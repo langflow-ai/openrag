@@ -169,13 +169,11 @@ async def initialize_services():
         Category.SERVICE_INITIALIZATION, MessageId.ORB_SVC_INIT_SUCCESS
     )
 
-    api_key_service = APIKeyService(session_manager)
-
-    # ===== RBAC service =====
+    # ===== SQL-backed services (shared lazy session factory) =====
     # We do NOT open the SQL engine here. `create_app()` runs inside an
     # `asyncio.run(...)` whose loop is closed BEFORE uvicorn starts its
     # own loop — any AsyncEngine bound to this loop would be dead by
-    # then. Instead, RBACService takes a *lazy* session-factory getter
+    # then. Instead, these services take a *lazy* session-factory getter
     # that resolves `db.engine.SessionLocal` at call time — that
     # attribute is filled in by the lifespan startup event running on
     # uvicorn's loop. Alembic upgrade is run synchronously from __main__
@@ -189,11 +187,12 @@ async def initialize_services():
         sl = _db_engine_mod.SessionLocal
         if sl is None:
             raise RuntimeError(
-                "DB engine not yet initialized. RBACService called before lifespan startup."
+                "DB engine not yet initialized. A SQL-backed service called before lifespan startup"
             )
         return sl()
 
     rbac_service = RBACService(_lazy_session_factory)
+    api_key_service = APIKeyService(session_manager, session_factory=_lazy_session_factory)
 
     # WorkspaceConfigService — DB-first reads of what config.yaml holds,
     # with the legacy ConfigManager kept as the yaml fallback during

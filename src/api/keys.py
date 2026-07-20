@@ -28,7 +28,7 @@ async def list_keys_endpoint(
 
     GET /keys
     """
-    result = await api_key_service.list_keys(user.user_id, user.jwt_token)
+    result = await api_key_service.list_keys(user.db_user_id, user.jwt_token)
     return JSONResponse(result)
 
 
@@ -52,10 +52,8 @@ async def create_key_endpoint(
             )
 
         result = await api_key_service.create_key(
-            user_id=user.user_id,
-            user_email=user.email,
+            user_id=user.db_user_id,
             name=name,
-            jwt_token=user.jwt_token,
         )
 
         if result.get("success"):
@@ -64,7 +62,7 @@ async def create_key_endpoint(
             return JSONResponse(result, status_code=500)
 
     except Exception as e:
-        logger.error("Failed to create API key", error=str(e), user_id=user.user_id)
+        logger.error("Failed to create API key", error=str(e), user_id=user.db_user_id)
         return JSONResponse(
             {"success": False, "error": str(e)},
             status_code=500,
@@ -82,9 +80,8 @@ async def revoke_key_endpoint(
     DELETE /keys/{key_id}
     """
     result = await api_key_service.revoke_key(
-        user_id=user.user_id,
+        user_id=user.db_user_id,
         key_id=key_id,
-        jwt_token=user.jwt_token,
     )
 
     if result.get("success"):
@@ -108,9 +105,8 @@ async def delete_key_endpoint(
     DELETE /keys/{key_id}/permanent
     """
     result = await api_key_service.delete_key(
-        user_id=user.user_id,
+        user_id=user.db_user_id,
         key_id=key_id,
-        jwt_token=user.jwt_token,
     )
 
     if result.get("success"):
