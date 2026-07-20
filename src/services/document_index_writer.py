@@ -24,9 +24,9 @@ logger = get_logger(__name__)
 @dataclass
 class DocumentIndexContext:
     document_id: str
-    filename: str
     mimetype: str
     embedding_model: str
+    filename: str | None = None
     owner: str | None = None
     owner_name: str | None = None
     owner_email: str | None = None
