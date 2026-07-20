@@ -5,14 +5,13 @@ import {
   ChevronDown,
   ChevronUp,
   Circle,
-  Clock,
   FileIcon,
   Loader2,
   Maximize2,
   Minimize2,
   X,
 } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   type Task,
@@ -21,6 +20,7 @@ import {
 } from "@/app/api/queries/useGetTasksQuery";
 import {
   type DoclingPreviewResponse,
+  type IndexProofChunk,
   useDoclingPreviewQuery,
   useIndexProofQuery,
 } from "@/app/api/queries/useIngestPreviewQuery";
@@ -31,6 +31,7 @@ import {
 import { FileChunksPanel } from "@/components/file-chunks-panel";
 import { IngestPreviewAutoOpenControl } from "@/components/ingest-preview-auto-open-control";
 import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -55,16 +56,41 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTask } from "@/contexts/task-context";
 import {
-  markIngestPreviewSeen,
+  type IngestPreviewSettings,
   useIngestPreviewSettings,
 } from "@/hooks/use-ingest-preview-settings";
 import {
-  chunkPageToDoclingRef,
   doclingHasPageImages,
-  pageFromDoclingRef,
+  matchChunkToDoclingItems,
   summarizeChunkPages,
 } from "@/lib/ingest-preview";
+import {
+  buildSampleDemoDocument,
+  SAMPLE_DEMO_CHUNKS,
+  SAMPLE_DEMO_FILENAME,
+  SAMPLE_DEMO_STATS,
+} from "@/lib/ingest-preview-demo";
 import { cn } from "@/lib/utils";
+
+/** Client-only walkthrough phases for “Run a sample ingest” (nothing is uploaded). */
+function useDemoPreviewPhase(enabled: boolean): number {
+  const [phase, setPhase] = useState(0);
+  useEffect(() => {
+    if (!enabled) {
+      setPhase(0);
+      return;
+    }
+    setPhase(0);
+    const delays = [500, 1100, 1700, 2300];
+    const timers = delays.map((ms, index) =>
+      setTimeout(() => setPhase(index + 1), ms),
+    );
+    return () => {
+      for (const timer of timers) clearTimeout(timer);
+    };
+  }, [enabled]);
+  return phase;
+}
 
 function previewFrameClass(expanded: boolean): string {
   return cn(
@@ -87,28 +113,39 @@ function isPreviewReady(entry?: TaskFileEntry): boolean {
 function SkeletonChunk({
   label,
   lines,
+  active = false,
   className,
 }: {
   label: string;
   lines: ReadonlyArray<{ id: string; width: string }>;
+  /** Emphasized chunk (thicker border + stronger badge), matching the design mock. */
+  active?: boolean;
   className?: string;
 }) {
   return (
     <div
       className={cn(
-        "relative rounded-md border border-dashed border-sky-300/80 bg-sky-50/40 p-2 dark:border-sky-500/40 dark:bg-sky-950/20",
+        "relative rounded-md border-dashed bg-transparent p-3 pt-4",
+        active
+          ? "border-2 border-sky-500 dark:border-sky-400"
+          : "border border-sky-300/70 dark:border-sky-500/35",
         className,
       )}
     >
-      <span className="absolute -top-2 left-2 rounded bg-sky-500 px-1.5 py-0.5 text-[10px] font-medium leading-none text-white">
+      <span
+        className={cn(
+          "absolute -top-2.5 left-2 rounded-full px-2 py-0.5 text-[10px] font-medium leading-none text-white",
+          active ? "bg-sky-500" : "bg-sky-400/80 dark:bg-sky-500/70",
+        )}
+      >
         {label}
       </span>
-      <div className="flex flex-1 flex-col gap-1.5 py-1">
+      <div className="flex flex-col gap-2">
         {lines.map((line) => (
           <Skeleton
             key={line.id}
             className={cn(
-              "h-2 rounded-full bg-sky-200/70 dark:bg-sky-400/25",
+              "h-2 rounded-full bg-muted-foreground/20 dark:bg-muted-foreground/25",
               line.width,
             )}
           />
@@ -124,82 +161,46 @@ function DoclingDocSkeleton({ expanded = false }: { expanded?: boolean }) {
     <div
       className={cn(
         previewFrameClass(expanded),
-        "space-y-3 bg-muted/40 p-3",
+        "bg-muted/40 p-3",
         expanded && "min-h-0 flex-1",
       )}
       data-testid="ingest-review-doc-skeleton"
       aria-busy="true"
       aria-label="Loading document layout"
     >
-      <div className="rounded-md border-2 border-sky-400 bg-background p-3 shadow-sm">
-        <div className="mb-3">
-          <SkeletonChunk
-            label="Header"
-            lines={[
-              { id: "h1", width: "w-2/3" },
-              { id: "h2", width: "w-1/2" },
-            ]}
-            className="min-h-12"
-          />
-        </div>
-        <div className="mb-3 grid grid-cols-[1fr_5rem] gap-2">
-          <SkeletonChunk
-            label="Chunk 1"
-            lines={[
-              { id: "c1a", width: "w-full" },
-              { id: "c1b", width: "w-5/6" },
-              { id: "c1c", width: "w-4/5" },
-              { id: "c1d", width: "w-3/5" },
-            ]}
-            className="min-h-20"
-          />
-          <div className="rounded-md border border-dashed border-sky-300/80 dark:border-sky-500/40" />
-        </div>
-        <div className="grid grid-cols-[1fr_5rem] gap-2">
-          <SkeletonChunk
-            label="Chunk 2"
-            lines={[
-              { id: "c2a", width: "w-full" },
-              { id: "c2b", width: "w-5/6" },
-              { id: "c2c", width: "w-2/3" },
-            ]}
-            className="min-h-16"
-          />
-          <div className="rounded-md border border-dashed border-sky-300/80 dark:border-sky-500/40" />
-        </div>
-      </div>
-
-      <div className="rounded-md border border-border/60 bg-background p-3 shadow-sm">
-        <div className="mb-3 grid grid-cols-2 gap-2">
-          <SkeletonChunk
-            label="Chunk 3"
-            lines={[
-              { id: "c3a", width: "w-full" },
-              { id: "c3b", width: "w-4/5" },
-              { id: "c3c", width: "w-3/5" },
-            ]}
-            className="min-h-16"
-          />
-          <SkeletonChunk
-            label="Chunk 4"
-            lines={[
-              { id: "c4a", width: "w-full" },
-              { id: "c4b", width: "w-5/6" },
-            ]}
-            className="min-h-16"
-          />
-        </div>
+      <div className="rounded-lg border border-border/60 bg-background p-4 shadow-sm space-y-5">
         <SkeletonChunk
-          label="Chunk 5"
+          label="Header"
           lines={[
-            { id: "c5a", width: "w-full" },
-            { id: "c5b", width: "w-5/6" },
-            { id: "c5c", width: "w-4/5" },
-            { id: "c5d", width: "w-2/3" },
+            { id: "h1", width: "w-3/5" },
+            { id: "h2", width: "w-2/5" },
+            { id: "h3", width: "w-1/2" },
           ]}
-          className="min-h-16"
         />
-        <p className="mt-3 text-center text-xs text-muted-foreground">2</p>
+        <SkeletonChunk
+          label="Chunk 1"
+          active
+          lines={[
+            { id: "c1a", width: "w-full" },
+            { id: "c1b", width: "w-5/6" },
+            { id: "c1c", width: "w-full" },
+            { id: "c1d", width: "w-4/5" },
+            { id: "c1e", width: "w-full" },
+            { id: "c1f", width: "w-5/6" },
+            { id: "c1g", width: "w-2/3" },
+          ]}
+        />
+        <SkeletonChunk
+          label="Chunk 2"
+          lines={[
+            { id: "c2a", width: "w-full" },
+            { id: "c2b", width: "w-5/6" },
+            { id: "c2c", width: "w-full" },
+            { id: "c2d", width: "w-4/5" },
+            { id: "c2e", width: "w-3/5" },
+          ]}
+        />
+        <p className="pt-1 text-right text-xs text-muted-foreground/60">1</p>
       </div>
     </div>
   );
@@ -209,16 +210,20 @@ function DocumentPane({
   failed,
   failureMessage,
   parsePreview,
-  previewExpired,
-  highlightItems,
+  highlightItemRefs,
+  fallbackPage,
+  highlightText,
+  chunkLabel,
   hasChunks,
   expanded = false,
 }: {
   failed: boolean;
   failureMessage: string;
   parsePreview: DoclingPreviewResponse | null | undefined;
-  previewExpired: boolean;
-  highlightItems?: string;
+  highlightItemRefs?: string[];
+  fallbackPage?: number | null;
+  highlightText?: string;
+  chunkLabel?: string;
   hasChunks: boolean;
   expanded?: boolean;
 }) {
@@ -243,11 +248,13 @@ function DocumentPane({
         <div className={cn(frameClass, expanded && "min-h-0 flex-1")}>
           <p className="mb-2 shrink-0 text-xs text-muted-foreground">
             Blue boxes mark parsed text, tables, and figures.
-            {hasChunks ? " Click a chunk to focus a page." : null}
+            {hasChunks ? " Click a chunk to focus its region." : null}
           </p>
           <DoclingParseViewer
             doclingDocument={doclingDocument}
-            highlightItems={highlightItems}
+            highlightItemRefs={highlightItemRefs}
+            fallbackPage={fallbackPage}
+            chunkLabel={chunkLabel}
           />
         </div>
       );
@@ -257,25 +264,14 @@ function DocumentPane({
         <p className="mb-2 shrink-0 text-xs text-muted-foreground">
           No page image for this format — each region Docling detected is boxed
           and labeled by type.
+          {hasChunks ? " Click a chunk to focus its region." : null}
         </p>
-        <DoclingTextPreview doclingDocument={doclingDocument} />
-      </div>
-    );
-  }
-
-  if (previewExpired) {
-    return (
-      <div
-        className="flex h-56 flex-col items-center justify-center gap-2 px-4 text-center text-muted-foreground"
-        data-testid="ingest-review-expired"
-      >
-        <Clock className="h-8 w-8 opacity-60" />
-        <p className="text-sm font-medium text-foreground">
-          Live preview ended
-        </p>
-        <p className="text-xs">
-          This document is still indexed and searchable.
-        </p>
+        <DoclingTextPreview
+          doclingDocument={doclingDocument}
+          highlightItemRefs={highlightItemRefs}
+          highlightText={highlightText}
+          chunkLabel={chunkLabel}
+        />
       </div>
     );
   }
@@ -333,6 +329,90 @@ function ProofLine({
   );
 }
 
+function DemoChunksList({
+  chunks,
+  showContents,
+  chunkSearch,
+  selectedChunkIndex,
+  onSelectChunk,
+  expanded = false,
+}: {
+  chunks: IndexProofChunk[];
+  showContents: boolean;
+  chunkSearch: string;
+  selectedChunkIndex?: number | null;
+  onSelectChunk: (chunk: {
+    index: number;
+    page: number | null;
+    text: string;
+  }) => void;
+  expanded?: boolean;
+}) {
+  const needle = chunkSearch.trim().toLowerCase();
+  const visible = needle
+    ? chunks.filter((chunk) =>
+        chunk.text_preview.toLowerCase().includes(needle),
+      )
+    : chunks;
+
+  if (visible.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        No chunks match your search.
+      </p>
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        "space-y-3 overflow-auto",
+        expanded ? "min-h-0 flex-1" : "max-h-72",
+      )}
+      data-testid="ingest-review-demo-chunks"
+    >
+      {visible.map((chunk, index) => {
+        const chunkIndex = index + 1;
+        const selected = selectedChunkIndex === chunkIndex;
+        return (
+          <button
+            key={chunk.chunk_id}
+            type="button"
+            className={cn(
+              "w-full rounded-lg border border-border/50 bg-muted p-2.5 text-left transition-colors hover:border-primary/40",
+              selected && "border-primary/60 ring-1 ring-primary/30",
+            )}
+            onClick={() =>
+              onSelectChunk({
+                index: chunkIndex,
+                page: chunk.page ?? null,
+                text: chunk.text_preview,
+              })
+            }
+          >
+            <div className="mb-2 flex min-w-0 flex-wrap items-center gap-2">
+              <span className="text-xs font-bold">Chunk {chunkIndex}</span>
+              <Badge variant="secondary" className="text-xxs">
+                {chunk.char_count} chars
+              </Badge>
+            </div>
+            {showContents ? (
+              <blockquote className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap">
+                {chunk.text_preview}
+              </blockquote>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                {chunk.page != null ? `page ${chunk.page}` : "chunk"} ·{" "}
+                {chunk.char_count} chars
+              </p>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function IndexPane({
   steps,
   filename,
@@ -344,11 +424,11 @@ function IndexPane({
   failureMessage,
   onViewError,
   awaitingChunks,
-  highlightItems,
-  pageNumbering,
-  onHighlightChunk,
+  selectedChunkIndex,
+  onSelectChunk,
   chunkSearch,
   onChunkSearchChange,
+  demoChunks,
   expanded = false,
 }: {
   steps: PipelineStep[];
@@ -361,15 +441,18 @@ function IndexPane({
   failureMessage: string;
   onViewError?: () => void;
   awaitingChunks: boolean;
-  highlightItems?: string;
-  pageNumbering: ReturnType<typeof summarizeChunkPages>["numbering"];
-  onHighlightChunk: (pageRef: string | undefined) => void;
+  selectedChunkIndex?: number | null;
+  onSelectChunk: (chunk: {
+    index: number;
+    page: number | null;
+    text: string;
+  }) => void;
   chunkSearch: string;
   onChunkSearchChange: (query: string) => void;
+  demoChunks?: IndexProofChunk[];
   expanded?: boolean;
 }) {
   const activeStepIndex = failed ? -1 : steps.findIndex((step) => !step.done);
-  const selectedPage = pageFromDoclingRef(highlightItems, pageNumbering);
 
   return (
     <div
@@ -421,26 +504,36 @@ function IndexPane({
         <div className="mb-4 shrink-0 border-t border-border/60" />
       )}
 
-      {showChunkBoundaries && filename && !awaitingChunks && (
+      {showChunkBoundaries && filename && !awaitingChunks && demoChunks && (
+        <div className={cn(expanded && "min-h-0 flex-1")}>
+          <DemoChunksList
+            chunks={demoChunks}
+            showContents={showChunkContents}
+            chunkSearch={chunkSearch}
+            selectedChunkIndex={selectedChunkIndex}
+            onSelectChunk={onSelectChunk}
+            expanded={expanded}
+          />
+        </div>
+      )}
+
+      {showChunkBoundaries && filename && !awaitingChunks && !demoChunks && (
         <div className={cn(expanded && "min-h-0 flex-1")}>
           <FileChunksPanel
             filename={filename}
             compact
             fillHeight={expanded}
             showContents={showChunkContents}
-            selectedPage={selectedPage}
+            selectedChunkIndex={selectedChunkIndex}
             hideSearch
             filterQuery={chunkSearch}
             onFilterQueryChange={onChunkSearchChange}
             onChunkSelect={(chunk) => {
-              if (chunk.page == null) {
-                onHighlightChunk(undefined);
-                return;
-              }
-              const pageRef = chunkPageToDoclingRef(chunk.page, pageNumbering);
-              onHighlightChunk(
-                highlightItems === pageRef ? undefined : pageRef,
-              );
+              onSelectChunk({
+                index: chunk.index ?? 0,
+                page: chunk.page ?? null,
+                text: chunk.text,
+              });
             }}
           />
         </div>
@@ -611,26 +704,53 @@ const FAILURE_PHASE_TO_STEP: Record<string, number> = {
 function IngestReviewContent({
   taskIds,
   previewFiles,
+  demo = false,
+  settingsOverride,
+  showAutoOpenFooter = false,
   onViewError,
   expanded = false,
 }: {
   taskIds: string[];
   previewFiles?: File[];
+  demo?: boolean;
+  /** When set (e.g. unsaved settings draft), prefer over persisted prefs. */
+  settingsOverride?: IngestPreviewSettings;
+  /** Auto-open control — onboarding only. */
+  showAutoOpenFooter?: boolean;
   onViewError?: (taskId: string) => void;
   expanded?: boolean;
 }) {
-  const { settings, updateSettings } = useIngestPreviewSettings();
-  const { data: tasks } = useGetTasksQuery({ enabled: taskIds.length > 0 });
+  const { settings: storedSettings, updateSettings } =
+    useIngestPreviewSettings();
+  const settings = settingsOverride ?? storedSettings;
+  const { data: tasks } = useGetTasksQuery({
+    enabled: !demo && taskIds.length > 0,
+  });
+  const demoPhase = useDemoPreviewPhase(demo);
+  const demoDocument = useMemo(
+    () => (demo ? buildSampleDemoDocument() : null),
+    [demo],
+  );
 
   const fromTasks = carouselFilesFromTasks(tasks, taskIds);
   const files: CarouselFile[] =
     fromTasks.length > 0
       ? fromTasks
-      : (previewFiles ?? []).map((file) => ({
-          taskId: null,
-          filePath: null,
-          filename: file.name,
-        }));
+      : (previewFiles ?? []).length > 0
+        ? (previewFiles ?? []).map((file) => ({
+            taskId: null,
+            filePath: null,
+            filename: file.name,
+          }))
+        : demo
+          ? [
+              {
+                taskId: null,
+                filePath: null,
+                filename: SAMPLE_DEMO_FILENAME,
+              },
+            ]
+          : [];
 
   // Stable across task polls / late-arriving folder batches (not a list index).
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -640,31 +760,55 @@ function IngestReviewContent({
   const activeIndex = selectedIndex >= 0 ? selectedIndex : 0;
 
   const active = files[activeIndex];
-  const activeTaskId = active?.taskId ?? taskIds[0] ?? null;
+  const activeTaskId = demo ? null : (active?.taskId ?? taskIds[0] ?? null);
 
-  const failed = isFileEntryFailed(active?.entry);
+  const failed = !demo && isFileEntryFailed(active?.entry);
   const activeFilePath = active?.filePath ?? null;
 
-  const { data: parsePreview, isLoading: parseLoading } =
-    useDoclingPreviewQuery(
-      activeTaskId,
-      Boolean(activeTaskId) && !failed,
-      activeFilePath,
-    );
-  const { data: indexProof } = useIndexProofQuery(
+  const { data: liveParsePreview } = useDoclingPreviewQuery(
+    activeTaskId,
+    Boolean(activeTaskId) && !failed,
+    activeFilePath,
+  );
+  const { data: liveIndexProof } = useIndexProofQuery(
     activeTaskId,
     Boolean(activeTaskId) && !failed,
     activeFilePath,
   );
 
-  const [highlightItems, setHighlightItems] = useState<string | undefined>();
+  const parsePreview: DoclingPreviewResponse | null | undefined = demo
+    ? demoPhase >= 1 && demoDocument
+      ? {
+          task_id: "demo",
+          document: demoDocument,
+          stats: SAMPLE_DEMO_STATS,
+          expires_at: 0,
+          filename: active?.filename,
+        }
+      : null
+    : liveParsePreview;
+
+  const indexProof = demo
+    ? {
+        ready: demoPhase >= 4,
+        chunk_count: demoPhase >= 2 ? SAMPLE_DEMO_CHUNKS.length : 0,
+        embedding_dimensions: demoPhase >= 3 ? 1536 : undefined,
+        chunks: demoPhase >= 2 ? SAMPLE_DEMO_CHUNKS : [],
+      }
+    : liveIndexProof;
+
+  const [chunkHighlight, setChunkHighlight] = useState<{
+    index: number;
+    page: number | null;
+    text: string;
+  } | null>(null);
   const [chunkSearch, setChunkSearch] = useState("");
   const activeSelectionKey = active ? fileSelectionKey(active) : "";
   const [prevActiveSelectionKey, setPrevActiveSelectionKey] =
     useState(activeSelectionKey);
   if (activeSelectionKey !== prevActiveSelectionKey) {
     setPrevActiveSelectionKey(activeSelectionKey);
-    setHighlightItems(undefined);
+    setChunkHighlight(null);
     setChunkSearch("");
   }
 
@@ -673,10 +817,29 @@ function IngestReviewContent({
     indexProof?.chunks ?? [],
   );
 
-  const doclingFinished = isPreviewReady(active?.entry);
+  const doclingMatch = useMemo(() => {
+    if (!chunkHighlight) return null;
+    return matchChunkToDoclingItems(
+      parsePreview?.document,
+      { page: chunkHighlight.page, text: chunkHighlight.text },
+      pageNumbering,
+    );
+  }, [chunkHighlight, parsePreview?.document, pageNumbering]);
+
+  const highlightItemRefs = doclingMatch?.itemRefs;
+  // Always keep a page fallback for PDF overlays when the chunk has a page —
+  // text→item matching is often weak on PDFs, and nested shadow queries need it.
+  const fallbackPage =
+    chunkHighlight?.page != null
+      ? pageNumbering === "zero-based"
+        ? chunkHighlight.page + 1
+        : chunkHighlight.page
+      : null;
+  const chunkLabel =
+    chunkHighlight != null ? `Chunk ${chunkHighlight.index}` : undefined;
+
+  const doclingFinished = demo ? demoPhase >= 1 : isPreviewReady(active?.entry);
   const layoutReady = Boolean(parsePreview?.document);
-  const previewExpired =
-    !failed && !parsePreview?.document && !parseLoading && doclingFinished;
   const chunkCount = indexProof?.chunk_count ?? 0;
   const steps: PipelineStep[] = [
     {
@@ -693,7 +856,7 @@ function IngestReviewContent({
     {
       id: "stored",
       done: Boolean(indexProof?.ready),
-      label: "Stored in OpenSearch",
+      label: demo ? "Ready for retrieval" : "Stored in OpenSearch",
     },
   ];
 
@@ -719,7 +882,9 @@ function IngestReviewContent({
   const ready = Boolean(indexProof?.ready);
   const activeFilename = active?.filename;
   useEffect(() => {
-    if (!settings.completionNotification || !ready || !activeFilename) return;
+    if (demo || !settings.completionNotification || !ready || !activeFilename) {
+      return;
+    }
     const key = activeSelectionKey || activeFilename;
     const notified = notifiedRef.current;
     if (!notified || notified.has(key)) return;
@@ -728,6 +893,7 @@ function IngestReviewContent({
       description: `${activeFilename} is indexed and searchable.`,
     });
   }, [
+    demo,
     ready,
     settings.completionNotification,
     activeFilename,
@@ -789,6 +955,15 @@ function IngestReviewContent({
         )}
       </div>
 
+      {demo && (
+        <p
+          className="mt-3 text-xs text-muted-foreground"
+          data-testid="ingest-review-demo-banner"
+        >
+          Sample walkthrough — this document is not uploaded or indexed.
+        </p>
+      )}
+
       <div
         className={cn(
           "mt-4 grid min-h-0 gap-4 lg:grid-cols-2",
@@ -812,8 +987,10 @@ function IngestReviewContent({
               failed={failed}
               failureMessage={failureMessage}
               parsePreview={parsePreview}
-              previewExpired={previewExpired}
-              highlightItems={highlightItems}
+              highlightItemRefs={highlightItemRefs}
+              fallbackPage={fallbackPage}
+              highlightText={chunkHighlight?.text}
+              chunkLabel={chunkLabel}
               hasChunks={chunkCount > 0}
               expanded={expanded}
             />
@@ -829,11 +1006,15 @@ function IngestReviewContent({
           failedStepIndex={failedStepIndex}
           failureMessage={failureMessage}
           awaitingChunks={chunkCount === 0 && !failed}
-          highlightItems={highlightItems}
-          pageNumbering={pageNumbering}
-          onHighlightChunk={setHighlightItems}
+          selectedChunkIndex={chunkHighlight?.index ?? null}
+          onSelectChunk={(chunk) => {
+            setChunkHighlight((prev) =>
+              prev?.index === chunk.index ? null : chunk,
+            );
+          }}
           chunkSearch={chunkSearch}
           onChunkSearchChange={setChunkSearch}
+          demoChunks={demo && chunkCount > 0 ? SAMPLE_DEMO_CHUNKS : undefined}
           expanded={expanded}
           onViewError={
             activeTaskId ? () => onViewError?.(activeTaskId) : undefined
@@ -841,15 +1022,17 @@ function IngestReviewContent({
         />
       </div>
 
-      <div className="mt-3 flex shrink-0 flex-wrap items-center gap-3">
-        <span className="text-sm text-muted-foreground">
-          Auto-open on ingest
-        </span>
-        <IngestPreviewAutoOpenControl
-          value={settings.autoOpen}
-          onChange={(autoOpen) => updateSettings({ autoOpen })}
-        />
-      </div>
+      {showAutoOpenFooter && (
+        <div className="mt-3 flex shrink-0 flex-wrap items-center gap-3">
+          <span className="text-sm text-muted-foreground">
+            Auto-open on ingest
+          </span>
+          <IngestPreviewAutoOpenControl
+            value={settings.autoOpen}
+            onChange={(autoOpen) => updateSettings({ autoOpen })}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -860,8 +1043,13 @@ export interface IngestReviewDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   taskIds?: string[];
-  filename?: string;
   previewFiles?: File[];
+  /** Client-only walkthrough — no upload or indexing. */
+  demo?: boolean;
+  /** Prefer these prefs (e.g. unsaved settings draft) over localStorage. */
+  settingsOverride?: IngestPreviewSettings;
+  /** Show the auto-open preference footer (onboarding only). */
+  showAutoOpenFooter?: boolean;
 }
 
 export function IngestReviewDialog({
@@ -869,22 +1057,24 @@ export function IngestReviewDialog({
   onOpenChange,
   taskIds = [],
   previewFiles = [],
+  demo = false,
+  settingsOverride,
+  showAutoOpenFooter = false,
 }: IngestReviewDialogProps) {
   const { openTaskDialog } = useTask();
   const [expanded, setExpanded] = useState(false);
   const [wasOpen, setWasOpen] = useState(open);
 
-  // Reset expand state + mark seen when the dialog re-opens (sync during render).
+  // Reset expand state when the dialog re-opens (sync during render).
   if (open !== wasOpen) {
     setWasOpen(open);
     if (open) {
       setExpanded(false);
-      markIngestPreviewSeen();
     }
   }
 
   // Skip mounting while closed so preview polls don't run in the background.
-  if (!open || (taskIds.length === 0 && previewFiles.length === 0)) {
+  if (!open || (taskIds.length === 0 && previewFiles.length === 0 && !demo)) {
     return null;
   }
 
@@ -912,14 +1102,21 @@ export function IngestReviewDialog({
           )}
         </button>
         <DialogHeader className="shrink-0">
-          <DialogTitle>Ingestion review</DialogTitle>
+          <DialogTitle>
+            {demo ? "Ingestion review (sample)" : "Ingestion review"}
+          </DialogTitle>
           <DialogDescription className="sr-only">
-            Review how this document is parsed and indexed.
+            {demo
+              ? "Sample walkthrough of how a document is parsed and indexed. Nothing is uploaded."
+              : "Review how this document is parsed and indexed."}
           </DialogDescription>
         </DialogHeader>
         <IngestReviewContent
           taskIds={taskIds}
           previewFiles={previewFiles}
+          demo={demo}
+          settingsOverride={settingsOverride}
+          showAutoOpenFooter={showAutoOpenFooter}
           expanded={expanded}
           onViewError={(id) => {
             onOpenChange(false);

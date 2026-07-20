@@ -7,9 +7,16 @@ import { useUpdateOnboardingStateMutation } from "@/app/api/mutations/useUpdateO
 import { useGetNudgesQuery } from "@/app/api/queries/useGetNudgesQuery";
 import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import { AnimatedProviderSteps } from "@/app/onboarding/_components/animated-provider-steps";
+import { IngestReviewDialog } from "@/components/ingest-review";
 import { SUPPORTED_EXTENSIONS } from "@/components/knowledge-dropdown";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/contexts/auth-context";
 import { trackButton } from "@/lib/analytics";
+import {
+  EMPTY_PREVIEW,
+  isIngestPreviewEnabled,
+  type PreviewDialogState,
+} from "@/lib/ingest-preview";
 import { uploadFile } from "@/lib/upload-utils";
 
 interface OnboardingUploadProps {
@@ -25,7 +32,12 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
   const [uploadedTaskId, setUploadedTaskId] = useState<string | null>(null);
   const [shouldCreateFilter, setShouldCreateFilter] = useState(false);
   const [isCreatingFilter, setIsCreatingFilter] = useState(false);
+  const [ingestionReady, setIngestionReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<PreviewDialogState>(EMPTY_PREVIEW);
+
+  const { runMode } = useAuth();
+  const ingestPreviewEnabled = isIngestPreviewEnabled(runMode);
 
   const createFilterMutation = useCreateFilter();
   const updateOnboardingMutation = useUpdateOnboardingStateMutation();
@@ -47,7 +59,24 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
 
   useEffect(() => () => clearTimeout(completeTimeoutRef.current), []);
 
-  // Monitor tasks and call onComplete when file processing is done
+  // Advance to chat only after ingestion is ready and the review dialog is closed
+  // (or preview is disabled / never opened).
+  useEffect(() => {
+    if (!ingestionReady || isCreatingFilter) return;
+    if (ingestPreviewEnabled && preview.open) return;
+    if (completeTimeoutRef.current) return;
+    completeTimeoutRef.current = setTimeout(() => {
+      onComplete();
+    }, 1000);
+  }, [
+    ingestionReady,
+    isCreatingFilter,
+    ingestPreviewEnabled,
+    preview.open,
+    onComplete,
+  ]);
+
+  // Monitor tasks and mark ingestion ready when file processing is done
   useEffect(() => {
     let cancelled = false;
     if (currentStep === null || !tasks || !uploadedTaskId) {
@@ -98,13 +127,16 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
       }
 
       clearTimeout(completeTimeoutRef.current);
+      completeTimeoutRef.current = undefined;
+      setIngestionReady(false);
       setError(errorMessage);
       setCurrentStep(null);
       setUploadedTaskId(null);
+      setPreview(EMPTY_PREVIEW);
       return;
     }
 
-    // If task is completed or has processed files, complete the onboarding step
+    // If task is completed or has processed files, prepare to finish the step
     if (!isTaskActive || (matchingTask.processed_files ?? 0) > 0) {
       // Set to final step to show "Done"
       setCurrentStep(STEP_LIST.length);
@@ -158,19 +190,13 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
           .finally(() => {
             setIsCreatingFilter(false);
             refetchNudges();
-
-            if (!cancelled && !completeTimeoutRef.current) {
-              completeTimeoutRef.current = setTimeout(() => {
-                onComplete();
-              }, 1000);
+            if (!cancelled) {
+              setIngestionReady(true);
             }
           });
-      } else if (!isCreatingFilter && !completeTimeoutRef.current) {
+      } else if (!isCreatingFilter && !ingestionReady) {
         refetchNudges();
-
-        completeTimeoutRef.current = setTimeout(() => {
-          onComplete();
-        }, 1000);
+        setIngestionReady(true);
       }
     }
 
@@ -180,13 +206,13 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
   }, [
     tasks,
     currentStep,
-    onComplete,
     refetchNudges,
     shouldCreateFilter,
     uploadedFilename,
     uploadedTaskId,
     createFilterMutation,
     isCreatingFilter,
+    ingestionReady,
     updateOnboardingMutation.mutateAsync,
     STEP_LIST.length,
   ]);
@@ -209,13 +235,39 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
   const performUpload = async (file: File) => {
     setIsUploading(true);
     setError(null);
+    setIngestionReady(false);
+    clearTimeout(completeTimeoutRef.current);
+    completeTimeoutRef.current = undefined;
+    // Onboarding always opens the review when the feature flag is on.
+    if (ingestPreviewEnabled) {
+      setPreview({
+        open: true,
+        taskIds: [],
+        filename: file.name,
+        files: [file],
+      });
+    }
     try {
       setCurrentStep(0);
-      const result = await uploadFile(file, true, true); // Pass createFilter=true
+      const result = await uploadFile(
+        file,
+        true,
+        true,
+        undefined,
+        ingestPreviewEnabled,
+      );
 
       // Store task ID to track the specific upload task
       if (result.taskId) {
         setUploadedTaskId(result.taskId);
+        if (result.previewMode) {
+          setPreview((prev) => ({
+            ...prev,
+            taskIds: [result.taskId as string],
+          }));
+        } else if (ingestPreviewEnabled) {
+          setPreview(EMPTY_PREVIEW);
+        }
       }
 
       // Store filename and createFilter flag in state to create filter after ingestion succeeds
@@ -233,6 +285,7 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
         error instanceof Error ? error.message : "Upload failed";
       console.error("Upload failed", errorMessage);
       setError(errorMessage);
+      setPreview(EMPTY_PREVIEW);
 
       // Dispatch event that chat context can listen to
       // This avoids circular dependency issues
@@ -278,66 +331,78 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
   };
 
   return (
-    <AnimatePresence mode="wait">
-      {currentStep === null ? (
-        <motion.div
-          key="user-ingest"
-          initial={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -24 }}
-          transition={{ duration: 0.4, ease: "easeInOut" }}
-        >
-          <AnimatePresence mode="wait">
-            {error && (
-              <motion.div
-                key="error"
-                initial={{ opacity: 1, y: 0, height: "auto" }}
-                exit={{ opacity: 0, y: -10, height: 0 }}
-              >
-                <div className="pb-6 flex items-center gap-4">
-                  <X className="w-4 h-4 text-destructive shrink-0" />
-                  <span
-                    data-testid="onboarding-upload-error"
-                    className="text-mmd text-muted-foreground"
-                  >
-                    {error}
-                  </span>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-          <Button
-            size="sm"
-            variant="outline"
-            data-testid="upload-button"
-            onClick={handleUploadClick}
-            disabled={isUploading}
+    <>
+      <AnimatePresence mode="wait">
+        {currentStep === null ? (
+          <motion.div
+            key="user-ingest"
+            initial={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -24 }}
+            transition={{ duration: 0.4, ease: "easeInOut" }}
           >
-            <div>{isUploading ? "Uploading..." : "Add a document"}</div>
-          </Button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            onChange={handleFileChange}
-            className="hidden"
-            accept={SUPPORTED_EXTENSIONS.join(",")}
-          />
-        </motion.div>
-      ) : (
-        <motion.div
-          key="ingest-steps"
-          initial={{ opacity: 0, y: 24 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, ease: "easeInOut" }}
-        >
-          <AnimatedProviderSteps
-            currentStep={currentStep}
-            setCurrentStep={setCurrentStep}
-            isCompleted={false}
-            steps={STEP_LIST}
-          />
-        </motion.div>
-      )}
-    </AnimatePresence>
+            <AnimatePresence mode="wait">
+              {error && (
+                <motion.div
+                  key="error"
+                  initial={{ opacity: 1, y: 0, height: "auto" }}
+                  exit={{ opacity: 0, y: -10, height: 0 }}
+                >
+                  <div className="pb-6 flex items-center gap-4">
+                    <X className="w-4 h-4 text-destructive shrink-0" />
+                    <span
+                      data-testid="onboarding-upload-error"
+                      className="text-mmd text-muted-foreground"
+                    >
+                      {error}
+                    </span>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <Button
+              size="sm"
+              variant="outline"
+              data-testid="upload-button"
+              onClick={handleUploadClick}
+              disabled={isUploading}
+            >
+              <div>{isUploading ? "Uploading..." : "Add a document"}</div>
+            </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              onChange={handleFileChange}
+              className="hidden"
+              accept={SUPPORTED_EXTENSIONS.join(",")}
+            />
+          </motion.div>
+        ) : (
+          <motion.div
+            key="ingest-steps"
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, ease: "easeInOut" }}
+          >
+            <AnimatedProviderSteps
+              currentStep={currentStep}
+              setCurrentStep={setCurrentStep}
+              isCompleted={false}
+              steps={STEP_LIST}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <IngestReviewDialog
+        open={preview.open}
+        onOpenChange={(open) =>
+          setPreview((prev) => (open ? { ...prev, open } : EMPTY_PREVIEW))
+        }
+        taskIds={preview.taskIds}
+        previewFiles={preview.files}
+        showAutoOpenFooter
+      />
+    </>
   );
 };
 

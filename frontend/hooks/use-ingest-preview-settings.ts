@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 export type IngestPreviewAutoOpen = "every" | "first-run" | "never";
 
 export interface IngestPreviewSettings {
-  /** When the review opens automatically after an ingest starts. */
+  /** When the review opens automatically after a Knowledge ingest starts. */
   autoOpen: IngestPreviewAutoOpen;
   /** Show the per-chunk breakdown (the chunk cards). */
   showChunkBoundaries: boolean;
@@ -26,7 +26,6 @@ export const DEFAULT_INGEST_PREVIEW_SETTINGS: IngestPreviewSettings = {
 };
 
 const SETTINGS_KEY = "openrag.ingest-preview.settings";
-const SEEN_KEY = "openrag.ingest-preview.seen";
 const AUTO_OPEN_VALUES: IngestPreviewAutoOpen[] = [
   "every",
   "first-run",
@@ -38,7 +37,8 @@ export const INGEST_PREVIEW_AUTO_OPEN_OPTIONS: ReadonlyArray<{
   label: string;
 }> = [
   { value: "every", label: "Every upload" },
-  { value: "first-run", label: "First run only" },
+  // Value kept as first-run for localStorage compat; means onboarding only.
+  { value: "first-run", label: "Onboarding only" },
   { value: "never", label: "Never" },
 ];
 
@@ -92,28 +92,15 @@ function writeIngestPreviewSettings(settings: IngestPreviewSettings): void {
   window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
 }
 
-function readHasSeenPreview(): boolean {
-  if (typeof window === "undefined") return false;
-  return window.localStorage.getItem(SEEN_KEY) === "true";
-}
-
-export function markIngestPreviewSeen(): void {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(SEEN_KEY, "true");
-}
-
-/** Decide whether the review should auto-open for a freshly started ingest. */
+/**
+ * Whether Knowledge uploads should auto-open the review.
+ * Onboarding always opens when the feature flag is on (ignores this).
+ * `first-run` / "Onboarding only" → Knowledge does not auto-open.
+ */
 export function shouldAutoOpenIngestPreview(
   settings: IngestPreviewSettings = readIngestPreviewSettings(),
 ): boolean {
-  switch (settings.autoOpen) {
-    case "every":
-      return true;
-    case "never":
-      return false;
-    default:
-      return !readHasSeenPreview();
-  }
+  return settings.autoOpen === "every";
 }
 
 /** Stateful accessor for the settings form; persists on every change. */

@@ -46,7 +46,11 @@ import {
   getConnectorDescriptor,
   getConnectorDescriptors,
 } from "@/lib/connectors/registry";
-import { isIngestPreviewEnabled } from "@/lib/ingest-preview";
+import {
+  EMPTY_PREVIEW,
+  isIngestPreviewEnabled,
+  type PreviewDialogState,
+} from "@/lib/ingest-preview";
 import {
   duplicateCheck,
   uploadFiles,
@@ -123,20 +127,6 @@ const FileIconWithColor = ({ className }: { className?: string }) => (
 const FolderIconWithColor = ({ className }: { className?: string }) => (
   <Folder className={cn(className, "text-muted-foreground")} />
 );
-
-type PreviewDialogState = {
-  open: boolean;
-  taskIds: string[];
-  filename: string;
-  files: File[];
-};
-
-const EMPTY_PREVIEW: PreviewDialogState = {
-  open: false,
-  taskIds: [],
-  filename: "",
-  files: [],
-};
 
 export function KnowledgeDropdown() {
   const { runMode } = useAuth();
@@ -1035,7 +1025,6 @@ export function KnowledgeDropdown() {
           setPreview((prev) => (open ? { ...prev, open } : EMPTY_PREVIEW))
         }
         taskIds={preview.taskIds}
-        filename={preview.filename}
         previewFiles={preview.files}
       />
     </>

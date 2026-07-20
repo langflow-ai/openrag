@@ -1,67 +1,60 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { IngestPreviewAutoOpenControl } from "@/components/ingest-preview-auto-open-control";
 import { IngestReviewDialog } from "@/components/ingest-review";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { useIngestPreviewSettings } from "@/hooks/use-ingest-preview-settings";
-import { uploadFile } from "@/lib/upload-utils";
+import {
+  type IngestPreviewSettings,
+  useIngestPreviewSettings,
+} from "@/hooks/use-ingest-preview-settings";
+import { createSampleDemoFile } from "@/lib/ingest-preview-demo";
 import { cn } from "@/lib/utils";
 
-const SAMPLE_TEXT = `OpenRAG ingest preview sample
+const INGEST_PREVIEW_SETTING_KEYS = [
+  "autoOpen",
+  "showChunkBoundaries",
+  "showIndexingPipeline",
+  "showChunkContents",
+  "completionNotification",
+] as const satisfies ReadonlyArray<keyof IngestPreviewSettings>;
 
-This short document is used to demonstrate how files are parsed and
-chunked before they are used for retrieval.
-
-- Reading layout
-- Creating chunks
-- Generating embeddings
-- Storing in OpenSearch
-`;
-
-function createSampleFile(): File {
-  return new File([SAMPLE_TEXT], "ingest-preview-sample.txt", {
-    type: "text/plain",
-  });
+function settingsEqual(
+  a: IngestPreviewSettings,
+  b: IngestPreviewSettings,
+): boolean {
+  return INGEST_PREVIEW_SETTING_KEYS.every((key) => a[key] === b[key]);
 }
 
 export function IngestPreviewSettingsSection() {
   const { settings, updateSettings } = useIngestPreviewSettings();
-  const [runningSample, setRunningSample] = useState(false);
+  const [draft, setDraft] = useState<IngestPreviewSettings>(settings);
   const [showPreviewDialog, setShowPreviewDialog] = useState(false);
-  const [previewTaskId, setPreviewTaskId] = useState<string | null>(null);
   const [previewFile, setPreviewFile] = useState<File | null>(null);
 
-  const runSampleIngest = async () => {
-    const sample = createSampleFile();
-    setPreviewFile(sample);
-    setPreviewTaskId(null);
-    setShowPreviewDialog(true);
-    setRunningSample(true);
+  // Hook hydrates from localStorage after mount — keep the form in sync when
+  // persisted values change (including after Save).
+  useEffect(() => {
+    setDraft(settings);
+  }, [settings]);
 
-    try {
-      const result = await uploadFile(sample, false, false, undefined, true);
-      if (result.taskId) {
-        setPreviewTaskId(result.taskId);
-      }
-      if (!result.previewMode) {
-        setShowPreviewDialog(false);
-        toast.error("Ingest preview is not available", {
-          description:
-            "Requires OSS/SaaS run mode and OPENRAG_INGEST_PREVIEW_ENABLED=true.",
-        });
-      }
-    } catch (error) {
-      setShowPreviewDialog(false);
-      toast.error("Sample ingest failed", {
-        description: error instanceof Error ? error.message : "Unknown error",
-      });
-    } finally {
-      setRunningSample(false);
-    }
+  const isDirty = !settingsEqual(draft, settings);
+
+  const patchDraft = (patch: Partial<IngestPreviewSettings>) => {
+    setDraft((prev) => ({ ...prev, ...patch }));
+  };
+
+  const saveChanges = () => {
+    updateSettings(draft);
+    toast.success("Ingest preview settings saved");
+  };
+
+  const runSampleIngest = () => {
+    setPreviewFile(createSampleDemoFile());
+    setShowPreviewDialog(true);
   };
 
   return (
@@ -72,12 +65,13 @@ export function IngestPreviewSettingsSection() {
             Auto-open ingest preview
           </Label>
           <p className="text-sm text-muted-foreground mt-1">
-            Open the review automatically when a document is ingested.
+            Controls Knowledge uploads. Onboarding always opens the review when
+            the feature is enabled; Onboarding only skips Knowledge auto-open.
           </p>
         </div>
         <IngestPreviewAutoOpenControl
-          value={settings.autoOpen}
-          onChange={(autoOpen) => updateSettings({ autoOpen })}
+          value={draft.autoOpen}
+          onChange={(autoOpen) => patchDraft({ autoOpen })}
           aria-label="Auto-open ingest preview"
         />
       </div>
@@ -86,56 +80,67 @@ export function IngestPreviewSettingsSection() {
         id="show-chunk-boundaries"
         label="Show chunk boundaries"
         description="Show the indexed chunk list for each document."
-        checked={settings.showChunkBoundaries}
+        checked={draft.showChunkBoundaries}
         onCheckedChange={(checked) =>
-          updateSettings({ showChunkBoundaries: checked })
+          patchDraft({ showChunkBoundaries: checked })
         }
       />
       <SettingToggle
         id="show-indexing-pipeline"
         label="Show indexing pipeline"
         description="Reading layout, creating chunks, embeddings, stored."
-        checked={settings.showIndexingPipeline}
+        checked={draft.showIndexingPipeline}
         onCheckedChange={(checked) =>
-          updateSettings({ showIndexingPipeline: checked })
+          patchDraft({ showIndexingPipeline: checked })
         }
       />
       <SettingToggle
         id="show-chunk-contents"
         label="Show chunk contents"
         description="Stream each chunk's extracted text as it is created."
-        checked={settings.showChunkContents}
+        checked={draft.showChunkContents}
         onCheckedChange={(checked) =>
-          updateSettings({ showChunkContents: checked })
+          patchDraft({ showChunkContents: checked })
         }
       />
       <SettingToggle
         id="completion-notification"
         label="Completion notification"
         description="Show a 'Task completed' toast when ingestion finishes."
-        checked={settings.completionNotification}
+        checked={draft.completionNotification}
         onCheckedChange={(checked) =>
-          updateSettings({ completionNotification: checked })
+          patchDraft({ completionNotification: checked })
         }
         last
       />
 
-      <div className="pt-6">
+      <div className="flex flex-wrap items-center justify-end gap-2 pt-6">
         <Button
           type="button"
-          onClick={() => void runSampleIngest()}
-          disabled={runningSample}
+          variant="outline"
+          size="sm"
+          onClick={runSampleIngest}
           data-testid="ingest-preview-run-sample"
         >
-          {runningSample ? "Running sample…" : "Run a sample ingest"}
+          Run a sample ingest
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          className="min-w-[120px]"
+          onClick={saveChanges}
+          disabled={!isDirty}
+          data-testid="ingest-preview-save"
+        >
+          Save changes
         </Button>
       </div>
 
       <IngestReviewDialog
         open={showPreviewDialog}
         onOpenChange={setShowPreviewDialog}
-        taskIds={previewTaskId ? [previewTaskId] : []}
-        filename={previewFile?.name}
+        demo
+        settingsOverride={draft}
         previewFiles={previewFile ? [previewFile] : []}
       />
     </div>
@@ -165,7 +170,7 @@ function SettingToggle({
       )}
     >
       <div className="flex-1 min-w-0">
-        <Label htmlFor={id} className="text-base font-medium cursor-pointer">
+        <Label htmlFor={id} className="text-base font-medium">
           {label}
         </Label>
         <p className="text-sm text-muted-foreground mt-1">{description}</p>

@@ -17,6 +17,8 @@ export interface FileChunksPanelProps {
   /** When false, show metadata only (no chunk body). Default true. */
   showContents?: boolean;
   selectedPage?: number | null;
+  /** Prefer exact chunk selection over page-wide selection. */
+  selectedChunkIndex?: number | null;
   onChunkSelect?: (chunk: ChunkResult) => void;
   className?: string;
   /** Hide built-in search (parent renders it elsewhere, e.g. above pipeline steps). */
@@ -136,6 +138,7 @@ export function FileChunksPanel({
   compact = false,
   showContents = true,
   selectedPage,
+  selectedChunkIndex,
   onChunkSelect,
   className,
   hideSearch = false,
@@ -256,6 +259,10 @@ export function FileChunksPanel({
         >
           {chunks.map((chunk) => {
             const chunkKey = chunk.index ?? 0;
+            const selected =
+              selectedChunkIndex != null
+                ? chunk.index === selectedChunkIndex
+                : selectedPage != null && chunk.page === selectedPage;
             return (
               <FileChunkCard
                 key={`${chunk.filename}-${chunkKey}`}
@@ -263,7 +270,7 @@ export function FileChunksPanel({
                 listIndex={chunkKey}
                 compact={compact}
                 showContents={showContents}
-                selected={selectedPage != null && chunk.page === selectedPage}
+                selected={selected}
                 interactive={Boolean(onChunkSelect)}
                 copied={copiedIndex === chunkKey}
                 onCopy={handleCopy}
