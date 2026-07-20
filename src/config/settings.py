@@ -389,6 +389,10 @@ def get_jwt_verify_signature() -> bool:
 
 
 DOCLING_OCR_ENGINE = os.getenv("DOCLING_OCR_ENGINE")
+
+# Hugging Face cache root override (standard HF_HOME env var). Used to locate
+# locally downloaded VLM weights; falls back to ~/.cache/huggingface when unset.
+HF_HOME = os.getenv("HF_HOME")
 SEGMENT_WRITE_KEY = os.getenv("SEGMENT_WRITE_KEY", "")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "")
 PLATFORM_AUTH_DEV_MODE = os.getenv("PLATFORM_AUTH_DEV_MODE", "false").lower() in (

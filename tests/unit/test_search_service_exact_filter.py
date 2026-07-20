@@ -72,6 +72,23 @@ def test_verbatim_match_in_filename_restricts_to_matching_files():
     assert [c["filename"] for c in filtered] == ["SKU-1234-spec.pdf"]
 
 
+def test_multiword_prose_query_is_not_narrowed():
+    """Ordinary prose queries keep hybrid-ranked results even when one chunk
+    happens to contain the phrase verbatim — narrowing is for token-like
+    lookups only."""
+    chunks = [
+        _chunk("guide.pdf", "The quarterly revenue summary is attached below."),
+        _chunk("other.pdf", "Revenue grew on strong quarterly performance."),
+    ]
+
+    filtered, aggs = _apply_exact_match_file_filter(
+        "quarterly revenue summary", chunks, BASE_AGGS, is_wildcard_match_all=False
+    )
+
+    assert filtered == chunks
+    assert aggs == BASE_AGGS
+
+
 def test_wildcard_and_short_queries_are_untouched():
     chunks = [_chunk("report.pdf", "text"), _chunk("notes.md", "more text")]
 

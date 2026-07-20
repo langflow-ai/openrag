@@ -60,6 +60,7 @@ from config.config_manager import ALLOWED_INDEX_NAME_PREFIXES, is_permitted_inde
 from config.settings import (
     DEFAULT_DOCS_URL,
     ENVIRONMENT,
+    HF_HOME,
     INGEST_SAMPLE_DATA,
     LANGFLOW_CHAT_FLOW_ID,
     LANGFLOW_INGEST_FLOW_ID,
@@ -101,14 +102,12 @@ logger = get_logger(__name__)
 
 
 def _detect_local_vlm_models() -> list[str]:
-    import os
     from pathlib import Path
 
     local_models = []
     hf_cache = Path.home() / ".cache" / "huggingface" / "hub"
-    hf_home = os.getenv("HF_HOME")
-    if hf_home:
-        hf_cache = Path(hf_home) / "hub"
+    if HF_HOME:
+        hf_cache = Path(HF_HOME) / "hub"
     if hf_cache.exists():
         for p in hf_cache.glob("models--*"):
             if (
@@ -282,7 +281,7 @@ async def get_settings(
             ingestion_defaults=ingestion_defaults_obj,
             ingest_via_chat=OPENRAG_INGEST_VIA_CHAT,
             show_provider_ingest_settings=OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS,
-            local_vlm_models=_detect_local_vlm_models(),
+            local_vlm_models=await asyncio.to_thread(_detect_local_vlm_models),
             show_shared_upload_toggle=OPENRAG_SHOW_SHARED_UPLOAD_TOGGLE,
             segment_write_key=SEGMENT_WRITE_KEY or None,
             environment=ENVIRONMENT or None,
@@ -712,7 +711,7 @@ async def update_settings(
         for vlm_field in vlm_update_fields:
             value = getattr(body, vlm_field)
             if value is not None:
-                setattr(current_config.knowledge, vlm_field, value)
+                setattr(working_config.knowledge, vlm_field, value)
                 config_updated = True
 
         # Update provider-specific settings

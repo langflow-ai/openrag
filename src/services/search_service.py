@@ -1,6 +1,7 @@
 import asyncio
 import copy
 import os
+import re
 from collections import Counter
 from typing import Any
 
@@ -23,6 +24,19 @@ EMBED_RETRY_MAX_DELAY = 8.0
 _global_search_service = None
 
 
+def _is_exact_token_query(query: str) -> bool:
+    """Return True for code/token-like queries (identifiers, versions, SKUs)
+    that warrant exact-file narrowing; ordinary prose returns False."""
+    query = query.strip()
+    if not query or len(query) < 3:
+        return False
+
+    if re.search(r"[^a-zA-Z0-9\s]", query):
+        return True
+
+    return bool(re.search(r"[a-zA-Z]", query) and re.search(r"\d", query))
+
+
 def _apply_exact_match_file_filter(
     query: str,
     chunks: list[dict[str, Any]],
@@ -30,15 +44,22 @@ def _apply_exact_match_file_filter(
     *,
     is_wildcard_match_all: bool,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """If query text appears verbatim in a subset of files, prefer those files.
+    """If a token-like query appears verbatim in a subset of files, prefer those files.
 
-    This avoids broad semantic spillover for unique lookups. When no file
-    contains the query verbatim, the ranked hybrid results are returned
-    untouched — hits must never be discarded just because the query looks
-    token-like (e.g. "chunk_overlap", "v1.2", "SKU-1234").
+    This avoids broad semantic spillover for unique lookups. Narrowing only
+    applies to token-like queries (see _is_exact_token_query); multi-word prose
+    searches keep their full hybrid-ranked results. When no file contains the
+    query verbatim, the ranked results are returned untouched — hits must never
+    be discarded just because the query looks token-like (e.g. "chunk_overlap",
+    "v1.2", "SKU-1234").
     """
     normalized_query = query.strip().lower()
-    if not normalized_query or is_wildcard_match_all or len(normalized_query) < 4:
+    if (
+        not normalized_query
+        or is_wildcard_match_all
+        or len(normalized_query) < 4
+        or not _is_exact_token_query(normalized_query)
+    ):
         return chunks, aggregations
 
     exact_files = {

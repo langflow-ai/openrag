@@ -774,6 +774,18 @@ async def _classify_connector_duplicates(
     }
 
 
+def _connector_scoped_to_buckets(connector, bucket_names: list[str]):
+    """Shallow copy of a (cached, shared) connector with bucket_names overridden.
+
+    connector_service.get_connector() returns a per-connection cached instance;
+    mutating bucket_names on it directly would leak the override into concurrent
+    requests using the same connection.
+    """
+    scoped = copy.copy(connector)
+    scoped.bucket_names = list(bucket_names)
+    return scoped
+
+
 async def _classify_bucket_connector_duplicates(
     connector,
     connector_type: str,
@@ -790,19 +802,15 @@ async def _classify_bucket_connector_duplicates(
     ``non_duplicate_files`` so the caller can sync just those when the user
     chooses to skip duplicates.
     """
-    original_buckets = connector.bucket_names
-    connector.bucket_names = bucket_filter
-    try:
-        all_files: list[dict[str, Any]] = []
-        page_token = None
-        while True:
-            result = await connector.list_files(page_token=page_token)
-            all_files.extend(result.get("files", []))
-            page_token = result.get("next_page_token")
-            if not page_token:
-                break
-    finally:
-        connector.bucket_names = original_buckets
+    scoped_connector = _connector_scoped_to_buckets(connector, bucket_filter)
+    all_files: list[dict[str, Any]] = []
+    page_token = None
+    while True:
+        result = await scoped_connector.list_files(page_token=page_token)
+        all_files.extend(result.get("files", []))
+        page_token = result.get("next_page_token")
+        if not page_token:
+            break
 
     if not all_files:
         return {
@@ -1203,19 +1211,15 @@ async def connector_sync(
                 # container every time. Per-file dedup in ConnectorFileProcessor is a
                 # backstop, but it runs after download — this pre-filter avoids the
                 # redundant fetch/reprocess and the misleading "all files" task view.
-                original_buckets = connector.bucket_names
-                connector.bucket_names = body.bucket_filter
-                try:
-                    all_files: list[dict[str, Any]] = []
-                    page_token = None
-                    while True:
-                        result = await connector.list_files(page_token=page_token)
-                        all_files.extend(result.get("files", []))
-                        page_token = result.get("next_page_token")
-                        if not page_token:
-                            break
-                finally:
-                    connector.bucket_names = original_buckets
+                scoped_connector = _connector_scoped_to_buckets(connector, body.bucket_filter)
+                all_files: list[dict[str, Any]] = []
+                page_token = None
+                while True:
+                    result = await scoped_connector.list_files(page_token=page_token)
+                    all_files.extend(result.get("files", []))
+                    page_token = result.get("next_page_token")
+                    if not page_token:
+                        break
 
                 if not all_files:
                     return JSONResponse(
@@ -2389,17 +2393,15 @@ async def browse_connection_files(
                 status_code=401,
             )
 
-        # Temporarily override bucket filter if specified
-        original_buckets = None
+        # Scope the listing to the requested bucket without mutating the
+        # shared cached connector instance.
+        listing_connector = connector
         if bucket and hasattr(connector, "bucket_names"):
-            original_buckets = connector.bucket_names
-            connector.bucket_names = [bucket]
+            listing_connector = _connector_scoped_to_buckets(connector, [bucket])
 
-        try:
-            files_result = await connector.list_files(page_token=page_token, max_files=max_files)
-        finally:
-            if original_buckets is not None:
-                connector.bucket_names = original_buckets
+        files_result = await listing_connector.list_files(
+            page_token=page_token, max_files=max_files
+        )
 
         remote_files = files_result.get("files", [])
         next_page_token = files_result.get("next_page_token")
