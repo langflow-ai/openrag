@@ -74,6 +74,7 @@ from config.settings import (
     clients,
     config_manager,
     get_openrag_config,
+    is_workspace_oauth_overrides_enabled,
 )
 from dependencies import (
     get_chat_service,
@@ -244,6 +245,7 @@ async def get_settings(
             ingest_via_chat=OPENRAG_INGEST_VIA_CHAT,
             show_provider_ingest_settings=OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS,
             show_shared_upload_toggle=OPENRAG_SHOW_SHARED_UPLOAD_TOGGLE,
+            show_workspace_oauth_overrides=is_workspace_oauth_overrides_enabled(),
             segment_write_key=SEGMENT_WRITE_KEY or None,
             environment=ENVIRONMENT or None,
             langflow_port=str(LANGFLOW_PORT),

@@ -13,10 +13,10 @@ from config.settings import (
     DOCLING_ERROR_DETAIL_MAX_LENGTH,
     DOCLING_SERVE_URL,
     DOCLING_SERVE_VERIFY_SSL,
-    IBM_AUTH_ENABLED,
     get_openrag_config,
 )
 from utils.logging_config import get_logger
+from utils.run_mode_utils import is_run_mode_on_prem, is_run_mode_saas
 
 logger = get_logger(__name__)
 
@@ -176,14 +176,10 @@ class DoclingService:
     def _get_auth_headers(
         self, user_id: str | None = None, auth_header: str | None = None
     ) -> dict[str, str]:
-        """Build authentication headers for Docling Serve if IBM auth is enabled."""
+        """Build authentication headers for Docling Serve in saas run mode."""
         headers = {}
-        if IBM_AUTH_ENABLED:
-            if auth_header:
-                headers["Authorization"] = auth_header
-
-            if user_id:
-                headers["X-Tenant-Id"] = user_id
+        if (is_run_mode_saas() or is_run_mode_on_prem()) and auth_header:
+            headers["Authorization"] = auth_header
         return headers
 
     async def upload_to_docling_direct_async(

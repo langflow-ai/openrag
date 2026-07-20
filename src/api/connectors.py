@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config.settings import get_index_name
+from config.settings import get_index_name, is_workspace_oauth_overrides_enabled
 from connectors.sharepoint.utils import is_valid_sharepoint_url
 from dependencies import (
     get_connector_service,
@@ -1024,6 +1024,82 @@ async def update_connector_user_access(
     )
     connectors = await list_access_for_admin(session, metadata)
     return JSONResponse({"connectors": connectors})
+
+
+class UpdateConnectorOAuthConfigBody(BaseModel):
+    client_id: str | None = None
+    client_secret: str | None = None
+
+
+def _oauth_config_unavailable_response() -> JSONResponse:
+    return JSONResponse(
+        {"error": "Workspace OAuth connector credential overrides are not enabled"},
+        status_code=404,
+    )
+
+
+async def get_connector_oauth_config(
+    user: User = Depends(require_permission("connectors:manage:access")),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Per OAuth-kind connector: whether a workspace credential override is set,
+    plus env-var fallback visibility. Never returns the decrypted secret."""
+    from services.connector_oauth_config_service import get_oauth_config_status
+
+    if not is_workspace_oauth_overrides_enabled():
+        return _oauth_config_unavailable_response()
+
+    status = await get_oauth_config_status(session)
+    return JSONResponse({"credentials": status})
+
+
+async def update_connector_oauth_config(
+    credential_key: str,
+    body: UpdateConnectorOAuthConfigBody,
+    user: User = Depends(require_permission("connectors:manage:access")),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Save (partial update) a workspace OAuth client id/secret override."""
+    from services.connector_oauth_config_service import get_oauth_config_status, set_oauth_config
+
+    if not is_workspace_oauth_overrides_enabled():
+        return _oauth_config_unavailable_response()
+
+    try:
+        await set_oauth_config(
+            session,
+            credential_key,
+            body.client_id,
+            body.client_secret,
+            user.db_user_id or user.user_id,
+        )
+        await session.commit()
+    except ValueError as e:
+        logger.error("[CONNECTOR] Invalid OAuth config update", error=str(e))
+        return JSONResponse({"error": "Unknown connector credential key"}, status_code=400)
+
+    return JSONResponse({"credentials": await get_oauth_config_status(session)})
+
+
+async def delete_connector_oauth_config(
+    credential_key: str,
+    user: User = Depends(require_permission("connectors:manage:access")),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Clear a workspace OAuth client id/secret override, reverting to the env var."""
+    from services.connector_oauth_config_service import clear_oauth_config, get_oauth_config_status
+
+    if not is_workspace_oauth_overrides_enabled():
+        return _oauth_config_unavailable_response()
+
+    try:
+        await clear_oauth_config(session, credential_key, user.db_user_id or user.user_id)
+        await session.commit()
+    except ValueError as e:
+        logger.error("[CONNECTOR] Invalid OAuth config clear", error=str(e))
+        return JSONResponse({"error": "Unknown connector credential key"}, status_code=400)
+
+    return JSONResponse({"credentials": await get_oauth_config_status(session)})
 
 
 async def connector_sync(
