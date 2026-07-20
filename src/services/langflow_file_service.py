@@ -192,10 +192,10 @@ class LangflowFileService:
         self,
         *,
         document_id: str,
-        filename: str,
         mimetype: str,
         file_size: int,
         embedding_model: str,
+        filename: str | None = None,
         owner: str | None,
         owner_name: str | None,
         owner_email: str | None,
@@ -651,7 +651,6 @@ class LangflowFileService:
         }
         ingest_token, ingest_run_id = self._configure_ingest_callback(
             document_id=resolved_document_id,
-            filename=docs_url,
             mimetype="text/html",
             file_size=0,
             embedding_model=embedding_model,

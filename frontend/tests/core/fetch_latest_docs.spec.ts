@@ -3,29 +3,50 @@ import logger from "../utils/logger";
 import { navigateToKnowledge } from "../utils/navigation";
 
 test.describe("Fetch Latest Docs Functionality", () => {
-  test("Verify Fetch Latest Docs works and refreshes the document list @33219240", async ({
+  test("Verify Fetch Latest Docs works and refreshes the document list with and without Langflow @33219240", async ({
     page,
     knowledge,
+    settings,
   }) => {
-    test.setTimeout(180000); // 3 minutes timeout
+    test.setTimeout(360000); // 6 minutes timeout
 
     logger.info("Starting Fetch Latest Docs E2E test");
+    const expectedDocName = "What is OpenRAG? | OpenRAG";
 
-    // 1. Navigate to the Knowledge page
+    // Navigate initially to load the app UI (sidebar with Settings link)
+    await navigateToKnowledge(page);
+    logger.info("Successfully loaded the app UI");
+
+    // --- Phase 1: Test with Langflow Ingestion DISABLED (Traditional OpenRAG processing) ---
+    logger.info("PHASE 1: Testing with Langflow Ingestion DISABLED");
+    await settings.setDisableLangflowIngestion(true);
+
     await navigateToKnowledge(page);
     logger.info("Successfully navigated to Knowledge page");
 
-    // 2. Click the "Fetch latest docs" button and verify success toast is shown
     logger.info("Triggering fetchLatestDocs()...");
     await knowledge.fetchLatestDocs();
     logger.info("fetchLatestDocs() execution completed successfully");
 
-    // 3. Verify that the OpenRAG docs URL document appears and becomes active
-    const expectedDocName =
-      process.env.DEFAULT_DOCS_URL || "https://docs.openr.ag/";
     logger.info(`Verifying default document '${expectedDocName}' is active`);
     await knowledge.verifyDocumentActive(expectedDocName);
 
-    logger.info("Fetch Latest Docs E2E test passed successfully!");
+    // --- Phase 2: Test with Langflow Ingestion ENABLED (Langflow processing) ---
+    logger.info("PHASE 2: Testing with Langflow Ingestion ENABLED");
+    await settings.setDisableLangflowIngestion(false);
+
+    await navigateToKnowledge(page);
+    logger.info("Successfully navigated to Knowledge page");
+
+    logger.info("Triggering fetchLatestDocs()...");
+    await knowledge.fetchLatestDocs();
+    logger.info("fetchLatestDocs() execution completed successfully");
+
+    logger.info(`Verifying default document '${expectedDocName}' is active`);
+    await knowledge.verifyDocumentActive(expectedDocName);
+
+    logger.info(
+      "Fetch Latest Docs E2E test passed successfully for both modes!",
+    );
   });
 });
