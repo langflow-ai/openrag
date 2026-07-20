@@ -325,7 +325,9 @@ export function IngestSettingsSection() {
     if (k.disable_ingest_with_langflow !== undefined)
       setDisableIngestWithLangflow(k.disable_ingest_with_langflow);
     if (k.vlm_provider !== undefined) setVlmProvider(k.vlm_provider);
-    if (k.vlm_model !== undefined) setVlmModel(k.vlm_model);
+    // Backend defaults vlm_model to ""; an empty value means "not configured",
+    // so don't clobber a locally auto-selected model with it.
+    if (k.vlm_model) setVlmModel(k.vlm_model);
     if (k.vlm_prompt !== undefined) setVlmPrompt(k.vlm_prompt);
     if (k.vlm_response_format !== undefined)
       setVlmResponseFormat(k.vlm_response_format);
@@ -368,6 +370,9 @@ export function IngestSettingsSection() {
     if (provider) setVlmProvider(provider);
     setValidationError(null);
   };
+
+  const vlmModelPending =
+    showVlmSettings && pictureDescriptions && !vlmModel.trim();
 
   const k = settings.knowledge;
   const vlmDirty =
@@ -981,7 +986,9 @@ export function IngestSettingsSection() {
             <Button
               onClick={handleKnowledgeIngestSave}
               disabled={
-                updateSettingsMutation.isPending || !knowledgeIngestDirty
+                updateSettingsMutation.isPending ||
+                !knowledgeIngestDirty ||
+                vlmModelPending
               }
               className="min-w-[120px]"
               size="sm"
