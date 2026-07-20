@@ -29,6 +29,8 @@ export class Settings {
   private readonly chunkSizeInput = () => this.page.getByLabel(/chunk size/i);
   private readonly chunkOverlapInput = () =>
     this.page.getByLabel(/chunk overlap/i);
+  private readonly disableLangflowIngestionToggle = () =>
+    this.page.getByRole("switch", { name: /disable langflow ingestion/i });
   private readonly watsonxProjectIDInput = () =>
     this.page.locator("#project-id");
   private readonly apiKeyInput = () => this.page.locator("#api-key");
@@ -227,6 +229,18 @@ export class Settings {
   async setOCR(enabled: boolean) {
     await this.open();
     const toggle = this.ocrToggle();
+    await toggle.scrollIntoViewIfNeeded();
+    const state = await toggle.getAttribute("data-state");
+    const isChecked = state === "checked";
+    if (isChecked !== enabled) {
+      await toggle.click();
+      await this.saveIngestSettings();
+    }
+  }
+
+  async setDisableLangflowIngestion(enabled: boolean) {
+    await this.clickTab("Langflow");
+    const toggle = this.disableLangflowIngestionToggle();
     await toggle.scrollIntoViewIfNeeded();
     const state = await toggle.getAttribute("data-state");
     const isChecked = state === "checked";
