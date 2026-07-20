@@ -9,6 +9,47 @@ logger = get_logger(__name__)
 active_conversations: dict[str, dict[str, Any]] = {}
 
 
+def _format_provider_error_message(exc: BaseException) -> str:
+    """Return a concise, user-facing provider error string from an exception."""
+    text = str(exc).strip()
+    if not text:
+        return "An error occurred while generating a response."
+
+    try:
+        from api.provider_validation import _parse_json_error_message
+    except Exception:
+        return text
+
+    parsed = _parse_json_error_message(text)
+    if parsed != text:
+        return parsed
+
+    json_start = text.find("{")
+    if json_start >= 0:
+        nested = _parse_json_error_message(text[json_start:])
+        if nested != text[json_start:]:
+            prefix = text[:json_start].rstrip(": ").strip()
+            return f"{prefix}: {nested}" if prefix else nested
+
+    return text
+
+
+def _stream_error_chunk(message: str) -> bytes:
+    """NDJSON error event consumed by the chat streaming client."""
+    import json
+
+    return (
+        json.dumps(
+            {
+                "status": "failed",
+                "finish_reason": "error",
+                "error": {"message": message},
+            }
+        )
+        + "\n"
+    ).encode("utf-8")
+
+
 async def get_user_conversations(user_id: str):
     """Get conversation metadata for a user from persistent storage."""
     return await conversation_persistence.get_user_conversations(user_id)
@@ -505,52 +546,72 @@ async def async_chat_stream(
     full_response = ""
     response_id = None
     usage_data = None
-    async for chunk in async_stream(
-        async_client,
-        prompt,
-        model,
-        previous_response_id=previous_response_id,
-        log_prefix="agent",
-    ):
-        # Extract text content to build full response for history
-        try:
-            import json
+    try:
+        async for chunk in async_stream(
+            async_client,
+            prompt,
+            model,
+            previous_response_id=previous_response_id,
+            log_prefix="agent",
+        ):
+            # Extract text content to build full response for history
+            try:
+                import json
 
-            chunk_data = json.loads(chunk.decode("utf-8"))
-            if "delta" in chunk_data and "content" in chunk_data["delta"]:
-                full_response += chunk_data["delta"]["content"]
-            # Extract response_id from chunk
-            if "id" in chunk_data:
-                response_id = chunk_data["id"]
-            elif "response_id" in chunk_data:
-                response_id = chunk_data["response_id"]
-            # Capture usage from response.completed event
-            if chunk_data.get("type") == "response.completed":
-                response_obj = chunk_data.get("response", {})
-                usage_data = response_obj.get("usage")
-        except Exception:
-            pass
-        yield chunk
+                chunk_data = json.loads(chunk.decode("utf-8"))
+                if "delta" in chunk_data and "content" in chunk_data["delta"]:
+                    full_response += chunk_data["delta"]["content"]
+                # Extract response_id from chunk
+                if "id" in chunk_data:
+                    response_id = chunk_data["id"]
+                elif "response_id" in chunk_data:
+                    response_id = chunk_data["response_id"]
+                # Capture usage from response.completed event
+                if chunk_data.get("type") == "response.completed":
+                    response_obj = chunk_data.get("response", {})
+                    usage_data = response_obj.get("usage")
+            except Exception:
+                pass
+            yield chunk
 
-    # Add the complete assistant response to message history with response_id and timestamp
-    assistant_message = {
-        "role": "assistant",
-        "content": full_response,
-        "response_id": response_id,
-        "timestamp": datetime.now(),
-    }
-    # Store usage data if available (from response.completed event)
-    if usage_data:
-        assistant_message["response_data"] = {"usage": usage_data}
-    conversation_state["messages"].append(assistant_message)
+        # Add the complete assistant response to message history with response_id and timestamp
+        assistant_message = {
+            "role": "assistant",
+            "content": full_response,
+            "response_id": response_id,
+            "timestamp": datetime.now(),
+        }
+        # Store usage data if available (from response.completed event)
+        if usage_data:
+            assistant_message["response_data"] = {"usage": usage_data}
+        conversation_state["messages"].append(assistant_message)
 
-    # Store the conversation thread with its response_id
-    if response_id:
-        conversation_state["last_activity"] = datetime.now()
-        await store_conversation_thread(user_id, response_id, conversation_state)
-        logger.debug(
-            f"Stored conversation thread for user {user_id} with response_id: {response_id}"
+        # Store the conversation thread with its response_id
+        if response_id:
+            conversation_state["last_activity"] = datetime.now()
+            await store_conversation_thread(user_id, response_id, conversation_state)
+            logger.debug(
+                f"Stored conversation thread for user {user_id} with response_id: {response_id}"
+            )
+    except Exception as e:
+        logger.error(f"Error in chat stream: {e}", exc_info=True)
+        error_text = _format_provider_error_message(e)
+        conversation_state["messages"].append(
+            {
+                "role": "assistant",
+                "content": error_text,
+                "timestamp": datetime.now(),
+                "error": True,
+            }
         )
+        if not response_id:
+            response_id = f"error_{user_id}_{int(datetime.now().timestamp())}"
+        try:
+            conversation_state["last_activity"] = datetime.now()
+            await store_conversation_thread(user_id, response_id, conversation_state)
+        except Exception as store_error:
+            logger.error(f"Failed to store error conversation: {store_error}")
+        yield _stream_error_chunk(error_text)
 
 
 # Async langflow function with conversation storage (non-streaming)
@@ -861,11 +922,12 @@ async def async_langflow_chat_stream(
         # Log the error
         logger.error(f"Error in langflow chat stream: {e}", exc_info=True)
         error_occurred = True
+        error_text = _format_provider_error_message(e)
 
-        # Store error message in conversation history so it persists
+        # Store the same user-facing text the live stream yields
         error_message = {
             "role": "assistant",
-            "content": f"Sorry, I encountered an error: {str(e)}",
+            "content": error_text,
             "timestamp": datetime.now(),
             "error": True,
         }
@@ -883,8 +945,9 @@ async def async_langflow_chat_stream(
         except Exception as store_error:
             logger.error(f"Failed to store error conversation: {store_error}")
 
-        # Re-raise the exception so it propagates to the API layer
-        raise
+        # Yield a final error chunk so the client receives the provider message
+        # instead of seeing a dropped stream / generic network failure.
+        yield _stream_error_chunk(error_text)
 
 
 async def delete_user_conversation(user_id: str, response_id: str) -> bool:

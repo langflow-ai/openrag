@@ -5,6 +5,7 @@ import type {
   TokenUsage,
 } from "@/app/chat/_types/types";
 import { useChat } from "@/contexts/chat-context";
+import { extractStreamProviderError } from "@/lib/chat-stream-errors";
 import {
   detectImplicitToolCall,
   detectRAGFromContent,
@@ -140,8 +141,8 @@ export function useChatStreaming({
       const content = { value: "" };
       const currentFunctionCalls: FunctionCall[] = [];
       let newResponseId: string | null = null;
-      let isError = false;
       const usage: { value: TokenUsage | undefined } = { value: undefined };
+      let providerStreamError: string | null = null;
 
       if (!controller.signal.aborted && thisStreamId === streamIdRef.current) {
         setStreamingMessage({
@@ -190,12 +191,10 @@ export function useChatStreaming({
                   parseOpenRAGChunk(chunk, content);
                 detectImplicitToolCall(chunk, currentFunctionCalls);
 
-                if (
-                  chunk.finish_reason === "error" ||
-                  chunk.status === "failed"
-                ) {
-                  console.error("Error detected in stream");
-                  isError = true;
+                const streamError = extractStreamProviderError(chunk);
+                if (streamError) {
+                  console.error("Error detected in stream", streamError);
+                  providerStreamError = streamError;
                   break streamLoop;
                 }
 
@@ -225,6 +224,10 @@ export function useChatStreaming({
         if (timeoutId) clearTimeout(timeoutId);
       }
 
+      if (providerStreamError) {
+        throw new Error(providerStreamError);
+      }
+
       if (
         !hasReceivedData ||
         (!content.value && currentFunctionCalls.length === 0)
@@ -246,7 +249,6 @@ export function useChatStreaming({
           currentFunctionCalls.length > 0 ? currentFunctionCalls : undefined,
         timestamp: new Date(),
         isStreaming: false,
-        error: isError,
         usage: usage.value,
       };
 

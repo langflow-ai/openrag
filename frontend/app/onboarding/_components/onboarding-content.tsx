@@ -194,11 +194,19 @@ export function OnboardingContent({
     },
     onError: (error) => {
       console.error("Chat error:", error);
-      setAssistantMessage({
-        role: "assistant",
-        content:
-          "Sorry, I couldn't connect to the chat service. Please try again.",
-        timestamp: new Date(),
+      // Fallback if onComplete does not run (e.g. aborted mid-handler).
+      // Prefer the real error text over a generic connection message.
+      setAssistantMessage((prev) => {
+        if (prev?.error) {
+          return prev;
+        }
+        return {
+          role: "assistant",
+          content:
+            error.message || "An error occurred while generating a response.",
+          timestamp: new Date(),
+          error: true,
+        };
       });
     },
   });

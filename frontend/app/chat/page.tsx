@@ -145,15 +145,10 @@ function ChatPage() {
       console.error("Streaming error:", error);
       setLoading(false);
       setWaitingTooLong(false);
-      // Set chat error flag to trigger test_completion=true on health checks
+      // Set chat error flag to trigger test_completion=true on health checks.
+      // Do not append a message here — useChatStreaming already calls onComplete
+      // with the provider/stream error content.
       setChatError(true);
-      const errorMessage: Message = {
-        role: "assistant",
-        content:
-          "Sorry, I couldn't connect to the chat service. Please try again.",
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
     },
   });
 
