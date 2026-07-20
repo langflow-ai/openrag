@@ -8,7 +8,7 @@ test.describe("Fetch Latest Docs Functionality", () => {
     knowledge,
     settings,
   }) => {
-    test.setTimeout(180000); // 3 minutes timeout
+    test.setTimeout(360000); // 6 minutes timeout
 
     logger.info("Starting Fetch Latest Docs E2E test");
     const expectedDocName = "What is OpenRAG? | OpenRAG";

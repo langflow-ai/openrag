@@ -48,7 +48,8 @@ async def materialize_url_as_text_file(docs_url: str, crawl_depth: int) -> tuple
         raw_html,
         flags=re.IGNORECASE | re.DOTALL,
     )
-    title = html.unescape(title_match.group(1).strip()) if title_match else "OpenRAG"
+    title = html.unescape(title_match.group(1).strip()) if title_match else ""
+    title = title or "OpenRAG"
 
     text_parser = _VisibleTextHTMLParser()
     text_parser.feed(raw_html)
