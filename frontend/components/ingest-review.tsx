@@ -75,12 +75,17 @@ import { cn } from "@/lib/utils";
 /** Client-only walkthrough phases for “Run a sample ingest” (nothing is uploaded). */
 function useDemoPreviewPhase(enabled: boolean): number {
   const [phase, setPhase] = useState(0);
-  useEffect(() => {
-    if (!enabled) {
-      setPhase(0);
-      return;
-    }
+  const [prevEnabled, setPrevEnabled] = useState(enabled);
+
+  // Reset inline when `enabled` flips so we never paint a stale phase.
+  // https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes
+  if (enabled !== prevEnabled) {
+    setPrevEnabled(enabled);
     setPhase(0);
+  }
+
+  useEffect(() => {
+    if (!enabled) return;
     const delays = [500, 1100, 1700, 2300];
     const timers = delays.map((ms, index) =>
       setTimeout(() => setPhase(index + 1), ms),
@@ -701,24 +706,54 @@ const FAILURE_PHASE_TO_STEP: Record<string, number> = {
   indexing: 3,
 };
 
-function IngestReviewContent({
+type ChunkHighlight = {
+  index: number;
+  page: number | null;
+  text: string;
+};
+
+function useIngestCompletionToast({
+  demo,
+  ready,
+  completionNotification,
+  activeFilename,
+  activeSelectionKey,
+}: {
+  demo: boolean;
+  ready: boolean;
+  completionNotification: boolean;
+  activeFilename: string | undefined;
+  activeSelectionKey: string;
+}) {
+  const notifiedRef = useRef<Set<string> | null>(null);
+  if (notifiedRef.current === null) {
+    notifiedRef.current = new Set();
+  }
+
+  useEffect(() => {
+    if (demo || !completionNotification || !ready || !activeFilename) {
+      return;
+    }
+    const key = activeSelectionKey || activeFilename;
+    const notified = notifiedRef.current;
+    if (!notified || notified.has(key)) return;
+    notified.add(key);
+    toast.success("Task completed", {
+      description: `${activeFilename} is indexed and searchable.`,
+    });
+  }, [demo, ready, completionNotification, activeFilename, activeSelectionKey]);
+}
+
+function useIngestReviewModel({
   taskIds,
   previewFiles,
-  demo = false,
+  demo,
   settingsOverride,
-  showAutoOpenFooter = false,
-  onViewError,
-  expanded = false,
 }: {
   taskIds: string[];
   previewFiles?: File[];
-  demo?: boolean;
-  /** When set (e.g. unsaved settings draft), prefer over persisted prefs. */
+  demo: boolean;
   settingsOverride?: IngestPreviewSettings;
-  /** Auto-open control — onboarding only. */
-  showAutoOpenFooter?: boolean;
-  onViewError?: (taskId: string) => void;
-  expanded?: boolean;
 }) {
   const { settings: storedSettings, updateSettings } =
     useIngestPreviewSettings();
@@ -797,11 +832,9 @@ function IngestReviewContent({
       }
     : liveIndexProof;
 
-  const [chunkHighlight, setChunkHighlight] = useState<{
-    index: number;
-    page: number | null;
-    text: string;
-  } | null>(null);
+  const [chunkHighlight, setChunkHighlight] = useState<ChunkHighlight | null>(
+    null,
+  );
   const [chunkSearch, setChunkSearch] = useState("");
   const activeSelectionKey = active ? fileSelectionKey(active) : "";
   const [prevActiveSelectionKey, setPrevActiveSelectionKey] =
@@ -875,85 +908,244 @@ function IngestReviewContent({
     }
   }
 
-  const notifiedRef = useRef<Set<string> | null>(null);
-  if (notifiedRef.current === null) {
-    notifiedRef.current = new Set();
-  }
-  const ready = Boolean(indexProof?.ready);
   const activeFilename = active?.filename;
-  useEffect(() => {
-    if (demo || !settings.completionNotification || !ready || !activeFilename) {
-      return;
-    }
-    const key = activeSelectionKey || activeFilename;
-    const notified = notifiedRef.current;
-    if (!notified || notified.has(key)) return;
-    notified.add(key);
-    toast.success("Task completed", {
-      description: `${activeFilename} is indexed and searchable.`,
-    });
-  }, [
+  useIngestCompletionToast({
     demo,
-    ready,
-    settings.completionNotification,
+    ready: Boolean(indexProof?.ready),
+    completionNotification: settings.completionNotification,
     activeFilename,
     activeSelectionKey,
-  ]);
+  });
 
+  return {
+    settings,
+    updateSettings,
+    files,
+    activeIndex,
+    setSelectedKey,
+    activeTaskId,
+    failed,
+    parsePreview,
+    chunkHighlight,
+    setChunkHighlight,
+    chunkSearch,
+    setChunkSearch,
+    showChunks,
+    highlightItemRefs,
+    fallbackPage,
+    chunkLabel,
+    chunkCount,
+    steps,
+    failureMessage,
+    failedStepIndex,
+    activeFilename,
+  };
+}
+
+function IngestReviewToolbar({
+  files,
+  activeIndex,
+  activeFilename,
+  parsePreview,
+  showChunks,
+  chunkSearch,
+  onSelectFile,
+  onChunkSearch,
+  onClearChunkSearch,
+}: {
+  files: CarouselFile[];
+  activeIndex: number;
+  activeFilename: string | undefined;
+  parsePreview: DoclingPreviewResponse | null | undefined;
+  showChunks: boolean;
+  chunkSearch: string;
+  onSelectFile: (index: number) => void;
+  onChunkSearch: (query: string) => void;
+  onClearChunkSearch: () => void;
+}) {
   const canNavigate = files.length > 1;
+
+  return (
+    <div className="-mx-4 shrink-0 grid items-center gap-3 border-t border-b border-border px-4 lg:grid-cols-2 lg:gap-0">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-8 gap-y-1 lg:pr-4">
+        {canNavigate ? (
+          <PreviewFileSelector
+            files={files}
+            activeIndex={activeIndex}
+            onSelect={onSelectFile}
+          />
+        ) : (
+          <span
+            className="inline-flex min-w-0 items-center gap-2 truncate text-sm font-medium"
+            title={activeFilename}
+          >
+            <FileIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+            {activeFilename ?? "Document"}
+          </span>
+        )}
+
+        {parsePreview?.stats && (
+          <span className="text-xs text-muted-foreground">
+            {parsePreview.stats.text_count} text ·{" "}
+            {parsePreview.stats.table_count} tables ·{" "}
+            {parsePreview.stats.picture_count} figures
+          </span>
+        )}
+      </div>
+
+      {showChunks && activeFilename ? (
+        <div className="flex min-w-0 items-center border-border p-2 lg:border-l">
+          <KnowledgeSearchInput
+            value={chunkSearch}
+            onSearch={onChunkSearch}
+            onClear={onClearChunkSearch}
+            hideFilterChip
+            hideSubmit
+            placeholder="Search chunks…"
+            className="max-w-none w-full"
+            inputClassName="rounded-full !min-h-9"
+          />
+        </div>
+      ) : (
+        <div className="hidden lg:block" />
+      )}
+    </div>
+  );
+}
+
+function IngestReviewDocumentColumn({
+  failed,
+  failureMessage,
+  parsePreview,
+  highlightItemRefs,
+  fallbackPage,
+  highlightText,
+  chunkLabel,
+  hasChunks,
+  expanded,
+}: {
+  failed: boolean;
+  failureMessage: string;
+  parsePreview: DoclingPreviewResponse | null | undefined;
+  highlightItemRefs?: string[];
+  fallbackPage?: number | null;
+  highlightText?: string;
+  chunkLabel?: string;
+  hasChunks: boolean;
+  expanded: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex min-h-[280px] flex-col rounded-lg border border-border/60 bg-muted/30 p-3",
+        expanded && "h-full min-h-0",
+      )}
+    >
+      <h3 className="mb-2 shrink-0 text-sm font-semibold">Document</h3>
+      <div
+        className={cn("min-h-0", expanded ? "flex flex-1 flex-col" : undefined)}
+      >
+        <DocumentPane
+          failed={failed}
+          failureMessage={failureMessage}
+          parsePreview={parsePreview}
+          highlightItemRefs={highlightItemRefs}
+          fallbackPage={fallbackPage}
+          highlightText={highlightText}
+          chunkLabel={chunkLabel}
+          hasChunks={hasChunks}
+          expanded={expanded}
+        />
+      </div>
+    </div>
+  );
+}
+
+function IngestReviewAutoOpenFooter({
+  autoOpen,
+  onAutoOpenChange,
+}: {
+  autoOpen: IngestPreviewSettings["autoOpen"];
+  onAutoOpenChange: (autoOpen: IngestPreviewSettings["autoOpen"]) => void;
+}) {
+  return (
+    <div className="mt-3 flex shrink-0 flex-wrap items-center gap-3">
+      <span className="text-sm text-muted-foreground">Auto-open on ingest</span>
+      <IngestPreviewAutoOpenControl
+        value={autoOpen}
+        onChange={onAutoOpenChange}
+      />
+    </div>
+  );
+}
+
+function IngestReviewContent({
+  taskIds,
+  previewFiles,
+  demo = false,
+  settingsOverride,
+  showAutoOpenFooter = false,
+  onViewError,
+  expanded = false,
+}: {
+  taskIds: string[];
+  previewFiles?: File[];
+  demo?: boolean;
+  /** When set (e.g. unsaved settings draft), prefer over persisted prefs. */
+  settingsOverride?: IngestPreviewSettings;
+  /** Auto-open control — onboarding only. */
+  showAutoOpenFooter?: boolean;
+  onViewError?: (taskId: string) => void;
+  expanded?: boolean;
+}) {
+  const {
+    settings,
+    updateSettings,
+    files,
+    activeIndex,
+    setSelectedKey,
+    activeTaskId,
+    failed,
+    parsePreview,
+    chunkHighlight,
+    setChunkHighlight,
+    chunkSearch,
+    setChunkSearch,
+    showChunks,
+    highlightItemRefs,
+    fallbackPage,
+    chunkLabel,
+    chunkCount,
+    steps,
+    failureMessage,
+    failedStepIndex,
+    activeFilename,
+  } = useIngestReviewModel({
+    taskIds,
+    previewFiles,
+    demo,
+    settingsOverride,
+  });
 
   return (
     <div
       className="flex min-h-0 flex-1 flex-col"
       data-testid="ingest-review-content"
     >
-      <div className="-mx-4 shrink-0 grid items-center gap-3 border-t border-b border-border px-4 lg:grid-cols-2 lg:gap-0">
-        <div className="flex min-w-0 flex-wrap items-center gap-x-8 gap-y-1 lg:pr-4">
-          {canNavigate ? (
-            <PreviewFileSelector
-              files={files}
-              activeIndex={activeIndex}
-              onSelect={(index) => {
-                const file = files[index];
-                if (file) setSelectedKey(fileSelectionKey(file));
-              }}
-            />
-          ) : (
-            <span
-              className="inline-flex min-w-0 items-center gap-2 truncate text-sm font-medium"
-              title={active?.filename}
-            >
-              <FileIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
-              {active?.filename ?? "Document"}
-            </span>
-          )}
-
-          {parsePreview?.stats && (
-            <span className="text-xs text-muted-foreground">
-              {parsePreview.stats.text_count} text ·{" "}
-              {parsePreview.stats.table_count} tables ·{" "}
-              {parsePreview.stats.picture_count} figures
-            </span>
-          )}
-        </div>
-
-        {showChunks && activeFilename ? (
-          <div className="flex min-w-0 items-center border-border p-2 lg:border-l">
-            <KnowledgeSearchInput
-              value={chunkSearch}
-              onSearch={setChunkSearch}
-              onClear={() => setChunkSearch("")}
-              hideFilterChip
-              hideSubmit
-              placeholder="Search chunks…"
-              className="max-w-none w-full"
-              inputClassName="rounded-full !min-h-9"
-            />
-          </div>
-        ) : (
-          <div className="hidden lg:block" />
-        )}
-      </div>
+      <IngestReviewToolbar
+        files={files}
+        activeIndex={activeIndex}
+        activeFilename={activeFilename}
+        parsePreview={parsePreview}
+        showChunks={showChunks}
+        chunkSearch={chunkSearch}
+        onSelectFile={(index) => {
+          const file = files[index];
+          if (file) setSelectedKey(fileSelectionKey(file));
+        }}
+        onChunkSearch={setChunkSearch}
+        onClearChunkSearch={() => setChunkSearch("")}
+      />
 
       {demo && (
         <p
@@ -970,32 +1162,17 @@ function IngestReviewContent({
           expanded ? "flex-1" : "mb-0",
         )}
       >
-        <div
-          className={cn(
-            "flex min-h-[280px] flex-col rounded-lg border border-border/60 bg-muted/30 p-3",
-            expanded && "h-full min-h-0",
-          )}
-        >
-          <h3 className="mb-2 shrink-0 text-sm font-semibold">Document</h3>
-          <div
-            className={cn(
-              "min-h-0",
-              expanded ? "flex flex-1 flex-col" : undefined,
-            )}
-          >
-            <DocumentPane
-              failed={failed}
-              failureMessage={failureMessage}
-              parsePreview={parsePreview}
-              highlightItemRefs={highlightItemRefs}
-              fallbackPage={fallbackPage}
-              highlightText={chunkHighlight?.text}
-              chunkLabel={chunkLabel}
-              hasChunks={chunkCount > 0}
-              expanded={expanded}
-            />
-          </div>
-        </div>
+        <IngestReviewDocumentColumn
+          failed={failed}
+          failureMessage={failureMessage}
+          parsePreview={parsePreview}
+          highlightItemRefs={highlightItemRefs}
+          fallbackPage={fallbackPage}
+          highlightText={chunkHighlight?.text}
+          chunkLabel={chunkLabel}
+          hasChunks={chunkCount > 0}
+          expanded={expanded}
+        />
         <IndexPane
           steps={steps}
           filename={activeFilename}
@@ -1023,15 +1200,10 @@ function IngestReviewContent({
       </div>
 
       {showAutoOpenFooter && (
-        <div className="mt-3 flex shrink-0 flex-wrap items-center gap-3">
-          <span className="text-sm text-muted-foreground">
-            Auto-open on ingest
-          </span>
-          <IngestPreviewAutoOpenControl
-            value={settings.autoOpen}
-            onChange={(autoOpen) => updateSettings({ autoOpen })}
-          />
-        </div>
+        <IngestReviewAutoOpenFooter
+          autoOpen={settings.autoOpen}
+          onAutoOpenChange={(autoOpen) => updateSettings({ autoOpen })}
+        />
       )}
     </div>
   );

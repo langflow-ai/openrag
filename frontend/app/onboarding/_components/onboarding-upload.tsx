@@ -26,6 +26,9 @@ interface OnboardingUploadProps {
 const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const completeTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const didCompleteRef = useRef(false);
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
   const [isUploading, setIsUploading] = useState(false);
   const [currentStep, setCurrentStep] = useState<number | null>(null);
   const [uploadedFilename, setUploadedFilename] = useState<string | null>(null);
@@ -57,28 +60,32 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
 
   const { refetch: refetchNudges } = useGetNudgesQuery(null);
 
-  useEffect(() => () => clearTimeout(completeTimeoutRef.current), []);
-
   // Advance to chat only after ingestion is ready and the review dialog is closed
   // (or preview is disabled / never opened).
+  // Use onCompleteRef so parent re-renders don't reset the timer (handleStepComplete
+  // is not referentially stable and was cancelling completion after dialog close).
   useEffect(() => {
     if (!ingestionReady || isCreatingFilter) return;
     if (ingestPreviewEnabled && preview.open) return;
-    if (completeTimeoutRef.current) return;
-    completeTimeoutRef.current = setTimeout(() => {
-      onComplete();
+    if (didCompleteRef.current) return;
+
+    const timeoutId = setTimeout(() => {
+      didCompleteRef.current = true;
+      completeTimeoutRef.current = undefined;
+      onCompleteRef.current();
     }, 1000);
-  }, [
-    ingestionReady,
-    isCreatingFilter,
-    ingestPreviewEnabled,
-    preview.open,
-    onComplete,
-  ]);
+    completeTimeoutRef.current = timeoutId;
+
+    return () => {
+      clearTimeout(timeoutId);
+      if (completeTimeoutRef.current === timeoutId) {
+        completeTimeoutRef.current = undefined;
+      }
+    };
+  }, [ingestionReady, isCreatingFilter, ingestPreviewEnabled, preview.open]);
 
   // Monitor tasks and mark ingestion ready when file processing is done
   useEffect(() => {
-    let cancelled = false;
     if (currentStep === null || !tasks || !uploadedTaskId) {
       return;
     }
@@ -128,6 +135,7 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
 
       clearTimeout(completeTimeoutRef.current);
       completeTimeoutRef.current = undefined;
+      didCompleteRef.current = false;
       setIngestionReady(false);
       setError(errorMessage);
       setCurrentStep(null);
@@ -188,21 +196,17 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
             console.error("Failed to create knowledge filter:", error);
           })
           .finally(() => {
+            // Always mark ready — task-poll effect re-runs must not leave us stuck
+            // with Done steps but ingestionReady never set.
             setIsCreatingFilter(false);
             refetchNudges();
-            if (!cancelled) {
-              setIngestionReady(true);
-            }
+            setIngestionReady(true);
           });
       } else if (!isCreatingFilter && !ingestionReady) {
         refetchNudges();
         setIngestionReady(true);
       }
     }
-
-    return () => {
-      cancelled = true;
-    };
   }, [
     tasks,
     currentStep,
@@ -236,6 +240,7 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
     setIsUploading(true);
     setError(null);
     setIngestionReady(false);
+    didCompleteRef.current = false;
     clearTimeout(completeTimeoutRef.current);
     completeTimeoutRef.current = undefined;
     // Onboarding always opens the review when the feature flag is on.

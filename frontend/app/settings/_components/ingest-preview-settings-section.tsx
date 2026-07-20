@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { IngestPreviewAutoOpenControl } from "@/components/ingest-preview-auto-open-control";
 import { IngestReviewDialog } from "@/components/ingest-review";
@@ -32,14 +32,17 @@ function settingsEqual(
 export function IngestPreviewSettingsSection() {
   const { settings, updateSettings } = useIngestPreviewSettings();
   const [draft, setDraft] = useState<IngestPreviewSettings>(settings);
+  const [prevSettings, setPrevSettings] = useState(settings);
   const [showPreviewDialog, setShowPreviewDialog] = useState(false);
   const [previewFile, setPreviewFile] = useState<File | null>(null);
 
   // Hook hydrates from localStorage after mount — keep the form in sync when
-  // persisted values change (including after Save).
-  useEffect(() => {
+  // persisted values change (including after Save). Adjust during render instead
+  // of an effect: https://react.dev/learn/you-might-not-need-an-effect
+  if (settings !== prevSettings) {
+    setPrevSettings(settings);
     setDraft(settings);
-  }, [settings]);
+  }
 
   const isDirty = !settingsEqual(draft, settings);
 

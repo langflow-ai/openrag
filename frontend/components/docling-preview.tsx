@@ -273,7 +273,7 @@ export function DoclingParseViewer({
   const containerRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<DoclingImgElement | null>(null);
-  const matchedRefsRef = useRef<Set<string>>(new Set());
+  const matchedRefsRef = useRef<Set<string> | null>(null);
   const fallbackPageRef = useRef<number | null>(null);
   const [ready, setReady] = useState(false);
   const [loadError, setLoadError] = useState(false);
@@ -313,7 +313,7 @@ export function DoclingParseViewer({
 
   const isChunkHit = (page: unknown, item: unknown): boolean => {
     const refs = matchedRefsRef.current;
-    if (refs.size > 0) {
+    if (refs && refs.size > 0) {
       const ref = itemSelfRef(item);
       return Boolean(ref && refs.has(ref));
     }
