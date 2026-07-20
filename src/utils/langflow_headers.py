@@ -65,6 +65,10 @@ async def add_provider_credentials_to_headers(
         jwt_token: Optional credential string (``'Basic <b64>'`` or ``'Bearer <jwt>'``).
                    When IBM_AUTH_ENABLED, injected as Langflow global variables. Basic
                    credentials additionally provide OPENSEARCH_USERNAME and OPENSEARCH_PASSWORD.
+
+    NOTE: `headers` ends up holding raw API keys/JWTs after this call. Never log
+    it directly (e.g. logger.info(..., headers=headers) / extra_headers=...) —
+    use utils.logging_config.sanitize_headers() if a header dict must be logged.
     """
     # Add OpenAI credentials
     if config.providers.openai.api_key:
@@ -93,13 +97,17 @@ async def add_provider_credentials_to_headers(
             ollama_endpoint = transform_localhost_url(config.providers.ollama.endpoint)
         headers["X-LANGFLOW-GLOBAL-VAR-OLLAMA_BASE_URL"] = str(ollama_endpoint)
 
-    # Inject OpenSearch URL so Langflow flows always use the correct endpoint
-    from config.settings import LANGFLOW_OPENSEARCH_HOST, LANGFLOW_OPENSEARCH_PORT
+    # Inject OpenSearch URL and index name so Langflow flows always use the correct endpoint
+    from config.settings import LANGFLOW_OPENSEARCH_HOST, LANGFLOW_OPENSEARCH_PORT, get_index_name
 
     if LANGFLOW_OPENSEARCH_HOST and LANGFLOW_OPENSEARCH_PORT:
         headers["X-LANGFLOW-GLOBAL-VAR-OPENSEARCH_URL"] = (
             f"https://{LANGFLOW_OPENSEARCH_HOST}:{LANGFLOW_OPENSEARCH_PORT}"
         )
+
+    index_name = get_index_name()
+    if index_name:
+        headers["X-LANGFLOW-GLOBAL-VAR-OPENSEARCH_INDEX_NAME"] = index_name
 
     # IBM mode: inject OpenSearch Basic credentials as separate global vars
     from config.settings import IBM_AUTH_ENABLED

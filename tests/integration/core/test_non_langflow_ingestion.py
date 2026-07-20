@@ -193,9 +193,9 @@ async def test_non_langflow_csv_ingestion_with_splitting(tmp_path: Path):
             )
             hits = opensearch_resp.get("hits", {}).get("hits", [])
 
-            # Since the text is ~12,000 tokens, and max_tokens=8000,
-            # it should be split into 2 chunks, resulting in 2 documents in OpenSearch.
-            assert len(hits) == 2, f"Expected 2 indexed chunks, but got {len(hits)}"
+            # Since the text is ~12,000 tokens, and max_tokens=1000,
+            # it should be split into 10 chunks, resulting in 10 documents in OpenSearch.
+            assert len(hits) == 10, f"Expected 10 indexed chunks, but got {len(hits)}"
             for hit in hits:
                 source = hit.get("_source", {})
                 assert source.get("document_id") == expected_document_id
