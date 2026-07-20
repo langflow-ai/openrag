@@ -218,6 +218,7 @@ backend:
   enabled: true
 
   # StorageClass templating fields
+  createStorageClass: true                # Optional skip storageClass creation
   storageClassName: ""
   storageClassAnnotations: {}
   storageClassLabels: {}
