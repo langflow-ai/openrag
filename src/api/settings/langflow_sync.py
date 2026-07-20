@@ -19,6 +19,7 @@ from api.settings.helpers import (
     _configured_provider_names,
     _get_flows_service,
 )
+from utils.langflow_headers import map_embedding_provider
 from config.settings import clients, get_openrag_config
 from services.docling_service import get_docling_preset_configs
 from utils.logging_config import get_logger
@@ -134,21 +135,21 @@ def _required_generic_global_values(config) -> dict[str, str]:
             getattr(knowledge, "embedding_model", None),
             "text-embedding-3-small",
         ),
-        "SELECTED_EMBEDDING_MODEL_PROVIDER": _env_or_config(
+        "SELECTED_EMBEDDING_MODEL_PROVIDER": (lambda: map_embedding_provider(_env_or_config(
             "SELECTED_EMBEDDING_MODEL_PROVIDER",
             getattr(knowledge, "embedding_provider", None),
             "openai",
-        ),
+        )))(),
         "SELECTED_LANGUAGE_MODEL": _env_or_config(
             "SELECTED_LANGUAGE_MODEL",
             getattr(getattr(config, "agent", None), "llm_model", None),
             "gpt-4o-mini",
         ),
-        "SELECTED_LANGUAGE_MODEL_PROVIDER": _env_or_config(
+        "SELECTED_LANGUAGE_MODEL_PROVIDER": (lambda: map_provider(_env_or_config(
             "SELECTED_LANGUAGE_MODEL_PROVIDER",
             getattr(getattr(config, "agent", None), "llm_provider", None),
             "openai",
-        ),
+        )))(),
         "WATSONX_PROJECT_ID": _env_or_config(
             "WATSONX_PROJECT_ID", getattr(watsonx, "project_id", None), ""
         ),
@@ -217,11 +218,12 @@ async def _update_langflow_global_variables(config, flows_service=None):
                 f"Set SELECTED_EMBEDDING_MODEL global variable to {config.knowledge.embedding_model}"
             )
         if config.knowledge.embedding_provider:
+            mapped_provider = map_embedding_provider(config.knowledge.embedding_provider)
             await _upsert_langflow_global_variable(
-                "SELECTED_EMBEDDING_MODEL_PROVIDER", config.knowledge.embedding_provider
+                "SELECTED_EMBEDDING_MODEL_PROVIDER", mapped_provider
             )
             logger.info(
-                f"Set SELECTED_EMBEDDING_MODEL_PROVIDER global variable to {config.knowledge.embedding_provider}"
+                f"Set SELECTED_EMBEDDING_MODEL_PROVIDER global variable to {mapped_provider}"
             )
         if config.agent.llm_model:
             await _upsert_langflow_global_variable(
@@ -231,11 +233,12 @@ async def _update_langflow_global_variables(config, flows_service=None):
                 f"Set SELECTED_LANGUAGE_MODEL global variable to {config.agent.llm_model}"
             )
         if config.agent.llm_provider:
+            mapped_llm_provider = map_provider(config.agent.llm_provider)
             await _upsert_langflow_global_variable(
-                "SELECTED_LANGUAGE_MODEL_PROVIDER", config.agent.llm_provider
+                "SELECTED_LANGUAGE_MODEL_PROVIDER", mapped_llm_provider
             )
             logger.info(
-                f"Set SELECTED_LANGUAGE_MODEL_PROVIDER global variable to {config.agent.llm_provider}"
+                f"Set SELECTED_LANGUAGE_MODEL_PROVIDER global variable to {mapped_llm_provider}"
             )
         # Enable models in Langflow
         await _enable_langflow_models(config, flows_service)
@@ -275,6 +278,7 @@ async def _enable_langflow_models(config, flows_service):
 async def _run_async_post_save_langflow_updates(
     session_manager,
     update_mcp_servers: bool,
+    update_model_values: bool = False,
     models_service=None,
 ) -> None:
     """Apply post-save Langflow synchronization asynchronously."""
@@ -297,6 +301,17 @@ async def _run_async_post_save_langflow_updates(
                 current_config, session_manager, flows_service=flows_service
             )
 
+        # Update model values if provider/model changed
+        if update_model_values:
+            await _update_langflow_model_values(
+                current_config,
+                flows_service,
+                llm_model=current_config.agent.llm_model,
+                llm_provider=current_config.agent.llm_provider,
+                embedding_model=current_config.knowledge.embedding_model,
+                embedding_provider=current_config.knowledge.embedding_provider,
+            )
+
         logger.info("Completed asynchronous Langflow post-save sync")
     except Exception as e:
         # Do not fail user request if async sync fails; keep parity with existing behavior.
@@ -316,6 +331,85 @@ async def _update_mcp_server_urls(config, session_manager=None, flows_service=No
         logger.warning(f"Failed to update MCP server URLs after settings change: {str(mcp_error)}")
         # Don't fail the entire settings update if MCP update fails
 
+
+async def _update_langflow_model_values(
+    config,
+    flows_service,
+    llm_model=None,
+    llm_provider=None,
+    embedding_model=None,
+    embedding_provider=None,
+):
+    """Update model values across Langflow flows for all configured providers"""
+    try:
+        if llm_model or llm_provider:
+            effective_llm_provider = (llm_provider or config.agent.llm_provider).lower()
+            if llm_provider and llm_provider.lower() != config.agent.llm_provider.lower():
+                effective_llm_model = llm_model
+            else:
+                effective_llm_model = llm_model or config.agent.llm_model
+            result = await flows_service.change_langflow_model_value(
+                effective_llm_provider, llm_model=effective_llm_model, force_llm_update=True
+            )
+
+            logger.info(
+                f"Successfully updated Langflow flows for LLM provider {effective_llm_provider}",
+                result=result,
+            )
+
+        if embedding_model or embedding_provider:
+            effective_embedding_provider = (
+                embedding_provider or config.knowledge.embedding_provider
+            ).lower()
+            if (
+                embedding_provider
+                and embedding_provider.lower() != config.knowledge.embedding_provider.lower()
+            ):
+                effective_embedding_model = embedding_model
+            else:
+                effective_embedding_model = embedding_model or config.knowledge.embedding_model
+            result = await flows_service.change_langflow_model_value(
+                effective_embedding_provider,
+                embedding_model=effective_embedding_model,
+                force_embedding_update=True,
+            )
+
+            logger.info(
+                f"Successfully updated Langflow flows for embedding provider {effective_embedding_provider}",
+                result=result,
+            )
+
+        if not (embedding_model or embedding_provider or llm_model or llm_provider):
+            llm_providers = _configured_provider_names(config, _LLM_PROVIDER_NAMES)
+
+            current_llm_provider = config.agent.llm_provider.lower()
+            for provider in llm_providers:
+                provider_llm_model = (
+                    config.agent.llm_model if provider == current_llm_provider else None
+                )
+                await flows_service.change_langflow_model_value(
+                    provider, llm_model=provider_llm_model, force_llm_update=True
+                )
+                logger.info(f"Successfully updated Langflow flows for LLM provider {provider}")
+
+            embedding_providers = _configured_provider_names(config, _EMBEDDING_PROVIDER_NAMES)
+
+            current_embedding_provider = config.knowledge.embedding_provider.lower()
+            for provider in embedding_providers:
+                embedding_model = (
+                    config.knowledge.embedding_model
+                    if provider == current_embedding_provider
+                    else None
+                )
+                await flows_service.change_langflow_model_value(
+                    provider, embedding_model=embedding_model, force_embedding_update=True
+                )
+                logger.info(
+                    f"Successfully updated Langflow flows for embedding provider {provider}"
+                )
+    except Exception as e:
+        logger.error(f"Failed to update Langflow model values: {str(e)}")
+        raise
 
 
 async def _update_langflow_system_prompt(config, flows_service):
@@ -378,6 +472,11 @@ async def reapply_all_settings(session_manager=None):
         except Exception as e:
             logger.error(f"Failed to update Langflow global variables: {str(e)}")
             # Continue with other updates even if global variables fail
+
+        try:
+            await _update_langflow_model_values(config, flows_service)
+        except Exception as e:
+            logger.error(f"Failed to update Langflow model values: {str(e)}")
 
         try:
             await _update_langflow_system_prompt(config, flows_service)

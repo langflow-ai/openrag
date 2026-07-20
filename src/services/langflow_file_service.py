@@ -437,7 +437,7 @@ class LangflowFileService:
 
         # Get the current embedding model and provider credentials from config
         from config.settings import get_openrag_config
-        from utils.langflow_headers import add_provider_credentials_to_headers
+        from utils.langflow_headers import add_provider_credentials_to_headers, map_provider
 
         config = get_openrag_config()
         embedding_model = config.knowledge.embedding_model
@@ -459,9 +459,9 @@ class LangflowFileService:
             "X-Langflow-Global-Var-MIMETYPE": mimetype,
             "X-Langflow-Global-Var-FILESIZE": str(file_size_bytes),
             "X-Langflow-Global-Var-SELECTED_EMBEDDING_MODEL": str(embedding_model),
-            "X-Langflow-Global-Var-SELECTED_EMBEDDING_MODEL_PROVIDER": str(config.knowledge.embedding_provider or ""),
+            "X-Langflow-Global-Var-SELECTED_EMBEDDING_MODEL_PROVIDER": map_provider(config.knowledge.embedding_provider),
             "X-Langflow-Global-Var-SELECTED_LANGUAGE_MODEL": str(config.agent.llm_model or ""),
-            "X-Langflow-Global-Var-SELECTED_LANGUAGE_MODEL_PROVIDER": str(config.agent.llm_provider or ""),
+            "X-Langflow-Global-Var-SELECTED_LANGUAGE_MODEL_PROVIDER": map_provider(config.agent.llm_provider),
             "X-Langflow-Global-Var-DOCUMENT_ID": resolved_document_id,
             "X-Langflow-Global-Var-SOURCE_URL": str(source_url) if source_url else "",
             "X-Langflow-Global-Var-DOCLING_TASK_ID": str(docling_task_id)
@@ -625,7 +625,7 @@ class LangflowFileService:
             tweaks = {}
 
         from config.settings import get_openrag_config
-        from utils.langflow_headers import add_provider_credentials_to_headers
+        from utils.langflow_headers import add_provider_credentials_to_headers, map_provider
 
         config = get_openrag_config()
         embedding_model = config.knowledge.embedding_model
@@ -642,9 +642,9 @@ class LangflowFileService:
             "X-Langflow-Global-Var-OWNER_EMAIL": owner_email or "",
             "X-Langflow-Global-Var-CONNECTOR_TYPE": str(connector_type),
             "X-Langflow-Global-Var-SELECTED_EMBEDDING_MODEL": str(embedding_model),
-            "X-Langflow-Global-Var-SELECTED_EMBEDDING_MODEL_PROVIDER": str(config.knowledge.embedding_provider or ""),
+            "X-Langflow-Global-Var-SELECTED_EMBEDDING_MODEL_PROVIDER": map_provider(config.knowledge.embedding_provider),
             "X-Langflow-Global-Var-SELECTED_LANGUAGE_MODEL": str(config.agent.llm_model or ""),
-            "X-Langflow-Global-Var-SELECTED_LANGUAGE_MODEL_PROVIDER": str(config.agent.llm_provider or ""),
+            "X-Langflow-Global-Var-SELECTED_LANGUAGE_MODEL_PROVIDER": map_provider(config.agent.llm_provider),
             "X-Langflow-Global-Var-DOCUMENT_ID": resolved_document_id,
             "X-Langflow-Global-Var-SOURCE_URL": str(docs_url),
             "X-Langflow-Global-Var-ALLOWED_USERS": json.dumps([]),

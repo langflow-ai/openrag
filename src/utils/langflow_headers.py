@@ -5,6 +5,25 @@ from urllib.parse import quote
 from utils.container_utils import transform_localhost_url
 
 
+def map_provider(provider: str | None) -> str:
+    """Map provider values to the formatted names expected by Langflow.
+    
+    e.g. openai -> OpenAI, anthropic -> Anthropic, ollama -> Ollama, watsonx -> IBM WatsonX
+    """
+    if not provider:
+        return ""
+    provider_lower = provider.lower()
+    if provider_lower == "openai":
+        return "OpenAI"
+    if provider_lower == "anthropic":
+        return "Anthropic"
+    if provider_lower == "ollama":
+        return "Ollama"
+    if provider_lower == "watsonx":
+        return "IBM WatsonX"
+    return provider
+
+
 def ascii_safe_header_value(value) -> str:
     """Return an ASCII-only HTTP header value.
 
