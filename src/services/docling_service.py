@@ -16,7 +16,7 @@ from config.settings import (
     get_openrag_config,
 )
 from utils.logging_config import get_logger
-from utils.run_mode_utils import is_run_mode_saas
+from utils.run_mode_utils import is_run_mode_on_prem, is_run_mode_saas
 
 logger = get_logger(__name__)
 
@@ -178,7 +178,7 @@ class DoclingService:
     ) -> dict[str, str]:
         """Build authentication headers for Docling Serve in saas run mode."""
         headers = {}
-        if is_run_mode_saas() and auth_header:
+        if (is_run_mode_saas() or is_run_mode_on_prem()) and auth_header:
             headers["Authorization"] = auth_header
         return headers
 
