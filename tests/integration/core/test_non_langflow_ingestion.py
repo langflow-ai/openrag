@@ -87,7 +87,7 @@ async def test_non_langflow_csv_ingestion_with_splitting(tmp_path: Path):
     os.environ["DISABLE_STARTUP_INGEST"] = "true"
     os.environ["EMBEDDING_MODEL"] = "text-embedding-3-small"
     os.environ["EMBEDDING_PROVIDER"] = "openai"
-    os.environ["CHUNK_SIZE"] = "8000"
+    os.environ["CHUNK_SIZE"] = "0"
     os.environ["GOOGLE_OAUTH_CLIENT_ID"] = ""
     os.environ["GOOGLE_OAUTH_CLIENT_SECRET"] = ""
 
