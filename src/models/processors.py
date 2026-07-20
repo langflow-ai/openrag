@@ -508,12 +508,13 @@ class TaskProcessor:
             else embedding_model
         )
 
-        # Split into batches to avoid token limits (8191 limit, use 8000 with buffer or 2000 if it's ollama)
-        max_tokens = (
-            2000
-            if litellm_embedding_model and "ollama" in litellm_embedding_model.lower()
-            else 8000
-        )
+        litellm_model_lower = litellm_embedding_model.lower() if litellm_embedding_model else ""
+        if "watsonx" in litellm_model_lower:
+            max_tokens = 500
+        elif "ollama" in litellm_model_lower:
+            max_tokens = 2000
+        else:
+            max_tokens = 8000
 
         # Split any chunks that exceed max_tokens before embedding, ensuring chunks and embeddings align 1-to-1.
         slim_doc["chunks"] = split_chunks_by_max_tokens(
