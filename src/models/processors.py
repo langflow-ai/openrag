@@ -437,8 +437,14 @@ class TaskProcessor:
         # Use provided embedding model or configured model.
         # get_embedding_model() returns empty string when Langflow ingest is enabled,
         # but OpenRAG processors still need a concrete embedding model.
-        configured_embedding_model = get_openrag_config().knowledge.embedding_model
+        config = get_openrag_config()
+        configured_embedding_model = config.knowledge.embedding_model
         embedding_model = embedding_model or configured_embedding_model or get_embedding_model()
+
+        if chunk_size is None:
+            chunk_size = config.knowledge.chunk_size
+        if chunk_overlap is None:
+            chunk_overlap = config.knowledge.chunk_overlap
 
         # Get user's OpenSearch client with JWT for OIDC auth
         opensearch_client = self.document_service.session_manager.get_user_opensearch_client(
