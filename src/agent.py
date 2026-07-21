@@ -547,9 +547,7 @@ async def async_chat_stream(
     previous_response_id: str = None,
     filter_id: str = None,
 ):
-    previous_loaded_from_memory = _conversation_thread_in_memory(
-        user_id, previous_response_id
-    )
+    previous_loaded_from_memory = _conversation_thread_in_memory(user_id, previous_response_id)
     # Get the specific conversation thread (or create new one)
     conversation_state = get_conversation_thread(user_id, previous_response_id)
 
@@ -639,9 +637,7 @@ async def async_chat_stream(
             except Exception as store_error:
                 logger.error(f"Failed to store error conversation: {store_error}")
         else:
-            logger.debug(
-                "Skipping persistence for failed chat stream with no safe store id"
-            )
+            logger.debug("Skipping persistence for failed chat stream with no safe store id")
         yield _stream_error_chunk(display_text)
 
 
@@ -861,9 +857,7 @@ async def async_langflow_chat_stream(
         previous_response_id=previous_response_id,
     )
 
-    previous_loaded_from_memory = _conversation_thread_in_memory(
-        user_id, previous_response_id
-    )
+    previous_loaded_from_memory = _conversation_thread_in_memory(user_id, previous_response_id)
     # Get the specific conversation thread (or create new one)
     conversation_state = get_conversation_thread(user_id, previous_response_id)
 
@@ -983,9 +977,7 @@ async def async_langflow_chat_stream(
             except Exception as store_error:
                 logger.error(f"Failed to store error conversation: {store_error}")
         else:
-            logger.debug(
-                "Skipping persistence for failed langflow stream with no safe store id"
-            )
+            logger.debug("Skipping persistence for failed langflow stream with no safe store id")
 
         # Yield a final error chunk so the client receives the provider message
         # instead of seeing a dropped stream / generic network failure.

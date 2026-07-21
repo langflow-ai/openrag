@@ -139,9 +139,7 @@ async def test_langflow_stream_yields_provider_error_chunk(
 
 
 @pytest.mark.asyncio
-async def test_langflow_stream_persists_error_onto_existing_thread(
-    monkeypatch, store_in_memory
-):
+async def test_langflow_stream_persists_error_onto_existing_thread(monkeypatch, store_in_memory):
     provider_message = "Invalid API key for Anthropic. Check your credentials."
 
     async def raise_provider_error(*_args, **_kwargs) -> AsyncIterator[bytes]:
@@ -213,9 +211,7 @@ async def test_langflow_stream_skips_persist_for_cold_previous_response_id(
 
 
 @pytest.mark.asyncio
-async def test_langflow_stream_keeps_partial_text_with_provider_error(
-    monkeypatch, store_in_memory
-):
+async def test_langflow_stream_keeps_partial_text_with_provider_error(monkeypatch, store_in_memory):
     provider_message = "Rate limit exceeded for watsonx.ai."
 
     async def partial_then_fail(*_args, **_kwargs) -> AsyncIterator[bytes]:
@@ -246,9 +242,7 @@ async def test_langflow_stream_keeps_partial_text_with_provider_error(
 
     assert len(chunks) == 2
     assert chunks[0]["delta"]["content"] == "Here is a partial answer"
-    assert chunks[1]["error"]["message"] == (
-        f"Here is a partial answer\n\n{provider_message}"
-    )
+    assert chunks[1]["error"]["message"] == (f"Here is a partial answer\n\n{provider_message}")
     assert store_in_memory == [(user_id, "resp_partial")]
 
 
