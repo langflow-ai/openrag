@@ -900,9 +900,7 @@ async def update_settings(
         # Run expensive Langflow sync in the background to keep settings updates responsive.
         if should_validate or provider_updated:
             update_llm = (
-                body.llm_provider is not None
-                or body.llm_model is not None
-                or provider_updated
+                body.llm_provider is not None or body.llm_model is not None or provider_updated
             )
             update_embedding = (
                 body.embedding_provider is not None

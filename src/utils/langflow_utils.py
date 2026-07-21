@@ -33,6 +33,7 @@ async def wait_for_langflow(
     """
     if langflow_http_client is None:
         from config.settings import clients
+
         langflow_http_client = clients.langflow_http_client
 
     for attempt in range(max_retries):
@@ -72,7 +73,7 @@ async def wait_for_langflow(
             )
 
         if attempt < max_retries - 1:
-            delay = min(base_delay * (2 ** attempt), max_delay)
+            delay = min(base_delay * (2**attempt), max_delay)
             delay = random.uniform(delay / 2, delay)
 
             logger.debug(
@@ -88,17 +89,18 @@ async def wait_for_langflow(
     logger.error(message)
     raise LangflowNotReadyError(message)
 
+
 def parse_knowledge_chunks(results: Any) -> list[dict]:
     """Parse and standardize knowledge chunks from Langflow output formats."""
     import json
-    
+
     if not results:
         return []
-        
+
     items = []
     if hasattr(results, "model_dump"):
         results = results.model_dump()
-        
+
     if isinstance(results, dict):
         if "artifact" in results and isinstance(results["artifact"], list):
             items = results["artifact"]
@@ -124,23 +126,25 @@ def parse_knowledge_chunks(results: Any) -> list[dict]:
     for item in items:
         if hasattr(item, "model_dump"):
             item = item.model_dump()
-            
+
         data = item.get("data") if isinstance(item, dict) and "data" in item else item
-        
+
         if isinstance(data, dict) and ("text" in data or "filename" in data or "chunk_id" in data):
             chunk_id = data.get("chunk_id") or data.get("id") or ""
-            parsed_chunks.append({
-                "filename": data.get("filename", ""),
-                "text": data.get("text", ""),
-                "score": data.get("score", 0),
-                "page": data.get("page"),
-                "mimetype": data.get("mimetype"),
-                "chunk_id": chunk_id,
-                "id": chunk_id,
-                "embedding_model": data.get("embedding_model"),
-                "parser": data.get("parser"),
-                "chunk_size": data.get("chunk_size"),
-                "chunk_overlap": data.get("chunk_overlap"),
-            })
-            
+            parsed_chunks.append(
+                {
+                    "filename": data.get("filename", ""),
+                    "text": data.get("text", ""),
+                    "score": data.get("score", 0),
+                    "page": data.get("page"),
+                    "mimetype": data.get("mimetype"),
+                    "chunk_id": chunk_id,
+                    "id": chunk_id,
+                    "embedding_model": data.get("embedding_model"),
+                    "parser": data.get("parser"),
+                    "chunk_size": data.get("chunk_size"),
+                    "chunk_overlap": data.get("chunk_overlap"),
+                }
+            )
+
     return parsed_chunks

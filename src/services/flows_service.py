@@ -742,7 +742,6 @@ class FlowsService:
             node_display_name="Split Text",
         )
 
-
     def _normalize_flow_structure(self, flow_data):
         """
         Normalize flow structure for comparison by removing dynamic fields.

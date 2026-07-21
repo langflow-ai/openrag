@@ -170,6 +170,7 @@ async def test_update_langflow_global_variables_marks_non_secret_provider_fields
         ),
         knowledge=SimpleNamespace(embedding_model="embedding-model"),
     )
+
     async def resolve_ollama_url(endpoint, force_refresh=False):
         return endpoint
 

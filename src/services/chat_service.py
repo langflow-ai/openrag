@@ -93,9 +93,13 @@ class ChatService:
         chunk_size = getattr(config.knowledge, "chunk_size", 1000)
         chunk_overlap = getattr(config.knowledge, "chunk_overlap", 200)
         extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL"] = embedding_model
-        extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL_PROVIDER"] = map_provider(config.knowledge.embedding_provider)
+        extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL_PROVIDER"] = map_provider(
+            config.knowledge.embedding_provider
+        )
         extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_LANGUAGE_MODEL"] = config.agent.llm_model
-        extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_LANGUAGE_MODEL_PROVIDER"] = map_provider(config.agent.llm_provider)
+        extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_LANGUAGE_MODEL_PROVIDER"] = map_provider(
+            config.agent.llm_provider
+        )
 
         # Configure ingest callback credentials/vars like ingestion does
         import uuid
@@ -270,9 +274,13 @@ class ChatService:
         config = get_openrag_config()
         embedding_model = config.knowledge.embedding_model
         extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL"] = embedding_model
-        extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL_PROVIDER"] = map_provider(config.knowledge.embedding_provider)
+        extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL_PROVIDER"] = map_provider(
+            config.knowledge.embedding_provider
+        )
         extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_LANGUAGE_MODEL"] = config.agent.llm_model
-        extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_LANGUAGE_MODEL_PROVIDER"] = map_provider(config.agent.llm_provider)
+        extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_LANGUAGE_MODEL_PROVIDER"] = map_provider(
+            config.agent.llm_provider
+        )
 
         # Add provider credentials to headers
         await add_provider_credentials_to_headers(
@@ -522,9 +530,13 @@ class ChatService:
             chunk_size = getattr(config.knowledge, "chunk_size", 1000)
             chunk_overlap = getattr(config.knowledge, "chunk_overlap", 200)
             extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL"] = embedding_model
-            extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL_PROVIDER"] = map_provider(config.knowledge.embedding_provider)
+            extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL_PROVIDER"] = map_provider(
+                config.knowledge.embedding_provider
+            )
             extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_LANGUAGE_MODEL"] = config.agent.llm_model
-            extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_LANGUAGE_MODEL_PROVIDER"] = map_provider(config.agent.llm_provider)
+            extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_LANGUAGE_MODEL_PROVIDER"] = map_provider(
+                config.agent.llm_provider
+            )
 
             # Configure ingest callback credentials/vars like ingestion does
             import uuid

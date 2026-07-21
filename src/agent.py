@@ -232,13 +232,19 @@ async def async_response_stream(
                 if isinstance(chunk_data, dict):
                     # Format: {"type": "response.output_item.added", "item": {"type": "tool_call", "results": ...}}
                     item = chunk_data.get("item")
-                    if isinstance(item, dict) and item.get("type") == "tool_call" and "results" in item:
+                    if (
+                        isinstance(item, dict)
+                        and item.get("type") == "tool_call"
+                        and "results" in item
+                    ):
                         from utils.langflow_utils import parse_knowledge_chunks
+
                         item["results"] = parse_knowledge_chunks(item["results"])
-                        
+
                     # Also check for direct tool_call chunks
                     elif chunk_data.get("type") == "tool_call" and "results" in chunk_data:
                         from utils.langflow_utils import parse_knowledge_chunks
+
                         chunk_data["results"] = parse_knowledge_chunks(chunk_data["results"])
 
                 # Middleware: Detect implicit tool calls and inject standardized events
@@ -260,6 +266,7 @@ async def async_response_stream(
                             chunk_fields=list(chunk_data.keys()),
                         )
                         from utils.langflow_utils import parse_knowledge_chunks
+
                         # Inject a synthetic tool call event before this chunk
                         synthetic_event = {
                             "type": "response.output_item.done",
@@ -646,7 +653,7 @@ async def async_langflow_chat(
 
     # Extract sources from retrieval tool calls in the response
     sources = []
-    
+
     from utils.langflow_utils import parse_knowledge_chunks
 
     # Layer 1: Structured output items (OpenAI Responses API format).

@@ -7,7 +7,7 @@ from utils.container_utils import transform_localhost_url
 
 def map_provider(provider: str | None) -> str:
     """Map provider values to the formatted names expected by Langflow.
-    
+
     e.g. openai -> OpenAI, anthropic -> Anthropic, ollama -> Ollama, watsonx -> IBM WatsonX
     """
     if not provider:
