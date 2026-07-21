@@ -8,6 +8,8 @@ FROM registry.access.redhat.com/ubi10/nodejs-22-minimal AS deps
 WORKDIR /opt/app-root/src
 USER 0
 
+RUN microdnf update -y --nodocs && microdnf clean all
+
 COPY frontend/package.json frontend/package-lock.json ./
 # Copy local stub packages referenced via file: in package.json (e.g. sharp stub
 # that keeps LGPL libvips binaries out of the tree). npm ci needs these present.
@@ -22,6 +24,8 @@ FROM registry.access.redhat.com/ubi10/nodejs-22-minimal AS builder
 
 WORKDIR /opt/app-root/src
 USER 0
+
+RUN microdnf update -y --nodocs && microdnf clean all
 
 COPY --from=deps /opt/app-root/src/node_modules ./node_modules
 COPY --from=deps /opt/app-root/src/stubs ./stubs
@@ -38,6 +42,8 @@ FROM registry.access.redhat.com/ubi10/nodejs-22-minimal AS runtime
 
 WORKDIR /opt/app-root/src
 USER 0
+
+RUN microdnf update -y --nodocs && microdnf clean all
 
 
 ENV NODE_ENV=production \
