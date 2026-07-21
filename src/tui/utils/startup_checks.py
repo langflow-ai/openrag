@@ -12,17 +12,12 @@ import os
 from typing import Tuple, Optional
 from pathlib import Path
 
+from config.image_config import all_openrag_repos
+
 MIN_PODMAN_MEMORY_MB = 8192  # 8 GB minimum
-OPENRAG_IMAGE_REPOS = {
-    "langflowai/openrag-backend",
-    "langflowai/openrag-frontend",
-    "langflowai/openrag-langflow",
-    "langflowai/openrag-opensearch",
-    "langflowai/openrag-dashboards",
-    "langflow/langflow",
-    "opensearchproject/opensearch",
-    "opensearchproject/opensearch-dashboards",
-}
+
+# Derived from image_config so registry/org overrides are respected at runtime.
+OPENRAG_IMAGE_REPOS: set[str] = set(all_openrag_repos())
 
 
 # =============================================================================

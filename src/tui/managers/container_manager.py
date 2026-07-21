@@ -14,6 +14,7 @@ from utils.gpu_detection import detect_gpu_devices
 from utils.logging_config import get_logger
 
 from ..utils.platform import PlatformDetector, RuntimeInfo, RuntimeType
+from config.image_config import all_openrag_repos
 
 try:
     from importlib.resources import files
@@ -79,16 +80,7 @@ def format_port_conflict_message(conflicts: list[tuple[str, int, str]], max_show
 class ContainerManager:
     """Manages Docker/Podman container lifecycle for OpenRAG."""
 
-    OPENRAG_IMAGE_REPOS = {
-        "langflowai/openrag-backend",
-        "langflowai/openrag-frontend",
-        "langflowai/openrag-langflow",
-        "langflowai/openrag-opensearch",
-        "langflowai/openrag-dashboards",
-        "langflow/langflow",
-        "opensearchproject/opensearch",
-        "opensearchproject/opensearch-dashboards",
-    }
+    OPENRAG_IMAGE_REPOS: set[str] = set(all_openrag_repos())
 
     def __init__(self, compose_file: Path | None = None):
         self.platform_detector = PlatformDetector()
