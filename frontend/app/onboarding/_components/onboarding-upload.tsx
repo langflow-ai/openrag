@@ -1,6 +1,12 @@
 import { X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { type ChangeEvent, useEffect, useRef, useState } from "react";
+import {
+  type ChangeEvent,
+  useCallback,
+  useEffect,
+  useReducer,
+  useRef,
+} from "react";
 import { toast } from "sonner";
 import { useCreateFilter } from "@/app/api/mutations/useCreateFilter";
 import { useUpdateOnboardingStateMutation } from "@/app/api/mutations/useUpdateOnboardingStateMutation";
@@ -23,34 +29,155 @@ interface OnboardingUploadProps {
   onComplete: () => void;
 }
 
+const STEP_LIST = [
+  "Uploading your document",
+  "Generating embeddings",
+  "Ingesting document",
+  "Processing your document",
+];
+
+type UploadState = {
+  isUploading: boolean;
+  currentStep: number | null;
+  uploadedFilename: string | null;
+  uploadedTaskId: string | null;
+  shouldCreateFilter: boolean;
+  isCreatingFilter: boolean;
+  ingestionReady: boolean;
+  error: string | null;
+  preview: PreviewDialogState;
+};
+
+type UploadAction =
+  | { type: "start_upload"; preview: PreviewDialogState | null }
+  | { type: "set_step"; step: number | null }
+  | { type: "set_preview"; preview: PreviewDialogState }
+  | {
+      type: "upload_succeeded";
+      taskId: string | null;
+      preview: PreviewDialogState | null;
+      filename: string | null;
+      createFilter: boolean;
+    }
+  | { type: "upload_failed"; error: string }
+  | { type: "upload_finished" }
+  | { type: "ingestion_failed"; error: string }
+  | { type: "begin_create_filter"; filename: string }
+  | { type: "finish_create_filter" }
+  | { type: "mark_ingestion_ready" };
+
+const initialUploadState: UploadState = {
+  isUploading: false,
+  currentStep: null,
+  uploadedFilename: null,
+  uploadedTaskId: null,
+  shouldCreateFilter: false,
+  isCreatingFilter: false,
+  ingestionReady: false,
+  error: null,
+  preview: EMPTY_PREVIEW,
+};
+
+function uploadReducer(state: UploadState, action: UploadAction): UploadState {
+  switch (action.type) {
+    case "start_upload":
+      return {
+        ...state,
+        isUploading: true,
+        error: null,
+        ingestionReady: false,
+        preview: action.preview ?? state.preview,
+      };
+    case "set_step":
+      return { ...state, currentStep: action.step };
+    case "set_preview":
+      return { ...state, preview: action.preview };
+    case "upload_succeeded":
+      return {
+        ...state,
+        uploadedTaskId: action.taskId ?? state.uploadedTaskId,
+        preview: action.preview ?? state.preview,
+        uploadedFilename: action.filename ?? state.uploadedFilename,
+        shouldCreateFilter: action.createFilter
+          ? true
+          : state.shouldCreateFilter,
+      };
+    case "upload_failed":
+      return {
+        ...state,
+        error: action.error,
+        preview: EMPTY_PREVIEW,
+        currentStep: null,
+        uploadedTaskId: null,
+      };
+    case "upload_finished":
+      return { ...state, isUploading: false };
+    case "ingestion_failed":
+      return {
+        ...state,
+        ingestionReady: false,
+        error: action.error,
+        currentStep: null,
+        uploadedTaskId: null,
+        preview: EMPTY_PREVIEW,
+      };
+    case "begin_create_filter":
+      return {
+        ...state,
+        shouldCreateFilter: false,
+        uploadedFilename: null,
+        isCreatingFilter: true,
+        currentStep: STEP_LIST.length,
+      };
+    case "finish_create_filter":
+      return {
+        ...state,
+        isCreatingFilter: false,
+        ingestionReady: true,
+      };
+    case "mark_ingestion_ready":
+      return {
+        ...state,
+        currentStep: STEP_LIST.length,
+        ingestionReady: true,
+      };
+    default:
+      return state;
+  }
+}
+
 const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const completeTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const didCompleteRef = useRef(false);
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
-  const [isUploading, setIsUploading] = useState(false);
-  const [currentStep, setCurrentStep] = useState<number | null>(null);
-  const [uploadedFilename, setUploadedFilename] = useState<string | null>(null);
-  const [uploadedTaskId, setUploadedTaskId] = useState<string | null>(null);
-  const [shouldCreateFilter, setShouldCreateFilter] = useState(false);
-  const [isCreatingFilter, setIsCreatingFilter] = useState(false);
-  const [ingestionReady, setIngestionReady] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [preview, setPreview] = useState<PreviewDialogState>(EMPTY_PREVIEW);
+  const [state, dispatch] = useReducer(uploadReducer, initialUploadState);
+  const {
+    isUploading,
+    currentStep,
+    uploadedFilename,
+    uploadedTaskId,
+    shouldCreateFilter,
+    isCreatingFilter,
+    ingestionReady,
+    error,
+    preview,
+  } = state;
 
   const { runMode } = useAuth();
   const ingestPreviewEnabled = isIngestPreviewEnabled(runMode);
+  const ingestPreviewEnabledRef = useRef(ingestPreviewEnabled);
+  ingestPreviewEnabledRef.current = ingestPreviewEnabled;
+  const previewOpenRef = useRef(preview.open);
+  previewOpenRef.current = preview.open;
+  const ingestionReadyRef = useRef(ingestionReady);
+  ingestionReadyRef.current = ingestionReady;
+  const isCreatingFilterRef = useRef(isCreatingFilter);
+  isCreatingFilterRef.current = isCreatingFilter;
 
   const createFilterMutation = useCreateFilter();
   const updateOnboardingMutation = useUpdateOnboardingStateMutation();
-
-  const STEP_LIST = [
-    "Uploading your document",
-    "Generating embeddings",
-    "Ingesting document",
-    "Processing your document",
-  ];
 
   // Query tasks to track completion
   const { data: tasks } = useGetTasksQuery({
@@ -60,14 +187,16 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
 
   const { refetch: refetchNudges } = useGetNudgesQuery(null);
 
-  // Advance to chat only after ingestion is ready and the review dialog is closed
-  // (or preview is disabled / never opened).
-  // Use onCompleteRef so parent re-renders don't reset the timer (handleStepComplete
-  // is not referentially stable and was cancelling completion after dialog close).
-  useEffect(() => {
-    if (!ingestionReady || isCreatingFilter) return;
-    if (ingestPreviewEnabled && preview.open) return;
-    if (didCompleteRef.current) return;
+  const cancelScheduledComplete = useCallback(() => {
+    clearTimeout(completeTimeoutRef.current);
+    completeTimeoutRef.current = undefined;
+  }, []);
+
+  // Schedule advancing to chat from the completion path itself (not a follow-up
+  // effect watching ingestionReady). Delay while the review dialog is open.
+  const scheduleComplete = useCallback(() => {
+    if (didCompleteRef.current || completeTimeoutRef.current) return;
+    if (ingestPreviewEnabledRef.current && previewOpenRef.current) return;
 
     const timeoutId = setTimeout(() => {
       didCompleteRef.current = true;
@@ -75,14 +204,7 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
       onCompleteRef.current();
     }, 1000);
     completeTimeoutRef.current = timeoutId;
-
-    return () => {
-      clearTimeout(timeoutId);
-      if (completeTimeoutRef.current === timeoutId) {
-        completeTimeoutRef.current = undefined;
-      }
-    };
-  }, [ingestionReady, isCreatingFilter, ingestPreviewEnabled, preview.open]);
+  }, []);
 
   // Monitor tasks and mark ingestion ready when file processing is done
   useEffect(() => {
@@ -133,30 +255,20 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
         }
       }
 
-      clearTimeout(completeTimeoutRef.current);
-      completeTimeoutRef.current = undefined;
+      cancelScheduledComplete();
       didCompleteRef.current = false;
-      setIngestionReady(false);
-      setError(errorMessage);
-      setCurrentStep(null);
-      setUploadedTaskId(null);
-      setPreview(EMPTY_PREVIEW);
+      dispatch({ type: "ingestion_failed", error: errorMessage });
       return;
     }
 
     // If task is completed or has processed files, prepare to finish the step
     if (!isTaskActive || (matchingTask.processed_files ?? 0) > 0) {
-      // Set to final step to show "Done"
-      setCurrentStep(STEP_LIST.length);
-
       // Create knowledge filter for uploaded document if requested
       // Guard against race condition: only create if not already creating
       if (shouldCreateFilter && uploadedFilename && !isCreatingFilter) {
-        // Reset flags immediately (synchronously) to prevent duplicate creation
-        setShouldCreateFilter(false);
         const filename = uploadedFilename;
-        setUploadedFilename(null);
-        setIsCreatingFilter(true);
+        // Reset flags immediately (synchronously) to prevent duplicate creation
+        dispatch({ type: "begin_create_filter", filename });
 
         // Get display name from filename (remove extension for cleaner name)
         const displayName = filename.includes(".")
@@ -192,19 +304,20 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
               });
             }
           })
-          .catch((error) => {
-            console.error("Failed to create knowledge filter:", error);
+          .catch((filterError) => {
+            console.error("Failed to create knowledge filter:", filterError);
           })
           .finally(() => {
             // Always mark ready — task-poll effect re-runs must not leave us stuck
             // with Done steps but ingestionReady never set.
-            setIsCreatingFilter(false);
             refetchNudges();
-            setIngestionReady(true);
+            dispatch({ type: "finish_create_filter" });
+            scheduleComplete();
           });
       } else if (!isCreatingFilter && !ingestionReady) {
         refetchNudges();
-        setIngestionReady(true);
+        dispatch({ type: "mark_ingestion_ready" });
+        scheduleComplete();
       }
     }
   }, [
@@ -218,7 +331,8 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
     isCreatingFilter,
     ingestionReady,
     updateOnboardingMutation.mutateAsync,
-    STEP_LIST.length,
+    cancelScheduledComplete,
+    scheduleComplete,
   ]);
 
   const resetFileInput = () => {
@@ -237,23 +351,22 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
   };
 
   const performUpload = async (file: File) => {
-    setIsUploading(true);
-    setError(null);
-    setIngestionReady(false);
     didCompleteRef.current = false;
-    clearTimeout(completeTimeoutRef.current);
-    completeTimeoutRef.current = undefined;
+    cancelScheduledComplete();
     // Onboarding always opens the review when the feature flag is on.
-    if (ingestPreviewEnabled) {
-      setPreview({
-        open: true,
-        taskIds: [],
-        filename: file.name,
-        files: [file],
-      });
-    }
+    dispatch({
+      type: "start_upload",
+      preview: ingestPreviewEnabled
+        ? {
+            open: true,
+            taskIds: [],
+            filename: file.name,
+            files: [file],
+          }
+        : null,
+    });
     try {
-      setCurrentStep(0);
+      dispatch({ type: "set_step", step: 0 });
       const result = await uploadFile(
         file,
         true,
@@ -262,35 +375,38 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
         ingestPreviewEnabled,
       );
 
-      // Store task ID to track the specific upload task
+      let nextPreview: PreviewDialogState | null = null;
       if (result.taskId) {
-        setUploadedTaskId(result.taskId);
         if (result.previewMode) {
-          setPreview((prev) => ({
-            ...prev,
-            taskIds: [result.taskId as string],
-          }));
+          nextPreview = {
+            open: true,
+            taskIds: [result.taskId],
+            filename: file.name,
+            files: [file],
+          };
         } else if (ingestPreviewEnabled) {
-          setPreview(EMPTY_PREVIEW);
+          nextPreview = EMPTY_PREVIEW;
         }
       }
 
-      // Store filename and createFilter flag in state to create filter after ingestion succeeds
-      if (result.createFilter && result.filename) {
-        setUploadedFilename(result.filename);
-        setShouldCreateFilter(true);
-      }
+      dispatch({
+        type: "upload_succeeded",
+        taskId: result.taskId ?? null,
+        preview: nextPreview,
+        filename:
+          result.createFilter && result.filename ? result.filename : null,
+        createFilter: Boolean(result.createFilter && result.filename),
+      });
 
       // Move to processing step - task monitoring will handle completion
       setTimeout(() => {
-        setCurrentStep(1);
+        dispatch({ type: "set_step", step: 1 });
       }, 1500);
-    } catch (error) {
+    } catch (uploadError) {
       const errorMessage =
-        error instanceof Error ? error.message : "Upload failed";
+        uploadError instanceof Error ? uploadError.message : "Upload failed";
       console.error("Upload failed", errorMessage);
-      setError(errorMessage);
-      setPreview(EMPTY_PREVIEW);
+      dispatch({ type: "upload_failed", error: errorMessage });
 
       // Dispatch event that chat context can listen to
       // This avoids circular dependency issues
@@ -307,12 +423,8 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
         description: errorMessage,
         duration: 5000,
       });
-
-      // Reset on error
-      setCurrentStep(null);
-      setUploadedTaskId(null);
     } finally {
-      setIsUploading(false);
+      dispatch({ type: "upload_finished" });
     }
   };
 
@@ -325,10 +437,10 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
 
     try {
       await performUpload(selectedFile);
-    } catch (error) {
+    } catch (prepareError) {
       console.error(
         "Unable to prepare file for upload",
-        (error as Error).message,
+        (prepareError as Error).message,
       );
     } finally {
       resetFileInput();
@@ -390,7 +502,7 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
           >
             <AnimatedProviderSteps
               currentStep={currentStep}
-              setCurrentStep={setCurrentStep}
+              setCurrentStep={(step) => dispatch({ type: "set_step", step })}
               isCompleted={false}
               steps={STEP_LIST}
             />
@@ -400,9 +512,21 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
 
       <IngestReviewDialog
         open={preview.open}
-        onOpenChange={(open) =>
-          setPreview((prev) => (open ? { ...prev, open } : EMPTY_PREVIEW))
-        }
+        onOpenChange={(open) => {
+          dispatch({
+            type: "set_preview",
+            preview: open ? { ...preview, open } : EMPTY_PREVIEW,
+          });
+          // Preview was holding completion — advance once the dialog closes.
+          if (
+            !open &&
+            ingestionReadyRef.current &&
+            !isCreatingFilterRef.current
+          ) {
+            previewOpenRef.current = false;
+            scheduleComplete();
+          }
+        }}
         taskIds={preview.taskIds}
         previewFiles={preview.files}
         showAutoOpenFooter
