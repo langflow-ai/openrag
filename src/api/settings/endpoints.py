@@ -29,6 +29,7 @@ from api.settings.langflow_sync import (
     _run_async_post_save_langflow_updates,
     _update_langflow_docling_settings,
     _update_langflow_global_variables,
+    _update_langflow_model_values,
     _update_langflow_system_prompt,
     _update_mcp_server_urls,
 )
@@ -784,6 +785,13 @@ async def update_settings(
                         or body.embedding_model is not None
                         or provider_updated
                     ),
+                    update_model_values=(
+                        body.llm_provider is not None
+                        or body.llm_model is not None
+                        or body.embedding_provider is not None
+                        or body.embedding_model is not None
+                        or provider_updated
+                    ),
                 )
             )
             # Keep a strong reference until completion to avoid premature GC cancellation.
@@ -1061,6 +1069,21 @@ async def onboarding(
                     current_config,
                     session_manager=session_manager,
                     flows_service=flows_service,
+                )
+
+            if (
+                body.llm_provider
+                or body.llm_model
+                or body.embedding_provider
+                or body.embedding_model
+            ):
+                await _update_langflow_model_values(
+                    current_config,
+                    flows_service,
+                    embedding_model=body.embedding_model,
+                    embedding_provider=body.embedding_provider,
+                    llm_model=body.llm_model,
+                    llm_provider=body.llm_provider,
                 )
 
         except Exception as e:

@@ -240,40 +240,11 @@ async def _update_langflow_global_variables(config, flows_service=None):
             logger.info(
                 f"Set SELECTED_LANGUAGE_MODEL_PROVIDER global variable to {mapped_llm_provider}"
             )
-        # Enable models in Langflow
-        await _enable_langflow_models(config, flows_service)
         
     except Exception as e:
         logger.error(f"Failed to update Langflow global variables: {str(e)}")
         raise
 
-
-async def _enable_langflow_models(config, flows_service):
-    """Enable the selected models in Langflow's internal registry."""
-    try:
-        if config.knowledge.embedding_model and config.knowledge.embedding_provider:
-            # Need to get the correct provider display name for Langflow
-            provider = config.knowledge.embedding_provider
-            provider_name = (
-                "IBM WatsonX" if provider == "watsonx" else
-                "Ollama" if provider == "ollama" else
-                "Anthropic" if provider == "anthropic" else
-                "OpenAI"
-            )
-            await flows_service.enable_model_in_langflow(provider_name, config.knowledge.embedding_model)
-            
-        if config.agent.llm_model and config.agent.llm_provider:
-            provider = config.agent.llm_provider
-            provider_name = (
-                "IBM WatsonX" if provider == "watsonx" else
-                "Ollama" if provider == "ollama" else
-                "Anthropic" if provider == "anthropic" else
-                "OpenAI"
-            )
-            await flows_service.enable_model_in_langflow(provider_name, config.agent.llm_model)
-            
-    except Exception as e:
-        logger.error(f"Failed to enable Langflow models: {str(e)}")
 
 async def _run_async_post_save_langflow_updates(
     session_manager,
@@ -301,7 +272,7 @@ async def _run_async_post_save_langflow_updates(
                 current_config, session_manager, flows_service=flows_service
             )
 
-        # Update model values if provider/model changed
+        # Update model values if provider/model changed (including removals/fallbacks)
         if update_model_values:
             await _update_langflow_model_values(
                 current_config,
@@ -345,7 +316,7 @@ async def _update_langflow_model_values(
         if llm_model or llm_provider:
             effective_llm_provider = (llm_provider or config.agent.llm_provider).lower()
             if llm_provider and llm_provider.lower() != config.agent.llm_provider.lower():
-                effective_llm_model = llm_model
+                effective_llm_model = llm_model  # do not fall back; force caller to specify
             else:
                 effective_llm_model = llm_model or config.agent.llm_model
             result = await flows_service.change_langflow_model_value(
@@ -365,7 +336,9 @@ async def _update_langflow_model_values(
                 embedding_provider
                 and embedding_provider.lower() != config.knowledge.embedding_provider.lower()
             ):
-                effective_embedding_model = embedding_model
+                effective_embedding_model = (
+                    embedding_model  # do not fall back; force caller to specify
+                )
             else:
                 effective_embedding_model = embedding_model or config.knowledge.embedding_model
             result = await flows_service.change_langflow_model_value(
@@ -380,10 +353,15 @@ async def _update_langflow_model_values(
             )
 
         if not (embedding_model or embedding_provider or llm_model or llm_provider):
+            # 1. Update ALL configured LLM providers.
+            # Regression fix (#1587): the no-argument fallback used by
+            # reapply_all_settings previously only reapplied embedding providers,
+            # leaving LLM model values unset whenever flows were reset.
             llm_providers = _configured_provider_names(config, _LLM_PROVIDER_NAMES)
 
             current_llm_provider = config.agent.llm_provider.lower()
             for provider in llm_providers:
+                # Use configured model for current provider, or None (first available) for others
                 provider_llm_model = (
                     config.agent.llm_model if provider == current_llm_provider else None
                 )
@@ -392,10 +370,12 @@ async def _update_langflow_model_values(
                 )
                 logger.info(f"Successfully updated Langflow flows for LLM provider {provider}")
 
+            # 2. Update ALL configured embedding providers
             embedding_providers = _configured_provider_names(config, _EMBEDDING_PROVIDER_NAMES)
 
             current_embedding_provider = config.knowledge.embedding_provider.lower()
             for provider in embedding_providers:
+                # Use configured model for current provider, or None (first available) for others
                 embedding_model = (
                     config.knowledge.embedding_model
                     if provider == current_embedding_provider

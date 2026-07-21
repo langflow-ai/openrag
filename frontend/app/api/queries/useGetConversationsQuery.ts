@@ -88,9 +88,7 @@ export const useGetConversationsQuery = (
       conversations.sort((a: ChatConversation, b: ChatConversation) => {
         const aTime = new Date(a.last_activity || a.created_at || 0).getTime();
         const bTime = new Date(b.last_activity || b.created_at || 0).getTime();
-        const aVal = isNaN(aTime) ? 0 : aTime;
-        const bVal = isNaN(bTime) ? 0 : bTime;
-        return bVal - aVal;
+        return bTime - aTime;
       });
 
       return conversations;

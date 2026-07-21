@@ -13,12 +13,8 @@ from config.settings import (
     LANGFLOW_URL,
     LANGFLOW_URL_INGEST_FLOW_ID,
     NUDGES_FLOW_ID,
-    OLLAMA_EMBEDDING_COMPONENT_DISPLAY_NAME,
-    OLLAMA_LLM_COMPONENT_DISPLAY_NAME,
     OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME,
     OPENAI_LLM_COMPONENT_DISPLAY_NAME,
-    WATSONX_EMBEDDING_COMPONENT_DISPLAY_NAME,
-    WATSONX_LLM_COMPONENT_DISPLAY_NAME,
     clients,
     get_openrag_config,
 )
@@ -613,7 +609,7 @@ class FlowsService:
         return found
 
     def _get_node_provider(self, node):
-        """Get the provider name currently set in a node's model field."""
+        """Get the provider name currently set in a node."""
         template = node.get("data", {}).get("node", {}).get("template", {})
         model_val = template.get("model", {}).get("value")
         if isinstance(model_val, list) and len(model_val) > 0:
@@ -629,7 +625,6 @@ class FlowsService:
         if provider == "anthropic":
             return "Anthropic"
         return "OpenAI"
-
 
     async def _update_flow_field(
         self, flow_id: str, field_name: str, field_value: Any, node_display_name: str = None
@@ -747,62 +742,6 @@ class FlowsService:
             node_display_name="Split Text",
         )
 
-
-
-    async def enable_model_in_langflow(self, provider_name: str, model_value: str):
-        """Ensure the specified model is enabled in Langflow."""
-        try:
-            enabled_data = None
-            async with self._enabled_models_lock:
-                # Check if cache is still valid
-                if (
-                    self._enabled_models_cache
-                    and self._enabled_models_cache_time
-                    and (datetime.now() - self._enabled_models_cache_time).total_seconds()
-                    < self._enabled_models_cache_ttl
-                ):
-                    enabled_data = self._enabled_models_cache
-                else:
-                    # Cache miss or stale, fetch from Langflow
-                    get_response = await clients.langflow_request(
-                        "GET", "/api/v1/models/enabled_models"
-                    )
-                    if get_response.status_code == 200:
-                        enabled_data = get_response.json().get("enabled_models", {})
-                        self._enabled_models_cache = enabled_data
-                        self._enabled_models_cache_time = datetime.now()
-                        logger.debug("Refreshed enabled models cache from Langflow")
-
-            if enabled_data:
-                provider_models = enabled_data.get(provider_name, {})
-                if provider_models.get(model_value) is True:
-                    logger.info(
-                        f"Model {model_value} for provider {provider_name} is already enabled. Skipping."
-                    )
-                    return False
-
-            enable_payload = [{"provider": provider_name, "model_id": model_value, "enabled": True}]
-
-            response = await clients.langflow_request(
-                "POST", "/api/v1/models/enabled_models", json=enable_payload
-            )
-
-            if response.status_code == 200:
-                logger.info(
-                    f"Successfully enabled model {model_value} for provider {provider_name}"
-                )
-                async with self._enabled_models_lock:
-                    self._enabled_models_cache = None
-                return True
-            else:
-                logger.warning(
-                    f"Failed to enable model: HTTP {response.status_code} - {response.text}"
-                )
-                async with self._enabled_models_lock:
-                    self._enabled_models_cache = None
-        except Exception as e:
-            logger.error(f"Error enabling model in Langflow: {str(e)}")
-        return False
 
     def _normalize_flow_structure(self, flow_data):
         """
@@ -1330,7 +1269,7 @@ class FlowsService:
                 return False
 
             # Enable the model in Langflow first
-            await self.enable_model_in_langflow(provider_name, model_value)
+            await self._enable_model_in_langflow(provider_name, model_value)
             # Update template via Langflow API to get latest options
             template = (
                 await self._update_component_langflow(template, template["model"]["value"])
@@ -1406,18 +1345,78 @@ class FlowsService:
 
         return updated
 
+    async def _enable_model_in_langflow(self, provider_name: str, model_value: str):
+        """Ensure the specified model is enabled in Langflow."""
+        try:
+            enabled_data = None
+            async with self._enabled_models_lock:
+                # Check if cache is still valid
+                if (
+                    self._enabled_models_cache
+                    and self._enabled_models_cache_time
+                    and (datetime.now() - self._enabled_models_cache_time).total_seconds()
+                    < self._enabled_models_cache_ttl
+                ):
+                    enabled_data = self._enabled_models_cache
+                else:
+                    # Cache miss or stale, fetch from Langflow
+                    get_response = await clients.langflow_request(
+                        "GET", "/api/v1/models/enabled_models"
+                    )
+                    if get_response.status_code == 200:
+                        enabled_data = get_response.json().get("enabled_models", {})
+                        self._enabled_models_cache = enabled_data
+                        self._enabled_models_cache_time = datetime.now()
+                        logger.debug("Refreshed enabled models cache from Langflow")
+
+            if enabled_data:
+                provider_models = enabled_data.get(provider_name, {})
+                if provider_models.get(model_value) is True:
+                    logger.info(
+                        f"Model {model_value} for provider {provider_name} is already enabled. Skipping."
+                    )
+                    return False
+
+            enable_payload = [{"provider": provider_name, "model_id": model_value, "enabled": True}]
+
+            response = await clients.langflow_request(
+                "POST", "/api/v1/models/enabled_models", json=enable_payload
+            )
+
+            if response.status_code == 200:
+                logger.info(
+                    f"Successfully enabled model {model_value} for provider {provider_name}"
+                )
+                async with self._enabled_models_lock:
+                    self._enabled_models_cache = None
+                return True
+            else:
+                logger.warning(
+                    f"Failed to enable model: HTTP {response.status_code} - {response.text}"
+                )
+                async with self._enabled_models_lock:
+                    self._enabled_models_cache = None
+        except Exception as e:
+            logger.error(f"Error enabling model in Langflow: {str(e)}")
+        return False
+
     def _get_provider_component_ids(self, provider: str):
         """Helper to get component display names for various providers."""
+        from config.settings import (
+            OLLAMA_EMBEDDING_COMPONENT_DISPLAY_NAME,
+            OLLAMA_LLM_COMPONENT_DISPLAY_NAME,
+            OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME,
+            OPENAI_LLM_COMPONENT_DISPLAY_NAME,
+            WATSONX_EMBEDDING_COMPONENT_DISPLAY_NAME,
+            WATSONX_LLM_COMPONENT_DISPLAY_NAME,
+        )
+
         if provider == "openai":
             return (OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME, OPENAI_LLM_COMPONENT_DISPLAY_NAME)
         elif provider == "watsonx":
             return (WATSONX_EMBEDDING_COMPONENT_DISPLAY_NAME, WATSONX_LLM_COMPONENT_DISPLAY_NAME)
         elif provider == "ollama":
             return (OLLAMA_EMBEDDING_COMPONENT_DISPLAY_NAME, OLLAMA_LLM_COMPONENT_DISPLAY_NAME)
-        else:
-            return (OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME, OPENAI_LLM_COMPONENT_DISPLAY_NAME)
-
-
-
-
-
+        elif provider == "anthropic":
+            return (None, "Anthropic")
+        return (None, None)
