@@ -11,9 +11,9 @@ active_conversations: dict[str, dict[str, Any]] = {}
 
 def _format_provider_error_message(exc: BaseException) -> str:
     """Return a concise, user-facing provider error string from an exception."""
-    from api.provider_validation import format_provider_error_message
+    from api.provider_validation import sanitize_provider_error_content
 
-    return format_provider_error_message(exc)
+    return sanitize_provider_error_content(str(exc))
 
 
 def _provider_error_display_text(error_text: str, partial_response: str = "") -> str:

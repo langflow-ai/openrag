@@ -5,7 +5,10 @@ import type {
   TokenUsage,
 } from "@/app/chat/_types/types";
 import { useChat } from "@/contexts/chat-context";
-import { extractStreamProviderError } from "@/lib/chat-stream-errors";
+import {
+  extractStreamProviderError,
+  formatProviderErrorMessage,
+} from "@/lib/chat-stream-errors";
 import {
   detectImplicitToolCall,
   detectRAGFromContent,
@@ -280,7 +283,9 @@ export function useChatStreaming({
 
       // Create user-friendly error message
       const errorMessage = (error as Error).message;
-      let errorContent = errorMessage; // Default to the actual error message
+      let errorContent = formatProviderErrorMessage(
+        errorMessage || "An error occurred while generating a response.",
+      );
 
       // Only override with generic messages for specific infrastructure errors
       if (errorMessage?.includes("timed out")) {

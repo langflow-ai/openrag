@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { extractStreamProviderError } from "./chat-stream-errors";
+import {
+  extractStreamProviderError,
+  formatProviderErrorMessage,
+} from "./chat-stream-errors";
 
 describe("extractStreamProviderError", () => {
   it("returns null for non-error chunks", () => {
@@ -43,6 +46,37 @@ describe("extractStreamProviderError", () => {
     assert.equal(
       extractStreamProviderError({ status: "failed" }),
       "An error occurred while generating a response.",
+    );
+  });
+
+  it("strips embedded JSON from provider error chunks", () => {
+    assert.equal(
+      extractStreamProviderError({
+        status: "failed",
+        error: {
+          message:
+            'Failed to authenticate with IBM Watson: {"errorCode":"BXNIM0415E","errorMessage":"Provided API key could not be found."}',
+        },
+      }),
+      "Failed to authenticate with IBM Watson: Provided API key could not be found.",
+    );
+  });
+});
+
+describe("formatProviderErrorMessage", () => {
+  it("extracts OpenAI-style embedded JSON", () => {
+    assert.equal(
+      formatProviderErrorMessage(
+        'Provider request failed: {"error":{"message":"Incorrect API key provided","type":"invalid_request_error"}}',
+      ),
+      "Provider request failed: Incorrect API key provided",
+    );
+  });
+
+  it("keeps a readable prefix when JSON is truncated", () => {
+    assert.equal(
+      formatProviderErrorMessage("Invalid API key {not-valid-json"),
+      "Invalid API key",
     );
   });
 });

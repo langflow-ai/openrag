@@ -11,6 +11,7 @@ import { useTask } from "@/contexts/task-context";
 import { useOnboardingState } from "@/hooks/use-onboarding-state";
 import { useChatStreaming } from "@/hooks/useChatStreaming";
 import { trackLLMCall } from "@/lib/analytics";
+import { formatProviderErrorMessage } from "@/lib/chat-stream-errors";
 import { FILE_CONFIRMATION, FILES_REGEX } from "@/lib/constants";
 import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
 import { uploadFileForContext } from "@/lib/upload-utils";
@@ -310,16 +311,22 @@ function ChatPage() {
     let focusTimeoutId: NodeJS.Timeout;
     // Only load conversation data when:
     // 1. conversationData exists AND
-    // 2. (It's a different conversation OR we're not streaming and data has changed) AND
+    // 2. (It's a different conversation OR we're not streaming and remote data
+    //    caught up / advanced — never clobber local turns that are still ahead) AND
     // 3. User is not in the middle of an interaction
     const isNewConversation =
       lastLoadedConversationRef.current !== conversationData?.response_id;
-    const hasMessageCountChanged =
-      conversationData?.messages?.length !== messages.length;
+    const remoteMessageCount = conversationData?.messages?.length ?? 0;
+    const hasMessageCountChanged = remoteMessageCount !== messages.length;
+    // After a failed send, local state has the user (+ error) turn before history
+    // refreshes. Syncing from stale conversationData would wipe those messages
+    // (and a retry then duplicates them in Langflow history).
+    const localMessagesAhead = messages.length > remoteMessageCount;
 
     if (
       conversationData?.messages &&
-      (isNewConversation || (!isChatStreaming && hasMessageCountChanged)) &&
+      (isNewConversation ||
+        (!isChatStreaming && hasMessageCountChanged && !localMessagesAhead)) &&
       !isUserInteracting &&
       !isForkingInProgress
     ) {
@@ -356,7 +363,9 @@ function ChatPage() {
         }) => {
           const message: Message = {
             role: msg.role as "user" | "assistant",
-            content: msg.content,
+            content: msg.error
+              ? formatProviderErrorMessage(msg.content)
+              : msg.content,
             timestamp: new Date(msg.timestamp || new Date()),
             error: msg.error || false,
           };

@@ -170,6 +170,38 @@ class TestInferFailureMetadata:
         assert meta["failure_phase"] == "unknown"
         assert meta["actionable_by"] == "RETRYABLE"
 
+    def test_langflow_revoked_api_key_failure(self, task_service):
+        ft = _make_file_task(
+            phase=IngestionPhase.LANGFLOW,
+            docling_status=DoclingPhaseStatus.SUCCESS,
+            error=(
+                'Failed to authenticate with IBM Watson: {"errorCode":"BXNIM0415E",'
+                '"errorMessage":"Provided API key could not be found."}'
+            ),
+        )
+        meta = task_service._infer_failure_metadata(ft)
+        assert meta is not None
+        assert meta["component"] == "openrag"
+        assert meta["failure_phase"] == "embedding"
+        assert meta["actionable_by"] == "USER_ACTIONABLE"
+        assert "API key" in meta["user_facing_message"]
+        assert "{" not in meta["user_facing_message"]
+
+    def test_langflow_disconnect_with_api_key_text_prefers_credentials(self, task_service):
+        ft = _make_file_task(
+            phase=IngestionPhase.LANGFLOW,
+            docling_status=DoclingPhaseStatus.SUCCESS,
+            error=(
+                "Server disconnected without sending a response. "
+                "Incorrect API key provided"
+            ),
+        )
+        meta = task_service._infer_failure_metadata(ft)
+        assert meta is not None
+        assert meta["failure_phase"] == "embedding"
+        assert "API key" in meta["user_facing_message"]
+        assert "connection was lost" not in meta["user_facing_message"].lower()
+
     def test_duplicate_file_error(self, task_service):
         ft = _make_file_task(
             phase=IngestionPhase.DOCLING,

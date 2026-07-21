@@ -10,6 +10,36 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 
+_PROVIDER_CREDENTIAL_ERROR_MARKERS = (
+    "incorrect api key",
+    "invalid api key",
+    "invalid_api_key",
+    "api key could not be found",
+    "api key is invalid",
+    "api key has been revoked",
+    "api key revoked",
+    "revoked api key",
+    "provided api key could not be found",
+    "authentication_error",
+    "failed to authenticate",
+    "invalid x-api-key",
+    "unauthorized",
+    "authentication failed",
+    "invalid credentials",
+    "could not authenticate",
+)
+
+
+_PROVIDER_ERROR_CONTENT_MARKERS = _PROVIDER_CREDENTIAL_ERROR_MARKERS + (
+    "rate limit",
+    "rate_limit",
+    "permission denied",
+    "quota exceeded",
+    "provider request failed",
+    "insufficient_quota",
+)
+
+
 def format_provider_error_message(exc: BaseException | str) -> str:
     """Return a concise, user-facing provider error string from an exception or text."""
     text = (str(exc) if not isinstance(exc, str) else exc).strip()
@@ -28,6 +58,182 @@ def format_provider_error_message(exc: BaseException | str) -> str:
             return f"{prefix}: {nested}" if prefix else nested
 
     return text
+
+
+def is_provider_credential_error(text: str | BaseException | None) -> bool:
+    """True when the error indicates an invalid, missing, or revoked provider API key."""
+    if text is None:
+        return False
+    lowered = (str(text) if not isinstance(text, str) else text).lower()
+    return any(marker in lowered for marker in _PROVIDER_CREDENTIAL_ERROR_MARKERS)
+
+
+def looks_like_provider_error_content(text: str | None) -> bool:
+    """True when assistant text looks like a provider/auth failure rather than a normal reply."""
+    if not text or not text.strip():
+        return False
+    content = text.strip()
+    if content.startswith("Error:"):
+        return True
+    lowered = content.lower()
+    if any(marker in lowered for marker in _PROVIDER_ERROR_CONTENT_MARKERS):
+        return True
+    # Raw provider payloads often embed JSON error objects.
+    if "{" in content and (
+        '"error"' in lowered
+        or '"errormessage"' in lowered
+        or '"errorcode"' in lowered
+        or '"errors"' in lowered
+    ):
+        return True
+    return False
+
+
+def sanitize_provider_error_content(text: str | BaseException | None) -> str:
+    """Format provider error text and fall back when JSON still leaks through."""
+    if text is None:
+        return "An error occurred while generating a response."
+    if not isinstance(text, str):
+        text = str(text)
+    if not text.strip():
+        return "An error occurred while generating a response."
+    cleaned = format_provider_error_message(text)
+    if "{" in cleaned or "}" in cleaned:
+        if is_provider_credential_error(text) or is_provider_credential_error(cleaned):
+            return (
+                "The configured API key is invalid or has been revoked. "
+                "Update it in Settings and retry."
+            )
+        # Strip the first JSON object as a last resort.
+        json_start = cleaned.find("{")
+        prefix = cleaned[:json_start].rstrip(": ").strip()
+        return prefix or "An error occurred while generating a response."
+    return cleaned
+
+
+_LANGFLOW_TRANSPORT_ERROR_MARKERS = (
+    "server disconnected",
+    "disconnected without sending a response",
+    "remote protocol error",
+    "connection reset",
+    "broken pipe",
+    "all connection attempts failed",
+    "connection refused",
+)
+
+
+def is_langflow_transport_error(text: str | BaseException | None) -> bool:
+    """True when Langflow dropped the HTTP connection mid-ingest."""
+    if text is None:
+        return False
+    lowered = (str(text) if not isinstance(text, str) else text).lower()
+    return any(marker in lowered for marker in _LANGFLOW_TRANSPORT_ERROR_MARKERS)
+
+
+async def _probe_provider_credential_error(
+    *,
+    provider: str | None,
+    api_key: str | None,
+    endpoint: str | None = None,
+    project_id: str | None = None,
+    embedding_model: str | None = None,
+    llm_model: str | None = None,
+) -> str | None:
+    """Run a lightweight provider check; return a cleaned credential error if auth fails."""
+    if not provider:
+        return None
+    try:
+        await validate_provider_setup(
+            provider=provider,
+            api_key=api_key,
+            embedding_model=embedding_model,
+            llm_model=llm_model,
+            endpoint=endpoint,
+            project_id=project_id,
+            test_completion=False,
+        )
+    except Exception as probe_exc:
+        cleaned = sanitize_provider_error_content(probe_exc)
+        if is_provider_credential_error(probe_exc) or is_provider_credential_error(cleaned):
+            return cleaned
+    return None
+
+
+async def probe_provider_credential_error() -> str | None:
+    """Return a credential error if any ingest-relevant provider key fails auth.
+
+    Langflow receives every configured provider key, so a revoked watsonx key can
+    crash ingest even when the selected embedding provider is OpenAI.
+    """
+    from config.settings import get_openrag_config
+
+    config = get_openrag_config()
+    checked: set[str] = set()
+
+    candidates: list[tuple[str | None, object, str | None, str | None]] = [
+        (
+            config.knowledge.embedding_provider,
+            config.get_embedding_provider_config(),
+            config.knowledge.embedding_model,
+            None,
+        ),
+        (
+            config.agent.llm_provider,
+            config.get_llm_provider_config(),
+            None,
+            config.agent.llm_model,
+        ),
+    ]
+    for name in ("openai", "anthropic", "watsonx", "ollama"):
+        candidates.append((name, getattr(config.providers, name, None), None, None))
+
+    for provider, provider_config, embedding_model, llm_model in candidates:
+        if not provider or provider in checked or provider_config is None:
+            continue
+        checked.add(provider)
+        api_key = getattr(provider_config, "api_key", None)
+        endpoint = getattr(provider_config, "endpoint", None)
+        if provider == "ollama":
+            if not endpoint:
+                continue
+        elif provider not in (
+            config.knowledge.embedding_provider,
+            config.agent.llm_provider,
+        ) and not api_key:
+            continue
+
+        error = await _probe_provider_credential_error(
+            provider=provider,
+            api_key=api_key,
+            endpoint=endpoint,
+            project_id=getattr(provider_config, "project_id", None),
+            embedding_model=embedding_model,
+            llm_model=llm_model,
+        )
+        if error:
+            return error
+    return None
+
+
+async def resolve_ingest_error_message(exc: BaseException | str) -> str:
+    """Prefer a credential message when Langflow only reports a transport disconnect."""
+    raw = (str(exc) if not isinstance(exc, str) else exc).strip() or "Ingestion failed"
+
+    cleaned = sanitize_provider_error_content(raw)
+    if is_provider_credential_error(raw) or is_provider_credential_error(cleaned):
+        return cleaned
+
+    if is_langflow_transport_error(raw):
+        probe = await probe_provider_credential_error()
+        if probe:
+            logger.info(
+                "Ingest transport failure attributed to provider credentials",
+                transport_error=raw,
+                credential_error=probe,
+            )
+            return probe
+
+    return raw
 
 
 def _parse_json_error_message(error_text: str) -> str:

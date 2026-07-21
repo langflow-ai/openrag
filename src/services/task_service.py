@@ -91,6 +91,30 @@ def _is_task_cancellation_error(error: str) -> bool:
     return any(marker in lowered for marker in _TASK_CANCELLATION_ERROR_MARKERS)
 
 
+def _provider_credential_failure_metadata(error: str) -> dict | None:
+    """Classify invalid/revoked provider API key failures for ingestion toasts/UI."""
+    if not error:
+        return None
+
+    from api.provider_validation import (
+        is_provider_credential_error,
+        sanitize_provider_error_content,
+    )
+
+    cleaned = sanitize_provider_error_content(error)
+    if not (
+        is_provider_credential_error(error) or is_provider_credential_error(cleaned)
+    ):
+        return None
+
+    return {
+        "component": "openrag",
+        "failure_phase": "embedding",
+        "user_facing_message": cleaned,
+        "actionable_by": "USER_ACTIONABLE",
+    }
+
+
 def _is_transient_connectivity_error(error: str) -> bool:
     lowered = error.lower()
     return any(marker in lowered for marker in _TRANSIENT_CONNECTIVITY_ERROR_MARKERS)
@@ -1087,6 +1111,14 @@ class TaskService:
                 "user_facing_message": "A file with this name already exists.",
                 "actionable_by": "USER_ACTIONABLE",
             }
+
+        # Prefer credential failures over transport messages. Langflow may report
+        # "server disconnected" when the real cause is a revoked embedding API key;
+        # resolve_ingest_error_message() rewrites file_task.error in that case, and
+        # this check also covers errors that mention both disconnect + API key text.
+        credential_meta = _provider_credential_failure_metadata(error)
+        if credential_meta:
+            return credential_meta
 
         if _is_transient_connectivity_error(error) or _is_langflow_transport_failure(error):
             return {
