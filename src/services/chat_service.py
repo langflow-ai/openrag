@@ -270,7 +270,6 @@ class ChatService:
         )
 
         config = get_openrag_config()
-        embedding_model = config.knowledge.embedding_model
         extra_headers.update(build_model_provider_headers(config))
 
         # Add provider credentials to headers

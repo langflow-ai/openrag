@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from utils.langflow_utils import LangflowNotReadyError, wait_for_langflow
+from utils.langflow_utils import LangflowNotReadyError, wait_for_langflow, parse_knowledge_chunks
 
 
 def _make_response(status_code: int) -> MagicMock:
@@ -216,9 +216,6 @@ async def test_error_message_content(mock_langflow_client):
 
 
 # ── parse_knowledge_chunks tests ─────────────────────────────────────
-
-from utils.langflow_utils import parse_knowledge_chunks
-
 
 def test_parse_knowledge_chunks_artifact_list():
     input_data = {
