@@ -298,8 +298,8 @@ async def run_startup(app: FastAPI):
                     )
                 opensearch_client = clients.create_opensearch_client_from_jwt(service_token)
                 logger.info(
-                    "OpenSearch startup client: %s mode, using platform service token"
-                    % get_run_mode(),
+                    f"OpenSearch startup client: {get_run_mode()} mode, "
+                    "using platform service token",
                     admin_username=admin_username,
                 )
         else:

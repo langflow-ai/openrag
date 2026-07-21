@@ -935,8 +935,8 @@ class AppClients:
                     f"OpenSearch writer client in {get_run_mode()} mode."
                 )
             logger.info(
-                "Initializing global OpenSearch writer client: %s mode, "
-                "using platform service token" % get_run_mode()
+                f"Initializing global OpenSearch writer client: {get_run_mode()} mode, "
+                "using platform service token"
             )
             self.opensearch = self.create_opensearch_client_from_jwt(service_token)
         else:
@@ -1607,8 +1607,8 @@ class AppClients:
                     f"OpenSearch client in {get_run_mode()} mode."
                 )
             logger.info(
-                "Index admin OpenSearch client: %s mode, using platform service token"
-                % get_run_mode()
+                f"Index admin OpenSearch client: {get_run_mode()} mode, "
+                "using platform service token"
             )
             return self.create_opensearch_client_from_jwt(service_token)
         # oss: build a fresh basic-auth client so credentials updated after
