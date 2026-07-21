@@ -251,6 +251,8 @@ async def _run_async_post_save_langflow_updates(
     update_mcp_servers: bool,
     update_model_values: bool = False,
     models_service=None,
+    update_llm: bool = True,
+    update_embedding: bool = True,
 ) -> None:
     """Apply post-save Langflow synchronization asynchronously."""
     try:
@@ -277,10 +279,10 @@ async def _run_async_post_save_langflow_updates(
             await _update_langflow_model_values(
                 current_config,
                 flows_service,
-                llm_model=current_config.agent.llm_model,
-                llm_provider=current_config.agent.llm_provider,
-                embedding_model=current_config.knowledge.embedding_model,
-                embedding_provider=current_config.knowledge.embedding_provider,
+                llm_model=current_config.agent.llm_model if update_llm else None,
+                llm_provider=current_config.agent.llm_provider if update_llm else None,
+                embedding_model=current_config.knowledge.embedding_model if update_embedding else None,
+                embedding_provider=current_config.knowledge.embedding_provider if update_embedding else None,
             )
 
         logger.info("Completed asynchronous Langflow post-save sync")

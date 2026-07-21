@@ -1538,6 +1538,15 @@ class AppClients:
                     )
                 return
 
+            current_value = target_variable.get("value")
+            if current_value == value:
+                logger.debug(
+                    "Langflow global variable already up to date, skipping update",
+                    variable_name=name,
+                    variable_id=variable_id,
+                )
+                return
+
             # Update the variable using PATCH
             update_payload = {
                 "id": variable_id,
