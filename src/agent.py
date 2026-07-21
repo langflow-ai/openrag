@@ -17,11 +17,21 @@ def _format_provider_error_message(exc: BaseException) -> str:
 
 
 def _provider_error_display_text(error_text: str, partial_response: str = "") -> str:
-    """Combine any streamed partial answer with the provider error for display/history."""
+    """Combine any streamed partial answer with the provider error for display/history.
+
+    If the mid-stream text is itself a provider failure dump (often raw JSON), keep
+    only the sanitized error — do not paste the dump above the clean message.
+    """
+    from api.provider_validation import looks_like_provider_error_content
+
     partial = (partial_response or "").strip()
-    if partial:
-        return f"{partial}\n\n{error_text}"
-    return error_text
+    if not partial:
+        return error_text
+    if looks_like_provider_error_content(partial) or "{" in partial:
+        return error_text
+    if error_text in partial:
+        return partial
+    return f"{partial}\n\n{error_text}"
 
 
 def _conversation_thread_in_memory(user_id: str, response_id: str | None) -> bool:
@@ -41,13 +51,16 @@ def _resolve_error_store_id(
 ) -> str | None:
     """Persist errors only onto a real stream id or a thread already loaded in memory.
 
+    Prefer the in-memory previous thread so a failed turn does not create an orphan
+    conversation when Langflow emits a new chunk id before failing.
+
     Using previous_response_id after a cold get_conversation_thread() would overwrite
-    that conversation's metadata with a freshly built empty state.
+    that conversation's metadata with a freshly built empty state — skip that case.
     """
-    if response_id:
-        return response_id
     if previous_loaded_from_memory and previous_response_id:
         return previous_response_id
+    if response_id:
+        return response_id
     return None
 
 
@@ -915,6 +928,40 @@ async def async_langflow_chat_stream(
             except Exception:
                 pass
             yield chunk
+
+        from api.provider_validation import (
+            looks_like_provider_error_content,
+            sanitize_provider_error_content,
+        )
+
+        # Credential failures are often streamed as plain assistant text with no
+        # exception. Sanitize, mark as error, and emit a terminal error chunk so
+        # the client shows the error card instead of raw JSON.
+        if full_response and (error_occurred or looks_like_provider_error_content(full_response)):
+            display_text = sanitize_provider_error_content(full_response)
+            conversation_state["messages"].append(
+                {
+                    "role": "assistant",
+                    "content": display_text,
+                    "response_id": response_id,
+                    "timestamp": datetime.now(),
+                    "chunks": collected_chunks,
+                    "error": True,
+                }
+            )
+            store_id = _resolve_error_store_id(
+                response_id,
+                previous_response_id,
+                previous_loaded_from_memory=previous_loaded_from_memory,
+            )
+            if store_id:
+                try:
+                    conversation_state["last_activity"] = datetime.now()
+                    await store_conversation_thread(user_id, store_id, conversation_state)
+                except Exception as store_error:
+                    logger.error(f"Failed to store error conversation: {store_error}")
+            yield _stream_error_chunk(display_text)
+            return
 
         # Add the complete assistant response to message history with response_id, timestamp, and function call data
         if full_response:

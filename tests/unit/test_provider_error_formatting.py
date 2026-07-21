@@ -25,11 +25,21 @@ def test_parse_ibm_iam_error_message():
     )
 
 
-def test_sanitize_strips_unparseable_json_for_credential_errors():
-    raw = 'Incorrect API key provided {"error": "truncated'
-    cleaned = sanitize_provider_error_content(raw)
-    assert "{" not in cleaned
-    assert "Incorrect API key provided" in cleaned or "revoked" in cleaned.lower()
+def test_format_extracts_json_with_trailing_text():
+    raw = (
+        "Failed to initialize IBM WatsonX embedding model: Attempt of authenticating "
+        "connection to service failed, please validate your credentials. Error: "
+        '{"errorCode":"BXNIM0415E","errorMessage":"Provided API key could not be found.",'
+        '"context":{"requestId":"abc"}} '
+        "IBM WatsonX requires additional configuration parameters. "
+        "An error occurred while generating a response."
+    )
+    assert format_provider_error_message(raw) == (
+        "Failed to initialize IBM WatsonX embedding model: Attempt of authenticating "
+        "connection to service failed, please validate your credentials: "
+        "Provided API key could not be found."
+    )
+    assert "{" not in sanitize_provider_error_content(raw)
 
 
 def test_is_provider_credential_error():

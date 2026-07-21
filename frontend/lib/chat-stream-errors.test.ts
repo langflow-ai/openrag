@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   extractStreamProviderError,
   formatProviderErrorMessage,
+  looksLikeProviderErrorContent,
 } from "./chat-stream-errors";
 
 describe("extractStreamProviderError", () => {
@@ -63,6 +64,24 @@ describe("extractStreamProviderError", () => {
   });
 });
 
+describe("looksLikeProviderErrorContent", () => {
+  it("detects watsonx credential dumps streamed as assistant text", () => {
+    assert.equal(
+      looksLikeProviderErrorContent(
+        'Failed to initialize IBM WatsonX embedding model: Error: {"errorCode":"BXNIM0415E","errorMessage":"Provided API key could not be found."} An error occurred while generating a response.',
+      ),
+      true,
+    );
+  });
+
+  it("does not flag ordinary replies", () => {
+    assert.equal(
+      looksLikeProviderErrorContent("OpenRAG uses Langflow and OpenSearch."),
+      false,
+    );
+  });
+});
+
 describe("formatProviderErrorMessage", () => {
   it("extracts OpenAI-style embedded JSON", () => {
     assert.equal(
@@ -70,6 +89,15 @@ describe("formatProviderErrorMessage", () => {
         'Provider request failed: {"error":{"message":"Incorrect API key provided","type":"invalid_request_error"}}',
       ),
       "Provider request failed: Incorrect API key provided",
+    );
+  });
+
+  it("strips embedded JSON even with trailing text", () => {
+    assert.equal(
+      formatProviderErrorMessage(
+        'Failed to authenticate. Error: {"errorCode":"BXNIM0415E","errorMessage":"Provided API key could not be found."} trailing junk',
+      ),
+      "Failed to authenticate: Provided API key could not be found.",
     );
   });
 

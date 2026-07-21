@@ -43,6 +43,94 @@ function tryParseJsonMessage(text: string): string | null {
   return null;
 }
 
+function extractBalancedJsonObject(text: string): string | null {
+  const start = text.indexOf("{");
+  if (start < 0) {
+    return null;
+  }
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === "\\") {
+        escaped = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+    } else if (ch === "{") {
+      depth += 1;
+    } else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return text.slice(start, i + 1);
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * True when assistant text looks like a provider/auth failure rather than a reply.
+ * Keep markers aligned with src/api/provider_validation.py.
+ */
+export function looksLikeProviderErrorContent(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return false;
+  }
+  if (trimmed.startsWith("Error:")) {
+    return true;
+  }
+  const lowered = trimmed.toLowerCase();
+  const markers = [
+    "incorrect api key",
+    "invalid api key",
+    "invalid_api_key",
+    "api key could not be found",
+    "api key is invalid",
+    "api key has been revoked",
+    "api key revoked",
+    "revoked api key",
+    "provided api key could not be found",
+    "authentication_error",
+    "failed to authenticate",
+    "invalid x-api-key",
+    "unauthorized",
+    "authentication failed",
+    "invalid credentials",
+    "could not authenticate",
+    "rate limit",
+    "rate_limit",
+    "permission denied",
+    "quota exceeded",
+    "provider request failed",
+    "insufficient_quota",
+    "failed to initialize",
+    "an error occurred while generating a response",
+  ];
+  if (markers.some((marker) => lowered.includes(marker))) {
+    return true;
+  }
+  if (
+    trimmed.includes("{") &&
+    (lowered.includes('"error"') ||
+      lowered.includes('"errormessage"') ||
+      lowered.includes('"errorcode"') ||
+      lowered.includes('"errors"'))
+  ) {
+    return true;
+  }
+  return false;
+}
+
 /**
  * Strip embedded provider JSON payloads so chat never shows raw error objects.
  */
@@ -57,17 +145,34 @@ export function formatProviderErrorMessage(text: string): string {
     return direct;
   }
 
-  const jsonStart = trimmed.indexOf("{");
-  if (jsonStart >= 0) {
-    const nested = tryParseJsonMessage(trimmed.slice(jsonStart));
+  const jsonBlob = extractBalancedJsonObject(trimmed);
+  if (jsonBlob) {
+    const nested = tryParseJsonMessage(jsonBlob);
     if (nested) {
-      const prefix = trimmed
-        .slice(0, jsonStart)
+      let prefix = trimmed
+        .slice(0, trimmed.indexOf(jsonBlob))
         .replace(/[:\s]+$/, "")
         .trim();
+      if (/error$/i.test(prefix)) {
+        prefix = prefix
+          .replace(/error$/i, "")
+          .replace(/[:.\s]+$/, "")
+          .trim();
+      }
       return prefix ? `${prefix}: ${nested}` : nested;
     }
-    // Unparseable JSON residue — keep the human-readable prefix only.
+    const prefix = trimmed
+      .slice(0, trimmed.indexOf(jsonBlob))
+      .replace(/[:\s]+$/, "")
+      .trim();
+    if (prefix) {
+      return prefix;
+    }
+  }
+
+  // Truncated / unbalanced JSON — keep the readable prefix only.
+  const jsonStart = trimmed.indexOf("{");
+  if (jsonStart > 0) {
     const prefix = trimmed
       .slice(0, jsonStart)
       .replace(/[:\s]+$/, "")

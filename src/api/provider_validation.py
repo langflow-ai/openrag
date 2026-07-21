@@ -40,6 +40,35 @@ _PROVIDER_ERROR_CONTENT_MARKERS = _PROVIDER_CREDENTIAL_ERROR_MARKERS + (
 )
 
 
+def _extract_balanced_json_object(text: str) -> str | None:
+    """Return the first top-level `{...}` substring, ignoring trailing junk."""
+    start = text.find("{")
+    if start < 0:
+        return None
+    depth = 0
+    in_string = False
+    escape = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return None
+
+
 def format_provider_error_message(exc: BaseException | str) -> str:
     """Return a concise, user-facing provider error string from an exception or text."""
     text = (str(exc) if not isinstance(exc, str) else exc).strip()
@@ -50,11 +79,14 @@ def format_provider_error_message(exc: BaseException | str) -> str:
     if parsed != text:
         return parsed
 
-    json_start = text.find("{")
-    if json_start >= 0:
-        nested = _parse_json_error_message(text[json_start:])
-        if nested != text[json_start:]:
-            prefix = text[:json_start].rstrip(": ").strip()
+    json_blob = _extract_balanced_json_object(text)
+    if json_blob:
+        nested = _parse_json_error_message(json_blob)
+        if nested != json_blob:
+            prefix = text[: text.find(json_blob)].rstrip(": ").strip()
+            # Drop boilerplate that only points at the JSON payload ("... Error:").
+            if prefix.lower().endswith("error"):
+                prefix = prefix[: -len("error")].rstrip(": .").strip()
             return f"{prefix}: {nested}" if prefix else nested
 
     return text
@@ -220,7 +252,7 @@ async def probe_provider_credential_error() -> str | None:
 
 
 async def resolve_ingest_error_message(exc: BaseException | str) -> str:
-    """Prefer a credential message when Langflow only reports a transport disconnect."""
+    """Prefer a credential message when Langflow fails auth or only reports a disconnect."""
     raw = (str(exc) if not isinstance(exc, str) else exc).strip() or "Ingestion failed"
 
     cleaned = sanitize_provider_error_content(raw)
@@ -237,6 +269,9 @@ async def resolve_ingest_error_message(exc: BaseException | str) -> str:
             )
             return probe
 
+    # Prefer the sanitized form whenever JSON / boilerplate was stripped.
+    if cleaned != raw and "{" not in cleaned:
+        return cleaned
     return raw
 
 

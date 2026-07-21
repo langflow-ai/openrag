@@ -48,6 +48,17 @@ def test_provider_error_display_text_keeps_partial_answer():
     ) == ("Partial answer so far\n\nRate limit exceeded")
 
 
+def test_provider_error_display_text_drops_error_like_partial():
+    partial = (
+        "Failed to initialize IBM WatsonX embedding model. Error: "
+        '{"errorMessage":"Provided API key could not be found."}'
+    )
+    assert (
+        agent_module._provider_error_display_text("Provided API key could not be found.", partial)
+        == "Provided API key could not be found."
+    )
+
+
 def test_resolve_error_store_id_ignores_cold_previous_response_id():
     assert (
         agent_module._resolve_error_store_id(
@@ -71,7 +82,7 @@ def test_resolve_error_store_id_ignores_cold_previous_response_id():
             "resp_warm",
             previous_loaded_from_memory=True,
         )
-        == "resp_stream"
+        == "resp_warm"
     )
 
 
@@ -208,6 +219,46 @@ async def test_langflow_stream_skips_persist_for_cold_previous_response_id(
     # Cold previous_response_id must not overwrite conversation metadata.
     assert store_in_memory == []
     assert previous_id not in agent_module.active_conversations.get(user_id, {})
+
+
+@pytest.mark.asyncio
+async def test_langflow_stream_treats_credential_dump_content_as_error(
+    monkeypatch, store_in_memory
+):
+    """WatsonX failures are often streamed as assistant text with no exception."""
+    dump = (
+        "Failed to initialize IBM WatsonX embedding model: Attempt of authenticating "
+        "connection to service failed, please validate your credentials. Error: "
+        '{"errorCode":"BXNIM0415E","errorMessage":"Provided API key could not be found."} '
+        "IBM WatsonX requires additional configuration parameters "
+        "(API endpoint URL and project ID). An error occurred while generating a response."
+    )
+
+    async def stream_dump(*_args, **_kwargs) -> AsyncIterator[bytes]:
+        yield (json.dumps({"id": "resp_dump", "delta": {"content": dump}}) + "\n").encode("utf-8")
+
+    monkeypatch.setattr(agent_module, "async_stream", stream_dump)
+
+    user_id = "test-provider-error-content-dump"
+    agent_module.active_conversations.pop(user_id, None)
+
+    chunks = await _collect_error_chunks(
+        agent_module.async_langflow_chat_stream(
+            langflow_client=object(),
+            flow_id="flow-id",
+            prompt="hello",
+            user_id=user_id,
+        )
+    )
+
+    assert any(c.get("status") == "failed" for c in chunks)
+    error_chunk = next(c for c in chunks if c.get("status") == "failed")
+    assert "{" not in error_chunk["error"]["message"]
+    assert "Provided API key could not be found" in error_chunk["error"]["message"]
+    assert store_in_memory == [(user_id, "resp_dump")]
+    stored = agent_module.active_conversations[user_id]["resp_dump"]
+    assert stored["messages"][-1]["error"] is True
+    assert "{" not in stored["messages"][-1]["content"]
 
 
 @pytest.mark.asyncio

@@ -11,7 +11,10 @@ import { useTask } from "@/contexts/task-context";
 import { useOnboardingState } from "@/hooks/use-onboarding-state";
 import { useChatStreaming } from "@/hooks/useChatStreaming";
 import { trackLLMCall } from "@/lib/analytics";
-import { formatProviderErrorMessage } from "@/lib/chat-stream-errors";
+import {
+  formatProviderErrorMessage,
+  looksLikeProviderErrorContent,
+} from "@/lib/chat-stream-errors";
 import { FILE_CONFIRMATION, FILES_REGEX } from "@/lib/constants";
 import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
 import { uploadFileForContext } from "@/lib/upload-utils";
@@ -309,26 +312,34 @@ function ChatPage() {
   // Load conversation data from context
   useEffect(() => {
     let focusTimeoutId: NodeJS.Timeout;
-    // Only load conversation data when:
-    // 1. conversationData exists AND
-    // 2. (It's a different conversation OR we're not streaming and remote data
-    //    caught up / advanced — never clobber local turns that are still ahead) AND
-    // 3. User is not in the middle of an interaction
-    const isNewConversation =
-      lastLoadedConversationRef.current !== conversationData?.response_id;
+    // Only load conversation data when remote history should win:
+    // - Switching to a different conversation always loads remote.
+    // - Same conversation: never clobber local turns that are still ahead
+    //   (failed sends append user+error before history refreshes; syncing
+    //   stale remote would wipe them and retries then duplicate in Langflow).
+    const conversationId = conversationData?.response_id ?? null;
+    const isSwitchingConversation =
+      conversationId != null &&
+      lastLoadedConversationRef.current != null &&
+      lastLoadedConversationRef.current !== conversationId;
+    const isFirstLoadOfConversation =
+      conversationId != null &&
+      lastLoadedConversationRef.current !== conversationId;
     const remoteMessageCount = conversationData?.messages?.length ?? 0;
     const hasMessageCountChanged = remoteMessageCount !== messages.length;
-    // After a failed send, local state has the user (+ error) turn before history
-    // refreshes. Syncing from stale conversationData would wipe those messages
-    // (and a retry then duplicates them in Langflow history).
     const localMessagesAhead = messages.length > remoteMessageCount;
+    const shouldSyncSameConversation =
+      !isChatStreaming &&
+      hasMessageCountChanged &&
+      !localMessagesAhead &&
+      !isUserInteracting &&
+      !isForkingInProgress;
 
     if (
       conversationData?.messages &&
-      (isNewConversation ||
-        (!isChatStreaming && hasMessageCountChanged && !localMessagesAhead)) &&
-      !isUserInteracting &&
-      !isForkingInProgress
+      (isSwitchingConversation ||
+        (isFirstLoadOfConversation && !localMessagesAhead) ||
+        (!isFirstLoadOfConversation && shouldSyncSameConversation))
     ) {
       // Convert backend message format to frontend Message interface
       const convertedMessages: Message[] = conversationData.messages.map(
@@ -361,13 +372,17 @@ function ChatPage() {
           }>;
           response_data?: unknown;
         }) => {
+          const isProviderError =
+            Boolean(msg.error) ||
+            (msg.role === "assistant" &&
+              looksLikeProviderErrorContent(msg.content || ""));
           const message: Message = {
             role: msg.role as "user" | "assistant",
-            content: msg.error
+            content: isProviderError
               ? formatProviderErrorMessage(msg.content)
               : msg.content,
             timestamp: new Date(msg.timestamp || new Date()),
-            error: msg.error || false,
+            error: isProviderError,
           };
 
           // Extract function calls from chunks or response_data

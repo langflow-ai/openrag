@@ -8,6 +8,7 @@ import { useChat } from "@/contexts/chat-context";
 import {
   extractStreamProviderError,
   formatProviderErrorMessage,
+  looksLikeProviderErrorContent,
 } from "@/lib/chat-stream-errors";
 import {
   detectImplicitToolCall,
@@ -233,6 +234,16 @@ export function useChatStreaming({
         });
       }
 
+      // Langflow often streams credential failures as plain assistant text
+      // (no status=failed chunk). Treat that as an error so JSON never lands
+      // in the transcript as a normal reply.
+      if (content.value && looksLikeProviderErrorContent(content.value)) {
+        throw Object.assign(
+          new Error(formatProviderErrorMessage(content.value)),
+          { partialContent: content.value },
+        );
+      }
+
       if (
         !hasReceivedData ||
         (!content.value && currentFunctionCalls.length === 0)
@@ -301,14 +312,21 @@ export function useChatStreaming({
           "Network error. Please check your connection and try again.";
       }
 
-      // Keep any mid-stream partial answer visible above the provider error.
+      // Keep any mid-stream partial answer visible above the provider error,
+      // unless the "partial" is itself a provider failure dump with JSON.
       const partialContent =
         typeof (error as { partialContent?: unknown }).partialContent ===
         "string"
           ? (error as { partialContent: string }).partialContent.trim()
           : "";
+      const partialLooksLikeProviderError =
+        partialContent.includes("{") ||
+        /api key|authenticat|unauthorized|permission denied|rate limit/i.test(
+          partialContent,
+        );
       if (
         partialContent &&
+        !partialLooksLikeProviderError &&
         !errorContent.startsWith(partialContent) &&
         !errorMessage?.includes("timed out") &&
         !errorMessage?.includes("No response") &&
