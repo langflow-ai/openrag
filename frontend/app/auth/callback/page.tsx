@@ -48,6 +48,7 @@ function AuthCallbackContent() {
   const state = searchParams.get("state");
   const finalConnectorId =
     localStorage.getItem("connecting_connector_id") || state;
+  const storedConnectorType = localStorage.getItem("connecting_connector_type");
 
   const validationError = errorParam
     ? `OAuth error: ${errorParam}`
@@ -135,6 +136,19 @@ function AuthCallbackContent() {
               () => router.push(redirectTo),
               2000,
             );
+          } else if (result.purpose === "test" || purpose === "test") {
+            // Test Connection — token exchange succeeded, credentials work. No
+            // connection was persisted (see _handle_test_auth); send the admin
+            // back to Connector Settings with a success indicator to toast.
+            cleanupOAuthStorage();
+            localStorage.removeItem("test_connection_return_tab");
+            redirectTimeoutRef.current = setTimeout(
+              () =>
+                router.push(
+                  `/settings/connector-access?oauth_test=success&credential=${encodeURIComponent(storedConnectorType || "")}`,
+                ),
+              1000,
+            );
           } else {
             cleanupOAuthStorage();
             redirectTimeoutRef.current = setTimeout(
@@ -145,6 +159,7 @@ function AuthCallbackContent() {
         },
         onError: () => {
           cleanupOAuthStorage();
+          localStorage.removeItem("test_connection_return_tab");
           sessionStorage.removeItem(callbackKey);
         },
       },
@@ -155,6 +170,7 @@ function AuthCallbackContent() {
     code,
     state,
     finalConnectorId,
+    storedConnectorType,
     validationError,
     searchParams,
     isIbmAuthMode,
@@ -178,16 +194,29 @@ function AuthCallbackContent() {
       : null);
 
   const isAppAuth = purpose === "app_auth";
+  const isTest = purpose === "test";
 
   const getTitle = () => {
     if (status === "processing") {
-      return isAppAuth ? "Signing you in..." : "Connecting...";
+      return isAppAuth
+        ? "Signing you in..."
+        : isTest
+          ? "Testing connection..."
+          : "Connecting...";
     }
     if (status === "success") {
-      return isAppAuth ? "Welcome to OpenRAG!" : "Connection Successful!";
+      return isAppAuth
+        ? "Welcome to OpenRAG!"
+        : isTest
+          ? "Test Successful!"
+          : "Connection Successful!";
     }
     if (status === "error") {
-      return isAppAuth ? "Sign In Failed" : "Connection Failed";
+      return isAppAuth
+        ? "Sign In Failed"
+        : isTest
+          ? "Test Failed"
+          : "Connection Failed";
     }
   };
 
@@ -240,7 +269,15 @@ function AuthCallbackContent() {
                 <p className="text-sm text-red-600">{error}</p>
               </div>
               <Button
-                onClick={() => router.push(isAppAuth ? "/login" : "/settings")}
+                onClick={() =>
+                  router.push(
+                    isAppAuth
+                      ? "/login"
+                      : isTest
+                        ? "/settings/connector-access"
+                        : "/settings",
+                  )
+                }
                 variant="outline"
                 className="w-full"
               >

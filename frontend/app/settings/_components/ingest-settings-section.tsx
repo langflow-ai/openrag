@@ -4,6 +4,7 @@ import { ArrowUpRight, Loader2, Minus, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
+  useGetAnthropicModelsQuery,
   useGetIBMModelsQuery,
   useGetOllamaModelsQuery,
   useGetOpenAIModelsQuery,
@@ -12,6 +13,12 @@ import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { LabelWrapper } from "@/components/label-wrapper";
 import { RequirePermission } from "@/components/require-permission";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -21,8 +28,17 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/inputs/number-input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { trackButton } from "@/lib/analytics";
@@ -33,6 +49,14 @@ import { useUpdateSettingsMutation } from "../../api/mutations/useUpdateSettings
 import { ModelSelector } from "../../onboarding/_components/model-selector";
 import { getModelLogo } from "../_helpers/model-helpers";
 import { LangflowIcon } from "./langflow-icon";
+
+const DEFAULT_WATSONX_API_VERSION = "2023-05-29";
+
+const RESPONSE_FORMATS = [
+  { value: "markdown", label: "Markdown (recommended)" },
+  { value: "doctags", label: "DocTags" },
+  { value: "html", label: "HTML" },
+] as const;
 
 export function IngestSettingsSection() {
   const isCloudBrand = useIsCloudBrand();
@@ -52,14 +76,34 @@ export function IngestSettingsSection() {
   const [disableIngestWithLangflow, setDisableIngestWithLangflow] =
     useState<boolean>(false);
 
+  const [vlmProvider, setVlmProvider] = useState<string>("openai");
+  const [vlmModel, setVlmModel] = useState<string>("");
+  const [vlmPrompt, setVlmPrompt] = useState<string>("");
+  const [vlmResponseFormat, setVlmResponseFormat] =
+    useState<string>("markdown");
+  const [vlmMaxTokens, setVlmMaxTokens] = useState<number>(5000);
+  const [vlmConcurrency, setVlmConcurrency] = useState<number>(4);
+  const [vlmTimeout, setVlmTimeout] = useState<number>(120);
+  const [vlmWatsonxApiVersion, setVlmWatsonxApiVersion] = useState<string>(
+    DEFAULT_WATSONX_API_VERSION,
+  );
+  const [validationError, setValidationError] = useState<string | null>(null);
+
   const { data: settings = {} } = useGetSettingsQuery({
     enabled: isAuthenticated || isNoAuthMode,
   });
+
+  const showVlmSettings = settings.show_vlm_settings ?? true;
 
   const { data: openaiModels, isLoading: openaiLoading } =
     useGetOpenAIModelsQuery(
       { apiKey: "" },
       { enabled: settings?.providers?.openai?.configured === true },
+    );
+  const { data: anthropicModels, isLoading: anthropicLoading } =
+    useGetAnthropicModelsQuery(
+      { apiKey: "" },
+      { enabled: settings?.providers?.anthropic?.configured === true },
     );
   const { data: ollamaModels, isLoading: ollamaLoading } =
     useGetOllamaModelsQuery(
@@ -129,6 +173,99 @@ export function IngestSettingsSection() {
   const isLoadingAnyEmbeddingModels =
     openaiLoading || ollamaLoading || watsonxLoading;
 
+  const groupedVlmModels = useMemo(() => {
+    const list: any[] = [];
+
+    // 1. Local Models
+    if (settings.local_vlm_models && settings.local_vlm_models.length > 0) {
+      list.push({
+        group: "Local Models",
+        icon: getModelLogo("", "local"),
+        options: settings.local_vlm_models.map((m: string) => ({
+          value: m,
+          label: m.split("/").pop(),
+          provider: "local",
+        })),
+      });
+    }
+
+    // 2. OpenAI
+    if (settings.providers?.openai?.configured) {
+      const models = (openaiModels?.language_models || [])
+        .filter((m: any) => m.supports_images === true)
+        .map((m: any) => ({ ...m, provider: "openai" }));
+      if (models.length > 0) {
+        list.push({
+          group: "OpenAI",
+          icon: getModelLogo("", "openai"),
+          options: models,
+        });
+      }
+    }
+
+    // 3. Anthropic
+    if (settings.providers?.anthropic?.configured) {
+      const models = (anthropicModels?.language_models || [])
+        .filter((m: any) => m.supports_images === true)
+        .map((m: any) => ({ ...m, provider: "anthropic" }));
+      if (models.length > 0) {
+        list.push({
+          group: "Anthropic",
+          icon: getModelLogo("", "anthropic"),
+          options: models,
+        });
+      }
+    }
+
+    // 4. Ollama
+    if (settings.providers?.ollama?.configured) {
+      const models = (ollamaModels?.language_models || [])
+        .filter((m: any) => m.supports_images === true)
+        .map((m: any) => ({ ...m, provider: "ollama" }));
+      if (models.length > 0) {
+        list.push({
+          group: "Ollama",
+          icon: getModelLogo("", "ollama"),
+          options: models,
+        });
+      }
+    }
+
+    // 5. IBM watsonx.ai
+    if (settings.providers?.watsonx?.configured) {
+      const models = (watsonxModels?.language_models || [])
+        .filter((m: any) => m.supports_images === true)
+        .map((m: any) => ({ ...m, provider: "watsonx" }));
+      if (models.length > 0) {
+        list.push({
+          group: "IBM watsonx.ai",
+          icon: getModelLogo("", "watsonx"),
+          options: models,
+        });
+      }
+    }
+
+    return list;
+  }, [
+    settings.local_vlm_models,
+    settings.providers?.openai?.configured,
+    settings.providers?.anthropic?.configured,
+    settings.providers?.ollama?.configured,
+    settings.providers?.watsonx?.configured,
+    openaiModels?.language_models,
+    anthropicModels?.language_models,
+    ollamaModels?.language_models,
+    watsonxModels?.language_models,
+  ]);
+
+  const isLoadingAnyVlmModels =
+    openaiLoading || anthropicLoading || ollamaLoading || watsonxLoading;
+
+  const allVlmOptions = useMemo(
+    () => groupedVlmModels.flatMap((g) => g.options),
+    [groupedVlmModels],
+  );
+
   const updateSettingsMutation = useUpdateSettingsMutation({
     onSuccess: () => {
       toast.success("Settings updated successfully");
@@ -177,37 +314,80 @@ export function IngestSettingsSection() {
   ]);
 
   useEffect(() => {
-    if (settings.knowledge?.chunk_size !== undefined)
-      setChunkSize(settings.knowledge.chunk_size);
-  }, [settings.knowledge?.chunk_size]);
+    const k = settings.knowledge;
+    if (!k) return;
+    if (k.chunk_size !== undefined) setChunkSize(k.chunk_size);
+    if (k.chunk_overlap !== undefined) setChunkOverlap(k.chunk_overlap);
+    if (k.table_structure !== undefined) setTableStructure(k.table_structure);
+    if (k.ocr !== undefined) setOcr(k.ocr);
+    if (k.picture_descriptions !== undefined)
+      setPictureDescriptions(k.picture_descriptions);
+    if (k.disable_ingest_with_langflow !== undefined)
+      setDisableIngestWithLangflow(k.disable_ingest_with_langflow);
+    if (k.vlm_provider !== undefined) setVlmProvider(k.vlm_provider);
+    // Backend defaults vlm_model to ""; an empty value means "not configured",
+    // so don't clobber a locally auto-selected model with it.
+    if (k.vlm_model) setVlmModel(k.vlm_model);
+    if (k.vlm_prompt !== undefined) setVlmPrompt(k.vlm_prompt);
+    if (k.vlm_response_format !== undefined)
+      setVlmResponseFormat(k.vlm_response_format);
+    if (k.vlm_max_tokens !== undefined) setVlmMaxTokens(k.vlm_max_tokens);
+    if (k.vlm_concurrency !== undefined) setVlmConcurrency(k.vlm_concurrency);
+    if (k.vlm_timeout !== undefined) setVlmTimeout(k.vlm_timeout);
+    if (k.vlm_watsonx_api_version !== undefined)
+      setVlmWatsonxApiVersion(k.vlm_watsonx_api_version);
+  }, [settings.knowledge]);
 
-  useEffect(() => {
-    if (settings.knowledge?.chunk_overlap !== undefined)
-      setChunkOverlap(settings.knowledge.chunk_overlap);
-  }, [settings.knowledge?.chunk_overlap]);
+  const [vlmAccordionValue, setVlmAccordionValue] = useState<string>("");
 
+  const autoSelectedVlm = useRef(false);
   useEffect(() => {
-    if (settings.knowledge?.table_structure !== undefined)
-      setTableStructure(settings.knowledge.table_structure);
-  }, [settings.knowledge?.table_structure]);
+    if (!showVlmSettings) return;
+    if (settings.knowledge?.vlm_model) {
+      autoSelectedVlm.current = false;
+      return;
+    }
+    if (autoSelectedVlm.current) return;
+    if (settings.local_vlm_models && settings.local_vlm_models.length > 0) {
+      setVlmModel(settings.local_vlm_models[0]);
+      setVlmProvider("local");
+      autoSelectedVlm.current = true;
+    } else if (allVlmOptions.length > 0) {
+      const fallback = allVlmOptions.find((o) => o.default) || allVlmOptions[0];
+      setVlmModel(fallback.value);
+      setVlmProvider(fallback.provider || "openai");
+      autoSelectedVlm.current = true;
+    }
+  }, [
+    showVlmSettings,
+    settings.knowledge?.vlm_model,
+    settings.local_vlm_models,
+    allVlmOptions,
+  ]);
 
-  useEffect(() => {
-    if (settings.knowledge?.ocr !== undefined) setOcr(settings.knowledge.ocr);
-  }, [settings.knowledge?.ocr]);
+  const handleVlmModelChange = (value: string, provider?: string) => {
+    setVlmModel(value);
+    if (provider) setVlmProvider(provider);
+    setValidationError(null);
+  };
 
-  useEffect(() => {
-    if (settings.knowledge?.picture_descriptions !== undefined)
-      setPictureDescriptions(settings.knowledge.picture_descriptions);
-  }, [settings.knowledge?.picture_descriptions]);
-
-  useEffect(() => {
-    if (settings.knowledge?.disable_ingest_with_langflow !== undefined)
-      setDisableIngestWithLangflow(
-        settings.knowledge.disable_ingest_with_langflow,
-      );
-  }, [settings.knowledge?.disable_ingest_with_langflow]);
+  const vlmModelPending =
+    showVlmSettings && pictureDescriptions && !vlmModel.trim();
 
   const k = settings.knowledge;
+  const vlmDirty =
+    showVlmSettings &&
+    (pictureDescriptions !== (k?.vlm_enabled ?? pictureDescriptions) ||
+      vlmProvider !== (k?.vlm_provider ?? vlmProvider) ||
+      vlmModel !== (k?.vlm_model ?? vlmModel) ||
+      vlmPrompt !== (k?.vlm_prompt ?? vlmPrompt) ||
+      vlmResponseFormat !== (k?.vlm_response_format ?? vlmResponseFormat) ||
+      vlmMaxTokens !== (k?.vlm_max_tokens ?? vlmMaxTokens) ||
+      vlmConcurrency !== (k?.vlm_concurrency ?? vlmConcurrency) ||
+      vlmTimeout !== (k?.vlm_timeout ?? vlmTimeout) ||
+      vlmWatsonxApiVersion !==
+        (k?.vlm_watsonx_api_version ?? vlmWatsonxApiVersion));
+
   const knowledgeIngestDirty =
     chunkSize !== (k?.chunk_size ?? chunkSize) ||
     chunkOverlap !== (k?.chunk_overlap ?? chunkOverlap) ||
@@ -215,7 +395,31 @@ export function IngestSettingsSection() {
     ocr !== (k?.ocr ?? ocr) ||
     pictureDescriptions !== (k?.picture_descriptions ?? pictureDescriptions) ||
     disableIngestWithLangflow !==
-      (k?.disable_ingest_with_langflow ?? disableIngestWithLangflow);
+      (k?.disable_ingest_with_langflow ?? disableIngestWithLangflow) ||
+    vlmDirty;
+
+  const providerConfigured =
+    settings.providers === undefined || settings.providers === null
+      ? undefined
+      : vlmProvider === "watsonx"
+        ? settings.providers.watsonx?.configured === true
+        : vlmProvider === "anthropic"
+          ? settings.providers.anthropic?.configured === true
+          : vlmProvider === "ollama"
+            ? settings.providers.ollama?.configured === true
+            : vlmProvider === "local"
+              ? true
+              : settings.providers.openai?.configured === true;
+
+  const providerWarning = pictureDescriptions && providerConfigured === false;
+  const providerLabel =
+    vlmProvider === "watsonx"
+      ? "IBM watsonx.ai"
+      : vlmProvider === "anthropic"
+        ? "Anthropic"
+        : vlmProvider === "ollama"
+          ? "Ollama"
+          : "OpenAI";
 
   const handleChunkSizeChange = (value: string) => {
     setChunkSize(Math.max(0, Number.parseInt(value, 10) || 0));
@@ -228,6 +432,22 @@ export function IngestSettingsSection() {
   };
 
   const handleKnowledgeIngestSave = () => {
+    // Only include VLM fields when the VLM UI is enabled; a hidden section
+    // must not drive backend VLM state or trip its validation.
+    const vlmPayload = showVlmSettings
+      ? {
+          vlm_enabled: pictureDescriptions,
+          vlm_provider: vlmProvider,
+          vlm_model: vlmModel.trim() || undefined,
+          vlm_prompt: vlmPrompt,
+          vlm_response_format: vlmResponseFormat,
+          vlm_max_tokens: vlmMaxTokens,
+          vlm_concurrency: vlmConcurrency,
+          vlm_timeout: vlmTimeout,
+          vlm_watsonx_api_version: vlmWatsonxApiVersion,
+        }
+      : {};
+
     trackButton({
       CTA: "Save Ingest Settings",
       elementId: "save-ingest-settings-button",
@@ -239,8 +459,10 @@ export function IngestSettingsSection() {
         ocr,
         picture_descriptions: pictureDescriptions,
         disable_ingest_with_langflow: disableIngestWithLangflow,
+        ...vlmPayload,
       },
     });
+
     if (chunkSize < 1) {
       const msg = "Chunk size must be at least 1";
       setChunkValidationError(msg);
@@ -253,6 +475,23 @@ export function IngestSettingsSection() {
       toast.error("Could not save ingest settings", { description: msg });
       return;
     }
+
+    if (showVlmSettings && pictureDescriptions) {
+      if (!vlmModel.trim()) {
+        const msg =
+          "Model name is required when picture descriptions are enabled";
+        setValidationError(msg);
+        toast.error("Could not save ingest settings", { description: msg });
+        return;
+      }
+      if (vlmMaxTokens < 1 || vlmConcurrency < 1 || vlmTimeout < 1) {
+        const msg = "Max tokens, concurrency, and timeout must be at least 1";
+        setValidationError(msg);
+        toast.error("Could not save ingest settings", { description: msg });
+        return;
+      }
+    }
+
     updateSettingsMutation.mutate(
       {
         chunk_size: chunkSize,
@@ -261,8 +500,14 @@ export function IngestSettingsSection() {
         ocr,
         picture_descriptions: pictureDescriptions,
         disable_ingest_with_langflow: disableIngestWithLangflow,
+        ...vlmPayload,
       },
-      { onSuccess: () => setChunkValidationError(null) },
+      {
+        onSuccess: () => {
+          setChunkValidationError(null);
+          setValidationError(null);
+        },
+      },
     );
   };
 
@@ -579,12 +824,171 @@ export function IngestSettingsSection() {
                 onCheckedChange={setPictureDescriptions}
               />
             </div>
+            {showVlmSettings && (
+              <div
+                className={cn(
+                  "mt-4 border border-border rounded-lg bg-muted/5 overflow-hidden transition-all duration-200",
+                  !pictureDescriptions &&
+                    "opacity-50 cursor-not-allowed select-none",
+                )}
+              >
+                <Accordion
+                  type="single"
+                  collapsible
+                  disabled={!pictureDescriptions}
+                  value={pictureDescriptions ? vlmAccordionValue : ""}
+                  onValueChange={setVlmAccordionValue}
+                >
+                  <AccordionItem value="vlm-settings" className="border-none">
+                    <AccordionTrigger
+                      className={cn(
+                        "hover:no-underline font-medium text-foreground px-4 py-3 bg-muted/10 border-b border-border",
+                        !pictureDescriptions && "pointer-events-none",
+                      )}
+                    >
+                      Advanced Vision Model (VLM) Settings
+                    </AccordionTrigger>
+                    <AccordionContent className="p-4 space-y-6">
+                      <div className="space-y-2">
+                        <LabelWrapper
+                          id="vlm-model"
+                          label="Vision model"
+                          helperText="Pick a vision-capable model; the provider is set from your selection"
+                          required={pictureDescriptions}
+                        >
+                          <ModelSelector
+                            groupedOptions={groupedVlmModels}
+                            noOptionsPlaceholder={
+                              isLoadingAnyVlmModels
+                                ? "Loading models..."
+                                : "No models detected. Configure OpenAI, Anthropic, Ollama, or IBM watsonx.ai first."
+                            }
+                            value={vlmModel}
+                            onValueChange={handleVlmModelChange}
+                            hasError={!!validationError}
+                          />
+                        </LabelWrapper>
+                        {providerWarning && (
+                          <p className="text-sm text-destructive" role="alert">
+                            {providerLabel} is not configured. Configure it in
+                            Settings &gt; Providers first.
+                          </p>
+                        )}
+                      </div>
+
+                      {vlmProvider === "watsonx" && (
+                        <div className="space-y-2">
+                          <LabelWrapper
+                            id="vlm-watsonx-api-version"
+                            label="watsonx API version"
+                            helperText="API version date sent to watsonx.ai"
+                          >
+                            <Input
+                              id="vlm-watsonx-api-version"
+                              type="text"
+                              placeholder={DEFAULT_WATSONX_API_VERSION}
+                              value={vlmWatsonxApiVersion}
+                              onChange={(e) =>
+                                setVlmWatsonxApiVersion(e.target.value)
+                              }
+                            />
+                          </LabelWrapper>
+                        </div>
+                      )}
+
+                      <div className="space-y-2">
+                        <LabelWrapper
+                          id="vlm-prompt"
+                          label="Prompt"
+                          helperText="Sent to the VLM for every page"
+                        >
+                          <Textarea
+                            id="vlm-prompt"
+                            rows={3}
+                            value={vlmPrompt}
+                            onChange={(e) => setVlmPrompt(e.target.value)}
+                          />
+                        </LabelWrapper>
+                      </div>
+
+                      <div className="space-y-2">
+                        <LabelWrapper
+                          id="vlm-response-format"
+                          label="Response format"
+                          helperText="Per-page VLM output. Markdown is compatible with the existing pipeline; the final document is always Docling JSON."
+                        >
+                          <Select
+                            value={vlmResponseFormat}
+                            onValueChange={setVlmResponseFormat}
+                          >
+                            <SelectTrigger id="vlm-response-format">
+                              <SelectValue placeholder="Select a format" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {RESPONSE_FORMATS.map((format) => (
+                                <SelectItem
+                                  key={format.value}
+                                  value={format.value}
+                                >
+                                  {format.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </LabelWrapper>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-4">
+                        <NumberInput
+                          id="vlm-max-tokens"
+                          label="Max tokens per page"
+                          value={vlmMaxTokens}
+                          onChange={(value) =>
+                            setVlmMaxTokens(Math.max(1, value))
+                          }
+                          unit="tokens"
+                          min={1}
+                        />
+                        <NumberInput
+                          id="vlm-concurrency"
+                          label="Concurrency"
+                          value={vlmConcurrency}
+                          onChange={(value) =>
+                            setVlmConcurrency(Math.max(1, value))
+                          }
+                          unit="requests"
+                          min={1}
+                        />
+                        <NumberInput
+                          id="vlm-timeout"
+                          label="API timeout"
+                          value={vlmTimeout}
+                          onChange={(value) =>
+                            setVlmTimeout(Math.max(1, value))
+                          }
+                          unit="seconds"
+                          min={1}
+                        />
+                      </div>
+
+                      {validationError && (
+                        <p className="text-sm text-destructive" role="alert">
+                          {validationError}
+                        </p>
+                      )}
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
+              </div>
+            )}
           </div>
           <div className="flex justify-end pt-2">
             <Button
               onClick={handleKnowledgeIngestSave}
               disabled={
-                updateSettingsMutation.isPending || !knowledgeIngestDirty
+                updateSettingsMutation.isPending ||
+                !knowledgeIngestDirty ||
+                vlmModelPending
               }
               className="min-w-[120px]"
               size="sm"

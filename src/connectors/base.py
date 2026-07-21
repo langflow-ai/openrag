@@ -52,6 +52,13 @@ class BaseConnector(ABC):
     CLIENT_ID_ENV_VAR: str = None
     CLIENT_SECRET_ENV_VAR: str = None
 
+    # Key used to look up a workspace-level OAuth credential override
+    # (see services.connector_oauth_config_service). Falls back to
+    # CONNECTOR_TYPE when unset. Connectors that share one OAuth app
+    # registration (e.g. OneDrive + SharePoint both use "microsoft_graph")
+    # should set this explicitly so they resolve to the same override.
+    OAUTH_CREDENTIAL_KEY: str | None = None
+
     # Stable identifier used in connections.json and on the wire (e.g. "google_drive").
     CONNECTOR_TYPE: str = None
     # "oauth" connectors authenticate per-user via OAuth env-var credentials.
@@ -94,10 +101,28 @@ class BaseConnector(ABC):
         except (ValueError, NotImplementedError, RuntimeError):
             return manager._has_saved_credentials_for_user(cls.CONNECTOR_TYPE, user_id)
 
+    def _oauth_credential_key(self) -> str:
+        return self.OAUTH_CREDENTIAL_KEY or self.CONNECTOR_TYPE
+
     def get_client_id(self) -> str:
-        """Get the OAuth client ID from environment variable"""
+        """Get the OAuth client ID.
+
+        Resolution order: per-connection config override, workspace-level
+        admin override (see services.connector_oauth_config_service), then
+        the environment variable.
+        """
         if not self.CLIENT_ID_ENV_VAR:
             raise NotImplementedError(f"{self.__class__.__name__} must define CLIENT_ID_ENV_VAR")
+
+        config_client_id = self.config.get("client_id")
+        if isinstance(config_client_id, str) and config_client_id.strip():
+            return config_client_id
+
+        from services.connector_oauth_config_service import get_cached_client_id
+
+        override = get_cached_client_id(self._oauth_credential_key())
+        if override:
+            return override
 
         client_id = os.getenv(self.CLIENT_ID_ENV_VAR)
         if not client_id:
@@ -106,11 +131,26 @@ class BaseConnector(ABC):
         return client_id
 
     def get_client_secret(self) -> str:
-        """Get the OAuth client secret from environment variable"""
+        """Get the OAuth client secret.
+
+        Resolution order: per-connection config override, workspace-level
+        admin override (see services.connector_oauth_config_service), then
+        the environment variable.
+        """
         if not self.CLIENT_SECRET_ENV_VAR:
             raise NotImplementedError(
                 f"{self.__class__.__name__} must define CLIENT_SECRET_ENV_VAR"
             )
+
+        config_client_secret = self.config.get("client_secret")
+        if isinstance(config_client_secret, str) and config_client_secret.strip():
+            return config_client_secret
+
+        from services.connector_oauth_config_service import get_cached_client_secret
+
+        override = get_cached_client_secret(self._oauth_credential_key())
+        if override:
+            return override
 
         secret = os.getenv(self.CLIENT_SECRET_ENV_VAR)
         if not secret:
