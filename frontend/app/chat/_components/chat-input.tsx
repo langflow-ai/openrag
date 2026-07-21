@@ -6,10 +6,6 @@ import { useDropzone } from "react-dropzone";
 import TextareaAutosize from "react-textarea-autosize";
 import { toast } from "sonner";
 import type { FilterColor } from "@/components/filter-icon-popover";
-import {
-  SUPPORTED_EXTENSIONS,
-  SUPPORTED_FILE_TYPES,
-} from "@/components/knowledge-dropdown";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -18,6 +14,7 @@ import {
 } from "@/components/ui/popover";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useFileDrag } from "@/hooks/use-file-drag";
+import { useSupportedFileTypes } from "@/hooks/use-supported-file-types";
 import { cn } from "@/lib/utils";
 import { useGetAllFiltersQuery } from "../../api/queries/useGetAllFiltersQuery";
 import type { KnowledgeFilterData } from "../_types/types";
@@ -73,6 +70,7 @@ export function ChatInput({
   const isMultiline = input.includes("\n") || isWrapped;
   const isDragging = useFileDrag();
   const isCloudBrand = useIsCloudBrand();
+  const { supportedFileTypes, supportedExtensions } = useSupportedFileTypes();
 
   // Internal state for filter dropdown
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
@@ -106,7 +104,7 @@ export function ChatInput({
   }, [allFilters, filterSearchTerm]);
 
   const { getRootProps, getInputProps } = useDropzone({
-    accept: SUPPORTED_FILE_TYPES,
+    accept: supportedFileTypes,
     maxFiles: 1,
     disabled: !isDragging,
     onDrop: (acceptedFiles, fileRejections) => {
@@ -526,7 +524,7 @@ export function ChatInput({
           type="file"
           onChange={handleFilePickerChange}
           className="hidden"
-          accept={SUPPORTED_EXTENSIONS.join(",")}
+          accept={supportedExtensions.join(",")}
         />
 
         <Popover

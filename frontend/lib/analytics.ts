@@ -60,7 +60,7 @@ const track = (eventName: string, properties: Record<string, unknown> = {}) => {
 interface ButtonEventParams {
   action?: string;
   channel?: string;
-  CTA?: string;
+  CTA: string;
   elementId?: string;
   namespace?: string;
   payload?: string | Record<string, unknown>;
@@ -71,7 +71,7 @@ export const trackButton = <T = Record<string, unknown>>({
   action = "clicked",
   ...rest
 }: T & ButtonEventParams): void =>
-  track("Button Clicked", { action, ...rest } as Record<string, unknown>);
+  track("CTA Clicked", { action, ...rest } as Record<string, unknown>);
 
 interface StartProcessParams {
   processType: string;

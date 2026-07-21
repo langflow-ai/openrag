@@ -3,7 +3,12 @@ import IBMLogo from "@/components/icons/ibm-logo";
 import OllamaLogo from "@/components/icons/ollama-logo";
 import OpenAILogo from "@/components/icons/openai-logo";
 
-export type ModelProvider = "openai" | "anthropic" | "ollama" | "watsonx";
+export type ModelProvider =
+  | "openai"
+  | "anthropic"
+  | "ollama"
+  | "watsonx"
+  | "local";
 
 // Full ordered list of providers for settings / cards
 export const ALL_PROVIDERS: ModelProvider[] = [
@@ -47,6 +52,30 @@ export function getModelLogo(modelValue: string, provider?: ModelProvider) {
     return <OllamaLogo className="w-4 h-4" />;
   } else if (provider === "watsonx") {
     return <IBMLogo className="w-4 h-4" />;
+  } else if (provider === "local") {
+    return (
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="w-4 h-4 text-muted-foreground"
+      >
+        <rect x="4" y="4" width="16" height="16" rx="2" />
+        <rect x="9" y="9" width="6" height="6" />
+        <path d="M9 1v3" />
+        <path d="M15 1v3" />
+        <path d="M9 20v3" />
+        <path d="M15 20v3" />
+        <path d="M20 9h3" />
+        <path d="M20 15h3" />
+        <path d="M1 9h3" />
+        <path d="M1 15h3" />
+      </svg>
+    );
   }
 
   // Fallback to model name analysis

@@ -316,7 +316,7 @@ async def _ingest_default_documents_url(
         docs_url=docs_url,
         crawl_depth=crawl_depth,
     )
-    temp_file_path = await materialize_url_as_text_file(
+    temp_file_path, title = await materialize_url_as_text_file(
         docs_url=docs_url,
         crawl_depth=crawl_depth,
     )
@@ -341,7 +341,7 @@ async def _ingest_default_documents_url(
             file_path=temp_file_path,
             file_hash=hash_id(temp_file_path),
             owner_user_id=None,
-            original_filename="openrag-url-default.txt",
+            original_filename=title,
             jwt_token=jwt_token,
             owner_name=anonymous_user.name,
             owner_email=anonymous_user.email,

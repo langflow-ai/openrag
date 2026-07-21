@@ -45,6 +45,21 @@ async def startup_tasks(services):
     logger.info("Starting startup tasks")
     await TelemetryClient.send_event(Category.APPLICATION_STARTUP, MessageId.ORB_APP_START_INIT)
 
+    # Warm the in-process cache of workspace-level OAuth connector credential
+    # overrides (see services.connector_oauth_config_service) so BaseConnector's
+    # synchronous get_client_id()/get_client_secret() resolve overrides without a
+    # DB session. Reuses the same lazy session factory wired into workspace_config_service.
+    try:
+        from services.connector_oauth_config_service import warm_cache
+
+        await warm_cache(services["workspace_config_service"]._session_factory)
+    except Exception as e:
+        logger.error(
+            "Failed to warm connector OAuth config cache — overrides unavailable "
+            "until the next restart, env vars still work",
+            error=str(e),
+        )
+
     # Update model registry to allow further search calls to be instant
     try:
         models_service = services["models_service"]
