@@ -1574,6 +1574,10 @@ class AppClients:
                 recreate_response = await self.langflow_request(
                     "POST", "/api/v1/variables/", json=recreate_payload
                 )
+                if recreate_response.status_code not in [200, 201]:
+                    recreate_response = await self.langflow_request(
+                        "POST", "/api/v1/variables/", json=recreate_payload
+                    )
                 if recreate_response.status_code in [200, 201]:
                     logger.info(
                         "Migrated Langflow global variable type",
@@ -1583,13 +1587,9 @@ class AppClients:
                         new_type=variable_type,
                     )
                 else:
-                    logger.warning(
-                        "Failed to recreate Langflow global variable after type migration",
-                        variable_name=name,
-                        old_type=current_type,
-                        new_type=variable_type,
-                        status_code=recreate_response.status_code,
-                        response_text=recreate_response.text,
+                    raise RuntimeError(
+                        f"Failed to recreate Langflow global variable '{name}' after type migration: "
+                        f"status_code={recreate_response.status_code}, response={recreate_response.text}"
                     )
                 return
 

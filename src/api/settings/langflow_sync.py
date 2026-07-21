@@ -11,7 +11,6 @@ Lifted verbatim from the original `src/api/settings.py` (lines 46,
 """
 
 import asyncio
-import os
 
 from api.settings.helpers import (
     _EMBEDDING_PROVIDER_NAMES,
@@ -19,6 +18,7 @@ from api.settings.helpers import (
     _configured_provider_names,
     _get_flows_service,
 )
+from config import settings
 from config.settings import clients, get_openrag_config
 from services.docling_service import get_docling_preset_configs
 from utils.langflow_headers import map_provider
@@ -84,87 +84,38 @@ def _string_value(value) -> str:
     return "" if value is None else str(value)
 
 
-def _env_or_config(name: str, config_value, default: str) -> str:
-    value = os.getenv(name)
-    if value is None or value == "":
-        value = config_value
-    if value is None or value == "":
-        value = default
-    return str(value)
-
-
-def _first_env_value(*names: str) -> str | None:
-    for name in names:
-        value = os.getenv(name)
-        if value:
-            return value
-    return None
-
-
 def _required_generic_global_values(config) -> dict[str, str]:
     knowledge = getattr(config, "knowledge", None)
     providers = getattr(config, "providers", None)
+    agent = getattr(config, "agent", None)
     watsonx = getattr(providers, "watsonx", None)
     ollama = getattr(providers, "ollama", None)
 
     return {
-        "DOCLING_SERVE_URL": os.getenv("DOCLING_SERVE_URL", "http://host.docker.internal:5001"),
-        "DOCLING_SERVE_VERIFY_SSL": os.getenv("DOCLING_SERVE_VERIFY_SSL", "true"),
-        "DOCLING_TASK_ID": os.getenv("DOCLING_TASK_ID", "None"),
-        "FILESIZE": os.getenv("FILESIZE", "0"),
-        "MIMETYPE": os.getenv("MIMETYPE", "None"),
-        "OLLAMA_BASE_URL": _string_value(
-            _first_env_value("OLLAMA_BASE_URL", "OLLAMA_ENDPOINT")
-            or getattr(ollama, "endpoint", None)
+        "DOCLING_SERVE_URL": settings.DOCLING_SERVE_URL,
+        "DOCLING_SERVE_VERIFY_SSL": str(settings.DOCLING_SERVE_VERIFY_SSL).lower(),
+        "DOCLING_TASK_ID": "None",
+        "FILESIZE": "0",
+        "MIMETYPE": "None",
+        "OLLAMA_BASE_URL": _string_value(getattr(ollama, "endpoint", None)),
+        "OPENRAG-QUERY-FILTER": "{}",
+        "OPENRAG_INGEST_BATCH_SIZE": "100",
+        "OPENRAG_INGEST_RUN_ID": "OPENRAG_INGEST_RUN_ID",
+        "OPENRAG_INGEST_TOKEN": "OPENRAG_INGEST_TOKEN",
+        "OPENRAG_INGEST_URL": "OPENRAG_INGEST_URL",
+        "OPENSEARCH_INDEX_NAME": _string_value(getattr(knowledge, "index_name", None)) or "documents",
+        "OPENSEARCH_URL": settings.OPENSEARCH_URL,
+        "SELECTED_EMBEDDING_MODEL": _string_value(getattr(knowledge, "embedding_model", None))
+        or "text-embedding-3-small",
+        "SELECTED_EMBEDDING_MODEL_PROVIDER": map_provider(
+            getattr(knowledge, "embedding_provider", None) or "openai"
         ),
-        "OPENRAG-QUERY-FILTER": os.getenv("OPENRAG-QUERY-FILTER", "{}"),
-        "OPENRAG_INGEST_BATCH_SIZE": os.getenv("OPENRAG_INGEST_BATCH_SIZE", "100"),
-        "OPENRAG_INGEST_RUN_ID": os.getenv("OPENRAG_INGEST_RUN_ID", "OPENRAG_INGEST_RUN_ID"),
-        "OPENRAG_INGEST_TOKEN": os.getenv("OPENRAG_INGEST_TOKEN", "OPENRAG_INGEST_TOKEN"),
-        "OPENRAG_INGEST_URL": os.getenv("OPENRAG_INGEST_URL", "OPENRAG_INGEST_URL"),
-        "OPENSEARCH_INDEX_NAME": _env_or_config(
-            "OPENSEARCH_INDEX_NAME", getattr(knowledge, "index_name", None), "documents"
+        "SELECTED_LANGUAGE_MODEL": _string_value(getattr(agent, "llm_model", None)) or "gpt-4o-mini",
+        "SELECTED_LANGUAGE_MODEL_PROVIDER": map_provider(
+            getattr(agent, "llm_provider", None) or "openai"
         ),
-        "OPENSEARCH_URL": os.getenv(
-            "OPENSEARCH_URL",
-            f"https://{os.getenv('OPENSEARCH_HOST', 'opensearch')}:"
-            f"{os.getenv('OPENSEARCH_INTERNAL_PORT', '9200')}",
-        ),
-        "SELECTED_EMBEDDING_MODEL": _env_or_config(
-            "SELECTED_EMBEDDING_MODEL",
-            getattr(knowledge, "embedding_model", None),
-            "text-embedding-3-small",
-        ),
-        "SELECTED_EMBEDDING_MODEL_PROVIDER": (
-            lambda: map_provider(
-                _env_or_config(
-                    "SELECTED_EMBEDDING_MODEL_PROVIDER",
-                    getattr(knowledge, "embedding_provider", None),
-                    "openai",
-                )
-            )
-        )(),
-        "SELECTED_LANGUAGE_MODEL": _env_or_config(
-            "SELECTED_LANGUAGE_MODEL",
-            getattr(getattr(config, "agent", None), "llm_model", None),
-            "gpt-4o-mini",
-        ),
-        "SELECTED_LANGUAGE_MODEL_PROVIDER": (
-            lambda: map_provider(
-                _env_or_config(
-                    "SELECTED_LANGUAGE_MODEL_PROVIDER",
-                    getattr(getattr(config, "agent", None), "llm_provider", None),
-                    "openai",
-                )
-            )
-        )(),
-        "WATSONX_PROJECT_ID": _env_or_config(
-            "WATSONX_PROJECT_ID", getattr(watsonx, "project_id", None), ""
-        ),
-        "WATSONX_URL": _string_value(
-            _first_env_value("WATSONX_URL", "WATSONX_ENDPOINT")
-            or getattr(watsonx, "endpoint", None)
-        ),
+        "WATSONX_PROJECT_ID": _string_value(getattr(watsonx, "project_id", None)),
+        "WATSONX_URL": _string_value(getattr(watsonx, "endpoint", None)),
     }
 
 

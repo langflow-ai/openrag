@@ -86,20 +86,16 @@ class ChatService:
 
         # Pass the selected embedding model as a global variable
         from config.settings import get_openrag_config
-        from utils.langflow_headers import add_provider_credentials_to_headers, map_provider
+        from utils.langflow_headers import (
+            add_provider_credentials_to_headers,
+            build_model_provider_headers,
+        )
 
         config = get_openrag_config()
         embedding_model = config.knowledge.embedding_model
         chunk_size = getattr(config.knowledge, "chunk_size", 1000)
         chunk_overlap = getattr(config.knowledge, "chunk_overlap", 200)
-        extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL"] = embedding_model
-        extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL_PROVIDER"] = map_provider(
-            config.knowledge.embedding_provider
-        )
-        extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_LANGUAGE_MODEL"] = config.agent.llm_model
-        extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_LANGUAGE_MODEL_PROVIDER"] = map_provider(
-            config.agent.llm_provider
-        )
+        extra_headers.update(build_model_provider_headers(config))
 
         # Configure ingest callback credentials/vars like ingestion does
         import uuid
@@ -267,20 +263,15 @@ class ChatService:
         if jwt_token:
             extra_headers["X-LANGFLOW-GLOBAL-VAR-JWT"] = jwt_token
 
-        # Pass the selected embedding model as a global variable
         from config.settings import get_openrag_config
-        from utils.langflow_headers import add_provider_credentials_to_headers, map_provider
+        from utils.langflow_headers import (
+            add_provider_credentials_to_headers,
+            build_model_provider_headers,
+        )
 
         config = get_openrag_config()
         embedding_model = config.knowledge.embedding_model
-        extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL"] = embedding_model
-        extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL_PROVIDER"] = map_provider(
-            config.knowledge.embedding_provider
-        )
-        extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_LANGUAGE_MODEL"] = config.agent.llm_model
-        extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_LANGUAGE_MODEL_PROVIDER"] = map_provider(
-            config.agent.llm_provider
-        )
+        extra_headers.update(build_model_provider_headers(config))
 
         # Add provider credentials to headers
         await add_provider_credentials_to_headers(
@@ -521,22 +512,17 @@ class ChatService:
             if jwt_token:
                 extra_headers["X-LANGFLOW-GLOBAL-VAR-JWT"] = jwt_token
 
-            # Pass the selected embedding model as a global variable
             from config.settings import get_openrag_config
-            from utils.langflow_headers import add_provider_credentials_to_headers, map_provider
+            from utils.langflow_headers import (
+                add_provider_credentials_to_headers,
+                build_model_provider_headers,
+            )
 
             config = get_openrag_config()
             embedding_model = config.knowledge.embedding_model
             chunk_size = getattr(config.knowledge, "chunk_size", 1000)
             chunk_overlap = getattr(config.knowledge, "chunk_overlap", 200)
-            extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL"] = embedding_model
-            extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL_PROVIDER"] = map_provider(
-                config.knowledge.embedding_provider
-            )
-            extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_LANGUAGE_MODEL"] = config.agent.llm_model
-            extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_LANGUAGE_MODEL_PROVIDER"] = map_provider(
-                config.agent.llm_provider
-            )
+            extra_headers.update(build_model_provider_headers(config))
 
             # Configure ingest callback credentials/vars like ingestion does
             import uuid

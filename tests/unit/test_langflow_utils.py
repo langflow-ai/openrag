@@ -197,3 +197,98 @@ async def test_error_message_content(mock_langflow_client):
 
     with pytest.raises(LangflowNotReadyError, match="Failed to verify"):
         await wait_for_langflow(langflow_http_client=mock_langflow_client, max_retries=1)
+
+
+# ── parse_knowledge_chunks tests ─────────────────────────────────────
+
+from utils.langflow_utils import parse_knowledge_chunks
+
+
+def test_parse_knowledge_chunks_artifact_list():
+    input_data = {
+        "artifact": [
+            {
+                "data": {
+                    "filename": "doc1.pdf",
+                    "text": "sample text",
+                    "score": 0.95,
+                    "page": 1,
+                    "mimetype": "application/pdf",
+                    "chunk_id": "chunk-123",
+                }
+            }
+        ]
+    }
+    result = parse_knowledge_chunks(input_data)
+    assert len(result) == 1
+    assert result[0] == {
+        "filename": "doc1.pdf",
+        "text": "sample text",
+        "score": 0.95,
+        "page": 1,
+        "mimetype": "application/pdf",
+        "chunk_id": "chunk-123",
+        "id": "chunk-123",
+        "embedding_model": None,
+        "parser": None,
+        "chunk_size": None,
+        "chunk_overlap": None,
+    }
+
+
+def test_parse_knowledge_chunks_content_json_string():
+    input_data = {
+        "content": '[{"filename": "doc2.txt", "text": "content text", "score": 0.8, "chunk_id": "c2"}]'
+    }
+    result = parse_knowledge_chunks(input_data)
+    assert len(result) == 1
+    assert result[0]["filename"] == "doc2.txt"
+    assert result[0]["chunk_id"] == "c2"
+
+
+def test_parse_knowledge_chunks_raw_list():
+    input_data = [
+        {"filename": "doc3.md", "text": "md text", "chunk_id": "c3"},
+        {"filename": "doc4.md", "text": "md text 2", "chunk_id": "c4"},
+    ]
+    result = parse_knowledge_chunks(input_data)
+    assert len(result) == 2
+    assert result[0]["filename"] == "doc3.md"
+    assert result[1]["filename"] == "doc4.md"
+
+
+def test_parse_knowledge_chunks_raw_json_string():
+    input_data = '[{"filename": "doc5.pdf", "text": "pdf text", "chunk_id": "c5"}]'
+    result = parse_knowledge_chunks(input_data)
+    assert len(result) == 1
+    assert result[0]["filename"] == "doc5.pdf"
+
+
+def test_parse_knowledge_chunks_idempotent_normalized():
+    normalized = [
+        {
+            "filename": "doc.pdf",
+            "text": "hello",
+            "score": 1.0,
+            "page": 2,
+            "mimetype": "application/pdf",
+            "chunk_id": "c10",
+            "id": "c10",
+            "embedding_model": "text-embedding-3-small",
+            "parser": "default",
+            "chunk_size": 1000,
+            "chunk_overlap": 200,
+        }
+    ]
+    result = parse_knowledge_chunks(normalized)
+    assert result == normalized
+    # Second pass (idempotency check)
+    result_second = parse_knowledge_chunks(result)
+    assert result_second == normalized
+
+
+def test_parse_knowledge_chunks_malformed_json_returns_empty():
+    input_data = "{malformed json"
+    result = parse_knowledge_chunks(input_data)
+    assert result == []
+

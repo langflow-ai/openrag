@@ -168,7 +168,14 @@ async def test_update_langflow_global_variables_marks_non_secret_provider_fields
             anthropic=SimpleNamespace(api_key="anthropic-key"),
             ollama=SimpleNamespace(endpoint="http://ollama.local"),
         ),
-        knowledge=SimpleNamespace(embedding_model="embedding-model"),
+        knowledge=SimpleNamespace(
+            embedding_model="embedding-model",
+            embedding_provider=None,
+        ),
+        agent=SimpleNamespace(
+            llm_model=None,
+            llm_provider=None,
+        ),
     )
 
     async def resolve_ollama_url(endpoint, force_refresh=False):

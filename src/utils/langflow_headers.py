@@ -133,3 +133,19 @@ async def add_provider_credentials_to_headers(
 
     if IBM_AUTH_ENABLED and jwt_token:
         headers.update(build_ibm_opensearch_vars(jwt_token, prefix="X-LANGFLOW-GLOBAL-VAR-"))
+
+
+def build_model_provider_headers(config, embedding_model: str | None = None) -> dict[str, str]:
+    """Build Langflow global variable headers for selected embedding and language models/providers."""
+    emb_model = embedding_model or getattr(getattr(config, "knowledge", None), "embedding_model", None)
+    emb_provider = getattr(getattr(config, "knowledge", None), "embedding_provider", None)
+    agent = getattr(config, "agent", None)
+    llm_model = getattr(agent, "llm_model", None)
+    llm_provider = getattr(agent, "llm_provider", None)
+
+    return {
+        "X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL": str(emb_model or ""),
+        "X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL_PROVIDER": map_provider(emb_provider),
+        "X-LANGFLOW-GLOBAL-VAR-SELECTED_LANGUAGE_MODEL": str(llm_model or ""),
+        "X-LANGFLOW-GLOBAL-VAR-SELECTED_LANGUAGE_MODEL_PROVIDER": map_provider(llm_provider),
+    }
