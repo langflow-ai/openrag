@@ -813,42 +813,59 @@ async def get_langflow_api_key(force_regenerate: bool = False):
         logger.warning("[LF] Forcing Langflow API key regeneration due to auth failure")
         LANGFLOW_KEY = None
 
-    # Use default langflow/langflow credentials if auto-login is enabled and credentials not set
-    username = LANGFLOW_SUPERUSER
-    password = LANGFLOW_SUPERUSER_PASSWORD
-
-    if LANGFLOW_AUTO_LOGIN and (not username or not password):
-        logger.info("LANGFLOW_AUTO_LOGIN is enabled, using default langflow/langflow credentials")
-        username = username or "langflow"
-        password = password or "langflow"
-
-    if not username or not password:
-        logger.warning(
-            "LANGFLOW_SUPERUSER and LANGFLOW_SUPERUSER_PASSWORD not set, skipping API key generation"
-        )
-        return None
-
     try:
-        logger.info("Generating Langflow API key using superuser credentials")
+        logger.info("Generating Langflow API key")
         max_attempts = get_env_int("LANGFLOW_KEY_RETRIES", 15)
         delay_seconds = get_env_float("LANGFLOW_KEY_RETRY_DELAY", 2.0)
 
         async with httpx.AsyncClient(timeout=10.0) as client:
             for attempt in range(1, max_attempts + 1):
                 try:
-                    # Login to get access token
-                    login_response = await client.post(
-                        f"{LANGFLOW_URL}/api/v1/login",
-                        headers={"Content-Type": "application/x-www-form-urlencoded"},
-                        data={
-                            "username": username,
-                            "password": password,
-                        },
-                    )
-                    login_response.raise_for_status()
-                    access_token = login_response.json().get("access_token")
+                    access_token = None
+
+                    # Check /auto_login endpoint to discover if auto login is enabled in Langflow
+                    try:
+                        auto_login_response = await client.get(f"{LANGFLOW_URL}/api/v1/auto_login")
+                        if auto_login_response.status_code == 200:
+                            access_token = auto_login_response.json().get("access_token")
+                            if access_token:
+                                logger.info(
+                                    "Langflow auto_login is enabled; acquired access token via /auto_login"
+                                )
+                    except Exception as e:
+                        logger.debug("Failed probing Langflow /auto_login", error=str(e))
+
+                    # If auto_login token is not available, use superuser credentials login
                     if not access_token:
-                        raise KeyError("access_token")
+                        username = LANGFLOW_SUPERUSER
+                        password = LANGFLOW_SUPERUSER_PASSWORD
+
+                        if LANGFLOW_AUTO_LOGIN and (not username or not password):
+                            logger.info(
+                                "LANGFLOW_AUTO_LOGIN is enabled, using default langflow/langflow credentials"
+                            )
+                            username = username or "langflow"
+                            password = password or "langflow"
+
+                        if not username or not password:
+                            logger.warning(
+                                "LANGFLOW_SUPERUSER and LANGFLOW_SUPERUSER_PASSWORD not set, skipping API key generation"
+                            )
+                            return None
+
+                        # Login to get access token
+                        login_response = await client.post(
+                            f"{LANGFLOW_URL}/api/v1/login",
+                            headers={"Content-Type": "application/x-www-form-urlencoded"},
+                            data={
+                                "username": username,
+                                "password": password,
+                            },
+                        )
+                        login_response.raise_for_status()
+                        access_token = login_response.json().get("access_token")
+                        if not access_token:
+                            raise KeyError("access_token")
 
                     # Create API key
                     api_key_response = await client.post(
