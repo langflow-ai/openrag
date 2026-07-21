@@ -272,8 +272,7 @@ class DLSPrincipalService:
                     service_token
                 )
                 logger.info(
-                    f"DLS principal service: {get_run_mode()} mode, "
-                    "using platform service token"
+                    f"DLS principal service: {get_run_mode()} mode, using platform service token"
                 )
             else:
                 username = get_opensearch_username()
