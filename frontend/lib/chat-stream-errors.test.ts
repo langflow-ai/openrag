@@ -74,9 +74,30 @@ describe("looksLikeProviderErrorContent", () => {
     );
   });
 
+  it("detects permission-denied style provider errors", () => {
+    assert.equal(
+      looksLikeProviderErrorContent(
+        "Permission denied: model access not authorized.",
+      ),
+      true,
+    );
+  });
+
   it("does not flag ordinary replies", () => {
     assert.equal(
       looksLikeProviderErrorContent("OpenRAG uses Langflow and OpenSearch."),
+      false,
+    );
+    assert.equal(
+      looksLikeProviderErrorContent(
+        "The docs explain unauthorized access patterns and when permission denied responses appear.",
+      ),
+      false,
+    );
+    assert.equal(
+      looksLikeProviderErrorContent(
+        "An error occurred while generating a response.",
+      ),
       false,
     );
   });

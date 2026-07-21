@@ -79,7 +79,8 @@ function extractBalancedJsonObject(text: string): string | null {
 
 /**
  * True when assistant text looks like a provider/auth failure rather than a reply.
- * Keep markers aligned with src/api/provider_validation.py.
+ * Marker list aligned with src/api/provider_validation.py (_PROVIDER_ERROR_CONTENT_MARKERS).
+ * Ambiguous phrases use tighter patterns so ordinary assistant prose is not flagged.
  */
 export function looksLikeProviderErrorContent(text: string): boolean {
   const trimmed = text.trim();
@@ -103,20 +104,25 @@ export function looksLikeProviderErrorContent(text: string): boolean {
     "authentication_error",
     "failed to authenticate",
     "invalid x-api-key",
-    "unauthorized",
     "authentication failed",
     "invalid credentials",
     "could not authenticate",
     "rate limit",
     "rate_limit",
-    "permission denied",
-    "quota exceeded",
     "provider request failed",
     "insufficient_quota",
-    "failed to initialize",
-    "an error occurred while generating a response",
   ];
   if (markers.some((marker) => lowered.includes(marker))) {
+    return true;
+  }
+  // Tighter matches for phrases that also appear in ordinary explanations.
+  if (
+    /(?:^|\berror\b[:\s]*|\b(?:401|403)\b[:\s]*)unauthorized\b/.test(lowered) ||
+    /(?:^|\berror\b[:\s]*)permission denied\b/.test(lowered) ||
+    /\bpermission denied\s*:/.test(lowered) ||
+    /(?:^|\berror\b[:\s]*)quota exceeded\b/.test(lowered) ||
+    /\bquota exceeded\s*:/.test(lowered)
+  ) {
     return true;
   }
   if (
