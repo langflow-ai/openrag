@@ -17,9 +17,11 @@ class ApiKeyRepo:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def get_by_hash(self, key_hash: str) -> ApiKey | None:
+    # TODO: once we remove opensearch fallback for reads, we can revert this to 
+    # get_by_hash to only return non revoked keys
+    async def get_by_hash_any_state(self, key_hash: str) -> ApiKey | None:
         result = await self.session.execute(
-            select(ApiKey).where(col(ApiKey.key_hash) == key_hash, col(ApiKey.revoked).is_(False))
+            select(ApiKey).where(col(ApiKey.key_hash) == key_hash)
         )
         return result.scalar_one_or_none()
 
@@ -57,8 +59,4 @@ class ApiKeyRepo:
             self.session.add(row)
             await self.session.flush()
 
-    async def delete(self, key_id: str) -> None:
-        row = await self.session.get(ApiKey, key_id)
-        if row is not None:
-            await self.session.delete(row)
-            await self.session.flush()
+    # TODO: once we remove opensearch fallback for reads, add a hard delete sql method

@@ -230,11 +230,20 @@ class APIKeyService:
 
                 # Keyed-HMAC digest first, then the pre-HMAC legacy digest
                 # so old keys migrated with a legacy hash still validate.
-                row = await repo.get_by_hash(key_hash)
+                # Look up in *any* state: a SQL row is authoritative, so a 
+                # revoked/tombstoned key must be found and rejected here rather
+                # than slipping through to OpenSearch fallback (whose copy
+                # is never updated on revoke/delete) and re-authenticating.
+                row = await repo.get_by_hash_any_state(key_hash)
                 if row is None:
-                    row = await repo.get_by_hash(self._legacy_hash_key(api_key))
+                    row = await repo.get_by_hash_any_state(self._legacy_hash_key(api_key))
 
                 if row is not None:
+                    # sql row exists. If its revoked (tombstone applies to both revoke and delete)
+                    # the key is invalid and we shouldnt fall back to OpenSearch
+                    if row.revoked:
+                        return None
+
                     user = await UserRepo(session).get_by_id(row.user_id)
 
                     result = {
@@ -257,13 +266,20 @@ class APIKeyService:
         except Exception as e:
             logger.error("Failed to validate API key", error=str(e))
             return None
-
-    async def list_keys(self, user_id: str, jwt_token: str | None = None) -> dict[str, Any]:
+            
+    async def list_keys(
+        self, 
+        user_id: str,
+        oauth_subject: str,
+        jwt_token: str | None = None
+    ) -> dict[str, Any]:
         """
         List all active (non-revoked) API keys for a user (without the actual keys).
 
         Args:
             user_id: The user's ID
+            oauth_subject: The user's OAuth subject, used only for the OpenSearch
+                read fallback (OpenSearch documents key on the subject, not users.id)
             jwt_token: JWT token for OpenSearch authentication (used only for OpenSearch read fallback)
 
         Returns:
@@ -273,8 +289,8 @@ class APIKeyService:
             async with self._db_session() as session:
                 rows = await ApiKeyRepo(session).list_for_user(user_id)
 
-            active = [r for r in rows if not r.revoked]
-            if active:
+            if rows:
+                active = [r for r in rows if not r.revoked]
                 active.sort(key=lambda r: r.created_at, reverse=True)
                 keys = [
                     {
@@ -297,7 +313,7 @@ class APIKeyService:
                 "query": {
                     "bool": {
                         "must": [
-                            {"term": {"user_id": user_id}},
+                            {"term": {"user_id": oauth_subject}},
                             {"term": {"revoked": False}},
                         ]
                     }
@@ -380,7 +396,7 @@ class APIKeyService:
         key_id: str,
     ) -> dict[str, Any]:
         """
-        Permanently delete an API key.
+        Delete an API key (tombstone).
 
         Args:
             user_id: The user's ID (for authorization)
@@ -399,8 +415,13 @@ class APIKeyService:
                     return {"success": False, "error": "Key not found"}
                 if row.user_id != user_id:
                     return {"success": False, "error": "Not authorized to delete this key"}
-
-                await repo.delete(key_id)
+                
+                # since a migrated key still has a live OpenSearch doc and we never write to
+                # OpenSearch on delete we should Tombstone instead of hard-deleting. 
+                # Dropping the sql row would let validate_key's OpenSearch fallback re-auth the key.
+                # TODO: once we complete migration to sql (remove opensearch read fallback), 
+                # we should update this to use a proper sql delete instead of soft delete
+                await repo.revoke(key_id)
                 await session.commit()
 
             logger.info(
