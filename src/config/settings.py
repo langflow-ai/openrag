@@ -822,6 +822,7 @@ async def get_langflow_api_key(force_regenerate: bool = False):
             for attempt in range(1, max_attempts + 1):
                 try:
                     access_token = None
+                    auto_login_disabled = False
 
                     # Check /auto_login endpoint to discover if auto login is enabled in Langflow
                     try:
@@ -832,6 +833,12 @@ async def get_langflow_api_key(force_regenerate: bool = False):
                                 logger.info(
                                     "Langflow auto_login is enabled; acquired access token via /auto_login"
                                 )
+                        elif auto_login_response.status_code in (401, 403, 404):
+                            auto_login_disabled = True
+                        else:
+                            auto_login_response.raise_for_status()
+                    except (httpx.HTTPStatusError, httpx.RequestError):
+                        raise
                     except Exception as e:
                         logger.debug("Failed probing Langflow /auto_login", error=str(e))
 
@@ -848,10 +855,15 @@ async def get_langflow_api_key(force_regenerate: bool = False):
                             password = password or "langflow"
 
                         if not username or not password:
-                            logger.warning(
-                                "LANGFLOW_SUPERUSER and LANGFLOW_SUPERUSER_PASSWORD not set, skipping API key generation"
-                            )
-                            return None
+                            if auto_login_disabled:
+                                logger.warning(
+                                    "Auto-login is disabled in Langflow and superuser credentials not set, skipping API key generation"
+                                )
+                                return None
+                            else:
+                                raise httpx.RequestError(
+                                    "Auto-login token unavailable and superuser credentials not set"
+                                )
 
                         # Login to get access token
                         login_response = await client.post(

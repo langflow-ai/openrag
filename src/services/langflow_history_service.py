@@ -3,7 +3,7 @@ Langflow Message History Service
 Simplified service that retrieves message history from Langflow using shared client infrastructure
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from config.settings import clients
 from utils.logging_config import get_logger
