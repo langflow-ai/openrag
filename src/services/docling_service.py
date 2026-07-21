@@ -15,6 +15,7 @@ from config.settings import (
     DOCLING_SERVE_VERIFY_SSL,
     get_openrag_config,
 )
+from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 from utils.run_mode_utils import is_run_mode_on_prem, is_run_mode_saas
 
@@ -147,30 +148,127 @@ class DoclingService:
             )
         return DoclingService._default_client
 
-    def _build_docling_options(
+    async def _build_docling_options_async(
         self,
         *,
         ocr_override: bool | None = None,
         picture_descriptions_override: bool | None = None,
     ) -> dict[str, Any]:
-        """Build the options payload for docling from OpenRAG configs.
+        """Build the options payload for docling from OpenRAG configs, incorporating VLM settings if enabled."""
+        from services.watsonx_iam import WatsonxIamError, get_iam_token
 
-        Per-request overrides take precedence over saved Knowledge settings.
-        """
         config = get_openrag_config()
         knowledge_config = config.knowledge
 
+        is_ocr_enabled = ocr_override if ocr_override is not None else knowledge_config.ocr
+        is_pic_desc_enabled = (
+            picture_descriptions_override
+            if picture_descriptions_override is not None
+            else knowledge_config.picture_descriptions
+        )
+
         preset = get_docling_preset_configs(
             table_structure=knowledge_config.table_structure,
-            ocr=ocr_override if ocr_override is not None else knowledge_config.ocr,
-            picture_descriptions=(
-                picture_descriptions_override
-                if picture_descriptions_override is not None
-                else knowledge_config.picture_descriptions
-            ),
+            ocr=is_ocr_enabled,
+            picture_descriptions=is_pic_desc_enabled,
         )
 
         options = {"to_formats": "json", "image_export_mode": "placeholder", **preset}
+
+        # If picture descriptions are enabled, configure custom/local VLM model
+        if is_pic_desc_enabled and knowledge_config.vlm_enabled:
+            provider = knowledge_config.vlm_provider
+            vlm_model = knowledge_config.vlm_model
+            prompt = knowledge_config.vlm_prompt
+
+            if provider == "local":
+                options["picture_description_local"] = {
+                    "repo_id": vlm_model,
+                    "prompt": prompt,
+                }
+            elif provider == "watsonx":
+                watsonx = config.providers.watsonx
+                if not (watsonx.api_key and watsonx.endpoint and watsonx.project_id):
+                    raise DoclingServeError(
+                        "Docling VLM is enabled but the watsonx provider is not fully "
+                        "configured (api key, endpoint, and project id are required)"
+                    )
+                try:
+                    token = await get_iam_token(watsonx.api_key)
+                except httpx.RequestError as e:
+                    raise DoclingTransientError(
+                        f"watsonx IAM token exchange network error: {str(e)}"
+                    ) from e
+                except WatsonxIamError as e:
+                    raise DoclingServeError(str(e)) from e
+
+                url = (
+                    f"{watsonx.endpoint.rstrip('/')}/ml/v1/text/chat"
+                    f"?version={knowledge_config.vlm_watsonx_api_version}"
+                )
+                options["picture_description_api"] = {
+                    "url": url,
+                    "headers": {"Authorization": f"Bearer {token}"},
+                    "params": {
+                        "model_id": vlm_model,
+                        "project_id": watsonx.project_id,
+                        "max_tokens": knowledge_config.vlm_max_tokens,
+                    },
+                    "prompt": prompt,
+                }
+            elif provider == "anthropic":
+                anthropic = config.providers.anthropic
+                if not anthropic.api_key:
+                    raise DoclingServeError(
+                        "Docling VLM is enabled but the Anthropic provider is not configured"
+                    )
+                url = "https://api.anthropic.com/v1/messages"
+                options["picture_description_api"] = {
+                    "url": url,
+                    "headers": {
+                        "x-api-key": anthropic.api_key,
+                        "anthropic-version": "2023-06-01",
+                        "content-type": "application/json",
+                    },
+                    "params": {
+                        "model": vlm_model,
+                        "max_tokens": knowledge_config.vlm_max_tokens,
+                    },
+                    "prompt": prompt,
+                }
+            elif provider == "ollama":
+                ollama = config.providers.ollama
+                if not ollama.endpoint:
+                    raise DoclingServeError(
+                        "Docling VLM is enabled but the Ollama provider is not configured"
+                    )
+                url = f"{transform_localhost_url(ollama.endpoint).rstrip('/')}/v1/chat/completions"
+                options["picture_description_api"] = {
+                    "url": url,
+                    "headers": {},
+                    "params": {
+                        "model": vlm_model,
+                        "max_completion_tokens": knowledge_config.vlm_max_tokens,
+                    },
+                    "prompt": prompt,
+                }
+            else:  # openai or default
+                openai = config.providers.openai
+                if not openai.api_key:
+                    raise DoclingServeError(
+                        "Docling VLM is enabled but the OpenAI provider is not configured"
+                    )
+                url = "https://api.openai.com/v1/chat/completions"
+                options["picture_description_api"] = {
+                    "url": url,
+                    "headers": {"Authorization": f"Bearer {openai.api_key}"},
+                    "params": {
+                        "model": vlm_model,
+                        "max_completion_tokens": knowledge_config.vlm_max_tokens,
+                    },
+                    "prompt": prompt,
+                }
+
         return options
 
     def _get_auth_headers(
@@ -195,22 +293,24 @@ class DoclingService:
         """
         Upload a file to Docling Serve asynchronously using direct multipart/form-data upload.
         """
-        options = self._build_docling_options(
+        options = await self._build_docling_options_async(
             ocr_override=ocr,
             picture_descriptions_override=picture_descriptions,
         )
+
         headers = self._get_auth_headers(user_id, auth_header)
 
         # Docling serve async multipart endpoint /v1/convert/file/async
-        # Options are passed as form data
+        # Options are passed as form data; dict-valued options (e.g.
+        # picture_description_local, vlm_pipeline_model_api) go as JSON strings.
         data = {
-            k: str(v).lower() if isinstance(v, bool) else v
+            k: json.dumps(v)
+            if isinstance(v, dict)
+            else str(v).lower()
+            if isinstance(v, bool)
+            else v
             for k, v in options.items()
-            if not isinstance(v, dict)
-        }  # picture_description_local needs to be JSON if it's a dict
-
-        if "picture_description_local" in options:
-            data["picture_description_local"] = json.dumps(options["picture_description_local"])
+        }
 
         files = {"files": (filename, file_content)}
 

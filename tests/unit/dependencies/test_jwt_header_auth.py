@@ -379,6 +379,72 @@ async def test_no_jwt_saas_rbac_off_no_error_log(monkeypatch):
     assert errors == []
 
 
+# --- on_prem mirrors: on-prem must behave exactly like saas here -----------
+
+
+@pytest.mark.asyncio
+async def test_no_jwt_on_prem_rbac_on_fails_loud_no_db_write(monkeypatch, _patch_attach):
+    """on_prem + RBAC + no gateway JWT -> fail loud with 401 missing_user_jwt
+    and do NOT silently fall back to lakehouse creds (matches saas)."""
+    manager, services = _ibm_setup(monkeypatch)
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "on_prem")
+    errors: list[str] = []
+    monkeypatch.setattr(deps.logger, "error", lambda msg, **kw: errors.append(msg))
+    # Even with a valid LH-credentials header present, platform_rbac must not use it.
+    req = _FakeRequest({"X-IBM-LH-Credentials": _B64}, services=services)
+
+    with pytest.raises(HTTPException) as exc:
+        await get_api_key_user_async(req, api_key_service=None, session_manager=None)
+
+    assert exc.value.status_code == 401
+    assert exc.value.detail["error"] == "missing_user_jwt"
+    assert any("JWT not found" in m for m in errors)
+    assert "user" not in _patch_attach
+    assert manager.upserts == []
+
+
+@pytest.mark.asyncio
+async def test_no_jwt_on_prem_rbac_on_rejects_api_key_fail_fast(monkeypatch, _patch_attach):
+    """on_prem + RBAC + no gateway JWT -> fail fast even when a valid orag_ API
+    key is present (matches saas)."""
+    _ibm_setup(monkeypatch)
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "on_prem")
+
+    calls: list[str] = []
+
+    class _KeySvc:
+        async def validate_key(self, key):
+            calls.append(key)
+            return {"user_id": "svc-user", "user_email": "svc@example.com", "key_id": "k1"}
+
+    req = _FakeRequest({"X-API-Key": "orag_live_key"})
+
+    with pytest.raises(HTTPException) as exc:
+        await get_api_key_user_async(req, api_key_service=_KeySvc(), session_manager=None)
+
+    assert exc.value.status_code == 401
+    assert exc.value.detail["error"] == "missing_user_jwt"
+    assert calls == []  # API key never validated under platform_rbac
+    assert "user" not in _patch_attach  # no _attach_request_user / DB write
+
+
+@pytest.mark.asyncio
+async def test_no_jwt_on_prem_rbac_off_no_error_log(monkeypatch):
+    """on_prem + RBAC off + no JWT -> no error log (legacy API-key behavior),
+    exactly as when RBAC is off today."""
+    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "false")
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "on_prem")
+    monkeypatch.setattr(app_settings, "IBM_AUTH_ENABLED", False)
+    errors: list[str] = []
+    monkeypatch.setattr(deps.logger, "error", lambda msg, **kw: errors.append(msg))
+    req = _FakeRequest({})
+
+    with pytest.raises(HTTPException) as exc:
+        await get_api_key_user_async(req, api_key_service=None, session_manager=None)
+    assert exc.value.status_code == 401  # API key required
+    assert errors == []
+
+
 @pytest.mark.asyncio
 async def test_invalid_jwt_rbac_on_logs_error(monkeypatch, _patch_attach):
     """Header present but unverifiable under RBAC -> 401 plus a clear

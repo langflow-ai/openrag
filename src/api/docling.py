@@ -8,11 +8,11 @@ from config.settings import (
     DOCLING_HOST_IP,
     DOCLING_SERVE_URL,
     DOCLING_SERVE_VERIFY_SSL,
-    IBM_AUTH_ENABLED,
 )
 from dependencies import get_optional_user
 from session_manager import User
 from utils.logging_config import get_logger
+from utils.run_mode_utils import is_run_mode_on_prem, is_run_mode_saas
 
 logger = get_logger(__name__)
 
@@ -31,11 +31,9 @@ async def health(
     """
     health_url = f"{DOCLING_SERVICE_URL}/health"
     headers = {}
-    if IBM_AUTH_ENABLED and user:
+    if (is_run_mode_saas() or is_run_mode_on_prem()) and user:
         if user.jwt_token:
             headers["Authorization"] = user.jwt_token
-        if user.user_id:
-            headers["X-Tenant-Id"] = user.user_id
 
     try:
         async with httpx.AsyncClient(verify=DOCLING_SERVE_VERIFY_SSL) as client:
