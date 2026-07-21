@@ -196,10 +196,14 @@ async def probe_provider_credential_error() -> str | None:
         if provider == "ollama":
             if not endpoint:
                 continue
-        elif provider not in (
-            config.knowledge.embedding_provider,
-            config.agent.llm_provider,
-        ) and not api_key:
+        elif (
+            provider
+            not in (
+                config.knowledge.embedding_provider,
+                config.agent.llm_provider,
+            )
+            and not api_key
+        ):
             continue
 
         error = await _probe_provider_credential_error(

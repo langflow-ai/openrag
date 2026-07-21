@@ -191,10 +191,7 @@ class TestInferFailureMetadata:
         ft = _make_file_task(
             phase=IngestionPhase.LANGFLOW,
             docling_status=DoclingPhaseStatus.SUCCESS,
-            error=(
-                "Server disconnected without sending a response. "
-                "Incorrect API key provided"
-            ),
+            error=("Server disconnected without sending a response. Incorrect API key provided"),
         )
         meta = task_service._infer_failure_metadata(ft)
         assert meta is not None

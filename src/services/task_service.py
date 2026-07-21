@@ -102,9 +102,7 @@ def _provider_credential_failure_metadata(error: str) -> dict | None:
     )
 
     cleaned = sanitize_provider_error_content(error)
-    if not (
-        is_provider_credential_error(error) or is_provider_credential_error(cleaned)
-    ):
+    if not (is_provider_credential_error(error) or is_provider_credential_error(cleaned)):
         return None
 
     return {
