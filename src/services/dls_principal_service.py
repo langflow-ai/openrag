@@ -294,6 +294,8 @@ class DLSPrincipalService:
                 )
 
             return self._admin_opensearch_client
+        except RuntimeError:
+            raise
         except Exception as e:
             logger.warning(
                 "Failed to build DLS principal OpenSearch client",

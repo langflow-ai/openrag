@@ -51,7 +51,8 @@ def test_saas_uses_service_token(monkeypatch):
     assert service._get_opensearch_client() is sentinel
 
 
-def test_saas_without_service_token_returns_none(monkeypatch):
+def test_saas_without_service_token_raises(monkeypatch):
+    import pytest
     from config import settings
     from utils import run_mode_utils
 
@@ -59,7 +60,8 @@ def test_saas_without_service_token_returns_none(monkeypatch):
     monkeypatch.setattr(settings, "get_openrag_service_token", lambda: None)
 
     service = _make_service()
-    assert service._get_opensearch_client() is None
+    with pytest.raises(RuntimeError):
+        service._get_opensearch_client()
 
 
 def test_on_prem_uses_service_token(monkeypatch):
@@ -85,7 +87,8 @@ def test_on_prem_uses_service_token(monkeypatch):
     assert captured["token"] == "svc-jwt-token"
 
 
-def test_on_prem_without_service_token_returns_none(monkeypatch):
+def test_on_prem_without_service_token_raises(monkeypatch):
+    import pytest
     from config import settings
     from utils import run_mode_utils
 
@@ -94,7 +97,8 @@ def test_on_prem_without_service_token_returns_none(monkeypatch):
     monkeypatch.setattr(settings, "get_openrag_service_token", lambda: None)
 
     service = _make_service()
-    assert service._get_opensearch_client() is None
+    with pytest.raises(RuntimeError):
+        service._get_opensearch_client()
 
 
 def test_oss_uses_basic_auth(monkeypatch):
