@@ -196,8 +196,6 @@ MICROSOFT_ALLOWED_TENANT_IDS: set[str] | None = get_env_set("MICROSOFT_ALLOWED_T
 
 # IBM AMS authentication (Watsonx Data embedded mode)
 IBM_AUTH_ENABLED = os.getenv("IBM_AUTH_ENABLED", "false").lower() in ("true", "1", "yes")
-PLATFORM_USERNAME = os.getenv("PLATFORM_USERNAME")
-PLATFORM_PASSWORD = os.getenv("PLATFORM_PASSWORD")
 OPENRAG_TENANT_ID = os.getenv("OPENRAG_TENANT_ID", "openrag")
 IBM_JWT_PUBLIC_KEY_URL = os.getenv("IBM_JWT_PUBLIC_KEY_URL", "")
 IBM_SESSION_COOKIE_NAME = os.getenv("IBM_SESSION_COOKIE_NAME", "ibm-openrag-session")

@@ -20,7 +20,6 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 import auth.ibm_auth as ibm_auth  # noqa: E402
-import config.settings as app_settings  # noqa: E402
 from auth.request_identity import _get_ibm_user  # noqa: E402
 
 COOKIE_NAME = "ibm-openrag-session"
@@ -45,9 +44,6 @@ def _env(monkeypatch):
     monkeypatch.setenv("OPENRAG_ROLE_CLAIM_USER", "user")
     monkeypatch.delenv("OPENRAG_ROLE_CLAIM_VIEWER", raising=False)
     monkeypatch.setenv("OPENRAG_JWT_AUTH_HEADER", "X-OpenRAG-JWT")
-    # Keep the Option -1 env override from short-circuiting the function.
-    monkeypatch.setattr(app_settings, "PLATFORM_USERNAME", None)
-    monkeypatch.setattr(app_settings, "PLATFORM_PASSWORD", None)
 
 
 @pytest.mark.asyncio
