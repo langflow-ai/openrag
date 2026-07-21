@@ -798,6 +798,7 @@ async def update_settings(
                     update_model_values=update_llm or update_embedding,
                     update_llm=update_llm,
                     update_embedding=update_embedding,
+                    update_global_variables=provider_updated,
                 )
             )
             # Keep a strong reference until completion to avoid premature GC cancellation.

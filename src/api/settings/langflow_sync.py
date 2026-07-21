@@ -253,6 +253,7 @@ async def _run_async_post_save_langflow_updates(
     models_service=None,
     update_llm: bool = True,
     update_embedding: bool = True,
+    update_global_variables: bool = False,
 ) -> None:
     """Apply post-save Langflow synchronization asynchronously."""
     try:
@@ -265,8 +266,9 @@ async def _run_async_post_save_langflow_updates(
         if models_service is not None:
             await models_service.update_model_registry()
 
-        # Update global variables
-        await _update_langflow_global_variables(current_config, flows_service=flows_service)
+        # Update global variables only when provider credentials or endpoints change
+        if update_global_variables:
+            await _update_langflow_global_variables(current_config, flows_service=flows_service)
 
         # Update LLM client credentials when embedding selection changes
         if update_mcp_servers:
