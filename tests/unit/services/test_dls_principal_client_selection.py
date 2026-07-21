@@ -53,6 +53,7 @@ def test_saas_uses_service_token(monkeypatch):
 
 def test_saas_without_service_token_raises(monkeypatch):
     import pytest
+
     from config import settings
     from utils import run_mode_utils
 
@@ -89,6 +90,7 @@ def test_on_prem_uses_service_token(monkeypatch):
 
 def test_on_prem_without_service_token_raises(monkeypatch):
     import pytest
+
     from config import settings
     from utils import run_mode_utils
 
