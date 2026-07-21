@@ -389,6 +389,10 @@ def get_jwt_verify_signature() -> bool:
 
 
 DOCLING_OCR_ENGINE = os.getenv("DOCLING_OCR_ENGINE")
+
+# Hugging Face cache root override (standard HF_HOME env var). Used to locate
+# locally downloaded VLM weights; falls back to ~/.cache/huggingface when unset.
+HF_HOME = os.getenv("HF_HOME")
 SEGMENT_WRITE_KEY = os.getenv("SEGMENT_WRITE_KEY", "")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "")
 PLATFORM_AUTH_DEV_MODE = os.getenv("PLATFORM_AUTH_DEV_MODE", "false").lower() in (
@@ -549,6 +553,15 @@ OPENRAG_INGEST_VIA_CHAT = os.getenv("OPENRAG_INGEST_VIA_CHAT", "false").lower() 
 OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS = os.getenv(
     "OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS", "false"
 ).lower() in ("true", "1", "yes")
+
+# Show the "Advanced Vision Model (VLM) Settings" section in ingest settings.
+# On by default; set to "false" to hide the VLM UI (kill switch — the backend
+# VLM settings endpoints stay functional either way).
+OPENRAG_SHOW_VLM_SETTINGS = os.getenv("OPENRAG_SHOW_VLM_SETTINGS", "true").lower() in (
+    "true",
+    "1",
+    "yes",
+)
 
 # Show the "Make documents available to all users" (shared) toggle for COS bucket
 # ingestion, independent of OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS. Deployments that

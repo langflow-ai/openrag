@@ -36,6 +36,8 @@ export interface ChunkResult {
   parser?: string;
   chunk_size?: number;
   chunk_overlap?: number;
+  chunk_id?: string;
+  id?: string;
   index?: number;
   allowed_users?: string[];
   allowed_groups?: string[];

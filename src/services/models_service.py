@@ -1,14 +1,13 @@
-import httpx
 import asyncio
-from typing import Dict, List, Optional
+
+import httpx
+
+from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL, OPENAI_EMBEDDING_MODEL_PREFIX
 from config.model_constants import (
     ANTHROPIC_DEFAULT_LANGUAGE_MODEL,
-    ANTHROPIC_VALIDATION_MODELS,
     OLLAMA_DEFAULT_LANGUAGE_MODEL_PATTERN,
     OPENAI_DEFAULT_LANGUAGE_MODEL,
-    OPENAI_VALIDATION_MODELS,
 )
-from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL, OPENAI_EMBEDDING_MODEL_PREFIX
 from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 
@@ -23,16 +22,15 @@ class UnknownEmbeddingProvider(Exception):
     unroutable request into LiteLLM's retry loop."""
 
     def __init__(self, model_name: str):
-        super().__init__(
-            f"No configured provider can serve embedding model '{model_name}'"
-        )
+        super().__init__(f"No configured provider can serve embedding model '{model_name}'")
         self.model_name = model_name
+
 
 class ModelsService:
     """Service for fetching available models from different AI providers and managing a model registry."""
 
     # Registry for caching model-to-provider mapping
-    _model_provider_registry: Dict[str, str] = {}
+    _model_provider_registry: dict[str, str] = {}
     _registry_lock = asyncio.Lock()
 
     def __init__(self):
@@ -58,23 +56,25 @@ class ModelsService:
 
     async def update_model_registry(self):
         """Fetch all models from all providers and update the internal registry.
-        
+
         This method calls provider-specific methods to get the list of available
         models and stores the mapping in a registry for fast lookup.
         """
         from config.config_manager import config_manager
-        
+
         async with self._registry_lock:
             try:
                 config = config_manager.get_config()
                 new_registry = {}
 
                 # Fetch from providers
-                
+
                 # OpenAI
                 if config.providers.openai.api_key:
                     try:
-                        res = await self.get_openai_models(config.providers.openai.api_key, update_index=False)
+                        res = await self.get_openai_models(
+                            config.providers.openai.api_key, update_index=False
+                        )
                         self.add_models(res, "openai", new_registry)
                     except Exception as e:
                         logger.debug(f"Could not fetch OpenAI models for registry: {str(e)}")
@@ -82,7 +82,9 @@ class ModelsService:
                 # Anthropic
                 if config.providers.anthropic.api_key:
                     try:
-                        res = await self.get_anthropic_models(config.providers.anthropic.api_key, update_index=False)
+                        res = await self.get_anthropic_models(
+                            config.providers.anthropic.api_key, update_index=False
+                        )
                         self.add_models(res, "anthropic", new_registry)
                     except Exception as e:
                         logger.debug(f"Could not fetch Anthropic models for registry: {str(e)}")
@@ -90,11 +92,13 @@ class ModelsService:
                 # Ollama
                 if config.providers.ollama.endpoint:
                     try:
-                        res = await self.get_ollama_models(config.providers.ollama.endpoint, update_index=False)
+                        res = await self.get_ollama_models(
+                            config.providers.ollama.endpoint, update_index=False
+                        )
                         self.add_models(res, "ollama", new_registry)
                     except Exception as e:
                         logger.debug(f"Could not fetch Ollama models for registry: {str(e)}")
-                        
+
                 # WatsonX
                 if config.providers.watsonx.api_key:
                     try:
@@ -102,22 +106,24 @@ class ModelsService:
                             config.providers.watsonx.endpoint,
                             config.providers.watsonx.api_key,
                             config.providers.watsonx.project_id,
-                            update_index=False
+                            update_index=False,
                         )
                         self.add_models(res, "watsonx", new_registry)
                     except Exception as e:
                         logger.debug(f"Could not fetch WatsonX models for registry: {str(e)}")
 
                 ModelsService._model_provider_registry = new_registry
-                logger.info(f"Model registry updated: {len(ModelsService._model_provider_registry)} models registered")
-                
+                logger.info(
+                    f"Model registry updated: {len(ModelsService._model_provider_registry)} models registered"
+                )
+
             except Exception as e:
                 logger.error(f"Error updating model registry: {str(e)}")
 
     async def get_litellm_model_name(
         self,
         model_name: str,
-        provider: Optional[str] = None,
+        provider: str | None = None,
         strict: bool = False,
     ) -> str:
         """Resolve ``model_name`` to a LiteLLM-routable string.
@@ -160,7 +166,51 @@ class ModelsService:
 
         return f"{provider_lower}/{model_name}" if provider_lower != "openai" else model_name
 
-    async def get_openai_models(self, api_key: str, update_index: bool = True) -> Dict[str, List[Dict[str, str]]]:
+    def _openai_supports_images(self, model_id: str) -> bool:
+        model_lower = model_id.lower()
+        if "text-embedding" in model_lower:
+            return False
+        if "o1-mini" in model_lower or "o1-preview" in model_lower:
+            return False
+        return any(
+            x in model_lower for x in ["gpt-4o", "gpt-5", "vision", "o3", "o4", "gpt-4-turbo", "o1"]
+        )
+
+    def _anthropic_supports_images(self, model_data: dict) -> bool:
+        capabilities = model_data.get("capabilities", {})
+        if isinstance(capabilities, dict):
+            image_input = capabilities.get("image_input", {})
+            if isinstance(image_input, dict) and image_input.get("supported") is True:
+                return True
+        # Fallback to model name matching if capabilities is not populated
+        model_id = model_data.get("id", "").lower()
+        return any(x in model_id for x in ["claude-3", "claude-4", "opus", "sonnet", "haiku"])
+
+    def _watsonx_supports_images(self, model_data: dict) -> bool:
+        model_id = model_data.get("model_id", "").lower()
+        if any(x in model_id for x in ["vision", "pixtral", "qwen-vl", "qwen2-vl", "multimodal"]):
+            return True
+        short_desc = model_data.get("short_description", "").lower()
+        if "vision" in short_desc or "multimodal" in short_desc or "image" in short_desc:
+            return True
+        return False
+
+    def _ollama_supports_images(self, json_data: dict) -> bool:
+        capabilities = json_data.get("capabilities", [])
+        if "vision" in capabilities:
+            return True
+        model_info = json_data.get("model_info", {})
+        if any("vision" in key.lower() or "projector" in key.lower() for key in model_info.keys()):
+            return True
+        details = json_data.get("details", {})
+        families = details.get("families", []) or []
+        if any("clip" in str(fam).lower() or "vision" in str(fam).lower() for fam in families):
+            return True
+        return False
+
+    async def get_openai_models(
+        self, api_key: str, update_index: bool = True
+    ) -> dict[str, list[dict[str, str]]]:
         """Fetch available models from OpenAI API with lightweight validation"""
         try:
             headers = {
@@ -186,18 +236,8 @@ class ModelsService:
                 for model in models:
                     model_id = model.get("id", "")
 
-                    # Language models (GPT models)
-                    if model_id in OPENAI_VALIDATION_MODELS:
-                        language_models.append(
-                            {
-                                "value": model_id,
-                                "label": model_id,
-                                "default": model_id == OPENAI_DEFAULT_LANGUAGE_MODEL,
-                            }
-                        )
-
                     # Embedding models
-                    elif OPENAI_EMBEDDING_MODEL_PREFIX in model_id:
+                    if OPENAI_EMBEDDING_MODEL_PREFIX in model_id or "text-similarity-" in model_id:
                         embedding_models.append(
                             {
                                 "value": model_id,
@@ -205,22 +245,26 @@ class ModelsService:
                                 "default": model_id == OPENAI_DEFAULT_EMBEDDING_MODEL,
                             }
                         )
+                    # Language models (GPT and o1/o3/chatgpt models)
+                    elif (
+                        model_id.startswith(("gpt-", "o1-", "o3-", "chatgpt-"))
+                        and "-moderation" not in model_id
+                    ):
+                        language_models.append(
+                            {
+                                "value": model_id,
+                                "label": model_id,
+                                "default": model_id == OPENAI_DEFAULT_LANGUAGE_MODEL,
+                                "supports_images": self._openai_supports_images(model_id),
+                            }
+                        )
 
                 # Sort by name and ensure defaults are first
-                language_models.sort(
-                    key=lambda x: (not x.get("default", False), x["value"])
-                )
-                embedding_models.sort(
-                    key=lambda x: (not x.get("default", False), x["value"])
-                )
+                language_models.sort(key=lambda x: (not x.get("default", False), x["value"]))
+                embedding_models.sort(key=lambda x: (not x.get("default", False), x["value"]))
 
                 if not language_models:
-                    logger.warning(
-                        "OpenAI API key is valid but no language models matched the validation list. "
-                        "The API returned %d models, none matched OPENAI_VALIDATION_MODELS. "
-                        "This may indicate a model naming scheme change.",
-                        len(models),
-                    )
+                    logger.warning("OpenAI API key is valid but no language models were found.")
                 if not embedding_models:
                     logger.warning(
                         "OpenAI API key is valid but no embedding models were found matching prefix '%s'.",
@@ -248,7 +292,9 @@ class ModelsService:
             logger.error(f"Error fetching OpenAI models: {str(e)}")
             raise
 
-    async def get_anthropic_models(self, api_key: str, update_index: bool = True) -> Dict[str, List[Dict[str, str]]]:
+    async def get_anthropic_models(
+        self, api_key: str, update_index: bool = True
+    ) -> dict[str, list[dict[str, str]]]:
         """Fetch available models from Anthropic API"""
         try:
             headers = {
@@ -274,27 +320,21 @@ class ModelsService:
 
                 for model in models:
                     model_id = model.get("id", "")
-
-                    if model_id in ANTHROPIC_VALIDATION_MODELS:
-                        language_models.append(
-                            {
-                                "value": model_id,
-                                "label": model_id,
-                                "default": model_id == ANTHROPIC_DEFAULT_LANGUAGE_MODEL,
-                            }
-                        )
+                    language_models.append(
+                        {
+                            "value": model_id,
+                            "label": model.get("display_name", model_id),
+                            "default": model_id == ANTHROPIC_DEFAULT_LANGUAGE_MODEL,
+                            "supports_images": self._anthropic_supports_images(model),
+                        }
+                    )
 
                 # Sort by default first, then by name
-                language_models.sort(
-                    key=lambda x: (not x.get("default", False), x["value"])
-                )
+                language_models.sort(key=lambda x: (not x.get("default", False), x["value"]))
 
                 if not language_models:
                     logger.warning(
-                        "Anthropic API key is valid but no models matched the validation list. "
-                        "The API returned %d models, none matched ANTHROPIC_VALIDATION_MODELS. "
-                        "This may indicate a model naming scheme change.",
-                        len(models),
+                        "Anthropic API key is valid but no models were returned.",
                     )
 
                 result = {
@@ -318,7 +358,7 @@ class ModelsService:
 
     async def get_ollama_models(
         self, endpoint: str = None, update_index: bool = True
-    ) -> Dict[str, List[Dict[str, str]]]:
+    ) -> dict[str, list[dict[str, str]]]:
         """Fetch available models from Ollama API with tool calling capabilities for language models"""
         try:
             ollama_url = transform_localhost_url(endpoint)
@@ -359,16 +399,12 @@ class ModelsService:
                     # Check model capabilities
                     payload = {"model": model_name}
                     try:
-                        show_response = await client.post(
-                            show_url, json=payload, timeout=10.0
-                        )
+                        show_response = await client.post(show_url, json=payload, timeout=10.0)
                         show_response.raise_for_status()
                         json_data = show_response.json()
 
                         capabilities = json_data.get(JSON_CAPABILITIES_KEY, [])
-                        logger.debug(
-                            f"Model: {model_name}, Capabilities: {capabilities}"
-                        )
+                        logger.debug(f"Model: {model_name}, Capabilities: {capabilities}")
 
                         # Check if model has embedding capability
                         has_embedding = "embedding" in capabilities
@@ -393,6 +429,7 @@ class ModelsService:
                                     "label": model_name,
                                     "default": OLLAMA_DEFAULT_LANGUAGE_MODEL_PATTERN
                                     in model_name.lower(),
+                                    "supports_images": self._ollama_supports_images(json_data),
                                 }
                             )
                         if not capabilities and not has_embedding:
@@ -414,16 +451,10 @@ class ModelsService:
                         continue
 
                 # Remove duplicates and sort
-                language_models = list(
-                    {m["value"]: m for m in language_models}.values()
-                )
-                embedding_models = list(
-                    {m["value"]: m for m in embedding_models}.values()
-                )
+                language_models = list({m["value"]: m for m in language_models}.values())
+                embedding_models = list({m["value"]: m for m in embedding_models}.values())
 
-                language_models.sort(
-                    key=lambda x: (not x.get("default", False), x["value"])
-                )
+                language_models.sort(key=lambda x: (not x.get("default", False), x["value"]))
                 embedding_models.sort(key=lambda x: x["value"])
 
                 logger.info(
@@ -445,8 +476,12 @@ class ModelsService:
             raise
 
     async def get_ibm_models(
-        self, endpoint: str = None, api_key: str = None, project_id: str = None, update_index: bool = True
-    ) -> Dict[str, List[Dict[str, str]]]:
+        self,
+        endpoint: str = None,
+        api_key: str = None,
+        project_id: str = None,
+        update_index: bool = True,
+    ) -> dict[str, list[dict[str, str]]]:
         """Fetch available models from IBM Watson API"""
         try:
             # Use provided endpoint or default
@@ -522,6 +557,7 @@ class ModelsService:
                                 "value": model_id,
                                 "label": model_name or model_id,
                                 "default": i == 0,  # First model is default
+                                "supports_images": self._watsonx_supports_images(model),
                             }
                         )
                 else:
