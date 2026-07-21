@@ -89,6 +89,7 @@ def test_resolve_error_store_id_ignores_cold_previous_response_id():
 @pytest.fixture
 def store_in_memory(monkeypatch):
     stored: list[tuple[str, str]] = []
+    claimed: list[tuple[str, str]] = []
 
     async def _store(user_id, response_id, conversation_state):
         stored.append((user_id, response_id))
@@ -96,8 +97,16 @@ def store_in_memory(monkeypatch):
             agent_module.active_conversations[user_id] = {}
         agent_module.active_conversations[user_id][response_id] = conversation_state
 
+    class _Ownership:
+        async def claim_session(self, user_id, session_id):
+            claimed.append((user_id, session_id))
+
     monkeypatch.setattr(agent_module, "store_conversation_thread", _store)
-    return stored
+    monkeypatch.setattr(
+        "services.session_ownership_service.session_ownership_service",
+        _Ownership(),
+    )
+    return {"stored": stored, "claimed": claimed}
 
 
 async def _collect_error_chunks(stream) -> list[dict]:
@@ -145,7 +154,7 @@ async def test_langflow_stream_yields_provider_error_chunk(
     assert error_chunk["error"]["message"] == provider_message
 
     # No real response_id yet — do not invent synthetic error_* conversations.
-    assert store_in_memory == []
+    assert store_in_memory["stored"] == []
     assert agent_module.active_conversations.get(user_id, {}) == {}
 
 
@@ -180,8 +189,9 @@ async def test_langflow_stream_persists_error_onto_existing_thread(monkeypatch, 
     )
 
     assert chunks[0]["error"]["message"] == provider_message
-    assert store_in_memory == [(user_id, previous_id)]
-    assert not any(rid.startswith("error_") for _, rid in store_in_memory)
+    assert store_in_memory["stored"] == [(user_id, previous_id)]
+    assert store_in_memory["claimed"] == [(user_id, previous_id)]
+    assert not any(rid.startswith("error_") for _, rid in store_in_memory["stored"])
 
     stored = agent_module.active_conversations[user_id][previous_id]
     error_messages = [m for m in stored["messages"] if m.get("error")]
@@ -217,7 +227,7 @@ async def test_langflow_stream_skips_persist_for_cold_previous_response_id(
 
     assert chunks[0]["error"]["message"] == provider_message
     # Cold previous_response_id must not overwrite conversation metadata.
-    assert store_in_memory == []
+    assert store_in_memory["stored"] == []
     assert previous_id not in agent_module.active_conversations.get(user_id, {})
 
 
@@ -255,7 +265,8 @@ async def test_langflow_stream_treats_credential_dump_content_as_error(
     error_chunk = next(c for c in chunks if c.get("status") == "failed")
     assert "{" not in error_chunk["error"]["message"]
     assert "Provided API key could not be found" in error_chunk["error"]["message"]
-    assert store_in_memory == [(user_id, "resp_dump")]
+    assert store_in_memory["stored"] == [(user_id, "resp_dump")]
+    assert store_in_memory["claimed"] == [(user_id, "resp_dump")]
     stored = agent_module.active_conversations[user_id]["resp_dump"]
     assert stored["messages"][-1]["error"] is True
     assert "{" not in stored["messages"][-1]["content"]
@@ -294,7 +305,8 @@ async def test_langflow_stream_keeps_partial_text_with_provider_error(monkeypatc
     assert len(chunks) == 2
     assert chunks[0]["delta"]["content"] == "Here is a partial answer"
     assert chunks[1]["error"]["message"] == (f"Here is a partial answer\n\n{provider_message}")
-    assert store_in_memory == [(user_id, "resp_partial")]
+    assert store_in_memory["stored"] == [(user_id, "resp_partial")]
+    assert store_in_memory["claimed"] == [(user_id, "resp_partial")]
 
 
 @pytest.mark.asyncio
@@ -321,5 +333,5 @@ async def test_chat_stream_yields_provider_error_chunk(monkeypatch, store_in_mem
 
     assert len(chunks) == 1
     assert chunks[0]["error"]["message"] == provider_message
-    assert store_in_memory == []
+    assert store_in_memory["stored"] == []
     assert agent_module.active_conversations.get(user_id, {}) == {}

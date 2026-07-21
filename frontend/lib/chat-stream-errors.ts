@@ -224,8 +224,11 @@ export function extractStreamProviderError(chunk: unknown): string | null {
     raw = c.message;
   }
 
+  // Empty error payloads are common from Langflow (finish_reason=error with no
+  // message). Return null so the client can fall back to accumulated content or
+  // a later sanitized error chunk instead of a generic placeholder.
   if (!raw) {
-    return "An error occurred while generating a response.";
+    return null;
   }
 
   return formatProviderErrorMessage(raw);

@@ -43,11 +43,9 @@ describe("extractStreamProviderError", () => {
     );
   });
 
-  it("returns a default when the error chunk has no message", () => {
-    assert.equal(
-      extractStreamProviderError({ status: "failed" }),
-      "An error occurred while generating a response.",
-    );
+  it("returns null when the error chunk has no message", () => {
+    assert.equal(extractStreamProviderError({ status: "failed" }), null);
+    assert.equal(extractStreamProviderError({ finish_reason: "error" }), null);
   });
 
   it("strips embedded JSON from provider error chunks", () => {

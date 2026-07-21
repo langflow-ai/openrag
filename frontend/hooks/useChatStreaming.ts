@@ -228,20 +228,19 @@ export function useChatStreaming({
         if (timeoutId) clearTimeout(timeoutId);
       }
 
-      if (providerStreamError) {
-        throw Object.assign(new Error(providerStreamError), {
-          partialContent: content.value,
-        });
-      }
-
-      // Langflow often streams credential failures as plain assistant text
-      // (no status=failed chunk). Treat that as an error so JSON never lands
-      // in the transcript as a normal reply.
+      // Prefer accumulated stream text when it carries the real provider dump —
+      // Langflow often sends finish_reason=error with an empty error payload.
       if (content.value && looksLikeProviderErrorContent(content.value)) {
         throw Object.assign(
           new Error(formatProviderErrorMessage(content.value)),
           { partialContent: content.value },
         );
+      }
+
+      if (providerStreamError) {
+        throw Object.assign(new Error(providerStreamError), {
+          partialContent: content.value,
+        });
       }
 
       if (

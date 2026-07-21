@@ -64,6 +64,27 @@ def _resolve_error_store_id(
     return None
 
 
+async def _persist_error_conversation(
+    user_id: str, store_id: str, conversation_state: dict
+) -> None:
+    """Store a failed turn and claim session ownership.
+
+    Claiming is required: otherwise the client may retry with this response_id and
+    ``_assert_owns`` returns 404 (session_not_found) for an unclaimed session.
+    """
+    from datetime import datetime
+
+    from services.session_ownership_service import session_ownership_service
+
+    conversation_state["last_activity"] = datetime.now()
+    await store_conversation_thread(user_id, store_id, conversation_state)
+    try:
+        await session_ownership_service.claim_session(user_id, store_id)
+        logger.debug(f"Claimed session {store_id} for user {user_id} after stream error")
+    except Exception as e:
+        logger.warning(f"Failed to claim session ownership after stream error: {e}")
+
+
 def _stream_error_chunk(message: str) -> bytes:
     """NDJSON error event consumed by the chat streaming client."""
     import json
@@ -216,13 +237,16 @@ async def async_response_stream(
             if hasattr(chunk, "output_text") and chunk.output_text:
                 full_response += chunk.output_text
             elif hasattr(chunk, "delta") and chunk.delta:
-                # Handle delta properly - it might be a dict or string
+                # Handle delta properly - it might be a dict or string.
+                # Do not fall back to str(dict) when content is "" — that pollutes
+                # the transcript with "{'content': ''}" prefixes on error chunks.
                 if isinstance(chunk.delta, dict):
-                    delta_text = (
-                        chunk.delta.get("content", "")
-                        or chunk.delta.get("text", "")
-                        or str(chunk.delta)
-                    )
+                    raw_delta = chunk.delta.get("content")
+                    if raw_delta is None:
+                        raw_delta = chunk.delta.get("text")
+                    delta_text = raw_delta if isinstance(raw_delta, str) else ""
+                elif chunk.delta is None:
+                    delta_text = ""
                 else:
                     delta_text = str(chunk.delta)
                 full_response += delta_text
@@ -645,8 +669,7 @@ async def async_chat_stream(
         )
         if store_id:
             try:
-                conversation_state["last_activity"] = datetime.now()
-                await store_conversation_thread(user_id, store_id, conversation_state)
+                await _persist_error_conversation(user_id, store_id, conversation_state)
             except Exception as store_error:
                 logger.error(f"Failed to store error conversation: {store_error}")
         else:
@@ -914,13 +937,32 @@ async def async_langflow_chat_stream(
                 elif "response_id" in chunk_data:
                     response_id = chunk_data["response_id"]
 
-                # Check for error status
+                # Check for error status. Do not forward bare Langflow error
+                # chunks — they often lack a useful message and the client would
+                # show a generic failure before our sanitized terminal chunk.
                 if (
                     chunk_data.get("finish_reason") == "error"
                     or chunk_data.get("status") == "failed"
                 ):
                     error_occurred = True
                     logger.error("Error detected in Langflow stream chunk")
+                    err = chunk_data.get("error")
+                    if isinstance(err, dict):
+                        err_msg = err.get("message")
+                    else:
+                        err_msg = err
+                    if isinstance(err_msg, str) and err_msg.strip():
+                        if err_msg not in full_response:
+                            full_response = (
+                                f"{full_response}\n\n{err_msg}" if full_response else err_msg
+                            )
+                    elif (
+                        isinstance(chunk_data.get("message"), str) and chunk_data["message"].strip()
+                    ):
+                        msg = chunk_data["message"]
+                        if msg not in full_response:
+                            full_response = f"{full_response}\n\n{msg}" if full_response else msg
+                    continue
                 # Capture usage from response.completed event
                 if chunk_data.get("type") == "response.completed":
                     response_obj = chunk_data.get("response", {})
@@ -937,8 +979,12 @@ async def async_langflow_chat_stream(
         # Credential failures are often streamed as plain assistant text with no
         # exception. Sanitize, mark as error, and emit a terminal error chunk so
         # the client shows the error card instead of raw JSON.
-        if full_response and (error_occurred or looks_like_provider_error_content(full_response)):
-            display_text = sanitize_provider_error_content(full_response)
+        if error_occurred or looks_like_provider_error_content(full_response):
+            display_text = (
+                sanitize_provider_error_content(full_response)
+                if full_response
+                else "An error occurred while generating a response."
+            )
             conversation_state["messages"].append(
                 {
                     "role": "assistant",
@@ -956,8 +1002,7 @@ async def async_langflow_chat_stream(
             )
             if store_id:
                 try:
-                    conversation_state["last_activity"] = datetime.now()
-                    await store_conversation_thread(user_id, store_id, conversation_state)
+                    await _persist_error_conversation(user_id, store_id, conversation_state)
                 except Exception as store_error:
                     logger.error(f"Failed to store error conversation: {store_error}")
             yield _stream_error_chunk(display_text)
@@ -1018,8 +1063,7 @@ async def async_langflow_chat_stream(
         )
         if store_id:
             try:
-                conversation_state["last_activity"] = datetime.now()
-                await store_conversation_thread(user_id, store_id, conversation_state)
+                await _persist_error_conversation(user_id, store_id, conversation_state)
                 logger.debug(f"Stored conversation with error for user {user_id}")
             except Exception as store_error:
                 logger.error(f"Failed to store error conversation: {store_error}")
