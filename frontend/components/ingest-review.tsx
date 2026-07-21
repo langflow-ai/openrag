@@ -100,7 +100,10 @@ function useDemoPreviewPhase(enabled: boolean): number {
 function previewFrameClass(expanded: boolean): string {
   return cn(
     "overflow-auto rounded-md bg-background",
-    expanded ? "h-full min-h-0 max-h-none" : "max-h-[420px]",
+    // Fixed height in dialog mode so skeleton → Docling swap does not jump.
+    expanded
+      ? "h-full min-h-0 max-h-none"
+      : "h-[420px] min-h-[420px] max-h-[420px]",
   );
 }
 
@@ -173,7 +176,7 @@ function DoclingDocSkeleton({ expanded = false }: { expanded?: boolean }) {
       aria-busy="true"
       aria-label="Loading document layout"
     >
-      <div className="rounded-lg border border-border/60 bg-background p-4 shadow-sm space-y-5">
+      <div className="min-h-full rounded-lg border border-border/60 bg-background p-4 shadow-sm space-y-5">
         <SkeletonChunk
           label="Header"
           lines={[
@@ -590,10 +593,10 @@ function PreviewFileSelector({
           role="combobox"
           aria-expanded={open}
           aria-controls={listboxId}
-          className="h-auto w-auto min-w-[260px] max-w-full justify-between gap-2 px-1.5 py-2 font-medium hover:bg-muted/60"
+          className="h-auto w-full min-w-0 justify-between gap-2 px-1.5 py-2 font-medium hover:bg-muted/60"
           data-testid="ingest-review-file-selector"
         >
-          <span className="flex min-w-0 items-center gap-2">
+          <span className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
             <FileIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
             <span className="truncate" title={active?.filename}>
               {active?.filename ?? "Select file"}
@@ -633,7 +636,7 @@ function PreviewFileSelector({
                       onSelect(index);
                       setOpen(false);
                     }}
-                    className="gap-2"
+                    className="min-w-0 gap-2 overflow-hidden"
                   >
                     <Check
                       className={cn(
@@ -967,25 +970,27 @@ function IngestReviewToolbar({
 
   return (
     <div className="-mx-4 shrink-0 grid items-center gap-3 border-t border-b border-border px-4 lg:grid-cols-2 lg:gap-0">
-      <div className="flex min-w-0 flex-wrap items-center gap-x-8 gap-y-1 lg:pr-4">
+      <div className="flex min-w-0 items-center gap-x-4 lg:pr-4">
         {canNavigate ? (
-          <PreviewFileSelector
-            files={files}
-            activeIndex={activeIndex}
-            onSelect={onSelectFile}
-          />
+          <div className="min-w-0 flex-1">
+            <PreviewFileSelector
+              files={files}
+              activeIndex={activeIndex}
+              onSelect={onSelectFile}
+            />
+          </div>
         ) : (
           <span
-            className="inline-flex min-w-0 items-center gap-2 truncate text-sm font-medium"
+            className="inline-flex min-w-0 flex-1 items-center gap-2 text-sm font-medium"
             title={activeFilename}
           >
             <FileIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
-            {activeFilename ?? "Document"}
+            <span className="truncate">{activeFilename ?? "Document"}</span>
           </span>
         )}
 
         {parsePreview?.stats && (
-          <span className="text-xs text-muted-foreground">
+          <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
             {parsePreview.stats.text_count} text ·{" "}
             {parsePreview.stats.table_count} tables ·{" "}
             {parsePreview.stats.picture_count} figures
