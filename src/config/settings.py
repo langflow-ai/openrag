@@ -302,6 +302,19 @@ def is_ingest_preview_flag_enabled() -> bool:
     return raw in ("true", "1", "yes", "on")
 
 
+def is_workspace_oauth_overrides_enabled() -> bool:
+    """Feature flag for workspace-level OAuth connector credential overrides.
+
+    Default off. Gates: the admin UI + API for setting per-workspace client
+    id/secret overrides on OAuth-kind connectors, resolution of those
+    overrides in BaseConnector.get_client_id()/get_client_secret() (env vars
+    still work either way), and the OAuth "test connection" flow. Set
+    ``OPENRAG_WORKSPACE_OAUTH_OVERRIDES_ENABLED=true`` to turn it on.
+    """
+    raw = os.getenv("OPENRAG_WORKSPACE_OAUTH_OVERRIDES_ENABLED", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
 def is_cloud_context() -> bool:
     """True when connector policy and SaaS settings guards should apply."""
     from utils.run_mode_utils import is_run_mode_saas

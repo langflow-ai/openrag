@@ -1,13 +1,17 @@
 import json
 import logging
-import os
 import uuid
 from datetime import UTC, datetime, timedelta
 
 import httpx
 from fastapi import HTTPException
 
-from config.settings import OAUTH_BROKER_URL, WEBHOOK_BASE_URL, is_no_auth_mode
+from config.settings import (
+    OAUTH_BROKER_URL,
+    WEBHOOK_BASE_URL,
+    is_no_auth_mode,
+    is_workspace_oauth_overrides_enabled,
+)
 from connectors.registry import get_connector_class, get_connector_classes
 from services.langflow_mcp_service import LangflowMCPService
 from session_manager import SessionManager
@@ -68,12 +72,23 @@ class AuthService:
                     "OAuth credentials not configured. Data source connections require OAuth setup."
                 )
 
-        # Validate connector_type based on purpose
+        # Validate connector_type based on purpose. "test" (admin Test Connection
+        # button, see _handle_test_auth) is validated like "data_source" but does
+        # not persist a connection on success. Gated behind the workspace OAuth
+        # overrides feature flag — off by default.
+        allowed_purposes = (
+            ("app_auth", "data_source", "test")
+            if is_workspace_oauth_overrides_enabled()
+            else ("app_auth", "data_source")
+        )
         if purpose == "app_auth" and connector_type != "google_drive":
             raise ValueError("Only Google login supported for app authentication")
-        elif purpose == "data_source" and connector_type not in _data_source_connector_types():
+        elif (
+            purpose in ("data_source", "test")
+            and connector_type not in _data_source_connector_types()
+        ):
             raise ValueError(f"Unsupported connector type: {connector_type}")
-        elif purpose not in ["app_auth", "data_source"]:
+        elif purpose not in allowed_purposes:
             raise ValueError(f"Unsupported purpose: {purpose}")
 
         if not redirect_uri:
@@ -132,28 +147,17 @@ class AuthService:
         auth_endpoint = oauth_class_any.AUTH_ENDPOINT
         token_endpoint = oauth_class_any.TOKEN_ENDPOINT
 
-        # src/services/auth_service.py
-        client_key = getattr(connector_class_any, "CLIENT_ID_ENV_VAR", None)
-        secret_key = getattr(connector_class_any, "CLIENT_SECRET_ENV_VAR", None)
-
-        def _assert_env_key(name, val):
-            if not isinstance(val, str) or not val.strip():
-                raise RuntimeError(
-                    f"{connector_class.__name__} misconfigured: {name} must be a non-empty string "
-                    f"(got {val!r}). Define it as a class attribute on the connector."
-                )
-
-        _assert_env_key("CLIENT_ID_ENV_VAR", client_key)
-        _assert_env_key("CLIENT_SECRET_ENV_VAR", secret_key)
-
-        client_id = os.getenv(client_key)
-        client_secret = os.getenv(secret_key)
-
-        if not client_id or not client_secret:
+        # Resolve credentials the same way the connector itself does (per-connection
+        # config override -> workspace-level admin override -> env var), so this
+        # matches what handle_oauth_callback resolves later for the same connector.
+        try:
+            connector_instance = connector_class_any({})
+            client_id = connector_instance.get_client_id()
+            connector_instance.get_client_secret()  # validate it's configured; not returned to the frontend
+        except (ValueError, NotImplementedError, RuntimeError) as e:
             raise RuntimeError(
-                f"Missing OAuth env vars for {connector_class.__name__}. "
-                f"Set {client_key} and {secret_key} in the environment."
-            )
+                f"Missing OAuth credentials for {connector_class.__name__}: {e}"
+            ) from e
 
         # Per-connector OAuth prompt: Microsoft uses "select_account" so a one-time
         # tenant admin consent is reused; Google uses "consent" for refresh tokens.
@@ -329,6 +333,8 @@ class AuthService:
                 return await self._handle_app_auth(
                     connection_id, connection_config, token_data, request
                 )
+            elif purpose == "test":
+                return await self._handle_test_auth(connection_id, connection_config)
             else:
                 return await self._handle_data_source_auth(connection_id, connection_config)
 
@@ -336,6 +342,21 @@ class AuthService:
             # Remove used code from set if we failed
             self.used_auth_codes.discard(authorization_code)
             raise e
+
+    async def _handle_test_auth(self, connection_id: str, connection_config) -> dict:
+        """Handle a Test Connection run — the token exchange already succeeded by
+        the time this is called, which proves the active client id/secret work.
+        Unlike a real data-source connection, a test must not persist anything:
+        no base-URL detection, no webhook subscription, and the temporary
+        connection + token file are deleted immediately.
+        """
+        connector_type = connection_config.connector_type
+        await self.connector_service.connection_manager.delete_connection(connection_id)
+        return {
+            "status": "test_success",
+            "connector_type": connector_type,
+            "purpose": "test",
+        }
 
     async def _handle_app_auth(
         self, connection_id: str, connection_config, token_data: dict, request=None

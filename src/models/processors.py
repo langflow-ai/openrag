@@ -437,8 +437,14 @@ class TaskProcessor:
         # Use provided embedding model or configured model.
         # get_embedding_model() returns empty string when Langflow ingest is enabled,
         # but OpenRAG processors still need a concrete embedding model.
-        configured_embedding_model = get_openrag_config().knowledge.embedding_model
+        config = get_openrag_config()
+        configured_embedding_model = config.knowledge.embedding_model
         embedding_model = embedding_model or configured_embedding_model or get_embedding_model()
+
+        if chunk_size is None:
+            chunk_size = config.knowledge.chunk_size
+        if chunk_overlap is None:
+            chunk_overlap = config.knowledge.chunk_overlap
 
         # Get user's OpenSearch client with JWT for OIDC auth
         opensearch_client = self.document_service.session_manager.get_user_opensearch_client(
@@ -508,12 +514,13 @@ class TaskProcessor:
             else embedding_model
         )
 
-        # Split into batches to avoid token limits (8191 limit, use 8000 with buffer or 2000 if it's ollama)
-        max_tokens = (
-            2000
-            if litellm_embedding_model and "ollama" in litellm_embedding_model.lower()
-            else 8000
-        )
+        litellm_model_lower = litellm_embedding_model.lower() if litellm_embedding_model else ""
+        if "watsonx" in litellm_model_lower:
+            max_tokens = 500
+        elif "ollama" in litellm_model_lower:
+            max_tokens = 2000
+        else:
+            max_tokens = 8000
 
         # Split any chunks that exceed max_tokens before embedding, ensuring chunks and embeddings align 1-to-1.
         slim_doc["chunks"] = split_chunks_by_max_tokens(
