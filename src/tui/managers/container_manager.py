@@ -643,12 +643,12 @@ class ContainerManager:
             images.append(image_data)
 
         return True, images, ""
-    
+
     def _resolve_service_name(self, compose_service: str | None, container_name: str) -> str | None:
         """Resolve a container to its canonical OpenRAG service name"""
         if compose_service and compose_service in self.expected_services:
             return compose_service
-        
+
         return self.container_name_map.get(container_name)
 
     def _process_service_json(self, service: dict, services: dict[str, ServiceInfo]) -> None:

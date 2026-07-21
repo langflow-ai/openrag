@@ -30,8 +30,11 @@ async def test_status_resolves_by_compose_label_despite_prefix_mismatch():
     """A tui-* container must resolve to RUNNING via its compose service label."""
     manager = _make_manager()
     containers = [
-        {"Names": ["tui-opensearch"], "State": "running",
-         "Labels": {"com.docker.compose.service": "opensearch"}},
+        {
+            "Names": ["tui-opensearch"],
+            "State": "running",
+            "Labels": {"com.docker.compose.service": "opensearch"},
+        },
     ]
     manager._run_runtime_command = AsyncMock(return_value=(True, json.dumps(containers), ""))
 
