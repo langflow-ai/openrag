@@ -54,5 +54,7 @@ RUN uv pip uninstall litellm ragstack-ai-knowledge-store
 # Expose ports
 EXPOSE 7860
 
+ENV LANGFLOW_SSRF_ALLOWED_HOSTS=localhost,127.0.0.1,host.docker.internal
+
 # Start the backend server
 CMD ["uv", "run", "langflow", "run", "--host", "0.0.0.0", "--port", "7860"]

@@ -221,6 +221,7 @@ services:
       # - DEFAULT_FOLDER_NAME=OpenRAG
       - HIDE_GETTING_STARTED_PROGRESS=true
       - LANGFLOW_ALLOW_CUSTOM_COMPONENTS=${LANGFLOW_ALLOW_CUSTOM_COMPONENTS:-true}
+      - LANGFLOW_SSRF_ALLOWED_HOSTS=${LANGFLOW_SSRF_ALLOWED_HOSTS:-localhost,127.0.0.1,host.docker.internal}
 
   # Azurite: local Azure Storage emulator for manually testing the Azure Blob
   # connector without a paid Azure account. Opt-in only — gated behind the

@@ -31,6 +31,7 @@ COPY flows/ /app/flows/
 COPY --chmod=755 scripts/langflow-entrypoint.py /usr/local/bin/langflow-entrypoint
 USER root
 ENV LANGFLOW_ALLOW_CUSTOM_COMPONENTS=true
+ENV LANGFLOW_SSRF_ALLOWED_HOSTS=localhost,127.0.0.1,host.docker.internal
 
 EXPOSE 7860
 
