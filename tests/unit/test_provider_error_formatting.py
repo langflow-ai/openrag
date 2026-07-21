@@ -8,8 +8,10 @@ import pytest
 
 from api.provider_validation import (
     format_provider_error_message,
+    is_generic_upstream_error,
     is_provider_credential_error,
     looks_like_provider_error_content,
+    resolve_chat_stream_error_message,
     sanitize_provider_error_content,
 )
 
@@ -51,10 +53,20 @@ def test_is_provider_credential_error():
 
 def test_looks_like_provider_error_content():
     assert looks_like_provider_error_content("Error: boom")
+    assert looks_like_provider_error_content("An unknown error occurred.")
     assert looks_like_provider_error_content(
         'Failed to authenticate: {"errorMessage":"Provided API key could not be found."}'
     )
     assert not looks_like_provider_error_content("OpenRAG is an open-source package.")
+    assert is_generic_upstream_error("An unknown error occurred.")
+
+
+def test_resolve_chat_stream_error_message_keeps_generic_without_probing():
+    # Opaque upstream text must not be rewritten into an inferred API-key error.
+    assert (
+        resolve_chat_stream_error_message("An unknown error occurred.")
+        == "An unknown error occurred."
+    )
 
 
 @pytest.mark.asyncio

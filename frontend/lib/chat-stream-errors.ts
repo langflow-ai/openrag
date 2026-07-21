@@ -90,7 +90,15 @@ export function looksLikeProviderErrorContent(text: string): boolean {
   if (trimmed.startsWith("Error:")) {
     return true;
   }
-  const lowered = trimmed.toLowerCase();
+  const lowered = trimmed.toLowerCase().replace(/\.$/, "");
+  if (
+    lowered === "an unknown error occurred" ||
+    lowered === "an error occurred while generating a response" ||
+    lowered === "unknown error occurred" ||
+    lowered === "something went wrong"
+  ) {
+    return true;
+  }
   const markers = [
     "incorrect api key",
     "invalid api key",

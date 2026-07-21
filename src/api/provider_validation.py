@@ -100,12 +100,33 @@ def is_provider_credential_error(text: str | BaseException | None) -> bool:
     return any(marker in lowered for marker in _PROVIDER_CREDENTIAL_ERROR_MARKERS)
 
 
+_GENERIC_UPSTREAM_ERROR_MARKERS = (
+    "an unknown error occurred",
+    "an error occurred while generating a response",
+    "unknown error occurred",
+    "something went wrong",
+)
+
+
+def is_generic_upstream_error(text: str | BaseException | None) -> bool:
+    """True when upstream returned an opaque error with no actionable detail."""
+    if text is None:
+        return True
+    lowered = (str(text) if not isinstance(text, str) else text).strip().lower().rstrip(".")
+    if not lowered:
+        return True
+    generics = {marker.rstrip(".") for marker in _GENERIC_UPSTREAM_ERROR_MARKERS}
+    return lowered in generics
+
+
 def looks_like_provider_error_content(text: str | None) -> bool:
     """True when assistant text looks like a provider/auth failure rather than a normal reply."""
     if not text or not text.strip():
         return False
     content = text.strip()
     if content.startswith("Error:"):
+        return True
+    if is_generic_upstream_error(content):
         return True
     lowered = content.lower()
     if any(marker in lowered for marker in _PROVIDER_ERROR_CONTENT_MARKERS):
@@ -273,6 +294,19 @@ async def resolve_ingest_error_message(exc: BaseException | str) -> str:
     if cleaned != raw and "{" not in cleaned:
         return cleaned
     return raw
+
+
+def resolve_chat_stream_error_message(text: str | BaseException | None) -> str:
+    """Sanitize chat stream errors without probing providers.
+
+    Do not infer API-key failures from opaque upstream text — that can hide the
+    real failure. Callers should break Langflow session chaining after errors so
+    the next turn is a fresh session that returns the detailed upstream message.
+    """
+    raw = (str(text) if not isinstance(text, str) else text) if text is not None else ""
+    if not raw.strip():
+        return "An error occurred while generating a response."
+    return sanitize_provider_error_content(raw)
 
 
 def _parse_json_error_message(error_text: str) -> str:

@@ -159,6 +159,12 @@ function ChatPage() {
       setWaitingTooLong(false);
       // Set chat error flag to trigger test_completion=true on health checks.
       setChatError(true);
+      // Stop chaining the failed Langflow session — continued turns often only
+      // return "An unknown error occurred." instead of the real provider error.
+      setPreviousResponseIds((prev) => ({
+        ...prev,
+        [endpoint]: null,
+      }));
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (last?.role === "assistant" && last.error) {
@@ -502,10 +508,14 @@ function ChatPage() {
       setMessages(convertedMessages);
       lastLoadedConversationRef.current = conversationData.response_id;
 
-      // Set the previous response ID for this conversation
+      // Don't chain a session that ended in an error — Langflow often collapses
+      // follow-ups to "An unknown error occurred." and hides the real failure.
+      const lastConverted = convertedMessages[convertedMessages.length - 1];
       setPreviousResponseIds((prev) => ({
         ...prev,
-        [conversationData.endpoint]: conversationData.response_id,
+        [conversationData.endpoint]: lastConverted?.error
+          ? null
+          : conversationData.response_id,
       }));
 
       // Focus input when loading a conversation
@@ -574,8 +584,14 @@ function ChatPage() {
         })()
       : undefined;
 
-    // Use passed previousResponseId if available, otherwise fall back to state
-    const responseIdToUse = previousResponseId || previousResponseIds[endpoint];
+    // After a provider/stream error, do not continue the broken Langflow session
+    // (follow-ups often collapse to "An unknown error occurred.").
+    const lastAssistant = [...messages]
+      .reverse()
+      .find((message) => message.role === "assistant");
+    const responseIdToUse = lastAssistant?.error
+      ? undefined
+      : previousResponseId || previousResponseIds[endpoint];
 
     // Use the hook to send the message
     await sendStreamingMessage({

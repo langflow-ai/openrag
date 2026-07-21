@@ -973,18 +973,14 @@ async def async_langflow_chat_stream(
 
         from api.provider_validation import (
             looks_like_provider_error_content,
-            sanitize_provider_error_content,
+            resolve_chat_stream_error_message,
         )
 
         # Credential failures are often streamed as plain assistant text with no
         # exception. Sanitize, mark as error, and emit a terminal error chunk so
         # the client shows the error card instead of raw JSON.
         if error_occurred or looks_like_provider_error_content(full_response):
-            display_text = (
-                sanitize_provider_error_content(full_response)
-                if full_response
-                else "An error occurred while generating a response."
-            )
+            display_text = resolve_chat_stream_error_message(full_response)
             conversation_state["messages"].append(
                 {
                     "role": "assistant",
@@ -1042,8 +1038,12 @@ async def async_langflow_chat_stream(
         # Log the error
         logger.error(f"Error in langflow chat stream: {e}", exc_info=True)
         error_occurred = True
-        error_text = _format_provider_error_message(e)
+        from api.provider_validation import resolve_chat_stream_error_message
+
+        error_text = resolve_chat_stream_error_message(e)
         display_text = _provider_error_display_text(error_text, full_response)
+        if full_response:
+            display_text = resolve_chat_stream_error_message(display_text)
 
         # Store the same user-facing text the live stream yields
         error_message = {
