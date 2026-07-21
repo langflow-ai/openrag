@@ -11,27 +11,44 @@ active_conversations: dict[str, dict[str, Any]] = {}
 
 def _format_provider_error_message(exc: BaseException) -> str:
     """Return a concise, user-facing provider error string from an exception."""
-    text = str(exc).strip()
-    if not text:
-        return "An error occurred while generating a response."
+    from api.provider_validation import format_provider_error_message
 
-    try:
-        from api.provider_validation import _parse_json_error_message
-    except Exception:
-        return text
+    return format_provider_error_message(exc)
 
-    parsed = _parse_json_error_message(text)
-    if parsed != text:
-        return parsed
 
-    json_start = text.find("{")
-    if json_start >= 0:
-        nested = _parse_json_error_message(text[json_start:])
-        if nested != text[json_start:]:
-            prefix = text[:json_start].rstrip(": ").strip()
-            return f"{prefix}: {nested}" if prefix else nested
+def _provider_error_display_text(error_text: str, partial_response: str = "") -> str:
+    """Combine any streamed partial answer with the provider error for display/history."""
+    partial = (partial_response or "").strip()
+    if partial:
+        return f"{partial}\n\n{error_text}"
+    return error_text
 
-    return text
+
+def _conversation_thread_in_memory(user_id: str, response_id: str | None) -> bool:
+    """True when response_id is already keyed in the in-process conversation cache."""
+    return bool(
+        response_id
+        and user_id in active_conversations
+        and response_id in active_conversations[user_id]
+    )
+
+
+def _resolve_error_store_id(
+    response_id: str | None,
+    previous_response_id: str | None,
+    *,
+    previous_loaded_from_memory: bool,
+) -> str | None:
+    """Persist errors only onto a real stream id or a thread already loaded in memory.
+
+    Using previous_response_id after a cold get_conversation_thread() would overwrite
+    that conversation's metadata with a freshly built empty state.
+    """
+    if response_id:
+        return response_id
+    if previous_loaded_from_memory and previous_response_id:
+        return previous_response_id
+    return None
 
 
 def _stream_error_chunk(message: str) -> bytes:
@@ -530,6 +547,9 @@ async def async_chat_stream(
     previous_response_id: str = None,
     filter_id: str = None,
 ):
+    previous_loaded_from_memory = _conversation_thread_in_memory(
+        user_id, previous_response_id
+    )
     # Get the specific conversation thread (or create new one)
     conversation_state = get_conversation_thread(user_id, previous_response_id)
 
@@ -596,22 +616,33 @@ async def async_chat_stream(
     except Exception as e:
         logger.error(f"Error in chat stream: {e}", exc_info=True)
         error_text = _format_provider_error_message(e)
+        display_text = _provider_error_display_text(error_text, full_response)
         conversation_state["messages"].append(
             {
                 "role": "assistant",
-                "content": error_text,
+                "content": display_text,
                 "timestamp": datetime.now(),
                 "error": True,
             }
         )
-        if not response_id:
-            response_id = f"error_{user_id}_{int(datetime.now().timestamp())}"
-        try:
-            conversation_state["last_activity"] = datetime.now()
-            await store_conversation_thread(user_id, response_id, conversation_state)
-        except Exception as store_error:
-            logger.error(f"Failed to store error conversation: {store_error}")
-        yield _stream_error_chunk(error_text)
+        # Only persist onto a real provider/session id, or a thread already in memory.
+        # Never invent synthetic error_* ids — they pollute the conversation list.
+        store_id = _resolve_error_store_id(
+            response_id,
+            previous_response_id,
+            previous_loaded_from_memory=previous_loaded_from_memory,
+        )
+        if store_id:
+            try:
+                conversation_state["last_activity"] = datetime.now()
+                await store_conversation_thread(user_id, store_id, conversation_state)
+            except Exception as store_error:
+                logger.error(f"Failed to store error conversation: {store_error}")
+        else:
+            logger.debug(
+                "Skipping persistence for failed chat stream with no safe store id"
+            )
+        yield _stream_error_chunk(display_text)
 
 
 # Async langflow function with conversation storage (non-streaming)
@@ -830,6 +861,9 @@ async def async_langflow_chat_stream(
         previous_response_id=previous_response_id,
     )
 
+    previous_loaded_from_memory = _conversation_thread_in_memory(
+        user_id, previous_response_id
+    )
     # Get the specific conversation thread (or create new one)
     conversation_state = get_conversation_thread(user_id, previous_response_id)
 
@@ -923,31 +957,39 @@ async def async_langflow_chat_stream(
         logger.error(f"Error in langflow chat stream: {e}", exc_info=True)
         error_occurred = True
         error_text = _format_provider_error_message(e)
+        display_text = _provider_error_display_text(error_text, full_response)
 
         # Store the same user-facing text the live stream yields
         error_message = {
             "role": "assistant",
-            "content": error_text,
+            "content": display_text,
             "timestamp": datetime.now(),
             "error": True,
         }
         conversation_state["messages"].append(error_message)
 
-        # Try to store the conversation with error message
-        # Use a temporary response_id if we don't have one
-        if not response_id:
-            response_id = f"error_{user_id}_{int(datetime.now().timestamp())}"
-
-        try:
-            conversation_state["last_activity"] = datetime.now()
-            await store_conversation_thread(user_id, response_id, conversation_state)
-            logger.debug(f"Stored conversation with error for user {user_id}")
-        except Exception as store_error:
-            logger.error(f"Failed to store error conversation: {store_error}")
+        # Only persist onto a real provider/session id, or a thread already in memory.
+        # Never invent synthetic error_* ids — they pollute the conversation list.
+        store_id = _resolve_error_store_id(
+            response_id,
+            previous_response_id,
+            previous_loaded_from_memory=previous_loaded_from_memory,
+        )
+        if store_id:
+            try:
+                conversation_state["last_activity"] = datetime.now()
+                await store_conversation_thread(user_id, store_id, conversation_state)
+                logger.debug(f"Stored conversation with error for user {user_id}")
+            except Exception as store_error:
+                logger.error(f"Failed to store error conversation: {store_error}")
+        else:
+            logger.debug(
+                "Skipping persistence for failed langflow stream with no safe store id"
+            )
 
         # Yield a final error chunk so the client receives the provider message
         # instead of seeing a dropped stream / generic network failure.
-        yield _stream_error_chunk(error_text)
+        yield _stream_error_chunk(display_text)
 
 
 async def delete_user_conversation(user_id: str, response_id: str) -> bool:

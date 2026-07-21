@@ -225,7 +225,9 @@ export function useChatStreaming({
       }
 
       if (providerStreamError) {
-        throw new Error(providerStreamError);
+        throw Object.assign(new Error(providerStreamError), {
+          partialContent: content.value,
+        });
       }
 
       if (
@@ -293,9 +295,23 @@ export function useChatStreaming({
         errorContent =
           "Network error. Please check your connection and try again.";
       }
-      // For all other errors (including Langflow errors), use the actual error message
 
-      onError?.(error as Error);
+      // Keep any mid-stream partial answer visible above the provider error.
+      const partialContent =
+        typeof (error as { partialContent?: unknown }).partialContent ===
+        "string"
+          ? (error as { partialContent: string }).partialContent.trim()
+          : "";
+      if (
+        partialContent &&
+        !errorContent.startsWith(partialContent) &&
+        !errorMessage?.includes("timed out") &&
+        !errorMessage?.includes("No response") &&
+        !errorMessage?.includes("NetworkError") &&
+        !errorMessage?.includes("Failed to fetch")
+      ) {
+        errorContent = `${partialContent}\n\n${errorContent}`;
+      }
 
       const errorMessageObj: Message = {
         role: "assistant",
@@ -305,8 +321,13 @@ export function useChatStreaming({
         error: true,
       };
 
-      // Pass error message to onComplete so it gets added to chat history
-      // This ensures errors appear immediately and persist on page refresh
+      // onError owns side effects + display fallback; onComplete still receives the
+      // error message for callers that persist/render from completion alone.
+      onError?.(
+        Object.assign(new Error(errorContent), {
+          partialContent,
+        }) as Error,
+      );
       if (!streamAbortRef.current?.signal.aborted) {
         onComplete?.(errorMessageObj, null);
       }

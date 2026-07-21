@@ -6,6 +6,28 @@ from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+
+def format_provider_error_message(exc: BaseException | str) -> str:
+    """Return a concise, user-facing provider error string from an exception or text."""
+    text = (str(exc) if not isinstance(exc, str) else exc).strip()
+    if not text:
+        return "An error occurred while generating a response."
+
+    parsed = _parse_json_error_message(text)
+    if parsed != text:
+        return parsed
+
+    json_start = text.find("{")
+    if json_start >= 0:
+        nested = _parse_json_error_message(text[json_start:])
+        if nested != text[json_start:]:
+            prefix = text[:json_start].rstrip(": ").strip()
+            return f"{prefix}: {nested}" if prefix else nested
+
+    return text
+
+
 def _parse_json_error_message(error_text: str) -> str:
     """Parse JSON error message and extract just the message field."""
     try:
@@ -35,6 +57,10 @@ def _parse_json_error_message(error_text: str) -> str:
             # Direct message field
             if "message" in error_data:
                 return error_data["message"]
+
+            # IBM IAM format: {"errorCode": "...", "errorMessage": "...", "context": {...}}
+            if "errorMessage" in error_data:
+                return error_data["errorMessage"]
             
             # Generic format: {"detail": "..."}
             if "detail" in error_data:
@@ -82,11 +108,15 @@ def _extract_error_details(response: httpx.Response) -> str:
                             details += f" (code: {code})"
                         return details
             
-            # Anthropic format: {"error": {"message": "...", "type": "..."}}
+            # Anthropic / generic: {"message": "..."}
             if "message" in error_data:
                 return error_data["message"]
+
+            # IBM IAM format: {"errorCode": "...", "errorMessage": "...", "context": {...}}
+            if "errorMessage" in error_data:
+                return error_data["errorMessage"]
             
-            # Generic format: {"message": "..."}
+            # Generic format: {"detail": "..."}
             if "detail" in error_data:
                 return error_data["detail"]
         

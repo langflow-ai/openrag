@@ -111,6 +111,14 @@ function ChatPage() {
   } = useChatStreaming({
     endpoint: apiEndpoint,
     onComplete: (message, responseId) => {
+      if (message.error) {
+        // Error display is owned by onError so a missing onComplete still shows
+        // something, and we avoid duplicate appends from batched setState.
+        setLoading(false);
+        setWaitingTooLong(false);
+        return;
+      }
+
       trackLLMCall({
         mode: "chat",
         model: settings?.agent?.llm_model,
@@ -146,9 +154,23 @@ function ChatPage() {
       setLoading(false);
       setWaitingTooLong(false);
       // Set chat error flag to trigger test_completion=true on health checks.
-      // Do not append a message here — useChatStreaming already calls onComplete
-      // with the provider/stream error content.
       setChatError(true);
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (last?.role === "assistant" && last.error) {
+          return prev;
+        }
+        return [
+          ...prev,
+          {
+            role: "assistant",
+            content:
+              error.message || "An error occurred while generating a response.",
+            timestamp: new Date(),
+            error: true,
+          },
+        ];
+      });
     },
   });
 

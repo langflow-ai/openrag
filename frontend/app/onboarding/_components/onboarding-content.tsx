@@ -148,13 +148,18 @@ export function OnboardingContent({
 
   const { streamingMessage, isLoading, sendMessage } = useChatStreaming({
     onComplete: async (message, newResponseId) => {
+      setAssistantMessage(message);
+      // Errors are display-only during onboarding — do not track or persist them.
+      if (message.error) {
+        return;
+      }
+
       trackLLMCall({
         mode: "onboarding",
         model: settings?.agent?.llm_model,
         inputTokens: message.usage?.input_tokens,
         outputTokens: message.usage?.output_tokens,
       });
-      setAssistantMessage(message);
       // Save assistant message to backend
       await updateOnboardingMutation.mutateAsync({
         assistant_message: {
