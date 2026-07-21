@@ -4,7 +4,7 @@ import json
 import time
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 import httpx
 
@@ -307,7 +307,7 @@ class LangflowFileService:
                 error=str(e),
             )
 
-    async def _raise_resolved_ingest_error(self, exc: BaseException) -> None:
+    async def _raise_resolved_ingest_error(self, exc: BaseException) -> NoReturn:
         """Re-raise with a credential message when Langflow disconnects on bad API keys."""
         from api.provider_validation import resolve_ingest_error_message
 
