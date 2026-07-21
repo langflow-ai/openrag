@@ -29,11 +29,7 @@ async def list_keys_endpoint(
 
     GET /keys
     """
-    result = await api_key_service.list_keys(
-        user.db_user_id, 
-        user.user_id,
-        user.jwt_token
-    )
+    result = await api_key_service.list_keys(user.db_user_id, user.user_id, user.jwt_token)
     return JSONResponse(result)
 
 

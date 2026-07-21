@@ -230,7 +230,7 @@ class APIKeyService:
 
                 # Keyed-HMAC digest first, then the pre-HMAC legacy digest
                 # so old keys migrated with a legacy hash still validate.
-                # Look up in *any* state: a SQL row is authoritative, so a 
+                # Look up in *any* state: a SQL row is authoritative, so a
                 # revoked/tombstoned key must be found and rejected here rather
                 # than slipping through to OpenSearch fallback (whose copy
                 # is never updated on revoke/delete) and re-authenticating.
@@ -266,12 +266,9 @@ class APIKeyService:
         except Exception as e:
             logger.error("Failed to validate API key", error=str(e))
             return None
-            
+
     async def list_keys(
-        self, 
-        user_id: str,
-        oauth_subject: str,
-        jwt_token: str | None = None
+        self, user_id: str, oauth_subject: str, jwt_token: str | None = None
     ) -> dict[str, Any]:
         """
         List all active (non-revoked) API keys for a user (without the actual keys).
@@ -415,11 +412,11 @@ class APIKeyService:
                     return {"success": False, "error": "Key not found"}
                 if row.user_id != user_id:
                     return {"success": False, "error": "Not authorized to delete this key"}
-                
+
                 # since a migrated key still has a live OpenSearch doc and we never write to
-                # OpenSearch on delete we should Tombstone instead of hard-deleting. 
+                # OpenSearch on delete we should Tombstone instead of hard-deleting.
                 # Dropping the sql row would let validate_key's OpenSearch fallback re-auth the key.
-                # TODO: once we complete migration to sql (remove opensearch read fallback), 
+                # TODO: once we complete migration to sql (remove opensearch read fallback),
                 # we should update this to use a proper sql delete instead of soft delete
                 await repo.revoke(key_id)
                 await session.commit()

@@ -1,14 +1,14 @@
 import sys
 from pathlib import Path
 from unittest.mock import AsyncMock
-from services.api_key_service import APIKeyService
-
 
 import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 from sqlmodel import SQLModel
+
+from services.api_key_service import APIKeyService
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src"
@@ -145,7 +145,9 @@ async def test_validate_key_accepts_and_migrates_legacy_hash(session_factory, mo
 
 
 @pytest.mark.asyncio
-async def test_validate_key_opensearch_fallback_accepts_and_migrates_legacy_has(session_factory, monkeypatch) -> None:
+async def test_validate_key_opensearch_fallback_accepts_and_migrates_legacy_has(
+    session_factory, monkeypatch
+) -> None:
     monkeypatch.setattr("config.settings.SESSION_SECRET", "unit-test-session-secret")
 
     service = APIKeyService(session_factory=session_factory)
@@ -223,7 +225,9 @@ async def test_list_keys_returns_only_non_revoked_api_keys(session_factory, monk
 
 
 @pytest.mark.asyncio
-async def test_list_keys_opensearch_fallback_when_sqlite_empty(session_factory, monkeypatch) -> None:
+async def test_list_keys_opensearch_fallback_when_sqlite_empty(
+    session_factory, monkeypatch
+) -> None:
     service = APIKeyService(session_factory=session_factory)
 
     opensearch_client = AsyncMock()
@@ -265,13 +269,23 @@ async def test_list_keys_opensearch_fallback_when_sqlite_empty(session_factory, 
 
 
 @pytest.mark.asyncio
-async def test_list_keys_all_revoked_returns_empty_without_fallback(session_factory, monkeypatch) -> None:
+async def test_list_keys_all_revoked_returns_empty_without_fallback(
+    session_factory, monkeypatch
+) -> None:
     from db.models import ApiKey
 
     service = APIKeyService(session_factory=session_factory)
     async with session_factory() as session:
-        session.add(ApiKey(id="k1", user_id="user-1", name="revoked",
-                           key_hash="h1", key_prefix="orag_a", revoked=True))
+        session.add(
+            ApiKey(
+                id="k1",
+                user_id="user-1",
+                name="revoked",
+                key_hash="h1",
+                key_prefix="orag_a",
+                revoked=True,
+            )
+        )
         await session.commit()
 
     opensearch_client = AsyncMock()

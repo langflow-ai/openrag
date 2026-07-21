@@ -17,12 +17,10 @@ class ApiKeyRepo:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    # TODO: once we remove opensearch fallback for reads, we can revert this to 
+    # TODO: once we remove opensearch fallback for reads, we can revert this to
     # get_by_hash to only return non revoked keys
     async def get_by_hash_any_state(self, key_hash: str) -> ApiKey | None:
-        result = await self.session.execute(
-            select(ApiKey).where(col(ApiKey.key_hash) == key_hash)
-        )
+        result = await self.session.execute(select(ApiKey).where(col(ApiKey.key_hash) == key_hash))
         return result.scalar_one_or_none()
 
     async def get_by_id(self, key_id: str) -> ApiKey | None:
