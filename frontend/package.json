@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node build.js",
     "start": "next start",
     "lint": "biome check .",
     "typecheck": "tsc --noEmit",
