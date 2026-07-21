@@ -176,8 +176,9 @@ class LangflowHistoryService:
                     }
                     conversations.append(conversation)
 
-            # Sort by last activity (most recent first)
-            conversations.sort(key=lambda c: c.get("last_activity", ""), reverse=True)
+            # Sort by last activity (most recent first). Normalize None so mixed
+            # None/str timestamps do not raise TypeError during comparison.
+            conversations.sort(key=lambda c: c.get("last_activity") or "", reverse=True)
 
             return {
                 "conversations": conversations,
