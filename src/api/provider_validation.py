@@ -1,7 +1,9 @@
 """Provider validation utilities for testing API keys and models during onboarding."""
 
 import json
+
 import httpx
+
 from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 
@@ -293,7 +295,7 @@ async def _test_openai_lightweight_health(api_key: str) -> None:
 
     except httpx.TimeoutException:
         logger.error("OpenAI lightweight health check timed out")
-        raise Exception("OpenAI API request timed out")
+        raise Exception("OpenAI API request timed out") from None
     except Exception as e:
         logger.error(f"OpenAI lightweight health check failed: {str(e)}")
         raise
@@ -364,7 +366,7 @@ async def _test_openai_completion_with_tools(api_key: str, llm_model: str) -> No
 
     except httpx.TimeoutException:
         logger.error("OpenAI completion test timed out")
-        raise Exception("Request timed out")
+        raise Exception("Request timed out") from None
     except Exception as e:
         logger.error(f"OpenAI completion test failed: {str(e)}")
         raise
@@ -404,7 +406,7 @@ async def _test_openai_embedding(api_key: str, embedding_model: str) -> None:
 
     except httpx.TimeoutException:
         logger.error("OpenAI embedding test timed out")
-        raise Exception("Request timed out")
+        raise Exception("Request timed out") from None
     except Exception as e:
         logger.error(f"OpenAI embedding test failed: {str(e)}")
         raise
@@ -445,7 +447,7 @@ async def _test_watsonx_lightweight_health(
 
     except httpx.TimeoutException:
         logger.error("WatsonX lightweight health check timed out")
-        raise Exception("WatsonX API request timed out")
+        raise Exception("WatsonX API request timed out") from None
     except Exception as e:
         logger.error(f"WatsonX lightweight health check failed: {str(e)}")
         raise
@@ -533,7 +535,7 @@ async def _test_watsonx_completion_with_tools(
 
     except httpx.TimeoutException:
         logger.error("IBM Watson completion test timed out")
-        raise Exception("Request timed out")
+        raise Exception("Request timed out") from None
     except Exception as e:
         logger.error(f"IBM Watson completion test failed: {str(e)}")
         # If the error message contains JSON, parse it to extract just the message
@@ -542,7 +544,7 @@ async def _test_watsonx_completion_with_tools(
             json_part = error_str.split("IBM Watson API error: ", 1)[1]
             parsed_message = _parse_json_error_message(json_part)
             if parsed_message != json_part:
-                raise Exception(f"IBM Watson API error: {parsed_message}")
+                raise Exception(f"IBM Watson API error: {parsed_message}") from e
         raise
 
 
@@ -610,7 +612,7 @@ async def _test_watsonx_embedding(
 
     except httpx.TimeoutException:
         logger.error("IBM Watson embedding test timed out")
-        raise Exception("Request timed out")
+        raise Exception("Request timed out") from None
     except Exception as e:
         logger.error(f"IBM Watson embedding test failed: {str(e)}")
         # If the error message contains JSON, parse it to extract just the message
@@ -619,7 +621,7 @@ async def _test_watsonx_embedding(
             json_part = error_str.split("IBM Watson API error: ", 1)[1]
             parsed_message = _parse_json_error_message(json_part)
             if parsed_message != json_part:
-                raise Exception(f"IBM Watson API error: {parsed_message}")
+                raise Exception(f"IBM Watson API error: {parsed_message}") from e
         raise
 
 
@@ -647,7 +649,7 @@ async def _test_ollama_lightweight_health(endpoint: str) -> None:
 
     except httpx.TimeoutException:
         logger.error("Ollama lightweight health check timed out")
-        raise Exception("Ollama endpoint timed out")
+        raise Exception("Ollama endpoint timed out") from None
     except Exception as e:
         logger.error(f"Ollama lightweight health check failed: {str(e)}")
         raise
@@ -702,7 +704,7 @@ async def _test_ollama_completion_with_tools(llm_model: str, endpoint: str) -> N
 
     except httpx.TimeoutException:
         logger.error("Ollama completion test timed out")
-        raise httpx.TimeoutException("Ollama is busy or model inference timed out")
+        raise httpx.TimeoutException("Ollama is busy or model inference timed out") from None
     except Exception as e:
         logger.error(f"Ollama completion test failed: {str(e)}")
         raise
@@ -739,7 +741,7 @@ async def _test_ollama_embedding(embedding_model: str, endpoint: str) -> None:
 
     except httpx.TimeoutException:
         logger.error("Ollama embedding test timed out")
-        raise httpx.TimeoutException("Ollama is busy or embedding generation timed out")
+        raise httpx.TimeoutException("Ollama is busy or embedding generation timed out") from None
     except Exception as e:
         logger.error(f"Ollama embedding test failed: {str(e)}")
         raise
@@ -775,7 +777,7 @@ async def _test_anthropic_lightweight_health(api_key: str) -> None:
 
     except httpx.TimeoutException:
         logger.error("Anthropic lightweight health check timed out")
-        raise Exception("Anthropic API request timed out")
+        raise Exception("Anthropic API request timed out") from None
     except Exception as e:
         logger.error(f"Anthropic lightweight health check failed: {str(e)}")
         raise
@@ -832,7 +834,7 @@ async def _test_anthropic_completion_with_tools(api_key: str, llm_model: str) ->
 
     except httpx.TimeoutException:
         logger.error("Anthropic completion test timed out")
-        raise Exception("Request timed out")
+        raise Exception("Request timed out") from None
     except Exception as e:
         logger.error(f"Anthropic completion test failed: {str(e)}")
         raise
