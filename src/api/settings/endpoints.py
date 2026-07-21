@@ -1225,38 +1225,36 @@ async def onboarding(
                 )
                 from main import init_index
                 from utils.run_mode_utils import (
+                    get_run_mode,
                     is_run_mode_on_prem,
-                    is_run_mode_oss,
                     is_run_mode_saas,
                 )
 
                 # Choose the admin identity for index/security setup, by run mode:
-                #   saas    -> platform service token (JWT); admin from its claim
-                #   on_prem -> OpenSearch basic auth; OpenSearch username as admin
-                #   oss     -> OpenSearch basic auth; OpenSearch username as admin
+                #   saas/on_prem -> platform service token (JWT); admin from its claim
+                #   oss          -> OpenSearch basic auth; OpenSearch username as admin
                 # The matching client comes from the shared run-mode-aware helper.
                 admin_username = None
-                if is_run_mode_saas():
+                if is_run_mode_saas() or is_run_mode_on_prem():
                     service_token = get_openrag_service_token()
-                    if service_token:
-                        # Prefer the platform service token so onboarding pins the
-                        # same admin identity as the startup security bootstrap
-                        # (see app/lifespan.py).
-                        from auth.ibm_auth import admin_username_from_service_jwt
+                    if not service_token:
+                        raise RuntimeError(
+                            "OPENRAG_SERVICE_TOKEN is required to determine the "
+                            "OpenSearch admin identity during onboarding in "
+                            f"{get_run_mode()} mode."
+                        )
+                    # Prefer the platform service token so onboarding pins the
+                    # same admin identity as the startup security bootstrap
+                    # (see app/lifespan.py).
+                    from auth.ibm_auth import admin_username_from_service_jwt
 
-                        admin_username = admin_username_from_service_jwt(service_token)
-                        if not admin_username:
-                            raise RuntimeError(
-                                "OPENRAG_SERVICE_TOKEN has no 'username' or 'sub' claim; "
-                                "cannot determine OpenSearch admin during onboarding"
-                            )
-                    elif user:
-                        # TODO: backward-compatibility fallback for saas deployments
-                        # without OPENRAG_SERVICE_TOKEN — pins the onboarding user as
-                        # admin instead of the platform service identity. Remove once
-                        # the service token is always provided.
-                        admin_username = user.user_id
-                elif is_run_mode_on_prem() or is_run_mode_oss():
+                    admin_username = admin_username_from_service_jwt(service_token)
+                    if not admin_username:
+                        raise RuntimeError(
+                            "OPENRAG_SERVICE_TOKEN has no 'username' or 'sub' claim; "
+                            "cannot determine OpenSearch admin during onboarding"
+                        )
+                else:
                     admin_username = get_opensearch_username()
 
                 opensearch_client = app_clients.create_index_admin_opensearch_client(
