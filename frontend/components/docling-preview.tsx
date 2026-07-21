@@ -585,7 +585,9 @@ type ParsedItem =
 
 /**
  * Walks the DoclingDocument body in reading order, resolving refs to texts,
- * tables, and pictures (recursing through groups). Falls back to concatenating
+ * tables, and pictures. Recurses through groups and through children nested
+ * under text/table/picture nodes (common for HTML, where Docling nests body
+ * content under title/section_header parents). Falls back to concatenating
  * the top-level arrays when no body ordering is present.
  * Stops once `limit` items are collected (used to cap the left-pane DOM).
  */
@@ -613,10 +615,14 @@ function collectParsedItems(
       }
       if (path.startsWith("#/texts")) {
         result.push({ kind: "text", id: path, node });
+        // HTML Docling trees nest following content under heading nodes.
+        walk(node.children);
       } else if (path.startsWith("#/tables")) {
         result.push({ kind: "table", id: path, node });
+        walk(node.children);
       } else if (path.startsWith("#/pictures")) {
         result.push({ kind: "picture", id: path, node });
+        walk(node.children);
       } else if (path.startsWith("#/groups")) {
         walk(node.children);
       }
