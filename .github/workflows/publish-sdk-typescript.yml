@@ -2,6 +2,8 @@ name: Publish TypeScript SDK
 
 on:
   workflow_dispatch:
+  workflow_call:
+
 
 jobs:
   publish:
@@ -64,6 +66,8 @@ jobs:
       - name: Publish to npm
         if: steps.check.outputs.exists == 'false'
         run: npm publish --access public --provenance --tag ${{ steps.tag.outputs.tag }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Skip publish (version exists)
         if: steps.check.outputs.exists == 'true'

@@ -280,3 +280,22 @@ jobs:
           uv publish
         env:
           UV_PUBLISH_TOKEN: ${{ secrets.UV_PUBLISH_TOKEN }}
+
+  publish-sdk-python:
+    needs: [build-python-packages, check-version]
+    if: needs.check-version.outputs.skip_release != 'true'
+    uses: ./.github/workflows/publish-sdk-python.yml
+    secrets: inherit
+
+  publish-sdk-typescript:
+    needs: [build-python-packages, check-version]
+    if: needs.check-version.outputs.skip_release != 'true'
+    uses: ./.github/workflows/publish-sdk-typescript.yml
+    secrets: inherit
+
+  publish-sdk-mcp:
+    needs: [build-python-packages, check-version]
+    if: needs.check-version.outputs.skip_release != 'true'
+    uses: ./.github/workflows/publish-mcp.yml
+    secrets: inherit
+

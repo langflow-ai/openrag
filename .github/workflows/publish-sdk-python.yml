@@ -2,6 +2,8 @@ name: Publish Python SDK
 
 on:
   workflow_dispatch:
+  workflow_call:
+
 
 jobs:
   publish:
