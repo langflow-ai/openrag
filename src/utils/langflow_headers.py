@@ -137,7 +137,9 @@ async def add_provider_credentials_to_headers(
 
 def build_model_provider_headers(config, embedding_model: str | None = None) -> dict[str, str]:
     """Build Langflow global variable headers for selected embedding and language models/providers."""
-    emb_model = embedding_model or getattr(getattr(config, "knowledge", None), "embedding_model", None)
+    emb_model = embedding_model or getattr(
+        getattr(config, "knowledge", None), "embedding_model", None
+    )
     emb_provider = getattr(getattr(config, "knowledge", None), "embedding_provider", None)
     agent = getattr(config, "agent", None)
     llm_model = getattr(agent, "llm_model", None)

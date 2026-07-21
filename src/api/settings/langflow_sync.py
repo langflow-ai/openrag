@@ -103,14 +103,16 @@ def _required_generic_global_values(config) -> dict[str, str]:
         "OPENRAG_INGEST_RUN_ID": "OPENRAG_INGEST_RUN_ID",
         "OPENRAG_INGEST_TOKEN": "OPENRAG_INGEST_TOKEN",
         "OPENRAG_INGEST_URL": "OPENRAG_INGEST_URL",
-        "OPENSEARCH_INDEX_NAME": _string_value(getattr(knowledge, "index_name", None)) or "documents",
+        "OPENSEARCH_INDEX_NAME": _string_value(getattr(knowledge, "index_name", None))
+        or "documents",
         "OPENSEARCH_URL": settings.OPENSEARCH_URL,
         "SELECTED_EMBEDDING_MODEL": _string_value(getattr(knowledge, "embedding_model", None))
         or "text-embedding-3-small",
         "SELECTED_EMBEDDING_MODEL_PROVIDER": map_provider(
             getattr(knowledge, "embedding_provider", None) or "openai"
         ),
-        "SELECTED_LANGUAGE_MODEL": _string_value(getattr(agent, "llm_model", None)) or "gpt-4o-mini",
+        "SELECTED_LANGUAGE_MODEL": _string_value(getattr(agent, "llm_model", None))
+        or "gpt-4o-mini",
         "SELECTED_LANGUAGE_MODEL_PROVIDER": map_provider(
             getattr(agent, "llm_provider", None) or "openai"
         ),

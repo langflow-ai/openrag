@@ -108,7 +108,10 @@ def parse_knowledge_chunks(results: Any) -> list[dict]:
             try:
                 items = json.loads(results["content"])
             except Exception as e:
-                logger.warning(f"Failed to parse content JSON in parse_knowledge_chunks: {e}", content_preview=str(results["content"])[:200])
+                logger.warning(
+                    f"Failed to parse content JSON in parse_knowledge_chunks: {e}",
+                    content_preview=str(results["content"])[:200],
+                )
         else:
             items = [results]
     elif isinstance(results, list):
@@ -117,7 +120,10 @@ def parse_knowledge_chunks(results: Any) -> list[dict]:
         try:
             items = json.loads(results)
         except Exception as e:
-            logger.warning(f"Failed to parse raw string JSON in parse_knowledge_chunks: {e}", raw_preview=str(results)[:200])
+            logger.warning(
+                f"Failed to parse raw string JSON in parse_knowledge_chunks: {e}",
+                raw_preview=str(results)[:200],
+            )
 
     if not isinstance(items, list):
         return []
