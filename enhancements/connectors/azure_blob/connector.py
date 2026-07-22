@@ -8,8 +8,9 @@ so the event loop stays responsive while staying consistent with the cached
 client lifecycle used by the AWS S3 / IBM COS connectors.
 
 DLS (v1): owner-based. The connector returns an empty-principal ``DocumentACL``;
-``service.process_connector_document`` assigns ``owner`` to the ingesting
-OpenRAG user. Container→group principal mapping is a planned fast-follow.
+``TaskProcessor.process_document_standard`` (``models/processors.py``) assigns
+``owner`` to the ingesting OpenRAG user. Container→group principal mapping is
+a planned fast-follow.
 """
 
 import asyncio
@@ -335,7 +336,7 @@ class AzureBlobConnector(BaseConnector):
         filename = basename(blob_name) or blob_name
 
         # Owner-based DLS (v1): no per-blob principals — ownership is assigned to
-        # the ingesting OpenRAG user by service.process_connector_document.
+        # the ingesting OpenRAG user by TaskProcessor.process_document_standard.
         acl = DocumentACL(owner=None, allowed_users=[], allowed_groups=[], allowed_principals=[])
 
         return ConnectorDocument(
