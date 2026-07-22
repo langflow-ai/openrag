@@ -201,7 +201,7 @@ async def langflow_history_endpoint(
         return JSONResponse(history)
     except Exception as e:
         logger.exception("[CHAT] Failed to get langflow history")
-        return JSONResponse({"error": f"Failed to get langflow history: {str(e)}"}, status_code=500)
+        return JSONResponse({"error": "Failed to get langflow history"}, status_code=500)
 
 
 async def delete_session_endpoint(
@@ -222,5 +222,5 @@ async def delete_session_endpoint(
                 {"error": result.get("error", "Failed to delete session")}, status_code=500
             )
     except Exception as e:
-        logger.exception("[CHAT] Failed to delete session")
+        logger.exception("Error deleting session")
         return JSONResponse({"error": "Failed to delete session"}, status_code=500)
