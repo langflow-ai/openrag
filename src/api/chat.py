@@ -188,7 +188,7 @@ async def chat_history_endpoint(
         return JSONResponse(history)
     except Exception as e:
         logger.exception("[CHAT] Failed to get chat history")
-        return JSONResponse({"error": f"Failed to get chat history: {str(e)}"}, status_code=500)
+        return JSONResponse({"error": "Failed to get chat history"}, status_code=500)
 
 
 async def langflow_history_endpoint(
