@@ -157,11 +157,18 @@ class ExportDoclingDocumentComponent(Component):
                         continue
 
                     # Fall back to whole-document export (no page granularity)
-                    content = doc.export_to_markdown(
-                        image_mode=image_mode,
-                        image_placeholder=self.md_image_placeholder,
-                        page_break_placeholder=self.md_page_break_placeholder,
-                    )
+                    try:
+                        content = doc.export_to_markdown(
+                            image_mode=image_mode,
+                            image_placeholder=self.md_image_placeholder,
+                            page_break_placeholder=self.md_page_break_placeholder,
+                        )
+                    except TypeError:
+                        # Older docling-core versions lack page_break_placeholder
+                        content = doc.export_to_markdown(
+                            image_mode=image_mode,
+                            image_placeholder=self.md_image_placeholder,
+                        )
                 elif self.export_format == "HTML":
                     content = doc.export_to_html(image_mode=image_mode)
                 elif self.export_format == "Plaintext":

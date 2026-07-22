@@ -51,7 +51,9 @@ def test_saas_uses_service_token(monkeypatch):
     assert service._get_opensearch_client() is sentinel
 
 
-def test_saas_without_service_token_returns_none(monkeypatch):
+def test_saas_without_service_token_raises(monkeypatch):
+    import pytest
+
     from config import settings
     from utils import run_mode_utils
 
@@ -59,7 +61,46 @@ def test_saas_without_service_token_returns_none(monkeypatch):
     monkeypatch.setattr(settings, "get_openrag_service_token", lambda: None)
 
     service = _make_service()
-    assert service._get_opensearch_client() is None
+    with pytest.raises(RuntimeError):
+        service._get_opensearch_client()
+
+
+def test_on_prem_uses_service_token(monkeypatch):
+    from config import settings
+    from utils import run_mode_utils
+
+    sentinel = object()
+    monkeypatch.setattr(run_mode_utils, "is_run_mode_saas", lambda: False)
+    monkeypatch.setattr(run_mode_utils, "is_run_mode_on_prem", lambda: True)
+    monkeypatch.setattr(settings, "get_openrag_service_token", lambda: "svc-jwt-token")
+    captured = {}
+
+    def fake_from_jwt(token):
+        captured["token"] = token
+        return sentinel
+
+    monkeypatch.setattr(settings.clients, "create_opensearch_client_from_jwt", fake_from_jwt)
+
+    service = _make_service()
+    client = service._get_opensearch_client()
+
+    assert client is sentinel
+    assert captured["token"] == "svc-jwt-token"
+
+
+def test_on_prem_without_service_token_raises(monkeypatch):
+    import pytest
+
+    from config import settings
+    from utils import run_mode_utils
+
+    monkeypatch.setattr(run_mode_utils, "is_run_mode_saas", lambda: False)
+    monkeypatch.setattr(run_mode_utils, "is_run_mode_on_prem", lambda: True)
+    monkeypatch.setattr(settings, "get_openrag_service_token", lambda: None)
+
+    service = _make_service()
+    with pytest.raises(RuntimeError):
+        service._get_opensearch_client()
 
 
 def test_oss_uses_basic_auth(monkeypatch):
@@ -86,12 +127,12 @@ def test_oss_uses_basic_auth(monkeypatch):
     assert captured["creds"] == ("admin", "secret")
 
 
-def test_on_prem_without_password_returns_none(monkeypatch):
+def test_oss_without_password_returns_none(monkeypatch):
     from config import settings
     from utils import run_mode_utils
 
     monkeypatch.setattr(run_mode_utils, "is_run_mode_saas", lambda: False)
-    monkeypatch.setattr(run_mode_utils, "is_run_mode_on_prem", lambda: True)
+    monkeypatch.setattr(run_mode_utils, "is_run_mode_on_prem", lambda: False)
     monkeypatch.setattr(settings, "get_opensearch_username", lambda: "admin")
     monkeypatch.setattr(settings, "get_opensearch_password", lambda: None)
 

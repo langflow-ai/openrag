@@ -60,6 +60,7 @@ from config.config_manager import ALLOWED_INDEX_NAME_PREFIXES, is_permitted_inde
 from config.settings import (
     DEFAULT_DOCS_URL,
     ENVIRONMENT,
+    HF_HOME,
     INGEST_SAMPLE_DATA,
     LANGFLOW_CHAT_FLOW_ID,
     LANGFLOW_INGEST_FLOW_ID,
@@ -70,6 +71,7 @@ from config.settings import (
     OPENRAG_INGEST_VIA_CHAT,
     OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS,
     OPENRAG_SHOW_SHARED_UPLOAD_TOGGLE,
+    OPENRAG_SHOW_VLM_SETTINGS,
     SEGMENT_WRITE_KEY,
     clients,
     config_manager,
@@ -99,6 +101,34 @@ from utils.telemetry import Category, MessageId, TelemetryClient
 from utils.version_utils import OPENRAG_VERSION
 
 logger = get_logger(__name__)
+
+
+def _detect_local_vlm_models() -> list[str]:
+    from pathlib import Path
+
+    local_models = []
+    hf_cache = Path.home() / ".cache" / "huggingface" / "hub"
+    if HF_HOME:
+        hf_cache = Path(HF_HOME) / "hub"
+    if hf_cache.exists():
+        for p in hf_cache.glob("models--*"):
+            if (
+                p.is_dir()
+                and ("smolvlm" in p.name.lower() or "granite-docling" in p.name.lower())
+                and "mlx" not in p.name.lower()
+            ):
+                parts = p.name.split("--")
+                if len(parts) >= 3:
+                    owner = parts[1]
+                    model = "--".join(parts[2:])
+                    model_id = f"{owner}/{model}"
+                    if model_id not in local_models:
+                        local_models.append(model_id)
+    # Ensure HuggingFaceTB/SmolVLM-256M-Instruct is first if present
+    if "HuggingFaceTB/SmolVLM-256M-Instruct" in local_models:
+        local_models.remove("HuggingFaceTB/SmolVLM-256M-Instruct")
+        local_models.insert(0, "HuggingFaceTB/SmolVLM-256M-Instruct")
+    return local_models
 
 
 async def get_settings(
@@ -232,6 +262,15 @@ async def get_settings(
                 picture_descriptions=knowledge_config.picture_descriptions,
                 index_name=knowledge_config.index_name,
                 disable_ingest_with_langflow=knowledge_config.disable_ingest_with_langflow,
+                vlm_enabled=knowledge_config.vlm_enabled,
+                vlm_provider=knowledge_config.vlm_provider,
+                vlm_model=knowledge_config.vlm_model,
+                vlm_prompt=knowledge_config.vlm_prompt,
+                vlm_response_format=knowledge_config.vlm_response_format,
+                vlm_max_tokens=knowledge_config.vlm_max_tokens,
+                vlm_concurrency=knowledge_config.vlm_concurrency,
+                vlm_timeout=knowledge_config.vlm_timeout,
+                vlm_watsonx_api_version=knowledge_config.vlm_watsonx_api_version,
             ),
             agent=AgentConfig(
                 llm_model=agent_config.llm_model,
@@ -244,6 +283,8 @@ async def get_settings(
             ingestion_defaults=ingestion_defaults_obj,
             ingest_via_chat=OPENRAG_INGEST_VIA_CHAT,
             show_provider_ingest_settings=OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS,
+            show_vlm_settings=OPENRAG_SHOW_VLM_SETTINGS,
+            local_vlm_models=await asyncio.to_thread(_detect_local_vlm_models),
             show_shared_upload_toggle=OPENRAG_SHOW_SHARED_UPLOAD_TOGGLE,
             show_workspace_oauth_overrides=is_workspace_oauth_overrides_enabled(),
             segment_write_key=SEGMENT_WRITE_KEY or None,
@@ -292,10 +333,29 @@ async def update_settings(
 
         should_validate = any(getattr(body, field) is not None for field in provider_fields)
 
+        # Docling VLM settings reuse provider credentials, so they are gated
+        # like the Providers page. They don't trigger provider validation.
+        vlm_update_fields = [
+            "vlm_enabled",
+            "vlm_provider",
+            "vlm_model",
+            "vlm_prompt",
+            "vlm_response_format",
+            "vlm_max_tokens",
+            "vlm_concurrency",
+            "vlm_timeout",
+            "vlm_watsonx_api_version",
+        ]
+        vlm_update = any(getattr(body, field) is not None for field in vlm_update_fields)
+
         # Provider changes are admin-only. The outer gate only requires
         # config:write; require providers:write specifically when any
         # provider field is being touched (defends custom roles too).
-        if should_validate and is_rbac_enforced() and hasattr(rbac, "has_permission"):
+        if (
+            (should_validate or vlm_update)
+            and is_rbac_enforced()
+            and hasattr(rbac, "has_permission")
+        ):
             uid = user.db_user_id or user.user_id
             if not await rbac.has_permission(uid, "providers:write"):
                 await rbac.audit_denied(uid, "providers:write")
@@ -596,6 +656,67 @@ async def update_settings(
                 # Don't fail the entire settings update if flow update fails
 
                 # The config will still be saved
+
+        # Update Docling VLM settings (knowledge.vlm_*). Credentials are reused
+        # from the providers config; these fields carry no secrets and are
+        # intentionally NOT synced into the Langflow flow JSON.
+        if body.vlm_enabled:
+            effective_vlm_provider = body.vlm_provider or current_config.knowledge.vlm_provider
+            if effective_vlm_provider in ("openai", "watsonx", "anthropic"):
+                vlm_provider_config = current_config.providers.get_provider_config(
+                    effective_vlm_provider
+                )
+                vlm_provider_missing = (
+                    not getattr(vlm_provider_config, "api_key", "")
+                    or not vlm_provider_config.configured
+                )
+                if effective_vlm_provider == "watsonx":
+                    vlm_provider_missing = (
+                        vlm_provider_missing
+                        or not vlm_provider_config.endpoint
+                        or not vlm_provider_config.project_id
+                    )
+                if vlm_provider_missing:
+                    return JSONResponse(
+                        {
+                            "error": (
+                                f"Cannot enable Docling VLM: provider '{effective_vlm_provider}' "
+                                "is not configured. Configure it in Settings > Providers first."
+                            )
+                        },
+                        status_code=400,
+                    )
+            elif effective_vlm_provider == "local":
+                # Local provider does not require any credentials
+                pass
+            elif effective_vlm_provider == "ollama":
+                vlm_provider_config = current_config.providers.ollama
+                vlm_provider_missing = (
+                    not getattr(vlm_provider_config, "endpoint", "")
+                    or not vlm_provider_config.configured
+                )
+                if vlm_provider_missing:
+                    return JSONResponse(
+                        {
+                            "error": (
+                                "Cannot enable Docling VLM: provider 'ollama' "
+                                "is not configured. Configure it in Settings > Providers first."
+                            )
+                        },
+                        status_code=400,
+                    )
+            effective_vlm_model = body.vlm_model or current_config.knowledge.vlm_model
+            if not effective_vlm_model.strip():
+                return JSONResponse(
+                    {"error": "Cannot enable Docling VLM: model name is required."},
+                    status_code=400,
+                )
+
+        for vlm_field in vlm_update_fields:
+            value = getattr(body, vlm_field)
+            if value is not None:
+                setattr(working_config.knowledge, vlm_field, value)
+                config_updated = True
 
         # Update provider-specific settings
         provider_updated = False
@@ -1104,38 +1225,36 @@ async def onboarding(
                 )
                 from main import init_index
                 from utils.run_mode_utils import (
+                    get_run_mode,
                     is_run_mode_on_prem,
-                    is_run_mode_oss,
                     is_run_mode_saas,
                 )
 
                 # Choose the admin identity for index/security setup, by run mode:
-                #   saas    -> platform service token (JWT); admin from its claim
-                #   on_prem -> OpenSearch basic auth; OpenSearch username as admin
-                #   oss     -> OpenSearch basic auth; OpenSearch username as admin
+                #   saas/on_prem -> platform service token (JWT); admin from its claim
+                #   oss          -> OpenSearch basic auth; OpenSearch username as admin
                 # The matching client comes from the shared run-mode-aware helper.
                 admin_username = None
-                if is_run_mode_saas():
+                if is_run_mode_saas() or is_run_mode_on_prem():
                     service_token = get_openrag_service_token()
-                    if service_token:
-                        # Prefer the platform service token so onboarding pins the
-                        # same admin identity as the startup security bootstrap
-                        # (see app/lifespan.py).
-                        from auth.ibm_auth import admin_username_from_service_jwt
+                    if not service_token:
+                        raise RuntimeError(
+                            "OPENRAG_SERVICE_TOKEN is required to determine the "
+                            "OpenSearch admin identity during onboarding in "
+                            f"{get_run_mode()} mode."
+                        )
+                    # Prefer the platform service token so onboarding pins the
+                    # same admin identity as the startup security bootstrap
+                    # (see app/lifespan.py).
+                    from auth.ibm_auth import admin_username_from_service_jwt
 
-                        admin_username = admin_username_from_service_jwt(service_token)
-                        if not admin_username:
-                            raise RuntimeError(
-                                "OPENRAG_SERVICE_TOKEN has no 'username' or 'sub' claim; "
-                                "cannot determine OpenSearch admin during onboarding"
-                            )
-                    elif user:
-                        # TODO: backward-compatibility fallback for saas deployments
-                        # without OPENRAG_SERVICE_TOKEN — pins the onboarding user as
-                        # admin instead of the platform service identity. Remove once
-                        # the service token is always provided.
-                        admin_username = user.user_id
-                elif is_run_mode_on_prem() or is_run_mode_oss():
+                    admin_username = admin_username_from_service_jwt(service_token)
+                    if not admin_username:
+                        raise RuntimeError(
+                            "OPENRAG_SERVICE_TOKEN has no 'username' or 'sub' claim; "
+                            "cannot determine OpenSearch admin during onboarding"
+                        )
+                else:
                     admin_username = get_opensearch_username()
 
                 opensearch_client = app_clients.create_index_admin_opensearch_client(
