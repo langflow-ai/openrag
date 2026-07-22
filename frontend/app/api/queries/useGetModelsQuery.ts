@@ -9,7 +9,6 @@ export interface ModelOption {
   value: string;
   label: string;
   default?: boolean;
-  supports_images?: boolean;
 }
 
 export interface ModelsResponse {

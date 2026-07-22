@@ -338,17 +338,10 @@ class DoclingManager:
 
             env = os.environ.copy()
 
-            # Disable PyTorch model compilation to prevent Dynamo/AttributeError issues on CPU/Mac
-            env["TORCH_COMPILE_DISABLE"] = "1"
-            env["TORCH_DYNAMO_DISABLE"] = "1"
-
-            # Add docling serve environment variables
+            # Add docling serve environment variable to change Tenant Id header name
+            # so that it's not used to enforce ownership locally.
             if "DOCLING_SERVE_ENG_RAY_TENANT_ID_HEADER" not in env:
                 env["DOCLING_SERVE_ENG_RAY_TENANT_ID_HEADER"] = "X-Docling-Tenant-Id"
-            if "DOCLING_SERVE_ENABLE_REMOTE_SERVICES" not in env:
-                env["DOCLING_SERVE_ENABLE_REMOTE_SERVICES"] = "true"
-            if "DOCLING_SERVE_ALLOW_CUSTOM_VLM_CONFIG" not in env:
-                env["DOCLING_SERVE_ALLOW_CUSTOM_VLM_CONFIG"] = "true"
 
             self._process = subprocess.Popen(
                 cmd,

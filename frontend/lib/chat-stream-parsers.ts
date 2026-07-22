@@ -36,9 +36,8 @@ function findFunctionCallByEvent(
 ): FunctionCall | undefined {
   const itemId = c.item_id || c.call_id || c.id;
   if (typeof itemId === "string") {
-    // The event names a specific call; if we don't know it yet, let the
-    // caller create it rather than guessing an existing one.
-    return calls.find((fc) => fc.id === itemId);
+    const match = calls.find((fc) => fc.id === itemId);
+    if (match) return match;
   }
 
   const outputIndex =
@@ -51,9 +50,7 @@ function findFunctionCallByEvent(
     return calls[outputIndex];
   }
 
-  // No identifying info on the event: continue an in-progress call that
-  // hasn't been assigned an id yet, if there is one.
-  return [...calls].reverse().find((fc) => fc.status === "pending" && !fc.id);
+  return calls[calls.length - 1];
 }
 
 export function parseOpenAIChatChunk(
