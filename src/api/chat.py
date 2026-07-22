@@ -173,9 +173,9 @@ async def langflow_endpoint(
             )
             return JSONResponse(result)
 
-    except Exception as e:
+    except Exception:
         logger.exception("[CHAT] Langflow request failed")
-        return JSONResponse({"error": f"Langflow request failed: {str(e)}"}, status_code=500)
+        return JSONResponse({"error": "Langflow request failed"}, status_code=500)
 
 
 async def chat_history_endpoint(
