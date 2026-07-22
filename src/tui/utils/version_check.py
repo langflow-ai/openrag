@@ -2,7 +2,7 @@
 
 from typing import Optional, Tuple
 from utils.logging_config import get_logger
-from config.image_config import IMAGE_ORG, IMAGE_NAME_BACKEND, IMAGE_REGISTRY
+from config.image_config import IMAGE_ORG, IMAGE_NAME_BACKEND, IMAGE_REGISTRY, SUPPORTED_ARCHITECTURES
 
 logger = get_logger(__name__)
 
@@ -51,12 +51,12 @@ async def get_latest_docker_version(image_name: str = _DEFAULT_VERSION_IMAGE) ->
                     # Skip architecture-specific tags and "latest"
                     # Architecture suffixes: amd64, arm64, ppc64le (and any future archs)
                     # Tags like "0.5.1-ppc64le" are arch-specific; "0.5.1" is the manifest.
-                    if tag_name in ["latest", "amd64", "arm64", "ppc64le"]:
+                    if tag_name in ("latest",) + SUPPORTED_ARCHITECTURES:
                         continue
                     # Also skip tags that look like "<version>-<arch>" (arch-specific digests)
                     if "-" in tag_name:
                         suffix = tag_name.rsplit("-", 1)[-1]
-                        if suffix in ("amd64", "arm64", "ppc64le"):
+                        if suffix in SUPPORTED_ARCHITECTURES:
                             continue
                     # Skip tags that don't look like version numbers
                     # Version format: X.Y.Z (e.g., 0.1.47)
@@ -175,26 +175,31 @@ def compare_versions(version1: str, version2: str) -> int:
             return 0
 
 
-async def check_if_latest() -> Tuple[bool, Optional[str], str]:
+async def check_if_latest() -> Tuple[bool, Optional[str], Optional[str]]:
     """
     Check if the current version is the latest available on Docker Hub.
-    
+
     Returns:
-        Tuple of (is_latest, latest_version, current_version)
+        Tuple of (is_latest, latest_version, current_version).
+        When the version check was skipped (e.g. non-Docker Hub registry),
+        ``latest_version`` is ``None`` and ``is_latest`` is ``None`` to signal
+        "not checked" — distinct from a confirmed up-to-date result.
     """
     current = get_current_version()
     latest = await get_latest_docker_version()
-    
+
     if latest is None:
-        # If we can't check, assume current is latest
-        return True, None, current
-    
+        # Check was skipped or failed — do not assume the current version is
+        # latest; return None for is_latest so callers can distinguish "not
+        # checked" from a confirmed up-to-date result.
+        return None, None, current
+
     if current == "unknown":
         # If we can't determine current version, assume it's not latest
         return False, latest, current
-    
+
     comparison = compare_versions(current, latest)
     is_latest = comparison >= 0
-    
+
     return is_latest, latest, current
 
