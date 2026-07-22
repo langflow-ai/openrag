@@ -222,5 +222,5 @@ async def delete_session_endpoint(
                 {"error": result.get("error", "Failed to delete session")}, status_code=500
             )
     except Exception as e:
-        logger.error(f"Error deleting session: {e}")
-        return JSONResponse({"error": f"Failed to delete session: {str(e)}"}, status_code=500)
+        logger.exception("[CHAT] Failed to delete session")
+        return JSONResponse({"error": "Failed to delete session"}, status_code=500)
