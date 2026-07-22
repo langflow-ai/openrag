@@ -90,6 +90,11 @@ class BaseConnector(ABC):
     CONNECTOR_DESCRIPTION: str = None
     CONNECTOR_ICON: str = None  # Icon identifier or emoji
 
+    # Per-connection settings (file_ids/folder_ids selection, etc.). Declared
+    # here so subclasses that set a concrete cfg type still satisfy the base
+    # type; list_selected_files() scopes it via a per-call shallow copy.
+    cfg: Any = None
+
     def __init__(self, config: dict[str, Any]):
         self.config = config
         self._authenticated = False
