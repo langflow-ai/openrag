@@ -17,8 +17,6 @@ from auth.request_identity import _get_ibm_user  # noqa: E402
 async def test_ibm_header_auth_uses_opensearch_username_without_session_cookie(monkeypatch):
     monkeypatch.setattr("config.settings.IBM_CREDENTIALS_HEADER", "X-Test-IBM-Credentials")
     monkeypatch.setattr("config.settings.IBM_SESSION_COOKIE_NAME", "ibm-openrag-session")
-    monkeypatch.setattr("config.settings.PLATFORM_USERNAME", "")
-    monkeypatch.setattr("config.settings.PLATFORM_PASSWORD", "")
 
     class ConnectionManager:
         def __init__(self):

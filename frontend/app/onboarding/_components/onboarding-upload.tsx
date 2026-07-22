@@ -15,14 +15,17 @@ import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import { AnimatedProviderSteps } from "@/app/onboarding/_components/animated-provider-steps";
 import { IngestReviewDialog } from "@/components/ingest-review";
 import { SUPPORTED_EXTENSIONS } from "@/components/knowledge-dropdown";
+
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth-context";
 import { trackButton } from "@/lib/analytics";
+
 import {
   EMPTY_PREVIEW,
   isIngestPreviewEnabled,
   type PreviewDialogState,
 } from "@/lib/ingest-preview";
+
 import { uploadFile } from "@/lib/upload-utils";
 
 interface OnboardingUploadProps {

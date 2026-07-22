@@ -37,6 +37,7 @@ import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useTask } from "@/contexts/task-context";
 import { shouldAutoOpenIngestPreview } from "@/hooks/use-ingest-preview-settings";
 import { usePermissions } from "@/hooks/use-permissions";
+import { useSupportedFileTypes } from "@/hooks/use-supported-file-types";
 import {
   trackButton,
   trackProcessFailure,
@@ -57,37 +58,6 @@ import {
   uploadFile as uploadFileUtil,
 } from "@/lib/upload-utils";
 import { cn } from "@/lib/utils";
-
-/**
- * Local / chat file picker + folder ingest filter — single source of truth.
- * Only extensions verified to ingest successfully in the Langflow pipeline.
- * If modified, update docs (docs/docs/core-components/ingestion.mdx).
- *
- * documents: txt, md, html, htm, adoc, asciidoc, asc, pdf, docx
- * spreadsheets: csv
- *
- * TODO: Re-add other MIME/extension groups (images, xlsx/xls/ppt, rtf/odt, etc.)
- * once ingestion is verified end-to-end in Langflow; keep this list and ingestion.mdx in sync.
- */
-export const SUPPORTED_FILE_TYPES = {
-  "text/plain": [".txt"],
-  "text/markdown": [".md"],
-  "text/html": [".html", ".htm"],
-  "text/asciidoc": [".adoc", ".asciidoc", ".asc"],
-  "application/pdf": [".pdf"],
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [
-    ".docx",
-  ],
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [
-    ".xlsx",
-  ],
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation": [
-    ".pptx",
-  ],
-  "text/csv": [".csv"],
-};
-
-export const SUPPORTED_EXTENSIONS = Object.values(SUPPORTED_FILE_TYPES).flat();
 
 const getFilenameVariants = (filename: string): string[] => {
   const dotIndex = filename.lastIndexOf(".");
@@ -130,6 +100,8 @@ const FolderIconWithColor = ({ className }: { className?: string }) => (
 
 export function KnowledgeDropdown() {
   const { runMode } = useAuth();
+  const { supportedExtensions, supportedExtensionSet } =
+    useSupportedFileTypes();
   const { can } = usePermissions();
   const canUpload = can("knowledge:upload");
   const isCloudBrand = useIsCloudBrand();
@@ -620,7 +592,7 @@ export function KnowledgeDropdown() {
         const ext = file.name
           .substring(file.name.lastIndexOf("."))
           .toLowerCase();
-        return SUPPORTED_EXTENSIONS.includes(ext);
+        return supportedExtensionSet.has(ext);
       });
       const unsupportedCount = fileList.length - filteredFiles.length;
 
@@ -955,7 +927,7 @@ export function KnowledgeDropdown() {
         type="file"
         onChange={handleFileChange}
         className="hidden"
-        accept={SUPPORTED_EXTENSIONS.join(",")}
+        accept={supportedExtensions.join(",")}
       />
 
       <input

@@ -22,6 +22,17 @@ export interface UpdateSettingsRequest {
   embedding_model?: string;
   embedding_provider?: string;
 
+  // Docling VLM pipeline settings
+  vlm_enabled?: boolean;
+  vlm_provider?: string;
+  vlm_model?: string;
+  vlm_prompt?: string;
+  vlm_response_format?: string;
+  vlm_max_tokens?: number;
+  vlm_concurrency?: number;
+  vlm_timeout?: number;
+  vlm_watsonx_api_version?: string;
+
   // Provider-specific settings (for dialogs)
   model_provider?: string; // Deprecated, kept for backward compatibility
   api_key?: string;

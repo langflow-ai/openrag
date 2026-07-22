@@ -241,8 +241,8 @@ class DLSPrincipalService:
         # An explicitly injected client wins; otherwise build (once) an
         # admin-identity client using the same run-mode switching as the
         # startup security bootstrap (app/lifespan.py) and onboarding
-        # (api/settings/endpoints.py): SaaS -> platform service-token JWT;
-        # on-prem/OSS -> OpenSearch basic auth.
+        # (api/settings/endpoints.py): SaaS/on-prem -> platform service-token
+        # JWT (required); OSS -> OpenSearch basic auth.
         if self.opensearch_client is not None:
             return self.opensearch_client
         if self._admin_opensearch_client is not None:
@@ -256,30 +256,31 @@ class DLSPrincipalService:
                 get_opensearch_username,
             )
             from utils.run_mode_utils import (
+                get_run_mode,
                 is_run_mode_on_prem,
                 is_run_mode_saas,
             )
 
-            if is_run_mode_saas():
+            if is_run_mode_saas() or is_run_mode_on_prem():
                 service_token = get_openrag_service_token()
                 if not service_token:
-                    logger.warning(
-                        "DLS principal OpenSearch client unavailable: saas mode "
-                        "but OPENRAG_SERVICE_TOKEN is not set"
+                    raise RuntimeError(
+                        "OPENRAG_SERVICE_TOKEN is required for the DLS principal "
+                        f"OpenSearch client in {get_run_mode()} mode."
                     )
-                    return None
                 self._admin_opensearch_client = clients.create_opensearch_client_from_jwt(
                     service_token
                 )
-                logger.info("DLS principal service: saas mode, using platform service token")
+                logger.info(
+                    f"DLS principal service: {get_run_mode()} mode, using platform service token"
+                )
             else:
-                mode = "on_prem" if is_run_mode_on_prem() else "oss"
                 username = get_opensearch_username()
                 password = get_opensearch_password()
                 if not password:
                     logger.warning(
-                        "DLS principal OpenSearch client unavailable: "
-                        f"{mode} mode but OpenSearch password is not set"
+                        "DLS principal OpenSearch client unavailable: oss mode "
+                        "but OpenSearch password is not set"
                     )
                     return None
                 self._admin_opensearch_client = clients.create_basic_opensearch_client(
@@ -287,11 +288,13 @@ class DLSPrincipalService:
                     password,
                 )
                 logger.info(
-                    f"DLS principal service: {mode} mode, using OpenSearch basic auth",
+                    "DLS principal service: oss mode, using OpenSearch basic auth",
                     admin_username=username,
                 )
 
             return self._admin_opensearch_client
+        except RuntimeError:
+            raise
         except Exception as e:
             logger.warning(
                 "Failed to build DLS principal OpenSearch client",
