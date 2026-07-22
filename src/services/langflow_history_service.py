@@ -136,6 +136,17 @@ class LangflowHistoryService:
                     if chunks:
                         converted_msg["chunks"] = chunks
 
+                # Langflow often records the same provider failure several times
+                # in one session (e.g. embedding + LLM auth retries). Keep one.
+                prev = converted_messages[-1] if converted_messages else None
+                if (
+                    is_error
+                    and prev
+                    and prev.get("error")
+                    and (prev.get("content") or "").strip() == content.strip()
+                ):
+                    continue
+
                 converted_messages.append(converted_msg)
 
             except Exception as e:

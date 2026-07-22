@@ -29,6 +29,8 @@ interface UseChatStreamingOptions {
 interface SendMessageOptions {
   prompt: string;
   previousResponseId?: string;
+  /** OpenRAG sidebar thread id (kept after errors; distinct from Langflow session). */
+  conversationId?: string;
   filters?: FilterInput;
   filter_id?: string;
   limit?: number;
@@ -52,6 +54,7 @@ export function useChatStreaming({
   const sendMessage = async ({
     prompt,
     previousResponseId,
+    conversationId,
     filters,
     filter_id,
     limit = 10,
@@ -60,6 +63,8 @@ export function useChatStreaming({
     // Set up timeout to detect stuck/hanging requests
     let timeoutId: NodeJS.Timeout | null = null;
     let hasReceivedData = false;
+    // Hoisted so the catch path can still attach a failed turn to history.
+    let newResponseId: string | null = null;
 
     try {
       setIsLoading(true);
@@ -91,6 +96,7 @@ export function useChatStreaming({
         prompt: string;
         stream: boolean;
         previous_response_id?: string;
+        conversation_id?: string;
         filters?: FilterInput;
         filter_id?: string;
         limit?: number;
@@ -104,6 +110,10 @@ export function useChatStreaming({
 
       if (previousResponseId) {
         requestBody.previous_response_id = previousResponseId;
+      }
+
+      if (conversationId) {
+        requestBody.conversation_id = conversationId;
       }
 
       if (filters) {
@@ -144,7 +154,6 @@ export function useChatStreaming({
       let buffer = "";
       const content = { value: "" };
       const currentFunctionCalls: FunctionCall[] = [];
-      let newResponseId: string | null = null;
       const usage: { value: TokenUsage | undefined } = { value: undefined };
       let providerStreamError: string | null = null;
 
@@ -343,15 +352,19 @@ export function useChatStreaming({
         error: true,
       };
 
-      // onError owns side effects + display fallback; onComplete still receives the
-      // error message for callers that persist/render from completion alone.
+      // onError owns side effects (flags, session reset). onComplete owns appending
+      // the error message and refreshing history — pass any stream/store id so a
+      // failed first turn still appears in the conversation list.
       onError?.(
         Object.assign(new Error(errorContent), {
           partialContent,
         }) as Error,
       );
-      if (!streamAbortRef.current?.signal.aborted) {
-        onComplete?.(errorMessageObj, null);
+      // User aborts skip completion; timeout aborts still surface the error card.
+      const isTimeout = errorMessage?.includes("timed out");
+      if (!streamAbortRef.current?.signal.aborted || isTimeout) {
+        onComplete?.(errorMessageObj, newResponseId);
+        refreshConversations(true);
       }
 
       return errorMessageObj;

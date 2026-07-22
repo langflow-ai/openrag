@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  dedupeConsecutiveErrorMessages,
   extractStreamProviderError,
   formatProviderErrorMessage,
   looksLikeProviderErrorContent,
@@ -92,11 +93,33 @@ describe("looksLikeProviderErrorContent", () => {
       ),
       false,
     );
+  });
+
+  it("flags the exact generic stream fallback message", () => {
     assert.equal(
       looksLikeProviderErrorContent(
         "An error occurred while generating a response.",
       ),
-      false,
+      true,
+    );
+  });
+});
+
+describe("dedupeConsecutiveErrorMessages", () => {
+  it("collapses repeated identical assistant errors", () => {
+    const err = {
+      role: "assistant",
+      content: "Provided API key could not be found.",
+      error: true,
+    };
+    assert.deepEqual(
+      dedupeConsecutiveErrorMessages([
+        { role: "user", content: "hello" },
+        err,
+        { ...err },
+        { ...err },
+      ]),
+      [{ role: "user", content: "hello" }, err],
     );
   });
 });

@@ -40,6 +40,9 @@ async def _assert_owns(session_id: Optional[str], user_id: str) -> None:
 class ChatBody(BaseModel):
     prompt: str
     previous_response_id: Optional[str] = None
+    # OpenRAG sidebar/thread id. Distinct from previous_response_id so a retry
+    # after an error can stay in the same chat while starting a fresh Langflow session.
+    conversation_id: Optional[str] = None
     stream: bool = False
     filters: Optional[Dict[str, Any]] = None
     limit: int = 10
@@ -114,6 +117,7 @@ async def langflow_endpoint(
 
     storage_user_id = _openrag_user_id(user)
     await _assert_owns(body.previous_response_id, storage_user_id)
+    await _assert_owns(body.conversation_id, storage_user_id)
 
     jwt_token = user.jwt_token
 
@@ -133,6 +137,7 @@ async def langflow_endpoint(
                     user.user_id,
                     jwt_token,
                     previous_response_id=body.previous_response_id,
+                    conversation_id=body.conversation_id,
                     stream=True,
                     filter_id=body.filter_id,
                     owner=user.user_id,
@@ -154,6 +159,7 @@ async def langflow_endpoint(
                 user.user_id,
                 jwt_token,
                 previous_response_id=body.previous_response_id,
+                conversation_id=body.conversation_id,
                 stream=False,
                 filter_id=body.filter_id,
                 owner=user.user_id,

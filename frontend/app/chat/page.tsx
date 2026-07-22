@@ -12,6 +12,7 @@ import { useOnboardingState } from "@/hooks/use-onboarding-state";
 import { useChatStreaming } from "@/hooks/useChatStreaming";
 import { trackLLMCall } from "@/lib/analytics";
 import {
+  dedupeConsecutiveErrorMessages,
   formatProviderErrorMessage,
   looksLikeProviderErrorContent,
 } from "@/lib/chat-stream-errors";
@@ -80,6 +81,9 @@ function ChatPage() {
   const { scrollToBottom } = useStickToBottomContext();
 
   const lastLoadedConversationRef = useRef<string | null>(null);
+  // Set when a live stream fails so history sync cannot replace one error card
+  // with Langflow's duplicated copies of the same failure.
+  const liveErrorConversationRef = useRef<string | null>(null);
   const { addTask } = useTask();
 
   // Check if chat history is loading
@@ -115,11 +119,45 @@ function ChatPage() {
   } = useChatStreaming({
     endpoint: apiEndpoint,
     onComplete: (message, responseId) => {
+      setLoading(false);
+      setWaitingTooLong(false);
+
+      setMessages((prev) => {
+        if (!message.error) {
+          return [...prev, message];
+        }
+        // One error card per failure — drop a trailing duplicate if present.
+        const withoutTrailingDup = [...prev];
+        while (
+          withoutTrailingDup.length > 0 &&
+          withoutTrailingDup[withoutTrailingDup.length - 1]?.role ===
+            "assistant" &&
+          withoutTrailingDup[withoutTrailingDup.length - 1]?.error &&
+          withoutTrailingDup[withoutTrailingDup.length - 1]?.content ===
+            message.content
+        ) {
+          withoutTrailingDup.pop();
+        }
+        return [...withoutTrailingDup, message];
+      });
+
       if (message.error) {
-        // Error display is owned by onError so a missing onComplete still shows
-        // something, and we avoid duplicate appends from batched setState.
-        setLoading(false);
-        setWaitingTooLong(false);
+        // Sidebar id stays on currentConversationId; onError clears Langflow chaining.
+        if (responseId) {
+          liveErrorConversationRef.current = responseId;
+          if (!currentConversationId) {
+            setCurrentConversationId(responseId);
+            refreshConversations(true);
+            if (conversationFilter && typeof window !== "undefined") {
+              localStorage.setItem(
+                `conversation_filter_${responseId}`,
+                conversationFilter.id,
+              );
+            }
+          } else {
+            refreshConversationsSilent();
+          }
+        }
         return;
       }
 
@@ -129,11 +167,9 @@ function ChatPage() {
         inputTokens: message.usage?.input_tokens,
         outputTokens: message.usage?.output_tokens,
       });
-      setMessages((prev) => [...prev, message]);
-      setLoading(false);
-      setWaitingTooLong(false);
       if (responseId) {
         cancelNudges();
+        // Langflow session id for chaining; sidebar id stays on currentConversationId.
         setPreviousResponseIds((prev) => ({
           ...prev,
           [endpoint]: responseId,
@@ -148,7 +184,8 @@ function ChatPage() {
 
         // Save filter association for this response
         if (conversationFilter && typeof window !== "undefined") {
-          const newKey = `conversation_filter_${responseId}`;
+          const stableId = currentConversationId || responseId;
+          const newKey = `conversation_filter_${stableId}`;
           localStorage.setItem(newKey, conversationFilter.id);
         }
       }
@@ -159,28 +196,11 @@ function ChatPage() {
       setWaitingTooLong(false);
       // Set chat error flag to trigger test_completion=true on health checks.
       setChatError(true);
-      // Stop chaining the failed Langflow session — continued turns often only
-      // return "An unknown error occurred." instead of the real provider error.
+      // Clear Langflow session chaining; conversation_id keeps the sidebar thread.
       setPreviousResponseIds((prev) => ({
         ...prev,
         [endpoint]: null,
       }));
-      setMessages((prev) => {
-        const last = prev[prev.length - 1];
-        if (last?.role === "assistant" && last.error) {
-          return prev;
-        }
-        return [
-          ...prev,
-          {
-            role: "assistant",
-            content:
-              error.message || "An error occurred while generating a response.",
-            timestamp: new Date(),
-            error: true,
-          },
-        ];
-      });
     },
   });
 
@@ -296,6 +316,7 @@ function ChatPage() {
       setIsFilterHighlighted(false);
       setLoading(false);
       lastLoadedConversationRef.current = null;
+      liveErrorConversationRef.current = null;
 
       // Focus input after a short delay to ensure rendering is complete
       setTimeout(() => {
@@ -334,6 +355,13 @@ function ChatPage() {
     const remoteMessageCount = conversationData?.messages?.length ?? 0;
     const hasMessageCountChanged = remoteMessageCount !== messages.length;
     const localMessagesAhead = messages.length > remoteMessageCount;
+    // After a live failed send we already appended the error locally. History
+    // often returns the same provider failure repeated from Langflow — do not
+    // clobber the live transcript for that conversation id.
+    const skipSyncAfterLiveError =
+      conversationId != null &&
+      liveErrorConversationRef.current === conversationId &&
+      !isSwitchingConversation;
     const shouldSyncSameConversation =
       !isChatStreaming &&
       hasMessageCountChanged &&
@@ -341,7 +369,13 @@ function ChatPage() {
       !isUserInteracting &&
       !isForkingInProgress;
 
-    if (
+    if (skipSyncAfterLiveError) {
+      lastLoadedConversationRef.current = conversationId;
+      setPreviousResponseIds((prev) => ({
+        ...prev,
+        [conversationData?.endpoint ?? endpoint]: null,
+      }));
+    } else if (
       conversationData?.messages &&
       (isSwitchingConversation ||
         (isFirstLoadOfConversation && !localMessagesAhead) ||
@@ -505,12 +539,16 @@ function ChatPage() {
         },
       );
 
-      setMessages(convertedMessages);
+      const dedupedMessages = dedupeConsecutiveErrorMessages(convertedMessages);
+      setMessages(dedupedMessages);
       lastLoadedConversationRef.current = conversationData.response_id;
+      if (liveErrorConversationRef.current === conversationData.response_id) {
+        liveErrorConversationRef.current = null;
+      }
 
       // Don't chain a session that ended in an error — Langflow often collapses
       // follow-ups to "An unknown error occurred." and hides the real failure.
-      const lastConverted = convertedMessages[convertedMessages.length - 1];
+      const lastConverted = dedupedMessages[dedupedMessages.length - 1];
       setPreviousResponseIds((prev) => ({
         ...prev,
         [conversationData.endpoint]: lastConverted?.error
@@ -535,6 +573,7 @@ function ChatPage() {
     setPreviousResponseIds,
     isChatStreaming,
     messages.length,
+    endpoint,
   ]);
 
   // Handle new conversation creation - only reset messages when placeholderConversation is set
@@ -584,19 +623,21 @@ function ChatPage() {
         })()
       : undefined;
 
-    // After a provider/stream error, do not continue the broken Langflow session
-    // (follow-ups often collapse to "An unknown error occurred.").
+    // OpenRAG sidebar thread vs Langflow session are separate:
+    // - conversationId keeps the same list entry after errors
+    // - previousResponseId is omitted after an error so Langflow starts fresh
     const lastAssistant = [...messages]
       .reverse()
       .find((message) => message.role === "assistant");
-    const responseIdToUse = lastAssistant?.error
+    const langflowSessionId = lastAssistant?.error
       ? undefined
-      : previousResponseId || previousResponseIds[endpoint];
+      : previousResponseId || previousResponseIds[endpoint] || undefined;
 
     // Use the hook to send the message
     await sendStreamingMessage({
       prompt: userMessage.content,
-      previousResponseId: responseIdToUse || undefined,
+      previousResponseId: langflowSessionId,
+      conversationId: currentConversationId || undefined,
       filters: processedFilters,
       filter_id: conversationFilter?.id, // ✅ Add filter_id for this conversation
       limit: parsedFilterData?.limit ?? 10,

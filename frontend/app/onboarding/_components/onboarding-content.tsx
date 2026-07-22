@@ -199,10 +199,10 @@ export function OnboardingContent({
     },
     onError: (error) => {
       console.error("Chat error:", error);
-      // Fallback if onComplete does not run (e.g. aborted mid-handler).
-      // Prefer the real error text over a generic connection message.
+      // Display is owned by onComplete (including message.error). Keep a
+      // fallback only when completion never ran.
       setAssistantMessage((prev) => {
-        if (prev?.error) {
+        if (prev?.error || (prev && !prev.isStreaming)) {
           return prev;
         }
         return {

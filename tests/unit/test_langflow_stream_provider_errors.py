@@ -59,17 +59,19 @@ def test_provider_error_display_text_drops_error_like_partial():
     )
 
 
-def test_resolve_error_store_id_ignores_cold_previous_response_id():
-    assert (
-        agent_module._resolve_error_store_id(
-            None,
-            "resp_cold",
-            previous_loaded_from_memory=False,
-        )
-        is None
+def test_resolve_conversation_store_id_prefers_warm_thread():
+    cold_id = agent_module._resolve_conversation_store_id(
+        None,
+        "resp_cold",
+        previous_loaded_from_memory=False,
+        mint_if_missing=True,
     )
+    # Cold previous ids must not be reused (would overwrite metadata); mint a new id.
+    assert cold_id != "resp_cold"
+    assert not cold_id.startswith("error_")
+
     assert (
-        agent_module._resolve_error_store_id(
+        agent_module._resolve_conversation_store_id(
             None,
             "resp_warm",
             previous_loaded_from_memory=True,
@@ -77,7 +79,7 @@ def test_resolve_error_store_id_ignores_cold_previous_response_id():
         == "resp_warm"
     )
     assert (
-        agent_module._resolve_error_store_id(
+        agent_module._resolve_conversation_store_id(
             "resp_stream",
             "resp_warm",
             previous_loaded_from_memory=True,
@@ -153,9 +155,13 @@ async def test_langflow_stream_yields_provider_error_chunk(
     assert error_chunk["finish_reason"] == "error"
     assert error_chunk["error"]["message"] == provider_message
 
-    # No real response_id yet — do not invent synthetic error_* conversations.
-    assert store_in_memory["stored"] == []
-    assert agent_module.active_conversations.get(user_id, {}) == {}
+    # Failed first turns still get a real store id (UUID, not error_*).
+    assert len(store_in_memory["stored"]) == 1
+    stored_user, stored_id = store_in_memory["stored"][0]
+    assert stored_user == user_id
+    assert not stored_id.startswith("error_")
+    assert error_chunk.get("id") == stored_id
+    assert stored_id in agent_module.active_conversations.get(user_id, {})
 
 
 @pytest.mark.asyncio
@@ -200,6 +206,111 @@ async def test_langflow_stream_persists_error_onto_existing_thread(monkeypatch, 
 
 
 @pytest.mark.asyncio
+async def test_langflow_follow_up_after_error_reuses_store_id(
+    monkeypatch, store_in_memory
+):
+    """Retrying in the same chat must not create a second sidebar conversation."""
+    provider_message = "Rate limit exceeded for watsonx.ai."
+    stream_calls: list[dict] = []
+
+    async def raise_provider_error(*_args, **kwargs) -> AsyncIterator[bytes]:
+        stream_calls.append(kwargs)
+        raise Exception(provider_message)
+        yield b""  # pragma: no cover
+
+    monkeypatch.setattr(agent_module, "async_stream", raise_provider_error)
+
+    user_id = "test-provider-error-follow-up"
+    existing_id = "resp_failed_thread"
+    agent_module.active_conversations[user_id] = {
+        existing_id: {
+            "messages": [
+                {"role": "user", "content": "first"},
+                {
+                    "role": "assistant",
+                    "content": "Provided API key could not be found.",
+                    "error": True,
+                },
+            ],
+            "created_at": None,
+            "last_activity": None,
+        }
+    }
+
+    # Client keeps conversation_id after an error but omits previous_response_id
+    # so Langflow starts fresh while OpenRAG appends to the same sidebar thread.
+    chunks = await _collect_error_chunks(
+        agent_module.async_langflow_chat_stream(
+            langflow_client=object(),
+            flow_id="flow-id",
+            prompt="retry hello",
+            user_id=user_id,
+            conversation_id=existing_id,
+            previous_response_id=None,
+        )
+    )
+
+    assert chunks[0]["error"]["message"] == provider_message
+    assert store_in_memory["stored"] == [(user_id, existing_id)]
+    assert list(agent_module.active_conversations[user_id].keys()) == [existing_id]
+    # Fresh Langflow session, same OpenRAG conversation id.
+    assert stream_calls[0].get("previous_response_id") is None
+    stored_messages = agent_module.active_conversations[user_id][existing_id]["messages"]
+    assert [m["role"] for m in stored_messages if m["role"] != "system"][-2:] == [
+        "user",
+        "assistant",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_langflow_follow_up_ignores_broken_previous_response_id(
+    monkeypatch, store_in_memory
+):
+    """Even if the client still sends a failed Langflow session id, do not chain it."""
+    provider_message = "Invalid API key for Anthropic. Check your credentials."
+    stream_calls: list[dict] = []
+
+    async def raise_provider_error(*_args, **kwargs) -> AsyncIterator[bytes]:
+        stream_calls.append(kwargs)
+        raise Exception(provider_message)
+        yield b""  # pragma: no cover
+
+    monkeypatch.setattr(agent_module, "async_stream", raise_provider_error)
+
+    user_id = "test-provider-error-broken-session"
+    existing_id = "resp_broken_langflow"
+    agent_module.active_conversations[user_id] = {
+        existing_id: {
+            "messages": [
+                {"role": "user", "content": "first"},
+                {
+                    "role": "assistant",
+                    "content": provider_message,
+                    "error": True,
+                },
+            ],
+            "created_at": None,
+            "last_activity": None,
+        }
+    }
+
+    chunks = await _collect_error_chunks(
+        agent_module.async_langflow_chat_stream(
+            langflow_client=object(),
+            flow_id="flow-id",
+            prompt="retry hello",
+            user_id=user_id,
+            conversation_id=existing_id,
+            previous_response_id=existing_id,
+        )
+    )
+
+    assert chunks[0]["error"]["message"] == provider_message
+    assert stream_calls[0].get("previous_response_id") is None
+    assert store_in_memory["stored"] == [(user_id, existing_id)]
+
+
+@pytest.mark.asyncio
 async def test_langflow_stream_skips_persist_for_cold_previous_response_id(
     monkeypatch, store_in_memory
 ):
@@ -226,9 +337,15 @@ async def test_langflow_stream_skips_persist_for_cold_previous_response_id(
     )
 
     assert chunks[0]["error"]["message"] == provider_message
-    # Cold previous_response_id must not overwrite conversation metadata.
-    assert store_in_memory["stored"] == []
+    # Cold previous_response_id must not overwrite conversation metadata —
+    # persist under a freshly minted id instead.
+    assert len(store_in_memory["stored"]) == 1
+    stored_user, stored_id = store_in_memory["stored"][0]
+    assert stored_user == user_id
+    assert stored_id != previous_id
+    assert not stored_id.startswith("error_")
     assert previous_id not in agent_module.active_conversations.get(user_id, {})
+    assert stored_id in agent_module.active_conversations.get(user_id, {})
 
 
 @pytest.mark.asyncio
@@ -333,5 +450,9 @@ async def test_chat_stream_yields_provider_error_chunk(monkeypatch, store_in_mem
 
     assert len(chunks) == 1
     assert chunks[0]["error"]["message"] == provider_message
-    assert store_in_memory["stored"] == []
-    assert agent_module.active_conversations.get(user_id, {}) == {}
+    assert len(store_in_memory["stored"]) == 1
+    stored_user, stored_id = store_in_memory["stored"][0]
+    assert stored_user == user_id
+    assert not stored_id.startswith("error_")
+    assert chunks[0].get("id") == stored_id
+    assert stored_id in agent_module.active_conversations.get(user_id, {})

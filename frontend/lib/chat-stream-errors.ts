@@ -200,6 +200,33 @@ export function formatProviderErrorMessage(text: string): string {
 }
 
 /**
+ * Collapse consecutive identical assistant error messages.
+ * Langflow often stores the same provider failure multiple times in one session.
+ */
+export function dedupeConsecutiveErrorMessages<
+  T extends { role?: string; content?: string; error?: boolean },
+>(messages: T[]): T[] {
+  const result: T[] = [];
+  for (const message of messages) {
+    const prev = result[result.length - 1];
+    const isErrorAssistant =
+      message.role === "assistant" &&
+      (Boolean(message.error) ||
+        looksLikeProviderErrorContent(message.content || ""));
+    const prevIsSameError =
+      prev?.role === "assistant" &&
+      (Boolean(prev.error) ||
+        looksLikeProviderErrorContent(prev.content || "")) &&
+      (prev.content || "").trim() === (message.content || "").trim();
+    if (isErrorAssistant && prevIsSameError) {
+      continue;
+    }
+    result.push(message);
+  }
+  return result;
+}
+
+/**
  * Extract a user-facing provider/stream error message from an NDJSON chunk.
  * Returns null when the chunk is not a failed/error terminal event.
  */
