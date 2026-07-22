@@ -43,6 +43,18 @@ async def test_status_resolves_by_compose_label_despite_prefix_mismatch():
     assert services["opensearch"].status == ServiceStatus.RUNNING
 
 
+def test_process_service_json_resolves_by_service_field_despite_prefix_mismatch():
+    """Docker: _process_service_json must resolve tui-* containers via the Service field."""
+    manager = _make_manager()
+    services: dict = {}
+
+    manager._process_service_json(
+        {"Name": "tui-opensearch", "Service": "opensearch", "State": "running"}, services
+    )
+
+    assert services["opensearch"].status == ServiceStatus.RUNNING
+
+
 def test_resolve_service_name_falls_back_to_name_map():
     """Without a compose label, resolution matches the legacy name map (no regression)."""
     manager = _make_manager()
