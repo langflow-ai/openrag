@@ -186,7 +186,7 @@ async def chat_history_endpoint(
     try:
         history = await chat_service.get_chat_history(_openrag_user_id(user))
         return JSONResponse(history)
-    except Exception as e:
+    except Exception:
         logger.exception("[CHAT] Failed to get chat history")
         return JSONResponse({"error": "Failed to get chat history"}, status_code=500)
 
@@ -199,7 +199,7 @@ async def langflow_history_endpoint(
     try:
         history = await chat_service.get_langflow_history(_openrag_user_id(user))
         return JSONResponse(history)
-    except Exception as e:
+    except Exception:
         logger.exception("[CHAT] Failed to get langflow history")
         return JSONResponse({"error": "Failed to get langflow history"}, status_code=500)
 
@@ -221,6 +221,6 @@ async def delete_session_endpoint(
             return JSONResponse(
                 {"error": result.get("error", "Failed to delete session")}, status_code=500
             )
-    except Exception as e:
+    except Exception:
         logger.exception("Error deleting session")
         return JSONResponse({"error": "Failed to delete session"}, status_code=500)
