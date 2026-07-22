@@ -206,7 +206,6 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
     1. Configured session cookie. When JWT-role sync is enabled, the JWT is
        instead read from the gateway-forwarded header named by ``get_jwt_auth_header()``;
        identity and roles both come from that token.
-    2. Local dev basic-auth cookie.
 
     If *required* is True, raises HTTP 401 when none is present.
     If *required* is False, returns None instead of raising.
@@ -214,32 +213,8 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
     import auth.ibm_auth as ibm_auth
     from auth.ibm_auth import extract_ibm_credentials
     from auth.jwt_roles import jwt_roles_enabled
-    from config.settings import (
-        IBM_SESSION_COOKIE_NAME,
-        PLATFORM_PASSWORD,
-        PLATFORM_USERNAME,
-        get_jwt_auth_header,
-    )
+    from config.settings import IBM_SESSION_COOKIE_NAME, get_jwt_auth_header
     from config.utils import resolve_jwt_claims
-
-    # ── Option -1: Environment variable override (local dev/calls) ───────
-
-    if PLATFORM_USERNAME and PLATFORM_PASSWORD:
-        logger.debug("[AUTH] Using PLATFORM_USERNAME and PLATFORM_PASSWORD from environment")
-        creds = f"{PLATFORM_USERNAME}:{PLATFORM_PASSWORD}"
-        lh_credentials = base64.b64encode(creds.encode()).decode()
-        user = User(
-            user_id=PLATFORM_USERNAME,
-            email=PLATFORM_USERNAME,
-            name=PLATFORM_USERNAME,
-            picture=None,
-            provider="ibm_ams_env",
-            jwt_token=f"Basic {lh_credentials}",
-            opensearch_username=PLATFORM_USERNAME,
-            opensearch_credentials=lh_credentials,
-        )
-        request.state.user = user
-        return user
 
     # When RBAC/JWT-role sync is on, the gateway forwards the end-user JWT in the
     # configured header; use it as the source of identity and roles. When RBAC is
