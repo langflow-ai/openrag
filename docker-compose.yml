@@ -1,6 +1,6 @@
 services:
   opensearch:
-    image: ${IMAGE_REGISTRY:-docker.io}/${IMAGE_ORG:-langflowai}/openrag-opensearch:${OPENRAG_IMAGE_TAG:-${OPENRAG_VERSION:-latest}${IMAGE_ARCH:+-${IMAGE_ARCH}}}
+    image: ${IMAGE_REGISTRY:-docker.io}/${IMAGE_ORG:-langflowai}/openrag-opensearch:${OPENRAG_IMAGE_TAG:-${OPENRAG_VERSION:-latest}${IMAGE_ARCH_SUFFIX:+-${IMAGE_ARCH_SUFFIX}}}
     build:
       context: .
       dockerfile: Dockerfile
@@ -47,7 +47,7 @@ services:
       - "${OPENSEARCH_DASHBOARDS_PORT:-5601}:5601"
 
   openrag-backend:
-    image: ${IMAGE_REGISTRY:-docker.io}/${IMAGE_ORG:-langflowai}/openrag-backend:${OPENRAG_IMAGE_TAG:-${OPENRAG_VERSION:-latest}${IMAGE_ARCH:+-${IMAGE_ARCH}}}
+    image: ${IMAGE_REGISTRY:-docker.io}/${IMAGE_ORG:-langflowai}/openrag-backend:${OPENRAG_IMAGE_TAG:-${OPENRAG_VERSION:-latest}${IMAGE_ARCH_SUFFIX:+-${IMAGE_ARCH_SUFFIX}}}
     build:
       context: .
       dockerfile: Dockerfile.backend
@@ -136,7 +136,7 @@ services:
       - "host.docker.internal:host-gateway"
 
   openrag-frontend:
-    image: ${IMAGE_REGISTRY:-docker.io}/${IMAGE_ORG:-langflowai}/openrag-frontend:${OPENRAG_IMAGE_TAG:-${OPENRAG_VERSION:-latest}${IMAGE_ARCH:+-${IMAGE_ARCH}}}
+    image: ${IMAGE_REGISTRY:-docker.io}/${IMAGE_ORG:-langflowai}/openrag-frontend:${OPENRAG_IMAGE_TAG:-${OPENRAG_VERSION:-latest}${IMAGE_ARCH_SUFFIX:+-${IMAGE_ARCH_SUFFIX}}}
     build:
       context: .
       dockerfile: Dockerfile.frontend
@@ -149,7 +149,7 @@ services:
       - "${FRONTEND_PORT:-3000}:3000"
 
   langflow:
-    image: ${IMAGE_REGISTRY:-docker.io}/${IMAGE_ORG:-langflowai}/openrag-langflow:${OPENRAG_IMAGE_TAG:-${OPENRAG_VERSION:-latest}${IMAGE_ARCH:+-${IMAGE_ARCH}}}
+    image: ${IMAGE_REGISTRY:-docker.io}/${IMAGE_ORG:-langflowai}/openrag-langflow:${OPENRAG_IMAGE_TAG:-${OPENRAG_VERSION:-latest}${IMAGE_ARCH_SUFFIX:+-${IMAGE_ARCH_SUFFIX}}}
     build:
       context: .
       dockerfile: Dockerfile.langflow

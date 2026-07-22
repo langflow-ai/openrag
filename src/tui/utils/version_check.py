@@ -2,13 +2,15 @@
 
 from typing import Optional, Tuple
 from utils.logging_config import get_logger
-from config.image_config import IMAGE_ORG, IMAGE_NAME_BACKEND
+from config.image_config import IMAGE_ORG, IMAGE_NAME_BACKEND, IMAGE_REGISTRY
 
 logger = get_logger(__name__)
 
 # Canonical image used for version polling (short form without registry prefix,
 # as required by the Docker Hub v2 API endpoint).
 _DEFAULT_VERSION_IMAGE = f"{IMAGE_ORG}/{IMAGE_NAME_BACKEND}"
+
+_DOCKER_HUB_REGISTRY = "docker.io"
 
 
 async def get_latest_docker_version(image_name: str = _DEFAULT_VERSION_IMAGE) -> Optional[str]:
@@ -22,6 +24,13 @@ async def get_latest_docker_version(image_name: str = _DEFAULT_VERSION_IMAGE) ->
     Returns:
         Latest version string if found, None otherwise
     """
+    # Only poll Docker Hub when the configured registry is Docker Hub.
+    if IMAGE_REGISTRY != _DOCKER_HUB_REGISTRY:
+        logger.debug(
+            "Skipping version check: IMAGE_REGISTRY=%r is not Docker Hub", IMAGE_REGISTRY
+        )
+        return None
+
     try:
         import httpx
         

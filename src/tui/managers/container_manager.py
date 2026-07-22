@@ -219,6 +219,11 @@ class ContainerManager:
             except Exception as e:
                 logger.debug(f"Error reading .env file for Docker Compose: {e}")
 
+        # Normalise IMAGE_ARCH_SUFFIX: "multi" and "" both mean no suffix (fat manifest).
+        from config.image_config import IMAGE_ARCH as _DEFAULT_ARCH
+        arch = env.get("IMAGE_ARCH", _DEFAULT_ARCH)
+        env["IMAGE_ARCH_SUFFIX"] = arch if arch and arch != "multi" else ""
+
         return env
 
     def is_available(self) -> bool:
