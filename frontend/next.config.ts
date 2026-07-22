@@ -6,7 +6,7 @@ import path from "path";
 // the Makefile) so per-instance env files like `.env.instance2` are respected;
 // defaults to `.env`. Absolute ENV_FILE paths are used as-is.
 dotenv.config({
-  path: path.resolve(__dirname, "..", process.env.ENV_FILE || ".env"),
+  path: path.resolve(process.cwd(), "..", process.env.ENV_FILE || ".env"),
 });
 
 function getAllowedDevOrigins(): string[] {

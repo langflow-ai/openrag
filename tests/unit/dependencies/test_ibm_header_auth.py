@@ -151,3 +151,56 @@ async def test_saas_rbac_jwt_wins_over_lakehouse_header(monkeypatch):
     assert user is not None
     assert user.jwt_token == "Bearer tok"  # Bearer JWT, never "Basic ..."
     assert user.opensearch_credentials is None
+
+
+# --- on_prem mirrors: on-prem must behave exactly like saas here -----------
+
+
+@pytest.mark.asyncio
+async def test_on_prem_rbac_no_jwt_does_not_degrade_to_lakehouse(monkeypatch):
+    """on_prem+RBAC with no forwarded JWT must fail loud, even when the
+    lakehouse credentials header is present — it must NOT build a Basic
+    lakehouse user (matches saas)."""
+    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "on_prem")
+    monkeypatch.setattr(
+        ibm_auth,
+        "decode_ibm_jwt",
+        lambda tok: (_ for _ in ()).throw(AssertionError("decode must not run without a JWT")),
+    )
+    req = _FakeRequest(headers={LH_HEADER: "dGVzdDp0ZXN0"})
+
+    with pytest.raises(HTTPException) as exc:
+        await _get_ibm_user(req, required=True)
+    assert exc.value.status_code == 401
+    assert exc.value.detail["error"] == "missing_user_jwt"
+
+
+@pytest.mark.asyncio
+async def test_on_prem_rbac_no_jwt_optional_returns_none(monkeypatch):
+    """on_prem+RBAC with no forwarded JWT on an optional endpoint returns None
+    (anonymous), not a 401."""
+    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "on_prem")
+    req = _FakeRequest(headers={LH_HEADER: "dGVzdDp0ZXN0"})
+
+    user = await _get_ibm_user(req, required=False)
+
+    assert user is None
+
+
+@pytest.mark.asyncio
+async def test_on_prem_rbac_jwt_wins_over_lakehouse_header(monkeypatch):
+    """on_prem+RBAC: a valid forwarded JWT is authoritative — the lakehouse
+    header must never override it into a Basic credential."""
+    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "on_prem")
+    claims = {"sub": "s1", "username": "alice", "display_name": "Alice", "openrag_roles": ["admin"]}
+    monkeypatch.setattr(ibm_auth, "decode_ibm_jwt", lambda tok: claims if tok == "tok" else None)
+    req = _FakeRequest(headers={"X-OpenRAG-JWT": "Bearer tok", LH_HEADER: "dGVzdDp0ZXN0"})
+
+    user = await _get_ibm_user(req, required=True)
+
+    assert user is not None
+    assert user.jwt_token == "Bearer tok"  # Bearer JWT, never "Basic ..."
+    assert user.opensearch_credentials is None

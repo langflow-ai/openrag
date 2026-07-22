@@ -726,14 +726,22 @@ backend: ## Run backend locally
 frontend: ## Run frontend locally
 	@echo "$(YELLOW)Starting frontend locally...$(NC)"
 	@if [ ! -d "frontend/node_modules" ]; then echo "$(YELLOW)Installing frontend dependencies first...$(NC)"; cd frontend && npm install; fi
+	@ARCH=$$(uname -m); \
+	export ENV_FILE="$(abspath $(ENV_FILE))"; \
+	PORT=$${FRONTEND_PORT:-3000}; \
+	export NEXT_DIST_DIR=$${NEXT_DIST_DIR:-$$( [ "$$PORT" = "3000" ] && echo .next || echo .next-$$PORT )}; \
 	cd frontend && \
-		export ENV_FILE="$(abspath $(ENV_FILE))"; \
-		PORT=$${FRONTEND_PORT:-3000}; \
-		export NEXT_DIST_DIR=$${NEXT_DIST_DIR:-$$( [ "$$PORT" = "3000" ] && echo .next || echo .next-$$PORT )}; \
-		echo "$(YELLOW)Using distDir $$NEXT_DIST_DIR$(NC)"; \
+	echo "$(YELLOW)Using distDir $$NEXT_DIST_DIR$(NC)"; \
+	if [ "$$ARCH" = "ppc64le" ] || [ "$$ARCH" = "ppc64" ]; then \
+		echo "$(YELLOW)Detected Power architecture ($$ARCH) — using Webpack fallback$(NC)"; \
+		npx next dev --webpack \
+			--port $$PORT \
+			--hostname $$(hostname); \
+	else \
 		npx next dev \
 			--port $$PORT \
-			--hostname $(hostname)
+			--hostname $$(hostname); \
+	fi
 
 docling: ## Start docling-serve for document processing
 	@echo "$(YELLOW)Starting docling-serve...$(NC)"

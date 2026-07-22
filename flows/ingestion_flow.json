@@ -666,7 +666,7 @@
                       "value": true
                     },
                     "key": "X-Tenant-Id",
-                    "value": "OWNER"
+                    "value": ""
                   }
                 ]
               },
