@@ -206,9 +206,7 @@ async def test_langflow_stream_persists_error_onto_existing_thread(monkeypatch, 
 
 
 @pytest.mark.asyncio
-async def test_langflow_follow_up_after_error_reuses_store_id(
-    monkeypatch, store_in_memory
-):
+async def test_langflow_follow_up_after_error_reuses_store_id(monkeypatch, store_in_memory):
     """Retrying in the same chat must not create a second sidebar conversation."""
     provider_message = "Rate limit exceeded for watsonx.ai."
     stream_calls: list[dict] = []
@@ -263,9 +261,7 @@ async def test_langflow_follow_up_after_error_reuses_store_id(
 
 
 @pytest.mark.asyncio
-async def test_langflow_follow_up_ignores_broken_previous_response_id(
-    monkeypatch, store_in_memory
-):
+async def test_langflow_follow_up_ignores_broken_previous_response_id(monkeypatch, store_in_memory):
     """Even if the client still sends a failed Langflow session id, do not chain it."""
     provider_message = "Invalid API key for Anthropic. Check your credentials."
     stream_calls: list[dict] = []

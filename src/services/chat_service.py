@@ -843,9 +843,7 @@ class ChatService:
                 ]
 
             if response_id in listed_ids:
-                existing = next(
-                    c for c in all_conversations if c["response_id"] == response_id
-                )
+                existing = next(c for c in all_conversations if c["response_id"] == response_id)
                 if len(messages) > len(existing.get("messages") or []):
                     existing["messages"] = messages
                     existing["total_messages"] = len(messages)
@@ -864,9 +862,7 @@ class ChatService:
                 else "New Chat"
             )
             created_at = metadata.get("created_at") or conversation_state.get("created_at")
-            last_activity = metadata.get("last_activity") or conversation_state.get(
-                "last_activity"
-            )
+            last_activity = metadata.get("last_activity") or conversation_state.get("last_activity")
             all_conversations.append(
                 {
                     "response_id": response_id,

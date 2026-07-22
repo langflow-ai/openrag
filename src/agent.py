@@ -112,6 +112,7 @@ def _stream_error_chunk(message: str, response_id: str | None = None) -> bytes:
         payload["response_id"] = response_id
     return (json.dumps(payload) + "\n").encode("utf-8")
 
+
 async def get_user_conversations(user_id: str):
     """Get conversation metadata for a user from persistent storage."""
     return await conversation_persistence.get_user_conversations(user_id)
@@ -163,9 +164,7 @@ async def store_conversation_thread(user_id: str, response_id: str, conversation
         content = first_user_msg.get("content", "")
         title = content[:50] + "..." if len(content) > 50 else content
 
-    user_assistant_messages = [
-        msg for msg in messages if msg.get("role") in ["user", "assistant"]
-    ]
+    user_assistant_messages = [msg for msg in messages if msg.get("role") in ["user", "assistant"]]
     metadata_only = {
         "response_id": response_id,
         "title": title,
