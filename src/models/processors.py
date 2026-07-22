@@ -386,13 +386,18 @@ class TaskProcessor:
         owner_user_id: str,
         keep_filenames: list[str] | None = None,
         shared: bool = False,
+        connector_type: str | None = None,
     ) -> int:
         """Delete indexed chunks for a connector file by its STABLE id.
 
-        Deletion semantics (dual-field id match, owner/shared scoping, rename
-        ``keep_filenames``) live in ``connectors.chunk_cleanup``. This wrapper
-        is best-effort: logs and returns 0 on failure so a cleanup miss never
-        fails the task.
+        Deletion semantics (dual-field id match, connector/owner/shared scoping,
+        rename ``keep_filenames``) live in ``connectors.chunk_cleanup``. This
+        wrapper is best-effort: logs and returns 0 on failure so a cleanup miss
+        never fails the task.
+
+        ``connector_type`` scopes the match to one connector type — the same
+        value the chunks were indexed under — so an id that collides with a
+        different connector's id can't take its chunks down with it.
         """
         from connectors.chunk_cleanup import delete_connector_file_chunks
 
@@ -402,6 +407,7 @@ class TaskProcessor:
             return await delete_connector_file_chunks(
                 [file_id],
                 opensearch_client,
+                connector_type=connector_type,
                 owner_user_id=owner_user_id,
                 shared=shared,
                 keep_filenames=keep_filenames,
@@ -1004,7 +1010,11 @@ class ConnectorFileProcessor(TaskProcessor):
                         )
                     )
                     deleted_chunks = await self._delete_connector_chunks(
-                        file_id, opensearch_client, self.user_id, shared=self.shared
+                        file_id,
+                        opensearch_client,
+                        self.user_id,
+                        shared=self.shared,
+                        connector_type=connector_type,
                     )
 
                     logger.warning(
@@ -1080,6 +1090,7 @@ class ConnectorFileProcessor(TaskProcessor):
                     self.user_id,
                     keep_filenames=get_filename_aliases(file_task.filename),
                     shared=self.shared,
+                    connector_type=connector_type,
                 )
                 > 0
             )

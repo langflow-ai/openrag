@@ -235,6 +235,11 @@ async def test_connector_processor_deletes_chunks_when_source_returns_404(
     assert fields["connector_file_id"] == ["file-id-1"]
     assert fields["document_id"] == ["file-id-1"]
 
+    # ...and stay scoped to this connector type, so an id that collides with a
+    # different connector's id can't take its chunks down with it.
+    terms = [f["term"] for f in query["bool"]["filter"] if "term" in f]
+    assert {"connector_type": "sharepoint"} in terms
+
 
 @pytest.mark.asyncio
 async def test_connector_processor_indexes_cleaned_filename(monkeypatch):
@@ -600,6 +605,10 @@ async def test_rename_cleanup_matches_both_id_fields(monkeypatch, backend_write_
     assert fields == {"document_id", "connector_file_id", "connector_file_id.keyword"}
     excluded = captured["query"]["bool"]["must_not"][0]["terms"]["filename"]
     assert set(get_filename_aliases("Renamed.pdf")).issubset(set(excluded))
+    # Scoped to this connector type, matching the value the chunks were indexed
+    # under, so a colliding id from another connector is left alone.
+    terms = [f["term"] for f in captured["query"]["bool"]["filter"] if "term" in f]
+    assert {"connector_type": "sharepoint"} in terms
 
 
 @pytest.mark.asyncio
