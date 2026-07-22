@@ -19,10 +19,7 @@ def test_parse_ibm_iam_error_message():
             "url": "https://iam.cloud.ibm.com",
         },
     }
-    assert (
-        _parse_json_error_message(json.dumps(payload))
-        == "Provided API key could not be found."
-    )
+    assert _parse_json_error_message(json.dumps(payload)) == "Provided API key could not be found."
 
 
 def test_format_ibm_auth_failure_strips_context_json():
