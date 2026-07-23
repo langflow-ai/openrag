@@ -47,8 +47,12 @@ async def test_bulk_update_flows_creates_backup_flow_in_langflow():
 
     with (
         patch("services.flows_service.clients.langflow_request", side_effect=mock_langflow_request),
-        patch.object(service, "_backup_flow", new_callable=AsyncMock, return_value="/tmp/backup.json"),
-        patch.object(service, "reset_langflow_flow", new_callable=AsyncMock, return_value={"success": True}),
+        patch.object(
+            service, "_backup_flow", new_callable=AsyncMock, return_value="/tmp/backup.json"
+        ),
+        patch.object(
+            service, "reset_langflow_flow", new_callable=AsyncMock, return_value={"success": True}
+        ),
     ):
         results = await service.bulk_update_flows(["retrieval"], backup_custom=True)
 

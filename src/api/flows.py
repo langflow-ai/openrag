@@ -1,12 +1,13 @@
 """Reset Flow API endpoints"""
+
 from typing import Literal
 
 from fastapi import Depends
 from fastapi.responses import JSONResponse
-from utils.logging_config import get_logger
 
-from dependencies import get_flows_service, get_current_user, require_permission
+from dependencies import get_current_user, get_flows_service, require_permission
 from session_manager import User
+from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
@@ -23,27 +24,19 @@ async def reset_flow_endpoint(
         return JSONResponse(
             {
                 "success": False,
-                "error": "Invalid flow type. Must be 'nudges', 'retrieval', or 'ingest'"
+                "error": "Invalid flow type. Must be 'nudges', 'retrieval', or 'ingest'",
             },
-            status_code=400
+            status_code=400,
         )
 
     try:
         result = await flows_service.reset_langflow_flow(flow_type)
 
         if result.get("success"):
-            logger.info(
-                "Flow reset successful",
-                flow_type=flow_type,
-                flow_id=result.get("flow_id")
-            )
+            logger.info("Flow reset successful", flow_type=flow_type, flow_id=result.get("flow_id"))
             return JSONResponse(result, status_code=200)
         else:
-            logger.error(
-                "Flow reset failed",
-                flow_type=flow_type,
-                error=result.get("error")
-            )
+            logger.error("Flow reset failed", flow_type=flow_type, error=result.get("error"))
             return JSONResponse(result, status_code=500)
 
     except ValueError as e:
@@ -52,16 +45,19 @@ async def reset_flow_endpoint(
     except Exception as e:
         logger.error("Unexpected error in flow reset", error=str(e))
         return JSONResponse(
-            {"success": False, "error": f"Internal server error: {str(e)}"},
-            status_code=500
+            {"success": False, "error": f"Internal server error: {str(e)}"}, status_code=500
         )
 
-from pydantic import BaseModel
+
 from typing import List
 
+from pydantic import BaseModel
+
+
 class BulkUpdateFlowsRequest(BaseModel):
-    flow_types: List[str]
+    flow_types: list[str]
     backup_custom: bool = True
+
 
 async def get_flows_updates_endpoint(
     flows_service=Depends(get_flows_service),
@@ -74,9 +70,9 @@ async def get_flows_updates_endpoint(
     except Exception as e:
         logger.error("Error getting flow updates", error=str(e))
         return JSONResponse(
-            {"success": False, "error": f"Internal server error: {str(e)}"},
-            status_code=500
+            {"success": False, "error": f"Internal server error: {str(e)}"}, status_code=500
         )
+
 
 async def bulk_update_flows_endpoint(
     request: BulkUpdateFlowsRequest,
@@ -90,6 +86,5 @@ async def bulk_update_flows_endpoint(
     except Exception as e:
         logger.error("Error bulk updating flows", error=str(e))
         return JSONResponse(
-            {"success": False, "error": f"Internal server error: {str(e)}"},
-            status_code=500
+            {"success": False, "error": f"Internal server error: {str(e)}"}, status_code=500
         )

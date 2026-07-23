@@ -425,7 +425,7 @@ def register_internal_routes(app: FastAPI):
         methods=["POST"],
         tags=["internal"],
     )
-    
+
     # Flow updates endpoints
     app.add_api_route(
         "/settings/flows/updates-available",
