@@ -12,6 +12,7 @@ from config.settings import (
     config_manager,
     get_embedding_model,
     get_index_name,
+    is_dev_azure_blob_enabled,
     is_no_auth_mode,
 )
 from connectors.service import ConnectorService
@@ -24,6 +25,7 @@ from services.document_index_writer import DocumentIndexWriter
 from services.document_service import DocumentService
 from services.flows_service import FlowsService
 from services.group_acl_service import GroupACLService
+from services.ingest_preview_service import IngestPreviewService
 from services.knowledge_filter_service import KnowledgeFilterService
 from services.langflow_file_service import LangflowFileService
 from services.langflow_ingest_token_service import LangflowIngestTokenService
@@ -38,6 +40,19 @@ from utils.logging_config import get_logger
 from utils.telemetry import Category, MessageId, TelemetryClient
 
 logger = get_logger(__name__)
+
+
+def _should_load_persisted_connections() -> bool:
+    """Whether to load persisted connector connections at startup.
+
+    Normally skipped in no-auth mode because OAuth connectors are unusable
+    there — but dev bucket connectors (e.g. Azure Blob via
+    OPENRAG_DEV_AZURE_BLOB) DO work in no-auth mode and persist real
+    connections. Without loading them, a saved connection silently disappears
+    on restart (the in-memory dict empties), leaving the UI stuck on "Connect".
+    OR in those dev flags so their connections survive a restart.
+    """
+    return not is_no_auth_mode() or is_dev_azure_blob_enabled()
 
 
 async def initialize_services():
@@ -68,6 +83,7 @@ async def initialize_services():
     models_service = ModelsService()
     document_index_writer = DocumentIndexWriter()
     langflow_ingest_token_service = LangflowIngestTokenService()
+    ingest_preview_service = IngestPreviewService()
     document_service = DocumentService(
         session_manager=session_manager,
         models_service=models_service,
@@ -131,9 +147,9 @@ async def initialize_services():
     )
 
     # Load persisted connector connections at startup so webhooks and syncs
-    # can resolve existing subscriptions immediately after server boot
-    # Skip in no-auth mode since connectors require OAuth
-    if not is_no_auth_mode():
+    # can resolve existing subscriptions immediately after server boot.
+    # (See _should_load_persisted_connections for the no-auth/dev-bucket nuance.)
+    if _should_load_persisted_connections():
         try:
             await connector_service.initialize()
             loaded_count = len(connector_service.connection_manager.connections)
@@ -218,6 +234,7 @@ async def initialize_services():
         "langflow_mcp_service": langflow_mcp_service,
         "docling_service": clients.docling_service,
         "docling_polling_service": docling_polling_service,
+        "ingest_preview_service": ingest_preview_service,
         "rbac_service": rbac_service,
         "workspace_config_service": workspace_config_service,
     }

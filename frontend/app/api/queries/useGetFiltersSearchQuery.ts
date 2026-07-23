@@ -12,6 +12,7 @@ export interface KnowledgeFilter {
   owner: string;
   created_at: string;
   updated_at: string;
+  active_source_count?: number;
 }
 
 export const useGetFiltersSearchQuery = (

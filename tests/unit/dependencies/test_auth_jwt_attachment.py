@@ -9,7 +9,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-import dependencies  # noqa: E402
+import auth.request_identity as request_identity  # noqa: E402
 from dependencies import get_current_user, get_optional_user  # noqa: E402
 from session_manager import User  # noqa: E402
 
@@ -48,7 +48,7 @@ def _auth_settings(monkeypatch):
     async def _resolve_db_user_id(user, jwt_roles=None):
         return user.user_id
 
-    monkeypatch.setattr(dependencies, "_resolve_db_user_id", _resolve_db_user_id)
+    monkeypatch.setattr(request_identity, "_resolve_db_user_id", _resolve_db_user_id)
 
 
 @pytest.mark.asyncio

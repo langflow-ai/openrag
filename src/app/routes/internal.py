@@ -16,6 +16,7 @@ from api import (
     documents,
     files,
     flows,
+    ingest_preview,
     knowledge_filter,
     langflow_files,
     langflow_ingest,
@@ -73,6 +74,14 @@ def register_internal_routes(app: FastAPI):
     app.add_api_route("/upload_path", upload.upload_path, methods=["POST"], tags=["internal"])
     app.add_api_route("/upload_options", upload.upload_options, methods=["GET"], tags=["internal"])
     app.add_api_route("/upload_bucket", upload.upload_bucket, methods=["POST"], tags=["internal"])
+
+    # Ingest preview endpoint (index proof for preview-mode ingests)
+    app.add_api_route(
+        "/ingest/preview/{task_id}/index-proof",
+        ingest_preview.get_index_proof,
+        methods=["GET"],
+        tags=["internal"],
+    )
 
     # Task endpoints
     # Literal sub-paths must be registered before the parameterised /{task_id}
@@ -224,6 +233,24 @@ def register_internal_routes(app: FastAPI):
         "/connectors/user-access",
         connectors.update_connector_user_access,
         methods=["PUT"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/connectors/oauth-config",
+        connectors.get_connector_oauth_config,
+        methods=["GET"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/connectors/oauth-config/{credential_key}",
+        connectors.update_connector_oauth_config,
+        methods=["PUT"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/connectors/oauth-config/{credential_key}",
+        connectors.delete_connector_oauth_config,
+        methods=["DELETE"],
         tags=["internal"],
     )
     # Per-connector routes (defaults, configure, bucket listing, etc.) — registered before

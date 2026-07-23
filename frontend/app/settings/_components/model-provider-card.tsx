@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useIsCloudBrand } from "@/contexts/brand-context";
+import { trackButton } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import type { ModelProvider } from "../_helpers/model-helpers";
 import CardIcon from "./card-icon";
@@ -87,7 +88,20 @@ export default function ModelProviderCard({
                 ? "ghost"
                 : "outline"
           }
-          onClick={() => onConfigure(providerKey)}
+          onClick={() => {
+            const cta = isUnhealthy
+              ? "Fix Setup"
+              : isConfigured
+                ? "Edit Setup"
+                : "Configure";
+            trackButton({
+              CTA: `${cta} - ${name}`,
+              elementId: "provider-card-button",
+              namespace: "settings",
+              payload: { provider: providerKey },
+            });
+            onConfigure(providerKey);
+          }}
         >
           {isUnhealthy
             ? "Fix Setup"

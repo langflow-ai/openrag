@@ -36,8 +36,8 @@ class _VisibleTextHTMLParser(HTMLParser):
         return " ".join(self._chunks)
 
 
-async def materialize_url_as_text_file(docs_url: str, crawl_depth: int) -> str:
-    """Fetch URL content and write a temporary text file for OpenRAG ingestion."""
+async def materialize_url_as_text_file(docs_url: str, crawl_depth: int) -> tuple[str, str]:
+    """Fetch URL content and write a temporary text file for OpenRAG ingestion, returning path and title."""
     async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
         response = await client.get(docs_url)
         response.raise_for_status()
@@ -48,7 +48,8 @@ async def materialize_url_as_text_file(docs_url: str, crawl_depth: int) -> str:
         raw_html,
         flags=re.IGNORECASE | re.DOTALL,
     )
-    title = html.unescape(title_match.group(1).strip()) if title_match else "OpenRAG"
+    title = html.unescape(title_match.group(1).strip()) if title_match else ""
+    title = title or "OpenRAG"
 
     text_parser = _VisibleTextHTMLParser()
     text_parser.feed(raw_html)
@@ -68,4 +69,4 @@ async def materialize_url_as_text_file(docs_url: str, crawl_depth: int) -> str:
     )
     with temp_file:
         temp_file.write(content)
-    return temp_file.name
+    return temp_file.name, title

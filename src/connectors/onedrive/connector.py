@@ -30,6 +30,8 @@ class OneDriveConnector(BaseConnector):
     # Required BaseConnector class attributes
     CLIENT_ID_ENV_VAR = "MICROSOFT_GRAPH_OAUTH_CLIENT_ID"
     CLIENT_SECRET_ENV_VAR = "MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET"  # pragma: allowlist secret
+    # Shared with SharePointConnector — both use one Microsoft Graph app registration.
+    OAUTH_CREDENTIAL_KEY = "microsoft_graph"
 
     # Connector metadata
     CONNECTOR_TYPE = "onedrive"
@@ -406,7 +408,7 @@ class OneDriveConnector(BaseConnector):
         """Get subscription expiry time (Graph caps duration; often <= 3 days)."""
         from datetime import datetime, timedelta
 
-        expiry = datetime.utcnow() + timedelta(days=3)
+        expiry = datetime.now(UTC) + timedelta(days=3)
         return expiry.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
     async def list_files(

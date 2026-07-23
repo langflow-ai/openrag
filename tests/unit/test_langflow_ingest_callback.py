@@ -103,6 +103,28 @@ async def test_langflow_ingest_callback_indexes_authoritative_token_context():
         )
 
 
+def test_ingest_token_round_trips_connector_file_id():
+    """Bucket-connector chunks (COS/Azure/S3) rely on connector_file_id
+    surviving the JWT round trip so post-ingest verification (which queries
+    by connector_file_id) and dedupe/ACL sync can find them. Regression guard
+    for the field being dropped by _context_to_payload/_payload_to_context."""
+    token_service = LangflowIngestTokenService(secret="test-secret" * 4, ttl_seconds=60)
+    context = DocumentIndexContext(
+        document_id="hashed-id",
+        filename="report.pdf",
+        mimetype="application/pdf",
+        embedding_model="text-embedding-3-small",
+        owner="user-1",
+        ingest_run_id="run-1",
+        connector_file_id="my-bucket::報告書.pdf",
+    )
+    token = token_service.create_token(context)
+
+    restored_context, _jti = token_service.validate_token(token)
+
+    assert restored_context.connector_file_id == "my-bucket::報告書.pdf"
+
+
 @pytest.mark.asyncio
 async def test_langflow_ingest_callback_rewrites_langflow_chunk_ids():
     token_service = LangflowIngestTokenService(secret="test-secret" * 4, ttl_seconds=60)
@@ -329,7 +351,8 @@ def test_ingest_flows_resolve_callback_config_from_global_vars(flow_path, compon
 def test_ingest_flows_wire_callback_global_vars_into_opensearch(flow_path, component_id):
     flow = json.loads(Path(flow_path).read_text(encoding="utf-8"))
     nodes = {node.get("id"): node for node in flow["data"]["nodes"]}
-    edges = flow["data"]["edges"]
+    component = nodes[component_id]
+    template = component["data"]["node"]["template"]
     expected = {
         "openrag_ingest_url": "OPENRAG_INGEST_URL",
         "openrag_ingest_token": "OPENRAG_INGEST_TOKEN",
@@ -337,18 +360,14 @@ def test_ingest_flows_wire_callback_global_vars_into_opensearch(flow_path, compo
     }
 
     for field_name, variable_name in expected.items():
-        source_id = f"TextInput-OpenRAGIngest-{field_name.removeprefix('openrag_ingest_')}"
-        text_node = nodes[source_id]
-        input_template = text_node["data"]["node"]["template"]["input_value"]
+        input_template = template[field_name]
         assert input_template["value"] == variable_name
         assert input_template["load_from_db"] is True
+        assert input_template["show"] is True
 
-        assert any(
-            edge.get("source") == source_id
-            and edge.get("target") == component_id
-            and edge.get("data", {}).get("targetHandle", {}).get("fieldName") == field_name
-            for edge in edges
-        )
+    assert template["openrag_ingest_batch_size"]["value"] == 100
+    assert template["openrag_ingest_batch_size"].get("load_from_db") is None
+    assert template["openrag_ingest_batch_size"]["show"] is True
 
 
 @pytest.mark.parametrize(

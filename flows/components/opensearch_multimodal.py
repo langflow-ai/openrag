@@ -2306,6 +2306,9 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                 "source_url",
                 "owner",
                 "embedding_model",
+                "parser",
+                "chunk_size",
+                "chunk_overlap",
                 "allowed_users",
                 "allowed_groups",
                 "allowed_principals",
@@ -2394,7 +2397,12 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         return [
             {
                 "page_content": hit["_source"].get("text", ""),
-                "metadata": {k: v for k, v in hit["_source"].items() if k != "text"},
+                "metadata": {
+                    **{k: v for k, v in hit["_source"].items() if k != "text"},
+                    "chunk_id": hit.get("_id"),
+                    "id": hit.get("_id"),
+                    "score": hit.get("_score"),
+                },
                 "score": hit.get("_score"),
             }
             for hit in hits

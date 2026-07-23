@@ -138,12 +138,6 @@ function ChatPage() {
         if (conversationFilter && typeof window !== "undefined") {
           const newKey = `conversation_filter_${responseId}`;
           localStorage.setItem(newKey, conversationFilter.id);
-          console.log(
-            "[CHAT] Saved filter association:",
-            newKey,
-            "=",
-            conversationFilter.id,
-          );
         }
       }
     },
@@ -164,10 +158,11 @@ function ChatPage() {
   });
 
   // Show warning if waiting too long (20 seconds)
+  const hasStreamingMessage = !!streamingMessage;
   useEffect(() => {
     let timeoutId: NodeJS.Timeout | null = null;
 
-    if (isChatStreaming && !streamingMessage) {
+    if (isChatStreaming && !hasStreamingMessage) {
       timeoutId = setTimeout(() => {
         setWaitingTooLong(true);
       }, 20000); // 20 seconds
@@ -178,7 +173,7 @@ function ChatPage() {
     return () => {
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [isChatStreaming, streamingMessage]);
+  }, [isChatStreaming, hasStreamingMessage]);
 
   const handleEndpointChange = (newEndpoint: EndpointType) => {
     setEndpoint(newEndpoint);
@@ -201,7 +196,7 @@ function ChatPage() {
       );
 
       if (result.type === "task") {
-        addTask(result.taskId);
+        addTask(result.taskId, { source: "file" });
         return { type: "task-queued" as const };
       }
 
@@ -295,6 +290,7 @@ function ChatPage() {
 
   // Load conversation data from context
   useEffect(() => {
+    let focusTimeoutId: NodeJS.Timeout;
     // Only load conversation data when:
     // 1. conversationData exists AND
     // 2. (It's a different conversation OR we're not streaming and data has changed) AND
@@ -310,11 +306,6 @@ function ChatPage() {
       !isUserInteracting &&
       !isForkingInProgress
     ) {
-      console.log(
-        "Loading conversation with",
-        conversationData.messages.length,
-        "messages",
-      );
       // Convert backend message format to frontend Message interface
       const convertedMessages: Message[] = conversationData.messages.map(
         (msg: {
@@ -356,11 +347,6 @@ function ChatPage() {
           // Extract function calls from chunks or response_data
           if (msg.role === "assistant" && (msg.chunks || msg.response_data)) {
             const functionCalls: FunctionCall[] = [];
-            console.log("Processing assistant message for function calls:", {
-              hasChunks: !!msg.chunks,
-              chunksLength: msg.chunks?.length,
-              hasResponseData: !!msg.response_data,
-            });
 
             // Process chunks (streaming data)
             if (msg.chunks && Array.isArray(msg.chunks)) {
@@ -368,7 +354,6 @@ function ChatPage() {
                 // Handle Langflow format: chunks[].item.tool_call
                 if (chunk.item && chunk.item.type === "tool_call") {
                   const toolCall = chunk.item;
-                  console.log("Found Langflow tool call:", toolCall);
                   functionCalls.push({
                     id: toolCall.id || "",
                     name: toolCall.tool_name || "unknown",
@@ -454,10 +439,7 @@ function ChatPage() {
             }
 
             if (functionCalls.length > 0) {
-              console.log("Setting functionCalls on message:", functionCalls);
               message.functionCalls = functionCalls;
-            } else {
-              console.log("No function calls found in message");
             }
 
             // Extract usage data from response_data
@@ -486,13 +468,15 @@ function ChatPage() {
       }));
 
       // Focus input when loading a conversation
-      setTimeout(() => {
+      focusTimeoutId = setTimeout(() => {
         chatInputRef.current?.focusInput();
       }, 100);
     } else if (!conversationData) {
       // No conversation selected (new conversation)
       lastLoadedConversationRef.current = null;
     }
+
+    return () => clearTimeout(focusTimeoutId);
   }, [
     conversationData,
     isUserInteracting,
@@ -504,16 +488,17 @@ function ChatPage() {
 
   // Handle new conversation creation - only reset messages when placeholderConversation is set
   useEffect(() => {
+    let focusTimeoutId: NodeJS.Timeout;
     if (placeholderConversation && currentConversationId === null) {
-      console.log("Starting new conversation");
       setMessages([INITIAL_ASSISTANT_MESSAGE]);
       lastLoadedConversationRef.current = null;
 
       // Focus input when starting a new conversation
-      setTimeout(() => {
+      focusTimeoutId = setTimeout(() => {
         chatInputRef.current?.focusInput();
       }, 100);
     }
+    return () => clearTimeout(focusTimeoutId);
   }, [placeholderConversation, currentConversationId]);
 
   const { isOnboardingComplete } = useOnboardingState();
@@ -550,12 +535,6 @@ function ChatPage() {
 
     // Use passed previousResponseId if available, otherwise fall back to state
     const responseIdToUse = previousResponseId || previousResponseIds[endpoint];
-
-    console.log("[CHAT] Sending streaming message:", {
-      conversationFilter: conversationFilter?.id,
-      currentConversationId,
-      responseIdToUse,
-    });
 
     // Use the hook to send the message
     await sendStreamingMessage({
@@ -630,14 +609,6 @@ function ChatPage() {
           requestBody.filter_id = conversationFilter.id;
         }
 
-        // Debug logging
-        console.log("[DEBUG] Sending message with:", {
-          previous_response_id: requestBody.previous_response_id,
-          filter_id: requestBody.filter_id,
-          currentConversationId,
-          previousResponseIds,
-        });
-
         const response = await fetch(apiEndpoint, {
           method: "POST",
           headers: {
@@ -662,13 +633,6 @@ function ChatPage() {
 
           // Store the response ID if present for this endpoint
           if (result.response_id) {
-            console.log(
-              "[DEBUG] Received response_id:",
-              result.response_id,
-              "currentConversationId:",
-              currentConversationId,
-            );
-
             setPreviousResponseIds((prev) => ({
               ...prev,
               [endpoint]: result.response_id,
@@ -676,16 +640,9 @@ function ChatPage() {
 
             // If this is a new conversation (no currentConversationId), set it now
             if (!currentConversationId) {
-              console.log(
-                "[DEBUG] Setting currentConversationId to:",
-                result.response_id,
-              );
               setCurrentConversationId(result.response_id);
               refreshConversations(true);
             } else {
-              console.log(
-                "[DEBUG] Existing conversation, doing silent refresh",
-              );
               // For existing conversations, do a silent refresh to keep backend in sync
               refreshConversationsSilent();
             }
@@ -694,12 +651,6 @@ function ChatPage() {
             if (conversationFilter && typeof window !== "undefined") {
               const newKey = `conversation_filter_${result.response_id}`;
               localStorage.setItem(newKey, conversationFilter.id);
-              console.log(
-                "[DEBUG] Saved filter association:",
-                newKey,
-                "=",
-                conversationFilter.id,
-              );
             }
           }
         } else {
@@ -792,8 +743,6 @@ function ChatPage() {
     setIsUserInteracting(true);
     setIsForkingInProgress(true);
 
-    console.log("Fork conversation called for message index:", messageIndex);
-
     // Get messages up to and including the selected assistant message
     const messagesToKeep = messages.slice(0, messageIndex + 1);
 
@@ -830,13 +779,10 @@ function ChatPage() {
       }));
     }
 
-    console.log("Forked conversation with", messagesToKeep.length, "messages");
-
     // Reset interaction state after a longer delay to ensure all effects complete
     setTimeout(() => {
       setIsUserInteracting(false);
       setIsForkingInProgress(false);
-      console.log("Fork interaction complete, re-enabling auto effects");
     }, 500);
 
     // The original conversation remains unchanged in the sidebar

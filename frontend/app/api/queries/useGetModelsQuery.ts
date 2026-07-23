@@ -9,6 +9,7 @@ export interface ModelOption {
   value: string;
   label: string;
   default?: boolean;
+  supports_images?: boolean;
 }
 
 export interface ModelsResponse {
@@ -61,7 +62,7 @@ export const useGetOpenAIModelsQuery = (
     }
   }
 
-  const queryResult = useQuery(
+  return useQuery(
     {
       queryKey: ["models", "openai", params],
       queryFn: getOpenAIModels,
@@ -72,8 +73,6 @@ export const useGetOpenAIModelsQuery = (
     },
     queryClient,
   );
-
-  return queryResult;
 };
 
 export const useGetAnthropicModelsQuery = (
@@ -103,7 +102,7 @@ export const useGetAnthropicModelsQuery = (
     }
   }
 
-  const queryResult = useQuery(
+  return useQuery(
     {
       queryKey: ["models", "anthropic", params],
       queryFn: getAnthropicModels,
@@ -114,8 +113,6 @@ export const useGetAnthropicModelsQuery = (
     },
     queryClient,
   );
-
-  return queryResult;
 };
 
 export const useGetOllamaModelsQuery = (
@@ -138,7 +135,7 @@ export const useGetOllamaModelsQuery = (
     }
   }
 
-  const queryResult = useQuery(
+  return useQuery(
     {
       queryKey: ["models", "ollama", params],
       queryFn: getOllamaModels,
@@ -149,8 +146,6 @@ export const useGetOllamaModelsQuery = (
     },
     queryClient,
   );
-
-  return queryResult;
 };
 
 export const useGetIBMModelsQuery = (
@@ -190,7 +185,7 @@ export const useGetIBMModelsQuery = (
     }
   }
 
-  const queryResult = useQuery(
+  return useQuery(
     {
       queryKey: ["models", "ibm", params],
       queryFn: getIBMModels,
@@ -201,8 +196,6 @@ export const useGetIBMModelsQuery = (
     },
     queryClient,
   );
-
-  return queryResult;
 };
 
 /**

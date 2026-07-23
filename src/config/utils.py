@@ -61,11 +61,17 @@ def get_public_key_from_issuer(
     cache_key = f"{issuer}#{key_id or ''}"
     cached = _ISSUER_PUBLIC_KEY_CACHE.get(cache_key)
     if cached is not None:
+        logger.debug("Public key cache hit", issuer=issuer, key_id=key_id)
         return cached
 
-    with httpx.Client(verify=verify_tls, timeout=timeout) as client:
-        response = client.get(issuer)
-        response.raise_for_status()
+    logger.debug("Fetching public key from issuer", issuer=issuer)
+    try:
+        with httpx.Client(verify=verify_tls, timeout=timeout) as client:
+            response = client.get(issuer)
+            response.raise_for_status()
+    except (httpx.HTTPError, ValueError) as exc:
+        logger.error("Failed to fetch public key from issuer", issuer=issuer, error=str(exc))
+        raise
 
     content_type = response.headers.get("content-type", "")
     if "json" in content_type:
@@ -78,6 +84,7 @@ def get_public_key_from_issuer(
 
     public_key = _load_public_key_from_payload(key_payload, key_id)
     _ISSUER_PUBLIC_KEY_CACHE[cache_key] = public_key
+    logger.debug("Public key cached", issuer=issuer, key_id=key_id)
     return public_key
 
 
@@ -146,9 +153,23 @@ def verify_jwt_from_issuer(
         else:
             decode_kwargs["audience"] = audience
 
-        return jwt.decode(raw_token, public_key, **decode_kwargs)
+        claims = jwt.decode(raw_token, public_key, **decode_kwargs)
+        logger.debug("JWT verified successfully", issuer=issuer, sub=claims.get("sub"))
+        return claims
+    except jwt.ExpiredSignatureError as e:
+        logger.warning("JWT has expired", error=str(e), issuer=issuer)
+        return None
+    except jwt.InvalidSignatureError as e:
+        logger.warning("JWT has invalid signature", error=str(e), issuer=issuer)
+        return None
+    except jwt.InvalidIssuerError as e:
+        logger.warning("JWT has invalid issuer", error=str(e), issuer=issuer)
+        return None
+    except jwt.InvalidAudienceError as e:
+        logger.warning("JWT has invalid audience", error=str(e), issuer=issuer)
+        return None
     except (ValueError, httpx.HTTPError, jwt.InvalidTokenError) as e:
-        logger.debug(
+        logger.warning(
             "JWT verification failed",
             error=str(e),
             error_type=type(e).__name__,

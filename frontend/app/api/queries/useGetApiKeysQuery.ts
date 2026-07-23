@@ -12,17 +12,17 @@ export interface GetApiKeysResponse {
   keys: ApiKey[];
 }
 
+async function getApiKeys(): Promise<GetApiKeysResponse> {
+  const response = await fetch("/api/keys");
+  if (response.ok) {
+    return await response.json();
+  }
+  throw new Error("Failed to fetch API keys");
+}
+
 export const useGetApiKeysQuery = (
   options?: Omit<UseQueryOptions<GetApiKeysResponse>, "queryKey" | "queryFn">,
 ) => {
-  async function getApiKeys(): Promise<GetApiKeysResponse> {
-    const response = await fetch("/api/keys");
-    if (response.ok) {
-      return await response.json();
-    }
-    throw new Error("Failed to fetch API keys");
-  }
-
   return useQuery({
     queryKey: ["api-keys"],
     queryFn: getApiKeys,

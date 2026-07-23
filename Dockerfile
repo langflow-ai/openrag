@@ -1,31 +1,29 @@
 ########################################
 # Stage 1: Upstream OpenSearch with plugins
 ########################################
-FROM opensearchproject/opensearch:3.2.0 AS upstream_opensearch
+FROM opensearchproject/opensearch:3.6.0 AS upstream_opensearch
 
 # Remove plugins
 RUN opensearch-plugin remove opensearch-neural-search || true && \
-    opensearch-plugin remove opensearch-knn || true && \
-    # removing this one due to Netty CVE-2025-58056, can bring it back in the future
-    opensearch-plugin remove opensearch-security-analytics || true 
+    opensearch-plugin remove opensearch-knn || true
 
 # Prepare jvector plugin artifacts
 RUN mkdir -p /tmp/opensearch-jvector-plugin && \
-    curl -L -s https://github.com/opensearch-project/opensearch-jvector/releases/download/3.2.0.0/artifacts.tar.gz \
+    curl -L -s https://github.com/opensearch-project/opensearch-jvector/releases/download/3.6.0.0/artifacts.tar.gz \
       | tar zxvf - -C /tmp/opensearch-jvector-plugin
 
 # Prepare neural-search plugin
 RUN mkdir -p /tmp/opensearch-neural-search && \
-    curl -L -s https://storage.googleapis.com/opensearch-jvector/opensearch-neural-search-3.2.0.0-20251029200300.zip \
+    curl -L -s https://github.com/IBM/neural-search-jvector/releases/download/3.6.0.0/opensearch-neural-search-3.6.0.0.zip \
       > /tmp/opensearch-neural-search/plugin.zip
 
 # Install additional plugins
-RUN opensearch-plugin install --batch file:///tmp/opensearch-jvector-plugin/repository/org/opensearch/plugin/opensearch-jvector-plugin/3.2.0.0/opensearch-jvector-plugin-3.2.0.0.zip && \
+RUN opensearch-plugin install --batch file:///tmp/opensearch-jvector-plugin/repository/org/opensearch/plugin/opensearch-jvector-plugin/3.6.0.0/opensearch-jvector-plugin-3.6.0.0.zip && \
     opensearch-plugin install --batch file:///tmp/opensearch-neural-search/plugin.zip && \
     opensearch-plugin install --batch repository-gcs && \
     opensearch-plugin install --batch repository-azure && \
     # opensearch-plugin install --batch repository-s3 && \
-    opensearch-plugin install --batch https://github.com/opensearch-project/opensearch-prometheus-exporter/releases/download/3.2.0.0/prometheus-exporter-3.2.0.0.zip
+    opensearch-plugin install --batch https://github.com/opensearch-project/opensearch-prometheus-exporter/releases/download/3.6.0.0/prometheus-exporter-3.6.0.0.zip
 
 # Apply Netty patch
 COPY patch-netty.sh /tmp/
@@ -36,9 +34,9 @@ RUN chmod -R g=u /usr/share/opensearch
 
 
 ########################################
-# Stage 2: UBI9 runtime image
+# Stage 2: UBI10 runtime image
 ########################################
-FROM registry.access.redhat.com/ubi9/ubi:latest
+FROM registry.access.redhat.com/ubi10/ubi:latest
 
 USER root
 
@@ -66,8 +64,6 @@ RUN usermod -aG wheel opensearch && \
 
 # Copy OpenSearch from the upstream stage
 COPY --from=upstream_opensearch --chown=$UID:0 $OPENSEARCH_HOME $OPENSEARCH_HOME
-
-ARG OPENSEARCH_VERSION=3.2.0
 
 ########################################
 # Async-profiler (multi-arch like your original)
@@ -113,6 +109,8 @@ RUN echo '#!/bin/bash' > /usr/share/opensearch/setup-security.sh && \
     echo 'if [ -z "$HASH" ]; then echo "[ERROR] Failed to generate admin hash"; exit 1; fi' >> /usr/share/opensearch/setup-security.sh && \
     echo 'sed -i "s|^  hash: \".*\"|  hash: \"$HASH\"|" /usr/share/opensearch/securityconfig/internal_users.yml' >> /usr/share/opensearch/setup-security.sh && \
     echo 'echo "Updated internal_users.yml with runtime-generated admin hash"' >> /usr/share/opensearch/setup-security.sh && \
+    echo 'BACKEND_URL=${OPENRAG_BACKEND_INTERNAL_URL:-http://${OPENRAG_BACKEND_HOST:-openrag-backend}:${OPENRAG_BACKEND_PORT:-8000}}' >> /usr/share/opensearch/setup-security.sh && \
+    echo 'sed -i "s|http://openrag-backend:8000|$BACKEND_URL|g" /usr/share/opensearch/securityconfig/config.yml /usr/share/opensearch/cloud_securityconfig/config.yml' >> /usr/share/opensearch/setup-security.sh && \
     echo 'echo "Applying OIDC and DLS security configuration..."' >> /usr/share/opensearch/setup-security.sh && \
     echo '/usr/share/opensearch/plugins/opensearch-security/tools/securityadmin.sh \' >> /usr/share/opensearch/setup-security.sh && \
     echo '  -cd /usr/share/opensearch/securityconfig \' >> /usr/share/opensearch/setup-security.sh && \

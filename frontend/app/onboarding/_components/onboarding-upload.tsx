@@ -7,9 +7,9 @@ import { useUpdateOnboardingStateMutation } from "@/app/api/mutations/useUpdateO
 import { useGetNudgesQuery } from "@/app/api/queries/useGetNudgesQuery";
 import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import { AnimatedProviderSteps } from "@/app/onboarding/_components/animated-provider-steps";
-import { SUPPORTED_EXTENSIONS } from "@/components/knowledge-dropdown";
 import { Button } from "@/components/ui/button";
 import { trackButton } from "@/lib/analytics";
+import { SUPPORTED_EXTENSIONS } from "@/lib/supported-file-types";
 import { uploadFile } from "@/lib/upload-utils";
 
 interface OnboardingUploadProps {
@@ -18,6 +18,7 @@ interface OnboardingUploadProps {
 
 const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const completeTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [isUploading, setIsUploading] = useState(false);
   const [currentStep, setCurrentStep] = useState<number | null>(null);
   const [uploadedFilename, setUploadedFilename] = useState<string | null>(null);
@@ -44,8 +45,11 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
 
   const { refetch: refetchNudges } = useGetNudgesQuery(null);
 
+  useEffect(() => () => clearTimeout(completeTimeoutRef.current), []);
+
   // Monitor tasks and call onComplete when file processing is done
   useEffect(() => {
+    let cancelled = false;
     if (currentStep === null || !tasks || !uploadedTaskId) {
       return;
     }
@@ -93,6 +97,7 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
         }
       }
 
+      clearTimeout(completeTimeoutRef.current);
       setError(errorMessage);
       setCurrentStep(null);
       setUploadedTaskId(null);
@@ -145,11 +150,6 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
               await updateOnboardingMutation.mutateAsync({
                 user_doc_filter_id: result.filter.id,
               });
-
-              console.log(
-                "Created knowledge filter for uploaded document",
-                result.filter.id,
-              );
             }
           })
           .catch((error) => {
@@ -157,25 +157,26 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
           })
           .finally(() => {
             setIsCreatingFilter(false);
-            // Refetch nudges to get new ones
             refetchNudges();
 
-            // Wait a bit before completing (after filter is created)
-            setTimeout(() => {
-              onComplete();
-            }, 1000);
+            if (!cancelled && !completeTimeoutRef.current) {
+              completeTimeoutRef.current = setTimeout(() => {
+                onComplete();
+              }, 1000);
+            }
           });
-      } else {
-        // No filter to create, just complete
-        // Refetch nudges to get new ones
+      } else if (!isCreatingFilter && !completeTimeoutRef.current) {
         refetchNudges();
 
-        // Wait a bit before completing
-        setTimeout(() => {
+        completeTimeoutRef.current = setTimeout(() => {
           onComplete();
         }, 1000);
       }
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, [
     tasks,
     currentStep,
@@ -186,6 +187,8 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
     uploadedTaskId,
     createFilterMutation,
     isCreatingFilter,
+    updateOnboardingMutation.mutateAsync,
+    STEP_LIST.length,
   ]);
 
   const resetFileInput = () => {
@@ -209,7 +212,6 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
     try {
       setCurrentStep(0);
       const result = await uploadFile(file, true, true); // Pass createFilter=true
-      console.log("Document upload task started successfully");
 
       // Store task ID to track the specific upload task
       if (result.taskId) {

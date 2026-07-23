@@ -60,7 +60,7 @@ const AnthropicSettingsDialog = ({
   useEffect(() => {
     // Reset form state on dialog open
     if (open) methods.reset();
-  }, [open]);
+  }, [open, methods.reset]);
 
   const { handleSubmit, watch } = methods;
   const apiKey = watch("apiKey");
@@ -198,6 +198,7 @@ const AnthropicSettingsDialog = ({
               isRemovePending={removeMutation.isPending}
               isConfigured={isAnthropicConfigured}
               canRemove={canRemoveAnthropic}
+              providerKey="anthropic"
               removeDisabledTooltip="Configure another model provider before removing Anthropic"
               onRequestRemove={() => setShowRemoveConfirm(true)}
               onCancel={() => setOpen(false)}

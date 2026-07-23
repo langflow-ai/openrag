@@ -6,7 +6,10 @@ export type Status =
   | "unavailable"
   | "hidden"
   | "sync"
-  | "failed";
+  | "failed"
+  | "ready"
+  | "fallback"
+  | "not-configured";
 
 interface StatusBadgeProps {
   status: Status;
@@ -37,6 +40,18 @@ const statusConfig = {
   sync: {
     label: "Sync",
     className: "text-accent-amber-foreground underline",
+  },
+  ready: {
+    label: "Ready",
+    className: "text-accent-emerald-foreground ",
+  },
+  fallback: {
+    label: "Using environment default",
+    className: "text-accent-amber-foreground ",
+  },
+  "not-configured": {
+    label: "Not configured",
+    className: "text-muted-foreground ",
   },
 };
 

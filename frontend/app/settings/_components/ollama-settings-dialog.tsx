@@ -69,7 +69,7 @@ const OllamaSettingsDialog = ({
   useEffect(() => {
     // Reset form state on dialog open
     if (open) methods.reset();
-  }, [open]);
+  }, [open, methods.reset]);
 
   const { handleSubmit, watch } = methods;
   const endpoint = watch("endpoint");
@@ -212,6 +212,7 @@ const OllamaSettingsDialog = ({
               isRemovePending={removeMutation.isPending}
               isConfigured={isOllamaConfigured}
               canRemove={canRemoveOllama}
+              providerKey="ollama"
               removeDisabledTooltip="Configure another model provider before removing Ollama"
               onRequestRemove={() => setShowRemoveConfirm(true)}
               onCancel={() => setOpen(false)}

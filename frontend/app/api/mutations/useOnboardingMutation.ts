@@ -30,6 +30,25 @@ interface OnboardingResponse {
   task_id?: string;
 }
 
+async function submitOnboarding(
+  variables: OnboardingVariables,
+): Promise<OnboardingResponse> {
+  const response = await fetch("/api/onboarding", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(variables),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || "Failed to complete onboarding");
+  }
+
+  return response.json();
+}
+
 export const useOnboardingMutation = (
   options?: Omit<
     UseMutationOptions<OnboardingResponse, Error, OnboardingVariables>,
@@ -40,25 +59,6 @@ export const useOnboardingMutation = (
 
   const updateOnboardingMutation = useUpdateOnboardingStateMutation();
 
-  async function submitOnboarding(
-    variables: OnboardingVariables,
-  ): Promise<OnboardingResponse> {
-    const response = await fetch("/api/onboarding", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(variables),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || "Failed to complete onboarding");
-    }
-
-    return response.json();
-  }
-
   return useMutation({
     mutationFn: submitOnboarding,
     onSuccess: (data) => {
@@ -68,11 +68,6 @@ export const useOnboardingMutation = (
         updateOnboardingMutation.mutateAsync({
           openrag_docs_filter_id: data.openrag_docs_filter_id,
         });
-
-        console.log(
-          "Saved OpenRAG docs filter ID:",
-          data.openrag_docs_filter_id,
-        );
       }
     },
     onSettled: () => {

@@ -49,6 +49,7 @@ export function MultiSelect({
 }: MultiSelectProps) {
   const [open, setOpen] = React.useState(false);
   const [searchValue, setSearchValue] = React.useState("");
+  const listboxId = React.useId();
 
   // Normalize value to empty array if undefined/null to prevent crashes
   const safeValue = value ?? [];
@@ -109,6 +110,7 @@ export function MultiSelect({
           variant="outline"
           role="combobox"
           aria-expanded={open}
+          aria-controls={listboxId}
           className={cn("w-full justify-between h-8 py-0 text-left", className)}
         >
           <span className="text-foreground text-sm">{getDisplayText()}</span>
@@ -123,7 +125,7 @@ export function MultiSelect({
             onValueChange={setSearchValue}
           />
           <CommandEmpty>No items found.</CommandEmpty>
-          <CommandGroup>
+          <CommandGroup id={listboxId}>
             <ScrollArea className="max-h-64">
               {showAllOption && (
                 <CommandItem

@@ -20,7 +20,7 @@ const TABS = [
   { value: "api-keys", label: "API Keys", apiKeysTab: true },
   {
     value: "connector-access",
-    label: "Connectors Permission",
+    label: "Connector Settings",
     perm: "connectors:manage:access",
   },
 ] as const;
@@ -50,7 +50,7 @@ export function SettingsNav() {
     return true;
   });
 
-  const visibleTabKey = visibleTabs.map((tab) => tab.value).join("|");
+  const _visibleTabKey = visibleTabs.map((tab) => tab.value).join("|");
   const tabIsVisible = visibleTabs.some((tab) => tab.value === currentTab);
   const fallbackTab = visibleTabs[0]?.value ?? "connectors";
 
@@ -58,15 +58,7 @@ export function SettingsNav() {
     if (isLoading || !permissionsResolved) return;
     if (tabIsVisible) return;
     router.replace(`/settings/${fallbackTab}`);
-  }, [
-    isLoading,
-    permissionsResolved,
-    currentTab,
-    tabIsVisible,
-    fallbackTab,
-    visibleTabKey,
-    router,
-  ]);
+  }, [isLoading, permissionsResolved, tabIsVisible, fallbackTab, router]);
 
   return (
     <Tabs value={currentTab}>

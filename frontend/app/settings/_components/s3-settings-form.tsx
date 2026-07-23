@@ -67,9 +67,7 @@ export function S3SettingsForm({
             id="s3-access-key"
             type="password"
             placeholder={
-              accessKeySet
-                ? "•••••••• (loaded from env)"
-                : "AKIAIOSFODNN7EXAMPLE"
+              accessKeySet ? "•••••••• (loaded from env)" : "Your access key ID"
             }
             autoComplete="off"
           />
@@ -91,7 +89,7 @@ export function S3SettingsForm({
             placeholder={
               secretKeySet
                 ? "•••••••• (loaded from env)"
-                : "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+                : "Your secret access key"
             }
             autoComplete="off"
           />
@@ -170,9 +168,9 @@ export function S3SettingsForm({
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <Label className="text-sm font-medium">
-              Select Buckets to Ingest
+              Restrict Ingestion to Buckets
               <span className="ml-1 text-muted-foreground font-normal">
-                (leave all unchecked to ingest everything)
+                (optional)
               </span>
             </Label>
             {buckets.length > 1 && (

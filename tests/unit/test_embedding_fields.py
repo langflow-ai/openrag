@@ -124,3 +124,17 @@ class TestBuildKnnVectorFieldCallSitesMatch:
 
         assert properties[embedding_field] == build_knn_vector_field(3072)
         assert properties["owner_email"] == {"type": "keyword"}
+
+    @pytest.mark.asyncio
+    async def test_create_index_body_uses_configured_shards_and_replicas(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr("config.settings.OPENSEARCH_NUMBER_OF_SHARDS", 3)
+        monkeypatch.setattr("config.settings.OPENSEARCH_NUMBER_OF_REPLICAS", 2)
+
+        from utils.embeddings import create_index_body
+
+        body = await create_index_body("text-embedding-3-small", 1536)
+
+        assert body["settings"]["number_of_shards"] == 3
+        assert body["settings"]["number_of_replicas"] == 2

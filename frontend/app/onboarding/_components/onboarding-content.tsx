@@ -8,7 +8,11 @@ import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { AssistantMessage } from "@/app/chat/_components/assistant-message";
 import Nudges from "@/app/chat/_components/nudges";
 import { UserMessage } from "@/app/chat/_components/user-message";
-import type { Message } from "@/app/chat/_types/types";
+import type {
+  FunctionCall,
+  Message,
+  ToolCallResult,
+} from "@/app/chat/_types/types";
 import OnboardingCard from "@/app/onboarding/_components/onboarding-card";
 import { useChat } from "@/contexts/chat-context";
 import { useChatStreaming } from "@/hooks/useChatStreaming";
@@ -25,6 +29,62 @@ const OPENRAG_DOCS_FILTERS: FilterInput = {
   document_types: [],
   owners: [],
   connector_types: ["openrag_docs"],
+};
+
+const sanitizeCitationResult = (item: ToolCallResult): ToolCallResult => {
+  const data = (() => {
+    if (!item.data) return undefined;
+
+    const sanitizedData = {
+      file_path: item.data.file_path,
+      page: item.data.page,
+      score: item.data.score,
+    };
+
+    return Object.values(sanitizedData).some((value) => value !== undefined)
+      ? sanitizedData
+      : undefined;
+  })();
+
+  return {
+    data,
+    chunk_id: item.chunk_id,
+    id: item.id,
+    filename: item.filename,
+    page: item.page ?? item.data?.page,
+    score: item.score ?? item.data?.score,
+  };
+};
+
+const hasNestedResults = (
+  value: unknown,
+): value is [{ results: ToolCallResult[] }] => {
+  if (!Array.isArray(value) || value.length !== 1) return false;
+  const first = value[0];
+  if (typeof first !== "object" || first === null || !("results" in first)) {
+    return false;
+  }
+  return Array.isArray((first as { results?: unknown }).results);
+};
+
+const sanitizeOnboardingFunctionCalls = (
+  functionCalls: FunctionCall[] | undefined,
+): FunctionCall[] | undefined => {
+  if (!functionCalls || functionCalls.length === 0) return undefined;
+
+  return functionCalls.map(({ name, status, result }) => {
+    const sanitizedResult = hasNestedResults(result)
+      ? [{ results: result[0].results.map(sanitizeCitationResult) }]
+      : Array.isArray(result)
+        ? result.map(sanitizeCitationResult)
+        : undefined;
+
+    return {
+      name,
+      status,
+      result: sanitizedResult,
+    };
+  });
 };
 
 export function OnboardingContent({
@@ -56,6 +116,7 @@ export function OnboardingContent({
           role: msg.role as "user" | "assistant",
           content: msg.content,
           timestamp: new Date(msg.timestamp),
+          functionCalls: msg.functionCalls || undefined,
         };
       }
       return null;
@@ -73,6 +134,7 @@ export function OnboardingContent({
         role: msg.role as "user" | "assistant",
         content: msg.content,
         timestamp: new Date(msg.timestamp),
+        functionCalls: msg.functionCalls || undefined,
       });
     }
   }, [settings?.onboarding]);
@@ -99,6 +161,7 @@ export function OnboardingContent({
           role: message.role,
           content: message.content,
           timestamp: message.timestamp.toISOString(),
+          functionCalls: sanitizeOnboardingFunctionCalls(message.functionCalls),
         },
       });
 
@@ -119,12 +182,6 @@ export function OnboardingContent({
             if (filter) {
               // Pass explicit newResponseId to ensure correct localStorage association
               setConversationFilter(filter, newResponseId);
-              console.log(
-                "[ONBOARDING] Saved filter association:",
-                `conversation_filter_${newResponseId}`,
-                "=",
-                openragDocsFilterId,
-              );
             }
           } catch (error) {
             console.error(
@@ -169,11 +226,9 @@ export function OnboardingContent({
 
       // Load and set the OpenRAG docs filter if available
       let filterToUse = null;
-      console.log("[ONBOARDING] openragDocsFilterId:", openragDocsFilterId);
       if (openragDocsFilterId) {
         try {
           const filter = await getFilterById(openragDocsFilterId);
-          console.log("[ONBOARDING] Loaded filter:", filter);
           if (filter) {
             // Pass null to skip localStorage save - no conversation exists yet
             setConversationFilter(filter, null);
@@ -183,11 +238,6 @@ export function OnboardingContent({
           console.error("Failed to load OpenRAG docs filter:", error);
         }
       }
-
-      console.log(
-        "[ONBOARDING] Sending message with filter_id:",
-        filterToUse?.id,
-      );
       await sendMessage({
         prompt: nudge,
         previousResponseId: responseId || undefined,
@@ -204,7 +254,7 @@ export function OnboardingContent({
   const displayMessage = streamingMessage || assistantMessage;
 
   useEffect(() => {
-    if (currentStep === 2 && !isLoading && !!displayMessage) {
+    if (currentStep === 2 && !isLoading && displayMessage) {
       handleStepComplete();
     }
   }, [isLoading, displayMessage, handleStepComplete, currentStep]);
@@ -288,6 +338,9 @@ export function OnboardingContent({
                 isStreaming={!!streamingMessage}
                 isCompleted={currentStep > 3}
                 showFeedback={false}
+                interactiveCitations={false}
+                showFunctionCalls={false}
+                unstyledMessageContent
               />
             )}
 

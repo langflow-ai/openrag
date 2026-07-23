@@ -2,7 +2,7 @@ import hashlib
 import os
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -207,11 +207,11 @@ class SessionManager:
 
     def _get_oidc_issuer(self) -> str:
         # Use OpenSearch-compatible issuer for OIDC validation
-        from config.settings import OPENRAG_FQDN
+        from config.settings import OPENRAG_BACKEND_PORT, OPENRAG_FQDN
 
-        oidc_issuer = "http://openrag-backend:8000"
+        oidc_issuer = f"http://openrag-backend:{OPENRAG_BACKEND_PORT}"
         if OPENRAG_FQDN:
-            oidc_issuer = f"http://{OPENRAG_FQDN}:8000"
+            oidc_issuer = f"http://{OPENRAG_FQDN}:{OPENRAG_BACKEND_PORT}"
         return oidc_issuer
 
     def _create_signed_jwt_token(
@@ -221,7 +221,7 @@ class SessionManager:
         expires_delta: timedelta,
     ) -> str:
         # Create JWT token with OIDC-compliant claims
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         roles = ["openrag_user"]
         token_payload = {
             # OIDC standard claims

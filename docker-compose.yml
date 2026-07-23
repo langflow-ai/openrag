@@ -1,16 +1,17 @@
 services:
   opensearch:
-    image: langflowai/openrag-opensearch:${OPENRAG_VERSION:-latest}
-    # build:
-    #   context: .
-    #   dockerfile: Dockerfile
-    container_name: os
-    depends_on:
-      - openrag-backend
+    image: docker.io/langflowai/openrag-opensearch:${OPENRAG_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ${COMPOSE_PROJECT_NAME:-openrag}-opensearch
     environment:
       - discovery.type=single-node
       - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_PASSWORD}
       - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
+      - OPENRAG_BACKEND_PORT=${OPENRAG_BACKEND_PORT:-8000}
+      - OPENRAG_BACKEND_HOST=${OPENRAG_BACKEND_HOST:-openrag-backend}
+      - OPENRAG_BACKEND_INTERNAL_URL=${OPENRAG_BACKEND_INTERNAL_URL:-http://${OPENRAG_BACKEND_HOST:-openrag-backend}:${OPENRAG_BACKEND_PORT:-8000}}
     # NOTE: do NOT add `extra_hosts: openrag-backend:host-gateway` here.
     # `extra_hosts` writes to /etc/hosts, which libc resolves BEFORE
     # docker DNS — so the alias overrides docker-compose service-name
@@ -20,8 +21,8 @@ services:
     # run `make backend` on the host need the alias and should add it via
     # an override file (see AGENTS.md → Operational constraints).
     ports:
-      - "9200:9200"
-      - "9600:9600"
+      - "${OPENSEARCH_PORT:-9200}:9200"
+      - "${OPENSEARCH_PERF_PORT:-9600}:9600"
     volumes:
       - opensearch-data:/usr/share/opensearch/data
     stop_grace_period: 2m
@@ -34,29 +35,29 @@ services:
     restart: unless-stopped
 
   dashboards:
-    image: opensearchproject/opensearch-dashboards:3.0.0
-    container_name: osdash
+    image: docker.io/opensearchproject/opensearch-dashboards:3.6.0
+    container_name: ${COMPOSE_PROJECT_NAME:-openrag}-dashboards
     depends_on:
       - opensearch
     environment:
-      OPENSEARCH_HOSTS: '["https://${OPENSEARCH_HOST:-opensearch}:${OPENSEARCH_PORT:-9200}"]'
+      OPENSEARCH_HOSTS: '["https://${OPENSEARCH_HOST:-opensearch}:${OPENSEARCH_INTERNAL_PORT:-9200}"]'
       OPENSEARCH_USERNAME: "${OPENSEARCH_USERNAME:-admin}"
       OPENSEARCH_PASSWORD: ${OPENSEARCH_PASSWORD}
     ports:
-      - "5601:5601"
+      - "${OPENSEARCH_DASHBOARDS_PORT:-5601}:5601"
 
   openrag-backend:
-    image: langflowai/openrag-backend:${OPENRAG_VERSION:-latest}
+    image: docker.io/langflowai/openrag-backend:${OPENRAG_VERSION:-latest}
     build:
       context: .
       dockerfile: Dockerfile.backend
-    container_name: openrag-backend
+    container_name: ${COMPOSE_PROJECT_NAME:-openrag}-backend
     depends_on:
       - langflow
     environment:
       - OPENSEARCH_HOST=${OPENSEARCH_HOST:-opensearch}
       - LANGFLOW_URL=http://langflow:7860
-      - OPENRAG_BACKEND_INTERNAL_URL=${OPENRAG_BACKEND_INTERNAL_URL:-http://openrag-backend:8000}
+      - OPENRAG_BACKEND_INTERNAL_URL=${OPENRAG_BACKEND_INTERNAL_URL:-http://openrag-backend:${OPENRAG_BACKEND_PORT:-8000}}
       - OPENRAG_BACKEND_ROUTER_ENABLE=${OPENRAG_BACKEND_ROUTER_ENABLE:-false}
       - LANGFLOW_PUBLIC_URL=${LANGFLOW_PUBLIC_URL}
       - LANGFLOW_AUTO_LOGIN=${LANGFLOW_AUTO_LOGIN}
@@ -68,11 +69,12 @@ services:
       - DISABLE_INGEST_WITH_LANGFLOW=${DISABLE_INGEST_WITH_LANGFLOW:-false}
       - INGEST_SAMPLE_DATA=${INGEST_SAMPLE_DATA:-true}
       - NUDGES_FLOW_ID=${NUDGES_FLOW_ID}
-      - OPENSEARCH_PORT=${OPENSEARCH_PORT:-9200}
-      - LANGFLOW_OPENSEARCH_HOST=${LANGFLOW_OPENSEARCH_HOST:-${OPENSEARCH_HOST:-opensearch}}
-      - LANGFLOW_OPENSEARCH_PORT=${LANGFLOW_OPENSEARCH_PORT:-${OPENSEARCH_PORT:-9200}}
+      - OPENSEARCH_PORT=${OPENSEARCH_INTERNAL_PORT:-9200}
       - OPENSEARCH_USERNAME=${OPENSEARCH_USERNAME:-admin}
       - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
+      # Single-node compose clusters don't meet the multi-node readiness counts,
+      # so default the node-count check off here (override to re-enable).
+      - OPENSEARCH_NODE_COUNT_CHECK_ENABLED=${OPENSEARCH_NODE_COUNT_CHECK_ENABLED:-false}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - WATSONX_API_KEY=${WATSONX_API_KEY}
@@ -95,6 +97,9 @@ services:
       - IBM_COS_HMAC_SECRET_ACCESS_KEY=${IBM_COS_HMAC_SECRET_ACCESS_KEY}
       - IBM_COS_AUTH_ENDPOINT=${IBM_COS_AUTH_ENDPOINT}
       - OPENSEARCH_INDEX_NAME=${OPENSEARCH_INDEX_NAME:-documents}
+      - OPENRAG_OPENSEARCH_NUMBER_OF_SHARDS=${OPENRAG_OPENSEARCH_NUMBER_OF_SHARDS:-1}
+      - OPENRAG_OPENSEARCH_NUMBER_OF_REPLICAS=${OPENRAG_OPENSEARCH_NUMBER_OF_REPLICAS:-0}
+      - OPENRAG_ENSURE_INDEX_REPLICAS_ON_STARTUP=${OPENRAG_ENSURE_INDEX_REPLICAS_ON_STARTUP:-false}
       - LANGFLOW_KEY=${LANGFLOW_KEY}
       - SEGMENT_WRITE_KEY=${SEGMENT_WRITE_KEY:-}
       - ENVIRONMENT=${ENVIRONMENT:-production}
@@ -115,9 +120,8 @@ services:
       - UPLOAD_BATCH_SIZE=${UPLOAD_BATCH_SIZE:-25}
       - MAX_WORKERS=${MAX_WORKERS:-4}
       - IBM_AUTH_ENABLED=${IBM_AUTH_ENABLED:-false}
+      - OPENRAG_AZURE_BLOB_ENABLED=${OPENRAG_AZURE_BLOB_ENABLED:-true}
       - PLATFORM_AUTH_DEV_MODE=${PLATFORM_AUTH_DEV_MODE:-false}
-      - PLATFORM_USERNAME=${PLATFORM_USERNAME}
-      - PLATFORM_PASSWORD=${PLATFORM_PASSWORD}
       - DOCLING_SERVE_URL=${DOCLING_SERVE_URL:-http://host.docker.internal:5001}
       - DOCLING_SERVE_VERIFY_SSL=${DOCLING_SERVE_VERIFY_SSL:-true}
     volumes:
@@ -132,11 +136,11 @@ services:
       - "host.docker.internal:host-gateway"
 
   openrag-frontend:
-    image: langflowai/openrag-frontend:${OPENRAG_VERSION:-latest}
+    image: docker.io/langflowai/openrag-frontend:${OPENRAG_VERSION:-latest}
     build:
       context: .
       dockerfile: Dockerfile.frontend
-    container_name: openrag-frontend
+    container_name: ${COMPOSE_PROJECT_NAME:-openrag}-frontend
     depends_on:
       - openrag-backend
     environment:
@@ -145,11 +149,11 @@ services:
       - "${FRONTEND_PORT:-3000}:3000"
 
   langflow:
-    image: langflowai/openrag-langflow:${OPENRAG_VERSION:-latest}
+    image: docker.io/langflowai/openrag-langflow:${OPENRAG_VERSION:-latest}
     build:
       context: .
       dockerfile: Dockerfile.langflow
-    container_name: langflow
+    container_name: ${COMPOSE_PROJECT_NAME:-openrag}-langflow
     ports:
       - "${LANGFLOW_PORT:-7860}:7860"
     volumes:
@@ -191,9 +195,9 @@ services:
       - OPENRAG_INGEST_RUN_ID=OPENRAG_INGEST_RUN_ID
       - OPENRAG_INGEST_BATCH_SIZE=100
       - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
-      - OPENSEARCH_HOST=${LANGFLOW_OPENSEARCH_HOST:-${OPENSEARCH_HOST:-opensearch}}
-      - OPENSEARCH_PORT=${LANGFLOW_OPENSEARCH_PORT:-${OPENSEARCH_PORT:-9200}}
-      - OPENSEARCH_URL=https://${LANGFLOW_OPENSEARCH_HOST:-${OPENSEARCH_HOST:-opensearch}}:${LANGFLOW_OPENSEARCH_PORT:-${OPENSEARCH_PORT:-9200}}
+      - OPENSEARCH_HOST=${OPENSEARCH_HOST:-opensearch}
+      - OPENSEARCH_PORT=${OPENSEARCH_INTERNAL_PORT:-9200}
+      - OPENSEARCH_URL=https://${OPENSEARCH_HOST:-opensearch}:${OPENSEARCH_INTERNAL_PORT:-9200}
       - OPENSEARCH_INDEX_NAME=${OPENSEARCH_INDEX_NAME:-documents}
       - DOCLING_SERVE_URL=${DOCLING_SERVE_URL:-http://host.docker.internal:5001}
       - DOCLING_SERVE_VERIFY_SSL=${DOCLING_SERVE_VERIFY_SSL:-true}
@@ -213,5 +217,28 @@ services:
       # - DEFAULT_FOLDER_NAME=OpenRAG
       - HIDE_GETTING_STARTED_PROGRESS=true
 
+  # Azurite: local Azure Storage emulator for manually testing the Azure Blob
+  # connector without a paid Azure account. Opt-in only — gated behind the
+  # "azurite" compose profile so it never starts with the normal stack.
+  # Start it with `make azurite-up` (or `docker compose --profile azurite up -d azurite`).
+  # Connect the connector with AZURE_STORAGE_CONNECTION_STRING="UseDevelopmentStorage=true"
+  # (from inside the compose network use host "azurite": the well-known dev
+  # endpoint http://azurite:10000/devstoreaccount1).
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:latest
+    container_name: azurite
+    profiles: ["azurite"]
+    # --skipApiVersionCheck: the azure-storage-blob SDK may negotiate a newer
+    # Storage API version than the pinned Azurite image supports; skip the check
+    # so the emulator accepts requests (safe for local dev only).
+    command: "azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --location /data --skipApiVersionCheck"
+    ports:
+      - "10000:10000" # Blob
+      - "10001:10001" # Queue
+      - "10002:10002" # Table
+    volumes:
+      - azurite-data:/data
+
 volumes:
   opensearch-data:
+  azurite-data:

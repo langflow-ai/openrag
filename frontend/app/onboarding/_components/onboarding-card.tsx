@@ -10,7 +10,10 @@ import {
   useOnboardingMutation,
 } from "@/app/api/mutations/useOnboardingMutation";
 import { useOnboardingRollbackMutation } from "@/app/api/mutations/useOnboardingRollbackMutation";
-import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
+import {
+  type ProviderSettings,
+  useGetSettingsQuery,
+} from "@/app/api/queries/useGetSettingsQuery";
 import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import type { ProviderHealthResponse } from "@/app/api/queries/useProviderHealthQuery";
 import {
@@ -85,46 +88,48 @@ const OnboardingCard = ({
   const { data: currentSettings } = useGetSettingsQuery();
 
   // Auto-select the first provider that has an API key set in env vars
-  useEffect(() => {
-    if (!currentSettings?.providers) return;
+  const [prevProviders, setPrevProviders] = useState<
+    ProviderSettings | undefined | null
+  >(null);
+  if (currentSettings?.providers !== prevProviders) {
+    setPrevProviders(currentSettings?.providers);
+    if (currentSettings?.providers) {
+      const fullOrder = isEmbedding
+        ? EMBEDDING_PROVIDER_ORDER
+        : LLM_PROVIDER_ORDER;
+      const providerOrder = isCloudBrand
+        ? fullOrder.filter((p) => !CLOUD_EXCLUDED_PROVIDERS.includes(p))
+        : fullOrder;
 
-    // Define provider order based on whether it's embedding or not
-    const fullOrder = isEmbedding
-      ? EMBEDDING_PROVIDER_ORDER
-      : LLM_PROVIDER_ORDER;
-    const providerOrder = isCloudBrand
-      ? fullOrder.filter((p) => !CLOUD_EXCLUDED_PROVIDERS.includes(p))
-      : fullOrder;
-
-    // Find the first provider with an API key
-    for (const provider of providerOrder) {
-      if (
-        provider === "anthropic" &&
-        currentSettings.providers.anthropic?.has_api_key
-      ) {
-        setModelProvider("anthropic");
-        return;
-      } else if (
-        provider === "openai" &&
-        currentSettings.providers.openai?.has_api_key
-      ) {
-        setModelProvider("openai");
-        return;
-      } else if (
-        provider === "watsonx" &&
-        currentSettings.providers.watsonx?.has_api_key
-      ) {
-        setModelProvider("watsonx");
-        return;
-      } else if (
-        provider === "ollama" &&
-        currentSettings.providers.ollama?.endpoint
-      ) {
-        setModelProvider("ollama");
-        return;
+      for (const provider of providerOrder) {
+        if (
+          provider === "anthropic" &&
+          currentSettings.providers.anthropic?.has_api_key
+        ) {
+          setModelProvider("anthropic");
+          break;
+        } else if (
+          provider === "openai" &&
+          currentSettings.providers.openai?.has_api_key
+        ) {
+          setModelProvider("openai");
+          break;
+        } else if (
+          provider === "watsonx" &&
+          currentSettings.providers.watsonx?.has_api_key
+        ) {
+          setModelProvider("watsonx");
+          break;
+        } else if (
+          provider === "ollama" &&
+          currentSettings.providers.ollama?.endpoint
+        ) {
+          setModelProvider("ollama");
+          break;
+        }
       }
     }
-  }, [currentSettings, isEmbedding, isCloudBrand]);
+  }
 
   const handleSetModelProvider = (provider: string) => {
     setIsLoadingModels(false);
@@ -191,6 +196,10 @@ const OnboardingCard = ({
   // Track which tasks we've already handled to prevent infinite loops
   const handledFailedTasksRef = useRef<Set<string>>(new Set());
 
+  // Ref for the completion timeout so it persists across effect re-runs
+  const completeTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(completeTimeoutRef.current), []);
+
   // Query tasks to track completion
   const { data: tasks } = useGetTasksQuery({
     enabled: currentStep !== null && !isCompleted, // Only poll when onboarding has started and stop once step is complete
@@ -200,7 +209,6 @@ const OnboardingCard = ({
   // Rollback mutation
   const rollbackMutation = useOnboardingRollbackMutation({
     onSuccess: () => {
-      console.log("Onboarding rolled back successfully");
       // Reset to provider selection step
       // Error message is already set before calling mutate
       setCurrentStep(null);
@@ -219,8 +227,6 @@ const OnboardingCard = ({
   // Mutations
   const onboardingMutation = useOnboardingMutation({
     onSuccess: (data) => {
-      console.log("Onboarding completed successfully", data);
-
       if (data.task_id) {
         setOnboardingTaskId(data.task_id);
       }
@@ -370,6 +376,7 @@ const OnboardingCard = ({
         failed_files: taskWithFailure.failed_files,
       });
 
+      clearTimeout(completeTimeoutRef.current);
       setError(errorMessage);
       setCurrentStep(totalSteps);
       rollbackMutation.mutate({ embedding_only: isEmbedding });
@@ -403,8 +410,9 @@ const OnboardingCard = ({
 
       // Set to final step to show "Done"
       setCurrentStep(totalSteps);
-      // Wait a bit before completing
-      setTimeout(() => {
+      // Wait a bit before completing — stored in a ref so the timeout
+      // survives the re-render caused by setCurrentStep above.
+      completeTimeoutRef.current = setTimeout(() => {
         onComplete();
       }, 1000);
     }
@@ -741,8 +749,8 @@ const OnboardingCard = ({
                   <TooltipContent>
                     {isLoadingModels
                       ? "Loading models..."
-                      : !!settings.llm_model &&
-                          !!settings.embedding_model &&
+                      : settings.llm_model &&
+                          settings.embedding_model &&
                           !isDoclingHealthy
                         ? "docling-serve must be running to continue"
                         : "Please fill in all required fields"}

@@ -20,10 +20,9 @@ function parseApiError(
   if (typeof detail === "string") return detail;
   if (Array.isArray(detail)) {
     const msg = detail
-      .map((d) =>
-        typeof d === "object" && d && "msg" in d ? String(d.msg) : "",
+      .flatMap((d) =>
+        typeof d === "object" && d && "msg" in d ? [String(d.msg)] : [],
       )
-      .filter(Boolean)
       .join("; ");
     if (msg) return msg;
   }
@@ -63,11 +62,13 @@ export function DevRoleToggle() {
       return response.json() as Promise<{ role?: string }>;
     },
     onSuccess: async (data) => {
-      await refreshPermissions();
-      await queryClient.invalidateQueries(connectorsQueryFilter);
-      await queryClient.invalidateQueries({
-        queryKey: CONNECTOR_USER_ACCESS_KEY,
-      });
+      await Promise.all([
+        refreshPermissions(),
+        queryClient.invalidateQueries(connectorsQueryFilter),
+        queryClient.invalidateQueries({
+          queryKey: CONNECTOR_USER_ACCESS_KEY,
+        }),
+      ]);
       router.refresh();
       const label =
         DEV_ROLES.find((r) => r.value === data.role)?.label ?? data.role;

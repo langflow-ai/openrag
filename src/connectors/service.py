@@ -135,12 +135,14 @@ class ConnectorService:
                 docling_polling_service=self.task_service.docling_polling_service
                 if self.task_service
                 else None,
-                document_id=document.id,
+                connector_file_id=document.id,
                 source_url=document.source_url,
                 allowed_users=allowed_users,
                 allowed_groups=allowed_groups,
                 allowed_principals=allowed_principals,
                 allowed_principal_labels=allowed_principal_labels,
+                original_filename=document.filename,
+                original_mimetype=document.mimetype,
             )
             return {
                 "status": "indexed",
@@ -213,6 +215,7 @@ class ConnectorService:
                     file_size=len(document.content) if document.content else 0,
                     connector_type=connector_type,
                     acl=document.acl,
+                    connector_file_id=document.id,
                     **standard_kwargs,
                 )
 
@@ -226,7 +229,10 @@ class ConnectorService:
                 if result["status"] in ["indexed", "unchanged"]:
                     # Update all chunks with connector-specific metadata
                     await self._update_connector_metadata(
-                        document, owner_user_id, connector_type, jwt_token
+                        document,
+                        owner_user_id,
+                        connector_type,
+                        jwt_token,
                     )
 
                 return {
@@ -241,7 +247,6 @@ class ConnectorService:
         owner_user_id: str,
         connector_type: str,
         jwt_token: str = None,
-        id_field: str = "document_id",
         indexed_filename: str | None = None,
     ):
         """Update indexed chunks with connector-specific metadata"""
@@ -258,9 +263,11 @@ class ConnectorService:
             raise RuntimeError("Backend OpenSearch write client is unavailable")
 
         # Update ACL if changed (hash-based skip optimization).
-        # Match both document_id and connector_file_id: non-Langflow connector
-        # chunks store the connector id in connector_file_id (document_id holds the
-        # content hash), while Langflow chunks store it in document_id.
+        # Match both document_id and connector_file_id: both the Langflow and
+        # non-Langflow ingestion paths store the raw connector id in
+        # connector_file_id (document_id holds a content/id hash), except for
+        # pre-migration chunks indexed before that split existed, which only
+        # have document_id set to the raw connector id.
         acl_result = await update_document_acl(
             document_id=document.id,
             acl=document.acl,
@@ -286,14 +293,19 @@ class ConnectorService:
             await write_client.update_by_query(
                 index=self.index_name,
                 body={
-                    # Match both fields: non-Langflow chunks carry the connector id
-                    # in connector_file_id (document_id is the content hash),
-                    # Langflow chunks carry it in document_id.
+                    # Match both fields: both ingestion paths carry the raw
+                    # connector id in connector_file_id (document_id is a
+                    # content/id hash); pre-migration chunks only have it in
+                    # document_id.
                     "query": {
                         "bool": {
                             "should": [
                                 {"term": {"document_id": document.id}},
                                 {"term": {"connector_file_id": document.id}},
+                                # See check_document_exists (models/processors.py):
+                                # some indices predate the explicit keyword
+                                # mapping for this field.
+                                {"term": {"connector_file_id.keyword": document.id}},
                             ],
                             "minimum_should_match": 1,
                         }
@@ -348,6 +360,7 @@ class ConnectorService:
         filename_filter: set = None,
         ingest_settings: dict[str, Any] | None = None,
         replace_duplicates: bool = False,
+        shared: bool = False,
     ) -> str:
         """
         Sync files from a connector connection using existing task tracking system.
@@ -384,6 +397,9 @@ class ConnectorService:
 
         if not connector.is_authenticated:
             raise ValueError(f"Connection '{connection_id}' not authenticated")
+
+        if shared and connector.CONNECTOR_TYPE != "ibm_cos":
+            raise ValueError("shared flag is only supported for the ibm_cos connector")
 
         # Collect files to process (limited by max_files)
         files_to_process: list[dict[str, Any]] = []
@@ -450,6 +466,7 @@ class ConnectorService:
             ingest_settings=ingest_settings,
             replace_duplicates=replace_duplicates,
             connector_type=connector.CONNECTOR_TYPE,
+            shared=shared,
         )
 
         # Use file IDs as items (no more fake file paths!)
@@ -464,7 +481,10 @@ class ConnectorService:
 
         # Create custom task using TaskService
         task_id = await self.task_service.create_custom_task(
-            user_id, file_ids, processor, original_filenames=original_filenames
+            user_id,
+            file_ids,
+            processor,
+            original_filenames=original_filenames,
         )
 
         return task_id
@@ -478,6 +498,8 @@ class ConnectorService:
         file_infos: list[dict[str, Any]] = None,
         ingest_settings: dict[str, Any] | None = None,
         replace_duplicates: bool = False,
+        preview_mode: bool = False,
+        shared: bool = False,
     ) -> str:
         """
         Sync specific files by their IDs (used for webhook-triggered syncs or manual selection).
@@ -506,6 +528,9 @@ class ConnectorService:
 
         if not connector.is_authenticated:
             raise ValueError(f"Connection '{connection_id}' not authenticated")
+
+        if shared and connector.CONNECTOR_TYPE != "ibm_cos":
+            raise ValueError("shared flag is only supported for the ibm_cos connector")
 
         if not file_ids:
             raise ValueError("No file IDs provided")
@@ -633,6 +658,7 @@ class ConnectorService:
             ingest_settings=ingest_settings,
             replace_duplicates=replace_duplicates,
             connector_type=connector.CONNECTOR_TYPE,
+            shared=shared,
         )
 
         # Create custom task using TaskService
@@ -643,14 +669,18 @@ class ConnectorService:
         if all_infos:
             original_filenames = {
                 f["id"]: clean_connector_filename(
-                    f["name"], f.get("mimeType") or f.get("mimetype", "")
+                    f["name"], f.get("mimeType") or f.get("mime_type") or f.get("mimetype", "")
                 )
                 for f in all_infos
                 if "id" in f and "name" in f
             }
 
         task_id = await self.task_service.create_custom_task(
-            user_id, expanded_file_ids, processor, original_filenames=original_filenames
+            user_id,
+            expanded_file_ids,
+            processor,
+            original_filenames=original_filenames,
+            preview_mode=preview_mode,
         )
 
         return task_id

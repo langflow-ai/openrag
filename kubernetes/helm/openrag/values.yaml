@@ -34,6 +34,11 @@ global:
     port: 5001
     scheme: "http"
     verifySsl: false
+    # Note: this chart does not deploy docling-serve. To use OpenRAG's Docling
+    # VLM pipeline (remote OpenAI/watsonx vision models), the external
+    # docling-serve deployment must set:
+    #   DOCLING_SERVE_ENABLE_REMOTE_SERVICES=true
+    #   DOCLING_SERVE_ALLOW_CUSTOM_VLM_CONFIG=true
 
   # Shared OAuth credentials (same across all tenants)
   oauth:
@@ -55,7 +60,17 @@ global:
     accessKeyId: ""
     secretAccessKey: ""
     region: ""
-      
+  # Azure Blob Storage connector (Enterprise/SaaS; gated by backend.auth.ibmCloud.enabled
+  # like the other bucket connectors). Optional env defaults — credentials are
+  # normally entered per-connection in the UI. Provide EITHER a connection string
+  # OR account name + key (+ optional custom blob endpoint).
+  azureBlob:
+    enabled: true                       # OPENRAG_AZURE_BLOB_ENABLED
+    connectionString: ""                # AZURE_STORAGE_CONNECTION_STRING
+    accountName: ""                     # AZURE_STORAGE_ACCOUNT_NAME
+    accountKey: ""                      # AZURE_STORAGE_ACCOUNT_KEY
+    endpoint: ""                        # AZURE_STORAGE_ENDPOINT (optional)
+
 # ============================================================================
 # Langflow Configuration
 # ============================================================================
@@ -172,7 +187,7 @@ langflow:
         value: "langflow-db"
     sqlite:
       enabled: false
-      
+
   # Langfuse Tracking
   langfuse:
     secretKey: ""
@@ -420,7 +435,7 @@ dashboards:
 
   image:
     repository: opensearchproject/opensearch-dashboards
-    tag: "3.0.0"
+    tag: "3.6.0"
 
   replicaCount: 1
 

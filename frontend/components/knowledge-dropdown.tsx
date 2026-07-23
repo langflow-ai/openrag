@@ -31,10 +31,15 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useTask } from "@/contexts/task-context";
 import { usePermissions } from "@/hooks/use-permissions";
+import { useSupportedFileTypes } from "@/hooks/use-supported-file-types";
+import {
+  trackButton,
+  trackProcessFailure,
+  trackStartProcess,
+} from "@/lib/analytics";
 import {
   getConnectorDescriptor,
   getConnectorDescriptors,
@@ -45,37 +50,6 @@ import {
   uploadFile as uploadFileUtil,
 } from "@/lib/upload-utils";
 import { cn } from "@/lib/utils";
-
-/**
- * Local / chat file picker + folder ingest filter — single source of truth.
- * Only extensions verified to ingest successfully in the Langflow pipeline.
- * If modified, update docs (docs/docs/core-components/ingestion.mdx).
- *
- * documents: txt, md, html, htm, adoc, asciidoc, asc, pdf, docx
- * spreadsheets: csv
- *
- * TODO: Re-add other MIME/extension groups (images, xlsx/xls/ppt, rtf/odt, etc.)
- * once ingestion is verified end-to-end in Langflow; keep this list and ingestion.mdx in sync.
- */
-export const SUPPORTED_FILE_TYPES = {
-  "text/plain": [".txt"],
-  "text/markdown": [".md"],
-  "text/html": [".html", ".htm"],
-  "text/asciidoc": [".adoc", ".asciidoc", ".asc"],
-  "application/pdf": [".pdf"],
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [
-    ".docx",
-  ],
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [
-    ".xlsx",
-  ],
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation": [
-    ".pptx",
-  ],
-  "text/csv": [".csv"],
-};
-
-export const SUPPORTED_EXTENSIONS = Object.values(SUPPORTED_FILE_TYPES).flat();
 
 const getFilenameVariants = (filename: string): string[] => {
   const dotIndex = filename.lastIndexOf(".");
@@ -117,7 +91,8 @@ const FolderIconWithColor = ({ className }: { className?: string }) => (
 );
 
 export function KnowledgeDropdown() {
-  const { isIbmAuthMode } = useAuth();
+  const { supportedExtensions, supportedExtensionSet } =
+    useSupportedFileTypes();
   const { can } = usePermissions();
   const canUpload = can("knowledge:upload");
   const isCloudBrand = useIsCloudBrand();
@@ -135,6 +110,9 @@ export function KnowledgeDropdown() {
   const [fileUploading, setFileUploading] = useState(false);
   const [isNavigatingToCloud, setIsNavigatingToCloud] = useState(false);
   const [bucketConnectorConfigured, setBucketConnectorConfigured] = useState<
+    Record<string, boolean>
+  >({});
+  const [bucketConnectorAvailable, setBucketConnectorAvailable] = useState<
     Record<string, boolean>
   >({});
   const [pendingFile, setPendingFile] = useState<File | null>(null);
@@ -210,6 +188,19 @@ export function KnowledgeDropdown() {
         const connectorsRes = await fetch("/api/connectors");
         if (connectorsRes.ok) {
           const connectorsResult = await connectorsRes.json();
+
+          // Bucket connector availability mirrors the backend `is_available()`
+          // gate (IBM auth, or the dev flag for Azure Blob), so the dropdown
+          // surfaces a bucket entry whenever the connector is actually usable —
+          // not only in IBM auth mode.
+          const bucketAvailable: Record<string, boolean> = {};
+          for (const d of bucketDescriptors) {
+            bucketAvailable[d.connectorType] = Boolean(
+              connectorsResult.connectors?.[d.connectorType]?.available,
+            );
+          }
+          setBucketConnectorAvailable(bucketAvailable);
+
           const cloudConnectorTypes = [
             "google_drive",
             "onedrive",
@@ -224,51 +215,54 @@ export function KnowledgeDropdown() {
             };
           } = {};
 
-          for (const type of cloudConnectorTypes) {
-            if (connectorsResult.connectors[type]) {
-              connectorInfo[type] = {
-                name: connectorsResult.connectors[type].name,
-                available: connectorsResult.connectors[type].available,
-                connected: false,
-                hasToken: false,
-              };
+          const availableTypes = cloudConnectorTypes.filter(
+            (type) => connectorsResult.connectors?.[type],
+          );
 
-              // Check connection status
+          for (const type of availableTypes) {
+            connectorInfo[type] = {
+              name: connectorsResult.connectors?.[type]?.name ?? type,
+              available:
+                connectorsResult.connectors?.[type]?.available ?? false,
+              connected: false,
+              hasToken: false,
+            };
+          }
+
+          await Promise.all(
+            availableTypes.map(async (type) => {
               try {
                 const statusRes = await fetch(`/api/connectors/${type}/status`);
-                if (statusRes.ok) {
-                  const statusData = await statusRes.json();
-                  const connections = statusData.connections || [];
-                  const activeConnection = connections.find(
-                    (conn: { is_active: boolean; connection_id: string }) =>
-                      conn.is_active,
+                if (!statusRes.ok) return;
+
+                const statusData = await statusRes.json();
+                const connections = statusData.connections || [];
+                const activeConnection = connections.find(
+                  (conn: { is_active: boolean; connection_id: string }) =>
+                    conn.is_active,
+                );
+                if (!activeConnection) return;
+
+                connectorInfo[type].connected = true;
+
+                try {
+                  const tokenRes = await fetch(
+                    `/api/connectors/${type}/token?connection_id=${activeConnection.connection_id}`,
                   );
-                  const isConnected = activeConnection !== undefined;
-
-                  if (isConnected && activeConnection) {
-                    connectorInfo[type].connected = true;
-
-                    // Check token availability
-                    try {
-                      const tokenRes = await fetch(
-                        `/api/connectors/${type}/token?connection_id=${activeConnection.connection_id}`,
-                      );
-                      if (tokenRes.ok) {
-                        const tokenData = await tokenRes.json();
-                        if (tokenData.access_token) {
-                          connectorInfo[type].hasToken = true;
-                        }
-                      }
-                    } catch {
-                      // Token check failed
+                  if (tokenRes.ok) {
+                    const tokenData = await tokenRes.json();
+                    if (tokenData.access_token) {
+                      connectorInfo[type].hasToken = true;
                     }
                   }
+                } catch {
+                  // Token check failed
                 }
               } catch {
                 // Status check failed
               }
-            }
-          }
+            }),
+          );
 
           setCloudConnectors(connectorInfo);
         }
@@ -304,11 +298,9 @@ export function KnowledgeDropdown() {
       // File selection will close dropdown automatically
 
       try {
-        console.log("[Duplicate Check] Checking file:", file.name);
         const exists = await isDuplicateFile(file);
 
         if (exists) {
-          console.log("[Duplicate Check] Duplicate detected, showing dialog");
           resetDuplicateDialogState();
           setPendingFile(file);
           setDuplicateFilename(file.name);
@@ -316,9 +308,6 @@ export function KnowledgeDropdown() {
           resetFileInput();
           return;
         }
-
-        // No duplicate, proceed with upload
-        console.log("[Duplicate Check] No duplicate, proceeding with upload");
         await uploadFile(file, false);
       } catch (error) {
         console.error("[Duplicate Check] Exception:", error);
@@ -333,11 +322,25 @@ export function KnowledgeDropdown() {
 
   const uploadFile = async (file: File, replace: boolean) => {
     setFileUploading(true);
+    trackStartProcess({
+      processType: "Ingestion",
+      process: "Document Upload",
+      category: "Knowledge",
+      source: "file",
+      total_files: 1,
+    });
 
     try {
       await uploadFileUtil(file, replace);
       refetchTasks();
     } catch (error) {
+      trackProcessFailure({
+        processType: "Ingestion",
+        process: "Document Upload",
+        category: "Knowledge",
+        source: "file",
+        resultValue: error instanceof Error ? error.message : "Unknown error",
+      });
       // Dispatch event that chat context can listen to
       // This avoids circular dependency issues
       if (typeof window !== "undefined") {
@@ -359,20 +362,31 @@ export function KnowledgeDropdown() {
     filesToUpload: File[],
     replace: boolean,
   ) => {
+    trackStartProcess({
+      processType: "Ingestion",
+      process: "Document Upload",
+      category: "Knowledge",
+      source: "folder",
+      total_files: filesToUpload.length,
+    });
+
     const batches: File[][] = [];
     for (let i = 0; i < filesToUpload.length; i += uploadBatchSize) {
       batches.push(filesToUpload.slice(i, i + uploadBatchSize));
     }
 
-    console.log(
-      `[Folder Upload] Uploading ${filesToUpload.length} file(s) in ${batches.length} batch(es), replace=${replace}`,
-    );
-
     for (const batch of batches) {
       try {
         const result = await uploadFiles(batch, replace);
-        addTask(result.taskId);
+        addTask(result.taskId, { source: "folder" });
       } catch (error) {
+        trackProcessFailure({
+          processType: "Ingestion",
+          process: "Document Upload",
+          category: "Knowledge",
+          source: "folder",
+          resultValue: error instanceof Error ? error.message : "Unknown error",
+        });
         console.error("[Folder Upload] Batch upload failed:", error);
         toast.error("Batch upload failed", {
           description: error instanceof Error ? error.message : "Unknown error",
@@ -475,7 +489,7 @@ export function KnowledgeDropdown() {
         const ext = file.name
           .substring(file.name.lastIndexOf("."))
           .toLowerCase();
-        return SUPPORTED_EXTENSIONS.includes(ext);
+        return supportedExtensionSet.has(ext);
       });
       const unsupportedCount = fileList.length - filteredFiles.length;
 
@@ -534,9 +548,6 @@ export function KnowledgeDropdown() {
       }
 
       if (duplicateCount > 0) {
-        console.log(
-          `[Folder Upload] Found ${duplicateCount} duplicate file(s), showing overwrite dialog`,
-        );
         resetDuplicateDialogState();
         setPendingFolderUpload({
           allFiles: cleanFiles,
@@ -577,6 +588,12 @@ export function KnowledgeDropdown() {
 
     setFolderLoading(true);
     setShowFolderDialog(false);
+    trackStartProcess({
+      processType: "Ingestion",
+      process: "Document Upload",
+      category: "Knowledge",
+      source: "path",
+    });
 
     try {
       const response = await fetch("/api/upload_path", {
@@ -596,7 +613,7 @@ export function KnowledgeDropdown() {
           throw new Error("No task ID received from server");
         }
 
-        addTask(taskId);
+        addTask(taskId, { source: "path" });
         setFolderPath("");
         // Refetch tasks to show the new task
         refetchTasks();
@@ -613,6 +630,13 @@ export function KnowledgeDropdown() {
         }
       }
     } catch (error) {
+      trackProcessFailure({
+        processType: "Ingestion",
+        process: "Document Upload",
+        category: "Knowledge",
+        source: "path",
+        resultValue: error instanceof Error ? error.message : "Unknown error",
+      });
       console.error("Folder upload error:", error);
     } finally {
       setFolderLoading(false);
@@ -631,6 +655,12 @@ export function KnowledgeDropdown() {
         label: info.name,
         icon: descriptor?.Icon ?? PlugZap,
         onClick: async () => {
+          trackButton({
+            CTA: `Select Connector - ${info.name}`,
+            elementId: "cloud-connector-menu-item",
+            namespace: "knowledge",
+            payload: { connector_type: type },
+          });
           if (info.connected && info.hasToken) {
             setIsNavigatingToCloud(true);
             try {
@@ -647,20 +677,23 @@ export function KnowledgeDropdown() {
       };
     });
 
-  const bucketConnectorItems = isIbmAuthMode
-    ? getConnectorDescriptors()
-        .filter(
-          (d) =>
-            d.kind === "bucket" &&
-            d.menuItem &&
-            bucketConnectorConfigured[d.connectorType],
-        )
-        .map((d) => ({
-          label: d.menuItem!.label,
-          icon: d.Icon,
-          onClick: () => router.push(d.menuItem!.route),
-        }))
-    : [];
+  // Gate each bucket connector on its backend availability (IBM auth, or the
+  // OPENRAG_DEV_AZURE_BLOB dev flag for Azure Blob) AND a saved connection,
+  // rather than the global IBM-auth flag — this keeps S3/IBM COS hidden outside
+  // IBM auth while letting Azure Blob appear in local dev once configured.
+  const bucketConnectorItems = getConnectorDescriptors()
+    .filter(
+      (d) =>
+        d.kind === "bucket" &&
+        d.menuItem &&
+        bucketConnectorAvailable[d.connectorType] &&
+        bucketConnectorConfigured[d.connectorType],
+    )
+    .map((d) => ({
+      label: d.menuItem!.label,
+      icon: d.Icon,
+      onClick: () => router.push(d.menuItem!.route),
+    }));
 
   const menuItems = [
     {
@@ -791,7 +824,7 @@ export function KnowledgeDropdown() {
         type="file"
         onChange={handleFileChange}
         className="hidden"
-        accept={SUPPORTED_EXTENSIONS.join(",")}
+        accept={supportedExtensions.join(",")}
       />
 
       <input
@@ -799,8 +832,6 @@ export function KnowledgeDropdown() {
         type="file"
         // @ts-ignore - webkitdirectory is not in TypeScript types but is widely supported
         webkitdirectory=""
-        // @ts-ignore
-        directory=""
         multiple
         onChange={handleFolderSelect}
         className="hidden"

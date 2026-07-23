@@ -15,7 +15,7 @@ import {
 } from "@/lib/brand";
 
 /** Prefix for all connector list queries (see `connectorsQueryKey`). */
-export const CONNECTORS_QUERY_KEY_ROOT = ["connectors"] as const;
+const CONNECTORS_QUERY_KEY_ROOT = ["connectors"] as const;
 
 /**
  * Cache key from policy + deployment filter context (inputs to `getConnectors`).
@@ -23,7 +23,7 @@ export const CONNECTORS_QUERY_KEY_ROOT = ["connectors"] as const;
  * `applyWorkspacePolicy`: SaaS workspace policy path in the query fn.
  * `isCloudBrand` / `isIbmAuthMode`: client deployment visibility (`isConnectorTypeVisible`).
  */
-export function connectorsQueryKey(
+function connectorsQueryKey(
   cloudContext: boolean,
   applyWorkspacePolicy: boolean,
   isCloudBrand: boolean,
@@ -80,7 +80,7 @@ export function updateAllConnectorQueries(
 }
 
 /** Shared policy context for connector list query key + optimistic updates. */
-export function useConnectorsQueryKey() {
+function useConnectorsQueryKey() {
   const { isIbmAuthMode, cloudContext } = useAuth();
   const { brand } = useBrand();
   const isCloudBrand = useIsCloudBrand();
@@ -133,7 +133,7 @@ export interface Connector {
   name: string;
   description: string;
   icon: string; // The icon name from the API
-  status: "not_connected" | "connected" | "error";
+  status: "not_connected" | "configured" | "connected" | "error";
   type: string;
   connectionId?: string;
   clientId?: string;
@@ -141,6 +141,7 @@ export interface Connector {
   access_token?: string;
   selectedFiles?: GoogleDriveFile[] | OneDriveFile[];
   available?: boolean;
+  requiresOAuth?: boolean;
 }
 
 interface Connection {
@@ -189,6 +190,11 @@ export const useGetConnectorsQuery = (
         let status: Connector["status"] = "not_connected";
         let connectionId: string | undefined;
 
+        // Determine if this connector requires OAuth based on connector kind
+        // "oauth" connectors require OAuth flow (Google Drive, OneDrive, SharePoint)
+        // "bucket" connectors use credential-based auth (Azure Blob, S3, IBM COS)
+        const requiresOAuth = connectorData.kind === "oauth";
+
         if (statusResponse.ok) {
           const statusData = await statusResponse.json();
           const connections = statusData.connections || [];
@@ -210,7 +216,13 @@ export const useGetConnectorsQuery = (
               clientId: activeConnection.client_id,
               baseUrl: activeConnection.base_url,
               available: connectorData.available,
+              requiresOAuth,
             } as Connector;
+          }
+
+          // For OAuth connectors: check if credentials are configured in .env
+          if (requiresOAuth && statusData.has_env_credentials) {
+            status = "configured";
           }
         }
 
@@ -223,6 +235,7 @@ export const useGetConnectorsQuery = (
           type,
           connectionId,
           available: connectorData.available,
+          requiresOAuth,
         } as Connector;
       }),
     );
@@ -260,7 +273,7 @@ export interface ConnectorAccessItem {
 
 export const CONNECTOR_USER_ACCESS_KEY = ["connector-user-access"] as const;
 
-export function connectorUserAccessQueryKey(
+function connectorUserAccessQueryKey(
   isCloudBrand: boolean,
   isIbmAuthMode: boolean,
 ) {

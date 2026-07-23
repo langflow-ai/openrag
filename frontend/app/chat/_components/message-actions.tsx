@@ -18,9 +18,9 @@ const MessageActions = ({ trackFeedback }: MessageActionsProps) => {
   };
 
   return (
-    <div className="flex space-x-2 mt-2">
+    <div className="flex space-x-2">
       <Button
-        variant="ghost"
+        variant="outline"
         size="icon"
         aria-label="Like"
         aria-pressed={feedbackSelected === "like"}
@@ -36,7 +36,7 @@ const MessageActions = ({ trackFeedback }: MessageActionsProps) => {
         />
       </Button>
       <Button
-        variant="ghost"
+        variant="outline"
         size="icon"
         aria-label="Dislike"
         aria-pressed={feedbackSelected === "dislike"}

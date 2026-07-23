@@ -1,0 +1,636 @@
+name: CI Tests
+
+on:
+  pull_request:
+  # Push to main only warms the shared layer cache (build-images); the test/e2e
+  # jobs are gated off `push` below so a merge doesn't run the full suite.
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      use_local_images:
+        description: 'Build images locally instead of pulling from DockerHub'
+        required: false
+        type: boolean
+        default: true
+
+concurrency:
+  group: test-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "22"
+  PYTHON_VERSION: "3.13"
+  PLAYWRIGHT_BROWSERS_PATH: "ms-playwright"
+  PLAYWRIGHT_VERSION: "1.57.0"
+  # Total number of parallel E2E test shards
+  TOTAL_SHARDS: 8
+  IS_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+  OPENSEARCH_PASSWORD: ${{ vars.OPENSEARCH_PASSWORD || secrets.OPENSEARCH_PASSWORD || 'OpenRag#2025!' }}
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  LANGFLOW_AUTO_LOGIN: "True"
+  LANGFLOW_NEW_USER_IS_ACTIVE: "True"
+  LANGFLOW_ENABLE_SUPERUSER_CLI: "True"
+  LANGFLOW_CHAT_FLOW_ID: ${{ vars.LANGFLOW_CHAT_FLOW_ID || '1098eea1-6649-4e1d-aed1-b77249fb8dd0' }}
+  LANGFLOW_INGEST_FLOW_ID: ${{ vars.LANGFLOW_INGEST_FLOW_ID || '5488df7c-b93f-4f87-a446-b67028bc0813' }}
+  NUDGES_FLOW_ID: ${{ vars.NUDGES_FLOW_ID || 'ebc01d31-1976-46ce-a385-b0240327226c' }}
+  CI_IMAGE_TAG: ci-${{ github.sha }}
+  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+  WATSONX_API_KEY: ${{ secrets.WATSONX_API_KEY }}
+  WATSONX_ENDPOINT: ${{ secrets.WATSONX_ENDPOINT }}
+  WATSONX_PROJECT_ID: ${{ secrets.WATSONX_PROJECT_ID }}
+  OLLAMA_ENDPOINT: ${{ secrets.OLLAMA_ENDPOINT }}
+  GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+  GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  LANGFLOW_URL_INGEST_FLOW_ID: ${{ vars.LANGFLOW_URL_INGEST_FLOW_ID || '72c3d17c-2dac-4a73-b48a-6518473d7830' }}
+  # Single-node test cluster never reaches the multi-node readiness counts
+  OPENSEARCH_NODE_COUNT_CHECK_ENABLED: "false"
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      e2e: ${{ steps.filter.outputs.e2e }}
+      integration: ${{ steps.filter.outputs.integration }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            e2e:
+              - '**'
+              - '!docs/**'
+              - '!**/*.md'
+            integration:
+              - '**'
+              - '!docs/**'
+              - '!**/*.md'
+              - '!frontend/**'
+
+  build-images:
+    needs: changes
+    if: ${{ needs.changes.outputs.e2e == 'true' || needs.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'push' }}
+    runs-on:
+      labels: "ubuntu-latest"
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [opensearch, backend, frontend, langflow]
+    name: build-image (${{ matrix.image }})
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: env.IS_FORK != 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set lower case repository name
+        id: repo
+        run: |
+          echo "name=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
+      - name: Determine build parameters
+        id: params
+        run: |
+          if [ "${{ matrix.image }}" = "opensearch" ]; then
+            echo "dockerfile=Dockerfile" >> "$GITHUB_OUTPUT"
+          else
+            echo "dockerfile=Dockerfile.${{ matrix.image }}" >> "$GITHUB_OUTPUT"
+          fi
+          if [ "${{ env.IS_FORK }}" = "true" ]; then
+            echo "image=langflowai/openrag-${{ matrix.image }}:${CI_IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+          else
+            echo "image=ghcr.io/${{ steps.repo.outputs.name }}/openrag-${{ matrix.image }}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+          # Build locally for PRs, local dispatch, and the OpenSearch image
+          # (which has no DockerHub publish); otherwise reuse the prebuilt
+          # DockerHub image.
+          if [ "${{ github.event_name }}" = "pull_request" ] || [ "${{ github.event_name }}" = "push" ] || [ "${{ inputs.use_local_images }}" != "false" ] || [ "${{ matrix.image }}" = "opensearch" ]; then
+            echo "mode=build" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=pull" >> "$GITHUB_OUTPUT"
+          fi
+          # Shared, non-branch-scoped registry cache. `main` (push) writes it;
+          # every non-fork PR reads it, so a PR that doesn't touch this image
+          # gets its layers for free on the first run. PRs also keep a per-PR
+          # gha cache so a second commit in the same PR reuses its own layers.
+          REG_CACHE="ghcr.io/${{ steps.repo.outputs.name }}/openrag-${{ matrix.image }}:buildcache"
+          {
+            echo "cache_from<<EOF"
+            echo "type=registry,ref=${REG_CACHE}"
+            echo "type=gha,scope=${{ matrix.image }}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "cache_to=type=registry,ref=${REG_CACHE},mode=max" >> "$GITHUB_OUTPUT"
+          else
+            echo "cache_to=type=gha,mode=max,scope=${{ matrix.image }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Build with BuildKit layer caching (cache_from/cache_to computed above)
+      # so unchanged layers -- e.g. Langflow's torch/pip-install layer or the
+      # backend uv-sync layer -- are reused instead of rebuilt. Reads the shared
+      # registry cache seeded by main plus this PR's own gha cache; a flows-only
+      # change no longer forces a full re-install because that layer's cache key
+      # doesn't depend on flows/. Non-fork builds push straight to GHCR (no local
+      # load / docker save / tar shuttle).
+      - name: Build and push image (GHCR)
+        if: steps.params.outputs.mode == 'build' && env.IS_FORK != 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ steps.params.outputs.dockerfile }}
+          push: true
+          tags: ${{ steps.params.outputs.image }}
+          cache-from: ${{ steps.params.outputs.cache_from }}
+          cache-to: ${{ steps.params.outputs.cache_to }}
+          provenance: false
+
+      # Fork PRs cannot push to GHCR or write the Actions cache, so build and
+      # load locally (still reading any available layer cache). The fork
+      # fallback steps below save and upload the image as an artifact.
+      - name: Build image (fork fallback)
+        if: steps.params.outputs.mode == 'build' && env.IS_FORK == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ steps.params.outputs.dockerfile }}
+          load: true
+          tags: ${{ steps.params.outputs.image }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          provenance: false
+
+      - name: Pull prebuilt image from DockerHub
+        if: steps.params.outputs.mode == 'pull'
+        run: |
+          for i in 1 2 3; do
+            if docker pull "langflowai/openrag-${{ matrix.image }}:latest"; then
+              docker tag "langflowai/openrag-${{ matrix.image }}:latest" "${{ steps.params.outputs.image }}"
+              if [ "${{ env.IS_FORK }}" != "true" ]; then
+                docker push "${{ steps.params.outputs.image }}"
+              fi
+              exit 0
+            fi
+            echo "Pull attempt $i failed. Retrying in 10s..."
+            sleep 10
+          done
+          echo "Pull failed after 3 attempts."
+          exit 1
+
+      - name: Save OpenRAG image (Fork fallback)
+        if: env.IS_FORK == 'true'
+        run: |
+          mkdir -p .ci-artifacts
+          docker save -o .ci-artifacts/${{ matrix.image }}.tar langflowai/openrag-${{ matrix.image }}:${CI_IMAGE_TAG}
+
+      - name: Upload OpenRAG image artifact (Fork fallback)
+        if: env.IS_FORK == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: openrag-ci-image-${{ matrix.image }}-${{ github.sha }}
+          path: .ci-artifacts/${{ matrix.image }}.tar
+          retention-days: 1
+          compression-level: 0
+
+      - name: Cleanup workspace and Docker images
+        if: always()
+        run: |
+          rm -rf .ci-artifacts
+          docker compose -f docker-compose.yml down -v --remove-orphans || true
+          docker system prune -f || true
+          for i in 1 2 3; do
+            docker run --rm -v $(pwd):/work alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows /work/openrag-documents" && break
+            echo "Attempt $i failed, retrying in 5s..."
+            sleep 5
+          done || true
+
+  test-suite:
+    needs: [changes, build-images]
+    if: ${{ github.event_name != 'push' && (needs.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch') }}
+    runs-on:
+      labels: "ubuntu-latest"
+    permissions:
+      contents: read
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [core, sdk-python, sdk-typescript]
+    name: tests (${{ matrix.suite }})
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up UV
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: latest
+          enable-cache: true
+
+      - name: Set up Node.js
+        if: matrix.suite == 'sdk-typescript'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: sdks/typescript/package-lock.json
+
+      - name: Python version
+        run: uv python install 3.13
+
+      - name: Download OpenRAG image artifacts (Fork fallback)
+        if: env.IS_FORK == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: openrag-ci-image-*-${{ github.sha }}
+          path: .ci-artifacts
+          merge-multiple: true
+
+      - name: Load OpenRAG images (Fork fallback)
+        if: env.IS_FORK == 'true'
+        run: |
+          for f in .ci-artifacts/*.tar; do
+            docker load -i "$f"
+          done
+          rm -rf .ci-artifacts
+
+      - name: Log in to GHCR
+        if: env.IS_FORK != 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set lower case repository name
+        id: repo
+        if: env.IS_FORK != 'true'
+        run: |
+          echo "name=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
+      - name: Pull and tag OpenRAG images
+        if: env.IS_FORK != 'true'
+        run: |
+          REGISTRY_PREFIX="ghcr.io/${{ steps.repo.outputs.name }}"
+          for image in opensearch backend frontend langflow; do
+            docker pull "${REGISTRY_PREFIX}/openrag-${image}:${{ github.sha }}"
+            docker tag "${REGISTRY_PREFIX}/openrag-${image}:${{ github.sha }}" "langflowai/openrag-${image}:${CI_IMAGE_TAG}"
+          done
+
+      - name: Run ${{ matrix.suite }} integration suite
+        env:
+          OPENSEARCH_HOST: localhost
+          OPENSEARCH_PORT: 9200
+          OPENSEARCH_USERNAME: admin
+          OPENSEARCH_PASSWORD: ${{ env.OPENSEARCH_PASSWORD }}
+          LOG_LEVEL: DEBUG
+          # Force no-auth mode so tests bypass OAuth
+          GOOGLE_OAUTH_CLIENT_ID: ""
+          GOOGLE_OAUTH_CLIENT_SECRET: ""
+          # Disable startup ingest noise unless a test enables it
+          DISABLE_STARTUP_INGEST: "true"
+        run: |
+          chmod +x scripts/ci/run_integration_suite.sh
+          OPENRAG_VERSION="${CI_IMAGE_TAG}" TEST_SUITE="${{ matrix.suite }}" make test-ci-suite
+          echo "Keys directory after tests:"
+          ls -la keys/ || echo "No keys directory"
+
+      - name: Upload service logs
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: service-logs-${{ matrix.suite }}
+          path: service-logs/
+          retention-days: 7
+
+      - name: Teardown and Cleanup
+        if: always()
+        run: |
+          make clean || true
+          docker system prune -f || true
+          for i in 1 2 3; do
+            docker run --rm -v $(pwd):/work alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows /work/openrag-documents" && break
+            echo "Attempt $i failed, retrying in 5s..."
+            sleep 5
+          done || true
+
+  e2e-run:
+    needs: [changes, build-images]
+    if: ${{ github.event_name != 'push' && (needs.changes.outputs.e2e == 'true' || github.event_name == 'workflow_dispatch') }}
+    runs-on:
+      labels: "ubuntu-latest"
+    permissions:
+      contents: read
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+        total_shards: [8]
+    name: e2e (shard ${{ matrix.shard }}/${{ matrix.total_shards }})
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up UV
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: latest
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Python
+        run: uv python install 3.13
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Wait for apt locks
+        run: |
+          sudo systemctl stop unattended-upgrades || true
+          while sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || sudo fuser /var/lib/dpkg/lock >/dev/null 2>&1; do
+            echo "Waiting for other apt/dpkg process to release the lock..."
+            sleep 5
+          done
+
+      - name: Cache Playwright Browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: frontend/${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+          key: ${{ runner.os }}-playwright-${{ env.PLAYWRIGHT_VERSION }}
+
+      - name: Install Playwright Browsers
+        working-directory: frontend
+        run: |
+          for i in 1 2 3; do
+            echo "Installing Playwright browsers (attempt $i)..."
+            if npx playwright install --with-deps chromium; then
+              break
+            fi
+            echo "Attempt $i failed. Retrying in 10 seconds..."
+            sleep 10
+            if [ $i -eq 3 ]; then
+              echo "Failed to install Playwright browsers after 3 attempts."
+              exit 1
+            fi
+          done
+
+      - name: Download OpenRAG image artifacts (Fork fallback)
+        if: env.IS_FORK == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: openrag-ci-image-*-${{ github.sha }}
+          path: .ci-artifacts
+          merge-multiple: true
+
+      - name: Load OpenRAG images (Fork fallback)
+        if: env.IS_FORK == 'true'
+        run: |
+          for f in .ci-artifacts/*.tar; do
+            docker load -i "$f"
+          done
+          rm -rf .ci-artifacts
+
+      - name: Log in to GHCR
+        if: env.IS_FORK != 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set lower case repository name
+        id: repo
+        if: env.IS_FORK != 'true'
+        run: |
+          echo "name=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
+      - name: Pull and tag OpenRAG images
+        if: env.IS_FORK != 'true'
+        run: |
+          REGISTRY_PREFIX="ghcr.io/${{ steps.repo.outputs.name }}"
+          for image in opensearch backend frontend langflow; do
+            docker pull "${REGISTRY_PREFIX}/openrag-${image}:${{ github.sha }}"
+            docker tag "${REGISTRY_PREFIX}/openrag-${image}:${{ github.sha }}" "langflowai/openrag-${image}:${CI_IMAGE_TAG}"
+          done
+
+      - name: Setup E2E infrastructure
+        run: |
+          chmod +x scripts/setup-e2e.sh
+          OPENRAG_VERSION="${CI_IMAGE_TAG}" ./scripts/setup-e2e.sh
+
+      - name: Run Playwright tests (shard ${{ matrix.shard }}/${{ matrix.total_shards }})
+        working-directory: frontend
+        env:
+          CI: "true"
+          OPENSEARCH_HOST: localhost
+          OPENSEARCH_PORT: "9200"
+          OPENSEARCH_USERNAME: admin
+          OPENSEARCH_PASSWORD: ${{ env.OPENSEARCH_PASSWORD }}
+          GOOGLE_OAUTH_CLIENT_ID: ""
+          GOOGLE_OAUTH_CLIENT_SECRET: ""
+        run: npx playwright test --shard=${{ matrix.shard }}/${{ matrix.total_shards }}
+
+      - name: Collect service logs on failure
+        if: failure()
+        run: |
+          mkdir -p service-logs
+          docker logs openrag-opensearch > service-logs/opensearch.log 2>&1 || true
+          docker logs openrag-backend > service-logs/backend.log 2>&1 || true
+          docker logs openrag-frontend > service-logs/frontend.log 2>&1 || true
+          docker logs openrag-langflow > service-logs/langflow.log 2>&1 || true
+          cp ~/.openrag/tui/docling-serve.log service-logs/docling.log 2>&1 || true
+
+      - name: Upload service logs
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: service-logs-shard-${{ matrix.shard }}
+          path: service-logs/
+          retention-days: 7
+
+      - name: Upload blob report (for merge)
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: blob-report-shard-${{ matrix.shard }}
+          path: frontend/blob-report/
+          retention-days: 1
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-test-results-shard-${{ matrix.shard }}
+          path: frontend/test-results/
+          retention-days: 7
+
+      - name: Teardown infrastructure
+        if: always()
+        run: |
+          make docling-stop || true
+          docker rm -f openrag-backend-proxy 2>/dev/null || true
+          make clean || true
+          docker system prune -f || true
+          for i in 1 2 3; do
+            docker run --rm -v $(pwd):/work alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows /work/openrag-documents" && break
+            echo "Attempt $i failed, retrying in 5s..."
+            sleep 5
+          done || true
+
+  e2e-merge-reports:
+    if: ${{ github.event_name != 'push' && !cancelled() && (needs.changes.outputs.e2e == 'true' || github.event_name == 'workflow_dispatch') && needs.e2e-run.result != 'skipped' }}
+    needs: [changes, e2e-run]
+    runs-on:
+      labels: "ubuntu-latest"
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Download all shard blob reports
+        uses: actions/download-artifact@v4
+        with:
+          path: frontend/all-blob-reports
+          pattern: blob-report-shard-*
+          merge-multiple: true
+
+      - name: Merge into HTML report
+        working-directory: frontend
+        run: npx playwright merge-reports --reporter html ./all-blob-reports
+
+      - name: Upload merged HTML report
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 14
+
+  tests:
+    needs: [changes, build-images, test-suite]
+    if: always() && github.event_name != 'push'
+    runs-on:
+      labels: "ubuntu-latest"
+    permissions:
+      contents: read
+    steps:
+      - name: Check split integration result
+        run: |
+          if [ "${{ needs.changes.outputs.integration }}" = "true" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ "${{ needs.build-images.result }}" != "success" ]; then
+              echo "build-images failed"
+              exit 1
+            fi
+            if [ "${{ needs.test-suite.result }}" != "success" ]; then
+              echo "one or more integration suites failed"
+              exit 1
+            fi
+          fi
+          echo "all integration suites passed or skipped"
+
+  e2e:
+    needs: [changes, build-images, e2e-run]
+    if: always() && github.event_name != 'push'
+    runs-on:
+      labels: "ubuntu-latest"
+    permissions:
+      contents: read
+    steps:
+      - name: Check E2E result
+        run: |
+          if [ "${{ needs.changes.outputs.e2e }}" = "true" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ "${{ needs.build-images.result }}" != "success" ]; then
+              echo "build-images failed"
+              exit 1
+            fi
+            if [ "${{ needs.e2e-run.result }}" != "success" ]; then
+              echo "one or more E2E shards failed"
+              exit 1
+            fi
+          fi
+          echo "E2E tests passed or skipped"
+
+  cleanup-packages:
+    needs: [tests, e2e]
+    if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on:
+      labels: "ubuntu-latest"
+    permissions:
+      packages: write
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set lower case repository name
+        id: repo
+        run: |
+          echo "name=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
+      - name: Delete package versions
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for image in opensearch backend frontend langflow; do
+            PACKAGE_NAME="openrag-${image}"
+            echo "Searching for version of package ${PACKAGE_NAME} with tag ${{ github.sha }}..."
+            OWNER="${{ github.repository_owner }}"
+            
+            IS_ORG=$(gh api "/users/${OWNER}" --jq '.type == "Organization"' || echo "false")
+            if [ "$IS_ORG" = "true" ]; then
+              ENDPOINT="orgs/${OWNER}"
+            else
+              ENDPOINT="users/${OWNER}"
+            fi
+            
+            VERSIONS_JSON=$(gh api "/${ENDPOINT}/packages/container/${PACKAGE_NAME}/versions" 2>/dev/null || echo "[]")
+            VERSION_ID=$(echo "$VERSIONS_JSON" | jq -r --arg tag "${{ github.sha }}" '.[] | select(.metadata.container.tags[] == $tag) | .id' 2>/dev/null || true)
+            
+            if [ -n "$VERSION_ID" ]; then
+              echo "Deleting package version ID ${VERSION_ID} for ${PACKAGE_NAME}..."
+              gh api -X DELETE "/${ENDPOINT}/packages/container/${PACKAGE_NAME}/versions/${VERSION_ID}" || true
+            else
+              echo "No package version found with tag ${{ github.sha }} for ${PACKAGE_NAME}"
+            fi
+          done

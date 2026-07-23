@@ -5,10 +5,12 @@ import time
 from typing import TYPE_CHECKING, Any, Literal
 
 from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
+from session_manager import AnonymousUser
 from utils.document_processing import (
     extract_relevant,
     process_text_file,
     resplit_chunks_character_windows,
+    split_chunks_by_max_tokens,
 )
 from utils.file_utils import (
     auto_cleanup_tempfile,
@@ -19,11 +21,14 @@ from utils.file_utils import (
 )
 from utils.hash_utils import hash_id
 from utils.logging_config import get_logger
-from utils.opensearch_queries import build_filename_search_body
+from utils.opensearch_queries import build_filename_search_body, build_replace_filename_query
 
 from .tasks import FileTask, TaskStatus, UploadTask
 
 logger = get_logger(__name__)
+
+DOCLING_PARSER_LABEL = "Docling Serve 1.20.0"
+TEXT_PARSER_LABEL = "Text Parser"
 
 if TYPE_CHECKING:
     from connectors.base import DocumentACL
@@ -39,6 +44,26 @@ def _verification_client(fallback_client):
     return clients.opensearch if clients.opensearch is not None else fallback_client
 
 
+def resolve_shared_owner_fields(
+    user_id: str | None,
+    owner_name: str | None,
+    owner_email: str | None,
+    shared: bool,
+) -> tuple[str | None, str | None, str | None]:
+    """Return (owner, owner_name, owner_email) for indexing.
+
+    When shared=True, owner is None so the indexed chunk omits the owner field
+    entirely, triggering the OpenSearch DLS must_not-exists-owner clause that
+    makes the document visible to all users in the instance. owner_name and
+    owner_email are set to AnonymousUser values, matching how default/sample
+    documents are loaded.
+    """
+    if shared:
+        _anon = AnonymousUser()
+        return None, _anon.name, _anon.email
+    return user_id, owner_name, owner_email
+
+
 class TaskProcessor:
     """Base class for task processors with shared processing logic"""
 
@@ -52,6 +77,9 @@ class TaskProcessor:
         file_hash: str,
         opensearch_client,
         on_error: Literal["assume_missing", "assume_exists"] = "assume_missing",
+        *,
+        wait_for_visibility: bool = False,
+        field: str = "document_id",
     ) -> bool:
         """
         Check if a document with the given hash already exists in OpenSearch.
@@ -64,9 +92,36 @@ class TaskProcessor:
           * ``"assume_exists"`` (post-ingestion verification callers): an
             infrastructure error must not fail a file that Langflow already
             reported as ingested.
+
+        When ``wait_for_visibility`` is True, an empty result is retried a few
+        times with backoff before concluding the document is absent. This is for
+        post-ingest verification: chunks that were just written may not be
+        searchable yet within OpenSearch's near-real-time refresh window
+        (default ~1s), and the user-scoped client cannot force an
+        ``indices:admin/refresh`` (it lacks the privilege).
         """
         max_retries = 3
         retry_delay = 1.0
+
+        # Some deployments' indices predate connector_file_id's addition to the
+        # explicit mapping (config/settings.py), so OpenSearch dynamically
+        # mapped it as analyzed `text` (with a `.keyword` multi-field) instead
+        # of the intended `keyword` type. A plain term query against such a
+        # field tokenizes the query value and rarely matches the raw id, so
+        # also match its `.keyword` multi-field. document_id has always been
+        # explicitly `keyword` since index creation and never has this issue.
+        query: dict[str, Any]
+        if field == "connector_file_id":
+            query = {
+                "bool": {
+                    "should": [
+                        {"term": {field: file_hash}},
+                        {"term": {f"{field}.keyword": file_hash}},
+                    ]
+                }
+            }
+        else:
+            query = {"term": {field: file_hash}}
 
         for attempt in range(max_retries):
             try:
@@ -75,11 +130,19 @@ class TaskProcessor:
                     body={
                         "size": 1,
                         "_source": False,
-                        "query": {"term": {"document_id": file_hash}},
+                        "query": query,
                     },
                 )
                 hits = response.get("hits", {}).get("hits", [])
-                return bool(hits)
+                if hits:
+                    return True
+                # No hits. For post-ingest verification, the document may not be
+                # visible yet within the near-real-time refresh window — retry.
+                if wait_for_visibility and attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2
+                    continue
+                return False
             except (TimeoutError, Exception) as e:
                 if attempt == max_retries - 1:
                     logger.error(
@@ -117,10 +180,19 @@ class TaskProcessor:
         self,
         filename: str,
         opensearch_client,
+        *,
+        wait_for_visibility: bool = False,
     ) -> bool:
         """
         Check if a document with the given filename already exists in OpenSearch.
         Returns True if any chunks with this filename exist.
+
+        When ``wait_for_visibility`` is True, an empty result is retried a few
+        times with backoff before concluding the document is absent. This is for
+        post-ingest verification: chunks that were just written may not be
+        searchable yet within OpenSearch's near-real-time refresh window
+        (default ~1s), and the user-scoped client cannot force an
+        ``indices:admin/refresh`` (it lacks the privilege).
         """
         max_retries = 3
         retry_delay = 1.0
@@ -151,6 +223,14 @@ class TaskProcessor:
                     # Successfully checked this alias with no hits; don't
                     # re-query it on future retries.
                     pending_candidates.pop(i)
+                    continue
+                # All aliases checked with no hits. For post-ingest verification,
+                # the document may not be visible yet within the near-real-time
+                # refresh window — re-check every alias after a short delay.
+                if wait_for_visibility and attempt < max_retries - 1:
+                    pending_candidates = list(candidate_filenames)
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2
                     continue
                 return False
 
@@ -185,13 +265,17 @@ class TaskProcessor:
         filename: str,
         opensearch_client,
         owner_user_id: str | None = None,
+        shared: bool = False,
     ) -> None:
         """
         Delete all chunks of a document with the given filename from OpenSearch.
         """
         from config.settings import clients, get_index_name
         from utils.opensearch_delete import collect_visible_document_ids, delete_document_ids
-        from utils.opensearch_queries import build_owned_filename_query
+        from utils.opensearch_queries import (
+            build_owned_filename_query,
+            build_replace_filename_query,
+        )
 
         try:
             write_client = clients.opensearch
@@ -213,11 +297,18 @@ class TaskProcessor:
                     filename=filename,
                 )
                 return
+
+            # When shared=True the document being replaced may have previously
+            # been ingested without an owner field (also shared), so the normal
+            # owner-scoped query would miss those chunks.  Use a broader query
+            # that covers both owned and ownerless chunks for this filename.
+            build_query = build_replace_filename_query if shared else build_owned_filename_query
+
             for candidate in candidate_filenames:
                 document_ids = await collect_visible_document_ids(
                     opensearch_client,
                     index=get_index_name(),
-                    query=build_owned_filename_query(candidate, owner_user_id),
+                    query=build_query(candidate, owner_user_id),
                 )
                 deleted_count += await delete_document_ids(
                     write_client,
@@ -238,6 +329,7 @@ class TaskProcessor:
         opensearch_client,
         owner_user_id: str,
         keep_filenames: list[str] | None = None,
+        shared: bool = False,
     ) -> int:
         """Delete indexed chunks for a connector file by its STABLE id.
 
@@ -258,6 +350,11 @@ class TaskProcessor:
             if write_client is None:
                 raise RuntimeError("Backend OpenSearch write client is unavailable")
 
+            owner_filter = (
+                {"bool": {"must_not": {"exists": {"field": "owner"}}}}
+                if shared
+                else {"term": {"owner": owner_user_id}}
+            )
             query: dict[str, Any] = {
                 "bool": {
                     "filter": [
@@ -266,11 +363,16 @@ class TaskProcessor:
                                 "should": [
                                     {"term": {"document_id": file_id}},
                                     {"term": {"connector_file_id": file_id}},
+                                    # Some deployments' indices predate this field's
+                                    # addition to the explicit mapping, so it was
+                                    # dynamically mapped as analyzed text with a
+                                    # `.keyword` multi-field instead of `keyword`.
+                                    {"term": {"connector_file_id.keyword": file_id}},
                                 ],
                                 "minimum_should_match": 1,
                             }
                         },
-                        {"term": {"owner": owner_user_id}},
+                        owner_filter,
                     ]
                 }
             }
@@ -314,6 +416,7 @@ class TaskProcessor:
         connector_file_id: str | None = None,
         ocr: bool | None = None,
         picture_descriptions: bool | None = None,
+        shared: bool = False,
     ):
         """
         Standard processing pipeline for non-Langflow processors:
@@ -334,8 +437,14 @@ class TaskProcessor:
         # Use provided embedding model or configured model.
         # get_embedding_model() returns empty string when Langflow ingest is enabled,
         # but OpenRAG processors still need a concrete embedding model.
-        configured_embedding_model = get_openrag_config().knowledge.embedding_model
+        config = get_openrag_config()
+        configured_embedding_model = config.knowledge.embedding_model
         embedding_model = embedding_model or configured_embedding_model or get_embedding_model()
+
+        if chunk_size is None:
+            chunk_size = config.knowledge.chunk_size
+        if chunk_overlap is None:
+            chunk_overlap = config.knowledge.chunk_overlap
 
         # Get user's OpenSearch client with JWT for OIDC auth
         opensearch_client = self.document_service.session_manager.get_user_opensearch_client(
@@ -363,6 +472,7 @@ class TaskProcessor:
                 file_hash=file_hash,
             )
             slim_doc = process_text_file(file_path)
+            slim_doc["parser"] = TEXT_PARSER_LABEL
         else:
             full_doc = await self.docling_service.convert_file(
                 file_path,
@@ -372,6 +482,7 @@ class TaskProcessor:
                 picture_descriptions=picture_descriptions,
             )
             slim_doc = extract_relevant(full_doc)
+            slim_doc["parser"] = DOCLING_PARSER_LABEL
 
         # Override filename with original_filename if provided
         if original_filename:
@@ -396,7 +507,6 @@ class TaskProcessor:
         # This ensures the length of chunks matches the length of the embeddings array,
         # since chunk_texts_for_embeddings also drops empty texts.
         slim_doc["chunks"] = [c for c in slim_doc["chunks"] if c.get("text") and c["text"].strip()]
-        texts = [c["text"] for c in slim_doc["chunks"]]
 
         litellm_embedding_model = (
             await self.models_service.get_litellm_model_name(embedding_model)
@@ -404,11 +514,23 @@ class TaskProcessor:
             else embedding_model
         )
 
-        # Split into batches to avoid token limits (8191 limit, use 8000 with buffer or 2000 if it's ollama)
-        if "ollama" in litellm_embedding_model:
-            text_batches = chunk_texts_for_embeddings(texts, max_tokens=2000)
+        litellm_model_lower = litellm_embedding_model.lower() if litellm_embedding_model else ""
+        if "watsonx" in litellm_model_lower:
+            max_tokens = 500
+        elif "ollama" in litellm_model_lower:
+            max_tokens = 2000
         else:
-            text_batches = chunk_texts_for_embeddings(texts, max_tokens=8000)
+            max_tokens = 8000
+
+        # Split any chunks that exceed max_tokens before embedding, ensuring chunks and embeddings align 1-to-1.
+        slim_doc["chunks"] = split_chunks_by_max_tokens(
+            slim_doc["chunks"], max_tokens, litellm_embedding_model
+        )
+        # Re-filter out chunks with empty or whitespace-only text that may have resulted from splitting
+        slim_doc["chunks"] = [c for c in slim_doc["chunks"] if c.get("text") and c["text"].strip()]
+        texts = [c["text"] for c in slim_doc["chunks"]]
+
+        text_batches = chunk_texts_for_embeddings(texts, max_tokens=max_tokens)
         embeddings = []
 
         for batch in text_batches:
@@ -471,9 +593,11 @@ class TaskProcessor:
                 error=str(e),
             )
 
-        # Owner is always the authenticated uploading/syncing user. Upstream ACL
-        # owners/authors only contribute read access through allowed principals.
-        owner = owner_user_id
+        # Owner is always the authenticated uploading/syncing user unless shared=True,
+        # in which case owner fields are omitted so DLS makes the doc visible to all users.
+        owner, owner_name, owner_email = resolve_shared_owner_fields(
+            owner_user_id, owner_name, owner_email, shared
+        )
         if acl:
             allowed_users = acl.allowed_users or []
             allowed_groups = acl.allowed_groups or []
@@ -502,13 +626,28 @@ class TaskProcessor:
             allowed_principal_labels=allowed_principal_labels,
             is_sample_data=is_sample_data,
         )
+        parser_name = slim_doc.get("parser")
+        if not parser_name:
+            if file_ext in (".txt", ".md"):
+                parser_name = TEXT_PARSER_LABEL
+            else:
+                parser_name = DOCLING_PARSER_LABEL
+
+        chunk_metadata = {"parser": parser_name}
+        if chunk_size is not None:
+            chunk_metadata["chunk_size"] = chunk_size
+        if chunk_overlap is not None:
+            chunk_metadata["chunk_overlap"] = chunk_overlap
+        if connector_file_id:
+            chunk_metadata["connector_file_id"] = connector_file_id
+
         index_chunks = [
             DocumentIndexChunk(
                 chunk_id=f"{file_hash}_{i}",
                 text=chunk["text"],
                 vector=vect,
                 page=chunk["page"],
-                metadata={"connector_file_id": connector_file_id} if connector_file_id else {},
+                metadata=chunk_metadata,
             )
             for i, (chunk, vect) in enumerate(zip(slim_doc["chunks"], embeddings, strict=True))
         ]
@@ -601,7 +740,11 @@ class DocumentFileProcessor(TaskProcessor):
             elif filename_exists and self.replace_duplicates:
                 # Delete existing document before uploading new one
                 logger.info(f"Replacing existing document: {original_filename}")
-                await self.delete_document_by_filename(original_filename, opensearch_client)
+                await self.delete_document_by_filename(
+                    original_filename,
+                    opensearch_client,
+                    owner_user_id=self.owner_user_id,
+                )
                 # Refresh index to make deletion visible before processing.
                 # refresh is index-wide (indices:admin/refresh) and cannot be DLS-scoped,
                 # so it must run under the admin/service client, not the user client.
@@ -617,6 +760,10 @@ class DocumentFileProcessor(TaskProcessor):
 
             # Compute hash
             file_hash = hash_id(item)
+            # Chunks are indexed with document_id=file_hash (see
+            # process_document_standard -> DocumentIndexContext), so record it on
+            # the file_task for preview-mode index proof lookups.
+            file_task.document_id = file_hash
 
             # Get file size
             try:
@@ -654,6 +801,10 @@ class DocumentFileProcessor(TaskProcessor):
                             standard_kwargs[param] = int(raw)
                         except (TypeError, ValueError):
                             pass
+
+            config = get_openrag_config()
+            standard_kwargs["ocr"] = config.knowledge.ocr
+            standard_kwargs["picture_descriptions"] = config.knowledge.picture_descriptions
 
             # Use consolidated standard processing
             result = await self.process_document_standard(
@@ -707,6 +858,7 @@ class ConnectorFileProcessor(TaskProcessor):
         ingest_settings: dict[str, Any] | None = None,
         replace_duplicates: bool = False,
         connector_type: str | None = None,
+        shared: bool = False,
     ):
         super().__init__(
             document_service=document_service,
@@ -723,6 +875,59 @@ class ConnectorFileProcessor(TaskProcessor):
         self.ingest_settings = ingest_settings
         self.replace_duplicates = replace_duplicates
         self.connector_type = connector_type
+        self.shared = shared
+
+    async def _reconcile_shared_owner(self, filename: str) -> None:
+        """Update owner fields on already-indexed chunks for `filename` to match
+        the connector's current `shared` setting.
+
+        Called on the duplicate/unchanged skip paths below, where a file's
+        content and name haven't changed since a prior sync but the connector's
+        "Make documents available to all users" setting may have been toggled
+        since then. Without this, those chunks would keep whatever owner they
+        got on their original ingest forever, since a byte-identical re-sync
+        never reaches resolve_shared_owner_fields(). Scoped to chunks owned by
+        this user or already ownerless (matching the same boundary
+        delete_document_by_filename uses), so it can't touch another user's
+        private document that happens to share this filename.
+        """
+        write_client = clients.opensearch
+        if write_client is None:
+            return
+        owner, owner_name, owner_email = resolve_shared_owner_fields(
+            self.user_id, self.owner_name, self.owner_email, self.shared
+        )
+        for candidate in get_filename_aliases(filename):
+            try:
+                await write_client.update_by_query(
+                    index=get_index_name(),
+                    body={
+                        "query": build_replace_filename_query(candidate, self.user_id),
+                        "script": {
+                            "source": """
+                                if (params.shared) {
+                                    ctx._source.remove('owner');
+                                } else {
+                                    ctx._source.owner = params.owner;
+                                }
+                                ctx._source.owner_name = params.owner_name;
+                                ctx._source.owner_email = params.owner_email;
+                            """,
+                            "params": {
+                                "shared": self.shared,
+                                "owner": owner,
+                                "owner_name": owner_name,
+                                "owner_email": owner_email,
+                            },
+                        },
+                    },
+                )
+            except Exception as e:
+                logger.warning(
+                    "Failed to reconcile owner fields for skipped duplicate",
+                    filename=candidate,
+                    error=str(e),
+                )
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Process a connector file using unified methods"""
@@ -802,7 +1007,7 @@ class ConnectorFileProcessor(TaskProcessor):
                         )
                     )
                     deleted_chunks = await self._delete_connector_chunks(
-                        file_id, opensearch_client, self.user_id
+                        file_id, opensearch_client, self.user_id, shared=self.shared
                     )
 
                     logger.warning(
@@ -865,12 +1070,14 @@ class ConnectorFileProcessor(TaskProcessor):
                     opensearch_client,
                     self.user_id,
                     keep_filenames=get_filename_aliases(file_task.filename),
+                    shared=self.shared,
                 )
                 > 0
             )
 
             if await self.check_filename_exists(file_task.filename, opensearch_client):
                 if not self.replace_duplicates:
+                    await self._reconcile_shared_owner(file_task.filename)
                     file_task.status = TaskStatus.SKIPPED
                     file_task.error = None
                     file_task.result = {
@@ -885,6 +1092,7 @@ class ConnectorFileProcessor(TaskProcessor):
                     file_task.filename,
                     opensearch_client,
                     owner_user_id=self.user_id,
+                    shared=self.shared,
                 )
 
             # Create temporary file from document content
@@ -900,6 +1108,7 @@ class ConnectorFileProcessor(TaskProcessor):
                 file_hash = hash_id(tmp_path)
 
                 if not renamed and await self.check_document_exists(file_hash, opensearch_client):
+                    await self._reconcile_shared_owner(file_task.filename)
                     file_task.status = TaskStatus.COMPLETED
                     file_task.result = {"status": "unchanged", "id": file_hash}
                     file_task.updated_at = time.time()
@@ -919,10 +1128,25 @@ class ConnectorFileProcessor(TaskProcessor):
                             delete_document_ids,
                         )
 
+                        # Match both fields: bucket-connector chunks carry the
+                        # raw connector id in connector_file_id (document_id is
+                        # a hash), while pre-migration chunks only have it in
+                        # document_id.
                         chunk_ids = await collect_visible_document_ids(
                             opensearch_client,
                             index=get_index_name(),
-                            query={"term": {"document_id": document.id}},
+                            query={
+                                "bool": {
+                                    "should": [
+                                        {"term": {"document_id": document.id}},
+                                        {"term": {"connector_file_id": document.id}},
+                                        # See check_document_exists: some indices
+                                        # predate the explicit keyword mapping for
+                                        # this field.
+                                        {"term": {"connector_file_id.keyword": document.id}},
+                                    ]
+                                }
+                            },
                         )
                         deleted_count = await delete_document_ids(
                             opensearch_client,
@@ -951,10 +1175,14 @@ class ConnectorFileProcessor(TaskProcessor):
                     # Extract ACL information
                     allowed_users: list[str] = []
                     allowed_groups: list[str] = []
+                    allowed_principals: list[str] = []
+                    allowed_principal_labels: list[dict[str, Any]] = []
                     if document.acl:
                         try:
                             allowed_users = document.acl.allowed_users or []
                             allowed_groups = document.acl.allowed_groups or []
+                            allowed_principals = document.acl.allowed_principals or []
+                            allowed_principal_labels = document.acl.allowed_principal_labels or []
                         except AttributeError:
                             pass
 
@@ -968,37 +1196,74 @@ class ConnectorFileProcessor(TaskProcessor):
                         {}, connector_tweak_settings
                     )
 
+                    config = get_openrag_config()
+                    effective_ingest_settings = (
+                        dict(self.ingest_settings) if self.ingest_settings else {}
+                    )
+                    effective_ingest_settings["ocr"] = config.knowledge.ocr
+                    effective_ingest_settings["pictureDescriptions"] = (
+                        config.knowledge.picture_descriptions
+                    )
+
+                    effective_owner, effective_owner_name, effective_owner_email = (
+                        resolve_shared_owner_fields(
+                            self.user_id, self.owner_name, self.owner_email, self.shared
+                        )
+                    )
+                    file_task.document_id = document.id
                     result = await self.connector_service.langflow_service.upload_and_ingest_file(
                         file_tuple=file_tuple,
                         session_id=None,
                         tweaks=tweaks,
-                        settings=self.ingest_settings,
+                        settings=effective_ingest_settings,
                         jwt_token=self.jwt_token,
-                        owner=self.user_id,
-                        owner_name=self.owner_name,
-                        owner_email=self.owner_email,
+                        owner=effective_owner,
+                        owner_name=effective_owner_name,
+                        owner_email=effective_owner_email,
                         connector_type=connector_type,
                         docling_polling_service=self.connector_service.task_service.docling_polling_service
                         if self.connector_service.task_service
                         else None,
                         file_task=file_task,
-                        document_id=document.id,
+                        connector_file_id=document.id,
                         source_url=document.source_url,
                         allowed_users=allowed_users,
                         allowed_groups=allowed_groups,
+                        allowed_principals=allowed_principals,
+                        allowed_principal_labels=allowed_principal_labels,
+                        original_filename=file_task.filename,
+                        original_mimetype=document.mimetype,
                     )
                     # Langflow returns "success" even when no text was extracted
                     # (e.g. image files without OCR). Verify the document actually
                     # landed in OpenSearch before declaring success.
+                    # wait_for_visibility polls on an empty result to ride out
+                    # OpenSearch's ~1s near-real-time window (the user-scoped
+                    # client cannot force an indices:admin/refresh — it 403s).
                     if not await self.check_document_exists(
                         document.id,
                         _verification_client(opensearch_client),
                         on_error="assume_exists",
+                        wait_for_visibility=True,
+                        field="connector_file_id",
                     ):
                         result = {
                             "status": "error",
                             "error": "No text content could be extracted from document",
                         }
+
+                    # Persist connector metadata (incl. modified_time) onto the
+                    # Langflow-indexed chunks (keyed by document_id) so bucket-connector
+                    # change detection has a stored timestamp to compare against on the
+                    # next sync. Mirrors the standard path's enrichment below.
+                    if result.get("status") != "error":
+                        await self.connector_service._update_connector_metadata(
+                            document,
+                            self.user_id,
+                            connector_type,
+                            self.jwt_token,
+                            indexed_filename=file_task.filename,
+                        )
                 else:
                     # Standard OpenRAG processing pipeline (process_document_standard)
                     standard_kwargs: dict[str, Any] = {}
@@ -1017,10 +1282,9 @@ class ConnectorFileProcessor(TaskProcessor):
                                     standard_kwargs[param] = int(raw)
                                 except (TypeError, ValueError):
                                     pass
-                        if "ocr" in s:
-                            standard_kwargs["ocr"] = bool(s["ocr"])
-                        if "pictureDescriptions" in s:
-                            standard_kwargs["picture_descriptions"] = bool(s["pictureDescriptions"])
+                    config = get_openrag_config()
+                    standard_kwargs["ocr"] = config.knowledge.ocr
+                    standard_kwargs["picture_descriptions"] = config.knowledge.picture_descriptions
 
                     result = await self.process_document_standard(
                         file_path=tmp_path,
@@ -1034,6 +1298,7 @@ class ConnectorFileProcessor(TaskProcessor):
                         connector_type=connector_type,
                         acl=document.acl,
                         connector_file_id=document.id,
+                        shared=self.shared,
                         **standard_kwargs,
                     )
 
@@ -1044,7 +1309,6 @@ class ConnectorFileProcessor(TaskProcessor):
                             self.user_id,
                             connector_type,
                             self.jwt_token,
-                            id_field="connector_file_id",
                             indexed_filename=file_task.filename,
                         )
 
@@ -1191,10 +1455,6 @@ class LangflowFileProcessor(TaskProcessor):
         self.settings = settings
         self.replace_duplicates = replace_duplicates
         self.connector_type = connector_type
-        # Backend-side Docling polling coordinator. Injected by TaskService
-        # from the container; gating by ENABLE_BACKEND_DOCLING_POLLING happens
-        # at construction time in app.container. When None, the legacy
-        # single-call ingestion path is used.
         self.docling_polling_service = docling_polling_service
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
@@ -1247,13 +1507,13 @@ class LangflowFileProcessor(TaskProcessor):
 
             # Create file tuple for upload using ORIGINAL filename
             # This ensures the document is indexed with the original name
-            content_type, _ = mimetypes.guess_type(original_filename)
-            if not content_type:
-                content_type = "application/octet-stream"
+            original_mimetype, _ = mimetypes.guess_type(original_filename)
+            if not original_mimetype:
+                original_mimetype = "application/octet-stream"
 
             # Langflow's docling chokes on text/plain — rename .txt -> .md.
             langflow_filename, content_type = langflow_safe_filename_and_mimetype(
-                original_filename, content_type
+                original_filename, original_mimetype
             )
             file_tuple = (langflow_filename, content, content_type)
 
@@ -1267,6 +1527,16 @@ class LangflowFileProcessor(TaskProcessor):
             # Prepare metadata tweaks similar to API endpoint
             final_tweaks = self.tweaks.copy() if self.tweaks else {}
 
+            file_hash = hash_id(item)
+            file_task.document_id = file_hash
+
+            # Build settings with fresh OCR/pictureDescriptions from live
+            # config so retries pick up configuration changes.
+            config = get_openrag_config()
+            effective_settings = dict(self.settings) if self.settings else {}
+            effective_settings["ocr"] = config.knowledge.ocr
+            effective_settings["pictureDescriptions"] = config.knowledge.picture_descriptions
+
             # Process file using langflow service. Passing the polling
             # service triggers the two-phase model: backend polls Docling,
             # then invokes Langflow only after SUCCESS. file_task is passed
@@ -1275,7 +1545,7 @@ class LangflowFileProcessor(TaskProcessor):
                 file_tuple=file_tuple,
                 session_id=self.session_id,
                 tweaks=final_tweaks,
-                settings=self.settings,
+                settings=effective_settings,
                 jwt_token=effective_jwt,
                 owner=self.owner_user_id,
                 owner_name=self.owner_name,
@@ -1283,15 +1553,29 @@ class LangflowFileProcessor(TaskProcessor):
                 connector_type=self.connector_type,
                 docling_polling_service=self.docling_polling_service,
                 file_task=file_task,
+                document_id=file_hash,
+                original_filename=original_filename,
+                original_mimetype=original_mimetype,
             )
 
-            # Langflow returns "success" even when no text was extracted.
-            # Verify the document actually landed in OpenSearch.
-            file_hash = hash_id(item)
-            if not await self.check_document_exists(
-                file_hash,
+            # Langflow returns "success" even when no text was extracted
+            # (e.g. image files without OCR). Verify the document actually
+            # landed in OpenSearch before declaring success. We key off the
+            # filename — the identifier this path already uses for dedup and
+            # delete (see check_filename_exists / delete_document_by_filename
+            # above). The document_id (hash_id(item) == content hash) is now
+            # threaded through to Langflow so preview-mode index proof can look
+            # chunks up by document_id, but verification stays filename-based to
+            # match this path's existing dedup/delete semantics.
+            #
+            # wait_for_visibility polls on an empty result so the just-written
+            # chunks become visible within OpenSearch's near-real-time refresh
+            # window. We cannot force a refresh here: the user-scoped client
+            # lacks the indices:admin/refresh privilege (it 403s).
+            if not await self.check_filename_exists(
+                original_filename,
                 _verification_client(opensearch_client),
-                on_error="assume_exists",
+                wait_for_visibility=True,
             ):
                 file_task.status = TaskStatus.FAILED
                 file_task.error = "No text content could be extracted from document"
