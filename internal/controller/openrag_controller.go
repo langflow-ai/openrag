@@ -1007,6 +1007,9 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, target
 	podAnnotations := mergePodAnnotations(spec.PodAnnotations)
 	// Add .env secret hash to trigger pod restart when secret changes
 	podAnnotations["openr.ag/backend-env-hash"] = envHash
+	podAnnotations["prometheus.io/scrape"] = fmt.Sprintf("%t", spec.PrometheusScrape)
+	podAnnotations["prometheus.io/port"] = fmt.Sprintf("%d", spec.PrometheusPort)
+	podAnnotations["prometheus.io/path"] = spec.PrometheusPath
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        instanceResourceName(o, "be"),

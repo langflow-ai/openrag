@@ -273,6 +273,25 @@ type BackendSpec struct {
 	// OAuth configures Google and Microsoft OAuth providers.
 	// +optional
 	OAuth *OAuthSpec `json:"oauth,omitempty"`
+
+	// PrometheusScrape enables the standard Prometheus pod annotations
+	// (prometheus.io/scrape, prometheus.io/port, prometheus.io/path) for auto-discovery.
+	// defaults to true un
+	// +optional
+	// +kubebuilder:default=true
+	PrometheusScrape bool `json:"prometheusScrape,omitempty"`
+
+	// PrometheusPort is the port Prometheus should scrape.
+	// defaults to port 8000
+	// +optional
+	// +kubebuilder:default=8000
+	PrometheusPort int32 `json:"prometheusPort,omitempty"`
+
+	// PrometheusPath is the metrics endpoint path Prometheus should scrape.
+	// defaults to /metrics endpoint
+	// +optional
+	// +kubebuilder:default="/metrics"
+	PrometheusPath string `json:"prometheusPath,omitempty"`
 }
 
 // LangflowSpec configures the Langflow instance.

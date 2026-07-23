@@ -869,10 +869,10 @@ func TestReconcile_FrontendCustomPodLabels(t *testing.T) {
 func TestReconcile_BackendCustomPodAnnotations(t *testing.T) {
 	s := newScheme(t)
 	cr := minimalCR("my-openrag", "my-ns")
+	cr.Spec.Backend.PrometheusScrape = true
+	cr.Spec.Backend.PrometheusPort = 8000
 	cr.Spec.Backend.PodAnnotations = map[string]string{
-		"prometheus.io/scrape": "true",
-		"prometheus.io/port":   "8000",
-		"custom-annotation":    "backend-value",
+		"custom-annotation": "backend-value",
 	}
 	r, c := reconciler(s, cr)
 
