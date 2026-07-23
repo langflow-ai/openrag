@@ -363,13 +363,12 @@ def _start_services_cli(
         else:
             console.print("  [yellow]No container runtime available[/yellow]")
 
-        # Start docling
-        if not docling_manager.is_running():
-            success, message = await docling_manager.start()
-            if success:
-                console.print(f"  {message}")
-            else:
-                console.print(f"  [yellow]{message}[/yellow]")
+        # Start docling (restart if recovered PID is on an older pin)
+        success, message = await docling_manager.ensure_running()
+        if success:
+            console.print(f"  {message}")
+        else:
+            console.print(f"  [yellow]{message}[/yellow]")
 
     try:
         asyncio.run(_inner())

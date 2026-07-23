@@ -565,23 +565,30 @@ class WelcomeScreen(Screen):
 
     async def _start_native_services_after_containers(self) -> None:
         """Start native services after containers have been started."""
-        if not self.docling_manager.is_running():
-            # Check for port conflicts before attempting to start
-            port_available, error_msg = self.docling_manager.check_port_available()
-            if not port_available:
-                self.notify(
-                    f"Cannot start native services: {error_msg}. "
-                    f"Please stop the conflicting service first.",
-                    severity="error",
-                    timeout=10
-                )
-                # Update state and return
-                self.docling_running = False
-                await self._refresh_welcome_content()
-                return
+        # Restart if a recovered PID is still on an older docling-serve pin.
+        needs_start = (
+            not self.docling_manager.is_running()
+            or not self.docling_manager.started_for_current_openrag_version()
+        )
+        if needs_start:
+            # Check for port conflicts before attempting to start (skip when
+            # we own the port and are about to restart for a pin upgrade).
+            if not self.docling_manager.is_running():
+                port_available, error_msg = self.docling_manager.check_port_available()
+                if not port_available:
+                    self.notify(
+                        f"Cannot start native services: {error_msg}. "
+                        f"Please stop the conflicting service first.",
+                        severity="error",
+                        timeout=10
+                    )
+                    # Update state and return
+                    self.docling_running = False
+                    await self._refresh_welcome_content()
+                    return
 
             self.notify("Starting native services...", severity="information")
-            success, message = await self.docling_manager.start()
+            success, message = await self.docling_manager.ensure_running()
             if success:
                 self.notify(message, severity="information")
             else:

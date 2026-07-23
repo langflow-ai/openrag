@@ -11,6 +11,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from utils.logging_config import get_logger
+from utils.version_utils import OPENRAG_VERSION
 
 logger = get_logger(__name__)
 
@@ -46,6 +47,10 @@ class DoclingManager:
 
         self._tui_dir = get_tui_dir()
         self._pid_file = self._tui_dir / ".docling.pid"
+        # Records which OpenRAG package version started the long-lived
+        # docling-serve PID. On OSS OpenRAG upgrades the stamp mismatches and
+        # ensure_running()/start() recycle the process so a new uvx pin applies.
+        self._openrag_version_file = self._tui_dir / ".docling.openrag_version"
         self._log_file_path = self._tui_dir / "docling-serve.log"
 
         # Log storage - simplified, no queue
@@ -92,6 +97,38 @@ class DoclingManager:
                 self._add_log_entry("Cleared PID file")
         except Exception as e:
             self._add_log_entry(f"Failed to clear PID file: {e}")
+
+    def _read_started_openrag_version(self) -> str | None:
+        """Read the OpenRAG version that started the recovered docling process."""
+        try:
+            if self._openrag_version_file.exists():
+                value = self._openrag_version_file.read_text().strip()
+                return value or None
+        except Exception as e:
+            self._add_log_entry(f"Failed to read docling OpenRAG version stamp: {e}")
+        return None
+
+    def _write_started_openrag_version(self) -> None:
+        """Persist the current OpenRAG version next to the PID file."""
+        try:
+            self._openrag_version_file.parent.mkdir(parents=True, exist_ok=True)
+            self._openrag_version_file.write_text(OPENRAG_VERSION)
+            self._add_log_entry(f"Saved docling OpenRAG version stamp {OPENRAG_VERSION}")
+        except Exception as e:
+            self._add_log_entry(f"Failed to write docling OpenRAG version stamp: {e}")
+
+    def _clear_started_openrag_version(self) -> None:
+        """Remove the OpenRAG version stamp file."""
+        try:
+            if self._openrag_version_file.exists():
+                self._openrag_version_file.unlink()
+                self._add_log_entry("Cleared docling OpenRAG version stamp")
+        except Exception as e:
+            self._add_log_entry(f"Failed to clear docling OpenRAG version stamp: {e}")
+
+    def started_for_current_openrag_version(self) -> bool:
+        """True when the running process was started under this OpenRAG version."""
+        return self._read_started_openrag_version() == OPENRAG_VERSION
 
     def _is_process_running(self, pid: int) -> bool:
         """Check if a process with the given PID is running."""
@@ -242,7 +279,16 @@ class DoclingManager:
             timeout: Seconds to wait for the service to start listening (default: 120)
         """
         if self.is_running():
-            return False, "Docling serve is already running"
+            if self.started_for_current_openrag_version():
+                return False, "Docling serve is already running"
+            self._add_log_entry(
+                f"Docling serve OpenRAG version mismatch "
+                f"(running={self._read_started_openrag_version()!r}, "
+                f"expected={OPENRAG_VERSION!r}); restarting for upgrade"
+            )
+            stop_ok, stop_msg = await self.stop()
+            if not stop_ok:
+                return False, f"Failed to stop outdated docling-serve for upgrade: {stop_msg}"
 
         self._port = port
         # Use provided host or keep default from __init__
@@ -435,6 +481,7 @@ class DoclingManager:
             if self._process.poll() is None:
                 self._starting = False
 
+            self._write_started_openrag_version()
             display_host = "localhost" if self._host == "0.0.0.0" else self._host
             return True, f"Docling serve starting on http://{display_host}:{port}"
 
@@ -489,6 +536,35 @@ class DoclingManager:
 
         self._add_log_entry("Log file capture thread started")
 
+    async def ensure_running(
+        self,
+        port: int = 5001,
+        host: str | None = None,
+        enable_ui: bool = False,
+        workers: int | None = None,
+        timeout: int = 10,
+    ) -> tuple[bool, str]:
+        """Ensure docling-serve is running for the current OpenRAG version.
+
+        Unlike ``start()``, returns success when a process started under this
+        OpenRAG version is already running. Restarts when a recovered PID was
+        started under an older OpenRAG version (OSS upgrade path).
+        """
+        if self.is_running() and self.started_for_current_openrag_version():
+            return True, "Docling serve is already running"
+
+        success, message = await self.start(
+            port=port,
+            host=host,
+            enable_ui=enable_ui,
+            workers=workers,
+            timeout=timeout,
+        )
+        if success:
+            return True, message
+        if "already running" in message.lower() and self.started_for_current_openrag_version():
+            return True, message
+        return False, message
     async def stop(self) -> tuple[bool, str]:
         """Stop docling serve."""
         if not self.is_running():
@@ -542,6 +618,7 @@ class DoclingManager:
 
             # Clear the PID file since we intentionally stopped the service
             self._clear_pid_file()
+            self._clear_started_openrag_version()
 
             self._add_log_entry("Docling serve stopped successfully")
             return True, "Docling serve stopped successfully"

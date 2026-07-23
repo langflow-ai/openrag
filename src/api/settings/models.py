@@ -112,6 +112,7 @@ class OnboardingStateBody(BaseModel):
     user_doc_filter_id: str | None = None
     openrag_docs_ingested_version: str | None = None
     openrag_docs_remote_signature: str | None = None
+    openrag_flows_synced_version: str | None = None
 
 
 class DoclingPresetBody(BaseModel):
@@ -131,6 +132,7 @@ class OnboardingStateConfig(BaseModel):
     user_doc_filter_id: str | None
     openrag_docs_ingested_version: str | None
     openrag_docs_remote_signature: str | None
+    openrag_flows_synced_version: str | None = None
 
 
 class OpenAIProviderConfig(BaseModel):

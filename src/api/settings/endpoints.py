@@ -229,6 +229,7 @@ async def get_settings(
                 user_doc_filter_id=openrag_config.onboarding.user_doc_filter_id,
                 openrag_docs_ingested_version=openrag_config.onboarding.openrag_docs_ingested_version,
                 openrag_docs_remote_signature=openrag_config.onboarding.openrag_docs_remote_signature,
+                openrag_flows_synced_version=openrag_config.onboarding.openrag_flows_synced_version,
             ),
             providers=ProvidersConfig(
                 openai=OpenAIProviderConfig(
@@ -1610,6 +1611,7 @@ async def rollback_onboarding(
         current_config.knowledge.embedding_model = ""
         current_config.onboarding.openrag_docs_ingested_version = None
         current_config.onboarding.openrag_docs_remote_signature = None
+        current_config.onboarding.openrag_flows_synced_version = None
         current_config.onboarding.assistant_message = None
         current_config.onboarding.selected_nudge = None
         current_config.onboarding.card_steps = None

@@ -218,6 +218,10 @@ class OnboardingState:
     user_doc_filter_id: str | None = field(default=None)
     openrag_docs_ingested_version: str | None = field(default=None)
     openrag_docs_remote_signature: str | None = field(default=None)
+    # Last OpenRAG version for which stock Langflow flows were synced from
+    # bundled JSON. Used on OSS upgrades so two-phase Docling (DOCLING_TASK_ID)
+    # wiring replaces stale 0.5.x ingest graphs without overwriting locked flows.
+    openrag_flows_synced_version: str | None = field(default=None)
 
 
 @dataclass
