@@ -374,7 +374,9 @@ class MonitorScreen(Screen):
             command_generator = self.container_manager.start_services(cpu_mode)
             modal = CommandOutputModal(
                 "Starting Services",
-                command_generator,
+                # start_services yields an optional replace_last flag; the modal
+                # accepts both 2- and 3-tuples at runtime.
+                cast(AsyncIterator[tuple[bool, str]], command_generator),
                 on_complete=self._on_start_complete,  # Refresh after completion
             )
             self.app.push_screen(modal)
