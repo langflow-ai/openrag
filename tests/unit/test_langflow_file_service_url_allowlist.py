@@ -34,6 +34,29 @@ async def test_run_url_ingestion_flow_rejects_disallowed_host(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_denied_allowlist_audit_event_fires_on_rejection(monkeypatch):
+    monkeypatch.setattr("utils.ssrf_guard.OPENRAG_URL_INGEST_ALLOWED_HOSTS", {"good.example.com"})
+    audit_mock = AsyncMock()
+    monkeypatch.setattr("utils.audit_helpers.write_audit_event_best_effort", audit_mock)
+
+    service = LangflowFileService()
+    service._ensure_url_ingest_flow_id = AsyncMock()
+
+    with pytest.raises(SSRFBlockedError):
+        await service.run_url_ingestion_flow(
+            docs_url="https://attacker.example/canary",
+            crawl_depth=1,
+            owner="user-1",
+        )
+
+    audit_mock.assert_awaited_once()
+    call_kwargs = audit_mock.call_args.kwargs
+    assert call_kwargs["event"] == "url.ingest.denied_allowlist"
+    assert call_kwargs["actor_user_id"] == "user-1"
+    assert call_kwargs["target_id"] == "https://attacker.example/canary"
+
+
+@pytest.mark.asyncio
 async def test_run_url_ingestion_flow_rejects_private_ip_even_if_host_allowlisted(monkeypatch):
     monkeypatch.setattr("utils.ssrf_guard.OPENRAG_URL_INGEST_ALLOWED_HOSTS", {"localhost"})
 
@@ -74,3 +97,31 @@ async def test_run_url_ingestion_flow_proceeds_for_allowlisted_public_host(monke
         )
 
     service._ensure_url_ingest_flow_id.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_requested_audit_event_fires_before_flow_run(monkeypatch):
+    monkeypatch.setattr("utils.ssrf_guard.OPENRAG_URL_INGEST_ALLOWED_HOSTS", {"docs.example.com"})
+
+    def fake_getaddrinfo(host, port):
+        return [(None, None, None, None, ("8.8.8.8", 0))]
+
+    monkeypatch.setattr("utils.ssrf_guard.socket.getaddrinfo", fake_getaddrinfo)
+
+    audit_mock = AsyncMock()
+    monkeypatch.setattr("utils.audit_helpers.write_audit_event_best_effort", audit_mock)
+
+    service = LangflowFileService()
+    service._ensure_url_ingest_flow_id = AsyncMock(side_effect=RuntimeError("stop here"))
+
+    with pytest.raises(RuntimeError, match="stop here"):
+        await service.run_url_ingestion_flow(
+            docs_url="https://docs.example.com/report",
+            crawl_depth=1,
+            owner="user-2",
+        )
+
+    audit_mock.assert_awaited_once()
+    call_kwargs = audit_mock.call_args.kwargs
+    assert call_kwargs["event"] == "url.ingest.requested"
+    assert call_kwargs["actor_user_id"] == "user-2"
