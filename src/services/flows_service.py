@@ -1021,7 +1021,9 @@ class FlowsService:
                     )
 
         config.onboarding.openrag_flows_synced_version = current_version
-        if not config_manager.save_config_file(config):
+        # Internal stamp only — do not mark onboarding as user-edited (fresh
+        # installs / explicit rollback stay unedited).
+        if not config_manager.save_config_file(config, preserve_edited=True):
             logger.warning(
                 "Stock flows sync completed but failed to persist openrag_flows_synced_version",
                 current_version=current_version,

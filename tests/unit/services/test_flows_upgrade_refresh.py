@@ -72,7 +72,8 @@ async def test_fresh_install_stamps_without_patch(monkeypatch):
     assert refreshed == set()
     refresh.assert_not_called()
     assert config.onboarding.openrag_flows_synced_version == "0.6.0"
-    save.assert_called_once()
+    save.assert_called_once_with(config, preserve_edited=True)
+    assert config.edited is False
 
 
 @pytest.mark.asyncio
@@ -102,7 +103,7 @@ async def test_upgrade_refreshes_unlocked_ingest(monkeypatch):
     assert refreshed == {"ingest"}
     assert refresh.await_count == 4
     assert config.onboarding.openrag_flows_synced_version == "0.6.0"
-    save.assert_called_once()
+    save.assert_called_once_with(config, preserve_edited=True)
 
 
 @pytest.mark.asyncio
@@ -132,6 +133,7 @@ async def test_pre_stamp_upgrade_when_ingest_already_existed(monkeypatch):
 
     assert refreshed == {"ingest"}
     refresh.assert_awaited_once()
+    save.assert_called_once_with(config, preserve_edited=True)
 
 
 @pytest.mark.asyncio
