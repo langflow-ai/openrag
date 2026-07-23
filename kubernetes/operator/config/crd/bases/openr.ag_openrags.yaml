@@ -13963,6 +13963,19 @@ spec:
                   enabled:
                     default: false
                     type: boolean
+                  extraEgressCIDRs:
+                    description: |-
+                      ExtraEgressCIDRs restricts the Langflow pod's egress on ports 443/9200
+                      (LLM providers, OpenSearch, and allowlisted URL-ingestion targets) to
+                      these CIDR blocks. When empty (default), egress on those ports is
+                      unrestricted — matching the pre-existing behavior, so setting this is
+                      opt-in and doesn't change existing installs. NetworkPolicy can only
+                      filter by IP/CIDR, not hostname, so tightening this requires knowing
+                      egress destinations' IP ranges ahead of time (e.g. an LLM provider's
+                      published IP ranges, or a resolved allowlisted-host CIDR).
+                    items:
+                      type: string
+                    type: array
                 type: object
               opensearch:
                 description: OpenSearch configures the external OpenSearch connection.

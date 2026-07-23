@@ -2084,8 +2084,25 @@ func (r *OpenRAGReconciler) reconcileNetworkPolicy(ctx context.Context, o *openr
 			To:    []networkingv1.NetworkPolicyPeer{{PodSelector: &metav1.LabelSelector{MatchLabels: labels}}},
 		},
 		{Ports: []networkingv1.NetworkPolicyPort{udpPort(53), tcpPort(53)}},
-		{Ports: []networkingv1.NetworkPolicyPort{tcpPort(9200), tcpPort(443)}},
 	}
+
+	// VULN-13906: egress on 443/9200 (LLM providers, OpenSearch, allowlisted URL-ingestion
+	// targets) is unrestricted by default — matches pre-existing behavior. When
+	// ExtraEgressCIDRs is set, restrict it to those CIDRs instead, tightening the pod's
+	// blast radius beyond "TCP 443 to anywhere".
+	opensearchAndProviderEgress := networkingv1.NetworkPolicyEgressRule{
+		Ports: []networkingv1.NetworkPolicyPort{tcpPort(9200), tcpPort(443)},
+	}
+	if cidrs := o.Spec.NetworkPolicy.ExtraEgressCIDRs; len(cidrs) > 0 {
+		peers := make([]networkingv1.NetworkPolicyPeer, 0, len(cidrs))
+		for _, cidr := range cidrs {
+			peers = append(peers, networkingv1.NetworkPolicyPeer{
+				IPBlock: &networkingv1.IPBlock{CIDR: cidr},
+			})
+		}
+		opensearchAndProviderEgress.To = peers
+	}
+	egress = append(egress, opensearchAndProviderEgress)
 
 	if o.Spec.Docling != nil {
 		egress = append(egress, networkingv1.NetworkPolicyEgressRule{

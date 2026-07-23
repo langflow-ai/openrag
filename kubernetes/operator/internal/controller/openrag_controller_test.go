@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -1427,4 +1428,61 @@ func TestDeployment_NoHashChangeWhenEnvUnchanged(t *testing.T) {
 
 	// Hash should be identical (no unnecessary pod restart)
 	assert.Equal(t, hash1, hash2, "Hash should remain same when env unchanged (avoids unnecessary restarts)")
+}
+
+// ---------------------------------------------------------------------------
+// NetworkPolicy egress CIDR restriction (VULN-13906)
+// ---------------------------------------------------------------------------
+
+func TestReconcile_NetworkPolicy_UnrestrictedEgressByDefault(t *testing.T) {
+	s := newScheme(t)
+	require.NoError(t, networkingv1.AddToScheme(s))
+	cr := minimalCR("test-openrag", "test-ns")
+	cr.Spec.NetworkPolicy = openragv1alpha1.NetworkPolicySpec{Enabled: true}
+	r, c := reconciler(s, cr)
+
+	reconcileOnce(t, r, cr)
+
+	np := &networkingv1.NetworkPolicy{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: instanceResourceName(cr, "lf-netpol"), Namespace: "test-ns"}, np))
+
+	rule := findEgressRuleByPort(t, np, 9200)
+	assert.Empty(t, rule.To, "egress on 9200/443 must remain unrestricted when ExtraEgressCIDRs is unset")
+}
+
+func TestReconcile_NetworkPolicy_ExtraEgressCIDRsRestrictsEgress(t *testing.T) {
+	s := newScheme(t)
+	require.NoError(t, networkingv1.AddToScheme(s))
+	cr := minimalCR("test-openrag", "test-ns")
+	cr.Spec.NetworkPolicy = openragv1alpha1.NetworkPolicySpec{
+		Enabled:          true,
+		ExtraEgressCIDRs: []string{"10.20.0.0/16", "203.0.113.0/24"},
+	}
+	r, c := reconciler(s, cr)
+
+	reconcileOnce(t, r, cr)
+
+	np := &networkingv1.NetworkPolicy{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: instanceResourceName(cr, "lf-netpol"), Namespace: "test-ns"}, np))
+
+	rule := findEgressRuleByPort(t, np, 9200)
+	require.Len(t, rule.To, 2)
+	assert.Equal(t, "10.20.0.0/16", rule.To[0].IPBlock.CIDR)
+	assert.Equal(t, "203.0.113.0/24", rule.To[1].IPBlock.CIDR)
+}
+
+// findEgressRuleByPort returns the egress rule containing the given TCP port.
+func findEgressRuleByPort(t *testing.T, np *networkingv1.NetworkPolicy, port int32) networkingv1.NetworkPolicyEgressRule {
+	t.Helper()
+	for _, rule := range np.Spec.Egress {
+		for _, p := range rule.Ports {
+			if p.Port != nil && p.Port.IntVal == port {
+				return rule
+			}
+		}
+	}
+	t.Fatalf("no egress rule found for port %d", port)
+	return networkingv1.NetworkPolicyEgressRule{}
 }
