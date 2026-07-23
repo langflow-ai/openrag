@@ -52,6 +52,29 @@ def _strip_untrusted_fence(text: str) -> str:
     return stripped
 
 
+def _strip_untrusted_fence_recursive(obj: Any) -> None:
+    """Recursively strip untrusted-fence markers from every "text" string field
+    found anywhere in a streamed SSE chunk payload, in place (VULN-13906).
+
+    The live chat UI always streams (stream=True), which bypasses the
+    citation-building fence-stripping in async_langflow_chat entirely — that
+    non-streaming path is dead code for real traffic. Client code
+    (frontend tool-call trace panel, citation click-through popup) reads
+    retrieved chunk text straight out of the raw SSE stream, so stripping has
+    to happen here, on every chunk, before it's yielded. A no-op on any text
+    that isn't actually fenced, so this is safe to apply unconditionally.
+    """
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            if key == "text" and isinstance(value, str):
+                obj[key] = _strip_untrusted_fence(value)
+            else:
+                _strip_untrusted_fence_recursive(value)
+    elif isinstance(obj, list):
+        for item in obj:
+            _strip_untrusted_fence_recursive(item)
+
+
 async def get_user_conversations(user_id: str):
     """Get conversation metadata for a user from persistent storage."""
     return await conversation_persistence.get_user_conversations(user_id)
@@ -232,6 +255,13 @@ async def async_response_stream(
                     chunk_data = chunk.__dict__
                 else:
                     chunk_data = str(chunk)
+
+                # VULN-13906: the live chat UI always streams, so this is the only place
+                # retrieved/uploaded text (fenced in flows/components/opensearch_multimodal.py
+                # and src/agent.py's fence_untrusted_text) reaches the client — strip fence
+                # markers here, before anything is yielded. Frontend surfaces (tool-call trace
+                # panel, citation click-through popup) read this raw streamed payload directly.
+                _strip_untrusted_fence_recursive(chunk_data)
 
                 # Log detailed chunk structure for investigation (especially for Granite 3.3 8b)
                 if isinstance(chunk_data, dict):
