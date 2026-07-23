@@ -217,7 +217,15 @@ class BaseConnector(ABC):
         """
         cfg = getattr(self, "cfg", None)
         if cfg is None:
-            return await self.list_files(**kwargs)
+            # No per-call selection state to scope by. Falling back to
+            # list_files() would list the connector's entire account and
+            # silently ignore file_ids, so refuse instead: callers must gate on
+            # `cfg is not None` and use file_ids directly for cfg-less
+            # (bucket) connectors.
+            raise NotImplementedError(
+                f"{type(self).__name__} has no cfg; list_selected_files is only "
+                "supported on cfg-backed connectors (Google Drive/OneDrive/SharePoint)."
+            )
         scoped = copy.copy(self)
         scoped.cfg = copy.copy(cfg)
         scoped.cfg.file_ids = file_ids

@@ -385,7 +385,15 @@ class ConnectorService:
         expanded_files_info = []
 
         try:
-            if hasattr(connector, "cfg"):
+            # cfg is None on bucket connectors (azure_blob/aws_s3/ibm_cos): they
+            # have no per-call file/folder selection to expand, and file_ids are
+            # already the exact ids to sync. Only cfg-backed connectors
+            # (Google Drive/OneDrive/SharePoint) expand folders here. Guarding on
+            # cfg-is-not-None rather than hasattr is deliberate: BaseConnector
+            # declares cfg=None as a class default, so hasattr is True for every
+            # connector and would route bucket syncs through list_selected_files
+            # -> list_files() (the whole account), discarding the selected ids.
+            if getattr(connector, "cfg", None) is not None:
                 result = await connector.list_selected_files(file_ids)
                 expanded_files = result.get("files", [])
                 expanded_file_ids = [f["id"] for f in expanded_files]

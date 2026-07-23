@@ -78,6 +78,27 @@ async def test_folder_ids_cleared_by_default():
 
 
 @pytest.mark.asyncio
+async def test_raises_when_cfg_is_none():
+    """cfg-less (bucket) connectors must not silently fall back to list_files().
+
+    BaseConnector declares cfg=None as a class default, so a bucket connector
+    reaches list_selected_files with cfg None. Falling back to list_files()
+    there would list the connector's entire account and ignore file_ids —
+    exactly the "all buckets ingested" regression. Callers must gate on
+    `cfg is not None` instead, so this path is a loud error, not a silent
+    whole-account listing.
+    """
+
+    class _NoCfg(_FakeConnector):
+        def __init__(self):
+            self.cfg = None
+
+    conn = _NoCfg()
+    with pytest.raises(NotImplementedError):
+        await conn.list_selected_files(["a"])
+
+
+@pytest.mark.asyncio
 async def test_folder_ids_passed_through():
     observed = {}
 

@@ -507,7 +507,11 @@ async def compute_orphans_for_connector_type(
             # and silently drops missing ids, so the resulting `remote_ids` is
             # exactly "the subset of existing_file_ids that still exists at
             # source" — which is what orphan detection actually needs.
-            scoped_listing = hasattr(connector, "cfg") and bool(existing_file_ids)
+            # cfg is None on bucket connectors (BaseConnector declares it as a
+            # class default), so guard on cfg-is-not-None rather than hasattr:
+            # otherwise bucket connectors route through list_selected_files ->
+            # list_files() (the whole account) instead of the flat listing below.
+            scoped_listing = getattr(connector, "cfg", None) is not None and bool(existing_file_ids)
 
             if scoped_listing:
                 page = await connector.list_selected_files(list(existing_file_ids))
@@ -812,7 +816,10 @@ async def _expand_selected_connector_files(
     file_ids = [f.get("id") for f in selected_files_raw if isinstance(f, dict) and f.get("id")]
     expanded_files_info: list[dict[str, Any]] = []
 
-    if file_ids and hasattr(connector, "cfg"):
+    # cfg is None on bucket connectors (BaseConnector class default), so guard on
+    # cfg-is-not-None: only cfg-backed connectors expand folders here; bucket
+    # connectors fall through to using selected_files_raw directly below.
+    if file_ids and getattr(connector, "cfg", None) is not None:
         try:
             result = await connector.list_selected_files(file_ids)
             for f in result.get("files", []):
