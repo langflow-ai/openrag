@@ -318,6 +318,21 @@ func TestEnvVarManager_NewEnvVarManagerDefaults(t *testing.T) {
 	assert.NotNil(t, manager.DefaultOpenRagFEEnvVars)
 }
 
+func TestEnvVarManager_OpenragCurrentUserMessageWiredForIntentGate(t *testing.T) {
+	// VULN-13906: the URL Ingestion Tool's intent gate resolves this value via
+	// Langflow's load_from_db global-variable mechanism, which only works if the
+	// var name is both registered in LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT
+	// and given a baseline placeholder default (same pattern as OPENRAG_INGEST_URL).
+	manager := NewEnvVarManager()
+
+	assert.Contains(
+		t,
+		manager.DefaultLangflowEnvVars["LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT"],
+		"OPENRAG_CURRENT_USER_MESSAGE",
+	)
+	assert.Equal(t, "OPENRAG_CURRENT_USER_MESSAGE", manager.DefaultLangflowEnvVars["OPENRAG_CURRENT_USER_MESSAGE"])
+}
+
 func TestEnvVarManager_EnsureRequiredEnvVars(t *testing.T) {
 	tests := []struct {
 		name           string
