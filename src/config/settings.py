@@ -194,6 +194,12 @@ GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
 # When unset, any tenant whose token passes signature/audience/expiry checks is accepted.
 MICROSOFT_ALLOWED_TENANT_IDS: set[str] | None = get_env_set("MICROSOFT_ALLOWED_TENANT_IDS")
 
+# Comma-separated list of hostnames (or "*.suffix" wildcards) the URL Ingestion Tool /
+# Knowledge API URL connector is allowed to fetch from (VULN-13906 defense-in-depth
+# against SSRF). Unlike MICROSOFT_ALLOWED_TENANT_IDS, this is fail-closed: unset or
+# blank means NO host is allowed, not "any host". Operators must explicitly opt in.
+OPENRAG_URL_INGEST_ALLOWED_HOSTS: set[str] | None = get_env_set("OPENRAG_URL_INGEST_ALLOWED_HOSTS")
+
 # IBM AMS authentication (Watsonx Data embedded mode)
 IBM_AUTH_ENABLED = os.getenv("IBM_AUTH_ENABLED", "false").lower() in ("true", "1", "yes")
 OPENRAG_TENANT_ID = os.getenv("OPENRAG_TENANT_ID", "openrag")

@@ -49,10 +49,18 @@ func NewEnvVarManager() *EnvVarManager {
 			"HIDE_GETTING_STARTED_PROGRESS":  "true",
 			"LANGFLOW_ALEMBIC_LOG_TO_STDOUT": "true",
 			"LANGFLOW_DEACTIVATE_TRACING":    "true",
-			"LANGFLOW_LOAD_FLOWS_PATH":       "/app/flows",
-			"LANGFUSE_HOST":                  "https://cloud.langfuse.com",
-			"LANGFLOW_KEY_RETRIES":           "15",
-			"LANGFLOW_KEY_RETRY_DELAY":       "2",
+			// VULN-13906: gates Langflow's built-in URLComponent SSRF check
+			// (validate_url_for_ssrf) — without it, that check may be a no-op.
+			"LANGFLOW_SSRF_PROTECTION_ENABLED": "true",
+			// VULN-13906: destination allowlist read directly (plain env var, not a
+			// Langflow global) by flows/components/url.py's ensure_url(). Empty is
+			// fail-closed (blocks all url ingestion); override via CR spec.env with
+			// the same value set on the backend's OPENRAG_URL_INGEST_ALLOWED_HOSTS.
+			"OPENRAG_URL_INGEST_ALLOWED_HOSTS": "",
+			"LANGFLOW_LOAD_FLOWS_PATH":         "/app/flows",
+			"LANGFUSE_HOST":                    "https://cloud.langfuse.com",
+			"LANGFLOW_KEY_RETRIES":             "15",
+			"LANGFLOW_KEY_RETRY_DELAY":         "2",
 
 			// Flow context defaults
 			"JWT":                          "None",

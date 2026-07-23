@@ -146,6 +146,12 @@ langflow:
   doclingServeUrl: "http://host.docker.internal:5001"
   openragQueryFilter: "{}"
 
+  # OPTIONAL (recommended): comma-separated allowlist of hosts (exact match or
+  # "*.suffix" wildcard) the URL Ingestion Tool is allowed to fetch from.
+  # Fail-closed: empty blocks ALL url ingestion. Set the backend's
+  # OPENRAG_URL_INGEST_ALLOWED_HOSTS env var to the same value.
+  urlIngestAllowedHosts: ""
+
   # Flow context default variables (injected into every flow execution)
   flowDefaults:
     jwt: "None"
