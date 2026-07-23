@@ -55,6 +55,10 @@ async def test_bucket_filter_sync_forwards_shared_to_new_and_changed_batches():
 
     with (
         patch(
+            "api.connectors.has_effective_permission",
+            new=AsyncMock(return_value=True),
+        ),
+        patch(
             "api.connectors.get_synced_file_ids_for_connector",
             new=AsyncMock(return_value=(["changed-file-1"], [], "connector_file_id")),
         ),

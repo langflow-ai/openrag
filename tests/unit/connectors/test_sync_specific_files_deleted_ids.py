@@ -35,7 +35,9 @@ def _make_service(live_files: list[dict]):
     connector = MagicMock()
     connector.is_authenticated = True
     connector.cfg = MagicMock()
-    connector.list_files = AsyncMock(return_value={"files": live_files})
+    response = {"files": live_files}
+    connector.list_files = AsyncMock(return_value=response)
+    connector.list_selected_files = AsyncMock(return_value=response)
     service.get_connector = AsyncMock(return_value=connector)
 
     return service

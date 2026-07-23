@@ -53,6 +53,7 @@ class IBMCOSConnector(BaseConnector):
 
     CONNECTOR_TYPE = "ibm_cos"
     CONNECTOR_KIND = "bucket"
+    CHANGE_DETECTION = "timestamp"
     CONNECTOR_NAME = "IBM Cloud Object Storage"
     CONNECTOR_DESCRIPTION = "Add knowledge from IBM Cloud Object Storage"
     CONNECTOR_ICON = "ibm-cos"
