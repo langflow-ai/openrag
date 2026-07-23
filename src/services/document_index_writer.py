@@ -16,6 +16,7 @@ from typing import Any
 from utils.embedding_fields import ensure_embedding_field_exists
 from utils.embeddings import create_index_body
 from utils.group_acl import unique_acl_principal_labels, unique_acl_principals
+from utils.injection_scan import audit_injection_indicators_detected, scan_for_injection_indicators
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -107,6 +108,7 @@ class DocumentIndexWriter:
 
         now = datetime.datetime.now(datetime.UTC).isoformat()
         bulk_body: list[dict[str, Any]] = []
+        flagged_chunks: dict[str, list[str]] = {}
         for chunk in chunks:
             if len(chunk.vector) != dimensions:
                 raise ValueError(
@@ -121,19 +123,26 @@ class DocumentIndexWriter:
                     }
                 }
             )
-            bulk_body.append(
-                self._build_chunk_document(
-                    context=context,
-                    chunk=chunk,
-                    embedding_field=embedding_field,
-                    indexed_time=now,
-                )
+            chunk_doc = self._build_chunk_document(
+                context=context,
+                chunk=chunk,
+                embedding_field=embedding_field,
+                indexed_time=now,
             )
+            bulk_body.append(chunk_doc)
+            indicators = (
+                chunk_doc.get("metadata", {}).get("security", {}).get("injection_indicators")
+            )
+            if indicators:
+                flagged_chunks[chunk.chunk_id] = indicators
 
         result = await client.bulk(body=bulk_body, refresh=refresh)
         self._raise_for_bulk_errors(result)
         if final:
             await self._refresh(index_name)
+
+        if flagged_chunks:
+            await self._audit_injection_indicators(context, flagged_chunks)
 
         logger.info(
             "Indexed document chunks",
@@ -148,6 +157,17 @@ class DocumentIndexWriter:
             "ingest_run_id": context.ingest_run_id,
             "document_id": context.document_id,
         }
+
+    @staticmethod
+    async def _audit_injection_indicators(
+        context: DocumentIndexContext, flagged_chunks: dict[str, list[str]]
+    ) -> None:
+        await audit_injection_indicators_detected(
+            actor_user_id=context.owner,
+            target_id=context.document_id,
+            filename=context.filename,
+            indicators=[i for v in flagged_chunks.values() for i in v],
+        )
 
     @staticmethod
     def _scoped_chunk_id(context: DocumentIndexContext, chunk_id: str) -> str:
@@ -236,6 +256,16 @@ class DocumentIndexWriter:
             "indexed_time": indexed_time,
             "metadata": metadata.get("metadata", {}),
         }
+
+        # VULN-13906: non-blocking heuristic scan; flags are attached to metadata
+        # for detection/audit, never used to reject ingestion. See index_chunks
+        # for the batch-level audit log write.
+        injection_indicators = scan_for_injection_indicators(chunk.text)
+        if injection_indicators:
+            doc["metadata"] = {
+                **doc["metadata"],
+                "security": {"injection_indicators": injection_indicators},
+            }
 
         parser = context.parser or metadata.get("parser")
         if parser:

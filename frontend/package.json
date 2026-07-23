@@ -55,6 +55,7 @@
     "react-textarea-autosize": "^8.5.9",
     "rehype-mathjax": "^7.1.0",
     "rehype-raw": "^7.0.0",
+    "rehype-sanitize": "^6.0.0",
     "remark-gfm": "^4.0.1",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.6.0",

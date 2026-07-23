@@ -1,6 +1,7 @@
 from typing import Any
 
 from services.conversation_persistence_service import conversation_persistence
+from utils.audit_helpers import write_audit_event_best_effort
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -274,9 +275,34 @@ async def async_response_stream(
                     )
 
                     if has_results:
+                        tool_results = (
+                            chunk_data.get("results")
+                            or chunk_data.get("outputs")
+                            or chunk_data.get("retrieved_documents")
+                            or chunk_data.get("retrieval_results")
+                            or []
+                        )
                         logger.info(
                             "Detected implicit tool call in backend, injecting synthetic event",
                             chunk_fields=list(chunk_data.keys()),
+                        )
+                        # VULN-13906: audit every detected tool call for anomaly detection.
+                        # result_count/truncated field names only — never the retrieved
+                        # content itself, so a poisoned document's text never lands in
+                        # the audit log.
+                        from auth_context import get_current_user_id
+
+                        await write_audit_event_best_effort(
+                            event="agent.tool_call",
+                            actor_user_id=get_current_user_id(),
+                            target_type="tool",
+                            target_id="Retrieval",
+                            audit_metadata={
+                                "log_prefix": log_prefix,
+                                "result_count": len(tool_results)
+                                if isinstance(tool_results, list)
+                                else None,
+                            },
                         )
                         # Inject a synthetic tool call event before this chunk
                         synthetic_event = {
@@ -288,11 +314,7 @@ async def async_response_stream(
                                 "tool_name": "Retrieval",
                                 "status": "completed",
                                 "inputs": {"implicit": True, "backend_detected": True},
-                                "results": chunk_data.get("results")
-                                or chunk_data.get("outputs")
-                                or chunk_data.get("retrieved_documents")
-                                or chunk_data.get("retrieval_results")
-                                or [],
+                                "results": tool_results,
                             },
                         }
                         # Send the synthetic event first

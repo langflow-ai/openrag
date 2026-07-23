@@ -616,9 +616,28 @@ class LangflowFileService:
         # Langflow. The explicit submission itself is the confirmed intent here (this
         # is the Knowledge API / connector path, not a chat tool call), so only the
         # allowlist + SSRF check applies — see ssrf_guard for details.
-        from utils.ssrf_guard import assert_url_ingest_allowed
+        from utils.audit_helpers import write_audit_event_best_effort
+        from utils.ssrf_guard import SSRFBlockedError, assert_url_ingest_allowed
 
-        assert_url_ingest_allowed(docs_url)
+        try:
+            assert_url_ingest_allowed(docs_url)
+        except SSRFBlockedError as exc:
+            await write_audit_event_best_effort(
+                event="url.ingest.denied_allowlist",
+                actor_user_id=owner,
+                target_type="url",
+                target_id=docs_url,
+                audit_metadata={"reason": str(exc)},
+            )
+            raise
+
+        await write_audit_event_best_effort(
+            event="url.ingest.requested",
+            actor_user_id=owner,
+            target_type="url",
+            target_id=docs_url,
+            audit_metadata={"connector_type": connector_type},
+        )
 
         flow_id = await self._ensure_url_ingest_flow_id()
 

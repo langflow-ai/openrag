@@ -139,6 +139,22 @@ async def upload_context(
     owner_name = user.name if user else None
     owner_email = user.email if user else None
 
+    # VULN-13906: non-blocking heuristic scan; a match is only ever logged for
+    # detection/audit, never used to reject the upload.
+    from utils.injection_scan import (
+        audit_injection_indicators_detected,
+        scan_for_injection_indicators,
+    )
+
+    injection_indicators = scan_for_injection_indicators(doc_result["content"])
+    if injection_indicators:
+        await audit_injection_indicators_detected(
+            actor_user_id=owner_user_id,
+            target_id=doc_result.get("filename") or filename,
+            filename=filename,
+            indicators=injection_indicators,
+        )
+
     response_text, response_id = await chat_service.upload_context_chat(
         doc_result["content"],
         filename,

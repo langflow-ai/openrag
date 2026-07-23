@@ -1,9 +1,70 @@
+import { defaultSchema } from "hast-util-sanitize";
 import dynamic from "next/dynamic";
 import Markdown from "react-markdown";
 import rehypeMathjax from "rehype-mathjax";
 import rehypeRaw from "rehype-raw";
+import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
+
+// VULN-13906: react-markdown's rehypeRaw lets raw HTML embedded in markdown text
+// (e.g. from a retrieved document or an LLM echoing injected content) become real
+// DOM nodes. rehypeSanitize strips anything not explicitly allowed here — scripts,
+// event handler attributes, iframes, etc. — while still permitting the MathJax SVG
+// output (mjx-container + inline svg) that rehypeMathjax renders.
+const markdownSanitizeSchema = {
+  ...defaultSchema,
+  tagNames: [
+    ...(defaultSchema.tagNames || []),
+    "mjx-container",
+    "svg",
+    "g",
+    "path",
+    "use",
+    "rect",
+    "defs",
+    "text",
+    "tspan",
+  ],
+  attributes: {
+    ...defaultSchema.attributes,
+    "mjx-container": ["className", "jax", "display", "style"],
+    svg: [
+      "viewBox",
+      "width",
+      "height",
+      "style",
+      "xmlns",
+      "focusable",
+      "role",
+      "ariaHidden",
+    ],
+    g: ["transform", "fill", "stroke", "strokeWidth", "dataMmlNode"],
+    path: ["d", "transform", "fill", "stroke", "strokeWidth"],
+    use: ["href", "xlinkHref", "x", "y", "width", "height", "transform"],
+    rect: ["x", "y", "width", "height", "fill", "stroke"],
+    text: ["x", "y", "transform", "fontSize"],
+    tspan: ["x", "y"],
+  },
+};
+
+// Only http(s)/mailto links are ever safe to render as clickable — everything
+// else (javascript:, data:, vbscript:, etc.) is dropped rather than passed through.
+const safeUrlTransform = (url: string): string => {
+  try {
+    const parsed = new URL(url, "http://resolve-relative.invalid");
+    if (["http:", "https:", "mailto:"].includes(parsed.protocol)) {
+      return url;
+    }
+  } catch {
+    // Not a parseable absolute/relative URL (e.g. a bare "#citation-0" fragment) —
+    // allow it through only if it's a same-page fragment link.
+    if (url.startsWith("#")) {
+      return url;
+    }
+  }
+  return "";
+};
 
 const CodeComponent = dynamic(() => import("./code-component"), {
   ssr: false,
@@ -76,8 +137,12 @@ export const MarkdownRenderer = ({
     >
       <Markdown
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeMathjax, rehypeRaw]}
-        urlTransform={(url) => url}
+        rehypePlugins={[
+          rehypeMathjax,
+          rehypeRaw,
+          [rehypeSanitize, markdownSanitizeSchema],
+        ]}
+        urlTransform={safeUrlTransform}
         components={{
           p({ node, ...props }) {
             return (
