@@ -20,7 +20,10 @@ import utils.ssrf_guard as ssrf_guard  # noqa: E402
         ("127.0.0.1", True),  # loopback
         ("169.254.169.254", True),  # link-local / cloud metadata
         ("100.64.0.1", True),  # CGNAT — not covered by stdlib is_private
-        ("9.30.87.233", False),  # the pentest's "non-RFC1918 internal" target — publicly-routable-looking
+        (
+            "9.30.87.233",
+            False,
+        ),  # the pentest's "non-RFC1918 internal" target — publicly-routable-looking
         ("8.8.8.8", False),  # public
     ],
 )

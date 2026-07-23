@@ -62,7 +62,9 @@ async def test_run_url_ingestion_flow_proceeds_for_allowlisted_public_host(monke
 
     service = LangflowFileService()
     service._ensure_url_ingest_flow_id = AsyncMock(
-        side_effect=RuntimeError("stop here — past the allowlist check, rest of the flow is out of scope")
+        side_effect=RuntimeError(
+            "stop here — past the allowlist check, rest of the flow is out of scope"
+        )
     )
 
     with pytest.raises(RuntimeError, match="stop here"):
