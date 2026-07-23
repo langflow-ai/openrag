@@ -213,8 +213,6 @@ MICROSOFT_ALLOWED_TENANT_IDS: set[str] | None = get_env_set("MICROSOFT_ALLOWED_T
 
 # IBM AMS authentication (Watsonx Data embedded mode)
 IBM_AUTH_ENABLED = os.getenv("IBM_AUTH_ENABLED", "false").lower() in ("true", "1", "yes")
-PLATFORM_USERNAME = os.getenv("PLATFORM_USERNAME")
-PLATFORM_PASSWORD = os.getenv("PLATFORM_PASSWORD")
 OPENRAG_TENANT_ID = os.getenv("OPENRAG_TENANT_ID", "openrag")
 IBM_JWT_PUBLIC_KEY_URL = os.getenv("IBM_JWT_PUBLIC_KEY_URL", "")
 IBM_SESSION_COOKIE_NAME = os.getenv("IBM_SESSION_COOKIE_NAME", "ibm-openrag-session")
@@ -975,36 +973,32 @@ class AppClients:
 
     async def initialize(self):
         from utils.run_mode_utils import (
+            get_run_mode,
             is_run_mode_on_prem,
-            is_run_mode_oss,
             is_run_mode_saas,
         )
 
         # Credentials for the global (backend-owned) writer client, by run mode:
-        #   saas    -> platform service token (JWT) when available, else unauthenticated
-        #   on_prem -> OpenSearch basic auth
-        #   oss     -> OpenSearch basic auth
-        service_token = get_openrag_service_token() if is_run_mode_saas() else None
-        if service_token:
+        #   saas/on_prem -> platform service token (JWT); required, raises if unset
+        #   oss          -> OpenSearch basic auth
+        if is_run_mode_saas() or is_run_mode_on_prem():
+            service_token = get_openrag_service_token()
+            if not service_token:
+                raise RuntimeError(
+                    "OPENRAG_SERVICE_TOKEN is required to initialize the global "
+                    f"OpenSearch writer client in {get_run_mode()} mode."
+                )
             logger.info(
-                "Initializing global OpenSearch writer client: saas mode, "
+                f"Initializing global OpenSearch writer client: {get_run_mode()} mode, "
                 "using platform service token"
             )
             self.opensearch = self.create_opensearch_client_from_jwt(service_token)
         else:
-            if is_run_mode_on_prem() or is_run_mode_oss():
-                os_auth = (get_opensearch_username(), get_opensearch_password())
-                logger.info(
-                    "Initializing global OpenSearch writer client: %s mode, "
-                    "using OpenSearch basic auth" % ("on_prem" if is_run_mode_on_prem() else "oss")
-                )
-            else:
-                os_auth = None
-                logger.info(
-                    "Initializing global OpenSearch writer client: saas mode without "
-                    "service token, using the unauthenticated client"
-                )
-
+            os_auth = (get_opensearch_username(), get_opensearch_password())
+            logger.info(
+                "Initializing global OpenSearch writer client: oss mode, "
+                "using OpenSearch basic auth"
+            )
             self.opensearch = AsyncOpenSearch(
                 hosts=[{"host": OPENSEARCH_HOST, "port": OPENSEARCH_PORT}],
                 connection_class=AIOHttpConnection,
@@ -1716,49 +1710,34 @@ class AppClients:
         """Create the OpenSearch client used for index administration
         (init_index: index creation, mapping/settings updates), by run mode:
 
-          saas    -> platform service token — the end-user JWT identity can
-                     search/write documents but lacks index-admin privileges on
-                     managed OpenSearch, so admin calls (e.g. HEAD /<index>)
-                     fail. Falls back to the user's token for legacy
-                     deployments without OPENRAG_SERVICE_TOKEN.
-          on_prem -> OpenSearch basic auth
-          oss     -> OpenSearch basic auth
+          saas/on_prem -> platform service token (JWT); required, raises if
+                          unset. The end-user JWT (``user_jwt_token``, kept
+                          for call-site compatibility but no longer consulted)
+                          lacks index-admin privileges on managed OpenSearch,
+                          so admin calls (e.g. HEAD /<index>) would fail.
+          oss          -> OpenSearch basic auth
 
-        Returns None when no suitable credentials exist; callers should then
-        use the global writer client (clients.opensearch).
+        Raises RuntimeError when saas/on_prem is missing OPENRAG_SERVICE_TOKEN.
         """
-        from utils.run_mode_utils import (
-            is_run_mode_on_prem,
-            is_run_mode_oss,
-            is_run_mode_saas,
-        )
+        from utils.run_mode_utils import get_run_mode, is_run_mode_on_prem, is_run_mode_saas
 
-        if is_run_mode_saas():
+        if is_run_mode_saas() or is_run_mode_on_prem():
             service_token = get_openrag_service_token()
-            if service_token:
-                logger.info(
-                    "Index admin OpenSearch client: saas mode, using platform service token"
+            if not service_token:
+                raise RuntimeError(
+                    "OPENRAG_SERVICE_TOKEN is required for the index-admin "
+                    f"OpenSearch client in {get_run_mode()} mode."
                 )
-                return self.create_opensearch_client_from_jwt(service_token)
-            if user_jwt_token:
-                logger.warning(
-                    "Index admin OpenSearch client: saas mode without "
-                    "OPENRAG_SERVICE_TOKEN; falling back to the requesting "
-                    "user's token (backward-compatibility path)"
-                )
-                return self.create_opensearch_client_from_jwt(user_jwt_token)
             logger.info(
-                "Index admin OpenSearch client: saas mode with no service or "
-                "user token; using the global writer client"
+                f"Index admin OpenSearch client: {get_run_mode()} mode, "
+                "using platform service token"
             )
-            return None
-        if is_run_mode_on_prem() or is_run_mode_oss():
-            # Build a fresh basic-auth client so credentials updated after
-            # startup (e.g. during onboarding) take effect immediately.
-            return self.create_basic_opensearch_client(
-                get_opensearch_username(), get_opensearch_password()
-            )
-        return None
+            return self.create_opensearch_client_from_jwt(service_token)
+        # oss: build a fresh basic-auth client so credentials updated after
+        # startup (e.g. during onboarding) take effect immediately.
+        return self.create_basic_opensearch_client(
+            get_opensearch_username(), get_opensearch_password()
+        )
 
 
 # Component template paths — derived from the centralized flows directory

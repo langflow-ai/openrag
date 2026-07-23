@@ -5,6 +5,10 @@ Simplified service that retrieves message history from Langflow using shared cli
 
 from typing import Any
 
+from api.provider_validation import (
+    looks_like_provider_error_content,
+    sanitize_provider_error_content,
+)
 from config.settings import clients
 from utils.logging_config import get_logger
 
@@ -67,26 +71,33 @@ class LangflowHistoryService:
         self, langflow_messages: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
         """Convert Langflow messages to OpenRAG format"""
-        converted_messages = []
+        converted_messages: list[dict[str, Any]] = []
 
         for msg in langflow_messages:
             try:
-                content = msg.get("text", "")
+                content = msg.get("text", "") or ""
+                sender = msg.get("sender")
+                is_user = sender == "User"
 
-                # Detect error messages - check explicit error flag or common error patterns
-                is_error = msg.get("error", False) or (
-                    msg.get("sender") != "User" and content.startswith("Error:")
-                )
+                # Detect error messages - explicit flag, Error: prefix, or provider failures
+                # (including raw JSON payloads that leak from upstream auth/rate-limit errors).
+                is_error = False
+                if not is_user:
+                    is_error = bool(msg.get("error", False)) or looks_like_provider_error_content(
+                        content
+                    )
+                    if is_error:
+                        content = sanitize_provider_error_content(content)
 
                 # Map Langflow message format to OpenRAG format
                 converted_msg = {
-                    "role": "user" if msg.get("sender") == "User" else "assistant",
+                    "role": "user" if is_user else "assistant",
                     "content": content,
                     "timestamp": msg.get("timestamp"),
                     "langflow_message_id": msg.get("id"),
                     "langflow_session_id": msg.get("session_id"),
                     "langflow_flow_id": msg.get("flow_id"),
-                    "sender": msg.get("sender"),
+                    "sender": sender,
                     "sender_name": msg.get("sender_name"),
                     "source": "langflow",
                     "files": msg.get("files", []),
@@ -102,8 +113,8 @@ class LangflowHistoryService:
                     chunks = []
                     for block in content_blocks:
                         if block.get("title") == "Agent Steps" and block.get("contents"):
-                            for content in block["contents"]:
-                                if content.get("type") == "tool_use":
+                            for content_item in block["contents"]:
+                                if content_item.get("type") == "tool_use":
                                     # Convert Langflow tool_use format to match streaming chunks format
                                     # Frontend expects: chunk.item.type === "tool_call" with tool_name, inputs, results
                                     from utils.langflow_utils import parse_knowledge_chunks
@@ -112,14 +123,15 @@ class LangflowHistoryService:
                                         "type": "response.output_item.added",
                                         "item": {
                                             "type": "tool_call",
-                                            "tool_name": content.get("name", ""),
-                                            "inputs": content.get("tool_input", {}),
+                                            "tool_name": content_item.get("name", ""),
+                                            "inputs": content_item.get("tool_input", {}),
                                             "results": parse_knowledge_chunks(
-                                                content.get("output", {})
+                                                content_item.get("output", {})
                                             ),
-                                            "id": content.get("id") or content.get("run_id", ""),
+                                            "id": content_item.get("id")
+                                            or content_item.get("run_id", ""),
                                             "status": "completed"
-                                            if not content.get("error")
+                                            if not content_item.get("error")
                                             else "error",
                                         },
                                     }
@@ -127,6 +139,17 @@ class LangflowHistoryService:
 
                     if chunks:
                         converted_msg["chunks"] = chunks
+
+                # Langflow often records the same provider failure several times
+                # in one session (e.g. embedding + LLM auth retries). Keep one.
+                prev = converted_messages[-1] if converted_messages else None
+                if (
+                    is_error
+                    and prev
+                    and prev.get("error")
+                    and (prev.get("content") or "").strip() == content.strip()
+                ):
+                    continue
 
                 converted_messages.append(converted_msg)
 

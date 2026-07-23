@@ -148,13 +148,18 @@ export function OnboardingContent({
 
   const { streamingMessage, isLoading, sendMessage } = useChatStreaming({
     onComplete: async (message, newResponseId) => {
+      setAssistantMessage(message);
+      // Errors are display-only during onboarding — do not track or persist them.
+      if (message.error) {
+        return;
+      }
+
       trackLLMCall({
         mode: "onboarding",
         model: settings?.agent?.llm_model,
         inputTokens: message.usage?.input_tokens,
         outputTokens: message.usage?.output_tokens,
       });
-      setAssistantMessage(message);
       // Save assistant message to backend
       await updateOnboardingMutation.mutateAsync({
         assistant_message: {
@@ -194,11 +199,19 @@ export function OnboardingContent({
     },
     onError: (error) => {
       console.error("Chat error:", error);
-      setAssistantMessage({
-        role: "assistant",
-        content:
-          "Sorry, I couldn't connect to the chat service. Please try again.",
-        timestamp: new Date(),
+      // Display is owned by onComplete (including message.error). Keep a
+      // fallback only when completion never ran.
+      setAssistantMessage((prev) => {
+        if (prev?.error || (prev && !prev.isStreaming)) {
+          return prev;
+        }
+        return {
+          role: "assistant",
+          content:
+            error.message || "An error occurred while generating a response.",
+          timestamp: new Date(),
+          error: true,
+        };
       });
     },
   });

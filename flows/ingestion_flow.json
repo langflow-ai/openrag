@@ -325,13 +325,6 @@
                     },
                     "key": "Authorization",
                     "value": "JWT"
-                  },
-                  {
-                    "__load_from_db_fields": {
-                      "value": true
-                    },
-                    "key": "X-Tenant-Id",
-                    "value": ""
                   }
                 ]
               },

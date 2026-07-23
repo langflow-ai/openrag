@@ -4,7 +4,7 @@ import json
 import time
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 import httpx
 
@@ -307,6 +307,15 @@ class LangflowFileService:
                 error=str(e),
             )
 
+    async def _raise_resolved_ingest_error(self, exc: BaseException) -> NoReturn:
+        """Re-raise with a credential message when Langflow disconnects on bad API keys."""
+        from api.provider_validation import resolve_ingest_error_message
+
+        resolved = await resolve_ingest_error_message(exc)
+        if resolved != (str(exc) or "").strip():
+            raise Exception(resolved) from exc
+        raise exc
+
     async def upload_user_file(self, file_tuple, jwt_token: str | None = None) -> dict[str, Any]:
         """Upload a file using Langflow Files API v2: POST /api/v2/files.
         Returns JSON with keys: id, name, path, size, provider.
@@ -592,12 +601,12 @@ class LangflowFileService:
 
                 raise
             return resp_json
-        except Exception:
+        except Exception as e:
             await self._cleanup_failed_callback_ingest(
                 ingest_token=ingest_token,
                 ingest_run_id=ingest_run_id,
             )
-            raise
+            await self._raise_resolved_ingest_error(e)
 
     async def run_url_ingestion_flow(
         self,
@@ -730,12 +739,12 @@ class LangflowFileService:
                 )
 
             return resp.json()
-        except Exception:
+        except Exception as e:
             await self._cleanup_failed_callback_ingest(
                 ingest_token=ingest_token,
                 ingest_run_id=ingest_run_id,
             )
-            raise
+            await self._raise_resolved_ingest_error(e)
 
     async def _ensure_url_ingest_flow_id(self) -> str:
         """Ensure URL ingest flow ID is valid; import flow if missing.
