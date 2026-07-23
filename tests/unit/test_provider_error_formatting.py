@@ -47,8 +47,23 @@ def test_format_extracts_json_with_trailing_text():
 def test_is_provider_credential_error():
     assert is_provider_credential_error("Incorrect API key provided")
     assert is_provider_credential_error("Provided API key could not be found.")
+    assert is_provider_credential_error("Provided API key is disabled.")
     assert is_provider_credential_error(json.dumps({"errorMessage": "api key revoked"}))
     assert not is_provider_credential_error("Rate limit exceeded")
+
+
+def test_disabled_watsonx_key_embedding_dump_is_credential_error():
+    """Langflow embedding failures for disabled keys omit 'failed to authenticate'."""
+    raw = (
+        "Error building Component Embedding Model: Failed to initialize IBM WatsonX "
+        "embedding model: Attempt of authenticating connection to service failed, "
+        "please validate your credentials. Error: "
+        '{"errorCode":"BXNIM0420E","errorMessage":"Provided API key is disabled."}'
+    )
+    cleaned = sanitize_provider_error_content(raw)
+    assert is_provider_credential_error(raw) or is_provider_credential_error(cleaned)
+    assert "disabled" in cleaned.lower()
+    assert "{" not in cleaned
 
 
 def test_looks_like_provider_error_content():

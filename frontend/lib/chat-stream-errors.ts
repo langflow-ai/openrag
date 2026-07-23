@@ -109,6 +109,9 @@ export function looksLikeProviderErrorContent(text: string): boolean {
     "api key revoked",
     "revoked api key",
     "provided api key could not be found",
+    // IBM IAM: key still exists but is toggled off (vs deleted/not found).
+    "api key is disabled",
+    "api key disabled",
     "authentication_error",
     "failed to authenticate",
     "invalid x-api-key",

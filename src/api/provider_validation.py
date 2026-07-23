@@ -20,6 +20,9 @@ _PROVIDER_CREDENTIAL_ERROR_MARKERS = (
     "api key revoked",
     "revoked api key",
     "provided api key could not be found",
+    # IBM IAM returns this when the key still exists but is toggled off.
+    "api key is disabled",
+    "api key disabled",
     "authentication_error",
     "failed to authenticate",
     "invalid x-api-key",

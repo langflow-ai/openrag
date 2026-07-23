@@ -95,6 +95,13 @@ describe("looksLikeProviderErrorContent", () => {
     );
   });
 
+  it("flags IBM disabled API key messages", () => {
+    assert.equal(
+      looksLikeProviderErrorContent("Provided API key is disabled."),
+      true,
+    );
+  });
+
   it("flags the exact generic stream fallback message", () => {
     assert.equal(
       looksLikeProviderErrorContent(

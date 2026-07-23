@@ -187,6 +187,27 @@ class TestInferFailureMetadata:
         assert "API key" in meta["user_facing_message"]
         assert "{" not in meta["user_facing_message"]
 
+    def test_langflow_disabled_api_key_failure(self, task_service):
+        """Disabled (not deleted) IBM keys must not fall through to generic Langflow copy."""
+        ft = _make_file_task(
+            phase=IngestionPhase.LANGFLOW,
+            docling_status=DoclingPhaseStatus.SUCCESS,
+            error=(
+                "Error building Component Embedding Model: Failed to initialize IBM "
+                "WatsonX embedding model: Attempt of authenticating connection to "
+                "service failed, please validate your credentials. Error: "
+                '{"errorCode":"BXNIM0420E","errorMessage":"Provided API key is disabled."}'
+            ),
+        )
+        meta = task_service._infer_failure_metadata(ft)
+        assert meta is not None
+        assert meta["component"] == "openrag"
+        assert meta["failure_phase"] == "embedding"
+        assert meta["actionable_by"] == "USER_ACTIONABLE"
+        assert "disabled" in meta["user_facing_message"].lower()
+        assert "unexpectedly" not in meta["user_facing_message"].lower()
+        assert "{" not in meta["user_facing_message"]
+
     def test_langflow_disconnect_with_api_key_text_prefers_credentials(self, task_service):
         ft = _make_file_task(
             phase=IngestionPhase.LANGFLOW,
