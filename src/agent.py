@@ -141,13 +141,6 @@ async def async_response_stream(
 
             import json
 
-            logger.info(
-                "Raw streaming chunk received from Langflow client",
-                chunk_index=chunk_count,
-                chunk_type=type(chunk).__name__,
-                chunk_repr=repr(chunk),
-            )
-
             # Also extract text content for logging
             if hasattr(chunk, "output_text") and chunk.output_text:
                 full_response += chunk.output_text
