@@ -47,3 +47,26 @@ def test_embedded_url_node_is_synced_and_has_new_input_wired():
     assert field["value"] == "OPENRAG_CURRENT_USER_MESSAGE"
 
     assert "openrag_current_user_message" in node["data"]["node"]["field_order"]
+
+
+def test_url_component_allowlist_check_runs_before_ssrf_and_intent_check():
+    """VULN-13906: ensure_url() must run intent -> allowlist -> SSRF, in that order."""
+    code = Path("flows/components/url.py").read_text(encoding="utf-8")
+
+    assert 'os.environ.get("OPENRAG_URL_INGEST_ALLOWED_HOSTS"' in code
+    assert 'ipaddress.ip_network("100.64.0.0/10")' in code
+    assert "def _openrag_assert_url_ingest_allowed(url: str) -> None:" in code
+
+    intent_idx = code.index("trusted_user_message = self._openrag_trusted_user_message()")
+    allowlist_idx = code.index("_openrag_assert_url_ingest_allowed(url)")
+    ssrf_idx = code.index("validate_url_for_ssrf(url, warn_only=False)")
+    assert intent_idx < allowlist_idx < ssrf_idx
+
+
+def test_url_component_cgnat_constant_matches_backend_ssrf_guard():
+    """The embedded duplicate must stay in sync with src/utils/ssrf_guard.py."""
+    backend_code = Path("src/utils/ssrf_guard.py").read_text(encoding="utf-8")
+    flow_code = Path("flows/components/url.py").read_text(encoding="utf-8")
+
+    assert 'ipaddress.ip_network("100.64.0.0/10")' in backend_code
+    assert 'ipaddress.ip_network("100.64.0.0/10")' in flow_code

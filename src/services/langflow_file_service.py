@@ -611,6 +611,15 @@ class LangflowFileService:
         """Run URL-based docs ingestion flow using Langflow global variable passthrough."""
         if not docs_url:
             raise ValueError("DEFAULT_DOCS_URL is not configured")
+
+        # VULN-13906: defense-in-depth destination check before handing the URL to
+        # Langflow. The explicit submission itself is the confirmed intent here (this
+        # is the Knowledge API / connector path, not a chat tool call), so only the
+        # allowlist + SSRF check applies — see ssrf_guard for details.
+        from utils.ssrf_guard import assert_url_ingest_allowed
+
+        assert_url_ingest_allowed(docs_url)
+
         flow_id = await self._ensure_url_ingest_flow_id()
 
         payload: dict[str, Any] = {

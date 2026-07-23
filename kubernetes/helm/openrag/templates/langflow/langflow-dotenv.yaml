@@ -45,6 +45,15 @@ stringData:
     LANGFLOW_DEACTIVATE_TRACING={{ .Values.langflow.deactivateTracing | quote }}
     LANGFLOW_LOG_LEVEL={{ .Values.langflow.logLevel | quote }}
     HIDE_GETTING_STARTED_PROGRESS="true"
+    # VULN-13906: Langflow's built-in URLComponent SSRF check (validate_url_for_ssrf)
+    # is gated behind this flag — without it, that check may be a no-op.
+    LANGFLOW_SSRF_PROTECTION_ENABLED="true"
+    {{- if .Values.langflow.urlIngestAllowedHosts }}
+    # VULN-13906: destination allowlist read directly (plain env var, not a Langflow
+    # global) by flows/components/url.py's ensure_url(). Keep in sync with the
+    # backend's OPENRAG_URL_INGEST_ALLOWED_HOSTS (same value, different container).
+    OPENRAG_URL_INGEST_ALLOWED_HOSTS={{ .Values.langflow.urlIngestAllowedHosts | quote }}
+    {{- end }}
 
     # Langflow API secret key (https://docs.langflow.org/api-keys-and-authentication#langflow-secret-key)
     {{- if .Values.langflow.auth.secretKey }}

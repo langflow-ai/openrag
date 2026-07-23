@@ -167,6 +167,9 @@ services:
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
       - LANGFUSE_HOST=${LANGFUSE_HOST:-}
       - LANGFLOW_DEACTIVATE_TRACING
+      # VULN-13906: Langflow's built-in URLComponent SSRF check (validate_url_for_ssrf)
+      # is gated behind this flag — without it, that check may be a no-op.
+      - LANGFLOW_SSRF_PROTECTION_ENABLED=true
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - WATSONX_APIKEY=${WATSONX_API_KEY}

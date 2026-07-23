@@ -1,6 +1,10 @@
 import importlib
 import io
+import ipaddress
+import os
 import re
+import socket
+from urllib.parse import urlparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -36,6 +40,75 @@ if importlib.util.find_spec("langflow"):
 else:
     langflow_installed = False
     USER_AGENT = "lfx"
+
+
+# VULN-13906 destination allowlist + IP-range check. Mirrors src/utils/ssrf_guard.py —
+# this embedded Langflow component can't import repo modules at flow runtime, so the
+# logic is duplicated here (kept in sync via tests/unit/test_flow_url_intent_gate.py).
+# Read as a plain container env var (static deployment config, not per-request), set
+# alongside the backend's OPENRAG_URL_INGEST_ALLOWED_HOSTS on the langflow container.
+_CGNAT_NETWORK = ipaddress.ip_network("100.64.0.0/10")
+
+
+def _openrag_allowed_hosts() -> set:
+    raw = os.environ.get("OPENRAG_URL_INGEST_ALLOWED_HOSTS", "").strip()
+    if not raw:
+        return set()
+    return {v.strip() for v in raw.split(",") if v.strip()}
+
+
+def _openrag_is_host_allowlisted(host: str) -> bool:
+    allowed = _openrag_allowed_hosts()
+    if not allowed:
+        return False
+    host = host.strip().lower().rstrip(".")
+    for entry in allowed:
+        entry = entry.strip().lower().rstrip(".")
+        if not entry:
+            continue
+        if entry.startswith("*."):
+            if host == entry[2:] or host.endswith(entry[1:]):
+                return True
+        elif host == entry:
+            return True
+    return False
+
+
+def _openrag_is_unsafe_ip(ip) -> bool:
+    if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+        return True
+    if ip.is_multicast or ip.is_unspecified:
+        return True
+    return isinstance(ip, ipaddress.IPv4Address) and ip in _CGNAT_NETWORK
+
+
+def _openrag_assert_url_ingest_allowed(url: str) -> None:
+    parsed = urlparse(url)
+    host = parsed.hostname
+    if not host:
+        msg = f"URL ingestion blocked: could not parse a host from {url!r}"
+        raise ValueError(msg)
+
+    if not _openrag_is_host_allowlisted(host):
+        msg = f"URL ingestion blocked: host '{host}' is not in OPENRAG_URL_INGEST_ALLOWED_HOSTS."
+        raise ValueError(msg)
+
+    try:
+        ips = [ipaddress.ip_address(host)]
+    except ValueError:
+        try:
+            ips = [ipaddress.ip_address(r[4][0]) for r in socket.getaddrinfo(host, None)]
+        except OSError as exc:
+            msg = f"Could not resolve host: {host}"
+            raise ValueError(msg) from exc
+
+    for ip in ips:
+        if _openrag_is_unsafe_ip(ip):
+            msg = (
+                f"URL ingestion blocked: {host} resolves to a non-routable/internal "
+                f"address ({ip}), which is never allowed regardless of the host allowlist."
+            )
+            raise ValueError(msg)
 
 
 class URLComponent(Component):
@@ -297,6 +370,15 @@ class URLComponent(Component):
             )
             raise ValueError(msg)
         # --- end OPENRAG intent check ---
+
+        # --- OPENRAG allowlist check ---
+        # VULN-13906: every fetch (chat-invoked or Knowledge-API-submitted) must also
+        # pass a fail-closed destination allowlist plus a full IP-range check, so an
+        # allowlisted hostname later rebound (DNS rebinding) to a private/internal
+        # address is still blocked. See src/utils/ssrf_guard.py for the backend-side
+        # equivalent used by the non-chat ingestion path.
+        _openrag_assert_url_ingest_allowed(url)
+        # --- end OPENRAG allowlist check ---
 
         # SSRF Protection: Validate URL to prevent access to internal resources
         # Blocks requests to private IPs, localhost, and cloud metadata endpoints
