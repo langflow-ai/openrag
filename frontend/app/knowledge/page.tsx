@@ -323,7 +323,7 @@ function SearchPage() {
     isError: isListFilesError,
   } = useListFiles(
     {
-      pageSize: 100,
+      pageSize: 10000,
       search: isWildcardQuery ? undefined : queryOverride,
       connectorType: listFilesFilterParam(
         parsedFilterData?.filters?.connector_types,
