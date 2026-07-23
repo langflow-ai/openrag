@@ -107,10 +107,17 @@ def fence_untrusted_text(text: str) -> str:
     instructions (indirect prompt injection, VULN-13906). Fencing it lets the
     system prompt tell the LLM to treat anything between these markers as
     data only, never as instructions or tool directives.
+
+    Any literal fence markers already present in `text` are escaped first, so
+    a poisoned chunk can't embed a fake end-of-fence marker to break out of
+    the untrusted section and have its continuation misread as trusted.
     """
     if not text:
         return text
-    return f"{UNTRUSTED_CHUNK_FENCE_START}\n{text}\n{UNTRUSTED_CHUNK_FENCE_END}"
+    escaped = text.replace(
+        UNTRUSTED_CHUNK_FENCE_START, "\\" + UNTRUSTED_CHUNK_FENCE_START
+    ).replace(UNTRUSTED_CHUNK_FENCE_END, "\\" + UNTRUSTED_CHUNK_FENCE_END)
+    return f"{UNTRUSTED_CHUNK_FENCE_START}\n{escaped}\n{UNTRUSTED_CHUNK_FENCE_END}"
 
 
 @vector_store_connection

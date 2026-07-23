@@ -18,10 +18,17 @@ def fence_untrusted_text(text: str) -> str:
     Mirrors flows/components/opensearch_multimodal.py::fence_untrusted_text for the
     non-Langflow (direct chat / upload-context) paths so the same system-prompt rule
     applies regardless of which path fed the content into the conversation.
+
+    Any literal fence markers already present in `text` are escaped first, so a
+    poisoned document can't embed a fake end-of-fence marker to break out of the
+    untrusted section and have its continuation misread as trusted.
     """
     if not text:
         return text
-    return f"{_UNTRUSTED_FENCE_START}\n{text}\n{_UNTRUSTED_FENCE_END}"
+    escaped = text.replace(_UNTRUSTED_FENCE_START, "\\" + _UNTRUSTED_FENCE_START).replace(
+        _UNTRUSTED_FENCE_END, "\\" + _UNTRUSTED_FENCE_END
+    )
+    return f"{_UNTRUSTED_FENCE_START}\n{escaped}\n{_UNTRUSTED_FENCE_END}"
 
 
 def _strip_untrusted_fence(text: str) -> str:
@@ -38,6 +45,10 @@ def _strip_untrusted_fence(text: str) -> str:
         stripped = stripped[len(_UNTRUSTED_FENCE_START) :].lstrip("\n")
     if stripped.endswith(_UNTRUSTED_FENCE_END):
         stripped = stripped[: -len(_UNTRUSTED_FENCE_END)].rstrip("\n")
+    # Restore any embedded fence-marker literals that fence_untrusted_text escaped,
+    # so citations show the document's original text, not the escaped form.
+    stripped = stripped.replace("\\" + _UNTRUSTED_FENCE_START, _UNTRUSTED_FENCE_START)
+    stripped = stripped.replace("\\" + _UNTRUSTED_FENCE_END, _UNTRUSTED_FENCE_END)
     return stripped
 
 
