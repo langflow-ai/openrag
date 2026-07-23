@@ -2,32 +2,22 @@ name: Operator CI
 
 on:
   pull_request:
-    paths:
-      - 'kubernetes/operator/**'
-      - 'kubernetes/helm/operator/**'
-      - '.github/workflows/operator-ci.yml'
   push:
     branches:
       - main
-    paths:
-      - 'kubernetes/operator/**'
-      - 'kubernetes/helm/operator/**'
 
 jobs:
   ci:
     name: fmt / vet / lint
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: kubernetes/operator
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: kubernetes/operator/go.mod
-          cache-dependency-path: kubernetes/operator/go.sum
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
 
       - name: go fmt
         run: |
@@ -73,7 +63,6 @@ jobs:
         uses: golangci/golangci-lint-action@v7
         with:
           version: v2.11.4
-          working-directory: kubernetes/operator
 
   helm:
     name: Helm lint and verify
@@ -91,7 +80,7 @@ jobs:
 
       - name: Template Helm chart
         run: |
-          helm template openrag-operator kubernetes/helm/operator \
+          helm template openrag-deploy kubernetes/helm/operator \
             --namespace openrag-control \
             --debug
 
@@ -114,8 +103,8 @@ jobs:
       - name: Build image (no push)
         uses: docker/build-push-action@v6
         with:
-          context: kubernetes/operator
-          file: kubernetes/operator/Dockerfile
+          context: .
+          file: Dockerfile
           platforms: linux/amd64
           push: false
           build-args: |
