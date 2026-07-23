@@ -1,0 +1,59 @@
+"""Tests for flows_service bulk_update_flows with Langflow backup creation."""
+
+import sys
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+ROOT = Path(__file__).resolve().parent.parent.parent.parent
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+from services.flows_service import FlowsService  # noqa: E402
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_flows_creates_backup_flow_in_langflow():
+    service = FlowsService()
+
+    mock_get_response = MagicMock()
+    mock_get_response.status_code = 200
+    mock_get_response.json.return_value = {
+        "id": "flow-retrieval-123",
+        "name": "Custom Retrieval Flow",
+        "locked": False,
+        "data": {"nodes": []},
+    }
+
+    mock_post_response = MagicMock()
+    mock_post_response.status_code = 201
+    mock_post_response.json.return_value = {
+        "id": "backup-flow-999",
+        "name": "Backup - Custom Retrieval Flow (2026-07-23 20:00)",
+    }
+
+    async def mock_langflow_request(method, url, json=None, **kwargs):
+        if method == "GET":
+            return mock_get_response
+        elif method == "POST":
+            # Verify the posted backup payload
+            assert "id" not in json
+            assert json["name"].startswith("Backup - Custom Retrieval Flow")
+            assert json["locked"] is False
+            return mock_post_response
+        return MagicMock(status_code=404)
+
+    with (
+        patch("services.flows_service.clients.langflow_request", side_effect=mock_langflow_request),
+        patch.object(service, "_backup_flow", new_callable=AsyncMock, return_value="/tmp/backup.json"),
+        patch.object(service, "reset_langflow_flow", new_callable=AsyncMock, return_value={"success": True}),
+    ):
+        results = await service.bulk_update_flows(["retrieval"], backup_custom=True)
+
+    assert len(results) == 1
+    res = results[0]
+    assert res["flow_type"] == "retrieval"
+    assert res["success"] is True
+    assert res["backup_flow_id"] == "backup-flow-999"

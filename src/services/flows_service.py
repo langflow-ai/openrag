@@ -1504,8 +1504,8 @@ class FlowsService:
     async def bulk_update_flows(self, flow_types: list[str], backup_custom: bool = True):
         """
         Bulk updates multiple flows.
-        If backup_custom is True, custom flows are backed up before resetting.
-        Returns the paths of the backups if any.
+        If backup_custom is True, custom flows are backed up in Langflow before resetting.
+        Returns the backup flow details if any.
         """
         results = []
         flow_configs_dict = {
@@ -1522,7 +1522,7 @@ class FlowsService:
                 continue
                 
             backup_path = None
-            backup_content = None
+            backup_flow_id = None
             if backup_custom:
                 try:
                     response = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
@@ -1531,9 +1531,32 @@ class FlowsService:
                         if not flow_data.get("locked", False):
                             logger.info(f"Flow {flow_type} is custom, backing up before update.")
                             backup_path = await self._backup_flow(flow_id, flow_type, flow_data)
-                            if backup_path and os.path.exists(backup_path):
-                                with open(backup_path, "r") as f:
-                                    backup_content = f.read()
+
+                            # Create a backup flow directly in Langflow
+                            backup_payload = dict(flow_data)
+                            backup_payload.pop("id", None)
+                            flow_name = flow_data.get("name", flow_type.capitalize())
+                            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+                            backup_payload["name"] = f"Backup - {flow_name} ({timestamp})"
+                            backup_payload["description"] = (
+                                f"Backup of custom flow '{flow_name}' created before flow update on {timestamp}. "
+                                "Use this flow to reference or redo your custom modifications."
+                            )
+                            backup_payload["locked"] = False
+
+                            lf_create_res = await clients.langflow_request(
+                                "POST", "/api/v1/flows/", json=backup_payload
+                            )
+                            if lf_create_res.status_code in (200, 201):
+                                created_flow = lf_create_res.json()
+                                backup_flow_id = created_flow.get("id")
+                                logger.info(
+                                    f"Created backup flow in Langflow for {flow_type}: '{backup_payload['name']}' (ID: {backup_flow_id})"
+                                )
+                            else:
+                                logger.warning(
+                                    f"Failed to create backup flow in Langflow for {flow_type}: HTTP {lf_create_res.status_code}"
+                                )
                 except Exception as e:
                     logger.error(f"Failed to check/backup flow {flow_id} before update: {e}")
             
@@ -1544,7 +1567,7 @@ class FlowsService:
                     "success": reset_res.get("success", False),
                     "error": reset_res.get("error"),
                     "backup_path": backup_path,
-                    "backup_content": backup_content
+                    "backup_flow_id": backup_flow_id,
                 })
             except Exception as e:
                 results.append({
@@ -1552,7 +1575,7 @@ class FlowsService:
                     "success": False,
                     "error": str(e),
                     "backup_path": backup_path,
-                    "backup_content": backup_content
+                    "backup_flow_id": backup_flow_id,
                 })
                 
         return results

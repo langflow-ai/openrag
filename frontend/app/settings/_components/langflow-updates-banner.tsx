@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, FileDown } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import { useState } from "react";
 import { useUpdateFlowsMutation } from "@/app/api/mutations/useUpdateFlowsMutation";
 import { useGetFlowsUpdatesQuery } from "@/app/api/queries/useGetFlowsUpdatesQuery";
@@ -21,27 +21,9 @@ export function LangflowUpdatesBanner() {
     const flowTypes = updates.map((u) => u.flow_type);
 
     try {
-      const results = await updateMutation.mutateAsync({
+      await updateMutation.mutateAsync({
         flow_types: flowTypes,
         backup_custom: true, // Always backup from settings banner
-      });
-
-      // Download backups if any
-      results.forEach((res) => {
-        if (res.success && res.backup_content && res.backup_path) {
-          const filename = res.backup_path.split("/").pop() || "backup.json";
-          const blob = new Blob([res.backup_content], {
-            type: "application/json",
-          });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = filename;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-        }
       });
     } catch (e) {
       console.error("Failed to update flows", e);
@@ -65,7 +47,7 @@ export function LangflowUpdatesBanner() {
             <AlertDescription className="text-amber-700 dark:text-amber-300 mt-1">
               There are newer versions of the Langflow flows available.
               {hasCustomFlows &&
-                " Note: You have custom modifications. Updating will overwrite them, but a backup will be downloaded automatically."}
+                " Note: You have custom modifications. Updating will overwrite them, but a backup flow will be created in Langflow automatically so you can redo your modifications."}
             </AlertDescription>
             <ul className="list-disc pl-4 mt-2 text-sm text-amber-700 dark:text-amber-300">
               {updates.map((update) => (
@@ -84,9 +66,6 @@ export function LangflowUpdatesBanner() {
           className="shrink-0 bg-white dark:bg-black border-amber-500/30 hover:bg-amber-50 dark:hover:bg-amber-900/20"
         >
           {isUpdating ? "Updating..." : "Update Flows"}
-          {!isUpdating && hasCustomFlows && (
-            <FileDown className="ml-2 h-4 w-4" />
-          )}
         </Button>
       </Alert>
     </div>

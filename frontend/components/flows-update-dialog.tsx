@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, FileDown } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useUpdateFlowsMutation } from "@/app/api/mutations/useUpdateFlowsMutation";
 import { useGetFlowsUpdatesQuery } from "@/app/api/queries/useGetFlowsUpdatesQuery";
@@ -48,27 +48,9 @@ export function FlowsUpdateDialog() {
     const flowTypes = updates.map((u) => u.flow_type);
 
     try {
-      const results = await updateMutation.mutateAsync({
+      await updateMutation.mutateAsync({
         flow_types: flowTypes,
         backup_custom: backupCustom,
-      });
-
-      // Download backups if any
-      results.forEach((res) => {
-        if (res.success && res.backup_content && res.backup_path) {
-          const filename = res.backup_path.split("/").pop() || "backup.json";
-          const blob = new Blob([res.backup_content], {
-            type: "application/json",
-          });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = filename;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-        }
       });
 
       markDismissed();
@@ -121,7 +103,8 @@ export function FlowsUpdateDialog() {
               </AlertTitle>
               <AlertDescription className="text-yellow-700 dark:text-yellow-300">
                 You have modified some of these flows. Updating will overwrite
-                your custom changes.
+                your custom changes, but backup flows will be created in
+                Langflow so you can reference or redo your modifications.
               </AlertDescription>
             </Alert>
           )}
@@ -137,7 +120,7 @@ export function FlowsUpdateDialog() {
                 htmlFor="backup-custom"
                 className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
               >
-                Save a backup of custom flows before updating
+                Create backup flows in Langflow before updating
               </label>
             </div>
           )}
@@ -149,9 +132,6 @@ export function FlowsUpdateDialog() {
           </Button>
           <Button onClick={handleUpdate} disabled={updateMutation.isPending}>
             {updateMutation.isPending ? "Updating..." : "Update Flows"}
-            {!updateMutation.isPending && hasCustomFlows && backupCustom && (
-              <FileDown className="ml-2 h-4 w-4" />
-            )}
           </Button>
         </DialogFooter>
       </DialogContent>

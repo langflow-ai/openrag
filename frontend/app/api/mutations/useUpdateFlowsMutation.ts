@@ -10,7 +10,7 @@ export type FlowUpdateResult = {
   success: boolean;
   error?: string;
   backup_path?: string;
-  backup_content?: string;
+  backup_flow_id?: string;
 };
 
 export function useUpdateFlowsMutation() {
