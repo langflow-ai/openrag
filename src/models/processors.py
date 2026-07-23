@@ -946,6 +946,7 @@ class ConnectorFileProcessor(TaskProcessor):
                 raise ValueError(f"Connection '{self.connection_id}' not found")
 
             connector_type = self.connector_type or connection.connector_type
+            file_task.connector_type = connector_type
 
             # Validate file extension early if filename is available
             VALID_EXTENSIONS = {

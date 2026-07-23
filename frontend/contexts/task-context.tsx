@@ -351,10 +351,13 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
                 const connectorType = inferTaskFileConnectorType(
                   filePath,
                   fileName,
-                  existingFile?.connector_type &&
-                    existingFile.connector_type !== "local"
-                    ? existingFile.connector_type
-                    : taskConnectorTypesRef.current.get(currentTask.task_id),
+                  fileInfoEntry.connector_type &&
+                    fileInfoEntry.connector_type !== "local"
+                    ? fileInfoEntry.connector_type
+                    : existingFile?.connector_type &&
+                        existingFile.connector_type !== "local"
+                      ? existingFile.connector_type
+                      : taskConnectorTypesRef.current.get(currentTask.task_id),
                 );
 
                 const fileEntry: TaskFile = {

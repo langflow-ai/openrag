@@ -53,6 +53,7 @@ class FileTask:
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
     filename: str | None = None  # Original filename for display
+    connector_type: str | None = None
     # Two-phase ingestion fields. Only meaningful for processors that submit
     # files to Docling Serve and then trigger Langflow (i.e. LangflowFileProcessor).
     docling_task_id: str | None = None

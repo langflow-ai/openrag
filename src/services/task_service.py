@@ -940,6 +940,7 @@ class TaskService:
             "updated_at": file_task.updated_at,
             "duration_seconds": file_task.duration_seconds,
             "filename": file_task.filename,
+            "connector_type": file_task.connector_type,
             "phase": file_task.phase.value,
             "docling_status": file_task.docling_status.value,
             "docling_task_id": file_task.docling_task_id,
