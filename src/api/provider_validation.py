@@ -1,6 +1,7 @@
 """Provider validation utilities for testing API keys and models during onboarding."""
 
 import json
+import re
 
 import httpx
 
@@ -8,6 +9,20 @@ from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+# Peel leading "Error <label>:" wrappers (e.g. Langflow graph/component noise).
+# Requires a label after "Error" so bare "Error: …" messages are preserved.
+_ERROR_LABEL_PREFIX_RE = re.compile(r"^Error\s+\S[^:]*:\s*", re.IGNORECASE)
+
+
+def _strip_error_label_prefixes(text: str) -> str:
+    """Remove leading ``Error <label>:`` segments; keep the innermost message."""
+    cleaned = text.strip()
+    while True:
+        updated = _ERROR_LABEL_PREFIX_RE.sub("", cleaned, count=1).strip()
+        if updated == cleaned:
+            return cleaned
+        cleaned = updated
 
 
 _PROVIDER_CREDENTIAL_ERROR_MARKERS = (
@@ -74,23 +89,21 @@ def _extract_balanced_json_object(text: str) -> str | None:
 
 def format_provider_error_message(exc: BaseException | str) -> str:
     """Return a concise, user-facing provider error string from an exception or text."""
-    text = (str(exc) if not isinstance(exc, str) else exc).strip()
+    text = _strip_error_label_prefixes((str(exc) if not isinstance(exc, str) else exc).strip())
     if not text:
         return "An error occurred while generating a response."
 
     parsed = _parse_json_error_message(text)
     if parsed != text:
-        return parsed
+        # Pure JSON (or JSON-shaped) payloads: prefer the extracted message only.
+        return _strip_error_label_prefixes(parsed)
 
     json_blob = _extract_balanced_json_object(text)
     if json_blob:
         nested = _parse_json_error_message(json_blob)
         if nested != json_blob:
-            prefix = text[: text.find(json_blob)].rstrip(": ").strip()
-            # Drop boilerplate that only points at the JSON payload ("... Error:").
-            if prefix.lower().endswith("error"):
-                prefix = prefix[: -len("error")].rstrip(": .").strip()
-            return f"{prefix}: {nested}" if prefix else nested
+            # Embedded provider JSON already has the real message — drop wrappers.
+            return _strip_error_label_prefixes(nested)
 
     return text
 

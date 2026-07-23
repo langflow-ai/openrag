@@ -21,8 +21,7 @@ def test_format_provider_error_message_extracts_embedded_json():
         '"Incorrect API key provided", "type": "invalid_request_error"}}'
     )
     assert (
-        agent_module._format_provider_error_message(Exception(raw))
-        == "Provider request failed: Incorrect API key provided"
+        agent_module._format_provider_error_message(Exception(raw)) == "Incorrect API key provided"
     )
 
 
@@ -33,7 +32,7 @@ def test_format_provider_error_message_extracts_ibm_iam_error_message():
         '"context":{"requestId":"abc","url":"https://iam.cloud.ibm.com"}}'
     )
     assert agent_module._format_provider_error_message(Exception(raw)) == (
-        "Failed to authenticate with IBM Watson: Provided API key could not be found."
+        "Provided API key could not be found."
     )
 
 

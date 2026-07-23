@@ -206,6 +206,8 @@ class TestInferFailureMetadata:
         assert meta["actionable_by"] == "USER_ACTIONABLE"
         assert "disabled" in meta["user_facing_message"].lower()
         assert "unexpectedly" not in meta["user_facing_message"].lower()
+        assert "error building component" not in meta["user_facing_message"].lower()
+        assert "error running graph" not in meta["user_facing_message"].lower()
         assert "{" not in meta["user_facing_message"]
 
     def test_langflow_disconnect_with_api_key_text_prefers_credentials(self, task_service):

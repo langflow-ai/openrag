@@ -22,9 +22,7 @@ def test_parse_ibm_iam_error_message():
         '"errorMessage":"Provided API key could not be found.",'
         '"context":{"requestId":"abc","url":"https://iam.cloud.ibm.com"}}'
     )
-    assert format_provider_error_message(raw) == (
-        "Failed to authenticate with IBM Watson: Provided API key could not be found."
-    )
+    assert format_provider_error_message(raw) == "Provided API key could not be found."
 
 
 def test_format_extracts_json_with_trailing_text():
@@ -36,11 +34,7 @@ def test_format_extracts_json_with_trailing_text():
         "IBM WatsonX requires additional configuration parameters. "
         "An error occurred while generating a response."
     )
-    assert format_provider_error_message(raw) == (
-        "Failed to initialize IBM WatsonX embedding model: Attempt of authenticating "
-        "connection to service failed, please validate your credentials: "
-        "Provided API key could not be found."
-    )
+    assert format_provider_error_message(raw) == "Provided API key could not be found."
     assert "{" not in sanitize_provider_error_content(raw)
 
 
@@ -55,15 +49,26 @@ def test_is_provider_credential_error():
 def test_disabled_watsonx_key_embedding_dump_is_credential_error():
     """Langflow embedding failures for disabled keys omit 'failed to authenticate'."""
     raw = (
-        "Error building Component Embedding Model: Failed to initialize IBM WatsonX "
-        "embedding model: Attempt of authenticating connection to service failed, "
-        "please validate your credentials. Error: "
+        "Error running graph: Error building Component Embedding Model: "
+        "Failed to initialize IBM WatsonX embedding model: Attempt of authenticating "
+        "connection to service failed, please validate your credentials. Error: "
         '{"errorCode":"BXNIM0420E","errorMessage":"Provided API key is disabled."}'
     )
     cleaned = sanitize_provider_error_content(raw)
     assert is_provider_credential_error(raw) or is_provider_credential_error(cleaned)
-    assert "disabled" in cleaned.lower()
+    assert cleaned == "Provided API key is disabled."
     assert "{" not in cleaned
+
+
+def test_strip_error_label_prefixes_without_json():
+    assert (
+        format_provider_error_message(
+            "Error running graph: Error building Component Language Model: Rate limit exceeded"
+        )
+        == "Rate limit exceeded"
+    )
+    # Bare "Error: …" is preserved (no label after Error).
+    assert format_provider_error_message("Error: boom") == "Error: boom"
 
 
 def test_looks_like_provider_error_content():

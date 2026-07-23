@@ -2,6 +2,23 @@
  * Extract / sanitize provider stream errors for chat display.
  */
 
+/**
+ * Peel leading "Error <label>:" wrappers (Langflow graph/component noise, etc.).
+ * Requires a label after "Error" so bare "Error: …" messages are preserved.
+ */
+const ERROR_LABEL_PREFIX = /^Error\s+\S[^:]*:\s*/i;
+
+function stripErrorLabelPrefixes(text: string): string {
+  let cleaned = text.trim();
+  while (true) {
+    const updated = cleaned.replace(ERROR_LABEL_PREFIX, "").trim();
+    if (updated === cleaned) {
+      return cleaned;
+    }
+    cleaned = updated;
+  }
+}
+
 function tryParseJsonMessage(text: string): string | null {
   try {
     const data = JSON.parse(text) as Record<string, unknown>;
@@ -152,36 +169,30 @@ export function looksLikeProviderErrorContent(text: string): boolean {
  * Strip embedded provider JSON payloads so chat never shows raw error objects.
  */
 export function formatProviderErrorMessage(text: string): string {
-  const trimmed = text.trim();
+  const trimmed = stripErrorLabelPrefixes(text.trim());
   if (!trimmed) {
     return "An error occurred while generating a response.";
   }
 
   const direct = tryParseJsonMessage(trimmed);
   if (direct) {
-    return direct;
+    // Pure JSON payloads: prefer the extracted message only.
+    return stripErrorLabelPrefixes(direct);
   }
 
   const jsonBlob = extractBalancedJsonObject(trimmed);
   if (jsonBlob) {
     const nested = tryParseJsonMessage(jsonBlob);
     if (nested) {
-      let prefix = trimmed
+      // Embedded provider JSON already has the real message — drop wrappers.
+      return stripErrorLabelPrefixes(nested);
+    }
+    const prefix = stripErrorLabelPrefixes(
+      trimmed
         .slice(0, trimmed.indexOf(jsonBlob))
         .replace(/[:\s]+$/, "")
-        .trim();
-      if (/error$/i.test(prefix)) {
-        prefix = prefix
-          .replace(/error$/i, "")
-          .replace(/[:.\s]+$/, "")
-          .trim();
-      }
-      return prefix ? `${prefix}: ${nested}` : nested;
-    }
-    const prefix = trimmed
-      .slice(0, trimmed.indexOf(jsonBlob))
-      .replace(/[:\s]+$/, "")
-      .trim();
+        .trim(),
+    );
     if (prefix) {
       return prefix;
     }
@@ -190,10 +201,12 @@ export function formatProviderErrorMessage(text: string): string {
   // Truncated / unbalanced JSON — keep the readable prefix only.
   const jsonStart = trimmed.indexOf("{");
   if (jsonStart > 0) {
-    const prefix = trimmed
-      .slice(0, jsonStart)
-      .replace(/[:\s]+$/, "")
-      .trim();
+    const prefix = stripErrorLabelPrefixes(
+      trimmed
+        .slice(0, jsonStart)
+        .replace(/[:\s]+$/, "")
+        .trim(),
+    );
     if (prefix) {
       return prefix;
     }

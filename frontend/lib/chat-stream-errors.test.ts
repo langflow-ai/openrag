@@ -58,7 +58,7 @@ describe("extractStreamProviderError", () => {
             'Failed to authenticate with IBM Watson: {"errorCode":"BXNIM0415E","errorMessage":"Provided API key could not be found."}',
         },
       }),
-      "Failed to authenticate with IBM Watson: Provided API key could not be found.",
+      "Provided API key could not be found.",
     );
   });
 });
@@ -137,7 +137,7 @@ describe("formatProviderErrorMessage", () => {
       formatProviderErrorMessage(
         'Provider request failed: {"error":{"message":"Incorrect API key provided","type":"invalid_request_error"}}',
       ),
-      "Provider request failed: Incorrect API key provided",
+      "Incorrect API key provided",
     );
   });
 
@@ -146,7 +146,7 @@ describe("formatProviderErrorMessage", () => {
       formatProviderErrorMessage(
         'Failed to authenticate. Error: {"errorCode":"BXNIM0415E","errorMessage":"Provided API key could not be found."} trailing junk',
       ),
-      "Failed to authenticate: Provided API key could not be found.",
+      "Provided API key could not be found.",
     );
   });
 
@@ -155,5 +155,21 @@ describe("formatProviderErrorMessage", () => {
       formatProviderErrorMessage("Invalid API key {not-valid-json"),
       "Invalid API key",
     );
+  });
+
+  it("strips Error <label>: wrappers and prefers nested JSON messages", () => {
+    assert.equal(
+      formatProviderErrorMessage(
+        "Error running graph: Error building Component Language Model: Rate limit exceeded",
+      ),
+      "Rate limit exceeded",
+    );
+    assert.equal(
+      formatProviderErrorMessage(
+        'Error running graph: Error building Component Embedding Model: Failed to authenticate. Error: {"errorCode":"BXNIM0420E","errorMessage":"Provided API key is disabled."}',
+      ),
+      "Provided API key is disabled.",
+    );
+    assert.equal(formatProviderErrorMessage("Error: boom"), "Error: boom");
   });
 });
