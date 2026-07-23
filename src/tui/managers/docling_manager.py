@@ -565,6 +565,7 @@ class DoclingManager:
         if "already running" in message.lower() and self.started_for_current_openrag_version():
             return True, message
         return False, message
+
     async def stop(self) -> tuple[bool, str]:
         """Stop docling serve."""
         if not self.is_running():
