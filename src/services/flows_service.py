@@ -1050,19 +1050,20 @@ class FlowsService:
                     return label
                 return None
 
+            # Get all embedding nodes in the flow to check if flow is new (no 3 embeddings)
+            embedding_nodes = self._find_nodes_in_flow(
+                flow_data, display_name=OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME
+            )
+            logger.info(
+                f"Found {len(embedding_nodes)} embedding nodes in flow {flow_name} with display name '{OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME}'"
+            )
+            is_new_flow = len(embedding_nodes) < 3
+
             # Update embedding component
             if not get_openrag_config().knowledge.disable_ingest_with_langflow and (
                 embedding_model or force_embedding_update
             ):
-                # Get all embedding nodes in the flow
-                embedding_nodes = self._find_nodes_in_flow(
-                    flow_data, display_name=OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME
-                )
-                logger.info(
-                    f"Found {len(embedding_nodes)} embedding nodes in flow {flow_name} with display name '{OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME}'"
-                )
-
-                if len(embedding_nodes) < 3:
+                if is_new_flow:
                     logger.info(
                         f"Flow {flow_name} has {len(embedding_nodes)} embedding nodes (< 3). "
                         "Flow is updated to generic embedding component; skipping legacy component patching."
@@ -1161,23 +1162,29 @@ class FlowsService:
 
             # Update LLM component (if exists in this flow)
             if llm_model or force_llm_update:
-                llm_node, _ = self._find_node_in_flow(
-                    flow_data, display_name=OPENAI_LLM_COMPONENT_DISPLAY_NAME
-                )
-                if llm_node:
-                    node_tasks.append(
-                        wrap_node_update(llm_node, provider, llm_model, f"llm model: {llm_model}")
+                if is_new_flow:
+                    logger.info(
+                        f"Flow {flow_name} has {len(embedding_nodes)} embedding nodes (< 3). "
+                        "Flow is updated to generic components; skipping legacy LLM component patching."
                     )
-
-                agent_node, _ = self._find_node_in_flow(
-                    flow_data, display_name=AGENT_COMPONENT_DISPLAY_NAME
-                )
-                if agent_node:
-                    node_tasks.append(
-                        wrap_node_update(
-                            agent_node, provider, llm_model, f"agent model: {llm_model}"
+                else:
+                    llm_node, _ = self._find_node_in_flow(
+                        flow_data, display_name=OPENAI_LLM_COMPONENT_DISPLAY_NAME
+                    )
+                    if llm_node:
+                        node_tasks.append(
+                            wrap_node_update(llm_node, provider, llm_model, f"llm model: {llm_model}")
                         )
+
+                    agent_node, _ = self._find_node_in_flow(
+                        flow_data, display_name=AGENT_COMPONENT_DISPLAY_NAME
                     )
+                    if agent_node:
+                        node_tasks.append(
+                            wrap_node_update(
+                                agent_node, provider, llm_model, f"agent model: {llm_model}"
+                            )
+                        )
 
             # Execute all node updates simultaneously
             if node_tasks:

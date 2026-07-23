@@ -36,6 +36,23 @@ OPENSEARCH_URL = f"https://{OPENSEARCH_HOST}:{OPENSEARCH_PORT}"
 LANGFLOW_OPENSEARCH_HOST = os.getenv("LANGFLOW_OPENSEARCH_HOST")
 LANGFLOW_OPENSEARCH_PORT = get_env_int("LANGFLOW_OPENSEARCH_PORT")
 
+
+def get_langflow_opensearch_url() -> str:
+    """OpenSearch URL for Langflow to use.
+
+    Uses LANGFLOW_OPENSEARCH_HOST (and LANGFLOW_OPENSEARCH_PORT or OPENSEARCH_PORT)
+    when configured, otherwise falls back to OPENSEARCH_URL env var or container default.
+    """
+    if LANGFLOW_OPENSEARCH_HOST:
+        port = LANGFLOW_OPENSEARCH_PORT or OPENSEARCH_PORT
+        return f"https://{LANGFLOW_OPENSEARCH_HOST}:{port}"
+    return os.getenv(
+        "OPENSEARCH_URL",
+        f"https://{os.getenv('OPENSEARCH_HOST', 'opensearch')}:"
+        f"{os.getenv('OPENSEARCH_INTERNAL_PORT', '9200')}",
+    )
+
+
 OPENSEARCH_USERNAME = os.getenv("OPENSEARCH_USERNAME", "admin")
 OPENSEARCH_PASSWORD = os.getenv("OPENSEARCH_PASSWORD")
 
@@ -547,6 +564,16 @@ else:
     DOCLING_HOST_IP = determine_docling_host()
     DOCLING_SERVE_URL = f"http://{DOCLING_HOST_IP}:5001"
     logger.info("Auto-detected Docling host: %s (URL: %s)", DOCLING_HOST_IP, DOCLING_SERVE_URL)
+
+
+def get_langflow_docling_url() -> str:
+    """Docling Serve URL for Langflow to use.
+
+    Uses DOCLING_SERVE_URL env var if set, otherwise defaults to
+    http://host.docker.internal:5001 so Langflow running inside a container
+    can reach docling-serve on the host.
+    """
+    return os.getenv("DOCLING_SERVE_URL", "http://host.docker.internal:5001")
 
 # Ingestion configuration
 DISABLE_INGEST_WITH_LANGFLOW = os.getenv("DISABLE_INGEST_WITH_LANGFLOW", "false").lower() in (

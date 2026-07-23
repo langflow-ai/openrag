@@ -116,13 +116,16 @@ async def add_provider_credentials_to_headers(
             ollama_endpoint = transform_localhost_url(config.providers.ollama.endpoint)
         headers["X-LANGFLOW-GLOBAL-VAR-OLLAMA_BASE_URL"] = str(ollama_endpoint)
 
-    # Inject OpenSearch URL and index name so Langflow flows always use the correct endpoint
-    from config.settings import LANGFLOW_OPENSEARCH_HOST, LANGFLOW_OPENSEARCH_PORT, get_index_name
+    # Inject OpenSearch and Docling URLs and index name so Langflow flows always use the correct endpoints
+    from config.settings import get_index_name, get_langflow_docling_url, get_langflow_opensearch_url
 
-    if LANGFLOW_OPENSEARCH_HOST and LANGFLOW_OPENSEARCH_PORT:
-        headers["X-LANGFLOW-GLOBAL-VAR-OPENSEARCH_URL"] = (
-            f"https://{LANGFLOW_OPENSEARCH_HOST}:{LANGFLOW_OPENSEARCH_PORT}"
-        )
+    opensearch_url = get_langflow_opensearch_url()
+    if opensearch_url:
+        headers["X-LANGFLOW-GLOBAL-VAR-OPENSEARCH_URL"] = opensearch_url
+
+    docling_url = get_langflow_docling_url()
+    if docling_url:
+        headers["X-LANGFLOW-GLOBAL-VAR-DOCLING_SERVE_URL"] = docling_url
 
     index_name = get_index_name()
     if index_name:

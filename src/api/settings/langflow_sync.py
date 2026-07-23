@@ -92,7 +92,7 @@ def _required_generic_global_values(config) -> dict[str, str]:
     ollama = getattr(providers, "ollama", None)
 
     return {
-        "DOCLING_SERVE_URL": settings.DOCLING_SERVE_URL,
+        "DOCLING_SERVE_URL": settings.get_langflow_docling_url(),
         "DOCLING_SERVE_VERIFY_SSL": str(settings.DOCLING_SERVE_VERIFY_SSL).lower(),
         "DOCLING_TASK_ID": "None",
         "FILESIZE": "0",
@@ -105,7 +105,7 @@ def _required_generic_global_values(config) -> dict[str, str]:
         "OPENRAG_INGEST_URL": "OPENRAG_INGEST_URL",
         "OPENSEARCH_INDEX_NAME": _string_value(getattr(knowledge, "index_name", None))
         or "documents",
-        "OPENSEARCH_URL": settings.OPENSEARCH_URL,
+        "OPENSEARCH_URL": settings.get_langflow_opensearch_url(),
         "SELECTED_EMBEDDING_MODEL": _string_value(getattr(knowledge, "embedding_model", None))
         or "text-embedding-3-small",
         "SELECTED_EMBEDDING_MODEL_PROVIDER": map_provider(
