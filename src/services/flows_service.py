@@ -1173,7 +1173,9 @@ class FlowsService:
                     )
                     if llm_node:
                         node_tasks.append(
-                            wrap_node_update(llm_node, provider, llm_model, f"llm model: {llm_model}")
+                            wrap_node_update(
+                                llm_node, provider, llm_model, f"llm model: {llm_model}"
+                            )
                         )
 
                     agent_node, _ = self._find_node_in_flow(

@@ -573,6 +573,7 @@ def get_langflow_docling_url() -> str:
     """
     return os.getenv("DOCLING_SERVE_URL", "http://host.docker.internal:5001")
 
+
 # Ingestion configuration
 DISABLE_INGEST_WITH_LANGFLOW = os.getenv("DISABLE_INGEST_WITH_LANGFLOW", "false").lower() in (
     "true",
