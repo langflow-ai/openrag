@@ -71,7 +71,7 @@ class LangflowHistoryService:
         self, langflow_messages: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
         """Convert Langflow messages to OpenRAG format"""
-        converted_messages = []
+        converted_messages: list[dict[str, Any]] = []
 
         for msg in langflow_messages:
             try:
