@@ -47,8 +47,7 @@ async def test_langflow_chat_intent_header_reflects_real_user_message(monkeypatc
     await chat_svc.langflow_chat(prompt="please summarize https://example.com/report")
 
     assert (
-        captured["extra_headers"][_INTENT_HEADER]
-        == "please summarize https://example.com/report"
+        captured["extra_headers"][_INTENT_HEADER] == "please summarize https://example.com/report"
     )
 
 
