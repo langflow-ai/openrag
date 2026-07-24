@@ -90,9 +90,7 @@ async def test_bulk_update_flows_aborts_reset_on_backup_failure():
 
     with (
         patch("services.flows_service.clients.langflow_request", side_effect=mock_langflow_request),
-        patch.object(
-            service, "_backup_flow", new_callable=AsyncMock, return_value=None
-        ),
+        patch.object(service, "_backup_flow", new_callable=AsyncMock, return_value=None),
         patch.object(service, "reset_langflow_flow", reset_mock),
     ):
         results = await service.bulk_update_flows(["retrieval"], backup_custom=True)
@@ -132,4 +130,3 @@ async def test_bulk_update_flows_saves_local_file_backup_for_default_flows():
     assert results[0]["success"] is True
     assert backup_mock.call_count == 1
     assert reset_mock.call_count == 1
-

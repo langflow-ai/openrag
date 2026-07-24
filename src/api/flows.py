@@ -45,9 +45,7 @@ async def reset_flow_endpoint(
         return JSONResponse({"success": False, "error": str(e)}, status_code=400)
     except Exception as e:
         logger.error("Unexpected error in flow reset", error=str(e))
-        return JSONResponse(
-            {"success": False, "error": "Internal server error"}, status_code=500
-        )
+        return JSONResponse({"success": False, "error": "Internal server error"}, status_code=500)
 
 
 class BulkUpdateFlowsRequest(BaseModel):
@@ -65,9 +63,7 @@ async def get_flows_updates_endpoint(
         return JSONResponse({"success": True, "updates": updates}, status_code=200)
     except Exception as e:
         logger.error("Error getting flow updates", error=str(e))
-        return JSONResponse(
-            {"success": False, "error": "Internal server error"}, status_code=500
-        )
+        return JSONResponse({"success": False, "error": "Internal server error"}, status_code=500)
 
 
 async def bulk_update_flows_endpoint(
@@ -82,6 +78,4 @@ async def bulk_update_flows_endpoint(
         return JSONResponse({"success": overall_success, "results": results}, status_code=200)
     except Exception as e:
         logger.error("Error bulk updating flows", error=str(e))
-        return JSONResponse(
-            {"success": False, "error": "Internal server error"}, status_code=500
-        )
+        return JSONResponse({"success": False, "error": "Internal server error"}, status_code=500)

@@ -1516,7 +1516,9 @@ class FlowsService:
                     backup_path = await self._backup_flow(flow_id, flow_type, flow_data)
 
                     if backup_custom and is_custom:
-                        logger.info(f"Flow {flow_type} is custom, backing up in Langflow before update.")
+                        logger.info(
+                            f"Flow {flow_type} is custom, backing up in Langflow before update."
+                        )
                         # Create a backup flow directly in Langflow
                         backup_payload = dict(flow_data)
                         backup_payload.pop("id", None)
