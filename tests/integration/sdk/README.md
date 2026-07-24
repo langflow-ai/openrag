@@ -95,7 +95,7 @@ make test-sdk
 | # | Test | Expected |
 |---|------|----------|
 | 47 | List models for a provider (`openai`) | Returns `language_models` and `embedding_models` as lists |
-| 48 | List models across all providers (`openai`, `anthropic`, `ollama`, `watsonx`) | Each configured provider returns typed `ModelOption` entries (`value: str`) with at most one `default`; unconfigured providers raise `ValidationError` and are skipped defensively |
+| 48 | List models, parametrized per provider (`openai`, `anthropic`, `ollama`, `watsonx`) | `openai` is required to return typed `ModelOption` entries (`value: str`) with at most one `default`; other providers are marked `SKIPPED` (not failed) if unconfigured (`ValidationError`) |
 | 49 | List models for an invalid provider | Raises `ValidationError` |
 
 ---
