@@ -79,3 +79,22 @@ async def bulk_update_flows_endpoint(
     except Exception as e:
         logger.error("Error bulk updating flows", error=str(e))
         return JSONResponse({"success": False, "error": "Internal server error"}, status_code=500)
+
+
+class DismissFlowsUpdateRequest(BaseModel):
+    flow_types: list[str] | None = None
+
+
+async def dismiss_flows_update_endpoint(
+    request: DismissFlowsUpdateRequest | None = None,
+    flows_service=Depends(get_flows_service),
+    user: User = Depends(require_permission("flows:read")),
+):
+    """Dismiss available flow update notifications ephemerally in backend memory"""
+    try:
+        flow_types = request.flow_types if request else None
+        flows_service.dismiss_flows_updates(flow_types)
+        return JSONResponse({"success": True}, status_code=200)
+    except Exception as e:
+        logger.error("Error dismissing flow updates", error=str(e))
+        return JSONResponse({"success": False, "error": "Internal server error"}, status_code=500)

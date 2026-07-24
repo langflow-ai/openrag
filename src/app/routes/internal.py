@@ -439,6 +439,12 @@ def register_internal_routes(app: FastAPI):
         methods=["POST"],
         tags=["internal"],
     )
+    app.add_api_route(
+        "/settings/flows/dismiss-update",
+        flows.dismiss_flows_update_endpoint,
+        methods=["POST"],
+        tags=["internal"],
+    )
 
     # Router upload ingest endpoint
     app.add_api_route(

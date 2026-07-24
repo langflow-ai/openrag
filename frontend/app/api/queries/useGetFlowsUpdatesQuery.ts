@@ -4,6 +4,7 @@ export type FlowUpdate = {
   flow_type: "nudges" | "retrieval" | "ingest" | "url_ingest";
   flow_id: string;
   is_custom: boolean;
+  dismissed: boolean;
 };
 
 export function useGetFlowsUpdatesQuery() {

@@ -23,8 +23,20 @@ from utils.telemetry import Category, MessageId, TelemetryClient
 
 logger = get_logger(__name__)
 
-
 class FlowsService:
+    def dismiss_flows_updates(self, flow_types: list[str] | None = None):
+        """Dismiss flow update notifications ephemerally in backend memory."""
+        if not hasattr(self, "_dismissed_updates"):
+            self._dismissed_updates = set()
+        if flow_types:
+            self._dismissed_updates.update(flow_types)
+        else:
+            self._dismissed_updates.update(["nudges", "retrieval", "ingest", "url_ingest"])
+
+    def clear_dismissed_update(self, flow_type: str):
+        if hasattr(self, "_dismissed_updates"):
+            self._dismissed_updates.discard(flow_type)
+
     async def resolve_ollama_url(self, endpoint: str, force_refresh: bool = False) -> str:
         """Find the correct Ollama URL by probing candidates via Langflow's validate-provider API."""
         from config.config_manager import config_manager
@@ -88,6 +100,8 @@ class FlowsService:
         return resolved_url
 
     def __init__(self):
+        # Ephemeral set of dismissed flow update notifications
+        self._dismissed_updates: set[str] = set()
         # Cache for flow file mappings to avoid repeated filesystem scans
         self._flow_file_cache = {}
         # Semaphores to prevent race conditions when updating the same flow concurrently
@@ -1510,8 +1524,17 @@ class FlowsService:
                     # it needs an update
                     if local_mtime > langflow_mtime:
                         is_locked = flow_data.get("locked", False)
+                        is_dismissed = (
+                            hasattr(self, "_dismissed_updates")
+                            and flow_type in self._dismissed_updates
+                        )
                         updates.append(
-                            {"flow_type": flow_type, "flow_id": flow_id, "is_custom": not is_locked}
+                            {
+                                "flow_type": flow_type,
+                                "flow_id": flow_id,
+                                "is_custom": not is_locked,
+                                "dismissed": is_dismissed,
+                            }
                         )
             except Exception as e:
                 logger.error(f"Failed to fetch flow {flow_id} for update check: {e}")
@@ -1534,6 +1557,7 @@ class FlowsService:
         }
 
         for flow_type in flow_types:
+            self.clear_dismissed_update(flow_type)
             flow_id = flow_configs_dict.get(flow_type)
             if not flow_id:
                 results.append(
