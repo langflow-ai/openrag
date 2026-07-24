@@ -194,9 +194,17 @@ const OnboardingCard = ({
   // Track which tasks we've already handled to prevent infinite loops
   const handledFailedTasksRef = useRef<Set<string>>(new Set());
 
-  // Ref for the completion timeout so it persists across effect re-runs
-  const completeTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-  useEffect(() => () => clearTimeout(completeTimeoutRef.current), []);
+  // Delay calling onComplete so the "Done" step is briefly visible.
+  const [pendingComplete, setPendingComplete] = useState(false);
+  useEffect(() => {
+    if (!pendingComplete) {
+      return;
+    }
+    const timeoutId = setTimeout(() => {
+      onComplete();
+    }, 1000);
+    return () => clearTimeout(timeoutId);
+  }, [pendingComplete, onComplete]);
 
   // Query tasks to track completion
   const { data: tasks } = useGetTasksQuery({
@@ -248,9 +256,7 @@ const OnboardingCard = ({
           category: "Setup",
         });
         setCurrentStep(totalSteps);
-        setTimeout(() => {
-          onComplete();
-        }, 1000);
+        setPendingComplete(true);
       } else {
         trackProcessSuccess({
           processType: "Onboarding",
@@ -374,7 +380,7 @@ const OnboardingCard = ({
         failed_files: taskWithFailure.failed_files,
       });
 
-      clearTimeout(completeTimeoutRef.current);
+      setPendingComplete(false);
       setError(errorMessage);
       setCurrentStep(totalSteps);
       rollbackMutation.mutate({ embedding_only: isEmbedding });
@@ -406,18 +412,13 @@ const OnboardingCard = ({
         successful_files: completedTask?.successful_files,
       });
 
-      // Set to final step to show "Done"
+      // Set to final step to show "Done", then delay onComplete via pendingComplete.
       setCurrentStep(totalSteps);
-      // Wait a bit before completing — stored in a ref so the timeout
-      // survives the re-render caused by setCurrentStep above.
-      completeTimeoutRef.current = setTimeout(() => {
-        onComplete();
-      }, 1000);
+      setPendingComplete(true);
     }
   }, [
     tasks,
     currentStep,
-    onComplete,
     isCompleted,
     isEmbedding,
     totalSteps,

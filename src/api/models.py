@@ -1,3 +1,5 @@
+import re
+
 import httpx
 from fastapi import Depends
 from fastapi.responses import JSONResponse
@@ -13,6 +15,21 @@ from session_manager import User
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+_CREDENTIAL_PATTERNS = (
+    # OpenAI / Anthropic / Langflow-style secret prefixes echoed by providers.
+    re.compile(r"\bsk-(?:ant-|lf-)?[A-Za-z0-9_\-]{3,}\b"),
+    re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._\-]+\b"),
+    re.compile(r"(?i)\b(?:api[_-]?key|apikey|x-api-key)\s*[:=]\s*['\"]?[^\s'\",}]+"),
+)
+
+
+def _redact_credentials(message: str) -> str:
+    """Strip provider-echoed secrets before returning errors to clients."""
+    redacted = message
+    for pattern in _CREDENTIAL_PATTERNS:
+        redacted = pattern.sub("[REDACTED]", redacted)
+    return redacted
 
 
 class OpenAIBody(BaseModel):
@@ -31,14 +48,21 @@ class IBMBody(BaseModel):
 
 def _models_error_response(exc: Exception) -> JSONResponse:
     """Map model-route failures to client (400) vs upstream (502) vs server (500)."""
-    error = sanitize_provider_error_content(exc)
     if isinstance(exc, (httpx.TimeoutException, httpx.RequestError)):
-        return JSONResponse({"error": error}, status_code=502)
+        return JSONResponse(
+            {"error": "Unable to reach the model provider. Please try again."},
+            status_code=502,
+        )
+
+    error = sanitize_provider_error_content(exc)
     if is_provider_credential_error(exc) or is_provider_credential_error(error):
-        return JSONResponse({"error": error}, status_code=400)
+        return JSONResponse({"error": _redact_credentials(error)}, status_code=400)
     if isinstance(exc, (ValueError, TypeError)):
-        return JSONResponse({"error": error}, status_code=400)
-    return JSONResponse({"error": error}, status_code=500)
+        return JSONResponse({"error": _redact_credentials(error)}, status_code=400)
+    return JSONResponse(
+        {"error": "An unexpected error occurred while fetching models."},
+        status_code=500,
+    )
 
 
 async def get_openai_models(
