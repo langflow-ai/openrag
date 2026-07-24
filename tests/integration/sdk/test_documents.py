@@ -99,9 +99,7 @@ class TestDocuments:
         deterministic and doesn't require a real ingest at all.
         """
         with pytest.raises(TimeoutError):
-            await client.documents.wait_for_task(
-                f"nonexistent-{uuid.uuid4().hex}", timeout=0
-            )
+            await client.documents.wait_for_task(f"nonexistent-{uuid.uuid4().hex}", timeout=0)
 
 
 class TestDocumentsExtended:
