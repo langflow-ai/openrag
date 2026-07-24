@@ -1,16 +1,42 @@
-"""Unit tests for duplicate filename handling in DocumentFileProcessor."""
+"""Unit tests for the unified duplicate-filename gate across processors.
 
-from unittest.mock import ANY, AsyncMock, MagicMock, patch
+All processors resolve a filename duplicate the same way via
+``TaskProcessor.resolve_duplicate_filename``: with ``replace_duplicates=False``
+the file is SKIPPED (counted successful, with a warning); with
+``replace_duplicates=True`` the existing document is deleted and ingestion
+proceeds.
+"""
+
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from models.processors import DocumentFileProcessor
+from models.processors import (
+    DUPLICATE_FILENAME_WARNING,
+    DocumentFileProcessor,
+    LangflowFileProcessor,
+    S3FileProcessor,
+)
 from models.tasks import FileTask, TaskStatus, UploadTask
+
+DUPLICATE_SKIPPED_RESULT = {
+    "status": "skipped",
+    "reason": "duplicate_filename",
+    "warning": DUPLICATE_FILENAME_WARNING,
+}
+
+
+def _assert_duplicate_skipped(upload_task: UploadTask, file_task: FileTask) -> None:
+    assert file_task.status == TaskStatus.SKIPPED
+    assert file_task.error is None
+    assert file_task.result == DUPLICATE_SKIPPED_RESULT
+    assert upload_task.failed_files == 0
+    assert upload_task.successful_files == 1
 
 
 @pytest.mark.asyncio
 async def test_traditional_processor_duplicate_exists_no_replace():
-    """Verify that if a duplicate file exists and replace_duplicates is False, processing fails."""
+    """A duplicate with replace_duplicates=False is skipped, not failed."""
     mock_doc_service = MagicMock()
     mock_models_service = MagicMock()
     mock_session_manager = MagicMock()
@@ -36,10 +62,7 @@ async def test_traditional_processor_duplicate_exists_no_replace():
 
     await processor.process_item(upload_task, "/tmp/test.txt", file_task)
 
-    assert file_task.status == TaskStatus.FAILED
-    assert "already exists" in file_task.error
-    assert upload_task.failed_files == 1
-    assert upload_task.successful_files == 0
+    _assert_duplicate_skipped(upload_task, file_task)
 
     processor.check_filename_exists.assert_called_once()
     processor.delete_document_by_filename.assert_not_called()
@@ -69,7 +92,7 @@ async def test_traditional_processor_duplicate_exists_with_replace():
 
     # Mock base class methods directly on the instance to ensure perfect isolation
     processor.check_filename_exists = AsyncMock(return_value=True)
-    processor.delete_document_by_filename = AsyncMock()
+    processor.delete_document_by_filename = AsyncMock(return_value=1)
     processor.process_document_standard = AsyncMock(return_value={"status": "indexed"})
 
     upload_task = UploadTask(task_id="task-123", total_files=1)
@@ -87,12 +110,179 @@ async def test_traditional_processor_duplicate_exists_with_replace():
     assert upload_task.successful_files == 1
 
     processor.check_filename_exists.assert_called_once()
-    processor.delete_document_by_filename.assert_awaited_once_with(
-        "test.txt",
-        ANY,
-        owner_user_id="user-123",
-    )
+    processor.delete_document_by_filename.assert_called_once()
+    # The delete must be owner-scoped so it actually removes the old chunks.
+    delete_call = processor.delete_document_by_filename.call_args
+    assert delete_call.kwargs["owner_user_id"] == "user-123"
     processor.process_document_standard.assert_called_once()
     mock_session_manager.get_user_opensearch_client.assert_called_once_with(
         "user-123", "mock-token"
     )
+
+
+@pytest.mark.asyncio
+async def test_langflow_processor_duplicate_exists_no_replace():
+    """LangflowFileProcessor skips duplicates with the same uniform payload."""
+    mock_session_manager = MagicMock()
+    langflow_file_service = MagicMock()
+    langflow_file_service.upload_and_ingest_file = AsyncMock()
+
+    processor = LangflowFileProcessor(
+        langflow_file_service=langflow_file_service,
+        session_manager=mock_session_manager,
+        owner_user_id="user-123",
+        jwt_token="mock-token",
+        replace_duplicates=False,
+    )
+    processor.check_filename_exists = AsyncMock(return_value=True)
+    processor.delete_document_by_filename = AsyncMock()
+
+    upload_task = UploadTask(task_id="task-123", total_files=1)
+    file_task = FileTask(file_path="/tmp/test.txt", filename="test.txt")
+
+    await processor.process_item(upload_task, "/tmp/test.txt", file_task)
+
+    _assert_duplicate_skipped(upload_task, file_task)
+    processor.delete_document_by_filename.assert_not_called()
+    langflow_file_service.upload_and_ingest_file.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_resolve_duplicate_skips_when_delete_removes_nothing():
+    """If replace is requested but deletion removes 0 chunks (e.g. owner_user_id
+    missing on a private sync), resolve_duplicate_filename must return 'skip'
+    instead of falsely reporting 'replaced'."""
+    from models.processors import TaskProcessor
+
+    processor = TaskProcessor()
+    opensearch_client = AsyncMock()
+
+    processor.check_filename_exists = AsyncMock(return_value=True)
+    processor.delete_document_by_filename = AsyncMock(return_value=0)
+
+    result = await processor.resolve_duplicate_filename(
+        "report.pdf",
+        opensearch_client,
+        replace=True,
+        owner_user_id=None,
+    )
+
+    assert result == "skip"
+    processor.delete_document_by_filename.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_delete_document_by_filename_shared_without_owner(monkeypatch):
+    """shared=True with no owner_user_id must use the anonymous filename query
+    instead of silently skipping deletion."""
+    from types import SimpleNamespace
+
+    from models.processors import TaskProcessor
+
+    admin_client = AsyncMock()
+    admin_client.delete = AsyncMock(return_value={"result": "deleted"})
+    monkeypatch.setattr(
+        "config.settings.clients",
+        SimpleNamespace(opensearch=admin_client),
+    )
+    monkeypatch.setattr("config.settings.get_index_name", lambda: "test-index")
+
+    opensearch_client = AsyncMock()
+    opensearch_client.search = AsyncMock(
+        return_value={"_scroll_id": None, "hits": {"hits": [{"_id": "chunk-1"}]}}
+    )
+
+    processor = TaskProcessor()
+    deleted = await processor.delete_document_by_filename(
+        "report.pdf",
+        opensearch_client,
+        owner_user_id=None,
+        shared=True,
+    )
+
+    assert deleted == 1
+    search_body = opensearch_client.search.await_args.kwargs["body"]
+    filters = search_body["query"]["bool"]["filter"]
+    assert {"bool": {"must_not": {"exists": {"field": "owner"}}}} in filters
+
+
+def _build_s3_processor(replace_duplicates: bool) -> S3FileProcessor:
+    document_service = MagicMock()
+    document_service.session_manager = MagicMock()
+    processor = S3FileProcessor(
+        document_service,
+        bucket="test-bucket",
+        s3_client=MagicMock(),
+        owner_user_id="user-123",
+        jwt_token="mock-token",
+        models_service=MagicMock(),
+        docling_service=MagicMock(),
+        replace_duplicates=replace_duplicates,
+    )
+    return processor
+
+
+@pytest.mark.asyncio
+async def test_s3_processor_duplicate_exists_no_replace():
+    """S3FileProcessor now has the same duplicate gate: same-key duplicates
+    are skipped before the object is even downloaded."""
+    processor = _build_s3_processor(replace_duplicates=False)
+    processor.check_filename_exists = AsyncMock(return_value=True)
+    processor.delete_document_by_filename = AsyncMock()
+
+    upload_task = UploadTask(task_id="task-123", total_files=1)
+    file_task = FileTask(file_path="docs/report.pdf", filename="docs/report.pdf")
+
+    await processor.process_item(upload_task, "docs/report.pdf", file_task)
+
+    _assert_duplicate_skipped(upload_task, file_task)
+    processor.delete_document_by_filename.assert_not_called()
+    processor.s3_client.download_fileobj.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_s3_processor_duplicate_exists_with_replace(tmp_path):
+    """With replace_duplicates=True the old document is deleted and the object
+    is downloaded and processed."""
+    processor = _build_s3_processor(replace_duplicates=True)
+    processor.check_filename_exists = AsyncMock(return_value=True)
+    processor.delete_document_by_filename = AsyncMock(return_value=1)
+    processor.process_document_standard = AsyncMock(
+        return_value={"status": "indexed", "id": "hash-1"}
+    )
+    processor.s3_client.head_object = MagicMock(return_value={"ContentLength": 10})
+
+    upload_task = UploadTask(task_id="task-123", total_files=1)
+    file_task = FileTask(file_path="docs/report.pdf", filename="docs/report.pdf")
+
+    with patch("models.processors.hash_id", return_value="dummy-hash"):
+        await processor.process_item(upload_task, "docs/report.pdf", file_task)
+
+    assert file_task.status == TaskStatus.COMPLETED
+    assert upload_task.successful_files == 1
+    processor.delete_document_by_filename.assert_called_once()
+    assert processor.delete_document_by_filename.call_args.kwargs["owner_user_id"] == "user-123"
+    processor.s3_client.download_fileobj.assert_called_once()
+    processor.process_document_standard.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_s3_processor_no_duplicate_proceeds():
+    """No duplicate: the gate is a no-op and processing continues."""
+    processor = _build_s3_processor(replace_duplicates=False)
+    processor.check_filename_exists = AsyncMock(return_value=False)
+    processor.delete_document_by_filename = AsyncMock()
+    processor.process_document_standard = AsyncMock(
+        return_value={"status": "indexed", "id": "hash-1"}
+    )
+    processor.s3_client.head_object = MagicMock(return_value={"ContentLength": 10})
+
+    upload_task = UploadTask(task_id="task-123", total_files=1)
+    file_task = FileTask(file_path="docs/report.pdf", filename="docs/report.pdf")
+
+    with patch("models.processors.hash_id", return_value="dummy-hash"):
+        await processor.process_item(upload_task, "docs/report.pdf", file_task)
+
+    assert file_task.status == TaskStatus.COMPLETED
+    processor.delete_document_by_filename.assert_not_called()
+    processor.process_document_standard.assert_awaited_once()

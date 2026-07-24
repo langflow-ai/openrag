@@ -193,8 +193,9 @@ test("completed task with failures keeps failure log in Tasks panel", async ({
     page,
     "Synthetic ingestion failure for test",
   );
+  // Prefer title= on the panel error row — toast description can repeat the same text.
   await expect(
-    page.getByText("Synthetic ingestion failure for test"),
+    page.getByTitle("Synthetic ingestion failure for test"),
   ).toBeVisible();
 });
 
@@ -242,7 +243,8 @@ test("completed task with failures requires View click to open tasks panel", asy
   await openTasksPanel(page);
   await openPastTasksSection(page);
   await expandFirstFailureAccordion(page, "Auto-open on partial success");
-  await expect(page.getByText("Auto-open on partial success")).toBeVisible();
+  // Prefer title= on the panel error row — toast description can repeat the same text.
+  await expect(page.getByTitle("Auto-open on partial success")).toBeVisible();
 });
 
 test("new failed task auto-opens tasks panel", async ({ page }) => {
@@ -287,7 +289,8 @@ test("new failed task auto-opens tasks panel", async ({ page }) => {
   await openTasksPanel(page);
   await openPastTasksSection(page);
   await expandFirstFailureAccordion(page, "Auto-open on failed task");
-  await expect(page.getByText("Auto-open on failed task")).toBeVisible();
+  // Prefer title= on the panel error row — toast description can repeat the same text.
+  await expect(page.getByTitle("Auto-open on failed task")).toBeVisible();
 });
 
 test("unified panel shows all completed tasks in a single past tasks section", async ({
