@@ -1141,10 +1141,12 @@ async def onboarding(
                 logger.info(
                     f"Embedding provider setup validation completed successfully for {embedding_provider}"
                 )
-        except Exception as e:
+        except Exception:
             logger.exception("Provider validation failed")
             return JSONResponse(
-                {"error": "Provider validation failed. Verify your provider configuration and try again."},
+                {
+                    "error": "Provider validation failed. Verify your provider configuration and try again."
+                },
                 status_code=400,
             )
 
