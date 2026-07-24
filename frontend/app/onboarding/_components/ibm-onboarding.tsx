@@ -83,26 +83,29 @@ export function IBMOnboarding({
   const debouncedApiKey = useDebouncedValue(apiKey, 500);
   const debouncedProjectId = useDebouncedValue(projectId, 500);
 
-  // Fetch models from API when all credentials are provided
   const {
     data: modelsData,
     isLoading: isLoadingModels,
+    isFetching: isFetchingModels,
     error: modelsError,
   } = useGetIBMModelsQuery(
     {
-      endpoint: debouncedEndpoint ? debouncedEndpoint : undefined,
-      apiKey: getFromEnv ? "" : debouncedApiKey ? debouncedApiKey : undefined,
-      projectId: debouncedProjectId ? debouncedProjectId : undefined,
+      endpoint: debouncedEndpoint || undefined,
+      apiKey: getFromEnv ? undefined : debouncedApiKey || undefined,
+      projectId: debouncedProjectId || undefined,
+      useEnvKey: getFromEnv,
     },
     {
-      enabled:
-        (!!debouncedEndpoint && !!debouncedApiKey && !!debouncedProjectId) ||
-        getFromEnv ||
-        alreadyConfigured,
+      enabled: getFromEnv
+        ? !!debouncedEndpoint && !!debouncedProjectId
+        : (!!debouncedEndpoint && !!debouncedApiKey && !!debouncedProjectId) ||
+          alreadyConfigured,
     },
   );
 
-  // Use custom hook for model selection logic
+  const showModelsError =
+    !!modelsError && !isLoadingModels && !isFetchingModels;
+
   const {
     languageModel,
     embeddingModel,
@@ -122,15 +125,14 @@ export function IBMOnboarding({
   };
 
   useEffect(() => {
-    setIsLoadingModels?.(isLoadingModels);
-  }, [isLoadingModels, setIsLoadingModels]);
+    setIsLoadingModels?.(isLoadingModels || isFetchingModels);
+  }, [isLoadingModels, isFetchingModels, setIsLoadingModels]);
 
-  // Update settings when values change
   useUpdateSettings(
     "watsonx",
     {
       endpoint,
-      apiKey,
+      apiKey: getFromEnv ? "" : apiKey,
       projectId,
       languageModel,
       embeddingModel,
@@ -218,7 +220,7 @@ export function IBMOnboarding({
             <LabelInput
               label="watsonx API key"
               helperText="API key to access watsonx.ai"
-              className={modelsError ? "!border-destructive" : ""}
+              className={showModelsError ? "!border-destructive" : ""}
               id="api-key"
               type="password"
               required
@@ -226,15 +228,13 @@ export function IBMOnboarding({
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
             />
-            {isLoadingModels && (
+            {(isLoadingModels || isFetchingModels) && (
               <p className="text-mmd text-muted-foreground">
                 Validating API key...
               </p>
             )}
-            {modelsError && (
-              <p className="text-mmd text-destructive">
-                Invalid watsonx API key. Verify or replace the key.
-              </p>
+            {showModelsError && (
+              <p className="text-mmd text-destructive">{modelsError.message}</p>
             )}
           </div>
         )}
@@ -256,14 +256,14 @@ export function IBMOnboarding({
             </p>
           </div>
         )}
-        {getFromEnv && isLoadingModels && (
+        {getFromEnv && (isLoadingModels || isFetchingModels) && (
           <p className="text-mmd text-muted-foreground">
             Validating configuration...
           </p>
         )}
-        {getFromEnv && modelsError && (
+        {getFromEnv && showModelsError && (
           <p className="text-mmd text-accent-amber-foreground">
-            Connection failed. Check your configuration.
+            {modelsError.message}
           </p>
         )}
       </div>

@@ -120,8 +120,7 @@ export function OllamaOnboarding({
         )}
         {hasConnectionError && (
           <p className="text-mmd text-accent-amber-foreground">
-            Can&apos;t reach Ollama at {debouncedEndpoint}. Update the base URL
-            or start the server.
+            {modelsError.message}
           </p>
         )}
         {hasNoModels && (

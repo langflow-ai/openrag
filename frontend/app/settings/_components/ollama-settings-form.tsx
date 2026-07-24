@@ -18,9 +18,7 @@ export function OllamaSettingsForm({
     formState: { errors },
   } = useFormContext<OllamaSettingsFormData>();
 
-  const endpointError = modelsError
-    ? "Connection failed. Check your Ollama server URL."
-    : errors.endpoint?.message;
+  const endpointError = modelsError?.message || errors.endpoint?.message;
 
   return (
     <div className="space-y-4">
