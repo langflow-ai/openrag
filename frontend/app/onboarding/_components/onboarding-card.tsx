@@ -202,6 +202,7 @@ const OnboardingCard = ({
     }
     const timeoutId = setTimeout(() => {
       onComplete();
+      setPendingComplete(false);
     }, 1000);
     return () => clearTimeout(timeoutId);
   }, [pendingComplete, onComplete]);
