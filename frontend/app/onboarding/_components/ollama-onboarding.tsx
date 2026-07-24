@@ -26,7 +26,8 @@ export function OllamaOnboarding({
       ? undefined
       : existingEndpoint || `http://localhost:11434`,
   );
-  const [showConnecting, setShowConnecting] = useState(false);
+  const [connectingVisibleAfterDelay, setConnectingVisibleAfterDelay] =
+    useState(false);
   const debouncedEndpoint = useDebouncedValue(endpoint, 500);
 
   // Fetch models from API when endpoint is provided (debounced)
@@ -49,24 +50,24 @@ export function OllamaOnboarding({
     embeddingModels,
   } = useModelSelection(modelsData, isEmbedding);
 
-  // Delay "connecting" message to avoid flicker on short fetches
+  const isConnecting = !!debouncedEndpoint && isLoadingModels;
+
+  // Delay "connecting" message to avoid flicker on short fetches.
+  // Visibility is derived from isConnecting so we don't sync false via an effect.
   useEffect(() => {
-    let timeoutId: NodeJS.Timeout;
-
-    if (debouncedEndpoint && isLoadingModels) {
-      timeoutId = setTimeout(() => {
-        setShowConnecting(true);
-      }, 500);
-    } else {
-      setShowConnecting(false);
+    if (!isConnecting) {
+      return;
     }
-
+    const timeoutId = setTimeout(() => {
+      setConnectingVisibleAfterDelay(true);
+    }, 500);
     return () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
+      clearTimeout(timeoutId);
+      setConnectingVisibleAfterDelay(false);
     };
-  }, [debouncedEndpoint, isLoadingModels]);
+  }, [isConnecting]);
+
+  const showConnecting = isConnecting && connectingVisibleAfterDelay;
 
   // Update settings when values change
   useUpdateSettings(

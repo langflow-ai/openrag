@@ -63,7 +63,8 @@ async def test_get_openai_models_returns_sanitized_provider_error():
     assert isinstance(response, JSONResponse)
     assert response.status_code == 400
     payload = json.loads(response.body)
-    assert payload["error"] == "Incorrect API key provided: sk-bad."
+    assert payload["error"] == "Incorrect API key provided: [REDACTED]."
+    assert "sk-bad" not in payload["error"]
 
 
 @pytest.mark.asyncio
@@ -84,12 +85,15 @@ async def test_get_openai_models_returns_502_on_transport_error():
 
     assert isinstance(response, JSONResponse)
     assert response.status_code == 502
+    payload = json.loads(response.body)
+    assert payload["error"] == "Unable to reach the model provider. Please try again."
+    assert "connection attempts" not in payload["error"].lower()
 
 
 @pytest.mark.asyncio
 async def test_get_openai_models_returns_500_on_unexpected_error():
     models_service = SimpleNamespace(
-        get_openai_models=AsyncMock(side_effect=RuntimeError("boom")),
+        get_openai_models=AsyncMock(side_effect=RuntimeError("boom secret-key")),
     )
 
     response = await models_api.get_openai_models(
@@ -100,3 +104,6 @@ async def test_get_openai_models_returns_500_on_unexpected_error():
 
     assert isinstance(response, JSONResponse)
     assert response.status_code == 500
+    payload = json.loads(response.body)
+    assert payload["error"] == "An unexpected error occurred while fetching models."
+    assert "boom" not in payload["error"]
