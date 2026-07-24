@@ -21,6 +21,17 @@ class TestSettings:
         assert settings.agent is not None
         assert settings.knowledge is not None
 
+        knowledge = settings.knowledge
+        assert knowledge.chunk_overlap is None or isinstance(knowledge.chunk_overlap, int)
+        assert knowledge.table_structure is None or isinstance(knowledge.table_structure, bool)
+        assert knowledge.ocr is None or isinstance(knowledge.ocr, bool)
+        assert knowledge.picture_descriptions is None or isinstance(
+            knowledge.picture_descriptions, bool
+        )
+        assert settings.agent.system_prompt is None or isinstance(
+            settings.agent.system_prompt, str
+        )
+
     @pytest.mark.asyncio
     async def test_update_settings(self, client):
         """Updating a setting must persist and be readable back."""

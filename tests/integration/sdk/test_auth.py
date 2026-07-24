@@ -2,6 +2,7 @@
 
 import os
 
+import httpx
 import pytest
 
 from .conftest import _base_url
@@ -30,24 +31,52 @@ class TestAuth:
             if env_backup is not None:
                 os.environ["OPENRAG_API_KEY"] = env_backup
 
-    def test_extra_headers_alone_satisfies_auth_check(self):
-        """Client must not raise when extra_headers are provided without an api_key.
+    @pytest.mark.asyncio
+    async def test_extra_headers_alone_satisfies_auth_check(self):
+        """Client must not raise when extra_headers are provided without an api_key,
+        and must actually attach those headers to real outgoing requests.
 
         This covers the IBM auth mode where X-Username / X-Api-Key are passed via
         extra_headers instead of the OPENRAG_API_KEY env var or api_key argument.
+        A real request is made here to prove the headers are sent end-to-end
+        rather than merely accepted at construction time. Whether the server
+        authenticates the request successfully depends on IBM_AUTH_ENABLED
+        being set on the target instance (off by default for a standard
+        `make test-sdk` run), so both a successful response and a clean 401
+        (a server-side rejection, which still proves the request — and its
+        headers — reached the server) are accepted outcomes.
         """
         from openrag_sdk import OpenRAGClient
+        from openrag_sdk.exceptions import AuthenticationError
 
         env_backup = os.environ.pop("OPENRAG_API_KEY", None)
+        captured_headers: dict[str, str] = {}
+
+        async def capture_request(request: httpx.Request) -> None:
+            captured_headers.update(request.headers)
+
         try:
-            client = OpenRAGClient(
-                extra_headers={"X-Username": "testuser", "X-Api-Key": "ibm-key"},
-                base_url=_base_url,
-            )
-            assert client is not None
+            async with httpx.AsyncClient(
+                timeout=30.0, event_hooks={"request": [capture_request]}
+            ) as http_client:
+                ibm_client = OpenRAGClient(
+                    extra_headers={"X-Username": "testuser", "X-Api-Key": "ibm-key"},
+                    base_url=_base_url,
+                    http_client=http_client,
+                )
+                assert ibm_client is not None
+
+                try:
+                    settings = await ibm_client.settings.get()
+                    assert settings.agent is not None
+                except AuthenticationError as e:
+                    assert e.status_code == 401
         finally:
             if env_backup is not None:
                 os.environ["OPENRAG_API_KEY"] = env_backup
+
+        assert captured_headers.get("X-Username") == "testuser"
+        assert captured_headers.get("X-Api-Key") == "ibm-key"
 
     def test_env_var_api_key_satisfies_auth_check(self):
         """Client must not raise when only the OPENRAG_API_KEY env var is set."""
