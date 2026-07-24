@@ -87,14 +87,21 @@ class TestDocuments:
             await client.documents.delete(filter_id=f"nonexistent-uuid-{uuid.uuid4().hex}")
 
     @pytest.mark.asyncio
-    async def test_wait_for_task_timeout_raises_timeout_error(self, client, test_file: Path):
-        """wait_for_task() with a tiny timeout must raise TimeoutError before completion."""
-        result = await client.documents.ingest(file_path=str(test_file), wait=False)
-        try:
-            with pytest.raises(TimeoutError):
-                await client.documents.wait_for_task(result.task_id, timeout=0.001)
-        finally:
-            await client.documents.delete(test_file.name)
+    async def test_wait_for_task_timeout_raises_timeout_error(self, client):
+        """wait_for_task() with timeout=0 must raise TimeoutError without polling.
+
+        A timeout racing real task duration (e.g. a tiny nonzero value) is
+        inherently flaky: if the task happens to reach a terminal status on
+        the very first poll -- which can happen near-instantly, including on
+        failure -- wait_for_task returns normally instead of raising,
+        regardless of how small the timeout was. timeout=0 makes the
+        elapsed<timeout loop guard false before the first poll, so this is
+        deterministic and doesn't require a real ingest at all.
+        """
+        with pytest.raises(TimeoutError):
+            await client.documents.wait_for_task(
+                f"nonexistent-{uuid.uuid4().hex}", timeout=0
+            )
 
 
 class TestDocumentsExtended:

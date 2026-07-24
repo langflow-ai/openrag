@@ -75,8 +75,11 @@ class TestAuth:
             if env_backup is not None:
                 os.environ["OPENRAG_API_KEY"] = env_backup
 
-        assert captured_headers.get("X-Username") == "testuser"
-        assert captured_headers.get("X-Api-Key") == "ibm-key"
+        # httpx.Headers normalizes header names to lowercase internally, so
+        # captured_headers (a plain dict built from iterating request.headers)
+        # holds lowercase keys regardless of the casing extra_headers used.
+        assert captured_headers.get("x-username") == "testuser"
+        assert captured_headers.get("x-api-key") == "ibm-key"
 
     def test_env_var_api_key_satisfies_auth_check(self):
         """Client must not raise when only the OPENRAG_API_KEY env var is set."""

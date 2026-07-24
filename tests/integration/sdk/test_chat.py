@@ -27,7 +27,9 @@ class TestChat:
             assert isinstance(response.sources, list)
             for s in response.sources:
                 assert isinstance(s, Source)
-                assert 0 <= s.score <= 1
+                # score is a raw OpenSearch relevance score (boosted BM25/KNN
+                # hybrid), not normalized to [0, 1] -- it can exceed 1.
+                assert s.score >= 0
         finally:
             if response.chat_id:
                 await client.chat.delete(response.chat_id)

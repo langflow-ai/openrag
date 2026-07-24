@@ -24,7 +24,9 @@ class TestSearch:
             results = await client.search.query("purple elephants dancing")
             assert results.results is not None
             for r in results.results:
-                assert 0 <= r.score <= 1
+                # score is a raw OpenSearch relevance score (boosted BM25/KNN
+                # hybrid), not normalized to [0, 1] -- it can exceed 1.
+                assert r.score >= 0
         finally:
             await client.documents.delete(test_file.name)
 
