@@ -4,8 +4,9 @@ from typing import Literal
 
 from fastapi import Depends
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
-from dependencies import get_current_user, get_flows_service, require_permission
+from dependencies import get_flows_service, require_permission
 from session_manager import User
 from utils.logging_config import get_logger
 
@@ -47,11 +48,6 @@ async def reset_flow_endpoint(
         return JSONResponse(
             {"success": False, "error": f"Internal server error: {str(e)}"}, status_code=500
         )
-
-
-from typing import List
-
-from pydantic import BaseModel
 
 
 class BulkUpdateFlowsRequest(BaseModel):
