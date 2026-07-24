@@ -31,15 +31,14 @@ export function useUpdateSettings(
         updatedSettings.llm_provider = provider;
       }
 
-      // Map provider-specific API keys
-      if (config.apiKey) {
-        if (provider === "openai") {
-          updatedSettings.openai_api_key = config.apiKey;
-        } else if (provider === "anthropic") {
-          updatedSettings.anthropic_api_key = config.apiKey;
-        } else if (provider === "watsonx") {
-          updatedSettings.watsonx_api_key = config.apiKey;
-        }
+      // Map provider-specific API keys (clear when empty so env-key mode
+      // does not keep a previously typed key in onboarding settings).
+      if (provider === "openai") {
+        updatedSettings.openai_api_key = config.apiKey || "";
+      } else if (provider === "anthropic") {
+        updatedSettings.anthropic_api_key = config.apiKey || "";
+      } else if (provider === "watsonx") {
+        updatedSettings.watsonx_api_key = config.apiKey || "";
       }
 
       // Map provider-specific endpoints

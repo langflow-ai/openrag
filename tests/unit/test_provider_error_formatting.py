@@ -156,16 +156,11 @@ async def test_probe_checks_non_selected_providers_with_keys(monkeypatch):
 
     async def fake_validate(**kwargs):
         if kwargs.get("provider") == "watsonx":
-            raise Exception(
-                "Failed to authenticate with IBM Watson: Provided API key could not be found."
-            )
+            raise Exception("Provided API key could not be found.")
 
     monkeypatch.setattr("config.settings.get_openrag_config", lambda: FakeConfig())
     monkeypatch.setattr("api.provider_validation.validate_provider_setup", fake_validate)
 
     from api.provider_validation import probe_provider_credential_error
 
-    assert (
-        await probe_provider_credential_error()
-        == "Failed to authenticate with IBM Watson: Provided API key could not be found."
-    )
+    assert await probe_provider_credential_error() == "Provided API key could not be found."

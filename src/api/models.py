@@ -2,6 +2,7 @@ from fastapi import Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from api.provider_validation import sanitize_provider_error_content
 from config.settings import get_openrag_config
 from dependencies import get_models_service, require_permission
 from session_manager import User
@@ -49,7 +50,7 @@ async def get_openai_models(
         return JSONResponse(models)
     except Exception as e:
         logger.error(f"Failed to get OpenAI models: {str(e)}")
-        return JSONResponse({"error": "Failed to retrieve OpenAI models"}, status_code=500)
+        return JSONResponse({"error": sanitize_provider_error_content(e)}, status_code=400)
 
 
 async def get_anthropic_models(
@@ -79,7 +80,7 @@ async def get_anthropic_models(
         return JSONResponse(models)
     except Exception as e:
         logger.error(f"Failed to get Anthropic models: {str(e)}")
-        return JSONResponse({"error": "Failed to retrieve Anthropic models"}, status_code=500)
+        return JSONResponse({"error": sanitize_provider_error_content(e)}, status_code=400)
 
 
 async def get_ollama_models(
@@ -106,7 +107,7 @@ async def get_ollama_models(
         return JSONResponse(models)
     except Exception as e:
         logger.error(f"Failed to get Ollama models: {str(e)}")
-        return JSONResponse({"error": "Failed to retrieve Ollama models"}, status_code=500)
+        return JSONResponse({"error": sanitize_provider_error_content(e)}, status_code=400)
 
 
 async def get_ibm_models(
@@ -163,4 +164,4 @@ async def get_ibm_models(
         return JSONResponse(models)
     except Exception as e:
         logger.error(f"Failed to get IBM models: {str(e)}")
-        return JSONResponse({"error": "Failed to retrieve IBM models"}, status_code=500)
+        return JSONResponse({"error": sanitize_provider_error_content(e)}, status_code=400)

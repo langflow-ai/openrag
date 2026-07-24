@@ -395,15 +395,8 @@ def _extract_error_details(response: httpx.Response) -> str:
                 error_obj = error_data["error"]
                 if isinstance(error_obj, dict):
                     message = error_obj.get("message", "")
-                    error_type = error_obj.get("type", "")
-                    code = error_obj.get("code", "")
                     if message:
-                        details = message
-                        if error_type:
-                            details += f" (type: {error_type})"
-                        if code:
-                            details += f" (code: {code})"
-                        return details
+                        return message
 
             # Anthropic / generic: {"message": "..."}
             if "message" in error_data:
@@ -588,7 +581,7 @@ async def _test_openai_lightweight_health(api_key: str) -> None:
                 logger.error(
                     f"OpenAI lightweight health check failed: {response.status_code} - {error_details}"
                 )
-                raise Exception(f"OpenAI API key validation failed: {error_details}")
+                raise Exception(error_details)
 
             logger.info("OpenAI lightweight health check passed")
 
@@ -658,7 +651,7 @@ async def _test_openai_completion_with_tools(api_key: str, llm_model: str) -> No
                 logger.error(
                     f"OpenAI completion test failed: {response.status_code} - {error_details}"
                 )
-                raise Exception(f"OpenAI API error: {error_details}")
+                raise Exception(error_details)
 
             logger.info("OpenAI completion with tool calling test passed")
 
@@ -696,7 +689,7 @@ async def _test_openai_embedding(api_key: str, embedding_model: str) -> None:
                 logger.error(
                     f"OpenAI embedding test failed: {response.status_code} - {error_details}"
                 )
-                raise Exception(f"OpenAI API error: {error_details}")
+                raise Exception(error_details)
 
             data = response.json()
             if not data.get("data") or len(data["data"]) == 0:
@@ -737,7 +730,7 @@ async def _test_watsonx_lightweight_health(api_key: str, endpoint: str, project_
                 logger.error(
                     f"IBM IAM token request failed: {token_response.status_code} - {error_details}"
                 )
-                raise Exception(f"Failed to authenticate with IBM Watson: {error_details}")
+                raise Exception(error_details)
 
             bearer_token = token_response.json().get("access_token")
             if not bearer_token:
@@ -775,7 +768,7 @@ async def _test_watsonx_completion_with_tools(
                 logger.error(
                     f"IBM IAM token request failed: {token_response.status_code} - {error_details}"
                 )
-                raise Exception(f"Failed to authenticate with IBM Watson: {error_details}")
+                raise Exception(error_details)
 
             bearer_token = token_response.json().get("access_token")
             if not bearer_token:
@@ -828,7 +821,7 @@ async def _test_watsonx_completion_with_tools(
                 )
                 # If error_details is still JSON, parse it to extract just the message
                 parsed_details = _parse_json_error_message(error_details)
-                raise Exception(f"IBM Watson API error: {parsed_details}")
+                raise Exception(parsed_details)
 
             logger.info("IBM Watson completion with tool calling test passed")
 
@@ -843,7 +836,7 @@ async def _test_watsonx_completion_with_tools(
             json_part = error_str.split("IBM Watson API error: ", 1)[1]
             parsed_message = _parse_json_error_message(json_part)
             if parsed_message != json_part:
-                raise Exception(f"IBM Watson API error: {parsed_message}") from e
+                raise Exception(parsed_message) from e
         raise
 
 
@@ -869,7 +862,7 @@ async def _test_watsonx_embedding(
                 logger.error(
                     f"IBM IAM token request failed: {token_response.status_code} - {error_details}"
                 )
-                raise Exception(f"Failed to authenticate with IBM Watson: {error_details}")
+                raise Exception(error_details)
 
             bearer_token = token_response.json().get("access_token")
             if not bearer_token:
@@ -905,7 +898,7 @@ async def _test_watsonx_embedding(
                 )
                 # If error_details is still JSON, parse it to extract just the message
                 parsed_details = _parse_json_error_message(error_details)
-                raise Exception(f"IBM Watson API error: {parsed_details}")
+                raise Exception(parsed_details)
 
             data = response.json()
             if not data.get("results") or len(data["results"]) == 0:
@@ -924,7 +917,7 @@ async def _test_watsonx_embedding(
             json_part = error_str.split("IBM Watson API error: ", 1)[1]
             parsed_message = _parse_json_error_message(json_part)
             if parsed_message != json_part:
-                raise Exception(f"IBM Watson API error: {parsed_message}") from e
+                raise Exception(parsed_message) from e
         raise
 
 
@@ -948,7 +941,7 @@ async def _test_ollama_lightweight_health(endpoint: str) -> None:
                 logger.error(
                     f"Ollama lightweight health check failed: {response.status_code} - {error_details}"
                 )
-                raise Exception(f"Ollama endpoint not responding: {error_details}")
+                raise Exception(error_details)
 
             logger.info("Ollama lightweight health check passed")
 
@@ -1000,7 +993,7 @@ async def _test_ollama_completion_with_tools(llm_model: str, endpoint: str) -> N
                 logger.error(
                     f"Ollama completion test failed: {response.status_code} - {error_details}"
                 )
-                raise Exception(f"Ollama API error: {error_details}")
+                raise Exception(error_details)
 
             logger.info("Ollama completion with tool calling test passed")
 
@@ -1035,7 +1028,7 @@ async def _test_ollama_embedding(embedding_model: str, endpoint: str) -> None:
                 logger.error(
                     f"Ollama embedding test failed: {response.status_code} - {error_details}"
                 )
-                raise Exception(f"Ollama API error: {error_details}")
+                raise Exception(error_details)
 
             data = response.json()
             if not data.get("embedding"):
@@ -1077,7 +1070,7 @@ async def _test_anthropic_lightweight_health(api_key: str) -> None:
                 logger.error(
                     f"Anthropic lightweight health check failed: {response.status_code} - {error_details}"
                 )
-                raise Exception(f"Anthropic API key validation failed: {error_details}")
+                raise Exception(error_details)
 
             logger.info("Anthropic lightweight health check passed")
 
@@ -1131,7 +1124,7 @@ async def _test_anthropic_completion_with_tools(api_key: str, llm_model: str) ->
                 logger.error(
                     f"Anthropic completion test failed: {response.status_code} - {error_details}"
                 )
-                raise Exception(f"Anthropic API error: {error_details}")
+                raise Exception(error_details)
 
             logger.info("Anthropic completion with tool calling test passed")
 
