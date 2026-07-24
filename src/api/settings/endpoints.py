@@ -13,7 +13,7 @@ import json
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from api.provider_validation import sanitize_provider_error_content, validate_provider_setup
+from api.provider_validation import validate_provider_setup
 from api.settings.helpers import (
     _affected_embedding_models,
     _create_openrag_docs_filter,
@@ -1142,9 +1142,9 @@ async def onboarding(
                     f"Embedding provider setup validation completed successfully for {embedding_provider}"
                 )
         except Exception as e:
-            logger.error(f"Provider validation failed: {str(e)}")
+            logger.exception("Provider validation failed")
             return JSONResponse(
-                {"error": sanitize_provider_error_content(e)},
+                {"error": "Provider validation failed. Verify your provider configuration and try again."},
                 status_code=400,
             )
 
