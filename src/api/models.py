@@ -63,12 +63,28 @@ def _models_error_response(exc: Exception) -> JSONResponse:
     error = sanitize_provider_error_content(exc)
     redacted = _redact_credentials(error)
     if is_provider_credential_error(exc) or is_provider_credential_error(error):
-        return JSONResponse({"error": redacted}, status_code=400)
+        return JSONResponse(
+            {
+                "error": (
+                    "The configured API key is invalid or has been revoked. "
+                    "Update it in Settings and retry."
+                )
+            },
+            status_code=400,
+        )
     if isinstance(exc, (ValueError, TypeError)) or type(exc) is Exception:
         # Bare Exception is the models_service user-facing contract; keep JSON
         # / traceback leaks behind the generic response.
         if redacted and "{" not in redacted and "}" not in redacted:
-            return JSONResponse({"error": redacted}, status_code=400)
+            return JSONResponse(
+                {
+                    "error": (
+                        "Unable to validate provider configuration. "
+                        "Please verify your settings and try again."
+                    )
+                },
+                status_code=400,
+            )
     return JSONResponse(
         {"error": "An unexpected error occurred while fetching models."},
         status_code=500,
