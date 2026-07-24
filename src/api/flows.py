@@ -46,7 +46,7 @@ async def reset_flow_endpoint(
     except Exception as e:
         logger.error("Unexpected error in flow reset", error=str(e))
         return JSONResponse(
-            {"success": False, "error": f"Internal server error: {str(e)}"}, status_code=500
+            {"success": False, "error": "Internal server error"}, status_code=500
         )
 
 
@@ -66,7 +66,7 @@ async def get_flows_updates_endpoint(
     except Exception as e:
         logger.error("Error getting flow updates", error=str(e))
         return JSONResponse(
-            {"success": False, "error": f"Internal server error: {str(e)}"}, status_code=500
+            {"success": False, "error": "Internal server error"}, status_code=500
         )
 
 
@@ -78,9 +78,10 @@ async def bulk_update_flows_endpoint(
     """Bulk update multiple flows and optionally backup custom flows"""
     try:
         results = await flows_service.bulk_update_flows(request.flow_types, request.backup_custom)
-        return JSONResponse({"success": True, "results": results}, status_code=200)
+        overall_success = all(r.get("success", False) for r in results)
+        return JSONResponse({"success": overall_success, "results": results}, status_code=200)
     except Exception as e:
         logger.error("Error bulk updating flows", error=str(e))
         return JSONResponse(
-            {"success": False, "error": f"Internal server error: {str(e)}"}, status_code=500
+            {"success": False, "error": "Internal server error"}, status_code=500
         )

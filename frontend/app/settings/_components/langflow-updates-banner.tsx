@@ -2,40 +2,68 @@
 
 import { AlertCircle } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import { useUpdateFlowsMutation } from "@/app/api/mutations/useUpdateFlowsMutation";
 import { useGetFlowsUpdatesQuery } from "@/app/api/queries/useGetFlowsUpdatesQuery";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { usePermissions } from "@/hooks/use-permissions";
 
 export function LangflowUpdatesBanner() {
+  const { can } = usePermissions();
   const { data: updates, isLoading } = useGetFlowsUpdatesQuery();
   const updateMutation = useUpdateFlowsMutation();
   const [isUpdating, setIsUpdating] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  if (isLoading || !updates || updates.length === 0) return null;
+  if (!can("flows:edit") || isLoading || !updates || updates.length === 0) {
+    return null;
+  }
 
   const hasCustomFlows = updates.some((u) => u.is_custom);
 
   const handleUpdate = async () => {
     setIsUpdating(true);
+    setErrorMessage(null);
     const flowTypes = updates.map((u) => u.flow_type);
 
     try {
-      await updateMutation.mutateAsync({
+      const results = await updateMutation.mutateAsync({
         flow_types: flowTypes,
         backup_custom: true, // Always backup from settings banner
       });
-    } catch (e) {
-      console.error("Failed to update flows", e);
+
+      const failed = results.filter((r) => !r.success);
+      if (failed.length > 0) {
+        const errorText = failed
+          .map((f) => `${f.flow_type}: ${f.error || "Update failed"}`)
+          .join("; ");
+        setErrorMessage(errorText);
+        toast.error(`Flow update failed: ${errorText}`);
+      } else {
+        toast.success("Flows updated successfully");
+      }
+    } catch (e: any) {
+      const msg = e?.message || "Failed to update flows";
+      setErrorMessage(msg);
+      toast.error(msg);
     } finally {
       setIsUpdating(false);
     }
   };
 
   return (
-    <div className="mb-6">
+    <div className="mb-6 space-y-3">
+      {errorMessage && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Update Failed</AlertTitle>
+          <AlertDescription>{errorMessage}</AlertDescription>
+        </Alert>
+      )}
+
       <Alert
-        variant="warning"
+        variant="default"
         className="border-amber-500/50 bg-amber-500/10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4"
       >
         <div className="flex gap-3">

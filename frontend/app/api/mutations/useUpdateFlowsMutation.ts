@@ -25,7 +25,8 @@ export function useUpdateFlowsMutation() {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to update flows");
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to update flows");
       }
 
       const data = await response.json();

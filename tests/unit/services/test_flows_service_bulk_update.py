@@ -61,3 +61,75 @@ async def test_bulk_update_flows_creates_backup_flow_in_langflow():
     assert res["flow_type"] == "retrieval"
     assert res["success"] is True
     assert res["backup_flow_id"] == "backup-flow-999"
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_flows_aborts_reset_on_backup_failure():
+    service = FlowsService()
+
+    mock_get_response = MagicMock()
+    mock_get_response.status_code = 200
+    mock_get_response.json.return_value = {
+        "id": "flow-retrieval-123",
+        "name": "Custom Retrieval Flow",
+        "locked": False,
+        "data": {"nodes": []},
+    }
+
+    mock_post_response = MagicMock()
+    mock_post_response.status_code = 500
+
+    async def mock_langflow_request(method, url, json=None, **kwargs):
+        if method == "GET":
+            return mock_get_response
+        elif method == "POST":
+            return mock_post_response
+        return MagicMock(status_code=404)
+
+    reset_mock = AsyncMock(return_value={"success": True})
+
+    with (
+        patch("services.flows_service.clients.langflow_request", side_effect=mock_langflow_request),
+        patch.object(
+            service, "_backup_flow", new_callable=AsyncMock, return_value=None
+        ),
+        patch.object(service, "reset_langflow_flow", reset_mock),
+    ):
+        results = await service.bulk_update_flows(["retrieval"], backup_custom=True)
+
+    assert len(results) == 1
+    res = results[0]
+    assert res["flow_type"] == "retrieval"
+    assert res["success"] is False
+    assert "Backup failed" in res["error"]
+    assert reset_mock.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_flows_saves_local_file_backup_for_default_flows():
+    service = FlowsService()
+
+    mock_get_response = MagicMock()
+    mock_get_response.status_code = 200
+    mock_get_response.json.return_value = {
+        "id": "flow-retrieval-123",
+        "name": "Default Retrieval Flow",
+        "locked": True,
+        "data": {"nodes": []},
+    }
+
+    backup_mock = AsyncMock(return_value="/tmp/backup_default.json")
+    reset_mock = AsyncMock(return_value={"success": True})
+
+    with (
+        patch("services.flows_service.clients.langflow_request", return_value=mock_get_response),
+        patch.object(service, "_backup_flow", backup_mock),
+        patch.object(service, "reset_langflow_flow", reset_mock),
+    ):
+        results = await service.bulk_update_flows(["retrieval"], backup_custom=True)
+
+    assert len(results) == 1
+    assert results[0]["success"] is True
+    assert backup_mock.call_count == 1
+    assert reset_mock.call_count == 1
+

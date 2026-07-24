@@ -1,7 +1,8 @@
 "use client";
 
 import { AlertCircle } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { useUpdateFlowsMutation } from "@/app/api/mutations/useUpdateFlowsMutation";
 import { useGetFlowsUpdatesQuery } from "@/app/api/queries/useGetFlowsUpdatesQuery";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -15,47 +16,68 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { usePermissions } from "@/hooks/use-permissions";
 
 export function FlowsUpdateDialog() {
+  const { can } = usePermissions();
   const { data: updates, isLoading } = useGetFlowsUpdatesQuery();
   const updateMutation = useUpdateFlowsMutation();
   const [isOpen, setIsOpen] = useState(false);
-  const [hasDismissed, setHasDismissed] = useState(false);
+  const hasDismissedRef = useRef(false);
   const [backupCustom, setBackupCustom] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     // Check sessionStorage on mount
     const dismissed =
       sessionStorage.getItem("openrag-flow-updates-shown") === "true";
     if (dismissed) {
-      setHasDismissed(true);
+      hasDismissedRef.current = true;
       return;
     }
 
-    if (!isLoading && updates && updates.length > 0 && !hasDismissed) {
+    if (
+      !isLoading &&
+      updates &&
+      updates.length > 0 &&
+      !hasDismissedRef.current
+    ) {
       setIsOpen(true);
     }
-  }, [updates, isLoading, hasDismissed]);
+  }, [updates, isLoading]);
 
   const markDismissed = () => {
     setIsOpen(false);
-    setHasDismissed(true);
+    hasDismissedRef.current = true;
     sessionStorage.setItem("openrag-flow-updates-shown", "true");
   };
 
   const handleUpdate = async () => {
     if (!updates) return;
+    setErrorMessage(null);
     const flowTypes = updates.map((u) => u.flow_type);
 
     try {
-      await updateMutation.mutateAsync({
+      const results = await updateMutation.mutateAsync({
         flow_types: flowTypes,
         backup_custom: backupCustom,
       });
 
-      markDismissed();
-    } catch (e) {
-      console.error("Failed to update flows", e);
+      const failed = results.filter((r) => !r.success);
+      if (failed.length > 0) {
+        const errorText = failed
+          .map((f) => `${f.flow_type}: ${f.error || "Update failed"}`)
+          .join("; ");
+        setErrorMessage(errorText);
+        toast.error(`Flow update failed: ${errorText}`);
+      } else {
+        toast.success("Flows updated successfully");
+        markDismissed();
+      }
+    } catch (e: any) {
+      const msg = e?.message || "Failed to update flows";
+      setErrorMessage(msg);
+      toast.error(msg);
     }
   };
 
@@ -63,7 +85,7 @@ export function FlowsUpdateDialog() {
     markDismissed();
   };
 
-  if (!updates || updates.length === 0) return null;
+  if (!can("flows:edit") || !updates || updates.length === 0) return null;
 
   const hasCustomFlows = updates.some((u) => u.is_custom);
 
@@ -79,6 +101,14 @@ export function FlowsUpdateDialog() {
         </DialogHeader>
 
         <div className="space-y-4 py-4">
+          {errorMessage && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Update Failed</AlertTitle>
+              <AlertDescription>{errorMessage}</AlertDescription>
+            </Alert>
+          )}
+
           <ul className="list-disc pl-4 space-y-1">
             {updates.map((update) => (
               <li key={update.flow_type}>
