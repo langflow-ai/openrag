@@ -305,8 +305,12 @@ class FlowsService:
         for result in results:
             if not result:
                 continue
-            backup_results[result["type"]].append(result["data"])
-            if result["type"] == "failed":
+            res_type = result.get("type")
+            if res_type in ("backed_up", "skipped", "failed"):
+                target_list = backup_results[res_type]
+                if isinstance(target_list, list):
+                    target_list.append(result.get("data"))
+            if res_type == "failed":
                 backup_results["success"] = False
 
         logger.info(
@@ -328,7 +332,7 @@ class FlowsService:
 
         return backup_results
 
-    async def _backup_flow(self, flow_id: str, flow_type: str, flow_data: dict = None):
+    async def _backup_flow(self, flow_id: str, flow_type: str, flow_data: dict | None = None):
         """
         Backup a single flow to the backup folder.
 
@@ -626,7 +630,7 @@ class FlowsService:
         return "OpenAI"
 
     async def _update_flow_field(
-        self, flow_id: str, field_name: str, field_value: Any, node_display_name: str = None
+        self, flow_id: str, field_name: str, field_value: Any, node_display_name: str | None = None
     ):
         """
         Generic helper function to update any field in any Langflow component.
@@ -789,7 +793,7 @@ class FlowsService:
             node_template = node_data.get("node", {})
 
             template = node_template.get("template", {})
-            normalized_template = {}
+            normalized_template: dict[str, Any] = {}
             if isinstance(template, dict):
                 for field_name, field_def in template.items():
                     if isinstance(field_def, dict):
@@ -800,7 +804,7 @@ class FlowsService:
                             "input_types": field_def.get("input_types"),
                         }
                     else:
-                        normalized_template[field_name] = str(field_def)
+                        normalized_template[field_name] = {"value": str(field_def)}
 
             normalized_node = {
                 "id": node.get("id"),  # Keep ID for edge matching
@@ -1001,11 +1005,11 @@ class FlowsService:
     async def change_langflow_model_value(
         self,
         provider: str,
-        embedding_model: str = None,
-        llm_model: str = None,
+        embedding_model: str | None = None,
+        llm_model: str | None = None,
         force_embedding_update: bool = False,
         force_llm_update: bool = False,
-        flow_configs: list = None,
+        flow_configs: list | None = None,
     ):
         """
         Change dropdown values for provider-specific components across flows
@@ -1068,8 +1072,8 @@ class FlowsService:
         self,
         config,
         provider: str,
-        embedding_model: str = None,
-        llm_model: str = None,
+        embedding_model: str | None = None,
+        llm_model: str | None = None,
         force_embedding_update: bool = False,
         force_llm_update: bool = False,
     ):
@@ -1465,7 +1469,7 @@ class FlowsService:
         Check if there are any updates available for core flows.
         Returns a list of dicts with flow details.
         """
-        updates = []
+        updates: list[dict[str, Any]] = []
         flow_configs = [
             ("nudges", NUDGES_FLOW_ID),
             ("retrieval", LANGFLOW_CHAT_FLOW_ID),
@@ -1494,16 +1498,16 @@ class FlowsService:
                     if langflow_updated_at_str:
                         if langflow_updated_at_str.endswith("Z"):
                             langflow_updated_at_str = langflow_updated_at_str[:-1] + "+00:00"
-                        import datetime
 
                         try:
-                            dt = datetime.datetime.fromisoformat(langflow_updated_at_str)
+                            dt = datetime.fromisoformat(langflow_updated_at_str)
                             langflow_mtime = dt.timestamp()
                         except ValueError:
                             pass
 
                     # 3. Compare timestamps
-                    # If the date modified on the local files is greater than what's in Langflow, it needs an update
+                    # If the date modified on the local files is greater than what's in Langflow,
+                    # it needs an update
                     if local_mtime > langflow_mtime:
                         is_locked = flow_data.get("locked", False)
                         updates.append(
@@ -1521,7 +1525,7 @@ class FlowsService:
         Local file backups are always saved via _backup_flow prior to resetting.
         Returns the backup flow details if any.
         """
-        results = []
+        results: list[dict[str, Any]] = []
         flow_configs_dict = {
             "nudges": NUDGES_FLOW_ID,
             "retrieval": LANGFLOW_CHAT_FLOW_ID,
