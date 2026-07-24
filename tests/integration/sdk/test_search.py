@@ -71,9 +71,7 @@ class TestSearchExtended:
     @pytest.mark.asyncio
     async def test_search_no_results_for_obscure_query(self, client):
         """A nonsense query must return an empty list, not raise an error."""
-        results = await client.search.query(
-            "zzz_xyzzy_nonexistent_content_abc123_qwerty_999"
-        )
+        results = await client.search.query("zzz_xyzzy_nonexistent_content_abc123_qwerty_999")
         assert results.results is not None
         assert isinstance(results.results, list)
 

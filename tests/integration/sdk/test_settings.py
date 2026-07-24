@@ -28,9 +28,7 @@ class TestSettings:
         assert knowledge.picture_descriptions is None or isinstance(
             knowledge.picture_descriptions, bool
         )
-        assert settings.agent.system_prompt is None or isinstance(
-            settings.agent.system_prompt, str
-        )
+        assert settings.agent.system_prompt is None or isinstance(settings.agent.system_prompt, str)
 
     @pytest.mark.asyncio
     async def test_update_settings(self, client):
