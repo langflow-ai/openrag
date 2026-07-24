@@ -1,8 +1,12 @@
+import httpx
 from fastapi import Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from api.provider_validation import sanitize_provider_error_content
+from api.provider_validation import (
+    is_provider_credential_error,
+    sanitize_provider_error_content,
+)
 from config.settings import get_openrag_config
 from dependencies import get_models_service, require_permission
 from session_manager import User
@@ -23,6 +27,18 @@ class IBMBody(BaseModel):
     api_key: str | None = None
     endpoint: str | None = None
     project_id: str | None = None
+
+
+def _models_error_response(exc: Exception) -> JSONResponse:
+    """Map model-route failures to client (400) vs upstream (502) vs server (500)."""
+    error = sanitize_provider_error_content(exc)
+    if isinstance(exc, (httpx.TimeoutException, httpx.RequestError)):
+        return JSONResponse({"error": error}, status_code=502)
+    if is_provider_credential_error(exc) or is_provider_credential_error(error):
+        return JSONResponse({"error": error}, status_code=400)
+    if isinstance(exc, (ValueError, TypeError)):
+        return JSONResponse({"error": error}, status_code=400)
+    return JSONResponse({"error": error}, status_code=500)
 
 
 async def get_openai_models(
@@ -50,7 +66,7 @@ async def get_openai_models(
         return JSONResponse(models)
     except Exception as e:
         logger.error(f"Failed to get OpenAI models: {str(e)}")
-        return JSONResponse({"error": sanitize_provider_error_content(e)}, status_code=400)
+        return _models_error_response(e)
 
 
 async def get_anthropic_models(
@@ -80,7 +96,7 @@ async def get_anthropic_models(
         return JSONResponse(models)
     except Exception as e:
         logger.error(f"Failed to get Anthropic models: {str(e)}")
-        return JSONResponse({"error": sanitize_provider_error_content(e)}, status_code=400)
+        return _models_error_response(e)
 
 
 async def get_ollama_models(
@@ -107,7 +123,7 @@ async def get_ollama_models(
         return JSONResponse(models)
     except Exception as e:
         logger.error(f"Failed to get Ollama models: {str(e)}")
-        return JSONResponse({"error": sanitize_provider_error_content(e)}, status_code=400)
+        return _models_error_response(e)
 
 
 async def get_ibm_models(
@@ -164,4 +180,4 @@ async def get_ibm_models(
         return JSONResponse(models)
     except Exception as e:
         logger.error(f"Failed to get IBM models: {str(e)}")
-        return JSONResponse({"error": sanitize_provider_error_content(e)}, status_code=400)
+        return _models_error_response(e)
