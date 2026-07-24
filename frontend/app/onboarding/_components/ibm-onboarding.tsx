@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import IBMLogo from "@/components/icons/ibm-logo";
 import { LabelInput } from "@/components/label-input";
 import { LabelWrapper } from "@/components/label-wrapper";
@@ -20,7 +20,6 @@ import { ModelSelector } from "./model-selector";
 export function IBMOnboarding({
   isEmbedding = false,
   setSettings,
-  setIsLoadingModels,
   alreadyConfigured = false,
   existingEndpoint,
   existingProjectId,
@@ -28,7 +27,6 @@ export function IBMOnboarding({
 }: {
   isEmbedding?: boolean;
   setSettings: Dispatch<SetStateAction<OnboardingVariables>>;
-  setIsLoadingModels?: (isLoading: boolean) => void;
   alreadyConfigured?: boolean;
   existingEndpoint?: string;
   existingProjectId?: string;
@@ -124,15 +122,12 @@ export function IBMOnboarding({
     setLanguageModel?.("");
   };
 
-  useEffect(() => {
-    setIsLoadingModels?.(isLoadingModels || isFetchingModels);
-  }, [isLoadingModels, isFetchingModels, setIsLoadingModels]);
-
   useUpdateSettings(
     "watsonx",
     {
       endpoint,
-      apiKey: getFromEnv ? "" : apiKey,
+      apiKey: getFromEnv ? undefined : apiKey,
+      clearApiKey: getFromEnv,
       projectId,
       languageModel,
       embeddingModel,

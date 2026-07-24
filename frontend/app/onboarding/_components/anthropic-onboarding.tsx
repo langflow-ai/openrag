@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import AnthropicLogo from "@/components/icons/anthropic-logo";
 import { LabelInput } from "@/components/label-input";
 import { LabelWrapper } from "@/components/label-wrapper";
@@ -18,12 +18,10 @@ import { AdvancedOnboarding } from "./advanced";
 
 export function AnthropicOnboarding({
   setSettings,
-  setIsLoadingModels,
   isEmbedding = false,
   hasEnvApiKey = false,
 }: {
   setSettings: Dispatch<SetStateAction<OnboardingVariables>>;
-  setIsLoadingModels?: (isLoading: boolean) => void;
   isEmbedding?: boolean;
   hasEnvApiKey?: boolean;
 }) {
@@ -79,14 +77,11 @@ export function AnthropicOnboarding({
     setLanguageModel?.("");
   };
 
-  useEffect(() => {
-    setIsLoadingModels?.(isLoadingModels || isFetchingModels);
-  }, [isLoadingModels, isFetchingModels, setIsLoadingModels]);
-
   useUpdateSettings(
     "anthropic",
     {
-      apiKey: getFromEnv ? "" : apiKey,
+      apiKey: getFromEnv ? undefined : apiKey,
+      clearApiKey: getFromEnv,
       languageModel,
       embeddingModel,
     },
