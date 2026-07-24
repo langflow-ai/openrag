@@ -39,6 +39,7 @@ import {
   trackProcessFailure,
   trackProcessSuccess,
 } from "@/lib/analytics";
+import { formatProviderErrorMessage } from "@/lib/chat-stream-errors";
 import { cn } from "@/lib/utils";
 import { AnimatedProviderSteps } from "./animated-provider-steps";
 import { AnthropicOnboarding } from "./anthropic-onboarding";
@@ -270,13 +271,14 @@ const OnboardingCard = ({
       }
     },
     onError: (error) => {
+      const message = formatProviderErrorMessage(error.message);
       trackProcessFailure({
         processType: "Onboarding",
         process: isEmbedding ? "Embedding Setup" : "LLM Setup",
-        resultValue: error.message,
+        resultValue: message,
         category: "Setup",
       });
-      setError(error.message);
+      setError(message);
       setCurrentStep(totalSteps);
       rollbackMutation.mutate({ embedding_only: isEmbedding });
     },
@@ -346,31 +348,28 @@ const OnboardingCard = ({
       // Mark this task as handled to prevent infinite loops
       handledFailedTasksRef.current.add(taskWithFailure.task_id);
 
-      // Extract error messages from failed files
+      // Prefer sanitized user_facing_message from enhanced tasks, then raw error.
       const errorMessages: string[] = [];
       if (taskWithFailure.files) {
         Object.values(taskWithFailure.files).forEach((file) => {
-          if (
-            (file.status === "failed" || file.status === "error") &&
-            file.error
-          ) {
-            errorMessages.push(file.error);
+          if (file.status !== "failed" && file.status !== "error") {
+            return;
+          }
+          const msg = file.user_facing_message || file.error;
+          if (msg) {
+            errorMessages.push(msg);
           }
         });
       }
 
-      // Also check task-level error
       if (taskWithFailure.error) {
         errorMessages.push(taskWithFailure.error);
       }
 
-      // Use the first error message, or a generic message if no errors found
-      const errorMessage =
-        errorMessages.length > 0
-          ? errorMessages[0]
-          : "Sample data ingestion failed. Please try again.";
+      const errorMessage = formatProviderErrorMessage(
+        errorMessages[0] || "Sample data ingestion failed. Please try again.",
+      );
 
-      // Set error message and jump back one step (exactly like onboardingMutation.onError)
       trackProcessFailure({
         processType: "Onboarding",
         process: "Sample Data Ingest",

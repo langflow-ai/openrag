@@ -1140,6 +1140,47 @@ class TaskService:
                     ),
                     "actionable_by": "RETRYABLE",
                 }
+
+            # Prefer a sanitized specific provider/Langflow message (model missing,
+            # project misconfig, etc.) over a generic "unexpectedly" toast.
+            from api.provider_validation import (
+                is_generic_upstream_error,
+                is_provider_credential_error,
+                sanitize_provider_error_content,
+            )
+
+            cleaned = sanitize_provider_error_content(error)
+            if (
+                cleaned
+                and not is_generic_upstream_error(cleaned)
+                and "{" not in cleaned
+                and "}" not in cleaned
+            ):
+                lowered = cleaned.lower()
+                user_actionable = is_provider_credential_error(cleaned) or any(
+                    marker in lowered
+                    for marker in (
+                        "model",
+                        "project",
+                        "not found",
+                        "not properly configured",
+                        "no models",
+                        "unauthorized",
+                        "forbidden",
+                        "permission",
+                        "quota",
+                        "rate limit",
+                    )
+                )
+                return {
+                    "component": "langflow",
+                    "failure_phase": "unknown",
+                    "user_facing_message": cleaned,
+                    "actionable_by": (
+                        "USER_ACTIONABLE" if user_actionable else "RETRYABLE"
+                    ),
+                }
+
             return {
                 "component": "langflow",
                 "failure_phase": "unknown",

@@ -1144,7 +1144,7 @@ async def onboarding(
         except Exception as e:
             logger.error(f"Provider validation failed: {str(e)}")
             return JSONResponse(
-                {"error": str(e)},
+                {"error": sanitize_provider_error_content(e)},
                 status_code=400,
             )
 
