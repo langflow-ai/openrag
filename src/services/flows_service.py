@@ -777,16 +777,30 @@ class FlowsService:
     def _normalize_flow_structure(self, flow_data):
         """
         Normalize flow structure for comparison by removing dynamic fields.
-        Keeps structural elements: nodes (types, display names, templates), edges (connections).
-        Removes: IDs, timestamps, positions, etc. but keeps template structure.
+        Keeps structural elements: nodes (types, display names, template definitions), edges (connections).
+        Removes: IDs, timestamps, positions, dynamic runtime field values, and dynamic options lists.
         """
         normalized = {"data": {"nodes": [], "edges": []}}
 
-        # Normalize nodes - keep structural info including templates
+        # Normalize nodes - keep structural info including template definitions
         nodes = flow_data.get("data", {}).get("nodes", [])
         for node in nodes:
             node_data = node.get("data", {})
             node_template = node_data.get("node", {})
+
+            template = node_template.get("template", {})
+            normalized_template = {}
+            if isinstance(template, dict):
+                for field_name, field_def in template.items():
+                    if isinstance(field_def, dict):
+                        normalized_template[field_name] = {
+                            "type": field_def.get("type"),
+                            "display_name": field_def.get("display_name"),
+                            "required": field_def.get("required"),
+                            "input_types": field_def.get("input_types"),
+                        }
+                    else:
+                        normalized_template[field_name] = str(field_def)
 
             normalized_node = {
                 "id": node.get("id"),  # Keep ID for edge matching
@@ -796,7 +810,7 @@ class FlowsService:
                         "display_name": node_template.get("display_name"),
                         "name": node_template.get("name"),
                         "base_classes": node_template.get("base_classes", []),
-                        "template": node_template.get("template", {}),  # Include template structure
+                        "template": normalized_template,
                     }
                 },
             }
@@ -1464,16 +1478,37 @@ class FlowsService:
                 continue
 
             try:
-                # Compare flow content with local JSON file
-                is_matching = await self._compare_flow_with_file(flow_id)
-                if not is_matching:
-                    response = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
-                    is_locked = False
-                    if response.status_code == 200:
-                        is_locked = response.json().get("locked", False)
-                    updates.append(
-                        {"flow_type": flow_type, "flow_id": flow_id, "is_custom": not is_locked}
-                    )
+                # 1. Get the local file modification time
+                flow_path = self._find_flow_file_by_id(flow_id)
+                if not flow_path or not os.path.exists(flow_path):
+                    continue
+                local_mtime = os.path.getmtime(flow_path)
+
+                # 2. Get the Langflow flow updated_at
+                response = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
+                if response.status_code == 200:
+                    flow_data = response.json()
+
+                    langflow_updated_at_str = flow_data.get("updated_at")
+                    langflow_mtime = 0
+                    if langflow_updated_at_str:
+                        if langflow_updated_at_str.endswith("Z"):
+                            langflow_updated_at_str = langflow_updated_at_str[:-1] + "+00:00"
+                        import datetime
+
+                        try:
+                            dt = datetime.datetime.fromisoformat(langflow_updated_at_str)
+                            langflow_mtime = dt.timestamp()
+                        except ValueError:
+                            pass
+
+                    # 3. Compare timestamps
+                    # If the date modified on the local files is greater than what's in Langflow, it needs an update
+                    if local_mtime > langflow_mtime:
+                        is_locked = flow_data.get("locked", False)
+                        updates.append(
+                            {"flow_type": flow_type, "flow_id": flow_id, "is_custom": not is_locked}
+                        )
             except Exception as e:
                 logger.error(f"Failed to fetch flow {flow_id} for update check: {e}")
 
