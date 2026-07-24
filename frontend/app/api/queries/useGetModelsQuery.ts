@@ -65,11 +65,10 @@ export const useGetOpenAIModelsQuery = (
   return useQuery(
     {
       queryKey: ["models", "openai", useEnvKey, apiKey] as const,
-      queryFn: async ({ queryKey }) => {
-        const [, , envMode, key] = queryKey;
+      queryFn: async (): Promise<ModelsResponse> => {
         const body: { api_key?: string } = {};
-        if (!envMode && key) {
-          body.api_key = key;
+        if (!useEnvKey && apiKey) {
+          body.api_key = apiKey;
         }
 
         const response = await fetch("/api/models/openai", {
@@ -80,7 +79,7 @@ export const useGetOpenAIModelsQuery = (
         if (response.ok) {
           return (await response.json()) as ModelsResponse;
         }
-        await throwModelsFetchError(response, "Failed to fetch OpenAI models");
+        return throwModelsFetchError(response, "Failed to fetch OpenAI models");
       },
       staleTime: 0,
       gcTime: 0,
@@ -102,11 +101,10 @@ export const useGetAnthropicModelsQuery = (
   return useQuery(
     {
       queryKey: ["models", "anthropic", useEnvKey, apiKey] as const,
-      queryFn: async ({ queryKey }) => {
-        const [, , envMode, key] = queryKey;
+      queryFn: async (): Promise<ModelsResponse> => {
         const body: { api_key?: string } = {};
-        if (!envMode && key) {
-          body.api_key = key;
+        if (!useEnvKey && apiKey) {
+          body.api_key = apiKey;
         }
 
         const response = await fetch("/api/models/anthropic", {
@@ -117,7 +115,7 @@ export const useGetAnthropicModelsQuery = (
         if (response.ok) {
           return (await response.json()) as ModelsResponse;
         }
-        await throwModelsFetchError(
+        return throwModelsFetchError(
           response,
           "Failed to fetch Anthropic models",
         );
@@ -141,18 +139,17 @@ export const useGetOllamaModelsQuery = (
   return useQuery(
     {
       queryKey: ["models", "ollama", endpoint] as const,
-      queryFn: async ({ queryKey }) => {
-        const [, , ep] = queryKey;
+      queryFn: async (): Promise<ModelsResponse> => {
         const url = new URL("/api/models/ollama", window.location.origin);
-        if (ep) {
-          url.searchParams.set("endpoint", ep);
+        if (endpoint) {
+          url.searchParams.set("endpoint", endpoint);
         }
 
         const response = await fetch(url.toString());
         if (response.ok) {
           return (await response.json()) as ModelsResponse;
         }
-        await throwModelsFetchError(response, "Failed to fetch Ollama models");
+        return throwModelsFetchError(response, "Failed to fetch Ollama models");
       },
       staleTime: 0,
       gcTime: 0,
@@ -183,21 +180,20 @@ export const useGetIBMModelsQuery = (
         projectId,
         apiKey,
       ] as const,
-      queryFn: async ({ queryKey }) => {
-        const [, , envMode, ep, proj, key] = queryKey;
+      queryFn: async (): Promise<ModelsResponse> => {
         const body: {
           endpoint?: string;
           api_key?: string;
           project_id?: string;
         } = {};
-        if (ep) {
-          body.endpoint = ep;
+        if (endpoint) {
+          body.endpoint = endpoint;
         }
-        if (proj) {
-          body.project_id = proj;
+        if (projectId) {
+          body.project_id = projectId;
         }
-        if (!envMode && key) {
-          body.api_key = key;
+        if (!useEnvKey && apiKey) {
+          body.api_key = apiKey;
         }
 
         const response = await fetch("/api/models/ibm", {
@@ -208,7 +204,7 @@ export const useGetIBMModelsQuery = (
         if (response.ok) {
           return (await response.json()) as ModelsResponse;
         }
-        await throwModelsFetchError(response, "Failed to fetch IBM models");
+        return throwModelsFetchError(response, "Failed to fetch IBM models");
       },
       staleTime: 0,
       gcTime: 0,
@@ -282,11 +278,6 @@ export const useGetCurrentProviderModelsQuery = (
     case "watsonx":
       return ibmModels;
     default:
-      return {
-        data: undefined,
-        isLoading: false,
-        error: null,
-        refetch: async () => ({ data: undefined }),
-      } as ReturnType<typeof useGetOpenAIModelsQuery>;
+      return openaiModels;
   }
 };
