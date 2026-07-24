@@ -126,7 +126,7 @@ export function IBMOnboarding({
     "watsonx",
     {
       endpoint,
-      apiKey: getFromEnv ? undefined : apiKey,
+      apiKey: getFromEnv || alreadyConfigured ? undefined : apiKey,
       clearApiKey: getFromEnv,
       projectId,
       languageModel,

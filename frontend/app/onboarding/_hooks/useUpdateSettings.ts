@@ -20,7 +20,8 @@ function resolveApiKey(
   if (clearApiKey) {
     return "";
   }
-  if (apiKey) {
+  // Explicit empty clears a typed key; omit (undefined) to reuse previous.
+  if (apiKey !== undefined) {
     return apiKey;
   }
   return previous || "";
@@ -47,8 +48,8 @@ export function useUpdateSettings(
         updatedSettings.llm_provider = provider;
       }
 
-      // Map provider-specific API keys. Preserve prior credentials when the
-      // key is absent/reused; clear only when explicitly requested (env mode).
+      // Map provider-specific API keys. undefined preserves prior credentials;
+      // "" or clearApiKey clears; a non-empty string replaces.
       if (provider === "openai") {
         updatedSettings.openai_api_key = resolveApiKey(
           config.apiKey,

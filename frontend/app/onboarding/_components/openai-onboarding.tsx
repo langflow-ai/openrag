@@ -73,7 +73,7 @@ export function OpenAIOnboarding({
   useUpdateSettings(
     "openai",
     {
-      apiKey: getFromEnv ? undefined : apiKey,
+      apiKey: getFromEnv || alreadyConfigured ? undefined : apiKey,
       clearApiKey: getFromEnv,
       languageModel,
       embeddingModel,
