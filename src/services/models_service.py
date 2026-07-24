@@ -285,9 +285,7 @@ class ModelsService:
                 return result
             else:
                 logger.error(f"Failed to fetch OpenAI models: {response.status_code}")
-                raise Exception(
-                    format_provider_error_message(_extract_error_details(response))
-                )
+                raise Exception(format_provider_error_message(_extract_error_details(response)))
 
         except Exception as e:
             logger.error(f"Error fetching OpenAI models: {str(e)}")
@@ -349,9 +347,7 @@ class ModelsService:
                 return result
             else:
                 logger.error(f"Failed to validate Anthropic API key: {response.status_code}")
-                raise Exception(
-                    format_provider_error_message(_extract_error_details(response))
-                )
+                raise Exception(format_provider_error_message(_extract_error_details(response)))
 
         except Exception as e:
             logger.error(f"Error fetching Anthropic models: {str(e)}")
@@ -504,9 +500,7 @@ class ModelsService:
 
                     if token_response.status_code != 200:
                         raise Exception(
-                            format_provider_error_message(
-                                _extract_error_details(token_response)
-                            )
+                            format_provider_error_message(_extract_error_details(token_response))
                         )
 
                     token_data = token_response.json()

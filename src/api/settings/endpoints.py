@@ -454,9 +454,7 @@ async def update_settings(
 
             except Exception as e:
                 logger.error(f"Provider validation failed: {str(e)}")
-                return JSONResponse(
-                    {"error": sanitize_provider_error_content(e)}, status_code=400
-                )
+                return JSONResponse({"error": sanitize_provider_error_content(e)}, status_code=400)
 
         # Update configuration
         # Only reached if validation passed or wasn't needed.
