@@ -3,7 +3,7 @@
 import { useIsFetching, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   type OnboardingVariables,
@@ -196,16 +196,17 @@ const OnboardingCard = ({
 
   // Delay calling onComplete so the "Done" step is briefly visible.
   const [pendingComplete, setPendingComplete] = useState(false);
+  const onCompleteEvent = useEffectEvent(onComplete);
   useEffect(() => {
     if (!pendingComplete) {
       return;
     }
     const timeoutId = setTimeout(() => {
-      onComplete();
+      onCompleteEvent();
       setPendingComplete(false);
     }, 1000);
     return () => clearTimeout(timeoutId);
-  }, [pendingComplete, onComplete]);
+  }, [pendingComplete]);
 
   // Query tasks to track completion
   const { data: tasks } = useGetTasksQuery({
