@@ -23,6 +23,7 @@ from utils.telemetry import Category, MessageId, TelemetryClient
 
 logger = get_logger(__name__)
 
+
 class FlowsService:
     def dismiss_flows_updates(self, flow_types: list[str] | None = None):
         """Dismiss flow update notifications ephemerally in backend memory."""
