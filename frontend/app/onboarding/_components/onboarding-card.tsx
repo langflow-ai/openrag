@@ -1,6 +1,6 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
+import { useIsFetching, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -51,8 +51,6 @@ interface OnboardingCardProps {
   onComplete: () => void;
   isCompleted?: boolean;
   isEmbedding?: boolean;
-  setIsLoadingModels?: (isLoading: boolean) => void;
-  setLoadingStatus?: (status: string[]) => void;
 }
 
 const STEP_LIST = [
@@ -80,7 +78,8 @@ const OnboardingCard = ({
     isEmbedding ? "openai" : "anthropic",
   );
 
-  const [isLoadingModels, setIsLoadingModels] = useState<boolean>(false);
+  // Read model-fetch loading from React Query instead of syncing it up from children.
+  const isLoadingModels = useIsFetching({ queryKey: ["models"] }) > 0;
 
   const queryClient = useQueryClient();
 
@@ -132,7 +131,6 @@ const OnboardingCard = ({
   }
 
   const handleSetModelProvider = (provider: string) => {
-    setIsLoadingModels(false);
     setModelProvider(provider);
     setSettings({
       [isEmbedding ? "embedding_provider" : "llm_provider"]: provider,
@@ -673,7 +671,6 @@ const OnboardingCard = ({
                   <TabsContent value="anthropic">
                     <AnthropicOnboarding
                       setSettings={setSettings}
-                      setIsLoadingModels={setIsLoadingModels}
                       isEmbedding={isEmbedding}
                       hasEnvApiKey={
                         currentSettings?.providers?.anthropic?.has_api_key ===
@@ -685,7 +682,6 @@ const OnboardingCard = ({
                 <TabsContent value="openai">
                   <OpenAIOnboarding
                     setSettings={setSettings}
-                    setIsLoadingModels={setIsLoadingModels}
                     isEmbedding={isEmbedding}
                     hasEnvApiKey={
                       currentSettings?.providers?.openai?.has_api_key === true
@@ -698,7 +694,6 @@ const OnboardingCard = ({
                 <TabsContent value="watsonx">
                   <IBMOnboarding
                     setSettings={setSettings}
-                    setIsLoadingModels={setIsLoadingModels}
                     isEmbedding={isEmbedding}
                     alreadyConfigured={
                       providerAlreadyConfigured && modelProvider === "watsonx"
@@ -718,7 +713,6 @@ const OnboardingCard = ({
                   <TabsContent value="ollama">
                     <OllamaOnboarding
                       setSettings={setSettings}
-                      setIsLoadingModels={setIsLoadingModels}
                       isEmbedding={isEmbedding}
                       alreadyConfigured={
                         providerAlreadyConfigured && modelProvider === "ollama"

@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import OpenAILogo from "@/components/icons/openai-logo";
 import { LabelInput } from "@/components/label-input";
 import { LabelWrapper } from "@/components/label-wrapper";
@@ -18,13 +18,11 @@ import { AdvancedOnboarding } from "./advanced";
 
 export function OpenAIOnboarding({
   setSettings,
-  setIsLoadingModels,
   isEmbedding = false,
   hasEnvApiKey = false,
   alreadyConfigured = false,
 }: {
   setSettings: Dispatch<SetStateAction<OnboardingVariables>>;
-  setIsLoadingModels?: (isLoading: boolean) => void;
   isEmbedding?: boolean;
   hasEnvApiKey?: boolean;
   alreadyConfigured?: boolean;
@@ -72,14 +70,11 @@ export function OpenAIOnboarding({
     setLanguageModel?.("");
   };
 
-  useEffect(() => {
-    setIsLoadingModels?.(isLoadingModels || isFetchingModels);
-  }, [isLoadingModels, isFetchingModels, setIsLoadingModels]);
-
   useUpdateSettings(
     "openai",
     {
-      apiKey: getFromEnv ? "" : apiKey,
+      apiKey: getFromEnv ? undefined : apiKey,
+      clearApiKey: getFromEnv,
       languageModel,
       embeddingModel,
     },

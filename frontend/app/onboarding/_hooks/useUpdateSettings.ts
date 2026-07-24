@@ -4,10 +4,26 @@ import type { OnboardingVariables } from "../../api/mutations/useOnboardingMutat
 
 interface ConfigValues {
   apiKey?: string;
+  /** When true, clear the provider key (e.g. environment-key mode). */
+  clearApiKey?: boolean;
   endpoint?: string;
   projectId?: string;
   languageModel?: string;
   embeddingModel?: string;
+}
+
+function resolveApiKey(
+  apiKey: string | undefined,
+  clearApiKey: boolean | undefined,
+  previous: string | undefined,
+): string {
+  if (clearApiKey) {
+    return "";
+  }
+  if (apiKey) {
+    return apiKey;
+  }
+  return previous || "";
 }
 
 export function useUpdateSettings(
@@ -31,14 +47,26 @@ export function useUpdateSettings(
         updatedSettings.llm_provider = provider;
       }
 
-      // Map provider-specific API keys (clear when empty so env-key mode
-      // does not keep a previously typed key in onboarding settings).
+      // Map provider-specific API keys. Preserve prior credentials when the
+      // key is absent/reused; clear only when explicitly requested (env mode).
       if (provider === "openai") {
-        updatedSettings.openai_api_key = config.apiKey || "";
+        updatedSettings.openai_api_key = resolveApiKey(
+          config.apiKey,
+          config.clearApiKey,
+          prev.openai_api_key,
+        );
       } else if (provider === "anthropic") {
-        updatedSettings.anthropic_api_key = config.apiKey || "";
+        updatedSettings.anthropic_api_key = resolveApiKey(
+          config.apiKey,
+          config.clearApiKey,
+          prev.anthropic_api_key,
+        );
       } else if (provider === "watsonx") {
-        updatedSettings.watsonx_api_key = config.apiKey || "";
+        updatedSettings.watsonx_api_key = resolveApiKey(
+          config.apiKey,
+          config.clearApiKey,
+          prev.watsonx_api_key,
+        );
       }
 
       // Map provider-specific endpoints
@@ -60,6 +88,7 @@ export function useUpdateSettings(
   }, [
     provider,
     config.apiKey,
+    config.clearApiKey,
     config.endpoint,
     config.projectId,
     config.languageModel,

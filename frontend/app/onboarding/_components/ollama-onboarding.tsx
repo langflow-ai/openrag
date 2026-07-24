@@ -12,13 +12,11 @@ import { ModelSelector } from "./model-selector";
 
 export function OllamaOnboarding({
   setSettings,
-  setIsLoadingModels,
   isEmbedding = false,
   alreadyConfigured = false,
   existingEndpoint,
 }: {
   setSettings: Dispatch<SetStateAction<OnboardingVariables>>;
-  setIsLoadingModels?: (isLoading: boolean) => void;
   isEmbedding?: boolean;
   alreadyConfigured?: boolean;
   existingEndpoint?: string;
@@ -51,18 +49,16 @@ export function OllamaOnboarding({
     embeddingModels,
   } = useModelSelection(modelsData, isEmbedding);
 
-  // Handle delayed display of connecting state
+  // Delay "connecting" message to avoid flicker on short fetches
   useEffect(() => {
     let timeoutId: NodeJS.Timeout;
 
     if (debouncedEndpoint && isLoadingModels) {
       timeoutId = setTimeout(() => {
-        setIsLoadingModels?.(true);
         setShowConnecting(true);
       }, 500);
     } else {
       setShowConnecting(false);
-      setIsLoadingModels?.(false);
     }
 
     return () => {
@@ -70,7 +66,7 @@ export function OllamaOnboarding({
         clearTimeout(timeoutId);
       }
     };
-  }, [debouncedEndpoint, isLoadingModels, setIsLoadingModels]);
+  }, [debouncedEndpoint, isLoadingModels]);
 
   // Update settings when values change
   useUpdateSettings(
