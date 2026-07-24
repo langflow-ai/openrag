@@ -64,3 +64,39 @@ async def test_get_openai_models_returns_sanitized_provider_error():
     assert response.status_code == 400
     payload = json.loads(response.body)
     assert payload["error"] == "Incorrect API key provided: sk-bad."
+
+
+@pytest.mark.asyncio
+async def test_get_openai_models_returns_502_on_transport_error():
+    import httpx
+
+    models_service = SimpleNamespace(
+        get_openai_models=AsyncMock(
+            side_effect=httpx.ConnectError("All connection attempts failed")
+        ),
+    )
+
+    response = await models_api.get_openai_models(
+        body=models_api.OpenAIBody(api_key="sk-test"),
+        models_service=models_service,
+        user=SimpleNamespace(),
+    )
+
+    assert isinstance(response, JSONResponse)
+    assert response.status_code == 502
+
+
+@pytest.mark.asyncio
+async def test_get_openai_models_returns_500_on_unexpected_error():
+    models_service = SimpleNamespace(
+        get_openai_models=AsyncMock(side_effect=RuntimeError("boom")),
+    )
+
+    response = await models_api.get_openai_models(
+        body=models_api.OpenAIBody(api_key="sk-test"),
+        models_service=models_service,
+        user=SimpleNamespace(),
+    )
+
+    assert isinstance(response, JSONResponse)
+    assert response.status_code == 500
