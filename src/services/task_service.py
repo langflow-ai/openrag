@@ -1176,9 +1176,7 @@ class TaskService:
                     "component": "langflow",
                     "failure_phase": "unknown",
                     "user_facing_message": cleaned,
-                    "actionable_by": (
-                        "USER_ACTIONABLE" if user_actionable else "RETRYABLE"
-                    ),
+                    "actionable_by": ("USER_ACTIONABLE" if user_actionable else "RETRYABLE"),
                 }
 
             return {
