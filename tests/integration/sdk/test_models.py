@@ -35,40 +35,37 @@ class TestModels:
         assert isinstance(models.embedding_models, list)
 
     @pytest.mark.asyncio
-    async def test_list_models_all_providers(self, client):
-        """List models for every supported provider.
+    @pytest.mark.parametrize("provider", ALL_PROVIDERS)
+    async def test_list_models_per_provider(self, client, provider):
+        """List models for each supported provider.
 
-        A provider that isn't configured server-side raises ValidationError
-        (HTTP 400) rather than returning an empty list, so unconfigured
-        providers are skipped narrowly rather than failing the test.
+        Only `openai` is required to be configured (it's the provider set up
+        by the test onboarding fixture, conftest.ensure_onboarding) — its
+        assertions must pass. Any other provider that isn't configured on
+        this instance raises ValidationError (HTTP 400); those are marked as
+        explicitly skipped (visible per-provider in the pytest report) rather
+        than silently passed over or required to succeed.
         """
-        checked_any = False
+        try:
+            models = await client.models.list(provider)
+        except ValidationError:
+            if provider == "openai":
+                raise
+            pytest.skip(f"provider '{provider}' is not configured on this instance")
 
-        for provider in ALL_PROVIDERS:
-            try:
-                models = await client.models.list(provider)
-            except ValidationError:
-                # Provider not configured on this instance (missing API key /
-                # endpoint / project id) — expected on a typical local dev
-                # setup for providers other than the onboarded one.
-                continue
+        assert isinstance(models.language_models, list)
+        assert isinstance(models.embedding_models, list)
 
-            checked_any = True
-            assert isinstance(models.language_models, list)
-            assert isinstance(models.embedding_models, list)
-
-            if models.language_models:
-                first = models.language_models[0]
-                assert isinstance(first.value, str)
-                defaults = [m for m in models.language_models if m.default is True]
-                assert len(defaults) <= 1, (
-                    f"Provider {provider} returned more than one default language model"
-                )
-                assert len(defaults) >= 1, (
-                    f"Provider {provider} has language models but none marked default"
-                )
-
-        assert checked_any, "No provider was configured — could not verify models.list() shape"
+        if models.language_models:
+            first = models.language_models[0]
+            assert isinstance(first.value, str)
+            defaults = [m for m in models.language_models if m.default is True]
+            assert len(defaults) <= 1, (
+                f"Provider {provider} returned more than one default language model"
+            )
+            assert len(defaults) >= 1, (
+                f"Provider {provider} has language models but none marked default"
+            )
 
     @pytest.mark.asyncio
     async def test_list_models_invalid_provider_raises_validation_error(self, client):
