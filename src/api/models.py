@@ -47,7 +47,13 @@ class IBMBody(BaseModel):
 
 
 def _models_error_response(exc: Exception) -> JSONResponse:
-    """Map model-route failures to client (400) vs upstream (502) vs server (500)."""
+    """Map model-route failures to client (400) vs upstream (502) vs server (500).
+
+    ``models_service`` raises bare ``Exception(user_message)`` for actionable
+    provider/config failures (invalid key, empty model list, bad project). Those
+    must reach onboarding as sanitized text. Unexpected internals (e.g.
+    ``RuntimeError``) stay behind the generic 500.
+    """
     if isinstance(exc, (httpx.TimeoutException, httpx.RequestError)):
         return JSONResponse(
             {"error": "Unable to reach the model provider. Please try again."},
@@ -55,10 +61,14 @@ def _models_error_response(exc: Exception) -> JSONResponse:
         )
 
     error = sanitize_provider_error_content(exc)
+    redacted = _redact_credentials(error)
     if is_provider_credential_error(exc) or is_provider_credential_error(error):
-        return JSONResponse({"error": _redact_credentials(error)}, status_code=400)
-    if isinstance(exc, (ValueError, TypeError)):
-        return JSONResponse({"error": _redact_credentials(error)}, status_code=400)
+        return JSONResponse({"error": redacted}, status_code=400)
+    if isinstance(exc, (ValueError, TypeError)) or type(exc) is Exception:
+        # Bare Exception is the models_service user-facing contract; keep JSON
+        # / traceback leaks behind the generic response.
+        if redacted and "{" not in redacted and "}" not in redacted:
+            return JSONResponse({"error": redacted}, status_code=400)
     return JSONResponse(
         {"error": "An unexpected error occurred while fetching models."},
         status_code=500,

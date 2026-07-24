@@ -288,23 +288,125 @@ async def probe_provider_credential_error() -> str | None:
     return None
 
 
+async def probe_chat_llm_error() -> str | None:
+    """Return a cleaned error if the configured chat LLM fails auth or inference.
+
+    Unlike :func:`probe_provider_credential_error`, this runs a completion check
+    against the selected ``llm_model`` so missing/deprecated models surface
+    instead of being misreported as API-key failures (or left as opaque
+    Langflow text).
+    """
+    from config.settings import get_openrag_config
+
+    config = get_openrag_config()
+    provider = config.agent.llm_provider
+    llm_model = (config.agent.llm_model or "").strip()
+    if not provider or not llm_model:
+        return None
+
+    provider_config = config.get_llm_provider_config()
+    if provider_config is None:
+        return None
+
+    api_key = getattr(provider_config, "api_key", None)
+    endpoint = getattr(provider_config, "endpoint", None)
+    if provider == "ollama":
+        if not endpoint:
+            return None
+    elif not api_key:
+        return None
+
+    try:
+        # Pass only llm_model so validate_provider_setup runs completion (not
+        # the embedding branch of the test_completion if/elif).
+        await validate_provider_setup(
+            provider=provider,
+            api_key=api_key,
+            llm_model=llm_model,
+            endpoint=endpoint,
+            project_id=getattr(provider_config, "project_id", None),
+            test_completion=True,
+        )
+    except Exception as probe_exc:
+        return sanitize_provider_error_content(probe_exc)
+    return None
+
+
+async def probe_embedding_error() -> str | None:
+    """Return a cleaned error if the configured embedding model fails auth or inference."""
+    from config.settings import get_openrag_config
+
+    config = get_openrag_config()
+    provider = config.knowledge.embedding_provider
+    embedding_model = (config.knowledge.embedding_model or "").strip()
+    if not provider or not embedding_model:
+        return None
+
+    provider_config = config.get_embedding_provider_config()
+    if provider_config is None:
+        return None
+
+    api_key = getattr(provider_config, "api_key", None)
+    endpoint = getattr(provider_config, "endpoint", None)
+    if provider == "ollama":
+        if not endpoint:
+            return None
+    elif not api_key:
+        return None
+
+    try:
+        await validate_provider_setup(
+            provider=provider,
+            api_key=api_key,
+            embedding_model=embedding_model,
+            endpoint=endpoint,
+            project_id=getattr(provider_config, "project_id", None),
+            test_completion=True,
+        )
+    except Exception as probe_exc:
+        return sanitize_provider_error_content(probe_exc)
+    return None
+
+
 async def resolve_ingest_error_message(exc: BaseException | str) -> str:
-    """Prefer a credential message when Langflow fails auth or only reports a disconnect."""
+    """Sanitize ingest failures; probe model/setup when Langflow is opaque or mislabels auth.
+
+    Langflow often reports disconnects or "API key is invalid" when the real issue is a
+    missing/deprecated model. Mirror chat/banner diagnosis: test the configured embedding
+    and chat LLM (``test_completion``) before falling back to lightweight credential probes.
+    """
     raw = (str(exc) if not isinstance(exc, str) else exc).strip() or "Ingestion failed"
-
     cleaned = sanitize_provider_error_content(raw)
-    if is_provider_credential_error(raw) or is_provider_credential_error(cleaned):
-        return cleaned
 
-    if is_langflow_transport_error(raw):
-        probe = await probe_provider_credential_error()
-        if probe:
+    should_probe = (
+        is_generic_upstream_error(cleaned)
+        or is_langflow_transport_error(raw)
+        or is_langflow_transport_error(cleaned)
+        or is_provider_credential_error(raw)
+        or is_provider_credential_error(cleaned)
+    )
+
+    if should_probe:
+        # Ingest primarily uses embeddings; also probe chat LLM so task UI matches the
+        # banner when the selected LLM model is missing/deprecated.
+        for probe_name, probe_fn in (
+            ("embedding", probe_embedding_error),
+            ("llm", probe_chat_llm_error),
+            ("credentials", probe_provider_credential_error),
+        ):
+            probe = await probe_fn()
+            if not probe:
+                continue
             logger.info(
-                "Ingest transport failure attributed to provider credentials",
-                transport_error=raw,
-                credential_error=probe,
+                "Ingest failure attributed via provider probe",
+                upstream_error=cleaned,
+                probe=probe_name,
+                resolved_error=probe,
             )
             return probe
+
+    if is_provider_credential_error(raw) or is_provider_credential_error(cleaned):
+        return cleaned
 
     # Prefer the sanitized form whenever JSON / boilerplate was stripped.
     if cleaned != raw and "{" not in cleaned:
@@ -313,16 +415,46 @@ async def resolve_ingest_error_message(exc: BaseException | str) -> str:
 
 
 def resolve_chat_stream_error_message(text: str | BaseException | None) -> str:
-    """Sanitize chat stream errors without probing providers.
-
-    Do not infer API-key failures from opaque upstream text — that can hide the
-    real failure. Callers should break Langflow session chaining after errors so
-    the next turn is a fresh session that returns the detailed upstream message.
-    """
+    """Sanitize chat stream errors synchronously (no provider probing)."""
     raw = (str(text) if not isinstance(text, str) else text) if text is not None else ""
     if not raw.strip():
         return "An error occurred while generating a response."
     return sanitize_provider_error_content(raw)
+
+
+async def resolve_chat_stream_error_message_async(
+    text: str | BaseException | None,
+) -> str:
+    """Sanitize chat stream errors, probing the active LLM for opaque upstream text.
+
+    Langflow often collapses auth/model failures to "An unknown error occurred."
+    Probe only when the sanitized message is still generic/transport-level so we
+    do not overwrite a more specific upstream failure.
+
+    Order matters: diagnose the selected chat LLM (credentials + model) before
+    scanning other configured keys. Otherwise a revoked secondary key can mask
+    the real chat failure (e.g. missing watsonx model).
+    """
+    cleaned = resolve_chat_stream_error_message(text)
+    if is_generic_upstream_error(cleaned) or is_langflow_transport_error(cleaned):
+        llm_probe = await probe_chat_llm_error()
+        if llm_probe:
+            logger.info(
+                "Chat stream opaque error attributed to configured LLM",
+                upstream_error=cleaned,
+                llm_error=llm_probe,
+            )
+            return llm_probe
+
+        cred_probe = await probe_provider_credential_error()
+        if cred_probe:
+            logger.info(
+                "Chat stream opaque error attributed to provider credentials",
+                upstream_error=cleaned,
+                credential_error=cred_probe,
+            )
+            return cred_probe
+    return cleaned
 
 
 def _parse_json_error_message(error_text: str) -> str:
