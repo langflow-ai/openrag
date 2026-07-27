@@ -9,6 +9,7 @@ import pytest
 from fastapi import HTTPException
 
 from api.settings import DoclingPresetBody, update_docling_preset
+from api.settings.models import AssistantMessage, OnboardingFunctionCall
 from session_manager import User
 
 
@@ -35,3 +36,62 @@ async def test_update_docling_preset_invalid_preset_returns_400():
     assert exc_info.value.status_code == 400
     assert "Invalid preset" in exc_info.value.detail
     assert "nonexistent_preset" in exc_info.value.detail
+
+
+def test_assistant_message_citation_serialization():
+    """Test AssistantMessage model citation parsing with text and metadata."""
+    payload = {
+        "role": "assistant",
+        "content": "Here is the response [1]",
+        "timestamp": "2026-07-27T00:00:00.000Z",
+        "functionCalls": [
+            {
+                "name": "search_docs",
+                "status": "completed",
+                "result": [
+                    {
+                        "chunk_id": "chunk-123",
+                        "filename": "doc.pdf",
+                        "page": 2,
+                        "score": 0.95,
+                        "text": "Extracted chunk text",
+                        "embedding_model": "text-embedding-3-small",
+                        "parser": "Docling",
+                        "chunk_size": 512,
+                        "chunk_overlap": 64,
+                        "source_url": "https://example.com/doc.pdf",
+                        "metadata": {"custom_key": "val"},
+                        "data": {
+                            "file_path": "/path/to/doc.pdf",
+                            "page": 2,
+                            "score": 0.95,
+                            "text": "Extracted chunk text",
+                            "embedding_model": "text-embedding-3-small",
+                            "parser": "Docling",
+                            "chunk_size": 512,
+                            "chunk_overlap": 64,
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+
+    msg = AssistantMessage(**payload)
+    assert msg.functionCalls is not None
+    assert len(msg.functionCalls) == 1
+    fc = msg.functionCalls[0]
+    assert isinstance(fc, OnboardingFunctionCall)
+    assert fc.result is not None
+    result = fc.result[0]
+    assert result.text == "Extracted chunk text"
+    assert result.embedding_model == "text-embedding-3-small"
+    assert result.parser == "Docling"
+    assert result.chunk_size == 512
+    assert result.chunk_overlap == 64
+    assert result.source_url == "https://example.com/doc.pdf"
+    assert result.metadata == {"custom_key": "val"}
+    assert result.data is not None
+    assert result.data.text == "Extracted chunk text"
+
+
