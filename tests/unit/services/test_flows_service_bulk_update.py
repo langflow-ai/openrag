@@ -164,5 +164,7 @@ def test_per_user_dismissal_isolation():
 
     assert "user_A" in service._dismissed_updates
     assert "retrieval" in service._dismissed_updates["user_A"]
-    assert "user_B" not in service._dismissed_updates or "retrieval" not in service._dismissed_updates.get("user_B", set())
-
+    assert (
+        "user_B" not in service._dismissed_updates
+        or "retrieval" not in service._dismissed_updates.get("user_B", set())
+    )

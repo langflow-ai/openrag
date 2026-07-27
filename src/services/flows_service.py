@@ -29,9 +29,7 @@ class FlowsService:
         self, flow_types: list[str] | None = None, user_id: str | None = None
     ):
         """Dismiss flow update notifications ephemerally in backend memory per user."""
-        if not hasattr(self, "_dismissed_updates") or not isinstance(
-            self._dismissed_updates, dict
-        ):
+        if not hasattr(self, "_dismissed_updates") or not isinstance(self._dismissed_updates, dict):
             self._dismissed_updates = {}
         target_user = user_id or "default"
         if target_user not in self._dismissed_updates:
@@ -1179,10 +1177,7 @@ class FlowsService:
                 configured_providers.append("ollama")
 
             # Ensure current provider is in the list for counting purposes if it's being configured
-            if (
-                provider in ["openai", "watsonx", "ollama"]
-                and provider not in configured_providers
-            ):
+            if provider in ["openai", "watsonx", "ollama"] and provider not in configured_providers:
                 configured_providers.append(provider)
 
             all_possible = ["openai", "watsonx", "ollama"]
@@ -1274,9 +1269,7 @@ class FlowsService:
             )
             if agent_node:
                 node_tasks.append(
-                    wrap_node_update(
-                        agent_node, provider, llm_model, f"agent model: {llm_model}"
-                    )
+                    wrap_node_update(agent_node, provider, llm_model, f"agent model: {llm_model}")
                 )
 
         # Execute all node updates simultaneously
@@ -1301,9 +1294,7 @@ class FlowsService:
         )
 
         if response.status_code != 200:
-            raise Exception(
-                f"Failed to update flow: HTTP {response.status_code} - {response.text}"
-            )
+            raise Exception(f"Failed to update flow: HTTP {response.status_code} - {response.text}")
 
         return {
             "flow": flow_name,
@@ -1573,8 +1564,8 @@ class FlowsService:
                         if hasattr(self, "_dismissed_updates") and isinstance(
                             self._dismissed_updates, dict
                         ):
-                            is_dismissed = (
-                                flow_type in self._dismissed_updates.get(target_user, set())
+                            is_dismissed = flow_type in self._dismissed_updates.get(
+                                target_user, set()
                             )
                         updates.append(
                             {
