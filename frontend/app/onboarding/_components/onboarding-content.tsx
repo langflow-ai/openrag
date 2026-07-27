@@ -364,7 +364,7 @@ export function OnboardingContent({
                 isStreaming={!!streamingMessage}
                 isCompleted={currentStep > 3}
                 showFeedback={false}
-                interactiveCitations={true}
+                showViewDocument={false}
                 showFunctionCalls={false}
                 unstyledMessageContent
               />
