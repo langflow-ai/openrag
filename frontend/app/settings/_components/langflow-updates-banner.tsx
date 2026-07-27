@@ -8,6 +8,7 @@ import { useGetFlowsUpdatesQuery } from "@/app/api/queries/useGetFlowsUpdatesQue
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { usePermissions } from "@/hooks/use-permissions";
+import { formatFlowName } from "@/lib/utils";
 
 export function LangflowUpdatesBanner() {
   const { can } = usePermissions();
@@ -36,7 +37,10 @@ export function LangflowUpdatesBanner() {
       const failed = results.filter((r) => !r.success);
       if (failed.length > 0) {
         const errorText = failed
-          .map((f) => `${f.flow_type}: ${f.error || "Update failed"}`)
+          .map(
+            (f) =>
+              `${formatFlowName(f.flow_type)}: ${f.error || "Update failed"}`,
+          )
           .join("; ");
         setErrorMessage(errorText);
         toast.error(`Flow update failed: ${errorText}`);
@@ -80,7 +84,7 @@ export function LangflowUpdatesBanner() {
             <ul className="list-disc pl-4 mt-2 text-sm text-amber-700 dark:text-amber-300">
               {updates.map((update) => (
                 <li key={update.flow_type}>
-                  {update.flow_type}
+                  {formatFlowName(update.flow_type)}
                   {update.is_custom && " (Custom)"}
                 </li>
               ))}

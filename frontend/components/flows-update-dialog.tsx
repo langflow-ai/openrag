@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { usePermissions } from "@/hooks/use-permissions";
+import { formatFlowName } from "@/lib/utils";
 
 export function FlowsUpdateDialog() {
   const { can } = usePermissions();
@@ -64,7 +65,10 @@ export function FlowsUpdateDialog() {
       const failed = results.filter((r) => !r.success);
       if (failed.length > 0) {
         const errorText = failed
-          .map((f) => `${f.flow_type}: ${f.error || "Update failed"}`)
+          .map(
+            (f) =>
+              `${formatFlowName(f.flow_type)}: ${f.error || "Update failed"}`,
+          )
           .join("; ");
         setErrorMessage(errorText);
         toast.error(`Flow update failed: ${errorText}`);
@@ -106,7 +110,9 @@ export function FlowsUpdateDialog() {
           <ul className="list-disc pl-4 space-y-1">
             {undismissedUpdates.map((update) => (
               <li key={update.flow_type}>
-                <span className="font-medium">{update.flow_type}</span>
+                <span className="font-medium">
+                  {formatFlowName(update.flow_type)}
+                </span>
                 {update.is_custom && (
                   <span className="ml-2 text-xs bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 px-2 py-0.5 rounded-full">
                     Custom Modified

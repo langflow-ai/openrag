@@ -1,7 +1,7 @@
 import asyncio
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from cachetools import LRUCache
@@ -1516,14 +1516,16 @@ class FlowsService:
 
                         try:
                             dt = datetime.fromisoformat(langflow_updated_at_str)
+                            if dt.tzinfo is None:
+                                dt = dt.replace(tzinfo=timezone.utc)
                             langflow_mtime = dt.timestamp()
                         except ValueError:
                             pass
 
                     # 3. Compare timestamps
-                    # If the date modified on the local files is greater than what's in Langflow,
-                    # it needs an update
-                    if local_mtime > langflow_mtime:
+                    # If the date modified on the local files is greater than what's in Langflow
+                    # (with a 1-second margin for sub-second precision drift), it needs an update
+                    if local_mtime > langflow_mtime + 1.0:
                         is_locked = flow_data.get("locked", False)
                         is_dismissed = (
                             hasattr(self, "_dismissed_updates")
