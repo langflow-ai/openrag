@@ -129,8 +129,6 @@ class FlowsService:
 
         return resolved_url
 
-
-
     async def _get_flow_lock(self, flow_id: str) -> asyncio.Lock:
         """Get or create an asyncio.Lock for a specific flow ID"""
         async with self._lock_creation_lock:
