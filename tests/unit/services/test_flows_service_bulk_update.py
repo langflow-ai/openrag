@@ -130,3 +130,39 @@ async def test_bulk_update_flows_saves_local_file_backup_for_default_flows():
     assert results[0]["success"] is True
     assert backup_mock.call_count == 1
     assert reset_mock.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_flows_aborts_when_preflight_get_fails():
+    """Verify issue (2a): pre-flight GET failure aborts update without attempting reset."""
+    service = FlowsService()
+
+    mock_get_response = MagicMock()
+    mock_get_response.status_code = 500
+
+    reset_mock = AsyncMock(return_value={"success": True})
+
+    with (
+        patch("services.flows_service.clients.langflow_request", return_value=mock_get_response),
+        patch.object(service, "reset_langflow_flow", reset_mock),
+    ):
+        results = await service.bulk_update_flows(["retrieval"], backup_custom=True)
+
+    assert len(results) == 1
+    res = results[0]
+    assert res["flow_type"] == "retrieval"
+    assert res["success"] is False
+    assert "Pre-flight check failed" in res["error"]
+    assert reset_mock.call_count == 0
+
+
+def test_per_user_dismissal_isolation():
+    """Verify issue (2c): dismissal for user A does not dismiss for user B."""
+    service = FlowsService()
+
+    service.dismiss_flows_updates(["retrieval"], user_id="user_A")
+
+    assert "user_A" in service._dismissed_updates
+    assert "retrieval" in service._dismissed_updates["user_A"]
+    assert "user_B" not in service._dismissed_updates or "retrieval" not in service._dismissed_updates.get("user_B", set())
+

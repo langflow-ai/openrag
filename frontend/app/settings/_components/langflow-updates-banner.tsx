@@ -12,12 +12,15 @@ import { formatFlowName } from "@/lib/utils";
 
 export function LangflowUpdatesBanner() {
   const { can } = usePermissions();
-  const { data: updates, isLoading } = useGetFlowsUpdatesQuery();
+  const canEdit = can("flows:edit");
+  const { data: updates, isLoading } = useGetFlowsUpdatesQuery({
+    enabled: canEdit,
+  });
   const updateMutation = useUpdateFlowsMutation();
   const [isUpdating, setIsUpdating] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  if (!can("flows:edit") || isLoading || !updates || updates.length === 0) {
+  if (!canEdit || isLoading || !updates || updates.length === 0) {
     return null;
   }
 

@@ -59,7 +59,8 @@ async def get_flows_updates_endpoint(
 ):
     """Get available updates for core flows"""
     try:
-        updates = await flows_service.get_flows_updates_available()
+        user_id = getattr(user, "db_user_id", None) or getattr(user, "user_id", None)
+        updates = await flows_service.get_flows_updates_available(user_id=user_id)
         return JSONResponse({"success": True, "updates": updates}, status_code=200)
     except Exception as e:
         logger.error("Error getting flow updates", error=str(e))
@@ -93,7 +94,8 @@ async def dismiss_flows_update_endpoint(
     """Dismiss available flow update notifications ephemerally in backend memory"""
     try:
         flow_types = request.flow_types if request else None
-        flows_service.dismiss_flows_updates(flow_types)
+        user_id = getattr(user, "db_user_id", None) or getattr(user, "user_id", None)
+        flows_service.dismiss_flows_updates(flow_types, user_id=user_id)
         return JSONResponse({"success": True}, status_code=200)
     except Exception as e:
         logger.error("Error dismissing flow updates", error=str(e))

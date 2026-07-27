@@ -7,7 +7,7 @@ export type FlowUpdate = {
   dismissed: boolean;
 };
 
-export function useGetFlowsUpdatesQuery() {
+export function useGetFlowsUpdatesQuery(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ["flows", "updates-available"],
     queryFn: async () => {
@@ -18,5 +18,6 @@ export function useGetFlowsUpdatesQuery() {
       const data = await response.json();
       return data.updates as FlowUpdate[];
     },
+    ...options,
   });
 }

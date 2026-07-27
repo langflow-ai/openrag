@@ -32,8 +32,8 @@ export function useUpdateFlowsMutation() {
       const data = await response.json();
       return data.results as FlowUpdateResult[];
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["flows"] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["flows"] });
     },
   });
 }

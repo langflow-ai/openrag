@@ -22,7 +22,10 @@ import { formatFlowName } from "@/lib/utils";
 
 export function FlowsUpdateDialog() {
   const { can } = usePermissions();
-  const { data: updates, isLoading } = useGetFlowsUpdatesQuery();
+  const canEdit = can("flows:edit");
+  const { data: updates, isLoading } = useGetFlowsUpdatesQuery({
+    enabled: canEdit,
+  });
   const updateMutation = useUpdateFlowsMutation();
   const dismissMutation = useDismissFlowsUpdateMutation();
   const [isOpen, setIsOpen] = useState(false);
@@ -30,14 +33,15 @@ export function FlowsUpdateDialog() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const undismissedUpdates = updates?.filter((u) => !u.dismissed) ?? [];
+  const hasUndismissed = undismissedUpdates.length > 0;
 
   useEffect(() => {
-    if (!isLoading && undismissedUpdates.length > 0) {
+    if (!isLoading && hasUndismissed) {
       setIsOpen(true);
-    } else {
+    } else if (!isLoading) {
       setIsOpen(false);
     }
-  }, [updates, isLoading]);
+  }, [isLoading, hasUndismissed]);
 
   const handleDismiss = async () => {
     setIsOpen(false);
