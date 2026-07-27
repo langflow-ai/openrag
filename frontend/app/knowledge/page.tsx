@@ -168,6 +168,10 @@ function SearchPage() {
     null,
   );
 
+  //t1-3
+  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPageSize, setCurrentPageSize] = useState(25);
+
   const handleOpenSyncDialog = useCallback(async () => {
     setSyncPreview(null);
     setSyncDialogOpen(true);
@@ -323,7 +327,8 @@ function SearchPage() {
     isError: isListFilesError,
   } = useListFiles(
     {
-      pageSize: 10000,
+      page: currentPage,
+      pageSize: currentPageSize,
       search: isWildcardQuery ? undefined : queryOverride,
       connectorType: listFilesFilterParam(
         parsedFilterData?.filters?.connector_types,
@@ -470,7 +475,9 @@ function SearchPage() {
     Boolean(selectedFilter),
   );
 
-  const gridRows = fileResults;
+  const serverTotal = listFilesData?.total ?? 0;
+  const gridRows: File[] = fileResults;
+  const totalPages = Math.max(1, Math.ceil(serverTotal / currentPageSize));
   const gridRef = useRef<AgGridReact>(null);
   const gridReadyRef = useRef(false);
 
@@ -873,14 +880,23 @@ function SearchPage() {
     }
   };
 
-  // enables pagination in the grid
-  const pagination = true;
-
-  // sets 25 rows per page (default is 100)
-  const paginationPageSize = 25;
-
-  // allows the user to select the page size from a predefined list of page sizes
-  const paginationPageSizeSelector = [10, 25, 50, 100];
+  const pageBtnStyle = (disabled: boolean): React.CSSProperties => ({
+    width: 40,
+    height: 40,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    lineHeight: 1,
+    padding: 0,
+    background: "none",
+    border: "none",
+    borderRadius: 4,
+    cursor: disabled ? "default" : "pointer",
+    opacity: disabled ? 0.4 : 1,
+    fontSize: 18,
+    color: "inherit",
+    userSelect: "none",
+  });
 
   return (
     <>
@@ -927,7 +943,7 @@ function SearchPage() {
           </div>
         ) : (
           /* Search Input Area */
-          <div className="flex-1 flex items-center flex-shrink-0 flex-wrap-reverse gap-3 mb-6">
+          <div className="flex items-center flex-shrink-0 flex-wrap-reverse gap-3 mb-6">
             <KnowledgeSearchInput />
 
             <Button
@@ -1036,73 +1052,186 @@ function SearchPage() {
           </div>
         )}
         {isCloudBrand ? (
-          <AgGridReact
-            className="w-full overflow-auto border"
-            columnDefs={columnDefs as ColDef<File>[]}
-            defaultColDef={defaultColDef}
-            loading={isLoading || deleteDocumentMutation.isPending}
-            ref={gridRef}
-            theme={themeQuartz.withParams({ browserColorScheme: "inherit" })}
-            rowData={gridRows}
-            rowSelection="multiple"
-            getRowId={(params: GetRowIdParams<File>) =>
-              getFileIdentity(params.data)
-            }
-            isRowSelectable={(params) => isDeletableKnowledgeRow(params.data)}
-            domLayout="normal"
-            onGridReady={handleGridReady}
-            onGridPreDestroyed={handleGridPreDestroyed}
-            onSelectionChanged={onSelectionChanged}
-            pagination={pagination}
-            paginationPageSize={paginationPageSize}
-            paginationPageSizeSelector={paginationPageSizeSelector}
-            headerHeight={64}
-            rowHeight={64}
-            noRowsOverlayComponent={() => (
-              <div className="text-center pb-[45px]">
-                <div className="text-lg text-primary font-semibold">
-                  No knowledge
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <AgGridReact
+              className="w-full h-full border"
+              columnDefs={columnDefs as ColDef<File>[]}
+              defaultColDef={defaultColDef}
+              loading={isLoading || deleteDocumentMutation.isPending}
+              ref={gridRef}
+              theme={themeQuartz.withParams({ browserColorScheme: "inherit" })}
+              rowData={gridRows}
+              rowSelection="multiple"
+              getRowId={(params: GetRowIdParams<File>) =>
+                getFileIdentity(params.data)
+              }
+              isRowSelectable={(params) => isDeletableKnowledgeRow(params.data)}
+              domLayout="normal"
+              onGridReady={handleGridReady}
+              onGridPreDestroyed={handleGridPreDestroyed}
+              onSelectionChanged={onSelectionChanged}
+              headerHeight={64}
+              rowHeight={64}
+              noRowsOverlayComponent={() => (
+                <div className="text-center pb-[45px]">
+                  <div className="text-lg text-primary font-semibold">
+                    No knowledge
+                  </div>
+                  <div className="text-sm mt-1 text-muted-foreground">
+                    Add files from local or your preferred cloud.
+                  </div>
                 </div>
-                <div className="text-sm mt-1 text-muted-foreground">
-                  Add files from local or your preferred cloud.
-                </div>
-              </div>
-            )}
-          />
+              )}
+            />
+          </div>
         ) : (
-          <AgGridReact
-            className="w-full overflow-auto"
-            columnDefs={columnDefs as ColDef<File>[]}
-            defaultColDef={defaultColDef}
-            loading={isLoading || deleteDocumentMutation.isPending}
-            ref={gridRef}
-            theme={themeQuartz.withParams({ browserColorScheme: "inherit" })}
-            rowData={gridRows}
-            rowSelection="multiple"
-            rowMultiSelectWithClick={false}
-            suppressRowClickSelection={true}
-            getRowId={(params: GetRowIdParams<File>) =>
-              getFileIdentity(params.data)
-            }
-            isRowSelectable={(params) => isDeletableKnowledgeRow(params.data)}
-            domLayout="normal"
-            onGridReady={handleGridReady}
-            onGridPreDestroyed={handleGridPreDestroyed}
-            onSelectionChanged={onSelectionChanged}
-            pagination={pagination}
-            paginationPageSize={paginationPageSize}
-            paginationPageSizeSelector={paginationPageSizeSelector}
-            noRowsOverlayComponent={() => (
-              <div className="text-center pb-[45px]">
-                <div className="text-lg text-primary font-semibold">
-                  No knowledge
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <AgGridReact
+              className="w-full h-full"
+              columnDefs={columnDefs as ColDef<File>[]}
+              defaultColDef={defaultColDef}
+              loading={isLoading || deleteDocumentMutation.isPending}
+              ref={gridRef}
+              theme={themeQuartz.withParams({ browserColorScheme: "inherit" })}
+              rowData={gridRows}
+              rowSelection="multiple"
+              rowMultiSelectWithClick={false}
+              suppressRowClickSelection={true}
+              getRowId={(params: GetRowIdParams<File>) =>
+                getFileIdentity(params.data)
+              }
+              isRowSelectable={(params) => isDeletableKnowledgeRow(params.data)}
+              domLayout="normal"
+              onGridReady={handleGridReady}
+              onGridPreDestroyed={handleGridPreDestroyed}
+              onSelectionChanged={onSelectionChanged}
+              noRowsOverlayComponent={() => (
+                <div className="text-center pb-[45px]">
+                  <div className="text-lg text-primary font-semibold">
+                    No knowledge
+                  </div>
+                  <div className="text-sm mt-1 text-muted-foreground">
+                    Add files from local or your preferred cloud.
+                  </div>
                 </div>
-                <div className="text-sm mt-1 text-muted-foreground">
-                  Add files from local or your preferred cloud.
-                </div>
-              </div>
-            )}
-          />
+              )}
+            />
+          </div>
+        )}
+        {isWildcardQuery && serverTotal > 0 && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "flex-end",
+              gap: 16,
+              height: "var(--ag-pagination-panel-height, 48px)",
+              paddingInline: "calc(var(--ag-grid-size, 4px) * 3)",
+              borderTop: "1px solid var(--ag-border-color, hsl(var(--border)))",
+              backgroundColor:
+                "var(--ag-background-color, hsl(var(--background)))",
+              color: "var(--ag-foreground-color, hsl(var(--muted-foreground)))",
+              fontSize: "var(--ag-font-size, 14px)",
+              fontFamily: "var(--ag-font-family, inherit)",
+            }}
+          >
+            {/* page size */}
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                whiteSpace: "nowrap",
+              }}
+            >
+              Page Size:
+              <select
+                value={currentPageSize}
+                onChange={(e) => {
+                  setCurrentPageSize(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                style={{
+                  background:
+                    "var(--ag-background-color, hsl(var(--background)))",
+                  color:
+                    "var(--ag-foreground-color, hsl(var(--muted-foreground)))",
+                  border:
+                    "1px solid var(--ag-border-color, hsl(var(--border)))",
+                  borderRadius: "var(--ag-border-radius, 0px)",
+                  fontSize: "var(--ag-font-size, 14px)",
+                  fontFamily: "var(--ag-font-family, inherit)",
+                  padding: "2px 4px",
+                  cursor: "pointer",
+                }}
+              >
+                {[10, 25, 50, 100].map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {/* row summary */}
+            <span style={{ whiteSpace: "nowrap" }}>
+              {`${(currentPage - 1) * currentPageSize + 1} to ${Math.min(
+                currentPage * currentPageSize,
+                serverTotal,
+              )} of ${serverTotal}`}
+            </span>
+
+            {/* nav buttons */}
+            <div style={{ display: "flex", alignItems: "center" }}>
+              <button
+                type="button"
+                aria-label="First page"
+                aria-disabled={currentPage <= 1}
+                style={pageBtnStyle(currentPage <= 1)}
+                onClick={() => {
+                  if (currentPage > 1) setCurrentPage(1);
+                }}
+              >
+                <span style={{ pointerEvents: "none" }}>«</span>
+              </button>
+              <button
+                type="button"
+                aria-label="Previous page"
+                aria-disabled={currentPage <= 1}
+                style={pageBtnStyle(currentPage <= 1)}
+                onClick={() => {
+                  if (currentPage > 1) setCurrentPage((p) => p - 1);
+                }}
+              >
+                <span style={{ pointerEvents: "none" }}>‹</span>
+              </button>
+              <span style={{ padding: "0 8px", whiteSpace: "nowrap" }}>
+                Page {currentPage} of {totalPages}
+              </span>
+              <button
+                type="button"
+                aria-label="Next page"
+                aria-disabled={currentPage >= totalPages}
+                style={pageBtnStyle(currentPage >= totalPages)}
+                onClick={() => {
+                  if (currentPage < totalPages) setCurrentPage((p) => p + 1);
+                }}
+              >
+                <span style={{ pointerEvents: "none" }}>›</span>
+              </button>
+              <button
+                type="button"
+                aria-label="Last page"
+                aria-disabled={currentPage >= totalPages}
+                style={pageBtnStyle(currentPage >= totalPages)}
+                onClick={() => {
+                  if (currentPage < totalPages) setCurrentPage(totalPages);
+                }}
+              >
+                <span style={{ pointerEvents: "none" }}>»</span>
+              </button>
+            </div>
+          </div>
         )}
       </div>
 
