@@ -1,6 +1,39 @@
-"""Image configuration for OpenRAG container images."""
+"""Central source of truth for all OpenRAG container image references.
+
+Purpose
+-------
+This module defines every container image the OpenRAG stack uses.  It is the
+single place to change registry, organisation, or image names — all other code
+imports from here.
+
+Changing image coordinates
+--------------------------
+Three environment variables control where images are pulled from:
+
+* ``IMAGE_REGISTRY`` — container registry host (default: ``"docker.io"``).
+* ``IMAGE_ORG``      — namespace / organisation within the registry
+  (default: ``"langflowai"``).
+* ``OPENRAG_VERSION`` / ``OPENRAG_IMAGE_TAG`` — set in the project ``.env``
+  file (read by Docker Compose) to pin a specific version tag.  Do **not**
+  hard-code versions here.
+
+Allow-list usage
+----------------
+:func:`all_openrag_repos` returns every repository path that OpenRAG owns.
+Both ``container_manager.py`` (``ContainerManager.OPENRAG_IMAGE_REPOS``) and
+``startup_checks.py`` (module-level ``OPENRAG_IMAGE_REPOS``) import this
+function to build their image allow-lists for cleanup and validation.  **If you
+add, rename, or remove an image here, update both callers so the allow-lists
+stay in sync.**
+
+Multi-arch manifests
+--------------------
+All images are assumed to be multi-arch fat manifests.  No per-architecture
+tag suffix is needed or supported.
+"""
 
 import os
+import subprocess
 
 # ---------------------------------------------------------------------------
 # Registry & organisation
