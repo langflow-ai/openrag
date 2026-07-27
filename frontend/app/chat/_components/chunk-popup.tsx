@@ -14,6 +14,7 @@ interface ChunkPopupProps {
   score: number | string;
   sourceText: string;
   item: ToolCallResult;
+  showViewDocument?: boolean;
 }
 
 const getMetadataValue = (
@@ -103,11 +104,12 @@ export function ChunkPopup({
   score,
   sourceText,
   item,
+  showViewDocument = true,
 }: ChunkPopupProps) {
   const { data: settings } = useGetSettingsQuery();
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
-  const hasUrl = !!item.source_url;
+  const hasUrl = showViewDocument && !!item.source_url;
   const parser = formatParser(item, filename);
   const scoreLabel = formatScore(item, score);
   const pageLabel = formatPage(item);

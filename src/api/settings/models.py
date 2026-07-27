@@ -67,6 +67,12 @@ class CitationDisplayData(BaseModel):
     file_path: str | None = None
     page: int | str | None = None
     score: float | str | None = None
+    text: str | None = None
+    embedding_model: str | None = None
+    parser: str | None = None
+    chunk_size: int | float | str | None = None
+    chunk_overlap: int | float | str | None = None
+    metadata: dict[str, Any] | None = None
 
 
 class CitationDisplayResult(BaseModel):
@@ -76,6 +82,13 @@ class CitationDisplayResult(BaseModel):
     filename: str | None = None
     page: int | str | None = None
     score: float | str | None = None
+    text: str | None = None
+    embedding_model: str | None = None
+    parser: str | None = None
+    chunk_size: int | float | str | None = None
+    chunk_overlap: int | float | str | None = None
+    source_url: str | None = None
+    metadata: dict[str, Any] | None = None
 
 
 class CitationDisplayResultGroup(BaseModel):
