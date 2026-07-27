@@ -146,6 +146,10 @@ function SearchPage() {
   } = useKnowledgeFilter();
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
 
+  // T1-4: sort state fed to server
+  const [sortBy, setSortBy] = useState("filename");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+
   // Keep the filter context aware of checked rows so "Create New Filter"
   // can pre-populate its sources from the current selection.
   useEffect(() => {
@@ -329,6 +333,8 @@ function SearchPage() {
     {
       page: currentPage,
       pageSize: currentPageSize,
+      sortBy,
+      sortOrder,
       search: isWildcardQuery ? undefined : queryOverride,
       connectorType: listFilesFilterParam(
         parsedFilterData?.filters?.connector_types,
@@ -798,6 +804,31 @@ function SearchPage() {
     );
   }, [isDeletableKnowledgeRow, getGridApi]);
 
+  // T1-4: map AG Grid colId to backend sort_by field, push to server, reset to page 1
+  const COL_TO_SORT_FIELD: Record<string, string> = {
+    filename: "filename",
+    size: "file_size",
+    mimetype: "mimetype",
+    owner: "owner",
+    chunkCount: "chunk_count",
+    embedding_model: "embedding_model",
+    embedding_dimensions: "embedding_dimensions",
+  };
+
+  const onSortChanged = useCallback(() => {
+    const api = getGridApi();
+    if (!api) return;
+    const sorted = api.getColumnState().find((col) => col.sort);
+    if (sorted && COL_TO_SORT_FIELD[sorted.colId]) {
+      setSortBy(COL_TO_SORT_FIELD[sorted.colId]);
+      setSortOrder(sorted.sort as "asc" | "desc");
+    } else {
+      setSortBy("filename");
+      setSortOrder("asc");
+    }
+    setCurrentPage(1);
+  }, [getGridApi]);
+
   const handleBulkDelete = async () => {
     const rowsToDelete = selectedRows.filter(isDeletableKnowledgeRow);
     if (rowsToDelete.length === 0) return;
@@ -1051,7 +1082,7 @@ function SearchPage() {
             })}
           </div>
         )}
-        {isCloudBrand ? (
+                {isCloudBrand ? (
           <div className="flex-1 min-h-0 overflow-hidden">
             <AgGridReact
               className="w-full h-full border"
@@ -1070,6 +1101,7 @@ function SearchPage() {
               onGridReady={handleGridReady}
               onGridPreDestroyed={handleGridPreDestroyed}
               onSelectionChanged={onSelectionChanged}
+              onSortChanged={onSortChanged}
               headerHeight={64}
               rowHeight={64}
               noRowsOverlayComponent={() => (
@@ -1105,6 +1137,7 @@ function SearchPage() {
               onGridReady={handleGridReady}
               onGridPreDestroyed={handleGridPreDestroyed}
               onSelectionChanged={onSelectionChanged}
+              onSortChanged={onSortChanged}
               noRowsOverlayComponent={() => (
                 <div className="text-center pb-[45px]">
                   <div className="text-lg text-primary font-semibold">
@@ -1118,6 +1151,7 @@ function SearchPage() {
             />
           </div>
         )}
+
         {isWildcardQuery && serverTotal > 0 && (
           <div
             style={{
