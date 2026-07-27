@@ -165,6 +165,15 @@ export function looksLikeProviderErrorContent(text: string): boolean {
   return false;
 }
 
+/** Rewrite provider-specific messages into clearer user-facing copy. */
+function humanizeProviderErrorMessage(message: string): string {
+  // IBM IAM returns "could not be found" for invalid/unknown keys.
+  if (message.toLowerCase().includes("api key could not be found")) {
+    return "Provided API key is Invalid.";
+  }
+  return message;
+}
+
 /**
  * Strip embedded provider JSON payloads so chat never shows raw error objects.
  */
@@ -177,7 +186,7 @@ export function formatProviderErrorMessage(text: string): string {
   const direct = tryParseJsonMessage(trimmed);
   if (direct) {
     // Pure JSON payloads: prefer the extracted message only.
-    return stripErrorLabelPrefixes(direct);
+    return humanizeProviderErrorMessage(stripErrorLabelPrefixes(direct));
   }
 
   const jsonBlob = extractBalancedJsonObject(trimmed);
@@ -185,7 +194,7 @@ export function formatProviderErrorMessage(text: string): string {
     const nested = tryParseJsonMessage(jsonBlob);
     if (nested) {
       // Embedded provider JSON already has the real message — drop wrappers.
-      return stripErrorLabelPrefixes(nested);
+      return humanizeProviderErrorMessage(stripErrorLabelPrefixes(nested));
     }
     const prefix = stripErrorLabelPrefixes(
       trimmed
@@ -194,7 +203,7 @@ export function formatProviderErrorMessage(text: string): string {
         .trim(),
     );
     if (prefix) {
-      return prefix;
+      return humanizeProviderErrorMessage(prefix);
     }
   }
 
@@ -208,11 +217,11 @@ export function formatProviderErrorMessage(text: string): string {
         .trim(),
     );
     if (prefix) {
-      return prefix;
+      return humanizeProviderErrorMessage(prefix);
     }
   }
 
-  return trimmed;
+  return humanizeProviderErrorMessage(trimmed);
 }
 
 /**

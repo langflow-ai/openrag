@@ -88,14 +88,19 @@ export function IBMOnboarding({
     error: modelsError,
   } = useGetIBMModelsQuery(
     {
-      endpoint: debouncedEndpoint || undefined,
+      endpoint: getFromEnv
+        ? existingEndpoint || debouncedEndpoint || undefined
+        : debouncedEndpoint || undefined,
       apiKey: getFromEnv ? undefined : debouncedApiKey || undefined,
-      projectId: debouncedProjectId || undefined,
+      projectId: getFromEnv
+        ? existingProjectId || debouncedProjectId || undefined
+        : debouncedProjectId || undefined,
       useEnvKey: getFromEnv,
     },
     {
       enabled: getFromEnv
-        ? !!debouncedEndpoint && !!debouncedProjectId
+        ? !!(existingEndpoint || debouncedEndpoint) &&
+          !!(existingProjectId || debouncedProjectId)
         : (!!debouncedEndpoint && !!debouncedApiKey && !!debouncedProjectId) ||
           alreadyConfigured,
     },
@@ -117,6 +122,8 @@ export function IBMOnboarding({
     setGetFromEnv(fromEnv);
     if (fromEnv) {
       setApiKey("");
+      setEndpoint(existingEndpoint || "https://us-south.ml.cloud.ibm.com");
+      setProjectId(existingProjectId || "");
     }
     setEmbeddingModel?.("");
     setLanguageModel?.("");
@@ -125,10 +132,12 @@ export function IBMOnboarding({
   useUpdateSettings(
     "watsonx",
     {
-      endpoint,
+      endpoint: getFromEnv
+        ? existingEndpoint || "https://us-south.ml.cloud.ibm.com"
+        : endpoint,
       apiKey: getFromEnv || alreadyConfigured ? undefined : apiKey,
       clearApiKey: getFromEnv,
-      projectId,
+      projectId: getFromEnv ? existingProjectId || "" : projectId,
       languageModel,
       embeddingModel,
     },
@@ -150,7 +159,10 @@ export function IBMOnboarding({
               options={alreadyConfigured ? [] : options}
               value={endpoint}
               custom
-              onValueChange={alreadyConfigured ? () => {} : setEndpoint}
+              onValueChange={
+                alreadyConfigured || getFromEnv ? () => {} : setEndpoint
+              }
+              disabled={alreadyConfigured || getFromEnv}
               searchPlaceholder="Search endpoint..."
               noOptionsPlaceholder={
                 alreadyConfigured
@@ -162,6 +174,11 @@ export function IBMOnboarding({
             {alreadyConfigured && (
               <p className="text-mmd text-muted-foreground">
                 Reusing endpoint from model provider selection.
+              </p>
+            )}
+            {getFromEnv && !alreadyConfigured && (
+              <p className="text-mmd text-muted-foreground">
+                Reusing endpoint from environment config.
               </p>
             )}
           </div>
@@ -178,11 +195,16 @@ export function IBMOnboarding({
             }
             value={projectId}
             onChange={(e) => setProjectId(e.target.value)}
-            disabled={alreadyConfigured}
+            disabled={alreadyConfigured || getFromEnv}
           />
           {alreadyConfigured && (
             <p className="text-mmd text-muted-foreground">
               Reusing project ID from model provider selection.
+            </p>
+          )}
+          {getFromEnv && !alreadyConfigured && (
+            <p className="text-mmd text-muted-foreground">
+              Reusing project ID from environment config.
             </p>
           )}
         </div>

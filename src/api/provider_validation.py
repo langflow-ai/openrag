@@ -87,6 +87,15 @@ def _extract_balanced_json_object(text: str) -> str | None:
     return None
 
 
+def _humanize_provider_error_message(message: str) -> str:
+    """Rewrite provider-specific messages into clearer user-facing copy."""
+    lowered = message.lower()
+    # IBM IAM returns "could not be found" for invalid/unknown keys.
+    if "api key could not be found" in lowered:
+        return "Provided API key is Invalid."
+    return message
+
+
 def format_provider_error_message(exc: BaseException | str) -> str:
     """Return a concise, user-facing provider error string from an exception or text."""
     text = _strip_error_label_prefixes((str(exc) if not isinstance(exc, str) else exc).strip())
@@ -96,16 +105,16 @@ def format_provider_error_message(exc: BaseException | str) -> str:
     parsed = _parse_json_error_message(text)
     if parsed != text:
         # Pure JSON (or JSON-shaped) payloads: prefer the extracted message only.
-        return _strip_error_label_prefixes(parsed)
+        return _humanize_provider_error_message(_strip_error_label_prefixes(parsed))
 
     json_blob = _extract_balanced_json_object(text)
     if json_blob:
         nested = _parse_json_error_message(json_blob)
         if nested != json_blob:
             # Embedded provider JSON already has the real message — drop wrappers.
-            return _strip_error_label_prefixes(nested)
+            return _humanize_provider_error_message(_strip_error_label_prefixes(nested))
 
-    return text
+    return _humanize_provider_error_message(text)
 
 
 def is_provider_credential_error(text: str | BaseException | None) -> bool:

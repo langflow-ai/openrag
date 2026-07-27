@@ -22,7 +22,7 @@ def test_parse_ibm_iam_error_message():
         '"errorMessage":"Provided API key could not be found.",'
         '"context":{"requestId":"abc","url":"https://iam.cloud.ibm.com"}}'
     )
-    assert format_provider_error_message(raw) == "Provided API key could not be found."
+    assert format_provider_error_message(raw) == "Provided API key is Invalid."
 
 
 def test_format_extracts_json_with_trailing_text():
@@ -34,7 +34,7 @@ def test_format_extracts_json_with_trailing_text():
         "IBM WatsonX requires additional configuration parameters. "
         "An error occurred while generating a response."
     )
-    assert format_provider_error_message(raw) == "Provided API key could not be found."
+    assert format_provider_error_message(raw) == "Provided API key is Invalid."
     assert "{" not in sanitize_provider_error_content(raw)
 
 
@@ -314,4 +314,4 @@ async def test_probe_checks_non_selected_providers_with_keys(monkeypatch):
 
     from api.provider_validation import probe_provider_credential_error
 
-    assert await probe_provider_credential_error() == "Provided API key could not be found."
+    assert await probe_provider_credential_error() == "Provided API key is Invalid."
