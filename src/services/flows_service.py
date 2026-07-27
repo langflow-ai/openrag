@@ -1,7 +1,7 @@
 import asyncio
 import json
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from typing import Any
 
 from cachetools import LRUCache
@@ -1517,7 +1517,7 @@ class FlowsService:
                         try:
                             dt = datetime.fromisoformat(langflow_updated_at_str)
                             if dt.tzinfo is None:
-                                dt = dt.replace(tzinfo=timezone.utc)
+                                dt = dt.replace(tzinfo=UTC)
                             langflow_mtime = dt.timestamp()
                         except ValueError:
                             pass
