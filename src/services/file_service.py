@@ -238,8 +238,10 @@ class FileService:
 
         reverse = sort_order.lower() == "desc"
 
-        return sorted(
-            files,
-            key=lambda f: f.get(sort_by) or "",
-            reverse=reverse,
-        )
+        _numeric_sort_fields = {"file_size", "chunk_count"}
+        if sort_by in _numeric_sort_fields:
+            key = lambda f: f.get(sort_by) or 0  
+        else:
+            key = lambda f: f.get(sort_by) or ""
+
+        return sorted(files, key=key, reverse=reverse)
