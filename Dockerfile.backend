@@ -65,13 +65,24 @@ COPY openrag-documents/ ./openrag-documents/
 # -----------------------------------------------------------------------------
 FROM registry.access.redhat.com/ubi10/python-314-minimal AS runtime
 
-# Install runtime dependencies
+# Install runtime dependencies.
+# VULN-13973: after installing packages, explicitly update the OS libraries
+# that carried known CVEs in the pentest:
+#   glibc        CVE-2026-6238 / CVE-2026-5435
+#   libarchive   CVE-2026-14164
+#   expat        CVE-2026-56406
+#   libxml2      CVE-2026-6732
 USER 0
 RUN microdnf install -y \
     ca-certificates \
     openssl \
     shadow-utils \
     util-linux \
+    && microdnf update -y \
+    glibc \
+    libarchive \
+    expat \
+    libxml2 \
     && microdnf clean all \
     && python -m ensurepip --upgrade \
     && python -m pip install --no-cache-dir --upgrade "pip>=26.1" "setuptools>=78.1.1"

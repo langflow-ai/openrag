@@ -13,6 +13,9 @@ COPY frontend/package.json frontend/package-lock.json ./
 # that keeps LGPL libvips binaries out of the tree). npm ci needs these present.
 COPY frontend/stubs ./stubs
 
+# VULN-13973: brace-expansion override in package.json pins to 5.0.8 (CVE-2026-13149).
+# npm ci installs exactly what package-lock.json records; the override in
+# package.json ensures the resolved version is 5.0.8 for all transitive consumers.
 RUN npm ci --prefer-offline --no-audit
 
 # -----------------------------------------------------------------------------
