@@ -14,18 +14,6 @@ IMAGE_REGISTRY: str = os.getenv("IMAGE_REGISTRY", "docker.io")
 IMAGE_ORG: str = os.getenv("IMAGE_ORG", "langflowai")
 
 # ---------------------------------------------------------------------------
-# Architecture
-# ---------------------------------------------------------------------------
-
-#: Target architecture suffix.  Set IMAGE_ARCH to one of: amd64, arm64,
-#: ppc64le.  Leave empty (default) for a fat-manifest / architecture-agnostic
-#: reference (i.e. no suffix appended to the tag).
-IMAGE_ARCH: str = os.getenv("IMAGE_ARCH", "")
-
-#: Recognised architecture identifiers.
-SUPPORTED_ARCHITECTURES: tuple[str, ...] = ("amd64", "arm64", "ppc64le")
-
-# ---------------------------------------------------------------------------
 # Image names
 # ---------------------------------------------------------------------------
 
@@ -68,40 +56,19 @@ def image_repo(name: str) -> str:
     return f"{IMAGE_REGISTRY}/{IMAGE_ORG}/{name}"
 
 
-def image_tag(version: str, arch: str = IMAGE_ARCH) -> str:
-    """Return the image tag for *version*, optionally suffixed with *arch*.
-
-    If *arch* is empty or ``"multi"``, no suffix is added and the plain
-    version string is returned (suitable for a fat-manifest reference).
-
-    Examples::
-
-        image_tag("0.5.1")             # -> "0.5.1"
-        image_tag("0.5.1", "ppc64le") # -> "0.5.1-ppc64le"
-        image_tag("0.5.1", "arm64")   # -> "0.5.1-arm64"
-    """
-    if arch and arch != "multi":
-        return f"{version}-{arch}"
-    return version
-
-
-def image_ref(name: str, version: str = "latest", arch: str = IMAGE_ARCH) -> str:
+def image_ref(name: str, version: str = "latest") -> str:
     """Return the fully-qualified image reference including tag.
 
     Args:
         name:    Short image name (e.g. ``"openrag-backend"``).
         version: Version / tag string (e.g. ``"0.5.1"`` or ``"latest"``).
-        arch:    Architecture suffix.  Defaults to :data:`IMAGE_ARCH`.
 
     Example::
-
-        image_ref("openrag-backend", "0.5.1", "ppc64le")
-        # -> "docker.io/langflowai/openrag-backend:0.5.1-ppc64le"
 
         image_ref("openrag-backend", "0.5.1")
         # -> "docker.io/langflowai/openrag-backend:0.5.1"
     """
-    return f"{image_repo(name)}:{image_tag(version, arch)}"
+    return f"{image_repo(name)}:{version}"
 
 
 def all_openrag_repos() -> tuple[str, ...]:
