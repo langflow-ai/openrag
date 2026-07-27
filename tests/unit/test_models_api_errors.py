@@ -36,7 +36,7 @@ async def test_get_ibm_models_returns_sanitized_provider_error():
     assert isinstance(response, JSONResponse)
     assert response.status_code == 400
     payload = json.loads(response.body)
-    assert payload["error"] == "Provided API key could not be found."
+    assert payload["error"] == "Provided API key is Invalid."
 
 
 @pytest.mark.asyncio
