@@ -1135,6 +1135,31 @@ class ContainerManager:
             missing_images = []
 
         if missing_images:
+            # Validate that each OpenRAG-owned image is reachable before pulling.
+            from config.image_config import (
+                all_openrag_repos,
+                validate_image_reachable,
+                ImageNotFoundError,
+                RegistryUnreachableError,
+                RegistryAuthError,
+                MalformedImageRefError,
+            )
+            openrag_repos = all_openrag_repos()
+            runtime_cmd = self.runtime_info.runtime_command[0] if self.runtime_info.runtime_command else "docker"
+            for image in missing_images:
+                # Only validate images owned by OpenRAG (skip third-party images).
+                repo = self._extract_repository(image)
+                if not self._is_openrag_repository(repo):
+                    continue
+                try:
+                    await asyncio.get_event_loop().run_in_executor(
+                        None, lambda img=image: validate_image_reachable(img, runtime_cmd)
+                    )
+                except (ImageNotFoundError, RegistryAuthError, MalformedImageRefError,
+                        RegistryUnreachableError) as exc:
+                    yield False, f"ERROR: Cannot pull image {image!r}: {exc}", False
+                    return
+
             images_list = ", ".join(missing_images)
             yield False, f"Pulling container images ({images_list})...", False
             pull_success = {"value": True}
