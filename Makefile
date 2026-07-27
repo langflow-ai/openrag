@@ -1208,9 +1208,9 @@ health: ## Check health of all services
 	@printf "$(CYAN)Backend:$(NC)     "
 	@if curl -s -k --fail http://127.0.0.1:$${OPENRAG_BACKEND_PORT:-8000}/health >/dev/null 2>&1; then \
 		printf "$(GREEN)Healthy$(NC)\n"; \
-	elif command -v podman >/dev/null 2>&1 && podman ps --format "{{.Names}}" | grep -q "^openrag-backend$$" && podman exec -T openrag-backend curl -s -k --fail http://127.0.0.1:8000/health >/dev/null 2>&1; then \
+	elif command -v podman >/dev/null 2>&1 && podman ps --format "{{.Names}}" | grep -q "^openrag-backend$$" && podman exec openrag-backend curl -s -k --fail http://127.0.0.1:8000/health >/dev/null 2>&1; then \
 		printf "$(GREEN)Healthy$(NC)\n"; \
-	elif command -v docker >/dev/null 2>&1 && docker ps --format "{{.Names}}" | grep -q "^openrag-backend$$" && docker exec -T openrag-backend curl -s -k --fail http://127.0.0.1:8000/health >/dev/null 2>&1; then \
+	elif command -v docker >/dev/null 2>&1 && docker ps --format "{{.Names}}" | grep -q "^openrag-backend$$" && docker exec openrag-backend curl -s -k --fail http://127.0.0.1:8000/health >/dev/null 2>&1; then \
 		printf "$(GREEN)Healthy$(NC)\n"; \
 	else \
 		printf "$(RED)Not responding$(NC)\n"; \
