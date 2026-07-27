@@ -16,7 +16,9 @@ from config.image_config import all_openrag_repos
 
 MIN_PODMAN_MEMORY_MB = 8192  # 8 GB minimum
 
-# Derived from image_config so registry/org overrides are respected at runtime.
+# NOTE: Derived from image_config.all_openrag_repos().
+# Keep in sync with ContainerManager.OPENRAG_IMAGE_REPOS in container_manager.py.
+# Any registry/org/image-name changes in image_config.py must be reflected here.
 OPENRAG_IMAGE_REPOS: set[str] = set(all_openrag_repos())
 
 

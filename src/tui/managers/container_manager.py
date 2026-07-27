@@ -80,6 +80,10 @@ def format_port_conflict_message(conflicts: list[tuple[str, int, str]], max_show
 class ContainerManager:
     """Manages Docker/Podman container lifecycle for OpenRAG."""
 
+    # NOTE: OPENRAG_IMAGE_REPOS is derived from image_config.all_openrag_repos().
+    # If you change the registry, org, or image names in image_config.py, the
+    # matching OPENRAG_IMAGE_REPOS set in startup_checks.py must also be updated,
+    # as both use this allow-list independently for image cleanup/validation.
     OPENRAG_IMAGE_REPOS: set[str] = set(all_openrag_repos())
 
     def __init__(self, compose_file: Path | None = None):
