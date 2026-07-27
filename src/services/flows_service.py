@@ -25,6 +25,22 @@ logger = get_logger(__name__)
 
 
 class FlowsService:
+    def __init__(self):
+        # Ephemeral dict of dismissed flow update notifications per user_id
+        self._dismissed_updates: dict[str, set[str]] = {}
+        # Cache for flow file mappings to avoid repeated filesystem scans
+        self._flow_file_cache: dict[str, str] = {}
+        # Semaphores to prevent race conditions when updating the same flow concurrently
+        self._flow_locks = LRUCache(maxsize=128)
+        self._lock_creation_lock = asyncio.Lock()
+        # Cache for enabled models to avoid redundant API calls
+        self._enabled_models_cache = None
+        self._enabled_models_cache_time = None
+        self._enabled_models_cache_ttl = 60  # seconds
+        self._enabled_models_lock = asyncio.Lock()
+        # Cache for available custom flow updates
+        self._custom_updates_cache: list[dict[str, Any]] | None = None
+
     def dismiss_flows_updates(
         self, flow_types: list[str] | None = None, user_id: str | None = None
     ):
@@ -113,21 +129,7 @@ class FlowsService:
 
         return resolved_url
 
-    def __init__(self):
-        # Ephemeral dict of dismissed flow update notifications per user_id
-        self._dismissed_updates: dict[str, set[str]] = {}
-        # Cache for flow file mappings to avoid repeated filesystem scans
-        self._flow_file_cache = {}
-        # Semaphores to prevent race conditions when updating the same flow concurrently
-        self._flow_locks = LRUCache(maxsize=128)
-        self._lock_creation_lock = asyncio.Lock()
-        # Cache for enabled models to avoid redundant API calls
-        self._enabled_models_cache = None
-        self._enabled_models_cache_time = None
-        self._enabled_models_cache_ttl = 60  # seconds
-        self._enabled_models_lock = asyncio.Lock()
-        # Cache for available custom flow updates
-        self._custom_updates_cache: list[dict[str, Any]] | None = None
+
 
     async def _get_flow_lock(self, flow_id: str) -> asyncio.Lock:
         """Get or create an asyncio.Lock for a specific flow ID"""
@@ -843,7 +845,7 @@ class FlowsService:
                 return None
 
         langflow_updated_at_str = flow_data.get("updated_at")
-        langflow_mtime = 0
+        langflow_mtime: float = 0.0
         if langflow_updated_at_str:
             if langflow_updated_at_str.endswith("Z"):
                 langflow_updated_at_str = langflow_updated_at_str[:-1] + "+00:00"
