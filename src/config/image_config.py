@@ -83,3 +83,101 @@ def all_openrag_repos() -> tuple[str, ...]:
     # pulled images that may omit the registry prefix.
     short = tuple(f"{IMAGE_ORG}/{n}" for n in OPENRAG_IMAGE_NAMES)
     return standard + short + THIRD_PARTY_IMAGE_REPOS
+
+
+# ---------------------------------------------------------------------------
+# Registry reachability validation
+# ---------------------------------------------------------------------------
+
+class ImageNotFoundError(Exception):
+    """Raised when the image or tag does not exist in the registry."""
+
+
+class RegistryUnreachableError(Exception):
+    """Raised when the registry host cannot be reached (DNS/network failure)."""
+
+
+class RegistryAuthError(Exception):
+    """Raised when the registry returns an authentication failure (401/403)."""
+
+
+class MalformedImageRefError(Exception):
+    """Raised when the image reference cannot be parsed by the runtime."""
+
+
+def validate_image_reachable(image_ref: str, runtime: str = "docker") -> None:
+    """Test whether *image_ref* exists in its registry without downloading layers.
+
+    Uses ``<runtime> manifest inspect`` (a metadata-only call) so no image
+    data is transferred.
+
+    Args:
+        image_ref: Fully-resolved image reference, e.g.
+                   ``"docker.io/langflowai/openrag-backend:0.5.1"``.
+        runtime:   Container runtime executable name.  Defaults to
+                   ``"docker"``; pass ``"podman"`` for Podman.
+
+    Raises:
+        :exc:`MalformedImageRefError`:    The reference could not be parsed.
+        :exc:`ImageNotFoundError`:        The image or tag is absent from the
+                                          registry.
+        :exc:`RegistryAuthError`:         The registry rejected the request
+                                          with a 401 or 403.
+        :exc:`RegistryUnreachableError`:  The registry host could not be
+                                          reached (DNS/network failure).
+    """
+    # Reject obviously malformed references before hitting the network.
+    if not image_ref or image_ref.startswith(":") or " " in image_ref:
+        raise MalformedImageRefError(
+            f"Image reference is malformed and cannot be parsed: {image_ref!r}"
+        )
+
+    try:
+        result = subprocess.run(
+            [runtime, "manifest", "inspect", image_ref],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except FileNotFoundError:
+        raise RegistryUnreachableError(
+            f"Container runtime {runtime!r} not found on PATH."
+        )
+    except subprocess.TimeoutExpired:
+        raise RegistryUnreachableError(
+            f"Timed out contacting registry for {image_ref!r}."
+        )
+
+    if result.returncode == 0:
+        return  # Image exists — all good.
+
+    combined = (result.stdout + result.stderr).lower()
+
+    # Authentication failures
+    if any(token in combined for token in ("unauthorized", "denied", "403", "401",
+                                            "authentication", "forbidden")):
+        raise RegistryAuthError(
+            f"Authentication failure accessing {image_ref!r}: {(result.stderr or result.stdout).strip()}"
+        )
+
+    # DNS / network failures
+    if any(token in combined for token in ("no such host", "name resolution",
+                                            "dial tcp", "connection refused",
+                                            "network is unreachable", "i/o timeout",
+                                            "lookup", "tls", "certificate")):
+        raise RegistryUnreachableError(
+            f"Registry unreachable for {image_ref!r}: {(result.stderr or result.stdout).strip()}"
+        )
+
+    # Malformed reference reported by the runtime
+    if any(token in combined for token in ("invalid reference", "invalid image",
+                                            "invalid tag", "could not parse",
+                                            "malformed")):
+        raise MalformedImageRefError(
+            f"Image reference {image_ref!r} could not be parsed: {(result.stderr or result.stdout).strip()}"
+        )
+
+    # Default: image / tag not found
+    raise ImageNotFoundError(
+        f"Image {image_ref!r} not found in registry: {(result.stderr or result.stdout).strip()}"
+    )
