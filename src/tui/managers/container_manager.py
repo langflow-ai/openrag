@@ -1095,7 +1095,11 @@ class ContainerManager:
             env_manager.setup_secure_defaults()
             env_manager.save_env_file()
             if not env_manager.config.langflow_superuser_password:
-                yield False, "ERROR: Langflow superuser password is required but not configured.", False
+                yield (
+                    False,
+                    "ERROR: Langflow superuser password is required but not configured.",
+                    False,
+                )
                 return
         except Exception:
             pass  # Continue even if version setting fails
