@@ -1086,12 +1086,17 @@ class ContainerManager:
             yield False, "No container runtime available", False
             return
 
-        # Ensure OPENRAG_VERSION is set in .env file
+        # Ensure secure defaults and OPENRAG_VERSION are set in .env file
         try:
             from ..managers.env_manager import EnvManager
 
             env_manager = EnvManager()
-            env_manager.ensure_openrag_version()
+            env_manager.load_existing_env()
+            env_manager.setup_secure_defaults()
+            env_manager.save_env_file()
+            if not env_manager.config.langflow_superuser_password:
+                yield False, "ERROR: Langflow superuser password is required but not configured.", False
+                return
         except Exception:
             pass  # Continue even if version setting fails
 

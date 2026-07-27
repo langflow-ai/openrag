@@ -341,6 +341,14 @@ def _start_services_cli(
     docling_manager: DoclingManager,
 ):
     """Start container services and docling via async bridge."""
+    env_manager = EnvManager()
+    env_manager.load_existing_env()
+    env_manager.setup_secure_defaults()
+
+    if not env_manager.config.langflow_superuser_password:
+        console.print("[red]✗ Error: Langflow password is required. Cannot start services.[/red]")
+        return
+
     console.print()
     console.print("Starting OpenRAG services...", style="bold")
 

@@ -307,10 +307,9 @@ class ConfigScreen(Screen):
         yield Static(" ")
 
     def _render_langflow_superuser_password(self, field: ConfigField) -> ComposeResult:
-        """Langflow password with generate checkbox and eye toggle."""
-        with Horizontal():
-            yield Label("Admin Password (optional)")
-            yield Checkbox("Generate password", id="generate-langflow-password")
+        """Langflow password with eye toggle."""
+        yield Label("Admin Password *")
+        yield Static(field.helper_text, classes="helper-text")
         current_value = getattr(self.env_manager.config, field.name, "")
         with Horizontal(id="langflow-password-row"):
             input_widget = Input(
@@ -411,10 +410,6 @@ class ConfigScreen(Screen):
 
     def on_mount(self) -> None:
         """Initialize the screen when mounted."""
-        # Set initial visibility of username field based on password
-        current_password = getattr(self.env_manager.config, "langflow_superuser_password", "")
-        self._update_langflow_username_visibility(current_password)
-
         # Focus the first input field
         try:
             # Find the first input field and focus it
@@ -423,26 +418,6 @@ class ConfigScreen(Screen):
                 inputs[0].focus()
         except Exception:
             pass
-
-    def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
-        """Handle checkbox changes."""
-        if event.checkbox.id == "generate-langflow-password":
-            langflow_password_input = self.inputs.get("langflow_superuser_password")
-            if event.value:
-                # Generate password when checked
-                password = self.env_manager.generate_secure_password()
-                if langflow_password_input:
-                    langflow_password_input.value = password
-                    # Show username field
-                    self._update_langflow_username_visibility(password)
-                self.notify("Generated Langflow password", severity="information")
-            else:
-                # Clear password when unchecked (enable autologin)
-                if langflow_password_input:
-                    langflow_password_input.value = ""
-                    # Hide username field
-                    self._update_langflow_username_visibility("")
-                self.notify("Cleared Langflow password - autologin enabled", severity="information")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
@@ -479,9 +454,16 @@ class ConfigScreen(Screen):
         if encryption_key_input:
             self.env_manager.config.openrag_encryption_key = encryption_key_input.value
 
-        # Only generate OpenSearch password if empty
+        langflow_input = self.inputs.get("langflow_superuser_password")
+        if langflow_input:
+            self.env_manager.config.langflow_superuser_password = langflow_input.value
+
+        # Generate passwords if empty
         if not self.env_manager.config.opensearch_password:
             self.env_manager.config.opensearch_password = self.env_manager.generate_secure_password()
+
+        if not self.env_manager.config.langflow_superuser_password:
+            self.env_manager.config.langflow_superuser_password = self.env_manager.generate_secure_password()
 
         # Update secret keys
         if not self.env_manager.config.langflow_secret_key:
@@ -493,6 +475,9 @@ class ConfigScreen(Screen):
         # Update input fields with generated values
         if opensearch_input:
             opensearch_input.value = self.env_manager.config.opensearch_password
+
+        if langflow_input:
+            langflow_input.value = self.env_manager.config.langflow_superuser_password
 
         if encryption_key_input:
             encryption_key_input.value = self.env_manager.config.openrag_encryption_key
@@ -694,31 +679,4 @@ class ConfigScreen(Screen):
 
     def on_input_changed(self, event: Input.Changed) -> None:
         """Handle input changes for real-time validation feedback."""
-        # Handle Langflow password changes - show/hide username field
-        if event.input.id == "input-langflow_superuser_password":
-            self._update_langflow_username_visibility(event.value)
-        # This will trigger validation display in real-time
         pass
-
-    def _update_langflow_username_visibility(self, password_value: str) -> None:
-        """Show or hide the Langflow username field based on password presence."""
-        has_password = bool(password_value and password_value.strip())
-
-        # Get the widgets
-        try:
-            username_label = self.query_one("#langflow-username-label")
-            username_input = self.query_one("#input-langflow_superuser")
-            username_spacer = self.query_one("#langflow-username-spacer")
-
-            # Show or hide based on password presence
-            if has_password:
-                username_label.display = True
-                username_input.display = True
-                username_spacer.display = True
-            else:
-                username_label.display = False
-                username_input.display = False
-                username_spacer.display = False
-        except Exception:
-            # Widgets don't exist yet, ignore
-            pass

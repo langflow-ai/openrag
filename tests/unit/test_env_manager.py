@@ -240,3 +240,40 @@ class TestLegacyMigrationPermissions:
         assert _perms(target_env) == 0o600, (
             f"expected 0o600, got {oct(_perms(target_env))}"
         )
+
+
+class TestLangflowPasswordAndAutoLogin:
+    """Verify Langflow superuser password auto-generation, validation, and auto-login settings."""
+
+    def test_setup_secure_defaults_generates_langflow_password_and_keeps_autologin(
+        self, env_manager
+    ):
+        env_manager.config.langflow_superuser_password = ""
+        env_manager.setup_secure_defaults()
+
+        assert bool(env_manager.config.langflow_superuser_password)
+        assert env_manager.config.langflow_auto_login == "True"
+        assert env_manager.config.langflow_new_user_is_active == "True"
+        assert env_manager.config.langflow_enable_superuser_cli == "True"
+
+    def test_save_env_file_writes_langflow_password_and_autologin(
+        self, env_manager, tmp_path
+    ):
+        env_file = tmp_path / ".env"
+        env_manager.config.opensearch_password = "OpenSearchPass123!"
+        env_manager.config.langflow_superuser_password = "LangflowPass123!"
+
+        with patch("tui.utils.version_check.get_current_version", return_value="1.0.0"):
+            assert env_manager.save_env_file() is True
+
+        content = env_file.read_text()
+        assert "LANGFLOW_SUPERUSER_PASSWORD='LangflowPass123!'" in content
+        assert "LANGFLOW_AUTO_LOGIN='True'" in content
+        assert "LANGFLOW_SUPERUSER='admin'" in content
+
+    def test_validate_config_requires_langflow_password(self, env_manager):
+        env_manager.config.opensearch_password = "Pass123!"
+        env_manager.config.langflow_superuser_password = ""
+
+        assert env_manager.validate_config() is False
+        assert "langflow_superuser_password" in env_manager.config.validation_errors

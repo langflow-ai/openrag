@@ -490,6 +490,14 @@ class WelcomeScreen(Screen):
 
     async def _start_all_services(self) -> None:
         """Start all services: containers first, then native services."""
+        # Ensure password and secure defaults are set
+        self.env_manager.load_existing_env()
+        self.env_manager.setup_secure_defaults()
+        self.env_manager.save_env_file()
+        if not self.env_manager.config.langflow_superuser_password:
+            self.notify("Langflow password is required. Cannot start services.", severity="error")
+            return
+
         # Check for port conflicts before attempting to start anything
         conflicts: list[tuple[str, int, str]] = []
 
