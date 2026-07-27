@@ -170,52 +170,14 @@ async def startup_tasks(services):
     # Update MCP server URLs (patch localhost and convert to streamable HTTP)
     await _update_mcp_server_urls(services["langflow_mcp_service"])
 
-    # Ensure all configured flows exist in Langflow (create-only, never overwrites).
-    # This replaces LANGFLOW_LOAD_FLOWS_PATH, which performed a blind upsert on
-    # every container start and discarded any user edits made in the Langflow UI.
-    newly_created: set[str] = set()
+    # Ensure all configured flows exist in Langflow (create-only, never overwrites existing).
+    # If a flow does not exist, it is created and active configuration settings are reapplied.
     try:
         flows_service = services["flows_service"]
-        newly_created = await flows_service.ensure_flows_exist()
+        await flows_service.ensure_flows_exist()
     except Exception as e:
         logger.error(
             "Failed to ensure Langflow flows exist at startup — "
             "flows may be missing until the next restart",
             error=str(e),
         )
-
-    # Check if flows were reset and reapply settings if config is edited
-    try:
-        config = get_openrag_config()
-        if config.edited:
-            logger.info("Checking if Langflow flows were reset")
-            flows_service = services["flows_service"]
-            reset_flows = await flows_service.check_flows_reset()
-            # Exclude flows that were just seeded — they match the JSON by design,
-            # not because they were externally reset.
-            reset_flows = [f for f in reset_flows if f not in newly_created]
-
-            if reset_flows:
-                logger.info(
-                    f"Detected reset flows: {', '.join(reset_flows)}. Reapplying all settings."
-                )
-                await TelemetryClient.send_event(
-                    Category.FLOW_OPERATIONS, MessageId.ORB_FLOW_RESET_DETECTED
-                )
-                from api.settings import reapply_all_settings
-
-                await reapply_all_settings(session_manager=services["session_manager"])
-                logger.info("Successfully reapplied settings after detecting flow resets")
-                await TelemetryClient.send_event(
-                    Category.FLOW_OPERATIONS, MessageId.ORB_FLOW_SETTINGS_REAPPLIED
-                )
-            else:
-                logger.info("No flows detected as reset, skipping settings reapplication")
-        else:
-            logger.debug("Configuration not yet edited, skipping flow reset check")
-    except Exception as e:
-        logger.error(f"Failed to check flows reset or reapply settings: {str(e)}")
-        await TelemetryClient.send_event(
-            Category.FLOW_OPERATIONS, MessageId.ORB_FLOW_RESET_CHECK_FAIL
-        )
-        # Don't fail startup if this check fails

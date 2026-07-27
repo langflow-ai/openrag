@@ -867,70 +867,7 @@ class FlowsService:
 
         return normalized
 
-    async def _compare_flow_with_file(self, flow_id: str):
-        """
-        Compare a Langflow flow with its JSON file.
-        Returns True if flows match (indicating a reset), False otherwise.
-        """
-        try:
-            # Get flow from Langflow API
-            response = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
-            if response.status_code != 200:
-                logger.warning(
-                    f"Failed to get flow {flow_id} from Langflow: HTTP {response.status_code}"
-                )
-                return False
 
-            langflow_flow = response.json()
-
-            # Find and load the corresponding JSON file
-            flow_path = self._find_flow_file_by_id(flow_id)
-            if not flow_path:
-                logger.warning(f"Flow file not found for flow ID: {flow_id}")
-                return False
-
-            with open(flow_path) as f:
-                file_flow = json.load(f)
-
-            # Normalize both flows for comparison
-            normalized_langflow = self._normalize_flow_structure(langflow_flow)
-            normalized_file = self._normalize_flow_structure(file_flow)
-
-            # Compare entire normalized structures exactly
-            # Sort nodes and edges for consistent comparison
-            normalized_langflow["data"]["nodes"] = sorted(
-                normalized_langflow["data"]["nodes"],
-                key=lambda x: (x.get("id", ""), x.get("type", "")),
-            )
-            normalized_file["data"]["nodes"] = sorted(
-                normalized_file["data"]["nodes"], key=lambda x: (x.get("id", ""), x.get("type", ""))
-            )
-
-            normalized_langflow["data"]["edges"] = sorted(
-                normalized_langflow["data"]["edges"],
-                key=lambda x: (
-                    x.get("source", ""),
-                    x.get("target", ""),
-                    x.get("sourceHandle", ""),
-                    x.get("targetHandle", ""),
-                ),
-            )
-            normalized_file["data"]["edges"] = sorted(
-                normalized_file["data"]["edges"],
-                key=lambda x: (
-                    x.get("source", ""),
-                    x.get("target", ""),
-                    x.get("sourceHandle", ""),
-                    x.get("targetHandle", ""),
-                ),
-            )
-
-            # Compare entire normalized structures
-            return normalized_langflow == normalized_file
-
-        except Exception as e:
-            logger.error(f"Error comparing flow {flow_id} with file: {str(e)}")
-            return False
 
     async def ensure_flows_exist(self) -> set[str]:
         """
@@ -1003,38 +940,24 @@ class FlowsService:
         tasks = [ensure_single_flow_exists(ft, fi) for ft, fi in flow_configs]
         results = await asyncio.gather(*tasks)
         created_flow_types = {r for r in results if r is not None}
+
+        if created_flow_types:
+            try:
+                config = get_openrag_config()
+                if config.edited:
+                    logger.info(
+                        f"Newly created flows detected ({', '.join(created_flow_types)}), reapplying settings."
+                    )
+                    from api.settings import reapply_all_settings
+
+                    await reapply_all_settings()
+                    logger.info("Successfully reapplied settings for newly created flows")
+            except Exception as e:
+                logger.error(f"Failed to reapply settings for newly created flows: {e}")
+
         return created_flow_types
 
-    async def check_flows_reset(self):
-        """
-        Check if any flows have been reset by comparing with JSON files.
-        Returns list of flow types that were reset.
-        """
-        reset_flows = []
 
-        flow_configs = [
-            ("nudges", NUDGES_FLOW_ID),
-            ("retrieval", LANGFLOW_CHAT_FLOW_ID),
-            ("ingest", LANGFLOW_INGEST_FLOW_ID),
-            ("url_ingest", LANGFLOW_URL_INGEST_FLOW_ID),
-        ]
-
-        async def check_single_flow_reset(flow_type, flow_id):
-            if not flow_id:
-                return None
-            logger.info(f"Checking if {flow_type} flow (ID: {flow_id}) was reset")
-            is_reset = await self._compare_flow_with_file(flow_id)
-            if is_reset:
-                logger.info(f"Flow {flow_type} (ID: {flow_id}) appears to have been reset")
-                return flow_type
-            else:
-                logger.info(f"Flow {flow_type} (ID: {flow_id}) does not match reset state")
-                return None
-
-        tasks = [check_single_flow_reset(ft, fi) for ft, fi in flow_configs]
-        results = await asyncio.gather(*tasks)
-        reset_flows = [r for r in results if r is not None]
-        return reset_flows
 
     async def change_langflow_model_value(
         self,
