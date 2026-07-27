@@ -2,7 +2,7 @@
 
 from typing import Optional, Tuple
 from utils.logging_config import get_logger
-from config.image_config import IMAGE_ORG, IMAGE_NAME_BACKEND, IMAGE_REGISTRY, SUPPORTED_ARCHITECTURES
+from config.image_config import IMAGE_ORG, IMAGE_NAME_BACKEND, IMAGE_REGISTRY
 
 logger = get_logger(__name__)
 
@@ -48,16 +48,9 @@ async def get_latest_docker_version(image_name: str = _DEFAULT_VERSION_IMAGE) ->
                 version_tags = []
                 for tag in tags:
                     tag_name = tag.get("name", "")
-                    # Skip architecture-specific tags and "latest"
-                    # Architecture suffixes: amd64, arm64, ppc64le (and any future archs)
-                    # Tags like "0.5.1-ppc64le" are arch-specific; "0.5.1" is the manifest.
-                    if tag_name in ("latest",) + SUPPORTED_ARCHITECTURES:
+                    # Skip "latest" and non-version tags.
+                    if tag_name == "latest":
                         continue
-                    # Also skip tags that look like "<version>-<arch>" (arch-specific digests)
-                    if "-" in tag_name:
-                        suffix = tag_name.rsplit("-", 1)[-1]
-                        if suffix in SUPPORTED_ARCHITECTURES:
-                            continue
                     # Skip tags that don't look like version numbers
                     # Version format: X.Y.Z (e.g., 0.1.47)
                     # Check if it starts with a digit and contains only digits, dots, and hyphens
