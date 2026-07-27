@@ -818,8 +818,6 @@ class FlowsService:
 
         return normalized
 
-
-
     async def _check_flow_update(
         self, flow_type: str, flow_id: str, flow_data: dict[str, Any] | None = None
     ) -> dict[str, Any] | None:
@@ -969,8 +967,6 @@ class FlowsService:
                 logger.error(f"Failed to reapply settings for newly created flows: {e}")
 
         return created_flow_types
-
-
 
     async def change_langflow_model_value(
         self,
@@ -1447,9 +1443,7 @@ class FlowsService:
             return (None, "Anthropic")
         return (None, None)
 
-    async def get_flows_updates_available(
-        self, user_id: str | None = None
-    ) -> list[dict[str, Any]]:
+    async def get_flows_updates_available(self, user_id: str | None = None) -> list[dict[str, Any]]:
         """
         Check for available flow updates.
         Uses cached update results from startup/previous checks if available.
