@@ -1,0 +1,44 @@
+# FileNet P8 MCP sidecar image.
+#
+# Wraps the IBM Content Services MCP Server (stdio-only as shipped) with the
+# OpenRAG HTTP entry point in sidecars/filenet_mcp/server.py, exposing the
+# Core config (document_search + get_document_text_extract) over streamable
+# HTTP plus /health and /diagnostics admin routes.
+#
+# The IBM package is consumed as a library via underscore-prefixed internals,
+# so the git ref below MUST stay pinned. On every bump, run the upgrade smoke
+# check documented in sidecars/filenet_mcp/README.md before shipping.
+FROM python:3.13-slim
+
+# Pinned upstream ref (tag or commit SHA) of ibm-ecm/ibm-content-services-mcp-server.
+ARG IBM_CS_MCP_REF=v1.0.4
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir \
+    "git+https://github.com/ibm-ecm/ibm-content-services-mcp-server@${IBM_CS_MCP_REF}" \
+    "uvicorn>=0.30" \
+    "httpx>=0.27"
+
+WORKDIR /app
+COPY sidecars/filenet_mcp/ /app/filenet_mcp/
+
+# Upgrade smoke check: fail the build if the pinned ref no longer exposes the
+# internals the entry point depends on (see sidecars/filenet_mcp/README.md).
+RUN python -c "\
+from cs_mcp_server import mcp_server_main as ibm; \
+assert hasattr(ibm, 'initialize_graphql_client'); \
+assert hasattr(ibm, '_initialize_mcp_server'); \
+assert hasattr(ibm, 'register_server_resources'); \
+assert hasattr(ibm, 'register_server_tools'); \
+assert hasattr(ibm.ServerType, 'CORE'); \
+print('IBM cs_mcp_server entry-point surface OK')"
+
+RUN useradd --create-home --uid 1001 filenet-mcp
+USER 1001
+
+EXPOSE 8811
+
+CMD ["python", "-m", "filenet_mcp.server"]

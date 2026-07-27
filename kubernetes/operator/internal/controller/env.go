@@ -157,6 +157,13 @@ func NewEnvVarManager() *EnvVarManager {
 			"AZURE_STORAGE_ACCOUNT_NAME":      "",
 			"AZURE_STORAGE_ACCOUNT_KEY":       "",
 			"AZURE_STORAGE_ENDPOINT":          "",
+
+			// FileNet P8 MCP chat tool (Enterprise/on_prem): intentionally no
+			// defaults here. OPENRAG_FILENET_MCP_ENABLED/_URL/_TOKEN are derived
+			// from spec.filenetMcp in buildBackendEnv (URL points at the
+			// operator-managed sidecar Service); the backend defaults the kill
+			// switch to true and additionally gates on OPENRAG_RUN_MODE=on_prem.
+			// Override via spec.env only for unusual setups (external sidecar).
 		},
 		DefaultOpenRagFEEnvVars: map[string]string{
 			// Frontend environment variables will be added here

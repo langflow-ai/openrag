@@ -288,6 +288,73 @@ def is_azure_blob_enabled() -> bool:
     return raw in ("true", "1", "yes", "on")
 
 
+FILENET_MCP_SERVER_NAME = "filenet-p8"
+
+
+def is_filenet_mcp_flag_enabled() -> bool:
+    """Feature kill switch for the FileNet P8 MCP chat tool (default: enabled).
+
+    Set ``OPENRAG_FILENET_MCP_ENABLED=false`` to force-disable the FileNet P8
+    chat tool even in an ``on_prem`` deployment. When true (the default),
+    availability still requires the ``on_prem`` run-mode gate or the
+    ``OPENRAG_DEV_FILENET_MCP`` dev bypass, plus a configured
+    ``OPENRAG_FILENET_MCP_URL`` -- this flag is subtractive (AND-ed with those
+    gates), not an override.
+    """
+    raw = os.getenv("OPENRAG_FILENET_MCP_ENABLED", "true").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
+def is_dev_filenet_mcp_enabled() -> bool:
+    """Local dev: enable the FileNet P8 MCP chat tool outside ``on_prem``.
+
+    Allows testing the FileNet P8 MCP integration (sidecar + chat tool) in a
+    local OSS environment where ``OPENRAG_RUN_MODE`` is not ``on_prem``. Never
+    enable in production. Requires ``OPENRAG_DEV_FILENET_MCP=true``.
+    """
+    raw = os.getenv("OPENRAG_DEV_FILENET_MCP", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
+def get_filenet_mcp_url() -> str:
+    """URL of the IBM Content Services MCP sidecar (streamable HTTP endpoint).
+
+    Must be resolvable from the Langflow container (e.g.
+    ``http://filenet-mcp:8811/mcp``) -- never ``localhost``, which the MCP URL
+    patcher rewrites to ``LANGFLOW_URL``. Empty (the default) means the
+    FileNet P8 chat tool is unavailable.
+    """
+    return os.getenv("OPENRAG_FILENET_MCP_URL", "").strip()
+
+
+def get_filenet_mcp_token() -> str:
+    """Optional shared secret sent as ``Authorization: Bearer`` to the sidecar.
+
+    Registered on the ``filenet-p8`` Langflow MCP server entry at startup and
+    enforced by the sidecar when its ``FILENET_MCP_AUTH_TOKEN`` is set. Empty
+    (the default) disables the header entirely.
+    """
+    return os.getenv("OPENRAG_FILENET_MCP_TOKEN", "").strip()
+
+
+def is_filenet_mcp_available() -> bool:
+    """Effective availability of the FileNet P8 MCP chat tool.
+
+    True only when ALL of the following hold:
+    - the ``OPENRAG_FILENET_MCP_ENABLED`` kill switch is on (default), AND
+    - the run mode is ``on_prem`` (CPD) OR the ``OPENRAG_DEV_FILENET_MCP``
+      dev bypass is set, AND
+    - ``OPENRAG_FILENET_MCP_URL`` is configured (non-empty).
+    """
+    from utils.run_mode_utils import is_run_mode_on_prem
+
+    if not is_filenet_mcp_flag_enabled():
+        return False
+    if not (is_run_mode_on_prem() or is_dev_filenet_mcp_enabled()):
+        return False
+    return bool(get_filenet_mcp_url())
+
+
 def is_ingest_preview_flag_enabled() -> bool:
     """Raw opt-in flag for the preview-mode ingest backend.
 

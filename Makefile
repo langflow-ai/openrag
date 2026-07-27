@@ -99,7 +99,7 @@ endef
 ######################
 .PHONY: help check_tools help_docker help_dev help_test help_local help_utils help_operator \
        dev dev-cpu dev-local dev-local-cpu dev-local-build-lf dev-local-build-lf-cpu stop clean build logs \
-       azurite-up azurite-down \
+       azurite-up azurite-down filenet-mcp-up filenet-mcp-down \
        shell-backend shell-frontend install \
        test test-unit test-integration test-ci test-ci-local test-ci-suite test-sdk test-os-jwt lint \
        ci-build-images ci-save-images \
@@ -353,6 +353,8 @@ help_local: ## Show local development commands
 	@echo "  $(PURPLE)make docling-stop$(NC)    - Stop docling-serve"
 	@echo "  $(PURPLE)make azurite-up$(NC)      - Start Azurite (local Azure Blob emulator) for connector testing"
 	@echo "  $(PURPLE)make azurite-down$(NC)    - Stop Azurite emulator"
+	@echo "  $(PURPLE)make filenet-mcp-up$(NC)  - Start the FileNet P8 MCP sidecar (needs FILENET_* vars in .env)"
+	@echo "  $(PURPLE)make filenet-mcp-down$(NC) - Stop the FileNet P8 MCP sidecar"
 	@echo ''
 	@echo "$(PURPLE)Installation:$(NC)"
 	@echo "  $(PURPLE)make install$(NC)         - Install all dependencies"
@@ -762,6 +764,17 @@ azurite-down: ## Stop Azurite emulator
 	@echo "$(YELLOW)Stopping Azurite...$(NC)"
 	$(COMPOSE_CMD) --profile azurite stop azurite
 	@echo "$(PURPLE)Azurite stopped.$(NC)"
+
+filenet-mcp-up: ## Start the FileNet P8 MCP sidecar (needs FILENET_* vars in .env)
+	@echo "$(YELLOW)Starting the FileNet P8 MCP sidecar...$(NC)"
+	$(COMPOSE_CMD) --profile filenet-mcp up -d --build filenet-mcp
+	@echo "$(PURPLE)FileNet MCP sidecar started on http://localhost:8811 (MCP endpoint: /mcp, health: /health).$(NC)"
+	@echo "$(PURPLE)Point the backend at it with OPENRAG_FILENET_MCP_URL=http://filenet-mcp:8811/mcp (and OPENRAG_DEV_FILENET_MCP=true outside on_prem).$(NC)"
+
+filenet-mcp-down: ## Stop the FileNet P8 MCP sidecar
+	@echo "$(YELLOW)Stopping the FileNet P8 MCP sidecar...$(NC)"
+	$(COMPOSE_CMD) --profile filenet-mcp stop filenet-mcp
+	@echo "$(PURPLE)FileNet MCP sidecar stopped.$(NC)"
 
 ######################
 # INSTALLATION

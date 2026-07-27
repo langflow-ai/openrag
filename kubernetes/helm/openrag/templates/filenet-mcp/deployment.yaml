@@ -1,0 +1,99 @@
+{{- if .Values.global.filenet.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "openrag.fullname" . }}-filenet-mcp
+  namespace: {{ include "openrag.namespace" . }}
+  labels:
+    {{- include "openrag.filenetMcp.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.global.filenet.mcp.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "openrag.filenetMcp.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "openrag.filenetMcp.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/secret: {{ include (print $.Template.BasePath "/secrets/filenet-secret.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "openrag.serviceAccountName" . }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: filenet-mcp
+          image: "{{ .Values.global.filenet.mcp.image.repository }}:{{ .Values.global.filenet.mcp.image.tag | default .Values.global.imageTag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.global.filenet.mcp.port }}
+              protocol: TCP
+          env:
+            # SERVER_URL must not end with a trailing slash — the entry point
+            # hard-fails on one (it silently breaks every text fetch upstream).
+            - name: SERVER_URL
+              value: {{ .Values.global.filenet.graphqlUrl | quote }}
+            - name: OBJECT_STORE
+              value: {{ .Values.global.filenet.objectStore | quote }}
+            - name: USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "openrag.fullname" . }}-filenet
+                  key: username
+            - name: PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "openrag.fullname" . }}-filenet
+                  key: password
+            - name: SSL_ENABLED
+              value: {{ .Values.global.filenet.sslEnabled | quote }}
+            - name: FILENET_MCP_PORT
+              value: {{ .Values.global.filenet.mcp.port | quote }}
+            - name: FILENET_MCP_DOCUMENT_CLASS
+              value: {{ .Values.global.filenet.documentClass | quote }}
+            {{- if .Values.global.filenet.authToken }}
+            - name: FILENET_MCP_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "openrag.fullname" . }}-filenet
+                  key: auth-token
+            {{- end }}
+          # The sidecar's bootstrap performs a live CPE GraphQL call, so
+          # readiness is coupled to CPE reachability: keep the thresholds
+          # generous so a briefly-unreachable CPE does not crash-loop the pod.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            failureThreshold: 6
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 12
+          resources:
+            {{- toYaml .Values.global.filenet.mcp.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

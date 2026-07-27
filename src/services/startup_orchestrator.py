@@ -38,6 +38,61 @@ async def _update_mcp_server_urls(langflow_mcp_service):
         logger.warning(f"Failed to update MCP server URLs after settings change: {str(mcp_error)}")
 
 
+async def _ensure_filenet_mcp_server(langflow_mcp_service):
+    """Register the FileNet P8 MCP server in Langflow and run its diagnostics.
+
+    Create-only (an existing ``filenet-p8`` server is never overwritten) and
+    strictly log-and-continue: neither a registration failure nor a degraded
+    diagnostic may abort startup. Gated on ``is_filenet_mcp_available()``
+    (kill switch AND on_prem-or-dev gate AND configured sidecar URL).
+    """
+    from config.settings import (
+        FILENET_MCP_SERVER_NAME,
+        get_filenet_mcp_token,
+        get_filenet_mcp_url,
+        is_filenet_mcp_available,
+    )
+
+    if not is_filenet_mcp_available():
+        logger.debug(
+            "FileNet P8 MCP chat tool is not available; "
+            "skipping MCP server registration and diagnostics"
+        )
+        return
+
+    logger.info("Registering the FileNet P8 MCP server in Langflow...")
+    try:
+        server_config = {"url": get_filenet_mcp_url()}
+        token = get_filenet_mcp_token()
+        if token:
+            # NOTE: server_config now carries a credential header — never log it.
+            server_config["headers"] = {"Authorization": f"Bearer {token}"}
+        result = await langflow_mcp_service.ensure_mcp_server(
+            FILENET_MCP_SERVER_NAME, server_config
+        )
+        logger.info(
+            "FileNet P8 MCP server registration completed",
+            server_name=FILENET_MCP_SERVER_NAME,
+            result=result,
+        )
+    except Exception as filenet_error:
+        logger.warning(
+            "Failed to register the FileNet P8 MCP server — the FileNet chat "
+            "tool will be unavailable until the next restart",
+            error=str(filenet_error),
+        )
+
+    try:
+        from services.filenet_mcp_diagnostics import run_filenet_startup_diagnostics
+
+        await run_filenet_startup_diagnostics()
+    except Exception as diag_error:
+        logger.warning(
+            "FileNet P8 MCP startup diagnostics failed unexpectedly",
+            error=str(diag_error),
+        )
+
+
 async def startup_tasks(services):
     """Startup tasks"""
     from config.settings import IBM_AUTH_ENABLED
@@ -166,6 +221,11 @@ async def startup_tasks(services):
             )
         except Exception as e:
             logger.error("OpenRAG docs startup refresh failed", error=str(e))
+
+    # Register the FileNet P8 MCP server (create-only) and log its diagnostics
+    # BEFORE the URL-patching pass so a newly created server is normalized in
+    # the same startup. No-ops unless is_filenet_mcp_available().
+    await _ensure_filenet_mcp_server(services["langflow_mcp_service"])
 
     # Update MCP server URLs (patch localhost and convert to streamable HTTP)
     await _update_mcp_server_urls(services["langflow_mcp_service"])

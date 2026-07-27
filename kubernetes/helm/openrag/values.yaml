@@ -71,6 +71,36 @@ global:
     accountKey: ""                      # AZURE_STORAGE_ACCOUNT_KEY
     endpoint: ""                        # AZURE_STORAGE_ENDPOINT (optional)
 
+  # FileNet P8 MCP chat tool (Enterprise/on_prem). When enabled, deploys the
+  # IBM Content Services MCP sidecar (templates/filenet-mcp/) as its own
+  # Deployment + Service and points the backend at it
+  # (OPENRAG_FILENET_MCP_URL). The backend feature is additionally gated by
+  # OPENRAG_RUN_MODE=on_prem (or the OPENRAG_DEV_FILENET_MCP dev bypass).
+  # Credentials go into a dedicated Secret; use a least-privilege CPD service
+  # account and its ACTUAL password (Basic auth rejects a Zen API key).
+  filenet:
+    enabled: false                      # Deploy the sidecar + enable the chat tool
+    graphqlUrl: ""                      # SERVER_URL — CPE GraphQL URL (MUST NOT end with '/')
+    objectStore: ""                     # OBJECT_STORE — the single object store the sidecar is bound to
+    username: ""                        # CPD service account (least-privilege, never an admin)
+    password: ""                        # The account's actual password
+    sslEnabled: "true"                  # SSL_ENABLED — "true"/"false" or a CA bundle path
+    authToken: ""                       # Optional Langflow<->sidecar shared secret (Bearer)
+    documentClass: "Document"           # Class probed by the sidecar /diagnostics route
+    mcp:
+      image:
+        repository: langflowai/openrag-filenet-mcp
+        tag: ""                         # Uses global.imageTag if empty
+      port: 8811
+      replicaCount: 1
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "256Mi"
+        limits:
+          cpu: "1"
+          memory: "1Gi"
+
 # ============================================================================
 # Langflow Configuration
 # ============================================================================

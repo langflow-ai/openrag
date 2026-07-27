@@ -1,16 +1,14 @@
-from config.settings import MCP_URL_PATTERNS
-from typing import List, Dict, Any
+from typing import Any
 
 from tenacity import (
     retry,
+    retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
-    retry_if_exception_type,
 )
 
-from config.settings import clients
+from config.settings import MCP_URL_PATTERNS, clients
 from utils.logging_config import get_logger
-
 
 logger = get_logger(__name__)
 
@@ -22,7 +20,7 @@ class LangflowMCPService:
         retry=retry_if_exception_type(Exception),
         reraise=True,
     )
-    async def _list_mcp_servers_with_retry(self) -> List[Dict[str, Any]]:
+    async def _list_mcp_servers_with_retry(self) -> list[dict[str, Any]]:
         """Internal method with retry logic for listing MCP servers."""
         response = await clients.langflow_request(
             method="GET",
@@ -39,7 +37,7 @@ class LangflowMCPService:
         )
         return []
 
-    async def list_mcp_servers(self) -> List[Dict[str, Any]]:
+    async def list_mcp_servers(self) -> list[dict[str, Any]]:
         """Fetch list of MCP servers from Langflow (v2 API).
 
         Includes retry logic to handle startup timing issues.
@@ -50,7 +48,7 @@ class LangflowMCPService:
             logger.error("Failed to list MCP servers after retries", error=str(e))
             return []
 
-    async def get_mcp_server(self, server_name: str) -> Dict[str, Any]:
+    async def get_mcp_server(self, server_name: str) -> dict[str, Any]:
         """Get MCP server configuration by name."""
         response = await clients.langflow_request(
             method="GET",
@@ -59,7 +57,7 @@ class LangflowMCPService:
         response.raise_for_status()
         return response.json()
 
-    def _parse_stdio_args(self, args: List[str]) -> tuple[str | None, Dict[str, str]]:
+    def _parse_stdio_args(self, args: list[str]) -> tuple[str | None, dict[str, str]]:
         """Extract URL and headers from stdio args.
 
         Args format: [URL, "--headers", key1, value1, "--headers", key2, value2, ...]
@@ -70,7 +68,7 @@ class LangflowMCPService:
             return None, {}
 
         url: str | None = None
-        headers: Dict[str, str] = {}
+        headers: dict[str, str] = {}
         url_index: int = -1
 
         # Find the URL by scanning for http:// or https://
@@ -102,7 +100,7 @@ class LangflowMCPService:
 
         return url, headers
 
-    def _is_convertible_to_streamable_http(self, server_config: Dict[str, Any]) -> bool:
+    def _is_convertible_to_streamable_http(self, server_config: dict[str, Any]) -> bool:
         """Check if stdio server can be converted to streamable HTTP.
 
         Returns True if:
@@ -126,7 +124,7 @@ class LangflowMCPService:
 
         return False
 
-    def _is_streamable_http_mode(self, server_config: Dict[str, Any]) -> bool:
+    def _is_streamable_http_mode(self, server_config: dict[str, Any]) -> bool:
         """Check if server is in streamable HTTP mode (has url field)."""
         return bool(server_config.get("url"))
 
@@ -248,7 +246,84 @@ class LangflowMCPService:
             )
             return "failed"
 
-    async def update_all_mcp_server_urls(self) -> Dict[str, Any]:
+    async def ensure_mcp_server(self, server_name: str, server_config: dict[str, Any]) -> str:
+        """Idempotently register an MCP server in Langflow (create-if-absent).
+
+        Mirrors the create-only convention of ``flows_service.ensure_flows_exist``:
+        - server already exists -> leave it (and its headers) completely untouched;
+        - server missing (404) -> create it with ``server_config``;
+        - anything unexpected -> skip creation to avoid overwriting existing data.
+
+        ``server_config`` is the Langflow v2 MCP server config, e.g.
+        ``{"url": "http://filenet-mcp:8811/mcp", "headers": {...}}`` for a
+        streamable-HTTP server.
+
+        Returns "created", "exists", or "failed". Never raises.
+        """
+        try:
+            logger.info("Ensuring MCP server is registered", server_name=server_name)
+            response = await clients.langflow_request(
+                method="GET",
+                endpoint=f"/api/v2/mcp/servers/{server_name}",
+            )
+            if response.status_code == 200:
+                logger.info(
+                    "MCP server already registered; leaving existing config untouched",
+                    server_name=server_name,
+                )
+                return "exists"
+            if response.status_code != 404:
+                logger.warning(
+                    "Unexpected status while checking MCP server; "
+                    "skipping creation to avoid overwriting existing data",
+                    server_name=server_name,
+                    status_code=response.status_code,
+                    body=response.text,
+                )
+                return "failed"
+
+            response = await clients.langflow_request(
+                method="POST",
+                endpoint=f"/api/v2/mcp/servers/{server_name}",
+                json=server_config,
+            )
+            if response.status_code in (404, 405):
+                # Some Langflow versions expose creation on the collection
+                # endpoint with the name in the body instead of the path.
+                logger.debug(
+                    "Name-in-path MCP server create not supported; "
+                    "retrying against the collection endpoint",
+                    server_name=server_name,
+                    status_code=response.status_code,
+                )
+                response = await clients.langflow_request(
+                    method="POST",
+                    endpoint="/api/v2/mcp/servers",
+                    json={"name": server_name, **server_config},
+                )
+            if response.status_code in (200, 201):
+                logger.info(
+                    "Successfully registered MCP server",
+                    server_name=server_name,
+                    mode="streamable_http" if server_config.get("url") else "stdio",
+                )
+                return "created"
+            logger.warning(
+                "Failed to register MCP server",
+                server_name=server_name,
+                status_code=response.status_code,
+                body=response.text,
+            )
+            return "failed"
+        except Exception as e:
+            logger.error(
+                "Exception while registering MCP server",
+                server_name=server_name,
+                error=str(e),
+            )
+            return "failed"
+
+    async def update_all_mcp_server_urls(self) -> dict[str, Any]:
         """Fetch all MCP servers and update their URLs (replacing localhost with LANGFLOW_URL).
 
         Also converts eligible stdio servers to streamable HTTP mode.

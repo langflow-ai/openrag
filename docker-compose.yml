@@ -121,6 +121,9 @@ services:
       - MAX_WORKERS=${MAX_WORKERS:-4}
       - IBM_AUTH_ENABLED=${IBM_AUTH_ENABLED:-false}
       - OPENRAG_AZURE_BLOB_ENABLED=${OPENRAG_AZURE_BLOB_ENABLED:-true}
+      - OPENRAG_FILENET_MCP_ENABLED=${OPENRAG_FILENET_MCP_ENABLED:-true}
+      - OPENRAG_FILENET_MCP_URL=${OPENRAG_FILENET_MCP_URL:-}
+      - OPENRAG_FILENET_MCP_TOKEN=${OPENRAG_FILENET_MCP_TOKEN:-}
       - PLATFORM_AUTH_DEV_MODE=${PLATFORM_AUTH_DEV_MODE:-false}
       - DOCLING_SERVE_URL=${DOCLING_SERVE_URL:-http://host.docker.internal:5001}
       - DOCLING_SERVE_VERIFY_SSL=${DOCLING_SERVE_VERIFY_SSL:-true}
@@ -238,6 +241,35 @@ services:
       - "10002:10002" # Table
     volumes:
       - azurite-data:/data
+
+  # FileNet P8 MCP sidecar: the IBM Content Services MCP Server wrapped by the
+  # OpenRAG HTTP entry point (sidecars/filenet_mcp/). Opt-in only — gated
+  # behind the "filenet-mcp" compose profile so it never starts with the
+  # normal stack. Start it with `make filenet-mcp-up` (or
+  # `docker compose --profile filenet-mcp up -d filenet-mcp`).
+  # Requires FILENET_GRAPHQL_URL / FILENET_OBJECT_STORE / FILENET_USERNAME /
+  # FILENET_PASSWORD in .env and a reachable CPE (the sidecar's bootstrap
+  # performs a live GraphQL call). Point the backend at it with
+  # OPENRAG_FILENET_MCP_URL=http://filenet-mcp:8811/mcp (plus
+  # OPENRAG_DEV_FILENET_MCP=true outside on_prem).
+  filenet-mcp:
+    image: docker.io/langflowai/openrag-filenet-mcp:${OPENRAG_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile.filenet-mcp
+    container_name: filenet-mcp
+    profiles: ["filenet-mcp"]
+    environment:
+      - SERVER_URL=${FILENET_GRAPHQL_URL:-}
+      - OBJECT_STORE=${FILENET_OBJECT_STORE:-}
+      - USERNAME=${FILENET_USERNAME:-}
+      - PASSWORD=${FILENET_PASSWORD:-}
+      - SSL_ENABLED=${FILENET_SSL_ENABLED:-true}
+      - FILENET_MCP_PORT=8811
+      - FILENET_MCP_AUTH_TOKEN=${OPENRAG_FILENET_MCP_TOKEN:-}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    ports:
+      - "8811:8811"
 
 volumes:
   opensearch-data:
