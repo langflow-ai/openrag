@@ -866,7 +866,7 @@ export function IngestSettingsSection() {
                       </LabelWrapper>
                       {providerWarning && (
                         <p className="text-sm text-destructive" role="alert">
-                          {providerLabel} is not configured. Configure it in
+                          Configure a provider with vision-capable models in
                           Settings &gt; Providers first.
                         </p>
                       )}
