@@ -24,8 +24,6 @@ export function LangflowUpdatesBanner() {
     return null;
   }
 
-  const hasCustomFlows = updates.some((u) => u.is_custom);
-
   const handleUpdate = async () => {
     setIsUpdating(true);
     setErrorMessage(null);
@@ -77,18 +75,18 @@ export function LangflowUpdatesBanner() {
           <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-500 mt-0.5" />
           <div>
             <AlertTitle className="text-amber-800 dark:text-amber-400 text-base">
-              Langflow Flow Updates Available
+              Custom Langflow Flow Updates Available
             </AlertTitle>
             <AlertDescription className="text-amber-700 dark:text-amber-300 mt-1">
-              There are newer versions of the Langflow flows available.
-              {hasCustomFlows &&
-                " Note: You have custom modifications. Updating will overwrite them, but a backup flow will be created in Langflow automatically so you can redo your modifications."}
+              There are newer versions of custom flows available. Updating will
+              overwrite your custom modifications, but a backup flow will be
+              created in Langflow automatically so you can redo your
+              modifications.
             </AlertDescription>
             <ul className="list-disc pl-4 mt-2 text-sm text-amber-700 dark:text-amber-300">
               {updates.map((update) => (
                 <li key={update.flow_type}>
                   {formatFlowName(update.flow_type)}
-                  {update.is_custom && " (Custom)"}
                 </li>
               ))}
             </ul>

@@ -89,16 +89,13 @@ export function FlowsUpdateDialog() {
 
   if (!can("flows:edit") || undismissedUpdates.length === 0) return null;
 
-  const hasCustomFlows = undismissedUpdates.some((u) => u.is_custom);
-
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>Flow Updates Available</DialogTitle>
           <DialogDescription>
-            There are updates available for your Langflow flows. Updating
-            ensures you have the latest features and bug fixes.
+            There are updates available for custom Langflow flows.
           </DialogDescription>
         </DialogHeader>
 
@@ -117,47 +114,38 @@ export function FlowsUpdateDialog() {
                 <span className="font-medium">
                   {formatFlowName(update.flow_type)}
                 </span>
-                {update.is_custom && (
-                  <span className="ml-2 text-xs bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 px-2 py-0.5 rounded-full">
-                    Custom Modified
-                  </span>
-                )}
               </li>
             ))}
           </ul>
 
-          {hasCustomFlows && (
-            <Alert
-              variant="default"
-              className="border-yellow-500/50 bg-yellow-500/10"
-            >
-              <AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-500" />
-              <AlertTitle className="text-yellow-800 dark:text-yellow-400">
-                Custom Flows Detected
-              </AlertTitle>
-              <AlertDescription className="text-yellow-700 dark:text-yellow-300">
-                You have modified some of these flows. Updating will overwrite
-                your custom changes, but backup flows will be created in
-                Langflow so you can reference or redo your modifications.
-              </AlertDescription>
-            </Alert>
-          )}
+          <Alert
+            variant="default"
+            className="border-yellow-500/50 bg-yellow-500/10"
+          >
+            <AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-500" />
+            <AlertTitle className="text-yellow-800 dark:text-yellow-400">
+              Custom Flows Detected
+            </AlertTitle>
+            <AlertDescription className="text-yellow-700 dark:text-yellow-300">
+              You have modified some of these flows. Updating will overwrite
+              your custom changes, but backup flows will be created in Langflow
+              so you can reference or redo your modifications.
+            </AlertDescription>
+          </Alert>
 
-          {hasCustomFlows && (
-            <div className="flex items-center space-x-2 pt-2">
-              <Checkbox
-                id="backup-custom"
-                checked={backupCustom}
-                onCheckedChange={(checked) => setBackupCustom(!!checked)}
-              />
-              <label
-                htmlFor="backup-custom"
-                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-              >
-                Create backup flows in Langflow before updating
-              </label>
-            </div>
-          )}
+          <div className="flex items-center space-x-2 pt-2">
+            <Checkbox
+              id="backup-custom"
+              checked={backupCustom}
+              onCheckedChange={(checked) => setBackupCustom(!!checked)}
+            />
+            <label
+              htmlFor="backup-custom"
+              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+            >
+              Create backup flows in Langflow before updating
+            </label>
+          </div>
         </div>
 
         <DialogFooter>

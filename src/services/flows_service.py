@@ -126,6 +126,8 @@ class FlowsService:
         self._enabled_models_cache_time = None
         self._enabled_models_cache_ttl = 60  # seconds
         self._enabled_models_lock = asyncio.Lock()
+        # Cache for available custom flow updates
+        self._custom_updates_cache: list[dict[str, Any]] | None = None
 
     async def _get_flow_lock(self, flow_id: str) -> asyncio.Lock:
         """Get or create an asyncio.Lock for a specific flow ID"""
@@ -496,7 +498,18 @@ class FlowsService:
         flow_id = self._get_flow_id_by_type(flow_type)
         flow_lock = await self._get_flow_lock(flow_id)
         async with flow_lock:
-            return await self._reset_langflow_flow_locked(flow_type, flow_id)
+            result = await self._reset_langflow_flow_locked(flow_type, flow_id)
+            if result.get("success"):
+                self._custom_updates_cache = None
+                try:
+                    config = get_openrag_config()
+                    if config.edited:
+                        from api.settings import reapply_all_settings
+
+                        await reapply_all_settings()
+                except Exception as e:
+                    logger.error(f"Error reapplying settings after flow reset: {e}")
+            return result
 
     async def _reset_langflow_flow_locked(self, flow_type: str, flow_id: str):
         if not LANGFLOW_URL:
@@ -531,68 +544,6 @@ class FlowsService:
                     flow_id=flow_id,
                     flow_file=os.path.basename(flow_path),
                 )
-
-                # Now update the flow with current configuration settings
-                try:
-                    config = get_openrag_config()
-
-                    # Check if configuration has been edited (onboarding completed)
-                    if config.edited:
-                        logger.info(
-                            f"Updating {flow_type} flow with current configuration settings"
-                        )
-
-                        # Update current LLM provider
-                        update_result = await self._update_provider_components_locked(
-                            {"name": flow_type, "flow_id": flow_id},
-                            config.agent.llm_provider.lower(),
-                            llm_model=config.agent.llm_model,
-                            force_llm_update=True,
-                        )
-
-                        # Update all configured embedding providers
-                        embedding_providers = []
-                        if config.providers.openai.configured:
-                            embedding_providers.append("openai")
-                        if config.providers.watsonx.configured:
-                            embedding_providers.append("watsonx")
-                        if config.providers.ollama.configured:
-                            embedding_providers.append("ollama")
-
-                        current_emb_provider = config.knowledge.embedding_provider.lower()
-                        for provider in embedding_providers:
-                            model = (
-                                config.knowledge.embedding_model
-                                if provider == current_emb_provider
-                                else None
-                            )
-                            await self._update_provider_components_locked(
-                                {"name": flow_type, "flow_id": flow_id},
-                                provider,
-                                embedding_model=model,
-                                force_embedding_update=True,
-                            )
-
-                        if update_result.get("success"):
-                            logger.info(
-                                f"Successfully updated {flow_type} flow with current configuration"
-                            )
-                        else:
-                            logger.warning(
-                                f"Failed to update {flow_type} flow with current configuration: {update_result.get('error', 'Unknown error')}"
-                            )
-                    else:
-                        logger.info(
-                            f"Configuration not yet edited (onboarding not completed), skipping model updates for {flow_type} flow"
-                        )
-
-                except Exception as e:
-                    logger.error(
-                        f"Error updating {flow_type} flow with current configuration",
-                        error=str(e),
-                    )
-                    # Don't fail the entire reset operation if configuration update fails
-
                 return {
                     "success": True,
                     "message": f"Successfully reset {flow_type} flow",
@@ -869,6 +820,52 @@ class FlowsService:
 
 
 
+    async def _check_flow_update(
+        self, flow_type: str, flow_id: str, flow_data: dict[str, Any] | None = None
+    ) -> dict[str, Any] | None:
+        """
+        Check if a flow has a newer version on disk compared to Langflow.
+        Returns flow update info dict if an update is available, None otherwise.
+        """
+        if not flow_id:
+            return None
+        flow_path = self._find_flow_file_by_id(flow_id)
+        if not flow_path or not os.path.exists(flow_path):
+            return None
+        local_mtime = os.path.getmtime(flow_path)
+
+        if flow_data is None:
+            try:
+                response = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
+                if response.status_code != 200:
+                    return None
+                flow_data = response.json()
+            except Exception as e:
+                logger.error(f"Failed to fetch flow {flow_id} for update check: {e}")
+                return None
+
+        langflow_updated_at_str = flow_data.get("updated_at")
+        langflow_mtime = 0
+        if langflow_updated_at_str:
+            if langflow_updated_at_str.endswith("Z"):
+                langflow_updated_at_str = langflow_updated_at_str[:-1] + "+00:00"
+            try:
+                dt = datetime.fromisoformat(langflow_updated_at_str)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=UTC)
+                langflow_mtime = dt.timestamp()
+            except ValueError:
+                pass
+
+        if local_mtime > langflow_mtime + 1.0:
+            is_locked = flow_data.get("locked", False)
+            return {
+                "flow_type": flow_type,
+                "flow_id": flow_id,
+                "is_custom": not is_locked,
+            }
+        return None
+
     async def ensure_flows_exist(self) -> set[str]:
         """
         Ensure all configured flows exist in Langflow.
@@ -877,9 +874,6 @@ class FlowsService:
         the Langflow database.  This is intentionally create-only: it never
         patches or overwrites an existing flow, preserving any edits the user
         has made in the Langflow UI.
-
-        This replaces the LANGFLOW_LOAD_FLOWS_PATH mechanism, which performed a
-        blind upsert on every container start and discarded user edits.
 
         Returns the set of flow type names that were actually created.
         """
@@ -890,6 +884,7 @@ class FlowsService:
             ("url_ingest", LANGFLOW_URL_INGEST_FLOW_ID),
         ]
         created_flow_types: set[str] = set()
+        custom_updates: list[dict[str, Any]] = []
 
         async def ensure_single_flow_exists(flow_type, flow_id):
             if not flow_id:
@@ -897,6 +892,23 @@ class FlowsService:
             try:
                 response = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
                 if response.status_code == 200:
+                    flow_data = response.json()
+                    update_info = await self._check_flow_update(
+                        flow_type, flow_id, flow_data=flow_data
+                    )
+                    if update_info:
+                        if not update_info["is_custom"]:
+                            logger.info(
+                                f"Non-custom flow {flow_type} (ID: {flow_id}) has a newer version on disk, auto-updating on startup."
+                            )
+                            await self._backup_flow(flow_id, flow_type, flow_data=flow_data)
+                            flow_lock = await self._get_flow_lock(flow_id)
+                            async with flow_lock:
+                                await self._reset_langflow_flow_locked(flow_type, flow_id)
+                            return flow_type
+                        else:
+                            custom_updates.append(update_info)
+
                     logger.info(
                         f"Flow {flow_type} (ID: {flow_id}) already exists, skipping creation"
                     )
@@ -940,6 +952,7 @@ class FlowsService:
         tasks = [ensure_single_flow_exists(ft, fi) for ft, fi in flow_configs]
         results = await asyncio.gather(*tasks)
         created_flow_types = {r for r in results if r is not None}
+        self._custom_updates_cache = custom_updates
 
         if created_flow_types:
             try:
@@ -1434,72 +1447,40 @@ class FlowsService:
             return (None, "Anthropic")
         return (None, None)
 
-    async def get_flows_updates_available(self, user_id: str | None = None):
+    async def get_flows_updates_available(
+        self, user_id: str | None = None
+    ) -> list[dict[str, Any]]:
         """
-        Check if there are any updates available for core flows.
-        Returns a list of dicts with flow details.
+        Check for available flow updates.
+        Uses cached update results from startup/previous checks if available.
+        Only surfaces custom flows since non-custom flows are auto-updated on startup.
         """
-        updates: list[dict[str, Any]] = []
-        flow_configs = [
-            ("nudges", NUDGES_FLOW_ID),
-            ("retrieval", LANGFLOW_CHAT_FLOW_ID),
-            ("ingest", LANGFLOW_INGEST_FLOW_ID),
-            ("url_ingest", LANGFLOW_URL_INGEST_FLOW_ID),
-        ]
-
         target_user = user_id or "default"
-        for flow_type, flow_id in flow_configs:
-            if not flow_id:
-                continue
+        if not hasattr(self, "_custom_updates_cache") or self._custom_updates_cache is None:
+            flow_configs = [
+                ("nudges", NUDGES_FLOW_ID),
+                ("retrieval", LANGFLOW_CHAT_FLOW_ID),
+                ("ingest", LANGFLOW_INGEST_FLOW_ID),
+                ("url_ingest", LANGFLOW_URL_INGEST_FLOW_ID),
+            ]
+            cache = []
+            for flow_type, flow_id in flow_configs:
+                update_info = await self._check_flow_update(flow_type, flow_id)
+                if update_info and update_info["is_custom"]:
+                    cache.append(update_info)
+            self._custom_updates_cache = cache
 
-            try:
-                # 1. Get the local file modification time
-                flow_path = self._find_flow_file_by_id(flow_id)
-                if not flow_path or not os.path.exists(flow_path):
-                    continue
-                local_mtime = os.path.getmtime(flow_path)
-
-                # 2. Get the Langflow flow updated_at
-                response = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
-                if response.status_code == 200:
-                    flow_data = response.json()
-
-                    langflow_updated_at_str = flow_data.get("updated_at")
-                    langflow_mtime = 0
-                    if langflow_updated_at_str:
-                        if langflow_updated_at_str.endswith("Z"):
-                            langflow_updated_at_str = langflow_updated_at_str[:-1] + "+00:00"
-
-                        try:
-                            dt = datetime.fromisoformat(langflow_updated_at_str)
-                            if dt.tzinfo is None:
-                                dt = dt.replace(tzinfo=UTC)
-                            langflow_mtime = dt.timestamp()
-                        except ValueError:
-                            pass
-
-                    # 3. Compare timestamps
-                    # If the date modified on the local files is greater than what's in Langflow
-                    # (with a 1-second margin for sub-second precision drift), it needs an update
-                    if local_mtime > langflow_mtime + 1.0:
-                        is_locked = flow_data.get("locked", False)
-                        is_dismissed = False
-                        if hasattr(self, "_dismissed_updates") and isinstance(
-                            self._dismissed_updates, dict
-                        ):
-                            is_dismissed = flow_type in self._dismissed_updates.get(
-                                target_user, set()
-                            )
-                        updates.append(
-                            {
-                                "flow_type": flow_type,
-                                "flow_id": flow_id,
-                                "is_custom": not is_locked,
-                                "dismissed": is_dismissed,
-                            }
-                        )
-            except Exception as e:
-                logger.error(f"Failed to fetch flow {flow_id} for update check: {e}")
+        updates = []
+        for item in self._custom_updates_cache:
+            is_dismissed = False
+            if hasattr(self, "_dismissed_updates") and isinstance(self._dismissed_updates, dict):
+                is_dismissed = item["flow_type"] in self._dismissed_updates.get(target_user, set())
+            updates.append(
+                {
+                    **item,
+                    "dismissed": is_dismissed,
+                }
+            )
 
         return updates
 
@@ -1633,5 +1614,16 @@ class FlowsService:
                             "backup_flow_id": backup_flow_id,
                         }
                     )
+
+        if results and any(r.get("success") for r in results):
+            self._custom_updates_cache = None
+            try:
+                config = get_openrag_config()
+                if config.edited:
+                    from api.settings import reapply_all_settings
+
+                    await reapply_all_settings()
+            except Exception as e:
+                logger.error(f"Error reapplying settings after bulk update: {e}")
 
         return results
