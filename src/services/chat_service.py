@@ -140,6 +140,11 @@ class ChatService:
         )
         extra_headers["X-Langflow-Global-Var-CONNECTOR_TYPE"] = "url"
 
+        # VULN-13906: backend-known trusted copy of the real current user message, used by
+        # the URL Ingestion Tool's intent gate. Never derive this from retrieved/uploaded
+        # document content or model output — only from the actual chat request.
+        extra_headers["X-Langflow-Global-Var-OPENRAG_CURRENT_USER_MESSAGE"] = prompt
+
         # Add provider credentials to headers
         await add_provider_credentials_to_headers(
             extra_headers, config, flows_service=self.flows_service, jwt_token=jwt_token
@@ -566,6 +571,15 @@ class ChatService:
                 LANGFLOW_INGEST_CALLBACK_BATCH_SIZE
             )
             extra_headers["X-Langflow-Global-Var-CONNECTOR_TYPE"] = "url"
+
+            # VULN-13906: intentionally NOT document_prompt — that string embeds the
+            # untrusted document body, and including it here would let a poisoned
+            # document's own URL satisfy the URL Ingestion Tool's intent gate. Use only
+            # the synthetic upload-confirmation framing, which never contains attacker
+            # content, so no URL from the document itself can pass the intent check.
+            extra_headers["X-Langflow-Global-Var-OPENRAG_CURRENT_USER_MESSAGE"] = (
+                f"I'm uploading a document called '{filename}'."
+            )
 
             # Add provider credentials to headers
             await add_provider_credentials_to_headers(

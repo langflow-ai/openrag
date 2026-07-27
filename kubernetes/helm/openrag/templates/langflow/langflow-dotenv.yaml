@@ -165,6 +165,7 @@ stringData:
     OPENRAG_INGEST_TOKEN={{ .Values.langflow.flowDefaults.openragIngestToken | quote }}
     OPENRAG_INGEST_RUN_ID={{ .Values.langflow.flowDefaults.openragIngestRunId | quote }}
     OPENRAG_INGEST_BATCH_SIZE={{ .Values.langflow.flowDefaults.openragIngestBatchSize | quote }}
+    OPENRAG_CURRENT_USER_MESSAGE={{ .Values.langflow.flowDefaults.openragCurrentUserMessage | quote }}
     OPENRAG-QUERY-FILTER={{ .Values.langflow.openragQueryFilter | quote }}
     DOCLING_TASK_ID={{ .Values.langflow.flowDefaults.doclingTaskId | quote }}
     FILENAME={{ .Values.langflow.flowDefaults.filename | quote }}
