@@ -93,5 +93,3 @@ def test_assistant_message_citation_serialization():
     assert result.metadata == {"custom_key": "val"}
     assert result.data is not None
     assert result.data.text == "Extracted chunk text"
-
-
