@@ -1,3 +1,4 @@
+import copy
 import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -64,6 +65,23 @@ class BaseConnector(ABC):
     # "oauth" connectors authenticate per-user via OAuth env-var credentials.
     # "bucket" connectors authenticate via per-connection config dict (HMAC, API key, etc).
     CONNECTOR_KIND: str = "oauth"
+    # When a sync re-processes files that are already indexed, pass
+    # replace_duplicates so the indexed copy is replaced and content changes
+    # propagate, instead of being skipped by the duplicate-filename gate.
+    # Default True so a new connector gets change-propagating sync out of the
+    # box (the content-hash "unchanged" short-circuit still avoids re-indexing
+    # identical bytes on the non-Langflow path). Bucket connectors normally
+    # never consult this: their sync paths divert to modified_time change
+    # detection and replace only the blobs that actually changed.
+    SYNC_REPLACES_DUPLICATES: bool = True
+    # How sync decides whether an already-indexed file needs re-ingesting:
+    #   "replace_always" — re-process every indexed file on sync, replacing the
+    #                      indexed copy (the content-hash short-circuit still
+    #                      skips identical bytes on the non-Langflow path).
+    #   "timestamp"      — list the source once and re-ingest only files whose
+    #                      remote modified_time is strictly newer than the
+    #                      stored one (see bucket_changed_file_ids).
+    CHANGE_DETECTION: str = "replace_always"
     # Connector-specific keys in the config dict that must be encrypted at rest.
     SECRET_CONFIG_KEYS: tuple = ()
 
@@ -71,6 +89,11 @@ class BaseConnector(ABC):
     CONNECTOR_NAME: str = None
     CONNECTOR_DESCRIPTION: str = None
     CONNECTOR_ICON: str = None  # Icon identifier or emoji
+
+    # Per-connection settings (file_ids/folder_ids selection, etc.). Declared
+    # here so subclasses that set a concrete cfg type still satisfy the base
+    # type; list_selected_files() scopes it via a per-call shallow copy.
+    cfg: Any = None
 
     def __init__(self, config: dict[str, Any]):
         self.config = config
@@ -174,6 +197,40 @@ class BaseConnector(ABC):
     ) -> dict[str, Any]:
         """List all files. Returns files and next_page_token if any."""
         pass
+
+    async def list_selected_files(
+        self,
+        file_ids: list[str],
+        folder_ids: list[str] | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """List specific files/folders by scoping cfg to this call.
+
+        Callers that need list_files() to operate on a specific set of ids
+        previously had to manually save cfg.file_ids / cfg.folder_ids, overwrite
+        them, call list_files(), then restore in a finally block.  This method
+        owns that scoping so the caller never has to.
+
+        Connectors are cached and shared across requests by ConnectionManager,
+        so we operate on a per-call shallow copy with its own cfg instead of
+        mutating (and racing on) the shared config.
+        """
+        cfg = getattr(self, "cfg", None)
+        if cfg is None:
+            # No per-call selection state to scope by. Falling back to
+            # list_files() would list the connector's entire account and
+            # silently ignore file_ids, so refuse instead: callers must gate on
+            # `cfg is not None` and use file_ids directly for cfg-less
+            # (bucket) connectors.
+            raise NotImplementedError(
+                f"{type(self).__name__} has no cfg; list_selected_files is only "
+                "supported on cfg-backed connectors (Google Drive/OneDrive/SharePoint)."
+            )
+        scoped = copy.copy(self)
+        scoped.cfg = copy.copy(cfg)
+        scoped.cfg.file_ids = file_ids
+        scoped.cfg.folder_ids = folder_ids
+        return await scoped.list_files(**kwargs)
 
     @abstractmethod
     async def get_file_content(self, file_id: str) -> ConnectorDocument:

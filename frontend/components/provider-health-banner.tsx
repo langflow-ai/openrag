@@ -73,26 +73,27 @@ export function ProviderHealthBanner({ className }: ProviderHealthBannerProps) {
     let errorProvider: string | undefined;
     let errorMessage: string;
 
+    // Prefer a single shared provider when LLM and embedding fail the same way
+    // (e.g. both watsonx auth failures), so the banner stays readable.
+    let showMultipleErrors = false;
+
     if (llmError && embeddingError) {
-      // Both have errors - check if they're the same
       if (llmError === embeddingError) {
-        // Same error for both - show once
         errorMessage = llmError;
+        errorProvider =
+          llmProvider === embeddingProvider ? llmProvider : undefined;
       } else {
-        // Different errors - show both
         errorMessage = `${llmError}; ${embeddingError}`;
+        errorProvider = undefined;
+        showMultipleErrors = true;
       }
-      errorProvider = undefined; // Don't link to a specific provider
     } else if (llmError) {
-      // Only LLM has error
       errorProvider = llmProvider;
       errorMessage = llmError;
     } else if (embeddingError) {
-      // Only embedding has error
       errorProvider = embeddingProvider;
       errorMessage = embeddingError;
     } else {
-      // Fallback to original message
       errorMessage = health?.message || "Provider validation failed";
       errorProvider = llmProvider;
     }
@@ -104,6 +105,10 @@ export function ProviderHealthBanner({ className }: ProviderHealthBannerProps) {
     const settingsUrl = errorProvider
       ? `/settings?setup=${errorProvider}`
       : "/settings";
+
+    const bannerLabel = showMultipleErrors
+      ? `Provider errors - ${errorMessage}`
+      : `${providerTitle} error - ${errorMessage}`;
 
     return (
       <Banner
@@ -117,13 +122,7 @@ export function ProviderHealthBanner({ className }: ProviderHealthBannerProps) {
           icon={AlertTriangle}
         />
         <BannerTitle className="font-medium flex items-center gap-2">
-          {llmError && embeddingError ? (
-            <>Provider errors - {errorMessage}</>
-          ) : (
-            <>
-              {providerTitle} error - {errorMessage}
-            </>
-          )}
+          {bannerLabel}
         </BannerTitle>
         <Button size="sm" onClick={() => router.push(settingsUrl)}>
           Fix Setup

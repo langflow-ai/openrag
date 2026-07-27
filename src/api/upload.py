@@ -30,6 +30,9 @@ class UploadPathBody(BaseModel):
 
 class UploadBucketBody(BaseModel):
     s3_url: str
+    # When True, objects whose filename (S3 key) already exists in the index
+    # replace the indexed copy; when False (default) they are skipped.
+    replace_duplicates: bool = False
 
 
 async def upload(
@@ -230,6 +233,7 @@ async def upload_bucket(
         jwt_token=jwt_token,
         owner_name=owner_name,
         owner_email=owner_email,
+        replace_duplicates=body.replace_duplicates,
     )
 
     task_id = await task_service.create_custom_task(task_user_id, keys, processor)
