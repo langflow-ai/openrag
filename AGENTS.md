@@ -9,6 +9,13 @@ This repository ships with **agent skills** that any compliant agent can use to 
 | `openrag_install` | [`plugins/openrag/skills/install/SKILL.md`](plugins/openrag/skills/install/SKILL.md) | Plan and execute a minimal OpenRAG installation, verify locally. |
 | `openrag_sdk` | [`plugins/openrag/skills/sdk/SKILL.md`](plugins/openrag/skills/sdk/SKILL.md) | Guide SDK integration (Python, TypeScript, MCP) with code examples. |
 
+The `openrag-dev` plugin holds internal contributor/QA workflow skills (not distributed to end users installing OpenRAG):
+
+| Skill | File | Purpose |
+| --- | --- | --- |
+| `openrag_dev_qa_handoff` | [`plugins/openrag-dev/skills/qa-handoff/SKILL.md`](plugins/openrag-dev/skills/qa-handoff/SKILL.md) | Generate a QA handoff message for a release branch: per-commit fix summary, PR link, and test steps within a date range. |
+| `openrag_dev_backport` | [`plugins/openrag-dev/skills/backport/SKILL.md`](plugins/openrag-dev/skills/backport/SKILL.md) | Backport commits/PRs from a source branch into a target branch: one PR per commit, ordered, conflicts resolved and verified. |
+
 ## How to use these skills
 
 Pick the path that matches your agent runtime.
