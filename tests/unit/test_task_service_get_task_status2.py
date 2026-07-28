@@ -170,6 +170,22 @@ class TestInferFailureMetadata:
         assert meta["failure_phase"] == "unknown"
         assert meta["actionable_by"] == "RETRYABLE"
 
+    def test_langflow_model_not_found_surfaces_specific_message(self, task_service):
+        ft = _make_file_task(
+            phase=IngestionPhase.LANGFLOW,
+            docling_status=DoclingPhaseStatus.SUCCESS,
+            error=(
+                "Model 'ibm/granite-4-h-small' was not found. "
+                "This model may be unsupported, deprecated, or removed."
+            ),
+        )
+        meta = task_service._infer_failure_metadata(ft)
+        assert meta is not None
+        assert meta["component"] == "langflow"
+        assert meta["actionable_by"] == "USER_ACTIONABLE"
+        assert "granite-4-h-small" in meta["user_facing_message"]
+        assert "unexpectedly" not in meta["user_facing_message"].lower()
+
     def test_langflow_revoked_api_key_failure(self, task_service):
         ft = _make_file_task(
             phase=IngestionPhase.LANGFLOW,
@@ -332,6 +348,7 @@ class TestGetTaskStatus2FailureMetadata:
         assert file_entry["component"] == "langflow"
         assert file_entry["failure_phase"] == "unknown"
         assert file_entry["actionable_by"] == "RETRYABLE"
+        assert file_entry["user_facing_message"] == "Langflow run failed"
 
     def test_duplicate_file_failure_adds_metadata(self, task_service):
         ft = _make_file_task(
