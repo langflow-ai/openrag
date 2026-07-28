@@ -1035,7 +1035,7 @@
               },
               "_frontend_node_folder_id": {
                 "input_types": [],
-                "value": "d2f06123-6a36-47a7-bd53-0ca2f498d791"
+                "value": "ac85075c-d2f1-4ad4-be8e-cac332195513"
               },
               "_type": "Component",
               "add_calculator_tool": {
@@ -1856,7 +1856,7 @@
             ],
             "frozen": false,
             "icon": "calculator",
-            "last_updated": "2026-07-28T17:20:32.806Z",
+            "last_updated": "2026-07-28T20:11:36.358Z",
             "legacy": false,
             "metadata": {
               "code_hash": "d0b2936e74fa",
@@ -1899,7 +1899,7 @@
                 "value": "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
               },
               "_frontend_node_folder_id": {
-                "value": "d2f06123-6a36-47a7-bd53-0ca2f498d791"
+                "value": "ac85075c-d2f1-4ad4-be8e-cac332195513"
               },
               "_type": "Component",
               "code": {
@@ -2062,7 +2062,7 @@
             ],
             "frozen": false,
             "icon": "OpenSearch",
-            "last_updated": "2026-07-28T17:20:32.806Z",
+            "last_updated": "2026-07-28T20:11:36.359Z",
             "legacy": false,
             "metadata": {
               "code_hash": "48fac82a63c3",
@@ -2095,7 +2095,7 @@
               {
                 "allows_loop": false,
                 "cache": true,
-                "display_name": "Toolset",
+                "display_name": "Search Results",
                 "group_outputs": false,
                 "hidden": null,
                 "loop_types": null,
@@ -2117,7 +2117,7 @@
                 "value": "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
               },
               "_frontend_node_folder_id": {
-                "value": "d2f06123-6a36-47a7-bd53-0ca2f498d791"
+                "value": "ac85075c-d2f1-4ad4-be8e-cac332195513"
               },
               "_type": "Component",
               "auth_mode": {
@@ -3015,7 +3015,7 @@
                 "value": "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
               },
               "_frontend_node_folder_id": {
-                "value": "d2f06123-6a36-47a7-bd53-0ca2f498d791"
+                "value": "ac85075c-d2f1-4ad4-be8e-cac332195513"
               },
               "_type": "Component",
               "api_base": {
@@ -3996,7 +3996,7 @@
             ],
             "frozen": false,
             "icon": "Mcp",
-            "last_updated": "2026-07-28T17:20:46.533Z",
+            "last_updated": "2026-07-28T20:11:36.366Z",
             "legacy": false,
             "metadata": {
               "code_hash": "ccd98ac0a0fb",
@@ -4025,7 +4025,7 @@
               {
                 "allows_loop": false,
                 "cache": true,
-                "display_name": "Toolset",
+                "display_name": "Response",
                 "group_outputs": false,
                 "hidden": null,
                 "loop_types": null,
@@ -4047,7 +4047,7 @@
                 "value": "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
               },
               "_frontend_node_folder_id": {
-                "value": "d2f06123-6a36-47a7-bd53-0ca2f498d791"
+                "value": "ac85075c-d2f1-4ad4-be8e-cac332195513"
               },
               "_type": "Component",
               "code": {
@@ -4192,7 +4192,7 @@
                   }
                 ]
               },
-              "is_refresh": true,
+              "is_refresh": false,
               "mcp_server": {
                 "_input_type": "McpInput",
                 "advanced": false,
@@ -4279,7 +4279,7 @@
                 "list_add_label": "Add More",
                 "name": "tools_metadata",
                 "override_skip": false,
-                "placeholder": "Error loading actions",
+                "placeholder": "",
                 "real_time_refresh": true,
                 "required": false,
                 "show": true,
@@ -4288,7 +4288,48 @@
                 "trace_as_metadata": true,
                 "track_in_telemetry": false,
                 "type": "tools",
-                "value": []
+                "value": [
+                  {
+                    "approval_actions": [],
+                    "args": {
+                      "input_value": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "description": "Message to be passed as input.",
+                        "title": "Input Value"
+                      },
+                      "session_id": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "description": "Optional session identifier used to persist conversation history across tool calls. Omit to start a new session.",
+                        "title": "Session Id"
+                      }
+                    },
+                    "description": "This flow is to ingest the URL to open search.",
+                    "display_description": "This flow is to ingest the URL to open search.",
+                    "display_name": "opensearch_url_ingestion_flow",
+                    "name": "opensearch_url_ingestion_flow",
+                    "readonly": false,
+                    "status": true,
+                    "tags": [
+                      "opensearch_url_ingestion_flow"
+                    ]
+                  }
+                ]
               },
               "use_cache": {
                 "_input_type": "BoolInput",
@@ -4339,14 +4380,14 @@
         "dragging": false,
         "id": "MCPTools-uu7m3",
         "measured": {
-          "height": 315,
+          "height": 293,
           "width": 320
         },
         "position": {
           "x": 1499.1989099237799,
           "y": 1358.0838292705346
         },
-        "selected": true,
+        "selected": false,
         "type": "genericNode"
       },
       {
@@ -4450,7 +4491,7 @@
                 "value": "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
               },
               "_frontend_node_folder_id": {
-                "value": "d2f06123-6a36-47a7-bd53-0ca2f498d791"
+                "value": "ac85075c-d2f1-4ad4-be8e-cac332195513"
               },
               "_type": "Component",
               "api_key": {
@@ -5093,16 +5134,16 @@
       }
     ],
     "viewport": {
-      "x": -637.9231102758231,
-      "y": -745.4080713165597,
-      "zoom": 0.7288127181834346
+      "x": -63.1398499440088,
+      "y": -339.06294556867385,
+      "zoom": 0.47224912881136594
     }
   },
   "description": "OpenRAG OpenSearch Agent",
   "endpoint_name": null,
   "id": "1098eea1-6649-4e1d-aed1-b77249fb8dd0",
   "is_component": false,
-  "last_tested_version": "0.11.1rc0",
+  "last_tested_version": "1.11.1",
   "locked": true,
   "name": "OpenRAG OpenSearch Agent Flow",
   "tags": [
