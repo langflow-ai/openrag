@@ -51,7 +51,7 @@ async def test_bulk_update_flows_creates_backup_flow_in_langflow():
             service, "_backup_flow", new_callable=AsyncMock, return_value="/tmp/backup.json"
         ),
         patch.object(
-            service, "reset_langflow_flow", new_callable=AsyncMock, return_value={"success": True}
+            service, "_reset_langflow_flow_locked", new_callable=AsyncMock, return_value={"success": True}
         ),
     ):
         results = await service.bulk_update_flows(["retrieval"], backup_custom=True)
@@ -91,7 +91,7 @@ async def test_bulk_update_flows_aborts_reset_on_backup_failure():
     with (
         patch("services.flows_service.clients.langflow_request", side_effect=mock_langflow_request),
         patch.object(service, "_backup_flow", new_callable=AsyncMock, return_value=None),
-        patch.object(service, "reset_langflow_flow", reset_mock),
+        patch.object(service, "_reset_langflow_flow_locked", reset_mock),
     ):
         results = await service.bulk_update_flows(["retrieval"], backup_custom=True)
 
@@ -122,7 +122,7 @@ async def test_bulk_update_flows_saves_local_file_backup_for_default_flows():
     with (
         patch("services.flows_service.clients.langflow_request", return_value=mock_get_response),
         patch.object(service, "_backup_flow", backup_mock),
-        patch.object(service, "reset_langflow_flow", reset_mock),
+        patch.object(service, "_reset_langflow_flow_locked", reset_mock),
     ):
         results = await service.bulk_update_flows(["retrieval"], backup_custom=True)
 
@@ -144,7 +144,7 @@ async def test_bulk_update_flows_aborts_when_preflight_get_fails():
 
     with (
         patch("services.flows_service.clients.langflow_request", return_value=mock_get_response),
-        patch.object(service, "reset_langflow_flow", reset_mock),
+        patch.object(service, "_reset_langflow_flow_locked", reset_mock),
     ):
         results = await service.bulk_update_flows(["retrieval"], backup_custom=True)
 
@@ -168,3 +168,44 @@ def test_per_user_dismissal_isolation():
         "user_B" not in service._dismissed_updates
         or "retrieval" not in service._dismissed_updates.get("user_B", set())
     )
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_flows_dismissal_cleared_only_on_success():
+    """Verify issue (4c): dismissal state is preserved on failure and cleared on success."""
+    service = FlowsService()
+
+    # Pre-dismiss update for user_A
+    service.dismiss_flows_updates(["retrieval"], user_id="user_A")
+    assert "retrieval" in service._dismissed_updates["user_A"]
+
+    mock_get_fail = MagicMock(status_code=500)
+
+    # 1. Update fails (pre-flight GET returns 500) -> dismissal remains intact
+    with patch("services.flows_service.clients.langflow_request", return_value=mock_get_fail):
+        results = await service.bulk_update_flows(["retrieval"], backup_custom=True)
+
+    assert results[0]["success"] is False
+    assert "retrieval" in service._dismissed_updates.get("user_A", set())
+
+    # 2. Update succeeds -> dismissal is cleared
+    mock_get_ok = MagicMock(status_code=200)
+    mock_get_ok.json.return_value = {
+        "id": "flow-retrieval-123",
+        "name": "Retrieval Flow",
+        "locked": True,
+        "data": {"nodes": []},
+    }
+
+    with (
+        patch("services.flows_service.clients.langflow_request", return_value=mock_get_ok),
+        patch.object(service, "_backup_flow", AsyncMock(return_value="/tmp/backup.json")),
+        patch.object(
+            service, "_reset_langflow_flow_locked", AsyncMock(return_value={"success": True})
+        ),
+    ):
+        results = await service.bulk_update_flows(["retrieval"], backup_custom=True)
+
+    assert results[0]["success"] is True
+    assert "retrieval" not in service._dismissed_updates.get("user_A", set())
+

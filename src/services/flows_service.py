@@ -499,17 +499,17 @@ class FlowsService:
         flow_lock = await self._get_flow_lock(flow_id)
         async with flow_lock:
             result = await self._reset_langflow_flow_locked(flow_type, flow_id)
-            if result.get("success"):
-                self._custom_updates_cache = None
-                try:
-                    config = get_openrag_config()
-                    if config.edited:
-                        from api.settings import reapply_all_settings
+        if result.get("success"):
+            self._custom_updates_cache = None
+            try:
+                config = get_openrag_config()
+                if config.edited:
+                    from api.settings import reapply_all_settings
 
-                        await reapply_all_settings()
-                except Exception as e:
-                    logger.error(f"Error reapplying settings after flow reset: {e}")
-            return result
+                    await reapply_all_settings()
+            except Exception as e:
+                logger.error(f"Error reapplying settings after flow reset: {e}")
+        return result
 
     async def _reset_langflow_flow_locked(self, flow_type: str, flow_id: str):
         if not LANGFLOW_URL:
@@ -1494,7 +1494,6 @@ class FlowsService:
         }
 
         for flow_type in flow_types:
-            self.clear_dismissed_update(flow_type)
             flow_id = flow_configs_dict.get(flow_type)
             if not flow_id:
                 results.append(
@@ -1583,12 +1582,9 @@ class FlowsService:
                     continue
 
                 try:
-                    from unittest.mock import AsyncMock, MagicMock
-
-                    if isinstance(self.reset_langflow_flow, (AsyncMock, MagicMock)):
-                        reset_res = await self.reset_langflow_flow(flow_type)
-                    else:
-                        reset_res = await self._reset_langflow_flow_locked(flow_type, flow_id)
+                    reset_res = await self._reset_langflow_flow_locked(flow_type, flow_id)
+                    if reset_res.get("success"):
+                        self.clear_dismissed_update(flow_type)
                     results.append(
                         {
                             "flow_type": flow_type,
