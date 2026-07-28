@@ -34,7 +34,7 @@ class KnowledgeFilterService:
 
             from config.settings import clients, get_index_name
             from utils.logging_config import get_logger
-            from utils.opensearch_queries import build_existing_filenames_agg_body
+            from utils.opensearch_filenames import find_existing_filenames
 
             data_sources_by_filter: list[list[str] | None] = []
             all_filenames = set()
@@ -58,13 +58,9 @@ class KnowledgeFilterService:
             if not all_filenames or clients.opensearch is None:
                 return
 
-            existence_result = await clients.opensearch.search(
-                index=get_index_name(),
-                body=build_existing_filenames_agg_body(list(all_filenames)),
+            existing_filenames = await find_existing_filenames(
+                all_filenames, clients.opensearch, get_index_name()
             )
-            existing_filenames = {
-                bucket["key"] for bucket in existence_result["aggregations"]["filenames"]["buckets"]
-            }
 
             for knowledge_filter, data_sources in zip(filters, data_sources_by_filter, strict=True):
                 if data_sources:

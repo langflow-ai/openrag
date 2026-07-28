@@ -28,6 +28,7 @@ import {
   getKnowledgeFileIdentity,
   inferTaskFileConnectorType,
 } from "@/lib/knowledge-table-state";
+import { getTaskFailureToastDescription } from "@/lib/task-error-display";
 import {
   didTaskReachCompleted,
   didTaskReachTerminalState,
@@ -496,9 +497,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
             };
             if (isTotalFailure) {
               toast.error("Task failed", {
-                description: `${failedFiles} file${
-                  failedFiles !== 1 ? "s" : ""
-                } failed`,
+                description: getTaskFailureToastDescription(currentTask),
                 action: toastAction,
               });
             } else {
@@ -626,9 +625,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
             resultValue: currentTask.error,
           });
           toast.error("Task failed", {
-            description: `Task ${currentTask.task_id} failed: ${
-              currentTask.error || "Unknown error"
-            }`,
+            description: getTaskFailureToastDescription(currentTask),
           });
 
           // Set chat error flag to trigger test_completion=true on health checks
