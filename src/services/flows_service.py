@@ -1059,14 +1059,18 @@ class FlowsService:
             )
             is_new_flow = len(embedding_nodes) < 3
 
+            provider_name = self._get_provider_name_display(provider)
+
             # Update embedding component
             if not get_openrag_config().knowledge.disable_ingest_with_langflow and (
                 embedding_model or force_embedding_update
             ):
                 if is_new_flow:
+                    if embedding_model:
+                        await self._enable_model_in_langflow(provider_name, embedding_model)
                     logger.info(
                         f"Flow {flow_name} has {len(embedding_nodes)} embedding nodes (< 3). "
-                        "Flow is updated to generic embedding component; skipping legacy component patching."
+                        f"Flow is updated to generic embedding component; enabled model in Langflow, skipping legacy component patching."
                     )
                 else:
                     # Count configured embedding-enabled providers
@@ -1095,7 +1099,7 @@ class FlowsService:
 
                     # 1. Check if any node is already this provider - always update those first
                     matched_nodes = []
-                    provider_display = self._get_provider_name_display(provider)
+                    provider_display = provider_name
                     for node, idx in embedding_nodes:
                         if self._get_node_provider(node) == provider_display:
                             matched_nodes.append((node, idx))
@@ -1163,9 +1167,11 @@ class FlowsService:
             # Update LLM component (if exists in this flow)
             if llm_model or force_llm_update:
                 if is_new_flow:
+                    if llm_model:
+                        await self._enable_model_in_langflow(provider_name, llm_model)
                     logger.info(
                         f"Flow {flow_name} has {len(embedding_nodes)} embedding nodes (< 3). "
-                        "Flow is updated to generic components; skipping legacy LLM component patching."
+                        f"Flow is updated to generic components; enabled model in Langflow, skipping legacy LLM component patching."
                     )
                 else:
                     llm_node, _ = self._find_node_in_flow(
@@ -1277,7 +1283,8 @@ class FlowsService:
                 return False
 
             # Enable the model in Langflow first
-            await self._enable_model_in_langflow(provider_name, model_value)
+            if model_value:
+                await self._enable_model_in_langflow(provider_name, model_value)
             # Update template via Langflow API to get latest options
             template = (
                 await self._update_component_langflow(template, template["model"]["value"])
