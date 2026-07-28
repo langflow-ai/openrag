@@ -213,11 +213,14 @@ async def test_non_cos_connector_rejects_shared_true():
 
 
 @pytest.mark.asyncio
-async def test_ibm_cos_shared_true_does_not_hit_guard():
+async def test_ibm_cos_shared_true_does_not_hit_guard(monkeypatch):
     """shared=True with ibm_cos should NOT be rejected by the guard."""
     from unittest.mock import AsyncMock, MagicMock
 
+    from api import connectors as connectors_api
     from api.connectors import ConnectorSyncBody, connector_sync
+
+    monkeypatch.setattr(connectors_api, "has_effective_permission", AsyncMock(return_value=True))
 
     body = ConnectorSyncBody(shared=True)
     connector_service = MagicMock()
@@ -241,3 +244,32 @@ async def test_ibm_cos_shared_true_does_not_hit_guard():
     )
     # 404 = "no active connections" error, not 400 = guard rejection
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_ibm_cos_shared_sync_denied_without_delete_anonymous_permission(monkeypatch):
+    """shared=True requires knowledge:delete:anonymous for all sync paths."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from api import connectors as connectors_api
+    from api.connectors import ConnectorSyncBody, connector_sync
+
+    monkeypatch.setattr(connectors_api, "has_effective_permission", AsyncMock(return_value=False))
+    monkeypatch.setattr(connectors_api.TelemetryClient, "send_event", AsyncMock())
+
+    body = ConnectorSyncBody(shared=True)
+
+    response = await connector_sync(
+        connector_type="ibm_cos",
+        body=body,
+        request=MagicMock(),
+        connector_service=MagicMock(),
+        session_manager=MagicMock(),
+        user=MagicMock(jwt_token="token", user_id="user-1"),
+        session=AsyncMock(),
+        rbac=MagicMock(),
+    )
+    import json
+
+    assert response.status_code == 403
+    assert "knowledge:delete:anonymous" in json.loads(response.body)["error"]

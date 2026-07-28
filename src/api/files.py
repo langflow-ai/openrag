@@ -25,7 +25,7 @@ async def list_files(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(25, ge=1, le=500, description="Items per page"),
     sort_by: str = Query("filename", description="Sort field"),
-    sort_order: str = Query("asc", regex="^(asc|desc)$", description="Sort order"),
+    sort_order: str = Query("asc", pattern="^(asc|desc)$", description="Sort order"),
     connector_type: str | None = Query(None, description="Filter by connector type"),
     mimetype: str | None = Query(None, description="Filter by MIME type"),
     owner: str | None = Query(None, description="Filter by owner"),

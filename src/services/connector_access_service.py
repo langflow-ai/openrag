@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from connectors.registry import get_connector_classes
+from connectors.registry import get_connector_class, get_connector_classes
 from db.repositories import WorkspaceConfigRepo
 
 CONNECTOR_ACCESS_SECTION = "connector_access"
@@ -13,12 +13,12 @@ CONNECTOR_ACCESS_SECTION = "connector_access"
 # without touching this module.
 CONNECTOR_TYPES: tuple[str, ...] = tuple(cls.CONNECTOR_TYPE for cls in get_connector_classes())
 
-_BUCKET_CONNECTOR_TYPES = frozenset({"aws_s3", "ibm_cos", "azure_blob"})
-
 
 def is_bucket_connector_type(connector_type: str) -> bool:
-    """True for object-storage "bucket" connectors (S3, IBM COS, Azure Blob)."""
-    return connector_type in _BUCKET_CONNECTOR_TYPES
+    """True for object-storage "bucket" connectors, per the class's
+    CONNECTOR_KIND declaration (registry-derived, no hardcoded type list)."""
+    cls = get_connector_class(connector_type)
+    return cls is not None and cls.CONNECTOR_KIND == "bucket"
 
 
 def governable_connector_types() -> tuple[str, ...]:
@@ -31,7 +31,7 @@ def governable_connector_types() -> tuple[str, ...]:
     if not is_azure_blob_enabled():
         types = tuple(t for t in types if t != "azure_blob")
     if is_cloud_context() and not IBM_AUTH_ENABLED:
-        types = tuple(t for t in types if t not in _BUCKET_CONNECTOR_TYPES)
+        types = tuple(t for t in types if not is_bucket_connector_type(t))
     return types
 
 

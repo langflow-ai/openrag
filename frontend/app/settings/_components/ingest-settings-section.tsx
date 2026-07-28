@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, Loader2, Minus, Plus } from "lucide-react";
+import { ArrowUpRight, ChevronDown, Loader2, Minus, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -13,12 +13,6 @@ import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { LabelWrapper } from "@/components/label-wrapper";
 import { RequirePermission } from "@/components/require-permission";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -27,6 +21,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { NumberInput } from "@/components/ui/inputs/number-input";
 import { Label } from "@/components/ui/label";
@@ -338,7 +337,7 @@ export function IngestSettingsSection() {
       setVlmWatsonxApiVersion(k.vlm_watsonx_api_version);
   }, [settings.knowledge]);
 
-  const [vlmAccordionValue, setVlmAccordionValue] = useState<string>("");
+  const [vlmOpen, setVlmOpen] = useState(false);
 
   const autoSelectedVlm = useRef(false);
   useEffect(() => {
@@ -825,161 +824,164 @@ export function IngestSettingsSection() {
               />
             </div>
             {showVlmSettings && (
-              <div
-                className={cn(
-                  "mt-4 border border-border rounded-lg bg-muted/5 overflow-hidden transition-all duration-200",
-                  !pictureDescriptions &&
-                    "opacity-50 cursor-not-allowed select-none",
-                )}
-              >
-                <Accordion
-                  type="single"
-                  collapsible
-                  disabled={!pictureDescriptions}
-                  value={pictureDescriptions ? vlmAccordionValue : ""}
-                  onValueChange={setVlmAccordionValue}
+              <>
+                <hr className="mt-4 border-border" />
+                <Collapsible
+                  open={vlmOpen}
+                  onOpenChange={setVlmOpen}
+                  className={cn(
+                    "mt-4 px-4 transition-all duration-200",
+                    !pictureDescriptions && "opacity-50",
+                  )}
                 >
-                  <AccordionItem value="vlm-settings" className="border-none">
-                    <AccordionTrigger
+                  <CollapsibleTrigger className="flex w-full items-center justify-between py-2 text-sm font-medium text-foreground hover:text-foreground/80">
+                    Advanced Vision Model (VLM) Settings
+                    <ChevronDown
                       className={cn(
-                        "hover:no-underline font-medium text-foreground px-4 py-3 bg-muted/10 border-b border-border",
-                        !pictureDescriptions && "pointer-events-none",
+                        "h-4 w-4 text-muted-foreground transition-transform duration-200",
+                        vlmOpen && "rotate-180",
                       )}
-                    >
-                      Advanced Vision Model (VLM) Settings
-                    </AccordionTrigger>
-                    <AccordionContent className="p-4 space-y-6">
-                      <div className="space-y-2">
-                        <LabelWrapper
-                          id="vlm-model"
-                          label="Vision model"
-                          helperText="Pick a vision-capable model; the provider is set from your selection"
-                          required={pictureDescriptions}
-                        >
-                          <ModelSelector
-                            groupedOptions={groupedVlmModels}
-                            noOptionsPlaceholder={
-                              isLoadingAnyVlmModels
-                                ? "Loading models..."
-                                : "No models detected. Configure OpenAI, Anthropic, Ollama, or IBM watsonx.ai first."
-                            }
-                            value={vlmModel}
-                            onValueChange={handleVlmModelChange}
-                            hasError={!!validationError}
-                          />
-                        </LabelWrapper>
-                        {providerWarning && (
-                          <p className="text-sm text-destructive" role="alert">
-                            {providerLabel} is not configured. Configure it in
-                            Settings &gt; Providers first.
-                          </p>
-                        )}
-                      </div>
-
-                      {vlmProvider === "watsonx" && (
-                        <div className="space-y-2">
-                          <LabelWrapper
-                            id="vlm-watsonx-api-version"
-                            label="watsonx API version"
-                            helperText="API version date sent to watsonx.ai"
-                          >
-                            <Input
-                              id="vlm-watsonx-api-version"
-                              type="text"
-                              placeholder={DEFAULT_WATSONX_API_VERSION}
-                              value={vlmWatsonxApiVersion}
-                              onChange={(e) =>
-                                setVlmWatsonxApiVersion(e.target.value)
-                              }
-                            />
-                          </LabelWrapper>
-                        </div>
-                      )}
-
-                      <div className="space-y-2">
-                        <LabelWrapper
-                          id="vlm-prompt"
-                          label="Prompt"
-                          helperText="Sent to the VLM for every page"
-                        >
-                          <Textarea
-                            id="vlm-prompt"
-                            rows={3}
-                            value={vlmPrompt}
-                            onChange={(e) => setVlmPrompt(e.target.value)}
-                          />
-                        </LabelWrapper>
-                      </div>
-
-                      <div className="space-y-2">
-                        <LabelWrapper
-                          id="vlm-response-format"
-                          label="Response format"
-                          helperText="Per-page VLM output. Markdown is compatible with the existing pipeline; the final document is always Docling JSON."
-                        >
-                          <Select
-                            value={vlmResponseFormat}
-                            onValueChange={setVlmResponseFormat}
-                          >
-                            <SelectTrigger id="vlm-response-format">
-                              <SelectValue placeholder="Select a format" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {RESPONSE_FORMATS.map((format) => (
-                                <SelectItem
-                                  key={format.value}
-                                  value={format.value}
-                                >
-                                  {format.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </LabelWrapper>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-4">
-                        <NumberInput
-                          id="vlm-max-tokens"
-                          label="Max tokens per page"
-                          value={vlmMaxTokens}
-                          onChange={(value) =>
-                            setVlmMaxTokens(Math.max(1, value))
+                    />
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="pt-4 space-y-6">
+                    <div className="space-y-2">
+                      <LabelWrapper
+                        id="vlm-model"
+                        label="Vision model"
+                        helperText="Pick a vision-capable model; the provider is set from your selection"
+                        required={pictureDescriptions}
+                      >
+                        <ModelSelector
+                          groupedOptions={groupedVlmModels}
+                          noOptionsPlaceholder={
+                            isLoadingAnyVlmModels
+                              ? "Loading models..."
+                              : "No models detected. Configure OpenAI, Anthropic, Ollama, or IBM watsonx.ai first."
                           }
-                          unit="tokens"
-                          min={1}
+                          value={vlmModel}
+                          onValueChange={handleVlmModelChange}
+                          hasError={!!validationError}
+                          disabled={!pictureDescriptions}
                         />
-                        <NumberInput
-                          id="vlm-concurrency"
-                          label="Concurrency"
-                          value={vlmConcurrency}
-                          onChange={(value) =>
-                            setVlmConcurrency(Math.max(1, value))
-                          }
-                          unit="requests"
-                          min={1}
-                        />
-                        <NumberInput
-                          id="vlm-timeout"
-                          label="API timeout"
-                          value={vlmTimeout}
-                          onChange={(value) =>
-                            setVlmTimeout(Math.max(1, value))
-                          }
-                          unit="seconds"
-                          min={1}
-                        />
-                      </div>
-
-                      {validationError && (
+                      </LabelWrapper>
+                      {providerWarning && (
                         <p className="text-sm text-destructive" role="alert">
-                          {validationError}
+                          Configure a provider with vision-capable models in
+                          Settings &gt; Providers first.
                         </p>
                       )}
-                    </AccordionContent>
-                  </AccordionItem>
-                </Accordion>
-              </div>
+                    </div>
+
+                    {vlmProvider === "watsonx" && (
+                      <div className="space-y-2">
+                        <LabelWrapper
+                          id="vlm-watsonx-api-version"
+                          label="watsonx API version"
+                          helperText="API version date sent to watsonx.ai"
+                        >
+                          <Input
+                            id="vlm-watsonx-api-version"
+                            type="text"
+                            placeholder={DEFAULT_WATSONX_API_VERSION}
+                            value={vlmWatsonxApiVersion}
+                            onChange={(e) =>
+                              setVlmWatsonxApiVersion(e.target.value)
+                            }
+                            disabled={!pictureDescriptions}
+                          />
+                        </LabelWrapper>
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <LabelWrapper
+                        id="vlm-prompt"
+                        label="Prompt"
+                        helperText="Sent to the VLM for every page"
+                      >
+                        <Textarea
+                          id="vlm-prompt"
+                          rows={3}
+                          value={vlmPrompt}
+                          onChange={(e) => setVlmPrompt(e.target.value)}
+                          disabled={!pictureDescriptions}
+                        />
+                      </LabelWrapper>
+                    </div>
+
+                    <div className="space-y-2">
+                      <LabelWrapper
+                        id="vlm-response-format"
+                        label="Response format"
+                        helperText="Per-page VLM output. Markdown is compatible with the existing pipeline; the final document is always Docling JSON."
+                      >
+                        <Select
+                          value={vlmResponseFormat}
+                          onValueChange={setVlmResponseFormat}
+                          disabled={!pictureDescriptions}
+                        >
+                          <SelectTrigger
+                            id="vlm-response-format"
+                            disabled={!pictureDescriptions}
+                          >
+                            <SelectValue placeholder="Select a format" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {RESPONSE_FORMATS.map((format) => (
+                              <SelectItem
+                                key={format.value}
+                                value={format.value}
+                              >
+                                {format.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </LabelWrapper>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-4">
+                      <NumberInput
+                        id="vlm-max-tokens"
+                        label="Max tokens per page"
+                        value={vlmMaxTokens}
+                        onChange={(value) =>
+                          setVlmMaxTokens(Math.max(1, value))
+                        }
+                        unit="tokens"
+                        min={1}
+                        disabled={!pictureDescriptions}
+                      />
+                      <NumberInput
+                        id="vlm-concurrency"
+                        label="Concurrency"
+                        value={vlmConcurrency}
+                        onChange={(value) =>
+                          setVlmConcurrency(Math.max(1, value))
+                        }
+                        unit="requests"
+                        min={1}
+                        disabled={!pictureDescriptions}
+                      />
+                      <NumberInput
+                        id="vlm-timeout"
+                        label="API timeout"
+                        value={vlmTimeout}
+                        onChange={(value) => setVlmTimeout(Math.max(1, value))}
+                        unit="seconds"
+                        min={1}
+                        disabled={!pictureDescriptions}
+                      />
+                    </div>
+
+                    {validationError && (
+                      <p className="text-sm text-destructive" role="alert">
+                        {validationError}
+                      </p>
+                    )}
+                  </CollapsibleContent>
+                </Collapsible>
+              </>
             )}
           </div>
           <div className="flex justify-end pt-2">
