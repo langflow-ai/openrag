@@ -173,6 +173,37 @@ export function resolveTaskFileError(
   return "Unknown error";
 }
 
+/** Best available user-facing reason for a failed ingestion task toast. */
+export function getTaskFailureToastDescription(task: {
+  error?: string | null;
+  failed_files?: number;
+  files?: Record<string, TaskFileEntry> | null;
+}): string {
+  const files = Object.values(task.files ?? {});
+  for (const fileInfo of files) {
+    if (fileInfo.status !== "failed" && fileInfo.status !== "error") {
+      continue;
+    }
+    const message = resolveTaskFileError(fileInfo, task.error ?? undefined);
+    if (message && message !== "Unknown error") {
+      return message;
+    }
+  }
+
+  if (typeof task.error === "string" && task.error.trim()) {
+    return task.error.trim();
+  }
+
+  const failedCount =
+    task.failed_files ??
+    files.filter((file) => file.status === "failed" || file.status === "error")
+      .length;
+  if (failedCount > 0) {
+    return `${failedCount} file${failedCount !== 1 ? "s" : ""} failed`;
+  }
+  return "Unknown error";
+}
+
 export function analyzeTaskFileIngestionFailure(
   fileInfo: TaskFileEntry,
   taskError?: string,

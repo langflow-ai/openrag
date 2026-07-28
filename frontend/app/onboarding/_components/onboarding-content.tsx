@@ -39,6 +39,12 @@ const sanitizeCitationResult = (item: ToolCallResult): ToolCallResult => {
       file_path: item.data.file_path,
       page: item.data.page,
       score: item.data.score,
+      text: item.data.text,
+      embedding_model: item.data.embedding_model,
+      parser: item.data.parser,
+      chunk_size: item.data.chunk_size,
+      chunk_overlap: item.data.chunk_overlap,
+      metadata: item.data.metadata,
     };
 
     return Object.values(sanitizedData).some((value) => value !== undefined)
@@ -53,6 +59,13 @@ const sanitizeCitationResult = (item: ToolCallResult): ToolCallResult => {
     filename: item.filename,
     page: item.page ?? item.data?.page,
     score: item.score ?? item.data?.score,
+    text: item.text ?? item.data?.text,
+    embedding_model: item.embedding_model ?? item.data?.embedding_model,
+    parser: item.parser ?? item.data?.parser,
+    chunk_size: item.chunk_size ?? item.data?.chunk_size,
+    chunk_overlap: item.chunk_overlap ?? item.data?.chunk_overlap,
+    source_url: item.source_url,
+    metadata: item.metadata ?? item.data?.metadata,
   };
 };
 
@@ -148,13 +161,18 @@ export function OnboardingContent({
 
   const { streamingMessage, isLoading, sendMessage } = useChatStreaming({
     onComplete: async (message, newResponseId) => {
+      setAssistantMessage(message);
+      // Errors are display-only during onboarding — do not track or persist them.
+      if (message.error) {
+        return;
+      }
+
       trackLLMCall({
         mode: "onboarding",
         model: settings?.agent?.llm_model,
         inputTokens: message.usage?.input_tokens,
         outputTokens: message.usage?.output_tokens,
       });
-      setAssistantMessage(message);
       // Save assistant message to backend
       await updateOnboardingMutation.mutateAsync({
         assistant_message: {
@@ -194,11 +212,19 @@ export function OnboardingContent({
     },
     onError: (error) => {
       console.error("Chat error:", error);
-      setAssistantMessage({
-        role: "assistant",
-        content:
-          "Sorry, I couldn't connect to the chat service. Please try again.",
-        timestamp: new Date(),
+      // Display is owned by onComplete (including message.error). Keep a
+      // fallback only when completion never ran.
+      setAssistantMessage((prev) => {
+        if (prev?.error || (prev && !prev.isStreaming)) {
+          return prev;
+        }
+        return {
+          role: "assistant",
+          content:
+            error.message || "An error occurred while generating a response.",
+          timestamp: new Date(),
+          error: true,
+        };
       });
     },
   });
@@ -338,7 +364,7 @@ export function OnboardingContent({
                 isStreaming={!!streamingMessage}
                 isCompleted={currentStep > 3}
                 showFeedback={false}
-                interactiveCitations={false}
+                showViewDocument={false}
                 showFunctionCalls={false}
                 unstyledMessageContent
               />

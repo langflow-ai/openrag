@@ -4,7 +4,7 @@ import json
 import time
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 import httpx
 
@@ -168,7 +168,16 @@ class LangflowFileService:
         self,
         file_tuples: list[tuple[str, Any, str]] | None,
         document_id: str | None,
+        connector_file_id: str | None = None,
     ) -> str:
+        # Bucket-style connectors (COS/Azure/S3) pass their raw, potentially
+        # non-ASCII and unbounded "bucket::key" as connector_file_id. Hash it
+        # into a stable ASCII document_id instead of using it verbatim — the
+        # raw value still travels downstream as connector_file_id, but
+        # document_id must stay safe for HTTP headers and OpenSearch's chunk
+        # _id (mirrors the content-hash document_id used by manual upload).
+        if connector_file_id:
+            return hash_id(io.BytesIO(connector_file_id.encode("utf-8")))
         if document_id:
             return document_id
         if file_tuples and len(file_tuples[0]) > 1:
@@ -183,10 +192,10 @@ class LangflowFileService:
         self,
         *,
         document_id: str,
-        filename: str,
         mimetype: str,
         file_size: int,
         embedding_model: str,
+        filename: str | None = None,
         owner: str | None,
         owner_name: str | None,
         owner_email: str | None,
@@ -199,6 +208,7 @@ class LangflowFileService:
         parser: str | None = None,
         chunk_size: int | None = None,
         chunk_overlap: int | None = None,
+        connector_file_id: str | None = None,
     ) -> tuple[str | None, str | None]:
         if self.ingest_token_service is None:
             logger.warning(
@@ -234,6 +244,7 @@ class LangflowFileService:
             parser=parser,
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
+            connector_file_id=connector_file_id,
         )
         token = self.ingest_token_service.create_token(context)
         logger.info(
@@ -296,6 +307,15 @@ class LangflowFileService:
                 error=str(e),
             )
 
+    async def _raise_resolved_ingest_error(self, exc: BaseException) -> NoReturn:
+        """Re-raise with a credential message when Langflow disconnects on bad API keys."""
+        from api.provider_validation import resolve_ingest_error_message
+
+        resolved = await resolve_ingest_error_message(exc)
+        if resolved != (str(exc) or "").strip():
+            raise Exception(resolved) from exc
+        raise exc
+
     async def upload_user_file(self, file_tuple, jwt_token: str | None = None) -> dict[str, Any]:
         """Upload a file using Langflow Files API v2: POST /api/v2/files.
         Returns JSON with keys: id, name, path, size, provider.
@@ -353,6 +373,7 @@ class LangflowFileService:
         owner_email: str | None = None,
         connector_type: str | None = None,
         document_id: str | None = None,
+        connector_file_id: str | None = None,
         source_url: str | None = None,
         allowed_users: list[str] | None = None,
         allowed_groups: list[str] | None = None,
@@ -419,7 +440,9 @@ class LangflowFileService:
             if file_tuples and len(file_tuples) > 0 and len(file_tuples[0]) > 2
             else ""
         )
-        resolved_document_id = self._resolve_document_id(file_tuples, document_id)
+        resolved_document_id = self._resolve_document_id(
+            file_tuples, document_id, connector_file_id
+        )
 
         # Get the current embedding model and provider credentials from config
         from config.settings import get_openrag_config
@@ -480,6 +503,7 @@ class LangflowFileService:
             parser="Docling Serve 1.20.0",
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
+            connector_file_id=connector_file_id,
         )
         headers.update(
             self._ingest_callback_global_var_headers(
@@ -574,12 +598,12 @@ class LangflowFileService:
 
                 raise
             return resp_json
-        except Exception:
+        except Exception as e:
             await self._cleanup_failed_callback_ingest(
                 ingest_token=ingest_token,
                 ingest_run_id=ingest_run_id,
             )
-            raise
+            await self._raise_resolved_ingest_error(e)
 
     async def run_url_ingestion_flow(
         self,
@@ -636,7 +660,6 @@ class LangflowFileService:
         }
         ingest_token, ingest_run_id = self._configure_ingest_callback(
             document_id=resolved_document_id,
-            filename=docs_url,
             mimetype="text/html",
             file_size=0,
             embedding_model=embedding_model,
@@ -710,12 +733,12 @@ class LangflowFileService:
                 )
 
             return resp.json()
-        except Exception:
+        except Exception as e:
             await self._cleanup_failed_callback_ingest(
                 ingest_token=ingest_token,
                 ingest_run_id=ingest_run_id,
             )
-            raise
+            await self._raise_resolved_ingest_error(e)
 
     async def _ensure_url_ingest_flow_id(self) -> str:
         """Ensure URL ingest flow ID is valid; import flow if missing.
@@ -892,6 +915,7 @@ class LangflowFileService:
         docling_polling_service: Any | None = None,
         file_task: Any | None = None,
         document_id: str | None = None,
+        connector_file_id: str | None = None,
         source_url: str | None = None,
         allowed_users: list[str] | None = None,
         allowed_groups: list[str] | None = None,
@@ -1036,6 +1060,7 @@ class LangflowFileService:
                 connector_type=connector_type,
                 docling_task_id=task_id,
                 document_id=document_id,
+                connector_file_id=connector_file_id,
                 source_url=source_url,
                 selected_embedding_model=selected_embedding,
                 allowed_users=allowed_users,

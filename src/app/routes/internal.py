@@ -235,6 +235,24 @@ def register_internal_routes(app: FastAPI):
         methods=["PUT"],
         tags=["internal"],
     )
+    app.add_api_route(
+        "/connectors/oauth-config",
+        connectors.get_connector_oauth_config,
+        methods=["GET"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/connectors/oauth-config/{credential_key}",
+        connectors.update_connector_oauth_config,
+        methods=["PUT"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/connectors/oauth-config/{credential_key}",
+        connectors.delete_connector_oauth_config,
+        methods=["DELETE"],
+        tags=["internal"],
+    )
     # Per-connector routes (defaults, configure, bucket listing, etc.) — registered before
     # the generic /{connector_type}/... routes to avoid path shadowing.
     for cls in get_connector_classes():

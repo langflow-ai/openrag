@@ -1,3 +1,4 @@
+import copy
 from datetime import UTC, datetime
 from typing import Any
 
@@ -6,7 +7,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config.settings import get_index_name
+from config.settings import get_index_name, is_workspace_oauth_overrides_enabled
 from connectors.sharepoint.utils import is_valid_sharepoint_url
 from dependencies import (
     get_connector_service,
@@ -21,7 +22,6 @@ from services.connector_access_service import (
     CONNECTOR_TYPES,
     filter_connectors_for_user,
     get_access_map,
-    is_bucket_connector_type,
     is_connector_access_policy_enforced,
     is_connector_allowed_for_request,
     list_access_for_admin,
@@ -72,8 +72,42 @@ async def _allowed_connector_types_for_request(
 
 
 def _connector_sync_should_replace(connector_type: str) -> bool:
-    """Return True for connector types where sync should replace existing indexed files."""
-    return connector_type in ["google_drive", "sharepoint", "onedrive"]
+    """Return True when sync should replace existing indexed files for this
+    connector type, so content changes propagate on re-sync.
+
+    Declared per connector via ``BaseConnector.SYNC_REPLACES_DUPLICATES``
+    (default True) instead of a hardcoded type list, so new connectors get
+    change-propagating sync without touching this module. Unknown types (e.g.
+    stale index docs from a removed enhancement connector) stay conservative
+    and skip duplicates.
+    """
+    from connectors.registry import get_connector_class
+
+    cls = get_connector_class(connector_type)
+    return cls.SYNC_REPLACES_DUPLICATES if cls is not None else False
+
+
+def _connector_uses_timestamp_change_detection(connector_type: str) -> bool:
+    """True when sync should re-ingest only files whose remote modified_time is
+    newer than the stored one (see bucket_changed_file_ids), instead of
+    replacing every indexed file.
+
+    Declared per connector via ``BaseConnector.CHANGE_DETECTION`` — the bucket
+    connectors set ``"timestamp"``; the default is ``"replace_always"``.
+    """
+    from connectors.registry import get_connector_class
+
+    cls = get_connector_class(connector_type)
+    return cls is not None and cls.CHANGE_DETECTION == "timestamp"
+
+
+def _is_unmapped_keyword_agg_error(err: Exception) -> bool:
+    """True when a terms aggregation failed because the target field is an
+    analyzed `text` field without fielddata enabled — the error OpenSearch
+    raises for connector_file_id on indices that predate its addition to the
+    explicit `keyword` mapping in config/settings.py."""
+    msg = str(err)
+    return "Text fields are not optimised" in msg or "fielddata" in msg
 
 
 async def get_synced_file_ids_for_connector(
@@ -94,13 +128,13 @@ async def get_synced_file_ids_for_connector(
       source ID.
     - ``filenames``: unique filenames as a fallback when ``file_ids`` is empty.
     - ``id_field``: the OpenSearch field name that ``file_ids`` came from
-      (``"connector_file_id"`` or ``"document_id"``). Callers must pass this to
-      ``delete_orphan_documents`` so deletions target the correct field.
+      (``"connector_file_id"`` or ``"document_id"``). Informational (logging);
+      chunk deletion matches both fields via ``connectors.chunk_cleanup``.
     """
     try:
         opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
 
-        query_body = {
+        query_body: dict[str, Any] = {
             "size": 0,
             "query": {"term": {"connector_type": connector_type}},
             "aggs": {
@@ -116,7 +150,19 @@ async def get_synced_file_ids_for_connector(
             },
         }
 
-        result = await opensearch_client.search(index=get_index_name(), body=query_body)
+        try:
+            result = await opensearch_client.search(index=get_index_name(), body=query_body)
+        except Exception as agg_err:
+            if not _is_unmapped_keyword_agg_error(agg_err):
+                raise
+            # Some indices predate connector_file_id's addition to the explicit
+            # mapping (config/settings.py), so it was dynamically mapped as
+            # analyzed text instead of keyword — terms aggs need the
+            # `.keyword` multi-field on those indices.
+            query_body["aggs"]["unique_connector_file_ids"]["terms"]["field"] = (
+                "connector_file_id.keyword"
+            )
+            result = await opensearch_client.search(index=get_index_name(), body=query_body)
 
         # Prefer connector_file_id — these are set by ConnectorFileProcessor (non-Langflow)
         # and hold the actual connector source IDs (e.g. SharePoint GUIDs), not SHA hashes.
@@ -190,7 +236,7 @@ async def get_synced_id_to_filename_map(
     try:
         opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
 
-        query_body = {
+        query_body: dict[str, Any] = {
             "size": 0,
             "query": {"term": {"connector_type": connector_type}},
             "aggs": {
@@ -253,7 +299,7 @@ async def get_synced_id_to_modified_time_map(
     try:
         opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
 
-        query_body = {
+        query_body: dict[str, Any] = {
             "size": 0,
             "query": {"term": {"connector_type": connector_type}},
             "aggs": {
@@ -268,7 +314,17 @@ async def get_synced_id_to_modified_time_map(
             },
         }
 
-        result = await opensearch_client.search(index=get_index_name(), body=query_body)
+        try:
+            result = await opensearch_client.search(index=get_index_name(), body=query_body)
+        except Exception as agg_err:
+            if not _is_unmapped_keyword_agg_error(agg_err):
+                raise
+            # See get_synced_file_ids_for_connector: some indices predate the
+            # explicit keyword mapping for connector_file_id.
+            query_body["aggs"]["by_connector_file_id"]["terms"]["field"] = (
+                "connector_file_id.keyword"
+            )
+            result = await opensearch_client.search(index=get_index_name(), body=query_body)
         aggs = result.get("aggregations", {})
 
         mapping: dict[str, float | None] = {}
@@ -441,28 +497,29 @@ async def compute_orphans_for_connector_type(
                 )
                 return None
 
-            # Drive the per-id existence check via cfg.file_ids when the
-            # connector supports it (SharePoint / OneDrive / Google Drive).
+            # Drive the per-id existence check via list_selected_files when
+            # the connector supports it (SharePoint / OneDrive / Google Drive).
             # The flat default of list_files() only returns the *root* listing
             # (e.g. /drive/root/children for SharePoint, files-only, no folder
             # traversal), so any folder-internal file in OpenSearch would be
             # absent from remote_ids and wrongly flagged as an orphan.
-            # _list_selected_files iterates each id via _get_file_metadata_by_id
+            # list_selected_files iterates each id via _get_file_metadata_by_id
             # and silently drops missing ids, so the resulting `remote_ids` is
             # exactly "the subset of existing_file_ids that still exists at
             # source" — which is what orphan detection actually needs.
-            cfg = getattr(connector, "cfg", None)
-            scoped_listing = cfg is not None and bool(existing_file_ids)
+            # cfg is None on bucket connectors (BaseConnector declares it as a
+            # class default), so guard on cfg-is-not-None rather than hasattr:
+            # otherwise bucket connectors route through list_selected_files ->
+            # list_files() (the whole account) instead of the flat listing below.
+            scoped_listing = getattr(connector, "cfg", None) is not None and bool(existing_file_ids)
 
-            original_file_ids = None
-            original_folder_ids = None
             if scoped_listing:
-                original_file_ids = getattr(cfg, "file_ids", None)
-                original_folder_ids = getattr(cfg, "folder_ids", None)
-                cfg.file_ids = list(existing_file_ids)
-                cfg.folder_ids = None
-
-            try:
+                page = await connector.list_selected_files(list(existing_file_ids))
+                for f in page.get("files", []):
+                    fid = f.get("id")
+                    if fid:
+                        remote_ids.add(fid)
+            else:
                 page_token = None
                 while True:
                     page = await connector.list_files(page_token=page_token)
@@ -473,10 +530,6 @@ async def compute_orphans_for_connector_type(
                     page_token = page.get("nextPageToken") or page.get("next_page_token")
                     if not page_token:
                         break
-            finally:
-                if scoped_listing:
-                    cfg.file_ids = original_file_ids
-                    cfg.folder_ids = original_folder_ids
         except Exception as e:
             logger.warning(
                 "Skipping orphan compute — listing failed",
@@ -499,31 +552,36 @@ async def delete_orphan_documents(
     user_id: str,
     session_manager,
     jwt_token: str | None,
-    id_field: str = "document_id",
+    *,
+    connector_type: str | None = None,
+    shared: bool = False,
 ) -> int:
     """Delete OpenSearch chunks for the given orphan IDs. Returns the number of
     chunks deleted (0 on failure).
 
-    ``id_field`` must match the OpenSearch field that ``orphan_ids`` came from —
-    either ``"connector_file_id"`` (ConnectorFileProcessor / non-Langflow path)
-    or ``"document_id"`` (Langflow path, where document_id holds the connector
-    source ID). Pass the value returned as the third element of
-    ``get_synced_file_ids_for_connector()``.
+    Deletion matches both id layouts (``connector_file_id`` for the standard
+    ingest path, ``document_id`` for the Langflow path) via
+    ``connectors.chunk_cleanup``, so callers no longer need to track which
+    field the ids came from.
     """
     if not orphan_ids:
         return 0
-    from .documents import delete_chunks_by_document_ids
+    from connectors.chunk_cleanup import delete_connector_file_chunks
 
     try:
         opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
-        return await delete_chunks_by_document_ids(
-            orphan_ids, opensearch_client, get_index_name(), field=id_field
+        return await delete_connector_file_chunks(
+            orphan_ids,
+            opensearch_client,
+            connector_type=connector_type,
+            owner_user_id=None if shared else user_id,
+            shared=shared,
+            refresh=True,
         )
     except Exception as e:
         logger.error(
             "Orphan delete failed",
             orphan_count=len(orphan_ids),
-            id_field=id_field,
             error=str(e),
         )
         return 0
@@ -536,15 +594,12 @@ async def reconcile_orphans_for_connector_type(
     session_manager,
     jwt_token: str | None,
     existing_file_ids: list[str],
-    id_field: str = "document_id",
+    *,
+    shared: bool = False,
 ) -> list[str]:
     """Compute and delete orphans for a connector type. Thin wrapper around
     compute_orphans_for_connector_type + delete_orphan_documents preserved for
     callers that perform sync immediately after reconcile.
-
-    ``id_field`` must match the OpenSearch field that ``existing_file_ids`` came
-    from. Pass the value returned as the third element of
-    ``get_synced_file_ids_for_connector()``.
 
     Returns the list of orphan file IDs that were deleted (or []).
     """
@@ -565,18 +620,136 @@ async def reconcile_orphans_for_connector_type(
         user_id=user_id,
         session_manager=session_manager,
         jwt_token=jwt_token,
-        id_field=id_field,
+        connector_type=connector_type,
+        shared=shared,
     )
     logger.info(
         "Orphan reconcile complete",
         connector_type=connector_type,
         orphan_count=len(orphan_ids),
         deleted_chunks=deleted,
-        id_field=id_field,
     )
     if deleted <= 0:
         return []
     return orphan_ids
+
+
+async def _sync_existing_connector_files(
+    connector_type: str,
+    working_connection,
+    user_id: str,
+    connector_service,
+    session_manager,
+    jwt_token: str | None,
+    existing_file_ids: list[str],
+    existing_filenames: list[str],
+    id_field: str,
+    *,
+    ingest_settings: dict[str, Any] | None = None,
+    shared: bool = False,
+    reconcile: bool = True,
+    max_files: int | None = None,
+) -> dict[str, Any]:
+    """Re-sync the files already indexed for a connector type — the shared
+    no-selection Sync flow used by both ``connector_sync`` and
+    ``sync_all_connectors``.
+
+    Orphans (deleted at the source) are reconciled first when ``reconcile`` is
+    True, then either timestamp change detection (updates-only re-ingest) or a
+    full re-sync runs depending on the connector's ``CHANGE_DETECTION``
+    capability; connectors with no stored ids fall back to filename filtering.
+
+    Returns an outcome dict the caller maps onto its own response shape:
+      * ``{"outcome": "synced", "task_id": ...}``
+      * ``{"outcome": "deleted_only"}`` — orphan cleanup removed every file;
+        nothing left to sync.
+      * ``{"outcome": "up_to_date"}`` — timestamp change detection found no
+        remote changes.
+    """
+    if existing_file_ids:
+        logger.info(
+            "Syncing specific files by connector file ID",
+            connector_type=connector_type,
+            file_count=len(existing_file_ids),
+            id_field=id_field,
+        )
+        # Reconcile orphans (files deleted at the source) before re-syncing.
+        # Callers gate this: a capped sync sees a partial remote listing and
+        # would delete legitimate files.
+        ids_to_sync = list(existing_file_ids)
+        if reconcile:
+            orphan_ids = await reconcile_orphans_for_connector_type(
+                connector_type=connector_type,
+                user_id=user_id,
+                connector_service=connector_service,
+                session_manager=session_manager,
+                jwt_token=jwt_token,
+                existing_file_ids=existing_file_ids,
+                shared=shared,
+            )
+            if orphan_ids:
+                orphan_id_set = set(orphan_ids)
+                ids_to_sync = [fid for fid in existing_file_ids if fid not in orphan_id_set]
+        if not ids_to_sync:
+            return {"outcome": "deleted_only"}
+        if _connector_uses_timestamp_change_detection(connector_type):
+            # Timestamp Sync is updates-only: re-ingest just the files whose
+            # remote copy is newer than what's indexed (deleting the stale
+            # chunks via replace_duplicates). Unlike replace_duplicates=False
+            # this actually propagates content changes; unlike replacing every
+            # id it skips unchanged files instead of re-fetching the source.
+            connector = await connector_service.get_connector(working_connection.connection_id)
+            changed_ids = await bucket_changed_file_ids(
+                connector,
+                connector_type,
+                user_id,
+                session_manager,
+                jwt_token,
+                ids_to_sync,
+            )
+            if not changed_ids:
+                return {"outcome": "up_to_date"}
+            if max_files is not None:
+                changed_ids = changed_ids[:max_files]
+            task_id = await connector_service.sync_specific_files(
+                working_connection.connection_id,
+                user_id,
+                changed_ids,
+                jwt_token=jwt_token,
+                ingest_settings=ingest_settings,
+                replace_duplicates=True,
+                shared=shared,
+            )
+        else:
+            if max_files is not None:
+                ids_to_sync = ids_to_sync[:max_files]
+            task_id = await connector_service.sync_specific_files(
+                working_connection.connection_id,
+                user_id,
+                ids_to_sync,
+                jwt_token=jwt_token,
+                ingest_settings=ingest_settings,
+                replace_duplicates=_connector_sync_should_replace(connector_type),
+                shared=shared,
+            )
+    else:
+        # Fallback: use filename filtering (for Langflow-ingested files without document_id)
+        logger.info(
+            "Syncing files by filename filter (document_id not available)",
+            connector_type=connector_type,
+            filename_count=len(existing_filenames),
+        )
+        task_id = await connector_service.sync_connector_files(
+            working_connection.connection_id,
+            user_id,
+            max_files=max_files,
+            jwt_token=jwt_token,
+            filename_filter=set(existing_filenames),
+            ingest_settings=ingest_settings,
+            replace_duplicates=_connector_sync_should_replace(connector_type),
+            shared=shared,
+        )
+    return {"outcome": "synced", "task_id": task_id}
 
 
 class ConnectorSyncBody(BaseModel):
@@ -604,6 +777,11 @@ class ConnectorSyncBody(BaseModel):
 class ConnectorCheckDuplicatesBody(BaseModel):
     connection_id: str | None = None
     selected_files: list[Any] | None = None
+    # Bucket-kind connectors (aws_s3, azure_blob, ibm_cos) select whole
+    # buckets rather than individual files; when set (and selected_files is
+    # not), the check lists files from these buckets and classifies each as
+    # new/changed/unchanged instead of a plain filename match.
+    bucket_filter: list[str] | None = None
 
 
 def _connector_file_response(file_info: dict[str, Any], cleaned_name: str | None = None) -> dict:
@@ -638,21 +816,16 @@ async def _expand_selected_connector_files(
     file_ids = [f.get("id") for f in selected_files_raw if isinstance(f, dict) and f.get("id")]
     expanded_files_info: list[dict[str, Any]] = []
 
-    if file_ids and hasattr(connector, "cfg"):
-        original_file_ids = getattr(connector.cfg, "file_ids", None)
-        original_folder_ids = getattr(connector.cfg, "folder_ids", None)
+    # cfg is None on bucket connectors (BaseConnector class default), so guard on
+    # cfg-is-not-None: only cfg-backed connectors expand folders here; bucket
+    # connectors fall through to using selected_files_raw directly below.
+    if file_ids and getattr(connector, "cfg", None) is not None:
         try:
-            connector.cfg.file_ids = file_ids
-            connector.cfg.folder_ids = None
-
-            result = await connector.list_files()
+            result = await connector.list_selected_files(file_ids)
             for f in result.get("files", []):
                 expanded_files_info.append(_connector_file_response(f))
         except Exception as e:
             logger.error("Failed to expand files in duplicate check", error=str(e))
-        finally:
-            connector.cfg.file_ids = original_file_ids
-            connector.cfg.folder_ids = original_folder_ids
 
     if not expanded_files_info:
         for f in selected_files_raw:
@@ -700,21 +873,14 @@ async def _classify_connector_duplicates(
             "total_files": len(cleaned_files),
         }
 
-    opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
-    query_body = {
-        "size": 10000,
-        "query": {"terms": {"filename": list(all_candidates)}},
-        "_source": ["filename"],
-    }
+    from utils.opensearch_filenames import find_existing_filenames
 
+    opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
     existing_filenames = set()
     try:
-        response = await opensearch_client.search(index=get_index_name(), body=query_body)
-        hits = response.get("hits", {}).get("hits", [])
-        for hit in hits:
-            fn = hit.get("_source", {}).get("filename")
-            if fn:
-                existing_filenames.add(fn)
+        existing_filenames = await find_existing_filenames(
+            all_candidates, opensearch_client, get_index_name()
+        )
     except Exception as search_err:
         if "index_not_found_exception" not in str(search_err):
             raise
@@ -738,6 +904,91 @@ async def _classify_connector_duplicates(
     }
 
 
+def _connector_scoped_to_buckets(connector, bucket_names: list[str]):
+    """Shallow copy of a (cached, shared) connector with bucket_names overridden.
+
+    connector_service.get_connector() returns a per-connection cached instance;
+    mutating bucket_names on it directly would leak the override into concurrent
+    requests using the same connection.
+    """
+    scoped = copy.copy(connector)
+    scoped.bucket_names = list(bucket_names)
+    return scoped
+
+
+async def _classify_bucket_connector_duplicates(
+    connector,
+    connector_type: str,
+    bucket_filter: list[str],
+    session_manager,
+    user_id: str,
+    jwt_token: str | None,
+) -> dict[str, Any]:
+    """Preview a bucket_filter sync: classify remote blobs new/changed/unchanged
+    without ingesting anything, mirroring the reconciliation in connector_sync's
+    bucket_filter branch. "changed" blobs are reported as duplicates (they would
+    overwrite an already-indexed version); "unchanged" blobs are silently
+    dropped (the real sync would skip them too); "new" blobs are returned as
+    ``non_duplicate_files`` so the caller can sync just those when the user
+    chooses to skip duplicates.
+    """
+    scoped_connector = _connector_scoped_to_buckets(connector, bucket_filter)
+    all_files: list[dict[str, Any]] = []
+    page_token = None
+    while True:
+        result = await scoped_connector.list_files(page_token=page_token)
+        all_files.extend(result.get("files", []))
+        page_token = result.get("next_page_token")
+        if not page_token:
+            break
+
+    if not all_files:
+        return {
+            "duplicate_names": [],
+            "duplicate_files": [],
+            "non_duplicate_files": [],
+            "duplicate_count": 0,
+            "total_files": 0,
+        }
+
+    existing_ids, _, _ = await get_synced_file_ids_for_connector(
+        connector_type=connector_type,
+        user_id=user_id,
+        session_manager=session_manager,
+        jwt_token=jwt_token,
+    )
+    existing_set = set(existing_ids)
+
+    # Existence-based, like the OAuth connector duplicate check: any blob
+    # already ingested under this connector_type is a "duplicate" regardless
+    # of whether the remote copy is newer. (The real bucket_filter sync uses
+    # modified_time to auto-skip unchanged blobs on ITS OWN — that's a
+    # separate, silent optimization; the confirm dialog here is about whether
+    # the user wants to touch an already-indexed file at all, same as it
+    # would for Google Drive/OneDrive/SharePoint.)
+    duplicate_files: list[dict[str, Any]] = []
+    duplicate_names: list[str] = []
+    non_duplicate_files: list[dict[str, Any]] = []
+    for f in all_files:
+        fid = f.get("id")
+        if not fid:
+            continue
+        if fid in existing_set:
+            response_file = _connector_file_response(f)
+            duplicate_files.append(response_file)
+            duplicate_names.append(response_file["name"])
+        else:
+            non_duplicate_files.append(_connector_file_response(f))
+
+    return {
+        "duplicate_names": list(dict.fromkeys(duplicate_names)),
+        "duplicate_files": duplicate_files,
+        "non_duplicate_files": non_duplicate_files,
+        "duplicate_count": len(duplicate_files),
+        "total_files": len(all_files),
+    }
+
+
 async def connector_check_duplicates(
     connector_type: str,
     body: ConnectorCheckDuplicatesBody,
@@ -752,7 +1003,7 @@ async def connector_check_duplicates(
         return denied
 
     selected_files_raw = body.selected_files
-    if not selected_files_raw:
+    if not selected_files_raw and not body.bucket_filter:
         return JSONResponse({"duplicate_names": []})
 
     try:
@@ -792,6 +1043,18 @@ async def connector_check_duplicates(
             return JSONResponse(
                 {"error": f"Connection '{working_connection.connection_id}' not found"},
                 status_code=404,
+            )
+
+        if body.bucket_filter and not selected_files_raw:
+            return JSONResponse(
+                await _classify_bucket_connector_duplicates(
+                    connector=connector,
+                    connector_type=connector_type,
+                    bucket_filter=body.bucket_filter,
+                    session_manager=session_manager,
+                    user_id=user.user_id,
+                    jwt_token=jwt_token,
+                )
             )
 
         return JSONResponse(
@@ -901,6 +1164,82 @@ async def update_connector_user_access(
     return JSONResponse({"connectors": connectors})
 
 
+class UpdateConnectorOAuthConfigBody(BaseModel):
+    client_id: str | None = None
+    client_secret: str | None = None
+
+
+def _oauth_config_unavailable_response() -> JSONResponse:
+    return JSONResponse(
+        {"error": "Workspace OAuth connector credential overrides are not enabled"},
+        status_code=404,
+    )
+
+
+async def get_connector_oauth_config(
+    user: User = Depends(require_permission("connectors:manage:access")),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Per OAuth-kind connector: whether a workspace credential override is set,
+    plus env-var fallback visibility. Never returns the decrypted secret."""
+    from services.connector_oauth_config_service import get_oauth_config_status
+
+    if not is_workspace_oauth_overrides_enabled():
+        return _oauth_config_unavailable_response()
+
+    status = await get_oauth_config_status(session)
+    return JSONResponse({"credentials": status})
+
+
+async def update_connector_oauth_config(
+    credential_key: str,
+    body: UpdateConnectorOAuthConfigBody,
+    user: User = Depends(require_permission("connectors:manage:access")),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Save (partial update) a workspace OAuth client id/secret override."""
+    from services.connector_oauth_config_service import get_oauth_config_status, set_oauth_config
+
+    if not is_workspace_oauth_overrides_enabled():
+        return _oauth_config_unavailable_response()
+
+    try:
+        await set_oauth_config(
+            session,
+            credential_key,
+            body.client_id,
+            body.client_secret,
+            user.db_user_id or user.user_id,
+        )
+        await session.commit()
+    except ValueError as e:
+        logger.error("[CONNECTOR] Invalid OAuth config update", error=str(e))
+        return JSONResponse({"error": "Unknown connector credential key"}, status_code=400)
+
+    return JSONResponse({"credentials": await get_oauth_config_status(session)})
+
+
+async def delete_connector_oauth_config(
+    credential_key: str,
+    user: User = Depends(require_permission("connectors:manage:access")),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Clear a workspace OAuth client id/secret override, reverting to the env var."""
+    from services.connector_oauth_config_service import clear_oauth_config, get_oauth_config_status
+
+    if not is_workspace_oauth_overrides_enabled():
+        return _oauth_config_unavailable_response()
+
+    try:
+        await clear_oauth_config(session, credential_key, user.db_user_id or user.user_id)
+        await session.commit()
+    except ValueError as e:
+        logger.error("[CONNECTOR] Invalid OAuth config clear", error=str(e))
+        return JSONResponse({"error": "Unknown connector credential key"}, status_code=400)
+
+    return JSONResponse({"credentials": await get_oauth_config_status(session)})
+
+
 async def connector_sync(
     connector_type: str,
     body: ConnectorSyncBody,
@@ -947,6 +1286,14 @@ async def connector_sync(
             return JSONResponse(
                 {"error": "shared flag is only supported for the ibm_cos connector"},
                 status_code=400,
+            )
+
+        if body.shared and not await has_effective_permission(
+            request, user, rbac, "knowledge:delete:anonymous"
+        ):
+            return JSONResponse(
+                {"error": "Shared sync requires the knowledge:delete:anonymous permission"},
+                status_code=403,
             )
 
         # Get all active connections for this connector type and user
@@ -1011,17 +1358,6 @@ async def connector_sync(
             # Explicit files selected (e.g., from file picker) - sync those specific files
             from .documents import _ensure_index_exists
 
-            if body.shared and body.replace_duplicates:
-                if not await has_effective_permission(
-                    request, user, rbac, "knowledge:delete:anonymous"
-                ):
-                    return JSONResponse(
-                        {
-                            "error": "Replacing shared documents requires the knowledge:delete:anonymous permission"
-                        },
-                        status_code=403,
-                    )
-
             if not body.replace_duplicates and file_infos:
                 duplicate_check = await _classify_connector_duplicates(
                     connector=await connector_service.get_connector(
@@ -1078,19 +1414,15 @@ async def connector_sync(
                 # container every time. Per-file dedup in ConnectorFileProcessor is a
                 # backstop, but it runs after download — this pre-filter avoids the
                 # redundant fetch/reprocess and the misleading "all files" task view.
-                original_buckets = connector.bucket_names
-                connector.bucket_names = body.bucket_filter
-                try:
-                    all_files: list[dict[str, Any]] = []
-                    page_token = None
-                    while True:
-                        result = await connector.list_files(page_token=page_token)
-                        all_files.extend(result.get("files", []))
-                        page_token = result.get("next_page_token")
-                        if not page_token:
-                            break
-                finally:
-                    connector.bucket_names = original_buckets
+                scoped_connector = _connector_scoped_to_buckets(connector, body.bucket_filter)
+                all_files: list[dict[str, Any]] = []
+                page_token = None
+                while True:
+                    result = await scoped_connector.list_files(page_token=page_token)
+                    all_files.extend(result.get("files", []))
+                    page_token = result.get("next_page_token")
+                    if not page_token:
+                        break
 
                 if not all_files:
                     return JSONResponse(
@@ -1214,101 +1546,40 @@ async def connector_sync(
                     status_code=200,
                 )
 
-            # If we have connector file IDs, use sync_specific_files
-            # Otherwise, use filename filtering with sync_connector_files
-            if existing_file_ids:
-                logger.info(
-                    "Syncing specific files by connector file ID",
-                    connector_type=connector_type,
-                    file_count=len(existing_file_ids),
-                    id_field=id_field,
+            sync_result = await _sync_existing_connector_files(
+                connector_type=connector_type,
+                working_connection=working_connection,
+                user_id=user.user_id,
+                connector_service=connector_service,
+                session_manager=session_manager,
+                jwt_token=jwt_token,
+                existing_file_ids=existing_file_ids,
+                existing_filenames=existing_filenames,
+                id_field=id_field,
+                ingest_settings=body.settings,
+                shared=body.shared,
+                # Strict gating: skip orphan reconcile when sync is capped — we'd
+                # see a partial remote listing and delete legitimate files.
+                reconcile=body.max_files is None,
+                max_files=body.max_files,
+            )
+            if sync_result["outcome"] == "deleted_only":
+                return JSONResponse(
+                    {
+                        "status": "no_files",
+                        "message": f"Deleted stale {connector_type} files; no remaining files to sync.",
+                    },
+                    status_code=200,
                 )
-                # Reconcile orphans (files deleted at the source) before re-syncing.
-                # Strict gating: skip when sync is capped — we'd see a partial remote
-                # listing and delete legitimate files.
-                ids_to_sync = list(existing_file_ids)
-                if body.max_files is None:
-                    orphan_ids = await reconcile_orphans_for_connector_type(
-                        connector_type=connector_type,
-                        user_id=user.user_id,
-                        connector_service=connector_service,
-                        session_manager=session_manager,
-                        jwt_token=jwt_token,
-                        existing_file_ids=existing_file_ids,
-                        id_field=id_field,
-                    )
-                    if orphan_ids:
-                        orphan_id_set = set(orphan_ids)
-                        ids_to_sync = [fid for fid in existing_file_ids if fid not in orphan_id_set]
-                if not ids_to_sync:
-                    return JSONResponse(
-                        {
-                            "status": "no_files",
-                            "message": f"Deleted stale {connector_type} files; no remaining files to sync.",
-                        },
-                        status_code=200,
-                    )
-                if is_bucket_connector_type(connector_type):
-                    # Bucket Sync is updates-only: re-ingest just the blobs whose
-                    # remote copy is newer than what's indexed (deleting the stale
-                    # chunks via replace_duplicates). Unlike replace_duplicates=False
-                    # this actually propagates content changes; unlike replacing every
-                    # id it skips unchanged blobs instead of re-fetching the container.
-                    connector = await connector_service.get_connector(
-                        working_connection.connection_id
-                    )
-                    changed_ids = await bucket_changed_file_ids(
-                        connector,
-                        connector_type,
-                        user.user_id,
-                        session_manager,
-                        jwt_token,
-                        ids_to_sync,
-                    )
-                    if not changed_ids:
-                        return JSONResponse(
-                            {
-                                "status": "no_files",
-                                "message": f"All {connector_type} files are already up to date.",
-                            },
-                            status_code=200,
-                        )
-                    task_id = await connector_service.sync_specific_files(
-                        working_connection.connection_id,
-                        user.user_id,
-                        changed_ids,
-                        jwt_token=jwt_token,
-                        ingest_settings=body.settings,
-                        replace_duplicates=True,
-                        shared=body.shared,
-                    )
-                else:
-                    task_id = await connector_service.sync_specific_files(
-                        working_connection.connection_id,
-                        user.user_id,
-                        ids_to_sync,
-                        jwt_token=jwt_token,
-                        ingest_settings=body.settings,
-                        replace_duplicates=_connector_sync_should_replace(connector_type),
-                        shared=body.shared,
-                    )
-            else:
-                # Fallback: use filename filtering (for Langflow-ingested files without document_id)
-                logger.info(
-                    "Syncing files by filename filter (document_id not available)",
-                    connector_type=connector_type,
-                    filename_count=len(existing_filenames),
+            if sync_result["outcome"] == "up_to_date":
+                return JSONResponse(
+                    {
+                        "status": "no_files",
+                        "message": f"All {connector_type} files are already up to date.",
+                    },
+                    status_code=200,
                 )
-                task_id = await connector_service.sync_connector_files(
-                    working_connection.connection_id,
-                    user.user_id,
-                    max_files=None,
-                    jwt_token=jwt_token,
-                    filename_filter=set(existing_filenames),
-                    ingest_settings=body.settings,
-                    replace_duplicates=_connector_sync_should_replace(connector_type),
-                    shared=body.shared,
-                )
+            task_id = sync_result["task_id"]
         # The bucket_filter path may have already populated task_ids (new + changed
         # batches); every other branch sets a single task_id.
         if not task_ids:
@@ -1406,11 +1677,15 @@ async def connector_status(
     # Only count connections that are both active AND actually authenticated
     has_authenticated_connection = len(verified_active_connections) > 0
 
+    # Check if OAuth credentials are configured in environment (for OAuth connectors only)
+    has_env_credentials = connector_service.connection_manager.has_env_credentials(connector_type)
+
     return JSONResponse(
         {
             "connector_type": connector_type,
             "authenticated": has_authenticated_connection,
             "status": "connected" if has_authenticated_connection else "not_connected",
+            "has_env_credentials": has_env_credentials,
             "connections": [
                 {
                     "connection_id": conn.connection_id,
@@ -1811,82 +2086,25 @@ async def sync_all_connectors(
                     )
                     continue
 
-                # Sync using connector file IDs if available, else use filename filter
-                if existing_file_ids:
-                    logger.info(
-                        "Syncing specific files by connector file ID",
-                        connector_type=connector_type,
-                        file_count=len(existing_file_ids),
-                        id_field=id_field,
-                    )
-                    # Reconcile orphans (files deleted at the source) before re-syncing.
-                    # sync_all_connectors has no caps or filters, so gating reduces
-                    # to the strict checks inside the helper.
-                    orphan_ids = await reconcile_orphans_for_connector_type(
-                        connector_type=connector_type,
-                        user_id=user.user_id,
-                        connector_service=connector_service,
-                        session_manager=session_manager,
-                        jwt_token=jwt_token,
-                        existing_file_ids=existing_file_ids,
-                        id_field=id_field,
-                    )
-                    if orphan_ids:
-                        orphan_id_set = set(orphan_ids)
-                        existing_file_ids = [
-                            fid for fid in existing_file_ids if fid not in orphan_id_set
-                        ]
-                    if not existing_file_ids:
-                        deleted_only_connectors.append(connector_type)
-                        continue
-                    if is_bucket_connector_type(connector_type):
-                        # Updates-only change detection (see connector_sync): re-ingest
-                        # only blobs that changed at source, replacing stale chunks.
-                        connector = await connector_service.get_connector(
-                            working_connection.connection_id
-                        )
-                        changed_ids = await bucket_changed_file_ids(
-                            connector,
-                            connector_type,
-                            user.user_id,
-                            session_manager,
-                            jwt_token,
-                            existing_file_ids,
-                        )
-                        if not changed_ids:
-                            # Nothing changed at source — already up to date.
-                            skipped_connectors.append(connector_type)
-                            continue
-                        task_id = await connector_service.sync_specific_files(
-                            working_connection.connection_id,
-                            user.user_id,
-                            changed_ids,
-                            jwt_token=jwt_token,
-                            replace_duplicates=True,
-                        )
-                    else:
-                        task_id = await connector_service.sync_specific_files(
-                            working_connection.connection_id,
-                            user.user_id,
-                            existing_file_ids,
-                            jwt_token=jwt_token,
-                            replace_duplicates=_connector_sync_should_replace(connector_type),
-                        )
-                else:
-                    # Fallback: use filename filtering
-                    logger.info(
-                        "Syncing files by filename filter",
-                        connector_type=connector_type,
-                        filename_count=len(existing_filenames),
-                    )
-                    task_id = await connector_service.sync_connector_files(
-                        working_connection.connection_id,
-                        user.user_id,
-                        max_files=None,
-                        jwt_token=jwt_token,
-                        filename_filter=set(existing_filenames),
-                        replace_duplicates=_connector_sync_should_replace(connector_type),
-                    )
+                sync_result = await _sync_existing_connector_files(
+                    connector_type=connector_type,
+                    working_connection=working_connection,
+                    user_id=user.user_id,
+                    connector_service=connector_service,
+                    session_manager=session_manager,
+                    jwt_token=jwt_token,
+                    existing_file_ids=existing_file_ids,
+                    existing_filenames=existing_filenames,
+                    id_field=id_field,
+                )
+                if sync_result["outcome"] == "deleted_only":
+                    deleted_only_connectors.append(connector_type)
+                    continue
+                if sync_result["outcome"] == "up_to_date":
+                    # Nothing changed at source — already up to date.
+                    skipped_connectors.append(connector_type)
+                    continue
+                task_id = sync_result["task_id"]
 
                 all_task_ids.append(task_id)
                 synced_connectors.append(connector_type)
@@ -2260,17 +2478,15 @@ async def browse_connection_files(
                 status_code=401,
             )
 
-        # Temporarily override bucket filter if specified
-        original_buckets = None
+        # Scope the listing to the requested bucket without mutating the
+        # shared cached connector instance.
+        listing_connector = connector
         if bucket and hasattr(connector, "bucket_names"):
-            original_buckets = connector.bucket_names
-            connector.bucket_names = [bucket]
+            listing_connector = _connector_scoped_to_buckets(connector, [bucket])
 
-        try:
-            files_result = await connector.list_files(page_token=page_token, max_files=max_files)
-        finally:
-            if original_buckets is not None:
-                connector.bucket_names = original_buckets
+        files_result = await listing_connector.list_files(
+            page_token=page_token, max_files=max_files
+        )
 
         remote_files = files_result.get("files", [])
         next_page_token = files_result.get("next_page_token")

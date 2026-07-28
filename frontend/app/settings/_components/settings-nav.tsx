@@ -20,7 +20,7 @@ const TABS = [
   { value: "api-keys", label: "API Keys", apiKeysTab: true },
   {
     value: "connector-access",
-    label: "Connectors Permission",
+    label: "Connector Settings",
     perm: "connectors:manage:access",
   },
 ] as const;

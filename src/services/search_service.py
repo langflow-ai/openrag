@@ -25,16 +25,85 @@ _global_search_service = None
 
 
 def _is_exact_token_query(query: str) -> bool:
-    """Return True for code/token-like queries that should not allow partial fuzzy matches."""
-    if not query or len(query.strip()) < 3:
-        return False
-
+    """Return True for code/token-like queries (identifiers, versions, SKUs)
+    that warrant exact-file narrowing; ordinary prose returns False."""
     query = query.strip()
+    if not query or len(query) < 3:
+        return False
 
     if re.search(r"[^a-zA-Z0-9\s]", query):
         return True
 
     return bool(re.search(r"[a-zA-Z]", query) and re.search(r"\d", query))
+
+
+def _apply_exact_match_file_filter(
+    query: str,
+    chunks: list[dict[str, Any]],
+    aggregations: dict[str, Any],
+    *,
+    is_wildcard_match_all: bool,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """If a token-like query appears verbatim in a subset of files, prefer those files.
+
+    This avoids broad semantic spillover for unique lookups. Narrowing only
+    applies to token-like queries (see _is_exact_token_query); multi-word prose
+    searches keep their full hybrid-ranked results. When no file contains the
+    query verbatim, the ranked results are returned untouched — hits must never
+    be discarded just because the query looks token-like (e.g. "chunk_overlap",
+    "v1.2", "SKU-1234").
+    """
+    normalized_query = query.strip().lower()
+    if (
+        not normalized_query
+        or is_wildcard_match_all
+        or len(normalized_query) < 4
+        or not _is_exact_token_query(normalized_query)
+    ):
+        return chunks, aggregations
+
+    exact_files = {
+        filename
+        for chunk in chunks
+        for filename in [chunk.get("filename")]
+        if isinstance(filename, str)
+        and (
+            normalized_query in filename.lower()
+            or (
+                isinstance(chunk.get("text"), str)
+                and normalized_query in chunk.get("text", "").lower()
+            )
+        )
+    }
+    if not exact_files:
+        return chunks, aggregations
+
+    # Filter to only chunks from files with exact matches
+    chunks = [chunk for chunk in chunks if chunk.get("filename") in exact_files]
+
+    def _build_terms_agg(field: str) -> dict[str, Any]:
+        counts = Counter(
+            value
+            for chunk in chunks
+            for value in [chunk.get(field)]
+            if isinstance(value, str) and value
+        )
+        return {
+            "doc_count_error_upper_bound": 0,
+            "sum_other_doc_count": 0,
+            "buckets": [{"key": key, "doc_count": count} for key, count in counts.most_common()],
+        }
+
+    # Keep aggregations consistent with the post-filtered result set.
+    aggregations = {
+        **aggregations,
+        "data_sources": _build_terms_agg("filename"),
+        "document_types": _build_terms_agg("mimetype"),
+        "owners": _build_terms_agg("owner"),
+        "connector_types": _build_terms_agg("connector_type"),
+        "embedding_models": _build_terms_agg("embedding_model"),
+    }
+    return chunks, aggregations
 
 
 def register_search_service(service: "SearchService") -> None:
@@ -587,58 +656,12 @@ class SearchService:
 
         # If query text appears verbatim in one subset of files, prefer those files
         # to avoid broad semantic spillover for unique lookups.
-        normalized_query = query.strip().lower()
-        aggregations = results.get("aggregations", {})
-        if normalized_query and not is_wildcard_match_all and len(normalized_query) >= 4:
-            exact_files = {
-                filename
-                for chunk in chunks
-                for filename in [chunk.get("filename")]
-                if isinstance(filename, str)
-                and (
-                    normalized_query in filename.lower()
-                    or (
-                        isinstance(chunk.get("text"), str)
-                        and normalized_query in chunk.get("text", "").lower()
-                    )
-                )
-            }
-
-            # Determine if we should apply exact-token filtering
-            should_filter_exact = bool(exact_files) or _is_exact_token_query(query)
-
-            if should_filter_exact:
-                if exact_files:
-                    # Filter to only chunks from files with exact matches
-                    chunks = [chunk for chunk in chunks if chunk.get("filename") in exact_files]
-                else:
-                    # No exact matches found for a token-like query - return empty results
-                    chunks = []
-
-                def _build_terms_agg(field: str) -> dict[str, Any]:
-                    counts = Counter(
-                        value
-                        for chunk in chunks
-                        for value in [chunk.get(field)]
-                        if isinstance(value, str) and value
-                    )
-                    return {
-                        "doc_count_error_upper_bound": 0,
-                        "sum_other_doc_count": 0,
-                        "buckets": [
-                            {"key": key, "doc_count": count} for key, count in counts.most_common()
-                        ],
-                    }
-
-                # Keep aggregations consistent with the post-filtered result set.
-                aggregations = {
-                    **aggregations,
-                    "data_sources": _build_terms_agg("filename"),
-                    "document_types": _build_terms_agg("mimetype"),
-                    "owners": _build_terms_agg("owner"),
-                    "connector_types": _build_terms_agg("connector_type"),
-                    "embedding_models": _build_terms_agg("embedding_model"),
-                }
+        chunks, aggregations = _apply_exact_match_file_filter(
+            query,
+            chunks,
+            results.get("aggregations", {}),
+            is_wildcard_match_all=is_wildcard_match_all,
+        )
 
         # Return both transformed results and aggregations. Surface degraded
         # semantic-search signals so the UI can show a non-fatal warning

@@ -133,7 +133,7 @@ export interface Connector {
   name: string;
   description: string;
   icon: string; // The icon name from the API
-  status: "not_connected" | "connected" | "error";
+  status: "not_connected" | "configured" | "connected" | "error";
   type: string;
   connectionId?: string;
   clientId?: string;
@@ -141,6 +141,7 @@ export interface Connector {
   access_token?: string;
   selectedFiles?: GoogleDriveFile[] | OneDriveFile[];
   available?: boolean;
+  requiresOAuth?: boolean;
 }
 
 interface Connection {
@@ -189,6 +190,11 @@ export const useGetConnectorsQuery = (
         let status: Connector["status"] = "not_connected";
         let connectionId: string | undefined;
 
+        // Determine if this connector requires OAuth based on connector kind
+        // "oauth" connectors require OAuth flow (Google Drive, OneDrive, SharePoint)
+        // "bucket" connectors use credential-based auth (Azure Blob, S3, IBM COS)
+        const requiresOAuth = connectorData.kind === "oauth";
+
         if (statusResponse.ok) {
           const statusData = await statusResponse.json();
           const connections = statusData.connections || [];
@@ -210,7 +216,13 @@ export const useGetConnectorsQuery = (
               clientId: activeConnection.client_id,
               baseUrl: activeConnection.base_url,
               available: connectorData.available,
+              requiresOAuth,
             } as Connector;
+          }
+
+          // For OAuth connectors: check if credentials are configured in .env
+          if (requiresOAuth && statusData.has_env_credentials) {
+            status = "configured";
           }
         }
 
@@ -223,6 +235,7 @@ export const useGetConnectorsQuery = (
           type,
           connectionId,
           available: connectorData.available,
+          requiresOAuth,
         } as Connector;
       }),
     );

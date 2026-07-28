@@ -54,7 +54,7 @@ async def test_document_processor_refresh_uses_admin_client(monkeypatch, tmp_pat
         session_manager=session_manager,
     )
     processor.check_filename_exists = AsyncMock(return_value=True)
-    processor.delete_document_by_filename = AsyncMock()
+    processor.delete_document_by_filename = AsyncMock(return_value=1)
     processor.process_document_standard = AsyncMock(
         return_value={"status": "indexed", "id": "hash-1"}
     )
@@ -98,7 +98,7 @@ async def test_langflow_processor_refresh_uses_admin_client(monkeypatch, tmp_pat
         replace_duplicates=True,
     )
     processor.check_filename_exists = AsyncMock(return_value=True)
-    processor.delete_document_by_filename = AsyncMock()
+    processor.delete_document_by_filename = AsyncMock(return_value=1)
 
     # The Langflow path reads the file off disk after the refresh.
     item = tmp_path / "report.pdf"

@@ -178,6 +178,22 @@ class KnowledgeConfig:
     picture_descriptions: bool = False
     index_name: str = "documents"  # OpenSearch index name
     disable_ingest_with_langflow: bool = False
+    # Docling VLM pipeline. Credentials come from ProvidersConfig — never stored here.
+    vlm_enabled: bool = False
+    vlm_provider: str = "openai"  # "openai" | "watsonx" | "anthropic" | "local" | "ollama"
+    vlm_model: str = ""  # e.g. "gpt-4o" or a watsonx model_id
+    vlm_prompt: str = (
+        "Extract ALL the text from the page, ensuring no words are omitted, "
+        "and present it as accurately as possible. "
+        "Then describe the content of the page in English."
+    )
+    # Per-page VLM response format only; the docling-serve output stays
+    # to_formats="json" so downstream json_content consumers are unaffected.
+    vlm_response_format: str = "markdown"  # "markdown" | "doctags" | "html"
+    vlm_max_tokens: int = 5000
+    vlm_concurrency: int = 4
+    vlm_timeout: int = 120  # per-page VLM API timeout, seconds
+    vlm_watsonx_api_version: str = "2023-05-29"
 
 
 @dataclass

@@ -47,6 +47,7 @@ class S3Connector(BaseConnector):
 
     CONNECTOR_TYPE = "aws_s3"
     CONNECTOR_KIND = "bucket"
+    CHANGE_DETECTION = "timestamp"
     CONNECTOR_NAME = "Amazon S3"
     CONNECTOR_DESCRIPTION = "Add knowledge from Amazon S3 or any S3-compatible storage"
     CONNECTOR_ICON = "aws-s3"

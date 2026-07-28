@@ -3,6 +3,7 @@ ENV_FILE ?= .env
 
 # Load variables from $(ENV_FILE) if present so `make` commands pick them up
 # Strip quotes from values to avoid issues with tools that don't handle them like python-dotenv does
+
 ifneq (,$(wildcard $(ENV_FILE)))
   include $(ENV_FILE)
   export $(shell sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' $(ENV_FILE))
@@ -725,14 +726,22 @@ backend: ## Run backend locally
 frontend: ## Run frontend locally
 	@echo "$(YELLOW)Starting frontend locally...$(NC)"
 	@if [ ! -d "frontend/node_modules" ]; then echo "$(YELLOW)Installing frontend dependencies first...$(NC)"; cd frontend && npm install; fi
+	@ARCH=$$(uname -m); \
+	export ENV_FILE="$(abspath $(ENV_FILE))"; \
+	PORT=$${FRONTEND_PORT:-3000}; \
+	export NEXT_DIST_DIR=$${NEXT_DIST_DIR:-$$( [ "$$PORT" = "3000" ] && echo .next || echo .next-$$PORT )}; \
 	cd frontend && \
-		export ENV_FILE="$(abspath $(ENV_FILE))"; \
-		PORT=$${FRONTEND_PORT:-3000}; \
-		export NEXT_DIST_DIR=$${NEXT_DIST_DIR:-$$( [ "$$PORT" = "3000" ] && echo .next || echo .next-$$PORT )}; \
-		echo "$(YELLOW)Using distDir $$NEXT_DIST_DIR$(NC)"; \
+	echo "$(YELLOW)Using distDir $$NEXT_DIST_DIR$(NC)"; \
+	if [ "$$ARCH" = "ppc64le" ] || [ "$$ARCH" = "ppc64" ]; then \
+		echo "$(YELLOW)Detected Power architecture ($$ARCH) — using Webpack fallback$(NC)"; \
+		npx next dev --webpack \
+			--port $$PORT \
+			--hostname $(hostname); \
+	else \
 		npx next dev \
 			--port $$PORT \
-			--hostname $(hostname)
+			--hostname $(hostname); \
+	fi
 
 docling: ## Start docling-serve for document processing
 	@echo "$(YELLOW)Starting docling-serve...$(NC)"
@@ -1199,9 +1208,9 @@ health: ## Check health of all services
 	@printf "$(CYAN)Backend:$(NC)     "
 	@if curl -s -k --fail http://127.0.0.1:$${OPENRAG_BACKEND_PORT:-8000}/health >/dev/null 2>&1; then \
 		printf "$(GREEN)Healthy$(NC)\n"; \
-	elif command -v podman >/dev/null 2>&1 && podman ps --format "{{.Names}}" | grep -q "^openrag-backend$$" && podman exec -T openrag-backend curl -s -k --fail http://127.0.0.1:8000/health >/dev/null 2>&1; then \
+	elif command -v podman >/dev/null 2>&1 && podman ps --format "{{.Names}}" | grep -q "^openrag-backend$$" && podman exec openrag-backend curl -s -k --fail http://127.0.0.1:8000/health >/dev/null 2>&1; then \
 		printf "$(GREEN)Healthy$(NC)\n"; \
-	elif command -v docker >/dev/null 2>&1 && docker ps --format "{{.Names}}" | grep -q "^openrag-backend$$" && docker exec -T openrag-backend curl -s -k --fail http://127.0.0.1:8000/health >/dev/null 2>&1; then \
+	elif command -v docker >/dev/null 2>&1 && docker ps --format "{{.Names}}" | grep -q "^openrag-backend$$" && docker exec openrag-backend curl -s -k --fail http://127.0.0.1:8000/health >/dev/null 2>&1; then \
 		printf "$(GREEN)Healthy$(NC)\n"; \
 	else \
 		printf "$(RED)Not responding$(NC)\n"; \

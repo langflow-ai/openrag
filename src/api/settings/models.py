@@ -22,6 +22,15 @@ class SettingsUpdateBody(BaseModel):
     ocr: bool | None = None
     picture_descriptions: bool | None = None
     disable_ingest_with_langflow: bool | None = None
+    vlm_enabled: bool | None = None
+    vlm_provider: str | None = Field(None, pattern="^(openai|watsonx|anthropic|local|ollama)$")
+    vlm_model: str | None = Field(None, min_length=1)
+    vlm_prompt: str | None = None
+    vlm_response_format: str | None = Field(None, pattern="^(markdown|doctags|html)$")
+    vlm_max_tokens: int | None = Field(None, gt=0)
+    vlm_concurrency: int | None = Field(None, gt=0)
+    vlm_timeout: int | None = Field(None, gt=0)
+    vlm_watsonx_api_version: str | None = Field(None, min_length=1)
     embedding_model: str | None = Field(None, min_length=1)
     embedding_provider: str | None = Field(None, pattern="^(openai|watsonx|ollama)$")
     index_name: str | None = Field(None, min_length=1)
@@ -58,6 +67,12 @@ class CitationDisplayData(BaseModel):
     file_path: str | None = None
     page: int | str | None = None
     score: float | str | None = None
+    text: str | None = None
+    embedding_model: str | None = None
+    parser: str | None = None
+    chunk_size: int | float | str | None = None
+    chunk_overlap: int | float | str | None = None
+    metadata: dict[str, Any] | None = None
 
 
 class CitationDisplayResult(BaseModel):
@@ -67,6 +82,13 @@ class CitationDisplayResult(BaseModel):
     filename: str | None = None
     page: int | str | None = None
     score: float | str | None = None
+    text: str | None = None
+    embedding_model: str | None = None
+    parser: str | None = None
+    chunk_size: int | float | str | None = None
+    chunk_overlap: int | float | str | None = None
+    source_url: str | None = None
+    metadata: dict[str, Any] | None = None
 
 
 class CitationDisplayResultGroup(BaseModel):
@@ -163,6 +185,15 @@ class KnowledgeConfig(BaseModel):
     picture_descriptions: bool | None
     index_name: str | None
     disable_ingest_with_langflow: bool | None
+    vlm_enabled: bool | None = None
+    vlm_provider: str | None = None
+    vlm_model: str | None = None
+    vlm_prompt: str | None = None
+    vlm_response_format: str | None = None
+    vlm_max_tokens: int | None = None
+    vlm_concurrency: int | None = None
+    vlm_timeout: int | None = None
+    vlm_watsonx_api_version: str | None = None
 
 
 class AgentConfig(BaseModel):
@@ -195,7 +226,10 @@ class SettingsResponse(BaseModel):
     ingestion_defaults: IngestionDefaultsConfig | None = None
     ingest_via_chat: bool = False
     show_provider_ingest_settings: bool = False
+    show_vlm_settings: bool = True
+    local_vlm_models: list[str] = Field(default_factory=list)
     show_shared_upload_toggle: bool = False
+    show_workspace_oauth_overrides: bool = False
     segment_write_key: str | None = None
     environment: str | None = None
     langflow_port: str | None = None
