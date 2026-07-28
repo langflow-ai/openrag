@@ -374,7 +374,9 @@ class MonitorScreen(Screen):
             command_generator = self.container_manager.start_services(cpu_mode)
             modal = CommandOutputModal(
                 "Starting Services",
-                command_generator,
+                # start_services yields an optional replace_last flag; the modal
+                # accepts both 2- and 3-tuples at runtime.
+                cast(AsyncIterator[tuple[bool, str]], command_generator),
                 on_complete=self._on_start_complete,  # Refresh after completion
             )
             self.app.push_screen(modal)
@@ -644,22 +646,23 @@ class MonitorScreen(Screen):
         """Start docling serve."""
         self.operation_in_progress = True
         try:
-            # Check for port conflicts before attempting to start
-            port_available, error_msg = self.docling_manager.check_port_available()
-            if not port_available:
-                self.notify(
-                    f"Cannot start docling serve: {error_msg}. "
-                    f"Please stop the conflicting service first.",
-                    severity="error",
-                    timeout=10,
-                )
-                # Refresh to show current state
-                await self._refresh_services()
-                return
+            # Port conflict check only when we don't already own a docling process
+            # (pin-upgrade restarts stop first inside ensure_running/start).
+            if not self.docling_manager.is_running():
+                port_available, error_msg = self.docling_manager.check_port_available()
+                if not port_available:
+                    self.notify(
+                        f"Cannot start docling serve: {error_msg}. "
+                        f"Please stop the conflicting service first.",
+                        severity="error",
+                        timeout=10,
+                    )
+                    # Refresh to show current state
+                    await self._refresh_services()
+                    return
 
-            # Start the service (this sets _starting = True internally at the start)
-            # Create task and let it begin executing (which sets the flag)
-            start_task = asyncio.create_task(self.docling_manager.start())
+            # Start (or pin-upgrade restart) the service
+            start_task = asyncio.create_task(self.docling_manager.ensure_running())
             # Give it a tiny moment to set the _starting flag
             await asyncio.sleep(0.1)
             # Refresh immediately to show "Starting" status

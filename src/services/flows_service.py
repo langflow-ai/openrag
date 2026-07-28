@@ -20,6 +20,7 @@ from config.settings import (
 )
 from utils.logging_config import get_logger
 from utils.telemetry import Category, MessageId, TelemetryClient
+from utils.version_utils import OPENRAG_VERSION
 
 logger = get_logger(__name__)
 
@@ -952,6 +953,156 @@ class FlowsService:
         results = await asyncio.gather(*tasks)
         created_flow_types = {r for r in results if r is not None}
         return created_flow_types
+
+    async def refresh_stock_flows_on_upgrade_if_needed(
+        self, newly_created: set[str] | None = None
+    ) -> set[str]:
+        """On OSS upgrades, PATCH unlocked stock flows from bundled JSON.
+
+        0.5.1→0.6 changed ingest to two-phase Docling (backend passes
+        ``DOCLING_TASK_ID``, empty file paths). Create-only
+        ``ensure_flows_exist`` leaves the old graph at the same UUID in
+        preserved ``langflow-data``. This refreshes unlocked stock flows
+        once per OpenRAG version bump.
+
+        Locked flows are skipped with a warning. Fresh installs that just
+        created flows are stamped without an extra PATCH.
+
+        Returns the set of flow type names that were refreshed.
+        """
+        from config.config_manager import config_manager
+        from utils.run_mode_utils import is_run_mode_oss
+
+        if not is_run_mode_oss():
+            return set()
+
+        newly_created = newly_created or set()
+        config = get_openrag_config()
+        previous_version = config.onboarding.openrag_flows_synced_version
+        current_version = OPENRAG_VERSION
+
+        if previous_version == current_version:
+            return set()
+
+        # Fresh install: ensure_flows_exist just seeded from current JSON —
+        # stamp only. Upgrade / pre-stamp installs: ingest already existed.
+        should_patch = (previous_version is not None and previous_version != current_version) or (
+            previous_version is None and "ingest" not in newly_created
+        )
+
+        refreshed: set[str] = set()
+        if should_patch:
+            logger.info(
+                "Detected OpenRAG upgrade; refreshing unlocked stock Langflow flows",
+                previous_version=previous_version,
+                current_version=current_version,
+            )
+            flow_configs = [
+                ("nudges", NUDGES_FLOW_ID),
+                ("retrieval", LANGFLOW_CHAT_FLOW_ID),
+                ("ingest", LANGFLOW_INGEST_FLOW_ID),
+                ("url_ingest", LANGFLOW_URL_INGEST_FLOW_ID),
+            ]
+            for flow_type, flow_id in flow_configs:
+                if not flow_id:
+                    continue
+                if flow_type in newly_created:
+                    continue
+                try:
+                    result = await self._refresh_unlocked_stock_flow(flow_type, flow_id)
+                    if result == "refreshed":
+                        refreshed.add(flow_type)
+                except Exception as e:
+                    logger.error(
+                        "Failed to refresh stock flow on upgrade",
+                        flow_type=flow_type,
+                        flow_id=flow_id,
+                        error=str(e),
+                    )
+
+        config.onboarding.openrag_flows_synced_version = current_version
+        # Internal stamp only — do not mark onboarding as user-edited (fresh
+        # installs / explicit rollback stay unedited).
+        if not config_manager.save_config_file(config, preserve_edited=True):
+            logger.warning(
+                "Stock flows sync completed but failed to persist openrag_flows_synced_version",
+                current_version=current_version,
+                refreshed=sorted(refreshed),
+            )
+        else:
+            logger.info(
+                "Recorded stock flows synced version",
+                current_version=current_version,
+                refreshed=sorted(refreshed),
+                patched=should_patch,
+            )
+        return refreshed
+
+    async def _refresh_unlocked_stock_flow(self, flow_type: str, flow_id: str) -> str:
+        """PATCH one stock flow from bundled JSON if it exists and is unlocked.
+
+        Returns one of: ``refreshed``, ``skipped_missing``, ``skipped_locked``,
+        ``skipped_no_file``, ``failed``.
+        """
+        response = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
+        if response.status_code == 404:
+            logger.info(
+                "Stock flow missing during upgrade refresh; relying on ensure_flows_exist",
+                flow_type=flow_type,
+                flow_id=flow_id,
+            )
+            return "skipped_missing"
+        if response.status_code != 200:
+            logger.warning(
+                "Unexpected status checking stock flow during upgrade refresh",
+                flow_type=flow_type,
+                flow_id=flow_id,
+                status_code=response.status_code,
+            )
+            return "failed"
+
+        current_flow = response.json()
+        if current_flow.get("locked", False):
+            logger.warning(
+                "Skipping upgrade refresh for locked stock flow — "
+                "manual reset may be required for Docling/two-phase ingest compatibility",
+                flow_type=flow_type,
+                flow_id=flow_id,
+            )
+            return "skipped_locked"
+
+        flow_path = self._find_flow_file_by_id(flow_id)
+        if not flow_path:
+            logger.warning(
+                "No bundled flow file found for upgrade refresh",
+                flow_type=flow_type,
+                flow_id=flow_id,
+            )
+            return "skipped_no_file"
+
+        with open(flow_path) as f:
+            flow_data = json.load(f)
+
+        patch_resp = await clients.langflow_request(
+            "PATCH", f"/api/v1/flows/{flow_id}", json=flow_data
+        )
+        if patch_resp.status_code != 200:
+            logger.warning(
+                "Failed to PATCH stock flow during upgrade refresh",
+                flow_type=flow_type,
+                flow_id=flow_id,
+                status_code=patch_resp.status_code,
+                body_preview=patch_resp.text[:300],
+            )
+            return "failed"
+
+        logger.info(
+            "Refreshed unlocked stock flow from bundled JSON on upgrade",
+            flow_type=flow_type,
+            flow_id=flow_id,
+            flow_file=os.path.basename(flow_path),
+        )
+        return "refreshed"
 
     async def check_flows_reset(self):
         """

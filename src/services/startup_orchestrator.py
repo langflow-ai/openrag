@@ -184,6 +184,31 @@ async def startup_tasks(services):
             error=str(e),
         )
 
+    # OSS upgrades: refresh unlocked stock flows when OpenRAG version changes
+    # so two-phase Docling (DOCLING_TASK_ID) replaces stale 0.5.x ingest graphs.
+    upgraded_flows: set[str] = set()
+    try:
+        flows_service = services["flows_service"]
+        upgraded_flows = await flows_service.refresh_stock_flows_on_upgrade_if_needed(
+            newly_created=newly_created
+        )
+        if upgraded_flows:
+            config = get_openrag_config()
+            if config.edited:
+                logger.info(
+                    "Reapplying settings after stock flow upgrade refresh",
+                    refreshed=sorted(upgraded_flows),
+                )
+                from api.settings import reapply_all_settings
+
+                await reapply_all_settings(session_manager=services["session_manager"])
+    except Exception as e:
+        logger.error(
+            "Failed to refresh stock Langflow flows on upgrade — "
+            "ingest may still use a stale Docling flow until manual reset",
+            error=str(e),
+        )
+
     # Check if flows were reset and reapply settings if config is edited
     try:
         config = get_openrag_config()
@@ -191,9 +216,11 @@ async def startup_tasks(services):
             logger.info("Checking if Langflow flows were reset")
             flows_service = services["flows_service"]
             reset_flows = await flows_service.check_flows_reset()
-            # Exclude flows that were just seeded — they match the JSON by design,
-            # not because they were externally reset.
-            reset_flows = [f for f in reset_flows if f not in newly_created]
+            # Exclude flows that were just seeded or upgrade-refreshed — they
+            # match the JSON by design, not because they were externally reset.
+            reset_flows = [
+                f for f in reset_flows if f not in newly_created and f not in upgraded_flows
+            ]
 
             if reset_flows:
                 logger.info(
