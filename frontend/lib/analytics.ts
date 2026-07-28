@@ -50,11 +50,9 @@ export const identify = (
   traits: Record<string, unknown> = {},
 ) => {
   if (!analytics || !userId) return;
-  try {
-    analytics.identify(userId, traits);
-  } catch (e) {
-    console.error("Analytics identify error:", e);
-  }
+  analytics
+    .identify(userId, traits)
+    .catch((e) => console.error("Analytics identify error:", e));
 };
 
 const track = (eventName: string, properties: Record<string, unknown> = {}) => {

@@ -26,14 +26,14 @@ export function Analytics() {
   }, [settings?.segment_write_key, settings?.environment]);
 
   useEffect(() => {
-    if (!isAuthenticated || !user) return;
+    if (!isAuthenticated || !user || !settings?.segment_write_key) return;
     identify(user.user_id, {
       email: user.email,
       name: user.name,
       provider: user.provider,
       roles: user.roles,
     });
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, user, settings?.segment_write_key]);
 
   useEffect(() => {
     if (pathname === "/") return;
