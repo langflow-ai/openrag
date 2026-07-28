@@ -66,7 +66,7 @@ interface AssistantMessageProps {
   usage?: TokenUsageType;
   timestamp?: Date;
   showFeedback?: boolean;
-  interactiveCitations?: boolean;
+  showViewDocument?: boolean;
   showFunctionCalls?: boolean;
   unstyledMessageContent?: boolean;
 }
@@ -88,7 +88,7 @@ export function AssistantMessage({
   usage,
   timestamp,
   showFeedback = true,
-  interactiveCitations = true,
+  showViewDocument = true,
   showFunctionCalls = true,
   unstyledMessageContent = false,
 }: AssistantMessageProps) {
@@ -270,9 +270,7 @@ export function AssistantMessage({
                     : "text-foreground",
                 )}
                 chatMessage={displayMessageText}
-                onCitationClick={
-                  interactiveCitations ? openChunkPopoverFromText : undefined
-                }
+                onCitationClick={openChunkPopoverFromText}
               />
 
               {/* Citation Cards */}
@@ -280,13 +278,8 @@ export function AssistantMessage({
                 <CitationCards
                   citedSources={citedSources}
                   activeCardIndex={activeChunkIndex}
-                  onCardClick={
-                    interactiveCitations ? openChunkPopover : undefined
-                  }
-                  onCardRef={
-                    interactiveCitations ? setCitationCardRef : undefined
-                  }
-                  interactive={interactiveCitations}
+                  onCardClick={openChunkPopover}
+                  onCardRef={setCitationCardRef}
                 />
               )}
 
@@ -307,7 +300,7 @@ export function AssistantMessage({
         </Message>
 
         {/* Chunk Details Popup Modal */}
-        {interactiveCitations && activeCitedSource && (
+        {activeCitedSource && (
           <ChunkPopup
             onClose={closeChunkPopover}
             chunkNumber={activeCitedSource.index}
@@ -327,6 +320,7 @@ export function AssistantMessage({
               ""
             }
             item={activeCitedSource.item}
+            showViewDocument={showViewDocument}
           />
         )}
       </Popover>
