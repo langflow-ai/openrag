@@ -43,9 +43,9 @@ export class Settings {
   private readonly removeAnywayButton = () =>
     this.page.getByRole("button", { name: "Remove Anyway" });
   private readonly watsonxConnectionErrorMessage = () =>
-    this.page.getByText("Connection failed. Check your configuration.");
+    this.page.locator('[role="dialog"] .text-destructive').first();
   private readonly openaiConnectionErrorMessage = () =>
-    this.page.getByText("Invalid OpenAI API key. Verify or replace the key.");
+    this.page.locator('[role="dialog"] .text-destructive').first();
 
   /**
    * Get locator for configure button by provider name
@@ -356,7 +356,7 @@ export class Settings {
       await expect(successToast.or(errorMsg)).toBeVisible({ timeout: 30000 });
       if (await errorMsg.isVisible()) {
         throw new Error(
-          "Watsonx.ai configuration failed: Connection failed. Check your configuration (invalid API Key, Project ID, or Endpoint).",
+          `Watsonx.ai configuration failed: ${await errorMsg.textContent()}`,
         );
       }
       logger.info("Watsonx.ai configuration completed");
@@ -444,7 +444,7 @@ export class Settings {
       await expect(successToast.or(errorMsg)).toBeVisible({ timeout: 30000 });
       if (await errorMsg.isVisible()) {
         throw new Error(
-          "OpenAI configuration failed: Invalid OpenAI API key. Verify or replace the key.",
+          `OpenAI configuration failed: ${await errorMsg.textContent()}`,
         );
       }
       logger.info("OpenAI configuration completed");

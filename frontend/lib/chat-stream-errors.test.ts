@@ -58,7 +58,7 @@ describe("extractStreamProviderError", () => {
             'Failed to authenticate with IBM Watson: {"errorCode":"BXNIM0415E","errorMessage":"Provided API key could not be found."}',
         },
       }),
-      "Provided API key could not be found.",
+      "Provided API key is Invalid.",
     );
   });
 });
@@ -146,7 +146,7 @@ describe("formatProviderErrorMessage", () => {
       formatProviderErrorMessage(
         'Failed to authenticate. Error: {"errorCode":"BXNIM0415E","errorMessage":"Provided API key could not be found."} trailing junk',
       ),
-      "Provided API key could not be found.",
+      "Provided API key is Invalid.",
     );
   });
 

@@ -671,7 +671,9 @@ async def async_chat_stream(
             )
     except Exception as e:
         logger.error(f"Error in chat stream: {e}", exc_info=True)
-        error_text = _format_provider_error_message(e)
+        from api.provider_validation import resolve_chat_stream_error_message_async
+
+        error_text = await resolve_chat_stream_error_message_async(e)
         display_text = _provider_error_display_text(error_text, full_response)
         conversation_state["messages"].append(
             {
@@ -988,14 +990,14 @@ async def async_langflow_chat_stream(
 
         from api.provider_validation import (
             looks_like_provider_error_content,
-            resolve_chat_stream_error_message,
+            resolve_chat_stream_error_message_async,
         )
 
         # Credential failures are often streamed as plain assistant text with no
         # exception. Sanitize, mark as error, and emit a terminal error chunk so
         # the client shows the error card instead of raw JSON.
         if error_occurred or looks_like_provider_error_content(full_response):
-            display_text = resolve_chat_stream_error_message(full_response)
+            display_text = await resolve_chat_stream_error_message_async(full_response)
             conversation_state["messages"].append(
                 {
                     "role": "assistant",
@@ -1048,12 +1050,12 @@ async def async_langflow_chat_stream(
                 logger.warning(f"Failed to claim session ownership: {e}")
     except Exception as e:
         logger.error(f"Error in langflow chat stream: {e}", exc_info=True)
-        from api.provider_validation import resolve_chat_stream_error_message
+        from api.provider_validation import resolve_chat_stream_error_message_async
 
-        error_text = resolve_chat_stream_error_message(e)
+        error_text = await resolve_chat_stream_error_message_async(e)
         display_text = _provider_error_display_text(error_text, full_response)
         if full_response:
-            display_text = resolve_chat_stream_error_message(display_text)
+            display_text = await resolve_chat_stream_error_message_async(display_text)
 
         conversation_state["messages"].append(
             {

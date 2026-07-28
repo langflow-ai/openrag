@@ -18,9 +18,7 @@ export function OpenAISettingsForm({
     formState: { errors },
   } = useFormContext<OpenAISettingsFormData>();
 
-  const apiKeyError = modelsError
-    ? "Invalid OpenAI API key. Verify or replace the key."
-    : errors.apiKey?.message;
+  const apiKeyError = modelsError?.message || errors.apiKey?.message;
 
   return (
     <div className="space-y-4">
