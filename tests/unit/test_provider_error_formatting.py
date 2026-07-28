@@ -38,6 +38,7 @@ def test_format_dedupes_identical_auth_failures_with_different_request_ids():
     )
     assert format_provider_error_message(first) == format_provider_error_message(second)
 
+
 def test_format_extracts_json_with_trailing_text():
     raw = (
         "Failed to initialize IBM WatsonX embedding model: Attempt of authenticating "
