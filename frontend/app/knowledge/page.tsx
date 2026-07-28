@@ -481,10 +481,6 @@ function SearchPage() {
     if (listFilesData?.after_key && listFilesData.page) {
       const nextPage = listFilesData.page + 1;
       cursorCacheRef.current.set(nextPage, listFilesData.after_key);
-      console.log(
-        `%c[cache]    cursor stored for page ${nextPage}  cacheSize=${cursorCacheRef.current.size}`,
-        "color: #9b59b6; font-weight: bold",
-      );
     }
   }, [listFilesData]);
   const gridRef = useRef<AgGridReact>(null);
