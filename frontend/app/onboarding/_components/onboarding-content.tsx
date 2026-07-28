@@ -39,6 +39,12 @@ const sanitizeCitationResult = (item: ToolCallResult): ToolCallResult => {
       file_path: item.data.file_path,
       page: item.data.page,
       score: item.data.score,
+      text: item.data.text,
+      embedding_model: item.data.embedding_model,
+      parser: item.data.parser,
+      chunk_size: item.data.chunk_size,
+      chunk_overlap: item.data.chunk_overlap,
+      metadata: item.data.metadata,
     };
 
     return Object.values(sanitizedData).some((value) => value !== undefined)
@@ -53,6 +59,13 @@ const sanitizeCitationResult = (item: ToolCallResult): ToolCallResult => {
     filename: item.filename,
     page: item.page ?? item.data?.page,
     score: item.score ?? item.data?.score,
+    text: item.text ?? item.data?.text,
+    embedding_model: item.embedding_model ?? item.data?.embedding_model,
+    parser: item.parser ?? item.data?.parser,
+    chunk_size: item.chunk_size ?? item.data?.chunk_size,
+    chunk_overlap: item.chunk_overlap ?? item.data?.chunk_overlap,
+    source_url: item.source_url,
+    metadata: item.metadata ?? item.data?.metadata,
   };
 };
 
@@ -351,7 +364,7 @@ export function OnboardingContent({
                 isStreaming={!!streamingMessage}
                 isCompleted={currentStep > 3}
                 showFeedback={false}
-                interactiveCitations={false}
+                showViewDocument={false}
                 showFunctionCalls={false}
                 unstyledMessageContent
               />
