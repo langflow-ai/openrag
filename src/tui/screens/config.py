@@ -145,7 +145,7 @@ class ConfigScreen(Screen):
         super().__init__()
         self.mode = mode  # "no_auth" or "full"
         self.env_manager = EnvManager()
-        self.inputs = {}
+        self.inputs: dict[str, Input] = {}
 
         # Check if .env file exists
         self.has_env_file = self.env_manager.env_file.exists()
@@ -594,9 +594,9 @@ class ConfigScreen(Screen):
 
         # Push with callback when supported; otherwise, use on_screen_dismissed fallback
         try:
-            self.app.push_screen(picker, _append_path)  # type: ignore[arg-type]
+            self.app.push_screen(picker, _append_path)
         except TypeError:
-            self._docs_pick_callback = _append_path  # type: ignore[attr-defined]
+            self._docs_pick_callback = _append_path
             self.app.push_screen(picker)
 
     def action_pick_langflow_data_path(self) -> None:
@@ -642,12 +642,12 @@ class ConfigScreen(Screen):
             input_widget.value = path_str
 
         try:
-            self.app.push_screen(picker, _set_path)  # type: ignore[arg-type]
+            self.app.push_screen(picker, _set_path)
         except TypeError:
-            self._langflow_data_pick_callback = _set_path  # type: ignore[attr-defined]
+            self._langflow_data_pick_callback = _set_path
             self.app.push_screen(picker)
 
-    def on_screen_dismissed(self, event) -> None:  # type: ignore[override]
+    def on_screen_dismissed(self, event) -> None:
         try:
             # textual-fspicker screens should dismiss with a result; hand to callback if present
             cb = getattr(self, "_docs_pick_callback", None)

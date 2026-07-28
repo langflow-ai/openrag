@@ -36,7 +36,7 @@ class LangflowFileService:
         docling_service=None,
         document_index_writer=None,
         ingest_token_service=None,
-    ):
+    ) -> None:
         self.flow_id_ingest = LANGFLOW_INGEST_FLOW_ID
         self.flows_service = flows_service
         self.docling_service = docling_service
