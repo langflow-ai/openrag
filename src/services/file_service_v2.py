@@ -1,8 +1,9 @@
 """
-Service for file-level listing and search via OpenSearch aggregations.
+File service v2 — composite aggregation pagination.
 
-Aggregates document chunks by filename to produce file-level views,
-with support for pagination, filtering, sorting, and fuzzy search.
+Uses OpenSearch composite aggregation for  O(page_size) server-side
+pagination. Only page_size buckets are processed per request regardless of
+total file count.
 """
 
 from typing import Any
@@ -12,9 +13,20 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+_COMPOSITE_SORT_FIELDS: dict[str, str] = {
+    "filename": "filename",
+    "file_size": "file_size",
+    "mimetype": "mimetype",
+    "indexed_time": "indexed_time",
+    "connector_type": "connector_type",
+}
 
-class FileService:
-    """Provides file-level views over the chunk-based OpenSearch index."""
+# fall back to filename composite sort,then re-sort the returned page in python
+_PYTHON_SORT_FIELDS = {"chunk_count", "owner"}
+
+
+class FileServiceV2:
+    """File-level views via composite aggregation (v2 — cursor pagination)."""
 
     def __init__(self, session_manager=None):
         self.session_manager = session_manager
@@ -31,17 +43,30 @@ class FileService:
         mimetype: str | None = None,
         owner: str | None = None,
         search: str | None = None,
+        after_key: dict | None = None,
     ) -> dict[str, Any]:
         """
-        List ingested files with server-side pagination, filtering, and sorting.
+        List files with server-side pagination via composite aggregation
 
-        Aggregates chunks by filename using OpenSearch terms aggregation,
-        then paginates and sorts the resulting file list in-memory.
+        Cost is O(page_size) per request (as opposed to returning all unique file sizes from OpenSearch)
+        Returns after_key for the next page (None when on the last page),
+        plus an approximate total from a cardinality aggregation.
         """
         opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
 
         query = self._build_filter_query(user_id, connector_type, mimetype, owner, search)
-        agg_body = self._build_file_aggregation(query)
+        total = await self._get_file_count(opensearch_client, query)
+
+        use_python_sort = sort_by in _PYTHON_SORT_FIELDS
+        composite_sort_field = "filename" if use_python_sort else _COMPOSITE_SORT_FIELDS.get(sort_by, "filename")
+
+        agg_body = self._build_composite_aggregation(
+            query=query,
+            page_size=page_size,
+            sort_field=composite_sort_field,
+            sort_order=sort_order,
+            after_key=after_key,
+        )
 
         try:
             result = await opensearch_client.search(
@@ -49,28 +74,31 @@ class FileService:
                 body=agg_body,
             )
         except Exception as e:
-            logger.error("Failed to list files", error=str(e))
-            # An auth failure (OpenSearch rejected the credential) must not be
-            # masked as an empty result — surface it so the route returns 401.
+            logger.error("Failed to list files (v2)", error=str(e))
             from utils.opensearch_utils import is_opensearch_auth_error
 
             if is_opensearch_auth_error(e):
                 raise
-            return {"files": [], "total": 0, "page": page, "page_size": page_size}
+            return {"files": [], "total": 0, "page": page, "page_size": page_size, "after_key": None}
 
-        files = self._parse_aggregation_buckets(result)
-        files = self._sort_files(files, sort_by, sort_order)
+        files, next_after_key = self._parse_composite_buckets(result)
 
-        total = len(files)
-        start = (page - 1) * page_size
-        end = start + page_size
-        paginated = files[start:end]
+        if len(files) < page_size: #final page, no after_key
+            next_after_key = None
+
+        if use_python_sort:
+            reverse = sort_order.lower() == "desc"
+            if sort_by == "chunk_count":
+                files.sort(key=lambda f: f.get("chunk_count") or 0, reverse=reverse)
+            elif sort_by == "owner":
+                files.sort(key=lambda f: f.get("owner") or "", reverse=reverse)
 
         return {
-            "files": paginated,
+            "files": files,
             "total": total,
             "page": page,
             "page_size": page_size,
+            "after_key": next_after_key,
         }
 
     async def search_files(
@@ -83,13 +111,9 @@ class FileService:
         connector_type: str | None = None,
         mimetype: str | None = None,
         owner: str | None = None,
+        after_key: dict | None = None,
     ) -> dict[str, Any]:
-        """
-        Search files by name with fuzzy/prefix matching.
-
-        Uses wildcard, match_phrase_prefix, and fuzzy queries on the
-        filename field, then aggregates matching chunks into file-level results.
-        """
+        """Search files by name with fuzzy/prefix matching."""
         return await self.list_files(
             user_id=user_id,
             jwt_token=jwt_token,
@@ -101,6 +125,7 @@ class FileService:
             mimetype=mimetype,
             owner=owner,
             search=query,
+            after_key=after_key,
         )
 
     def _build_filter_query(
@@ -111,7 +136,6 @@ class FileService:
         owner: str | None = None,
         search: str | None = None,
     ) -> dict[str, Any]:
-        """Build the bool query with optional filters + filename search."""
         must = []
         filter_clauses = []
 
@@ -123,7 +147,6 @@ class FileService:
             filter_clauses.append({"term": {"owner": owner}})
 
         if search:
-            # Combine wildcard (partial), prefix, and fuzzy for flexible matching
             must.append(
                 {
                     "bool": {
@@ -139,20 +162,44 @@ class FileService:
         query: dict[str, Any] = {"bool": {"filter": filter_clauses}}
         if must:
             query["bool"]["must"] = must
-
         return query
 
-    def _build_file_aggregation(self, query: dict[str, Any]) -> dict[str, Any]:
-        """Build the OpenSearch aggregation body for file-level grouping."""
+    def _build_composite_aggregation(
+        self,
+        query: dict[str, Any],
+        page_size: int,
+        sort_field: str,
+        sort_order: str,
+        after_key: dict | None,
+    ) -> dict[str, Any]:
+        composite: dict[str, Any] = {
+            "size": page_size,
+            "sources": [
+                {
+                    sort_field: {
+                        "terms": {
+                            "field": sort_field,
+                            "order": sort_order,
+                        }
+                    }
+                },
+                *(
+                    [{"filename_tiebreak": {"terms": {"field": "filename", "order": sort_order}}}]
+                    if sort_field != "filename"
+                    else []
+                ),
+            ],
+        }
+
+        if after_key:
+            composite["after"] = after_key
+
         return {
             "size": 0,
             "query": query,
             "aggs": {
                 "files": {
-                    "terms": {
-                        "field": "filename",
-                        "size": 10000,
-                    },
+                    "composite": composite,
                     "aggs": {
                         "file_metadata": {
                             "top_hits": {
@@ -183,20 +230,43 @@ class FileService:
             },
         }
 
-    def _parse_aggregation_buckets(self, result: dict[str, Any]) -> list[dict[str, Any]]:
-        """Parse OpenSearch aggregation buckets into file dicts."""
-        buckets = result.get("aggregations", {}).get("files", {}).get("buckets", [])
+    async def _get_file_count(self, opensearch_client: Any, query: dict[str, Any]) -> int:
+        """Approximate unique-filename count via cardinality aggregation (O(1))."""
+        body = {
+            "size": 0,
+            "query": query,
+            "aggs": {
+                "file_count": {
+                    "cardinality": {
+                        "field": "filename",
+                        "precision_threshold": 3000,
+                    }
+                }
+            },
+        }
+        try:
+            result = await opensearch_client.search(index=get_index_name(), body=body)
+            return result.get("aggregations", {}).get("file_count", {}).get("value", 0)
+        except Exception:
+            return 0
+
+    def _parse_composite_buckets(
+        self, result: dict[str, Any]
+    ) -> tuple[list[dict[str, Any]], dict | None]:
+        """Parse composite agg buckets. Returns (files, next_after_key)."""
+        agg = result.get("aggregations", {}).get("files", {})
+        buckets = agg.get("buckets", [])
+        next_after_key = agg.get("after_key")
 
         files = []
         for bucket in buckets:
             hits = bucket.get("file_metadata", {}).get("hits", {}).get("hits", [])
             if not hits:
                 continue
-
             source = hits[0].get("_source", {})
             files.append(
                 {
-                    "filename": bucket["key"],
+                    "filename": source.get("filename") or bucket["key"].get("filename", ""),
                     "document_id": source.get("document_id", ""),
                     "mimetype": source.get("mimetype", ""),
                     "file_size": source.get("file_size", 0),
@@ -215,33 +285,4 @@ class FileService:
                 }
             )
 
-        return files
-
-    def _sort_files(
-        self,
-        files: list[dict[str, Any]],
-        sort_by: str,
-        sort_order: str,
-    ) -> list[dict[str, Any]]:
-        """Sort file list by the given field."""
-        valid_sort_fields = {
-            "filename",
-            "file_size",
-            "mimetype",
-            "indexed_time",
-            "connector_type",
-            "chunk_count",
-            "owner",
-        }
-        if sort_by not in valid_sort_fields:
-            sort_by = "filename"
-
-        reverse = sort_order.lower() == "desc"
-
-        _numeric_sort_fields = {"file_size", "chunk_count"}
-        if sort_by in _numeric_sort_fields:
-            key = lambda f: f.get(sort_by) or 0
-        else:
-            key = lambda f: f.get(sort_by) or ""
-
-        return sorted(files, key=key, reverse=reverse)
+        return files, next_after_key
