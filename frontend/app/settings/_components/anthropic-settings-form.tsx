@@ -18,9 +18,7 @@ export function AnthropicSettingsForm({
     formState: { errors },
   } = useFormContext<AnthropicSettingsFormData>();
 
-  const apiKeyError = modelsError
-    ? "Invalid Anthropic API key. Verify or replace the key."
-    : errors.apiKey?.message;
+  const apiKeyError = modelsError?.message || errors.apiKey?.message;
 
   return (
     <div className="space-y-4">

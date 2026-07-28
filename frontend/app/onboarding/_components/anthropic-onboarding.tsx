@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import AnthropicLogo from "@/components/icons/anthropic-logo";
 import { LabelInput } from "@/components/label-input";
 import { LabelWrapper } from "@/components/label-wrapper";
@@ -18,12 +18,10 @@ import { AdvancedOnboarding } from "./advanced";
 
 export function AnthropicOnboarding({
   setSettings,
-  setIsLoadingModels,
   isEmbedding = false,
   hasEnvApiKey = false,
 }: {
   setSettings: Dispatch<SetStateAction<OnboardingVariables>>;
-  setIsLoadingModels?: (isLoading: boolean) => void;
   isEmbedding?: boolean;
   hasEnvApiKey?: boolean;
 }) {
@@ -40,20 +38,23 @@ export function AnthropicOnboarding({
   }
   const debouncedApiKey = useDebouncedValue(apiKey, 500);
 
-  // Fetch models from API when API key is provided
   const {
     data: modelsData,
     isLoading: isLoadingModels,
+    isFetching: isFetchingModels,
     error: modelsError,
   } = useGetAnthropicModelsQuery(
     getFromEnv
-      ? { apiKey: "" }
+      ? { useEnvKey: true }
       : debouncedApiKey
-        ? { apiKey: debouncedApiKey }
+        ? { apiKey: debouncedApiKey, useEnvKey: false }
         : undefined,
     { enabled: debouncedApiKey !== "" || getFromEnv },
   );
-  // Use custom hook for model selection logic
+
+  const showModelsError =
+    !!modelsError && !isLoadingModels && !isFetchingModels;
+
   const {
     languageModel,
     embeddingModel,
@@ -76,15 +77,11 @@ export function AnthropicOnboarding({
     setLanguageModel?.("");
   };
 
-  useEffect(() => {
-    setIsLoadingModels?.(isLoadingModels);
-  }, [isLoadingModels, setIsLoadingModels]);
-
-  // Update settings when values change
   useUpdateSettings(
     "anthropic",
     {
-      apiKey,
+      apiKey: getFromEnv ? undefined : apiKey,
+      clearApiKey: getFromEnv,
       languageModel,
       embeddingModel,
     },
@@ -124,7 +121,7 @@ export function AnthropicOnboarding({
             <LabelInput
               label="Anthropic API key"
               helperText="The API key for your Anthropic account."
-              className={modelsError ? "!border-destructive" : ""}
+              className={showModelsError ? "!border-destructive" : ""}
               id="api-key"
               type="password"
               required
@@ -132,15 +129,13 @@ export function AnthropicOnboarding({
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
             />
-            {isLoadingModels && (
+            {(isLoadingModels || isFetchingModels) && (
               <p className="text-mmd text-muted-foreground">
                 Validating API key...
               </p>
             )}
-            {modelsError && (
-              <p className="text-mmd text-destructive">
-                Invalid Anthropic API key. Verify or replace the key.
-              </p>
+            {showModelsError && (
+              <p className="text-mmd text-destructive">{modelsError.message}</p>
             )}
           </div>
         )}

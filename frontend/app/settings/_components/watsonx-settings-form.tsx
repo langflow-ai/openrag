@@ -135,9 +135,7 @@ export function WatsonxSettingsForm({
           </p>
         )}
         {modelsError && (
-          <p className="text-sm text-destructive">
-            Connection failed. Check your configuration.
-          </p>
+          <p className="text-sm text-destructive">{modelsError.message}</p>
         )}
       </div>
       <p className="text-sm text-muted-foreground">
