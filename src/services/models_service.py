@@ -1,4 +1,5 @@
 import asyncio
+import re
 
 import httpx
 
@@ -15,6 +16,71 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 KNOWN_PREFIXES = ["openai", "ollama", "watsonx", "anthropic"]
+
+# OpenAI /v1/models is a flat inventory. These IDs are real products but not
+# usable as OpenRAG agent LLMs (wrong modality / API surface).
+_OPENAI_NON_CHAT_PREFIXES = (
+    "whisper",
+    "dall-e",
+    "tts-",
+    "davinci",
+    "babbage",
+    "curie",
+    "sora-",
+    "computer-use",
+    "omni-moderation",
+    "text-moderation",
+    "gpt-image",
+    "gpt-audio",
+    "gpt-realtime",
+    "chatgpt-image",
+)
+_OPENAI_REASONING_MODEL_RE = re.compile(r"^o\d")
+
+
+def is_openai_embedding_model(model_id: str) -> bool:
+    """True if the OpenAI model ID is an embedding model."""
+    return OPENAI_EMBEDDING_MODEL_PREFIX in model_id or "text-similarity-" in model_id
+
+
+def is_openai_non_chat_model(model_id: str) -> bool:
+    """True if the ID is a known non-chat OpenAI product (junk for LLM/embedding pickers)."""
+    lower = model_id.lower()
+    if "-moderation" in lower:
+        return True
+    return any(lower.startswith(prefix) for prefix in _OPENAI_NON_CHAT_PREFIXES)
+
+
+def is_openai_language_model(model_id: str) -> bool:
+    """True if the OpenAI model ID is usable as a chat/agent language model.
+
+    Classifies the live /v1/models inventory: embeddings and non-chat junk are
+    excluded; gpt-*, chatgpt-*, and o<digit>* reasoning models are included so
+    new chat families appear without a curated allowlist.
+    """
+    if not model_id or is_openai_embedding_model(model_id) or is_openai_non_chat_model(model_id):
+        return False
+    if model_id.startswith(("gpt-", "chatgpt-")):
+        return True
+    return bool(_OPENAI_REASONING_MODEL_RE.match(model_id))
+
+
+def resolve_preferred_model(preferred: str, live_models: list[dict]) -> str:
+    """Pick a model from a live provider list.
+
+    Prefer ``preferred`` when it appears in the live list; otherwise the entry
+    marked ``default``, otherwise the first live model. If the live list is
+    empty, return ``preferred`` (may be empty).
+    """
+    if not live_models:
+        return preferred or ""
+    values = {m.get("value") for m in live_models}
+    if preferred and preferred in values:
+        return preferred
+    for model in live_models:
+        if model.get("default"):
+            return model.get("value") or preferred or ""
+    return live_models[0].get("value") or preferred or ""
 
 
 class UnknownEmbeddingProvider(Exception):
@@ -230,35 +296,44 @@ class ModelsService:
                 data = response.json()
                 models = data.get("data", [])
 
-                # Filter for relevant models
+                # Classify live inventory into embedding vs chat; drop non-chat junk.
                 language_models = []
                 embedding_models = []
 
                 for model in models:
                     model_id = model.get("id", "")
+                    if not model_id:
+                        continue
 
-                    # Embedding models
-                    if OPENAI_EMBEDDING_MODEL_PREFIX in model_id or "text-similarity-" in model_id:
+                    if is_openai_embedding_model(model_id):
                         embedding_models.append(
                             {
                                 "value": model_id,
                                 "label": model_id,
-                                "default": model_id == OPENAI_DEFAULT_EMBEDDING_MODEL,
+                                "default": False,
                             }
                         )
-                    # Language models (GPT and o1/o3/chatgpt models)
-                    elif (
-                        model_id.startswith(("gpt-", "o1-", "o3-", "chatgpt-"))
-                        and "-moderation" not in model_id
-                    ):
+                    elif is_openai_language_model(model_id):
                         language_models.append(
                             {
                                 "value": model_id,
                                 "label": model_id,
-                                "default": model_id == OPENAI_DEFAULT_LANGUAGE_MODEL,
+                                "default": False,
                                 "supports_images": self._openai_supports_images(model_id),
                             }
                         )
+
+                chosen_language = resolve_preferred_model(
+                    OPENAI_DEFAULT_LANGUAGE_MODEL, language_models
+                )
+                for entry in language_models:
+                    entry["default"] = entry["value"] == chosen_language
+
+                chosen_embedding = resolve_preferred_model(
+                    OPENAI_DEFAULT_EMBEDDING_MODEL, embedding_models
+                )
+                for entry in embedding_models:
+                    entry["default"] = entry["value"] == chosen_embedding
 
                 # Sort by name and ensure defaults are first
                 language_models.sort(key=lambda x: (not x.get("default", False), x["value"]))
@@ -302,7 +377,7 @@ class ModelsService:
                 "Content-Type": "application/json",
             }
 
-            # Validate API key with lightweight models endpoint and return curated models
+            # Validate API key and return all models from Anthropic's chat-oriented list API
             async with httpx.AsyncClient() as client:
                 response = await client.get(
                     "https://api.anthropic.com/v1/models",
@@ -314,19 +389,27 @@ class ModelsService:
                 data = response.json()
                 models = data.get("data", [])
 
-                # Filter for curated Anthropic models (same pattern as OpenAI validation list)
+                # Anthropic /v1/models is already chat-oriented; pass through live list.
                 language_models = []
 
                 for model in models:
                     model_id = model.get("id", "")
+                    if not model_id:
+                        continue
                     language_models.append(
                         {
                             "value": model_id,
                             "label": model.get("display_name", model_id),
-                            "default": model_id == ANTHROPIC_DEFAULT_LANGUAGE_MODEL,
+                            "default": False,
                             "supports_images": self._anthropic_supports_images(model),
                         }
                     )
+
+                chosen_language = resolve_preferred_model(
+                    ANTHROPIC_DEFAULT_LANGUAGE_MODEL, language_models
+                )
+                for entry in language_models:
+                    entry["default"] = entry["value"] == chosen_language
 
                 # Sort by default first, then by name
                 language_models.sort(key=lambda x: (not x.get("default", False), x["value"]))

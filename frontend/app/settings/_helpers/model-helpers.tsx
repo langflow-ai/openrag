@@ -94,7 +94,9 @@ export function getModelLogo(modelValue: string, provider?: ModelProvider) {
   return <OpenAILogo className="w-4 h-4" />; // Default to OpenAI logo
 }
 
-// Helper function to get fallback models by provider
+// Offline fallbacks when live /api/models/* returns empty.
+// Include current preferred defaults AND older models that are still functional.
+// Live provider lists remain the real catalog when the API is reachable.
 export function getFallbackModels(provider: ModelProvider) {
   switch (provider) {
     case "openai":
@@ -109,18 +111,19 @@ export function getFallbackModels(provider: ModelProvider) {
           { value: "gpt-5", label: "GPT-5" },
           { value: "gpt-5-mini", label: "GPT-5 Mini" },
           { value: "gpt-5-nano", label: "GPT-5 Nano" },
-          { value: "gpt-4o-mini", label: "GPT-4o Mini" },
-          { value: "gpt-4o", label: "GPT-4o" },
           { value: "gpt-4.1", label: "GPT-4.1" },
           { value: "gpt-4.1-mini", label: "GPT-4.1 Mini" },
+          { value: "gpt-4o", label: "GPT-4o" },
+          { value: "gpt-4o-mini", label: "GPT-4o Mini" },
           { value: "o3", label: "o3" },
           { value: "o3-pro", label: "o3 Pro" },
+          { value: "o4-mini", label: "o4 Mini" },
           { value: "o4-mini-high", label: "o4 Mini High" },
         ],
         embedding: [
-          { value: "text-embedding-ada-002", label: "text-embedding-ada-002" },
-          { value: "text-embedding-3-small", label: "text-embedding-3-small" },
           { value: "text-embedding-3-large", label: "text-embedding-3-large" },
+          { value: "text-embedding-3-small", label: "text-embedding-3-small" },
+          { value: "text-embedding-ada-002", label: "text-embedding-ada-002" },
         ],
       };
     case "anthropic":
@@ -128,59 +131,34 @@ export function getFallbackModels(provider: ModelProvider) {
         language: [
           { value: "claude-opus-4-6", label: "Claude Opus 4.6" },
           { value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
+          { value: "claude-opus-4-5-20251101", label: "Claude Opus 4.5" },
           { value: "claude-sonnet-4-5-20250929", label: "Claude Sonnet 4.5" },
+          { value: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
         ],
       };
     case "ollama":
       return {
+        // Tool-calling capable recommendations only (agent requires tools)
         language: [
-          { value: "llama2", label: "Llama 2" },
-          { value: "llama2:13b", label: "Llama 2 13B" },
-          { value: "codellama", label: "Code Llama" },
+          { value: "gpt-oss", label: "gpt-oss" },
+          { value: "mistral-nemo", label: "mistral-nemo" },
         ],
         embedding: [
-          { value: "mxbai-embed-large", label: "MxBai Embed Large" },
           { value: "nomic-embed-text", label: "Nomic Embed Text" },
+          { value: "mxbai-embed-large", label: "MxBai Embed Large" },
         ],
       };
     case "watsonx":
-      return {
-        language: [
-          {
-            value: "meta-llama/llama-3-1-70b-instruct",
-            label: "Llama 3.1 70B Instruct",
-          },
-          { value: "ibm/granite-13b-chat-v2", label: "Granite 13B Chat v2" },
-        ],
-        embedding: [
-          {
-            value: "ibm/slate-125m-english-rtrvr",
-            label: "Slate 125M English Retriever",
-          },
-        ],
-      };
+      // No stable static IDs — live list is required for watsonx.
+      return { language: [], embedding: [] };
     default:
       return {
         language: [
-          { value: "gpt-5.4", label: "GPT-5.4" },
           { value: "gpt-5.4-mini", label: "GPT-5.4 Mini" },
-          { value: "gpt-5.4-pro", label: "GPT-5.4 Pro" },
-          { value: "gpt-5.3-codex", label: "GPT-5.3 Codex" },
-          { value: "gpt-5.2", label: "GPT-5.2" },
-          { value: "gpt-5.1", label: "GPT-5.1" },
-          { value: "gpt-5", label: "GPT-5" },
-          { value: "gpt-5-mini", label: "GPT-5 Mini" },
-          { value: "gpt-5-nano", label: "GPT-5 Nano" },
-          { value: "gpt-4o-mini", label: "GPT-4o Mini" },
           { value: "gpt-4o", label: "GPT-4o" },
-          { value: "gpt-4.1", label: "GPT-4.1" },
-          { value: "gpt-4.1-mini", label: "GPT-4.1 Mini" },
-          { value: "o3", label: "o3" },
-          { value: "o3-pro", label: "o3 Pro" },
-          { value: "o4-mini-high", label: "o4 Mini High" },
+          { value: "gpt-4o-mini", label: "GPT-4o Mini" },
         ],
         embedding: [
-          { value: "text-embedding-ada-002", label: "text-embedding-ada-002" },
           { value: "text-embedding-3-small", label: "text-embedding-3-small" },
           { value: "text-embedding-3-large", label: "text-embedding-3-large" },
         ],
