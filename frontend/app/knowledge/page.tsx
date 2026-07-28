@@ -481,10 +481,6 @@ function SearchPage() {
     if (listFilesData?.after_key && listFilesData.page) {
       const nextPage = listFilesData.page + 1;
       cursorCacheRef.current.set(nextPage, listFilesData.after_key);
-      console.log(
-        `%c[cache]    cursor stored for page ${nextPage}  cacheSize=${cursorCacheRef.current.size}`,
-        "color: #9b59b6; font-weight: bold",
-      );
     }
   }, [listFilesData]);
   const gridRef = useRef<AgGridReact>(null);
@@ -516,11 +512,6 @@ function SearchPage() {
       : "filename";
     const newSortOrder: "asc" | "desc" =
       sortedCol?.sort === "desc" ? "desc" : "asc";
-
-    console.log(
-      `%c[sort]     sortBy=${newSortBy}  sortOrder=${newSortOrder}`,
-      "color: #e67e22; font-weight: bold",
-    );
 
     // Changing sort invalidates all cursors; reset to page 1
     cursorCacheRef.current = new Map();
@@ -1090,6 +1081,11 @@ function SearchPage() {
               onSortChanged={onSortChanged}
               headerHeight={64}
               rowHeight={64}
+              {...(!isWildcardQuery && {
+                pagination: true,
+                paginationPageSize: 25,
+                paginationPageSizeSelector: [10, 25, 50, 100],
+              })}
               noRowsOverlayComponent={() => (
                 <div className="text-center pb-[45px]">
                   <div className="text-lg text-primary font-semibold">
@@ -1124,6 +1120,11 @@ function SearchPage() {
               onGridPreDestroyed={handleGridPreDestroyed}
               onSelectionChanged={onSelectionChanged}
               onSortChanged={onSortChanged}
+              {...(!isWildcardQuery && {
+                pagination: true,
+                paginationPageSize: 25,
+                paginationPageSizeSelector: [10, 25, 50, 100],
+              })}
               noRowsOverlayComponent={() => (
                 <div className="text-center pb-[45px]">
                   <div className="text-lg text-primary font-semibold">
@@ -1199,7 +1200,7 @@ function SearchPage() {
               {`${(currentPage - 1) * currentPageSize + 1} to ${Math.min(
                 currentPage * currentPageSize,
                 serverTotal,
-              )} of ${serverTotal}`}
+              )} of ~${serverTotal}`}
             </span>
 
             {/* nav buttons */}
@@ -1231,7 +1232,7 @@ function SearchPage() {
                 <span style={{ pointerEvents: "none" }}>‹</span>
               </button>
               <span style={{ padding: "0 8px", whiteSpace: "nowrap" }}>
-                Page {currentPage} of {totalPages}
+                Page {currentPage} of ~{totalPages}
               </span>
               <button
                 type="button"

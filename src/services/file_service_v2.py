@@ -247,7 +247,8 @@ class FileServiceV2:
         try:
             result = await opensearch_client.search(index=get_index_name(), body=body)
             return result.get("aggregations", {}).get("file_count", {}).get("value", 0)
-        except Exception:
+        except Exception as e:
+            logger.warning("_get_file_count failed; returning 0 as fallback total", error=str(e))
             return 0
 
     def _parse_composite_buckets(
