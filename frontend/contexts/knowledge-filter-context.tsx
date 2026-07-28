@@ -11,7 +11,7 @@ import {
   FILTER_COLORS,
   type FilterColor,
   type IconKey,
-} from "@/components/filter-icon-popover";
+} from "@/lib/filter-constants";
 
 interface KnowledgeFilter {
   id: string;

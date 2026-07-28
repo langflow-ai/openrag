@@ -1,89 +1,22 @@
 "use client";
 
-import {
-  Archive,
-  Bolt,
-  Book,
-  Cable,
-  Check,
-  Database,
-  FileImage,
-  Filter,
-  Folder,
-  Gem,
-  Ghost,
-  Globe,
-  Hammer,
-  HardDrive,
-  Layers3,
-  Library,
-  Map as MapIcon,
-  MessagesSquare,
-  Scroll,
-  Shield,
-  ShoppingBag,
-  ShoppingCart,
-  SquareStack,
-  Swords,
-  Upload,
-} from "lucide-react";
-import React, { type SVGProps } from "react";
+import { Check } from "lucide-react";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  FILTER_COLORS,
+  type FilterColor,
+  ICON_MAP,
+  type IconKey,
+  iconKeyToComponent,
+} from "@/lib/filter-constants";
 import { cn } from "@/lib/utils";
 import { filterAccentClasses } from "./knowledge-filter-panel";
 
-const ICON_MAP = {
-  filter: Filter,
-  book: Book,
-  scroll: Scroll,
-  library: Library,
-  map: MapIcon,
-  image: FileImage,
-  layers3: Layers3,
-  database: Database,
-  folder: Folder,
-  archive: Archive,
-  messagesSquare: MessagesSquare,
-  squareStack: SquareStack,
-  ghost: Ghost,
-  gem: Gem,
-  swords: Swords,
-  bolt: Bolt,
-  shield: Shield,
-  hammer: Hammer,
-  globe: Globe,
-  hardDrive: HardDrive,
-  upload: Upload,
-  cable: Cable,
-  shoppingCart: ShoppingCart,
-  shoppingBag: ShoppingBag,
-} as const;
-
-export type IconKey = keyof typeof ICON_MAP;
-
-export function iconKeyToComponent(
-  key?: string,
-): React.ComponentType<SVGProps<SVGSVGElement>> | undefined {
-  if (!key) return undefined;
-  return (
-    ICON_MAP as Record<string, React.ComponentType<SVGProps<SVGSVGElement>>>
-  )[key];
-}
-
-export const FILTER_COLORS = [
-  "zinc",
-  "pink",
-  "purple",
-  "indigo",
-  "emerald",
-  "amber",
-  "red",
-] as const;
-export type FilterColor = (typeof FILTER_COLORS)[number];
+export type { FilterColor, IconKey };
 
 const colorSwatchClasses = {
   zinc: "bg-muted-foreground",

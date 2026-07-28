@@ -10,11 +10,7 @@ import {
   EMPTY_SEARCH_RESULT,
   useGetSearchQuery,
 } from "@/app/api/queries/useGetSearchQuery";
-import {
-  type FilterColor,
-  FilterIconPopover,
-  type IconKey,
-} from "@/components/filter-icon-popover";
+import { FilterIconPopover } from "@/components/filter-icon-popover";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -32,6 +28,7 @@ import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
 import { usePermissions } from "@/hooks/use-permissions";
 import { trackButton } from "@/lib/analytics";
+import type { FilterColor, IconKey } from "@/lib/filter-constants";
 import {
   buildActiveSourceOptions,
   buildKnowledgeTableRows,
