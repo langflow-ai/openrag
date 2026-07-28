@@ -6,7 +6,8 @@ The orphan-deletion safety net must:
 - preserve files present in any active connection,
 - enumerate visible chunks with the user-scoped client, then delete by primary
   ID with the trusted backend OpenSearch client,
-- query either `document_id` or `connector_file_id` depending on the ingest path.
+- match BOTH `document_id` and `connector_file_id` so orphan deletion covers
+  chunks from either ingest layout (see connectors.chunk_cleanup).
 """
 
 import json
@@ -30,12 +31,13 @@ def _make_connection(connection_id: str, is_active: bool = True):
 def _make_connector(remote_file_ids, *, authenticated=True, raise_on_list=False):
     connector = MagicMock()
     connector.is_authenticated = authenticated
+    response = {"files": [{"id": fid} for fid in remote_file_ids]}
     if raise_on_list:
         connector.list_files = AsyncMock(side_effect=RuntimeError("graph 503"))
+        connector.list_selected_files = AsyncMock(side_effect=RuntimeError("graph 503"))
     else:
-        connector.list_files = AsyncMock(
-            return_value={"files": [{"id": fid} for fid in remote_file_ids]}
-        )
+        connector.list_files = AsyncMock(return_value=response)
+        connector.list_selected_files = AsyncMock(return_value=response)
     return connector
 
 
@@ -222,11 +224,73 @@ async def test_happy_path_deletes_orphans(monkeypatch):
     opensearch_client.delete.assert_not_awaited()
 
     search_body = opensearch_client.search.await_args.kwargs["body"]
-    assert search_body["query"] == {"terms": {"document_id": ["b"]}}
+    shoulds = search_body["query"]["bool"]["filter"][0]["bool"]["should"]
+    fields = {next(iter(c["terms"])): next(iter(c["terms"].values())) for c in shoulds}
+    assert fields == {
+        "document_id": ["b"],
+        "connector_file_id": ["b"],
+        "connector_file_id.keyword": ["b"],
+    }
     assert [call.kwargs["id"] for call in write_client.delete.await_args_list] == [
         "chunk-b-1",
         "chunk-b-2",
     ]
+
+
+@pytest.mark.asyncio
+async def test_happy_path_private_scopes_to_owner(monkeypatch):
+    """Private orphan cleanup must filter by connector_type and owner."""
+    from api.connectors import reconcile_orphans_for_connector_type
+
+    conn = _make_connection("c1")
+    connector = _make_connector(remote_file_ids=["a"])
+    service = _make_service([conn], connector_lookup={"c1": connector})
+    opensearch_client = _make_opensearch_client(chunk_ids=["chunk-b-1"])
+    _patch_write_client(monkeypatch)
+    sm = _make_session_manager(opensearch_client)
+
+    await reconcile_orphans_for_connector_type(
+        connector_type="google_drive",
+        user_id="alice",
+        connector_service=service,
+        session_manager=sm,
+        jwt_token=None,
+        existing_file_ids=["a", "b"],
+    )
+
+    search_body = opensearch_client.search.await_args.kwargs["body"]
+    filters = search_body["query"]["bool"]["filter"]
+    assert {"term": {"connector_type": "google_drive"}} in filters
+    assert {"term": {"owner": "alice"}} in filters
+
+
+@pytest.mark.asyncio
+async def test_happy_path_shared_scopes_to_ownerless(monkeypatch):
+    """Shared orphan cleanup must filter by connector_type and ownerless chunks."""
+    from api.connectors import reconcile_orphans_for_connector_type
+
+    conn = _make_connection("c1")
+    connector = _make_connector(remote_file_ids=["a"])
+    service = _make_service([conn], connector_lookup={"c1": connector})
+    opensearch_client = _make_opensearch_client(chunk_ids=["chunk-b-1"])
+    _patch_write_client(monkeypatch)
+    sm = _make_session_manager(opensearch_client)
+
+    await reconcile_orphans_for_connector_type(
+        connector_type="ibm_cos",
+        user_id="alice",
+        connector_service=service,
+        session_manager=sm,
+        jwt_token=None,
+        existing_file_ids=["a", "b"],
+        shared=True,
+    )
+
+    search_body = opensearch_client.search.await_args.kwargs["body"]
+    filters = search_body["query"]["bool"]["filter"]
+    assert {"term": {"connector_type": "ibm_cos"}} in filters
+    assert {"bool": {"must_not": {"exists": {"field": "owner"}}}} in filters
+    assert {"term": {"owner": "alice"}} not in filters
 
 
 @pytest.mark.asyncio
@@ -310,6 +374,8 @@ async def test_multi_connection_one_offline_aborts_even_if_other_succeeds():
 
 @pytest.mark.asyncio
 async def test_paginated_listing_aggregates_all_pages():
+    """Connectors without cfg (e.g. bucket connectors) use the paginated
+    list_files() path.  Verify that all pages are consumed."""
     from api.connectors import reconcile_orphans_for_connector_type
 
     conn = _make_connection("c1")
@@ -320,6 +386,7 @@ async def test_paginated_listing_aggregates_all_pages():
         {"files": [{"id": "b"}, {"id": "c"}]},
     ]
     connector.list_files = AsyncMock(side_effect=pages)
+    del connector.cfg
 
     service = _make_service([conn], connector_lookup={"c1": connector})
     opensearch_client = _make_opensearch_client()
@@ -340,7 +407,11 @@ async def test_paginated_listing_aggregates_all_pages():
 
 
 @pytest.mark.asyncio
-async def test_connector_file_id_field_used_when_specified(monkeypatch):
+async def test_orphan_delete_matches_both_id_layouts(monkeypatch):
+    """Orphan deletion must cover chunks from either ingest layout: the
+    standard path keys chunks by connector_file_id (document_id is a content
+    hash) while the Langflow path keys them by document_id. A single-field
+    query would miss one of them."""
     from api.connectors import reconcile_orphans_for_connector_type
 
     conn = _make_connection("c1")
@@ -357,40 +428,19 @@ async def test_connector_file_id_field_used_when_specified(monkeypatch):
         session_manager=sm,
         jwt_token=None,
         existing_file_ids=["sp-guid-a", "sp-guid-b"],
-        id_field="connector_file_id",
     )
 
     assert result == ["sp-guid-b"]
     search_body = opensearch_client.search.await_args.kwargs["body"]
-    assert search_body["query"] == {"terms": {"connector_file_id": ["sp-guid-b"]}}
+    shoulds = search_body["query"]["bool"]["filter"][0]["bool"]["should"]
+    fields = {next(iter(c["terms"])): next(iter(c["terms"].values())) for c in shoulds}
+    assert fields == {
+        "document_id": ["sp-guid-b"],
+        "connector_file_id": ["sp-guid-b"],
+        "connector_file_id.keyword": ["sp-guid-b"],
+    }
     assert write_client.delete.await_count == 2
     opensearch_client.delete.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_document_id_field_used_by_default(monkeypatch):
-    from api.connectors import reconcile_orphans_for_connector_type
-
-    conn = _make_connection("c1")
-    connector = _make_connector(remote_file_ids=["lf-id-a"])
-    service = _make_service([conn], connector_lookup={"c1": connector})
-    opensearch_client = _make_opensearch_client(chunk_ids=["chunk-lf-b-0"])
-    write_client = _patch_write_client(monkeypatch)
-    sm = _make_session_manager(opensearch_client)
-
-    result = await reconcile_orphans_for_connector_type(
-        connector_type="sharepoint",
-        user_id="alice",
-        connector_service=service,
-        session_manager=sm,
-        jwt_token=None,
-        existing_file_ids=["lf-id-a", "lf-id-b"],
-    )
-
-    assert result == ["lf-id-b"]
-    search_body = opensearch_client.search.await_args.kwargs["body"]
-    assert search_body["query"] == {"terms": {"document_id": ["lf-id-b"]}}
-    write_client.delete.assert_awaited_once()
 
 
 @pytest.mark.asyncio

@@ -198,45 +198,6 @@ async def delete_documents_by_filename_core(
         )
 
 
-async def delete_chunks_by_document_ids(
-    document_ids: list[str],
-    opensearch_client,
-    index_name: str,
-    write_opensearch_client=None,
-    field: str = "document_id",
-) -> int:
-    """Bulk delete OpenSearch chunks by a keyword field. Returns deleted count.
-
-    DLS-safe: enumerate the visible chunk _ids via search, then issue a trusted
-    delete per primary id. `delete_by_query` is silently no-opped under DLS
-    (returns deleted:N but leaves docs in place).
-
-    `field` selects which indexed keyword to match against (default: ``document_id``).
-    Pass ``field="connector_file_id"`` to clean up chunks for a deleted connector
-    source file when the connector file ID differs from the content hash stored in
-    ``document_id``.
-    """
-    if not document_ids:
-        return 0
-    from config.settings import clients
-    from utils.opensearch_delete import collect_visible_document_ids, delete_document_ids
-
-    chunk_ids = await collect_visible_document_ids(
-        opensearch_client,
-        index=index_name,
-        query={"terms": {field: document_ids}},
-    )
-    write_client = write_opensearch_client or clients.opensearch
-    if write_client is None:
-        raise RuntimeError("Backend OpenSearch write client is unavailable")
-    return await delete_document_ids(
-        write_client,
-        index=index_name,
-        document_ids=chunk_ids,
-        refresh=True,
-    )
-
-
 async def _ensure_index_exists(jwt_token: str = None):
     """Create the OpenSearch index if it doesn't exist yet."""
     from config.settings import clients as app_clients
@@ -263,24 +224,13 @@ async def check_filename_exists(
     try:
         opensearch_client = session_manager.get_user_opensearch_client(user.user_id, jwt_token)
 
-        from utils.file_utils import get_filename_aliases
-        from utils.opensearch_queries import build_filename_search_body
-
-        candidate_filenames = get_filename_aliases(filename)
-        if not candidate_filenames:
-            return JSONResponse({"exists": False, "filename": filename}, status_code=200)
+        from utils.opensearch_filenames import filename_exists
 
         logger.debug("Checking filename existence", filename=filename, index_name=get_index_name())
         exists = False
 
         try:
-            for candidate in candidate_filenames:
-                search_body = build_filename_search_body(candidate, size=1, source=["filename"])
-                response = await opensearch_client.search(index=get_index_name(), body=search_body)
-                hits = response.get("hits", {}).get("hits", [])
-                if hits:
-                    exists = True
-                    break
+            exists = await filename_exists(filename, opensearch_client, get_index_name())
         except Exception as search_err:
             if "index_not_found_exception" in str(search_err):
                 logger.info("Index does not exist, creating it now before upload")

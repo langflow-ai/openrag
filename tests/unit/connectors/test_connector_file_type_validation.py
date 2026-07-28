@@ -27,14 +27,14 @@ async def test_sync_specific_files_does_not_raise_on_incompatible_type():
     connector.is_authenticated = True
 
     # Mock list_files returning an incompatible file (e.g. an .exe)
-    connector.list_files = AsyncMock(
-        return_value={
-            "files": [
-                {"id": "file-1", "name": "document.pdf"},
-                {"id": "file-2", "name": "program.exe"},
-            ]
-        }
-    )
+    expanded_response = {
+        "files": [
+            {"id": "file-1", "name": "document.pdf"},
+            {"id": "file-2", "name": "program.exe"},
+        ]
+    }
+    connector.list_files = AsyncMock(return_value=expanded_response)
+    connector.list_selected_files = AsyncMock(return_value=expanded_response)
     connector.cfg = MagicMock()
 
     service.get_connector = AsyncMock(return_value=connector)
@@ -104,18 +104,18 @@ async def test_connector_check_duplicates():
     connector.authenticate = AsyncMock(return_value=True)
 
     # Mock folder expansion
-    connector.list_files = AsyncMock(
-        return_value={
-            "files": [
-                {"id": "file-1", "name": "existing.pdf", "mimeType": "application/pdf"},
-                {
-                    "id": "file-2",
-                    "name": "new_file.docx",
-                    "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                },
-            ]
-        }
-    )
+    expanded_files = {
+        "files": [
+            {"id": "file-1", "name": "existing.pdf", "mimeType": "application/pdf"},
+            {
+                "id": "file-2",
+                "name": "new_file.docx",
+                "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            },
+        ]
+    }
+    connector.list_files = AsyncMock(return_value=expanded_files)
+    connector.list_selected_files = AsyncMock(return_value=expanded_files)
     connector.cfg = MagicMock()
     connector_service.get_connector = AsyncMock(return_value=connector)
 
@@ -126,7 +126,9 @@ async def test_connector_check_duplicates():
 
     # Mock search return value: existing.pdf exists, new_file.docx does not
     opensearch_client.search = AsyncMock(
-        return_value={"hits": {"hits": [{"_source": {"filename": "existing.pdf"}}]}}
+        return_value={
+            "aggregations": {"filenames": {"buckets": [{"key": "existing.pdf", "doc_count": 1}]}}
+        }
     )
 
     user = MagicMock()
@@ -286,18 +288,18 @@ async def test_connector_sync_skip_duplicates_returns_no_files_when_all_selected
     connector.is_authenticated = True
     connector.authenticate = AsyncMock(return_value=True)
     connector.cfg = MagicMock()
-    connector.list_files = AsyncMock(
-        return_value={
-            "files": [
-                {"id": "file-1", "name": "existing.pdf", "mimeType": "application/pdf"},
-                {
-                    "id": "file-2",
-                    "name": "existing.docx",
-                    "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                },
-            ]
-        }
-    )
+    expanded_files = {
+        "files": [
+            {"id": "file-1", "name": "existing.pdf", "mimeType": "application/pdf"},
+            {
+                "id": "file-2",
+                "name": "existing.docx",
+                "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            },
+        ]
+    }
+    connector.list_files = AsyncMock(return_value=expanded_files)
+    connector.list_selected_files = AsyncMock(return_value=expanded_files)
     connector_service.get_connector = AsyncMock(return_value=connector)
     connector_service.sync_specific_files = AsyncMock(return_value="task-id")
 
@@ -306,11 +308,13 @@ async def test_connector_sync_skip_duplicates_returns_no_files_when_all_selected
     session_manager.get_user_opensearch_client = MagicMock(return_value=opensearch_client)
     opensearch_client.search = AsyncMock(
         return_value={
-            "hits": {
-                "hits": [
-                    {"_source": {"filename": "existing.pdf"}},
-                    {"_source": {"filename": "existing.docx"}},
-                ]
+            "aggregations": {
+                "filenames": {
+                    "buckets": [
+                        {"key": "existing.pdf", "doc_count": 1},
+                        {"key": "existing.docx", "doc_count": 1},
+                    ]
+                }
             }
         }
     )
@@ -356,18 +360,18 @@ async def test_connector_sync_skip_duplicates_submits_only_expanded_non_duplicat
     connector.is_authenticated = True
     connector.authenticate = AsyncMock(return_value=True)
     connector.cfg = MagicMock()
-    connector.list_files = AsyncMock(
-        return_value={
-            "files": [
-                {"id": "file-1", "name": "existing.pdf", "mimeType": "application/pdf"},
-                {
-                    "id": "file-2",
-                    "name": "new_file.docx",
-                    "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                },
-            ]
-        }
-    )
+    expanded_files = {
+        "files": [
+            {"id": "file-1", "name": "existing.pdf", "mimeType": "application/pdf"},
+            {
+                "id": "file-2",
+                "name": "new_file.docx",
+                "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            },
+        ]
+    }
+    connector.list_files = AsyncMock(return_value=expanded_files)
+    connector.list_selected_files = AsyncMock(return_value=expanded_files)
     connector_service.get_connector = AsyncMock(return_value=connector)
     connector_service.sync_specific_files = AsyncMock(return_value="task-id")
 
@@ -375,7 +379,9 @@ async def test_connector_sync_skip_duplicates_submits_only_expanded_non_duplicat
     opensearch_client = AsyncMock()
     session_manager.get_user_opensearch_client = MagicMock(return_value=opensearch_client)
     opensearch_client.search = AsyncMock(
-        return_value={"hits": {"hits": [{"_source": {"filename": "existing.pdf"}}]}}
+        return_value={
+            "aggregations": {"filenames": {"buckets": [{"key": "existing.pdf", "doc_count": 1}]}}
+        }
     )
 
     response = await connectors_api.connector_sync(
