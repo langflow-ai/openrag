@@ -5,7 +5,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO
 
 from .exceptions import NotFoundError
-from .models import DeleteDocumentResponse, IngestResponse, IngestTaskStatus
+from .models import (
+    DeleteDocumentResponse,
+    IngestResponse,
+    IngestTaskStatus,
+    TaskListResponse,
+)
 
 if TYPE_CHECKING:
     from .client import OpenRAGClient
@@ -96,6 +101,34 @@ class DocumentsClient:
         )
         data = response.json()
         return IngestTaskStatus(**data)
+
+    async def get_task_status_enhanced(self, task_id: str) -> IngestTaskStatus:
+        """
+        Get the status of an ingestion task with structured failure metadata.
+
+        Args:
+            task_id: The task ID returned from ingest().
+
+        Returns:
+            IngestTaskStatus with current task status and classified failure details.
+        """
+        response = await self._client._request(
+            "GET",
+            f"/api/v1/tasks/{task_id}/enhanced",
+        )
+        data = response.json()
+        return IngestTaskStatus(**data)
+
+    async def list_tasks_enhanced(self) -> TaskListResponse:
+        """
+        List ingestion tasks with structured failure metadata.
+
+        Returns:
+            TaskListResponse with enhanced task status entries.
+        """
+        response = await self._client._request("GET", "/api/v1/tasks/enhanced")
+        data = response.json()
+        return TaskListResponse(**data)
 
     async def wait_for_task(
         self,

@@ -71,6 +71,10 @@ export interface IngestTaskStatus {
   files: Record<string, unknown>;
 }
 
+export interface TaskListResponse {
+  tasks: IngestTaskStatus[];
+}
+
 export interface DeleteDocumentResponse {
   success: boolean;
   deleted_chunks: number;

@@ -189,6 +189,14 @@ const finalStatus = await client.documents.waitForTask(result.task_id);
 console.log(`Status: ${finalStatus.status}`);
 console.log(`Successful files: ${finalStatus.successful_files}`);
 
+// Get structured failure metadata for a task
+const enhancedStatus = await client.documents.getTaskStatusEnhanced(result.task_id);
+console.log(enhancedStatus.files);
+
+// List tasks with structured failure metadata
+const enhancedTasks = await client.documents.listTasksEnhanced();
+console.log(enhancedTasks.tasks.length);
+
 // Ingest from File object (browser)
 const file = new File([...], "report.pdf");
 const result = await client.documents.ingest({

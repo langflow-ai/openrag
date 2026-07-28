@@ -89,6 +89,12 @@ class IngestTaskStatus(BaseModel):
     files: dict = {}  # Detailed per-file status
 
 
+class TaskListResponse(BaseModel):
+    """Response from listing ingestion tasks."""
+
+    tasks: list[IngestTaskStatus]
+
+
 class DeleteDocumentResponse(BaseModel):
     """Response from document deletion."""
 

@@ -65,6 +65,7 @@ from .models import (
     Source,
     SourcesEvent,
     StreamEvent,
+    TaskListResponse,
     UpdateKnowledgeFilterOptions,
 )
 
@@ -93,6 +94,7 @@ __all__ = [
     "SearchResult",
     "SearchFilters",
     "IngestResponse",
+    "TaskListResponse",
     "DeleteDocumentResponse",
     "Conversation",
     "ConversationDetail",

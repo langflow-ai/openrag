@@ -362,6 +362,21 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
       expect(finalStatus.status).toBeDefined();
     });
 
+    it("should get enhanced task status", async () => {
+      const result = await client.documents.ingest({
+        filePath: testFilePath,
+        wait: false,
+      });
+      const taskId = (result as any).task_id;
+      expect(taskId).toBeDefined();
+
+      const enhancedStatus = await client.documents.getTaskStatusEnhanced(taskId);
+      expect(enhancedStatus.status).toBeDefined();
+
+      const enhancedTasks = await client.documents.listTasksEnhanced();
+      expect(Array.isArray(enhancedTasks.tasks)).toBe(true);
+    });
+
     it("should delete a document", async () => {
       // Use a uniquely named file so this test doesn't inherit chunks left in
       // the index by the two ingest tests above (which share testFilePath /

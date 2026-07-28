@@ -64,6 +64,8 @@ export {
   SearchResult,
   // Document types
   IngestResponse,
+  IngestTaskStatus,
+  TaskListResponse,
   DeleteDocumentResponse,
   // Conversation types
   Conversation,

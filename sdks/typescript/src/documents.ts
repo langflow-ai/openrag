@@ -9,6 +9,7 @@ import type {
   IngestResponse,
   IngestTaskStatus,
   NotFoundError,
+  TaskListResponse,
 } from "./types";
 
 export interface IngestOptions {
@@ -100,14 +101,48 @@ export class DocumentsClient {
       `/api/v1/tasks/${taskId}`
     );
     const data = await response.json();
+    return this.parseTaskStatus(data);
+  }
+
+  /**
+   * Get the status of an ingestion task with structured failure metadata.
+   *
+   * @param taskId - The task ID returned from ingest().
+   * @returns IngestTaskStatus with current task status and classified failure details.
+   */
+  async getTaskStatusEnhanced(taskId: string): Promise<IngestTaskStatus> {
+    const response = await this.client._request(
+      "GET",
+      `/api/v1/tasks/${taskId}/enhanced`
+    );
+    const data = await response.json();
+    return this.parseTaskStatus(data);
+  }
+
+  /**
+   * List ingestion tasks with structured failure metadata.
+   *
+   * @returns TaskListResponse with enhanced task status entries.
+   */
+  async listTasksEnhanced(): Promise<TaskListResponse> {
+    const response = await this.client._request("GET", "/api/v1/tasks/enhanced");
+    const data = await response.json();
     return {
-      task_id: data.task_id,
-      status: data.status,
-      total_files: data.total_files ?? 0,
-      processed_files: data.processed_files ?? 0,
-      successful_files: data.successful_files ?? 0,
-      failed_files: data.failed_files ?? 0,
-      files: data.files ?? {},
+      tasks: (data.tasks ?? []).map((task: Record<string, unknown>) =>
+        this.parseTaskStatus(task)
+      ),
+    };
+  }
+
+  private parseTaskStatus(data: Record<string, unknown>): IngestTaskStatus {
+    return {
+      task_id: data["task_id"] as string,
+      status: data["status"] as string,
+      total_files: (data["total_files"] as number | undefined) ?? 0,
+      processed_files: (data["processed_files"] as number | undefined) ?? 0,
+      successful_files: (data["successful_files"] as number | undefined) ?? 0,
+      failed_files: (data["failed_files"] as number | undefined) ?? 0,
+      files: (data["files"] as Record<string, unknown> | undefined) ?? {},
     };
   }
 

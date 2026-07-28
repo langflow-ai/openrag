@@ -162,6 +162,14 @@ final_status = await client.documents.wait_for_task(result.task_id)
 print(f"Status: {final_status.status}")
 print(f"Successful files: {final_status.successful_files}")
 
+# Get structured failure metadata for a task
+enhanced_status = await client.documents.get_task_status_enhanced(result.task_id)
+print(enhanced_status.files)
+
+# List tasks with structured failure metadata
+enhanced_tasks = await client.documents.list_tasks_enhanced()
+print(len(enhanced_tasks.tasks))
+
 # Ingest from file object
 with open("./report.pdf", "rb") as f:
     result = await client.documents.ingest(file=f, filename="report.pdf")
