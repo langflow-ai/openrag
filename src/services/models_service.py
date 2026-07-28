@@ -48,6 +48,10 @@ def is_openai_non_chat_model(model_id: str) -> bool:
     lower = model_id.lower()
     if "-moderation" in lower:
         return True
+    # Mid-string modality markers (e.g. gpt-4o-realtime-preview, gpt-4o-mini-tts)
+    # that prefix checks alone miss.
+    if any(marker in lower for marker in ("-realtime", "-transcribe", "-tts")):
+        return True
     return any(lower.startswith(prefix) for prefix in _OPENAI_NON_CHAT_PREFIXES)
 
 
@@ -55,12 +59,12 @@ def is_openai_language_model(model_id: str) -> bool:
     """True if the OpenAI model ID is usable as a chat/agent language model.
 
     Classifies the live /v1/models inventory: embeddings and non-chat junk are
-    excluded; gpt-*, chatgpt-*, and o<digit>* reasoning models are included so
-    new chat families appear without a curated allowlist.
+    excluded; gpt-*, chatgpt-*, ft:gpt-* fine-tunes, and o<digit>* reasoning
+    models are included so new chat families appear without a curated allowlist.
     """
     if not model_id or is_openai_embedding_model(model_id) or is_openai_non_chat_model(model_id):
         return False
-    if model_id.startswith(("gpt-", "chatgpt-")):
+    if model_id.startswith(("gpt-", "chatgpt-", "ft:gpt-")):
         return True
     return bool(_OPENAI_REASONING_MODEL_RE.match(model_id))
 

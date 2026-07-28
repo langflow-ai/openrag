@@ -38,6 +38,9 @@ class TestOpenAINonChatClassification:
         assert is_openai_non_chat_model("gpt-image-1")
         assert is_openai_non_chat_model("gpt-audio-1")
         assert is_openai_non_chat_model("gpt-realtime")
+        assert is_openai_non_chat_model("gpt-4o-realtime-preview")
+        assert is_openai_non_chat_model("gpt-4o-transcribe")
+        assert is_openai_non_chat_model("gpt-4o-mini-tts")
 
     def test_chat_models_are_not_junk(self):
         assert not is_openai_non_chat_model("gpt-5.4-mini")
@@ -66,12 +69,16 @@ class TestOpenAILanguageClassification:
         assert not is_openai_language_model("dall-e-3")
         assert not is_openai_language_model("gpt-image-1")
         assert not is_openai_language_model("omni-moderation-latest")
+        assert not is_openai_language_model("gpt-4o-realtime-preview")
+        assert not is_openai_language_model("gpt-4o-transcribe")
+        assert not is_openai_language_model("gpt-4o-mini-tts")
 
-    def test_excludes_unknown_non_chat_ids(self):
+    def test_excludes_empty_id(self):
         assert not is_openai_language_model("")
-        assert not is_openai_language_model("ft:gpt-4o:org:custom")
-        # ft: prefix is not gpt-/chatgpt-/oN — intentionally not classified as chat
-        # (fine-tunes may still work if named gpt-*; ft: ids stay excluded)
+
+    def test_fine_tuned_gpt_models(self):
+        assert is_openai_language_model("ft:gpt-4o:org:custom")
+        assert is_openai_language_model("ft:gpt-4.1-mini:acme:my-tune:abc123")
 
 
 class TestResolvePreferredModel:
