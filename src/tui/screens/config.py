@@ -10,7 +10,6 @@ from textual.screen import Screen
 from textual.validation import ValidationResult, Validator
 from textual.widgets import (
     Button,
-    Checkbox,
     Footer,
     Input,
     Label,

@@ -6,7 +6,6 @@ import os
 import signal
 import sys
 import webbrowser
-from pathlib import Path
 
 from rich.console import Console
 from rich.rule import Rule
@@ -17,7 +16,6 @@ from .config_fields import CONFIG_SECTIONS
 from .managers.container_manager import ContainerManager, ServiceStatus
 from .managers.docling_manager import DoclingManager
 from .managers.env_manager import EnvManager
-from .utils.platform import PlatformDetector
 
 console = Console()
 
@@ -399,7 +397,7 @@ def _stop_services_cli(
     async def _inner():
         # Stop container services
         if container_manager.is_available():
-            async for success, message, *rest in container_manager.stop_services():
+            async for _success, message, *_rest in container_manager.stop_services():
                 console.print(f"  {message}")
         # Stop docling
         if docling_manager.is_running():

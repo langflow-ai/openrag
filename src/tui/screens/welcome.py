@@ -4,12 +4,11 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-from rich.align import Align
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical
 from textual.screen import Screen
-from textual.widgets import Button, Footer, Header, Static
+from textual.widgets import Button, Footer, Static
 
 from .. import __version__
 from ..managers.container_manager import (
@@ -306,7 +305,7 @@ class WelcomeScreen(Screen):
                 self.query_one("#advanced-setup-btn").focus()
             else:
                 self.query_one("#basic-setup-btn").focus()
-        except:
+        except Exception:
             pass  # Button might not exist
 
     async def on_screen_resume(self) -> None:
