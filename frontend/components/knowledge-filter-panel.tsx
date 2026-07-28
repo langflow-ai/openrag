@@ -329,18 +329,20 @@ export function KnowledgeFilterPanel() {
                   aria-invalid={!!nameError}
                 />
               </div>
-              <p
-                className={`text-sm text-destructive ${nameError ? "visible" : "invisible"}`}
-              >
-                {nameError || " "}
-              </p>
             </div>
-            {!createMode && selectedFilter?.created_at && (
-              <div className="space-y-2 text-xs text-right text-muted-foreground">
-                <span className="text-placeholder-foreground">Created</span>{" "}
-                {formatDate(selectedFilter.created_at)}
-              </div>
-            )}
+            <div className="text-xs min-h-[1.25rem]">
+              {nameError ? (
+                <span className="text-destructive">{nameError}</span>
+              ) : (
+                !createMode &&
+                selectedFilter?.created_at && (
+                  <span className="text-muted-foreground">
+                    <span className="text-placeholder-foreground">Created</span>{" "}
+                    {formatDate(selectedFilter.created_at)}
+                  </span>
+                )
+              )}
+            </div>
             <div className="space-y-2">
               <Label htmlFor="filter-description">Description</Label>
               <Textarea

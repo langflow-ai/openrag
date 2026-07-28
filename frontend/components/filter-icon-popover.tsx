@@ -74,7 +74,7 @@ export function iconKeyToComponent(
   )[key];
 }
 
-const COLORS = [
+export const FILTER_COLORS = [
   "zinc",
   "pink",
   "purple",
@@ -83,7 +83,7 @@ const COLORS = [
   "amber",
   "red",
 ] as const;
-export type FilterColor = (typeof COLORS)[number];
+export type FilterColor = (typeof FILTER_COLORS)[number];
 
 const colorSwatchClasses = {
   zinc: "bg-muted-foreground",
@@ -128,7 +128,7 @@ export function FilterIconPopover({
       <PopoverContent className="w-80" align="start">
         <div className="space-y-4">
           <div className="grid grid-cols-7 items-center gap-2">
-            {COLORS.map((c) => (
+            {FILTER_COLORS.map((c) => (
               <button
                 key={c}
                 type="button"
