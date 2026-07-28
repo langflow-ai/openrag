@@ -14,6 +14,7 @@ export interface ListFilesParams {
   mimetype?: string;
   owner?: string;
   search?: string;
+  afterKey?: Record<string, unknown> | null; //composite pagination cursor, could be undefined in the beginning
 }
 
 export interface ListFilesResponse {
@@ -21,6 +22,7 @@ export interface ListFilesResponse {
   total: number;
   page: number;
   page_size: number;
+  after_key: Record<string, unknown> | null;
 }
 
 export const useListFiles = (
@@ -41,8 +43,12 @@ export const useListFiles = (
     if (params.mimetype) searchParams.set("mimetype", params.mimetype);
     if (params.owner) searchParams.set("owner", params.owner);
     if (params.search) searchParams.set("search", params.search);
+    if (params.afterKey)
+      searchParams.set("after_key", JSON.stringify(params.afterKey));
 
-    const url = `/api/files?${searchParams.toString()}`;
+    // const url = `/api/files?${searchParams.toString()}`;
+    const url = `/api/v2/files?${searchParams.toString()}`; //v2 endpoint
+
     const response = await fetch(url);
 
     if (!response.ok) {
@@ -56,7 +62,6 @@ export const useListFiles = (
 
     const data = await response.json();
 
-    // Map server response to File interface
     const files: File[] = (data.files || []).map(
       (f: Record<string, unknown>) => ({
         filename: (f.filename as string) || "",
@@ -76,12 +81,15 @@ export const useListFiles = (
       }),
     );
 
-    return {
+    const result: ListFilesResponse = {
       files,
       total: data.total || 0,
       page: data.page || 1,
       page_size: data.page_size || 25,
+      after_key: data.after_key ?? null,
     };
+
+    return result;
   }
 
   return useQuery(

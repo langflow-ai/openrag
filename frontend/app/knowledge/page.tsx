@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   type CheckboxSelectionCallbackParams,
   type ColDef,
+  type ColumnState,
   type GetRowIdParams,
   themeQuartz,
   type ValueFormatterParams,
@@ -126,6 +127,17 @@ function getSourceIcon(connectorType?: string) {
   }
 }
 
+const AG_FIELD_TO_SORT_BY: Record<string, string> = {
+  filename: "filename",
+  size: "file_size",
+  mimetype: "mimetype",
+  owner: "owner",
+  chunkCount: "chunk_count",
+  embedding_model: "embedding_model",
+  embedding_dimensions: "embedding_dimensions",
+  status: "status",
+};
+
 function SearchPage() {
   const isCloudBrand = useIsCloudBrand();
   const queryClient = useQueryClient();
@@ -146,12 +158,9 @@ function SearchPage() {
   } = useKnowledgeFilter();
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
 
-  // T1-4: sort state fed to server
-  const [sortBy, setSortBy] = useState("filename");
+  const [sortBy, setSortBy] = useState<string>("filename");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
 
-  // Keep the filter context aware of checked rows so "Create New Filter"
-  // can pre-populate its sources from the current selection.
   useEffect(() => {
     setSelectedSources(
       selectedRows.flatMap((row) => (row.filename ? [row.filename] : [])),
@@ -172,9 +181,11 @@ function SearchPage() {
     null,
   );
 
-  //t1-3
   const [currentPage, setCurrentPage] = useState(1);
   const [currentPageSize, setCurrentPageSize] = useState(25);
+  const cursorCacheRef = useRef<Map<number, Record<string, unknown>>>(
+    new Map(),
+  );
 
   const handleOpenSyncDialog = useCallback(async () => {
     setSyncPreview(null);
@@ -335,6 +346,7 @@ function SearchPage() {
       pageSize: currentPageSize,
       sortBy,
       sortOrder,
+      afterKey: cursorCacheRef.current.get(currentPage) ?? null,
       search: isWildcardQuery ? undefined : queryOverride,
       connectorType: listFilesFilterParam(
         parsedFilterData?.filters?.connector_types,
@@ -360,7 +372,6 @@ function SearchPage() {
   const { files: searchFiles, warnings: searchWarnings } =
     searchData as SearchResult;
 
-  // Merge data from whichever source is active
   const effectiveData: File[] = isWildcardQuery
     ? (listFilesData?.files ?? [])
     : searchFiles;
@@ -396,26 +407,6 @@ function SearchPage() {
 
   const getOwnerLabel = useCallback((file?: File): string => {
     return file?.owner_name?.trim() || file?.owner_email?.trim() || "—";
-  }, []);
-
-  const normalizeSourceForSort = useCallback((value?: string): string => {
-    const trimmed = (value || "").trim();
-    if (!trimmed) {
-      return "";
-    }
-
-    try {
-      const parsed = new URL(trimmed);
-      const hostname = parsed.hostname.toLowerCase();
-      const pathname = parsed.pathname.replace(/\/+$/, "").toLowerCase();
-      return `${hostname}${pathname}`;
-    } catch {
-      return trimmed
-        .toLowerCase()
-        .replace(/^https?:\/\//, "")
-        .split(/[?#]/)[0]
-        .replace(/\/+$/, "");
-    }
   }, []);
 
   const getStatusSortRank = useCallback((status?: File["status"]): number => {
@@ -484,6 +475,18 @@ function SearchPage() {
   const serverTotal = listFilesData?.total ?? 0;
   const gridRows: File[] = fileResults;
   const totalPages = Math.max(1, Math.ceil(serverTotal / currentPageSize));
+
+  // when the server responds with an after_key for page N, cache it as the cursor for page N+1
+  useEffect(() => {
+    if (listFilesData?.after_key && listFilesData.page) {
+      const nextPage = listFilesData.page + 1;
+      cursorCacheRef.current.set(nextPage, listFilesData.after_key);
+      console.log(
+        `%c[cache]    cursor stored for page ${nextPage}  cacheSize=${cursorCacheRef.current.size}`,
+        "color: #9b59b6; font-weight: bold",
+      );
+    }
+  }, [listFilesData]);
   const gridRef = useRef<AgGridReact>(null);
   const gridReadyRef = useRef(false);
 
@@ -499,6 +502,32 @@ function SearchPage() {
     if (!gridReadyRef.current) return null;
     return gridRef.current?.api ?? null;
   }, []);
+
+  const onSortChanged = useCallback(() => {
+    const api = getGridApi();
+    if (!api) return;
+
+    const sortedCol: ColumnState | undefined = api
+      .getColumnState()
+      .find((col) => col.sort != null);
+
+    const newSortBy = sortedCol
+      ? (AG_FIELD_TO_SORT_BY[sortedCol.colId] ?? sortedCol.colId)
+      : "filename";
+    const newSortOrder: "asc" | "desc" =
+      sortedCol?.sort === "desc" ? "desc" : "asc";
+
+    console.log(
+      `%c[sort]     sortBy=${newSortBy}  sortOrder=${newSortOrder}`,
+      "color: #e67e22; font-weight: bold",
+    );
+
+    // Changing sort invalidates all cursors; reset to page 1
+    cursorCacheRef.current = new Map();
+    setCurrentPage(1);
+    setSortBy(newSortBy);
+    setSortOrder(newSortOrder);
+  }, [getGridApi]);
 
   // Re-run only when row identity/status changes, not on every list poll reference.
   const gridRowsSelectionKey = useMemo(
@@ -528,19 +557,7 @@ function SearchPage() {
       field: "filename",
       headerName: "Source",
       sortable: true,
-      comparator: (valueA?: string, valueB?: string) => {
-        const sourceA = normalizeSourceForSort(valueA);
-        const sourceB = normalizeSourceForSort(valueB);
-        if (sourceA === sourceB) {
-          const fallbackA = (valueA || "").trim().toLowerCase();
-          const fallbackB = (valueB || "").trim().toLowerCase();
-          if (fallbackA === fallbackB) {
-            return 0;
-          }
-          return fallbackA < fallbackB ? -1 : 1;
-        }
-        return sourceA < sourceB ? -1 : 1;
-      },
+      comparator: () => 0,
       checkboxSelection: (params: CheckboxSelectionCallbackParams<File>) =>
         isDeletableKnowledgeRow(params?.data),
       headerCheckboxSelection: true,
@@ -606,8 +623,7 @@ function SearchPage() {
       headerName: "Size",
       ...(isCloudBrand ? { flex: 1, minWidth: 110 } : {}),
       sortable: true,
-      comparator: (valueA?: number, valueB?: number) =>
-        (valueA || 0) - (valueB || 0),
+      comparator: () => 0,
       valueFormatter: (params: ValueFormatterParams<File>) =>
         params.value ? formatFileSize(params.value) : "-",
       cellClass: isCloudBrand ? "text-muted-foreground" : undefined,
@@ -629,18 +645,14 @@ function SearchPage() {
       sortable: true,
       valueGetter: (params: ValueGetterParams<File>) =>
         getOwnerLabel(params.data),
-      comparator: (valueA?: string, valueB?: string) =>
-        (valueA || "—").localeCompare(valueB || "—", undefined, {
-          sensitivity: "base",
-        }),
+      comparator: () => 0,
     },
     {
       field: "chunkCount",
       headerName: "Chunks",
       ...(isCloudBrand ? { flex: 0.9, minWidth: 95 } : {}),
       sortable: true,
-      comparator: (valueA?: number, valueB?: number) =>
-        (valueA || 0) - (valueB || 0),
+      comparator: () => 0,
       valueFormatter: (params: ValueFormatterParams<File>) =>
         params.data?.chunkCount?.toString() || "-",
       cellClass: isCloudBrand ? "text-muted-foreground" : undefined,
@@ -684,8 +696,7 @@ function SearchPage() {
       headerName: "Dimensions",
       ...(isCloudBrand ? { flex: 0.9, minWidth: 110 } : { width: 110 }),
       sortable: true,
-      comparator: (valueA?: number, valueB?: number) =>
-        (valueA || 0) - (valueB || 0),
+      comparator: () => 0,
       cellRenderer: ({ data }: CustomCellRendererProps<File>) => (
         <span className="text-xs text-muted-foreground">
           {typeof data?.embedding_dimensions === "number"
@@ -803,31 +814,6 @@ function SearchPage() {
       sameFileSelection(current, nextSelected) ? current : nextSelected,
     );
   }, [isDeletableKnowledgeRow, getGridApi]);
-
-  // T1-4: map AG Grid colId to backend sort_by field, push to server, reset to page 1
-  const COL_TO_SORT_FIELD: Record<string, string> = {
-    filename: "filename",
-    size: "file_size",
-    mimetype: "mimetype",
-    owner: "owner",
-    chunkCount: "chunk_count",
-    embedding_model: "embedding_model",
-    embedding_dimensions: "embedding_dimensions",
-  };
-
-  const onSortChanged = useCallback(() => {
-    const api = getGridApi();
-    if (!api) return;
-    const sorted = api.getColumnState().find((col) => col.sort);
-    if (sorted && COL_TO_SORT_FIELD[sorted.colId]) {
-      setSortBy(COL_TO_SORT_FIELD[sorted.colId]);
-      setSortOrder(sorted.sort as "asc" | "desc");
-    } else {
-      setSortBy("filename");
-      setSortOrder("asc");
-    }
-    setCurrentPage(1);
-  }, [getGridApi]);
 
   const handleBulkDelete = async () => {
     const rowsToDelete = selectedRows.filter(isDeletableKnowledgeRow);
@@ -1082,7 +1068,7 @@ function SearchPage() {
             })}
           </div>
         )}
-                {isCloudBrand ? (
+        {isCloudBrand ? (
           <div className="flex-1 min-h-0 overflow-hidden">
             <AgGridReact
               className="w-full h-full border"
@@ -1182,6 +1168,7 @@ function SearchPage() {
               <select
                 value={currentPageSize}
                 onChange={(e) => {
+                  cursorCacheRef.current = new Map();
                   setCurrentPageSize(Number(e.target.value));
                   setCurrentPage(1);
                 }}
@@ -1216,14 +1203,18 @@ function SearchPage() {
             </span>
 
             {/* nav buttons */}
-            <div style={{ display: "flex", alignItems: "center" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
+              {/* « always works — page 1 needs no cursor */}
               <button
                 type="button"
-                aria-label="First page"
+                aria-label="Back to first page"
                 aria-disabled={currentPage <= 1}
-                style={pageBtnStyle(currentPage <= 1)}
+                style={{ ...pageBtnStyle(currentPage <= 1), marginRight: -8 }}
                 onClick={() => {
-                  if (currentPage > 1) setCurrentPage(1);
+                  if (currentPage > 1) {
+                    cursorCacheRef.current = new Map();
+                    setCurrentPage(1);
+                  }
                 }}
               >
                 <span style={{ pointerEvents: "none" }}>«</span>
@@ -1252,17 +1243,6 @@ function SearchPage() {
                 }}
               >
                 <span style={{ pointerEvents: "none" }}>›</span>
-              </button>
-              <button
-                type="button"
-                aria-label="Last page"
-                aria-disabled={currentPage >= totalPages}
-                style={pageBtnStyle(currentPage >= totalPages)}
-                onClick={() => {
-                  if (currentPage < totalPages) setCurrentPage(totalPages);
-                }}
-              >
-                <span style={{ pointerEvents: "none" }}>»</span>
               </button>
             </div>
           </div>
