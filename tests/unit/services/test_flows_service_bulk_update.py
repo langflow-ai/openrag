@@ -51,7 +51,10 @@ async def test_bulk_update_flows_creates_backup_flow_in_langflow():
             service, "_backup_flow", new_callable=AsyncMock, return_value="/tmp/backup.json"
         ),
         patch.object(
-            service, "_reset_langflow_flow_locked", new_callable=AsyncMock, return_value={"success": True}
+            service,
+            "_reset_langflow_flow_locked",
+            new_callable=AsyncMock,
+            return_value={"success": True},
         ),
     ):
         results = await service.bulk_update_flows(["retrieval"], backup_custom=True)
@@ -208,4 +211,3 @@ async def test_bulk_update_flows_dismissal_cleared_only_on_success():
 
     assert results[0]["success"] is True
     assert "retrieval" not in service._dismissed_updates.get("user_A", set())
-
