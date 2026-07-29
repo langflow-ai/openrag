@@ -43,6 +43,7 @@ import {
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { getConnectorDescriptor } from "@/lib/connectors/registry";
 import { formatFileSize } from "@/lib/file-format";
+import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
 import {
   buildKnowledgeTableRows,
   getKnowledgeFileIdentity,
@@ -313,8 +314,12 @@ function SearchPage() {
   // Wildcard follows bar text or saved filter query (bar is cleared when a filter is picked).
   const effectiveSearchText =
     queryOverride.trim() || parsedFilterData?.query?.trim() || "";
+  const hasActiveFilters = parsedFilterData?.filters
+    ? buildSearchPayloadFilters(parsedFilterData.filters) !== undefined
+    : false;
   const isWildcardQuery =
-    effectiveSearchText === "" || effectiveSearchText === "*";
+    (effectiveSearchText === "" || effectiveSearchText === "*") &&
+    !hasActiveFilters;
 
   const {
     data: listFilesData,
