@@ -40,6 +40,7 @@ import subprocess
 # Registry & organisation
 # ---------------------------------------------------------------------------
 
+
 def get_registry() -> str:
     """Return the container registry host, reading ``os.environ`` at call time.
 
@@ -56,6 +57,7 @@ def get_org() -> str:
     environment variable (or ``~/.openrag/tui/.env``).
     """
     return os.environ.get("IMAGE_ORG", "langflowai")
+
 
 # ---------------------------------------------------------------------------
 # Image names
@@ -88,6 +90,7 @@ THIRD_PARTY_IMAGE_REPOS: tuple[str, ...] = (
 # ---------------------------------------------------------------------------
 # Helper functions
 # ---------------------------------------------------------------------------
+
 
 def image_repo(name: str) -> str:
     """Return the fully-qualified repository path (without tag) for *name*.
@@ -143,6 +146,7 @@ def all_openrag_repos() -> tuple[str, ...]:
 # Registry reachability validation
 # ---------------------------------------------------------------------------
 
+
 class ImageNotFoundError(Exception):
     """Raised when the image or tag does not exist in the registry."""
 
@@ -194,13 +198,9 @@ def validate_image_reachable(image_ref: str, runtime: str = "docker") -> None:
             timeout=30,
         )
     except FileNotFoundError as exc:
-        raise RegistryUnreachableError(
-            f"Container runtime {runtime!r} not found on PATH."
-        ) from exc
+        raise RegistryUnreachableError(f"Container runtime {runtime!r} not found on PATH.") from exc
     except subprocess.TimeoutExpired as exc:
-        raise RegistryUnreachableError(
-            f"Timed out contacting registry for {image_ref!r}."
-        ) from exc
+        raise RegistryUnreachableError(f"Timed out contacting registry for {image_ref!r}.") from exc
 
     if result.returncode == 0:
         return  # Image exists — all good.
@@ -208,25 +208,44 @@ def validate_image_reachable(image_ref: str, runtime: str = "docker") -> None:
     combined = (result.stdout + result.stderr).lower()
 
     # Authentication failures
-    if any(token in combined for token in ("unauthorized", "denied", "403", "401",
-                                            "authentication", "forbidden")):
+    if any(
+        token in combined
+        for token in ("unauthorized", "denied", "403", "401", "authentication", "forbidden")
+    ):
         raise RegistryAuthError(
             f"Authentication failure accessing {image_ref!r}: {(result.stderr or result.stdout).strip()}"
         )
 
     # DNS / network failures
-    if any(token in combined for token in ("no such host", "name resolution",
-                                            "dial tcp", "connection refused",
-                                            "network is unreachable", "i/o timeout",
-                                            "lookup", "tls", "certificate")):
+    if any(
+        token in combined
+        for token in (
+            "no such host",
+            "name resolution",
+            "dial tcp",
+            "connection refused",
+            "network is unreachable",
+            "i/o timeout",
+            "lookup",
+            "tls",
+            "certificate",
+        )
+    ):
         raise RegistryUnreachableError(
             f"Registry unreachable for {image_ref!r}: {(result.stderr or result.stdout).strip()}"
         )
 
     # Malformed reference reported by the runtime
-    if any(token in combined for token in ("invalid reference", "invalid image",
-                                            "invalid tag", "could not parse",
-                                            "malformed")):
+    if any(
+        token in combined
+        for token in (
+            "invalid reference",
+            "invalid image",
+            "invalid tag",
+            "could not parse",
+            "malformed",
+        )
+    ):
         raise MalformedImageRefError(
             f"Image reference {image_ref!r} could not be parsed: {(result.stderr or result.stdout).strip()}"
         )

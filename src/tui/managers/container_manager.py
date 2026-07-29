@@ -1150,7 +1150,11 @@ class ContainerManager:
 
         if missing_images:
             # Validate that each OpenRAG-owned image is reachable before pulling.
-            runtime_cmd = self.runtime_info.runtime_command[0] if self.runtime_info.runtime_command else "docker"
+            runtime_cmd = (
+                self.runtime_info.runtime_command[0]
+                if self.runtime_info.runtime_command
+                else "docker"
+            )
             for image in missing_images:
                 # Only validate images owned by OpenRAG (skip third-party images).
                 repo = self._extract_repository(image)
@@ -1161,8 +1165,12 @@ class ContainerManager:
                         None,
                         functools.partial(validate_image_reachable, image, runtime_cmd),
                     )
-                except (ImageNotFoundError, RegistryAuthError, MalformedImageRefError,
-                        RegistryUnreachableError) as exc:
+                except (
+                    ImageNotFoundError,
+                    RegistryAuthError,
+                    MalformedImageRefError,
+                    RegistryUnreachableError,
+                ) as exc:
                     yield False, f"ERROR: Cannot pull image {image!r}: {exc}", False
                     return
 
