@@ -648,9 +648,9 @@ def run_startup_checks() -> bool:
     # Get version
     try:
         cmd = ["podman", "--version"] if runtime == "podman" else ["docker", "--version"]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+        version_result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
         # Extract version number (e.g., "podman version 5.7.1" -> "5.7.1")
-        match = re.search(r"(\d+\.\d+\.\d+)", result.stdout)
+        match = re.search(r"(\d+\.\d+\.\d+)", version_result.stdout)
         if match:
             runtime_version = match.group(1)
     except Exception:
