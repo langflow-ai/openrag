@@ -603,6 +603,10 @@
         },
         "dragging": false,
         "id": "ChatInput-ci8VE",
+        "measured": {
+          "height": 52,
+          "width": 192
+        },
         "position": {
           "x": 1136.2811923974275,
           "y": 2503.9876597481666
@@ -904,6 +908,10 @@
         },
         "dragging": false,
         "id": "ChatOutput-gWl8E",
+        "measured": {
+          "height": 52,
+          "width": 192
+        },
         "position": {
           "x": 2458.4563028144366,
           "y": 2074.662957908784
@@ -1027,7 +1035,7 @@
               },
               "_frontend_node_folder_id": {
                 "input_types": [],
-                "value": "724b8b7f-d51c-4dc6-a551-b147e8b577f1"
+                "value": "7d320de9-b592-4b44-b88b-34d2bdc7f8d2"
               },
               "_type": "Component",
               "add_calculator_tool": {
@@ -1630,21 +1638,6 @@
                     },
                     "name": "meta-llama/llama-4-maverick-17b-128e-instruct-fp8",
                     "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "api_key_param": "apikey",
-                      "context_length": 128000,
-                      "max_tokens_field_name": "max_tokens",
-                      "model_class": "ChatWatsonx",
-                      "model_name_param": "model_id",
-                      "project_id_param": "project_id",
-                      "url_param": "url"
-                    },
-                    "name": "openai/gpt-oss-120b",
-                    "provider": "IBM WatsonX"
                   }
                 ],
                 "override_skip": false,
@@ -1876,6 +1869,10 @@
         },
         "dragging": false,
         "id": "Agent-Nfw7u",
+        "measured": {
+          "height": 431,
+          "width": 320
+        },
         "position": {
           "x": 2064.9341782775937,
           "y": 1693.5833129555906
@@ -1904,7 +1901,7 @@
             ],
             "frozen": false,
             "icon": "calculator",
-            "last_updated": "2026-07-29T14:24:46.879Z",
+            "last_updated": "2026-07-29T20:07:28.453Z",
             "legacy": false,
             "metadata": {
               "code_hash": "d0b2936e74fa",
@@ -1925,7 +1922,7 @@
               {
                 "allows_loop": false,
                 "cache": true,
-                "display_name": "JSON",
+                "display_name": "Toolset",
                 "group_outputs": false,
                 "hidden": null,
                 "loop_types": null,
@@ -1947,7 +1944,7 @@
                 "value": "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
               },
               "_frontend_node_folder_id": {
-                "value": "724b8b7f-d51c-4dc6-a551-b147e8b577f1"
+                "value": "7d320de9-b592-4b44-b88b-34d2bdc7f8d2"
               },
               "_type": "Component",
               "code": {
@@ -2045,6 +2042,10 @@
         },
         "dragging": false,
         "id": "CalculatorComponent-KrlMH",
+        "measured": {
+          "height": 227,
+          "width": 320
+        },
         "position": {
           "x": 1498.151476724705,
           "y": 1719.4446700170724
@@ -2106,7 +2107,7 @@
             ],
             "frozen": false,
             "icon": "OpenSearch",
-            "last_updated": "2026-07-29T14:24:46.880Z",
+            "last_updated": "2026-07-29T20:07:28.454Z",
             "legacy": false,
             "metadata": {
               "code_hash": "48fac82a63c3",
@@ -2161,7 +2162,7 @@
                 "value": "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
               },
               "_frontend_node_folder_id": {
-                "value": "724b8b7f-d51c-4dc6-a551-b147e8b577f1"
+                "value": "7d320de9-b592-4b44-b88b-34d2bdc7f8d2"
               },
               "_type": "Component",
               "auth_mode": {
@@ -2968,6 +2969,10 @@
         },
         "dragging": false,
         "id": "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-TyvvE",
+        "measured": {
+          "height": 971,
+          "width": 320
+        },
         "position": {
           "x": 982.8593504384346,
           "y": 1372.6753259451405
@@ -3055,7 +3060,7 @@
                 "value": "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
               },
               "_frontend_node_folder_id": {
-                "value": "724b8b7f-d51c-4dc6-a551-b147e8b577f1"
+                "value": "7d320de9-b592-4b44-b88b-34d2bdc7f8d2"
               },
               "_type": "Component",
               "api_base": {
@@ -3222,7 +3227,7 @@
                 "type": "bool",
                 "value": true
               },
-              "is_refresh": false,
+              "is_refresh": true,
               "max_retries": {
                 "_input_type": "IntInput",
                 "advanced": true,
@@ -3644,6 +3649,10 @@
         },
         "dragging": false,
         "id": "EmbeddingModel-zLHKs",
+        "measured": {
+          "height": 52,
+          "width": 192
+        },
         "position": {
           "x": 665.0615885834427,
           "y": 1838.806979140434
@@ -3855,6 +3864,10 @@
         },
         "dragging": false,
         "id": "Prompt Template-7kZsI",
+        "measured": {
+          "height": 429,
+          "width": 320
+        },
         "position": {
           "x": 1496.7915215019298,
           "y": 2019.0970114283145
@@ -4010,6 +4023,10 @@
         },
         "dragging": false,
         "id": "TextInput-i0a3P",
+        "measured": {
+          "height": 284,
+          "width": 320
+        },
         "position": {
           "x": 471.417983121568,
           "y": 2079.013458520555
@@ -4041,7 +4058,7 @@
             ],
             "frozen": false,
             "icon": "Mcp",
-            "last_updated": "2026-07-29T14:24:46.886Z",
+            "last_updated": "2026-07-29T20:07:28.461Z",
             "legacy": false,
             "metadata": {
               "code_hash": "ccd98ac0a0fb",
@@ -4070,7 +4087,7 @@
               {
                 "allows_loop": false,
                 "cache": true,
-                "display_name": "Response",
+                "display_name": "Toolset",
                 "group_outputs": false,
                 "hidden": null,
                 "loop_types": null,
@@ -4092,7 +4109,7 @@
                 "value": "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
               },
               "_frontend_node_folder_id": {
-                "value": "724b8b7f-d51c-4dc6-a551-b147e8b577f1"
+                "value": "7d320de9-b592-4b44-b88b-34d2bdc7f8d2"
               },
               "_type": "Component",
               "code": {
@@ -4234,6 +4251,27 @@
                     },
                     "key": "X-Langflow-Global-Var-OPENRAG_INGEST_TOKEN",
                     "value": "OPENRAG_INGEST_TOKEN"
+                  },
+                  {
+                    "__load_from_db_fields": {
+                      "value": true
+                    },
+                    "key": "X-Langflow-Global-Var-WATSONX_URL",
+                    "value": "WATSONX_URL"
+                  },
+                  {
+                    "__load_from_db_fields": {
+                      "value": true
+                    },
+                    "key": "X-Langflow-Global-Var-SELECTED_EMBEDDING_MODEL",
+                    "value": "SELECTED_EMBEDDING_MODEL"
+                  },
+                  {
+                    "__load_from_db_fields": {
+                      "value": true
+                    },
+                    "key": "X-Langflow-Global-Var-SELECTED_EMBEDDING_MODEL_PROVIDER",
+                    "value": "SELECTED_EMBEDDING_MODEL_PROVIDER"
                   }
                 ]
               },
@@ -4424,6 +4462,10 @@
         },
         "dragging": false,
         "id": "MCPTools-uu7m3",
+        "measured": {
+          "height": 293,
+          "width": 320
+        },
         "position": {
           "x": 1499.1989099237799,
           "y": 1358.0838292705346
@@ -4532,7 +4574,7 @@
                 "value": "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
               },
               "_frontend_node_folder_id": {
-                "value": "724b8b7f-d51c-4dc6-a551-b147e8b577f1"
+                "value": "7d320de9-b592-4b44-b88b-34d2bdc7f8d2"
               },
               "_type": "Component",
               "api_key": {
@@ -4634,7 +4676,7 @@
                 "type": "str",
                 "value": ""
               },
-              "is_refresh": false,
+              "is_refresh": true,
               "max_tokens": {
                 "_input_type": "IntInput",
                 "advanced": true,
@@ -4978,21 +5020,6 @@
                     },
                     "name": "meta-llama/llama-4-maverick-17b-128e-instruct-fp8",
                     "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "api_key_param": "apikey",
-                      "context_length": 128000,
-                      "max_tokens_field_name": "max_tokens",
-                      "model_class": "ChatWatsonx",
-                      "model_name_param": "model_id",
-                      "project_id_param": "project_id",
-                      "url_param": "url"
-                    },
-                    "name": "openai/gpt-oss-120b",
-                    "provider": "IBM WatsonX"
                   }
                 ],
                 "override_skip": false,
@@ -5205,6 +5232,10 @@
         },
         "dragging": false,
         "id": "LanguageModelComponent-MfLsT",
+        "measured": {
+          "height": 52,
+          "width": 192
+        },
         "position": {
           "x": 1832.8173400251,
           "y": 1806.741236642841
@@ -5214,16 +5245,16 @@
       }
     ],
     "viewport": {
-      "x": 31.349362240803657,
-      "y": -396.67589774934436,
-      "zoom": 0.4004294645997686
+      "x": -279.21483483687825,
+      "y": -776.1573599350271,
+      "zoom": 0.6442176265916861
     }
   },
   "description": "OpenRAG OpenSearch Agent",
   "endpoint_name": null,
   "id": "1098eea1-6649-4e1d-aed1-b77249fb8dd0",
   "is_component": false,
-  "last_tested_version": "0.11.1",
+  "last_tested_version": "1.11.1",
   "locked": true,
   "name": "OpenRAG OpenSearch Agent Flow",
   "tags": [
