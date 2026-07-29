@@ -142,6 +142,8 @@ function ChatPage() {
       });
 
       if (message.error) {
+        // Latch banner deep-probe so it shows the same provider/model error.
+        setChatError(true);
         // Sidebar id stays on currentConversationId; onError clears Langflow chaining.
         if (responseId) {
           liveErrorConversationRef.current = responseId;
@@ -160,6 +162,9 @@ function ChatPage() {
         }
         return;
       }
+
+      // Successful turn — drop the banner deep-probe latch.
+      setChatError(false);
 
       trackLLMCall({
         mode: "chat",
@@ -735,6 +740,7 @@ function ChatPage() {
             usage: result.usage,
           };
           setMessages((prev) => [...prev, assistantMessage]);
+          setChatError(false);
           if (result.response_id) {
             cancelNudges();
           }
