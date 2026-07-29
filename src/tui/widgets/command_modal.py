@@ -4,13 +4,13 @@ import asyncio
 import inspect
 import os
 import webbrowser
-from typing import Callable, Optional, AsyncIterator
+from collections.abc import AsyncIterator, Callable
 
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal
 from textual.screen import ModalScreen
-from textual.widgets import Button, Static, Label, TextArea, Footer
+from textual.widgets import Button, Footer, Label, Static, TextArea
 
 from ..utils.clipboard import copy_text_to_clipboard
 from .waves import Waves
@@ -175,8 +175,8 @@ class CommandOutputModal(ModalScreen):
     def __init__(
         self,
         title: str,
-        command_generator: AsyncIterator[tuple[bool, str]],
-        on_complete: Optional[Callable] = None,
+        command_generator: AsyncIterator[tuple[bool, str] | tuple[bool, str, bool]],
+        on_complete: Callable | None = None,
         show_launch_button: bool = False,
     ):
         """Initialize the modal dialog.
@@ -194,7 +194,7 @@ class CommandOutputModal(ModalScreen):
         self.show_launch_button = show_launch_button
         self._output_lines: list[str] = []
         self._layer_line_map: dict[str, int] = {}  # Maps layer ID to line index
-        self._status_task: Optional[asyncio.Task] = None
+        self._status_task: asyncio.Task | None = None
         self._error_detected = False
         self._command_complete = False
 
@@ -299,15 +299,14 @@ class CommandOutputModal(ModalScreen):
                 output.move_cursor((len(self._output_lines), 0))
 
                 # Detect error patterns in messages
-                import re
                 lower_msg = message.lower() if message else ""
                 if not self._error_detected and any(pattern in lower_msg for pattern in [
                     "error:",
                     "failed",
-                    "port.*already.*allocated",
+                    "port is already allocated",
                     "address already in use",
                     "not found",
-                    "permission denied"
+                    "permission denied",
                 ]):
                     self._error_detected = True
                     # Enable close button when error detected
