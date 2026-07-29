@@ -312,6 +312,34 @@
         "sourceHandle": "{œdataTypeœ:œMCPToolsœ,œidœ:œMCPTools-uu7m3œ,œnameœ:œcomponent_as_toolœ,œoutput_typesœ:[œToolœ]}",
         "target": "Agent-Nfw7u",
         "targetHandle": "{œfieldNameœ:œtoolsœ,œidœ:œAgent-Nfw7uœ,œinputTypesœ:[œToolœ],œtypeœ:œotherœ}"
+      },
+      {
+        "animated": false,
+        "className": "",
+        "data": {
+          "sourceHandle": {
+            "dataType": "FileNetSearch",
+            "id": "FileNetSearch-P8fn1",
+            "name": "component_as_tool",
+            "output_types": [
+              "Tool"
+            ]
+          },
+          "targetHandle": {
+            "fieldName": "tools",
+            "id": "Agent-Nfw7u",
+            "inputTypes": [
+              "Tool"
+            ],
+            "type": "other"
+          }
+        },
+        "id": "xy-edge__FileNetSearch-P8fn1{œdataTypeœ:œFileNetSearchœ,œidœ:œFileNetSearch-P8fn1œ,œnameœ:œcomponent_as_toolœ,œoutput_typesœ:[œToolœ]}-Agent-Nfw7u{œfieldNameœ:œtoolsœ,œidœ:œAgent-Nfw7uœ,œinputTypesœ:[œToolœ],œtypeœ:œotherœ}",
+        "selected": false,
+        "source": "FileNetSearch-P8fn1",
+        "sourceHandle": "{œdataTypeœ:œFileNetSearchœ,œidœ:œFileNetSearch-P8fn1œ,œnameœ:œcomponent_as_toolœ,œoutput_typesœ:[œToolœ]}",
+        "target": "Agent-Nfw7u",
+        "targetHandle": "{œfieldNameœ:œtoolsœ,œidœ:œAgent-Nfw7uœ,œinputTypesœ:[œToolœ],œtypeœ:œotherœ}"
       }
     ],
     "nodes": [
@@ -1598,7 +1626,7 @@
                 "trace_as_metadata": true,
                 "track_in_telemetry": false,
                 "type": "str",
-                "value": "You are the OpenRAG Agent. You answer questions using retrieval, reasoning, and tool use.\nYou have access to several tools. Your job is to determine **which tool to use and when**.\n### Available Tools\n- OpenSearch Retrieval Tool:\n  Use this to search the indexed knowledge base. Use when the user asks about product details, internal concepts, processes, architecture, documentation, roadmaps, or anything that may be stored in the index.\n- Conversation History:\n  Use this to maintain continuity when the user is referring to previous turns. \n  Do not treat history as a factual source.\n- Conversation File Context:\n  Use this when the user asks about a document they uploaded or refers directly to its contents.\n  **IMPORTANT**: If you receive confirmation that a file was uploaded (e.g., \"Confirm that you received this file\"), the file content is already available in the conversation context. Do NOT attempt to ingest it as a URL.\n  Simply acknowledge the file and answer questions about it directly from the context.\n- URL Ingestion Tool:\n  Use this **only** when the user explicitly asks you to read, summarize, or analyze the content of a web URL (http:// or https://).\n  **Do NOT use this tool for filenames** (e.g., README.md, document.pdf, data.txt). These are file uploads, not URLs.\n  Only use this tool for actual web addresses that the user explicitly provides.\n  If unclear → ask a clarifying question.\n- Calculator / Expression Evaluation Tool:\n  Use this when the user asks to compare numbers, compute estimates, calculate totals, analyze pricing, or answer any question requiring mathematics or quantitative reasoning.\n  If the answer requires arithmetic, call the calculator tool rather than calculating internally.\n### Retrieval Decision Rules\nUse OpenSearch **whenever**:\n1. The question may be answered from internal or indexed data.\n2. The user references team names, product names, release plans, configurations, requirements, or official information.\n3. The user needs a factual, grounded answer.\nDo **not** use retrieval if:\n- The question is purely creative (e.g., storytelling, analogies) or personal preference.\n- The user simply wants text reformatted or rewritten from what is already present in the conversation.\nWhen uncertain → **Retrieve.** Retrieval is low risk and improves grounding.\n### File Upload vs URL Distinction\n**File uploads** (already in context):\n- Filenames like: README.md, document.pdf, notes.txt, data.csv\n- When you see file confirmation messages\n- Use conversation context directly - do NOT call URL tool\n**Web URLs** (need ingestion):\n- Start with http:// or https://\n- Examples: https://example.com, http://docs.site.org\n- User explicitly asks to fetch from web\n### Calculator Usage Rules\nUse the calculator when:\n- Performing arithmetic\n- Estimating totals\n- Comparing values\n- Modeling cost, time, effort, scale, or projections\nDo not perform math internally. **Call the calculator tool instead.**\n### Answer Construction Rules\n1. When asked: \"What is OpenRAG\", answer the following:\n\"OpenRAG is an open-source package for building agentic RAG systems. It supports integration with a wide range of orchestration tools, vector databases, and LLM providers. OpenRAG connects and amplifies three popular, proven open-source projects into one powerful platform:\n**Langflow** – Langflow is a powerful tool to build and deploy AI agents and MCP servers. [Read more](https://www.langflow.org/)\n**OpenSearch** – OpenSearch is an open source, search and observability suite that brings order to unstructured data at scale. [Read more](https://opensearch.org/)\n**Docling** – Docling simplifies document processing with advanced PDF understanding, OCR support, and seamless AI integrations. Parse PDFs, DOCX, PPTX, images & more. [Read more](https://www.docling.ai/)\"\n2. Synthesize retrieved or ingested content in your own words.\n3. Support factual claims with citations in the format: (Source: <chunk_id>) placed exactly where the claim occurs (e.g., at the end of the sentence or clause making the claim). If multiple sources support a claim, cite them sequentially like: (Source: chunk_id_1)(Source: chunk_id_2). Use the exact chunk_id or id provided in the retrieved source block.\n4. If no supporting evidence is found:\n   Say: \"No relevant supporting sources were found for that request.\"\n5. Never invent facts or hallucinate details.\n6. Be concise, direct, and confident. \n7. Do not reveal internal chain-of-thought."
+                "value": "You are the OpenRAG Agent. You answer questions using retrieval, reasoning, and tool use.\nYou have access to several tools. Your job is to determine **which tool to use and when**.\n### Available Tools\n- OpenSearch Retrieval Tool:\n  Use this to search the indexed knowledge base. Use when the user asks about product details, internal concepts, processes, architecture, documentation, roadmaps, or anything that may be stored in the index.\n- FileNet P8 Search Tool (filenet_document_search):\n  Use this when the user asks about documents stored in IBM FileNet P8 / Content Manager (enterprise records such as contracts, policies, correspondence, or reports held in the ECM repository), or explicitly mentions FileNet.\n  Always provide a non-empty search_term with distinctive keywords or a quoted phrase; never call it with an empty search_term.\n  This is a keyword (lexical) search: prefer the distinctive terms from the user's question over full sentences.\n  Cite FileNet results with the document id from the retrieved source block, exactly like other sources.\n  If the tool reports it is disabled, unavailable, or fails, fall back to the OpenSearch Retrieval Tool.\n  Do not query both FileNet and OpenSearch for the same question unless the user asks to search both.\n- Conversation History:\n  Use this to maintain continuity when the user is referring to previous turns. \n  Do not treat history as a factual source.\n- Conversation File Context:\n  Use this when the user asks about a document they uploaded or refers directly to its contents.\n  **IMPORTANT**: If you receive confirmation that a file was uploaded (e.g., \"Confirm that you received this file\"), the file content is already available in the conversation context. Do NOT attempt to ingest it as a URL.\n  Simply acknowledge the file and answer questions about it directly from the context.\n- URL Ingestion Tool:\n  Use this **only** when the user explicitly asks you to read, summarize, or analyze the content of a web URL (http:// or https://).\n  **Do NOT use this tool for filenames** (e.g., README.md, document.pdf, data.txt). These are file uploads, not URLs.\n  Only use this tool for actual web addresses that the user explicitly provides.\n  If unclear → ask a clarifying question.\n- Calculator / Expression Evaluation Tool:\n  Use this when the user asks to compare numbers, compute estimates, calculate totals, analyze pricing, or answer any question requiring mathematics or quantitative reasoning.\n  If the answer requires arithmetic, call the calculator tool rather than calculating internally.\n### Retrieval Decision Rules\nUse OpenSearch **whenever**:\n1. The question may be answered from internal or indexed data.\n2. The user references team names, product names, release plans, configurations, requirements, or official information.\n3. The user needs a factual, grounded answer.\nDo **not** use retrieval if:\n- The question is purely creative (e.g., storytelling, analogies) or personal preference.\n- The user simply wants text reformatted or rewritten from what is already present in the conversation.\nWhen uncertain → **Retrieve.** Retrieval is low risk and improves grounding.\n### File Upload vs URL Distinction\n**File uploads** (already in context):\n- Filenames like: README.md, document.pdf, notes.txt, data.csv\n- When you see file confirmation messages\n- Use conversation context directly - do NOT call URL tool\n**Web URLs** (need ingestion):\n- Start with http:// or https://\n- Examples: https://example.com, http://docs.site.org\n- User explicitly asks to fetch from web\n### Calculator Usage Rules\nUse the calculator when:\n- Performing arithmetic\n- Estimating totals\n- Comparing values\n- Modeling cost, time, effort, scale, or projections\nDo not perform math internally. **Call the calculator tool instead.**\n### Answer Construction Rules\n1. When asked: \"What is OpenRAG\", answer the following:\n\"OpenRAG is an open-source package for building agentic RAG systems. It supports integration with a wide range of orchestration tools, vector databases, and LLM providers. OpenRAG connects and amplifies three popular, proven open-source projects into one powerful platform:\n**Langflow** – Langflow is a powerful tool to build and deploy AI agents and MCP servers. [Read more](https://www.langflow.org/)\n**OpenSearch** – OpenSearch is an open source, search and observability suite that brings order to unstructured data at scale. [Read more](https://opensearch.org/)\n**Docling** – Docling simplifies document processing with advanced PDF understanding, OCR support, and seamless AI integrations. Parse PDFs, DOCX, PPTX, images & more. [Read more](https://www.docling.ai/)\"\n2. Synthesize retrieved or ingested content in your own words.\n3. Support factual claims with citations in the format: (Source: <chunk_id>) placed exactly where the claim occurs (e.g., at the end of the sentence or clause making the claim). If multiple sources support a claim, cite them sequentially like: (Source: chunk_id_1)(Source: chunk_id_2). Use the exact chunk_id or id provided in the retrieved source block.\n4. If no supporting evidence is found:\n   Say: \"No relevant supporting sources were found for that request.\"\n5. Never invent facts or hallucinate details.\n6. Be concise, direct, and confident. \n7. Do not reveal internal chain-of-thought."
               },
               "tools": {
                 "_input_type": "HandleInput",
@@ -5117,6 +5145,289 @@
         "position": {
           "x": 1499.1989099237799,
           "y": 1358.0838292705346
+        },
+        "selected": false,
+        "type": "genericNode"
+      },
+      {
+        "data": {
+          "id": "FileNetSearch-P8fn1",
+          "node": {
+            "base_classes": [
+              "Table"
+            ],
+            "beta": false,
+            "conditional_paths": [],
+            "custom_fields": {},
+            "description": "Live FileNet P8 (Content Manager) keyword search via the IBM Content Services MCP server, with retrieve-and-window text fetching for grounded, cited answers.",
+            "display_name": "FileNet P8 Search",
+            "documentation": "https://docs.openr.ag/",
+            "edited": true,
+            "field_order": [
+              "search_term",
+              "mcp_server_name",
+              "document_class",
+              "top_k",
+              "snippet_char_cap",
+              "viewer_url_template",
+              "verify_ssl"
+            ],
+            "frozen": false,
+            "icon": "search",
+            "legacy": false,
+            "metadata": {
+              "module": "custom_components.filenet_retrieve_window"
+            },
+            "minimized": false,
+            "output_types": [],
+            "outputs": [
+              {
+                "allows_loop": false,
+                "cache": true,
+                "display_name": "Toolset",
+                "group_outputs": false,
+                "hidden": null,
+                "loop_types": null,
+                "method": "to_toolkit",
+                "name": "component_as_tool",
+                "options": null,
+                "required_inputs": null,
+                "selected": "Tool",
+                "tool_mode": true,
+                "types": [
+                  "Tool"
+                ],
+                "value": "__UNDEFINED__"
+              }
+            ],
+            "pinned": false,
+            "template": {
+              "_type": "Component",
+              "code": {
+                "advanced": true,
+                "dynamic": true,
+                "fileTypes": [],
+                "file_path": "",
+                "info": "",
+                "list": false,
+                "load_from_db": false,
+                "multiline": true,
+                "name": "code",
+                "password": false,
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "type": "code",
+                "value": "\"\"\"FileNet P8 retrieve-and-window search component for the OpenRAG agent flow.\n\nExposes ONE tool to the agent (``filenet_document_search``) that performs the\nfull FileNet retrieval pipeline against the ``filenet-p8`` MCP server (the IBM\nContent Services MCP sidecar):\n\n    document_search (CBR, ranked metadata ONLY — no text)\n        -> client-side top-K slice        (upstream max_results does NOT bind)\n        -> projection from properties[]   (flattened fields carry known bugs;\n                                           Owner/LDAP DN deliberately dropped)\n        -> K parallel get_document_text_extract calls (whole extract each)\n        -> failure classification         (Mode A: \"\" returned as success;\n                                           Mode B: error text returned AS content)\n        -> NFKC + ligature folding + boundary-tolerant term windowing\n        -> bounded snippet per document   (token control, NOT a latency control)\n        -> rows shaped for the OpenRAG citation pipeline\n           {text, filename, id, chunk_id, score, mimetype, source_url}\n\nDesign notes (see filenet-p8-mcp-feature-assessment.md for the evidence):\n- A result row without a ``text`` field is silently dropped by the citation\n  pipeline, so retrieval failures are surfaced as explicit non-citable status\n  rows and log lines — never as fabricated content, never silently.\n- ``Rank`` is term-relative: used for within-query top-K ordering only, never\n  cached, persisted, or compared across queries.\n- An empty search term is refused: upstream silently degrades it to a\n  metadata-only repository query, which looks like a successful search.\n- When the ``filenet-p8`` MCP server is not registered (feature disabled),\n  the tool returns a plain \"not enabled\" status row so the agent falls back\n  to OpenSearch retrieval without error noise or fake citations.\n\"\"\"\n\nimport asyncio\nimport json\nimport re\nimport unicodedata\nfrom typing import Any\n\nfrom lfx.base.mcp.util import MCPStdioClient, MCPStreamableHttpClient, update_tools\nfrom lfx.custom.custom_component.component_with_cache import ComponentWithCache\nfrom lfx.io import BoolInput, IntInput, MessageTextInput, Output, StrInput\nfrom lfx.log.logger import logger\nfrom lfx.schema.dataframe import DataFrame\nfrom lfx.services.deps import get_storage_service, session_scope\n\n# ---------------------------------------------------------------------------\n# Constants and pure helpers (no lfx dependency — unit-tested from the backend)\n# ---------------------------------------------------------------------------\n\nDEFAULT_MCP_SERVER_NAME = \"filenet-p8\"\nDEFAULT_DOCUMENT_CLASS = \"Document\"\nDEFAULT_TOP_K = 5\n# Token control set from the measured extract-size tail (p95 ≈ 60K chars,\n# max ≈ 104K ≈ 26K tokens/doc): ~2000 chars keeps K=5 at ≈2,500 tokens.\nDEFAULT_SNIPPET_CHAR_CAP = 2000\n# Snap window edges to whitespace within this many chars before hard-cutting\n# (extracts contain run-on token groups up to ~73 chars).\nBOUNDARY_SNAP_CHARS = 80\n\nSEARCH_TOOL_NAME = \"document_search\"\nFETCH_TOOL_NAME = \"get_document_text_extract\"\n\n# The IBM client returns this string AS DOCUMENT CONTENT on every download\n# failure path (auth, network, non-200, retry exhaustion). It MUST be\n# prefix-checked before anything reaches the model, or an HTTP error gets\n# cited to the user as document text (\"Mode B\").\nMODE_B_SENTINEL = \"Error: Failed to download text content\"\n\nDISABLED_MESSAGE = (\n    \"FileNet search is not enabled in this deployment. \"\n    \"Use the OpenSearch knowledge-base search instead.\"\n)\nEMPTY_TERM_MESSAGE = (\n    \"FileNet search requires a non-empty search term. Retry with the key \"\n    \"words or phrase to look for. (An empty term is refused because the \"\n    \"upstream tool would silently run a metadata-only query instead of a \"\n    \"content search.)\"\n)\n\n# Ligature folding: NFKC covers most of these, but be explicit so the matcher\n# does not depend on Unicode-table details. U+FFFD (replacement char) losses\n# are unrecoverable at extraction time — multi-token matching mitigates.\n_LIGATURE_MAP = {\n    \"ﬀ\": \"ff\",\n    \"ﬁ\": \"fi\",\n    \"ﬂ\": \"fl\",\n    \"ﬃ\": \"ffi\",\n    \"ﬄ\": \"ffl\",\n    \"ﬅ\": \"ft\",\n    \"ﬆ\": \"st\",\n}\n_LIGATURE_TABLE = str.maketrans(_LIGATURE_MAP)\n\n\ndef fold_ligatures(text: str) -> str:\n    return text.translate(_LIGATURE_TABLE)\n\n\ndef normalize_for_match(text: str) -> str:\n    \"\"\"NFKC-normalize and fold ligatures so degraded extracts stay matchable.\"\"\"\n    return unicodedata.normalize(\"NFKC\", fold_ligatures(text or \"\"))\n\n\ndef classify_extract(text: Any) -> tuple[str, str]:\n    \"\"\"Classify a get_document_text_extract return value.\n\n    Returns ``(status, detail)`` where status is:\n    - ``\"ok\"``     — real text; detail is the text itself.\n    - ``\"empty\"``  — Mode A: the upstream tool returned \"\" (missing TXE\n      annotation / downloadUrl, or an auth failure degraded to empty success).\n    - ``\"error\"``  — Mode B: an upstream error string returned AS content;\n      must never be shown or cited as document text.\n    \"\"\"\n    if text is None:\n        return (\"empty\", \"no content returned for the document\")\n    if not isinstance(text, str):\n        text = str(text)\n    stripped = text.strip()\n    if not stripped:\n        return (\n            \"empty\",\n            \"empty extract returned (Mode A): the document has no Persistent \"\n            \"Text Extract annotation, no downloadUrl, or an upstream auth \"\n            \"failure was degraded to an empty success\",\n        )\n    if stripped.startswith(MODE_B_SENTINEL):\n        # Do not propagate the raw upstream error body (information\n        # disclosure); keep a short, bounded prefix for the logs/status row.\n        return (\n            \"error\",\n            \"upstream download failure returned as content (Mode B): \"\n            + stripped[:200],\n        )\n    return (\"ok\", text)\n\n\ndef parse_search_results(payload: Any) -> list[dict]:\n    \"\"\"Normalize the document_search tool output into a list of hit dicts.\n\n    Accepts a list, a ``{\"result\": [...]}`` envelope, or a JSON string of\n    either. Anything unparseable yields an empty list (logged by the caller).\n    \"\"\"\n    if payload is None:\n        return []\n    if isinstance(payload, str):\n        stripped = payload.strip()\n        if not stripped:\n            return []\n        try:\n            payload = json.loads(stripped)\n        except json.JSONDecodeError:\n            return []\n    if isinstance(payload, dict):\n        payload = payload.get(\"result\", payload.get(\"results\", []))\n        if isinstance(payload, str):\n            return parse_search_results(payload)\n    if not isinstance(payload, list):\n        return []\n    return [hit for hit in payload if isinstance(hit, dict)]\n\n\ndef get_hit_property(document: dict, name: str) -> Any:\n    \"\"\"Read a property from the hit's ``properties[]`` list.\n\n    ALWAYS prefer ``properties[]`` over the flattened document fields: the\n    upstream flattener has confirmed bugs (a real ``0`` becomes ``null``;\n    ``isVersioningEnabled`` compares a JSON boolean to the string \"true\").\n    \"\"\"\n    properties = document.get(\"properties\")\n    if isinstance(properties, list):\n        for prop in properties:\n            if not isinstance(prop, dict):\n                continue\n            if name in (prop.get(\"symbolicName\"), prop.get(\"name\"), prop.get(\"id\")):\n                return prop.get(\"value\")\n    return None\n\n\ndef _to_float(value: Any) -> float:\n    try:\n        return float(value)\n    except (TypeError, ValueError):\n        return 0.0\n\n\ndef project_hit(hit: dict) -> dict:\n    \"\"\"Project a raw search hit (~40 mostly-null properties + a duplicated\n    flattened view, ~2.5-3K chars of JSON) down to the five fields the\n    pipeline needs. ``Owner`` (a full LDAP DN) is deliberately dropped — it\n    is directory-structure disclosure with no retrieval value.\n    \"\"\"\n    document = hit.get(\"document\") or {}\n    if not isinstance(document, dict):\n        document = {}\n    # Flattened id/name are only a last resort (they are not among the\n    # confirmed-buggy flattened fields, unlike version numbers/contentSize).\n    guid = get_hit_property(document, \"Id\") or document.get(\"id\") or \"\"\n    title = (\n        get_hit_property(document, \"DocumentTitle\")\n        or get_hit_property(document, \"Name\")\n        or document.get(\"name\")\n        or \"\"\n    )\n    mimetype = get_hit_property(document, \"MimeType\") or document.get(\"mimeType\")\n    return {\n        \"id\": str(guid),\n        \"filename\": str(title) if title else str(guid),\n        \"rank\": _to_float(hit.get(\"Rank\")),\n        \"mimetype\": mimetype,\n        \"date_last_modified\": get_hit_property(document, \"DateLastModified\"),\n    }\n\n\ndef slice_top_k(hits: list[dict], top_k: int) -> list[dict]:\n    \"\"\"Client-side top-K by Rank descending.\n\n    Hard requirement: the upstream ``max_results`` maps only to\n    FULLTEXTROWLIMIT, which was measured NOT to bind (34 rows at limits of\n    10/25/50), and the server never trims the row list. Without this slice a\n    broad query on a production estate overflows the model context.\n    \"\"\"\n    if top_k <= 0:\n        top_k = DEFAULT_TOP_K\n    ordered = sorted(hits, key=lambda hit: _to_float(hit.get(\"Rank\")), reverse=True)\n    return ordered[:top_k]\n\n\ndef _snap_start(text: str, start: int) -> int:\n    \"\"\"Move a window start forward to the next whitespace boundary (bounded).\"\"\"\n    if start <= 0:\n        return 0\n    limit = min(len(text), start + BOUNDARY_SNAP_CHARS)\n    for i in range(start, limit):\n        if text[i].isspace():\n            return i + 1\n    return start  # run-on text: hard cut rather than losing the match\n\n\ndef _snap_end(text: str, end: int) -> int:\n    \"\"\"Move a window end backward to the previous whitespace boundary (bounded).\"\"\"\n    if end >= len(text):\n        return len(text)\n    limit = max(0, end - BOUNDARY_SNAP_CHARS)\n    for i in range(end - 1, limit, -1):\n        if text[i].isspace():\n            return i\n    return end  # run-on text: hard cut\n\n\ndef locate_window(text: str, term: str, cap: int) -> tuple[str, bool]:\n    \"\"\"Cut a bounded snippet around the first located search-term token.\n\n    Matching runs on NFKC + ligature-folded text (degraded extracts contain\n    retained ligatures like ``proﬁle`` and U+FFFD losses; folding recovers\n    the former, nothing recovers the latter). Window edges snap to whitespace\n    within BOUNDARY_SNAP_CHARS so citations do not start or end mid-word,\n    with a hard cut as the fallback for run-on token groups.\n\n    Returns ``(snippet, term_located)``. When no token is found the snippet\n    is the head of the document (still real evidence, flagged not-located).\n    The cap is a TOKEN control: extract p95 is ~60K chars (~15K tokens), and\n    fetch time is size-independent, so never \"optimize\" this away for speed.\n    \"\"\"\n    if cap <= 0:\n        cap = DEFAULT_SNIPPET_CHAR_CAP\n    normalized = normalize_for_match(text)\n    haystack = normalized.casefold()\n    normalized_term = normalize_for_match(term or \"\").casefold()\n    tokens = [t for t in re.split(r\"\\W+\", normalized_term) if len(t) >= 3]\n    if not tokens and normalized_term.strip():\n        tokens = [normalized_term.strip()]\n\n    position = -1\n    for token in tokens:\n        index = haystack.find(token)\n        if index != -1 and (position == -1 or index < position):\n            position = index\n\n    if position == -1:\n        snippet = normalized[:cap]\n        if len(normalized) > cap:\n            snippet = normalized[: _snap_end(normalized, cap)].rstrip() + \"…\"\n        return (snippet.strip(), False)\n\n    half = cap // 2\n    start = max(0, position - half)\n    end = min(len(normalized), start + cap)\n    start = _snap_start(normalized, start)\n    end = _snap_end(normalized, end)\n    snippet = normalized[start:end].strip()\n    if start > 0:\n        snippet = \"…\" + snippet\n    if end < len(normalized):\n        snippet = snippet + \"…\"\n    return (snippet, True)\n\n\ndef build_viewer_url(template: str, guid: str) -> str:\n    \"\"\"Fill a viewer URL template; ``{id}`` gets the GUID without braces.\"\"\"\n    template = (template or \"\").strip()\n    if not template or not guid:\n        return \"\"\n    return template.replace(\"{id}\", str(guid).strip(\"{}\"))\n\n\ndef build_source_rows(\n    projected: list[dict],\n    extracts: list[tuple[str, str]],\n    term: str,\n    snippet_char_cap: int,\n    viewer_url_template: str,\n) -> tuple[list[dict], list[str]]:\n    \"\"\"Combine projected hits and classified extracts into citation rows.\n\n    Returns ``(rows, failures)``. Only rows for successfully retrieved and\n    windowed text carry a ``text`` field (the citation contract); failures\n    are returned as human-readable notes for the status row and the logs.\n    \"\"\"\n    rows: list[dict] = []\n    failures: list[str] = []\n    for hit, (status, detail) in zip(projected, extracts):\n        label = hit.get(\"filename\") or hit.get(\"id\") or \"<unknown document>\"\n        if status != \"ok\":\n            failures.append(f\"{label}: {detail}\")\n            continue\n        snippet, located = locate_window(detail, term, snippet_char_cap)\n        if not snippet:\n            failures.append(f\"{label}: extract contained no usable text\")\n            continue\n        row = {\n            \"text\": snippet,\n            \"filename\": hit.get(\"filename\") or hit.get(\"id\"),\n            \"id\": hit.get(\"id\"),\n            \"chunk_id\": hit.get(\"id\"),\n            \"score\": hit.get(\"rank\", 0.0),\n            \"mimetype\": hit.get(\"mimetype\"),\n            \"source_url\": build_viewer_url(viewer_url_template, hit.get(\"id\", \"\")),\n            \"term_located\": located,\n        }\n        if hit.get(\"date_last_modified\"):\n            row[\"date_last_modified\"] = hit[\"date_last_modified\"]\n        rows.append(row)\n    return rows, failures\n\n\ndef _status_row(status: str, message: str) -> dict:\n    \"\"\"A non-citable tool-output row: NO ``text`` key, so the citation\n    pipeline drops it while the agent still sees the message.\"\"\"\n    return {\"status\": status, \"message\": message}\n\n\n# ---------------------------------------------------------------------------\n# Langflow component\n# ---------------------------------------------------------------------------\n\n\nclass FileNetSearchComponent(ComponentWithCache):\n    display_name = \"FileNet P8 Search\"\n    description = (\n        \"Live FileNet P8 (Content Manager) keyword search via the IBM Content \"\n        \"Services MCP server, with retrieve-and-window text fetching for \"\n        \"grounded, cited answers.\"\n    )\n    documentation: str = \"https://docs.openr.ag/\"\n    icon = \"search\"\n    name = \"FileNetSearch\"\n\n    inputs = [\n        MessageTextInput(\n            name=\"search_term\",\n            display_name=\"Search Term\",\n            info=(\n                \"Keywords or a quoted phrase to search for in FileNet P8 \"\n                \"document content (lexical CBR search). Must be non-empty.\"\n            ),\n            tool_mode=True,\n        ),\n        StrInput(\n            name=\"mcp_server_name\",\n            display_name=\"MCP Server Name\",\n            value=DEFAULT_MCP_SERVER_NAME,\n            advanced=True,\n            info=\"Name of the registered Langflow MCP server for the FileNet sidecar.\",\n        ),\n        StrInput(\n            name=\"document_class\",\n            display_name=\"Document Class\",\n            value=DEFAULT_DOCUMENT_CLASS,\n            advanced=True,\n            info=(\n                \"FileNet document class pinned at configuration time (the \"\n                \"list_root_classes/determine_class prerequisite chain is \"\n                \"pre-resolved; the class must be CBR-enabled).\"\n            ),\n        ),\n        IntInput(\n            name=\"top_k\",\n            display_name=\"Top K Documents\",\n            value=DEFAULT_TOP_K,\n            advanced=True,\n            info=(\n                \"Documents fetched and cited per query. Sliced CLIENT-SIDE: \"\n                \"the upstream max_results does not bound the result set.\"\n            ),\n        ),\n        IntInput(\n            name=\"snippet_char_cap\",\n            display_name=\"Snippet Character Cap\",\n            value=DEFAULT_SNIPPET_CHAR_CAP,\n            advanced=True,\n            info=(\n                \"Per-document snippet cap in characters. A token-budget \"\n                \"control (extract p95 is ~60K chars); not a latency control.\"\n            ),\n        ),\n        StrInput(\n            name=\"viewer_url_template\",\n            display_name=\"Viewer URL Template\",\n            value=\"\",\n            advanced=True,\n            info=(\n                \"Optional citation link template; {id} is replaced with the \"\n                \"FileNet GUID without braces.\"\n            ),\n        ),\n        BoolInput(\n            name=\"verify_ssl\",\n            display_name=\"Verify SSL\",\n            value=True,\n            advanced=True,\n        ),\n    ]\n\n    outputs = [\n        Output(\n            display_name=\"Search Results\",\n            name=\"search_results\",\n            # The method name is the agent-visible tool name when the\n            # component is exposed as a tool — keep it self-describing.\n            method=\"filenet_document_search\",\n        ),\n    ]\n\n    def __init__(self, **data) -> None:\n        super().__init__(**data)\n        self.stdio_client: MCPStdioClient = MCPStdioClient(\n            component_cache=self._shared_component_cache\n        )\n        self.streamable_http_client: MCPStreamableHttpClient = MCPStreamableHttpClient(\n            component_cache=self._shared_component_cache\n        )\n\n    def _get_session_context(self) -> str | None:\n        \"\"\"Langflow session id + server name, for persistent MCP sessions.\"\"\"\n        graph = getattr(self, \"graph\", None)\n        session_id = getattr(graph, \"session_id\", None) if graph is not None else None\n        if not session_id:\n            return None\n        server_name = getattr(self, \"mcp_server_name\", \"\") or DEFAULT_MCP_SERVER_NAME\n        return f\"{session_id}_{server_name}\"\n\n    async def _resolve_server_config(self, server_name: str) -> dict | None:\n        \"\"\"Fetch the registered MCP server config from the Langflow DB.\n\n        Returns None when the server is not registered (feature disabled) or\n        resolution is impossible; the caller degrades gracefully.\n        \"\"\"\n        try:\n            from langflow.api.v2.mcp import get_server\n            from langflow.services.database.models.user.crud import get_user_by_id\n\n            from lfx.services.deps import get_settings_service\n        except ImportError as error:\n            await logger.awarning(\n                f\"FileNet search: Langflow MCP APIs unavailable ({error}); \"\n                \"treating the FileNet tool as disabled.\"\n            )\n            return None\n\n        try:\n            async with session_scope() as db:\n                if not self.user_id:\n                    await logger.awarning(\n                        \"FileNet search: no user id on the component; cannot \"\n                        \"resolve the MCP server config.\"\n                    )\n                    return None\n                current_user = await get_user_by_id(db, self.user_id)\n                server_config = await get_server(\n                    server_name,\n                    current_user,\n                    db,\n                    storage_service=get_storage_service(),\n                    settings_service=get_settings_service(),\n                )\n        except Exception as error:  # noqa: BLE001 - degrade, never break the agent\n            await logger.awarning(\n                f\"FileNet search: failed to resolve MCP server \"\n                f\"'{server_name}' ({error}); treating the FileNet tool as disabled.\"\n            )\n            return None\n\n        if not server_config:\n            return None\n        if \"verify_ssl\" not in server_config:\n            server_config[\"verify_ssl\"] = getattr(self, \"verify_ssl\", True)\n        return server_config\n\n    async def _load_tools(self, server_name: str, server_config: dict) -> dict:\n        \"\"\"Connect to the sidecar and return the tool cache (name -> tool).\"\"\"\n        _, _tool_list, tool_cache = await update_tools(\n            server_name=server_name,\n            server_config=server_config,\n            mcp_stdio_client=self.stdio_client,\n            mcp_streamable_http_client=self.streamable_http_client,\n        )\n        return tool_cache or {}\n\n    @staticmethod\n    def _content_to_text(output: Any) -> str:\n        \"\"\"Concatenate the text content items of an MCP tool result.\"\"\"\n        content = getattr(output, \"content\", None) or []\n        parts: list[str] = []\n        for item in content:\n            item_dict = item.model_dump() if hasattr(item, \"model_dump\") else item\n            if isinstance(item_dict, dict) and item_dict.get(\"type\") == \"text\":\n                parts.append(item_dict.get(\"text\") or \"\")\n        return \"\\n\".join(parts)\n\n    async def _fetch_extract(self, fetch_tool: Any, guid: str) -> tuple[str, str]:\n        \"\"\"Fetch one document's text extract; classify instead of raising.\"\"\"\n        try:\n            output = await fetch_tool.coroutine(identifier=guid)\n        except Exception as error:  # noqa: BLE001 - per-document failure isolation\n            await logger.awarning(\n                f\"FileNet search: get_document_text_extract failed for \"\n                f\"{guid}: {error}\"\n            )\n            return (\"error\", f\"text-extract call failed: {error}\")\n        return classify_extract(self._content_to_text(output))\n\n    async def filenet_document_search(self) -> DataFrame:\n        \"\"\"Run the full FileNet retrieve-and-window pipeline (never raises).\"\"\"\n        term = (getattr(self, \"search_term\", \"\") or \"\").strip()\n        if not term:\n            await logger.awarning(\n                \"FileNet search: refused an empty search term (upstream would \"\n                \"silently run a metadata-only query).\"\n            )\n            return DataFrame([_status_row(\"error\", EMPTY_TERM_MESSAGE)])\n\n        server_name = (\n            getattr(self, \"mcp_server_name\", \"\") or DEFAULT_MCP_SERVER_NAME\n        ).strip()\n        server_config = await self._resolve_server_config(server_name)\n        if not server_config:\n            return DataFrame([_status_row(\"disabled\", DISABLED_MESSAGE)])\n\n        try:\n            await logger.ainfo(\n                f\"FileNet search: querying '{server_name}' \"\n                f\"(class={getattr(self, 'document_class', DEFAULT_DOCUMENT_CLASS)}).\"\n            )\n            session_context = self._get_session_context()\n            if session_context:\n                self.stdio_client.set_session_context(session_context)\n                self.streamable_http_client.set_session_context(session_context)\n\n            tool_cache = await self._load_tools(server_name, server_config)\n            search_tool = tool_cache.get(SEARCH_TOOL_NAME)\n            fetch_tool = tool_cache.get(FETCH_TOOL_NAME)\n            if search_tool is None or fetch_tool is None:\n                await logger.awarning(\n                    f\"FileNet search: required tools missing on '{server_name}' \"\n                    f\"(have: {sorted(tool_cache)}). Is the sidecar running the \"\n                    \"Core server config?\"\n                )\n                return DataFrame(\n                    [\n                        _status_row(\n                            \"error\",\n                            \"FileNet search is misconfigured: the MCP server \"\n                            \"does not expose document_search/\"\n                            \"get_document_text_extract. Fall back to the \"\n                            \"OpenSearch knowledge-base search.\",\n                        )\n                    ]\n                )\n\n            top_k = int(getattr(self, \"top_k\", DEFAULT_TOP_K) or DEFAULT_TOP_K)\n            document_class = (\n                getattr(self, \"document_class\", DEFAULT_DOCUMENT_CLASS)\n                or DEFAULT_DOCUMENT_CLASS\n            ).strip()\n\n            search_output = await search_tool.coroutine(\n                search_parameters={\n                    \"search_class\": document_class,\n                    \"search_properties\": [],\n                },\n                search_term=term,\n                max_results=top_k,\n            )\n            hits = parse_search_results(self._content_to_text(search_output))\n            await logger.ainfo(\n                f\"FileNet search: document_search returned {len(hits)} hits \"\n                f\"(top_k={top_k}).\"\n            )\n            if not hits:\n                return DataFrame(\n                    [\n                        _status_row(\n                            \"no_results\",\n                            f\"FileNet search found no documents matching \"\n                            f\"'{term}' in this object store.\",\n                        )\n                    ]\n                )\n\n            projected = [project_hit(hit) for hit in slice_top_k(hits, top_k)]\n            projected = [hit for hit in projected if hit[\"id\"]]\n            if not projected:\n                return DataFrame(\n                    [\n                        _status_row(\n                            \"error\",\n                            \"FileNet search returned hits without document \"\n                            \"ids; nothing could be retrieved.\",\n                        )\n                    ]\n                )\n\n            extracts = await asyncio.gather(\n                *(self._fetch_extract(fetch_tool, hit[\"id\"]) for hit in projected)\n            )\n            snippet_cap = int(\n                getattr(self, \"snippet_char_cap\", DEFAULT_SNIPPET_CHAR_CAP)\n                or DEFAULT_SNIPPET_CHAR_CAP\n            )\n            rows, failures = build_source_rows(\n                projected,\n                list(extracts),\n                term,\n                snippet_cap,\n                getattr(self, \"viewer_url_template\", \"\") or \"\",\n            )\n\n            for failure in failures:\n                await logger.awarning(f\"FileNet search: retrieval failure — {failure}\")\n            if failures:\n                rows.append(\n                    _status_row(\n                        \"partial_failure\" if rows else \"failure\",\n                        f\"{len(failures)} of {len(projected)} FileNet \"\n                        f\"document(s) could not be retrieved: \"\n                        + \"; \".join(failures),\n                    )\n                )\n            await logger.ainfo(\n                f\"FileNet search: returning {len(rows)} row(s) \"\n                f\"({len(failures)} failure(s)).\"\n            )\n            return DataFrame(rows)\n        except Exception as error:  # noqa: BLE001 - the tool must not blow up the agent\n            await logger.aexception(f\"FileNet search failed: {error}\")\n            return DataFrame(\n                [\n                    _status_row(\n                        \"error\",\n                        f\"FileNet search failed: {error}. Fall back to the \"\n                        \"OpenSearch knowledge-base search if appropriate.\",\n                    )\n                ]\n            )\n"
+              },
+              "search_term": {
+                "_input_type": "MessageTextInput",
+                "advanced": false,
+                "display_name": "Search Term",
+                "dynamic": false,
+                "info": "Keywords or a quoted phrase to search for in FileNet P8 document content (lexical CBR search). Must be non-empty.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "search_term",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": true,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "mcp_server_name": {
+                "_input_type": "StrInput",
+                "advanced": true,
+                "display_name": "MCP Server Name",
+                "dynamic": false,
+                "info": "Name of the registered Langflow MCP server for the FileNet sidecar.",
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "mcp_server_name",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": "filenet-p8"
+              },
+              "document_class": {
+                "_input_type": "StrInput",
+                "advanced": true,
+                "display_name": "Document Class",
+                "dynamic": false,
+                "info": "FileNet document class pinned at configuration time (the list_root_classes/determine_class prerequisite chain is pre-resolved; the class must be CBR-enabled).",
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "document_class",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": "Document"
+              },
+              "top_k": {
+                "_input_type": "IntInput",
+                "advanced": true,
+                "display_name": "Top K Documents",
+                "dynamic": false,
+                "info": "Documents fetched and cited per query. Sliced CLIENT-SIDE: the upstream max_results does not bound the result set.",
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "top_k",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "int",
+                "value": 5
+              },
+              "snippet_char_cap": {
+                "_input_type": "IntInput",
+                "advanced": true,
+                "display_name": "Snippet Character Cap",
+                "dynamic": false,
+                "info": "Per-document snippet cap in characters. A token-budget control (extract p95 is ~60K chars); not a latency control.",
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "snippet_char_cap",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "int",
+                "value": 2000
+              },
+              "viewer_url_template": {
+                "_input_type": "StrInput",
+                "advanced": true,
+                "display_name": "Viewer URL Template",
+                "dynamic": false,
+                "info": "Optional citation link template; {id} is replaced with the FileNet GUID without braces.",
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "viewer_url_template",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "verify_ssl": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "display_name": "Verify SSL",
+                "dynamic": false,
+                "info": "",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "verify_ssl",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "bool",
+                "value": true
+              },
+              "tools_metadata": {
+                "_input_type": "ToolsInput",
+                "advanced": false,
+                "display_name": "Actions",
+                "dynamic": false,
+                "info": "Modify tool names and descriptions to help agents understand when to use each tool.",
+                "is_list": true,
+                "list_add_label": "Add More",
+                "name": "tools_metadata",
+                "override_skip": false,
+                "placeholder": "",
+                "real_time_refresh": true,
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "tools",
+                "value": [
+                  {
+                    "_uniqueId": "filenet_document_search_filenet_document_search_0",
+                    "args": {
+                      "search_term": {
+                        "default": "",
+                        "description": "Keywords or a quoted phrase to search for in FileNet P8 document content (lexical CBR search). Must be non-empty.",
+                        "title": "Search Term",
+                        "type": "string"
+                      }
+                    },
+                    "description": "Search IBM FileNet P8 (Content Manager) enterprise documents by keyword and return cited text passages fetched live from FileNet. Use for questions about content stored in the FileNet/ECM repository (contracts, policies, correspondence, records). Provide a non-empty search_term with distinctive keywords or a quoted phrase — this is a lexical (keyword) search, not semantic. Example: {search_term: \"auto-renewal\"}. If the tool reports it is disabled or unavailable, use the OpenSearch knowledge-base search instead.",
+                    "display_description": "Search IBM FileNet P8 (Content Manager) enterprise documents by keyword and return cited text passages fetched live from FileNet. Use for questions about content stored in the FileNet/ECM repository (contracts, policies, correspondence, records). Provide a non-empty search_term with distinctive keywords or a quoted phrase — this is a lexical (keyword) search, not semantic. Example: {search_term: \"auto-renewal\"}. If the tool reports it is disabled or unavailable, use the OpenSearch knowledge-base search instead.",
+                    "display_name": "filenet_document_search",
+                    "name": "filenet_document_search",
+                    "readonly": false,
+                    "status": true,
+                    "tags": [
+                      "filenet_document_search"
+                    ]
+                  }
+                ]
+              }
+            },
+            "tool_mode": true
+          },
+          "showNode": true,
+          "type": "FileNetSearch"
+        },
+        "dragging": false,
+        "id": "FileNetSearch-P8fn1",
+        "measured": {
+          "height": 287,
+          "width": 320
+        },
+        "position": {
+          "x": 1499.1989099237799,
+          "y": 1700.0
         },
         "selected": false,
         "type": "genericNode"

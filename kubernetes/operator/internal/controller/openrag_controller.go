@@ -142,6 +142,9 @@ func (r *OpenRAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if err := r.reconcileDoclingComponents(ctx, instance, targetNS); err != nil {
 		return r.updateStatusError(ctx, instance, "docling components", err)
 	}
+	if err := r.reconcileFileNetMCP(ctx, instance, targetNS); err != nil {
+		return r.updateStatusError(ctx, instance, "filenet mcp", err)
+	}
 	if instance.Spec.NetworkPolicy.Enabled {
 		if err := r.reconcileNetworkPolicy(ctx, instance, targetNS); err != nil {
 			return r.updateStatusError(ctx, instance, "network policy", err)
@@ -452,6 +455,29 @@ func (r *OpenRAGReconciler) buildBackendEnv(ctx context.Context, o *openragv1alp
 					envVars["MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET"] = clientSecret
 				}
 			}
+		}
+	}
+
+	// FileNet P8 MCP chat tool: point the backend at the operator-managed
+	// sidecar Service. The backend feature is additionally gated by
+	// OPENRAG_RUN_MODE=on_prem (or OPENRAG_DEV_FILENET_MCP), so emitting the
+	// flag here is necessary but not sufficient to turn the tool on.
+	if fn := o.Spec.FileNetMCP; fn != nil {
+		if fileNetMCPDeployed(o) {
+			envVars["OPENRAG_FILENET_MCP_ENABLED"] = "true"
+			envVars["OPENRAG_FILENET_MCP_URL"] = fmt.Sprintf(
+				"http://%s:%d/mcp", getServiceName(o, fileNetMCPRole), fileNetMCPPort(fn))
+			if fn.AuthTokenSecret != nil {
+				token, err := r.readSecretValue(ctx, targetNS, fn.AuthTokenSecret)
+				if err != nil {
+					return "", fmt.Errorf("failed to read FileNet MCP auth token: %w", err)
+				}
+				if token != "" {
+					envVars["OPENRAG_FILENET_MCP_TOKEN"] = token
+				}
+			}
+		} else {
+			envVars["OPENRAG_FILENET_MCP_ENABLED"] = "false"
 		}
 	}
 

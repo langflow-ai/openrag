@@ -118,6 +118,16 @@ stringData:
     AZURE_STORAGE_ENDPOINT={{ .Values.global.azureBlob.endpoint | quote }}
     {{- end }}
 
+    # FileNet P8 MCP chat tool (backend availability additionally requires
+    # OPENRAG_RUN_MODE=on_prem or OPENRAG_DEV_FILENET_MCP)
+    OPENRAG_FILENET_MCP_ENABLED={{ .Values.global.filenet.enabled }}
+    {{- if .Values.global.filenet.enabled }}
+    OPENRAG_FILENET_MCP_URL={{ include "openrag.filenetMcp.url" . | quote }}
+    {{- if .Values.global.filenet.authToken }}
+    OPENRAG_FILENET_MCP_TOKEN={{ .Values.global.filenet.authToken | quote }}
+    {{- end }}
+    {{- end }}
+
     # Webhook (continuous ingest)
     {{- if .Values.backend.webhook.baseUrl }}
     WEBHOOK_BASE_URL={{ .Values.backend.webhook.baseUrl | quote }}

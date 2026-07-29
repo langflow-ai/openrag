@@ -670,6 +670,77 @@ type DoclingComponentsSpec struct {
 	Valkey *ValkeySpec `json:"valkey,omitempty"`
 }
 
+// FileNetMCPSidecarSpec configures the FileNet MCP sidecar workload
+// (the IBM Content Services MCP Server wrapped by the OpenRAG HTTP entry
+// point; image built from Dockerfile.filenet-mcp).
+type FileNetMCPSidecarSpec struct {
+	ComponentSpec `json:",inline"`
+
+	// Port the sidecar listens on (FILENET_MCP_PORT). Defaults to 8811.
+	// +optional
+	Port int32 `json:"port,omitempty"`
+
+	// LivenessProbe configures the liveness probe for the container.
+	// Defaults to GET /health with generous thresholds (the sidecar's boot
+	// performs a live CPE GraphQL call).
+	// +optional
+	LivenessProbe *corev1.Probe `json:"livenessProbe,omitempty"`
+
+	// ReadinessProbe configures the readiness probe for the container.
+	// +optional
+	ReadinessProbe *corev1.Probe `json:"readinessProbe,omitempty"`
+}
+
+// FileNetMCPSpec configures the IBM FileNet P8 MCP chat tool: the Content
+// Services MCP sidecar Deployment/Service plus the backend feature flags
+// (OPENRAG_FILENET_MCP_ENABLED / OPENRAG_FILENET_MCP_URL). Note the backend
+// feature is additionally gated by OPENRAG_RUN_MODE=on_prem (or the
+// OPENRAG_DEV_FILENET_MCP dev bypass).
+type FileNetMCPSpec struct {
+	// Enabled deploys the sidecar and enables the FileNet chat tool.
+	// +optional
+	// +kubebuilder:default=false
+	Enabled bool `json:"enabled,omitempty"`
+
+	// GraphQLURL is the CPE Content Services GraphQL endpoint (SERVER_URL).
+	// Must NOT end with a trailing slash — the sidecar refuses to start on
+	// one (it silently breaks every document text fetch upstream).
+	// +optional
+	GraphQLURL string `json:"graphqlUrl,omitempty"`
+
+	// ObjectStore is the single FileNet object store the sidecar is bound to
+	// (OBJECT_STORE). No tool searches across stores.
+	// +optional
+	ObjectStore string `json:"objectStore,omitempty"`
+
+	// CredentialsSecret references a Secret with "username" and "password"
+	// keys for the CPD service account. Use a dedicated least-privilege
+	// account and its ACTUAL password (Basic auth rejects a Zen API key).
+	// +optional
+	CredentialsSecret *corev1.LocalObjectReference `json:"credentialsSecret,omitempty"`
+
+	// AuthTokenSecret references the Secret key holding the optional shared
+	// bearer token between Langflow and the sidecar (FILENET_MCP_AUTH_TOKEN /
+	// OPENRAG_FILENET_MCP_TOKEN).
+	// +optional
+	AuthTokenSecret *corev1.SecretKeySelector `json:"authTokenSecret,omitempty"`
+
+	// SSLEnabled maps to the sidecar's SSL_ENABLED: "true", "false", or a CA
+	// bundle path. Defaults to "true".
+	// +optional
+	SSLEnabled string `json:"sslEnabled,omitempty"`
+
+	// DocumentClass is the pinned document class probed by the sidecar's
+	// /diagnostics route (FILENET_MCP_DOCUMENT_CLASS). Defaults to "Document".
+	// +optional
+	DocumentClass string `json:"documentClass,omitempty"`
+
+	// Sidecar configures the MCP sidecar workload (image, resources, port).
+	// Required (with an image) when Enabled is true.
+	// +optional
+	Sidecar *FileNetMCPSidecarSpec `json:"sidecar,omitempty"`
+}
+
 // NetworkPolicySpec controls whether the operator creates a NetworkPolicy for Langflow.
 type NetworkPolicySpec struct {
 	// +optional
@@ -760,6 +831,11 @@ type OpenRAGSpec struct {
 	// Use DoclingComponents to deploy docling within the operator.
 	// +optional
 	Docling *DoclingSpec `json:"docling,omitempty"`
+
+	// FileNetMCP configures the optional IBM FileNet P8 MCP chat tool
+	// (Content Services MCP sidecar + backend feature flags).
+	// +optional
+	FileNetMCP *FileNetMCPSpec `json:"filenetMcp,omitempty"`
 
 	// NetworkPolicy controls creation of a NetworkPolicy for the Langflow pod.
 	// +optional

@@ -142,6 +142,29 @@ app.kubernetes.io/component: dashboards
 {{- end }}
 
 {{/*
+FileNet MCP sidecar labels
+*/}}
+{{- define "openrag.filenetMcp.labels" -}}
+{{ include "openrag.labels" . }}
+app.kubernetes.io/component: filenet-mcp
+{{- end }}
+
+{{/*
+FileNet MCP sidecar selector labels
+*/}}
+{{- define "openrag.filenetMcp.selectorLabels" -}}
+{{ include "openrag.selectorLabels" . }}
+app.kubernetes.io/component: filenet-mcp
+{{- end }}
+
+{{/*
+Generate the FileNet MCP sidecar streamable-HTTP endpoint URL
+*/}}
+{{- define "openrag.filenetMcp.url" -}}
+http://{{ include "openrag.fullname" . }}-filenet-mcp:{{ .Values.global.filenet.mcp.port }}/mcp
+{{- end }}
+
+{{/*
 Generate the Langflow service URL
 */}}
 {{- define "openrag.langflow.url" -}}

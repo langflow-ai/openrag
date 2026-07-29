@@ -288,6 +288,73 @@ def is_azure_blob_enabled() -> bool:
     return raw in ("true", "1", "yes", "on")
 
 
+FILENET_MCP_SERVER_NAME = "filenet-p8"
+
+
+def is_filenet_mcp_flag_enabled() -> bool:
+    """Feature kill switch for the FileNet P8 MCP chat tool (default: enabled).
+
+    Set ``OPENRAG_FILENET_MCP_ENABLED=false`` to force-disable the FileNet P8
+    chat tool even in an ``on_prem`` deployment. When true (the default),
+    availability still requires the ``on_prem`` run-mode gate or the
+    ``OPENRAG_DEV_FILENET_MCP`` dev bypass, plus a configured
+    ``OPENRAG_FILENET_MCP_URL`` -- this flag is subtractive (AND-ed with those
+    gates), not an override.
+    """
+    raw = os.getenv("OPENRAG_FILENET_MCP_ENABLED", "true").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
+def is_dev_filenet_mcp_enabled() -> bool:
+    """Local dev: enable the FileNet P8 MCP chat tool outside ``on_prem``.
+
+    Allows testing the FileNet P8 MCP integration (sidecar + chat tool) in a
+    local OSS environment where ``OPENRAG_RUN_MODE`` is not ``on_prem``. Never
+    enable in production. Requires ``OPENRAG_DEV_FILENET_MCP=true``.
+    """
+    raw = os.getenv("OPENRAG_DEV_FILENET_MCP", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
+def get_filenet_mcp_url() -> str:
+    """URL of the IBM Content Services MCP sidecar (streamable HTTP endpoint).
+
+    Must be resolvable from the Langflow container (e.g.
+    ``http://filenet-mcp:8811/mcp``) -- never ``localhost``, which the MCP URL
+    patcher rewrites to ``LANGFLOW_URL``. Empty (the default) means the
+    FileNet P8 chat tool is unavailable.
+    """
+    return os.getenv("OPENRAG_FILENET_MCP_URL", "").strip()
+
+
+def get_filenet_mcp_token() -> str:
+    """Optional shared secret sent as ``Authorization: Bearer`` to the sidecar.
+
+    Registered on the ``filenet-p8`` Langflow MCP server entry at startup and
+    enforced by the sidecar when its ``FILENET_MCP_AUTH_TOKEN`` is set. Empty
+    (the default) disables the header entirely.
+    """
+    return os.getenv("OPENRAG_FILENET_MCP_TOKEN", "").strip()
+
+
+def is_filenet_mcp_available() -> bool:
+    """Effective availability of the FileNet P8 MCP chat tool.
+
+    True only when ALL of the following hold:
+    - the ``OPENRAG_FILENET_MCP_ENABLED`` kill switch is on (default), AND
+    - the run mode is ``on_prem`` (CPD) OR the ``OPENRAG_DEV_FILENET_MCP``
+      dev bypass is set, AND
+    - ``OPENRAG_FILENET_MCP_URL`` is configured (non-empty).
+    """
+    from utils.run_mode_utils import is_run_mode_on_prem
+
+    if not is_filenet_mcp_flag_enabled():
+        return False
+    if not (is_run_mode_on_prem() or is_dev_filenet_mcp_enabled()):
+        return False
+    return bool(get_filenet_mcp_url())
+
+
 def is_ingest_preview_flag_enabled() -> bool:
     """Raw opt-in flag for the preview-mode ingest backend.
 
@@ -905,15 +972,77 @@ async def get_langflow_api_key(force_regenerate: bool = False):
         return None
 
 
+def _running_loop() -> asyncio.AbstractEventLoop | None:
+    """Return the running event loop, or None when called from sync context."""
+    try:
+        return asyncio.get_running_loop()
+    except RuntimeError:
+        return None
+
+
 class AppClients:
     def __init__(self):
         self.opensearch = None
         self.langflow_client = None
         self.langflow_http_client = None
+        self._langflow_http_client_loop = None
         self._patched_async_client = None  # Private attribute - single client for all providers
         self._client_init_lock = threading.Lock()  # Lock for thread-safe initialization
         self.docling_http_client = None
         self._docling_service = None
+
+    def _new_langflow_http_client(self) -> httpx.AsyncClient:
+        """Build the shared Langflow httpx client.
+
+        Extended timeouts so large-PDF ingestion (300+ pages) survives.
+        """
+        return httpx.AsyncClient(
+            base_url=LANGFLOW_URL,
+            timeout=httpx.Timeout(
+                timeout=LANGFLOW_TIMEOUT,  # Total timeout
+                connect=LANGFLOW_CONNECT_TIMEOUT,  # Connection timeout
+                read=LANGFLOW_TIMEOUT,  # Read timeout (most important for large PDFs)
+                write=LANGFLOW_CONNECT_TIMEOUT,  # Write timeout
+                pool=LANGFLOW_CONNECT_TIMEOUT,  # Pool timeout
+            ),
+        )
+
+    async def rebind_langflow_http_client(self) -> bool:
+        """Recreate the Langflow client if its pool belongs to a dead event loop.
+
+        `initialize()` runs inside `asyncio.run(create_app())` (see main.py),
+        and `wait_for_langflow()` leaves keep-alive connections in the client's
+        pool bound to that loop. The loop is closed before uvicorn starts, so
+        the first request to reuse one of those connections on the live loop
+        raises `RuntimeError: Event loop is closed`. That is not an
+        `httpx.RequestError`, so `langflow_request` does not retry it — the
+        caller just fails once, arbitrarily, per boot.
+
+        Called from `run_startup` on the live loop. Only the Langflow client
+        needs this: `docling_http_client` issues no requests during
+        `initialize()` (nothing binds its pool) and is captured by reference
+        into services at container-init time, so swapping it would strand
+        those references. The OpenSearch client is unaffected — opensearch-py
+        creates its aiohttp session lazily on first `perform_request`.
+
+        Returns True when the client was replaced.
+        """
+        current_loop = _running_loop()
+        if self.langflow_http_client is None or self._langflow_http_client_loop is current_loop:
+            return False
+
+        stale = self.langflow_http_client
+        self.langflow_http_client = self._new_langflow_http_client()
+        self._langflow_http_client_loop = current_loop
+        logger.info("Rebound Langflow HTTP client to the running event loop")
+
+        # Best-effort: closing a pool owned by a closed loop can itself raise.
+        # The sockets are released when the object is collected either way.
+        try:
+            await stale.aclose()
+        except Exception as e:
+            logger.debug("Could not close the stale Langflow HTTP client", error=str(e))
+        return True
 
     async def initialize(self):
         from utils.run_mode_utils import (
@@ -988,16 +1117,8 @@ class AppClients:
         # Initialize Langflow HTTP client with extended timeouts for large documents
         # Must be created before wait_for_langflow / get_langflow_api_key
         # Use explicit timeout configuration to handle large PDF ingestion (300+ pages)
-        self.langflow_http_client = httpx.AsyncClient(
-            base_url=LANGFLOW_URL,
-            timeout=httpx.Timeout(
-                timeout=LANGFLOW_TIMEOUT,  # Total timeout
-                connect=LANGFLOW_CONNECT_TIMEOUT,  # Connection timeout
-                read=LANGFLOW_TIMEOUT,  # Read timeout (most important for large PDFs)
-                write=LANGFLOW_CONNECT_TIMEOUT,  # Write timeout
-                pool=LANGFLOW_CONNECT_TIMEOUT,  # Pool timeout
-            ),
-        )
+        self.langflow_http_client = self._new_langflow_http_client()
+        self._langflow_http_client_loop = _running_loop()
         logger.info(
             "Initialized Langflow HTTP client with extended timeouts",
             timeout_seconds=LANGFLOW_TIMEOUT,
@@ -1268,6 +1389,7 @@ class AppClients:
                 logger.error("Failed to close Langflow HTTP client", error=str(e))
             finally:
                 self.langflow_http_client = None
+                self._langflow_http_client_loop = None
 
         # Close docling-serve HTTP client if it exists
         if self.docling_http_client is not None:
