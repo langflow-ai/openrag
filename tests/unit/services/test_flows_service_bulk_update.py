@@ -257,4 +257,3 @@ async def test_get_flows_updates_available_includes_all_flows():
 
     assert len(updates) == 4
     assert all(u["flow_type"] in ["nudges", "retrieval", "ingest", "url_ingest"] for u in updates)
-

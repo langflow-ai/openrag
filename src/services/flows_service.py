@@ -882,6 +882,7 @@ class FlowsService:
             ("url_ingest", LANGFLOW_URL_INGEST_FLOW_ID),
         ]
         created_flow_types: set[str] = set()
+
         async def ensure_single_flow_exists(flow_type, flow_id):
             if not flow_id:
                 return None
@@ -1497,9 +1498,7 @@ class FlowsService:
                         backup_path = await self._backup_flow(flow_id, flow_type, flow_data)
 
                         if backup_custom:
-                            logger.info(
-                                f"Backing up flow {flow_type} in Langflow before update."
-                            )
+                            logger.info(f"Backing up flow {flow_type} in Langflow before update.")
                             # Create a backup flow directly in Langflow
                             backup_payload = dict(flow_data)
                             backup_payload.pop("id", None)
