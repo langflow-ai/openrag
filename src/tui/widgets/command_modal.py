@@ -211,9 +211,7 @@ class CommandOutputModal(ModalScreen):
             )
             with Horizontal(id="button-row"):
                 yield Button("Copy Output", variant="default", id="copy-btn")
-                yield Button(
-                    "Close", variant="primary", id="close-btn", disabled=True
-                )
+                yield Button("Close", variant="primary", id="close-btn", disabled=True)
             yield Static("", id="copy-status")
         yield Footer()
 
@@ -300,19 +298,22 @@ class CommandOutputModal(ModalScreen):
 
                 # Detect error patterns in messages
                 lower_msg = message.lower() if message else ""
-                if not self._error_detected and any(pattern in lower_msg for pattern in [
-                    "error:",
-                    "failed",
-                    "port is already allocated",
-                    "address already in use",
-                    "not found",
-                    "permission denied",
-                ]):
+                if not self._error_detected and any(
+                    pattern in lower_msg
+                    for pattern in [
+                        "error:",
+                        "failed",
+                        "port is already allocated",
+                        "address already in use",
+                        "not found",
+                        "permission denied",
+                    ]
+                ):
                     self._error_detected = True
                     # Enable close button when error detected
                     close_btn = self.query_one("#close-btn", Button)
                     close_btn.disabled = False
-                
+
                 # If command is complete, update UI
                 if is_complete:
                     self._command_complete = True
@@ -324,9 +325,7 @@ class CommandOutputModal(ModalScreen):
                     if self.show_launch_button and not self._error_detected:
                         button_row = self.query_one("#button-row", Horizontal)
                         close_btn = self.query_one("#close-btn", Button)
-                        launch_btn = Button(
-                            "Launch OpenRAG", variant="success", id="launch-btn"
-                        )
+                        launch_btn = Button("Launch OpenRAG", variant="success", id="launch-btn")
                         button_row.mount(launch_btn, before=close_btn)
 
                     # Call the completion callback if provided
@@ -380,7 +379,9 @@ class CommandOutputModal(ModalScreen):
             potential_layer_id = parts[0]
 
             # Check if this looks like a layer ID (hex string, 12 chars for Docker layers)
-            if len(potential_layer_id) == 12 and all(c in '0123456789abcdefABCDEF' for c in potential_layer_id):
+            if len(potential_layer_id) == 12 and all(
+                c in "0123456789abcdefABCDEF" for c in potential_layer_id
+            ):
                 # This is a layer message
                 if potential_layer_id in self._layer_line_map:
                     # Update the existing line for this layer
