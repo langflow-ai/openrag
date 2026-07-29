@@ -2,32 +2,37 @@
 
 from typing import Optional, Tuple
 from utils.logging_config import get_logger
-from config.image_config import IMAGE_ORG, IMAGE_NAME_BACKEND, IMAGE_REGISTRY
+from config.image_config import IMAGE_NAME_BACKEND, get_registry, get_org
 
 logger = get_logger(__name__)
-
-# Canonical image used for version polling (short form without registry prefix,
-# as required by the Docker Hub v2 API endpoint).
-_DEFAULT_VERSION_IMAGE = f"{IMAGE_ORG}/{IMAGE_NAME_BACKEND}"
 
 _DOCKER_HUB_REGISTRY = "docker.io"
 
 
-async def get_latest_docker_version(image_name: str = _DEFAULT_VERSION_IMAGE) -> Optional[str]:
+async def get_latest_docker_version(image_name: str | None = None) -> Optional[str]:
     """
     Get the latest version tag from Docker Hub for OpenRAG containers.
 
     Args:
-        image_name: Name of the Docker image to check.
-                    Defaults to ``"<IMAGE_ORG>/openrag-backend"``.
-        
+        image_name: Name of the Docker image to check (short form without
+                    registry prefix, as required by the Docker Hub v2 API).
+                    Defaults to ``"<IMAGE_ORG>/openrag-backend"``, resolved at
+                    call time so .env overrides are respected.
+
     Returns:
         Latest version string if found, None otherwise
     """
+    # Resolve defaults at call time so IMAGE_ORG / IMAGE_REGISTRY values
+    # loaded from ~/.openrag/tui/.env after module import are reflected.
+    if image_name is None:
+        image_name = f"{get_org()}/{IMAGE_NAME_BACKEND}"
+
+    registry = get_registry()
+
     # Only poll Docker Hub when the configured registry is Docker Hub.
-    if IMAGE_REGISTRY != _DOCKER_HUB_REGISTRY:
+    if registry != _DOCKER_HUB_REGISTRY:
         logger.debug(
-            "Skipping version check: IMAGE_REGISTRY=%r is not Docker Hub", IMAGE_REGISTRY
+            "Skipping version check: IMAGE_REGISTRY=%r is not Docker Hub", registry
         )
         return None
 

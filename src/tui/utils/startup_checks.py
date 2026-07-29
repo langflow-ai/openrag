@@ -16,11 +16,6 @@ from config.image_config import all_openrag_repos
 
 MIN_PODMAN_MEMORY_MB = 8192  # 8 GB minimum
 
-# NOTE: Derived from image_config.all_openrag_repos().
-# Keep in sync with ContainerManager.OPENRAG_IMAGE_REPOS in container_manager.py.
-# Any registry/org/image-name changes in image_config.py must be reflected here.
-OPENRAG_IMAGE_REPOS: set[str] = set(all_openrag_repos())
-
 
 # =============================================================================
 # Helpers
@@ -110,9 +105,15 @@ def _extract_repository(image_tag: str) -> str:
 
 
 def _is_openrag_repository(repository: str) -> bool:
-    """Check whether repository is OpenRAG-related, with optional registry prefix."""
+    """Check whether repository is OpenRAG-related, with optional registry prefix.
+
+    Calls all_openrag_repos() at invocation time so that IMAGE_REGISTRY /
+    IMAGE_ORG values loaded from ``~/.openrag/tui/.env`` after module import
+    are always reflected.
+    """
+    known_repos = set(all_openrag_repos())
     repo = repository.lower()
-    return any(repo == known or repo.endswith(f"/{known}") for known in OPENRAG_IMAGE_REPOS)
+    return any(repo == known or repo.endswith(f"/{known}") for known in known_repos)
 
 
 def remove_openrag_images(runtime: str) -> tuple[int, int]:
