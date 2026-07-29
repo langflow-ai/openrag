@@ -298,7 +298,14 @@ async def async_response_stream(
                     # just reattach the raw (unvalidated) value afterwards to preserve same shape.
                     # TODO: replace this with just chunk.model_dump() if langflow's /response SSE matches openai's
                     # SDK's delta: str schema
-                    chunk_data = chunk.model_dump(exclude={"delta"})
+                    #
+                    # warnings=False for the same class of mismatch on `item`: Langflow emits
+                    # item.type "tool_call", which is not a member of the openai SDK's
+                    # ResponseOutputItem union, so the SDK lenient-constructs it as
+                    # ResponseOutputMessage and pydantic warns once per candidate union member
+                    # (~17 lines per tool call). The dump is byte-identical either way — the SDK
+                    # models are extra="allow", so tool_name/inputs/results survive intact.
+                    chunk_data = chunk.model_dump(exclude={"delta"}, warnings=False)
                     if hasattr(chunk, "delta"):
                         chunk_data["delta"] = chunk.delta
                 elif hasattr(chunk, "__dict__"):
@@ -325,7 +332,7 @@ async def async_response_stream(
                         )
                     }
                     if potential_tool_fields:
-                        logger.info(
+                        logger.debug(
                             "Potential tool-related fields in chunk",
                             chunk_count=chunk_count,
                             fields=list(potential_tool_fields.keys()),
@@ -569,7 +576,9 @@ async def async_chat(
         "content": response_text,
         "response_id": response_id,
         "timestamp": datetime.now(),
-        "response_data": response_obj.model_dump()
+        # warnings=False: Langflow's non-OpenAI output item types don't match the SDK's
+        # ResponseOutputItem union (see async_response_stream). Dump is unaffected.
+        "response_data": response_obj.model_dump(warnings=False)
         if hasattr(response_obj, "model_dump")
         else str(response_obj),  # Store complete response for function calls
     }
@@ -765,7 +774,9 @@ async def async_langflow_chat(
             "content": response_text,
             "response_id": response_id,
             "timestamp": datetime.now(),
-            "response_data": response_obj.model_dump()
+            # warnings=False: see async_response_stream — Langflow's output item types
+            # don't match the SDK's ResponseOutputItem union.
+            "response_data": response_obj.model_dump(warnings=False)
             if hasattr(response_obj, "model_dump")
             else str(response_obj),  # Store complete response for function calls
         }
@@ -785,7 +796,7 @@ async def async_langflow_chat(
         for output_item in response_obj.output:
             for result in getattr(output_item, "results", None) or []:
                 rd = (
-                    result.model_dump()
+                    result.model_dump(warnings=False)
                     if hasattr(result, "model_dump")
                     else (result if isinstance(result, dict) else {})
                 )
@@ -811,7 +822,7 @@ async def async_langflow_chat(
     # inside typed output items.
     if not sources:
         resp_dict = (
-            response_obj.model_dump()
+            response_obj.model_dump(warnings=False)
             if hasattr(response_obj, "model_dump")
             else getattr(response_obj, "__dict__", {})
         )

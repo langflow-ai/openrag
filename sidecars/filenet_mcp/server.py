@@ -335,13 +335,14 @@ def _bootstrap_ibm_server() -> Any:
 
     server_type = ibm.ServerType.CORE
     logger.info("Initializing the IBM Content Services GraphQL client...")
-    ibm.initialize_graphql_client()
+    graphql_client = ibm.initialize_graphql_client()
     logger.info("Successfully initialized the GraphQL client.")
 
     logger.info("Initializing the IBM MCP server (type: %s)...", server_type)
     ibm._initialize_mcp_server(server_type)
-    ibm.register_server_resources(server_type)
-    ibm.register_server_tools(server_type)
+    metadata_cache = ibm.MetadataCache()
+    ibm.register_server_resources(graphql_client, server_type)
+    ibm.register_server_tools(graphql_client, metadata_cache, server_type)
     logger.info("Successfully registered IBM MCP server resources and tools.")
 
     if ibm.mcp is None:  # pragma: no cover - upstream contract violation

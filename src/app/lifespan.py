@@ -152,6 +152,13 @@ async def run_startup(app: FastAPI):
     services = app.state.services
     mcp_lifespan_ctx = getattr(app.state, "mcp_lifespan_ctx", None)
 
+    # Do this before anything else touches Langflow: the shared httpx client is
+    # built in `clients.initialize()` under `asyncio.run(create_app())`, whose
+    # loop is already closed by the time we get here. Without the rebind, the
+    # first caller to reuse a pooled connection from that loop dies with
+    # "Event loop is closed" and is not retried.
+    await clients.rebind_langflow_http_client()
+
     # Hard-fail if the operator has configured multiple workers. The
     # RBAC permission cache and the OAuth-subject→DB-id cache are
     # both per-process; a second worker silently sees stale

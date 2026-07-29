@@ -99,7 +99,7 @@ endef
 ######################
 .PHONY: help check_tools help_docker help_dev help_test help_local help_utils help_operator \
        dev dev-cpu dev-local dev-local-cpu dev-local-build-lf dev-local-build-lf-cpu stop clean build logs \
-       azurite-up azurite-down filenet-mcp-up filenet-mcp-down \
+       azurite-up azurite-down filenet-mcp-up filenet-mcp-down build-filenet-mcp \
        shell-backend shell-frontend install \
        test test-unit test-integration test-ci test-ci-local test-ci-suite test-sdk test-os-jwt lint \
        ci-build-images ci-save-images \
@@ -355,6 +355,7 @@ help_local: ## Show local development commands
 	@echo "  $(PURPLE)make azurite-down$(NC)    - Stop Azurite emulator"
 	@echo "  $(PURPLE)make filenet-mcp-up$(NC)  - Start the FileNet P8 MCP sidecar (needs FILENET_* vars in .env)"
 	@echo "  $(PURPLE)make filenet-mcp-down$(NC) - Stop the FileNet P8 MCP sidecar"
+	@echo "  $(PURPLE)make build-filenet-mcp$(NC) - Build the FileNet P8 MCP sidecar Docker image"
 	@echo ''
 	@echo "$(PURPLE)Installation:$(NC)"
 	@echo "  $(PURPLE)make install$(NC)         - Install all dependencies"
@@ -775,6 +776,11 @@ filenet-mcp-down: ## Stop the FileNet P8 MCP sidecar
 	@echo "$(YELLOW)Stopping the FileNet P8 MCP sidecar...$(NC)"
 	$(COMPOSE_CMD) --profile filenet-mcp stop filenet-mcp
 	@echo "$(PURPLE)FileNet MCP sidecar stopped.$(NC)"
+
+build-filenet-mcp: ## Build the FileNet P8 MCP sidecar Docker image
+	@echo "$(YELLOW)Building the FileNet P8 MCP sidecar image...$(NC)"
+	$(COMPOSE_CMD) --profile filenet-mcp build filenet-mcp
+	@echo "$(PURPLE)FileNet MCP sidecar image built.$(NC)"
 
 ######################
 # INSTALLATION
@@ -1264,13 +1270,32 @@ clear-os-data: ## Clear OpenSearch data volume
 # FLOW MANAGEMENT
 ######################
 
-flow-upload: ## Upload flow to Langflow
-	@echo "$(YELLOW)Uploading flow to Langflow...$(NC)"
+flow-upload: ## Create or update a flow in Langflow from a JSON file (id taken from the file itself)
+	@echo "$(YELLOW)Syncing flow to Langflow...$(NC)"
 	@if [ -z "$(FLOW_FILE)" ]; then echo "$(RED)Usage: make flow-upload FLOW_FILE=path/to/flow.json$(NC)"; exit 1; fi
-	curl -X POST "http://localhost:$${LANGFLOW_PORT:-7860}/api/v1/flows" \
-		-H "Content-Type: application/json" \
-		-d @$(FLOW_FILE)
-	@echo "$(PURPLE)Flow uploaded.$(NC)"
+	@LANGFLOW_BASE="http://localhost:$${LANGFLOW_PORT:-7860}"; \
+	FLOW_ID=$$(python3 -c "import json; print(json.load(open('$(FLOW_FILE)'))['id'])"); \
+	TOKEN=$$(curl -sS -X POST "$$LANGFLOW_BASE/api/v1/login" \
+		-H "Content-Type: application/x-www-form-urlencoded" \
+		--data-urlencode "username=$${LANGFLOW_SUPERUSER}" \
+		--data-urlencode "password=$${LANGFLOW_SUPERUSER_PASSWORD}" \
+		| python3 -c "import json,sys; print(json.load(sys.stdin).get('access_token',''))"); \
+	if [ -z "$$TOKEN" ]; then echo "$(RED)Failed to authenticate with Langflow (check LANGFLOW_SUPERUSER/LANGFLOW_SUPERUSER_PASSWORD)$(NC)"; exit 1; fi; \
+	STATUS=$$(curl -sS -o /dev/null -w '%{http_code}' "$$LANGFLOW_BASE/api/v1/flows/$$FLOW_ID" -H "Authorization: Bearer $$TOKEN"); \
+	if [ "$$STATUS" = "200" ]; then \
+		echo "$(YELLOW)Flow $$FLOW_ID already exists — updating in place (PATCH)...$(NC)"; \
+		HTTP_CODE=$$(curl -sS -o /tmp/flow-upload-response.json -w '%{http_code}' -X PATCH "$$LANGFLOW_BASE/api/v1/flows/$$FLOW_ID" \
+			-H "Authorization: Bearer $$TOKEN" -H "Content-Type: application/json" -d @$(FLOW_FILE)); \
+	else \
+		echo "$(YELLOW)Flow $$FLOW_ID not found — creating (PUT)...$(NC)"; \
+		HTTP_CODE=$$(curl -sS -o /tmp/flow-upload-response.json -w '%{http_code}' -X PUT "$$LANGFLOW_BASE/api/v1/flows/$$FLOW_ID" \
+			-H "Authorization: Bearer $$TOKEN" -H "Content-Type: application/json" -d @$(FLOW_FILE)); \
+	fi; \
+	if [ "$$HTTP_CODE" = "200" ] || [ "$$HTTP_CODE" = "201" ]; then \
+		echo "$(PURPLE)Flow synced (HTTP $$HTTP_CODE).$(NC)"; \
+	else \
+		echo "$(RED)Flow sync failed (HTTP $$HTTP_CODE):$(NC)"; cat /tmp/flow-upload-response.json; echo ""; exit 1; \
+	fi
 
 ######################
 # SETUP

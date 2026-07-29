@@ -972,15 +972,77 @@ async def get_langflow_api_key(force_regenerate: bool = False):
         return None
 
 
+def _running_loop() -> asyncio.AbstractEventLoop | None:
+    """Return the running event loop, or None when called from sync context."""
+    try:
+        return asyncio.get_running_loop()
+    except RuntimeError:
+        return None
+
+
 class AppClients:
     def __init__(self):
         self.opensearch = None
         self.langflow_client = None
         self.langflow_http_client = None
+        self._langflow_http_client_loop = None
         self._patched_async_client = None  # Private attribute - single client for all providers
         self._client_init_lock = threading.Lock()  # Lock for thread-safe initialization
         self.docling_http_client = None
         self._docling_service = None
+
+    def _new_langflow_http_client(self) -> httpx.AsyncClient:
+        """Build the shared Langflow httpx client.
+
+        Extended timeouts so large-PDF ingestion (300+ pages) survives.
+        """
+        return httpx.AsyncClient(
+            base_url=LANGFLOW_URL,
+            timeout=httpx.Timeout(
+                timeout=LANGFLOW_TIMEOUT,  # Total timeout
+                connect=LANGFLOW_CONNECT_TIMEOUT,  # Connection timeout
+                read=LANGFLOW_TIMEOUT,  # Read timeout (most important for large PDFs)
+                write=LANGFLOW_CONNECT_TIMEOUT,  # Write timeout
+                pool=LANGFLOW_CONNECT_TIMEOUT,  # Pool timeout
+            ),
+        )
+
+    async def rebind_langflow_http_client(self) -> bool:
+        """Recreate the Langflow client if its pool belongs to a dead event loop.
+
+        `initialize()` runs inside `asyncio.run(create_app())` (see main.py),
+        and `wait_for_langflow()` leaves keep-alive connections in the client's
+        pool bound to that loop. The loop is closed before uvicorn starts, so
+        the first request to reuse one of those connections on the live loop
+        raises `RuntimeError: Event loop is closed`. That is not an
+        `httpx.RequestError`, so `langflow_request` does not retry it — the
+        caller just fails once, arbitrarily, per boot.
+
+        Called from `run_startup` on the live loop. Only the Langflow client
+        needs this: `docling_http_client` issues no requests during
+        `initialize()` (nothing binds its pool) and is captured by reference
+        into services at container-init time, so swapping it would strand
+        those references. The OpenSearch client is unaffected — opensearch-py
+        creates its aiohttp session lazily on first `perform_request`.
+
+        Returns True when the client was replaced.
+        """
+        current_loop = _running_loop()
+        if self.langflow_http_client is None or self._langflow_http_client_loop is current_loop:
+            return False
+
+        stale = self.langflow_http_client
+        self.langflow_http_client = self._new_langflow_http_client()
+        self._langflow_http_client_loop = current_loop
+        logger.info("Rebound Langflow HTTP client to the running event loop")
+
+        # Best-effort: closing a pool owned by a closed loop can itself raise.
+        # The sockets are released when the object is collected either way.
+        try:
+            await stale.aclose()
+        except Exception as e:
+            logger.debug("Could not close the stale Langflow HTTP client", error=str(e))
+        return True
 
     async def initialize(self):
         from utils.run_mode_utils import (
@@ -1055,16 +1117,8 @@ class AppClients:
         # Initialize Langflow HTTP client with extended timeouts for large documents
         # Must be created before wait_for_langflow / get_langflow_api_key
         # Use explicit timeout configuration to handle large PDF ingestion (300+ pages)
-        self.langflow_http_client = httpx.AsyncClient(
-            base_url=LANGFLOW_URL,
-            timeout=httpx.Timeout(
-                timeout=LANGFLOW_TIMEOUT,  # Total timeout
-                connect=LANGFLOW_CONNECT_TIMEOUT,  # Connection timeout
-                read=LANGFLOW_TIMEOUT,  # Read timeout (most important for large PDFs)
-                write=LANGFLOW_CONNECT_TIMEOUT,  # Write timeout
-                pool=LANGFLOW_CONNECT_TIMEOUT,  # Pool timeout
-            ),
-        )
+        self.langflow_http_client = self._new_langflow_http_client()
+        self._langflow_http_client_loop = _running_loop()
         logger.info(
             "Initialized Langflow HTTP client with extended timeouts",
             timeout_seconds=LANGFLOW_TIMEOUT,
@@ -1335,6 +1389,7 @@ class AppClients:
                 logger.error("Failed to close Langflow HTTP client", error=str(e))
             finally:
                 self.langflow_http_client = None
+                self._langflow_http_client_loop = None
 
         # Close docling-serve HTTP client if it exists
         if self.docling_http_client is not None:

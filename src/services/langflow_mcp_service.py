@@ -266,13 +266,13 @@ class LangflowMCPService:
                 method="GET",
                 endpoint=f"/api/v2/mcp/servers/{server_name}",
             )
-            if response.status_code == 200:
+            if response.status_code == 200 and response.json() is not None:
                 logger.info(
                     "MCP server already registered; leaving existing config untouched",
                     server_name=server_name,
                 )
                 return "exists"
-            if response.status_code != 404:
+            if response.status_code not in (200, 404):
                 logger.warning(
                     "Unexpected status while checking MCP server; "
                     "skipping creation to avoid overwriting existing data",
