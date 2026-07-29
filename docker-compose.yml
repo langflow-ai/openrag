@@ -5,11 +5,14 @@
 # Do NOT hard-code image tags or registry paths here.  Instead, set variables
 # in the .env file (or export them before running compose):
 #
-#   IMAGE_REGISTRY   — registry host          (default: docker.io)
-#   IMAGE_ORG        — organisation/namespace (default: langflowai)
-#   OPENRAG_VERSION  — image tag to use       (default: latest)
-#   OPENRAG_IMAGE_TAG — override the full tag entirely (takes precedence over
-#                       OPENRAG_VERSION; useful to pin a specific digest).
+#   IMAGE_REGISTRY      — registry host for OpenRAG-owned images (default: docker.io)
+#   IMAGE_ORG           — organisation/namespace (default: langflowai)
+#   OPENRAG_VERSION     — image tag to use       (default: latest)
+#   OPENRAG_IMAGE_TAG   — override the full tag entirely (takes precedence over
+#                         OPENRAG_VERSION; useful to pin a specific digest).
+#   DASHBOARDS_REGISTRY — registry host for the OpenSearch Dashboards image
+#                         (default: docker.io). Use this to point at a mirror
+#                         without affecting OpenRAG-owned images via IMAGE_REGISTRY.
 #
 # Python-side source of truth for image references: src/config/image_config.py
 #
@@ -55,7 +58,7 @@ services:
     restart: unless-stopped
 
   dashboards:
-    image: ${IMAGE_REGISTRY:-docker.io}/opensearchproject/opensearch-dashboards:3.6.0
+    image: ${DASHBOARDS_REGISTRY:-docker.io}/opensearchproject/opensearch-dashboards:3.6.0
     container_name: ${COMPOSE_PROJECT_NAME:-openrag}-dashboards
     depends_on:
       - opensearch
