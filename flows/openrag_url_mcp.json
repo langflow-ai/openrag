@@ -590,10 +590,6 @@
         },
         "dragging": false,
         "id": "SplitText-QIKhg",
-        "measured": {
-          "height": 415,
-          "width": 320
-        },
         "position": {
           "x": 2332.4637753484953,
           "y": 1432.2596523183522
@@ -1038,10 +1034,6 @@
         },
         "dragging": false,
         "id": "URLComponent-lnA0q",
-        "measured": {
-          "height": 295,
-          "width": 320
-        },
         "position": {
           "x": 417.1342145817257,
           "y": 1355.0755805523784
@@ -1336,10 +1328,6 @@
         },
         "dragging": false,
         "id": "ChatInput-sskrk",
-        "measured": {
-          "height": 207,
-          "width": 320
-        },
         "position": {
           "x": 2.9942378786288373,
           "y": 1375.037939780366
@@ -1640,10 +1628,6 @@
         },
         "dragging": false,
         "id": "ChatOutput-0XHyo",
-        "measured": {
-          "height": 52,
-          "width": 192
-        },
         "position": {
           "x": 3588.211427790188,
           "y": 1759.283136230774
@@ -2520,10 +2504,6 @@
         },
         "dragging": false,
         "id": "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-PMGGV",
-        "measured": {
-          "height": 1213,
-          "width": 320
-        },
         "position": {
           "x": 2729.318175939116,
           "y": 1398.252846147518
@@ -2727,10 +2707,6 @@
         },
         "dragging": false,
         "id": "ParserComponent-1eim1",
-        "measured": {
-          "height": 331,
-          "width": 320
-        },
         "position": {
           "x": 1197.404962798599,
           "y": 1479.7759648749616
@@ -4092,10 +4068,6 @@
         },
         "dragging": false,
         "id": "Operations-DEOwk",
-        "measured": {
-          "height": 415,
-          "width": 320
-        },
         "position": {
           "x": 816.0561462173285,
           "y": 1365.3303813465752
@@ -5457,10 +5429,6 @@
         },
         "dragging": false,
         "id": "Operations-AJiaz",
-        "measured": {
-          "height": 497,
-          "width": 320
-        },
         "position": {
           "x": 1560.213077487973,
           "y": 1370.229527925727
@@ -6822,10 +6790,6 @@
         },
         "dragging": false,
         "id": "Operations-10Yaw",
-        "measured": {
-          "height": 497,
-          "width": 320
-        },
         "position": {
           "x": 1947.5349696014814,
           "y": 1354.5272890562605
@@ -8187,10 +8151,6 @@
         },
         "dragging": false,
         "id": "Operations-uhog5",
-        "measured": {
-          "height": 415,
-          "width": 320
-        },
         "position": {
           "x": 3160.0211180473734,
           "y": 1481.6904008526296
@@ -8233,7 +8193,7 @@
             ],
             "frozen": false,
             "icon": "binary",
-            "last_updated": "2026-07-28T17:18:16.094Z",
+            "last_updated": "2026-07-29T14:27:30.575Z",
             "legacy": false,
             "lf_version": "0.11.1rc0",
             "metadata": {
@@ -8277,7 +8237,7 @@
                 "value": "72c3d17c-2dac-4a73-b48a-6518473d7830"
               },
               "_frontend_node_folder_id": {
-                "value": "d2f06123-6a36-47a7-bd53-0ca2f498d791"
+                "value": "724b8b7f-d51c-4dc6-a551-b147e8b577f1"
               },
               "_type": "Component",
               "api_base": {
@@ -8308,13 +8268,13 @@
               },
               "api_key": {
                 "_input_type": "SecretStrInput",
-                "advanced": true,
+                "advanced": false,
                 "api_editable": false,
                 "display_name": "API Key",
                 "dynamic": false,
                 "info": "Overrides global provider settings. Leave blank to use your pre-configured API Key.",
                 "input_types": [],
-                "load_from_db": true,
+                "load_from_db": false,
                 "name": "api_key",
                 "override_skip": false,
                 "password": true,
@@ -8325,7 +8285,7 @@
                 "title_case": false,
                 "track_in_telemetry": false,
                 "type": "str",
-                "value": "OPENAI_API_KEY"
+                "value": ""
               },
               "base_url_ibm_watsonx": {
                 "_input_type": "DropdownInput",
@@ -8443,7 +8403,7 @@
                 "type": "bool",
                 "value": true
               },
-              "is_refresh": true,
+              "is_refresh": false,
               "max_retries": {
                 "_input_type": "IntInput",
                 "advanced": true,
@@ -8553,6 +8513,23 @@
                     },
                     "name": "text-embedding-ada-002",
                     "provider": "OpenAI"
+                  },
+                  {
+                    "category": "Ollama",
+                    "icon": "Ollama",
+                    "metadata": {
+                      "embedding_class": "OllamaEmbeddings",
+                      "model_type": "embeddings",
+                      "param_mapping": {
+                        "base_url": "base_url",
+                        "model": "model",
+                        "model_kwargs": "model_kwargs",
+                        "num_ctx": "num_ctx",
+                        "request_timeout": "request_timeout"
+                      }
+                    },
+                    "name": "nomic-embed-text:latest",
+                    "provider": "Ollama"
                   },
                   {
                     "category": "IBM WatsonX",
@@ -8846,22 +8823,18 @@
         },
         "dragging": false,
         "id": "EmbeddingModel-4xlif",
-        "measured": {
-          "height": 52,
-          "width": 192
-        },
         "position": {
-          "x": 2429.8550744504114,
-          "y": 2106.3746066384865
+          "x": 2444.1500041374215,
+          "y": 2107.674145700942
         },
         "selected": false,
         "type": "genericNode"
       }
     ],
     "viewport": {
-      "x": -4260.927550696991,
-      "y": -2805.5193046367044,
-      "zoom": 2
+      "x": 8.766925111121509,
+      "y": -126.06670495471747,
+      "zoom": 0.3077861033362292
     }
   },
   "description": "This flow is to ingest the URL to open search.",
@@ -8869,7 +8842,7 @@
   "id": "72c3d17c-2dac-4a73-b48a-6518473d7830",
   "is_component": false,
   "mcp_enabled": true,
-  "last_tested_version": "0.11.1rc0",
+  "last_tested_version": "0.11.1",
   "locked": true,
   "name": "OpenSearch URL Ingestion Flow",
   "tags": [

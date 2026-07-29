@@ -418,10 +418,6 @@
         },
         "dragging": false,
         "id": "Prompt Template-Wo6kR",
-        "measured": {
-          "height": 429,
-          "width": 320
-        },
         "position": {
           "x": 1258.723154248008,
           "y": 1242.0705456678813
@@ -716,10 +712,6 @@
         },
         "dragging": false,
         "id": "ChatInput-7W1BE",
-        "measured": {
-          "height": 207,
-          "width": 320
-        },
         "position": {
           "x": 847.7008874324687,
           "y": 1560.6273308605132
@@ -1020,10 +1012,6 @@
         },
         "dragging": false,
         "id": "ChatOutput-axewE",
-        "measured": {
-          "height": 52,
-          "width": 192
-        },
         "position": {
           "x": 2049.2872443904885,
           "y": 1648.484385108906
@@ -1064,7 +1052,7 @@
             ],
             "frozen": false,
             "icon": "brain-circuit",
-            "last_updated": "2026-07-28T17:18:47.553Z",
+            "last_updated": "2026-07-29T14:28:06.176Z",
             "legacy": false,
             "metadata": {
               "code_hash": "c1f16fbd02f1",
@@ -1131,7 +1119,7 @@
                 "value": "ebc01d31-1976-46ce-a385-b0240327226c"
               },
               "_frontend_node_folder_id": {
-                "value": "d2f06123-6a36-47a7-bd53-0ca2f498d791"
+                "value": "724b8b7f-d51c-4dc6-a551-b147e8b577f1"
               },
               "_type": "Component",
               "api_key": {
@@ -1142,7 +1130,7 @@
                 "dynamic": false,
                 "info": "Overrides global provider settings. Leave blank to use your pre-configured API Key.",
                 "input_types": [],
-                "load_from_db": true,
+                "load_from_db": false,
                 "name": "api_key",
                 "override_skip": false,
                 "password": true,
@@ -1153,7 +1141,7 @@
                 "title_case": false,
                 "track_in_telemetry": false,
                 "type": "str",
-                "value": "OPENAI_API_KEY"
+                "value": ""
               },
               "base_url_ibm_watsonx": {
                 "_input_type": "DropdownInput",
@@ -1234,7 +1222,7 @@
                 "type": "str",
                 "value": ""
               },
-              "is_refresh": true,
+              "is_refresh": false,
               "max_tokens": {
                 "_input_type": "IntInput",
                 "advanced": true,
@@ -1460,6 +1448,51 @@
                     "provider": "OpenAI"
                   },
                   {
+                    "category": "OpenAI",
+                    "icon": "OpenAI",
+                    "metadata": {
+                      "api_key_param": "api_key",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_tokens",
+                      "model_class": "ChatOpenAI",
+                      "model_name_param": "model",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "gpt-5.4-mini"
+                      ]
+                    },
+                    "name": "gpt-5.4-mini",
+                    "provider": "OpenAI"
+                  },
+                  {
+                    "category": "Ollama",
+                    "icon": "Ollama",
+                    "metadata": {
+                      "api_key_param": "api_key",
+                      "base_url_param": "base_url",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_tokens",
+                      "model_class": "ChatOllama",
+                      "model_name_param": "model"
+                    },
+                    "name": "gpt-oss:20b",
+                    "provider": "Ollama"
+                  },
+                  {
+                    "category": "Ollama",
+                    "icon": "Ollama",
+                    "metadata": {
+                      "api_key_param": "api_key",
+                      "base_url_param": "base_url",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_tokens",
+                      "model_class": "ChatOllama",
+                      "model_name_param": "model"
+                    },
+                    "name": "qwen3:8b",
+                    "provider": "Ollama"
+                  },
+                  {
                     "category": "IBM WatsonX",
                     "icon": "WatsonxAI",
                     "metadata": {
@@ -1535,22 +1568,19 @@
                     "provider": "IBM WatsonX"
                   },
                   {
-                    "category": "OpenAI",
-                    "icon": "OpenAI",
+                    "category": "IBM WatsonX",
+                    "icon": "WatsonxAI",
                     "metadata": {
-                      "api_key_param": "api_key",
+                      "api_key_param": "apikey",
                       "context_length": 128000,
                       "max_tokens_field_name": "max_tokens",
-                      "model_class": "ChatOpenAI",
-                      "model_name_param": "model",
-                      "not_enabled_locally": true,
-                      "reasoning": true,
-                      "reasoning_models": [
-                        "gpt-5.4-mini"
-                      ]
+                      "model_class": "ChatWatsonx",
+                      "model_name_param": "model_id",
+                      "project_id_param": "project_id",
+                      "url_param": "url"
                     },
-                    "name": "gpt-5.4-mini",
-                    "provider": "OpenAI"
+                    "name": "openai/gpt-oss-120b",
+                    "provider": "IBM WatsonX"
                   }
                 ],
                 "override_skip": false,
@@ -1764,10 +1794,6 @@
         },
         "dragging": false,
         "id": "LanguageModelComponent-KdXf9",
-        "measured": {
-          "height": 453,
-          "width": 320
-        },
         "position": {
           "x": 1667.085299897802,
           "y": 1326.2080401399078
@@ -2644,10 +2670,6 @@
         },
         "dragging": false,
         "id": "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-0ByE3",
-        "measured": {
-          "height": 967,
-          "width": 320
-        },
         "position": {
           "x": 365.79131713313234,
           "y": 767.0259058739476
@@ -2692,7 +2714,7 @@
             ],
             "frozen": false,
             "icon": "binary",
-            "last_updated": "2026-07-28T17:18:55.328Z",
+            "last_updated": "2026-07-29T14:28:19.770Z",
             "legacy": false,
             "metadata": {
               "code_hash": "0780e9bbc5fa",
@@ -2735,7 +2757,7 @@
                 "value": "ebc01d31-1976-46ce-a385-b0240327226c"
               },
               "_frontend_node_folder_id": {
-                "value": "d2f06123-6a36-47a7-bd53-0ca2f498d791"
+                "value": "724b8b7f-d51c-4dc6-a551-b147e8b577f1"
               },
               "_type": "Component",
               "api_base": {
@@ -2772,7 +2794,7 @@
                 "dynamic": false,
                 "info": "Overrides global provider settings. Leave blank to use your pre-configured API Key.",
                 "input_types": [],
-                "load_from_db": true,
+                "load_from_db": false,
                 "name": "api_key",
                 "override_skip": false,
                 "password": true,
@@ -2783,7 +2805,7 @@
                 "title_case": false,
                 "track_in_telemetry": false,
                 "type": "str",
-                "value": "OPENAI_API_KEY"
+                "value": ""
               },
               "base_url_ibm_watsonx": {
                 "_input_type": "DropdownInput",
@@ -2902,7 +2924,7 @@
                 "type": "bool",
                 "value": true
               },
-              "is_refresh": true,
+              "is_refresh": false,
               "max_retries": {
                 "_input_type": "IntInput",
                 "advanced": true,
@@ -3013,6 +3035,23 @@
                     },
                     "name": "text-embedding-ada-002",
                     "provider": "OpenAI"
+                  },
+                  {
+                    "category": "Ollama",
+                    "icon": "Ollama",
+                    "metadata": {
+                      "embedding_class": "OllamaEmbeddings",
+                      "model_type": "embeddings",
+                      "param_mapping": {
+                        "base_url": "base_url",
+                        "model": "model",
+                        "model_kwargs": "model_kwargs",
+                        "num_ctx": "num_ctx",
+                        "request_timeout": "request_timeout"
+                      }
+                    },
+                    "name": "nomic-embed-text:latest",
+                    "provider": "Ollama"
                   },
                   {
                     "category": "IBM WatsonX",
@@ -3307,10 +3346,6 @@
         },
         "dragging": false,
         "id": "EmbeddingModel-cONxU",
-        "measured": {
-          "height": 52,
-          "width": 192
-        },
         "position": {
           "x": -22.139984432593124,
           "y": 1292.0572058205992
@@ -3469,10 +3504,6 @@
         },
         "dragging": false,
         "id": "TextInput-BG2U3",
-        "measured": {
-          "height": 284,
-          "width": 320
-        },
         "position": {
           "x": -129.32512588180916,
           "y": 1389.9093803810442
@@ -3675,10 +3706,6 @@
         },
         "dragging": false,
         "id": "ParserComponent-x6BS7",
-        "measured": {
-          "height": 331,
-          "width": 320
-        },
         "position": {
           "x": 846.9539656485665,
           "y": 1195.8338615381288
@@ -3688,16 +3715,16 @@
       }
     ],
     "viewport": {
-      "x": 155.56060966281723,
-      "y": -182.44193653778166,
-      "zoom": 0.4671636734415905
+      "x": 311.35445748080076,
+      "y": -89.39374522639366,
+      "zoom": 0.36148307363643706
     }
   },
   "description": "OpenRAG OpenSearch Nudges generator, based on the OpenSearch documents and the chat history.",
   "endpoint_name": null,
   "id": "ebc01d31-1976-46ce-a385-b0240327226c",
   "is_component": false,
-  "last_tested_version": "0.11.1rc0",
+  "last_tested_version": "0.11.1",
   "locked": true,
   "name": "OpenRAG OpenSearch Nudges Flow",
   "tags": [

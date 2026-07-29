@@ -679,10 +679,6 @@
         },
         "dragging": false,
         "id": "DoclingRemote-Dp3PX",
-        "measured": {
-          "height": 52,
-          "width": 192
-        },
         "position": {
           "x": 377.3513331245854,
           "y": 1841.1174193072818
@@ -955,10 +951,6 @@
         },
         "dragging": false,
         "id": "ExportDoclingDocument-zZdRg",
-        "measured": {
-          "height": 52,
-          "width": 192
-        },
         "position": {
           "x": 648.3765412475954,
           "y": 1839.7464467523132
@@ -1861,10 +1853,6 @@
         },
         "dragging": false,
         "id": "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4",
-        "measured": {
-          "height": 1213,
-          "width": 320
-        },
         "position": {
           "x": 1756.949537574781,
           "y": 1353.9990788264315
@@ -3223,10 +3211,6 @@
         },
         "dragging": false,
         "id": "Operations-IC6CD",
-        "measured": {
-          "height": 80,
-          "width": 192
-        },
         "position": {
           "x": 922.8558031751697,
           "y": 1830.0439761689086
@@ -4585,10 +4569,6 @@
         },
         "dragging": false,
         "id": "Operations-VUCJC",
-        "measured": {
-          "height": 80,
-          "width": 192
-        },
         "position": {
           "x": 1209.814890352602,
           "y": 1833.3550221261078
@@ -4860,10 +4840,6 @@
         },
         "dragging": false,
         "id": "SplitText-QIKhg",
-        "measured": {
-          "height": 80,
-          "width": 192
-        },
         "position": {
           "x": 1483.6566983203961,
           "y": 1839.4043723057894
@@ -4908,7 +4884,7 @@
             ],
             "frozen": false,
             "icon": "binary",
-            "last_updated": "2026-07-28T17:19:13.454Z",
+            "last_updated": "2026-07-29T14:26:09.914Z",
             "legacy": false,
             "metadata": {
               "code_hash": "0780e9bbc5fa",
@@ -4951,7 +4927,7 @@
                 "value": "5488df7c-b93f-4f87-a446-b67028bc0813"
               },
               "_frontend_node_folder_id": {
-                "value": "d2f06123-6a36-47a7-bd53-0ca2f498d791"
+                "value": "724b8b7f-d51c-4dc6-a551-b147e8b577f1"
               },
               "_type": "Component",
               "api_base": {
@@ -4982,13 +4958,13 @@
               },
               "api_key": {
                 "_input_type": "SecretStrInput",
-                "advanced": true,
+                "advanced": false,
                 "api_editable": false,
                 "display_name": "API Key",
                 "dynamic": false,
                 "info": "Overrides global provider settings. Leave blank to use your pre-configured API Key.",
                 "input_types": [],
-                "load_from_db": true,
+                "load_from_db": false,
                 "name": "api_key",
                 "override_skip": false,
                 "password": true,
@@ -4999,7 +4975,7 @@
                 "title_case": false,
                 "track_in_telemetry": false,
                 "type": "str",
-                "value": "OPENAI_API_KEY"
+                "value": ""
               },
               "base_url_ibm_watsonx": {
                 "_input_type": "DropdownInput",
@@ -5116,7 +5092,7 @@
                 "type": "bool",
                 "value": true
               },
-              "is_refresh": true,
+              "is_refresh": false,
               "max_retries": {
                 "_input_type": "IntInput",
                 "advanced": true,
@@ -5227,6 +5203,23 @@
                     },
                     "name": "text-embedding-ada-002",
                     "provider": "OpenAI"
+                  },
+                  {
+                    "category": "Ollama",
+                    "icon": "Ollama",
+                    "metadata": {
+                      "embedding_class": "OllamaEmbeddings",
+                      "model_type": "embeddings",
+                      "param_mapping": {
+                        "base_url": "base_url",
+                        "model": "model",
+                        "model_kwargs": "model_kwargs",
+                        "num_ctx": "num_ctx",
+                        "request_timeout": "request_timeout"
+                      }
+                    },
+                    "name": "nomic-embed-text:latest",
+                    "provider": "Ollama"
                   },
                   {
                     "category": "IBM WatsonX",
@@ -5520,29 +5513,25 @@
         },
         "dragging": false,
         "id": "EmbeddingModel-d8FQn",
-        "measured": {
-          "height": 52,
-          "width": 192
-        },
         "position": {
-          "x": 1493.6337589269267,
-          "y": 2059.9839135567636
+          "x": 1489.0121472829765,
+          "y": 1954.4725071351013
         },
         "selected": false,
         "type": "genericNode"
       }
     ],
     "viewport": {
-      "x": 60.51728058878837,
-      "y": -603.9632400991383,
-      "zoom": 0.5430186245758345
+      "x": -134.15084177167932,
+      "y": -381.92790059524714,
+      "zoom": 0.48065497978010674
     }
   },
   "description": "Load your data for chat context with Retrieval Augmented Generation.",
   "endpoint_name": null,
   "id": "5488df7c-b93f-4f87-a446-b67028bc0813",
   "is_component": false,
-  "last_tested_version": "0.11.1rc0",
+  "last_tested_version": "0.11.1",
   "locked": true,
   "name": "OpenSearch Ingestion Flow",
   "tags": [
