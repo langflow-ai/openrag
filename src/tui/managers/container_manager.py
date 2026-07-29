@@ -80,12 +80,6 @@ def format_port_conflict_message(conflicts: list[tuple[str, int, str]], max_show
 class ContainerManager:
     """Manages Docker/Podman container lifecycle for OpenRAG."""
 
-    # NOTE: OPENRAG_IMAGE_REPOS is derived from image_config.all_openrag_repos().
-    # If you change the registry, org, or image names in image_config.py, the
-    # matching OPENRAG_IMAGE_REPOS set in startup_checks.py must also be updated,
-    # as both use this allow-list independently for image cleanup/validation.
-    OPENRAG_IMAGE_REPOS: set[str] = set(all_openrag_repos())
-
     def __init__(self, compose_file: Path | None = None):
         self.platform_detector = PlatformDetector()
         self.runtime_info = self.platform_detector.detect_runtime()
@@ -109,7 +103,11 @@ class ContainerManager:
             "langflow",
         ]
 
-        # Get compose project name from env or default to "openrag"
+        # Get compose project name from env or default to "openrag".
+        # _get_env_from_file() calls load_dotenv(override=True), which writes
+        # IMAGE_REGISTRY / IMAGE_ORG into os.environ before we build the
+        # allow-list — so all_openrag_repos() picks up private-registry
+        # overrides correctly here.
         env = self._get_env_from_file()
         project_name = env.get("COMPOSE_PROJECT_NAME", "openrag")
 
@@ -122,6 +120,10 @@ class ContainerManager:
             f"{project_name}-langflow": "langflow",
         }
 
+        # Build the allow-list after .env is resolved so that private-registry
+        # overrides (IMAGE_REGISTRY, IMAGE_ORG) are reflected correctly.
+        self._openrag_image_repos: set[str] = set(all_openrag_repos())
+
     @staticmethod
     def _extract_repository(image_tag: str) -> str:
         """Extract repository name from <repository>:<tag> image reference."""
@@ -131,7 +133,7 @@ class ContainerManager:
         """Check whether repository is OpenRAG-related, with optional registry prefix."""
         repo = repository.lower()
         return any(
-            repo == known or repo.endswith(f"/{known}") for known in self.OPENRAG_IMAGE_REPOS
+            repo == known or repo.endswith(f"/{known}") for known in self._openrag_image_repos
         )
 
     def _find_compose_file(self, filename: str) -> Path:
