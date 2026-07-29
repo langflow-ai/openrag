@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import OpenAILogo from "@/components/icons/openai-logo";
 import { LabelInput } from "@/components/label-input";
 import { LabelWrapper } from "@/components/label-wrapper";
@@ -18,13 +18,11 @@ import { AdvancedOnboarding } from "./advanced";
 
 export function OpenAIOnboarding({
   setSettings,
-  setIsLoadingModels,
   isEmbedding = false,
   hasEnvApiKey = false,
   alreadyConfigured = false,
 }: {
   setSettings: Dispatch<SetStateAction<OnboardingVariables>>;
-  setIsLoadingModels?: (isLoading: boolean) => void;
   isEmbedding?: boolean;
   hasEnvApiKey?: boolean;
   alreadyConfigured?: boolean;
@@ -35,25 +33,25 @@ export function OpenAIOnboarding({
   );
   const debouncedApiKey = useDebouncedValue(apiKey, 500);
 
-  // Fetch models from API when API key is provided
   const {
     data: modelsData,
     isLoading: isLoadingModels,
+    isFetching: isFetchingModels,
     error: modelsError,
   } = useGetOpenAIModelsQuery(
     getFromEnv
-      ? { apiKey: "" }
+      ? { useEnvKey: true }
       : debouncedApiKey
-        ? { apiKey: debouncedApiKey }
+        ? { apiKey: debouncedApiKey, useEnvKey: false }
         : undefined,
     {
-      // Only validate when the user opts in (env) or provides a key.
-      // If a key was previously configured, let the user decide to reuse or replace it
-      // without triggering an immediate validation error.
       enabled: debouncedApiKey !== "" || getFromEnv || alreadyConfigured,
     },
   );
-  // Use custom hook for model selection logic
+
+  const showModelsError =
+    !!modelsError && !isLoadingModels && !isFetchingModels;
+
   const {
     languageModel,
     embeddingModel,
@@ -72,15 +70,11 @@ export function OpenAIOnboarding({
     setLanguageModel?.("");
   };
 
-  useEffect(() => {
-    setIsLoadingModels?.(isLoadingModels);
-  }, [isLoadingModels, setIsLoadingModels]);
-
-  // Update settings when values change
   useUpdateSettings(
     "openai",
     {
-      apiKey,
+      apiKey: getFromEnv || alreadyConfigured ? undefined : apiKey,
+      clearApiKey: getFromEnv,
       languageModel,
       embeddingModel,
     },
@@ -122,7 +116,7 @@ export function OpenAIOnboarding({
             <LabelInput
               label="OpenAI API key"
               helperText="The API key for your OpenAI account."
-              className={modelsError ? "!border-destructive" : ""}
+              className={showModelsError ? "!border-destructive" : ""}
               id="api-key"
               type="password"
               required
@@ -133,7 +127,6 @@ export function OpenAIOnboarding({
               }
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              // Even if a key exists, allow replacing it to avoid getting stuck on stale creds.
               disabled={false}
             />
             {alreadyConfigured && (
@@ -142,15 +135,13 @@ export function OpenAIOnboarding({
                 one.
               </p>
             )}
-            {isLoadingModels && (
+            {(isLoadingModels || isFetchingModels) && (
               <p className="text-mmd text-muted-foreground">
                 Validating API key...
               </p>
             )}
-            {modelsError && (
-              <p className="text-mmd text-destructive">
-                Invalid OpenAI API key. Verify or replace the key.
-              </p>
+            {showModelsError && (
+              <p className="text-mmd text-destructive">{modelsError.message}</p>
             )}
           </div>
         )}

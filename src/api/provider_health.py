@@ -6,7 +6,7 @@ import httpx
 from fastapi import Depends
 from fastapi.responses import JSONResponse
 
-from api.provider_validation import format_provider_error_message, sanitize_provider_error_content, validate_provider_setup
+from api.provider_validation import sanitize_provider_error_content, validate_provider_setup
 from config.settings import get_openrag_config
 from dependencies import require_permission
 from session_manager import User
@@ -195,10 +195,10 @@ async def check_provider_health(
                     llm_error = None  # Don't treat as error
                     logger.info(f"LLM provider ({provider}) appears busy: {str(e)}")
                 else:
-                    llm_error = sanitize_provider_error_content(format_provider_error_message(e))
+                    llm_error = sanitize_provider_error_content(e)
                     logger.error(f"LLM provider ({provider}) validation timed out: {llm_error}")
             except Exception as e:
-                llm_error = sanitize_provider_error_content(format_provider_error_message(e))
+                llm_error = sanitize_provider_error_content(e)
                 logger.error(f"LLM provider ({provider}) validation failed: {llm_error}")
 
             # Validate embedding provider
@@ -229,12 +229,12 @@ async def check_provider_health(
                     embedding_error = None  # Don't treat as error
                     logger.info(f"Embedding provider ({embedding_provider}) appears busy: {str(e)}")
                 else:
-                    embedding_error = sanitize_provider_error_content(format_provider_error_message(e))
+                    embedding_error = sanitize_provider_error_content(e)
                     logger.error(
                         f"Embedding provider ({embedding_provider}) validation timed out: {embedding_error}"
                     )
             except Exception as e:
-                embedding_error = sanitize_provider_error_content(format_provider_error_message(e))
+                embedding_error = sanitize_provider_error_content(e)
                 logger.error(
                     f"Embedding provider ({embedding_provider}) validation failed: {embedding_error}"
                 )
@@ -283,7 +283,7 @@ async def check_provider_health(
     except Exception as e:
         if _health_leader_key:
             provider_health_cache.release_error(_health_leader_key)
-        error_message = sanitize_provider_error_content(format_provider_error_message(e))
+        error_message = sanitize_provider_error_content(e)
         logger.error(f"Provider health check failed for {provider}: {error_message}")
 
         return JSONResponse(

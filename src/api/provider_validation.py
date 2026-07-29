@@ -87,6 +87,15 @@ def _extract_balanced_json_object(text: str) -> str | None:
     return None
 
 
+def _humanize_provider_error_message(message: str) -> str:
+    """Rewrite provider-specific messages into clearer user-facing copy."""
+    lowered = message.lower()
+    # IBM IAM returns "could not be found" for invalid/unknown keys.
+    if "api key could not be found" in lowered:
+        return "Provided API key is Invalid."
+    return message
+
+
 def format_provider_error_message(exc: BaseException | str) -> str:
     """Return a concise, user-facing provider error string from an exception or text."""
     text = _strip_error_label_prefixes((str(exc) if not isinstance(exc, str) else exc).strip())
@@ -96,16 +105,16 @@ def format_provider_error_message(exc: BaseException | str) -> str:
     parsed = _parse_json_error_message(text)
     if parsed != text:
         # Pure JSON (or JSON-shaped) payloads: prefer the extracted message only.
-        return _strip_error_label_prefixes(parsed)
+        return _humanize_provider_error_message(_strip_error_label_prefixes(parsed))
 
     json_blob = _extract_balanced_json_object(text)
     if json_blob:
         nested = _parse_json_error_message(json_blob)
         if nested != json_blob:
             # Embedded provider JSON already has the real message — drop wrappers.
-            return _strip_error_label_prefixes(nested)
+            return _humanize_provider_error_message(_strip_error_label_prefixes(nested))
 
-    return text
+    return _humanize_provider_error_message(text)
 
 
 def is_provider_credential_error(text: str | BaseException | None) -> bool:
@@ -288,24 +297,125 @@ async def probe_provider_credential_error() -> str | None:
     return None
 
 
-async def resolve_ingest_error_message(exc: BaseException | str) -> str:
-    """Prefer a credential message when Langflow fails auth or only reports a disconnect."""
-    raw = (str(exc) if not isinstance(exc, str) else exc).strip() or "Ingestion failed"
+async def probe_chat_llm_error() -> str | None:
+    """Return a cleaned error if the configured chat LLM fails auth or inference.
 
+    Unlike :func:`probe_provider_credential_error`, this runs a completion check
+    against the selected ``llm_model`` so missing/deprecated models surface
+    instead of being misreported as API-key failures (or left as opaque
+    Langflow text).
+    """
+    from config.settings import get_openrag_config
+
+    config = get_openrag_config()
+    provider = config.agent.llm_provider
+    llm_model = (config.agent.llm_model or "").strip()
+    if not provider or not llm_model:
+        return None
+
+    provider_config = config.get_llm_provider_config()
+    if provider_config is None:
+        return None
+
+    api_key = getattr(provider_config, "api_key", None)
+    endpoint = getattr(provider_config, "endpoint", None)
+    if provider == "ollama":
+        if not endpoint:
+            return None
+    elif not api_key:
+        return None
+
+    try:
+        # Pass only llm_model so validate_provider_setup runs completion (not
+        # the embedding branch of the test_completion if/elif).
+        await validate_provider_setup(
+            provider=provider,
+            api_key=api_key,
+            llm_model=llm_model,
+            endpoint=endpoint,
+            project_id=getattr(provider_config, "project_id", None),
+            test_completion=True,
+        )
+    except Exception as probe_exc:
+        return sanitize_provider_error_content(probe_exc)
+    return None
+
+
+async def probe_embedding_error() -> str | None:
+    """Return a cleaned error if the configured embedding model fails auth or inference."""
+    from config.settings import get_openrag_config
+
+    config = get_openrag_config()
+    provider = config.knowledge.embedding_provider
+    embedding_model = (config.knowledge.embedding_model or "").strip()
+    if not provider or not embedding_model:
+        return None
+
+    provider_config = config.get_embedding_provider_config()
+    if provider_config is None:
+        return None
+
+    api_key = getattr(provider_config, "api_key", None)
+    endpoint = getattr(provider_config, "endpoint", None)
+    if provider == "ollama":
+        if not endpoint:
+            return None
+    elif not api_key:
+        return None
+
+    try:
+        await validate_provider_setup(
+            provider=provider,
+            api_key=api_key,
+            embedding_model=embedding_model,
+            endpoint=endpoint,
+            project_id=getattr(provider_config, "project_id", None),
+            test_completion=True,
+        )
+    except Exception as probe_exc:
+        return sanitize_provider_error_content(probe_exc)
+    return None
+
+
+async def resolve_ingest_error_message(exc: BaseException | str) -> str:
+    """Sanitize ingest failures; probe model/setup when Langflow is opaque or mislabels auth.
+
+    Langflow often reports disconnects or "API key is invalid" when the real issue is a
+    missing/deprecated model. Mirror chat/banner diagnosis: test the configured embedding
+    and chat LLM (``test_completion``) before falling back to lightweight credential probes.
+    """
+    raw = (str(exc) if not isinstance(exc, str) else exc).strip() or "Ingestion failed"
     cleaned = sanitize_provider_error_content(raw)
+
+    should_probe = (
+        is_generic_upstream_error(cleaned)
+        or is_langflow_transport_error(raw)
+        or is_langflow_transport_error(cleaned)
+        or is_provider_credential_error(raw)
+        or is_provider_credential_error(cleaned)
+    )
+
+    if should_probe:
+        # Ingest primarily uses embeddings; also probe chat LLM so task UI matches the
+        # banner when the selected LLM model is missing/deprecated.
+        for probe_name, probe_fn in (
+            ("embedding", probe_embedding_error),
+            ("llm", probe_chat_llm_error),
+            ("credentials", probe_provider_credential_error),
+        ):
+            probe = await probe_fn()
+            if not probe:
+                continue
+            logger.info(
+                "Ingest failure attributed via provider probe",
+                upstream_error=cleaned,
+                probe=probe_name,
+                resolved_error=probe,
+            )
+            return probe
+
     if is_provider_credential_error(raw) or is_provider_credential_error(cleaned):
         return cleaned
-
-    if is_langflow_transport_error(raw):
-        probe = await probe_provider_credential_error()
-        if probe:
-            sanitized_probe = sanitize_provider_error_content(probe)
-            logger.info(
-                "Ingest transport failure attributed to provider credentials",
-                transport_error=raw,
-                credential_error=probe,
-            )
-            return sanitized_probe
 
     # Prefer the sanitized form whenever JSON / boilerplate was stripped.
     if cleaned != raw and "{" not in cleaned:
@@ -314,16 +424,46 @@ async def resolve_ingest_error_message(exc: BaseException | str) -> str:
 
 
 def resolve_chat_stream_error_message(text: str | BaseException | None) -> str:
-    """Sanitize chat stream errors without probing providers.
-
-    Do not infer API-key failures from opaque upstream text — that can hide the
-    real failure. Callers should break Langflow session chaining after errors so
-    the next turn is a fresh session that returns the detailed upstream message.
-    """
+    """Sanitize chat stream errors synchronously (no provider probing)."""
     raw = (str(text) if not isinstance(text, str) else text) if text is not None else ""
     if not raw.strip():
         return "An error occurred while generating a response."
     return sanitize_provider_error_content(raw)
+
+
+async def resolve_chat_stream_error_message_async(
+    text: str | BaseException | None,
+) -> str:
+    """Sanitize chat stream errors, probing the active LLM for opaque upstream text.
+
+    Langflow often collapses auth/model failures to "An unknown error occurred."
+    Probe only when the sanitized message is still generic/transport-level so we
+    do not overwrite a more specific upstream failure.
+
+    Order matters: diagnose the selected chat LLM (credentials + model) before
+    scanning other configured keys. Otherwise a revoked secondary key can mask
+    the real chat failure (e.g. missing watsonx model).
+    """
+    cleaned = resolve_chat_stream_error_message(text)
+    if is_generic_upstream_error(cleaned) or is_langflow_transport_error(cleaned):
+        llm_probe = await probe_chat_llm_error()
+        if llm_probe:
+            logger.info(
+                "Chat stream opaque error attributed to configured LLM",
+                upstream_error=cleaned,
+                llm_error=llm_probe,
+            )
+            return llm_probe
+
+        cred_probe = await probe_provider_credential_error()
+        if cred_probe:
+            logger.info(
+                "Chat stream opaque error attributed to provider credentials",
+                upstream_error=cleaned,
+                credential_error=cred_probe,
+            )
+            return cred_probe
+    return cleaned
 
 
 def _parse_json_error_message(error_text: str) -> str:
@@ -396,15 +536,8 @@ def _extract_error_details(response: httpx.Response) -> str:
                 error_obj = error_data["error"]
                 if isinstance(error_obj, dict):
                     message = error_obj.get("message", "")
-                    error_type = error_obj.get("type", "")
-                    code = error_obj.get("code", "")
                     if message:
-                        details = message
-                        if error_type:
-                            details += f" (type: {error_type})"
-                        if code:
-                            details += f" (code: {code})"
-                        return details
+                        return message
 
             # Anthropic / generic: {"message": "..."}
             if "message" in error_data:
@@ -589,7 +722,7 @@ async def _test_openai_lightweight_health(api_key: str) -> None:
                 logger.error(
                     f"OpenAI lightweight health check failed: {response.status_code} - {error_details}"
                 )
-                raise Exception(f"OpenAI API key validation failed: {error_details}")
+                raise Exception(error_details)
 
             logger.info("OpenAI lightweight health check passed")
 
@@ -659,7 +792,7 @@ async def _test_openai_completion_with_tools(api_key: str, llm_model: str) -> No
                 logger.error(
                     f"OpenAI completion test failed: {response.status_code} - {error_details}"
                 )
-                raise Exception(f"OpenAI API error: {error_details}")
+                raise Exception(error_details)
 
             logger.info("OpenAI completion with tool calling test passed")
 
@@ -697,7 +830,7 @@ async def _test_openai_embedding(api_key: str, embedding_model: str) -> None:
                 logger.error(
                     f"OpenAI embedding test failed: {response.status_code} - {error_details}"
                 )
-                raise Exception(f"OpenAI API error: {error_details}")
+                raise Exception(error_details)
 
             data = response.json()
             if not data.get("data") or len(data["data"]) == 0:
@@ -738,7 +871,7 @@ async def _test_watsonx_lightweight_health(api_key: str, endpoint: str, project_
                 logger.error(
                     f"IBM IAM token request failed: {token_response.status_code} - {error_details}"
                 )
-                raise Exception(f"Failed to authenticate with IBM Watson: {error_details}")
+                raise Exception(error_details)
 
             bearer_token = token_response.json().get("access_token")
             if not bearer_token:
@@ -776,7 +909,7 @@ async def _test_watsonx_completion_with_tools(
                 logger.error(
                     f"IBM IAM token request failed: {token_response.status_code} - {error_details}"
                 )
-                raise Exception(f"Failed to authenticate with IBM Watson: {error_details}")
+                raise Exception(error_details)
 
             bearer_token = token_response.json().get("access_token")
             if not bearer_token:
@@ -829,7 +962,7 @@ async def _test_watsonx_completion_with_tools(
                 )
                 # If error_details is still JSON, parse it to extract just the message
                 parsed_details = _parse_json_error_message(error_details)
-                raise Exception(f"IBM Watson API error: {parsed_details}")
+                raise Exception(parsed_details)
 
             logger.info("IBM Watson completion with tool calling test passed")
 
@@ -844,7 +977,7 @@ async def _test_watsonx_completion_with_tools(
             json_part = error_str.split("IBM Watson API error: ", 1)[1]
             parsed_message = _parse_json_error_message(json_part)
             if parsed_message != json_part:
-                raise Exception(f"IBM Watson API error: {parsed_message}") from e
+                raise Exception(parsed_message) from e
         raise
 
 
@@ -870,7 +1003,7 @@ async def _test_watsonx_embedding(
                 logger.error(
                     f"IBM IAM token request failed: {token_response.status_code} - {error_details}"
                 )
-                raise Exception(f"Failed to authenticate with IBM Watson: {error_details}")
+                raise Exception(error_details)
 
             bearer_token = token_response.json().get("access_token")
             if not bearer_token:
@@ -906,7 +1039,7 @@ async def _test_watsonx_embedding(
                 )
                 # If error_details is still JSON, parse it to extract just the message
                 parsed_details = _parse_json_error_message(error_details)
-                raise Exception(f"IBM Watson API error: {parsed_details}")
+                raise Exception(parsed_details)
 
             data = response.json()
             if not data.get("results") or len(data["results"]) == 0:
@@ -925,7 +1058,7 @@ async def _test_watsonx_embedding(
             json_part = error_str.split("IBM Watson API error: ", 1)[1]
             parsed_message = _parse_json_error_message(json_part)
             if parsed_message != json_part:
-                raise Exception(f"IBM Watson API error: {parsed_message}") from e
+                raise Exception(parsed_message) from e
         raise
 
 
@@ -949,7 +1082,7 @@ async def _test_ollama_lightweight_health(endpoint: str) -> None:
                 logger.error(
                     f"Ollama lightweight health check failed: {response.status_code} - {error_details}"
                 )
-                raise Exception(f"Ollama endpoint not responding: {error_details}")
+                raise Exception(error_details)
 
             logger.info("Ollama lightweight health check passed")
 
@@ -1001,7 +1134,7 @@ async def _test_ollama_completion_with_tools(llm_model: str, endpoint: str) -> N
                 logger.error(
                     f"Ollama completion test failed: {response.status_code} - {error_details}"
                 )
-                raise Exception(f"Ollama API error: {error_details}")
+                raise Exception(error_details)
 
             logger.info("Ollama completion with tool calling test passed")
 
@@ -1036,7 +1169,7 @@ async def _test_ollama_embedding(embedding_model: str, endpoint: str) -> None:
                 logger.error(
                     f"Ollama embedding test failed: {response.status_code} - {error_details}"
                 )
-                raise Exception(f"Ollama API error: {error_details}")
+                raise Exception(error_details)
 
             data = response.json()
             if not data.get("embedding"):
@@ -1078,7 +1211,7 @@ async def _test_anthropic_lightweight_health(api_key: str) -> None:
                 logger.error(
                     f"Anthropic lightweight health check failed: {response.status_code} - {error_details}"
                 )
-                raise Exception(f"Anthropic API key validation failed: {error_details}")
+                raise Exception(error_details)
 
             logger.info("Anthropic lightweight health check passed")
 
@@ -1132,7 +1265,7 @@ async def _test_anthropic_completion_with_tools(api_key: str, llm_model: str) ->
                 logger.error(
                     f"Anthropic completion test failed: {response.status_code} - {error_details}"
                 )
-                raise Exception(f"Anthropic API error: {error_details}")
+                raise Exception(error_details)
 
             logger.info("Anthropic completion with tool calling test passed")
 

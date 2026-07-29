@@ -13,8 +13,7 @@ import json
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from api.provider_validation import validate_provider_setup, sanitize_provider_error_content
-
+from api.provider_validation import sanitize_provider_error_content, validate_provider_setup
 from api.settings.helpers import (
     _affected_embedding_models,
     _create_openrag_docs_filter,
