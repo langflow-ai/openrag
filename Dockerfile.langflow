@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.4
-FROM langflowai/langflow:base-0.11.1rc0
+FROM langflowai/langflow:base-0.11.1
 
 # Install uv and pre-create the Langflow data directory.
 # The base image already runs as uid=1000 and owns /app, so no root or chown needed.
@@ -10,7 +10,6 @@ RUN pip install --no-cache-dir \
     --extra-index-url https://download.pytorch.org/whl/cpu \
     torch==2.10.0 \
     torchvision==0.25.0 \
-    "fastapi<0.140.5" \
     docling \
     openai \
     langchain-openai \
