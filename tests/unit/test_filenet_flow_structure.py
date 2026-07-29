@@ -35,9 +35,7 @@ def test_filenet_node_exists_as_tool():
     node_def = node["data"]["node"]
     assert node_def["tool_mode"] is True
     outputs = node_def["outputs"]
-    assert any(
-        o.get("name") == "component_as_tool" and o.get("types") == ["Tool"] for o in outputs
-    )
+    assert any(o.get("name") == "component_as_tool" and o.get("types") == ["Tool"] for o in outputs)
 
 
 def test_filenet_edge_targets_agent_tools():

@@ -73,9 +73,7 @@ class LangflowMCPService:
 
         # Find the URL by scanning for http:// or https://
         for idx, arg in enumerate(args):
-            if isinstance(arg, str) and (
-                arg.startswith("http://") or arg.startswith("https://")
-            ):
+            if isinstance(arg, str) and (arg.startswith("http://") or arg.startswith("https://")):
                 url = arg
                 url_index = idx
                 break
@@ -348,7 +346,12 @@ class LangflowMCPService:
             else:
                 failed_count += 1
 
-        summary = {"patched": patched_count, "skipped": skipped_count, "failed": failed_count, "total": len(servers)}
+        summary = {
+            "patched": patched_count,
+            "skipped": skipped_count,
+            "failed": failed_count,
+            "total": len(servers),
+        }
         if failed_count == 0:
             logger.info("MCP servers URL update completed", **summary)
         else:

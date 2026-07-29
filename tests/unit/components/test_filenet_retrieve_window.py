@@ -29,10 +29,7 @@ from pathlib import Path
 import pytest
 
 _COMPONENT_PATH = (
-    Path(__file__).resolve().parents[3]
-    / "flows"
-    / "components"
-    / "filenet_retrieve_window.py"
+    Path(__file__).resolve().parents[3] / "flows" / "components" / "filenet_retrieve_window.py"
 )
 
 
@@ -119,7 +116,9 @@ def _install_lfx_stubs() -> None:
 
 
 _install_lfx_stubs()
-_spec = importlib.util.spec_from_file_location("filenet_retrieve_window_under_test", _COMPONENT_PATH)
+_spec = importlib.util.spec_from_file_location(
+    "filenet_retrieve_window_under_test", _COMPONENT_PATH
+)
 component = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(component)
 
@@ -301,8 +300,10 @@ def test_locate_window_caps_snippet_length():
 
 
 def test_locate_window_snaps_to_word_boundaries():
-    words = " ".join(f"word{i}" for i in range(200)) + " NEEDLE " + " ".join(
-        f"tail{i}" for i in range(200)
+    words = (
+        " ".join(f"word{i}" for i in range(200))
+        + " NEEDLE "
+        + " ".join(f"tail{i}" for i in range(200))
     )
     snippet, _ = component.locate_window(words, "needle", 200)
     core = snippet.strip("…").strip()

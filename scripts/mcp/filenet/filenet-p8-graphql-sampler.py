@@ -117,7 +117,7 @@ class DocRecord:
     doc_id: str
     name: str = ""
     date_created: str = ""
-    content_size: float | None = None      # SOURCE FILE bytes — not extract length
+    content_size: float | None = None  # SOURCE FILE bytes — not extract length
     mime_type: str = ""
     indexation_id: str | None = None
     indexing_failure: int | None = None
@@ -130,7 +130,7 @@ class DocRecord:
     extract_error: str = ""
     mode_b: bool = False
     # (i) ground truth
-    cbr_probe: str = "not-run"             # found | not-found | no-clean-phrase | error
+    cbr_probe: str = "not-run"  # found | not-found | no-clean-phrase | error
     # (iv)
     quality: dict = field(default_factory=dict)
 
@@ -377,8 +377,10 @@ def summarize(name: str, samples: list[float], extra: str = "") -> None:
     s = sorted(samples)
     p50 = s[len(s) // 2]
     p95 = s[min(len(s) - 1, int(round(0.95 * (len(s) - 1))))]
-    print(f"  {name:<44s} n={len(s):3d}  p50={p50:8.1f}ms  p95={p95:8.1f}ms  "
-          f"min={s[0]:7.1f}  max={s[-1]:7.1f}  {extra}")
+    print(
+        f"  {name:<44s} n={len(s):3d}  p50={p50:8.1f}ms  p95={p95:8.1f}ms  "
+        f"min={s[0]:7.1f}  max={s[-1]:7.1f}  {extra}"
+    )
 
 
 def latency_targets(recs: list[DocRecord]) -> list[tuple[str, DocRecord]]:
@@ -427,8 +429,11 @@ def run_latency(client: httpx.Client, url: str, store: str, recs: list[DocRecord
     if len(search_p50) >= 2:
         lo, hi = min(search_p50), max(search_p50)
         ratio = search_p50[hi] / search_p50[lo] if search_p50[lo] else 0
-        verdict = ("scales with result count -> cap max_results"
-                   if ratio > 1.5 else "flat -> cost is the CBR scan, not the row count")
+        verdict = (
+            "scales with result count -> cap max_results"
+            if ratio > 1.5
+            else "flat -> cost is the CBR scan, not the row count"
+        )
         print(f"    -> {lo}->{hi} rows costs {ratio:.2f}x : {verdict}")
 
     # ---- Tier 1b: split the two round trips, across the size distribution --
@@ -457,8 +462,10 @@ def run_latency(client: httpx.Client, url: str, store: str, recs: list[DocRecord
         summarize(f"{tag} download GET", dl_ms, f"{per_kb:.2f}ms/KB")
         if ann_ms and dl_ms:
             a, d = sorted(ann_ms)[len(ann_ms) // 2], sorted(dl_ms)[len(dl_ms) // 2]
-            print(f"    -> {'download' if d > a else 'annotations query'} dominates "
-                  f"({max(a, d) / max(min(a, d), 0.001):.1f}x)")
+            print(
+                f"    -> {'download' if d > a else 'annotations query'} dominates "
+                f"({max(a, d) / max(min(a, d), 0.001):.1f}x)"
+            )
 
     # ---- Tier 2: realistic shape, serial vs parallel ----------------------
     print("\nTIER 2 — search + K fetches, SERIAL vs PARALLEL")
@@ -468,6 +475,7 @@ def run_latency(client: httpx.Client, url: str, store: str, recs: list[DocRecord
     if not fetchable:
         print("  no fetchable documents available")
     else:
+
         def one_fetch(rec: DocRecord) -> int:
             durl = fetch_annotation(client, url, store, rec)
             if not durl:
@@ -482,9 +490,11 @@ def run_latency(client: httpx.Client, url: str, store: str, recs: list[DocRecord
             for _ in range(reps):
                 _, ms = timed(lambda b=batch: [one_fetch(r) for r in b])
                 ser.append(ms)
+
                 def run_parallel(b=batch):
                     with cf.ThreadPoolExecutor(max_workers=len(b)) as ex:
                         return list(ex.map(one_fetch, b))
+
                 _, ms = timed(run_parallel)
                 par.append(ms)
             summarize(f"K={k} serial   ({2 * k} round trips)", ser)
@@ -494,14 +504,18 @@ def run_latency(client: httpx.Client, url: str, store: str, recs: list[DocRecord
             if ser and par:
                 sp = sorted(ser)[len(ser) // 2] / max(sorted(par)[len(par) // 2], 0.001)
                 if sp < 1.3:
-                    print(f"    -> speedup {sp:.2f}x : *** PARALLELISM DOES NOT HOLD *** "
-                          "CPE is serialising or throttling; §1.b.2's latency model is wrong.")
+                    print(
+                        f"    -> speedup {sp:.2f}x : *** PARALLELISM DOES NOT HOLD *** "
+                        "CPE is serialising or throttling; §1.b.2's latency model is wrong."
+                    )
                 else:
                     print(f"    -> speedup {sp:.2f}x : parallel fetch is effective")
 
     # ---- optional: concurrent users --------------------------------------
     if args.concurrent > 1:
-        print(f"\nTIER 2b — {args.concurrent} CONCURRENT queries (CPE queueing under shared identity)")
+        print(
+            f"\nTIER 2b — {args.concurrent} CONCURRENT queries (CPE queueing under shared identity)"
+        )
         sql = cbr_sql(args.term, 10)
 
         def one_search():
@@ -519,14 +533,18 @@ def run_latency(client: httpx.Client, url: str, store: str, recs: list[DocRecord
 
     # ---- verdict against the agreed budget --------------------------------
     print("\n" + "-" * 78)
-    print(f"BUDGET CHECK — retrieval-only target p95 <= {args.target_ms:.0f}ms "
-          "(excludes LLM turns; agree this number before quoting it)")
+    print(
+        f"BUDGET CHECK — retrieval-only target p95 <= {args.target_ms:.0f}ms "
+        "(excludes LLM turns; agree this number before quoting it)"
+    )
     search_ms = search_p50.get(10, 0.0)
     if search_ms and 5 in p95_par:
         total = search_ms + p95_par[5]
         verdict = "PASS" if total <= args.target_ms else "FAIL"
-        print(f"  modelled retrieval @ K=5 = search p50 {search_ms:.0f}ms "
-              f"+ parallel-fetch p95 {p95_par[5]:.0f}ms = {total:.0f}ms   ->  {verdict}")
+        print(
+            f"  modelled retrieval @ K=5 = search p50 {search_ms:.0f}ms "
+            f"+ parallel-fetch p95 {p95_par[5]:.0f}ms = {total:.0f}ms   ->  {verdict}"
+        )
         if verdict == "FAIL":
             print("  Fixes, in leverage order: (1) pre-resolve the prerequisite chain at")
             print("  startup; (2) fetch lazily — rank first, fetch only cited documents;")
@@ -564,7 +582,12 @@ def report(recs: list[DocRecord]) -> None:
 
     # (iii) THE GAP — findable but unfetchable.
     gap = [r for r in proxy_indexed if not (r.has_txe_annotation and r.has_download_url)]
-    reverse_gap = [r for r in recs if (r.has_txe_annotation and r.has_download_url) and not (r.indexation_id and not r.indexing_failure)]
+    reverse_gap = [
+        r
+        for r in recs
+        if (r.has_txe_annotation and r.has_download_url)
+        and not (r.indexation_id and not r.indexing_failure)
+    ]
 
     print("=" * 78)
     print(f"STEP 4 COVERAGE REPORT — sample size {n}")
@@ -577,6 +600,7 @@ def report(recs: list[DocRecord]) -> None:
         span_days = 0
         try:
             from datetime import date
+
             d0 = date.fromisoformat(dates[0])
             d1 = date.fromisoformat(dates[-1])
             span_days = (d1 - d0).days
@@ -594,24 +618,32 @@ def report(recs: list[DocRecord]) -> None:
         top = sorted(mimes.items(), key=lambda kv: -kv[1])[:4]
         print("  mime mix: " + ", ".join(f"{m.split('/')[-1][:28]}={c}" for m, c in top))
     print("\n(i)   CBR-index rate (proxy: IndexationId set, no failure code)")
-    print(f"      {len(proxy_indexed)}/{n} = {len(proxy_indexed)/n:.1%}")
+    print(f"      {len(proxy_indexed)}/{n} = {len(proxy_indexed) / n:.1%}")
     if probed:
-        print(f"      ground-truth CONTAINS() probe: {len(probe_found)}/{len(probed)} = "
-              f"{len(probe_found)/len(probed):.1%} of probed documents found by their own text")
-        agree = sum(1 for r in probed if (r.cbr_probe == "found") == bool(r.indexation_id and not r.indexing_failure))
-        print(f"      proxy/ground-truth agreement: {agree}/{len(probed)}"
-              f"{'  <-- PROXY VALIDATED' if agree == len(probed) else '  <-- PROXY UNRELIABLE, trust the probe'}")
+        print(
+            f"      ground-truth CONTAINS() probe: {len(probe_found)}/{len(probed)} = "
+            f"{len(probe_found) / len(probed):.1%} of probed documents found by their own text"
+        )
+        agree = sum(
+            1
+            for r in probed
+            if (r.cbr_probe == "found") == bool(r.indexation_id and not r.indexing_failure)
+        )
+        print(
+            f"      proxy/ground-truth agreement: {agree}/{len(probed)}"
+            f"{'  <-- PROXY VALIDATED' if agree == len(probed) else '  <-- PROXY UNRELIABLE, trust the probe'}"
+        )
 
     print("\n(ii)  TXE-annotation rate (upstream filter applied)")
-    print(f"      {len(annotated)}/{n} = {len(annotated)/n:.1%}")
+    print(f"      {len(annotated)}/{n} = {len(annotated) / n:.1%}")
     only_ann = sum(1 for r in recs if r.has_txe_annotation and not r.has_download_url)
     if only_ann:
-        print(f"      WARNING: {only_ann} have an annotation but NO downloadUrl -> tool returns \"\"")
+        print(f'      WARNING: {only_ann} have an annotation but NO downloadUrl -> tool returns ""')
 
     print("\n(iii) THE GAP — CBR-indexed but not fetchable  (Mode A at corpus scale)")
-    print(f"      {len(gap)}/{n} = {len(gap)/n:.1%}  <-- the number that decides this feature")
+    print(f"      {len(gap)}/{n} = {len(gap) / n:.1%}  <-- the number that decides this feature")
     if gap:
-        print("      These are findable by search and return \"\" on fetch: confident,")
+        print('      These are findable by search and return "" on fetch: confident,')
         print("      sourceless answers with nothing in the logs (see §4.a).")
         for r in gap[:5]:
             print(f"        - {r.doc_id} {r.name}")
@@ -629,10 +661,12 @@ def report(recs: list[DocRecord]) -> None:
         for r in fetched:
             shapes[r.quality.get("shape", "?")] = shapes.get(r.quality.get("shape", "?"), 0) + 1
         for shape, count in sorted(shapes.items(), key=lambda kv: -kv[1]):
-            print(f"      {shape:22s} {count}/{len(fetched)} = {count/len(fetched):.1%}")
+            print(f"      {shape:22s} {count}/{len(fetched)} = {count / len(fetched):.1%}")
         fig = shapes.get("figure/table-driven", 0)
         if fig:
-            print(f"      -> {fig/len(fetched):.0%} of fetchable documents carry their information in")
+            print(
+                f"      -> {fig / len(fetched):.0%} of fetchable documents carry their information in"
+            )
             print("         figures/tables, which the extract does NOT contain. An extract exists,")
             print("         is fetchable, and is still not an answer (§4.a).")
 
@@ -644,22 +678,28 @@ def report(recs: list[DocRecord]) -> None:
         print(f"        U+FFFD (UNRECOVERABLE, breaks exact search):  {unrec:,}")
         print(f"        ligatures (recoverable via NFKC):             {lig:,}")
         print(f"        run-on token groups (break windowing):        {runon:,}")
-        print(f"        corrupted-word rate:                          {(unrec+lig)/words:.2%}")
+        print(f"        corrupted-word rate:                          {(unrec + lig) / words:.2%}")
         affected = sum(1 for r in fetched if r.quality.get("replacement_chars_UNRECOVERABLE", 0))
         print(f"        documents with >=1 unrecoverable loss:        {affected}/{len(fetched)}")
 
     sizes = [float(r.annotation_content_size) for r in recs if r.annotation_content_size]
     if sizes:
         print("\n      extract contentSize distribution (chars) — sets the windowing cap:")
-        print(f"        n={len(sizes)}  min={min(sizes):,.0f}  median={statistics.median(sizes):,.0f}"
-              f"  p95={pctl(sizes, 0.95):,.0f}  max={max(sizes):,.0f}")
-        print(f"        approx tokens at p95: {pctl(sizes, 0.95)/4:,.0f}"
-              f"   at K=5: {5*pctl(sizes, 0.95)/4:,.0f}")
+        print(
+            f"        n={len(sizes)}  min={min(sizes):,.0f}  median={statistics.median(sizes):,.0f}"
+            f"  p95={pctl(sizes, 0.95):,.0f}  max={max(sizes):,.0f}"
+        )
+        print(
+            f"        approx tokens at p95: {pctl(sizes, 0.95) / 4:,.0f}"
+            f"   at K=5: {5 * pctl(sizes, 0.95) / 4:,.0f}"
+        )
 
     srcs = [float(r.content_size) for r in recs if r.content_size]
     if srcs and sizes:
-        print("\n      reminder: source ContentSize does NOT predict extract length"
-              " (measured ~149 bytes/char on one 2.9 MB PDF). Do not pre-filter on it.")
+        print(
+            "\n      reminder: source ContentSize does NOT predict extract length"
+            " (measured ~149 bytes/char on one 2.9 MB PDF). Do not pre-filter on it."
+        )
 
     print("\n" + "=" * 78)
     print("DECISION GUIDE")
@@ -673,36 +713,67 @@ def report(recs: list[DocRecord]) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser(description="FileNet P8 Step 4 coverage sampler")
     ap.add_argument("--sample", type=int, default=40, help="documents to sample (default 40)")
-    ap.add_argument("--ids-file", help="file of document GUIDs, one per line (skips SQL enumeration)")
-    ap.add_argument("--no-verify-ssl", action="store_true", help="skip TLS verification (spike only)")
-    ap.add_argument("--keep-junk", action="store_true",
-                    help=f"include sub-{JUNK_MIN_BYTES}B / archive objects (excluded by default)")
-    ap.add_argument("--no-cbr-probe", action="store_true", help="skip the ground-truth CONTAINS() probe")
+    ap.add_argument(
+        "--ids-file", help="file of document GUIDs, one per line (skips SQL enumeration)"
+    )
+    ap.add_argument(
+        "--no-verify-ssl", action="store_true", help="skip TLS verification (spike only)"
+    )
+    ap.add_argument(
+        "--keep-junk",
+        action="store_true",
+        help=f"include sub-{JUNK_MIN_BYTES}B / archive objects (excluded by default)",
+    )
+    ap.add_argument(
+        "--no-cbr-probe", action="store_true", help="skip the ground-truth CONTAINS() probe"
+    )
     ap.add_argument("--timeout", type=float, default=60.0)
     ap.add_argument("--json", help="also write the raw per-document records here")
-    ap.add_argument("--latency", action="store_true",
-                    help="run the Tier 1/2 latency sweep instead of the coverage report")
+    ap.add_argument(
+        "--latency",
+        action="store_true",
+        help="run the Tier 1/2 latency sweep instead of the coverage report",
+    )
     ap.add_argument("--reps", type=int, default=5, help="repetitions per timing (default 5)")
     ap.add_argument("--term", default="report", help="CBR search term for latency timing")
-    ap.add_argument("--concurrent", type=int, default=1,
-                    help="also run N concurrent searches (Tier 2b); 1 disables")
-    ap.add_argument("--target-ms", type=float, default=3000.0,
-                    help="retrieval-only p95 budget to check against (default 3000)")
+    ap.add_argument(
+        "--concurrent",
+        type=int,
+        default=1,
+        help="also run N concurrent searches (Tier 2b); 1 disables",
+    )
+    ap.add_argument(
+        "--target-ms",
+        type=float,
+        default=3000.0,
+        help="retrieval-only p95 budget to check against (default 3000)",
+    )
     args = ap.parse_args()
 
     url = os.environ.get("CPE_URL", "").strip()
     user = os.environ.get("CPE_USER", "").strip()
     password = os.environ.get("CPE_PASSWORD", "")
     store = os.environ.get("OBJECT_STORE", "").strip()
-    missing = [k for k, v in
-               {"CPE_URL": url, "CPE_USER": user, "CPE_PASSWORD": password, "OBJECT_STORE": store}.items() if not v]
+    missing = [
+        k
+        for k, v in {
+            "CPE_URL": url,
+            "CPE_USER": user,
+            "CPE_PASSWORD": password,
+            "OBJECT_STORE": store,
+        }.items()
+        if not v
+    ]
     if missing:
         print(f"error: missing environment variable(s): {', '.join(missing)}", file=sys.stderr)
         print(__doc__.split("Usage:")[-1], file=sys.stderr)
         return 2
     if url.endswith("/"):
-        print("error: CPE_URL must not end with '/' — a trailing slash silently breaks "
-              "downloadUrl resolution and produces Mode B errors (§4.a).", file=sys.stderr)
+        print(
+            "error: CPE_URL must not end with '/' — a trailing slash silently breaks "
+            "downloadUrl resolution and produces Mode B errors (§4.a).",
+            file=sys.stderr,
+        )
         return 2
 
     client = httpx.Client(
@@ -723,14 +794,19 @@ def main() -> int:
             try:
                 recs, junk = enumerate_documents(client, url, store, args.sample, args.keep_junk)
                 if junk:
-                    print(f"Excluded {len(junk)} seed/scratch object(s) "
-                          f"(<{JUNK_MIN_BYTES}B or archive MIME) — pass --keep-junk to include them.")
+                    print(
+                        f"Excluded {len(junk)} seed/scratch object(s) "
+                        f"(<{JUNK_MIN_BYTES}B or archive MIME) — pass --keep-junk to include them."
+                    )
                     for j in junk[:5]:
                         print(f"    - {j.name} ({j.mime_type}, {j.content_size:.0f}B)")
             except Exception as exc:
                 print(f"error: enumeration failed: {exc}", file=sys.stderr)
-                print("hint: FileNet SQL dialects vary; adjust ENUM_SQL at the top of this "
-                      "file, or pass --ids-file with GUIDs exported from ACCE.", file=sys.stderr)
+                print(
+                    "hint: FileNet SQL dialects vary; adjust ENUM_SQL at the top of this "
+                    "file, or pass --ids-file with GUIDs exported from ACCE.",
+                    file=sys.stderr,
+                )
                 return 1
             print(f"Enumerated {len(recs)} document(s)")
 
@@ -770,7 +846,9 @@ def main() -> int:
             if not args.no_cbr_probe:
                 phrase = clean_phrase(text)
                 rec.cbr_probe = (
-                    cbr_probe(client, url, store, phrase, rec.doc_id) if phrase else "no-clean-phrase"
+                    cbr_probe(client, url, store, phrase, rec.doc_id)
+                    if phrase
+                    else "no-clean-phrase"
                 )
 
     print()

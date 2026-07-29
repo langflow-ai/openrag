@@ -100,9 +100,7 @@ def validate_environment(env: Mapping[str, str]) -> list[str]:
     server_url = env.get("SERVER_URL", "").strip()
     if server_url:
         if not server_url.startswith(("http://", "https://")):
-            errors.append(
-                f"SERVER_URL must start with http:// or https:// (got: {server_url!r})."
-            )
+            errors.append(f"SERVER_URL must start with http:// or https:// (got: {server_url!r}).")
         if server_url.endswith("/"):
             errors.append(
                 "SERVER_URL must not end with a trailing slash: the IBM client "
@@ -236,9 +234,7 @@ async def run_cpe_diagnostics(
                 "credentials; note Basic auth requires the account password, "
                 "not a Zen API key)."
             )
-            logger.warning(
-                "CPE GraphQL TXE probe failed. Status: %s.", response.status_code
-            )
+            logger.warning("CPE GraphQL TXE probe failed. Status: %s.", response.status_code)
             return result
 
         result["cpe_reachable"] = True
@@ -257,9 +253,7 @@ async def run_cpe_diagnostics(
             result["txe_annotation_class_present"],
         )
 
-        logger.info(
-            "Probing CPE GraphQL for isCBREnabled on class %r...", document_class
-        )
+        logger.info("Probing CPE GraphQL for isCBREnabled on class %r...", document_class)
         try:
             response = await client.post(
                 server_url,
@@ -371,8 +365,7 @@ def _bootstrap_with_retry(retries: int, base_delay: float) -> Any:
         except Exception as error:
             if attempt >= retries:
                 logger.error(
-                    "Failed to bootstrap the IBM MCP server after %d attempts. "
-                    "Error: %s.",
+                    "Failed to bootstrap the IBM MCP server after %d attempts. Error: %s.",
                     attempt,
                     error,
                 )
@@ -462,9 +455,7 @@ def main() -> None:
         logger.info("Bearer-token authentication is ENABLED for the sidecar.")
         app.add_middleware(BearerTokenMiddleware, token=token)
     else:
-        logger.info(
-            "Bearer-token authentication is DISABLED (FILENET_MCP_AUTH_TOKEN unset)."
-        )
+        logger.info("Bearer-token authentication is DISABLED (FILENET_MCP_AUTH_TOKEN unset).")
 
     host = os.environ.get("FILENET_MCP_HOST", DEFAULT_HOST).strip() or DEFAULT_HOST
     port = get_port(os.environ)

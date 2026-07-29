@@ -12,9 +12,7 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import pytest
 
-_SERVER_PATH = (
-    Path(__file__).resolve().parents[3] / "sidecars" / "filenet_mcp" / "server.py"
-)
+_SERVER_PATH = Path(__file__).resolve().parents[3] / "sidecars" / "filenet_mcp" / "server.py"
 
 _spec = importlib.util.spec_from_file_location("filenet_mcp_server_under_test", _SERVER_PATH)
 server = importlib.util.module_from_spec(_spec)
@@ -156,7 +154,9 @@ def _client(*responses, side_effect=None):
     return client
 
 
-_TXE_OK = {"data": {"classDescription": {"id": "{63BC...}", "symbolicName": "TxeTextExtractAnnotation"}}}
+_TXE_OK = {
+    "data": {"classDescription": {"id": "{63BC...}", "symbolicName": "TxeTextExtractAnnotation"}}
+}
 _CBR_OK = {"data": {"classDescription": {"symbolicName": "Document", "isCBREnabled": True}}}
 
 
