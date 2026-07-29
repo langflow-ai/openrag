@@ -19,6 +19,7 @@ _COMPOSITE_SORT_FIELDS: dict[str, str] = {
     "mimetype": "mimetype",
     "indexed_time": "indexed_time",
     "connector_type": "connector_type",
+    "embedding_model": "embedding_model",
 }
 
 # fall back to filename composite sort,then re-sort the returned page in python
@@ -55,7 +56,7 @@ class FileServiceV2:
         opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
 
         query = self._build_filter_query(user_id, connector_type, mimetype, owner, search)
-        total = await self._get_file_count(opensearch_client, query)
+        total, is_approximate = await self._get_file_count(opensearch_client, query)
 
         use_python_sort = sort_by in _PYTHON_SORT_FIELDS
         composite_sort_field = "filename" if use_python_sort else _COMPOSITE_SORT_FIELDS.get(sort_by, "filename")
@@ -81,9 +82,12 @@ class FileServiceV2:
                 raise
             return {"files": [], "total": 0, "page": page, "page_size": page_size, "after_key": None}
 
+        raw_bucket_count = len(
+            result.get("aggregations", {}).get("files", {}).get("buckets", [])
+        )
         files, next_after_key = self._parse_composite_buckets(result)
 
-        if len(files) < page_size: #final page, no after_key
+        if raw_bucket_count < page_size:  # final page, no after_key
             next_after_key = None
 
         if use_python_sort:
@@ -96,6 +100,7 @@ class FileServiceV2:
         return {
             "files": files,
             "total": total,
+            "is_approximate": is_approximate,
             "page": page,
             "page_size": page_size,
             "after_key": next_after_key,
@@ -230,8 +235,13 @@ class FileServiceV2:
             },
         }
 
-    async def _get_file_count(self, opensearch_client: Any, query: dict[str, Any]) -> int:
-        """Approximate unique-filename count via cardinality aggregation (O(1))."""
+    async def _get_file_count(self, opensearch_client: Any, query: dict[str, Any]) -> tuple[int, bool]:
+        """Approximate unique-filename count via cardinality aggregation (O(1)).
+
+        Returns (count, is_approximate).  is_approximate is always True on
+        success (cardinality agg is inherently approximate) and False when the
+        aggregation fails and 0 is returned as a fallback.
+        """
         body = {
             "size": 0,
             "query": query,
@@ -246,9 +256,10 @@ class FileServiceV2:
         }
         try:
             result = await opensearch_client.search(index=get_index_name(), body=body)
-            return result.get("aggregations", {}).get("file_count", {}).get("value", 0)
-        except Exception:
-            return 0
+            return result.get("aggregations", {}).get("file_count", {}).get("value", 0), True
+        except Exception as e:
+            logger.warning("Failed to retrieve file count; pagination total will show 0", error=str(e))
+            return 0, False
 
     def _parse_composite_buckets(
         self, result: dict[str, Any]

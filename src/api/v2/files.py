@@ -7,7 +7,7 @@ Cursor-based: pass `after_key` (JSON-encoded) to advance pages.
 
 import json
 
-from fastapi import Depends, Query
+from fastapi import Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 from dependencies import get_current_user, get_session_manager
@@ -23,11 +23,29 @@ def _get_file_service(session_manager=Depends(get_session_manager)):
     return FileServiceV2(session_manager=session_manager)
 
 
+def _parse_after_key(after_key: str | None) -> dict | None:
+    """Parse a JSON-encoded composite cursor.
+
+    Returns None when after_key is absent.
+    Raises HTTPException 400 when the value is present but is not valid JSON
+    or does not decode to a dict (e.g. a bare string or number is invalid).
+    """
+    if not after_key:
+        return None
+    try:
+        parsed = json.loads(after_key)
+    except (json.JSONDecodeError, ValueError):
+        raise HTTPException(status_code=400, detail="after_key is not valid JSON")
+    if not isinstance(parsed, dict):
+        raise HTTPException(status_code=400, detail="after_key must be a JSON object")
+    return parsed
+
+
 async def list_files(
     page: int = Query(1, ge=1, description="Page number (for display only; navigation uses after_key cursor)"),
     page_size: int = Query(25, ge=1, le=500, description="Items per page"),
     sort_by: str = Query("filename", description="Sort field"),
-    sort_order: str = Query("asc", regex="^(asc|desc)$", description="Sort order"),
+    sort_order: str = Query("asc", pattern="^(asc|desc)$", description="Sort order"),
     connector_type: str | None = Query(None, description="Filter by connector type"),
     mimetype: str | None = Query(None, description="Filter by MIME type"),
     owner: str | None = Query(None, description="Filter by owner"),
@@ -37,12 +55,7 @@ async def list_files(
     user: User = Depends(get_current_user),
 ):
     """List ingested files with composite-aggregation pagination, filtering, and sorting."""
-    parsed_after_key: dict | None = None
-    if after_key:
-        try:
-            parsed_after_key = json.loads(after_key)
-        except (json.JSONDecodeError, ValueError):
-            parsed_after_key = None
+    parsed_after_key = _parse_after_key(after_key)
 
     try:
         result = await file_service.list_files(
@@ -83,12 +96,7 @@ async def search_files(
     user: User = Depends(get_current_user),
 ):
     """Search files by name with fuzzy/partial matching (v2 — composite pagination)."""
-    parsed_after_key: dict | None = None
-    if after_key:
-        try:
-            parsed_after_key = json.loads(after_key)
-        except (json.JSONDecodeError, ValueError):
-            parsed_after_key = None
+    parsed_after_key = _parse_after_key(after_key)
 
     try:
         result = await file_service.search_files(

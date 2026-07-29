@@ -20,6 +20,7 @@ export interface ListFilesParams {
 export interface ListFilesResponse {
   files: File[];
   total: number;
+  is_approximate: boolean;
   page: number;
   page_size: number;
   after_key: Record<string, unknown> | null;
@@ -46,7 +47,6 @@ export const useListFiles = (
     if (params.afterKey)
       searchParams.set("after_key", JSON.stringify(params.afterKey));
 
-    // const url = `/api/files?${searchParams.toString()}`;
     const url = `/api/v2/files?${searchParams.toString()}`; //v2 endpoint
 
     const response = await fetch(url);
@@ -84,6 +84,7 @@ export const useListFiles = (
     const result: ListFilesResponse = {
       files,
       total: data.total || 0,
+      is_approximate: data.is_approximate ?? true,
       page: data.page || 1,
       page_size: data.page_size || 25,
       after_key: data.after_key ?? null,

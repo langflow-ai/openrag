@@ -513,11 +513,6 @@ function SearchPage() {
     const newSortOrder: "asc" | "desc" =
       sortedCol?.sort === "desc" ? "desc" : "asc";
 
-    console.log(
-      `%c[sort]     sortBy=${newSortBy}  sortOrder=${newSortOrder}`,
-      "color: #e67e22; font-weight: bold",
-    );
-
     // Changing sort invalidates all cursors; reset to page 1
     cursorCacheRef.current = new Map();
     setCurrentPage(1);
@@ -1205,6 +1200,7 @@ function SearchPage() {
                 type="button"
                 aria-label="Back to first page"
                 aria-disabled={currentPage <= 1}
+                disabled={currentPage <= 1}
                 style={{ ...pageBtnStyle(currentPage <= 1), marginRight: -8 }}
                 onClick={() => {
                   if (currentPage > 1) {
@@ -1219,6 +1215,7 @@ function SearchPage() {
                 type="button"
                 aria-label="Previous page"
                 aria-disabled={currentPage <= 1}
+                disabled={currentPage <= 1}
                 style={pageBtnStyle(currentPage <= 1)}
                 onClick={() => {
                   if (currentPage > 1) setCurrentPage((p) => p - 1);
@@ -1233,6 +1230,7 @@ function SearchPage() {
                 type="button"
                 aria-label="Next page"
                 aria-disabled={currentPage >= totalPages}
+                disabled={currentPage >= totalPages}
                 style={pageBtnStyle(currentPage >= totalPages)}
                 onClick={() => {
                   if (currentPage < totalPages) setCurrentPage((p) => p + 1);
