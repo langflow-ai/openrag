@@ -32,7 +32,7 @@ def test_format_provider_error_message_extracts_ibm_iam_error_message():
         '"context":{"requestId":"abc","url":"https://iam.cloud.ibm.com"}}'
     )
     assert agent_module._format_provider_error_message(Exception(raw)) == (
-        "Provided API key could not be found."
+        "Provided API key is Invalid."
     )
 
 
@@ -53,8 +53,8 @@ def test_provider_error_display_text_drops_error_like_partial():
         '{"errorMessage":"Provided API key could not be found."}'
     )
     assert (
-        agent_module._provider_error_display_text("Provided API key could not be found.", partial)
-        == "Provided API key could not be found."
+        agent_module._provider_error_display_text("Provided API key is Invalid.", partial)
+        == "Provided API key is Invalid."
     )
 
 
@@ -376,7 +376,7 @@ async def test_langflow_stream_treats_credential_dump_content_as_error(
     assert any(c.get("status") == "failed" for c in chunks)
     error_chunk = next(c for c in chunks if c.get("status") == "failed")
     assert "{" not in error_chunk["error"]["message"]
-    assert "Provided API key could not be found" in error_chunk["error"]["message"]
+    assert "Provided API key is Invalid" in error_chunk["error"]["message"]
     assert store_in_memory["stored"] == [(user_id, "resp_dump")]
     assert store_in_memory["claimed"] == [(user_id, "resp_dump")]
     stored = agent_module.active_conversations[user_id]["resp_dump"]
