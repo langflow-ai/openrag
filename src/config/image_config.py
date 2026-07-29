@@ -193,14 +193,14 @@ def validate_image_reachable(image_ref: str, runtime: str = "docker") -> None:
             text=True,
             timeout=30,
         )
-    except FileNotFoundError:
+    except FileNotFoundError as exc:
         raise RegistryUnreachableError(
             f"Container runtime {runtime!r} not found on PATH."
-        )
-    except subprocess.TimeoutExpired:
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
         raise RegistryUnreachableError(
             f"Timed out contacting registry for {image_ref!r}."
-        )
+        ) from exc
 
     if result.returncode == 0:
         return  # Image exists — all good.
