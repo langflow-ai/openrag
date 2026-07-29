@@ -787,7 +787,9 @@ export function IngestSettingsSection() {
                         id="disable-ingest-with-langflow"
                         checked={disableIngestWithLangflow}
                         disabled={
-                          isSaas && pictureDescriptions && !disableIngestWithLangflow
+                          isSaas &&
+                          pictureDescriptions &&
+                          !disableIngestWithLangflow
                         }
                         onCheckedChange={(checked) => {
                           setDisableIngestWithLangflow(checked);
@@ -858,11 +860,14 @@ export function IngestSettingsSection() {
                         id="picture-descriptions"
                         checked={pictureDescriptions}
                         disabled={
-                          isSaas && disableIngestWithLangflow && !pictureDescriptions
+                          isSaas &&
+                          disableIngestWithLangflow &&
+                          !pictureDescriptions
                         }
                         onCheckedChange={(checked) => {
                           setPictureDescriptions(checked);
-                          if (isSaas && checked) setDisableIngestWithLangflow(false);
+                          if (isSaas && checked)
+                            setDisableIngestWithLangflow(false);
                         }}
                       />
                     </div>
@@ -871,7 +876,9 @@ export function IngestSettingsSection() {
                     disableIngestWithLangflow &&
                     !pictureDescriptions && (
                       <TooltipContent>
-                        <p>Unavailable while Disable Langflow Ingestion is on.</p>
+                        <p>
+                          Unavailable while Disable Langflow Ingestion is on.
+                        </p>
                       </TooltipContent>
                     )}
                 </Tooltip>
