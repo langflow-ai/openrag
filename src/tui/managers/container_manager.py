@@ -1,6 +1,7 @@
 """Container lifecycle manager for OpenRAG TUI."""
 
 import asyncio
+import functools
 import json
 import os
 import re
@@ -10,11 +11,18 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 
+from config.image_config import (
+    ImageNotFoundError,
+    MalformedImageRefError,
+    RegistryAuthError,
+    RegistryUnreachableError,
+    all_openrag_repos,
+    validate_image_reachable,
+)
 from utils.gpu_detection import detect_gpu_devices
 from utils.logging_config import get_logger
 
 from ..utils.platform import PlatformDetector, RuntimeInfo, RuntimeType
-from config.image_config import all_openrag_repos
 
 try:
     from importlib.resources import files
@@ -1142,15 +1150,6 @@ class ContainerManager:
 
         if missing_images:
             # Validate that each OpenRAG-owned image is reachable before pulling.
-            from config.image_config import (
-                all_openrag_repos,
-                validate_image_reachable,
-                ImageNotFoundError,
-                RegistryUnreachableError,
-                RegistryAuthError,
-                MalformedImageRefError,
-            )
-            openrag_repos = all_openrag_repos()
             runtime_cmd = self.runtime_info.runtime_command[0] if self.runtime_info.runtime_command else "docker"
             for image in missing_images:
                 # Only validate images owned by OpenRAG (skip third-party images).
@@ -1158,8 +1157,9 @@ class ContainerManager:
                 if not self._is_openrag_repository(repo):
                     continue
                 try:
-                    await asyncio.get_event_loop().run_in_executor(
-                        None, lambda img=image: validate_image_reachable(img, runtime_cmd)
+                    await asyncio.get_running_loop().run_in_executor(
+                        None,
+                        functools.partial(validate_image_reachable, image, runtime_cmd),
                     )
                 except (ImageNotFoundError, RegistryAuthError, MalformedImageRefError,
                         RegistryUnreachableError) as exc:
