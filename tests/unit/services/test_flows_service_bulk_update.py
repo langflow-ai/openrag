@@ -211,3 +211,50 @@ async def test_bulk_update_flows_dismissal_cleared_only_on_success():
 
     assert results[0]["success"] is True
     assert "retrieval" not in service._dismissed_updates.get("user_A", set())
+
+
+@pytest.mark.asyncio
+async def test_ensure_flows_exist_does_not_auto_update_on_startup():
+    """Verify that existing flows are skipped on startup and never auto-updated."""
+    service = FlowsService()
+
+    mock_get_ok = MagicMock(status_code=200)
+    mock_get_ok.json.return_value = {
+        "id": "flow-retrieval-123",
+        "name": "Retrieval Flow",
+        "locked": True,
+        "updated_at": "2020-01-01T00:00:00Z",
+    }
+
+    reset_mock = AsyncMock()
+    backup_mock = AsyncMock()
+
+    with (
+        patch("services.flows_service.clients.langflow_request", return_value=mock_get_ok),
+        patch.object(service, "_backup_flow", backup_mock),
+        patch.object(service, "_reset_langflow_flow_locked", reset_mock),
+    ):
+        created = await service.ensure_flows_exist()
+
+    assert created == set()
+    assert backup_mock.call_count == 0
+    assert reset_mock.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_get_flows_updates_available_includes_all_flows():
+    """Verify that get_flows_updates_available surfaces updates regardless of locked status."""
+    service = FlowsService()
+
+    mock_update_info = {
+        "flow_type": "retrieval",
+        "flow_id": "flow-retrieval-123",
+        "is_custom": False,
+    }
+
+    with patch.object(service, "_check_flow_update", AsyncMock(return_value=mock_update_info)):
+        updates = await service.get_flows_updates_available()
+
+    assert len(updates) == 4
+    assert all(u["flow_type"] in ["nudges", "retrieval", "ingest", "url_ingest"] for u in updates)
+

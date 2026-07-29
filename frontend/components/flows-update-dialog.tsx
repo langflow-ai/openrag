@@ -95,7 +95,7 @@ export function FlowsUpdateDialog() {
         <DialogHeader>
           <DialogTitle>Flow Updates Available</DialogTitle>
           <DialogDescription>
-            There are updates available for custom Langflow flows.
+            There are updates available for your Langflow flows.
           </DialogDescription>
         </DialogHeader>
 
@@ -124,12 +124,12 @@ export function FlowsUpdateDialog() {
           >
             <AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-500" />
             <AlertTitle className="text-yellow-800 dark:text-yellow-400">
-              Custom Flows Detected
+              Flow Updates Detected
             </AlertTitle>
             <AlertDescription className="text-yellow-700 dark:text-yellow-300">
-              You have modified some of these flows. Updating will overwrite
-              your custom changes, but backup flows will be created in Langflow
-              so you can reference or redo your modifications.
+              Updating will overwrite existing flows with newer versions. Backup
+              flows will be created in Langflow so you can reference or redo
+              your modifications.
             </AlertDescription>
           </Alert>
 

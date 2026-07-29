@@ -882,31 +882,12 @@ class FlowsService:
             ("url_ingest", LANGFLOW_URL_INGEST_FLOW_ID),
         ]
         created_flow_types: set[str] = set()
-        custom_updates: list[dict[str, Any]] = []
-
         async def ensure_single_flow_exists(flow_type, flow_id):
             if not flow_id:
                 return None
             try:
                 response = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
                 if response.status_code == 200:
-                    flow_data = response.json()
-                    update_info = await self._check_flow_update(
-                        flow_type, flow_id, flow_data=flow_data
-                    )
-                    if update_info:
-                        if not update_info["is_custom"]:
-                            logger.info(
-                                f"Non-custom flow {flow_type} (ID: {flow_id}) has a newer version on disk, auto-updating on startup."
-                            )
-                            await self._backup_flow(flow_id, flow_type, flow_data=flow_data)
-                            flow_lock = await self._get_flow_lock(flow_id)
-                            async with flow_lock:
-                                await self._reset_langflow_flow_locked(flow_type, flow_id)
-                            return flow_type
-                        else:
-                            custom_updates.append(update_info)
-
                     logger.info(
                         f"Flow {flow_type} (ID: {flow_id}) already exists, skipping creation"
                     )
@@ -950,7 +931,6 @@ class FlowsService:
         tasks = [ensure_single_flow_exists(ft, fi) for ft, fi in flow_configs]
         results = await asyncio.gather(*tasks)
         created_flow_types = {r for r in results if r is not None}
-        self._custom_updates_cache = custom_updates
 
         if created_flow_types:
             try:
@@ -1447,7 +1427,7 @@ class FlowsService:
         """
         Check for available flow updates.
         Uses cached update results from startup/previous checks if available.
-        Only surfaces custom flows since non-custom flows are auto-updated on startup.
+        Surfaces all available updates regardless of locked status.
         """
         target_user = user_id or "default"
         if not hasattr(self, "_custom_updates_cache") or self._custom_updates_cache is None:
@@ -1460,7 +1440,7 @@ class FlowsService:
             cache = []
             for flow_type, flow_id in flow_configs:
                 update_info = await self._check_flow_update(flow_type, flow_id)
-                if update_info and update_info["is_custom"]:
+                if update_info:
                     cache.append(update_info)
             self._custom_updates_cache = cache
 
@@ -1481,7 +1461,7 @@ class FlowsService:
     async def bulk_update_flows(self, flow_types: list[str], backup_custom: bool = True):
         """
         Bulk updates multiple flows.
-        If backup_custom is True, custom flows are backed up in Langflow before resetting.
+        If backup_custom is True, flows are backed up in Langflow before resetting.
         Local file backups are always saved via _backup_flow prior to resetting.
         Returns the backup flow details if any.
         """
@@ -1505,7 +1485,6 @@ class FlowsService:
             async with flow_lock:
                 backup_path = None
                 backup_flow_id = None
-                is_custom = False
                 flow_check_ok = False
 
                 try:
@@ -1513,14 +1492,13 @@ class FlowsService:
                     if response.status_code == 200:
                         flow_check_ok = True
                         flow_data = response.json()
-                        is_custom = not flow_data.get("locked", False)
 
                         # Always attempt local file backup for safety
                         backup_path = await self._backup_flow(flow_id, flow_type, flow_data)
 
-                        if backup_custom and is_custom:
+                        if backup_custom:
                             logger.info(
-                                f"Flow {flow_type} is custom, backing up in Langflow before update."
+                                f"Backing up flow {flow_type} in Langflow before update."
                             )
                             # Create a backup flow directly in Langflow
                             backup_payload = dict(flow_data)
@@ -1529,8 +1507,8 @@ class FlowsService:
                             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
                             backup_payload["name"] = f"Backup - {flow_name} ({timestamp})"
                             backup_payload["description"] = (
-                                f"Backup of custom flow '{flow_name}' created before flow update on {timestamp}. "
-                                "Use this flow to reference or redo your custom modifications."
+                                f"Backup of flow '{flow_name}' created before flow update on {timestamp}. "
+                                "Use this flow to reference or redo your modifications."
                             )
                             backup_payload["locked"] = False
 
@@ -1552,7 +1530,7 @@ class FlowsService:
 
                 if not flow_check_ok:
                     logger.error(
-                        f"Pre-flight check failed for flow {flow_type}; aborting update to protect custom modifications."
+                        f"Pre-flight check failed for flow {flow_type}; aborting update to protect flow modifications."
                     )
                     results.append(
                         {
@@ -1565,16 +1543,16 @@ class FlowsService:
                     )
                     continue
 
-                # If it's a custom flow and backup_custom is enabled, abort update if BOTH backups failed
-                if backup_custom and is_custom and backup_path is None and backup_flow_id is None:
+                # If backup_custom is enabled, abort update if BOTH backups failed
+                if backup_custom and backup_path is None and backup_flow_id is None:
                     logger.error(
-                        f"Backup failed for custom flow {flow_type}; aborting update to protect custom modifications."
+                        f"Backup failed for flow {flow_type}; aborting update to protect flow modifications."
                     )
                     results.append(
                         {
                             "flow_type": flow_type,
                             "success": False,
-                            "error": "Backup failed; update aborted to avoid losing custom changes",
+                            "error": "Backup failed; update aborted to avoid losing changes",
                             "backup_path": None,
                             "backup_flow_id": None,
                         }

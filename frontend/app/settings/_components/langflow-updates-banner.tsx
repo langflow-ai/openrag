@@ -75,12 +75,12 @@ export function LangflowUpdatesBanner() {
           <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-500 mt-0.5" />
           <div>
             <AlertTitle className="text-amber-800 dark:text-amber-400 text-base">
-              Custom Langflow Flow Updates Available
+              Langflow Flow Updates Available
             </AlertTitle>
             <AlertDescription className="text-amber-700 dark:text-amber-300 mt-1">
-              There are newer versions of custom flows available. Updating will
-              overwrite your custom modifications, but a backup flow will be
-              created in Langflow automatically so you can redo your
+              There are newer versions of flows available. Updating will
+              overwrite existing flows, but a backup flow will be created in
+              Langflow automatically so you can reference or redo your
               modifications.
             </AlertDescription>
             <ul className="list-disc pl-4 mt-2 text-sm text-amber-700 dark:text-amber-300">
