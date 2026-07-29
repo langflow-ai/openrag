@@ -2,6 +2,7 @@ import asyncio
 
 import httpx
 
+from api.provider_validation import _extract_error_details, format_provider_error_message
 from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL, OPENAI_EMBEDDING_MODEL_PREFIX
 from config.model_constants import (
     ANTHROPIC_DEFAULT_LANGUAGE_MODEL,
@@ -284,9 +285,7 @@ class ModelsService:
                 return result
             else:
                 logger.error(f"Failed to fetch OpenAI models: {response.status_code}")
-                raise Exception(
-                    f"OpenAI API returned status code {response.status_code}, {response.text}"
-                )
+                raise Exception(format_provider_error_message(_extract_error_details(response)))
 
         except Exception as e:
             logger.error(f"Error fetching OpenAI models: {str(e)}")
@@ -348,9 +347,7 @@ class ModelsService:
                 return result
             else:
                 logger.error(f"Failed to validate Anthropic API key: {response.status_code}")
-                raise Exception(
-                    f"Anthropic API returned status code {response.status_code}, {response.text}"
-                )
+                raise Exception(format_provider_error_message(_extract_error_details(response)))
 
         except Exception as e:
             logger.error(f"Error fetching Anthropic models: {str(e)}")
@@ -503,7 +500,7 @@ class ModelsService:
 
                     if token_response.status_code != 200:
                         raise Exception(
-                            f"Failed to get IBM IAM token: {token_response.status_code} - {token_response.text}"
+                            format_provider_error_message(_extract_error_details(token_response))
                         )
 
                     token_data = token_response.json()

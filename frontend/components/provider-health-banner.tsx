@@ -23,7 +23,9 @@ export function useProviderHealth() {
     error,
     isError,
   } = useProviderHealthQuery({
-    test_completion: hasChatError, // Use test_completion=true when chat errors occur
+    // After a chat/ingest failure, probe completion so the banner shows the
+    // real error (disabled key, missing model, etc.) — not only IAM auth.
+    test_completion: hasChatError,
   });
 
   const isHealthy = health?.status === "healthy" && !isError;

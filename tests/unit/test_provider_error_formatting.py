@@ -22,7 +22,7 @@ def test_parse_ibm_iam_error_message():
         '"errorMessage":"Provided API key could not be found.",'
         '"context":{"requestId":"abc","url":"https://iam.cloud.ibm.com"}}'
     )
-    assert format_provider_error_message(raw) == "Provided API key could not be found."
+    assert format_provider_error_message(raw) == "Provided API key is Invalid."
 
 
 def test_format_extracts_json_with_trailing_text():
@@ -34,7 +34,7 @@ def test_format_extracts_json_with_trailing_text():
         "IBM WatsonX requires additional configuration parameters. "
         "An error occurred while generating a response."
     )
-    assert format_provider_error_message(raw) == "Provided API key could not be found."
+    assert format_provider_error_message(raw) == "Provided API key is Invalid."
     assert "{" not in sanitize_provider_error_content(raw)
 
 
@@ -82,7 +82,7 @@ def test_looks_like_provider_error_content():
 
 
 def test_resolve_chat_stream_error_message_keeps_generic_without_probing():
-    # Opaque upstream text must not be rewritten into an inferred API-key error.
+    # Sync helper must not probe — that stays in the async path.
     assert (
         resolve_chat_stream_error_message("An unknown error occurred.")
         == "An unknown error occurred."
@@ -90,13 +90,130 @@ def test_resolve_chat_stream_error_message_keeps_generic_without_probing():
 
 
 @pytest.mark.asyncio
-async def test_resolve_ingest_error_message_probes_credentials_on_disconnect(monkeypatch):
-    async def fake_probe():
-        return "Provided API key could not be found."
+async def test_resolve_chat_stream_error_message_async_probes_llm_on_generic(monkeypatch):
+    async def fake_llm_probe():
+        return (
+            "Model 'ibm/granite-4-h-small' was not found. "
+            "This model may be unsupported, deprecated, or removed."
+        )
 
+    async def fake_cred_probe():
+        raise AssertionError("must prefer LLM probe over credential probe")
+
+    monkeypatch.setattr(
+        "api.provider_validation.probe_chat_llm_error",
+        fake_llm_probe,
+    )
+    monkeypatch.setattr(
+        "api.provider_validation.probe_provider_credential_error",
+        fake_cred_probe,
+    )
+
+    from api.provider_validation import resolve_chat_stream_error_message_async
+
+    assert "granite-4-h-small" in await resolve_chat_stream_error_message_async(
+        "An unknown error occurred."
+    )
+
+
+@pytest.mark.asyncio
+async def test_resolve_chat_stream_error_message_async_falls_back_to_credentials(
+    monkeypatch,
+):
+    async def fake_llm_probe():
+        return None
+
+    async def fake_cred_probe():
+        return "Provided API key is disabled."
+
+    monkeypatch.setattr(
+        "api.provider_validation.probe_chat_llm_error",
+        fake_llm_probe,
+    )
+    monkeypatch.setattr(
+        "api.provider_validation.probe_provider_credential_error",
+        fake_cred_probe,
+    )
+
+    from api.provider_validation import resolve_chat_stream_error_message_async
+
+    assert (
+        await resolve_chat_stream_error_message_async("An unknown error occurred.")
+        == "Provided API key is disabled."
+    )
+
+
+@pytest.mark.asyncio
+async def test_resolve_chat_stream_error_message_async_keeps_specific_errors(monkeypatch):
+    async def fake_probe():
+        raise AssertionError("must not probe specific errors")
+
+    monkeypatch.setattr(
+        "api.provider_validation.probe_chat_llm_error",
+        fake_probe,
+    )
     monkeypatch.setattr(
         "api.provider_validation.probe_provider_credential_error",
         fake_probe,
+    )
+
+    from api.provider_validation import resolve_chat_stream_error_message_async
+
+    assert (
+        await resolve_chat_stream_error_message_async("Rate limit exceeded")
+        == "Rate limit exceeded"
+    )
+
+
+@pytest.mark.asyncio
+async def test_probe_chat_llm_error_surfaces_missing_model(monkeypatch):
+    class FakeProvider:
+        def __init__(self):
+            self.api_key = "wx-ok"
+            self.endpoint = "https://us-south.ml.cloud.ibm.com"
+            self.project_id = "proj"
+
+    class FakeConfig:
+        class agent:
+            llm_provider = "watsonx"
+            llm_model = "ibm/granite-4-h-small"
+
+        def get_llm_provider_config(self):
+            return FakeProvider()
+
+    async def fake_validate(**kwargs):
+        assert kwargs.get("test_completion") is True
+        assert kwargs.get("llm_model") == "ibm/granite-4-h-small"
+        assert kwargs.get("embedding_model") is None
+        raise Exception(
+            "Model 'ibm/granite-4-h-small' was not found. "
+            "This model may be unsupported, deprecated, or removed."
+        )
+
+    monkeypatch.setattr("config.settings.get_openrag_config", lambda: FakeConfig())
+    monkeypatch.setattr("api.provider_validation.validate_provider_setup", fake_validate)
+
+    from api.provider_validation import probe_chat_llm_error
+
+    result = await probe_chat_llm_error()
+    assert result is not None
+    assert "granite-4-h-small" in result
+    assert "not found" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_resolve_ingest_error_message_probes_credentials_on_disconnect(monkeypatch):
+    async def fake_none():
+        return None
+
+    async def fake_cred_probe():
+        return "Provided API key could not be found."
+
+    monkeypatch.setattr("api.provider_validation.probe_embedding_error", fake_none)
+    monkeypatch.setattr("api.provider_validation.probe_chat_llm_error", fake_none)
+    monkeypatch.setattr(
+        "api.provider_validation.probe_provider_credential_error",
+        fake_cred_probe,
     )
 
     from api.provider_validation import resolve_ingest_error_message
@@ -112,6 +229,8 @@ async def test_resolve_ingest_error_message_keeps_disconnect_when_probe_clean(mo
     async def fake_probe():
         return None
 
+    monkeypatch.setattr("api.provider_validation.probe_embedding_error", fake_probe)
+    monkeypatch.setattr("api.provider_validation.probe_chat_llm_error", fake_probe)
     monkeypatch.setattr(
         "api.provider_validation.probe_provider_credential_error",
         fake_probe,
@@ -121,6 +240,38 @@ async def test_resolve_ingest_error_message_keeps_disconnect_when_probe_clean(mo
 
     raw = "Server disconnected without sending a response."
     assert await resolve_ingest_error_message(raw) == raw
+
+
+@pytest.mark.asyncio
+async def test_resolve_ingest_error_message_prefers_model_over_mislabeled_api_key(
+    monkeypatch,
+):
+    """Langflow often says API key invalid when the chat/LLM model is missing."""
+
+    async def fake_none():
+        return None
+
+    async def fake_llm_probe():
+        return (
+            "Model 'ibm/granite-4-h-small' was not found. "
+            "This model may be unsupported, deprecated, or removed."
+        )
+
+    async def fake_cred_probe():
+        raise AssertionError("credential probe must not run after LLM model diagnosis")
+
+    monkeypatch.setattr("api.provider_validation.probe_embedding_error", fake_none)
+    monkeypatch.setattr("api.provider_validation.probe_chat_llm_error", fake_llm_probe)
+    monkeypatch.setattr(
+        "api.provider_validation.probe_provider_credential_error",
+        fake_cred_probe,
+    )
+
+    from api.provider_validation import resolve_ingest_error_message
+
+    result = await resolve_ingest_error_message("API key is invalid")
+    assert "granite-4-h-small" in result
+    assert "not found" in result.lower()
 
 
 @pytest.mark.asyncio
@@ -156,16 +307,11 @@ async def test_probe_checks_non_selected_providers_with_keys(monkeypatch):
 
     async def fake_validate(**kwargs):
         if kwargs.get("provider") == "watsonx":
-            raise Exception(
-                "Failed to authenticate with IBM Watson: Provided API key could not be found."
-            )
+            raise Exception("Provided API key could not be found.")
 
     monkeypatch.setattr("config.settings.get_openrag_config", lambda: FakeConfig())
     monkeypatch.setattr("api.provider_validation.validate_provider_setup", fake_validate)
 
     from api.provider_validation import probe_provider_credential_error
 
-    assert (
-        await probe_provider_credential_error()
-        == "Failed to authenticate with IBM Watson: Provided API key could not be found."
-    )
+    assert await probe_provider_credential_error() == "Provided API key is Invalid."

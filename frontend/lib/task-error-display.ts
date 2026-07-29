@@ -3,6 +3,7 @@ import type {
   TaskFailurePhase,
   TaskFileEntry,
 } from "@/app/api/queries/useGetTasksQuery";
+import { formatProviderErrorMessage } from "@/lib/chat-stream-errors";
 
 export const FILE_ERROR_MAX_LINE_LENGTH = 80;
 
@@ -156,19 +157,19 @@ export function resolveTaskFileError(
     typeof fileInfo.result.warning === "string" &&
     fileInfo.result.warning.trim()
   ) {
-    return fileInfo.result.warning.trim();
+    return formatProviderErrorMessage(fileInfo.result.warning.trim());
   }
   if (typeof fileInfo.user_facing_message === "string") {
     const message = fileInfo.user_facing_message.trim();
     if (message) {
-      return message;
+      return formatProviderErrorMessage(message);
     }
   }
   if (typeof fileInfo.error === "string" && fileInfo.error.trim()) {
-    return fileInfo.error.trim();
+    return formatProviderErrorMessage(fileInfo.error.trim());
   }
   if (typeof taskError === "string" && taskError.trim()) {
-    return taskError.trim();
+    return formatProviderErrorMessage(taskError.trim());
   }
   return "Unknown error";
 }
