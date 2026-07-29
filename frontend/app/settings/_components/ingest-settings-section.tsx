@@ -38,10 +38,16 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { trackButton } from "@/lib/analytics";
-import { DEFAULT_KNOWLEDGE_SETTINGS } from "@/lib/constants";
+import { DEFAULT_KNOWLEDGE_SETTINGS, RUN_MODE } from "@/lib/constants";
 import { resolveLangflowEditUrl } from "@/lib/url-utils";
 import { cn } from "@/lib/utils";
 import { useUpdateSettingsMutation } from "../../api/mutations/useUpdateSettingsMutation";
@@ -60,6 +66,12 @@ const RESPONSE_FORMATS = [
 export function IngestSettingsSection() {
   const isCloudBrand = useIsCloudBrand();
   const { isAuthenticated, isNoAuthMode, isIbmAuthMode, runMode } = useAuth();
+
+  // In SaaS, the managed Docling-Serve runs without the custom-VLM flags, so
+  // picture descriptions can't work on the non-Langflow ingestion path. Treat
+  // the two as mutually exclusive: enabling one forces the other off. Only the
+  // currently-off toggle is disabled, so a legacy both-on config stays escapable.
+  const isSaas = runMode === RUN_MODE.SAAS;
 
   const [isRestoringFlow, setIsRestoringFlow] = useState<boolean>(false);
 
@@ -767,11 +779,32 @@ export function IngestSettingsSection() {
                   processing.
                 </div>
               </div>
-              <Switch
-                id="disable-ingest-with-langflow"
-                checked={disableIngestWithLangflow}
-                onCheckedChange={setDisableIngestWithLangflow}
-              />
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div>
+                      <Switch
+                        id="disable-ingest-with-langflow"
+                        checked={disableIngestWithLangflow}
+                        disabled={
+                          isSaas && pictureDescriptions && !disableIngestWithLangflow
+                        }
+                        onCheckedChange={(checked) => {
+                          setDisableIngestWithLangflow(checked);
+                          if (isSaas && checked) setPictureDescriptions(false);
+                        }}
+                      />
+                    </div>
+                  </TooltipTrigger>
+                  {isSaas &&
+                    pictureDescriptions &&
+                    !disableIngestWithLangflow && (
+                      <TooltipContent>
+                        <p>Unavailable while Picture Descriptions is on.</p>
+                      </TooltipContent>
+                    )}
+                </Tooltip>
+              </TooltipProvider>
             </div>
             <div className="flex items-center justify-between py-3 border-b border-border">
               <div className="flex-1">
@@ -817,11 +850,32 @@ export function IngestSettingsSection() {
                   Adds captions for images. Ingest is slower when enabled.
                 </div>
               </div>
-              <Switch
-                id="picture-descriptions"
-                checked={pictureDescriptions}
-                onCheckedChange={setPictureDescriptions}
-              />
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div>
+                      <Switch
+                        id="picture-descriptions"
+                        checked={pictureDescriptions}
+                        disabled={
+                          isSaas && disableIngestWithLangflow && !pictureDescriptions
+                        }
+                        onCheckedChange={(checked) => {
+                          setPictureDescriptions(checked);
+                          if (isSaas && checked) setDisableIngestWithLangflow(false);
+                        }}
+                      />
+                    </div>
+                  </TooltipTrigger>
+                  {isSaas &&
+                    disableIngestWithLangflow &&
+                    !pictureDescriptions && (
+                      <TooltipContent>
+                        <p>Unavailable while Disable Langflow Ingestion is on.</p>
+                      </TooltipContent>
+                    )}
+                </Tooltip>
+              </TooltipProvider>
             </div>
             {showVlmSettings && (
               <>
