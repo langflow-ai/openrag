@@ -17,7 +17,8 @@ RUN pip install --no-cache-dir \
     --extra-index-url https://download.pytorch.org/whl/cpu \
     torch==2.10.0 \
     torchvision==0.25.0 \
-    "fastapi<0.140.5" \
+    fastapi-pagination>=0.15.16 \
+    fastapi>=0.140.5 \
     "langflow-base[docling,openai,anthropic,google,ollama,opensearch,langfuse]==0.9.6" \
     "ibm-watsonx-ai>=1.3.1,<2.0.0" \
     "langchain-ibm~=1.1.0" \
