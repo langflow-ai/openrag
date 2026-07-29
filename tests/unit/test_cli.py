@@ -24,7 +24,9 @@ class StubContainerManager:
 
 
 class StubDoclingManager:
-    def __init__(self, running=False, start_result=(True, "Docling serve starting on http://localhost:5001")):
+    def __init__(
+        self, running=False, start_result=(True, "Docling serve starting on http://localhost:5001")
+    ):
         self._running = running
         self._start_result = start_result
 
