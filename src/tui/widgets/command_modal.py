@@ -1,7 +1,6 @@
 """Command output modal dialog for OpenRAG TUI."""
 
 import asyncio
-import inspect
 import os
 import webbrowser
 from collections.abc import AsyncIterator, Callable
@@ -334,7 +333,7 @@ class CommandOutputModal(ModalScreen):
 
                         def _invoke_callback() -> None:
                             callback_result = self.on_complete()
-                            if inspect.isawaitable(callback_result):
+                            if asyncio.iscoroutine(callback_result):
                                 asyncio.create_task(callback_result)
 
                         self.call_after_refresh(_invoke_callback)
