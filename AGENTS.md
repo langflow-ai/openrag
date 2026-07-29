@@ -1,6 +1,6 @@
 # Agent Instructions
 
-This repository ships with **agent skills** that any compliant agent can use to help users install OpenRAG and integrate the OpenRAG SDK. The canonical skill files are markdown with YAML frontmatter (the [Agent Skills](https://github.com/anthropics/skills) format), and live under `plugins/openrag/skills/`.
+This repository ships with **agent skills** that any compliant agent can use to help users install OpenRAG, integrate the OpenRAG SDK, and run the local dev stack. The canonical skill files are markdown with YAML frontmatter (the [Agent Skills](https://github.com/anthropics/skills) format), and live under `plugins/openrag/skills/`.
 
 ## Available skills
 
@@ -8,6 +8,7 @@ This repository ships with **agent skills** that any compliant agent can use to 
 | --- | --- | --- |
 | `openrag_install` | [`plugins/openrag/skills/install/SKILL.md`](plugins/openrag/skills/install/SKILL.md) | Plan and execute a minimal OpenRAG installation, verify locally. |
 | `openrag_sdk` | [`plugins/openrag/skills/sdk/SKILL.md`](plugins/openrag/skills/sdk/SKILL.md) | Guide SDK integration (Python, TypeScript, MCP) with code examples. |
+| `openrag_dev_stack` | [`plugins/openrag/skills/dev-stack/SKILL.md`](plugins/openrag/skills/dev-stack/SKILL.md) | Start, monitor, restart, or stop the local dev stack (Docker infra + host backend + host frontend). |
 
 ## How to use these skills
 
@@ -15,7 +16,7 @@ Pick the path that matches your agent runtime.
 
 ### Claude Code (this repo)
 
-`.claude/skills/` symlinks into the plugin, so after cloning the repo the skills are auto-discovered by Claude Code — invoke with `/install` or `/sdk`, or let Claude trigger them automatically based on the description fields.
+`.claude/skills/` symlinks into the plugin, so after cloning the repo the skills are auto-discovered by Claude Code — invoke with `/install`, `/sdk`, or `/dev-stack`, or let Claude trigger them automatically based on the description fields.
 
 ### Claude Code (install globally, any repo)
 

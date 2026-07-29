@@ -13,7 +13,8 @@ import json
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from api.provider_validation import validate_provider_setup
+from api.provider_validation import validate_provider_setup, sanitize_provider_error_content
+
 from api.settings.helpers import (
     _affected_embedding_models,
     _create_openrag_docs_filter,
@@ -454,7 +455,7 @@ async def update_settings(
 
             except Exception as e:
                 logger.error(f"Provider validation failed: {str(e)}")
-                return JSONResponse({"error": f"{str(e)}"}, status_code=400)
+                return JSONResponse({"error": sanitize_provider_error_content(e)}, status_code=400)
 
         # Update configuration
         # Only reached if validation passed or wasn't needed.
@@ -1144,7 +1145,7 @@ async def onboarding(
         except Exception as e:
             logger.error(f"Provider validation failed: {str(e)}")
             return JSONResponse(
-                {"error": str(e)},
+                {"error": sanitize_provider_error_content(e)},
                 status_code=400,
             )
 

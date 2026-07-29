@@ -299,12 +299,13 @@ async def resolve_ingest_error_message(exc: BaseException | str) -> str:
     if is_langflow_transport_error(raw):
         probe = await probe_provider_credential_error()
         if probe:
+            sanitized_probe = sanitize_provider_error_content(probe)
             logger.info(
                 "Ingest transport failure attributed to provider credentials",
                 transport_error=raw,
                 credential_error=probe,
             )
-            return probe
+            return sanitized_probe
 
     # Prefer the sanitized form whenever JSON / boilerplate was stripped.
     if cleaned != raw and "{" not in cleaned:

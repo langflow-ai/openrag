@@ -17,11 +17,13 @@ openrag/
 │       │   └── plugin.json        # plugin manifest (name, version, repo)
 │       └── skills/
 │           ├── install/SKILL.md   # guided OpenRAG installation
-│           └── sdk/SKILL.md       # OpenRAG SDK integration helper
+│           ├── sdk/SKILL.md       # OpenRAG SDK integration helper
+│           └── dev-stack/SKILL.md # local dev stack runner (infra + backend + frontend)
 ├── .claude/
 │   └── skills/                    # symlinks into plugins/openrag/skills
-│       ├── install -> ../../plugins/openrag/skills/install
-│       └── sdk     -> ../../plugins/openrag/skills/sdk
+│       ├── install   -> ../../plugins/openrag/skills/install
+│       ├── sdk       -> ../../plugins/openrag/skills/sdk
+│       └── dev-stack -> ../../plugins/openrag/skills/dev-stack
 └── AGENTS.md                      # entry point for any agent working in the repo
 ```
 
@@ -33,7 +35,7 @@ There are four ways to get these skills in front of an agent.
 
 ### 1. Clone this repo and use Claude Code
 
-No install step. `.claude/skills/` symlinks into the plugin, so Claude Code auto-discovers `install` and `sdk` when it starts in this directory. Invoke with `/install` or `/sdk`, or let Claude trigger them automatically based on the `description` fields.
+No install step. `.claude/skills/` symlinks into the plugin, so Claude Code auto-discovers `install`, `sdk`, and `dev-stack` when it starts in this directory. Invoke with `/install`, `/sdk`, or `/dev-stack`, or let Claude trigger them automatically based on the `description` fields.
 
 ### 2. Install into Claude Code globally (any project)
 
