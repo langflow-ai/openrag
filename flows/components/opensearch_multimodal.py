@@ -96,6 +96,30 @@ def get_embedding_field_name(model_name: str) -> str:
     return f"chunk_embedding_{normalize_model_name(model_name)}"
 
 
+UNTRUSTED_CHUNK_FENCE_START = "<<<UNTRUSTED_DOC_CHUNK>>>"
+UNTRUSTED_CHUNK_FENCE_END = "<<<END_UNTRUSTED_DOC_CHUNK>>>"
+
+
+def fence_untrusted_text(text: str) -> str:
+    """Wrap retrieved document text in delimiters marking it as untrusted data.
+
+    Retrieved chunk text can contain attacker-controlled natural-language
+    instructions (indirect prompt injection, VULN-13906). Fencing it lets the
+    system prompt tell the LLM to treat anything between these markers as
+    data only, never as instructions or tool directives.
+
+    Any literal fence markers already present in `text` are escaped first, so
+    a poisoned chunk can't embed a fake end-of-fence marker to break out of
+    the untrusted section and have its continuation misread as trusted.
+    """
+    if not text:
+        return text
+    escaped = text.replace(
+        UNTRUSTED_CHUNK_FENCE_START, "\\" + UNTRUSTED_CHUNK_FENCE_START
+    ).replace(UNTRUSTED_CHUNK_FENCE_END, "\\" + UNTRUSTED_CHUNK_FENCE_END)
+    return f"{UNTRUSTED_CHUNK_FENCE_START}\n{escaped}\n{UNTRUSTED_CHUNK_FENCE_END}"
+
+
 @vector_store_connection
 class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreComponent):
     """OpenSearch Vector Store Component with Multi-Model Hybrid Search Capabilities.
@@ -552,6 +576,8 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                     keys_to_remove = [k for k, v in source.items() if is_vector(v)]
                     for k in keys_to_remove:
                         source.pop(k)
+                    if "text" in source:
+                        source["text"] = fence_untrusted_text(source["text"])
         logger.info(f"Raw search response (all embedding vectors removed): {resp}")
         return Data(**resp)
 
@@ -2349,7 +2375,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
 
         return [
             {
-                "page_content": hit["_source"].get("text", ""),
+                "page_content": fence_untrusted_text(hit["_source"].get("text", "")),
                 "metadata": {
                     **{k: v for k, v in hit["_source"].items() if k != "text"},
                     "chunk_id": hit.get("_id"),

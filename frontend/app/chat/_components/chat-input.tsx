@@ -5,7 +5,6 @@ import { useImperativeHandle, useMemo, useRef, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import TextareaAutosize from "react-textarea-autosize";
 import { toast } from "sonner";
-import type { FilterColor } from "@/components/filter-icon-popover";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -15,6 +14,7 @@ import {
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useFileDrag } from "@/hooks/use-file-drag";
 import { useSupportedFileTypes } from "@/hooks/use-supported-file-types";
+import type { FilterColor } from "@/lib/filter-constants";
 import { cn } from "@/lib/utils";
 import { useGetAllFiltersQuery } from "../../api/queries/useGetAllFiltersQuery";
 import type { KnowledgeFilterData } from "../_types/types";

@@ -8,6 +8,8 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+_UNTRUSTED_FENCE_START = "<<<UNTRUSTED_DOC_CHUNK>>>"
+_UNTRUSTED_FENCE_END = "<<<END_UNTRUSTED_DOC_CHUNK>>>"
 
 class LangflowNotReadyError(Exception):
     """Raised when Langflow fails to become ready within the retry limit."""
@@ -89,6 +91,68 @@ async def wait_for_langflow(
     logger.error(message)
     raise LangflowNotReadyError(message)
 
+def fence_untrusted_text(text: str) -> str:
+    """Wrap text (e.g. an uploaded document body) in untrusted-data fence markers.
+
+    Mirrors flows/components/opensearch_multimodal.py::fence_untrusted_text for the
+    non-Langflow (direct chat / upload-context) paths so the same system-prompt rule
+    applies regardless of which path fed the content into the conversation.
+
+    Any literal fence markers already present in `text` are escaped first, so a
+    poisoned document can't embed a fake end-of-fence marker to break out of the
+    untrusted section and have its continuation misread as trusted.
+    """
+    if not text:
+        return text
+    escaped = text.replace(_UNTRUSTED_FENCE_START, "\\" + _UNTRUSTED_FENCE_START).replace(
+        _UNTRUSTED_FENCE_END, "\\" + _UNTRUSTED_FENCE_END
+    )
+    return f"{_UNTRUSTED_FENCE_START}\n{escaped}\n{_UNTRUSTED_FENCE_END}"
+
+
+def strip_untrusted_fence(text: str) -> str:
+    """Remove the untrusted-data fence markers before surfacing retrieved text as a citation.
+
+    The retrieval tool wraps chunk text in these markers (see
+    flows/components/opensearch_multimodal.py::fence_untrusted_text) so the LLM
+    treats it as data, not instructions. Users should never see the raw markers.
+    """
+    if not text:
+        return text
+    stripped = text
+    if stripped.startswith(_UNTRUSTED_FENCE_START):
+        stripped = stripped[len(_UNTRUSTED_FENCE_START) :].lstrip("\n")
+    if stripped.endswith(_UNTRUSTED_FENCE_END):
+        stripped = stripped[: -len(_UNTRUSTED_FENCE_END)].rstrip("\n")
+    # Restore any embedded fence-marker literals that fence_untrusted_text escaped,
+    # so citations show the document's original text, not the escaped form.
+    stripped = stripped.replace("\\" + _UNTRUSTED_FENCE_START, _UNTRUSTED_FENCE_START)
+    stripped = stripped.replace("\\" + _UNTRUSTED_FENCE_END, _UNTRUSTED_FENCE_END)
+    return stripped
+
+
+def strip_untrusted_fence_recursive(obj: Any) -> None:
+    """Recursively strip untrusted-fence markers from every "text" string field
+    found anywhere in a streamed SSE chunk payload, in place (VULN-13906).
+
+    The live chat UI always streams (stream=True), which bypasses the
+    citation-building fence-stripping in async_langflow_chat entirely — that
+    non-streaming path is dead code for real traffic. Client code
+    (frontend tool-call trace panel, citation click-through popup) reads
+    retrieved chunk text straight out of the raw SSE stream, so stripping has
+    to happen here, on every chunk, before it's yielded. A no-op on any text
+    that isn't actually fenced, so this is safe to apply unconditionally.
+    """
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            if key == "text" and isinstance(value, str):
+                obj[key] = strip_untrusted_fence(value)
+            else:
+                strip_untrusted_fence_recursive(value)
+    elif isinstance(obj, list):
+        for item in obj:
+            strip_untrusted_fence_recursive(item)
+
 
 def parse_knowledge_chunks(results: Any) -> list[dict]:
     """Parse and standardize knowledge chunks from Langflow output formats."""
@@ -140,7 +204,7 @@ def parse_knowledge_chunks(results: Any) -> list[dict]:
             parsed_chunks.append(
                 {
                     "filename": data.get("filename", ""),
-                    "text": data.get("text", ""),
+                    "text": strip_untrusted_fence(data.get("text", "")),
                     "score": data.get("score", 0),
                     "page": data.get("page"),
                     "mimetype": data.get("mimetype"),
