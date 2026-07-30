@@ -1,10 +1,10 @@
-from utils.langflow_utils import fence_untrusted_text
 import json
 from typing import Any
 
 from agent import async_chat, async_chat_stream, async_langflow
 from auth_context import set_auth_context
 from config.settings import LANGFLOW_CHAT_FLOW_ID, LANGFLOW_URL, NUDGES_FLOW_ID, clients
+from utils.langflow_utils import fence_untrusted_text
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
