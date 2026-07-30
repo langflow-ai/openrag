@@ -40,7 +40,7 @@ export function OllamaSettingsForm({
           />
         </LabelWrapper>
         {endpointError && (
-          <p className="text-sm text-destructive">{endpointError}</p>
+          <p className="text-sm text-destructive break-all">{endpointError}</p>
         )}
         {isLoadingModels && (
           <p className="text-sm text-muted-foreground">

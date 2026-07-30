@@ -80,7 +80,9 @@ export function WatsonxSettingsForm({
           />
         </LabelWrapper>
         {errors.endpoint && (
-          <p className="text-sm text-destructive">{errors.endpoint.message}</p>
+          <p className="text-sm text-destructive break-all">
+            {errors.endpoint.message}
+          </p>
         )}
       </div>
       <div className="space-y-2">
@@ -103,7 +105,9 @@ export function WatsonxSettingsForm({
           />
         </LabelWrapper>
         {errors.projectId && (
-          <p className="text-sm text-destructive">{errors.projectId.message}</p>
+          <p className="text-sm text-destructive break-all">
+            {errors.projectId.message}
+          </p>
         )}
       </div>
       <div className="space-y-2">
@@ -127,7 +131,9 @@ export function WatsonxSettingsForm({
           />
         </LabelWrapper>
         {errors.apiKey && (
-          <p className="text-sm text-destructive">{errors.apiKey.message}</p>
+          <p className="text-sm text-destructive break-all">
+            {errors.apiKey.message}
+          </p>
         )}
         {isLoadingModels && (
           <p className="text-sm text-muted-foreground">
@@ -135,7 +141,9 @@ export function WatsonxSettingsForm({
           </p>
         )}
         {modelsError && (
-          <p className="text-sm text-destructive">{modelsError.message}</p>
+          <p className="text-sm text-destructive break-all">
+            {modelsError.message}
+          </p>
         )}
       </div>
       <p className="text-sm text-muted-foreground">
