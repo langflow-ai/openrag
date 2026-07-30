@@ -34,8 +34,8 @@ class FlowsService:
         self._flow_locks = LRUCache(maxsize=128)
         self._lock_creation_lock = asyncio.Lock()
         # Cache for enabled models to avoid redundant API calls
-        self._enabled_models_cache = None
-        self._enabled_models_cache_time = None
+        self._enabled_models_cache: dict[str, Any] | None = None
+        self._enabled_models_cache_time: datetime | None = None
         self._enabled_models_cache_ttl = 60  # seconds
         self._enabled_models_lock = asyncio.Lock()
         # Cache for available custom flow updates
@@ -737,7 +737,7 @@ class FlowsService:
         Keeps structural elements: nodes (types, display names, template definitions), edges (connections).
         Removes: IDs, timestamps, positions, dynamic runtime field values, and dynamic options lists.
         """
-        normalized = {"data": {"nodes": [], "edges": []}}
+        normalized: dict[str, Any] = {"data": {"nodes": [], "edges": []}}
 
         # Normalize nodes - keep structural info including template definitions
         nodes = flow_data.get("data", {}).get("nodes", [])
