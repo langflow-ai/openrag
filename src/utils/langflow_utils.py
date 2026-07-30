@@ -11,6 +11,7 @@ logger = get_logger(__name__)
 _UNTRUSTED_FENCE_START = "<<<UNTRUSTED_DOC_CHUNK>>>"
 _UNTRUSTED_FENCE_END = "<<<END_UNTRUSTED_DOC_CHUNK>>>"
 
+
 class LangflowNotReadyError(Exception):
     """Raised when Langflow fails to become ready within the retry limit."""
 
@@ -90,6 +91,7 @@ async def wait_for_langflow(
     message: str = "Failed to verify whether the Langflow service is ready."
     logger.error(message)
     raise LangflowNotReadyError(message)
+
 
 def fence_untrusted_text(text: str) -> str:
     """Wrap text (e.g. an uploaded document body) in untrusted-data fence markers.
