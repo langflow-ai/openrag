@@ -1,7 +1,7 @@
 import json
 from typing import Any
 
-from agent import async_chat, async_chat_stream, async_langflow
+from agent import async_chat, async_chat_stream, async_langflow, fence_untrusted_text
 from auth_context import set_auth_context
 from config.settings import LANGFLOW_CHAT_FLOW_ID, LANGFLOW_URL, NUDGES_FLOW_ID, clients
 from utils.logging_config import get_logger
@@ -498,7 +498,11 @@ class ChatService:
         storage_user_id: str = None,
     ):
         """Send document content as user message to get proper response_id"""
-        document_prompt = f"I'm uploading a document called '{filename}'. Here is its content:\n\n{document_content}\n\nPlease confirm you've received this document and are ready to answer questions about it."
+        document_prompt = (
+            f"I'm uploading a document called '{filename}'. Here is its content:\n\n"
+            f"{fence_untrusted_text(document_content)}\n\n"
+            "Please confirm you've received this document and are ready to answer questions about it."
+        )
         conversation_user_id = storage_user_id or user_id
 
         if endpoint == "langflow":
