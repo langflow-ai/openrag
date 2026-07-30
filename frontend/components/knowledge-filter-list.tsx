@@ -5,12 +5,12 @@ import { useGetAllFiltersQuery } from "@/app/api/queries/useGetAllFiltersQuery";
 import type { KnowledgeFilter } from "@/app/api/queries/useGetFiltersSearchQuery";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
-import { cn } from "@/lib/utils";
 import {
   type FilterColor,
   type IconKey,
   iconKeyToComponent,
-} from "./filter-icon-popover";
+} from "@/lib/filter-constants";
+import { cn } from "@/lib/utils";
 import { filterAccentClasses } from "./knowledge-filter-panel";
 
 interface ParsedQueryData {

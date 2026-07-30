@@ -7,7 +7,11 @@ import React, {
   useCallback,
   useState,
 } from "react";
-import { FilterColor, IconKey } from "@/components/filter-icon-popover";
+import {
+  FILTER_COLORS,
+  type FilterColor,
+  type IconKey,
+} from "@/lib/filter-constants";
 
 interface KnowledgeFilter {
   id: string;
@@ -163,7 +167,7 @@ export function KnowledgeFilterProvider({
       },
       limit: 10,
       scoreThreshold: 0,
-      color: "amber",
+      color: FILTER_COLORS[Math.floor(Math.random() * FILTER_COLORS.length)],
       icon: "filter",
     });
     setIsPanelOpen(true);

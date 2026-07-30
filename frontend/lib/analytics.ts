@@ -45,6 +45,16 @@ export const page = (
   });
 };
 
+export const identify = (
+  userId: string,
+  traits: Record<string, unknown> = {},
+) => {
+  if (!analytics || !userId) return;
+  analytics
+    .identify(userId, traits)
+    .catch((e) => console.error("Analytics identify error:", e));
+};
+
 const track = (eventName: string, properties: Record<string, unknown> = {}) => {
   if (!analytics) return;
   try {
