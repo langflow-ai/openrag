@@ -25,7 +25,7 @@ logger = get_logger(__name__)
 
 
 class FlowsService:
-    def __init__(self):
+    def __init__(self) -> None:
         # Ephemeral dict of dismissed flow update notifications per user_id
         self._dismissed_updates: dict[str, set[str]] = {}
         # Cache for flow file mappings to avoid repeated filesystem scans
@@ -43,7 +43,7 @@ class FlowsService:
 
     def dismiss_flows_updates(
         self, flow_types: list[str] | None = None, user_id: str | None = None
-    ):
+    ) -> None:
         """Dismiss flow update notifications ephemerally in backend memory per user."""
         if not hasattr(self, "_dismissed_updates") or not isinstance(self._dismissed_updates, dict):
             self._dismissed_updates = {}
@@ -731,7 +731,7 @@ class FlowsService:
             node_display_name="Split Text",
         )
 
-    def _normalize_flow_structure(self, flow_data):
+    def _normalize_flow_structure(self, flow_data: dict[str, Any]) -> dict[str, Any]:
         """
         Normalize flow structure for comparison by removing dynamic fields.
         Keeps structural elements: nodes (types, display names, template definitions), edges (connections).
@@ -1028,7 +1028,7 @@ class FlowsService:
         flow_data = response.json()
         provider = provider_name
         updates_made = []
-        node_tasks = []
+        node_tasks: list[Any] = []
 
         async def wrap_node_update(node, p, m, label):
             if await self._update_component_fields(node, p, m):
