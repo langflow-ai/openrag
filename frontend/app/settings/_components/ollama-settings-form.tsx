@@ -21,8 +21,8 @@ export function OllamaSettingsForm({
   const endpointError = modelsError?.message || errors.endpoint?.message;
 
   return (
-    <div className="space-y-4">
-      <div className="space-y-2">
+    <div className="min-w-0 space-y-4">
+      <div className="min-w-0 space-y-2">
         <LabelWrapper
           label="Ollama Base URL"
           helperText="Base URL of your Ollama server"
@@ -40,7 +40,9 @@ export function OllamaSettingsForm({
           />
         </LabelWrapper>
         {endpointError && (
-          <p className="text-sm text-destructive break-all">{endpointError}</p>
+          <p className="text-sm text-destructive min-w-0 [overflow-wrap:anywhere]">
+            {endpointError}
+          </p>
         )}
         {isLoadingModels && (
           <p className="text-sm text-muted-foreground">
