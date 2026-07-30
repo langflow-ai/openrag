@@ -194,4 +194,3 @@ async def startup_tasks(services) -> None:
             "Failed to ensure required Langflow global variables at startup",
             error=str(e),
         )
-
