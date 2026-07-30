@@ -100,9 +100,7 @@ async def dismiss_files(
     user: User = Depends(get_current_user),
 ):
     """Remove terminal FAILED file entries from a task so they leave the list."""
-    result = await task_service.dismiss_files(
-        user.user_id, task_id, file_paths=body.file_paths
-    )
+    result = await task_service.dismiss_files(user.user_id, task_id, file_paths=body.file_paths)
     if result is None:
         return JSONResponse({"error": "Task not found"}, status_code=404)
 
