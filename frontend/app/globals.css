@@ -370,6 +370,7 @@
     --text-text-01: 0 0% 9%;
     --link-primary: 217 100% 45%;
     --button-tertiary: 217 100% 45%;
+    --brand-amber: 47 89% 53%; /* #f1c21b */
     --border-border-interactive: #4589ff;
     /* IBM dark grey action button (#393939 → #474747); not --badge (dark badge is #525252) */
     --ibm-overwrite-button: 0 0% 22.4%; /* #393939 */
@@ -434,6 +435,7 @@
     --accent-pink-foreground: 329 86% 70%;
     --accent-purple: 274 66% 32%;
     --accent-purple-foreground: 270 95% 75%;
+    --brand-amber: 47 89% 53%; /* #f1c21b */
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;

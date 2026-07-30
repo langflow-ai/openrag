@@ -20,7 +20,15 @@ import {
 import { usePermissions } from "@/hooks/use-permissions";
 import { formatFlowName } from "@/lib/utils";
 
-export function FlowsUpdateDialog() {
+interface FlowsUpdateDialogProps {
+  overrideOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}
+
+export function FlowsUpdateDialog({
+  overrideOpen,
+  onOpenChange,
+}: FlowsUpdateDialogProps = {}) {
   const { can } = usePermissions();
   const canEdit = can("flows:edit");
   const { data: updates, isLoading } = useGetFlowsUpdatesQuery({
@@ -28,21 +36,28 @@ export function FlowsUpdateDialog() {
   });
   const updateMutation = useUpdateFlowsMutation();
   const dismissMutation = useDismissFlowsUpdateMutation();
-  const [isOpen, setIsOpen] = useState(false);
+  const [internalIsOpen, setInternalIsOpen] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [backupCustom, setBackupCustom] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const isOpen = overrideOpen ?? internalIsOpen;
+  const setIsOpen = (open: boolean) => {
+    setInternalIsOpen(open);
+    onOpenChange?.(open);
+  };
 
   const undismissedUpdates = updates?.filter((u) => !u.dismissed) ?? [];
   const hasUndismissed = undismissedUpdates.length > 0;
 
   useEffect(() => {
+    if (overrideOpen !== undefined) return;
     if (!isLoading && hasUndismissed) {
-      setIsOpen(true);
+      setInternalIsOpen(true);
     } else if (!isLoading) {
-      setIsOpen(false);
+      setInternalIsOpen(false);
     }
-  }, [isLoading, hasUndismissed]);
+  }, [isLoading, hasUndismissed, overrideOpen]);
 
   const handleDismiss = async () => {
     setIsOpen(false);
@@ -94,7 +109,11 @@ export function FlowsUpdateDialog() {
     }
   };
 
-  if (!can("flows:edit") || undismissedUpdates.length === 0) return null;
+  if (
+    !can("flows:edit") ||
+    (overrideOpen === undefined && undismissedUpdates.length === 0)
+  )
+    return null;
 
   return (
     <>

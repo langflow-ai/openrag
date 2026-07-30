@@ -1,106 +1,91 @@
 "use client";
 
-import { AlertCircle } from "lucide-react";
+import { AlertTriangle, X } from "lucide-react";
 import { useState } from "react";
-import { toast } from "sonner";
-import { useUpdateFlowsMutation } from "@/app/api/mutations/useUpdateFlowsMutation";
 import { useGetFlowsUpdatesQuery } from "@/app/api/queries/useGetFlowsUpdatesQuery";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { FlowsUpdateDialog } from "@/components/flows-update-dialog";
+import { useBrand } from "@/contexts/brand-context";
 import { usePermissions } from "@/hooks/use-permissions";
-import { formatFlowName } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 export function LangflowUpdatesBanner() {
+  const { brand } = useBrand();
+  const isIbm = brand === "ibm";
   const { can } = usePermissions();
   const canEdit = can("flows:edit");
   const { data: updates, isLoading } = useGetFlowsUpdatesQuery({
     enabled: canEdit,
   });
-  const updateMutation = useUpdateFlowsMutation();
-  const [isUpdating, setIsUpdating] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isDismissed, setIsDismissed] = useState(false);
+  const [showModal, setShowModal] = useState(false);
 
-  if (!canEdit || isLoading || !updates || updates.length === 0) {
+  const undismissedUpdates = updates?.filter((u) => !u.dismissed) ?? [];
+
+  if (
+    !canEdit ||
+    isLoading ||
+    !updates ||
+    undismissedUpdates.length === 0 ||
+    isDismissed
+  ) {
     return null;
   }
 
-  const handleUpdate = async () => {
-    setIsUpdating(true);
-    setErrorMessage(null);
-    const flowTypes = updates.map((u) => u.flow_type);
-
-    try {
-      const results = await updateMutation.mutateAsync({
-        flow_types: flowTypes,
-        backup_custom: true, // Always backup from settings banner
-      });
-
-      const failed = results.filter((r) => !r.success);
-      if (failed.length > 0) {
-        const errorText = failed
-          .map(
-            (f) =>
-              `${formatFlowName(f.flow_type)}: ${f.error || "Update failed"}`,
-          )
-          .join("; ");
-        setErrorMessage(errorText);
-        toast.error(`Flow update failed: ${errorText}`);
-      } else {
-        toast.success("Flows updated successfully");
-      }
-    } catch (e: any) {
-      const msg = e?.message || "Failed to update flows";
-      setErrorMessage(msg);
-      toast.error(msg);
-    } finally {
-      setIsUpdating(false);
-    }
-  };
-
   return (
-    <div className="mb-6 space-y-3">
-      {errorMessage && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Update Failed</AlertTitle>
-          <AlertDescription>{errorMessage}</AlertDescription>
-        </Alert>
-      )}
-
-      <Alert
-        variant="default"
-        className="border-amber-500/50 bg-amber-500/10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4"
+    <>
+      <div
+        className={cn(
+          "mb-6 border border-brand-amber-30 text-foreground px-4 py-3 text-sm",
+          isIbm
+            ? "bg-card border-l-4 border-l-brand-amber rounded-none"
+            : "bg-brand-amber-10 rounded-lg",
+        )}
       >
-        <div className="flex gap-3">
-          <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-500 mt-0.5" />
-          <div>
-            <AlertTitle className="text-amber-800 dark:text-amber-400 text-base">
-              Langflow Flow Updates Available
-            </AlertTitle>
-            <AlertDescription className="text-amber-700 dark:text-amber-300 mt-1">
-              There are newer versions of flows available. Updating will
-              overwrite existing flows, but a backup flow will be created in
-              Langflow automatically so you can reference or redo your
-              modifications.
-            </AlertDescription>
-            <ul className="list-disc pl-4 mt-2 text-sm text-amber-700 dark:text-amber-300">
-              {updates.map((update) => (
-                <li key={update.flow_type}>
-                  {formatFlowName(update.flow_type)}
-                </li>
-              ))}
-            </ul>
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            {isIbm ? (
+              <div className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-brand-amber text-card">
+                <span className="font-bold text-xs">!</span>
+              </div>
+            ) : (
+              <AlertTriangle className="h-5 w-5 shrink-0 text-brand-amber" />
+            )}
+            <div className="truncate">
+              <span className="font-semibold text-foreground">
+                Langflow update detected
+              </span>
+              <span className="text-muted-foreground ml-2 hidden sm:inline text-mmd">
+                Modifications to Langflow require an update to revert any custom
+                changes.
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-4 shrink-0">
+            <button
+              type="button"
+              onClick={() => setShowModal(true)}
+              className={cn(
+                "hover:underline font-medium text-sm bg-transparent border-0 cursor-pointer p-0",
+                isIbm ? "text-[#78a9ff]" : "text-primary",
+              )}
+            >
+              View update details
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsDismissed(true)}
+              aria-label="Dismiss banner"
+              className="text-muted-foreground hover:text-foreground bg-transparent border-0 cursor-pointer p-1"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
         </div>
-        <Button
-          onClick={handleUpdate}
-          disabled={isUpdating}
-          variant="outline"
-          className="shrink-0 bg-white dark:bg-black border-amber-500/30 hover:bg-amber-50 dark:hover:bg-amber-900/20"
-        >
-          {isUpdating ? "Updating..." : "Update Flows"}
-        </Button>
-      </Alert>
-    </div>
+      </div>
+
+      {showModal && (
+        <FlowsUpdateDialog overrideOpen={true} onOpenChange={setShowModal} />
+      )}
+    </>
   );
 }
