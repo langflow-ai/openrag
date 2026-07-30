@@ -105,7 +105,7 @@ endef
        ci-build-images ci-save-images \
        backend frontend docling docling-stop install-be install-fe build-be build-fe build-os build-lf logs-be logs-fe logs-lf logs-os \
        shell-be shell-lf shell-os restart status health db-reset clear-os-data flow-upload setup factory-reset \
-       dev-branch build-langflow-dev stop-dev clean-dev logs-dev logs-lf-dev shell-lf-dev restart-dev status-dev \
+       dev-branch dev-branch-cpu dev-branch-local dev-branch-local-cpu build-langflow-dev stop-dev clean-dev logs-dev logs-lf-dev shell-lf-dev restart-dev status-dev \
        ensure-langflow-data ensure-backend-volumes
 
 all: help
@@ -267,6 +267,9 @@ help_dev: ## Show development environment commands
 	@echo "  $(PURPLE)make dev-branch$(NC)      - Build & run with custom Langflow branch"
 	@echo "                         Usage: make dev-branch BRANCH=test-openai-responses"
 	@echo "                                make dev-branch BRANCH=feature-x REPO=https://github.com/org/langflow.git"
+	@echo "  $(PURPLE)make dev-branch-cpu$(NC)  - Build & run (CPU only) with custom Langflow branch"
+	@echo "  $(PURPLE)make dev-branch-local$(NC) - Start local infrastructure only with custom Langflow branch"
+	@echo "  $(PURPLE)make dev-branch-local-cpu$(NC) - Start local infrastructure only (CPU only) with custom Langflow branch"
 	@echo "  $(PURPLE)make build-langflow-dev$(NC) - Build only the Langflow dev image (no cache)"
 	@echo "  $(PURPLE)make stop-dev$(NC)        - Stop dev environment containers"
 	@echo "  $(PURPLE)make restart-dev$(NC)     - Restart dev environment"
@@ -520,6 +523,38 @@ dev-branch-cpu: ensure-langflow-data ensure-backend-volumes ## Build & run full 
 	@echo "   $(CYAN)Frontend:$(NC)              http://localhost:$${FRONTEND_PORT:-3000}"
 	@echo "   $(CYAN)OpenSearch:$(NC)            http://localhost:$${OPENSEARCH_PORT:-9200}"
 	@echo "   $(CYAN)Dashboards:$(NC)            http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
+
+dev-branch-local: ensure-langflow-data ensure-backend-volumes ## Start infrastructure for local development with custom Langflow branch
+	@echo "$(YELLOW)Building Langflow from branch: $(BRANCH)$(NC)"
+	@echo "   $(CYAN)Repository:$(NC) $(REPO)"
+	@echo ""
+	@echo "$(YELLOW)This may take several minutes for the first build...$(NC)"
+	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.dev.yml build langflow
+	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml build opensearch
+	@echo "$(YELLOW)Starting infrastructure only (for local development) with custom Langflow build...$(NC)"
+	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.dev.yml -f docker-compose.host-backend.yml up -d opensearch dashboards langflow
+	@echo "$(PURPLE)Infrastructure started!$(NC)"
+	@echo "   $(CYAN)Langflow ($(BRANCH)):$(NC) http://localhost:$${LANGFLOW_PORT:-7860}"
+	@echo "   $(CYAN)OpenSearch:$(NC)            http://localhost:$${OPENSEARCH_PORT:-9200}"
+	@echo "   $(CYAN)Dashboards:$(NC)            http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
+	@echo ""
+	@echo "$(YELLOW)Now run 'make backend' and 'make frontend' in separate terminals$(NC)"
+
+dev-branch-local-cpu: ensure-langflow-data ensure-backend-volumes ## Start infrastructure for local development, with CPU only and custom Langflow branch
+	@echo "$(YELLOW)Building Langflow from branch: $(BRANCH)$(NC)"
+	@echo "   $(CYAN)Repository:$(NC) $(REPO)"
+	@echo ""
+	@echo "$(YELLOW)This may take several minutes for the first build...$(NC)"
+	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.dev.yml build langflow
+	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.host-backend.yml build opensearch
+	@echo "$(YELLOW)Starting infrastructure only (for local development) with CPU only and custom Langflow build...$(NC)"
+	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.host-backend.yml up -d opensearch dashboards langflow
+	@echo "$(PURPLE)Infrastructure started!$(NC)"
+	@echo "   $(CYAN)Langflow ($(BRANCH)):$(NC) http://localhost:$${LANGFLOW_PORT:-7860}"
+	@echo "   $(CYAN)OpenSearch:$(NC)            http://localhost:$${OPENSEARCH_PORT:-9200}"
+	@echo "   $(CYAN)Dashboards:$(NC)            http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
+	@echo ""
+	@echo "$(YELLOW)Now run 'make backend' and 'make frontend' in separate terminals$(NC)"
 
 build-langflow-dev: ## Build only the Langflow dev image (no cache)
 	@echo "$(YELLOW)Building Langflow dev image from branch: $(BRANCH)$(NC)"

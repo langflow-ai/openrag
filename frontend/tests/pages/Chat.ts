@@ -136,25 +136,19 @@ export class Chat {
           if (chunk.response?.text) {
             fullResponse = chunk.response.text; // final override
           }
+          if (chunk.item?.results?.length > 0) {
+            for (const result of chunk.item.results) {
+              if (result.filename && !fullResponse.includes(result.filename)) {
+                fullResponse += `Source: ${result.filename}`;
+              }
+            }
+          }
         } catch {
           // ignore malformed chunks
         }
       }
     } catch {
       // fallback to UI
-    }
-
-    // Always wait for the UI response to be visible and stable
-    const lastResponse = this.lastMarkdownResponse();
-    await lastResponse.waitFor({ state: "visible", timeout });
-
-    // Retrieve text content from the enclosing message bubble to ensure both LLM text and citations/filenames are included
-    const messageContainer = lastResponse.locator(
-      'xpath=ancestor::div[contains(@class, "flex-1")][1]',
-    );
-    const uiText = (await messageContainer.textContent()) || "";
-    if (uiText) {
-      fullResponse = uiText;
     }
 
     return fullResponse.trim();

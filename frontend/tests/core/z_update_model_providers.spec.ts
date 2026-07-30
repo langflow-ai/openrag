@@ -35,7 +35,7 @@ test.describe("Update model providers to watsonx.ai and openai @33219219, @33219
     await settings.configureWatsonxai();
     await settings.removeModelProviderSetup("OpenAI");
     await settings.clickTab("Langflow");
-    await settings.selectModel("Language model", "ibm/granite-3-8b-instruct");
+    await settings.selectModel("Language model", "ibm/granite-4-h-small");
     await settings.selectModel(
       "Embedding model",
       "ibm/slate-125m-english-rtrvr-v2",

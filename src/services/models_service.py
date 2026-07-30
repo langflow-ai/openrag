@@ -528,7 +528,7 @@ class ModelsService:
                 # Fetch text chat models
                 text_params = {
                     "version": "2026-04-15",
-                    "filters": "function_text_chat,!lifecycle_withdrawn",
+                    "filters": "function_text_chat,!lifecycle_withdrawn:and",
                 }
                 if project_id:
                     text_params["project_id"] = project_id
@@ -566,7 +566,7 @@ class ModelsService:
                 # Fetch embedding models
                 embed_params = {
                     "version": "2026-04-15",
-                    "filters": "function_embedding,!lifecycle_withdrawn",
+                    "filters": "function_embedding,!lifecycle_withdrawn:and",
                 }
                 if project_id:
                     embed_params["project_id"] = project_id

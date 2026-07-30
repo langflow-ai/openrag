@@ -544,7 +544,17 @@ function ChatPage() {
         },
       );
 
-      const dedupedMessages = dedupeConsecutiveErrorMessages(convertedMessages);
+      // Sort messages by timestamp to ensure they are in chronological order
+      const sortedMessages = [...convertedMessages].sort((a, b) => {
+        const aTime = a.timestamp.getTime();
+        const bTime = b.timestamp.getTime();
+        if (isNaN(aTime) && isNaN(bTime)) return 0;
+        if (isNaN(aTime)) return 1;
+        if (isNaN(bTime)) return -1;
+        return aTime - bTime;
+      });
+
+      const dedupedMessages = dedupeConsecutiveErrorMessages(sortedMessages);
       setMessages(dedupedMessages);
       lastLoadedConversationRef.current = conversationData.response_id;
       if (liveErrorConversationRef.current === conversationData.response_id) {

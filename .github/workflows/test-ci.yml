@@ -27,6 +27,8 @@ env:
   TOTAL_SHARDS: 8
   IS_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
   OPENSEARCH_PASSWORD: ${{ vars.OPENSEARCH_PASSWORD || secrets.OPENSEARCH_PASSWORD || 'OpenRag#2025!' }}
+  LANGFLOW_SUPERUSER: "admin"
+  LANGFLOW_SUPERUSER_PASSWORD: ${{ vars.LANGFLOW_SUPERUSER_PASSWORD || secrets.LANGFLOW_SUPERUSER_PASSWORD || 'OpenRag#2025!' }}
   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
   LANGFLOW_AUTO_LOGIN: "True"
   LANGFLOW_NEW_USER_IS_ACTIVE: "True"
@@ -302,6 +304,8 @@ jobs:
           OPENSEARCH_PORT: 9200
           OPENSEARCH_USERNAME: admin
           OPENSEARCH_PASSWORD: ${{ env.OPENSEARCH_PASSWORD }}
+          LANGFLOW_SUPERUSER: admin
+          LANGFLOW_SUPERUSER_PASSWORD: ${{ env.LANGFLOW_SUPERUSER_PASSWORD }}
           LOG_LEVEL: DEBUG
           # Force no-auth mode so tests bypass OAuth
           GOOGLE_OAUTH_CLIENT_ID: ""
@@ -453,6 +457,8 @@ jobs:
           OPENSEARCH_PORT: "9200"
           OPENSEARCH_USERNAME: admin
           OPENSEARCH_PASSWORD: ${{ env.OPENSEARCH_PASSWORD }}
+          LANGFLOW_SUPERUSER: admin
+          LANGFLOW_SUPERUSER_PASSWORD: ${{ env.LANGFLOW_SUPERUSER_PASSWORD }}
           GOOGLE_OAUTH_CLIENT_ID: ""
           GOOGLE_OAUTH_CLIENT_SECRET: ""
         run: npx playwright test --shard=${{ matrix.shard }}/${{ matrix.total_shards }}
