@@ -41,7 +41,7 @@ export function AnthropicSettingsForm({
           />
         </LabelWrapper>
         {apiKeyError && (
-          <p className="text-sm text-destructive">{apiKeyError}</p>
+          <p className="text-sm text-destructive break-all">{apiKeyError}</p>
         )}
         {isLoadingModels && (
           <p className="text-sm text-muted-foreground">Validating API key...</p>
