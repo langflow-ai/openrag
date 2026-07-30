@@ -56,7 +56,7 @@ def _default_llm_model(provider: str) -> str:
     return {
         "openai": OPENAI_DEFAULT_LANGUAGE_MODEL,
         "anthropic": ANTHROPIC_DEFAULT_LANGUAGE_MODEL,
-        "watsonx": "ibm/granite-3-8b-instruct",
+        "watsonx": "ibm/granite-4-h-small",
         "ollama": "llama3",
     }.get(provider, "")
 

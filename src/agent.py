@@ -2,7 +2,7 @@ import uuid
 from typing import Any
 
 from services.conversation_persistence_service import conversation_persistence
-from utils.langflow_utils import strip_untrusted_fence_recursive
+from utils.langflow_utils import parse_knowledge_chunks, strip_untrusted_fence_recursive
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -361,14 +361,10 @@ async def async_response_stream(
                         and item.get("type") == "tool_call"
                         and "results" in item
                     ):
-                        from utils.langflow_utils import parse_knowledge_chunks
-
                         item["results"] = parse_knowledge_chunks(item["results"])
 
                     # Also check for direct tool_call chunks
                     elif chunk_data.get("type") == "tool_call" and "results" in chunk_data:
-                        from utils.langflow_utils import parse_knowledge_chunks
-
                         chunk_data["results"] = parse_knowledge_chunks(chunk_data["results"])
 
                 # Middleware: Detect implicit tool calls and inject standardized events
@@ -377,10 +373,10 @@ async def async_response_stream(
                     # Check if this chunk contains retrieval results
                     has_results = any(
                         [
-                            "results" in chunk_data,
-                            "outputs" in chunk_data,
-                            "retrieved_documents" in chunk_data,
-                            "retrieval_results" in chunk_data,
+                            bool(chunk_data.get("results")),
+                            bool(chunk_data.get("outputs")),
+                            bool(chunk_data.get("retrieved_documents")),
+                            bool(chunk_data.get("retrieval_results")),
                         ]
                     )
 
@@ -389,8 +385,6 @@ async def async_response_stream(
                             "Detected implicit tool call in backend, injecting synthetic event",
                             chunk_fields=list(chunk_data.keys()),
                         )
-                        from utils.langflow_utils import parse_knowledge_chunks
-
                         # Inject a synthetic tool call event before this chunk
                         synthetic_event = {
                             "type": "response.output_item.done",
@@ -807,8 +801,6 @@ async def async_langflow_chat(
 
     # Extract sources from retrieval tool calls in the response
     sources = []
-
-    from utils.langflow_utils import parse_knowledge_chunks
 
     # Layer 1: Structured output items (OpenAI Responses API format).
     # Relaxed: check for any output item with a non-empty `results` field,
