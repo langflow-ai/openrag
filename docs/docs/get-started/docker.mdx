@@ -122,7 +122,69 @@ The following variables are required or recommended:
 
 8. Save your `.env` file.
 
-## Start services
+## Deploy from a private registry {#private-registry}
+
+By default, OpenRAG pulls its container images from Docker Hub.
+If your environment can't reach Docker Hub, or your organization requires images to be served from an approved registry, mirror the OpenRAG images to your own registry and then point your deployment at it.
+
+This is only supported for self-managed deployments. For Kubernetes deployments, configure the registry through the Helm chart's `global.imageRegistry`, `global.imageTag`, and `global.imagePullSecrets` values instead.
+
+1. Mirror the following images to your registry.
+
+   The OpenRAG containers use five images. Replace `VERSION` with the OpenRAG version you intend to deploy, such as `0.6.4`:
+
+   | Source image | Mirrored path must be |
+   |---|---|
+   | `docker.io/langflowai/openrag-backend:VERSION` | `REGISTRY/ORG/openrag-backend:TAG` |
+   | `docker.io/langflowai/openrag-frontend:VERSION` | `REGISTRY/ORG/openrag-frontend:TAG` |
+   | `docker.io/langflowai/openrag-langflow:VERSION` | `REGISTRY/ORG/openrag-langflow:TAG` |
+   | `docker.io/langflowai/openrag-opensearch:VERSION` | `REGISTRY/ORG/openrag-opensearch:TAG` |
+   | `docker.io/opensearchproject/opensearch-dashboards:3.6.0` | `DASHBOARDS_REGISTRY/opensearchproject/opensearch-dashboards:3.6.0` |
+
+   The first four images resolve from `IMAGE_REGISTRY` and `IMAGE_ORG`, so you can mirror them into any organization you control.
+   The OpenSearch Dashboards image resolves from `DASHBOARDS_REGISTRY` only, so you must preserve the `opensearchproject/opensearch-dashboards` path and the `3.6.0` tag when you mirror it.
+
+   :::tip
+   The OpenRAG images are multi-architecture manifests.
+   Copy them with a tool that preserves every architecture, such as `skopeo copy --all` or `docker buildx imagetools create`.
+   A plain `docker pull` followed by `docker push` copies only the architecture of the machine that ran it, which produces images that fail to start on other platforms.
+   :::
+
+2. If your registry requires authentication, sign in on the host that runs the containers:
+
+   ```bash title="Docker"
+   docker login registry.example.com
+   ```
+
+   ```bash title="Podman"
+   podman login registry.example.com
+   ```
+
+   OpenRAG checks that each image exists in the registry before it pulls, and that check uses your local credentials.
+   Signing in first prevents the deployment from failing with an authentication error.
+
+3. In your `.env` file, set the [container image and registry variables](/reference/configuration#container-image-and-registry-settings) for your registry:
+
+   ```env
+   IMAGE_REGISTRY=registry.example.com
+   IMAGE_ORG=platform-team
+   DASHBOARDS_REGISTRY=registry.example.com
+
+   # Set the tag your mirrored images use.
+   OPENRAG_IMAGE_TAG=0.6.4
+   ```
+
+   Set `IMAGE_REGISTRY` to a hostname without a scheme or trailing slash, and include the port if your registry uses a non-standard one, such as `registry.example.com:5000`.
+
+   Set `OPENRAG_IMAGE_TAG` if your mirrored images are tagged differently from the OpenRAG release versions.
+   It takes precedence over `OPENRAG_VERSION`.
+   If neither variable is set, OpenRAG pulls the `latest` tag, which many private registries don't populate.
+
+4. Save your `.env` file, and then continue with [Start services](#start-services).
+
+If the containers fail to start with an image pull error, see [Container image pull failures](/support/troubleshoot#image-pull-failures).
+
+## Start services {#start-services}
 
 1. To use the default Docling Serve implementation, start `docling serve` on port 5001 on the host machine using the included script:
 
