@@ -371,6 +371,7 @@ def _start_services_cli(
                 )
         else:
             console.print("  [yellow]No container runtime available[/yellow]")
+            containers_ok = False
 
         if not docling_ok:
             docling_ok, message = await docling_manager.start()
