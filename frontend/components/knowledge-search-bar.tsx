@@ -7,6 +7,7 @@ import {
   useSyncAllConnectors,
   useSyncAllConnectorsPreview,
 } from "@/app/api/mutations/useSyncConnector";
+import { RequirePermission } from "@/components/require-permission";
 import { Button } from "@/components/ui/button";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { cn } from "@/lib/utils";
@@ -166,29 +167,31 @@ export const KnowledgeSearchBar = () => {
         >
           <RefreshCw className="h-4 w-4 m-4 text-[var(--icon-primary)]" />
         </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          disabled={refreshOpenragDocsMutation.isPending}
-          className="h-auto flex-shrink-0 rounded-none px-3 text-sm hover:bg-accent hover:text-foreground"
-          onClick={async () => {
-            try {
-              toast.info("Refreshing OpenRAG docs...");
-              const result = await refreshOpenragDocsMutation.mutateAsync();
-              toast.success(result.message);
-            } catch (error) {
-              toast.error(
-                error instanceof Error
-                  ? error.message
-                  : "Failed to refresh OpenRAG docs",
-              );
-            }
-          }}
-        >
-          {refreshOpenragDocsMutation.isPending
-            ? "Refreshing docs..."
-            : "Fetch latest docs"}
-        </Button>
+        <RequirePermission perm="config:write">
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={refreshOpenragDocsMutation.isPending}
+            className="h-auto flex-shrink-0 rounded-none px-3 text-sm hover:bg-accent hover:text-foreground"
+            onClick={async () => {
+              try {
+                toast.info("Refreshing OpenRAG docs...");
+                const result = await refreshOpenragDocsMutation.mutateAsync();
+                toast.success(result.message);
+              } catch (error) {
+                toast.error(
+                  error instanceof Error
+                    ? error.message
+                    : "Failed to refresh OpenRAG docs",
+                );
+              }
+            }}
+          >
+            {refreshOpenragDocsMutation.isPending
+              ? "Refreshing docs..."
+              : "Fetch latest docs"}
+          </Button>
+        </RequirePermission>
         <div className="ml-auto">
           <KnowledgeDropdown />
         </div>
