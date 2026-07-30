@@ -296,11 +296,16 @@ class DoclingRemoteComponent(BaseFileComponent):
         Returns:
             bool: True if SSL verification should be enforced, False otherwise.
         """
-        verify = getattr(self, "verify_ssl", "true")
+        verify = getattr(self, "verify_ssl", None)
+        if hasattr(verify, "get_secret_value"):
+            verify = verify.get_secret_value()
+        if hasattr(verify, "text"):
+            verify = verify.text
         if isinstance(verify, bool):
             return verify
-        if isinstance(verify, str):
-            return verify.lower() in ("true", "1", "yes")
+        val_str = str(verify or "").strip().lower()
+        if val_str in ("false", "0", "no"):
+            return False
         return True
 
     def _process_task_id(self) -> list[Data]:
@@ -355,25 +360,21 @@ class DoclingRemoteComponent(BaseFileComponent):
             **(self.docling_serve_opts or {}),
         }
 
-        processed_data: list[Data | None] = []
+        processed_data: list[Data | None] = [None] * len(file_list)
         with (
             httpx.Client(headers=self._process_headers(), verify=self._get_verify_ssl()) as client,
             ThreadPoolExecutor(max_workers=self.max_concurrency) as executor,
         ):
             futures: list[tuple[int, Future]] = []
             for i, file in enumerate(file_list):
-                if file.path is None:
-                    processed_data.append(None)
-                    continue
+                if file.path is not None:
+                    futures.append(
+                        (i, executor.submit(_convert_document, client, file.path, docling_options))
+                    )
 
-                futures.append(
-                    (i, executor.submit(_convert_document, client, file.path, docling_options))
-                )
-
-            for _index, future in futures:
+            for idx, future in futures:
                 try:
-                    result_data = future.result()
-                    processed_data.append(result_data)
+                    processed_data[idx] = future.result()
                 except (httpx.HTTPStatusError, httpx.RequestError, KeyError, ValueError) as exc:
                     self.log(f"Docling remote processing failed: {exc}")
                     raise

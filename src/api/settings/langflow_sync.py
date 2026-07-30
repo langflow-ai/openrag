@@ -18,8 +18,10 @@ from api.settings.helpers import (
     _configured_provider_names,
     _get_flows_service,
 )
+from config import settings
 from config.settings import clients, get_openrag_config
 from services.docling_service import get_docling_preset_configs
+from utils.langflow_headers import map_provider
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -28,40 +30,137 @@ logger = get_logger(__name__)
 # garbage-collected mid-flight when the originating request returns.
 _background_tasks: set[asyncio.Task] = set()
 
+LANGFLOW_CREDENTIAL_GLOBAL_VARIABLES = frozenset(
+    {
+        "ANTHROPIC_API_KEY",
+        "JWT",
+        "OPENAI_API_KEY",
+        "OPENSEARCH_PASSWORD",
+        "WATSONX_APIKEY",
+    }
+)
+
+LANGFLOW_GENERIC_GLOBAL_VARIABLES = frozenset(
+    {
+        "DOCLING_SERVE_URL",
+        "DOCLING_SERVE_VERIFY_SSL",
+        "DOCLING_TASK_ID",
+        "FILESIZE",
+        "MIMETYPE",
+        "OLLAMA_BASE_URL",
+        "OPENRAG-QUERY-FILTER",
+        "OPENRAG_INGEST_BATCH_SIZE",
+        "OPENRAG_INGEST_RUN_ID",
+        "OPENRAG_INGEST_TOKEN",
+        "OPENRAG_INGEST_URL",
+        "OPENSEARCH_INDEX_NAME",
+        "OPENSEARCH_URL",
+        "SELECTED_EMBEDDING_MODEL",
+        "SELECTED_EMBEDDING_MODEL_PROVIDER",
+        "SELECTED_LANGUAGE_MODEL",
+        "SELECTED_LANGUAGE_MODEL_PROVIDER",
+        "WATSONX_PROJECT_ID",
+        "WATSONX_URL",
+    }
+)
+
+
+def _langflow_global_variable_type(name: str) -> str:
+    if name in LANGFLOW_GENERIC_GLOBAL_VARIABLES:
+        return "Generic"
+    return "Credential"
+
+
+async def _upsert_langflow_global_variable(name: str, value: str, modify: bool = True):
+    await clients._create_langflow_global_variable(
+        name,
+        value,
+        modify=modify,
+        variable_type=_langflow_global_variable_type(name),
+    )
+
+
+def _string_value(value) -> str:
+    return "" if value is None else str(value)
+
+
+def _required_generic_global_values(config) -> dict[str, str]:
+    knowledge = getattr(config, "knowledge", None)
+    providers = getattr(config, "providers", None)
+    agent = getattr(config, "agent", None)
+    watsonx = getattr(providers, "watsonx", None)
+    ollama = getattr(providers, "ollama", None)
+
+    return {
+        "DOCLING_SERVE_URL": settings.get_langflow_docling_url(),
+        "DOCLING_SERVE_VERIFY_SSL": str(settings.DOCLING_SERVE_VERIFY_SSL).lower(),
+        "DOCLING_TASK_ID": "None",
+        "FILESIZE": "0",
+        "MIMETYPE": "None",
+        "OLLAMA_BASE_URL": _string_value(getattr(ollama, "endpoint", None)),
+        "OPENRAG-QUERY-FILTER": "{}",
+        "OPENRAG_INGEST_BATCH_SIZE": "100",
+        "OPENRAG_INGEST_RUN_ID": "OPENRAG_INGEST_RUN_ID",
+        "OPENRAG_INGEST_TOKEN": "OPENRAG_INGEST_TOKEN",
+        "OPENRAG_INGEST_URL": "OPENRAG_INGEST_URL",
+        "OPENSEARCH_INDEX_NAME": _string_value(getattr(knowledge, "index_name", None))
+        or "documents",
+        "OPENSEARCH_URL": settings.get_langflow_opensearch_url(),
+        "SELECTED_EMBEDDING_MODEL": _string_value(getattr(knowledge, "embedding_model", None))
+        or "text-embedding-3-small",
+        "SELECTED_EMBEDDING_MODEL_PROVIDER": map_provider(
+            getattr(knowledge, "embedding_provider", None) or "openai"
+        ),
+        "SELECTED_LANGUAGE_MODEL": _string_value(getattr(agent, "llm_model", None))
+        or "gpt-4o-mini",
+        "SELECTED_LANGUAGE_MODEL_PROVIDER": map_provider(
+            getattr(agent, "llm_provider", None) or "openai"
+        ),
+        "WATSONX_PROJECT_ID": _string_value(getattr(watsonx, "project_id", None)),
+        "WATSONX_URL": _string_value(getattr(watsonx, "endpoint", None)),
+    }
+
+
+async def ensure_required_langflow_global_variables(config=None):
+    """Ensure load_from_db plain-string globals are Generic for backwards compatibility."""
+    config = config or get_openrag_config()
+    required_values = _required_generic_global_values(config)
+
+    for name in sorted(LANGFLOW_GENERIC_GLOBAL_VARIABLES):
+        await _upsert_langflow_global_variable(name, _string_value(required_values.get(name, "")))
+
 
 async def _update_langflow_global_variables(config, flows_service=None):
     """Update Langflow global variables for all configured providers"""
     try:
         # WatsonX global variables
         if config.providers.watsonx.api_key:
-            await clients._create_langflow_global_variable(
-                "WATSONX_APIKEY", config.providers.watsonx.api_key, modify=True
+            await _upsert_langflow_global_variable(
+                "WATSONX_APIKEY", config.providers.watsonx.api_key
             )
             logger.info("Set WATSONX_APIKEY global variable in Langflow")
 
         if config.providers.watsonx.project_id:
-            await clients._create_langflow_global_variable(
-                "WATSONX_PROJECT_ID", config.providers.watsonx.project_id, modify=True
+            await _upsert_langflow_global_variable(
+                "WATSONX_PROJECT_ID", config.providers.watsonx.project_id
             )
             logger.info("Set WATSONX_PROJECT_ID global variable in Langflow")
 
         if config.providers.watsonx.endpoint:
-            await clients._create_langflow_global_variable(
-                "WATSONX_URL", config.providers.watsonx.endpoint, modify=True
-            )
+            await _upsert_langflow_global_variable("WATSONX_URL", config.providers.watsonx.endpoint)
             logger.info("Set WATSONX_URL global variable in Langflow")
 
         # OpenAI global variables
         if config.providers.openai.api_key:
-            await clients._create_langflow_global_variable(
-                "OPENAI_API_KEY", config.providers.openai.api_key, modify=True
+            await _upsert_langflow_global_variable(
+                "OPENAI_API_KEY", config.providers.openai.api_key
             )
             logger.info("Set OPENAI_API_KEY global variable in Langflow")
 
         # Anthropic global variables
         if config.providers.anthropic.api_key:
-            await clients._create_langflow_global_variable(
-                "ANTHROPIC_API_KEY", config.providers.anthropic.api_key, modify=True
+            await _upsert_langflow_global_variable(
+                "ANTHROPIC_API_KEY", config.providers.anthropic.api_key
             )
             logger.info("Set ANTHROPIC_API_KEY global variable in Langflow")
 
@@ -73,15 +172,36 @@ async def _update_langflow_global_variables(config, flows_service=None):
             endpoint = await flows_service.resolve_ollama_url(
                 config.providers.ollama.endpoint, force_refresh=True
             )
-            await clients._create_langflow_global_variable("OLLAMA_BASE_URL", endpoint, modify=True)
+            await _upsert_langflow_global_variable("OLLAMA_BASE_URL", endpoint)
             logger.info("Set OLLAMA_BASE_URL global variable in Langflow")
 
         if config.knowledge.embedding_model:
-            await clients._create_langflow_global_variable(
-                "SELECTED_EMBEDDING_MODEL", config.knowledge.embedding_model, modify=True
+            await _upsert_langflow_global_variable(
+                "SELECTED_EMBEDDING_MODEL", config.knowledge.embedding_model
             )
             logger.info(
                 f"Set SELECTED_EMBEDDING_MODEL global variable to {config.knowledge.embedding_model}"
+            )
+        if config.knowledge.embedding_provider:
+            mapped_provider = map_provider(config.knowledge.embedding_provider)
+            await _upsert_langflow_global_variable(
+                "SELECTED_EMBEDDING_MODEL_PROVIDER", mapped_provider
+            )
+            logger.info(
+                f"Set SELECTED_EMBEDDING_MODEL_PROVIDER global variable to {mapped_provider}"
+            )
+        if config.agent.llm_model:
+            await _upsert_langflow_global_variable(
+                "SELECTED_LANGUAGE_MODEL", config.agent.llm_model
+            )
+            logger.info(f"Set SELECTED_LANGUAGE_MODEL global variable to {config.agent.llm_model}")
+        if config.agent.llm_provider:
+            mapped_llm_provider = map_provider(config.agent.llm_provider)
+            await _upsert_langflow_global_variable(
+                "SELECTED_LANGUAGE_MODEL_PROVIDER", mapped_llm_provider
+            )
+            logger.info(
+                f"Set SELECTED_LANGUAGE_MODEL_PROVIDER global variable to {mapped_llm_provider}"
             )
 
     except Exception as e:
@@ -92,8 +212,11 @@ async def _update_langflow_global_variables(config, flows_service=None):
 async def _run_async_post_save_langflow_updates(
     session_manager,
     update_mcp_servers: bool,
-    update_model_values: bool,
+    update_model_values: bool = False,
     models_service=None,
+    update_llm: bool = True,
+    update_embedding: bool = True,
+    update_global_variables: bool = False,
 ) -> None:
     """Apply post-save Langflow synchronization asynchronously."""
     try:
@@ -106,8 +229,9 @@ async def _run_async_post_save_langflow_updates(
         if models_service is not None:
             await models_service.update_model_registry()
 
-        # Update global variables
-        await _update_langflow_global_variables(current_config, flows_service=flows_service)
+        # Update global variables only when provider credentials or endpoints change
+        if update_global_variables:
+            await _update_langflow_global_variables(current_config, flows_service=flows_service)
 
         # Update LLM client credentials when embedding selection changes
         if update_mcp_servers:
@@ -120,10 +244,14 @@ async def _run_async_post_save_langflow_updates(
             await _update_langflow_model_values(
                 current_config,
                 flows_service,
-                llm_model=current_config.agent.llm_model,
-                llm_provider=current_config.agent.llm_provider,
-                embedding_model=current_config.knowledge.embedding_model,
-                embedding_provider=current_config.knowledge.embedding_provider,
+                llm_model=current_config.agent.llm_model if update_llm else None,
+                llm_provider=current_config.agent.llm_provider if update_llm else None,
+                embedding_model=current_config.knowledge.embedding_model
+                if update_embedding
+                else None,
+                embedding_provider=current_config.knowledge.embedding_provider
+                if update_embedding
+                else None,
             )
 
         logger.info("Completed asynchronous Langflow post-save sync")

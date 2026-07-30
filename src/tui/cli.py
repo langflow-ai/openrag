@@ -6,7 +6,6 @@ import os
 import signal
 import sys
 import webbrowser
-from pathlib import Path
 
 from rich.console import Console
 from rich.rule import Rule
@@ -17,7 +16,6 @@ from .config_fields import CONFIG_SECTIONS
 from .managers.container_manager import ContainerManager, ServiceStatus
 from .managers.docling_manager import DoclingManager
 from .managers.env_manager import EnvManager
-from .utils.platform import PlatformDetector
 
 console = Console()
 
@@ -99,6 +97,7 @@ def _get_service_states(
 
     Returns (container_services, docling_status, all_running).
     """
+
     async def _inner():
         if container_manager.is_available():
             return await container_manager.get_service_status(force_refresh=True)
@@ -114,8 +113,7 @@ def _get_service_states(
     # Determine if everything is up
     expected = set(container_manager.expected_services)
     running = {
-        name for name, info in container_services.items()
-        if info.status == ServiceStatus.RUNNING
+        name for name, info in container_services.items() if info.status == ServiceStatus.RUNNING
     }
     containers_up = running == expected and len(expected) > 0
     docling_up = docling_status.get("status") == "running"
@@ -204,7 +202,9 @@ def _setup_walkthrough(
     _collect_config(env_manager, advanced=False)
 
     try:
-        configure_advanced = input("Configure cloud connectors & advanced settings? [y/N]: ").strip().lower()
+        configure_advanced = (
+            input("Configure cloud connectors & advanced settings? [y/N]: ").strip().lower()
+        )
     except (EOFError, KeyboardInterrupt):
         console.print()
         configure_advanced = "n"
@@ -341,6 +341,14 @@ def _start_services_cli(
     docling_manager: DoclingManager,
 ):
     """Start container services and docling via async bridge."""
+    env_manager = EnvManager()
+    env_manager.load_existing_env()
+    env_manager.setup_secure_defaults()
+
+    if not env_manager.config.langflow_superuser_password:
+        console.print("[red]✗ Error: Langflow password is required. Cannot start services.[/red]")
+        return
+
     console.print()
     console.print("Starting OpenRAG services...", style="bold")
 
@@ -389,7 +397,7 @@ def _stop_services_cli(
     async def _inner():
         # Stop container services
         if container_manager.is_available():
-            async for success, message, *rest in container_manager.stop_services():
+            async for _success, message, *_rest in container_manager.stop_services():
                 console.print(f"  {message}")
         # Stop docling
         if docling_manager.is_running():
