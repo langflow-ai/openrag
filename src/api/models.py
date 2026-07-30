@@ -1,13 +1,35 @@
+import re
+
+import httpx
 from fastapi import Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from api.provider_validation import (
+    is_provider_credential_error,
+    sanitize_provider_error_content,
+)
 from config.settings import get_openrag_config
 from dependencies import get_models_service, require_permission
 from session_manager import User
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+_CREDENTIAL_PATTERNS = (
+    # OpenAI / Anthropic / Langflow-style secret prefixes echoed by providers.
+    re.compile(r"\bsk-(?:ant-|lf-)?[A-Za-z0-9_\-]{3,}\b"),
+    re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._\-]+\b"),
+    re.compile(r"(?i)\b(?:api[_-]?key|apikey|x-api-key)\s*[:=]\s*['\"]?[^\s'\",}]+"),
+)
+
+
+def _redact_credentials(message: str) -> str:
+    """Strip provider-echoed secrets before returning errors to clients."""
+    redacted = message
+    for pattern in _CREDENTIAL_PATTERNS:
+        redacted = pattern.sub("[REDACTED]", redacted)
+    return redacted
 
 
 class OpenAIBody(BaseModel):
@@ -22,6 +44,35 @@ class IBMBody(BaseModel):
     api_key: str | None = None
     endpoint: str | None = None
     project_id: str | None = None
+
+
+def _models_error_response(exc: Exception) -> JSONResponse:
+    """Map model-route failures to client (400) vs upstream (502) vs server (500).
+
+    ``models_service`` raises bare ``Exception(user_message)`` for actionable
+    provider/config failures (invalid key, empty model list, bad project). Those
+    must reach onboarding as sanitized text. Unexpected internals (e.g.
+    ``RuntimeError``) stay behind the generic 500.
+    """
+    if isinstance(exc, (httpx.TimeoutException, httpx.RequestError)):
+        return JSONResponse(
+            {"error": "Unable to reach the model provider. Please try again."},
+            status_code=502,
+        )
+
+    error = sanitize_provider_error_content(exc)
+    redacted = _redact_credentials(error)
+    if is_provider_credential_error(exc) or is_provider_credential_error(error):
+        return JSONResponse({"error": redacted}, status_code=400)
+    if isinstance(exc, (ValueError, TypeError)) or type(exc) is Exception:
+        # Bare Exception is the models_service user-facing contract; keep JSON
+        # / traceback leaks behind the generic response.
+        if redacted and "{" not in redacted and "}" not in redacted:
+            return JSONResponse({"error": redacted}, status_code=400)
+    return JSONResponse(
+        {"error": "An unexpected error occurred while fetching models."},
+        status_code=500,
+    )
 
 
 async def get_openai_models(
@@ -49,7 +100,7 @@ async def get_openai_models(
         return JSONResponse(models)
     except Exception as e:
         logger.error(f"Failed to get OpenAI models: {str(e)}")
-        return JSONResponse({"error": "Failed to retrieve OpenAI models"}, status_code=500)
+        return _models_error_response(e)
 
 
 async def get_anthropic_models(
@@ -79,7 +130,7 @@ async def get_anthropic_models(
         return JSONResponse(models)
     except Exception as e:
         logger.error(f"Failed to get Anthropic models: {str(e)}")
-        return JSONResponse({"error": "Failed to retrieve Anthropic models"}, status_code=500)
+        return _models_error_response(e)
 
 
 async def get_ollama_models(
@@ -106,7 +157,7 @@ async def get_ollama_models(
         return JSONResponse(models)
     except Exception as e:
         logger.error(f"Failed to get Ollama models: {str(e)}")
-        return JSONResponse({"error": "Failed to retrieve Ollama models"}, status_code=500)
+        return _models_error_response(e)
 
 
 async def get_ibm_models(
@@ -163,4 +214,4 @@ async def get_ibm_models(
         return JSONResponse(models)
     except Exception as e:
         logger.error(f"Failed to get IBM models: {str(e)}")
-        return JSONResponse({"error": "Failed to retrieve IBM models"}, status_code=500)
+        return _models_error_response(e)

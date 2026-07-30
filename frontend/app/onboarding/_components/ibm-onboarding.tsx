@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import IBMLogo from "@/components/icons/ibm-logo";
 import { LabelInput } from "@/components/label-input";
 import { LabelWrapper } from "@/components/label-wrapper";
@@ -20,7 +20,6 @@ import { ModelSelector } from "./model-selector";
 export function IBMOnboarding({
   isEmbedding = false,
   setSettings,
-  setIsLoadingModels,
   alreadyConfigured = false,
   existingEndpoint,
   existingProjectId,
@@ -28,7 +27,6 @@ export function IBMOnboarding({
 }: {
   isEmbedding?: boolean;
   setSettings: Dispatch<SetStateAction<OnboardingVariables>>;
-  setIsLoadingModels?: (isLoading: boolean) => void;
   alreadyConfigured?: boolean;
   existingEndpoint?: string;
   existingProjectId?: string;
@@ -83,26 +81,34 @@ export function IBMOnboarding({
   const debouncedApiKey = useDebouncedValue(apiKey, 500);
   const debouncedProjectId = useDebouncedValue(projectId, 500);
 
-  // Fetch models from API when all credentials are provided
   const {
     data: modelsData,
     isLoading: isLoadingModels,
+    isFetching: isFetchingModels,
     error: modelsError,
   } = useGetIBMModelsQuery(
     {
-      endpoint: debouncedEndpoint ? debouncedEndpoint : undefined,
-      apiKey: getFromEnv ? "" : debouncedApiKey ? debouncedApiKey : undefined,
-      projectId: debouncedProjectId ? debouncedProjectId : undefined,
+      endpoint: getFromEnv
+        ? existingEndpoint || debouncedEndpoint || undefined
+        : debouncedEndpoint || undefined,
+      apiKey: getFromEnv ? undefined : debouncedApiKey || undefined,
+      projectId: getFromEnv
+        ? existingProjectId || debouncedProjectId || undefined
+        : debouncedProjectId || undefined,
+      useEnvKey: getFromEnv,
     },
     {
-      enabled:
-        (!!debouncedEndpoint && !!debouncedApiKey && !!debouncedProjectId) ||
-        getFromEnv ||
-        alreadyConfigured,
+      enabled: getFromEnv
+        ? !!(existingEndpoint || debouncedEndpoint) &&
+          !!(existingProjectId || debouncedProjectId)
+        : (!!debouncedEndpoint && !!debouncedApiKey && !!debouncedProjectId) ||
+          alreadyConfigured,
     },
   );
 
-  // Use custom hook for model selection logic
+  const showModelsError =
+    !!modelsError && !isLoadingModels && !isFetchingModels;
+
   const {
     languageModel,
     embeddingModel,
@@ -116,22 +122,22 @@ export function IBMOnboarding({
     setGetFromEnv(fromEnv);
     if (fromEnv) {
       setApiKey("");
+      setEndpoint(existingEndpoint || "https://us-south.ml.cloud.ibm.com");
+      setProjectId(existingProjectId || "");
     }
     setEmbeddingModel?.("");
     setLanguageModel?.("");
   };
 
-  useEffect(() => {
-    setIsLoadingModels?.(isLoadingModels);
-  }, [isLoadingModels, setIsLoadingModels]);
-
-  // Update settings when values change
   useUpdateSettings(
     "watsonx",
     {
-      endpoint,
-      apiKey,
-      projectId,
+      endpoint: getFromEnv
+        ? existingEndpoint || "https://us-south.ml.cloud.ibm.com"
+        : endpoint,
+      apiKey: getFromEnv || alreadyConfigured ? undefined : apiKey,
+      clearApiKey: getFromEnv,
+      projectId: getFromEnv ? existingProjectId || "" : projectId,
       languageModel,
       embeddingModel,
     },
@@ -153,7 +159,10 @@ export function IBMOnboarding({
               options={alreadyConfigured ? [] : options}
               value={endpoint}
               custom
-              onValueChange={alreadyConfigured ? () => {} : setEndpoint}
+              onValueChange={
+                alreadyConfigured || getFromEnv ? () => {} : setEndpoint
+              }
+              disabled={alreadyConfigured || getFromEnv}
               searchPlaceholder="Search endpoint..."
               noOptionsPlaceholder={
                 alreadyConfigured
@@ -165,6 +174,11 @@ export function IBMOnboarding({
             {alreadyConfigured && (
               <p className="text-mmd text-muted-foreground">
                 Reusing endpoint from model provider selection.
+              </p>
+            )}
+            {getFromEnv && !alreadyConfigured && (
+              <p className="text-mmd text-muted-foreground">
+                Reusing endpoint from environment config.
               </p>
             )}
           </div>
@@ -181,11 +195,16 @@ export function IBMOnboarding({
             }
             value={projectId}
             onChange={(e) => setProjectId(e.target.value)}
-            disabled={alreadyConfigured}
+            disabled={alreadyConfigured || getFromEnv}
           />
           {alreadyConfigured && (
             <p className="text-mmd text-muted-foreground">
               Reusing project ID from model provider selection.
+            </p>
+          )}
+          {getFromEnv && !alreadyConfigured && (
+            <p className="text-mmd text-muted-foreground">
+              Reusing project ID from environment config.
             </p>
           )}
         </div>
@@ -218,7 +237,7 @@ export function IBMOnboarding({
             <LabelInput
               label="watsonx API key"
               helperText="API key to access watsonx.ai"
-              className={modelsError ? "!border-destructive" : ""}
+              className={showModelsError ? "!border-destructive" : ""}
               id="api-key"
               type="password"
               required
@@ -226,15 +245,13 @@ export function IBMOnboarding({
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
             />
-            {isLoadingModels && (
+            {(isLoadingModels || isFetchingModels) && (
               <p className="text-mmd text-muted-foreground">
                 Validating API key...
               </p>
             )}
-            {modelsError && (
-              <p className="text-mmd text-destructive">
-                Invalid watsonx API key. Verify or replace the key.
-              </p>
+            {showModelsError && (
+              <p className="text-mmd text-destructive">{modelsError.message}</p>
             )}
           </div>
         )}
@@ -256,14 +273,14 @@ export function IBMOnboarding({
             </p>
           </div>
         )}
-        {getFromEnv && isLoadingModels && (
+        {getFromEnv && (isLoadingModels || isFetchingModels) && (
           <p className="text-mmd text-muted-foreground">
             Validating configuration...
           </p>
         )}
-        {getFromEnv && modelsError && (
+        {getFromEnv && showModelsError && (
           <p className="text-mmd text-accent-amber-foreground">
-            Connection failed. Check your configuration.
+            {modelsError.message}
           </p>
         )}
       </div>

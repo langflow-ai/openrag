@@ -3,6 +3,7 @@ import {
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
+import { formatProviderErrorMessage } from "@/lib/chat-stream-errors";
 import { useGetCurrentProviderModelsQuery } from "../queries/useGetModelsQuery";
 import type { Settings } from "../queries/useGetSettingsQuery";
 
@@ -69,9 +70,9 @@ class UpdateSettingsError extends Error {
   readonly affectedModels?: AffectedEmbeddingModel[];
 
   constructor(status: number, data: Record<string, unknown>) {
-    const message =
+    const raw =
       typeof data.error === "string" ? data.error : "Failed to update settings";
-    super(message);
+    super(formatProviderErrorMessage(raw));
     this.name = "UpdateSettingsError";
     this.status = status;
     this.code = typeof data.code === "string" ? data.code : undefined;

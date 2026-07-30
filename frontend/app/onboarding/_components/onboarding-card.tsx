@@ -1,9 +1,9 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
+import { useIsFetching, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   type OnboardingVariables,
@@ -39,6 +39,7 @@ import {
   trackProcessFailure,
   trackProcessSuccess,
 } from "@/lib/analytics";
+import { formatProviderErrorMessage } from "@/lib/chat-stream-errors";
 import { cn } from "@/lib/utils";
 import { AnimatedProviderSteps } from "./animated-provider-steps";
 import { AnthropicOnboarding } from "./anthropic-onboarding";
@@ -51,8 +52,6 @@ interface OnboardingCardProps {
   onComplete: () => void;
   isCompleted?: boolean;
   isEmbedding?: boolean;
-  setIsLoadingModels?: (isLoading: boolean) => void;
-  setLoadingStatus?: (status: string[]) => void;
 }
 
 const STEP_LIST = [
@@ -80,7 +79,8 @@ const OnboardingCard = ({
     isEmbedding ? "openai" : "anthropic",
   );
 
-  const [isLoadingModels, setIsLoadingModels] = useState<boolean>(false);
+  // Read model-fetch loading from React Query instead of syncing it up from children.
+  const isLoadingModels = useIsFetching({ queryKey: ["models"] }) > 0;
 
   const queryClient = useQueryClient();
 
@@ -132,7 +132,6 @@ const OnboardingCard = ({
   }
 
   const handleSetModelProvider = (provider: string) => {
-    setIsLoadingModels(false);
     setModelProvider(provider);
     setSettings({
       [isEmbedding ? "embedding_provider" : "llm_provider"]: provider,
@@ -196,9 +195,19 @@ const OnboardingCard = ({
   // Track which tasks we've already handled to prevent infinite loops
   const handledFailedTasksRef = useRef<Set<string>>(new Set());
 
-  // Ref for the completion timeout so it persists across effect re-runs
-  const completeTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-  useEffect(() => () => clearTimeout(completeTimeoutRef.current), []);
+  // Delay calling onComplete so the "Done" step is briefly visible.
+  const [pendingComplete, setPendingComplete] = useState(false);
+  const onCompleteEvent = useEffectEvent(onComplete);
+  useEffect(() => {
+    if (!pendingComplete) {
+      return;
+    }
+    const timeoutId = setTimeout(() => {
+      onCompleteEvent();
+      setPendingComplete(false);
+    }, 1000);
+    return () => clearTimeout(timeoutId);
+  }, [pendingComplete]);
 
   // Query tasks to track completion
   const { data: tasks } = useGetTasksQuery({
@@ -250,9 +259,7 @@ const OnboardingCard = ({
           category: "Setup",
         });
         setCurrentStep(totalSteps);
-        setTimeout(() => {
-          onComplete();
-        }, 1000);
+        setPendingComplete(true);
       } else {
         trackProcessSuccess({
           processType: "Onboarding",
@@ -264,13 +271,14 @@ const OnboardingCard = ({
       }
     },
     onError: (error) => {
+      const message = formatProviderErrorMessage(error.message);
       trackProcessFailure({
         processType: "Onboarding",
         process: isEmbedding ? "Embedding Setup" : "LLM Setup",
-        resultValue: error.message,
+        resultValue: message,
         category: "Setup",
       });
-      setError(error.message);
+      setError(message);
       setCurrentStep(totalSteps);
       rollbackMutation.mutate({ embedding_only: isEmbedding });
     },
@@ -340,31 +348,28 @@ const OnboardingCard = ({
       // Mark this task as handled to prevent infinite loops
       handledFailedTasksRef.current.add(taskWithFailure.task_id);
 
-      // Extract error messages from failed files
+      // Prefer sanitized user_facing_message from enhanced tasks, then raw error.
       const errorMessages: string[] = [];
       if (taskWithFailure.files) {
         Object.values(taskWithFailure.files).forEach((file) => {
-          if (
-            (file.status === "failed" || file.status === "error") &&
-            file.error
-          ) {
-            errorMessages.push(file.error);
+          if (file.status !== "failed" && file.status !== "error") {
+            return;
+          }
+          const msg = file.user_facing_message || file.error;
+          if (msg) {
+            errorMessages.push(msg);
           }
         });
       }
 
-      // Also check task-level error
       if (taskWithFailure.error) {
         errorMessages.push(taskWithFailure.error);
       }
 
-      // Use the first error message, or a generic message if no errors found
-      const errorMessage =
-        errorMessages.length > 0
-          ? errorMessages[0]
-          : "Sample data ingestion failed. Please try again.";
+      const errorMessage = formatProviderErrorMessage(
+        errorMessages[0] || "Sample data ingestion failed. Please try again.",
+      );
 
-      // Set error message and jump back one step (exactly like onboardingMutation.onError)
       trackProcessFailure({
         processType: "Onboarding",
         process: "Sample Data Ingest",
@@ -376,7 +381,7 @@ const OnboardingCard = ({
         failed_files: taskWithFailure.failed_files,
       });
 
-      clearTimeout(completeTimeoutRef.current);
+      setPendingComplete(false);
       setError(errorMessage);
       setCurrentStep(totalSteps);
       rollbackMutation.mutate({ embedding_only: isEmbedding });
@@ -408,18 +413,13 @@ const OnboardingCard = ({
         successful_files: completedTask?.successful_files,
       });
 
-      // Set to final step to show "Done"
+      // Set to final step to show "Done", then delay onComplete via pendingComplete.
       setCurrentStep(totalSteps);
-      // Wait a bit before completing — stored in a ref so the timeout
-      // survives the re-render caused by setCurrentStep above.
-      completeTimeoutRef.current = setTimeout(() => {
-        onComplete();
-      }, 1000);
+      setPendingComplete(true);
     }
   }, [
     tasks,
     currentStep,
-    onComplete,
     isCompleted,
     isEmbedding,
     totalSteps,
@@ -673,7 +673,6 @@ const OnboardingCard = ({
                   <TabsContent value="anthropic">
                     <AnthropicOnboarding
                       setSettings={setSettings}
-                      setIsLoadingModels={setIsLoadingModels}
                       isEmbedding={isEmbedding}
                       hasEnvApiKey={
                         currentSettings?.providers?.anthropic?.has_api_key ===
@@ -685,7 +684,6 @@ const OnboardingCard = ({
                 <TabsContent value="openai">
                   <OpenAIOnboarding
                     setSettings={setSettings}
-                    setIsLoadingModels={setIsLoadingModels}
                     isEmbedding={isEmbedding}
                     hasEnvApiKey={
                       currentSettings?.providers?.openai?.has_api_key === true
@@ -698,7 +696,6 @@ const OnboardingCard = ({
                 <TabsContent value="watsonx">
                   <IBMOnboarding
                     setSettings={setSettings}
-                    setIsLoadingModels={setIsLoadingModels}
                     isEmbedding={isEmbedding}
                     alreadyConfigured={
                       providerAlreadyConfigured && modelProvider === "watsonx"
@@ -718,7 +715,6 @@ const OnboardingCard = ({
                   <TabsContent value="ollama">
                     <OllamaOnboarding
                       setSettings={setSettings}
-                      setIsLoadingModels={setIsLoadingModels}
                       isEmbedding={isEmbedding}
                       alreadyConfigured={
                         providerAlreadyConfigured && modelProvider === "ollama"
