@@ -50,14 +50,20 @@ export function FlowsUpdateDialog({
   const undismissedUpdates = updates?.filter((u) => !u.dismissed) ?? [];
   const hasUndismissed = undismissedUpdates.length > 0;
 
-  useEffect(() => {
-    if (overrideOpen !== undefined) return;
-    if (!isLoading && hasUndismissed) {
-      setInternalIsOpen(true);
-    } else if (!isLoading) {
-      setInternalIsOpen(false);
+  const [prevIsLoading, setPrevIsLoading] = useState(isLoading);
+  const [prevHasUndismissed, setPrevHasUndismissed] = useState(hasUndismissed);
+
+  if (isLoading !== prevIsLoading || hasUndismissed !== prevHasUndismissed) {
+    setPrevIsLoading(isLoading);
+    setPrevHasUndismissed(hasUndismissed);
+    if (overrideOpen === undefined) {
+      if (!isLoading && hasUndismissed) {
+        setInternalIsOpen(true);
+      } else if (!isLoading) {
+        setInternalIsOpen(false);
+      }
     }
-  }, [isLoading, hasUndismissed, overrideOpen]);
+  }
 
   const handleDismiss = async () => {
     setIsOpen(false);
