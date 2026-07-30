@@ -4,6 +4,17 @@ File service v2 — composite aggregation pagination.
 Uses OpenSearch composite aggregation for  O(page_size) server-side
 pagination. Only page_size buckets are processed per request regardless of
 total file count.
+
+Sort-field notes
+----------------
+* Fields in _COMPOSITE_SORT_FIELDS are handled entirely by the composite agg —
+  ordering is globally correct and cursor-paginated.
+* "owner" is a real keyword field so it lives in _COMPOSITE_SORT_FIELDS.
+* "chunk_count" is a derived metric (value_count sub-agg).  Composite aggs
+  cannot order by sub-aggregation metrics, so sorting by chunk_count falls back
+  to a classic terms aggregation sorted by the sub-agg, with offset-based
+  pagination (_build_terms_aggregation_for_chunk_count).  This is O(from+size)
+  at the shard level but gives a globally correct sort.
 """
 
 from typing import Any
@@ -20,10 +31,8 @@ _COMPOSITE_SORT_FIELDS: dict[str, str] = {
     "indexed_time": "indexed_time",
     "connector_type": "connector_type",
     "embedding_model": "embedding_model",
+    "owner": "owner",
 }
-
-# fall back to filename composite sort,then re-sort the returned page in python
-_PYTHON_SORT_FIELDS = {"chunk_count", "owner"}
 
 
 class FileServiceV2:
@@ -47,19 +56,34 @@ class FileServiceV2:
         after_key: dict | None = None,
     ) -> dict[str, Any]:
         """
-        List files with server-side pagination via composite aggregation
+        List files with server-side pagination via composite aggregation.
 
-        Cost is O(page_size) per request (as opposed to returning all unique file sizes from OpenSearch)
-        Returns after_key for the next page (None when on the last page),
-        plus an approximate total from a cardinality aggregation.
+        Cost is O(page_size) per request (as opposed to returning all unique
+        file sizes from OpenSearch).  Returns after_key for the next page
+        (None when on the last page), plus an approximate total from a
+        cardinality aggregation.
+
+        Exception: when sort_by="chunk_count" a terms aggregation is used
+        instead (composite aggs cannot order by sub-agg metrics).  Pagination
+        is offset-based in that path; after_key is always None.
         """
         opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
 
         query = self._build_filter_query(user_id, connector_type, mimetype, owner, search)
         total, is_approximate = await self._get_file_count(opensearch_client, query)
 
-        use_python_sort = sort_by in _PYTHON_SORT_FIELDS
-        composite_sort_field = "filename" if use_python_sort else _COMPOSITE_SORT_FIELDS.get(sort_by, "filename")
+        if sort_by == "chunk_count":
+            return await self._list_files_by_chunk_count(
+                opensearch_client=opensearch_client,
+                query=query,
+                page=page,
+                page_size=page_size,
+                sort_order=sort_order,
+                total=total,
+                is_approximate=is_approximate,
+            )
+
+        composite_sort_field = _COMPOSITE_SORT_FIELDS.get(sort_by, "filename")
 
         agg_body = self._build_composite_aggregation(
             query=query,
@@ -90,13 +114,6 @@ class FileServiceV2:
         if raw_bucket_count < page_size:  # final page, no after_key
             next_after_key = None
 
-        if use_python_sort:
-            reverse = sort_order.lower() == "desc"
-            if sort_by == "chunk_count":
-                files.sort(key=lambda f: f.get("chunk_count") or 0, reverse=reverse)
-            elif sort_by == "owner":
-                files.sort(key=lambda f: f.get("owner") or "", reverse=reverse)
-
         return {
             "files": files,
             "total": total,
@@ -104,6 +121,54 @@ class FileServiceV2:
             "page": page,
             "page_size": page_size,
             "after_key": next_after_key,
+        }
+
+    async def _list_files_by_chunk_count(
+        self,
+        opensearch_client: Any,
+        query: dict[str, Any],
+        page: int,
+        page_size: int,
+        sort_order: str,
+        total: int,
+        is_approximate: bool,
+    ) -> dict[str, Any]:
+        """
+        List files sorted globally by chunk_count using a terms aggregation.
+
+        Terms aggs support ordering by sub-aggregation metrics, which composite
+        aggs do not.  Pagination is offset-based (from = (page-1)*page_size).
+        """
+        offset = (page - 1) * page_size
+        agg_body = self._build_terms_aggregation_for_chunk_count(
+            query=query,
+            page_size=page_size,
+            offset=offset,
+            sort_order=sort_order,
+        )
+
+        try:
+            result = await opensearch_client.search(
+                index=get_index_name(),
+                body=agg_body,
+            )
+        except Exception as e:
+            logger.error("Failed to list files by chunk_count (v2)", error=str(e))
+            from utils.opensearch_utils import is_opensearch_auth_error
+
+            if is_opensearch_auth_error(e):
+                raise
+            return {"files": [], "total": 0, "page": page, "page_size": page_size, "after_key": None}
+
+        files = self._parse_terms_buckets(result, offset=offset)
+
+        return {
+            "files": files,
+            "total": total,
+            "is_approximate": is_approximate,
+            "page": page,
+            "page_size": page_size,
+            "after_key": None,  # offset pagination; no cursor
         }
 
     async def search_files(
@@ -235,6 +300,68 @@ class FileServiceV2:
             },
         }
 
+    def _build_terms_aggregation_for_chunk_count(
+        self,
+        query: dict[str, Any],
+        page_size: int,
+        offset: int,
+        sort_order: str,
+    ) -> dict[str, Any]:
+        """
+        Build a terms aggregation sorted by chunk_count sub-agg.
+
+        Terms agg supports `order: { sub_agg: asc/desc }`.  To implement
+        offset-based pagination we request (offset + page_size) buckets and
+        slice in Python — OpenSearch has no native offset for aggs.
+        """
+        return {
+            "size": 0,
+            "query": query,
+            "aggs": {
+                "files": {
+                    "terms": {
+                        "field": "filename",
+                        "size": offset + page_size,
+                        "order": {"chunk_count": sort_order},
+                    },
+                    "aggs": {
+                        "file_metadata": {
+                            "top_hits": {
+                                "size": 1,
+                                "_source": [
+                                    "document_id",
+                                    "filename",
+                                    "mimetype",
+                                    "file_size",
+                                    "source_url",
+                                    "owner",
+                                    "owner_name",
+                                    "owner_email",
+                                    "connector_type",
+                                    "embedding_model",
+                                    "embedding_dimensions",
+                                    "indexed_time",
+                                    "allowed_users",
+                                    "allowed_groups",
+                                    "allowed_principal_labels",
+                                ],
+                                "sort": [{"indexed_time": {"order": "desc"}}],
+                            }
+                        },
+                        "chunk_count": {"value_count": {"field": "_id"}},
+                    },
+                }
+            },
+        }
+
+    def _parse_terms_buckets(
+        self, result: dict[str, Any], offset: int = 0
+    ) -> list[dict[str, Any]]:
+        """Parse terms agg buckets, applying offset slice. Returns files list."""
+        buckets = result.get("aggregations", {}).get("files", {}).get("buckets", [])
+        buckets = buckets[offset:]
+        return self._buckets_to_files(buckets)
+
     async def _get_file_count(self, opensearch_client: Any, query: dict[str, Any]) -> tuple[int, bool]:
         """Approximate unique-filename count via cardinality aggregation (O(1)).
 
@@ -268,7 +395,10 @@ class FileServiceV2:
         agg = result.get("aggregations", {}).get("files", {})
         buckets = agg.get("buckets", [])
         next_after_key = agg.get("after_key")
+        return self._buckets_to_files(buckets), next_after_key
 
+    def _buckets_to_files(self, buckets: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Convert raw aggregation buckets (composite or terms) to file dicts."""
         files = []
         for bucket in buckets:
             hits = bucket.get("file_metadata", {}).get("hits", {}).get("hits", [])
@@ -277,7 +407,10 @@ class FileServiceV2:
             source = hits[0].get("_source", {})
             files.append(
                 {
-                    "filename": source.get("filename") or bucket["key"].get("filename", ""),
+                    "filename": source.get("filename") or (
+                        bucket["key"].get("filename", "") if isinstance(bucket["key"], dict)
+                        else bucket.get("key", "")
+                    ),
                     "document_id": source.get("document_id", ""),
                     "mimetype": source.get("mimetype", ""),
                     "file_size": source.get("file_size", 0),
@@ -295,5 +428,4 @@ class FileServiceV2:
                     "allowed_principal_labels": source.get("allowed_principal_labels", []),
                 }
             )
-
-        return files, next_after_key
+        return files

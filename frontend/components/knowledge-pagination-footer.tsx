@@ -1,25 +1,5 @@
 import React from "react";
 
-function pageBtnStyle(disabled: boolean): React.CSSProperties {
-  return {
-    width: 40,
-    height: 40,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    lineHeight: 1,
-    padding: 0,
-    background: "none",
-    border: "none",
-    borderRadius: 4,
-    cursor: disabled ? "default" : "pointer",
-    opacity: disabled ? 0.4 : 1,
-    fontSize: 18,
-    color: "inherit",
-    userSelect: "none",
-  };
-}
-
 export interface KnowledgePaginationFooterProps {
   currentPage: number;
   currentPageSize: number;
@@ -39,31 +19,16 @@ export function KnowledgePaginationFooter({
   setCurrentPage,
   setCurrentPageSize,
 }: KnowledgePaginationFooterProps) {
+  const atFirst = currentPage <= 1;
+  const atLast = currentPage >= totalPages;
+
   return (
     <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "flex-end",
-        gap: 16,
-        height: "var(--ag-pagination-panel-height, 48px)",
-        paddingInline: "calc(var(--ag-grid-size, 4px) * 3)",
-        borderTop: "1px solid var(--ag-border-color, hsl(var(--border)))",
-        backgroundColor: "var(--ag-background-color, hsl(var(--background)))",
-        color: "var(--ag-foreground-color, hsl(var(--muted-foreground)))",
-        fontSize: "var(--ag-font-size, 14px)",
-        fontFamily: "var(--ag-font-family, inherit)",
-      }}
+      className="flex items-center justify-end gap-4 border-t border-border bg-background px-3 text-sm text-muted-foreground"
+      style={{ height: "var(--ag-pagination-panel-height, 48px)" }}
     >
       {/* page size */}
-      <label
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          whiteSpace: "nowrap",
-        }}
-      >
+      <label className="flex items-center gap-1.5 whitespace-nowrap">
         Page Size:
         <select
           value={currentPageSize}
@@ -72,16 +37,7 @@ export function KnowledgePaginationFooter({
             setCurrentPageSize(Number(e.target.value));
             setCurrentPage(1);
           }}
-          style={{
-            background: "var(--ag-background-color, hsl(var(--background)))",
-            color: "var(--ag-foreground-color, hsl(var(--muted-foreground)))",
-            border: "1px solid var(--ag-border-color, hsl(var(--border)))",
-            borderRadius: "var(--ag-border-radius, 0px)",
-            fontSize: "var(--ag-font-size, 14px)",
-            fontFamily: "var(--ag-font-family, inherit)",
-            padding: "2px 4px",
-            cursor: "pointer",
-          }}
+          className="cursor-pointer rounded-none border border-border bg-background px-1 py-0.5 text-sm text-muted-foreground"
         >
           {[10, 25, 50, 100].map((n) => (
             <option key={n} value={n}>
@@ -92,56 +48,58 @@ export function KnowledgePaginationFooter({
       </label>
 
       {/* row summary */}
-      <span style={{ whiteSpace: "nowrap" }}>
-        {`${(currentPage - 1) * currentPageSize + 1} to ${Math.min(
-          currentPage * currentPageSize,
-          serverTotal,
-        )} of ${serverTotal}`}
+      <span className="whitespace-nowrap">
+        {serverTotal === 0
+          ? `0 of 0`
+          : `${(currentPage - 1) * currentPageSize + 1} to ${Math.min(
+              currentPage * currentPageSize,
+              serverTotal,
+            )} of ${serverTotal}`}
       </span>
 
       {/* nav buttons */}
-      <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
+      <div className="flex items-center">
         <button
           type="button"
           aria-label="Back to first page"
-          aria-disabled={currentPage <= 1}
-          disabled={currentPage <= 1}
-          style={{ ...pageBtnStyle(currentPage <= 1), marginRight: -8 }}
+          aria-disabled={atFirst}
+          disabled={atFirst}
           onClick={() => {
-            if (currentPage > 1) {
+            if (!atFirst) {
               cursorCacheRef.current = new Map();
               setCurrentPage(1);
             }
           }}
+          className="-mr-2 flex h-10 w-10 items-center justify-center rounded text-lg leading-none disabled:cursor-default disabled:opacity-40"
         >
-          <span style={{ pointerEvents: "none" }}>«</span>
+          <span className="pointer-events-none">«</span>
         </button>
         <button
           type="button"
           aria-label="Previous page"
-          aria-disabled={currentPage <= 1}
-          disabled={currentPage <= 1}
-          style={pageBtnStyle(currentPage <= 1)}
+          aria-disabled={atFirst}
+          disabled={atFirst}
           onClick={() => {
-            if (currentPage > 1) setCurrentPage((p) => p - 1);
+            if (!atFirst) setCurrentPage((p) => p - 1);
           }}
+          className="flex h-10 w-10 items-center justify-center rounded text-lg leading-none disabled:cursor-default disabled:opacity-40"
         >
-          <span style={{ pointerEvents: "none" }}>‹</span>
+          <span className="pointer-events-none">‹</span>
         </button>
-        <span style={{ padding: "0 8px", whiteSpace: "nowrap" }}>
+        <span className="whitespace-nowrap px-2">
           Page {currentPage} of {totalPages}
         </span>
         <button
           type="button"
           aria-label="Next page"
-          aria-disabled={currentPage >= totalPages}
-          disabled={currentPage >= totalPages}
-          style={pageBtnStyle(currentPage >= totalPages)}
+          aria-disabled={atLast}
+          disabled={atLast}
           onClick={() => {
-            if (currentPage < totalPages) setCurrentPage((p) => p + 1);
+            if (!atLast) setCurrentPage((p) => p + 1);
           }}
+          className="flex h-10 w-10 items-center justify-center rounded text-lg leading-none disabled:cursor-default disabled:opacity-40"
         >
-          <span style={{ pointerEvents: "none" }}>›</span>
+          <span className="pointer-events-none">›</span>
         </button>
       </div>
     </div>

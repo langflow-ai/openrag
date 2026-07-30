@@ -478,7 +478,9 @@ function SearchPage() {
     Boolean(selectedFilter),
   );
 
-  const serverTotal = listFilesData?.total ?? 0;
+  const serverTotal = isWildcardQuery
+    ? (listFilesData?.total ?? 0)
+    : searchFiles.length;
   const gridRows: File[] = fileResults;
   const totalPages = Math.max(1, Math.ceil(serverTotal / currentPageSize));
 
@@ -1117,17 +1119,15 @@ function SearchPage() {
           </div>
         )}
 
-        {isWildcardQuery && serverTotal > 0 && (
-          <KnowledgePaginationFooter
-            currentPage={currentPage}
-            currentPageSize={currentPageSize}
-            totalPages={totalPages}
-            serverTotal={serverTotal}
-            cursorCacheRef={cursorCacheRef}
-            setCurrentPage={setCurrentPage}
-            setCurrentPageSize={setCurrentPageSize}
-          />
-        )}
+        <KnowledgePaginationFooter
+          currentPage={currentPage}
+          currentPageSize={currentPageSize}
+          totalPages={totalPages}
+          serverTotal={serverTotal}
+          cursorCacheRef={cursorCacheRef}
+          setCurrentPage={setCurrentPage}
+          setCurrentPageSize={setCurrentPageSize}
+        />
       </div>
 
       {/* Bulk Delete Confirmation Dialog */}
