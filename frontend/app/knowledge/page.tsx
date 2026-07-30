@@ -968,7 +968,8 @@ function SearchPage() {
                   });
                   try {
                     toast.info("Refreshing OpenRAG docs...");
-                    const result = await refreshOpenragDocsMutation.mutateAsync();
+                    const result =
+                      await refreshOpenragDocsMutation.mutateAsync();
                     toast.success(result.message);
                   } catch (error) {
                     toast.error(
