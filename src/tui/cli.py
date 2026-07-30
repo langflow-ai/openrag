@@ -227,15 +227,18 @@ def _setup_walkthrough(
         _, _, already_running = _get_service_states(container_manager, docling_manager)
         if already_running:
             _stop_services_cli(container_manager, docling_manager)
-        _start_services_cli(container_manager, docling_manager)
+        fully_started = _start_services_cli(container_manager, docling_manager)
 
-        console.print()
-        frontend_url = f"http://localhost:{os.getenv('FRONTEND_PORT', '3000')}"
-        console.print(f"[bold green]OpenRAG is running at {frontend_url}[/bold green]")
-        try:
-            webbrowser.open(frontend_url)
-        except Exception:
-            pass
+        # Only announce the app URL / open the browser once everything is up;
+        # _start_services_cli already surfaced a warning for a partial startup.
+        if fully_started:
+            console.print()
+            frontend_url = f"http://localhost:{os.getenv('FRONTEND_PORT', '3000')}"
+            console.print(f"[bold green]OpenRAG is running at {frontend_url}[/bold green]")
+            try:
+                webbrowser.open(frontend_url)
+            except Exception:
+                pass
 
 
 def _collect_config(
@@ -390,8 +393,10 @@ def _start_services_cli(
                 f"[yellow]⚠ Startup incomplete: {', '.join(failed)} did not start "
                 "(run Show status for details)[/yellow]"
             )
+        return not failed
     except Exception as e:
         console.print(f"[red]✗ Error starting services: {e}[/red]")
+        return False
 
 
 def _stop_services_cli(
