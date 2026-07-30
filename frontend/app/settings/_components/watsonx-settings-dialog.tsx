@@ -196,7 +196,7 @@ const WatsonxSettingsDialog = ({
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
                 >
-                  <p className="rounded-lg border border-destructive p-4 break-all">
+                  <p className="rounded-lg border border-destructive p-4 min-w-0 [overflow-wrap:anywhere]">
                     {settingsMutation.error?.message}
                   </p>
                 </motion.div>
@@ -209,7 +209,7 @@ const WatsonxSettingsDialog = ({
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -10 }}
                   >
-                    <p className="rounded-lg border border-destructive p-4 break-all">
+                    <p className="rounded-lg border border-destructive p-4 min-w-0 [overflow-wrap:anywhere]">
                       {removeMutation.error?.message}
                     </p>
                   </motion.div>

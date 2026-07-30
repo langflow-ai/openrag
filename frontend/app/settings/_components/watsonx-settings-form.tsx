@@ -50,8 +50,8 @@ export function WatsonxSettingsForm({
   } = useFormContext<WatsonxSettingsFormData>();
 
   return (
-    <div className="space-y-4">
-      <div className="space-y-2">
+    <div className="min-w-0 space-y-4">
+      <div className="min-w-0 space-y-2">
         <LabelWrapper
           label="watsonx.ai API Endpoint"
           helperText="Base URL of the API"
@@ -80,7 +80,7 @@ export function WatsonxSettingsForm({
           />
         </LabelWrapper>
         {errors.endpoint && (
-          <p className="text-sm text-destructive break-all">
+          <p className="text-sm text-destructive min-w-0 [overflow-wrap:anywhere]">
             {errors.endpoint.message}
           </p>
         )}
@@ -105,7 +105,7 @@ export function WatsonxSettingsForm({
           />
         </LabelWrapper>
         {errors.projectId && (
-          <p className="text-sm text-destructive break-all">
+          <p className="text-sm text-destructive min-w-0 [overflow-wrap:anywhere]">
             {errors.projectId.message}
           </p>
         )}
@@ -131,7 +131,7 @@ export function WatsonxSettingsForm({
           />
         </LabelWrapper>
         {errors.apiKey && (
-          <p className="text-sm text-destructive break-all">
+          <p className="text-sm text-destructive min-w-0 [overflow-wrap:anywhere]">
             {errors.apiKey.message}
           </p>
         )}
@@ -141,7 +141,7 @@ export function WatsonxSettingsForm({
           </p>
         )}
         {modelsError && (
-          <p className="text-sm text-destructive break-all">
+          <p className="text-sm text-destructive min-w-0 [overflow-wrap:anywhere]">
             {modelsError.message}
           </p>
         )}
