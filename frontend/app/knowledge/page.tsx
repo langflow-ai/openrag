@@ -32,6 +32,7 @@ import "@/components/AgGrid/agGridStyles.css";
 import { toast } from "sonner";
 import { KnowledgeActionsDropdown } from "@/components/knowledge-actions-dropdown";
 import { KnowledgeBatchActionsBar } from "@/components/knowledge-batch-actions-bar";
+import { KnowledgeRowActions } from "@/components/knowledge-row-actions";
 import { KnowledgeSearchBar } from "@/components/knowledge-search-bar";
 import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -752,13 +753,20 @@ function SearchPage() {
       suppressMovable: true,
       cellRenderer: ({ data }: CustomCellRendererProps<File>) => {
         const status = data?.status || "active";
-        if (status !== "active") return null;
-        return (
-          <KnowledgeActionsDropdown
-            filename={data?.filename || ""}
-            connectorType={data?.connector_type}
-          />
-        );
+        if (status === "active") {
+          return (
+            <KnowledgeActionsDropdown
+              filename={data?.filename || ""}
+              connectorType={data?.connector_type}
+            />
+          );
+        }
+        if (data && status === "failed") {
+          return (
+            <KnowledgeRowActions file={data} taskId={getTaskIdForRow(data)} />
+          );
+        }
+        return null;
       },
       cellStyle: {
         display: "flex",
