@@ -29,6 +29,7 @@ export function FlowsUpdateDialog() {
   const updateMutation = useUpdateFlowsMutation();
   const dismissMutation = useDismissFlowsUpdateMutation();
   const [isOpen, setIsOpen] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [backupCustom, setBackupCustom] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -45,6 +46,7 @@ export function FlowsUpdateDialog() {
 
   const handleDismiss = async () => {
     setIsOpen(false);
+    setShowConfirm(false);
     if (undismissedUpdates.length === 0) return;
     try {
       await dismissMutation.mutateAsync({
@@ -55,7 +57,12 @@ export function FlowsUpdateDialog() {
     }
   };
 
-  const handleUpdate = async () => {
+  const handleInitialUpdateClick = () => {
+    setIsOpen(false);
+    setShowConfirm(true);
+  };
+
+  const handleConfirmUpdate = async () => {
     if (undismissedUpdates.length === 0) return;
     setErrorMessage(null);
     const flowTypes = undismissedUpdates.map((u) => u.flow_type);
@@ -78,7 +85,7 @@ export function FlowsUpdateDialog() {
         toast.error(`Flow update failed: ${errorText}`);
       } else {
         toast.success("Flows updated successfully");
-        setIsOpen(false);
+        setShowConfirm(false);
       }
     } catch (e: any) {
       const msg = e?.message || "Failed to update flows";
@@ -90,73 +97,83 @@ export function FlowsUpdateDialog() {
   if (!can("flows:edit") || undismissedUpdates.length === 0) return null;
 
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogContent className="sm:max-w-[500px]">
-        <DialogHeader>
-          <DialogTitle>Flow Updates Available</DialogTitle>
-          <DialogDescription>
-            There are updates available for your Langflow flows.
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <DialogContent className="sm:max-w-[540px]">
+          <DialogHeader>
+            <DialogTitle>Update required from Langflow</DialogTitle>
+            <DialogDescription>
+              OpenRAG will back up your customized flows first
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className="space-y-4 py-4">
-          {errorMessage && (
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
-              <AlertTitle>Update Failed</AlertTitle>
-              <AlertDescription>{errorMessage}</AlertDescription>
-            </Alert>
-          )}
+          <div className="space-y-4 py-2">
+            {errorMessage && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>Update Failed</AlertTitle>
+                <AlertDescription>{errorMessage}</AlertDescription>
+              </Alert>
+            )}
 
-          <ul className="list-disc pl-4 space-y-1">
-            {undismissedUpdates.map((update) => (
-              <li key={update.flow_type}>
-                <span className="font-medium">
-                  {formatFlowName(update.flow_type)}
-                </span>
-              </li>
-            ))}
-          </ul>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Updating Langflow discards your customizations to OpenRAG flows.
+              OpenRAG copies the core flows before updating, so you can reapply
+              your changes afterward. OpenRAG stores the copies in its embedded
+              Langflow instance.
+            </p>
 
-          <Alert
-            variant="default"
-            className="border-yellow-500/50 bg-yellow-500/10"
-          >
-            <AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-500" />
-            <AlertTitle className="text-yellow-800 dark:text-yellow-400">
-              Flow Updates Detected
-            </AlertTitle>
-            <AlertDescription className="text-yellow-700 dark:text-yellow-300">
-              Updating will overwrite existing flows with newer versions. Backup
-              flows will be created in Langflow so you can reference or redo
-              your modifications.
-            </AlertDescription>
-          </Alert>
-
-          <div className="flex items-center space-x-2 pt-2">
-            <Checkbox
-              id="backup-custom"
-              checked={backupCustom}
-              onCheckedChange={(checked) => setBackupCustom(!!checked)}
-            />
-            <label
-              htmlFor="backup-custom"
-              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-            >
-              Create backup flows in Langflow before updating
-            </label>
+            <div className="flex items-center space-x-2 pt-2">
+              <Checkbox
+                id="backup-custom"
+                checked={backupCustom}
+                onCheckedChange={(checked) => setBackupCustom(!!checked)}
+              />
+              <label
+                htmlFor="backup-custom"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              >
+                Back up my flows in Langflow before updating
+              </label>
+            </div>
           </div>
-        </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={handleDismiss}>
-            Skip for Now
-          </Button>
-          <Button onClick={handleUpdate} disabled={updateMutation.isPending}>
-            {updateMutation.isPending ? "Updating..." : "Update Flows"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          <DialogFooter>
+            <Button variant="outline" onClick={handleDismiss}>
+              Skip action
+            </Button>
+            <Button onClick={handleInitialUpdateClick}>Update flow</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showConfirm} onOpenChange={setShowConfirm}>
+        <DialogContent className="sm:max-w-[540px]">
+          <DialogHeader>
+            <DialogTitle>Confirm Langflow Update</DialogTitle>
+          </DialogHeader>
+
+          <div className="py-2">
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Updating Langflow will overwrite any custom changes made. Backup
+              copies of your flows will be created located in Langflow, Do you
+              want to continue?
+            </p>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowConfirm(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmUpdate}
+              disabled={updateMutation.isPending}
+            >
+              {updateMutation.isPending ? "Updating..." : "Continue update"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
