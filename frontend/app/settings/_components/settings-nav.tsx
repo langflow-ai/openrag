@@ -50,7 +50,8 @@ export function SettingsNav() {
     if ("perm" in tab) return canShowRbacGatedSettingsTab(tab.perm, tabAccess);
     if ("apiKeysTab" in tab)
       return (isAuthenticated || isNoAuthMode) && !isIbmAuthMode;
-    if ("ingestPreviewTab" in tab) return isIngestPreviewEnabled(runMode);
+    if ("ingestPreviewTab" in tab)
+      return isIngestPreviewEnabled(runMode, { isCloudBrand });
     return true;
   });
 

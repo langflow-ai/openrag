@@ -16,6 +16,7 @@ import { AnimatedProviderSteps } from "@/app/onboarding/_components/animated-pro
 import { IngestReviewDialog } from "@/components/ingest-review";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth-context";
+import { useIsCloudBrand } from "@/contexts/brand-context";
 import { trackButton } from "@/lib/analytics";
 import {
   EMPTY_PREVIEW,
@@ -166,7 +167,10 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
   } = state;
 
   const { runMode } = useAuth();
-  const ingestPreviewEnabled = isIngestPreviewEnabled(runMode);
+  const isCloudBrand = useIsCloudBrand();
+  const ingestPreviewEnabled = isIngestPreviewEnabled(runMode, {
+    isCloudBrand,
+  });
   const ingestPreviewEnabledRef = useRef(ingestPreviewEnabled);
   ingestPreviewEnabledRef.current = ingestPreviewEnabled;
   const previewOpenRef = useRef(preview.open);

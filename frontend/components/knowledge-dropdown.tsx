@@ -109,7 +109,9 @@ export function KnowledgeDropdown() {
   const { refetch: refetchTasks } = useGetTasksQuery();
   const queryClient = useQueryClient();
   const router = useRouter();
-  const ingestPreviewEnabled = isIngestPreviewEnabled(runMode);
+  const ingestPreviewEnabled = isIngestPreviewEnabled(runMode, {
+    isCloudBrand,
+  });
   const [mounted, setMounted] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showFolderDialog, setShowFolderDialog] = useState(false);
