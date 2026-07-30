@@ -140,9 +140,10 @@ CONFIG_SECTIONS: list[ConfigSection] = [
                 "langflow_superuser_password",
                 "LANGFLOW_SUPERUSER_PASSWORD",
                 "Admin Password",
-                placeholder="Langflow password",
+                placeholder="Auto-generated secure password",
                 secret=True,
-                helper_text="Leave empty for autologin (no password required)",
+                required=True,
+                helper_text="Langflow admin password (auto-generates if empty)",
             ),
             ConfigField(
                 "langflow_superuser",

@@ -29,7 +29,7 @@ from utils.telemetry import Category, MessageId, TelemetryClient
 logger = get_logger(__name__)
 
 
-async def _update_mcp_server_urls(langflow_mcp_service):
+async def _update_mcp_server_urls(langflow_mcp_service) -> None:
     """Update MCP server URLs (patch localhost and convert to streamable HTTP)."""
     try:
         result = await langflow_mcp_service.update_all_mcp_server_urls()
@@ -38,7 +38,7 @@ async def _update_mcp_server_urls(langflow_mcp_service):
         logger.warning(f"Failed to update MCP server URLs after settings change: {str(mcp_error)}")
 
 
-async def startup_tasks(services):
+async def startup_tasks(services) -> None:
     """Startup tasks"""
     from config.settings import IBM_AUTH_ENABLED
 
@@ -181,3 +181,17 @@ async def startup_tasks(services):
             "flows may be missing until the next restart",
             error=str(e),
         )
+
+    # Older Langflow databases may have plain-string globals stored as Credential
+    # variables because environment-seeded globals used Credential by default.
+    try:
+        from api.settings.langflow_sync import ensure_required_langflow_global_variables
+
+        await ensure_required_langflow_global_variables(get_openrag_config())
+        logger.info("Ensured required Langflow global variables")
+    except Exception as e:
+        logger.error(
+            "Failed to ensure required Langflow global variables at startup",
+            error=str(e),
+        )
+
