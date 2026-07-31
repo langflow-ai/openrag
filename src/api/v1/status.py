@@ -1,5 +1,4 @@
-from fastapi import Depends
-from fastapi.responses import JSONResponse
+from fastapi import Depends, HTTPException
 
 from api.schemas.status import StatusResponse
 from dependencies import require_api_key_permission
@@ -19,4 +18,4 @@ async def get_status_endpoint(
     except Exception as e:
         logger.error("Failed to get status", error=str(e))
 
-        return JSONResponse({"error": "Failed to get status"}, status_code=500)
+        raise HTTPException(status_code=500, detail="Failed to get status")
