@@ -18,4 +18,4 @@ async def get_status_endpoint(
     except Exception as e:
         logger.error("Failed to get status", error=str(e))
 
-        raise HTTPException(status_code=500, detail="Failed to get status")
+        raise HTTPException(status_code=500, detail="Failed to get status") from e
