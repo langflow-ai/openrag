@@ -47,8 +47,6 @@ RUN microdnf install -y \
     openssl openssl-libs \
     krb5-libs \
     expat \
-    libarchive \
-    libxml2 \
     && microdnf clean all
 
 # Install Langflow with targeted extras and CPU-only wheels for PyTorch/Docling
