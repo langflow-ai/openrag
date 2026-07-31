@@ -7,7 +7,7 @@ from utils.version_utils import OPENRAG_VERSION
 
 logger = get_logger(__name__)
 
-_CHECK_TIMEOUT_S = 3.0
+_CHECK_TIMEOUT_S = 2.0
 
 
 async def check_openrag_backend() -> ComponentStatus:

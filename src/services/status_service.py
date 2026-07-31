@@ -13,7 +13,7 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-CHECK_TIMEOUT_S = 3.0
+CHECK_TIMEOUT_S = 5.0
 
 CHECK_SPECS = [check_openrag_backend, check_docling, check_langflow, check_opensearch]
 
