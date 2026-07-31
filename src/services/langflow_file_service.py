@@ -136,14 +136,16 @@ class LangflowFileService:
             return
 
         try:
-            from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL
+            from config.embedding_constants import get_declared_default_embedding_model
             from config.settings import get_index_name, get_openrag_config
             from utils.embedding_fields import ensure_embedding_field_exists
             from utils.embeddings import create_index_body
 
             config = get_openrag_config()
             index_name = get_index_name()
-            model_name = embedding_model or OPENAI_DEFAULT_EMBEDDING_MODEL
+            model_name = embedding_model or get_declared_default_embedding_model(
+                config.knowledge.embedding_provider
+            )
             embedding_dimensions = await self._detect_embedding_dimensions(
                 model_name,
                 config.knowledge.embedding_provider,
