@@ -66,16 +66,12 @@ export const useGetOpenAIModelsQuery = (
     {
       queryKey: ["models", "openai", useEnvKey, apiKey] as const,
       queryFn: async (): Promise<ModelsResponse> => {
-        const body: { api_key?: string } = {};
+        const headers: Record<string, string> = {};
         if (!useEnvKey && apiKey) {
-          body.api_key = apiKey;
+          headers["X-Api-Key"] = apiKey;
         }
 
-        const response = await fetch("/api/models/openai", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
+        const response = await fetch("/api/models/openai", { headers });
         if (response.ok) {
           return (await response.json()) as ModelsResponse;
         }
@@ -102,16 +98,12 @@ export const useGetAnthropicModelsQuery = (
     {
       queryKey: ["models", "anthropic", useEnvKey, apiKey] as const,
       queryFn: async (): Promise<ModelsResponse> => {
-        const body: { api_key?: string } = {};
+        const headers: Record<string, string> = {};
         if (!useEnvKey && apiKey) {
-          body.api_key = apiKey;
+          headers["X-Api-Key"] = apiKey;
         }
 
-        const response = await fetch("/api/models/anthropic", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
+        const response = await fetch("/api/models/anthropic", { headers });
         if (response.ok) {
           return (await response.json()) as ModelsResponse;
         }
@@ -181,26 +173,20 @@ export const useGetIBMModelsQuery = (
         apiKey,
       ] as const,
       queryFn: async (): Promise<ModelsResponse> => {
-        const body: {
-          endpoint?: string;
-          api_key?: string;
-          project_id?: string;
-        } = {};
+        const url = new URL("/api/models/ibm", window.location.origin);
         if (endpoint) {
-          body.endpoint = endpoint;
+          url.searchParams.set("endpoint", endpoint);
         }
         if (projectId) {
-          body.project_id = projectId;
-        }
-        if (!useEnvKey && apiKey) {
-          body.api_key = apiKey;
+          url.searchParams.set("project_id", projectId);
         }
 
-        const response = await fetch("/api/models/ibm", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
+        const headers: Record<string, string> = {};
+        if (!useEnvKey && apiKey) {
+          headers["X-Api-Key"] = apiKey;
+        }
+
+        const response = await fetch(url.toString(), { headers });
         if (response.ok) {
           return (await response.json()) as ModelsResponse;
         }

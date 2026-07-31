@@ -43,7 +43,7 @@ export const useListFiles = (
     if (params.search) searchParams.set("search", params.search);
 
     const url = `/api/files?${searchParams.toString()}`;
-    const response = await fetch(url);
+    const response = await fetch(url, { redirect: "manual" });
 
     if (!response.ok) {
       const errorData = await response

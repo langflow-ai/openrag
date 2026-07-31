@@ -1,7 +1,7 @@
 import re
 
 import httpx
-from fastapi import Depends
+from fastapi import Depends, Header, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -77,12 +77,13 @@ def _models_error_response(exc: Exception) -> JSONResponse:
 
 async def get_openai_models(
     body: OpenAIBody | None = None,
+    x_api_key: str | None = Header(None),
     models_service=Depends(get_models_service),
     user: User = Depends(require_permission("providers:read")),
 ):
     """Get available OpenAI models"""
     try:
-        api_key = body.api_key if body else None
+        api_key = (body.api_key if body else None) or x_api_key
         if not api_key:
             try:
                 config = get_openrag_config()
@@ -105,12 +106,13 @@ async def get_openai_models(
 
 async def get_anthropic_models(
     body: AnthropicBody | None = None,
+    x_api_key: str | None = Header(None),
     models_service=Depends(get_models_service),
     user: User = Depends(require_permission("providers:read")),
 ):
     """Get available Anthropic models"""
     try:
-        api_key = body.api_key if body else None
+        api_key = (body.api_key if body else None) or x_api_key
         if not api_key:
             try:
                 config = get_openrag_config()
@@ -162,14 +164,17 @@ async def get_ollama_models(
 
 async def get_ibm_models(
     body: IBMBody | None = None,
+    x_api_key: str | None = Header(None),
+    endpoint: str | None = Query(None),
+    project_id: str | None = Query(None),
     models_service=Depends(get_models_service),
     user: User = Depends(require_permission("providers:read")),
 ):
     """Get available IBM Watson models"""
     try:
-        api_key = body.api_key if body else None
-        endpoint = body.endpoint if body else None
-        project_id = body.project_id if body else None
+        api_key = (body.api_key if body else None) or x_api_key
+        endpoint = (body.endpoint if body else None) or endpoint
+        project_id = (body.project_id if body else None) or project_id
 
         config = get_openrag_config()
         if not api_key:
