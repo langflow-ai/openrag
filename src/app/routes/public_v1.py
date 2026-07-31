@@ -20,6 +20,7 @@ from api.v1 import (
 from api.v1 import (
     settings as v1_settings,
 )
+from api.v1 import status as v1_status
 
 
 def register_public_v1_routes(app: FastAPI):
@@ -128,5 +129,13 @@ def register_public_v1_routes(app: FastAPI):
         "/v1/knowledge-filters/{filter_id}",
         v1_knowledge_filters.delete_endpoint,
         methods=["DELETE"],
+        tags=["public"],
+    )
+
+    # Status endpoint
+    app.add_api_route(
+        "/v1/status",
+        v1_status.get_status_endpoint,
+        methods=["GET"],
         tags=["public"],
     )
