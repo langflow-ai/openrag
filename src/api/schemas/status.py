@@ -1,6 +1,7 @@
 from enum import StrEnum
-from pydantic import BaseModel, Field
 from typing import Any
+
+from pydantic import BaseModel, Field
 
 
 class ComponentState(StrEnum):
@@ -9,11 +10,13 @@ class ComponentState(StrEnum):
     UNHEALTHY = "unhealthy"
     UNKNOWN = "unknown"
 
+
 class ComponentBuild(BaseModel):
     git_sha: str | None = None
     build_time: str | None = None
     image: str | None = None
     image_digest: str | None = None
+
 
 class ComponentStatus(BaseModel):
     name: str
@@ -26,7 +29,8 @@ class ComponentStatus(BaseModel):
     build: ComponentBuild = Field(default_factory=ComponentBuild)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
+
 class StatusResponse(BaseModel):
     overall_status: ComponentState
-    checked_at: str # ISO 8601 UTC
+    checked_at: str  # ISO 8601 UTC
     components: list[ComponentStatus] = Field(default_factory=list)

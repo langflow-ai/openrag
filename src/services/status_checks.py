@@ -1,13 +1,14 @@
 from time import perf_counter
 
 from api.schemas.status import ComponentBuild, ComponentState, ComponentStatus
-from config.settings import clients, DOCLING_SERVE_URL, get_openrag_config
+from config.settings import DOCLING_SERVE_URL, clients, get_openrag_config
 from utils.logging_config import get_logger
 from utils.version_utils import OPENRAG_VERSION
 
 logger = get_logger(__name__)
 
 _CHECK_TIMEOUT_S = 3.0
+
 
 async def check_openrag_backend() -> ComponentStatus:
     start = perf_counter()
@@ -23,9 +24,9 @@ async def check_openrag_backend() -> ComponentStatus:
             required=True,
             latency_ms=int((perf_counter() - start) * 1000),
             message="OpenRAG configuration is not loaded",
-            version=None, 
-            build=ComponentBuild(), # NOTE: deferring this to later Version and build traceability step
-            metadata={}
+            version=None,
+            build=ComponentBuild(),  # NOTE: deferring this to later Version and build traceability step
+            metadata={},
         )
 
     missing = []
@@ -50,9 +51,10 @@ async def check_openrag_backend() -> ComponentStatus:
         latency_ms=int((perf_counter() - start) * 1000),
         message=message,
         version=OPENRAG_VERSION,
-        build=ComponentBuild(), # NOTE: deferring this to later Version and build traceability step
-        metadata={}
+        build=ComponentBuild(),  # NOTE: deferring this to later Version and build traceability step
+        metadata={},
     )
+
 
 async def check_docling() -> ComponentStatus:
     start = perf_counter()
@@ -69,10 +71,10 @@ async def check_docling() -> ComponentStatus:
                 latency_ms=int((perf_counter() - start) * 1000),
                 message="Docling client is not initialized",
                 version=version,
-                build=ComponentBuild(), # NOTE: deferring this to later Version and build traceability step
-                metadata={}
+                build=ComponentBuild(),  # NOTE: deferring this to later Version and build traceability step
+                metadata={},
             )
-        
+
         resp = await docling_client.get(f"{DOCLING_SERVE_URL}/version", timeout=_CHECK_TIMEOUT_S)
         if resp.status_code == 200:
             status, message = ComponentState.HEALTHY, "Docling Serve reachable"
@@ -91,9 +93,10 @@ async def check_docling() -> ComponentStatus:
         latency_ms=int((perf_counter() - start) * 1000),
         message=message,
         version=version,
-        build=ComponentBuild(), # NOTE: deferring this to later Version and build traceability step
-        metadata={}
+        build=ComponentBuild(),  # NOTE: deferring this to later Version and build traceability step
+        metadata={},
     )
+
 
 async def check_langflow() -> ComponentStatus:
     start = perf_counter()
@@ -110,8 +113,8 @@ async def check_langflow() -> ComponentStatus:
                 latency_ms=int((perf_counter() - start) * 1000),
                 message="Langflow client is not initialized",
                 version=version,
-                build=ComponentBuild(), # NOTE: deferring this to later Version and build traceability step
-                metadata={}
+                build=ComponentBuild(),  # NOTE: deferring this to later Version and build traceability step
+                metadata={},
             )
 
         resp = await langflow_client.get("/api/v1/version", timeout=_CHECK_TIMEOUT_S)
@@ -133,9 +136,10 @@ async def check_langflow() -> ComponentStatus:
         latency_ms=int((perf_counter() - start) * 1000),
         message=message,
         version=version,
-        build=ComponentBuild(), # NOTE: deferring this to later Version and build traceability step
-        metadata={}
+        build=ComponentBuild(),  # NOTE: deferring this to later Version and build traceability step
+        metadata={},
     )
+
 
 async def check_opensearch() -> ComponentStatus:
     start = perf_counter()
@@ -153,8 +157,8 @@ async def check_opensearch() -> ComponentStatus:
                 latency_ms=int((perf_counter() - start) * 1000),
                 message="OpenSearch client is not initialized",
                 version=version,
-                build=ComponentBuild(), # NOTE: deferring this to later Version and build traceability step
-                metadata={}
+                build=ComponentBuild(),  # NOTE: deferring this to later Version and build traceability step
+                metadata={},
             )
 
         health = await opensearch.cluster.health()
@@ -166,13 +170,13 @@ async def check_opensearch() -> ComponentStatus:
         status = {
             "green": ComponentState.HEALTHY,
             "yellow": ComponentState.DEGRADED,
-            "red": ComponentState.UNHEALTHY
+            "red": ComponentState.UNHEALTHY,
         }.get(cluster_status, ComponentState.UNKNOWN)
         message = f"Cluster Health is {cluster_status}"
-        metadata={
+        metadata = {
             "cluster_name": health.get("cluster_name"),
             "cluster_health": cluster_status,
-            "distribution": distribution
+            "distribution": distribution,
         }
 
     except Exception as e:
@@ -189,6 +193,6 @@ async def check_opensearch() -> ComponentStatus:
         latency_ms=int((perf_counter() - start) * 1000),
         message=message,
         version=os_version,
-        build=ComponentBuild(), # NOTE: deferring this to later Version and build traceability step
-        metadata=metadata
+        build=ComponentBuild(),  # NOTE: deferring this to later Version and build traceability step
+        metadata=metadata,
     )

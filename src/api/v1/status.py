@@ -9,8 +9,9 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+
 async def get_status_endpoint(
-    user: User = Depends(require_api_key_permission("providers:read"))
+    user: User = Depends(require_api_key_permission("providers:read")),
 ) -> StatusResponse:
     """Aggregate component readiness. GET /v1/status"""
     try:
@@ -19,4 +20,3 @@ async def get_status_endpoint(
         logger.error("Failed to get status", error=str(e))
 
         return JSONResponse({"error": "Failed to get status"}, status_code=500)
-    

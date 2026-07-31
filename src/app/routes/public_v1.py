@@ -20,9 +20,7 @@ from api.v1 import (
 from api.v1 import (
     settings as v1_settings,
 )
-from api.v1 import (
-    status as v1_status
-)
+from api.v1 import status as v1_status
 
 
 def register_public_v1_routes(app: FastAPI):
