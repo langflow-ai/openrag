@@ -175,7 +175,9 @@ class SearchService:
         embedding_model = (
             embedding_model
             or get_embedding_model()
-            or get_declared_default_embedding_model(get_openrag_config().knowledge.embedding_provider)
+            or get_declared_default_embedding_model(
+                get_openrag_config().knowledge.embedding_provider
+            )
         )
         embedding_field_name = get_embedding_field_name(embedding_model)
 
