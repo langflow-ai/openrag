@@ -511,6 +511,32 @@ class FlowsService:
                 logger.error(f"Error reapplying settings after flow reset: {e}")
         return result
 
+    async def _unlock_flow(self, flow_id: str):
+        """Unlock a flow before making changes."""
+        try:
+            response = await clients.langflow_request(
+                "PATCH", f"/api/v1/flows/{flow_id}", json={"locked": False}
+            )
+            if response.status_code not in (200, 404):
+                logger.warning(
+                    f"Failed to unlock flow {flow_id}: HTTP {response.status_code} - {response.text}"
+                )
+        except Exception as e:
+            logger.warning(f"Error unlocking flow {flow_id}: {e}")
+
+    async def _lock_flow(self, flow_id: str):
+        """Lock a flow after making changes."""
+        try:
+            response = await clients.langflow_request(
+                "PATCH", f"/api/v1/flows/{flow_id}", json={"locked": True}
+            )
+            if response.status_code not in (200, 404):
+                logger.warning(
+                    f"Failed to lock flow {flow_id}: HTTP {response.status_code} - {response.text}"
+                )
+        except Exception as e:
+            logger.warning(f"Error locking flow {flow_id}: {e}")
+
     async def _reset_langflow_flow_locked(self, flow_type: str, flow_id: str):
         if not LANGFLOW_URL:
             raise ValueError("LANGFLOW_URL environment variable is required")
@@ -532,6 +558,8 @@ class FlowsService:
         except FileNotFoundError as e:
             raise ValueError(f"Flow file not found: {flow_path}") from e
 
+        await self._unlock_flow(flow_id)
+
         # Make PATCH request to Langflow API to update the flow using shared client
         try:
             response = await clients.langflow_request(
@@ -539,6 +567,7 @@ class FlowsService:
             )
 
             if response.status_code == 200:
+                await self._lock_flow(flow_id)
                 logger.info(
                     f"Successfully reset {flow_type} flow",
                     flow_id=flow_id,
@@ -673,6 +702,8 @@ class FlowsService:
             identifier = node_display_name
             raise Exception(f"{field_name} field not found in {identifier} component")
 
+        await self._unlock_flow(flow_id)
+
         # Update the flow via PATCH request
         patch_response = await clients.langflow_request(
             "PATCH", f"/api/v1/flows/{flow_id}", json=flow_data
@@ -682,6 +713,8 @@ class FlowsService:
             raise Exception(
                 f"Failed to update flow: HTTP {patch_response.status_code} - {patch_response.text}"
             )
+
+        await self._lock_flow(flow_id)
 
     async def update_chat_flow_system_prompt(self, system_prompt: str):
         """Helper function to update the system prompt in the chat flow"""
@@ -1195,6 +1228,8 @@ class FlowsService:
 
         logger.info(f"Updated {', '.join(updates_made)} in {flow_name} flow")
 
+        await self._unlock_flow(flow_id)
+
         # PATCH the updated flow
         response = await clients.langflow_request(
             "PATCH", f"/api/v1/flows/{flow_id}", json=flow_data
@@ -1202,6 +1237,8 @@ class FlowsService:
 
         if response.status_code != 200:
             raise Exception(f"Failed to update flow: HTTP {response.status_code} - {response.text}")
+
+        await self._lock_flow(flow_id)
 
         return {
             "flow": flow_name,
