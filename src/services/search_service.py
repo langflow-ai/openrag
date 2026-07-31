@@ -8,7 +8,7 @@ from typing import Any
 from agentd.tool_decorator import tool
 
 from auth_context import get_auth_context
-from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL
+from config.embedding_constants import get_declared_default_embedding_model
 from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
 from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
@@ -172,7 +172,11 @@ class SearchService:
         # Strategy: Use provided model, or default to the configured embedding
         # model. This assumes documents are embedded with that model by default.
         # Future enhancement: Could auto-detect available models in corpus.
-        embedding_model = embedding_model or get_embedding_model() or OPENAI_DEFAULT_EMBEDDING_MODEL
+        embedding_model = (
+            embedding_model
+            or get_embedding_model()
+            or get_declared_default_embedding_model(get_openrag_config().knowledge.embedding_provider)
+        )
         embedding_field_name = get_embedding_field_name(embedding_model)
 
         logger.info(
