@@ -41,6 +41,41 @@ func TestBuildBackendEnv_FileNetEnabled_SetsFlagAndURL(t *testing.T) {
 	assert.Contains(t, content, "OPENRAG_FILENET_MCP_URL=http://openrag-filenet-mcp:8811/mcp")
 	assert.NotContains(t, content, "OPENRAG_FILENET_MCP_TOKEN",
 		"no token env when no authTokenSecret is configured")
+	assert.NotContains(t, content, "OPENRAG_FILENET_VIEWER_URL_TEMPLATE",
+		"no viewer template env when the field is unset")
+	assert.NotContains(t, content, "OPENRAG_FILENET_SNIPPET_CHAR_CAP",
+		"no snippet cap env when the field is unset")
+}
+
+func TestBuildBackendEnv_FileNetViewerTemplateAndSnippetCap(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("test-openrag", "test-ns")
+	spec := filenetSpec(true)
+	spec.ViewerURLTemplate = "https://cpd.example.com/icn/navigator/bookmark.jsp" +
+		"?docid={class}%2C%7BOS-GUID%7D%2C{id_braced}&mimeType={mimetype}&template_name={class}"
+	spec.SnippetCharCap = "20000"
+	cr.Spec.FileNetMCP = spec
+	r, _ := reconciler(s, cr)
+
+	content, err := r.buildBackendEnv(context.Background(), cr, "test-ns")
+	require.NoError(t, err)
+	assert.Contains(t, content, "OPENRAG_FILENET_VIEWER_URL_TEMPLATE="+spec.ViewerURLTemplate)
+	assert.Contains(t, content, "OPENRAG_FILENET_SNIPPET_CHAR_CAP=20000")
+}
+
+func TestBuildBackendEnv_FileNetDisabled_OmitsViewerTemplate(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("test-openrag", "test-ns")
+	spec := filenetSpec(false)
+	spec.ViewerURLTemplate = "https://cpd.example.com/icn/navigator/bookmark.jsp?docid={id_braced}"
+	spec.SnippetCharCap = "20000"
+	cr.Spec.FileNetMCP = spec
+	r, _ := reconciler(s, cr)
+
+	content, err := r.buildBackendEnv(context.Background(), cr, "test-ns")
+	require.NoError(t, err)
+	assert.NotContains(t, content, "OPENRAG_FILENET_VIEWER_URL_TEMPLATE")
+	assert.NotContains(t, content, "OPENRAG_FILENET_SNIPPET_CHAR_CAP")
 }
 
 func TestBuildBackendEnv_FileNetDisabled_SetsFlagFalse(t *testing.T) {

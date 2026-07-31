@@ -12251,10 +12251,30 @@ spec:
                     required:
                     - image
                     type: object
+                  snippetCharCap:
+                    description: |-
+                      SnippetCharCap is the optional per-document snippet cap in characters
+                      (OPENRAG_FILENET_SNIPPET_CHAR_CAP, default 2000). A token-budget control,
+                      not a latency control: the upstream fetch returns the whole text extract
+                      either way. Cost per query is this value multiplied by the flow node's
+                      Top K.
+                    type: string
                   sslEnabled:
                     description: |-
                       SSLEnabled maps to the sidecar's SSL_ENABLED: "true", "false", or a CA
                       bundle path. Defaults to "true".
+                    type: string
+                  viewerUrlTemplate:
+                    description: |-
+                      ViewerURLTemplate is an optional citation link template for FileNet
+                      search results (OPENRAG_FILENET_VIEWER_URL_TEMPLATE). Empty means results
+                      carry no source link. Unlike the sidecar URL, this one is rendered as a
+                      citation and must resolve from the END USER'S BROWSER.
+
+                      Placeholders substituted per result: {id} (GUID without braces),
+                      {id_braced} (braced and percent-encoded), {mimetype} (percent-encoded)
+                      and {class}. Everything else is a deployment constant written literally —
+                      notably the object store GUID inside an IBM Content Navigator docid.
                     type: string
                 type: object
               frontend:

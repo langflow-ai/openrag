@@ -27,6 +27,18 @@ Design notes (see filenet-p8-mcp-feature-assessment.md for the evidence):
 - When the ``filenet-p8`` MCP server is not registered (feature disabled),
   the tool returns a plain "not enabled" status row so the agent falls back
   to OpenSearch retrieval without error noise or fake citations.
+- ``viewer_url_template`` and ``snippet_char_cap`` are deployment config,
+  delivered as Langflow global variables (``FILENET_VIEWER_URL_TEMPLATE`` /
+  ``FILENET_SNIPPET_CHAR_CAP``, set from the backend's
+  ``OPENRAG_FILENET_*`` env vars). When a global variable is not defined
+  Langflow leaves the literal variable NAME in the field, so both are read
+  through ``resolve_global_input`` rather than a bare ``getattr``.
+- The citation URL splits into DEPLOYMENT CONSTANTS (ICN host, object-store
+  GUID, ``template_name`` -- Content Navigator configuration that does not
+  exist in the CPE GraphQL schema at all, so it can never arrive from the
+  MCP tool) and PER-DOCUMENT values (``{id}``/``{id_braced}``,
+  ``{mimetype}``, ``{class}``). The constants are written literally into the
+  template by the admin; only the placeholders are substituted here.
 """
 
 import asyncio
@@ -34,6 +46,7 @@ import json
 import re
 import unicodedata
 from typing import Any
+from urllib.parse import quote
 
 from lfx.base.mcp.util import MCPStdioClient, MCPStreamableHttpClient, update_tools
 from lfx.custom.custom_component.component_with_cache import ComponentWithCache
@@ -58,6 +71,15 @@ BOUNDARY_SNAP_CHARS = 80
 
 SEARCH_TOOL_NAME = "document_search"
 FETCH_TOOL_NAME = "get_document_text_extract"
+
+# Langflow global variables backing the two deployment-config inputs. When the
+# variable is not defined (the backend only sends the header when the matching
+# env var is set), Langflow leaves the literal NAME in the field -- these values
+# are what ``resolve_global_input`` compares against to detect that state.
+GLOBAL_VAR_PLACEHOLDERS = {
+    "viewer_url_template": "FILENET_VIEWER_URL_TEMPLATE",
+    "snippet_char_cap": "FILENET_SNIPPET_CHAR_CAP",
+}
 
 # The IBM client returns this string AS DOCUMENT CONTENT on every download
 # failure path (auth, network, non-200, retry exhaustion). It MUST be
@@ -294,12 +316,83 @@ def locate_window(text: str, term: str, cap: int) -> tuple[str, bool]:
     return (snippet, True)
 
 
-def build_viewer_url(template: str, guid: str) -> str:
-    """Fill a viewer URL template; ``{id}`` gets the GUID without braces."""
+def resolve_global_input(value: Any, placeholder: str) -> str:
+    """Read an input backed by a Langflow global variable.
+
+    Langflow leaves the literal variable NAME in the field when the variable is
+    not defined, so a value equal to ``placeholder`` means "not configured" and
+    must not be treated as data. Mirrors ``_openrag_callback_value`` on the
+    OpenSearch component, which solves the same problem for the ingest
+    callback vars.
+    """
+    if hasattr(value, "get_secret_value"):
+        value = value.get_secret_value()
+    if hasattr(value, "text"):
+        value = value.text
+    resolved = str(value or "").strip()
+    return "" if resolved == placeholder else resolved
+
+
+def resolve_snippet_cap(raw: Any, default: int = DEFAULT_SNIPPET_CHAR_CAP) -> int:
+    """Parse the snippet cap, falling back on empty/non-numeric/non-positive.
+
+    The value arrives as a string (Langflow global variables are strings), and
+    the backend already rejects non-positive values -- this is the second line
+    of defence for a hand-edited flow node.
+    """
+    resolved = resolve_global_input(raw, GLOBAL_VAR_PLACEHOLDERS["snippet_char_cap"])
+    if not resolved:
+        return default
+    try:
+        cap = int(resolved)
+    except ValueError:
+        return default
+    return cap if cap > 0 else default
+
+
+def build_viewer_url(
+    template: str,
+    guid: str,
+    mimetype: str | None = None,
+    document_class: str = DEFAULT_DOCUMENT_CLASS,
+) -> str:
+    """Fill a citation URL template from a search hit.
+
+    Placeholders (everything else in the template is a deployment constant the
+    admin writes literally -- ICN host, object-store GUID, ``template_name``):
+
+    - ``{id}``         GUID without braces
+    - ``{id_braced}``  GUID braced and percent-encoded (``%7B..%7D``)
+    - ``{mimetype}``   MIME type, percent-encoded (``application%2Fpdf``)
+    - ``{class}``      the pinned FileNet document class
+
+    Returns ``""`` unless the template contains at least one known placeholder.
+    That single guard covers a template that is really an unresolved global
+    variable name, a ``None``, and a malformed template -- all of which would
+    otherwise produce a citation link that 404s.
+
+    Substitution is ``str.replace``, never ``str.format``: admin-authored URLs
+    legitimately contain literal braces (``%7B``-adjacent text, ICN docid
+    syntax) and ``format`` would raise on them.
+
+    A referenced placeholder with no value (e.g. a hit whose ``MimeType`` is
+    null) substitutes empty rather than dropping the link -- ICN resolves the
+    type from ``docid`` anyway, so a link beats no link.
+    """
     template = (template or "").strip()
     if not template or not guid:
         return ""
-    return template.replace("{id}", str(guid).strip("{}"))
+    if not any(
+        token in template for token in ("{id}", "{id_braced}", "{mimetype}", "{class}")
+    ):
+        return ""
+    bare_guid = str(guid).strip("{}")
+    return (
+        template.replace("{id_braced}", quote("{" + bare_guid + "}", safe=""))
+        .replace("{id}", bare_guid)
+        .replace("{mimetype}", quote(str(mimetype or ""), safe=""))
+        .replace("{class}", str(document_class or ""))
+    )
 
 
 def build_source_rows(
@@ -308,6 +401,7 @@ def build_source_rows(
     term: str,
     snippet_char_cap: int,
     viewer_url_template: str,
+    document_class: str = DEFAULT_DOCUMENT_CLASS,
 ) -> tuple[list[dict], list[str]]:
     """Combine projected hits and classified extracts into citation rows.
 
@@ -317,7 +411,10 @@ def build_source_rows(
     """
     rows: list[dict] = []
     failures: list[str] = []
-    for hit, (status, detail) in zip(projected, extracts):
+    # strict=True: extracts is built by gathering one fetch per projected hit,
+    # so a length mismatch means the pipeline desynced and rows would silently
+    # be dropped (or paired with the wrong document's text).
+    for hit, (status, detail) in zip(projected, extracts, strict=True):
         label = hit.get("filename") or hit.get("id") or "<unknown document>"
         if status != "ok":
             failures.append(f"{label}: {detail}")
@@ -333,7 +430,12 @@ def build_source_rows(
             "chunk_id": hit.get("id"),
             "score": hit.get("rank", 0.0),
             "mimetype": hit.get("mimetype"),
-            "source_url": build_viewer_url(viewer_url_template, hit.get("id", "")),
+            "source_url": build_viewer_url(
+                viewer_url_template,
+                hit.get("id", ""),
+                hit.get("mimetype"),
+                document_class,
+            ),
             "term_located": located,
         }
         if hit.get("date_last_modified"):
@@ -402,24 +504,33 @@ class FileNetSearchComponent(ComponentWithCache):
                 "the upstream max_results does not bound the result set."
             ),
         ),
-        IntInput(
+        StrInput(
             name="snippet_char_cap",
             display_name="Snippet Character Cap",
-            value=DEFAULT_SNIPPET_CHAR_CAP,
+            value=GLOBAL_VAR_PLACEHOLDERS["snippet_char_cap"],
+            load_from_db=True,
+            input_types=["Text", "Message"],
             advanced=True,
             info=(
-                "Per-document snippet cap in characters. A token-budget "
-                "control (extract p95 is ~60K chars); not a latency control."
+                "Per-document snippet cap in characters (default 2000). A "
+                "token-budget control (extract p95 is ~60K chars, cost is "
+                "cap x Top K); not a latency control. Set deployment-wide via "
+                "OPENRAG_FILENET_SNIPPET_CHAR_CAP."
             ),
         ),
         StrInput(
             name="viewer_url_template",
             display_name="Viewer URL Template",
-            value="",
+            value=GLOBAL_VAR_PLACEHOLDERS["viewer_url_template"],
+            load_from_db=True,
+            input_types=["Text", "Message"],
             advanced=True,
             info=(
-                "Optional citation link template; {id} is replaced with the "
-                "FileNet GUID without braces."
+                "Optional citation link template, set deployment-wide via "
+                "OPENRAG_FILENET_VIEWER_URL_TEMPLATE. Placeholders: {id} "
+                "(GUID without braces), {id_braced} (braced, percent-encoded), "
+                "{mimetype} (percent-encoded), {class}. Everything else is a "
+                "deployment constant written literally. Empty = no link."
             ),
         ),
         BoolInput(
@@ -467,7 +578,6 @@ class FileNetSearchComponent(ComponentWithCache):
         try:
             from langflow.api.v2.mcp import get_server
             from langflow.services.database.models.user.crud import get_user_by_id
-
             from lfx.services.deps import get_settings_service
         except ImportError as error:
             await logger.awarning(
@@ -632,16 +742,18 @@ class FileNetSearchComponent(ComponentWithCache):
             extracts = await asyncio.gather(
                 *(self._fetch_extract(fetch_tool, hit["id"]) for hit in projected)
             )
-            snippet_cap = int(
-                getattr(self, "snippet_char_cap", DEFAULT_SNIPPET_CHAR_CAP)
-                or DEFAULT_SNIPPET_CHAR_CAP
+            snippet_cap = resolve_snippet_cap(getattr(self, "snippet_char_cap", ""))
+            viewer_url_template = resolve_global_input(
+                getattr(self, "viewer_url_template", ""),
+                GLOBAL_VAR_PLACEHOLDERS["viewer_url_template"],
             )
             rows, failures = build_source_rows(
                 projected,
                 list(extracts),
                 term,
                 snippet_cap,
-                getattr(self, "viewer_url_template", "") or "",
+                viewer_url_template,
+                document_class,
             )
 
             for failure in failures:

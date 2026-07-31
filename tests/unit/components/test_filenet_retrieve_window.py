@@ -420,6 +420,125 @@ def test_build_viewer_url():
 
 
 # ---------------------------------------------------------------------------
+# Citation URL templating + deployment config delivered as Langflow global vars
+# ---------------------------------------------------------------------------
+
+# The exact template shape verified against a CP4BA CPD cluster: IBM Content
+# Navigator resolves the desktop and repository from the object-store GUID
+# inside docid, so desktop/repositoryId/repositoryType/version/vsId are all
+# unnecessary. Only {class}, {id_braced} and {mimetype} vary per document.
+ICN_TEMPLATE = (
+    "https://cpd.example.com/icn/navigator/bookmark.jsp"
+    "?docid={class}%2C%7BB9F063B1-E6F4-46DD-BEF4-D5E57EDCA08F%7D%2C{id_braced}"
+    "&mimeType={mimetype}&template_name={class}"
+)
+
+
+def test_build_viewer_url_renders_verified_icn_bookmark():
+    url = component.build_viewer_url(
+        ICN_TEMPLATE,
+        "{9FB66250-0000-C152-AD8A-3D8E616F44D2}",
+        "application/pdf",
+        "Document",
+    )
+    assert url == (
+        "https://cpd.example.com/icn/navigator/bookmark.jsp"
+        "?docid=Document%2C%7BB9F063B1-E6F4-46DD-BEF4-D5E57EDCA08F%7D"
+        "%2C%7B9FB66250-0000-C152-AD8A-3D8E616F44D2%7D"
+        "&mimeType=application%2Fpdf&template_name=Document"
+    )
+
+
+def test_build_viewer_url_percent_encodes_mimetype():
+    assert (
+        component.build_viewer_url("https://x/?m={mimetype}", "{G1}", "application/pdf")
+        == "https://x/?m=application%2Fpdf"
+    )
+
+
+def test_build_viewer_url_null_mimetype_substitutes_empty_not_dropped():
+    """ICN resolves the type from docid, so a link beats no link."""
+    assert (
+        component.build_viewer_url("https://x/{id}?m={mimetype}", "{G1}", None)
+        == "https://x/G1?m="
+    )
+
+
+def test_build_viewer_url_without_known_placeholder_returns_empty():
+    """The guard that neutralises an UNRESOLVED Langflow global variable.
+
+    When FILENET_VIEWER_URL_TEMPLATE is not defined, Langflow leaves the literal
+    variable name in the field; it must never be emitted as a citation link.
+    """
+    assert component.build_viewer_url("FILENET_VIEWER_URL_TEMPLATE", "{G1}") == ""
+    assert component.build_viewer_url("https://x/no-placeholder", "{G1}") == ""
+
+
+def test_build_viewer_url_tolerates_literal_braces():
+    """Substitution must be str.replace, not str.format — admin URLs contain braces."""
+    url = component.build_viewer_url("https://x/{id}?raw={unknown}", "{G1}")
+    assert url == "https://x/G1?raw={unknown}"
+
+
+def test_resolve_global_input_detects_unresolved_variable():
+    placeholder = component.GLOBAL_VAR_PLACEHOLDERS["viewer_url_template"]
+    assert component.resolve_global_input(placeholder, placeholder) == ""
+    assert component.resolve_global_input(None, placeholder) == ""
+    assert component.resolve_global_input("  https://x/{id}  ", placeholder) == "https://x/{id}"
+
+
+def test_resolve_global_input_unwraps_message_like_values():
+    class _Message:
+        text = "  https://x/{id}  "
+
+    placeholder = component.GLOBAL_VAR_PLACEHOLDERS["viewer_url_template"]
+    assert component.resolve_global_input(_Message(), placeholder) == "https://x/{id}"
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("20000", 20000),
+        ("  20000  ", 20000),
+        ("FILENET_SNIPPET_CHAR_CAP", 2000),  # unresolved global variable
+        ("", 2000),
+        (None, 2000),
+        ("0", 2000),
+        ("-5", 2000),
+        ("lots", 2000),
+    ],
+)
+def test_resolve_snippet_cap(raw, expected):
+    assert component.resolve_snippet_cap(raw) == expected
+
+
+def test_build_source_rows_populates_source_url_from_template():
+    rows, _ = component.build_source_rows(
+        [_projected()],
+        [("ok", "auto-renew clause")],
+        "auto-renew",
+        2000,
+        ICN_TEMPLATE,
+        "Document",
+    )
+    assert rows[0]["source_url"].startswith("https://cpd.example.com/icn/navigator/bookmark.jsp")
+    assert "%2C%7BG1%7D" in rows[0]["source_url"]
+    assert "mimeType=application%2Fpdf" in rows[0]["source_url"]
+
+
+def test_build_source_rows_without_template_leaves_source_url_empty():
+    """The default deployment: no template configured, so no citation link."""
+    rows, _ = component.build_source_rows(
+        [_projected()],
+        [("ok", "auto-renew clause")],
+        "auto-renew",
+        2000,
+        "",
+    )
+    assert rows[0]["source_url"] == ""
+
+
+# ---------------------------------------------------------------------------
 # Component-level constants the flow/prompt rely on
 # ---------------------------------------------------------------------------
 

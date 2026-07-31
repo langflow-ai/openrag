@@ -70,3 +70,73 @@ def test_headers_dict_survives_httpx_normalization():
     }
     # Previously raised UnicodeEncodeError here.
     httpx.Headers(headers)
+
+
+# ---------------------------------------------------------------------------
+# FileNet deployment-config knobs travel to the flow as global variables
+# ---------------------------------------------------------------------------
+
+import asyncio  # noqa: E402
+from types import SimpleNamespace  # noqa: E402
+
+from utils.langflow_headers import add_provider_credentials_to_headers  # noqa: E402
+
+ICN_TEMPLATE = (
+    "https://cpd.example.com/icn/navigator/bookmark.jsp"
+    "?docid={class}%2C%7BB9F063B1-E6F4-46DD-BEF4-D5E57EDCA08F%7D%2C{id_braced}"
+    "&mimeType={mimetype}&template_name={class}"
+)
+
+
+def _empty_provider_config():
+    """A config with no providers set, so only the FileNet vars are exercised."""
+    return SimpleNamespace(
+        providers=SimpleNamespace(
+            openai=SimpleNamespace(api_key=None),
+            anthropic=SimpleNamespace(api_key=None),
+            watsonx=SimpleNamespace(api_key=None, project_id=None),
+            ollama=SimpleNamespace(endpoint=None),
+        )
+    )
+
+
+def _build_headers(monkeypatch, **env):
+    for var in ("OPENRAG_FILENET_VIEWER_URL_TEMPLATE", "OPENRAG_FILENET_SNIPPET_CHAR_CAP"):
+        monkeypatch.delenv(var, raising=False)
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    headers: dict[str, str] = {}
+    asyncio.run(add_provider_credentials_to_headers(headers, _empty_provider_config()))
+    return headers
+
+
+def test_filenet_vars_absent_when_unset(monkeypatch):
+    """No env var => no global variable => the flow component uses its defaults."""
+    headers = _build_headers(monkeypatch)
+    assert "X-LANGFLOW-GLOBAL-VAR-FILENET_VIEWER_URL_TEMPLATE" not in headers
+    assert "X-LANGFLOW-GLOBAL-VAR-FILENET_SNIPPET_CHAR_CAP" not in headers
+
+
+def test_filenet_vars_forwarded_when_set(monkeypatch):
+    headers = _build_headers(
+        monkeypatch,
+        OPENRAG_FILENET_VIEWER_URL_TEMPLATE=ICN_TEMPLATE,
+        OPENRAG_FILENET_SNIPPET_CHAR_CAP="20000",
+    )
+    assert headers["X-LANGFLOW-GLOBAL-VAR-FILENET_VIEWER_URL_TEMPLATE"] == ICN_TEMPLATE
+    assert headers["X-LANGFLOW-GLOBAL-VAR-FILENET_SNIPPET_CHAR_CAP"] == "20000"
+
+
+def test_filenet_snippet_cap_rejected_before_reaching_the_flow(monkeypatch):
+    headers = _build_headers(monkeypatch, OPENRAG_FILENET_SNIPPET_CHAR_CAP="lots")
+    assert "X-LANGFLOW-GLOBAL-VAR-FILENET_SNIPPET_CHAR_CAP" not in headers
+
+
+def test_filenet_viewer_template_header_is_ascii_encodable(monkeypatch):
+    """A non-ASCII character would otherwise raise before the request is sent."""
+    headers = _build_headers(
+        monkeypatch, OPENRAG_FILENET_VIEWER_URL_TEMPLATE="https://x/café/{id}"
+    )
+    value = headers["X-LANGFLOW-GLOBAL-VAR-FILENET_VIEWER_URL_TEMPLATE"]
+    value.encode("ascii")  # must not raise
+    httpx.Headers({"X-LANGFLOW-GLOBAL-VAR-FILENET_VIEWER_URL_TEMPLATE": value})

@@ -80,7 +80,6 @@ def test_pinned_defaults_match_assessment():
     assert template["mcp_server_name"]["value"] == "filenet-p8"
     assert template["document_class"]["value"] == "Document"
     assert template["top_k"]["value"] == 5
-    assert template["snippet_char_cap"]["value"] == 2000
     # Only search_term is agent-controlled.
     tool_mode_fields = [
         name
@@ -88,6 +87,29 @@ def test_pinned_defaults_match_assessment():
         if isinstance(entry, dict) and entry.get("tool_mode") is True
     ]
     assert tool_mode_fields == ["search_term"]
+
+
+def test_deployment_config_fields_resolve_from_global_vars():
+    """The viewer URL template and snippet cap are deployment config, delivered
+    as Langflow global variables set from OPENRAG_FILENET_* env vars.
+
+    Mirrors the OPENRAG_INGEST_* assertions in test_langflow_ingest_callback.py.
+    Both must be StrInput: load_from_db is a string-field mechanism, which is
+    why the snippet cap is no longer an IntInput.
+    """
+    template = _filenet_node(_load_flow())["data"]["node"]["template"]
+    expected = {
+        "viewer_url_template": "FILENET_VIEWER_URL_TEMPLATE",
+        "snippet_char_cap": "FILENET_SNIPPET_CHAR_CAP",
+    }
+    for field, variable_name in expected.items():
+        entry = template[field]
+        assert entry["value"] == variable_name
+        assert entry["load_from_db"] is True
+        assert entry["_input_type"] == "StrInput"
+        assert entry["type"] == "str"
+        assert entry["input_types"] == ["Text", "Message"]
+        assert entry["advanced"] is True
 
 
 def test_system_prompt_mentions_filenet_in_flow_and_config():

@@ -126,6 +126,12 @@ stringData:
     {{- if .Values.global.filenet.authToken }}
     OPENRAG_FILENET_MCP_TOKEN={{ .Values.global.filenet.authToken | quote }}
     {{- end }}
+    {{- if .Values.global.filenet.viewerUrlTemplate }}
+    OPENRAG_FILENET_VIEWER_URL_TEMPLATE={{ .Values.global.filenet.viewerUrlTemplate | quote }}
+    {{- end }}
+    {{- if .Values.global.filenet.snippetCharCap }}
+    OPENRAG_FILENET_SNIPPET_CHAR_CAP={{ .Values.global.filenet.snippetCharCap | quote }}
+    {{- end }}
     {{- end }}
 
     # Webhook (continuous ingest)

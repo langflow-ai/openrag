@@ -14,6 +14,8 @@ from config.settings import (
     FILENET_MCP_SERVER_NAME,
     get_filenet_mcp_token,
     get_filenet_mcp_url,
+    get_filenet_snippet_char_cap,
+    get_filenet_viewer_url_template,
     is_dev_filenet_mcp_enabled,
     is_filenet_mcp_available,
     is_filenet_mcp_flag_enabled,
@@ -28,6 +30,8 @@ def _clear_env(monkeypatch):
         "OPENRAG_DEV_FILENET_MCP",
         "OPENRAG_FILENET_MCP_URL",
         "OPENRAG_FILENET_MCP_TOKEN",
+        "OPENRAG_FILENET_VIEWER_URL_TEMPLATE",
+        "OPENRAG_FILENET_SNIPPET_CHAR_CAP",
         "OPENRAG_RUN_MODE",
     ):
         monkeypatch.delenv(var, raising=False)
@@ -114,3 +118,52 @@ def test_availability_defaults_off(monkeypatch):
     """A pristine environment (no FileNet vars at all) leaves the tool off."""
     _clear_env(monkeypatch)
     assert is_filenet_mcp_available() is False
+
+
+# ---------------------------------------------------------------------------
+# Deployment-config knobs delivered to the flow as Langflow global variables
+# ---------------------------------------------------------------------------
+
+ICN_TEMPLATE = (
+    "https://cpd.example.com/icn/navigator/bookmark.jsp"
+    "?docid={class}%2C%7BB9F063B1-E6F4-46DD-BEF4-D5E57EDCA08F%7D%2C{id_braced}"
+    "&mimeType={mimetype}&template_name={class}"
+)
+
+
+def test_viewer_url_template_defaults_empty(monkeypatch):
+    """Unset means results carry no source link — the pre-existing behaviour."""
+    _clear_env(monkeypatch)
+    assert get_filenet_viewer_url_template() == ""
+
+
+def test_viewer_url_template_is_stripped(monkeypatch):
+    _clear_env(monkeypatch)
+    monkeypatch.setenv("OPENRAG_FILENET_VIEWER_URL_TEMPLATE", f"  {ICN_TEMPLATE}  ")
+    assert get_filenet_viewer_url_template() == ICN_TEMPLATE
+
+
+def test_snippet_char_cap_defaults_empty(monkeypatch):
+    """Unset lets the flow component apply its own 2000-char default."""
+    _clear_env(monkeypatch)
+    assert get_filenet_snippet_char_cap() == ""
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("20000", "20000"),
+        ("  20000  ", "20000"),
+        ("1", "1"),
+        # Rejected here so a malformed value never reaches the flow.
+        ("0", ""),
+        ("-5", ""),
+        ("2000.5", ""),
+        ("lots", ""),
+        ("", ""),
+    ],
+)
+def test_snippet_char_cap_only_accepts_positive_integers(monkeypatch, raw, expected):
+    _clear_env(monkeypatch)
+    monkeypatch.setenv("OPENRAG_FILENET_SNIPPET_CHAR_CAP", raw)
+    assert get_filenet_snippet_char_cap() == expected

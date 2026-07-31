@@ -109,6 +109,25 @@ async def add_provider_credentials_to_headers(
     if index_name:
         headers["X-LANGFLOW-GLOBAL-VAR-OPENSEARCH_INDEX_NAME"] = index_name
 
+    # FileNet P8 chat-tool knobs. Both are optional: when unset the global var is
+    # never created and the flow component falls back to its own defaults (no
+    # citation link, 2000-char snippet cap). The component detects the resulting
+    # unresolved-variable state -- Langflow leaves the literal variable NAME in
+    # the field -- so nothing here needs to send a placeholder value.
+    from config.settings import get_filenet_snippet_char_cap, get_filenet_viewer_url_template
+
+    viewer_url_template = get_filenet_viewer_url_template()
+    if viewer_url_template:
+        # A non-ASCII character anywhere in the URL would raise
+        # UnicodeEncodeError before the request is even sent.
+        headers["X-LANGFLOW-GLOBAL-VAR-FILENET_VIEWER_URL_TEMPLATE"] = ascii_safe_header_value(
+            viewer_url_template
+        )
+
+    snippet_char_cap = get_filenet_snippet_char_cap()
+    if snippet_char_cap:
+        headers["X-LANGFLOW-GLOBAL-VAR-FILENET_SNIPPET_CHAR_CAP"] = snippet_char_cap
+
     # IBM mode: inject OpenSearch Basic credentials as separate global vars
     from config.settings import IBM_AUTH_ENABLED
 

@@ -337,6 +337,60 @@ def get_filenet_mcp_token() -> str:
     return os.getenv("OPENRAG_FILENET_MCP_TOKEN", "").strip()
 
 
+def get_filenet_viewer_url_template() -> str:
+    """Optional citation-link template for FileNet P8 search results.
+
+    Empty (the default) means search results carry no ``source_url`` -- the
+    behaviour before this knob existed. Unlike ``OPENRAG_FILENET_MCP_URL``,
+    which must resolve from the *Langflow container*, this URL is handed to the
+    model and rendered as a citation, so it must resolve from the **user's
+    browser**.
+
+    Placeholders substituted per result (everything else in the string is a
+    deployment constant the admin writes literally):
+
+    - ``{id}``         document GUID, braces stripped
+    - ``{id_braced}``  document GUID, braced and percent-encoded (``%7B..%7D``)
+    - ``{mimetype}``   document MIME type, percent-encoded
+    - ``{class}``      the FileNet document class pinned on the flow node
+
+    A verified IBM Content Navigator bookmark URL (ICN resolves the desktop and
+    repository from the object-store GUID inside ``docid``, so ``desktop``,
+    ``repositoryId``, ``repositoryType``, ``version`` and ``vsId`` are all
+    unnecessary)::
+
+        https://<cpd-host>/icn/navigator/bookmark.jsp
+            ?docid={class}%2C%7B<object-store-guid>%7D%2C{id_braced}
+            &mimeType={mimetype}
+            &template_name={class}
+    """
+    return os.getenv("OPENRAG_FILENET_VIEWER_URL_TEMPLATE", "").strip()
+
+
+def get_filenet_snippet_char_cap() -> str:
+    """Per-document snippet cap (characters) for FileNet P8 search results.
+
+    Returned as a string because it travels to the flow as a Langflow global
+    variable; the component parses it and falls back to its own default (2000)
+    when this is empty. Anything that is not a positive integer is rejected
+    here so malformed values never reach the flow.
+
+    This is a TOKEN-BUDGET control, not a latency control -- the upstream fetch
+    returns the whole text extract either way and its cost is size-independent.
+    Measured extract sizes: p95 ~= 60K chars (~15K tokens/doc), max ~= 104K
+    (~26K tokens). The effective context cost per query is ``cap x top_k``, so
+    raise this together with a look at the flow node's Top K.
+    """
+    raw = os.getenv("OPENRAG_FILENET_SNIPPET_CHAR_CAP", "").strip()
+    if not raw:
+        return ""
+    try:
+        cap = int(raw)
+    except ValueError:
+        return ""
+    return str(cap) if cap > 0 else ""
+
+
 def is_filenet_mcp_available() -> bool:
     """Effective availability of the FileNet P8 MCP chat tool.
 

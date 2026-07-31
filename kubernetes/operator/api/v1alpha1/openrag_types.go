@@ -735,6 +735,26 @@ type FileNetMCPSpec struct {
 	// +optional
 	DocumentClass string `json:"documentClass,omitempty"`
 
+	// ViewerURLTemplate is an optional citation link template for FileNet
+	// search results (OPENRAG_FILENET_VIEWER_URL_TEMPLATE). Empty means results
+	// carry no source link. Unlike the sidecar URL, this one is rendered as a
+	// citation and must resolve from the END USER'S BROWSER.
+	//
+	// Placeholders substituted per result: {id} (GUID without braces),
+	// {id_braced} (braced and percent-encoded), {mimetype} (percent-encoded)
+	// and {class}. Everything else is a deployment constant written literally —
+	// notably the object store GUID inside an IBM Content Navigator docid.
+	// +optional
+	ViewerURLTemplate string `json:"viewerUrlTemplate,omitempty"`
+
+	// SnippetCharCap is the optional per-document snippet cap in characters
+	// (OPENRAG_FILENET_SNIPPET_CHAR_CAP, default 2000). A token-budget control,
+	// not a latency control: the upstream fetch returns the whole text extract
+	// either way. Cost per query is this value multiplied by the flow node's
+	// Top K.
+	// +optional
+	SnippetCharCap string `json:"snippetCharCap,omitempty"`
+
 	// Sidecar configures the MCP sidecar workload (image, resources, port).
 	// Required (with an image) when Enabled is true.
 	// +optional

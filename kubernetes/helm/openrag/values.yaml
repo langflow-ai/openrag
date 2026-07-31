@@ -87,6 +87,8 @@ global:
     sslEnabled: "true"                  # SSL_ENABLED — "true"/"false" or a CA bundle path
     authToken: ""                       # Optional Langflow<->sidecar shared secret (Bearer)
     documentClass: "Document"           # Class probed by the sidecar /diagnostics route
+    viewerUrlTemplate: ""               # Optional citation link; {id} {id_braced} {mimetype} {class}. Must resolve from the USER'S BROWSER
+    snippetCharCap: ""                  # Optional per-document snippet cap in chars (default 2000). Token budget = cap x Top K
     mcp:
       image:
         repository: langflowai/openrag-filenet-mcp

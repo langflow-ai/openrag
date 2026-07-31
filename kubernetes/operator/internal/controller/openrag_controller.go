@@ -476,6 +476,12 @@ func (r *OpenRAGReconciler) buildBackendEnv(ctx context.Context, o *openragv1alp
 					envVars["OPENRAG_FILENET_MCP_TOKEN"] = token
 				}
 			}
+			if fn.ViewerURLTemplate != "" {
+				envVars["OPENRAG_FILENET_VIEWER_URL_TEMPLATE"] = fn.ViewerURLTemplate
+			}
+			if fn.SnippetCharCap != "" {
+				envVars["OPENRAG_FILENET_SNIPPET_CHAR_CAP"] = fn.SnippetCharCap
+			}
 		} else {
 			envVars["OPENRAG_FILENET_MCP_ENABLED"] = "false"
 		}
