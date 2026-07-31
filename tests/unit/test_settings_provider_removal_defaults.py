@@ -100,7 +100,7 @@ class TestDefaultLlmModel:
 
 class TestDefaultEmbeddingModel:
     def test_openai_returns_empty(self):
-        """"openai" often means an internal OpenAI-compatible gateway with a
+        """ "openai" often means an internal OpenAI-compatible gateway with a
         curated model set — never guess, force an explicit, validated pick."""
         assert _default_embedding_model("openai") == ""
 
