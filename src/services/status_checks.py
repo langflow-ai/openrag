@@ -23,7 +23,7 @@ async def check_openrag_backend() -> ComponentStatus:
             required=True,
             latency_ms=int((perf_counter() - start) * 1000),
             message="OpenRAG configuration is not loaded",
-            version="UNKNOWN_VERSION", 
+            version=None, 
             build=ComponentBuild(), # NOTE: deferring this to later Version and build traceability step
             metadata={}
         )
@@ -56,6 +56,8 @@ async def check_openrag_backend() -> ComponentStatus:
 
 async def check_docling() -> ComponentStatus:
     start = perf_counter()
+    version = None
+
     try:
         docling_client = clients.docling_http_client
         if not docling_client:
@@ -66,7 +68,7 @@ async def check_docling() -> ComponentStatus:
                 required=True,
                 latency_ms=int((perf_counter() - start) * 1000),
                 message="Docling client is not initialized",
-                version="UNKNOWN_VERSION",
+                version=version,
                 build=ComponentBuild(), # NOTE: deferring this to later Version and build traceability step
                 metadata={}
             )
@@ -95,6 +97,8 @@ async def check_docling() -> ComponentStatus:
 
 async def check_langflow() -> ComponentStatus:
     start = perf_counter()
+    version = None
+
     try:
         langflow_client = clients.langflow_http_client
         if not langflow_client:
@@ -105,7 +109,7 @@ async def check_langflow() -> ComponentStatus:
                 required=True,
                 latency_ms=int((perf_counter() - start) * 1000),
                 message="Langflow client is not initialized",
-                version="UNKNOWN_VERSION",
+                version=version,
                 build=ComponentBuild(), # NOTE: deferring this to later Version and build traceability step
                 metadata={}
             )
@@ -135,6 +139,9 @@ async def check_langflow() -> ComponentStatus:
 
 async def check_opensearch() -> ComponentStatus:
     start = perf_counter()
+    version = None
+    os_version = None
+
     try:
         opensearch = clients.opensearch
         if opensearch is None:
@@ -145,7 +152,7 @@ async def check_opensearch() -> ComponentStatus:
                 required=True,
                 latency_ms=int((perf_counter() - start) * 1000),
                 message="OpenSearch client is not initialized",
-                version="UNKNOWN_VERSION",
+                version=version,
                 build=ComponentBuild(), # NOTE: deferring this to later Version and build traceability step
                 metadata={}
             )
@@ -172,7 +179,7 @@ async def check_opensearch() -> ComponentStatus:
         logger.warning("OpenSearch status check failed", error=str(e))
 
         status, message = ComponentState.UNHEALTHY, "OpenSearch is unreachable"
-        build, metadata = ComponentBuild(), {}
+        metadata = {}
 
     return ComponentStatus(
         name="opensearch",
