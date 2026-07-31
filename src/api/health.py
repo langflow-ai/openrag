@@ -3,13 +3,29 @@
 import asyncio
 
 import httpx
-from fastapi import Request
+from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from api.schemas.status import StatusResponse
 from config.settings import clients
+from dependencies import require_permission
+from services.status_service import aggregate_status
+from session_manager import User
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+
+async def get_console_status(
+    user: User = Depends(require_permission("providers:read")),
+) -> StatusResponse:
+    """Aggregate component readiness for the browser UI. GET /status"""
+    try:
+        return await aggregate_status()
+    except Exception as e:
+        logger.error("Failed to get console status", error=str(e))
+        raise HTTPException(status_code=500, detail="Failed to get status") from e
+
 
 
 async def health_check(request: Request):

@@ -2,7 +2,9 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import { useConsoleStatusQuery } from "@/app/api/queries/useConsoleStatusQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import {
   DoclingHealthBanner,
@@ -20,13 +22,47 @@ import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useChat } from "@/contexts/chat-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
+import { usePortal } from "@/hooks/use-portal";
 import { ANIMATION_DURATION, HEADER_HEIGHT } from "@/lib/constants";
 import { isFailureLikeTask } from "@/lib/task-utils";
 import { cn } from "@/lib/utils";
 import { AnimatedConditional } from "./animated-conditional";
 import { ChatRenderer } from "./chat-renderer";
+import {
+  ConsoleStatusButton,
+  ConsoleStatusPanel,
+} from "./console-status-panel";
 import { Header } from "./header";
 import FailedTasksInfo from "./tasks_details";
+
+/** Renders the Console Status button + panel directly into document.body via a
+ *  portal so that CSS transforms on ancestor elements (framer-motion sidebar
+ *  slide animation) cannot break `position: fixed` viewport anchoring. */
+function ConsoleStatusPortal({
+  isOpen,
+  onToggle,
+  onClose,
+  overallStatus,
+}: {
+  isOpen: boolean;
+  onToggle: () => void;
+  onClose: () => void;
+  overallStatus?: import("@/app/api/queries/useConsoleStatusQuery").ComponentState;
+}) {
+  const host = usePortal("console-status-portal");
+  if (!host) return null;
+  return createPortal(
+    <>
+      <ConsoleStatusButton
+        onClick={onToggle}
+        isOpen={isOpen}
+        overallStatus={overallStatus}
+      />
+      {isOpen && <ConsoleStatusPanel onClose={onClose} />}
+    </>,
+    host,
+  );
+}
 
 export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -36,12 +72,18 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const { isPanelOpen, panelMode, closePanelOnly } = useKnowledgeFilter();
   const failedTasks = tasks.filter(isFailureLikeTask);
 
+  const [isStatusOpen, setIsStatusOpen] = useState(false);
+  const { data: statusData } = useConsoleStatusQuery({
+    enabled: true,
+  });
+
   const isOnKnowledgePage = pathname.startsWith("/knowledge");
 
-  // Only one panel can be open at a time
+  // Close status panel when task menu opens, and vice-versa
   useEffect(() => {
     if (isMenuOpen) {
       closePanelOnly();
+      setIsStatusOpen(false);
     }
   }, [isMenuOpen, closePanelOnly]);
 
@@ -184,6 +226,17 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </div>
+
+      {/* Console Status — portalled into document.body so fixed positioning
+          is always relative to the viewport, not to any transformed ancestor */}
+      {isOnboardingComplete && (
+        <ConsoleStatusPortal
+          isOpen={isStatusOpen}
+          onToggle={() => setIsStatusOpen((v) => !v)}
+          onClose={() => setIsStatusOpen(false)}
+          overallStatus={statusData?.overall_status}
+        />
+      )}
     </div>
   );
 }
