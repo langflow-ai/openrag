@@ -27,7 +27,6 @@ async def get_console_status(
         raise HTTPException(status_code=500, detail="Failed to get status") from e
 
 
-
 async def health_check(request: Request):
     """Simple liveness probe: Indicates that the OpenRAG Backend service is online and running."""
     return JSONResponse({"status": "ok"}, status_code=200)
