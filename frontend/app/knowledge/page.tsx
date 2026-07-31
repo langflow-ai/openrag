@@ -343,9 +343,9 @@ function SearchPage() {
 
   const {
     data: listFilesData,
-    isLoading: isListFilesLoading,
-    error: listFilesError,
-    isError: isListFilesError,
+    isLoading,
+    error,
+    isError,
   } = useListFiles(
     {
       page: currentPage,
@@ -353,7 +353,10 @@ function SearchPage() {
       sortBy,
       sortOrder,
       afterKey: cursorCacheRef.current.get(currentPage) ?? null,
-      search: isWildcardQuery ? undefined : queryOverride,
+      search:
+        effectiveSearchText === "*"
+          ? undefined
+          : effectiveSearchText || undefined,
       connectorType: listFilesFilterParam(
         parsedFilterData?.filters?.connector_types,
       ),
@@ -362,28 +365,20 @@ function SearchPage() {
     },
     {
       refetchInterval: 5000,
-      enabled: isWildcardQuery,
     },
   );
 
-  const {
-    data: searchData = EMPTY_SEARCH_RESULT,
-    isLoading: isSearchLoading,
-    error: searchError,
-    isError: isSearchError,
-  } = useGetSearchQuery(queryOverride, parsedFilterData, {
-    enabled: !isWildcardQuery,
-  });
+  const { data: searchData = EMPTY_SEARCH_RESULT } = useGetSearchQuery(
+    queryOverride,
+    parsedFilterData,
+    {
+      enabled: false,
+    },
+  );
 
-  const { files: searchFiles, warnings: searchWarnings } =
-    searchData as SearchResult;
+  const { warnings: searchWarnings } = searchData as SearchResult;
 
-  const effectiveData: File[] = isWildcardQuery
-    ? (listFilesData?.files ?? [])
-    : searchFiles;
-  const isLoading = isWildcardQuery ? isListFilesLoading : isSearchLoading;
-  const error = isWildcardQuery ? listFilesError : searchError;
-  const isError = isWildcardQuery ? isListFilesError : isSearchError;
+  const effectiveData: File[] = listFilesData?.files ?? [];
 
   const isOpenragDocsRow = useCallback((file?: File) => {
     return (
@@ -478,11 +473,15 @@ function SearchPage() {
     Boolean(selectedFilter),
   );
 
-  const serverTotal = isWildcardQuery
-    ? (listFilesData?.total ?? 0)
-    : searchFiles.length;
+  const serverTotal = listFilesData?.total ?? 0;
   const gridRows: File[] = fileResults;
   const totalPages = Math.max(1, Math.ceil(serverTotal / currentPageSize));
+
+  // Reset to page 1 and clear cursor cache when search text or filters change
+  useEffect(() => {
+    cursorCacheRef.current = new Map();
+    setCurrentPage(1);
+  }, [effectiveSearchText]);
 
   // when the server responds with an after_key for page N, cache it as the cursor for page N+1
   useEffect(() => {
