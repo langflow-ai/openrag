@@ -104,11 +104,15 @@ class FileServiceV2:
 
             if is_opensearch_auth_error(e):
                 raise
-            return {"files": [], "total": 0, "page": page, "page_size": page_size, "after_key": None}
+            return {
+                "files": [],
+                "total": 0,
+                "page": page,
+                "page_size": page_size,
+                "after_key": None,
+            }
 
-        raw_bucket_count = len(
-            result.get("aggregations", {}).get("files", {}).get("buckets", [])
-        )
+        raw_bucket_count = len(result.get("aggregations", {}).get("files", {}).get("buckets", []))
         files, next_after_key = self._parse_composite_buckets(result)
 
         if raw_bucket_count < page_size:  # final page, no after_key
@@ -158,7 +162,13 @@ class FileServiceV2:
 
             if is_opensearch_auth_error(e):
                 raise
-            return {"files": [], "total": 0, "page": page, "page_size": page_size, "after_key": None}
+            return {
+                "files": [],
+                "total": 0,
+                "page": page,
+                "page_size": page_size,
+                "after_key": None,
+            }
 
         files = self._parse_terms_buckets(result, offset=offset)
 
@@ -354,15 +364,15 @@ class FileServiceV2:
             },
         }
 
-    def _parse_terms_buckets(
-        self, result: dict[str, Any], offset: int = 0
-    ) -> list[dict[str, Any]]:
+    def _parse_terms_buckets(self, result: dict[str, Any], offset: int = 0) -> list[dict[str, Any]]:
         """Parse terms agg buckets, applying offset slice. Returns files list."""
         buckets = result.get("aggregations", {}).get("files", {}).get("buckets", [])
         buckets = buckets[offset:]
         return self._buckets_to_files(buckets)
 
-    async def _get_file_count(self, opensearch_client: Any, query: dict[str, Any]) -> tuple[int, bool]:
+    async def _get_file_count(
+        self, opensearch_client: Any, query: dict[str, Any]
+    ) -> tuple[int, bool]:
         """Approximate unique-filename count via cardinality aggregation (O(1)).
 
         Returns (count, is_approximate).  is_approximate is always True on
@@ -385,7 +395,9 @@ class FileServiceV2:
             result = await opensearch_client.search(index=get_index_name(), body=body)
             return result.get("aggregations", {}).get("file_count", {}).get("value", 0), True
         except Exception as e:
-            logger.warning("Failed to retrieve file count; pagination total will show 0", error=str(e))
+            logger.warning(
+                "Failed to retrieve file count; pagination total will show 0", error=str(e)
+            )
             return 0, False
 
     def _parse_composite_buckets(
@@ -407,8 +419,10 @@ class FileServiceV2:
             source = hits[0].get("_source", {})
             files.append(
                 {
-                    "filename": source.get("filename") or (
-                        bucket["key"].get("filename", "") if isinstance(bucket["key"], dict)
+                    "filename": source.get("filename")
+                    or (
+                        bucket["key"].get("filename", "")
+                        if isinstance(bucket["key"], dict)
                         else bucket.get("key", "")
                     ),
                     "document_id": source.get("document_id", ""),
