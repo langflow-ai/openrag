@@ -34,8 +34,8 @@ def _parse_after_key(after_key: str | None) -> dict | None:
         return None
     try:
         parsed = json.loads(after_key)
-    except (json.JSONDecodeError, ValueError):
-        raise HTTPException(status_code=400, detail="after_key is not valid JSON")
+    except (json.JSONDecodeError, ValueError) as err:
+        raise HTTPException(status_code=400, detail="after_key is not valid JSON") from err
     if not isinstance(parsed, dict):
         raise HTTPException(status_code=400, detail="after_key must be a JSON object")
     return parsed
