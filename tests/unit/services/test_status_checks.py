@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import pytest
 
+import services.component_logs as _cl
 from api.schemas.status import ComponentState
 from config.settings import clients
 from services import status_checks
@@ -208,8 +209,6 @@ async def test_opensearch_unreachable_is_unhealthy(monkeypatch):
 # ---------------------------------------------------------------------------
 # Each block verifies that record_check_result() is called correctly by the
 # check functions: errors land in the buffer, healthy checks do not.
-
-import services.component_logs as _cl
 
 
 @pytest.fixture(autouse=True)

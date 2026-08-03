@@ -2,6 +2,7 @@ import asyncio
 
 import pytest
 
+import services.component_logs as _cl
 from api.schemas.status import ComponentState, ComponentStatus
 from services import status_service
 
@@ -85,8 +86,6 @@ async def test_check_exception_becomes_unknown(monkeypatch):
 # ---------------------------------------------------------------------------
 # Buffer recording assertions for _run_check (added by #2178)
 # ---------------------------------------------------------------------------
-
-import services.component_logs as _cl
 
 
 @pytest.fixture(autouse=True)
