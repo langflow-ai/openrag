@@ -23,7 +23,7 @@ spec:
 
   frontend:
     image: langflowai/openrag-frontend:latest
-    imagePullPolicy: Never
+    imagePullPolicy: IfNotPresent
     resources:
       requests:
         cpu: "100m"
@@ -34,7 +34,7 @@ spec:
 
   backend:
     image: langflowai/openrag-backend:latest
-    imagePullPolicy: Never
+    imagePullPolicy: IfNotPresent
     resources:
       requests:
         cpu: "100m"
@@ -48,7 +48,7 @@ spec:
 
   langflow:
     image: langflowai/openrag-langflow:latest
-    imagePullPolicy: Never
+    imagePullPolicy: IfNotPresent
     resources:
       requests:
         cpu: "100m"

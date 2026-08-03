@@ -694,15 +694,20 @@ func (r *OpenRAGReconciler) reconcileServices(ctx context.Context, o *openragv1a
 		}
 
 		svcPorts := []corev1.ServicePort{
-			{Name: "http", Port: d.port, Protocol: corev1.ProtocolTCP},
+			{Name: "http", Port: d.port, TargetPort: intstr.FromInt32(d.port), Protocol: corev1.ProtocolTCP},
 		}
 		// The backend optionally serves the ingestion-callback proxy router on
 		// its own port (OPENRAG_BACKEND_ROUTER_ENABLE); expose it so Langflow
 		// can reach only that endpoint instead of the full backend API.
 		if d.role == "be" {
 			svcPorts = append(svcPorts, corev1.ServicePort{
-				Name: "ingest-router", Port: backendIngestRouterPort, Protocol: corev1.ProtocolTCP,
+				Name: "ingest-router", Port: backendIngestRouterPort, TargetPort: intstr.FromInt32(backendIngestRouterPort), Protocol: corev1.ProtocolTCP,
 			})
+		}
+
+		serviceType := d.spec.ServiceType
+		if serviceType == "" {
+			serviceType = corev1.ServiceTypeClusterIP
 		}
 
 		baseLabels := componentLabels(o.Name, d.role)
@@ -714,7 +719,7 @@ func (r *OpenRAGReconciler) reconcileServices(ctx context.Context, o *openragv1a
 				Annotations: mergeServiceAnnotations(o, d.spec),
 			},
 			Spec: corev1.ServiceSpec{
-				Type:     corev1.ServiceTypeClusterIP,
+				Type:     serviceType,
 				Selector: componentLabels(o.Name, d.role),
 				Ports:    svcPorts,
 			},
@@ -2372,6 +2377,18 @@ func (r *OpenRAGReconciler) createOrUpdate(ctx context.Context, obj client.Objec
 		}
 	}
 
+	// For Services, also check for live spec drift: a user may have patched the
+	// Service directly (e.g. kubectl patch), which doesn't change our annotation
+	// but leaves the Service in a state that diverges from the desired spec.
+	if svc, ok := obj.(*corev1.Service); ok {
+		existingSvc, ok := existing.(*corev1.Service)
+		if ok && hasServiceSpecDrift(svc, existingSvc) {
+			setAnnotation(obj, specHashAnnotation, hash)
+			obj.SetResourceVersion(existing.GetResourceVersion())
+			return r.Update(ctx, obj)
+		}
+	}
+
 	if existingHash == hash {
 		// No changes needed
 		return nil
@@ -2426,6 +2443,36 @@ func hasDeploymentImageDrift(desired, existing *appsv1.Deployment) bool {
 		}
 	}
 
+	return false
+}
+
+// hasServiceSpecDrift returns true if the live Service has any operator-owned
+// field (type, selector, or ports) that differs from the desired spec. This
+// catches manual kubectl patch operations that bypass the annotation-hash check.
+func hasServiceSpecDrift(desired, existing *corev1.Service) bool {
+	// spec.type
+	if desired.Spec.Type != existing.Spec.Type {
+		return true
+	}
+	// spec.selector
+	if len(desired.Spec.Selector) != len(existing.Spec.Selector) {
+		return true
+	}
+	for k, v := range desired.Spec.Selector {
+		if existing.Spec.Selector[k] != v {
+			return true
+		}
+	}
+	// spec.ports
+	if len(desired.Spec.Ports) != len(existing.Spec.Ports) {
+		return true
+	}
+	for i, dp := range desired.Spec.Ports {
+		ep := existing.Spec.Ports[i]
+		if dp.Port != ep.Port || dp.TargetPort != ep.TargetPort || dp.Protocol != ep.Protocol || dp.Name != ep.Name {
+			return true
+		}
+	}
 	return false
 }
 

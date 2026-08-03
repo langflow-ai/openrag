@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -479,6 +480,92 @@ func TestReconcile_CreatesServices(t *testing.T) {
 		require.NoError(t, c.Get(context.Background(),
 			types.NamespacedName{Name: instanceResourceName(cr, role), Namespace: "my-ns"}, svc))
 		assert.Equal(t, port, svc.Spec.Ports[0].Port, "service port for role %s", role)
+	}
+}
+
+func TestReconcile_RevertsManualServicePortChange(t *testing.T) {
+	cases := []struct {
+		role         string
+		portIndex    int // which port entry to patch (0 = http, 1 = ingest-router for be)
+		expectedPort int32
+	}{
+		{role: "fe", portIndex: 0, expectedPort: 3000},
+		{role: "be", portIndex: 0, expectedPort: 8000},
+		{role: "be", portIndex: 1, expectedPort: 8100}, // ingest-router port
+		{role: "lf", portIndex: 0, expectedPort: 7860},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.role+"_port"+fmt.Sprintf("%d", tc.portIndex), func(t *testing.T) {
+			s := newScheme(t)
+			cr := minimalCR("my-openrag", "my-ns")
+			r, c := reconciler(s, cr)
+
+			reconcileOnce(t, r, cr)
+
+			// Simulate a user manually patching the Service port to 9999.
+			svc := &corev1.Service{}
+			require.NoError(t, c.Get(context.Background(),
+				types.NamespacedName{Name: instanceResourceName(cr, tc.role), Namespace: "my-ns"}, svc))
+			svc.Spec.Ports[tc.portIndex].Port = 9999
+			require.NoError(t, c.Update(context.Background(), svc))
+
+			// Confirm the patch took effect.
+			require.NoError(t, c.Get(context.Background(),
+				types.NamespacedName{Name: instanceResourceName(cr, tc.role), Namespace: "my-ns"}, svc))
+			assert.Equal(t, int32(9999), svc.Spec.Ports[tc.portIndex].Port)
+
+			// Reconcile again — the controller must revert the port.
+			reconcileOnce(t, r, cr)
+
+			require.NoError(t, c.Get(context.Background(),
+				types.NamespacedName{Name: instanceResourceName(cr, tc.role), Namespace: "my-ns"}, svc))
+			assert.Equal(t, tc.expectedPort, svc.Spec.Ports[tc.portIndex].Port,
+				"role %s port[%d] should be reverted to %d after reconcile", tc.role, tc.portIndex, tc.expectedPort)
+		})
+	}
+}
+
+// TestReconcile_RevertsManualServiceTypeChange verifies that patching a Service's
+// type to any non-default value is detected and reverted to ClusterIP on the next
+// reconcile, for all three core components.
+func TestReconcile_RevertsManualServiceTypeChange(t *testing.T) {
+	patchTypes := []corev1.ServiceType{
+		corev1.ServiceTypeNodePort,
+		corev1.ServiceTypeLoadBalancer,
+		corev1.ServiceTypeExternalName,
+	}
+
+	for _, role := range []string{"fe", "be", "lf"} {
+		for _, patchType := range patchTypes {
+			t.Run(role+"_to_"+string(patchType), func(t *testing.T) {
+				s := newScheme(t)
+				cr := minimalCR("my-openrag", "my-ns")
+				r, c := reconciler(s, cr)
+
+				reconcileOnce(t, r, cr)
+
+				// Simulate a user manually patching the Service type.
+				svc := &corev1.Service{}
+				require.NoError(t, c.Get(context.Background(),
+					types.NamespacedName{Name: instanceResourceName(cr, role), Namespace: "my-ns"}, svc))
+				svc.Spec.Type = patchType
+				require.NoError(t, c.Update(context.Background(), svc))
+
+				// Confirm the patch took effect.
+				require.NoError(t, c.Get(context.Background(),
+					types.NamespacedName{Name: instanceResourceName(cr, role), Namespace: "my-ns"}, svc))
+				assert.Equal(t, patchType, svc.Spec.Type)
+
+				// Reconcile again — the controller must revert to ClusterIP.
+				reconcileOnce(t, r, cr)
+
+				require.NoError(t, c.Get(context.Background(),
+					types.NamespacedName{Name: instanceResourceName(cr, role), Namespace: "my-ns"}, svc))
+				assert.Equal(t, corev1.ServiceTypeClusterIP, svc.Spec.Type,
+					"role %s: type %q should be reverted to ClusterIP after reconcile", role, patchType)
+			})
+		}
 	}
 }
 
