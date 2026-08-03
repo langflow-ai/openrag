@@ -195,7 +195,6 @@ class SearchService:
             get_score_threshold,
             get_search_filters,
             get_search_limit,
-            get_score_threshold,
         )
 
         filters = get_search_filters() or {}
@@ -728,7 +727,7 @@ class SearchService:
 
             set_search_filters(filters)
 
-        from auth_context import set_search_limit, set_score_threshold
+        from auth_context import set_score_threshold, set_search_limit
 
         set_search_limit(limit)
         set_search_offset(offset)
