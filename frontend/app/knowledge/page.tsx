@@ -485,7 +485,7 @@ function SearchPage() {
   useEffect(() => {
     cursorCacheRef.current = new Map();
     setCurrentPage(1);
-  }, [isWildcardQuery, searchFiles.length]);
+  }, [isWildcardQuery, searchFiles]);
 
   // when the server responds with an after_key for page N, cache it as the cursor for page N+1
   useEffect(() => {
