@@ -81,7 +81,7 @@ async def list_files(
         if is_opensearch_auth_error(e):
             return JSONResponse({"error": AUTH_ERROR_MESSAGE}, status_code=401)
         return JSONResponse(
-            {"error": "Failed to list files", "detail": str(e)},
+            {"error": "Failed to list files"},
             status_code=500,
         )
 
@@ -120,6 +120,6 @@ async def search_files(
         if is_opensearch_auth_error(e):
             return JSONResponse({"error": AUTH_ERROR_MESSAGE}, status_code=401)
         return JSONResponse(
-            {"error": "Failed to search files", "detail": str(e)},
+            {"error": "Failed to search files"},
             status_code=500,
         )
