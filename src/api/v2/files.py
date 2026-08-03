@@ -42,7 +42,9 @@ def _parse_after_key(after_key: str | None) -> dict | None:
 
 
 async def list_files(
-    page: int = Query(1, ge=1, description="Page number (for display only; navigation uses after_key cursor)"),
+    page: int = Query(
+        1, ge=1, description="Page number (for display only; navigation uses after_key cursor)"
+    ),
     page_size: int = Query(25, ge=1, le=500, description="Items per page"),
     sort_by: str = Query("filename", description="Sort field"),
     sort_order: str = Query("asc", pattern="^(asc|desc)$", description="Sort order"),
