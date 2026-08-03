@@ -187,8 +187,6 @@ class DoclingService:
             options["include_page_images"] = True
             options["include_images"] = True
 
-        options = {"to_formats": "json", "image_export_mode": "placeholder", **preset}
-
         # If picture descriptions are enabled, configure custom/local VLM model
         if is_pic_desc_enabled and knowledge_config.vlm_enabled:
             provider = knowledge_config.vlm_provider

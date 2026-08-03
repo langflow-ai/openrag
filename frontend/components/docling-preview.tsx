@@ -4,6 +4,7 @@ import Image from "next/image";
 import {
   type ReactNode,
   type RefObject,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -66,20 +67,126 @@ function pageNoOf(page: unknown): number | null {
   return typeof n === "number" ? n : null;
 }
 
+function isScrollableOverflowY(el: HTMLElement): boolean {
+  const { overflowY } = getComputedStyle(el);
+  return (
+    overflowY === "auto" || overflowY === "scroll" || overflowY === "overlay"
+  );
+}
+
 function findScrollParent(el: HTMLElement): HTMLElement | null {
   let node: HTMLElement | null = el.parentElement;
+  let overflowCandidate: HTMLElement | null = null;
   while (node) {
-    const { overflowY } = getComputedStyle(node);
-    if (
-      overflowY === "auto" ||
-      overflowY === "scroll" ||
-      overflowY === "overlay"
-    ) {
-      return node;
+    if (isScrollableOverflowY(node)) {
+      // Prefer an ancestor that can actually scroll. Nested overflow-auto
+      // frames (preview pane inside a dialog) often have no overflow while the
+      // outer dialog does — scrolling the inner one is a silent no-op.
+      if (node.scrollHeight > node.clientHeight + 1) {
+        return node;
+      }
+      overflowCandidate ??= node;
     }
     node = node.parentElement;
   }
-  return null;
+  return overflowCandidate;
+}
+
+function targetScrollTop(
+  el: Element,
+  scrollParent: HTMLElement,
+  paddingPx: number,
+): number | null {
+  const parentRect = scrollParent.getBoundingClientRect();
+  const elRect = el.getBoundingClientRect();
+  if (elRect.width === 0 && elRect.height === 0) return null;
+  return Math.max(
+    0,
+    elRect.top - parentRect.top + scrollParent.scrollTop - paddingPx,
+  );
+}
+
+/**
+ * Smooth-scroll the primary overflow container to `el`. Only one container is
+ * animated — repeated scrollTo calls cancel the browser's smooth animation.
+ */
+function scrollElementThroughAncestors(
+  el: Element,
+  preferredContainers: Array<HTMLElement | null | undefined>,
+  paddingPx = 48,
+) {
+  const seen = new Set<HTMLElement>();
+  const candidates: HTMLElement[] = [];
+  for (const preferred of preferredContainers) {
+    if (
+      preferred &&
+      preferred.scrollHeight > preferred.clientHeight + 1 &&
+      !seen.has(preferred)
+    ) {
+      seen.add(preferred);
+      candidates.push(preferred);
+    }
+  }
+
+  let current: Element | null = el;
+  while (current) {
+    const parentNode: Node | null = current.parentNode;
+    if (!parentNode) break;
+    if (parentNode instanceof ShadowRoot) {
+      current = parentNode.host;
+      continue;
+    }
+    if (!(parentNode instanceof HTMLElement)) break;
+    if (
+      isScrollableOverflowY(parentNode) &&
+      parentNode.scrollHeight > parentNode.clientHeight + 1 &&
+      !seen.has(parentNode)
+    ) {
+      seen.add(parentNode);
+      candidates.push(parentNode);
+    }
+    current = parentNode;
+  }
+
+  const primary = candidates[0];
+  if (!primary) return;
+  const top = targetScrollTop(el, primary, paddingPx);
+  if (top == null) return;
+  primary.scrollTo({ top, behavior: "smooth" });
+}
+
+function findDoclingPageElement(
+  viewer: DoclingImgElement,
+  pageNo: number,
+): HTMLElement | null {
+  const root = viewer.shadowRoot;
+  if (!root) return null;
+  const pages = root.querySelectorAll<
+    HTMLElement & { page?: { page_no?: number } }
+  >("docling-img-page");
+  for (const pageEl of pages) {
+    if (pageEl.page?.page_no === pageNo) return pageEl;
+  }
+  // Index fallback when Lit hasn't hydrated `.page` yet (1-based).
+  return pages[pageNo - 1] ?? null;
+}
+
+/**
+ * `docling-img-page` hosts have no :host display rule (default inline) and can
+ * report a 0×0 box. Scroll/measure the inner `.page` / SVG instead.
+ */
+function findDoclingPageAnchor(
+  viewer: DoclingImgElement,
+  pageNo: number,
+): Element | null {
+  const pageEl = findDoclingPageElement(viewer, pageNo);
+  if (!pageEl) return null;
+  const inner =
+    pageEl.shadowRoot?.querySelector(".page") ??
+    pageEl.shadowRoot?.querySelector("svg.base") ??
+    pageEl.shadowRoot?.querySelector("svg") ??
+    null;
+  return inner ?? pageEl;
 }
 
 function unionRect(
@@ -107,11 +214,11 @@ function unionRect(
   };
 }
 
-function collectChunkHitRects(viewer: DoclingImgElement): DOMRect[] {
+function collectChunkHitElements(viewer: DoclingImgElement): SVGRectElement[] {
   const root = viewer.shadowRoot;
   if (!root) return [];
 
-  const rects: DOMRect[] = [];
+  const elements: SVGRectElement[] = [];
   // docling-img-page is a nested Lit element with its own shadow root; rects
   // live there, not on the parent docling-img shadow tree.
   const pages = root.querySelectorAll<HTMLElement>("docling-img-page");
@@ -122,29 +229,45 @@ function collectChunkHitRects(viewer: DoclingImgElement): DOMRect[] {
       for (const rect of pageRoot.querySelectorAll<SVGRectElement>(
         "rect[part~='chunk-hit']",
       )) {
-        rects.push(rect.getBoundingClientRect());
+        elements.push(rect);
       }
     }
-    return rects;
+    return elements;
   }
 
   for (const rect of root.querySelectorAll<SVGRectElement>(
     "rect[part~='chunk-hit']",
   )) {
-    rects.push(rect.getBoundingClientRect());
+    elements.push(rect);
   }
-  return rects;
+  return elements;
 }
 
-/** Collect every item rect on a given Docling page (1-based), nested shadows. */
-function collectPageItemRects(
+function collectChunkHitRects(viewer: DoclingImgElement): DOMRect[] {
+  return collectChunkHitElements(viewer).map((el) =>
+    el.getBoundingClientRect(),
+  );
+}
+
+/** Stable geometry fingerprint so we can detect when Lit cleared stale hits. */
+function hitRectsSignature(rects: DOMRect[]): string {
+  if (rects.length === 0) return "";
+  return rects
+    .map(
+      (r) =>
+        `${Math.round(r.top)}:${Math.round(r.left)}:${Math.round(r.width)}:${Math.round(r.height)}`,
+    )
+    .join("|");
+}
+
+function collectPageItemElements(
   viewer: DoclingImgElement,
   pageNo: number,
-): DOMRect[] {
+): SVGRectElement[] {
   const root = viewer.shadowRoot;
   if (!root) return [];
   const pages = root.querySelectorAll<HTMLElement>("docling-img-page");
-  const rects: DOMRect[] = [];
+  const elements: SVGRectElement[] = [];
   for (const pageEl of pages) {
     const pageRoot = pageEl.shadowRoot;
     const page = (pageEl as HTMLElement & { page?: { page_no?: number } }).page;
@@ -152,30 +275,37 @@ function collectPageItemRects(
     for (const rect of pageRoot.querySelectorAll<SVGRectElement>(
       "rect[part~='item']",
     )) {
-      rects.push(rect.getBoundingClientRect());
+      elements.push(rect);
     }
   }
-  return rects;
+  return elements;
 }
 
 /**
- * Positions the Chunk N HTML overlay over matched layout rects and scrolls the
- * document pane so the union is visible — without filtering docling-img items.
+ * Applies chunk hit styles, scrolls to the chunk's page, then places the
+ * Chunk N overlay once geometry is fresh.
+ *
+ * Important: clear the previous overlay immediately — otherwise `chunkLabel`
+ * updates (Chunk 1 → 19) while the old box stays put during the Lit wait.
  */
 function useChunkHighlightOverlay({
   ready,
   hostRef,
   viewerRef,
+  scrollContainerRef,
   chunkLabel,
   highlightKey,
   fallbackPage,
+  applyStyles,
 }: {
   ready: boolean;
   hostRef: RefObject<HTMLDivElement | null>;
   viewerRef: RefObject<DoclingImgElement | null>;
+  scrollContainerRef?: RefObject<HTMLElement | null>;
   chunkLabel?: string;
   highlightKey: string;
   fallbackPage?: number | null;
+  applyStyles: () => void;
 }) {
   const [overlay, setOverlay] = useState<OverlayBox | null>(null);
 
@@ -187,71 +317,126 @@ function useChunkHighlightOverlay({
 
     const host = hostRef.current;
     const viewer = viewerRef.current;
+    // Drop stale "Chunk N" chrome before the new geometry is ready.
+    setOverlay(null);
     if (!host || !viewer) return;
 
+    const beforeSignature = hitRectsSignature(collectChunkHitRects(viewer));
+    applyStyles();
+
     let cancelled = false;
-    let attempts = 0;
     const timers: number[] = [];
     const schedule = (fn: () => void, ms: number) => {
       timers.push(window.setTimeout(fn, ms));
     };
 
-    const place = () => {
-      if (cancelled) return;
-      let hitRects = collectChunkHitRects(viewer);
-      // If itemPart styling hasn't painted yet (or refs missed), fall back to
-      // every layout box on the chunk's page so PDF still gets a Chunk N frame.
-      if (
-        hitRects.length === 0 &&
-        typeof fallbackPage === "number" &&
-        attempts >= 4
-      ) {
-        hitRects = collectPageItemRects(viewer, fallbackPage);
+    const resolvePageNo = (): number | null => {
+      if (typeof fallbackPage !== "number") return null;
+      for (const pageNo of [fallbackPage, fallbackPage + 1, fallbackPage - 1]) {
+        if (pageNo < 1) continue;
+        if (findDoclingPageElement(viewer, pageNo)) return pageNo;
       }
-      if (hitRects.length === 0) {
-        attempts += 1;
-        if (attempts < 20) {
-          schedule(place, 50);
-        } else {
-          setOverlay(null);
-        }
+      return fallbackPage;
+    };
+
+    const preferredScrollContainers = () => [
+      scrollContainerRef?.current,
+      findScrollParent(host),
+    ];
+
+    const scrollToAnchor = (anchor: Element | null) => {
+      if (!anchor) return;
+      scrollElementThroughAncestors(anchor, preferredScrollContainers());
+    };
+
+    const placeOverlay = (hitEls: Element[]) => {
+      if (cancelled || hitEls.length === 0) {
+        if (!cancelled) setOverlay(null);
+        return;
+      }
+      const hitRects = hitEls.map((el) => el.getBoundingClientRect());
+      const hostRect = host.getBoundingClientRect();
+      setOverlay(
+        unionRect(hitRects, hostRect, host.scrollTop, host.scrollLeft),
+      );
+    };
+
+    const pageNo = resolvePageNo();
+    const pageAnchor =
+      pageNo != null ? findDoclingPageAnchor(viewer, pageNo) : null;
+
+    const finish = (hitEls: Element[], refineScroll: boolean) => {
+      if (cancelled) return;
+      // Overlay is host-relative so it stays correct during the smooth scroll.
+      placeOverlay(hitEls);
+      // Single smooth scroll only — a second scrollTo cancels the animation.
+      const anchor =
+        refineScroll && hitEls[0] ? hitEls[0] : (pageAnchor ?? hitEls[0]);
+      scrollToAnchor(anchor ?? null);
+    };
+
+    const pageItemElements = (): SVGRectElement[] => {
+      if (pageNo == null) return [];
+      return collectPageItemElements(viewer, pageNo);
+    };
+
+    const place = (attempt: number) => {
+      if (cancelled) return;
+
+      const hitEls = collectChunkHitElements(viewer);
+      const signature = hitRectsSignature(
+        hitEls.map((el) => el.getBoundingClientRect()),
+      );
+      const hitsAreFresh =
+        hitEls.length > 0 &&
+        (beforeSignature === "" || signature !== beforeSignature);
+
+      if (hitsAreFresh) {
+        finish(hitEls, true);
         return;
       }
 
-      const hostRect = host.getBoundingClientRect();
-      const box = unionRect(
-        hitRects,
-        hostRect,
-        host.scrollTop,
-        host.scrollLeft,
-      );
-      setOverlay(box);
+      // Still the previous selection's parts — wait briefly for Lit.
+      if (hitEls.length > 0 && attempt < 10) {
+        schedule(() => place(attempt + 1), 32);
+        return;
+      }
 
-      const scrollParent = findScrollParent(host);
-      if (scrollParent && box) {
-        const parentRect = scrollParent.getBoundingClientRect();
-        const unionTopInParent =
-          hitRects.reduce((min, r) => Math.min(min, r.top), hitRects[0].top) -
-          parentRect.top +
-          scrollParent.scrollTop;
-        const target =
-          unionTopInParent -
-          Math.max(24, (scrollParent.clientHeight - box.height) / 3);
-        scrollParent.scrollTo({
-          top: Math.max(0, target),
-          behavior: "smooth",
-        });
+      // Fall back to page geometry so the Chunk N frame still appears.
+      if (attempt >= 6) {
+        const pageEls = pageItemElements();
+        if (pageEls.length > 0) {
+          finish(pageEls, false);
+          return;
+        }
+        if (pageAnchor) {
+          finish([pageAnchor], false);
+          return;
+        }
+      }
+
+      if (attempt < 18) {
+        schedule(() => place(attempt + 1), 32);
       }
     };
 
-    schedule(place, 50);
+    schedule(() => place(0), 0);
     return () => {
       cancelled = true;
       for (const timer of timers) {
         window.clearTimeout(timer);
       }
     };
-  }, [ready, chunkLabel, highlightKey, fallbackPage, hostRef, viewerRef]);
+  }, [
+    ready,
+    chunkLabel,
+    highlightKey,
+    fallbackPage,
+    applyStyles,
+    hostRef,
+    viewerRef,
+    scrollContainerRef,
+  ]);
 
   return overlay;
 }
@@ -261,6 +446,7 @@ export function DoclingParseViewer({
   highlightItemRefs,
   fallbackPage,
   chunkLabel,
+  scrollContainerRef,
 }: {
   doclingDocument: Record<string, unknown>;
   /** Matched Docling self_refs — styled in-place; all other annotations stay. */
@@ -269,6 +455,8 @@ export function DoclingParseViewer({
   fallbackPage?: number | null;
   /** e.g. "Chunk 5" — chip on the outer chunk border. */
   chunkLabel?: string;
+  /** Preview frame with overflow — preferred scrollport for chunk jumps. */
+  scrollContainerRef?: RefObject<HTMLElement | null>;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
@@ -283,14 +471,74 @@ export function DoclingParseViewer({
     typeof fallbackPage === "number" ? fallbackPage : null;
 
   const highlightKey = `${chunkLabel ?? ""}:${(highlightItemRefs ?? []).join(",")}:${fallbackPage ?? ""}`;
+  // Fingerprint content so React identity churn does not reassign `src`
+  // (re-rasterize resets scroll mid-selection).
+  const documentIdentity = useMemo(() => {
+    const pages = doclingDocument.pages;
+    const pageCount = Array.isArray(pages)
+      ? pages.length
+      : pages && typeof pages === "object"
+        ? Object.keys(pages).length
+        : 0;
+    const texts = Array.isArray(doclingDocument.texts)
+      ? doclingDocument.texts.length
+      : 0;
+    const tables = Array.isArray(doclingDocument.tables)
+      ? doclingDocument.tables.length
+      : 0;
+    return `${pageCount}:${texts}:${tables}`;
+  }, [doclingDocument]);
+  const documentIdentityRef = useRef<string>("");
+
+  const isChunkHit = useCallback((page: unknown, item: unknown): boolean => {
+    const refs = matchedRefsRef.current;
+    if (refs && refs.size > 0) {
+      const ref = itemSelfRef(item);
+      return Boolean(ref && refs.has(ref));
+    }
+    const pageNo = fallbackPageRef.current;
+    if (pageNo == null) return false;
+    const fromItem = itemOnDoclingPage(item, pageNo);
+    if (fromItem) return true;
+    // Some items lack prov — fall back to the rendered page's page_no.
+    return pageNoOf(page) === pageNo;
+  }, []);
+
+  const applyChunkStyles = useCallback(() => {
+    const viewer = viewerRef.current;
+    if (!viewer) return;
+    const partFn = (page: unknown, item: unknown) =>
+      isChunkHit(page, item) ? "chunk-hit" : "";
+    const styleFn = (page: unknown, item: unknown) =>
+      isChunkHit(page, item) ? CHUNK_HIT_STYLE : LAYOUT_BOX_STYLE;
+    viewer.itemPart = partFn;
+    viewer.itemStyle = styleFn;
+    const lit = viewer as DoclingImgElement & { requestUpdate?: () => void };
+    lit.requestUpdate?.();
+
+    const pages = viewer.shadowRoot?.querySelectorAll<
+      HTMLElement & {
+        itemPart?: typeof partFn;
+        itemStyle?: typeof styleFn;
+        requestUpdate?: () => void;
+      }
+    >("docling-img-page");
+    pages?.forEach((page) => {
+      page.itemPart = partFn;
+      page.itemStyle = styleFn;
+      page.requestUpdate?.();
+    });
+  }, [isChunkHit]);
 
   const overlay = useChunkHighlightOverlay({
     ready,
     hostRef,
     viewerRef,
+    scrollContainerRef,
     chunkLabel,
     highlightKey,
     fallbackPage,
+    applyStyles: applyChunkStyles,
   });
 
   useEffect(() => {
@@ -311,20 +559,6 @@ export function DoclingParseViewer({
     };
   }, []);
 
-  const isChunkHit = (page: unknown, item: unknown): boolean => {
-    const refs = matchedRefsRef.current;
-    if (refs && refs.size > 0) {
-      const ref = itemSelfRef(item);
-      return Boolean(ref && refs.has(ref));
-    }
-    const pageNo = fallbackPageRef.current;
-    if (pageNo == null) return false;
-    const fromItem = itemOnDoclingPage(item, pageNo);
-    if (fromItem) return true;
-    // Some items lack prov — fall back to the rendered page's page_no.
-    return pageNoOf(page) === pageNo;
-  };
-
   // Assigning `src` re-rasterizes embedded page images — only when the document
   // identity changes. Chunk emphasis goes through itemPart/itemStyle.
   useEffect(() => {
@@ -340,47 +574,19 @@ export function DoclingParseViewer({
       viewer.trim = "";
       container.appendChild(viewer);
       viewerRef.current = viewer;
+      documentIdentityRef.current = "";
     }
 
     const viewer = viewerRef.current;
     // Never filter via `items` — that hides other layout annotations.
     viewer.items = undefined;
     viewer.removeAttribute("items");
-    viewer.itemPart = (page, item) =>
-      isChunkHit(page, item) ? "chunk-hit" : "";
-    viewer.itemStyle = (page, item) =>
-      isChunkHit(page, item) ? CHUNK_HIT_STYLE : LAYOUT_BOX_STYLE;
-    viewer.src = doclingDocument;
-  }, [ready, doclingDocument]);
-
-  // Re-apply hit styling when the selected chunk changes without reloading src.
-  useEffect(() => {
-    const viewer = viewerRef.current;
-    if (!ready || !viewer) return;
-    const partFn = (page: unknown, item: unknown) =>
-      isChunkHit(page, item) ? "chunk-hit" : "";
-    const styleFn = (page: unknown, item: unknown) =>
-      isChunkHit(page, item) ? CHUNK_HIT_STYLE : LAYOUT_BOX_STYLE;
-    viewer.itemPart = partFn;
-    viewer.itemStyle = styleFn;
-    const lit = viewer as DoclingImgElement & { requestUpdate?: () => void };
-    lit.requestUpdate?.();
-
-    // Nested page elements keep their own reactive props — push updates down
-    // so PDF overlays re-paint without a full src reload.
-    const pages = viewer.shadowRoot?.querySelectorAll<
-      HTMLElement & {
-        itemPart?: typeof partFn;
-        itemStyle?: typeof styleFn;
-        requestUpdate?: () => void;
-      }
-    >("docling-img-page");
-    pages?.forEach((page) => {
-      page.itemPart = partFn;
-      page.itemStyle = styleFn;
-      page.requestUpdate?.();
-    });
-  }, [ready, highlightKey]);
+    applyChunkStyles();
+    if (documentIdentityRef.current !== documentIdentity) {
+      documentIdentityRef.current = documentIdentity;
+      viewer.src = doclingDocument;
+    }
+  }, [ready, doclingDocument, documentIdentity, applyChunkStyles]);
 
   if (loadError) {
     return (
@@ -679,7 +885,11 @@ function itemMatchesHighlight(
   highlightItemRefs: string[] | undefined,
   highlightText: string | undefined,
 ): boolean {
-  if (highlightItemRefs?.includes(item.id)) return true;
+  // Refs win exclusively — also applying text OR creates a second "Chunk N"
+  // frame on non-consecutive regions that share phrases.
+  if (highlightItemRefs && highlightItemRefs.length > 0) {
+    return highlightItemRefs.includes(item.id);
+  }
   if (!highlightText?.trim()) return false;
   const needle = normalizeNeedle(highlightText);
   const hay = normalizeNeedle(parsedItemText(item));
@@ -772,9 +982,12 @@ export function DoclingTextPreview({
   }, [groups]);
 
   useLayoutEffect(() => {
-    if (!chunkLabel) return;
-    scrollNodeIntoPane(chunkFrameRef.current);
-  }, [highlightKey, chunkLabel]);
+    if (!chunkLabel || !firstChunkKey) return;
+    const raf = window.requestAnimationFrame(() => {
+      scrollNodeIntoPane(chunkFrameRef.current);
+    });
+    return () => window.cancelAnimationFrame(raf);
+  }, [highlightKey, chunkLabel, firstChunkKey]);
 
   if (items.length === 0) {
     return (

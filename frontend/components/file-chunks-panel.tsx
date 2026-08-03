@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, Copy, Loader2 } from "lucide-react";
-import { useDeferredValue, useEffect, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useFileScopedChunksQuery } from "@/app/api/queries/useFileScopedChunksQuery";
 import type { ChunkResult } from "@/app/api/queries/useGetSearchQuery";
 import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
@@ -9,6 +9,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { trackButton } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
+
+/** Document order for stable Chunk N labels (search hit order is not page order). */
+function compareChunksByDocumentOrder(a: ChunkResult, b: ChunkResult): number {
+  const pageA = typeof a.page === "number" ? a.page : Number.POSITIVE_INFINITY;
+  const pageB = typeof b.page === "number" ? b.page : Number.POSITIVE_INFINITY;
+  if (pageA !== pageB) return pageA - pageB;
+  return (a.chunk_id ?? a.id ?? "").localeCompare(b.chunk_id ?? b.id ?? "");
+}
 
 export interface FileChunksPanelProps {
   filename: string;
@@ -147,11 +155,13 @@ export function FileChunksPanel({
   fillHeight = false,
 }: FileChunksPanelProps) {
   const { file, isFetching } = useFileScopedChunksQuery(filename);
-  const allChunks =
-    file?.chunks?.map((chunk, i) => ({
+  const allChunks = useMemo(() => {
+    const sorted = [...(file?.chunks ?? [])].sort(compareChunksByDocumentOrder);
+    return sorted.map((chunk, i) => ({
       ...chunk,
-      index: chunk.index ?? i + 1,
-    })) ?? [];
+      index: i + 1,
+    }));
+  }, [file?.chunks]);
 
   const filterControlled = filterQuery !== undefined;
   const [internalQuery, setInternalQuery] = useState("");

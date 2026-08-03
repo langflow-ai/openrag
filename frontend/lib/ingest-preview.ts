@@ -53,26 +53,6 @@ export function summarizeChunkPages(
   };
 }
 
-/** Map an indexed chunk page to a Docling `items` ref (`#/pages/N` is 1-based). */
-export function chunkPageToDoclingRef(
-  page: number,
-  numbering: ChunkPageNumbering = "one-based",
-): string {
-  const doclingPage = numbering === "zero-based" ? page + 1 : page;
-  return `#/pages/${doclingPage}`;
-}
-
-/** Inverse of `chunkPageToDoclingRef` for highlighting the matching chunk card. */
-export function pageFromDoclingRef(
-  highlightItems: string | undefined,
-  numbering: ChunkPageNumbering = "one-based",
-): number | null {
-  if (!highlightItems?.startsWith("#/pages/")) return null;
-  const n = Number(highlightItems.slice("#/pages/".length));
-  if (!Number.isFinite(n)) return null;
-  return numbering === "zero-based" ? n - 1 : n;
-}
-
 function pageHasEmbeddedImage(page: unknown): boolean {
   const image = (page as { image?: unknown } | null)?.image;
   if (!image) return false;
@@ -181,11 +161,14 @@ export type ChunkDoclingMatch = {
   itemRefs: string[];
   /** True when we fell back to the whole page. */
   pageFallback: boolean;
+  /** Docling 1-based page for scroll/overlay (from match prov or chunk page). */
+  page?: number;
 };
 
 /**
- * Map an indexed chunk to Docling layout item refs by page + text overlap.
- * Falls back to page-level matching when no item scores well enough.
+ * Map an indexed chunk to Docling layout item refs by text overlap.
+ * Chunk page is a hint only — indexed page metadata is often wrong/stale, so
+ * when nothing matches on that page we search the whole document.
  */
 export function matchChunkToDoclingItems(
   document: Record<string, unknown> | null | undefined,
@@ -196,16 +179,6 @@ export function matchChunkToDoclingItems(
     return null;
   }
 
-  const pageFallback =
-    typeof chunk.page === "number"
-      ? {
-          itemRefs: [] as string[],
-          pageFallback: true,
-        }
-      : null;
-
-  if (!document) return pageFallback;
-
   const doclingPage =
     typeof chunk.page === "number"
       ? numbering === "zero-based"
@@ -213,34 +186,60 @@ export function matchChunkToDoclingItems(
         : chunk.page
       : null;
 
-  const candidates: Array<{ ref: string; score: number }> = [];
+  const pageFallback =
+    doclingPage != null
+      ? {
+          itemRefs: [] as string[],
+          pageFallback: true,
+          page: doclingPage,
+        }
+      : null;
+
+  if (!document) return pageFallback;
+
+  type Candidate = { ref: string; score: number; page?: number };
   const collections: Array<{ key: string; items: unknown }> = [
     { key: "texts", items: document.texts },
     { key: "tables", items: document.tables },
     { key: "pictures", items: document.pictures },
   ];
 
-  for (const { key, items } of collections) {
-    if (!Array.isArray(items)) continue;
-    for (let i = 0; i < items.length; i += 1) {
-      const item = items[i] as MatchableDoclingItem;
-      const pages = itemPages(item);
-      if (
-        doclingPage != null &&
-        pages.length > 0 &&
-        !pages.includes(doclingPage)
-      ) {
-        continue;
+  const collectCandidates = (restrictPage: number | null): Candidate[] => {
+    const candidates: Candidate[] = [];
+    for (const { key, items } of collections) {
+      if (!Array.isArray(items)) continue;
+      for (let i = 0; i < items.length; i += 1) {
+        const item = items[i] as MatchableDoclingItem;
+        const pages = itemPages(item);
+        if (
+          restrictPage != null &&
+          pages.length > 0 &&
+          !pages.includes(restrictPage)
+        ) {
+          continue;
+        }
+        const plain = itemPlainText(item);
+        const score = scoreTextOverlap(chunk.text, plain);
+        if (score < MIN_MATCH_SCORE) continue;
+        const ref =
+          typeof item.self_ref === "string" && item.self_ref.startsWith("#/")
+            ? item.self_ref
+            : `#/${key}/${i}`;
+        candidates.push({
+          ref,
+          score,
+          page: pages[0],
+        });
       }
-      const plain = itemPlainText(item);
-      const score = scoreTextOverlap(chunk.text, plain);
-      if (score < MIN_MATCH_SCORE) continue;
-      const ref =
-        typeof item.self_ref === "string" && item.self_ref.startsWith("#/")
-          ? item.self_ref
-          : `#/${key}/${i}`;
-      candidates.push({ ref, score });
     }
+    return candidates;
+  };
+
+  // Prefer same-page matches, then search all pages by text (page metadata
+  // on indexed chunks is frequently missing or stuck on page 1).
+  let candidates = collectCandidates(doclingPage);
+  if (candidates.length === 0) {
+    candidates = collectCandidates(null);
   }
 
   if (candidates.length === 0) return pageFallback;
@@ -257,5 +256,6 @@ export function matchChunkToDoclingItems(
   return {
     itemRefs,
     pageFallback: false,
+    page: candidates[0]?.page ?? doclingPage ?? undefined,
   };
 }

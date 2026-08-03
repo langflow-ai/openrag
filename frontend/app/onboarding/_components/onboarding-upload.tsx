@@ -50,12 +50,13 @@ type UploadState = {
 };
 
 type UploadAction =
-  | { type: "start_upload"; preview: PreviewDialogState | null }
+  | { type: "start_upload"; preview: PreviewDialogState }
   | { type: "set_step"; step: number | null }
   | { type: "set_preview"; preview: PreviewDialogState }
   | {
       type: "upload_succeeded";
       taskId: string | null;
+      /** null = leave existing preview unchanged. */
       preview: PreviewDialogState | null;
       filename: string | null;
       createFilter: boolean;
@@ -87,7 +88,9 @@ function uploadReducer(state: UploadState, action: UploadAction): UploadState {
         isUploading: true,
         error: null,
         ingestionReady: false,
-        preview: action.preview ?? state.preview,
+        // Always replace — callers pass EMPTY_PREVIEW when preview is disabled
+        // so a prior open review cannot stick across uploads.
+        preview: action.preview,
       };
     case "set_step":
       return { ...state, currentStep: action.step };
@@ -367,7 +370,7 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
             filename: file.name,
             files: [file],
           }
-        : null,
+        : EMPTY_PREVIEW,
     });
     try {
       dispatch({ type: "set_step", step: 0 });

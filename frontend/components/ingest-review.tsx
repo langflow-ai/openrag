@@ -237,6 +237,7 @@ function DocumentPane({
 }) {
   const doclingDocument = parsePreview?.document;
   const frameClass = previewFrameClass(expanded);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   if (failed) {
     return (
@@ -253,7 +254,10 @@ function DocumentPane({
   if (doclingDocument) {
     if (doclingHasPageImages(doclingDocument)) {
       return (
-        <div className={cn(frameClass, expanded && "min-h-0 flex-1")}>
+        <div
+          ref={scrollContainerRef}
+          className={cn(frameClass, expanded && "min-h-0 flex-1")}
+        >
           <p className="mb-2 shrink-0 text-xs text-muted-foreground">
             Blue boxes mark parsed text, tables, and figures.
             {hasChunks ? " Click a chunk to focus its region." : null}
@@ -263,12 +267,16 @@ function DocumentPane({
             highlightItemRefs={highlightItemRefs}
             fallbackPage={fallbackPage}
             chunkLabel={chunkLabel}
+            scrollContainerRef={scrollContainerRef}
           />
         </div>
       );
     }
     return (
-      <div className={cn(frameClass, expanded && "min-h-0 flex-1")}>
+      <div
+        ref={scrollContainerRef}
+        className={cn(frameClass, expanded && "min-h-0 flex-1")}
+      >
         <p className="mb-2 shrink-0 text-xs text-muted-foreground">
           No page image for this format — each region Docling detected is boxed
           and labeled by type.
@@ -356,12 +364,17 @@ function DemoChunksList({
   }) => void;
   expanded?: boolean;
 }) {
+  // Number in source order before filtering so search does not renumber Chunk N.
+  const numbered = chunks.map((chunk, index) => ({
+    ...chunk,
+    displayIndex: index + 1,
+  }));
   const needle = chunkSearch.trim().toLowerCase();
   const visible = needle
-    ? chunks.filter((chunk) =>
+    ? numbered.filter((chunk) =>
         chunk.text_preview.toLowerCase().includes(needle),
       )
-    : chunks;
+    : numbered;
 
   if (visible.length === 0) {
     return (
@@ -379,8 +392,8 @@ function DemoChunksList({
       )}
       data-testid="ingest-review-demo-chunks"
     >
-      {visible.map((chunk, index) => {
-        const chunkIndex = index + 1;
+      {visible.map((chunk) => {
+        const chunkIndex = chunk.displayIndex;
         const selected = selectedChunkIndex === chunkIndex;
         return (
           <button
@@ -863,14 +876,15 @@ function useIngestReviewModel({
   }, [chunkHighlight, parsePreview?.document, pageNumbering]);
 
   const highlightItemRefs = doclingMatch?.itemRefs;
-  // Always keep a page fallback for PDF overlays when the chunk has a page —
-  // text→item matching is often weak on PDFs, and nested shadow queries need it.
+  // Prefer the page from text→item match (indexed chunk.page is often wrong).
+  // Fall back to the chunk's page so PDF overlays still have a scroll target.
   const fallbackPage =
-    chunkHighlight?.page != null
+    doclingMatch?.page ??
+    (chunkHighlight?.page != null
       ? pageNumbering === "zero-based"
         ? chunkHighlight.page + 1
         : chunkHighlight.page
-      : null;
+      : null);
   const chunkLabel =
     chunkHighlight != null ? `Chunk ${chunkHighlight.index}` : undefined;
 

@@ -48,6 +48,16 @@ function withFileParam(path: string, filePath?: string | null): string {
 
 async function fetchPreviewJson<T>(
   path: string,
+  filePath: string | null | undefined,
+  options: { notFoundAsNull: true },
+): Promise<T | null>;
+async function fetchPreviewJson<T>(
+  path: string,
+  filePath?: string | null,
+  options?: { notFoundAsNull?: false },
+): Promise<T>;
+async function fetchPreviewJson<T>(
+  path: string,
   filePath?: string | null,
   options?: { notFoundAsNull?: boolean },
 ): Promise<T | null> {
@@ -58,7 +68,7 @@ async function fetchPreviewJson<T>(
   if (!response.ok) {
     throw new Error(`Preview unavailable (${response.status})`);
   }
-  return response.json();
+  return response.json() as Promise<T>;
 }
 
 function usePreviewPollQuery<T>({
@@ -119,7 +129,13 @@ export function useDoclingPreviewQuery(
   });
 }
 
-/** Poll index-proof until chunks land (keyed by task + file). */
+/**
+ * Poll index-proof until chunks land (keyed by task + file).
+ *
+ * "Not ready yet" is HTTP 200 with `ready: false` — keep polling via isDone.
+ * 404 (missing task/file, preview disabled) throws and stops polling; that is
+ * intentional, unlike Docling preview where 404 means "still parsing".
+ */
 export function useIndexProofQuery(
   taskId: string | null,
   enabled: boolean,
@@ -127,16 +143,11 @@ export function useIndexProofQuery(
 ) {
   return usePreviewPollQuery<IndexProofResponse>({
     queryKey: ["ingest-preview", "index-proof", taskId, filePath ?? null],
-    queryFn: async () => {
-      const data = await fetchPreviewJson<IndexProofResponse>(
+    queryFn: () =>
+      fetchPreviewJson<IndexProofResponse>(
         `/api/ingest/preview/${taskId}/index-proof`,
         filePath,
-      );
-      if (!data) {
-        throw new Error("Index proof unavailable");
-      }
-      return data;
-    },
+      ),
     enabled: enabled && !!taskId,
     staleTime: 5_000,
     isDone: (data) => Boolean(data?.ready),

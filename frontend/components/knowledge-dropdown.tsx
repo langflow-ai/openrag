@@ -345,6 +345,39 @@ export function KnowledgeDropdown() {
     });
   };
 
+  /**
+   * Bind upload task IDs into the review dialog.
+   *
+   * Previously this always spread `prev` and only set `taskIds`. When Knowledge
+   * auto-open is off, `openPreviewForFiles` never runs, so `prev.open` stays
+   * false and the dialog kept a taskId while remaining invisible.
+   *
+   * Rules:
+   * - Dialog already open → attach taskIds (normal auto-open path).
+   * - Dialog closed but auto-open is on → open now with files (recovers a
+   *   missed optimistic open).
+   * - Dialog closed and auto-open is off → leave closed; tasks stay in the tray.
+   */
+  const attachPreviewTaskIds = (
+    taskIds: string[],
+    fallback?: { files: File[]; filename: string },
+  ) => {
+    setPreview((prev) => {
+      if (prev.open) {
+        return { ...prev, open: true, taskIds };
+      }
+      if (shouldAutoOpenIngestPreview() && fallback) {
+        return {
+          open: true,
+          taskIds,
+          filename: fallback.filename,
+          files: fallback.files,
+        };
+      }
+      return prev;
+    });
+  };
+
   const uploadFile = async (file: File, replace: boolean) => {
     setFileUploading(true);
     openPreviewForFiles([file], file.name);
@@ -369,10 +402,10 @@ export function KnowledgeDropdown() {
         // Always track in the task tray; preview dialog is optional (auto-open).
         addTask(result.taskId, { source: "file" });
         if (result.previewMode) {
-          setPreview((prev) => ({
-            ...prev,
-            taskIds: [result.taskId as string],
-          }));
+          attachPreviewTaskIds([result.taskId as string], {
+            files: [file],
+            filename: file.name,
+          });
         } else {
           setPreview(EMPTY_PREVIEW);
         }
@@ -427,6 +460,9 @@ export function KnowledgeDropdown() {
     // Cap parallel batch uploads so large folders don't open every request at once.
     const batchConcurrency = Math.min(2, batches.length);
     let nextBatchIndex = 0;
+    // Shared across concurrent workers: a previewMode=false batch must not
+    // close the dialog after a sibling batch already confirmed preview.
+    let previewModeConfirmed = false;
 
     const runNextBatch = async () => {
       while (nextBatchIndex < batches.length) {
@@ -443,16 +479,19 @@ export function KnowledgeDropdown() {
           );
           addTask(result.taskId, { source: "folder" });
           if (result.previewMode) {
+            previewModeConfirmed = true;
             taskIdsByBatch[batchIndex] = result.taskId;
-            setPreview((prev) => ({
-              ...prev,
-              taskIds: taskIdsByBatch.filter(
-                (id): id is string => id !== undefined,
-              ),
-            }));
+            attachPreviewTaskIds(
+              taskIdsByBatch.filter((id): id is string => id !== undefined),
+              {
+                files: filesToUpload,
+                filename: `${filesToUpload.length} files`,
+              },
+            );
             refetchTasks();
-          } else {
-            // Preview was pre-opened; close it when the server rejects preview mode.
+          } else if (!previewModeConfirmed) {
+            // Close the optimistic open only when no batch has confirmed
+            // preview yet. A concurrent false must not wipe a successful open.
             setPreview(EMPTY_PREVIEW);
           }
         } catch (error) {
