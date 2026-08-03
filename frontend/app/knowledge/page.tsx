@@ -288,8 +288,6 @@ function SearchPage() {
     [taskFiles, tasks],
   );
 
-  // Auto-open unified task panel only when a NEW task file transitions to failed
-  // (skip initial failed files that already existed on page load).
   useEffect(() => {
     const failedFiles = taskFiles.filter((file) => file.status === "failed");
     const seenKeys = seenFailedFileKeysRef.current;
@@ -330,8 +328,6 @@ function SearchPage() {
     getFailedFileKey,
   ]);
 
-  // Use server-side file listing for default/wildcard view; search otherwise.
-  // Wildcard follows bar text or saved filter query (bar is cleared when a filter is picked).
   const effectiveSearchText =
     queryOverride.trim() || parsedFilterData?.query?.trim() || "";
   const hasActiveFilters = parsedFilterData?.filters
@@ -343,9 +339,9 @@ function SearchPage() {
 
   const {
     data: listFilesData,
-    isLoading,
-    error,
-    isError,
+    isLoading: isListFilesLoading,
+    error: listFilesError,
+    isError: isListFilesError,
   } = useListFiles(
     {
       page: currentPage,
@@ -353,10 +349,6 @@ function SearchPage() {
       sortBy,
       sortOrder,
       afterKey: cursorCacheRef.current.get(currentPage) ?? null,
-      search:
-        effectiveSearchText === "*"
-          ? undefined
-          : effectiveSearchText || undefined,
       connectorType: listFilesFilterParam(
         parsedFilterData?.filters?.connector_types,
       ),
@@ -365,20 +357,32 @@ function SearchPage() {
     },
     {
       refetchInterval: 5000,
+      enabled: isWildcardQuery,
     },
   );
 
-  const { data: searchData = EMPTY_SEARCH_RESULT } = useGetSearchQuery(
-    queryOverride,
-    parsedFilterData,
-    {
-      enabled: false,
-    },
-  );
+  const {
+    data: searchData = EMPTY_SEARCH_RESULT,
+    isLoading: isSearchLoading,
+    error: searchError,
+    isError: isSearchError,
+  } = useGetSearchQuery(queryOverride, parsedFilterData, {
+    enabled: !isWildcardQuery,
+  });
 
-  const { warnings: searchWarnings } = searchData as SearchResult;
+  const { files: searchFiles, warnings: searchWarnings } =
+    searchData as SearchResult;
 
-  const effectiveData: File[] = listFilesData?.files ?? [];
+  const isLoading = isWildcardQuery ? isListFilesLoading : isSearchLoading;
+  const error = isWildcardQuery ? listFilesError : searchError;
+  const isError = isWildcardQuery ? isListFilesError : isSearchError;
+
+  const effectiveData: File[] = isWildcardQuery
+    ? (listFilesData?.files ?? [])
+    : searchFiles.slice(
+        (currentPage - 1) * currentPageSize,
+        currentPage * currentPageSize,
+      );
 
   const isOpenragDocsRow = useCallback((file?: File) => {
     return (
@@ -466,22 +470,22 @@ function SearchPage() {
       lastErrorRef.current = null;
     }
   }, [isError, error]);
-  // Third arg: saved filter only — draft `parsedFilterData` (create mode) must still show task rows.
   const fileResults = buildKnowledgeTableRows(
     effectiveData,
     taskFiles,
     Boolean(selectedFilter),
   );
 
-  const serverTotal = listFilesData?.total ?? 0;
+  const serverTotal = isWildcardQuery
+    ? (listFilesData?.total ?? 0)
+    : searchFiles.length;
   const gridRows: File[] = fileResults;
   const totalPages = Math.max(1, Math.ceil(serverTotal / currentPageSize));
 
-  // Reset to page 1 and clear cursor cache when search text or filters change
   useEffect(() => {
     cursorCacheRef.current = new Map();
     setCurrentPage(1);
-  }, [effectiveSearchText]);
+  }, [isWildcardQuery, searchFiles.length]);
 
   // when the server responds with an after_key for page N, cache it as the cursor for page N+1
   useEffect(() => {
@@ -527,7 +531,6 @@ function SearchPage() {
     setSortOrder(newSortOrder);
   }, [getGridApi]);
 
-  // Re-run only when row identity/status changes, not on every list poll reference.
   const gridRowsSelectionKey = useMemo(
     () =>
       gridRows
