@@ -19,6 +19,9 @@ _current_search_filters: ContextVar[Optional[Dict[str, Any]]] = ContextVar(
 _current_search_limit: ContextVar[Optional[int]] = ContextVar(
     "current_search_limit", default=10
 )
+_current_search_offset: ContextVar[int] = ContextVar(
+    "current_search_offset", default=0
+)
 _current_score_threshold: ContextVar[Optional[float]] = ContextVar(
     "current_score_threshold", default=0
 )
@@ -63,6 +66,16 @@ def set_search_limit(limit: int):
 def get_search_limit() -> int:
     """Get current search limit from context"""
     return _current_search_limit.get()
+
+
+def set_search_offset(offset: int):
+    """Set chunk offset for paginated wildcard listing"""
+    _current_search_offset.set(offset)
+
+
+def get_search_offset() -> int:
+    """Get current chunk offset from context"""
+    return _current_search_offset.get()
 
 
 def set_score_threshold(threshold: float):

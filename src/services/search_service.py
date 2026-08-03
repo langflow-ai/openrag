@@ -190,15 +190,17 @@ class SearchService:
 
         # Get authentication context from the current async context
         user_id, jwt_token = get_auth_context()
-        # Get search filters, limit, and score threshold from context
+        # Get search filters, limit, offset, and score threshold from context
         from auth_context import (
             get_score_threshold,
             get_search_filters,
             get_search_limit,
+            get_score_threshold,
         )
 
         filters = get_search_filters() or {}
         limit = get_search_limit()
+        offset = get_search_offset()
         score_threshold = get_score_threshold()
         # Detect wildcard request ("*") to return global facets/stats without semantic search
         is_wildcard_match_all = isinstance(query, str) and query.strip() == "*"
@@ -497,10 +499,10 @@ class SearchService:
         search_body: dict[str, Any] = {
             "query": query_block,
             "aggs": {
-                "data_sources": {"terms": {"field": "filename", "size": 20}},
-                "document_types": {"terms": {"field": "mimetype", "size": 10}},
-                "owners": {"terms": {"field": "owner", "size": 10}},
-                "connector_types": {"terms": {"field": "connector_type", "size": 10}},
+                "data_sources": {"terms": {"field": "filename", "size": 10000}},
+                "document_types": {"terms": {"field": "mimetype", "size": 100}},
+                "owners": {"terms": {"field": "owner", "size": 1000}},
+                "connector_types": {"terms": {"field": "connector_type", "size": 100}},
                 "embedding_models": {"terms": {"field": "embedding_model", "size": 10}},
             },
             "_source": [
@@ -523,6 +525,7 @@ class SearchService:
                 "allowed_groups",
                 "allowed_principal_labels",
             ],
+            "from": offset,
             "size": limit,
         }
 
@@ -701,6 +704,7 @@ class SearchService:
         jwt_token: str = None,
         filters: dict[str, Any] = None,
         limit: int = 10,
+        offset: int = 0,
         score_threshold: float = 0,
         embedding_model: str = None,
     ) -> dict[str, Any]:
@@ -718,15 +722,16 @@ class SearchService:
 
             set_auth_context(user_id, jwt_token)
 
-        # Set filters and limit in context if provided
+        # Set filters, limit, offset, and score threshold in context if provided
         if filters:
             from auth_context import set_search_filters
 
             set_search_filters(filters)
 
-        from auth_context import set_score_threshold, set_search_limit
+        from auth_context import set_search_limit, set_score_threshold
 
         set_search_limit(limit)
+        set_search_offset(offset)
         set_score_threshold(score_threshold)
 
         return await self.search_tool(query, embedding_model=embedding_model)

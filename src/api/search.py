@@ -21,6 +21,7 @@ class SearchBody(BaseModel):
     query: str
     filters: Dict[str, Any] = Field(default_factory=dict)
     limit: int = 10
+    offset: int = Field(default=0, ge=0, description="Number of chunks to skip (for pagination)")
     scoreThreshold: float = Field(default=0, alias="scoreThreshold")
 
     model_config = {"populate_by_name": True}
@@ -43,6 +44,7 @@ async def search(
             query=body.query,
             filters=body.filters,
             limit=body.limit,
+            offset=body.offset,
             score_threshold=body.scoreThreshold,
         )
 
@@ -52,6 +54,7 @@ async def search(
             jwt_token=jwt_token,
             filters=body.filters,
             limit=body.limit,
+            offset=body.offset,
             score_threshold=body.scoreThreshold,
         )
         return JSONResponse(result, status_code=200)
