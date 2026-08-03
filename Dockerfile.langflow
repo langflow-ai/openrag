@@ -9,6 +9,13 @@ USER 0
 RUN microdnf install -y \
     ca-certificates \
     shadow-utils \
+    && microdnf update -y \
+    glibc glibc-common glibc-minimal-langpack \
+    openssl openssl-libs \
+    krb5-libs \
+    expat \
+    libarchive \
+    libxml2 \
     && microdnf clean all
 
 # Install Langflow with targeted extras and CPU-only wheels for PyTorch/Docling
