@@ -13,7 +13,7 @@ async def create_index_body(
     Returns:
         OpenSearch index body configuration
     """
-    from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL
+    from config.embedding_constants import get_declared_default_embedding_model
     from config.settings import (
         ACL_PRINCIPAL_LABELS_MAPPING,
         OPENSEARCH_NUMBER_OF_REPLICAS,
@@ -22,10 +22,11 @@ async def create_index_body(
         get_openrag_config,
     )
 
+    config = get_openrag_config()
     resolved_embedding_model = (
         embedding_model
-        or get_openrag_config().knowledge.embedding_model
-        or OPENAI_DEFAULT_EMBEDDING_MODEL
+        or config.knowledge.embedding_model
+        or get_declared_default_embedding_model(config.knowledge.embedding_provider)
     )
 
     properties = {
