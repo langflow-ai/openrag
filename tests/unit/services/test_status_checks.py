@@ -202,6 +202,7 @@ async def test_opensearch_unreachable_is_unhealthy(monkeypatch):
     assert "unreachable" in (r.message or "").lower()
     assert r.version is None
 
+
 # ---------------------------------------------------------------------------
 # Buffer recording assertions (added by #2178)
 # ---------------------------------------------------------------------------
@@ -382,4 +383,3 @@ async def test_last_error_populated_on_failure(monkeypatch):
     r = await check_langflow()
     assert r.last_error is not None
     assert len(r.last_error) > 0
-

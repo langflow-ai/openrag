@@ -28,7 +28,7 @@ async def _run_check(fn: Callable[[], Awaitable[ComponentStatus]]) -> ComponentS
     name = fn.__name__.replace("check_", "")
     try:
         return await asyncio.wait_for(fn(), timeout=CHECK_TIMEOUT_S)
-    except asyncio.TimeoutError as e:
+    except TimeoutError:
         msg = f"Status check timed out after {CHECK_TIMEOUT_S}s"
         logger.warning("Status check timed out", component=name, timeout_s=CHECK_TIMEOUT_S)
         record(name, "error", msg, detail=f"asyncio.TimeoutError — timeout={CHECK_TIMEOUT_S}s")

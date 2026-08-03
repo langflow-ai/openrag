@@ -19,7 +19,9 @@ async def check_openrag_backend() -> ComponentStatus:
         logger.warning("OpenRAG config not loaded", error=str(e))
         message = "OpenRAG configuration is not loaded"
         record_check_result(
-            "openrag", False, message,
+            "openrag",
+            False,
+            message,
             detail=f"{type(e).__name__}: {e}",
         )
         return ComponentStatus(
@@ -100,7 +102,9 @@ async def check_docling() -> ComponentStatus:
             message = f"Docling returned HTTP {resp.status_code}"
             status = ComponentState.UNHEALTHY
             record_check_result(
-                "docling", False, message,
+                "docling",
+                False,
+                message,
                 detail=f"HTTP {resp.status_code} — target: {target_url}",
             )
             last_error = message
@@ -109,7 +113,9 @@ async def check_docling() -> ComponentStatus:
         message = "Docling Serve unreachable"
         status = ComponentState.UNHEALTHY
         record_check_result(
-            "docling", False, message,
+            "docling",
+            False,
+            message,
             detail=f"{type(e).__name__}: {e} — target: {target_url}",
         )
         last_error = f"{type(e).__name__}: {e} — target: {target_url}"
@@ -161,7 +167,9 @@ async def check_langflow() -> ComponentStatus:
             message = f"Langflow returned HTTP {resp.status_code}"
             status = ComponentState.UNHEALTHY
             record_check_result(
-                "langflow", False, message,
+                "langflow",
+                False,
+                message,
                 detail=f"HTTP {resp.status_code} — target: {target_url}",
             )
             last_error = message
@@ -170,7 +178,9 @@ async def check_langflow() -> ComponentStatus:
         message = "Langflow is unreachable"
         status = ComponentState.UNHEALTHY
         record_check_result(
-            "langflow", False, message,
+            "langflow",
+            False,
+            message,
             detail=f"{type(e).__name__}: {e} — target: {target_url}",
         )
         last_error = f"{type(e).__name__}: {e} — target: {target_url}"
@@ -231,7 +241,9 @@ async def check_opensearch() -> ComponentStatus:
         }
         ok = status in (ComponentState.HEALTHY, ComponentState.DEGRADED)
         record_check_result(
-            "opensearch", ok, message,
+            "opensearch",
+            ok,
+            message,
             detail=None if ok else f"cluster_health={cluster_status}",
         )
         last_error = None if ok else f"cluster_health={cluster_status}"
@@ -242,7 +254,9 @@ async def check_opensearch() -> ComponentStatus:
         status = ComponentState.UNHEALTHY
         metadata = {}
         record_check_result(
-            "opensearch", False, message,
+            "opensearch",
+            False,
+            message,
             detail=f"{type(e).__name__}: {e}",
         )
         last_error = f"{type(e).__name__}: {e}"

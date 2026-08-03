@@ -21,7 +21,6 @@ from api.schemas.status import LogsResponse  # noqa: E402
 from api.v1.status import get_component_logs_endpoint  # noqa: E402
 from session_manager import User  # noqa: E402
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

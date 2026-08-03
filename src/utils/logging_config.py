@@ -116,8 +116,17 @@ def mirror_to_component_buffer(_, __, event_dict: dict[str, Any]) -> dict[str, A
         message = str(safe.pop("event", ""))
         # Build a compact detail string from remaining context keys (skip
         # structlog internals and the fields already in message/level).
-        skip = {"level", "service", "env", "version", "timestamp",
-                "func_name", "filename", "lineno", "pathname"}
+        skip = {
+            "level",
+            "service",
+            "env",
+            "version",
+            "timestamp",
+            "func_name",
+            "filename",
+            "lineno",
+            "pathname",
+        }
         detail_parts = [f"{k}={v}" for k, v in safe.items() if k not in skip and v is not None]
         detail = "; ".join(detail_parts) if detail_parts else None
 

@@ -81,6 +81,7 @@ async def test_check_exception_becomes_unknown(monkeypatch):
 
     assert result.overall_status == ComponentState.UNHEALTHY
 
+
 # ---------------------------------------------------------------------------
 # Buffer recording assertions for _run_check (added by #2178)
 # ---------------------------------------------------------------------------
@@ -102,6 +103,7 @@ def _reset_log_buffer():
 @pytest.mark.asyncio
 async def test_timeout_records_error_to_buffer(monkeypatch):
     """A timed-out check must write an error entry to the component buffer."""
+
     async def slow():
         await asyncio.sleep(5)
         return _result("docling", ComponentState.HEALTHY)
@@ -117,13 +119,16 @@ async def test_timeout_records_error_to_buffer(monkeypatch):
     entries = _cl.get_entries("slow", tail=10)
     assert len(entries) >= 1
     assert entries[-1]["level"] == "error"
-    assert "timeout" in entries[-1]["message"].lower() or "timed out" in entries[-1]["message"].lower()
+    assert (
+        "timeout" in entries[-1]["message"].lower() or "timed out" in entries[-1]["message"].lower()
+    )
     assert result.components[0].last_error is not None
 
 
 @pytest.mark.asyncio
 async def test_check_exception_records_error_to_buffer(monkeypatch):
     """An unexpected exception must write an error entry to the component buffer."""
+
     async def boom():
         raise ValueError("unexpected")
 
@@ -138,4 +143,3 @@ async def test_check_exception_records_error_to_buffer(monkeypatch):
     assert "ValueError" in (entries[-1]["detail"] or "")
     assert result.components[0].last_error is not None
     assert "ValueError" in result.components[0].last_error
-

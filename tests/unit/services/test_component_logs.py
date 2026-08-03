@@ -136,17 +136,17 @@ def test_no_recovery_entry_when_first_call_is_healthy():
 def test_healthy_after_recovery_records_nothing_more():
     """After a recovery entry, subsequent healthy calls are still silent."""
     cl.record_check_result("langflow", False, "down")
-    cl.record_check_result("langflow", True, "up")   # recovery → 1 info
-    cl.record_check_result("langflow", True, "up")   # steady healthy → nothing
+    cl.record_check_result("langflow", True, "up")  # recovery → 1 info
+    cl.record_check_result("langflow", True, "up")  # steady healthy → nothing
     cl.record_check_result("langflow", True, "up")
     assert len(cl.get_entries("langflow", 10)) == 2  # still just error + recovery
 
 
 def test_second_failure_after_recovery_is_recorded():
     """Failure → recovery → failure again: second failure should be recorded."""
-    cl.record_check_result("opensearch", False, "down1")     # error
-    cl.record_check_result("opensearch", True, "up")         # info recovery
-    cl.record_check_result("opensearch", False, "down2")     # error again
+    cl.record_check_result("opensearch", False, "down1")  # error
+    cl.record_check_result("opensearch", True, "up")  # info recovery
+    cl.record_check_result("opensearch", False, "down2")  # error again
     entries = cl.get_entries("opensearch", 10)
     assert len(entries) == 3
     levels = [e["level"] for e in entries]

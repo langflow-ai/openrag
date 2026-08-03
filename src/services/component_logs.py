@@ -21,9 +21,7 @@ KNOWN_COMPONENTS: frozenset[str] = frozenset({"openrag", "langflow", "docling", 
 
 # Reuse the same pattern as logging_config._SENSITIVE_HEADER_RE so that keys
 # / tokens never surface in HTTP responses.
-_SENSITIVE_RE = re.compile(
-    r"(key|token|secret|password|apikey|credential|jwt|auth)", re.IGNORECASE
-)
+_SENSITIVE_RE = re.compile(r"(key|token|secret|password|apikey|credential|jwt|auth)", re.IGNORECASE)
 # Strip bare Bearer tokens from free-form detail strings.
 _BEARER_RE = re.compile(r"Bearer\s+\S+", re.IGNORECASE)
 
@@ -35,7 +33,7 @@ _BEARER_RE = re.compile(r"Bearer\s+\S+", re.IGNORECASE)
 
 class LogEntry(TypedDict):
     timestamp: str  # ISO-8601 UTC
-    level: str      # "debug" | "info" | "warning" | "error" | "critical"
+    level: str  # "debug" | "info" | "warning" | "error" | "critical"
     message: str
     detail: str | None
 
