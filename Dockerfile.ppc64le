@@ -40,7 +40,9 @@ RUN dnf install -y git make gcc-c++ libstdc++-static java-25-openjdk-devel && dn
 
 ENV JAVA_HOME=/usr/lib/jvm/java-25-openjdk
 
+# make source and target option 8 for async-profiler ppc64le builds on java 25
 RUN git clone --depth 1 --branch v4.2 https://github.com/async-profiler/async-profiler.git /async-profiler && \
+    sed -i 's/-source 7 -target 7/--release $(JAVA_TARGET)/g' /async-profiler/Makefile && \
     cd /async-profiler && \
     make
 
