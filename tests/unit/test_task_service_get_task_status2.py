@@ -123,6 +123,31 @@ class TestInferFailureMetadata:
         assert meta is not None
         assert meta["actionable_by"] == "USER_ACTIONABLE"
 
+    def test_password_protected_pdf_maps_to_clean_message(self, task_service):
+        ft = _make_file_task(
+            docling_status=DoclingPhaseStatus.FAILED,
+            error=(
+                "Docling conversion did not complete (failed): "
+                "Docling result unavailable after SUCCESS status: Docling processing "
+                "failed: docling-parse could not load document "
+                "cbfc231c73e85df69b34cfa56b4bb0696dc0f10d0536bcca821f92c324041bac: "
+                "Failed to load document (PDFium: Incorrect password error)."
+            ),
+        )
+
+        meta = task_service._infer_failure_metadata(ft)
+
+        assert meta is not None
+        assert meta["actionable_by"] == "USER_ACTIONABLE"
+
+        msg = meta["user_facing_message"]
+        
+        assert "password-protected" in msg.lower()
+        # no internals leaked
+        assert "pdfium" not in msg.lower()
+        assert "docling-parse" not in msg.lower()
+        assert "cbfc231c" not in msg
+
     def test_langflow_empty_content_not_retryable(self, task_service):
         ft = _make_file_task(
             phase=IngestionPhase.LANGFLOW,
