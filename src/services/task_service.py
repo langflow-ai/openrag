@@ -988,7 +988,7 @@ class TaskService:
                 "actionable_by": "USER_ACTIONABLE",
             }
 
-        if "incorrect password" in error.lower(): # for password protected pdf cases
+        if "incorrect password" in error.lower():  # for password protected pdf cases
             return {
                 "component": "docling",
                 "failure_phase": "parsing",

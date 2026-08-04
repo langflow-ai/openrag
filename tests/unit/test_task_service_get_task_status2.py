@@ -141,7 +141,7 @@ class TestInferFailureMetadata:
         assert meta["actionable_by"] == "USER_ACTIONABLE"
 
         msg = meta["user_facing_message"]
-        
+
         assert "password-protected" in msg.lower()
         # no internals leaked
         assert "pdfium" not in msg.lower()
