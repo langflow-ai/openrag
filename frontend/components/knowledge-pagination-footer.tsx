@@ -5,6 +5,7 @@ export interface KnowledgePaginationFooterProps {
   currentPageSize: number;
   totalPages: number;
   serverTotal: number;
+  isLoading?: boolean;
   cursorCacheRef: React.RefObject<Map<number, Record<string, unknown>>>;
   setCurrentPage: React.Dispatch<React.SetStateAction<number>>;
   setCurrentPageSize: React.Dispatch<React.SetStateAction<number>>;
@@ -15,6 +16,7 @@ export function KnowledgePaginationFooter({
   currentPageSize,
   totalPages,
   serverTotal,
+  isLoading = false,
   cursorCacheRef,
   setCurrentPage,
   setCurrentPageSize,
@@ -62,10 +64,10 @@ export function KnowledgePaginationFooter({
         <button
           type="button"
           aria-label="Back to first page"
-          aria-disabled={atFirst}
-          disabled={atFirst}
+          aria-disabled={atFirst || isLoading}
+          disabled={atFirst || isLoading}
           onClick={() => {
-            if (!atFirst) {
+            if (!atFirst && !isLoading) {
               cursorCacheRef.current = new Map();
               setCurrentPage(1);
             }
@@ -77,10 +79,10 @@ export function KnowledgePaginationFooter({
         <button
           type="button"
           aria-label="Previous page"
-          aria-disabled={atFirst}
-          disabled={atFirst}
+          aria-disabled={atFirst || isLoading}
+          disabled={atFirst || isLoading}
           onClick={() => {
-            if (!atFirst) setCurrentPage((p) => p - 1);
+            if (!atFirst && !isLoading) setCurrentPage((p) => p - 1);
           }}
           className="flex h-10 w-10 items-center justify-center rounded text-lg leading-none disabled:cursor-default disabled:opacity-40"
         >
@@ -92,10 +94,10 @@ export function KnowledgePaginationFooter({
         <button
           type="button"
           aria-label="Next page"
-          aria-disabled={atLast}
-          disabled={atLast}
+          aria-disabled={atLast || isLoading}
+          disabled={atLast || isLoading}
           onClick={() => {
-            if (!atLast) setCurrentPage((p) => p + 1);
+            if (!atLast && !isLoading) setCurrentPage((p) => p + 1);
           }}
           className="flex h-10 w-10 items-center justify-center rounded text-lg leading-none disabled:cursor-default disabled:opacity-40"
         >

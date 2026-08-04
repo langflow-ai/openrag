@@ -10,17 +10,11 @@ import json
 from fastapi import Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 
-from dependencies import get_current_user, get_session_manager
+from dependencies import get_current_user, get_file_service_v2
 from session_manager import User
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
-
-
-def _get_file_service(session_manager=Depends(get_session_manager)):
-    from services.file_service_v2 import FileServiceV2
-
-    return FileServiceV2(session_manager=session_manager)
 
 
 def _parse_after_key(after_key: str | None) -> dict | None:
@@ -53,7 +47,7 @@ async def list_files(
     owner: str | None = Query(None, description="Filter by owner"),
     search: str | None = Query(None, description="Search filename"),
     after_key: str | None = Query(None, description="Composite pagination cursor (JSON-encoded)"),
-    file_service=Depends(_get_file_service),
+    file_service=Depends(get_file_service_v2),
     user: User = Depends(get_current_user),
 ):
     """List ingested files with composite-aggregation pagination, filtering, and sorting."""
@@ -94,7 +88,7 @@ async def search_files(
     mimetype: str | None = Query(None, description="Filter by MIME type"),
     owner: str | None = Query(None, description="Filter by owner"),
     after_key: str | None = Query(None, description="Composite pagination cursor (JSON-encoded)"),
-    file_service=Depends(_get_file_service),
+    file_service=Depends(get_file_service_v2),
     user: User = Depends(get_current_user),
 ):
     """Search files by name with fuzzy/partial matching (v2 — composite pagination)."""

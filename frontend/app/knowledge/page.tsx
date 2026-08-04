@@ -186,9 +186,13 @@ function SearchPage() {
 
   const [currentPage, setCurrentPage] = useState(1);
   const [currentPageSize, setCurrentPageSize] = useState(25);
+
   const cursorCacheRef = useRef<Map<number, Record<string, unknown>>>(
-    new Map(),
+    null as any,
   );
+  if (!cursorCacheRef.current) {
+    cursorCacheRef.current = new Map();
+  }
 
   const handleOpenSyncDialog = useCallback(async () => {
     setSyncPreview(null);
@@ -486,7 +490,7 @@ function SearchPage() {
   useEffect(() => {
     cursorCacheRef.current = new Map();
     setCurrentPage(1);
-  }, [isWildcardQuery, searchFiles]);
+  }, [effectiveSearchText]);
 
   // when the server responds with an after_key for page N, cache it as the cursor for page N+1
   useEffect(() => {
@@ -1130,6 +1134,7 @@ function SearchPage() {
           currentPageSize={currentPageSize}
           totalPages={totalPages}
           serverTotal={serverTotal}
+          isLoading={isLoading}
           cursorCacheRef={cursorCacheRef}
           setCurrentPage={setCurrentPage}
           setCurrentPageSize={setCurrentPageSize}
