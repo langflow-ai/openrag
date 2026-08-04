@@ -988,6 +988,14 @@ class TaskService:
                 "actionable_by": "USER_ACTIONABLE",
             }
 
+        if "incorrect password" in error.lower():  # for password protected pdf cases
+            return {
+                "component": "docling",
+                "failure_phase": "parsing",
+                "user_facing_message": "This PDF is password-protected. Password-protected PDFs are not supported. Remove the password and upload the PDF again.",
+                "actionable_by": "USER_ACTIONABLE",
+            }
+
         if docling_status == DoclingPhaseStatus.EXPIRED:
             return {
                 "component": "docling",
