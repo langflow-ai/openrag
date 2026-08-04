@@ -67,7 +67,9 @@ _SAFE_CONFIG_PATH = re.compile(r"^/?(?:[A-Za-z0-9_.\-]+/)*[A-Za-z0-9_.\-]+\.ya?m
 # AuthorizationException. Keep this allowlist in sync with securityconfig/roles.yml.
 # ---------------------------------------------------------------------------
 ALLOWED_INDEX_NAME_PATTERNS = ("*documents*", "knowledge_filters*")
-_PERMITTED_INDEX_NAME = re.compile(r"^[a-z0-9._-]*documents[a-z0-9._-]*$|^knowledge_filters[a-z0-9._-]*$")
+_PERMITTED_INDEX_NAME = re.compile(
+    r"^[a-z0-9._-]*documents[a-z0-9._-]*$|^knowledge_filters[a-z0-9._-]*$"
+)
 
 
 def is_permitted_index_name(index_name: str) -> bool:
