@@ -177,9 +177,7 @@ These variables are read by Docker Compose, so they apply to [self-managed deplo
 Terminal-managed deployments read them from `~/.openrag/tui/.env`, where they determine which images the terminal session treats as OpenRAG-owned when it pulls or cleans up images.
 
 Setting `IMAGE_REGISTRY` to a host other than `docker.io` also disables the terminal session's update check, because that check queries the Docker Hub API. The **Status** page reports neither an available upgrade nor an up-to-date confirmation. Track new releases through your registry or the [OpenRAG releases page](https://github.com/langflow-ai/openrag/releases) instead.
-:::
 
-:::note
 Kubernetes deployments don't use these variables. The Helm charts in [`kubernetes/helm`](https://github.com/langflow-ai/openrag/tree/main/kubernetes/helm) configure images through their own `global.imageRegistry`, `global.imageTag`, and `global.imagePullSecrets` values. Note that the chart's `global.imageRegistry` value holds the organization (`langflowai` by default), which is the equivalent of `IMAGE_ORG` rather than `IMAGE_REGISTRY`.
 :::
 
