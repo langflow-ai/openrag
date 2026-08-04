@@ -54,6 +54,29 @@ export interface SearchFilters {
   document_types?: string[];
 }
 
+/** A single raw OpenSearch hit: `_source` has had embedding vectors stripped. */
+export interface RawSearchHit {
+  _id: string;
+  _index?: string;
+  _score?: number | null;
+  _source: Record<string, unknown>;
+}
+
+/**
+ * Response from a raw OpenSearch DSL search request.
+ * `hits` is the OpenSearch response's raw `hits` object.
+ */
+export interface RawSearchResponse {
+  took?: number;
+  timed_out?: boolean;
+  hits: {
+    total?: { value: number; relation: string } | number;
+    max_score?: number | null;
+    hits: RawSearchHit[];
+  };
+  aggregations?: Record<string, unknown>;
+}
+
 // Document types
 export interface IngestResponse {
   task_id: string;
@@ -267,6 +290,23 @@ export interface SearchQueryOptions {
   query: string;
   filters?: SearchFilters;
   limit?: number;
+  scoreThreshold?: number;
+  /** Knowledge filter ID to apply to the search. */
+  filterId?: string;
+  /**
+   * OpenSearch fuzziness for the keyword-match clause (e.g. "AUTO:4,7",
+   * "AUTO:7,10", "AUTO", "0", "1", "2"). Defaults to "AUTO:4,7".
+   */
+  fuzziness?: string;
+}
+
+export interface RawSearchQueryOptions {
+  /** OpenSearch query DSL object, or a JSON/plain-text string (falls back to a keyword match). */
+  query: Record<string, unknown> | string;
+  filters?: SearchFilters;
+  /** Result size cap, applied unless `query` already sets "size". */
+  limit?: number;
+  /** Minimum `_score`, applied unless `query` already sets "min_score". */
   scoreThreshold?: number;
   /** Knowledge filter ID to apply to the search. */
   filterId?: string;

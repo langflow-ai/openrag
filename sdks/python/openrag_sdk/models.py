@@ -1,6 +1,6 @@
 """OpenRAG SDK data models."""
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -66,6 +66,20 @@ class SearchResponse(BaseModel):
     """Response from a search request."""
 
     results: list[SearchResult]
+
+
+class RawSearchResponse(BaseModel):
+    """Response from a raw OpenSearch DSL search request.
+
+    `hits` is the OpenSearch response's raw `hits` object
+    (`hits["hits"]` is the list of matches, each with `_id`, `_score`,
+    and `_source`); embedding vectors have been stripped from `_source`.
+    """
+
+    took: int | None = None
+    timed_out: bool | None = None
+    hits: dict[str, Any] = Field(default_factory=dict)
+    aggregations: dict[str, Any] | None = None
 
 
 # Document models

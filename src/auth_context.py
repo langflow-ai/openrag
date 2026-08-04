@@ -22,6 +22,9 @@ _current_search_limit: ContextVar[Optional[int]] = ContextVar(
 _current_score_threshold: ContextVar[Optional[float]] = ContextVar(
     "current_score_threshold", default=0
 )
+_current_fuzziness: ContextVar[str] = ContextVar(
+    "current_fuzziness", default="AUTO:4,7"
+)
 
 
 def set_auth_context(user_id: str, jwt_token: str):
@@ -73,3 +76,13 @@ def set_score_threshold(threshold: float):
 def get_score_threshold() -> float:
     """Get current score threshold from context"""
     return _current_score_threshold.get()
+
+
+def set_fuzziness(fuzziness: str):
+    """Set keyword-match fuzziness for the current async context"""
+    _current_fuzziness.set(fuzziness)
+
+
+def get_fuzziness() -> str:
+    """Get current keyword-match fuzziness from context"""
+    return _current_fuzziness.get()
