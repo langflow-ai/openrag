@@ -208,12 +208,15 @@ async def raw_search_endpoint(
             "Raw search blocked by disk space constraint", error=str(e), user_id=user.user_id
         )
         return JSONResponse({"error": DISK_SPACE_ERROR_MESSAGE}, status_code=507)
-    except SearchAuthenticationError as e:
+    except SearchAuthenticationError:
         logger.warning("Raw search rejected: no authenticated user", user_id=user.user_id)
-        return JSONResponse({"error": str(e)}, status_code=401)
+        return JSONResponse({"error": "Authentication required"}, status_code=401)
     except RawSearchQueryError as e:
-        # Safe, user-facing validation message - not an internal exception string.
-        return JSONResponse({"error": str(e)}, status_code=400)
+        # str(e) is safe here: every RawSearchQueryError message is a fixed,
+        # developer-authored validation string from _validate_raw_query_safety
+        # (e.g. "'size' must not exceed 1000") - never OpenSearch/driver
+        # internals or a stack trace.
+        return JSONResponse({"error": str(e)}, status_code=400)  # lgtm[py/stack-trace-exposure]
     except Exception as e:
         error_msg = str(e)
         logger.error("Raw search failed", error=error_msg, user_id=user.user_id)
