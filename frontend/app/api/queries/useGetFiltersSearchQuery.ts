@@ -15,7 +15,7 @@ export interface KnowledgeFilter {
   active_source_count?: number;
 }
 
-export const useGetFiltersSearchQuery = (
+const useGetFiltersSearchQuery = (
   search: string,
   limit = 20,
   options?: Omit<UseQueryOptions<KnowledgeFilter[]>, "queryKey" | "queryFn">,

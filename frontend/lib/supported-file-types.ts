@@ -47,6 +47,6 @@ export function getSupportedExtensions(ocrEnabled = false): string[] {
 }
 
 /** Default (OCR off) — kept for backward compatibility. */
-export const SUPPORTED_FILE_TYPES = BASE_SUPPORTED_FILE_TYPES;
+const SUPPORTED_FILE_TYPES = BASE_SUPPORTED_FILE_TYPES;
 
 export const SUPPORTED_EXTENSIONS = getSupportedExtensions(false);

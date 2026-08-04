@@ -63,7 +63,7 @@ export const useBrowseConnectionFiles = (
     if (params.maxFiles) searchParams.set("max_files", String(params.maxFiles));
 
     const url = `/api/connectors/${params.connectorType}/${params.connectionId}/browse?${searchParams.toString()}`;
-    const response = await fetch(url);
+    const response = await fetch(url, { redirect: "manual" });
 
     if (!response.ok) {
       const errorData = await response
