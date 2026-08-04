@@ -19,6 +19,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	openragv1alpha1 "github.com/langflow-ai/openrag-deploy/api/v1alpha1"
@@ -682,6 +683,101 @@ func TestReconcile_LangflowMountsPVC(t *testing.T) {
 		}
 	}
 	assert.True(t, found, "langflow-data volume should exist")
+}
+
+// TestReconcileDocling_DoesNotUpdateExistingPVC checks the operator skips (never
+// updates) an already-bound docling PVC, for both the serve and worker paths. The
+// interceptor rejects an immutable-field change like the real API server, so
+// reconcile only succeeds if the PVC is skipped rather than updated.
+func TestReconcileDocling_DoesNotUpdateExistingPVC(t *testing.T) {
+	storage := func() *openragv1alpha1.PersistenceSpec {
+		return &openragv1alpha1.PersistenceSpec{Enabled: true, Size: resource.MustParse("50Gi")}
+	}
+	tests := []struct {
+		name      string
+		role      string // suffix passed to instanceResourceName
+		configure func(dc *openragv1alpha1.DoclingComponentsSpec)
+	}{
+		{
+			name: "serve",
+			role: "ds-data",
+			configure: func(dc *openragv1alpha1.DoclingComponentsSpec) {
+				dc.Serve = &openragv1alpha1.DoclingServeSpec{
+					ComponentSpec: openragv1alpha1.ComponentSpec{Image: "docling-serve:latest"},
+					Storage:       storage(),
+				}
+			},
+		},
+		{
+			name: "worker",
+			role: "dw-data",
+			configure: func(dc *openragv1alpha1.DoclingComponentsSpec) {
+				dc.Worker = &openragv1alpha1.DoclingWorkerSpec{
+					ComponentSpec: openragv1alpha1.ComponentSpec{Image: "docling-worker:latest"},
+					Storage:       storage(),
+				}
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newScheme(t)
+			cr := minimalCR("openrag", "openrag-system")
+			cr.Spec.DoclingComponents = &openragv1alpha1.DoclingComponentsSpec{Enabled: true}
+			tc.configure(cr.Spec.DoclingComponents)
+
+			// A PVC a prior reconcile created and the cluster has since bound: it has an
+			// assigned volumeName and defaulted storageClassName, and no spec-hash annotation.
+			boundClass := "standard"
+			existingPVC := &corev1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceResourceName(cr, tc.role),
+					Namespace: "openrag-system",
+					Labels:    map[string]string{"app.kubernetes.io/managed-by": "openrag-operator"},
+				},
+				Spec: corev1.PersistentVolumeClaimSpec{
+					AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+					StorageClassName: &boundClass,
+					VolumeName:       "pvc-bound",
+					Resources: corev1.VolumeResourceRequirements{
+						Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("50Gi")},
+					},
+				},
+			}
+
+			// Reject any Update that changes a bound PVC's volumeName, as the API server does.
+			rejectImmutablePVC := interceptor.Funcs{
+				Update: func(ctx context.Context, cl client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
+					if pvc, ok := obj.(*corev1.PersistentVolumeClaim); ok {
+						cur := &corev1.PersistentVolumeClaim{}
+						if err := cl.Get(ctx, client.ObjectKeyFromObject(pvc), cur); err == nil &&
+							cur.Spec.VolumeName != "" && pvc.Spec.VolumeName != cur.Spec.VolumeName {
+							return errors.NewForbidden(corev1.Resource("persistentvolumeclaims"), pvc.Name,
+								fmt.Errorf("spec is immutable after creation except resources.requests for bound claims"))
+						}
+					}
+					return cl.Update(ctx, obj, opts...)
+				},
+			}
+
+			c := fake.NewClientBuilder().WithScheme(s).
+				WithObjects(cr, existingPVC).
+				WithStatusSubresource(&openragv1alpha1.OpenRAG{}).
+				WithInterceptorFuncs(rejectImmutablePVC).
+				Build()
+			r := NewOpenRAGReconciler(c, s)
+
+			// Under the bug this issues the immutable Update and returns the forbidden error.
+			require.NoError(t, r.reconcileDoclingComponents(context.Background(), cr, "openrag-system"))
+
+			// The bound PVC is left intact.
+			got := &corev1.PersistentVolumeClaim{}
+			require.NoError(t, c.Get(context.Background(),
+				types.NamespacedName{Name: instanceResourceName(cr, tc.role), Namespace: "openrag-system"}, got))
+			assert.Equal(t, "pvc-bound", got.Spec.VolumeName)
+		})
+	}
 }
 
 // ---------------------------------------------------------------------------

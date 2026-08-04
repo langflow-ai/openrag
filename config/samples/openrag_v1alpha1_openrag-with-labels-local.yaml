@@ -1,0 +1,129 @@
+# Verification-only CR for the PVC immutable-update smoke test.
+# Derived from openrag_v1alpha1_openrag-with-labels-annotations.yaml with the
+# opensearch/watsonx blocks removed so it needs NO external services or secrets.
+# Enables storage on all four operator-managed PVCs (be, lf, ds, dw) plus valkey.
+# See docs/pvc-immutable-live-verification.md.
+apiVersion: openr.ag/v1alpha1
+kind: OpenRAG
+metadata:
+  name: openrag-with-custom-labels
+  namespace: openrag-system
+spec:
+  commonResourceLabels:
+    environment: production
+    team: ai-platform
+    cost-center: "12345"
+    managed-by: platform-team
+
+  commonResourceAnnotations:
+    backup.velero.io/backup-volumes: "true"
+    monitoring.prometheus.io/scrape: "true"
+    contact: "platform-team@example.com"
+
+  frontend:
+    image: langflowai/openrag-frontend:latest
+    imagePullPolicy: IfNotPresent
+    replicas: 2
+    serviceAccountLabels:
+      app-tier: frontend
+    serviceAccountAnnotations:
+      description: "Frontend service account for OpenRAG UI"
+    serviceLabels:
+      service-type: web-ui
+      expose: "true"
+    serviceAnnotations:
+      service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    secretLabels:
+      secret-type: env-config
+    secretAnnotations:
+      vault.hashicorp.com/agent-inject: "false"
+
+  backend:
+    image: langflowai/openrag-backend:latest
+    imagePullPolicy: IfNotPresent
+    replicas: 3
+    serviceAccountAnnotations:
+      eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/openrag-backend"
+    serviceLabels:
+      app-tier: backend
+      api: "true"
+    secretLabels:
+      backup-priority: high
+      encryption: required
+
+    storage:
+      enabled: true
+      size: 22Gi
+      # storageClassName omitted: uses the cluster default so it binds out of the box.
+      labels:
+        storage-tier: ssd
+        backup-policy: daily
+        data-classification: confidential
+      annotations:
+        volume.beta.kubernetes.io/storage-provisioner: ebs.csi.aws.com
+        backup.velero.io/backup-volumes-excludes: "false"
+
+  langflow:
+    image: langflowai/openrag-langflow:latest
+    imagePullPolicy: IfNotPresent
+    replicas: 2
+    serviceAccountAnnotations:
+      iam.gke.io/gcp-service-account: "openrag-langflow@project-id.iam.gserviceaccount.com"
+    serviceLabels:
+      app-tier: workflow-engine
+
+    storage:
+      enabled: true
+      size: 32Gi
+      labels:
+        storage-type: workflow-data
+        retention-policy: long-term
+      annotations:
+        snapshot.storage.kubernetes.io/is-default-class: "true"
+
+  doclingComponents:
+    enabled: true
+
+    serve:
+      image: langflowai/docling-serve:latest
+      imagePullPolicy: IfNotPresent
+      replicas: 2
+      serviceAccountLabels:
+        component: docling-serve
+      serviceLabels:
+        api-type: document-processing
+      storage:
+        enabled: true
+        size: 52Gi
+        labels:
+          storage-purpose: model-cache
+          performance-tier: high
+
+    worker:
+      image: langflowai/docling-worker:latest
+      imagePullPolicy: IfNotPresent
+      replicas: 3
+      serviceAccountLabels:
+        component: docling-worker
+      storage:
+        enabled: true
+        size: 102Gi
+        labels:
+          storage-purpose: processing-workspace
+          io-intensive: "true"
+
+    valkey:
+      image: valkey/valkey:7.2-alpine
+      imagePullPolicy: IfNotPresent
+      serviceAccountLabels:
+        component: valkey-queue
+      serviceLabels:
+        database-type: redis-compatible
+      secretLabels:
+        secret-type: database-credentials
+      storage:
+        enabled: true
+        size: 10Gi
+        labels:
+          storage-purpose: queue-persistence
+          backup-frequency: hourly

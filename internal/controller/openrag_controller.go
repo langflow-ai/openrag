@@ -1271,8 +1271,16 @@ func (r *OpenRAGReconciler) reconcileDoclingComponents(ctx context.Context, o *o
 			if err := r.setOwnerOrLabel(o, pvc, targetNS); err != nil {
 				return err
 			}
-			if err := r.createOrUpdate(ctx, pvc); err != nil {
-				return fmt.Errorf("docling-serve pvc: %w", err)
+			// PVCs are immutable once bound (only create, never update)
+			existing := &corev1.PersistentVolumeClaim{}
+			if err := r.Get(ctx, client.ObjectKeyFromObject(pvc), existing); err != nil {
+				if errors.IsNotFound(err) {
+					if err := r.Create(ctx, pvc); err != nil {
+						return fmt.Errorf("docling-serve pvc: %w", err)
+					}
+				} else {
+					return fmt.Errorf("docling-serve pvc: %w", err)
+				}
 			}
 		}
 	}
@@ -1307,8 +1315,16 @@ func (r *OpenRAGReconciler) reconcileDoclingComponents(ctx context.Context, o *o
 			if err := r.setOwnerOrLabel(o, pvc, targetNS); err != nil {
 				return err
 			}
-			if err := r.createOrUpdate(ctx, pvc); err != nil {
-				return fmt.Errorf("docling-worker pvc: %w", err)
+			// PVCs are immutable once bound — only create, never update.
+			existing := &corev1.PersistentVolumeClaim{}
+			if err := r.Get(ctx, client.ObjectKeyFromObject(pvc), existing); err != nil {
+				if errors.IsNotFound(err) {
+					if err := r.Create(ctx, pvc); err != nil {
+						return fmt.Errorf("docling-worker pvc: %w", err)
+					}
+				} else {
+					return fmt.Errorf("docling-worker pvc: %w", err)
+				}
 			}
 		}
 	}
