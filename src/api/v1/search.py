@@ -10,7 +10,7 @@ from typing import Any
 
 from fastapi import Depends
 from fastapi.responses import JSONResponse
-from opensearchpy.exceptions import RequestError
+from opensearchpy.exceptions import AuthenticationException, AuthorizationException, RequestError
 from pydantic import BaseModel, Field, field_validator
 
 from api.v1._filter_resolution import merge_filter_overrides, resolve_filter_id
@@ -150,15 +150,14 @@ async def search_endpoint(
     except OpenSearchDiskSpaceError as e:
         logger.error("Search blocked by disk space constraint", error=str(e), user_id=user.user_id)
         return JSONResponse({"error": DISK_SPACE_ERROR_MESSAGE}, status_code=507)
+    except (AuthenticationException, AuthorizationException) as e:
+        logger.error("Search access denied", error=str(e), user_id=user.user_id)
+        return JSONResponse({"error": "Access denied"}, status_code=403)
     except Exception as e:
-        error_msg = str(e)
-        logger.error("Search failed", error=error_msg, user_id=user.user_id)
-        if "AuthenticationException" in error_msg or "access denied" in error_msg.lower():
-            return JSONResponse({"error": "Access denied"}, status_code=403)
-        else:
-            return JSONResponse(
-                {"error": "Search failed. Check server logs for details."}, status_code=500
-            )
+        logger.error("Search failed", error=str(e), user_id=user.user_id)
+        return JSONResponse(
+            {"error": "Search failed. Check server logs for details."}, status_code=500
+        )
 
 
 async def raw_search_endpoint(
@@ -234,22 +233,23 @@ async def raw_search_endpoint(
         logger.warning("Raw search query rejected by safety validation", user_id=user.user_id)
         message = _RAW_QUERY_ERROR_MESSAGES.get(type(e), _RAW_QUERY_ERROR_DEFAULT_MESSAGE)
         return JSONResponse({"error": message}, status_code=400)
+    except (AuthenticationException, AuthorizationException) as e:
+        logger.error("Raw search access denied", error=str(e), user_id=user.user_id)
+        return JSONResponse({"error": "Access denied"}, status_code=403)
+    except RequestError as e:
+        # OpenSearch itself rejected the query DSL (malformed/unsupported clause) -
+        # this is the caller's fault, not a server failure.
+        logger.error("Raw search query rejected by OpenSearch", error=str(e), user_id=user.user_id)
+        return JSONResponse(
+            {
+                "error": "Raw search query was rejected by OpenSearch. Check server logs for details."
+            },
+            status_code=400,
+        )
     except Exception as e:
-        error_msg = str(e)
-        logger.error("Raw search failed", error=error_msg, user_id=user.user_id)
-        if "AuthenticationException" in error_msg or "access denied" in error_msg.lower():
-            return JSONResponse({"error": "Access denied"}, status_code=403)
-        if isinstance(e, RequestError):
-            # OpenSearch itself rejected the query DSL (malformed/unsupported clause) -
-            # this is the caller's fault, not a server failure.
-            return JSONResponse(
-                {
-                    "error": "Raw search query was rejected by OpenSearch. Check server logs for details."
-                },
-                status_code=400,
-            )
         # Anything else (connection/transport errors, unexpected internal failures)
         # is a server-side problem, not something the caller's request can fix.
+        logger.error("Raw search failed", error=str(e), user_id=user.user_id)
         return JSONResponse(
             {"error": "Raw search failed. Check server logs for details."}, status_code=500
         )
