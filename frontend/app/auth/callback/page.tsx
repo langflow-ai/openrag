@@ -46,9 +46,12 @@ function AuthCallbackContent() {
   const errorParam = searchParams.get("error");
   const code = searchParams.get("code");
   const state = searchParams.get("state");
-  const finalConnectorId =
-    localStorage.getItem("connecting_connector_id") || state;
-  const storedConnectorType = localStorage.getItem("connecting_connector_type");
+  const [finalConnectorId] = useState(
+    () => localStorage.getItem("connecting_connector_id") || state,
+  );
+  const [storedConnectorType] = useState(() =>
+    localStorage.getItem("connecting_connector_type"),
+  );
 
   const validationError = errorParam
     ? `OAuth error: ${errorParam}`

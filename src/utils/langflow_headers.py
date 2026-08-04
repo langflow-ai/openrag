@@ -5,6 +5,25 @@ from urllib.parse import quote
 from utils.container_utils import transform_localhost_url
 
 
+def map_provider(provider: str | None) -> str:
+    """Map provider values to the formatted names expected by Langflow.
+
+    e.g. openai -> OpenAI, anthropic -> Anthropic, ollama -> Ollama, watsonx -> IBM WatsonX
+    """
+    if not provider:
+        return ""
+    provider_lower = provider.lower()
+    if provider_lower == "openai":
+        return "OpenAI"
+    if provider_lower == "anthropic":
+        return "Anthropic"
+    if provider_lower == "ollama":
+        return "Ollama"
+    if provider_lower == "watsonx":
+        return "IBM WatsonX"
+    return provider
+
+
 def ascii_safe_header_value(value) -> str:
     """Return an ASCII-only HTTP header value.
 
@@ -97,13 +116,20 @@ async def add_provider_credentials_to_headers(
             ollama_endpoint = transform_localhost_url(config.providers.ollama.endpoint)
         headers["X-LANGFLOW-GLOBAL-VAR-OLLAMA_BASE_URL"] = str(ollama_endpoint)
 
-    # Inject OpenSearch URL and index name so Langflow flows always use the correct endpoint
-    from config.settings import LANGFLOW_OPENSEARCH_HOST, LANGFLOW_OPENSEARCH_PORT, get_index_name
+    # Inject OpenSearch and Docling URLs and index name so Langflow flows always use the correct endpoints
+    from config.settings import (
+        get_index_name,
+        get_langflow_docling_url,
+        get_langflow_opensearch_url,
+    )
 
-    if LANGFLOW_OPENSEARCH_HOST and LANGFLOW_OPENSEARCH_PORT:
-        headers["X-LANGFLOW-GLOBAL-VAR-OPENSEARCH_URL"] = (
-            f"https://{LANGFLOW_OPENSEARCH_HOST}:{LANGFLOW_OPENSEARCH_PORT}"
-        )
+    opensearch_url = get_langflow_opensearch_url()
+    if opensearch_url:
+        headers["X-LANGFLOW-GLOBAL-VAR-OPENSEARCH_URL"] = opensearch_url
+
+    docling_url = get_langflow_docling_url()
+    if docling_url:
+        headers["X-LANGFLOW-GLOBAL-VAR-DOCLING_SERVE_URL"] = docling_url
 
     index_name = get_index_name()
     if index_name:
@@ -114,3 +140,21 @@ async def add_provider_credentials_to_headers(
 
     if IBM_AUTH_ENABLED and jwt_token:
         headers.update(build_ibm_opensearch_vars(jwt_token, prefix="X-LANGFLOW-GLOBAL-VAR-"))
+
+
+def build_model_provider_headers(config, embedding_model: str | None = None) -> dict[str, str]:
+    """Build Langflow global variable headers for selected embedding and language models/providers."""
+    emb_model = embedding_model or getattr(
+        getattr(config, "knowledge", None), "embedding_model", None
+    )
+    emb_provider = getattr(getattr(config, "knowledge", None), "embedding_provider", None)
+    agent = getattr(config, "agent", None)
+    llm_model = getattr(agent, "llm_model", None)
+    llm_provider = getattr(agent, "llm_provider", None)
+
+    return {
+        "X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL": str(emb_model or ""),
+        "X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL_PROVIDER": map_provider(emb_provider),
+        "X-LANGFLOW-GLOBAL-VAR-SELECTED_LANGUAGE_MODEL": str(llm_model or ""),
+        "X-LANGFLOW-GLOBAL-VAR-SELECTED_LANGUAGE_MODEL_PROVIDER": map_provider(llm_provider),
+    }

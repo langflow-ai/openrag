@@ -171,8 +171,17 @@ make docling
 Build and run OpenRAG with a custom Langflow branch:
 
 ```bash
-# Use a specific branch
+# Full stack with custom branch
 make dev-branch BRANCH=my-feature-branch
+
+# Or CPU-only full stack
+make dev-branch-cpu BRANCH=my-feature-branch
+
+# Local development infrastructure (OpenSearch + custom Langflow container, backend/frontend on host)
+make dev-branch-local BRANCH=my-feature-branch
+
+# Or CPU-only local development infrastructure
+make dev-branch-local-cpu BRANCH=my-feature-branch
 
 # Use a different repository
 make dev-branch BRANCH=feature-x REPO=https://github.com/myorg/langflow.git

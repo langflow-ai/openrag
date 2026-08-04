@@ -4,6 +4,7 @@ from typing import Any
 from agent import async_chat, async_chat_stream, async_langflow
 from auth_context import set_auth_context
 from config.settings import LANGFLOW_CHAT_FLOW_ID, LANGFLOW_URL, NUDGES_FLOW_ID, clients
+from utils.langflow_utils import fence_untrusted_text
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -87,13 +88,16 @@ class ChatService:
 
         # Pass the selected embedding model as a global variable
         from config.settings import get_openrag_config
-        from utils.langflow_headers import add_provider_credentials_to_headers
+        from utils.langflow_headers import (
+            add_provider_credentials_to_headers,
+            build_model_provider_headers,
+        )
 
         config = get_openrag_config()
         embedding_model = config.knowledge.embedding_model
         chunk_size = getattr(config.knowledge, "chunk_size", 1000)
         chunk_overlap = getattr(config.knowledge, "chunk_overlap", 200)
-        extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL"] = embedding_model
+        extra_headers.update(build_model_provider_headers(config))
 
         # Configure ingest callback credentials/vars like ingestion does
         import uuid
@@ -263,13 +267,14 @@ class ChatService:
         if jwt_token:
             extra_headers["X-LANGFLOW-GLOBAL-VAR-JWT"] = jwt_token
 
-        # Pass the selected embedding model as a global variable
         from config.settings import get_openrag_config
-        from utils.langflow_headers import add_provider_credentials_to_headers
+        from utils.langflow_headers import (
+            add_provider_credentials_to_headers,
+            build_model_provider_headers,
+        )
 
         config = get_openrag_config()
-        embedding_model = config.knowledge.embedding_model
-        extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL"] = embedding_model
+        extra_headers.update(build_model_provider_headers(config))
 
         # Add provider credentials to headers
         await add_provider_credentials_to_headers(
@@ -498,7 +503,11 @@ class ChatService:
         storage_user_id: str = None,
     ):
         """Send document content as user message to get proper response_id"""
-        document_prompt = f"I'm uploading a document called '{filename}'. Here is its content:\n\n{document_content}\n\nPlease confirm you've received this document and are ready to answer questions about it."
+        document_prompt = (
+            f"I'm uploading a document called '{filename}'. Here is its content:\n\n"
+            f"{fence_untrusted_text(document_content)}\n\n"
+            "Please confirm you've received this document and are ready to answer questions about it."
+        )
         conversation_user_id = storage_user_id or user_id
 
         if endpoint == "langflow":
@@ -510,15 +519,17 @@ class ChatService:
             if jwt_token:
                 extra_headers["X-LANGFLOW-GLOBAL-VAR-JWT"] = jwt_token
 
-            # Pass the selected embedding model as a global variable
             from config.settings import get_openrag_config
-            from utils.langflow_headers import add_provider_credentials_to_headers
+            from utils.langflow_headers import (
+                add_provider_credentials_to_headers,
+                build_model_provider_headers,
+            )
 
             config = get_openrag_config()
             embedding_model = config.knowledge.embedding_model
             chunk_size = getattr(config.knowledge, "chunk_size", 1000)
             chunk_overlap = getattr(config.knowledge, "chunk_overlap", 200)
-            extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL"] = embedding_model
+            extra_headers.update(build_model_provider_headers(config))
 
             # Configure ingest callback credentials/vars like ingestion does
             import uuid

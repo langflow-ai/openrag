@@ -21,8 +21,8 @@ export function OpenAISettingsForm({
   const apiKeyError = modelsError?.message || errors.apiKey?.message;
 
   return (
-    <div className="space-y-4">
-      <div className="space-y-2">
+    <div className="min-w-0 space-y-4">
+      <div className="min-w-0 space-y-2">
         <LabelWrapper
           label="OpenAI API key"
           helperText="The API key for your OpenAI account"
@@ -41,7 +41,9 @@ export function OpenAISettingsForm({
           />
         </LabelWrapper>
         {apiKeyError && (
-          <p className="text-sm text-destructive">{apiKeyError}</p>
+          <p className="text-sm text-destructive min-w-0 [overflow-wrap:anywhere]">
+            {apiKeyError}
+          </p>
         )}
         {isLoadingModels && (
           <p className="text-sm text-muted-foreground">Validating API key...</p>

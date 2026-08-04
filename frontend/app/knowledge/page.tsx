@@ -34,6 +34,7 @@ import { KnowledgeActionsDropdown } from "@/components/knowledge-actions-dropdow
 import { KnowledgeBatchActionsBar } from "@/components/knowledge-batch-actions-bar";
 import { KnowledgeSearchBar } from "@/components/knowledge-search-bar";
 import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
+import { RequirePermission } from "@/components/require-permission";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
   Tooltip,
@@ -43,6 +44,7 @@ import {
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { getConnectorDescriptor } from "@/lib/connectors/registry";
 import { formatFileSize } from "@/lib/file-format";
+import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
 import {
   buildKnowledgeTableRows,
   getKnowledgeFileIdentity,
@@ -313,8 +315,12 @@ function SearchPage() {
   // Wildcard follows bar text or saved filter query (bar is cleared when a filter is picked).
   const effectiveSearchText =
     queryOverride.trim() || parsedFilterData?.query?.trim() || "";
+  const hasActiveFilters = parsedFilterData?.filters
+    ? buildSearchPayloadFilters(parsedFilterData.filters) !== undefined
+    : false;
   const isWildcardQuery =
-    effectiveSearchText === "" || effectiveSearchText === "*";
+    (effectiveSearchText === "" || effectiveSearchText === "*") &&
+    !hasActiveFilters;
 
   const {
     data: listFilesData,
@@ -953,36 +959,39 @@ function SearchPage() {
                 </>
               )}
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="rounded-lg flex-shrink-0"
-              disabled={refreshOpenragDocsMutation.isPending}
-              onClick={async () => {
-                trackButton({
-                  CTA: "Fetch Latest Docs",
-                  elementId: "fetch-latest-docs-button",
-                  namespace: "knowledge",
-                });
-                try {
-                  toast.info("Refreshing OpenRAG docs...");
-                  const result = await refreshOpenragDocsMutation.mutateAsync();
-                  toast.success(result.message);
-                } catch (error) {
-                  toast.error(
-                    error instanceof Error
-                      ? error.message
-                      : "Failed to refresh OpenRAG docs",
-                  );
-                }
-              }}
-            >
-              {refreshOpenragDocsMutation.isPending ? (
-                <>Refreshing docs...</>
-              ) : (
-                <>Fetch latest docs</>
-              )}
-            </Button>
+            <RequirePermission perm="config:write">
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-lg flex-shrink-0"
+                disabled={refreshOpenragDocsMutation.isPending}
+                onClick={async () => {
+                  trackButton({
+                    CTA: "Fetch Latest Docs",
+                    elementId: "fetch-latest-docs-button",
+                    namespace: "knowledge",
+                  });
+                  try {
+                    toast.info("Refreshing OpenRAG docs...");
+                    const result =
+                      await refreshOpenragDocsMutation.mutateAsync();
+                    toast.success(result.message);
+                  } catch (error) {
+                    toast.error(
+                      error instanceof Error
+                        ? error.message
+                        : "Failed to refresh OpenRAG docs",
+                    );
+                  }
+                }}
+              >
+                {refreshOpenragDocsMutation.isPending ? (
+                  <>Refreshing docs...</>
+                ) : (
+                  <>Fetch latest docs</>
+                )}
+              </Button>
+            </RequirePermission>
             {selectedRows.length > 0 && (
               <Button
                 type="button"
