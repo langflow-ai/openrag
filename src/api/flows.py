@@ -17,7 +17,9 @@ FlowType = Literal["nudges", "retrieval", "ingest"]
 
 def _is_oss_mode() -> bool:
     from config.settings import IBM_AUTH_ENABLED, is_dev_ibm_cos_enabled
+
     return not (IBM_AUTH_ENABLED or is_dev_ibm_cos_enabled())
+
 
 async def reset_flow_endpoint(
     flow_type: str,
@@ -80,7 +82,10 @@ async def bulk_update_flows_endpoint(
 ):
     """Bulk update multiple flows and optionally backup custom flows"""
     if not _is_oss_mode():
-        return JSONResponse({"success": False, "error": "Flow updates are only available in OSS mode"}, status_code=403)
+        return JSONResponse(
+            {"success": False, "error": "Flow updates are only available in OSS mode"},
+            status_code=403,
+        )
     try:
         results = await flows_service.bulk_update_flows(request.flow_types, request.backup_custom)
         overall_success = all(r.get("success", False) for r in results)
