@@ -23,6 +23,8 @@ export interface ComponentStatus {
   version?: string | null;
   build?: ComponentBuild;
   metadata?: Record<string, unknown>;
+  /** Non-null when the last health-check failed; used to gate the Logs button. */
+  last_error?: string | null;
 }
 
 export interface ConsoleStatusResponse {

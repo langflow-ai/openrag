@@ -7,17 +7,20 @@ import {
   ChevronUp,
   HelpCircle,
   RefreshCw,
+  ScrollText,
   Settings,
   XCircle,
 } from "lucide-react";
 import { useCallback, useState } from "react";
 import {
+  type LogEntry,
+  useComponentLogsQuery,
+} from "@/app/api/queries/useComponentLogsQuery";
+import {
   type ComponentState,
   type ComponentStatus,
   useConsoleStatusQuery,
 } from "@/app/api/queries/useConsoleStatusQuery";
-import type { ProviderHealthResponse } from "@/app/api/queries/useProviderHealthQuery";
-import { useProviderHealth } from "@/components/provider-health-banner";
 import { cn } from "@/lib/utils";
 
 // ─── status helpers ──────────────────────────────────────────────────────────
@@ -100,6 +103,136 @@ function MetaRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+// ─── log level helpers ────────────────────────────────────────────────────────
+
+function logLevelColor(level: string) {
+  switch (level.toLowerCase()) {
+    case "error":
+    case "critical":
+      return "text-red-400";
+    case "warning":
+      return "text-amber-400";
+    case "info":
+      return "text-sky-400";
+    default:
+      return "text-zinc-400";
+  }
+}
+
+// ─── component logs modal ─────────────────────────────────────────────────────
+
+interface ComponentLogsModalProps {
+  component: string;
+  displayName: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+function ComponentLogsModal({
+  component,
+  displayName,
+  open,
+  onOpenChange,
+}: ComponentLogsModalProps) {
+  const { data, isLoading, isError, error, refetch, isFetching } =
+    useComponentLogsQuery(open ? component : null, 100);
+
+  const entries: LogEntry[] = data?.entries ?? [];
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className={cn(
+          "bg-zinc-900 border-zinc-700 text-zinc-100",
+          "w-[560px] max-w-[95vw] max-h-[70vh] flex flex-col gap-0 p-0",
+        )}
+      >
+        {/* Modal header */}
+        <DialogHeader className="shrink-0 flex flex-row items-center justify-between px-4 py-3 border-b border-zinc-700/60">
+          <div className="flex items-center gap-2">
+            <ScrollText size={14} className="text-zinc-400" />
+            <DialogTitle className="text-sm font-semibold text-zinc-100">
+              {displayName} — Logs
+            </DialogTitle>
+            {isFetching && (
+              <RefreshCw size={11} className="text-zinc-500 animate-spin" />
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => void refetch()}
+            disabled={isFetching}
+            className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors disabled:opacity-40"
+          >
+            Refresh
+          </button>
+        </DialogHeader>
+
+        {/* Log list */}
+        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1.5 min-h-0">
+          {isLoading ? (
+            <div className="space-y-1.5">
+              {[...Array(5)].map((_, i) => (
+                <div
+                  // biome-ignore lint/suspicious/noArrayIndexKey: skeleton placeholders
+                  key={i}
+                  className="h-8 rounded bg-zinc-800/60 animate-pulse"
+                />
+              ))}
+            </div>
+          ) : isError ? (
+            <p className="text-sm text-red-400">
+              {error instanceof Error ? error.message : "Failed to load logs."}
+            </p>
+          ) : entries.length === 0 ? (
+            <p className="text-xs text-zinc-500 italic text-center py-6">
+              No log entries recorded yet.
+            </p>
+          ) : (
+            entries.map((entry, idx) => (
+              <div
+                // biome-ignore lint/suspicious/noArrayIndexKey: log entries have no stable id
+                key={idx}
+                className="rounded bg-zinc-800/50 border border-zinc-700/40 px-2.5 py-1.5"
+              >
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span
+                    className={cn(
+                      "text-[10px] font-semibold uppercase tabular-nums shrink-0",
+                      logLevelColor(entry.level),
+                    )}
+                  >
+                    {entry.level}
+                  </span>
+                  <span className="text-[10px] text-zinc-500 tabular-nums shrink-0">
+                    {new Date(entry.timestamp).toLocaleTimeString()}
+                  </span>
+                  <span className="text-xs text-zinc-200 break-all">
+                    {entry.message}
+                  </span>
+                </div>
+                {entry.detail && (
+                  <p className="text-[11px] text-zinc-400 mt-0.5 ml-0 break-all font-mono">
+                    {entry.detail}
+                  </p>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="shrink-0 px-4 py-2 border-t border-zinc-700/60">
+          <span className="text-[11px] text-zinc-500">
+            {entries.length} entr{entries.length === 1 ? "y" : "ies"} (most
+            recent 100)
+          </span>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── component placard ───────────────────────────────────────────────────────
 
 interface ComponentCardProps {
@@ -108,6 +241,7 @@ interface ComponentCardProps {
 
 function ComponentCard({ component }: ComponentCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const [logsOpen, setLogsOpen] = useState(false);
 
   const {
     display_name,
@@ -117,7 +251,10 @@ function ComponentCard({ component }: ComponentCardProps) {
     message,
     build,
     metadata,
+    last_error,
   } = component;
+
+  const showLogsButton = last_error != null;
 
   const hasBuildDetails =
     build &&
@@ -204,7 +341,35 @@ function ComponentCard({ component }: ComponentCardProps) {
               No additional details available.
             </p>
           )}
+
+          {/* Logs button — only shown when last_error is set */}
+          {showLogsButton && (
+            <div className="pt-1.5">
+              <button
+                type="button"
+                onClick={() => setLogsOpen(true)}
+                className={cn(
+                  "flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium",
+                  "bg-zinc-700/60 border border-zinc-600/60 text-zinc-200",
+                  "hover:bg-zinc-600/60 hover:border-zinc-500/60 transition-colors",
+                )}
+              >
+                <ScrollText size={12} className="shrink-0" />
+                Logs
+              </button>
+            </div>
+          )}
         </div>
+      )}
+
+      {/* Logs modal */}
+      {showLogsButton && (
+        <ComponentLogsModal
+          component={component.name}
+          displayName={display_name}
+          open={logsOpen}
+          onOpenChange={setLogsOpen}
+        />
       )}
     </div>
   );
