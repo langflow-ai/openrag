@@ -1,5 +1,6 @@
 from typing import Any
 
+from config.settings import get_index_name
 from utils.file_utils import clean_connector_filename
 from utils.logging_config import get_logger
 
@@ -126,7 +127,7 @@ class ConnectorService:
         # used for DLS visibility/ACL-change checks.
         try:
             await write_client.update_by_query(
-                index=self.index_name,
+                index=get_index_name(),
                 body={
                     # Match both fields: both ingestion paths carry the raw
                     # connector id in connector_file_id (document_id is a
