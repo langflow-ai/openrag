@@ -56,7 +56,7 @@ from api.settings.models import (
     SettingsUpdateResponse,
     WatsonXProviderConfig,
 )
-from config.config_manager import ALLOWED_INDEX_NAME_PREFIXES, is_permitted_index_name
+from config.config_manager import ALLOWED_INDEX_NAME_PATTERNS, is_permitted_index_name
 from config.settings import (
     DEFAULT_DOCS_URL,
     ENVIRONMENT,
@@ -632,8 +632,8 @@ async def update_settings(
                     status_code=422,
                     detail=(
                         f"Index name '{new_index_name}' is not permitted. The OpenSearch "
-                        "security role only grants search access to indices starting "
-                        f"with {' or '.join(ALLOWED_INDEX_NAME_PREFIXES)}."
+                        "security role only grants search access to indices matching "
+                        f"{' or '.join(ALLOWED_INDEX_NAME_PATTERNS)}."
                     ),
                 )
             working_config.knowledge.index_name = new_index_name
