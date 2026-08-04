@@ -12,6 +12,7 @@ from typing import Any
 
 from src.connectors.base import DocumentACL
 from utils.logging_config import get_logger
+from config.settings import get_index_name
 
 logger = get_logger(__name__)
 
@@ -76,7 +77,7 @@ async def should_update_acl(
     """
     try:
         response = await opensearch_client.search(
-            index="documents",
+            index=get_index_name(),
             body={
                 "query": _build_id_query(document_id, id_fields),
                 "size": 1,
@@ -136,7 +137,7 @@ async def update_document_acl(
 
     try:
         response = await write_client.update_by_query(
-            index="documents",
+            index=get_index_name(),
             body={
                 "query": _build_id_query(document_id, id_fields),
                 "script": {
@@ -199,7 +200,7 @@ async def batch_update_acls(
 
     update_tasks = [
         write_client.update_by_query(
-            index="documents",
+            index=get_index_name(),
             body={
                 "query": _build_id_query(doc_id, id_fields),
                 "script": {
