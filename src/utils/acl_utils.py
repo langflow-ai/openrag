@@ -10,9 +10,9 @@ import hashlib
 import json
 from typing import Any
 
+from config.settings import get_index_name
 from src.connectors.base import DocumentACL
 from utils.logging_config import get_logger
-from config.settings import get_index_name
 
 logger = get_logger(__name__)
 
