@@ -107,6 +107,46 @@ def _apply_exact_match_file_filter(
     return chunks, aggregations
 
 
+class SearchAuthenticationError(Exception):
+    """Raised when a search operation is attempted without an authenticated user."""
+
+
+class RawSearchQueryError(ValueError):
+    """Raised when a raw_search query body fails safety validation."""
+
+
+# Any API-key holder with search:use can run arbitrary DSL through /v1/search/raw
+# against the caller's ACL-scoped client. Document-level ACLs still apply, but
+# scripted clauses (Painless) and unbounded result/bucket sizes are not
+# blocked by ACLs. This is a scoped mitigation (script rejection + size caps
+# + depth cap), not an exhaustive OpenSearch DSL allowlist.
+_RAW_QUERY_BANNED_KEY_SUBSTRINGS = ("script",)
+_RAW_QUERY_MAX_SIZE = 1000
+_RAW_QUERY_MAX_DEPTH = 20
+_RAW_QUERY_TIMEOUT = "30s"
+
+
+def _validate_raw_query_safety(node: Any, *, depth: int = 0) -> None:
+    """Reject scripted clauses and oversized/deeply nested raw DSL query bodies."""
+    if depth > _RAW_QUERY_MAX_DEPTH:
+        msg = "Query is nested too deeply"
+        raise RawSearchQueryError(msg)
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if isinstance(key, str) and any(
+                s in key.lower() for s in _RAW_QUERY_BANNED_KEY_SUBSTRINGS
+            ):
+                msg = f"Scripted query clauses are not allowed (found '{key}')"
+                raise RawSearchQueryError(msg)
+            if key == "size" and isinstance(value, int) and value > _RAW_QUERY_MAX_SIZE:
+                msg = f"'size' must not exceed {_RAW_QUERY_MAX_SIZE}"
+                raise RawSearchQueryError(msg)
+            _validate_raw_query_safety(value, depth=depth + 1)
+    elif isinstance(node, list):
+        for item in node:
+            _validate_raw_query_safety(item, depth=depth + 1)
+
+
 def _build_filter_clauses(filters: dict[str, Any] | None) -> list[dict[str, Any]]:
     """Map frontend filter dimensions (data_sources, owners, ...) to OpenSearch term/terms clauses."""
     if not filters:
@@ -725,12 +765,20 @@ class SearchService:
 
             set_search_filters(filters)
 
-        from auth_context import set_fuzziness, set_score_threshold, set_search_limit
+        from auth_context import (
+            DEFAULT_FUZZINESS,
+            set_fuzziness,
+            set_score_threshold,
+            set_search_limit,
+        )
 
         set_search_limit(limit)
         set_score_threshold(score_threshold)
-        if fuzziness:
-            set_fuzziness(fuzziness)
+        # Always reset (never conditionally skip): _current_fuzziness is a
+        # per-context var, so an omitted `fuzziness` on this call must not
+        # inherit a custom value a prior request on the same context set.
+        fuzziness = fuzziness or DEFAULT_FUZZINESS
+        set_fuzziness(fuzziness)
 
         return await self.search_tool(query, embedding_model=embedding_model, fuzziness=fuzziness)
 
@@ -756,7 +804,7 @@ class SearchService:
         """
         if not user_id:
             logger.warning("[RAW_SEARCH] user_id missing, rejecting request")
-            return {"error": "Authentication required"}
+            raise SearchAuthenticationError("Authentication required")
 
         if isinstance(query, dict):
             query_body = copy.deepcopy(query)
@@ -765,8 +813,14 @@ class SearchService:
             if not stripped:
                 return {"hits": {"total": {"value": 0}, "hits": []}}
             try:
-                query_body = json.loads(stripped)
+                parsed = json.loads(stripped)
             except json.JSONDecodeError:
+                parsed = None
+            if isinstance(parsed, dict):
+                query_body = parsed
+            else:
+                # Not a DSL object (plain text, or a JSON scalar/array): fall
+                # back to a keyword match over the original stripped text.
                 query_body = {
                     "query": {
                         "multi_match": {
@@ -791,6 +845,8 @@ class SearchService:
         if "min_score" not in query_body and score_threshold:
             query_body["min_score"] = score_threshold
 
+        _validate_raw_query_safety(query_body)
+
         opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
 
         from utils.opensearch_utils import (
@@ -804,7 +860,9 @@ class SearchService:
         try:
             logger.info(f"[RAW_SEARCH] Sending raw DSL query to index '{index_name}'")
             response = await opensearch_client.search(
-                index=index_name, body=query_body, params={"terminate_after": 0}
+                index=index_name,
+                body=query_body,
+                params={"terminate_after": 0, "timeout": _RAW_QUERY_TIMEOUT},
             )
         except Exception as e:
             if is_disk_space_error(e):

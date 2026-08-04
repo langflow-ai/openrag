@@ -3,11 +3,12 @@
  */
 
 import type { OpenRAGClient } from "./client";
-import type {
-  RawSearchQueryOptions,
-  RawSearchResponse,
-  SearchQueryOptions,
-  SearchResponse,
+import {
+  OpenRAGError,
+  type RawSearchQueryOptions,
+  type RawSearchResponse,
+  type SearchQueryOptions,
+  type SearchResponse,
 } from "./types";
 
 export class SearchClient {
@@ -84,6 +85,10 @@ export class SearchClient {
       body: JSON.stringify(body),
     });
 
-    return (await response.json()) as RawSearchResponse;
+    const data = await response.json();
+    if (!data || typeof data !== "object" || !("hits" in data)) {
+      throw new OpenRAGError("Raw search response is missing 'hits'");
+    }
+    return data as RawSearchResponse;
   }
 }

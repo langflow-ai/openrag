@@ -18,7 +18,8 @@ _current_score_threshold: ContextVar[float | None] = ContextVar(
 )
 # OpenSearch fuzziness for the keyword-match clause of hybrid search.
 # See the openrag_search MCP tool description for accepted values.
-_current_fuzziness: ContextVar[str] = ContextVar("current_fuzziness", default="AUTO:7,10")
+DEFAULT_FUZZINESS = "AUTO:7,10"
+_current_fuzziness: ContextVar[str] = ContextVar("current_fuzziness", default=DEFAULT_FUZZINESS)
 
 
 def set_auth_context(user_id: str, jwt_token: str):

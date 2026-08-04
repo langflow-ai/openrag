@@ -2,8 +2,6 @@
 
 from typing import TYPE_CHECKING, Any
 
-import httpx
-
 from .models import RawSearchResponse, SearchFilters, SearchResponse, SearchResult
 
 if TYPE_CHECKING:

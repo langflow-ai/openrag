@@ -5,11 +5,12 @@ Provides semantic search functionality.
 Uses API key authentication.
 """
 
+import re
 from typing import Any
 
 from fastapi import Depends
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 from api.v1._filter_resolution import merge_filter_overrides, resolve_filter_id
 from auth_context import set_auth_context
@@ -18,11 +19,15 @@ from dependencies import (
     get_search_service,
     require_api_key_permission,
 )
+from services.search_service import RawSearchQueryError, SearchAuthenticationError
 from session_manager import User
 from utils.logging_config import get_logger
 from utils.opensearch_utils import DISK_SPACE_ERROR_MESSAGE, OpenSearchDiskSpaceError
 
 logger = get_logger(__name__)
+
+# "0" | "1" | "2" | "AUTO" | "AUTO:<low>,<high>"
+_FUZZINESS_RE = re.compile(r"^(0|1|2|AUTO(:\d+,\d+)?)$")
 
 
 class SearchV1Body(BaseModel):
@@ -36,6 +41,14 @@ class SearchV1Body(BaseModel):
     # Defaults to "AUTO:7,10".
     fuzziness: str | None = None
 
+    @field_validator("fuzziness")
+    @classmethod
+    def _check_fuzziness(cls, v: str | None) -> str | None:
+        if v is not None and not _FUZZINESS_RE.match(v):
+            msg = 'fuzziness must be "0", "1", "2", "AUTO", or "AUTO:<low>,<high>"'
+            raise ValueError(msg)
+        return v
+
 
 class RawSearchV1Body(BaseModel):
     query: dict[str, Any] | str
@@ -43,6 +56,15 @@ class RawSearchV1Body(BaseModel):
     limit: int = 10
     score_threshold: float = 0
     filter_id: str | None = None
+
+
+class RawSearchV1Response(BaseModel):
+    """OpenSearch response shape returned by /v1/search/raw (embedding vectors stripped)."""
+
+    took: int | None = None
+    timed_out: bool | None = None
+    hits: dict[str, Any] = Field(default_factory=dict)
+    aggregations: dict[str, Any] | None = None
 
 
 async def search_endpoint(
@@ -115,9 +137,11 @@ async def search_endpoint(
         error_msg = str(e)
         logger.error("Search failed", error=error_msg, user_id=user.user_id)
         if "AuthenticationException" in error_msg or "access denied" in error_msg.lower():
-            return JSONResponse({"error": error_msg}, status_code=403)
+            return JSONResponse({"error": "Access denied"}, status_code=403)
         else:
-            return JSONResponse({"error": error_msg}, status_code=500)
+            return JSONResponse(
+                {"error": "Search failed. Check server logs for details."}, status_code=500
+            )
 
 
 async def raw_search_endpoint(
@@ -184,10 +208,18 @@ async def raw_search_endpoint(
             "Raw search blocked by disk space constraint", error=str(e), user_id=user.user_id
         )
         return JSONResponse({"error": DISK_SPACE_ERROR_MESSAGE}, status_code=507)
+    except SearchAuthenticationError as e:
+        logger.warning("Raw search rejected: no authenticated user", user_id=user.user_id)
+        return JSONResponse({"error": str(e)}, status_code=401)
+    except RawSearchQueryError as e:
+        # Safe, user-facing validation message - not an internal exception string.
+        return JSONResponse({"error": str(e)}, status_code=400)
     except Exception as e:
         error_msg = str(e)
         logger.error("Raw search failed", error=error_msg, user_id=user.user_id)
         if "AuthenticationException" in error_msg or "access denied" in error_msg.lower():
-            return JSONResponse({"error": error_msg}, status_code=403)
+            return JSONResponse({"error": "Access denied"}, status_code=403)
         else:
-            return JSONResponse({"error": error_msg}, status_code=400)
+            return JSONResponse(
+                {"error": "Raw search failed. Check server logs for details."}, status_code=400
+            )

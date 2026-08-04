@@ -202,6 +202,7 @@ class TestRawSearch:
                 filters={"data_sources": [test_file.name]},
             )
             hits = results.hits.get("hits", [])
+            assert len(hits) > 0, "filtered raw query returned no hits"
             for hit in hits:
                 assert hit["_source"].get("filename") == test_file.name
         finally:

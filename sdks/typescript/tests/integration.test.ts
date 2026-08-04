@@ -7,7 +7,7 @@
  * Run with: npm test
  */
 
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
@@ -15,7 +15,6 @@ import * as os from "os";
 // Dynamic import to handle the SDK not being built yet
 let OpenRAGClient: typeof import("../src").OpenRAGClient;
 let ValidationError: typeof import("../src").ValidationError;
-let OpenRAGError: typeof import("../src").OpenRAGError;
 
 const BASE_URL = process.env.OPENRAG_URL || "http://localhost:3000";
 const SKIP_TESTS = process.env.SKIP_SDK_INTEGRATION_TESTS === "true";
@@ -94,7 +93,6 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
     const sdk = await import("../src");
     OpenRAGClient = sdk.OpenRAGClient;
     ValidationError = sdk.ValidationError;
-    OpenRAGError = sdk.OpenRAGError;
 
     // Create API key and client
     const apiKey = await createApiKey();
@@ -447,6 +445,24 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
   });
 
   describe("Raw Search", () => {
+    let rawSearchTmpDir: string;
+    const rawSearchDocName = `raw_search_doc_${Date.now()}.md`;
+
+    beforeAll(async () => {
+      rawSearchTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "sdk-raw-search-"));
+      const rawSearchDocPath = path.join(rawSearchTmpDir, rawSearchDocName);
+      fs.writeFileSync(
+        rawSearchDocPath,
+        "# Raw Search Test Document\n\norange kangaroos jumping\n"
+      );
+      await client.documents.ingest({ filePath: rawSearchDocPath });
+    });
+
+    afterAll(async () => {
+      await client.documents.delete(rawSearchDocName);
+      fs.rmSync(rawSearchTmpDir, { recursive: true, force: true });
+    });
+
     it("should run a raw OpenSearch DSL query dict and return hits with a _source", async () => {
       const results = await client.search.rawQuery({
         query: { match: { text: "orange kangaroos jumping" } },
@@ -521,11 +537,13 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
           { query: { match_all: {} } },
           { filters: { data_sources: [filterDocName] } }
         );
+        expect(results.hits.hits.length).toBeGreaterThan(0);
         for (const hit of results.hits.hits) {
           expect(hit._source["filename"]).toBe(filterDocName);
         }
       } finally {
         await client.documents.delete(filterDocName);
+        fs.rmSync(tmpDir, { recursive: true, force: true });
       }
     }, 120_000);
 
@@ -533,10 +551,10 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
       await expect(client.search.rawQuery("   ")).rejects.toThrow(ValidationError);
     });
 
-    it("should raise an SDK error for a malformed DSL clause", async () => {
+    it("should raise a ValidationError for a malformed DSL clause", async () => {
       await expect(
         client.search.rawQuery({ query: { not_a_real_query_type: {} } })
-      ).rejects.toThrow(OpenRAGError);
+      ).rejects.toThrow(ValidationError);
     });
   });
 
