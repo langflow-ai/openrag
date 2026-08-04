@@ -614,8 +614,15 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
     });
 
     it("should return an empty array for a query guaranteed not to match", async () => {
+      // search_service.py only applies OpenSearch's `min_score` filter when
+      // score_threshold > 0 (the default is 0, which applies no filter at
+      // all). Since search is hybrid BM25+KNN, an unfiltered nonsense query
+      // still returns nearest-neighbor hits -- nothing is "guaranteed not to
+      // match" without an explicit threshold. Reuse the same 0.5 cutoff the
+      // "should respect scoreThreshold" test below treats as meaningful.
       const results = await client.search.query(
-        `zzzz_no_such_content_${Date.now()}_qqqq`
+        `zzzz_no_such_content_${Date.now()}_qqqq`,
+        { scoreThreshold: 0.5 }
       );
       expect(results.results).toEqual([]);
     });
