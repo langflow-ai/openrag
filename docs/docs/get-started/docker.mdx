@@ -162,6 +162,8 @@ This is only supported for self-managed deployments. For Kubernetes deployments,
 
    OpenRAG checks that each image exists in the registry before it pulls, and that check uses your local credentials.
    Signing in first prevents the deployment from failing with an authentication error.
+   
+   If your `IMAGE_REGISTRY` and `DASHBOARDS_REGISTRY` are different, you might sign in to both registry hosts.
 
 3. In your `.env` file, set the [container image and registry variables](/reference/configuration#container-image-and-registry-settings) for your registry:
 

@@ -43,7 +43,7 @@ The reason identifies which part of your [image and registry configuration](/ref
 
 | Reason | Cause | Resolution |
 |---|---|---|
-| `Image 'IMAGE' not found in registry` | The registry is reachable and accepted your credentials, but it has no image at that repository path and tag. | Verify that `IMAGE_ORG` matches the organization in your registry, and that the tag from `OPENRAG_IMAGE_TAG` or `OPENRAG_VERSION` exists. This commonly occurs when neither tag variable is set, because OpenRAG then requests the `latest` tag, which many private registries don't populate. |
+| `Image 'IMAGE' not found in registry` | If the registry is reachable and your credentials are valid, then the registry has no image at the given repository path and tag. | Verify that `IMAGE_ORG` matches the organization in your registry, and that the tag from `OPENRAG_IMAGE_TAG` or `OPENRAG_VERSION` exists. This commonly occurs when neither tag variable is set, because OpenRAG then requests the `latest` tag, which many private registries don't populate. |
 | `Authentication failure accessing 'IMAGE'` | The registry rejected the request with a `401` or `403`. | Sign in to the registry with `docker login REGISTRY` or `podman login REGISTRY` on the host that runs the containers, then retry. If you are already signed in, confirm that the account can read the repository, because some registries return an authentication error rather than a not-found error for repositories you can't access. |
 | `Registry unreachable for 'IMAGE'` | The registry host couldn't be reached because of a DNS, network, or TLS failure. | Check that the hostname in `IMAGE_REGISTRY` resolves and is reachable from the host. If your registry uses a private certificate authority, add the certificate to your container runtime's trust store. If your registry listens on a non-standard port, include it in the variable, such as `registry.example.com:5000`. |
 | `Timed out contacting registry for 'IMAGE'` | The registry didn't respond within 30 seconds. | Check for a proxy or firewall that silently drops the connection, and confirm the registry is healthy. |
@@ -53,7 +53,7 @@ The reason identifies which part of your [image and registry configuration](/ref
 This check only covers the OpenRAG-owned images.
 The OpenSearch Dashboards image isn't validated in advance, so an incorrect `DASHBOARDS_REGISTRY` value doesn't produce one of the errors above.
 Instead, the deployment fails later with a pull error from Docker or Podman.
-Because the repository path and tag for that image are fixed, confirm that the mirrored image is available at `DASHBOARDS_REGISTRY/opensearchproject/opensearch-dashboards:3.6.0`.
+Because the repository path and tag for that image are fixed, confirm that the mirrored image is available at `DASHBOARDS_REGISTRY/opensearchproject/opensearch-dashboards:3.6.0`, and make sure `DASHBOARDS_REGISTRY` is set correctly.
 
 For instructions on mirroring the images, see [Deploy OpenRAG from a private registry](/docker#private-registry).
 
