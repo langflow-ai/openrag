@@ -4,15 +4,18 @@ import { AlertTriangle, X } from "lucide-react";
 import { useState } from "react";
 import { useGetFlowsUpdatesQuery } from "@/app/api/queries/useGetFlowsUpdatesQuery";
 import { FlowsUpdateDialog } from "@/components/flows-update-dialog";
+import { useAuth } from "@/contexts/auth-context";
 import { useBrand } from "@/contexts/brand-context";
 import { usePermissions } from "@/hooks/use-permissions";
+import { DEV_IBM_COS } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 
 export function LangflowUpdatesBanner() {
   const { brand } = useBrand();
   const isIbm = brand === "ibm";
+  const { isIbmAuthMode } = useAuth();
   const { can } = usePermissions();
-  const canEdit = can("flows:edit");
+  const canEdit = can("flows:edit") && !(isIbmAuthMode || DEV_IBM_COS);
   const { data: updates, isLoading } = useGetFlowsUpdatesQuery({
     enabled: canEdit,
   });

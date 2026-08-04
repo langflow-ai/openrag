@@ -20,6 +20,7 @@ import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useChat } from "@/contexts/chat-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
+import { DEV_IBM_COS } from "@/lib/brand";
 import { ANIMATION_DURATION, HEADER_HEIGHT } from "@/lib/constants";
 import { isFailureLikeTask } from "@/lib/task-utils";
 import { cn } from "@/lib/utils";
@@ -186,7 +187,9 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         </div>
       </div>
 
-      {(isAuthenticated || isNoAuthMode) && <FlowsUpdateDialog />}
+      {(isAuthenticated || isNoAuthMode) && !(isIbmAuthMode || DEV_IBM_COS) && (
+        <FlowsUpdateDialog />
+      )}
     </div>
   );
 }

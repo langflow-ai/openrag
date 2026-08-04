@@ -15,6 +15,10 @@ logger = get_logger(__name__)
 FlowType = Literal["nudges", "retrieval", "ingest"]
 
 
+def _is_oss_mode() -> bool:
+    from config.settings import IBM_AUTH_ENABLED, is_dev_ibm_cos_enabled
+    return not (IBM_AUTH_ENABLED or is_dev_ibm_cos_enabled())
+
 async def reset_flow_endpoint(
     flow_type: str,
     flows_service=Depends(get_flows_service),
@@ -58,6 +62,8 @@ async def get_flows_updates_endpoint(
     user: User = Depends(require_permission("flows:read")),
 ):
     """Get available updates for core flows"""
+    if not _is_oss_mode():
+        return JSONResponse({"success": True, "updates": []}, status_code=200)
     try:
         user_id = getattr(user, "db_user_id", None) or getattr(user, "user_id", None)
         updates = await flows_service.get_flows_updates_available(user_id=user_id)
@@ -73,6 +79,8 @@ async def bulk_update_flows_endpoint(
     user: User = Depends(require_permission("flows:edit")),
 ):
     """Bulk update multiple flows and optionally backup custom flows"""
+    if not _is_oss_mode():
+        return JSONResponse({"success": False, "error": "Flow updates are only available in OSS mode"}, status_code=403)
     try:
         results = await flows_service.bulk_update_flows(request.flow_types, request.backup_custom)
         overall_success = all(r.get("success", False) for r in results)
@@ -92,6 +100,8 @@ async def dismiss_flows_update_endpoint(
     user: User = Depends(require_permission("flows:read")),
 ):
     """Dismiss available flow update notifications ephemerally in backend memory"""
+    if not _is_oss_mode():
+        return JSONResponse({"success": True}, status_code=200)
     try:
         flow_types = request.flow_types if request else None
         user_id = getattr(user, "db_user_id", None) or getattr(user, "user_id", None)
