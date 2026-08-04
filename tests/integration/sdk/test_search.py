@@ -71,11 +71,11 @@ class TestSearchExtended:
 
     @pytest.mark.asyncio
     async def test_search_with_custom_fuzziness_returns_results(self, client, test_file: Path):
-        """An overridden fuzziness value (e.g. a wider AUTO band) must not error."""
+        """An overridden fuzziness value (a narrower, more typo-forgiving AUTO band) must not error."""
         await client.documents.ingest(file_path=str(test_file))
 
         try:
-            results = await client.search.query("purple elephants dancing", fuzziness="AUTO:7,10")
+            results = await client.search.query("purple elephants dancing", fuzziness="AUTO:4,7")
             assert results.results is not None
             assert isinstance(results.results, list)
         finally:

@@ -156,8 +156,8 @@ async def search_tool(
                               If not provided, uses the current embedding
                               model from configuration.
         fuzziness (str): Optional OpenSearch fuzziness for the keyword-match
-                        clause (e.g. "AUTO:4,7", "AUTO:7,10", "AUTO", "0", "1", "2").
-                        Defaults to "AUTO:4,7" if not provided.
+                        clause. See the openrag_search MCP tool description
+                        for accepted values. Defaults to "AUTO:7,10".
 
     Returns:
         dict (str, Any): {"results": [chunks]} on success
@@ -201,9 +201,8 @@ class SearchService:
                                   If not provided, uses the current embedding
                                   model from configuration.
             fuzziness (str): Optional OpenSearch fuzziness for the keyword-match
-                            clause (e.g. "AUTO:4,7", "AUTO:7,10", "AUTO", "0", "1", "2").
-                            Falls back to the request/context value, defaulting
-                            to "AUTO:4,7".
+                            clause. See the openrag_search MCP tool description
+                            for accepted values. Defaults to "AUTO:7,10".
 
         Returns:
             dict (str, Any): {"results": [chunks]} on success
@@ -708,9 +707,9 @@ class SearchService:
         Args:
             embedding_model: Embedding model to use for search (defaults to the
                 currently configured embedding model)
-            fuzziness: OpenSearch fuzziness for the keyword-match clause
-                (e.g. "AUTO:4,7", "AUTO:7,10", "AUTO", "0", "1", "2").
-                Defaults to "AUTO:4,7" if not provided.
+            fuzziness: OpenSearch fuzziness for the keyword-match clause.
+                See `search_tool`'s module-level docstring for accepted
+                values. Defaults to "AUTO:7,10" if not provided.
         """
         # Set auth context if provided (for direct API calls)
         from config.settings import is_no_auth_mode

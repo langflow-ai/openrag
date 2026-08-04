@@ -28,7 +28,7 @@ export class SearchClient {
       query,
       limit: options?.limit ?? 10,
       score_threshold: options?.scoreThreshold ?? 0,
-      fuzziness: options?.fuzziness ?? "AUTO:4,7",
+      fuzziness: options?.fuzziness ?? "AUTO:7,10",
     };
 
     if (options?.filters) {

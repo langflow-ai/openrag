@@ -431,7 +431,7 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
 
     it("should accept a custom fuzziness value without error", async () => {
       const results = await client.search.query("orange kangaroos jumping", {
-        fuzziness: "AUTO:7,10",
+        fuzziness: "AUTO:4,7",
       });
       expect(results.results).toBeDefined();
       expect(Array.isArray(results.results)).toBe(true);

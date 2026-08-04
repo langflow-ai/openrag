@@ -24,7 +24,7 @@ class SearchClient:
         limit: int = 10,
         score_threshold: float = 0,
         filter_id: str | None = None,
-        fuzziness: str = "AUTO:4,7",
+        fuzziness: str = "AUTO:7,10",
     ) -> SearchResponse:
         """
         Perform semantic search on documents.
@@ -35,9 +35,9 @@ class SearchClient:
             limit: Maximum number of results (default 10).
             score_threshold: Minimum score threshold (default 0).
             filter_id: Optional knowledge filter ID to apply.
-            fuzziness: OpenSearch fuzziness for the keyword-match clause
-                (e.g. "AUTO:4,7", "AUTO:7,10", "AUTO", "0", "1", "2").
-                Defaults to "AUTO:4,7".
+            fuzziness: OpenSearch fuzziness for the keyword-match clause.
+                See the openrag_search MCP tool description for accepted
+                values. Defaults to "AUTO:7,10".
 
         Returns:
             SearchResponse containing the search results.

@@ -31,8 +31,9 @@ class SearchV1Body(BaseModel):
     limit: int = 10
     score_threshold: float = 0
     filter_id: str | None = None
-    # OpenSearch fuzziness for the keyword-match clause (e.g. "AUTO:4,7",
-    # "AUTO:7,10", "AUTO", "0", "1", "2"). Defaults to "AUTO:4,7".
+    # OpenSearch fuzziness for the keyword-match clause. See the
+    # openrag_search MCP tool description for accepted values.
+    # Defaults to "AUTO:7,10".
     fuzziness: str | None = None
 
 

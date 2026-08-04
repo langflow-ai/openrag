@@ -4,7 +4,7 @@ Uses contextvars to safely pass user auth info through async calls.
 """
 
 from contextvars import ContextVar
-from typing import Any, Dict, Optional
+from typing import Any
 
 # Context variables for current request authentication
 _current_user_id: ContextVar[str | None] = ContextVar("current_user_id", default=None)
@@ -16,7 +16,9 @@ _current_search_limit: ContextVar[int | None] = ContextVar("current_search_limit
 _current_score_threshold: ContextVar[float | None] = ContextVar(
     "current_score_threshold", default=0
 )
-_current_fuzziness: ContextVar[str] = ContextVar("current_fuzziness", default="AUTO:4,7")
+# OpenSearch fuzziness for the keyword-match clause of hybrid search.
+# See the openrag_search MCP tool description for accepted values.
+_current_fuzziness: ContextVar[str] = ContextVar("current_fuzziness", default="AUTO:7,10")
 
 
 def set_auth_context(user_id: str, jwt_token: str):
