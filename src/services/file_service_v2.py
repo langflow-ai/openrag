@@ -276,7 +276,17 @@ class FileServiceV2:
                     }
                 },
                 *(
-                    [{"filename_tiebreak": {"terms": {"field": "filename", "order": sort_order, "missing_bucket": True}}}]
+                    [
+                        {
+                            "filename_tiebreak": {
+                                "terms": {
+                                    "field": "filename",
+                                    "order": sort_order,
+                                    "missing_bucket": True,
+                                }
+                            }
+                        }
+                    ]
                     if sort_field != "filename"
                     else []
                 ),
