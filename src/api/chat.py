@@ -14,6 +14,8 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+MAX_BULK_DELETE = 100
+
 
 def _openrag_user_id(user: User) -> str:
     return getattr(user, "db_user_id", None) or user.user_id
@@ -48,6 +50,10 @@ class ChatBody(BaseModel):
     limit: int = 10
     scoreThreshold: float = 0
     filter_id: str | None = None
+
+
+class BulkDeleteBody(BaseModel):
+    session_ids: list[str]
 
 
 async def chat_endpoint(
@@ -224,3 +230,39 @@ async def delete_session_endpoint(
     except Exception:
         logger.exception("Error deleting session")
         return JSONResponse({"error": "Failed to delete session"}, status_code=500)
+
+
+async def bulk_delete_sessions_endpoint(
+    body: BulkDeleteBody,
+    chat_service=Depends(get_chat_service),
+    user: User = Depends(require_permission("conversations:delete:own")),
+) -> JSONResponse:
+    """Best-effort bulk delete of chat sessions owned by user (caller)"""
+    from services.session_ownership_service import session_ownership_service
+
+    if not body.session_ids:
+        raise HTTPException(status_code=400, detail={"error": "no_session_ids"})
+    if len(body.session_ids) > MAX_BULK_DELETE:
+        raise HTTPException(status_code=400, detail={"error": "too_many_session_ids"})
+
+    storage_user_id = _openrag_user_id(user)
+    authorized: list[str] = []
+    forbidden: list[str] = []
+
+    for session_id in body.session_ids:
+        owner = await session_ownership_service.get_session_owner(session_id)
+        if owner == storage_user_id:
+            authorized.append(session_id)
+        else:
+            forbidden.append(session_id)
+
+    try:
+        result = await chat_service.delete_sessions(storage_user_id, authorized)
+        return JSONResponse({
+            "deleted": result.get("deleted", []),
+            "failed": result.get("failed", []) + forbidden,
+        })
+    except Exception:
+        logger.exception("Error bulk-deleting sessions")
+
+        return JSONResponse({"error": "Failed to delete sessions"}, status_code=500)

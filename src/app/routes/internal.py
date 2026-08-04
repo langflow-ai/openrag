@@ -200,10 +200,16 @@ def register_internal_routes(app: FastAPI):
         tags=["internal"],
     )
 
-    # Session deletion endpoint
+    # Session deletion endpoints
     app.add_api_route(
         "/sessions/{session_id}",
         chat.delete_session_endpoint,
+        methods=["DELETE"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/sessions",
+        chat.bulk_delete_sessions_endpoint,
         methods=["DELETE"],
         tags=["internal"],
     )
