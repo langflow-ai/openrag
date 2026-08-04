@@ -111,7 +111,10 @@ The commands to upgrade the package depend on how you installed OpenRAG.
 
 <PartialExportFlows />
 
-2. Fetch and apply the latest container images while preserving your OpenRAG data:
+2. If you [pull images from a private registry](/docker#private-registry), mirror the new version's images to your registry first, and then set `OPENRAG_IMAGE_TAG` or `OPENRAG_VERSION` in your `.env` file to the new tag.
+   The pull in the next step fails if the new images aren't present in your registry yet.
+
+3. Fetch and apply the latest container images while preserving your OpenRAG data:
 
    ```bash title="Docker"
    docker compose pull
@@ -125,10 +128,14 @@ The commands to upgrade the package depend on how you installed OpenRAG.
 
    By default, OpenRAG's `docker-compose` files pull the latest container images.
    To use a specific earlier version, you set `OPENRAG_VERSION` in your `.env` file to the desired image tag, and then run OpenRAG with `docker compose`, `podman compose`, or [`make`](/support/contribute) commands.
-   Overriding the `OPENRAG_VERSION` is only possible with self-managed deployments.
+   Overriding the image tag is only possible with self-managed deployments.
    This allows you to pin your OpenRAG containers to a specific version rather than deploying the latest version.
 
-3. After the containers start, access the OpenRAG application at `http://localhost:3000`.
+   You can also set [`OPENRAG_IMAGE_TAG`](/reference/configuration#container-image-and-registry-settings), which overrides the image tag for all OpenRAG images and takes precedence over `OPENRAG_VERSION`.
+   If both variables are set, OpenRAG uses `OPENRAG_IMAGE_TAG`, so check that variable first if the containers don't start at the version you expect.
+   `OPENRAG_IMAGE_TAG` is primarily useful when you [pull images from a private registry](/docker#private-registry) that tags them differently from the OpenRAG releases.
+
+4. After the containers start, access the OpenRAG application at `http://localhost:3000`.
 
 ## See also
 
