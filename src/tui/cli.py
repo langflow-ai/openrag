@@ -227,15 +227,18 @@ def _setup_walkthrough(
         _, _, already_running = _get_service_states(container_manager, docling_manager)
         if already_running:
             _stop_services_cli(container_manager, docling_manager)
-        _start_services_cli(container_manager, docling_manager)
+        fully_started = _start_services_cli(container_manager, docling_manager)
 
-        console.print()
-        frontend_url = f"http://localhost:{os.getenv('FRONTEND_PORT', '3000')}"
-        console.print(f"[bold green]OpenRAG is running at {frontend_url}[/bold green]")
-        try:
-            webbrowser.open(frontend_url)
-        except Exception:
-            pass
+        # Only announce the app URL / open the browser once everything is up;
+        # _start_services_cli already surfaced a warning for a partial startup.
+        if fully_started:
+            console.print()
+            frontend_url = f"http://localhost:{os.getenv('FRONTEND_PORT', '3000')}"
+            console.print(f"[bold green]OpenRAG is running at {frontend_url}[/bold green]")
+            try:
+                webbrowser.open(frontend_url)
+            except Exception:
+                pass
 
 
 def _collect_config(
@@ -353,11 +356,14 @@ def _start_services_cli(
     console.print("Starting OpenRAG services...", style="bold")
 
     async def _inner():
+        containers_ok = True
+        docling_ok = docling_manager.is_running()
+
         # Start container services
         if container_manager.is_available():
             async for item in container_manager.start_services():
                 # start_services yields (success, message) or (success, message, replace_last)
-                success = item[0]
+                containers_ok = item[0]
                 message = item[1]
                 replace_last = item[2] if len(item) > 2 else False
                 if replace_last:
@@ -366,24 +372,40 @@ def _start_services_cli(
                 else:
                     console.print(f"  {message}")
 
-                if not success and "error" in message.lower():
-                    console.print(f"  [red]✗ {message}[/red]")
+            if not containers_ok:
+                statuses = await container_manager.get_service_status(force_refresh=True)
+                containers_ok = bool(statuses) and all(
+                    s.status == ServiceStatus.RUNNING for s in statuses.values()
+                )
         else:
             console.print("  [yellow]No container runtime available[/yellow]")
+            containers_ok = False
 
-        # Start docling
-        if not docling_manager.is_running():
-            success, message = await docling_manager.start()
-            if success:
+        if not docling_ok:
+            docling_ok, message = await docling_manager.start()
+            if docling_ok:
                 console.print(f"  {message}")
             else:
                 console.print(f"  [yellow]{message}[/yellow]")
 
+        return containers_ok, docling_ok
+
     try:
-        asyncio.run(_inner())
-        console.print("[green]✓ All services started[/green]")
+        containers_ok, docling_ok = asyncio.run(_inner())
+
+        # On full success the menu header already reports "Services are running",
+        # so only surface partial/failed startup here to avoid a duplicate message.
+        results = {"containers": containers_ok, "docling-serve": docling_ok}
+        failed = [name for name, ok in results.items() if not ok]
+        if failed:
+            console.print(
+                f"[yellow]⚠ Startup incomplete: {', '.join(failed)} did not start "
+                "(run Show status for details)[/yellow]"
+            )
+        return not failed
     except Exception as e:
         console.print(f"[red]✗ Error starting services: {e}[/red]")
+        return False
 
 
 def _stop_services_cli(
@@ -401,7 +423,7 @@ def _stop_services_cli(
                 console.print(f"  {message}")
         # Stop docling
         if docling_manager.is_running():
-            success, message = await docling_manager.stop()
+            _success, message = await docling_manager.stop()
             console.print(f"  {message}")
 
     try:

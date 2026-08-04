@@ -12,6 +12,7 @@ import { ApiKeysSection } from "../_components/api-keys-section";
 import { ConnectorAccessSection } from "../_components/connector-access-section";
 import { ConnectorsTab } from "../_components/connectors-tab";
 import { IngestSettingsSection } from "../_components/ingest-settings-section";
+import { LangflowUpdatesBanner } from "../_components/langflow-updates-banner";
 import ModelProviders from "../_components/model-providers";
 
 const VALID_TABS = [
@@ -143,6 +144,7 @@ export default async function SettingsTabPage({
       {tab === "providers" && <ModelProviders />}
       {tab === "langflow" && (
         <div className="space-y-6">
+          <LangflowUpdatesBanner />
           <AgentSettingsSection />
           <IngestSettingsSection />
         </div>
