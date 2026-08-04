@@ -136,7 +136,9 @@ async def raw_search_endpoint(
     if isinstance(query, str) and not query.strip():
         return JSONResponse({"error": "Query is required"}, status_code=400)
     if not isinstance(query, (dict, str)):
-        return JSONResponse({"error": "query must be an OpenSearch DSL object or a string"}, status_code=400)
+        return JSONResponse(
+            {"error": "query must be an OpenSearch DSL object or a string"}, status_code=400
+        )
 
     # API-key requests can arrive without a JWT. Set the auth context before
     # resolving filters so raw_search() can still identify the caller.

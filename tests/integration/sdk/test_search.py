@@ -48,9 +48,7 @@ class TestSearchExtended:
     @pytest.mark.asyncio
     async def test_search_no_results_for_obscure_query(self, client):
         """A nonsense query must return an empty list, not raise an error."""
-        results = await client.search.query(
-            "zzz_xyzzy_nonexistent_content_abc123_qwerty_999"
-        )
+        results = await client.search.query("zzz_xyzzy_nonexistent_content_abc123_qwerty_999")
         assert results.results is not None
         assert isinstance(results.results, list)
 
@@ -77,16 +75,16 @@ class TestSearchExtended:
         await client.documents.ingest(file_path=str(test_file))
 
         try:
-            results = await client.search.query(
-                "purple elephants dancing", fuzziness="AUTO:7,10"
-            )
+            results = await client.search.query("purple elephants dancing", fuzziness="AUTO:7,10")
             assert results.results is not None
             assert isinstance(results.results, list)
         finally:
             await client.documents.delete(test_file.name)
 
     @pytest.mark.asyncio
-    async def test_search_with_fuzziness_zero_disables_fuzzy_matching(self, client, test_file: Path):
+    async def test_search_with_fuzziness_zero_disables_fuzzy_matching(
+        self, client, test_file: Path
+    ):
         """fuzziness="0" (exact keyword matching only) must not error."""
         await client.documents.ingest(file_path=str(test_file))
 
@@ -144,7 +142,9 @@ class TestRawSearch:
             for hit in hits:
                 for key, value in hit["_source"].items():
                     if isinstance(value, list) and len(value) > 100:
-                        pytest.fail(f"Embedding-like vector field '{key}' leaked into raw_search results")
+                        pytest.fail(
+                            f"Embedding-like vector field '{key}' leaked into raw_search results"
+                        )
         finally:
             await client.documents.delete(test_file.name)
 

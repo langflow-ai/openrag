@@ -98,9 +98,9 @@ COMPONENT_CUSTOMIZATIONS: dict[tuple[str, str], dict[str, str]] = {
             "filter's data_sources, or inline `filters` (data_sources, "
             "document_types, owners, connector_types) for a per-call scope. "
             "If both are provided, inline filters override per-field. "
-            "Optionally pass `fuzziness` (e.g. \"AUTO:4,7\", \"AUTO:7,10\", "
-            "\"AUTO\", \"0\", \"1\", \"2\") to tune keyword-match typo "
-            "tolerance; defaults to \"AUTO:4,7\"."
+            'Optionally pass `fuzziness` (e.g. "AUTO:4,7", "AUTO:7,10", '
+            '"AUTO", "0", "1", "2") to tune keyword-match typo '
+            'tolerance; defaults to "AUTO:4,7".'
         ),
     },
     ("/v1/search/raw", "POST"): {
