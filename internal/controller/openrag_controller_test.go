@@ -570,6 +570,148 @@ func TestReconcile_RevertsManualServiceTypeChange(t *testing.T) {
 	}
 }
 
+// TestReconcile_ServiceDefaultSelectors verifies that after a reconcile each of
+// the three core Services (frontend, backend, langflow) carries a Spec.Selector
+// equal to the four-label set produced by componentLabels — the same labels the
+// corresponding Deployment uses as its pod-selector.
+func TestReconcile_ServiceDefaultSelectors(t *testing.T) {
+	cases := []struct {
+		role      string
+		component string
+	}{
+		{role: "be", component: "be"},
+		{role: "fe", component: "fe"},
+		{role: "lf", component: "lf"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.role, func(t *testing.T) {
+			s := newScheme(t)
+			cr := minimalCR("my-openrag", "my-ns")
+			r, c := reconciler(s, cr)
+
+			reconcileOnce(t, r, cr)
+
+			svc := &corev1.Service{}
+			require.NoError(t, c.Get(context.Background(),
+				types.NamespacedName{Name: instanceResourceName(cr, tc.role), Namespace: "my-ns"}, svc))
+
+			sel := svc.Spec.Selector
+			require.NotNil(t, sel, "Service %s must have a selector", tc.role)
+			assert.Len(t, sel, 4, "selector for service %s should have exactly 4 labels", tc.role)
+			assert.Equal(t, "openrag", sel["app.kubernetes.io/name"], "role %s", tc.role)
+			assert.Equal(t, cr.Name, sel["app.kubernetes.io/instance"], "role %s", tc.role)
+			assert.Equal(t, tc.component, sel["app.kubernetes.io/component"], "role %s", tc.role)
+			assert.Equal(t, "openrag-operator", sel["app.kubernetes.io/managed-by"], "role %s", tc.role)
+		})
+	}
+}
+
+// TestReconcile_ServiceSelectorMatchesDeploymentSelector verifies that each
+// Service's Spec.Selector is identical to its corresponding Deployment's
+// Spec.Selector.MatchLabels, ensuring traffic is always routed to the correct pods.
+func TestReconcile_ServiceSelectorMatchesDeploymentSelector(t *testing.T) {
+	for _, role := range []string{"be", "fe", "lf"} {
+		t.Run(role, func(t *testing.T) {
+			s := newScheme(t)
+			cr := minimalCR("my-openrag", "my-ns")
+			r, c := reconciler(s, cr)
+
+			reconcileOnce(t, r, cr)
+
+			svc := &corev1.Service{}
+			require.NoError(t, c.Get(context.Background(),
+				types.NamespacedName{Name: instanceResourceName(cr, role), Namespace: "my-ns"}, svc))
+
+			dep := &appsv1.Deployment{}
+			require.NoError(t, c.Get(context.Background(),
+				types.NamespacedName{Name: instanceResourceName(cr, role), Namespace: "my-ns"}, dep))
+
+			assert.Equal(t, dep.Spec.Selector.MatchLabels, svc.Spec.Selector,
+				"Service and Deployment selectors must match for role %s", role)
+		})
+	}
+}
+
+// TestReconcile_RevertsManualServiceSelectorLabelChange verifies that if a user
+// overwrites one of the four managed selector labels on a Service, the next
+// reconcile restores the original value for all three core components.
+func TestReconcile_RevertsManualServiceSelectorLabelChange(t *testing.T) {
+	for _, role := range []string{"be", "fe", "lf"} {
+		t.Run(role, func(t *testing.T) {
+			s := newScheme(t)
+			cr := minimalCR("my-openrag", "my-ns")
+			r, c := reconciler(s, cr)
+
+			reconcileOnce(t, r, cr)
+
+			// Simulate a user overwriting the component label with a wrong value.
+			svc := &corev1.Service{}
+			require.NoError(t, c.Get(context.Background(),
+				types.NamespacedName{Name: instanceResourceName(cr, role), Namespace: "my-ns"}, svc))
+			svc.Spec.Selector["app.kubernetes.io/component"] = "wrong-value"
+			require.NoError(t, c.Update(context.Background(), svc))
+
+			// Confirm the patch took effect.
+			require.NoError(t, c.Get(context.Background(),
+				types.NamespacedName{Name: instanceResourceName(cr, role), Namespace: "my-ns"}, svc))
+			assert.Equal(t, "wrong-value", svc.Spec.Selector["app.kubernetes.io/component"])
+
+			// Reconcile — controller must revert to the correct component value.
+			reconcileOnce(t, r, cr)
+
+			require.NoError(t, c.Get(context.Background(),
+				types.NamespacedName{Name: instanceResourceName(cr, role), Namespace: "my-ns"}, svc))
+			assert.Equal(t, role, svc.Spec.Selector["app.kubernetes.io/component"],
+				"role %s: component selector label should be reverted after reconcile", role)
+			assert.Equal(t, "openrag", svc.Spec.Selector["app.kubernetes.io/name"],
+				"role %s: name selector label must be intact", role)
+			assert.Equal(t, cr.Name, svc.Spec.Selector["app.kubernetes.io/instance"],
+				"role %s: instance selector label must be intact", role)
+			assert.Equal(t, "openrag-operator", svc.Spec.Selector["app.kubernetes.io/managed-by"],
+				"role %s: managed-by selector label must be intact", role)
+		})
+	}
+}
+
+// TestReconcile_RevertsManualServiceSelectorLabelAddition verifies that if a
+// user injects an extra label into a Service's Spec.Selector, the next reconcile
+// removes it and restores the selector to exactly the four managed keys.
+func TestReconcile_RevertsManualServiceSelectorLabelAddition(t *testing.T) {
+	for _, role := range []string{"be", "fe", "lf"} {
+		t.Run(role, func(t *testing.T) {
+			s := newScheme(t)
+			cr := minimalCR("my-openrag", "my-ns")
+			r, c := reconciler(s, cr)
+
+			reconcileOnce(t, r, cr)
+
+			// Simulate a user adding a spurious selector entry.
+			svc := &corev1.Service{}
+			require.NoError(t, c.Get(context.Background(),
+				types.NamespacedName{Name: instanceResourceName(cr, role), Namespace: "my-ns"}, svc))
+			svc.Spec.Selector["custom-extra-label"] = "should-be-removed"
+			require.NoError(t, c.Update(context.Background(), svc))
+
+			// Confirm the extra label is visible before reconcile.
+			require.NoError(t, c.Get(context.Background(),
+				types.NamespacedName{Name: instanceResourceName(cr, role), Namespace: "my-ns"}, svc))
+			assert.Equal(t, "should-be-removed", svc.Spec.Selector["custom-extra-label"])
+
+			// Reconcile — controller must strip the extra label.
+			reconcileOnce(t, r, cr)
+
+			require.NoError(t, c.Get(context.Background(),
+				types.NamespacedName{Name: instanceResourceName(cr, role), Namespace: "my-ns"}, svc))
+			_, exists := svc.Spec.Selector["custom-extra-label"]
+			assert.False(t, exists,
+				"role %s: extra selector label should be removed after reconcile", role)
+			assert.Len(t, svc.Spec.Selector, 4,
+				"role %s: selector should have exactly 4 managed labels after reconcile", role)
+		})
+	}
+}
+
 func TestReconcile_CreatesServiceAccounts(t *testing.T) {
 	s := newScheme(t)
 	cr := minimalCR("my-openrag", "my-ns")

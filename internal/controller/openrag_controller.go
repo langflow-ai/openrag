@@ -705,11 +705,6 @@ func (r *OpenRAGReconciler) reconcileServices(ctx context.Context, o *openragv1a
 			})
 		}
 
-		serviceType := d.spec.ServiceType
-		if serviceType == "" {
-			serviceType = corev1.ServiceTypeClusterIP
-		}
-
 		baseLabels := componentLabels(o.Name, d.role)
 		svc := &corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
@@ -719,7 +714,7 @@ func (r *OpenRAGReconciler) reconcileServices(ctx context.Context, o *openragv1a
 				Annotations: mergeServiceAnnotations(o, d.spec),
 			},
 			Spec: corev1.ServiceSpec{
-				Type:     serviceType,
+				Type:     corev1.ServiceTypeClusterIP,
 				Selector: componentLabels(o.Name, d.role),
 				Ports:    svcPorts,
 			},
