@@ -345,6 +345,7 @@ function SearchPage() {
   const {
     data: listFilesData,
     isLoading: isListFilesLoading,
+    isFetching: isListFilesFetching,
     error: listFilesError,
     isError: isListFilesError,
   } = useListFiles(
@@ -379,6 +380,8 @@ function SearchPage() {
     searchData as SearchResult;
 
   const isLoading = isWildcardQuery ? isListFilesLoading : isSearchLoading;
+
+  const isFetching = isWildcardQuery ? isListFilesFetching : isSearchLoading;
   const error = isWildcardQuery ? listFilesError : searchError;
   const isError = isWildcardQuery ? isListFilesError : isSearchError;
 
@@ -1134,7 +1137,7 @@ function SearchPage() {
           currentPageSize={currentPageSize}
           totalPages={totalPages}
           serverTotal={serverTotal}
-          isLoading={isLoading}
+          isLoading={isFetching}
           cursorCacheRef={cursorCacheRef}
           setCurrentPage={setCurrentPage}
           setCurrentPageSize={setCurrentPageSize}
