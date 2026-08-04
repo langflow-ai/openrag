@@ -1,9 +1,9 @@
 from typing import Any
 
+from config.settings import get_index_name
 from utils.file_utils import clean_connector_filename, get_file_extension
 from utils.logging_config import get_logger
 
-from config.settings import get_index_name
 from .base import BaseConnector, ConnectorDocument
 from .connection_manager import ConnectionManager
 
