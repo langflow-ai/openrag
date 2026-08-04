@@ -2,7 +2,7 @@ import json
 import uuid
 from typing import Any
 
-from config.settings import OPENRAG_BACKEND_INTERNAL_URL, clients
+from config.settings import OPENRAG_BACKEND_INTERNAL_URL, clients, get_index_name
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -65,7 +65,7 @@ class MonitorService:
                     {
                         "doc_level_input": {
                             "description": f"Monitor for knowledge filter: {filter_name}",
-                            "indices": ["documents"],
+                            "indices": [get_index_name()],
                             "queries": [
                                 {
                                     "id": f"kf_query_{filter_id}",
