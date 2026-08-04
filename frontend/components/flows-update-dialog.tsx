@@ -181,13 +181,19 @@ export function FlowsUpdateDialog({
           <div className="py-2">
             <p className="text-sm text-muted-foreground leading-relaxed">
               Updating Langflow will overwrite any custom changes made. Backup
-              copies of your flows will be created located in Langflow, Do you
-              want to continue?
+              copies of your flows will be created in Langflow. Do you want to
+              continue?
             </p>
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowConfirm(false)}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowConfirm(false);
+                setIsOpen(true);
+              }}
+            >
               Cancel
             </Button>
             <Button
