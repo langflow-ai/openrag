@@ -2,78 +2,13 @@ import uuid
 from typing import Any
 
 from services.conversation_persistence_service import conversation_persistence
+from utils.langflow_utils import parse_knowledge_chunks, strip_untrusted_fence_recursive
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
 # In-memory storage for active conversation threads (preserves function calls)
 active_conversations: dict[str, dict[str, Any]] = {}
-
-_UNTRUSTED_FENCE_START = "<<<UNTRUSTED_DOC_CHUNK>>>"
-_UNTRUSTED_FENCE_END = "<<<END_UNTRUSTED_DOC_CHUNK>>>"
-
-
-def fence_untrusted_text(text: str) -> str:
-    """Wrap text (e.g. an uploaded document body) in untrusted-data fence markers.
-
-    Mirrors flows/components/opensearch_multimodal.py::fence_untrusted_text for the
-    non-Langflow (direct chat / upload-context) paths so the same system-prompt rule
-    applies regardless of which path fed the content into the conversation.
-
-    Any literal fence markers already present in `text` are escaped first, so a
-    poisoned document can't embed a fake end-of-fence marker to break out of the
-    untrusted section and have its continuation misread as trusted.
-    """
-    if not text:
-        return text
-    escaped = text.replace(_UNTRUSTED_FENCE_START, "\\" + _UNTRUSTED_FENCE_START).replace(
-        _UNTRUSTED_FENCE_END, "\\" + _UNTRUSTED_FENCE_END
-    )
-    return f"{_UNTRUSTED_FENCE_START}\n{escaped}\n{_UNTRUSTED_FENCE_END}"
-
-
-def _strip_untrusted_fence(text: str) -> str:
-    """Remove the untrusted-data fence markers before surfacing retrieved text as a citation.
-
-    The retrieval tool wraps chunk text in these markers (see
-    flows/components/opensearch_multimodal.py::fence_untrusted_text) so the LLM
-    treats it as data, not instructions. Users should never see the raw markers.
-    """
-    if not text:
-        return text
-    stripped = text
-    if stripped.startswith(_UNTRUSTED_FENCE_START):
-        stripped = stripped[len(_UNTRUSTED_FENCE_START) :].lstrip("\n")
-    if stripped.endswith(_UNTRUSTED_FENCE_END):
-        stripped = stripped[: -len(_UNTRUSTED_FENCE_END)].rstrip("\n")
-    # Restore any embedded fence-marker literals that fence_untrusted_text escaped,
-    # so citations show the document's original text, not the escaped form.
-    stripped = stripped.replace("\\" + _UNTRUSTED_FENCE_START, _UNTRUSTED_FENCE_START)
-    stripped = stripped.replace("\\" + _UNTRUSTED_FENCE_END, _UNTRUSTED_FENCE_END)
-    return stripped
-
-
-def _strip_untrusted_fence_recursive(obj: Any) -> None:
-    """Recursively strip untrusted-fence markers from every "text" string field
-    found anywhere in a streamed SSE chunk payload, in place (VULN-13906).
-
-    The live chat UI always streams (stream=True), which bypasses the
-    citation-building fence-stripping in async_langflow_chat entirely — that
-    non-streaming path is dead code for real traffic. Client code
-    (frontend tool-call trace panel, citation click-through popup) reads
-    retrieved chunk text straight out of the raw SSE stream, so stripping has
-    to happen here, on every chunk, before it's yielded. A no-op on any text
-    that isn't actually fenced, so this is safe to apply unconditionally.
-    """
-    if isinstance(obj, dict):
-        for key, value in obj.items():
-            if key == "text" and isinstance(value, str):
-                obj[key] = _strip_untrusted_fence(value)
-            else:
-                _strip_untrusted_fence_recursive(value)
-    elif isinstance(obj, list):
-        for item in obj:
-            _strip_untrusted_fence_recursive(item)
 
 
 def _format_provider_error_message(exc: BaseException) -> str:
@@ -377,7 +312,7 @@ async def async_response_stream(
                 # and src/agent.py's fence_untrusted_text) reaches the client — strip fence
                 # markers here, before anything is yielded. Frontend surfaces (tool-call trace
                 # panel, citation click-through popup) read this raw streamed payload directly.
-                _strip_untrusted_fence_recursive(chunk_data)
+                strip_untrusted_fence_recursive(chunk_data)
 
                 # Log detailed chunk structure for investigation (especially for Granite 3.3 8b)
                 if isinstance(chunk_data, dict):
@@ -417,16 +352,31 @@ async def async_response_stream(
                             total_tokens=usage.get("total_tokens"),
                         )
 
+                # Format native tool call results
+                if isinstance(chunk_data, dict):
+                    # Format: {"type": "response.output_item.added", "item": {"type": "tool_call", "results": ...}}
+                    item = chunk_data.get("item")
+                    if (
+                        isinstance(item, dict)
+                        and item.get("type") == "tool_call"
+                        and "results" in item
+                    ):
+                        item["results"] = parse_knowledge_chunks(item["results"])
+
+                    # Also check for direct tool_call chunks
+                    elif chunk_data.get("type") == "tool_call" and "results" in chunk_data:
+                        chunk_data["results"] = parse_knowledge_chunks(chunk_data["results"])
+
                 # Middleware: Detect implicit tool calls and inject standardized events
                 # This helps Granite 3.3 8b and other models that don't emit standard markers
                 if isinstance(chunk_data, dict) and not detected_tool_call:
                     # Check if this chunk contains retrieval results
                     has_results = any(
                         [
-                            "results" in chunk_data and isinstance(chunk_data.get("results"), list),
-                            "outputs" in chunk_data and isinstance(chunk_data.get("outputs"), list),
-                            "retrieved_documents" in chunk_data,
-                            "retrieval_results" in chunk_data,
+                            bool(chunk_data.get("results")),
+                            bool(chunk_data.get("outputs")),
+                            bool(chunk_data.get("retrieved_documents")),
+                            bool(chunk_data.get("retrieval_results")),
                         ]
                     )
 
@@ -445,11 +395,12 @@ async def async_response_stream(
                                 "tool_name": "Retrieval",
                                 "status": "completed",
                                 "inputs": {"implicit": True, "backend_detected": True},
-                                "results": chunk_data.get("results")
-                                or chunk_data.get("outputs")
-                                or chunk_data.get("retrieved_documents")
-                                or chunk_data.get("retrieval_results")
-                                or [],
+                                "results": parse_knowledge_chunks(
+                                    chunk_data.get("results")
+                                    or chunk_data.get("outputs")
+                                    or chunk_data.get("retrieved_documents")
+                                    or chunk_data.get("retrieval_results")
+                                ),
                             },
                         }
                         # Send the synthetic event first
@@ -856,28 +807,7 @@ async def async_langflow_chat(
     # regardless of `type` string (Langflow may use different type names).
     if hasattr(response_obj, "output") and response_obj.output:
         for output_item in response_obj.output:
-            for result in getattr(output_item, "results", None) or []:
-                rd = (
-                    result.model_dump()
-                    if hasattr(result, "model_dump")
-                    else (result if isinstance(result, dict) else {})
-                )
-                if "text" in rd:
-                    sources.append(
-                        {
-                            "filename": rd.get("filename", ""),
-                            "text": _strip_untrusted_fence(rd.get("text", "")),
-                            "score": rd.get("score", 0),
-                            "page": rd.get("page"),
-                            "mimetype": rd.get("mimetype"),
-                            "chunk_id": rd.get("chunk_id") or rd.get("id") or "",
-                            "id": rd.get("id") or rd.get("chunk_id") or "",
-                            "embedding_model": rd.get("embedding_model"),
-                            "parser": rd.get("parser"),
-                            "chunk_size": rd.get("chunk_size"),
-                            "chunk_overlap": rd.get("chunk_overlap"),
-                        }
-                    )
+            sources.extend(parse_knowledge_chunks(getattr(output_item, "results", None)))
 
     # Layer 2: Top-level dict inspection (mirrors streaming middleware in async_response_stream).
     # Langflow may embed retrieval results directly in the response dict rather than
@@ -893,26 +823,8 @@ async def async_langflow_chat(
             or resp_dict.get("outputs")
             or resp_dict.get("retrieved_documents")
             or resp_dict.get("retrieval_results")
-            or []
         )
-        if isinstance(implicit_results, list):
-            for result in implicit_results:
-                if isinstance(result, dict) and "text" in result:
-                    sources.append(
-                        {
-                            "filename": result.get("filename", ""),
-                            "text": _strip_untrusted_fence(result.get("text", "")),
-                            "score": result.get("score", 0),
-                            "page": result.get("page"),
-                            "mimetype": result.get("mimetype"),
-                            "chunk_id": result.get("chunk_id") or result.get("id") or "",
-                            "id": result.get("id") or result.get("chunk_id") or "",
-                            "embedding_model": result.get("embedding_model"),
-                            "parser": result.get("parser"),
-                            "chunk_size": result.get("chunk_size"),
-                            "chunk_overlap": result.get("chunk_overlap"),
-                        }
-                    )
+        sources.extend(parse_knowledge_chunks(implicit_results))
 
     # Layer 3: Citation-text fallback.
     # Parse "(Source: filename)" patterns emitted by the LLM when it cites documents.

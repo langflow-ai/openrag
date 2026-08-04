@@ -56,20 +56,33 @@ def _default_llm_model(provider: str) -> str:
     return {
         "openai": OPENAI_DEFAULT_LANGUAGE_MODEL,
         "anthropic": ANTHROPIC_DEFAULT_LANGUAGE_MODEL,
-        "watsonx": "ibm/granite-3-8b-instruct",
+        "watsonx": "ibm/granite-4-h-small",
         "ollama": "llama3",
     }.get(provider, "")
 
 
 def _default_embedding_model(provider: str) -> str:
-    """Return the default embedding model for a provider."""
-    from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL
+    """Return a fallback embedding model for `provider` on provider-removal
+    reshuffle, or "" if none can be assumed safe.
 
-    return {
-        "openai": OPENAI_DEFAULT_EMBEDDING_MODEL,
-        "watsonx": "ibm/granite-embedding-278m-multilingual",
-        "ollama": "nomic-embed-text",
-    }.get(provider, "")
+    No provider gets a hardcoded model name here. A provider name like
+    "openai" or "watsonx" doesn't reliably tell you which models are
+    actually deployed — it's frequently an internal OpenAI/watsonx-
+    compatible gateway with a curated, deployment-specific model subset.
+    A hardcoded guess can silently select a model the gateway doesn't
+    serve, breaking every ingestion with no clear signal why (see
+    incident: hardcoded "text-embedding-3-small" was selected in an
+    environment whose gateway only served "text-embedding-3-large").
+
+    Instead, defer to whatever the deployment itself declared via
+    EMBEDDING_MODEL/EMBEDDING_PROVIDER (see
+    ``get_declared_default_embedding_model``). If the deployment hasn't
+    declared a default for this provider, return "" and force the admin
+    to pick a model the settings UI confirms is actually available.
+    """
+    from config.embedding_constants import get_declared_default_embedding_model
+
+    return get_declared_default_embedding_model(provider)
 
 
 async def _affected_embedding_models(

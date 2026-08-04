@@ -36,7 +36,7 @@ class LangflowFileService:
         docling_service=None,
         document_index_writer=None,
         ingest_token_service=None,
-    ):
+    ) -> None:
         self.flow_id_ingest = LANGFLOW_INGEST_FLOW_ID
         self.flows_service = flows_service
         self.docling_service = docling_service
@@ -133,14 +133,16 @@ class LangflowFileService:
             return
 
         try:
-            from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL
+            from config.embedding_constants import get_declared_default_embedding_model
             from config.settings import get_index_name, get_openrag_config
             from utils.embedding_fields import ensure_embedding_field_exists
             from utils.embeddings import create_index_body
 
             config = get_openrag_config()
             index_name = get_index_name()
-            model_name = embedding_model or OPENAI_DEFAULT_EMBEDDING_MODEL
+            model_name = embedding_model or get_declared_default_embedding_model(
+                config.knowledge.embedding_provider
+            )
             embedding_dimensions = await self._detect_embedding_dimensions(
                 model_name,
                 config.knowledge.embedding_provider,
@@ -446,7 +448,10 @@ class LangflowFileService:
 
         # Get the current embedding model and provider credentials from config
         from config.settings import get_openrag_config
-        from utils.langflow_headers import add_provider_credentials_to_headers
+        from utils.langflow_headers import (
+            add_provider_credentials_to_headers,
+            build_model_provider_headers,
+        )
 
         config = get_openrag_config()
         embedding_model = config.knowledge.embedding_model
@@ -467,7 +472,7 @@ class LangflowFileService:
             "X-Langflow-Global-Var-CONNECTOR_TYPE": str(connector_type),
             "X-Langflow-Global-Var-MIMETYPE": mimetype,
             "X-Langflow-Global-Var-FILESIZE": str(file_size_bytes),
-            "X-Langflow-Global-Var-SELECTED_EMBEDDING_MODEL": str(embedding_model),
+            **build_model_provider_headers(config, embedding_model=embedding_model),
             "X-Langflow-Global-Var-DOCUMENT_ID": resolved_document_id,
             "X-Langflow-Global-Var-SOURCE_URL": str(source_url) if source_url else "",
             "X-Langflow-Global-Var-DOCLING_TASK_ID": str(docling_task_id)
@@ -631,7 +636,10 @@ class LangflowFileService:
             tweaks = {}
 
         from config.settings import get_openrag_config
-        from utils.langflow_headers import add_provider_credentials_to_headers
+        from utils.langflow_headers import (
+            add_provider_credentials_to_headers,
+            build_model_provider_headers,
+        )
 
         config = get_openrag_config()
         embedding_model = config.knowledge.embedding_model
@@ -647,7 +655,7 @@ class LangflowFileService:
             "X-Langflow-Global-Var-OWNER_NAME": owner_name or "",
             "X-Langflow-Global-Var-OWNER_EMAIL": owner_email or "",
             "X-Langflow-Global-Var-CONNECTOR_TYPE": str(connector_type),
-            "X-Langflow-Global-Var-SELECTED_EMBEDDING_MODEL": str(embedding_model),
+            **build_model_provider_headers(config, embedding_model=embedding_model),
             "X-Langflow-Global-Var-DOCUMENT_ID": resolved_document_id,
             "X-Langflow-Global-Var-SOURCE_URL": str(docs_url),
             "X-Langflow-Global-Var-ALLOWED_USERS": json.dumps([]),

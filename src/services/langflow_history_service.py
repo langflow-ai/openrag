@@ -117,13 +117,17 @@ class LangflowHistoryService:
                                 if content_item.get("type") == "tool_use":
                                     # Convert Langflow tool_use format to match streaming chunks format
                                     # Frontend expects: chunk.item.type === "tool_call" with tool_name, inputs, results
+                                    from utils.langflow_utils import parse_knowledge_chunks
+
                                     chunk = {
                                         "type": "response.output_item.added",
                                         "item": {
                                             "type": "tool_call",
                                             "tool_name": content_item.get("name", ""),
                                             "inputs": content_item.get("tool_input", {}),
-                                            "results": content_item.get("output", {}),
+                                            "results": parse_knowledge_chunks(
+                                                content_item.get("output", {})
+                                            ),
                                             "id": content_item.get("id")
                                             or content_item.get("run_id", ""),
                                             "status": "completed"
@@ -187,8 +191,7 @@ class LangflowHistoryService:
                     }
                     conversations.append(conversation)
 
-            # Sort by last activity (most recent first). Normalize None so mixed
-            # None/str timestamps do not raise TypeError during comparison.
+            # Sort by last activity (most recent first)
             conversations.sort(key=lambda c: c.get("last_activity") or "", reverse=True)
 
             return {

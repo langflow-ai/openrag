@@ -40,7 +40,7 @@ export const OLLAMA_CONFIG: ProviderConfig = {
 // IBM watsonx.ai Configuration (Optional)
 export const WATSONX_CONFIG: ProviderConfig = {
   provider: "IBM watsonx.ai",
-  language: "ibm/granite-3-8b-instruct",
+  language: "ibm/granite-4-h-small",
   embedding: "ibm/slate-125m-english-rtrvr-v2",
   testCase: {
     url: "https://kubernetes.io/docs/concepts/overview/",
@@ -90,10 +90,7 @@ export const MODEL_TRANSITIONS: ModelTransitionConfig[] = [
   },
   {
     provider: "IBM watsonx.ai",
-    languageSequence: [
-      "ibm/granite-3-8b-instruct",
-      "ibm/granite-3-3-8b-instruct",
-    ],
+    languageSequence: ["ibm/granite-4-h-small", "ibm/granite-3-3-8b-instruct"],
     embeddingSequence: [
       "ibm/slate-125m-english-rtrvr-v2",
       "ibm/granite-embedding-278m-multilingual",

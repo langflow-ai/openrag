@@ -4,10 +4,11 @@ Validates wait_for_langflow retry logic, backoff behavior, and error handling.
 All external dependencies (HTTP client, sleep, logging) are fully mocked.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from utils.langflow_utils import LangflowNotReadyError, wait_for_langflow
+import pytest
+
+from utils.langflow_utils import LangflowNotReadyError, parse_knowledge_chunks, wait_for_langflow
 
 
 def _make_response(status_code: int) -> MagicMock:
@@ -139,7 +140,12 @@ async def test_sleep_delay_respects_bounds(mock_langflow_client, no_sleep):
     max_delay = 4.0
 
     with pytest.raises(LangflowNotReadyError):
-        await wait_for_langflow(langflow_http_client=mock_langflow_client, max_retries=5, base_delay=base_delay, max_delay=max_delay)
+        await wait_for_langflow(
+            langflow_http_client=mock_langflow_client,
+            max_retries=5,
+            base_delay=base_delay,
+            max_delay=max_delay,
+        )
 
     # 4 sleeps for 5 retries (no sleep after the last attempt)
     assert no_sleep.call_count == 4
@@ -156,7 +162,12 @@ async def test_exponential_backoff_increases(mock_langflow_client, no_sleep):
 
     with patch("utils.langflow_utils.random.uniform", side_effect=lambda lo, hi: hi):
         with pytest.raises(LangflowNotReadyError):
-            await wait_for_langflow(langflow_http_client=mock_langflow_client, max_retries=4, base_delay=1.0, max_delay=100.0)
+            await wait_for_langflow(
+                langflow_http_client=mock_langflow_client,
+                max_retries=4,
+                base_delay=1.0,
+                max_delay=100.0,
+            )
 
     # With jitter pinned to the upper bound, delays should be 1, 2, 4
     delays = [call.args[0] for call in no_sleep.call_args_list]
@@ -170,7 +181,12 @@ async def test_max_delay_cap(mock_langflow_client, no_sleep):
 
     with patch("utils.langflow_utils.random.uniform", side_effect=lambda lo, hi: hi):
         with pytest.raises(LangflowNotReadyError):
-            await wait_for_langflow(langflow_http_client=mock_langflow_client, max_retries=6, base_delay=2.0, max_delay=5.0)
+            await wait_for_langflow(
+                langflow_http_client=mock_langflow_client,
+                max_retries=6,
+                base_delay=2.0,
+                max_delay=5.0,
+            )
 
     delays = [call.args[0] for call in no_sleep.call_args_list]
     # base_delay * 2^attempt: 2, 4, 5(cap), 5(cap), 5(cap)
@@ -197,3 +213,95 @@ async def test_error_message_content(mock_langflow_client):
 
     with pytest.raises(LangflowNotReadyError, match="Failed to verify"):
         await wait_for_langflow(langflow_http_client=mock_langflow_client, max_retries=1)
+
+
+# ── parse_knowledge_chunks tests ─────────────────────────────────────
+
+
+def test_parse_knowledge_chunks_artifact_list():
+    input_data = {
+        "artifact": [
+            {
+                "data": {
+                    "filename": "doc1.pdf",
+                    "text": "sample text",
+                    "score": 0.95,
+                    "page": 1,
+                    "mimetype": "application/pdf",
+                    "chunk_id": "chunk-123",
+                }
+            }
+        ]
+    }
+    result = parse_knowledge_chunks(input_data)
+    assert len(result) == 1
+    assert result[0] == {
+        "filename": "doc1.pdf",
+        "text": "sample text",
+        "score": 0.95,
+        "page": 1,
+        "mimetype": "application/pdf",
+        "chunk_id": "chunk-123",
+        "id": "chunk-123",
+        "embedding_model": None,
+        "parser": None,
+        "chunk_size": None,
+        "chunk_overlap": None,
+    }
+
+
+def test_parse_knowledge_chunks_content_json_string():
+    input_data = {
+        "content": '[{"filename": "doc2.txt", "text": "content text", "score": 0.8, "chunk_id": "c2"}]'
+    }
+    result = parse_knowledge_chunks(input_data)
+    assert len(result) == 1
+    assert result[0]["filename"] == "doc2.txt"
+    assert result[0]["chunk_id"] == "c2"
+
+
+def test_parse_knowledge_chunks_raw_list():
+    input_data = [
+        {"filename": "doc3.md", "text": "md text", "chunk_id": "c3"},
+        {"filename": "doc4.md", "text": "md text 2", "chunk_id": "c4"},
+    ]
+    result = parse_knowledge_chunks(input_data)
+    assert len(result) == 2
+    assert result[0]["filename"] == "doc3.md"
+    assert result[1]["filename"] == "doc4.md"
+
+
+def test_parse_knowledge_chunks_raw_json_string():
+    input_data = '[{"filename": "doc5.pdf", "text": "pdf text", "chunk_id": "c5"}]'
+    result = parse_knowledge_chunks(input_data)
+    assert len(result) == 1
+    assert result[0]["filename"] == "doc5.pdf"
+
+
+def test_parse_knowledge_chunks_idempotent_normalized():
+    normalized = [
+        {
+            "filename": "doc.pdf",
+            "text": "hello",
+            "score": 1.0,
+            "page": 2,
+            "mimetype": "application/pdf",
+            "chunk_id": "c10",
+            "id": "c10",
+            "embedding_model": "text-embedding-3-small",
+            "parser": "default",
+            "chunk_size": 1000,
+            "chunk_overlap": 200,
+        }
+    ]
+    result = parse_knowledge_chunks(normalized)
+    assert result == normalized
+    # Second pass (idempotency check)
+    result_second = parse_knowledge_chunks(result)
+    assert result_second == normalized
+
+
+def test_parse_knowledge_chunks_malformed_json_returns_empty():
+    input_data = "{malformed json"
+    result = parse_knowledge_chunks(input_data)
+    assert result == []
