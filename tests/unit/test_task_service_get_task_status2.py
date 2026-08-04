@@ -148,7 +148,7 @@ class TestInferFailureMetadata:
         assert "pdfium" not in msg.lower()
         assert "docling-parse" not in msg.lower()
         assert "cbfc231c" not in msg
-        
+
     def test_langflow_empty_content_not_retryable(self, task_service):
         ft = _make_file_task(
             phase=IngestionPhase.LANGFLOW,
