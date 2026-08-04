@@ -83,6 +83,16 @@ class FileServiceV2:
                 is_approximate=is_approximate,
             )
 
+        if page > 1 and after_key is None:
+            return {
+                "files": [],
+                "total": total,
+                "is_approximate": is_approximate,
+                "page": page,
+                "page_size": page_size,
+                "after_key": None,
+            }
+
         composite_sort_field = _COMPOSITE_SORT_FIELDS.get(sort_by, "filename")
 
         agg_body = self._build_composite_aggregation(
@@ -107,6 +117,7 @@ class FileServiceV2:
             return {
                 "files": [],
                 "total": 0,
+                "is_approximate": False,
                 "page": page,
                 "page_size": page_size,
                 "after_key": None,
@@ -260,11 +271,12 @@ class FileServiceV2:
                         "terms": {
                             "field": sort_field,
                             "order": sort_order,
+                            "missing_bucket": True,
                         }
                     }
                 },
                 *(
-                    [{"filename_tiebreak": {"terms": {"field": "filename", "order": sort_order}}}]
+                    [{"filename_tiebreak": {"terms": {"field": "filename", "order": sort_order, "missing_bucket": True}}}]
                     if sort_field != "filename"
                     else []
                 ),
@@ -398,7 +410,7 @@ class FileServiceV2:
             logger.warning(
                 "Failed to retrieve file count; pagination total will show 0", error=str(e)
             )
-            return 0, False
+            return 0, True
 
     def _parse_composite_buckets(
         self, result: dict[str, Any]
