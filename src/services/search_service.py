@@ -112,7 +112,28 @@ class SearchAuthenticationError(Exception):
 
 
 class RawSearchQueryError(ValueError):
-    """Raised when a raw_search query body fails safety validation."""
+    """Base class for raw_search query safety-validation failures.
+
+    Subclasses exist so callers (the API layer) can build the client-facing
+    error message from the exception's *type* via a fixed lookup table,
+    rather than reading the exception's message text - CodeQL's
+    py/stack-trace-exposure check flags any value read from a caught
+    exception that reaches an HTTP response, even a deliberately safe one,
+    since it can't distinguish "developer-authored validation string" from
+    "leaked internal detail." Type-based dispatch has no such data flow.
+    """
+
+
+class RawSearchScriptedQueryError(RawSearchQueryError):
+    """Raised when a raw_search query body contains a scripted (Painless) clause."""
+
+
+class RawSearchQuerySizeError(RawSearchQueryError):
+    """Raised when a raw_search query body's 'size' exceeds the allowed maximum."""
+
+
+class RawSearchQueryDepthError(RawSearchQueryError):
+    """Raised when a raw_search query body is nested too deeply."""
 
 
 # Any API-key holder with search:use can run arbitrary DSL through /v1/search/raw
@@ -121,7 +142,7 @@ class RawSearchQueryError(ValueError):
 # blocked by ACLs. This is a scoped mitigation (script rejection + size caps
 # + depth cap), not an exhaustive OpenSearch DSL allowlist.
 _RAW_QUERY_BANNED_KEY_SUBSTRINGS = ("script",)
-_RAW_QUERY_MAX_SIZE = 1000
+RAW_QUERY_MAX_SIZE = 1000
 _RAW_QUERY_MAX_DEPTH = 20
 _RAW_QUERY_TIMEOUT = "30s"
 
@@ -130,17 +151,17 @@ def _validate_raw_query_safety(node: Any, *, depth: int = 0) -> None:
     """Reject scripted clauses and oversized/deeply nested raw DSL query bodies."""
     if depth > _RAW_QUERY_MAX_DEPTH:
         msg = "Query is nested too deeply"
-        raise RawSearchQueryError(msg)
+        raise RawSearchQueryDepthError(msg)
     if isinstance(node, dict):
         for key, value in node.items():
             if isinstance(key, str) and any(
                 s in key.lower() for s in _RAW_QUERY_BANNED_KEY_SUBSTRINGS
             ):
                 msg = f"Scripted query clauses are not allowed (found '{key}')"
-                raise RawSearchQueryError(msg)
-            if key == "size" and isinstance(value, int) and value > _RAW_QUERY_MAX_SIZE:
-                msg = f"'size' must not exceed {_RAW_QUERY_MAX_SIZE}"
-                raise RawSearchQueryError(msg)
+                raise RawSearchScriptedQueryError(msg)
+            if key == "size" and isinstance(value, int) and value > RAW_QUERY_MAX_SIZE:
+                msg = f"'size' must not exceed {RAW_QUERY_MAX_SIZE}"
+                raise RawSearchQuerySizeError(msg)
             _validate_raw_query_safety(value, depth=depth + 1)
     elif isinstance(node, list):
         for item in node:

@@ -10,6 +10,7 @@ from typing import Any
 
 from fastapi import Depends
 from fastapi.responses import JSONResponse
+from opensearchpy.exceptions import RequestError
 from pydantic import BaseModel, Field, field_validator
 
 from api.v1._filter_resolution import merge_filter_overrides, resolve_filter_id
@@ -19,7 +20,14 @@ from dependencies import (
     get_search_service,
     require_api_key_permission,
 )
-from services.search_service import RawSearchQueryError, SearchAuthenticationError
+from services.search_service import (
+    RAW_QUERY_MAX_SIZE,
+    RawSearchQueryDepthError,
+    RawSearchQueryError,
+    RawSearchQuerySizeError,
+    RawSearchScriptedQueryError,
+    SearchAuthenticationError,
+)
 from session_manager import User
 from utils.logging_config import get_logger
 from utils.opensearch_utils import DISK_SPACE_ERROR_MESSAGE, OpenSearchDiskSpaceError
@@ -28,6 +36,15 @@ logger = get_logger(__name__)
 
 # "0" | "1" | "2" | "AUTO" | "AUTO:<low>,<high>"
 _FUZZINESS_RE = re.compile(r"^(0|1|2|AUTO(:\d+,\d+)?)$")
+
+# Client-facing messages keyed by exception *type*, not by reading the
+# exception's own message text - see RawSearchQueryError's docstring.
+_RAW_QUERY_ERROR_MESSAGES: dict[type[RawSearchQueryError], str] = {
+    RawSearchScriptedQueryError: "Scripted query clauses are not allowed.",
+    RawSearchQuerySizeError: f"'size' must not exceed {RAW_QUERY_MAX_SIZE}.",
+    RawSearchQueryDepthError: "Query is nested too deeply.",
+}
+_RAW_QUERY_ERROR_DEFAULT_MESSAGE = "Raw search query rejected by safety validation."
 
 
 class SearchV1Body(BaseModel):
@@ -212,17 +229,27 @@ async def raw_search_endpoint(
         logger.warning("Raw search rejected: no authenticated user", user_id=user.user_id)
         return JSONResponse({"error": "Authentication required"}, status_code=401)
     except RawSearchQueryError as e:
-        # str(e) is safe here: every RawSearchQueryError message is a fixed,
-        # developer-authored validation string from _validate_raw_query_safety
-        # (e.g. "'size' must not exceed 1000") - never OpenSearch/driver
-        # internals or a stack trace.
-        return JSONResponse({"error": str(e)}, status_code=400)  # lgtm[py/stack-trace-exposure]
+        # Dispatch on exception type, not its message: the message itself is
+        # never read here, so no exception-derived value reaches the response.
+        logger.warning("Raw search query rejected by safety validation", user_id=user.user_id)
+        message = _RAW_QUERY_ERROR_MESSAGES.get(type(e), _RAW_QUERY_ERROR_DEFAULT_MESSAGE)
+        return JSONResponse({"error": message}, status_code=400)
     except Exception as e:
         error_msg = str(e)
         logger.error("Raw search failed", error=error_msg, user_id=user.user_id)
         if "AuthenticationException" in error_msg or "access denied" in error_msg.lower():
             return JSONResponse({"error": "Access denied"}, status_code=403)
-        else:
+        if isinstance(e, RequestError):
+            # OpenSearch itself rejected the query DSL (malformed/unsupported clause) -
+            # this is the caller's fault, not a server failure.
             return JSONResponse(
-                {"error": "Raw search failed. Check server logs for details."}, status_code=400
+                {
+                    "error": "Raw search query was rejected by OpenSearch. Check server logs for details."
+                },
+                status_code=400,
             )
+        # Anything else (connection/transport errors, unexpected internal failures)
+        # is a server-side problem, not something the caller's request can fix.
+        return JSONResponse(
+            {"error": "Raw search failed. Check server logs for details."}, status_code=500
+        )

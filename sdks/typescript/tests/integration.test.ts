@@ -656,7 +656,11 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
           expect(r.filename).toBe(filterDocName);
         }
       } finally {
-        await client.documents.delete(filterDocName);
+        try {
+          await client.documents.delete(filterDocName);
+        } finally {
+          fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
       }
     }, 120_000);
 
@@ -800,8 +804,11 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
           expect(hit._source["filename"]).toBe(filterDocName);
         }
       } finally {
-        await client.documents.delete(filterDocName);
-        fs.rmSync(tmpDir, { recursive: true, force: true });
+        try {
+          await client.documents.delete(filterDocName);
+        } finally {
+          fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
       }
     }, 120_000);
 
