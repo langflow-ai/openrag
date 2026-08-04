@@ -10,7 +10,7 @@ openrag_user_role:
     - "cluster:monitor/*"
 
   index_permissions:
-    - index_patterns: ["documents", "documents*", "knowledge_filters", "knowledge_filters*"]
+    - index_patterns: ["documents", "*documents*", "knowledge_filters", "knowledge_filters*"]
       allowed_actions:
         - read
       dls: >
@@ -22,7 +22,7 @@ openrag_user_role:
           {"terms":{"allowed_principals":{"index":"openrag_dls_principals","id":"${user.name}","path":"principals"}}},
           {"bool":{"must_not":{"exists":{"field":"owner"}}}}
         ],"minimum_should_match":1}}
-    - index_patterns: ["documents", "documents*", "knowledge_filters", "knowledge_filters*"]
+    - index_patterns: ["documents", "*documents*", "knowledge_filters", "knowledge_filters*"]
       allowed_actions:
         - indices:admin/mappings/get
         - indices:admin/exists

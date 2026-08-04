@@ -61,13 +61,15 @@ _SAFE_CONFIG_PATH = re.compile(r"^/?(?:[A-Za-z0-9_.\-]+/)*[A-Za-z0-9_.\-]+\.ya?m
 # ---------------------------------------------------------------------------
 # The OpenSearch security role `openrag_user_role` (securityconfig/roles.yml)
 # only grants indices:data/read/search on the index_patterns "documents",
-# "documents*", "knowledge_filters", "knowledge_filters*". Nothing re-templates
+# "*documents*", "knowledge_filters", "knowledge_filters*". Nothing re-templates
 # that static role config from OPENSEARCH_INDEX_NAME, so an index name outside
 # those patterns causes ingestion/search to fail with a 403
 # AuthorizationException. Keep this allowlist in sync with securityconfig/roles.yml.
 # ---------------------------------------------------------------------------
-ALLOWED_INDEX_NAME_PREFIXES = ("documents", "knowledge_filters")
-_PERMITTED_INDEX_NAME = re.compile(r"^(documents|knowledge_filters)[a-z0-9._-]*$")
+ALLOWED_INDEX_NAME_PATTERNS = ("*documents*", "knowledge_filters*")
+_PERMITTED_INDEX_NAME = re.compile(
+    r"^[a-z0-9._-]*documents[a-z0-9._-]*$|^knowledge_filters[a-z0-9._-]*$"
+)
 
 
 def is_permitted_index_name(index_name: str) -> bool:
@@ -421,8 +423,8 @@ class ConfigManager:
             else:
                 logger.error(
                     f"OPENSEARCH_INDEX_NAME={env_index_name!r} is not permitted by the "
-                    f"OpenSearch security role (must start with one of "
-                    f"{ALLOWED_INDEX_NAME_PREFIXES}); ignoring and keeping "
+                    f"OpenSearch security role (must match one of "
+                    f"{ALLOWED_INDEX_NAME_PATTERNS}); ignoring and keeping "
                     f"{config_data['knowledge'].get('index_name', 'documents')!r}. "
                     "See securityconfig/roles.yml."
                 )
