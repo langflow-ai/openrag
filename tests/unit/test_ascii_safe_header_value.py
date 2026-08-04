@@ -19,7 +19,27 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 
-from utils.langflow_headers import ascii_safe_header_value  # noqa: E402
+from utils.langflow_headers import ascii_safe_header_value, map_provider  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    "provider,expected",
+    [
+        ("openai", "OpenAI"),
+        ("OPENAI", "OpenAI"),
+        ("anthropic", "Anthropic"),
+        ("Anthropic", "Anthropic"),
+        ("ollama", "Ollama"),
+        ("OLLAMA", "Ollama"),
+        ("watsonx", "IBM WatsonX"),
+        ("WatsonX", "IBM WatsonX"),
+        ("", ""),
+        (None, ""),
+        ("unknown_provider", "unknown_provider"),
+    ],
+)
+def test_map_provider(provider, expected):
+    assert map_provider(provider) == expected
 
 
 @pytest.mark.parametrize(

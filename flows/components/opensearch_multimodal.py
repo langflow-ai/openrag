@@ -220,23 +220,6 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             input_types=["Data", "JSON"],
         ),
         StrInput(
-            name="openrag_ingest_token",
-            display_name="OpenRAG Ingest Token",
-            value="OPENRAG_INGEST_TOKEN",
-            load_from_db=True,
-            input_types=["Text", "Message"],
-            advanced=True,
-            info="Short-lived token used only for OpenRAG ingest callbacks.",
-        ),
-        StrInput(
-            name="openrag_ingest_run_id",
-            display_name="OpenRAG Ingest Run ID",
-            value="OPENRAG_INGEST_RUN_ID",
-            load_from_db=True,
-            input_types=["Text", "Message"],
-            advanced=True,
-        ),
-        StrInput(
             name="opensearch_url",
             display_name="OpenSearch URL",
             value="http://localhost:9200",
@@ -382,7 +365,8 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         SecretStrInput(
             name="password",
             display_name="OpenSearch Password",
-            value="admin",
+            value="OPENSEARCH_PASSWORD",
+            load_from_db=True,
             show=True,
         ),
         SecretStrInput(
@@ -456,7 +440,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             advanced=True,
             info="Internal OpenRAG callback URL for backend-owned document indexing.",
         ),
-        StrInput(
+        SecretStrInput(
             name="openrag_ingest_token",
             display_name="OpenRAG Ingest Token",
             value="OPENRAG_INGEST_TOKEN",
@@ -869,30 +853,18 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         token = self._openrag_callback_value("openrag_ingest_token")
         ingest_run_id = self._openrag_callback_value("openrag_ingest_run_id")
 
-        masked_token = (
-            f"{token[:4]}...{token[-4:]}" if len(token) >= 8 else ("<set>" if token else "")
-        )
-        debug_payload = {
-            "openrag_ingest_url": url,
-            "openrag_ingest_url_len": len(url),
-            "openrag_ingest_token_masked": masked_token,
-            "openrag_ingest_token_len": len(token),
-            "openrag_ingest_run_id": ingest_run_id,
-            "raw_url_type": type(self.openrag_ingest_url).__name__,
-            "raw_token_type": type(self.openrag_ingest_token).__name__,
-            "raw_run_id_type": type(self.openrag_ingest_run_id).__name__,
-        }
-        logger.warning(f"[OpenRAG callback config] {debug_payload}")
-        try:
-            self.log(f"[OpenRAG callback config] {debug_payload}")
-        except Exception:
-            pass
-
         if not url and not token and not ingest_run_id:
             return None
         if not url or not token or not ingest_run_id:
             msg = "OpenRAG ingest callback requires url, token, and ingest_run_id."
             raise ValueError(msg)
+
+        logger.debug(
+            "[OpenRAG callback config] configured for ingest_run_id=%s (url_len=%d, token_len=%d)",
+            ingest_run_id,
+            len(url),
+            len(token),
+        )
         return url, token, ingest_run_id
 
     def _post_openrag_ingest_batches(
@@ -911,22 +883,9 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         timeout = self._parse_int_param("request_timeout", REQUEST_TIMEOUT)
         headers = {"Authorization": f"Bearer {token}"}
 
-        masked_token = (
-            f"{token[:4]}...{token[-4:]}" if len(token) >= 8 else ("<set>" if token else "")
+        logger.debug(
+            f"[OpenRAG ingest POST] total_chunks={len(requests)} batch_size={batch_size} timeout_s={timeout}"
         )
-        request_summary = {
-            "url": url,
-            "ingest_run_id": ingest_run_id,
-            "token_masked": masked_token,
-            "total_chunks": len(requests),
-            "batch_size": batch_size,
-            "timeout_s": timeout,
-        }
-        logger.warning(f"[OpenRAG ingest POST] {request_summary}")
-        try:
-            self.log(f"[OpenRAG ingest POST] {request_summary}")
-        except Exception:
-            pass
 
         with httpx.Client(timeout=timeout) as client:
             total_batches = (len(requests) + batch_size - 1) // batch_size
@@ -946,33 +905,21 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                         for request in batch
                     ],
                 }
-                logger.warning(
+                logger.debug(
                     f"[OpenRAG ingest POST] -> batch={batch_number}/{total_batches} "
-                    f"url={url} chunks={len(payload['chunks'])} final={final}"
+                    f"chunks={len(payload['chunks'])} final={final}"
                 )
                 response = client.post(url, json=payload, headers=headers)
-                response_summary = {
-                    "batch": batch_number,
-                    "url": url,
-                    "status": response.status_code,
-                    "final_url": str(response.request.url),
-                    "response_headers": dict(response.headers),
-                    "body_preview": response.text[:500],
-                }
-                logger.warning(f"[OpenRAG ingest POST resp] {response_summary}")
-                try:
-                    self.log(f"[OpenRAG ingest POST resp] {response_summary}")
-                except Exception:
-                    pass
+                logger.debug(f"[OpenRAG ingest POST resp] batch={batch_number} status={response.status_code}")
                 if response.status_code >= 400:
                     msg = (
                         "OpenRAG ingest callback failed "
-                        f"(batch={batch_number}, status={response.status_code}, "
-                        f"url={url}): {response.text[:1000]}"
+                        f"(batch={batch_number}, status={response.status_code})"
                     )
+                    logger.warning(msg)
                     raise RuntimeError(msg)
 
-        self.log(f"Posted {len(requests)} chunks to OpenRAG backend ingest callback.")
+        logger.debug(f"Posted {len(requests)} chunks to OpenRAG backend ingest callback.")
 
     @staticmethod
     def _openrag_chunk_payload(
@@ -1170,12 +1117,15 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             # Writes are delegated to the OpenRAG backend ingest callback,
             # so no direct OpenSearch credentials are needed. Only the
             # OPENRAG_* fields are required for ingestion to function.
+            url = self._openrag_callback_value("openrag_ingest_url")
+            token = self._openrag_callback_value("openrag_ingest_token")
+            ingest_run_id = self._openrag_callback_value("openrag_ingest_run_id")
             missing = [
                 name
                 for name, value in (
-                    ("openrag_ingest_url", self.openrag_ingest_url),
-                    ("openrag_ingest_token", self.openrag_ingest_token),
-                    ("openrag_ingest_run_id", self.openrag_ingest_run_id),
+                    ("openrag_ingest_url", url),
+                    ("openrag_ingest_token", token),
+                    ("openrag_ingest_run_id", ingest_run_id),
                 )
                 if not (value or "").strip()
             ]
@@ -1187,7 +1137,10 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                 raise ValueError(msg)
             return {}
         user = (self.username or "").strip()
-        pwd = (self.password or "").strip()
+        pwd = (self._openrag_input_to_str(self.password) or "").strip()
+        if pwd == "OPENSEARCH_PASSWORD" or not pwd:
+            from config.settings import get_opensearch_password
+            pwd = get_opensearch_password() or ""
         if not user or not pwd:
             msg = "Auth Mode is 'basic' but username/password are missing."
             raise ValueError(msg)
@@ -2434,19 +2387,19 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             for hit in hits
         ]
 
-    def search_documents(self) -> Table:
+    def search_documents(self) -> list[Data]:
 
-        """Search documents and return results as a Table.
+        """Search documents and return results as a list of Data objects.
 
         This is the main interface method that performs the multi-model search using the
-        configured search_query and returns results in Langflow's Table (DataFrame) format
-        so downstream Parser components can consume them directly.
+        configured search_query and returns results in a format that downstream Parser
+        components and tool wrappers can consume directly without DataFrame string truncation.
 
         Always builds the vector store (triggering ingestion if needed), then performs
         search only if a query is provided.
 
         Returns:
-            Table containing search results with text and metadata
+            List containing search results with text and metadata
 
         Raises:
             Exception: If search operation fails
@@ -2463,12 +2416,12 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             if not search_query:
                 self.log("No search query provided - ingestion completed, returning empty results")
 
-                return Table(data=[])
+                return []
 
             # Perform search with the provided query
             raw = self.search(search_query)
             raw_list = [Data(text=hit["page_content"], **hit["metadata"]) for hit in raw]
-            return Table(data=raw_list)
+            return raw_list
 
         except Exception as e:
             self.log(f"search_documents error: {e}")
