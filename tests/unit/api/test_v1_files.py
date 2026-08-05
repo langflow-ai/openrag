@@ -19,7 +19,6 @@ from fastapi import params as fastapi_params
 from api.v1.files import list_files, search_files
 from session_manager import User
 
-
 # ---------------------------------------------------------------------------
 # Auth-dependency introspection helpers
 # ---------------------------------------------------------------------------
@@ -271,6 +270,7 @@ class TestListFiles:
     async def test_after_key_non_dict_returns_400(self):
         """A valid JSON non-dict after_key (e.g. a string) raises HTTPException 400."""
         import json
+
         from fastapi import HTTPException
 
         file_service = _make_file_service(_SAMPLE_RESPONSE)
