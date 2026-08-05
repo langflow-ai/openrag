@@ -102,8 +102,18 @@ export function getFallbackModels(provider: ModelProvider) {
     case "openai":
       return {
         language: [
+          // GPT-5.6 family (current frontier)
+          { value: "gpt-5.6", label: "GPT-5.6" },
+          { value: "gpt-5.6-sol", label: "GPT-5.6 Sol" },
+          { value: "gpt-5.6-terra", label: "GPT-5.6 Terra" },
+          { value: "gpt-5.6-luna", label: "GPT-5.6 Luna" },
+          // GPT-5.5
+          { value: "gpt-5.5", label: "GPT-5.5" },
+          { value: "gpt-5.5-pro", label: "GPT-5.5 Pro" },
+          // GPT-5.4 and earlier (still functional)
           { value: "gpt-5.4", label: "GPT-5.4" },
           { value: "gpt-5.4-mini", label: "GPT-5.4 Mini" },
+          { value: "gpt-5.4-nano", label: "GPT-5.4 Nano" },
           { value: "gpt-5.4-pro", label: "GPT-5.4 Pro" },
           { value: "gpt-5.3-codex", label: "GPT-5.3 Codex" },
           { value: "gpt-5.2", label: "GPT-5.2" },
@@ -129,6 +139,13 @@ export function getFallbackModels(provider: ModelProvider) {
     case "anthropic":
       return {
         language: [
+          // Claude 5 family (current)
+          { value: "claude-fable-5", label: "Claude Fable 5" },
+          { value: "claude-opus-5", label: "Claude Opus 5" },
+          { value: "claude-sonnet-5", label: "Claude Sonnet 5" },
+          // Claude 4.x (still functional)
+          { value: "claude-opus-4-8", label: "Claude Opus 4.8" },
+          { value: "claude-opus-4-7", label: "Claude Opus 4.7" },
           { value: "claude-opus-4-6", label: "Claude Opus 4.6" },
           { value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
           { value: "claude-opus-4-5-20251101", label: "Claude Opus 4.5" },
@@ -142,6 +159,8 @@ export function getFallbackModels(provider: ModelProvider) {
         language: [
           { value: "gpt-oss", label: "gpt-oss" },
           { value: "mistral-nemo", label: "mistral-nemo" },
+          { value: "llama3.1", label: "Llama 3.1" },
+          { value: "qwen2.5", label: "Qwen 2.5" },
         ],
         embedding: [
           { value: "nomic-embed-text", label: "Nomic Embed Text" },
@@ -154,6 +173,7 @@ export function getFallbackModels(provider: ModelProvider) {
     default:
       return {
         language: [
+          { value: "gpt-5.6-luna", label: "GPT-5.6 Luna" },
           { value: "gpt-5.4-mini", label: "GPT-5.4 Mini" },
           { value: "gpt-4o", label: "GPT-4o" },
           { value: "gpt-4o-mini", label: "GPT-4o Mini" },
