@@ -85,25 +85,10 @@ async def run_ingestion(
             filename = os.path.basename(file_path)
             file_tuples.append((filename, b"", "application/octet-stream"))
 
-    tweaks = body.tweaks or {}
     settings = body.settings or {}
-
-    # Convert UI settings to component tweaks
-    if settings:
-        logger.debug("Applying ingestion settings", settings=settings)
-        if settings.get("chunkSize") or settings.get("chunkOverlap") or settings.get("separator"):
-            if "SplitText-PC36h" not in tweaks:
-                tweaks["SplitText-PC36h"] = {}
-            if settings.get("chunkSize"):
-                tweaks["SplitText-PC36h"]["chunk_size"] = settings["chunkSize"]
-            if settings.get("chunkOverlap"):
-                tweaks["SplitText-PC36h"]["chunk_overlap"] = settings["chunkOverlap"]
-            if settings.get("separator"):
-                tweaks["SplitText-PC36h"]["separator"] = settings["separator"]
-        if settings.get("embeddingModel"):
-            if "OpenAIEmbeddings-joRJ6" not in tweaks:
-                tweaks["OpenAIEmbeddings-joRJ6"] = {}
-            tweaks["OpenAIEmbeddings-joRJ6"]["model"] = settings["embeddingModel"]
+    tweaks = langflow_file_service.merge_ui_ingest_settings_into_tweaks(
+        body.tweaks or {}, settings
+    )
 
     jwt_token = user.jwt_token
 
@@ -123,6 +108,7 @@ async def run_ingestion(
             owner_name=user.name,
             owner_email=user.email,
             connector_type="local",
+            selected_embedding_model=settings.get("embeddingModel"),
         )
         return JSONResponse(result)
     except Exception as e:

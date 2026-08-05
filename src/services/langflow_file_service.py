@@ -78,12 +78,34 @@ class LangflowFileService:
           provider-specific component ids.
         """
         final_tweaks = dict(tweaks) if tweaks else {}
+
+        from config.settings import get_openrag_config
+        config = get_openrag_config()
+
+        # Build and merge Docling Serve tweaks
+        from services.docling_service import get_docling_preset_configs
+        preset_config = get_docling_preset_configs(
+            table_structure=config.knowledge.table_structure,
+            ocr=config.knowledge.ocr,
+            picture_descriptions=config.knowledge.picture_descriptions,
+        )
+        if "Docling Serve" not in final_tweaks:
+            final_tweaks["Docling Serve"] = {}
+        if "docling_serve_opts" not in final_tweaks["Docling Serve"]:
+            final_tweaks["Docling Serve"]["docling_serve_opts"] = preset_config
+
+        # Merge in default Split Text tweaks
+        if "Split Text" not in final_tweaks:
+            final_tweaks["Split Text"] = {}
+        if "chunk_size" not in final_tweaks["Split Text"]:
+            final_tweaks["Split Text"]["chunk_size"] = getattr(config.knowledge, "chunk_size", 1000)
+        if "chunk_overlap" not in final_tweaks["Split Text"]:
+            final_tweaks["Split Text"]["chunk_overlap"] = getattr(config.knowledge, "chunk_overlap", 200)
+
         if not settings:
             return final_tweaks
 
         if settings.get("chunkSize") or settings.get("chunkOverlap") or settings.get("separator"):
-            if "Split Text" not in final_tweaks:
-                final_tweaks["Split Text"] = {}
             if settings.get("chunkSize"):
                 final_tweaks["Split Text"]["chunk_size"] = settings["chunkSize"]
             if settings.get("chunkOverlap"):
@@ -402,9 +424,14 @@ class LangflowFileService:
         if not tweaks:
             tweaks = {}
 
+        from config.settings import get_openrag_config
+        config = get_openrag_config()
+
         # Pass files via tweaks to File component (File-PSU37 from the flow)
         if file_paths:
-            tweaks["Docling Serve"] = {"path": file_paths}
+            if "Docling Serve" not in tweaks:
+                tweaks["Docling Serve"] = {}
+            tweaks["Docling Serve"]["path"] = file_paths
 
         if session_id:
             payload["session_id"] = session_id
@@ -435,22 +462,18 @@ class LangflowFileService:
         )
 
         # Get the current embedding model and provider credentials from config
-        from config.settings import get_openrag_config
         from utils.langflow_headers import (
             add_provider_credentials_to_headers,
             build_model_provider_headers,
         )
 
-        config = get_openrag_config()
         embedding_model = config.knowledge.embedding_model
         if selected_embedding_model:
             embedding_model = selected_embedding_model
 
         split_tweaks = tweaks.get("Split Text", {}) if isinstance(tweaks, dict) else {}
-        default_chunk_size = getattr(config.knowledge, "chunk_size", 1000)
-        default_chunk_overlap = getattr(config.knowledge, "chunk_overlap", 200)
-        chunk_size = split_tweaks.get("chunk_size", default_chunk_size)
-        chunk_overlap = split_tweaks.get("chunk_overlap", default_chunk_overlap)
+        chunk_size = split_tweaks.get("chunk_size", getattr(config.knowledge, "chunk_size", 1000))
+        chunk_overlap = split_tweaks.get("chunk_overlap", getattr(config.knowledge, "chunk_overlap", 200))
 
         headers = {
             "X-Langflow-Global-Var-JWT": str(jwt_token or ""),
