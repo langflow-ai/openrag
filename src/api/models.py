@@ -319,9 +319,7 @@ async def get_azure_ai_foundry_models(
                         f"Azure AI Foundry embedding test passed for '{embedding_deployment_name}'"
                     )
                 except Exception as e:
-                    errors.append(
-                        f"Embedding deployment '{embedding_deployment_name}': {str(e)}"
-                    )
+                    errors.append(f"Embedding deployment '{embedding_deployment_name}': {str(e)}")
 
             if errors:
                 return JSONResponse({"error": "; ".join(errors)}, status_code=400)

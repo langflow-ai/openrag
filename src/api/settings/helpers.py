@@ -20,7 +20,14 @@ logger = get_logger(__name__)
 
 
 # Provider names in priority order. LLM supports anthropic; embeddings do not.
-_LLM_PROVIDER_NAMES = ("openai", "anthropic", "watsonx", "ollama", "azure_ai_foundry", "azure_openai")
+_LLM_PROVIDER_NAMES = (
+    "openai",
+    "anthropic",
+    "watsonx",
+    "ollama",
+    "azure_ai_foundry",
+    "azure_openai",
+)
 _EMBEDDING_PROVIDER_NAMES = ("openai", "watsonx", "ollama", "azure_ai_foundry", "azure_openai")
 
 
