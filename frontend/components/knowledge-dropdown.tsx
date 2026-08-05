@@ -460,8 +460,8 @@ export function KnowledgeDropdown() {
     // Cap parallel batch uploads so large folders don't open every request at once.
     const batchConcurrency = Math.min(2, batches.length);
     let nextBatchIndex = 0;
-    // Shared across concurrent workers: a previewMode=false batch must not
-    // close the dialog after a sibling batch already confirmed preview.
+    // Set by any worker that gets previewMode=true; checked once after all
+    // batches finish so a concurrent false cannot close a successful open.
     let previewModeConfirmed = false;
 
     const runNextBatch = async () => {
@@ -489,10 +489,6 @@ export function KnowledgeDropdown() {
               },
             );
             refetchTasks();
-          } else if (!previewModeConfirmed) {
-            // Close the optimistic open only when no batch has confirmed
-            // preview yet. A concurrent false must not wipe a successful open.
-            setPreview(EMPTY_PREVIEW);
           }
         } catch (error) {
           failedBatchIndexes.push(batchIndex);
@@ -516,6 +512,13 @@ export function KnowledgeDropdown() {
     await Promise.all(
       Array.from({ length: batchConcurrency }, () => runNextBatch()),
     );
+
+    // Close the optimistic open only after all workers finish. Doing this
+    // inside a worker races: a late previewMode=false can wipe a sibling's
+    // successful open between awaits.
+    if (!previewModeConfirmed) {
+      setPreview(EMPTY_PREVIEW);
+    }
 
     refetchTasks();
 
