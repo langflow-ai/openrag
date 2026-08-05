@@ -12,10 +12,8 @@ Tests cover:
 
 import inspect
 from unittest.mock import AsyncMock, MagicMock
-
-import pytest
 from fastapi import params as fastapi_params
-
+import pytest
 from api.v1.files import list_files, search_files
 from session_manager import User
 
