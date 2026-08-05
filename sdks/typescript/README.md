@@ -208,8 +208,8 @@ returns the metadata needed to drive knowledge filters and search.
 
 ```typescript
 // List the first page of files
-const page = await client.documents.listFiles({ page_size: 50 });
-for (const f of page.files) {
+const firstPage = await client.documents.listFiles({ page_size: 50 });
+for (const f of firstPage.files) {
   console.log(`${f.filename}  (${f.mimetype}, ${f.chunk_count} chunks)`);
 }
 
@@ -222,15 +222,15 @@ do {
 } while (afterKey);
 
 // Filter and sort
-const page = await client.documents.listFiles({
+const sortedPage = await client.documents.listFiles({
   connector_type: "sharepoint",
   sort_by: "indexed_time",
   sort_order: "desc",
 });
 
 // List → create knowledge filter workflow
-const page = await client.documents.listFiles({ connector_type: "sharepoint" });
-const filenames = page.files.map(f => f.filename);
+const sharepointPage = await client.documents.listFiles({ connector_type: "sharepoint" });
+const filenames = sharepointPage.files.map(f => f.filename);
 const { id: filterId } = await client.knowledgeFilters.create({
   name: "SharePoint docs",
   queryData: { filters: { data_sources: filenames } },

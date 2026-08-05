@@ -967,10 +967,11 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
       await client.documents.ingest({ filePath: fpath });
 
       try {
-        const result = await client.documents.listFiles({ search: `lf_test_` });
-        expect(result.files.length).toBeGreaterThanOrEqual(1);
+        const result = await client.documents.listFiles({ search: fname });
+        const match = result.files.find((r) => r.filename === fname);
+        expect(match).toBeDefined();
 
-        const f = result.files[0];
+        const f = match!;
         // Core identity
         expect(typeof f.filename).toBe("string");
         expect(f.filename.length).toBeGreaterThan(0);
@@ -1019,15 +1020,15 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
       let filterId: string | undefined;
 
       try {
-        const page = await client.documents.listFiles({ search: fname.slice(0, 10) });
-        const filenames = page.files.map((f) => f.filename);
-        expect(filenames.length).toBeGreaterThanOrEqual(1);
+        const page = await client.documents.listFiles({ search: fname });
+        const match = page.files.find((f) => f.filename === fname);
+        expect(match).toBeDefined();
 
         const createResult = await client.knowledgeFilters.create({
           name: `TS list-files workflow ${Date.now()}`,
           queryData: {
             filters: {
-              data_sources: filenames,
+              data_sources: [match!.filename],
               document_types: ["*"],
               owners: ["*"],
               connector_types: ["*"],

@@ -405,7 +405,7 @@ class FileServiceV2:
         """Approximate unique-filename count via cardinality aggregation (O(1)).
 
         Returns (count, is_approximate).  is_approximate is always True on
-        success (cardinality agg is inherently approximate) and False when the
+        success (cardinality agg is inherently approximate) and True when the
         aggregation fails and 0 is returned as a fallback.
         """
         body = {

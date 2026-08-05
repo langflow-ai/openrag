@@ -67,7 +67,14 @@ class TestListFiles:
 
     @pytest.mark.asyncio
     async def test_list_files_pagination(self, client, tmp_path: Path):
-        """page_size is respected and after_key enables cursor navigation."""
+        """page_size is respected and after_key cursor enables non-overlapping pages.
+
+        Three files are ingested with a unique token prefix.  Both page requests
+        are scoped to that prefix so unrelated index content cannot interfere.
+        With page_size=2 and 3 matching files, page 1 must return an after_key —
+        the assertion is unconditional, not conditional, so the test fails clearly
+        if the cursor is missing.
+        """
         token = uuid.uuid4().hex[:8]
         files = []
         for i in range(3):
@@ -77,30 +84,47 @@ class TestListFiles:
             files.append(p)
 
         try:
-            page1 = await client.documents.list_files(page_size=2)
-            assert len(page1.files) <= 2
+            page1 = await client.documents.list_files(
+                page_size=2,
+                search=f"pg_{token}",
+            )
+            assert len(page1.files) == 2, (
+                f"Expected 2 files on page 1, got {len(page1.files)}"
+            )
+            assert page1.after_key is not None, (
+                "Expected an after_key cursor with 3 matching files at page_size=2"
+            )
 
-            if page1.after_key is not None:
-                page2 = await client.documents.list_files(
-                    page_size=2,
-                    after_key=json.dumps(page1.after_key),
-                )
-                assert isinstance(page2.files, list)
-                # Pages must not overlap by filename
-                p1_names = {f.filename for f in page1.files}
-                p2_names = {f.filename for f in page2.files}
-                assert p1_names.isdisjoint(p2_names), (
-                    f"Pages overlap: {p1_names & p2_names}"
-                )
+            page2 = await client.documents.list_files(
+                page_size=2,
+                search=f"pg_{token}",
+                after_key=json.dumps(page1.after_key),
+            )
+            assert isinstance(page2.files, list)
+            assert len(page2.files) >= 1, (
+                f"Expected at least 1 file on page 2, got {len(page2.files)}"
+            )
+            # Pages must not overlap by filename
+            p1_names = {f.filename for f in page1.files}
+            p2_names = {f.filename for f in page2.files}
+            assert p1_names.isdisjoint(p2_names), (
+                f"Pages overlap: {p1_names & p2_names}"
+            )
         finally:
             for p in files:
                 await client.documents.delete(p.name)
 
     @pytest.mark.asyncio
     async def test_list_files_search_filters_by_filename(self, client, tmp_path: Path):
-        """search= parameter filters results to filenames matching the query."""
+        """search= filters by filename and is case-insensitive.
+
+        The needle file has an uppercase prefix (NEEDLE_); the search term is
+        lowercase ('needle_'). This directly exercises the case_insensitive fix
+        in _build_filter_query.
+        """
         token = uuid.uuid4().hex[:8]
-        needle = tmp_path / f"needle_{token}.md"
+        # Uppercase filename — search with lowercase to verify case-insensitive matching
+        needle = tmp_path / f"NEEDLE_{token}.md"
         haystack = tmp_path / f"haystack_{token}.md"
         needle.write_text("# Needle\n\nUnique needle content.\n")
         haystack.write_text("# Haystack\n\nUnrelated haystack content.\n")
@@ -109,10 +133,12 @@ class TestListFiles:
         await client.documents.ingest(file_path=str(haystack))
 
         try:
+            # Search with lowercase — must match the uppercase filename
             result = await client.documents.list_files(search=f"needle_{token}")
             filenames = [f.filename for f in result.files]
-            assert any(f"needle_{token}" in fn for fn in filenames), (
-                f"Expected needle_{token} in results, got: {filenames}"
+            assert any(f"NEEDLE_{token}" in fn for fn in filenames), (
+                f"Case-insensitive search for 'needle_{token}' should match "
+                f"'NEEDLE_{token}.md', got: {filenames}"
             )
             assert not any(f"haystack_{token}" in fn for fn in filenames), (
                 f"Haystack should not appear in needle search, got: {filenames}"
