@@ -11,8 +11,9 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { useBulkDeleteSessionsMutation } from "@/app/api/mutations/useBulkDeleteSessionsMutation";
 import { useDeleteSessionMutation } from "@/app/api/queries/useDeleteSessionMutation";
 import {
   DropdownMenu,
@@ -24,8 +25,10 @@ import { useIsCloudBrand } from "@/contexts/brand-context";
 import { type EndpointType, useChat } from "@/contexts/chat-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { usePermissions } from "@/hooks/use-permissions";
+import { useChatSelection } from "@/hooks/useChatSelection";
 import { FILES_REGEX } from "@/lib/constants";
 import { cn } from "@/lib/utils";
+import { BulkDeleteButton } from "./bulk-delete-button";
 import { DeleteSessionModal } from "./delete-session-modal";
 import { KnowledgeFilterList } from "./knowledge-filter-list";
 
@@ -68,12 +71,14 @@ interface NavigationProps {
   conversations?: ChatConversation[];
   isConversationsLoading?: boolean;
   onNewConversation?: () => void;
+  onSelectionChange?: (isSelecting: boolean) => void;
 }
 
 export function Navigation({
   conversations = [],
   isConversationsLoading = false,
   onNewConversation,
+  onSelectionChange,
 }: NavigationProps = {}) {
   const isCloudBrand = useIsCloudBrand();
   const pathname = usePathname();
@@ -91,6 +96,13 @@ export function Navigation({
     conversationLoaded,
     loading,
   } = useChat();
+  const selection = useChatSelection();
+
+  useEffect(() => {
+    onSelectionChange?.(selection.isSelecting);
+  }, [selection.isSelecting, onSelectionChange]);
+
+  const allIds = conversations.map((c) => c.response_id);
 
   const previousConversationCountRef = useRef(0);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -136,6 +148,39 @@ export function Navigation({
     },
     onError: (error) => {
       toast.error(`Failed to delete conversation: ${error.message}`);
+    },
+  });
+
+  const bulkDeleteMutation = useBulkDeleteSessionsMutation({
+    onSuccess: (res) => {
+      const deletedSet = new Set(res.deleted);
+
+      if (res.failed.length == 0) {
+        toast.success(`${res.deleted.length} conversations deleted`);
+      } else {
+        toast.success(
+          `${res.deleted.length} deleted, ${res.failed.length} couldn't be removed`,
+        );
+      }
+
+      // if we delete a conversation the user is currently on
+      if (currentConversationId && deletedSet.has(currentConversationId)) {
+        const remaining = conversations.filter(
+          (c) => !deletedSet.has(c.response_id),
+        );
+
+        if (remaining.length > 0) {
+          loadConversation(remaining[0]);
+        } else {
+          setCurrentConversationId(null);
+          startNewConversation();
+        }
+      }
+
+      selection.exit();
+    },
+    onError: (error) => {
+      toast.error(`Failed to delete conversations: ${error.message}`);
     },
   });
 
@@ -380,21 +425,37 @@ export function Navigation({
               <h3 className="text-xs font-medium text-muted-foreground">
                 Conversations
               </h3>
-              <button
-                type="button"
-                className="p-1 hover:bg-accent rounded"
-                data-testid="new-conversation-button"
-                onClick={handleNewConversation}
-                title="Start new conversation"
-                disabled={loading}
-              >
-                <Plus
-                  className={cn(
-                    "h-4 w-4",
-                    isCloudBrand ? "text-foreground" : "text-muted-foreground",
-                  )}
-                />
-              </button>
+              <div className="flex items-center gap-1">
+                {!selection.isSelecting && (
+                  <button
+                    type="button"
+                    className="p-1 hover:bg-accent rounded"
+                    data-testid="new-conversation-button"
+                    onClick={handleNewConversation}
+                    title="Start new conversation"
+                    disabled={loading}
+                  >
+                    <Plus
+                      className={cn(
+                        "h-4 w-4",
+                        isCloudBrand
+                          ? "text-foreground"
+                          : "text-muted-foreground",
+                      )}
+                    />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  data-testid="caht-select-toggle"
+                  className="text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded hover:bg-accent bg-accent/50"
+                  onClick={() =>
+                    selection.isSelecting ? selection.exit() : selection.enter()
+                  }
+                >
+                  {selection.isSelecting ? "Cancel" : "Select"}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -483,12 +544,30 @@ export function Navigation({
                           )
                         );
                       })()}
+                      {selection.isSelecting && (
+                        <div className="flex items-center justify-between p-2 text-sm">
+                          <label className="flex items-center gap-2 cursor-pointer font-bold">
+                            <input
+                              type="checkbox"
+                              data-testid="chat-select-all"
+                              checked={selection.isAllSelected(allIds)}
+                              onChange={() => selection.toggleAll(allIds)}
+                            />
+                            Select all
+                          </label>
+                          <span className="text-muted-foreground/50 text-xs">
+                            {conversations.length} chats
+                          </span>
+                        </div>
+                      )}
                       {conversations.map((conversation) => (
                         <button
                           key={conversation.response_id}
                           data-testid={`conversation-button-${conversation.title}`}
                           type="button"
-                          className={`w-full px-3 h-11 rounded-lg group relative text-left ${
+                          className={`w-full h-11 rounded-lg group relative text-left ${
+                            selection.isSelecting ? "px-2" : "px-3"
+                          } ${
                             loading || isConversationsLoading
                               ? "opacity-50 cursor-not-allowed"
                               : "hover:bg-accent cursor-pointer"
@@ -498,6 +577,10 @@ export function Navigation({
                               : ""
                           }`}
                           onClick={() => {
+                            if (selection.isSelecting) {
+                              selection.toggle(conversation.response_id);
+                              return;
+                            }
                             if (loading || isConversationsLoading) return;
                             loadConversation(conversation);
                             // Don't refresh - just loading an existing conversation
@@ -505,51 +588,67 @@ export function Navigation({
                           disabled={loading || isConversationsLoading}
                         >
                           <div className="flex items-center justify-between">
-                            <div className="flex-1 min-w-0">
+                            <div className="flex min-w-0">
+                              {selection.isSelecting && (
+                                <input
+                                  type="checkbox"
+                                  data-testid={`chat-select-${conversation.response_id}`}
+                                  checked={selection.selectedIds.has(
+                                    conversation.response_id,
+                                  )}
+                                  onChange={() =>
+                                    selection.toggle(conversation.response_id)
+                                  }
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="mr-2 flex-shrink-0"
+                                />
+                              )}
                               <div className="text-sm font-medium text-foreground truncate">
                                 {conversation.title}
                               </div>
                             </div>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger
-                                disabled={
-                                  loading ||
-                                  isConversationsLoading ||
-                                  deleteSessionMutation.isPending
-                                }
-                                asChild
-                              >
-                                <div
-                                  className="opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 data-[state=open]:text-foreground transition-opacity p-1 hover:bg-accent rounded text-muted-foreground hover:text-foreground ml-2 flex-shrink-0 cursor-pointer"
-                                  title="More options"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                  }}
+                            {!selection.isSelecting && (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger
+                                  disabled={
+                                    loading ||
+                                    isConversationsLoading ||
+                                    deleteSessionMutation.isPending
+                                  }
+                                  asChild
                                 >
-                                  <EllipsisVertical className="h-4 w-4" />
-                                </div>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent
-                                side="bottom"
-                                align="end"
-                                className="w-48"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <DropdownMenuItem
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleContextMenuAction(
-                                      "delete",
-                                      conversation,
-                                    );
-                                  }}
-                                  className="cursor-pointer text-destructive focus:text-destructive"
+                                  <div
+                                    className="opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 data-[state=open]:text-foreground transition-opacity p-1 hover:bg-accent rounded text-muted-foreground hover:text-foreground ml-2 flex-shrink-0 cursor-pointer"
+                                    title="More options"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                    }}
+                                  >
+                                    <EllipsisVertical className="h-4 w-4" />
+                                  </div>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent
+                                  side="bottom"
+                                  align="end"
+                                  className="w-48"
+                                  onClick={(e) => e.stopPropagation()}
                                 >
-                                  <Trash2 className="mr-2 h-4 w-4" />
-                                  Delete conversation
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
+                                  <DropdownMenuItem
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleContextMenuAction(
+                                        "delete",
+                                        conversation,
+                                      );
+                                    }}
+                                    className="cursor-pointer text-destructive focus:text-destructive"
+                                  >
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Delete conversation
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            )}
                           </div>
                         </button>
                       ))}
@@ -580,6 +679,26 @@ export function Navigation({
               </div>
             )}
           </div>
+          {selection.isSelecting && (
+            <div className="flex-shrink-0 py-3 border-t mx-3">
+              <div className="flex items-center justify-between pb-1 text-xs text-muted-foreground">
+                <span>{selection.count} selected</span>
+                <span>of {conversations.length}</span>
+              </div>
+              <div className="pt-1 pb-3 w-full">
+                <BulkDeleteButton
+                  count={selection.count}
+                  isDeleting={bulkDeleteMutation.isPending}
+                  onDelete={() =>
+                    bulkDeleteMutation.mutate({
+                      session_ids: [...selection.selectedIds],
+                      endpoint,
+                    })
+                  }
+                />
+              </div>
+            </div>
+          )}
         </div>
       )}
 
