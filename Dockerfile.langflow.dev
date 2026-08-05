@@ -51,10 +51,18 @@ WORKDIR /app
 RUN uv sync --frozen --no-dev --no-editable --extra postgresql
 RUN uv pip uninstall litellm ragstack-ai-knowledge-store
 
+COPY flows/component_index.json /app/component_index.json
+COPY custom_components/ /app/custom_components/
+
 # Expose ports
 EXPOSE 7860
 
 ENV LANGFLOW_SSRF_ALLOWED_HOSTS=localhost,127.0.0.1,host.docker.internal
+ENV LANGFLOW_LOG_TRACE_LOCALS=false
+ENV LANGFLOW_BLOCK_CODE_INTERPRETER_COMPONENTS=true
+ENV LANGFLOW_COMPONENTS_PATH=/app/custom_components
+ENV LANGFLOW_COMPONENTS_INDEX_PATH=/app/component_index.json
+ENV LANGFLOW_ALLOW_CUSTOM_COMPONENTS=false
 
 # Start the backend server
 CMD ["uv", "run", "langflow", "run", "--host", "0.0.0.0", "--port", "7860"]
