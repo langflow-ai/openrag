@@ -186,7 +186,10 @@ async def get_settings(
                             node_template = node.get("data", {}).get("node", {}).get("template", {})
 
                             # Split Text component
-                            if node.get("data", {}).get("node", {}).get("display_name") == "Split Text":
+                            if (
+                                node.get("data", {}).get("node", {}).get("display_name")
+                                == "Split Text"
+                            ):
                                 if node_template.get("chunk_size", {}).get("value"):
                                     ingestion_defaults["chunkSize"] = node_template["chunk_size"][
                                         "value"
