@@ -24,6 +24,7 @@ from session_manager import User
 # Auth-dependency introspection helpers
 # ---------------------------------------------------------------------------
 
+
 def _get_user_dependency(fn) -> object:
     """Return the raw dependency object wired to the `user` parameter of `fn`."""
     sig = inspect.signature(fn)
@@ -52,30 +53,25 @@ def _extract_permission(dep) -> str:
 # Route-level dependency tests
 # ---------------------------------------------------------------------------
 
-class TestAuthDependency:
 
+class TestAuthDependency:
     def test_list_files_uses_require_api_key_permission(self):
         """list_files must be gated by require_api_key_permission, not get_current_user."""
         dep = _get_user_dependency(list_files)
         perm = _extract_permission(dep)
-        assert perm == "knowledge:read:own", (
-            f"Expected 'knowledge:read:own', got '{perm}'"
-        )
+        assert perm == "knowledge:read:own", f"Expected 'knowledge:read:own', got '{perm}'"
 
     def test_search_files_uses_require_api_key_permission(self):
         """search_files must be gated by require_api_key_permission, not get_current_user."""
         dep = _get_user_dependency(search_files)
         perm = _extract_permission(dep)
-        assert perm == "knowledge:read:own", (
-            f"Expected 'knowledge:read:own', got '{perm}'"
-        )
+        assert perm == "knowledge:read:own", f"Expected 'knowledge:read:own', got '{perm}'"
 
     def test_list_files_and_search_files_use_same_permission(self):
         """Both handlers must require the same permission — no accidental divergence."""
         list_perm = _extract_permission(_get_user_dependency(list_files))
         search_perm = _extract_permission(_get_user_dependency(search_files))
         assert list_perm == search_perm
-
 
 
 def _make_user() -> User:
@@ -275,9 +271,6 @@ class TestListFiles:
     async def test_after_key_non_dict_returns_400(self):
         """A valid JSON non-dict after_key (e.g. a string) raises HTTPException 400."""
         import json
-        from fastapi import HTTPException
-
-
         from fastapi import HTTPException
 
         file_service = _make_file_service(_SAMPLE_RESPONSE)

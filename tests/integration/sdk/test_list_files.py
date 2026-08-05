@@ -86,29 +86,24 @@ class TestListFiles:
                 page_size=2,
                 search=f"pg_{token}",
             )
-            assert len(page1.files) == 2, (
-                f"Expected 2 files on page 1, got {len(page1.files)}"
-            )
+            assert len(page1.files) == 2, f"Expected 2 files on page 1, got {len(page1.files)}"
             assert page1.after_key is not None, (
                 "Expected an after_key cursor with 3 matching files at page_size=2"
             )
 
-if page1.after_key is not None:
-    page2 = await client.documents.list_files(
-        page_size=2,
-        search=f"pg_{token}",
-        after_key=json.dumps(page1.after_key),
-    )
-    assert isinstance(page2.files, list)
-    assert len(page2.files) >= 1, (
-        f"Expected at least 1 file on page 2, got {len(page2.files)}"
-    )
-    # Pages must not overlap by filename
-    p1_names = {f.filename for f in page1.files}
-    p2_names = {f.filename for f in page2.files}
-    assert p1_names.isdisjoint(p2_names), (
-        f"Pages overlap: {p1_names & p2_names}"
-    )
+            page2 = await client.documents.list_files(
+                page_size=2,
+                search=f"pg_{token}",
+                after_key=json.dumps(page1.after_key),
+            )
+            assert isinstance(page2.files, list)
+            assert len(page2.files) >= 1, (
+                f"Expected at least 1 file on page 2, got {len(page2.files)}"
+            )
+            # Pages must not overlap by filename
+            p1_names = {f.filename for f in page1.files}
+            p2_names = {f.filename for f in page2.files}
+            assert p1_names.isdisjoint(p2_names), f"Pages overlap: {p1_names & p2_names}"
         finally:
             for p in files:
                 await client.documents.delete(p.name)
