@@ -6,7 +6,7 @@ Auth and service injection are handled inside each handler via FastAPI
 Depends, not here. This module only wires URL → handler.
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, status
 
 from api import (
     auth,
@@ -16,8 +16,10 @@ from api import (
     documents,
     files,
     flows,
+    ingest_preview,
     knowledge_filter,
     langflow_files,
+    langflow_ingest,
     models,
     nudges,
     oidc,
@@ -30,18 +32,9 @@ from api import (
 )
 from api import keys as api_keys
 from api.health import health_check, opensearch_health_ready
-from connectors.aws_s3.api import (
-    s3_bucket_status,
-    s3_configure,
-    s3_defaults,
-    s3_list_buckets,
-)
-from connectors.ibm_cos.api import (
-    ibm_cos_bucket_status,
-    ibm_cos_configure,
-    ibm_cos_defaults,
-    ibm_cos_list_buckets,
-)
+from api.schemas.tasks import ErrorResponse, TaskRetryResponse
+from api.v2 import files as files_v2
+from connectors.registry import get_connector_classes
 
 
 def register_internal_routes(app: FastAPI):
@@ -70,6 +63,12 @@ def register_internal_routes(app: FastAPI):
         methods=["POST"],
         tags=["internal"],
     )
+    app.add_api_route(
+        "/internal/ingest/chunks",
+        langflow_ingest.ingest_langflow_chunks,
+        methods=["POST"],
+        tags=["internal"],
+    )
 
     # Upload endpoints
     app.add_api_route("/upload_context", upload.upload_context, methods=["POST"], tags=["internal"])
@@ -77,9 +76,42 @@ def register_internal_routes(app: FastAPI):
     app.add_api_route("/upload_options", upload.upload_options, methods=["GET"], tags=["internal"])
     app.add_api_route("/upload_bucket", upload.upload_bucket, methods=["POST"], tags=["internal"])
 
+    # Ingest preview endpoint (index proof for preview-mode ingests)
+    app.add_api_route(
+        "/ingest/preview/{task_id}/index-proof",
+        ingest_preview.get_index_proof,
+        methods=["GET"],
+        tags=["internal"],
+    )
+
     # Task endpoints
+    # Literal sub-paths must be registered before the parameterised /{task_id}
+    # so Starlette does not absorb "enhanced" as a task_id value.
+    app.add_api_route(
+        "/tasks/enhanced", tasks.all_tasks_enhanced, methods=["GET"], tags=["internal"]
+    )
     app.add_api_route("/tasks/{task_id}", tasks.task_status, methods=["GET"], tags=["internal"])
+    app.add_api_route(
+        "/tasks/{task_id}/enhanced",
+        tasks.task_status_enhanced,
+        methods=["GET"],
+        tags=["internal"],
+    )
     app.add_api_route("/tasks", tasks.all_tasks, methods=["GET"], tags=["internal"])
+    app.add_api_route(
+        "/tasks/{task_id}/retry",
+        tasks.retry_task,
+        methods=["POST"],
+        tags=["internal"],
+        status_code=status.HTTP_202_ACCEPTED,
+        response_model=TaskRetryResponse,
+        responses={
+            400: {"model": ErrorResponse},
+            404: {"model": ErrorResponse},
+            409: {"model": ErrorResponse},
+            500: {"model": ErrorResponse},
+        },
+    )
     app.add_api_route(
         "/tasks/{task_id}/cancel",
         tasks.cancel_task,
@@ -90,9 +122,13 @@ def register_internal_routes(app: FastAPI):
     # Search endpoint
     app.add_api_route("/search", search.search, methods=["POST"], tags=["internal"])
 
-    # File listing/search endpoints
+    # File listing/search endpoints (v1 — terms-agg, in-memory sort)
     app.add_api_route("/files", files.list_files, methods=["GET"], tags=["internal"])
     app.add_api_route("/files/search", files.search_files, methods=["GET"], tags=["internal"])
+
+    # File listing/search endpoints (v2 — composite-agg, cursor pagination)
+    app.add_api_route("/v2/files/search", files_v2.search_files, methods=["GET"], tags=["internal"])
+    app.add_api_route("/v2/files", files_v2.list_files, methods=["GET"], tags=["internal"])
 
     # Knowledge Filter endpoints
     app.add_api_route(
@@ -186,53 +222,46 @@ def register_internal_routes(app: FastAPI):
 
     # Connector endpoints
     app.add_api_route("/connectors", connectors.list_connectors, methods=["GET"], tags=["internal"])
-    # IBM COS-specific routes (registered before generic /{connector_type}/... to avoid shadowing)
     app.add_api_route(
-        "/connectors/ibm_cos/defaults",
-        ibm_cos_defaults,
+        "/connectors/workspace-policy",
+        connectors.get_connector_workspace_policy,
         methods=["GET"],
         tags=["internal"],
     )
     app.add_api_route(
-        "/connectors/ibm_cos/configure",
-        ibm_cos_configure,
-        methods=["POST"],
-        tags=["internal"],
-    )
-    app.add_api_route(
-        "/connectors/ibm_cos/{connection_id}/buckets",
-        ibm_cos_list_buckets,
+        "/connectors/user-access",
+        connectors.get_connector_user_access,
         methods=["GET"],
         tags=["internal"],
     )
     app.add_api_route(
-        "/connectors/ibm_cos/{connection_id}/bucket-status",
-        ibm_cos_bucket_status,
-        methods=["GET"],
-        tags=["internal"],
-    )
-    # AWS S3-specific routes (registered before generic /{connector_type}/... to avoid shadowing)
-    app.add_api_route(
-        "/connectors/aws_s3/defaults", s3_defaults, methods=["GET"], tags=["internal"]
-    )
-    app.add_api_route(
-        "/connectors/aws_s3/configure",
-        s3_configure,
-        methods=["POST"],
+        "/connectors/user-access",
+        connectors.update_connector_user_access,
+        methods=["PUT"],
         tags=["internal"],
     )
     app.add_api_route(
-        "/connectors/aws_s3/{connection_id}/buckets",
-        s3_list_buckets,
+        "/connectors/oauth-config",
+        connectors.get_connector_oauth_config,
         methods=["GET"],
         tags=["internal"],
     )
     app.add_api_route(
-        "/connectors/aws_s3/{connection_id}/bucket-status",
-        s3_bucket_status,
-        methods=["GET"],
+        "/connectors/oauth-config/{credential_key}",
+        connectors.update_connector_oauth_config,
+        methods=["PUT"],
         tags=["internal"],
     )
+    app.add_api_route(
+        "/connectors/oauth-config/{credential_key}",
+        connectors.delete_connector_oauth_config,
+        methods=["DELETE"],
+        tags=["internal"],
+    )
+    # Per-connector routes (defaults, configure, bucket listing, etc.) — registered before
+    # the generic /{connector_type}/... routes to avoid path shadowing.
+    for cls in get_connector_classes():
+        cls.register_routes(app)
     app.add_api_route(
         "/connectors/{connector_type}/sync",
         connectors.connector_sync,
@@ -240,8 +269,26 @@ def register_internal_routes(app: FastAPI):
         tags=["internal"],
     )
     app.add_api_route(
+        "/connectors/{connector_type}/check-duplicates",
+        connectors.connector_check_duplicates,
+        methods=["POST"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/connectors/{connector_type}/sync-preview",
+        connectors.connector_sync_preview,
+        methods=["POST"],
+        tags=["internal"],
+    )
+    app.add_api_route(
         "/connectors/sync-all",
         connectors.sync_all_connectors,
+        methods=["POST"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/connectors/sync-all-preview",
+        connectors.connectors_sync_all_preview,
         methods=["POST"],
         tags=["internal"],
     )
@@ -267,6 +314,12 @@ def register_internal_routes(app: FastAPI):
         "/connectors/{connector_type}/webhook",
         connectors.connector_webhook,
         methods=["POST", "GET"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/connectors/{connector_type}/{connection_id}/browse",
+        connectors.browse_connection_files,
+        methods=["GET"],
         tags=["internal"],
     )
 
@@ -378,6 +431,26 @@ def register_internal_routes(app: FastAPI):
         tags=["internal"],
     )
 
+    # Flow updates endpoints
+    app.add_api_route(
+        "/settings/flows/updates-available",
+        flows.get_flows_updates_endpoint,
+        methods=["GET"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/settings/flows/update",
+        flows.bulk_update_flows_endpoint,
+        methods=["POST"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/settings/flows/dismiss-update",
+        flows.dismiss_flows_update_endpoint,
+        methods=["POST"],
+        tags=["internal"],
+    )
+
     # Router upload ingest endpoint
     app.add_api_route(
         "/router/upload_ingest",
@@ -389,13 +462,11 @@ def register_internal_routes(app: FastAPI):
     # Docling service proxy
     app.add_api_route("/docling/health", docling.health, methods=["GET"], tags=["internal"])
 
-    # ===== Users / RBAC Endpoints (JWT auth) =====
+    # ===== Users Endpoints (JWT auth) =====
     from api import config as config_api
     from api import users as users_api
-    from api.admin import rbac as admin_rbac
 
     app.include_router(users_api.router)
-    app.include_router(admin_rbac.router)
     # Public — must work pre-auth so the onboarding wizard can render.
     app.include_router(config_api.router)
 

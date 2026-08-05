@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import os
 import uuid
-from typing import Optional
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,12 +34,21 @@ def _noauth_role() -> str:
     return os.getenv("OPENRAG_NOAUTH_ROLE", "admin")
 
 
-async def ensure_user_row(session: AsyncSession, user: User) -> UserRow:
+async def ensure_user_row(
+    session: AsyncSession,
+    user: User,
+    jwt_roles: list[str] | None = None,
+) -> UserRow:
     """Ensure the authenticated `user` exists in the SQL `users` table.
 
-    First-ever user gets the `admin` role. All subsequent users get the
-    role named in `OPENRAG_DEFAULT_ROLE` (default `user`). The synthetic
-    no-auth user is granted `OPENRAG_NOAUTH_ROLE` (default `admin`).
+    Role assignment:
+
+    * ``jwt_roles is None`` — env-default behavior (oss / RBAC-off). Every new
+      user gets ``OPENRAG_DEFAULT_ROLE`` (default ``user``); the synthetic
+      anonymous user gets ``OPENRAG_NOAUTH_ROLE`` (default ``admin``). There is
+      no first-user-becomes-admin bootstrap.
+    * ``jwt_roles is not None`` — JWT is authoritative (saas / on_prem). The
+      user's DB role assignments are reconciled against the list every call.
 
     Returns the persisted UserRow. Caller commits.
     """
@@ -58,6 +66,10 @@ async def ensure_user_row(session: AsyncSession, user: User) -> UserRow:
     existing = await user_repo.get_by_oauth(provider, subject)
     if existing:
         await user_repo.update_last_login(existing.id)
+        if jwt_roles is not None:
+            await _sync_jwt_roles(role_repo, audit_repo, existing.id, jwt_roles)
+        else:
+            await _assign_default_role_if_missing(session, role_repo, audit_repo, existing.id)
         return existing
 
     # Possible legacy row (oauth_provider='legacy', oauth_subject==user_id)
@@ -84,8 +96,11 @@ async def ensure_user_row(session: AsyncSession, user: User) -> UserRow:
             target_id=merged.id,
             audit_metadata={"provider": provider},
         )
-        # Legacy rows had no role assignment — give them the default.
-        await _assign_bootstrap_or_default(session, role_repo, audit_repo, merged.id)
+        if jwt_roles is not None:
+            await _sync_jwt_roles(role_repo, audit_repo, merged.id, jwt_roles)
+        else:
+            # Legacy rows had no role assignment — give them the default.
+            await _assign_default_role(session, role_repo, audit_repo, merged.id)
         return merged
 
     # Brand-new row.
@@ -108,20 +123,60 @@ async def ensure_user_row(session: AsyncSession, user: User) -> UserRow:
     except IntegrityError:
         # The collision could be on any of the three unique constraints:
         # (oauth_provider, oauth_subject), email_lookup_hash, or id (PK).
-        # Only the FIRST means we hit our own identity (same logical
-        # user via concurrent insert by a peer process); the latter two
-        # mean a *different* identity already owns that id or email.
+        # By the time the flush raises, the peer transaction that lost the
+        # race has committed, so the re-fetches below see its row.
         await session.rollback()
+
+        # Case 1: (oauth_provider, oauth_subject) race — a peer beat us to the
+        # INSERT for this exact identity.
         existing = await user_repo.get_by_oauth(provider, subject)
         if existing:
             await user_repo.update_last_login(existing.id)
             return existing
-        # PK collision across providers (different subject chose the
-        # same id). Retry with a UUID id; (provider, subject) and email
-        # differ from the conflicting row so this insert succeeds.
-        # email_lookup_hash collision is NOT recoverable here — that's
-        # a real conflict (two identities with the same email) and we
-        # let it propagate to the caller.
+
+        # Case 2: email_lookup_hash collision — some row already owns this
+        # email (email_lookup_hash is UNIQUE). Most common for the synthetic
+        # anonymous@localhost user in no-auth mode when two concurrent requests
+        # both observe an empty table.
+        by_email = await user_repo.get_by_email(user.email) if user.email else None
+        if by_email is not None:
+            if by_email.oauth_provider == provider and by_email.oauth_subject == subject:
+                # Concurrent insert of the *same* identity — safe to reuse.
+                await user_repo.update_last_login(by_email.id)
+                return by_email
+
+            # A *different* identity already owns this email (e.g. the same
+            # person signing in through a second provider). Re-inserting with
+            # the same email is futile — it would collide on email_lookup_hash
+            # again — so create this distinct principal *without* the email so
+            # the request never fails on a UNIQUE constraint. The email stays
+            # attached to the first identity that claimed it.
+            logger.warning(
+                "email already owned by another identity; creating user row without email",
+                provider=provider,
+                subject=subject,
+                existing_provider=by_email.oauth_provider,
+                existing_subject=by_email.oauth_subject,
+            )
+            row = UserRow(
+                id=str(uuid.uuid4()),
+                oauth_provider=provider,
+                oauth_subject=subject,
+                email=None,
+                display_name=user.name,
+                picture_url=user.picture,
+            )
+            await user_repo.add(row)
+            if jwt_roles is not None:
+                await _sync_jwt_roles(role_repo, audit_repo, row.id, jwt_roles)
+            else:
+                await _assign_default_role(session, role_repo, audit_repo, row.id)
+            return row
+
+        # Case 3: pure PK collision (id==subject already occupied by a
+        # different identity, no email conflict). Retry with a UUID;
+        # (provider, subject) differs from the conflicting row so the INSERT
+        # succeeds.
         new_id = str(uuid.uuid4())
         row = UserRow(
             id=new_id,
@@ -133,50 +188,91 @@ async def ensure_user_row(session: AsyncSession, user: User) -> UserRow:
         )
         await user_repo.add(row)
 
-    await _assign_bootstrap_or_default(session, role_repo, audit_repo, row.id)
+    if jwt_roles is not None:
+        await _sync_jwt_roles(role_repo, audit_repo, row.id, jwt_roles)
+    else:
+        await _assign_default_role(session, role_repo, audit_repo, row.id)
     return row
 
 
-async def _assign_bootstrap_or_default(
+async def sync_jwt_roles(session: AsyncSession, user_id: str, jwt_roles: list[str]) -> None:
+    """Public entry point for re-syncing a user's roles from JWT claims.
+
+    Used by the ensure-user cache fast path in ``dependencies.py``: when the
+    user row is already in the per-process cache we skip ``ensure_user_row``
+    but still need to reconcile roles each request. Caller commits.
+    """
+    role_repo = RoleRepo(session)
+    audit_repo = AuditRepo(session)
+    await _sync_jwt_roles(role_repo, audit_repo, user_id, jwt_roles)
+
+
+async def _sync_jwt_roles(
+    role_repo: RoleRepo,
+    audit_repo: AuditRepo,
+    user_id: str,
+    jwt_roles: list[str],
+) -> None:
+    """Reconcile ``user_roles`` for ``user_id`` against the JWT-derived list.
+
+    JWT is authoritative: roles missing from the JWT are revoked, new ones
+    are added. Role names not present in the ``roles`` table are skipped
+    (logged at WARNING). A single ``user.roles_synced`` audit row is written
+    when the role set changes.
+    """
+    current = await role_repo.list_user_roles(user_id)
+    current_by_name = {r.name: r for r in current}
+
+    desired: dict[str, str] = {}  # name -> role_id
+    for name in jwt_roles:
+        if name in desired:
+            continue
+        role = await role_repo.get_by_name(name)
+        if role is None:
+            logger.warning(
+                "JWT role not present in roles table; skipping",
+                role=name,
+                user_id=user_id,
+            )
+            continue
+        desired[name] = role.id
+
+    added: list[str] = []
+    removed: list[str] = []
+
+    for name, role_id in desired.items():
+        if name not in current_by_name:
+            await role_repo.assign_role(user_id, role_id)
+            added.append(name)
+
+    for name, role in current_by_name.items():
+        if name not in desired:
+            await role_repo.revoke_role(user_id, role.id)
+            removed.append(name)
+
+    if added or removed:
+        await audit_repo.write(
+            event="user.roles_synced",
+            actor_user_id=user_id,
+            target_type="user",
+            target_id=user_id,
+            audit_metadata={"added": added, "removed": removed, "source": "jwt"},
+        )
+
+
+async def _assign_default_role(
     session: AsyncSession,
     role_repo: RoleRepo,
     audit_repo: AuditRepo,
     user_id: str,
 ) -> None:
-    admin_count = await role_repo.count_admins()
-    if admin_count == 0:
-        admin_role = await role_repo.get_by_name("admin")
-        if admin_role is None:
-            logger.warning("admin role not seeded; skipping bootstrap assignment")
-            return
-        await role_repo.assign_role(user_id, admin_role.id)
-        await session.flush()
+    """Assign the configured default role to a freshly-created user.
 
-        # Race-detect: a concurrent caller may have *also* observed
-        # admin_count == 0 and granted admin to a different user. Both
-        # writes succeeded (no DB-level mutex). Resolve by lexicographic
-        # tie-break — only the smallest user_id keeps admin; others
-        # demote and fall through to the default-role path. This is
-        # portable across SQLite and Postgres without advisory locks.
-        admins = await role_repo.list_admin_user_ids()
-        if len(admins) > 1 and min(admins) != user_id:
-            await role_repo.revoke_role(user_id, admin_role.id)
-            await session.flush()
-            logger.warning(
-                "bootstrap race detected; demoted to default role",
-                user_id=user_id,
-                winner=min(admins),
-            )
-            # Fall through to the default-role assignment block below.
-        else:
-            await audit_repo.write(
-                event="user.bootstrap_admin",
-                actor_user_id=user_id,
-                target_type="user",
-                target_id=user_id,
-            )
-            return
-
+    Role assignment is owned outside the app: saas/on_prem deployments sync
+    roles from the JWT claim (see ``_sync_jwt_roles``), and everything else
+    falls back here. There is no first-user-becomes-admin bootstrap — an oss
+    operator who wants an admin sets ``OPENRAG_DEFAULT_ROLE=admin``.
+    """
     # No-auth synthetic user -> configurable role
     if user_id == "anonymous":
         target_name = _noauth_role()
@@ -201,6 +297,18 @@ async def _assign_bootstrap_or_default(
     )
 
 
+async def _assign_default_role_if_missing(
+    session: AsyncSession,
+    role_repo: RoleRepo,
+    audit_repo: AuditRepo,
+    user_id: str,
+) -> None:
+    roles = await role_repo.list_user_roles(user_id)
+    if roles:
+        return
+    await _assign_default_role(session, role_repo, audit_repo, user_id)
+
+
 async def get_effective_provider_keys(session: AsyncSession, user_id: str) -> dict:
     """Phase-4 helper. Returns a dict of provider -> overrides for this user.
 
@@ -211,6 +319,6 @@ async def get_effective_provider_keys(session: AsyncSession, user_id: str) -> di
     return {}
 
 
-async def get_effective_agent_config(session: AsyncSession, user_id: str) -> Optional[dict]:
+async def get_effective_agent_config(session: AsyncSession, user_id: str) -> dict | None:
     """Phase-4 helper. Returns the per-user agent config overlay (or None)."""
     return None

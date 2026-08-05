@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,7 +18,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
+
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -32,6 +33,19 @@ const (
 	userSecretFinalizer = "openr.ag/user-secret-protection"
 	specHashAnnotation  = "openr.ag/spec-hash"
 	immutableAnnotation = "openr.ag/immutable"
+
+	// backendIngestRouterPort is the port the optional ingestion-callback proxy
+	// router listens on inside the backend pod (OPENRAG_BACKEND_ROUTER_ENABLE).
+	backendIngestRouterPort int32 = 8100
+
+	// Condition types
+	conditionBackendReady = "BackendReady"
+
+	// Phase values
+	phaseReconciled = "Reconciled"
+	phaseScaledDown = "ScaledDown"
+	phaseRunning    = "Running"
+	phaseError      = "Error"
 )
 
 // OpenRAGReconciler reconciles an OpenRAG object.
@@ -67,30 +81,41 @@ func NewOpenRAGReconciler(c client.Client, s *runtime.Scheme) *OpenRAGReconciler
 func (r *OpenRAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
+	logger.Info("reconcile triggered", "name", req.Name, "namespace", req.Namespace)
+
 	instance := &openragv1alpha1.OpenRAG{}
 	if err := r.Get(ctx, req.NamespacedName, instance); err != nil {
 		if errors.IsNotFound(err) {
+			logger.Info("CR not found - already deleted or never existed", "name", req.Name)
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
 	}
 
+	logger.Info("CR retrieved", "name", instance.Name, "deletionTimestamp", instance.DeletionTimestamp)
+
 	if !instance.DeletionTimestamp.IsZero() {
+		logger.Info("CR has deletionTimestamp - calling handleDeletion", "name", instance.Name)
 		return ctrl.Result{}, r.handleDeletion(ctx, instance)
 	}
 
 	targetNS := targetNamespace(instance)
-	if targetNS != instance.Namespace {
-		if !controllerutil.ContainsFinalizer(instance, finalizer) {
-			controllerutil.AddFinalizer(instance, finalizer)
-			if err := r.Update(ctx, instance); err != nil {
-				return ctrl.Result{}, err
-			}
-			// Return immediately after adding finalizer to avoid duplicate reconciliation.
-			// The update will trigger a new reconcile that will do the actual work.
-			logger.Info("added finalizer, will reconcile again")
-			return ctrl.Result{}, nil
+	logger.Info("target namespace determined", "targetNS", targetNS, "crNamespace", instance.Namespace)
+
+	// Always add finalizer to CR so handleDeletion() can clean up .env secret finalizers
+	// .env secrets have envSecretFinalizer that must be removed before secrets can be deleted
+	if !controllerutil.ContainsFinalizer(instance, finalizer) {
+		logger.Info("adding finalizer to CR", "finalizer", finalizer, "reason", "needed to cleanup secret finalizers")
+		controllerutil.AddFinalizer(instance, finalizer)
+		if err := r.Update(ctx, instance); err != nil {
+			return ctrl.Result{}, err
 		}
+		// Return immediately after adding finalizer to avoid duplicate reconciliation.
+		// The update will trigger a new reconcile that will do the actual work.
+		logger.Info("added finalizer, will reconcile again")
+		return ctrl.Result{}, nil
+	} else {
+		logger.Info("CR already has finalizer", "finalizer", finalizer)
 	}
 
 	// Reconcile all resources
@@ -100,7 +125,9 @@ func (r *OpenRAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if err := r.reconcileServiceAccounts(ctx, instance, targetNS); err != nil {
 		return r.updateStatusError(ctx, instance, "service accounts", err)
 	}
-	if err := r.reconcileEnvSecrets(ctx, instance, targetNS); err != nil {
+	// Reconcile .env secrets and get their hashes to trigger pod restarts when secrets change
+	backendEnvHash, langflowEnvHash, err := r.reconcileEnvSecrets(ctx, instance, targetNS)
+	if err != nil {
 		return r.updateStatusError(ctx, instance, "env secrets", err)
 	}
 	if err := r.reconcilePVCs(ctx, instance, targetNS); err != nil {
@@ -109,7 +136,7 @@ func (r *OpenRAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if err := r.reconcileServices(ctx, instance, targetNS); err != nil {
 		return r.updateStatusError(ctx, instance, "services", err)
 	}
-	if err := r.reconcileDeployments(ctx, instance, targetNS); err != nil {
+	if err := r.reconcileDeployments(ctx, instance, targetNS, backendEnvHash, langflowEnvHash); err != nil {
 		return r.updateStatusError(ctx, instance, "deployments", err)
 	}
 	if err := r.reconcileDoclingComponents(ctx, instance, targetNS); err != nil {
@@ -123,356 +150,7 @@ func (r *OpenRAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	// Update status to success
 	logger.Info("reconciled OpenRAG instance", "name", instance.Name, "targetNamespace", targetNS)
-	return r.updateStatusSuccess(ctx, instance)
-}
-
-// updateStatusSuccess updates the status to indicate successful reconciliation
-func (r *OpenRAGReconciler) updateStatusSuccess(ctx context.Context, instance *openragv1alpha1.OpenRAG) (ctrl.Result, error) {
-	const successMsg = "All resources reconciled successfully"
-	if instance.Status.Phase == "Running" &&
-		instance.Status.Message == successMsg &&
-		instance.Status.ObservedGeneration == instance.Generation {
-		return ctrl.Result{}, nil
-	}
-
-	instance.Status.Phase = "Running"
-	instance.Status.Message = successMsg
-	instance.Status.ObservedGeneration = instance.Generation
-	if err := r.Status().Update(ctx, instance); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to update status: %w", err)
-	}
-
-	return ctrl.Result{}, nil
-}
-
-// updateStatusError updates the status to indicate reconciliation failure and schedules retry after 5 minutes
-func (r *OpenRAGReconciler) updateStatusError(ctx context.Context, instance *openragv1alpha1.OpenRAG, component string, reconcileErr error) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
-
-	instance.Status.Phase = "Error"
-	instance.Status.Message = fmt.Sprintf("Failed to reconcile %s: %s", component, reconcileErr.Error())
-	instance.Status.ObservedGeneration = instance.Generation
-
-	if err := r.Status().Update(ctx, instance); err != nil {
-		logger.Error(err, "failed to update status after error", "component", component, "reconcileError", reconcileErr.Error())
-		// Return original error even if status update fails
-		return ctrl.Result{}, reconcileErr
-	}
-
-	logger.Error(reconcileErr, "reconciliation failed, will retry in 5 minutes", "component", component)
-
-	// Requeue after 5 minutes on failure
-	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
-}
-
-func (r *OpenRAGReconciler) handleDeletion(ctx context.Context, o *openragv1alpha1.OpenRAG) error {
-	logger := log.FromContext(ctx)
-
-	if !controllerutil.ContainsFinalizer(o, finalizer) {
-		return nil
-	}
-
-	targetNS := targetNamespace(o)
-
-	// Remove finalizers from .env secrets and delete them
-	for _, envSecretName := range []string{resourceName("be-env"), resourceName("lf-env")} {
-		envSecret := &corev1.Secret{}
-		err := r.Get(ctx, client.ObjectKey{Name: envSecretName, Namespace: targetNS}, envSecret)
-		if err == nil {
-			// Remove finalizer first
-			if controllerutil.ContainsFinalizer(envSecret, envSecretFinalizer) {
-				controllerutil.RemoveFinalizer(envSecret, envSecretFinalizer)
-				if err := r.Update(ctx, envSecret); err != nil {
-					return fmt.Errorf("failed to remove finalizer from env secret %s: %w", envSecretName, err)
-				}
-			}
-			// Then delete the secret (necessary for cross-namespace or if owner ref not set)
-			if err := r.Delete(ctx, envSecret); err != nil && !errors.IsNotFound(err) {
-				return fmt.Errorf("failed to delete env secret %s: %w", envSecretName, err)
-			}
-		} else if !errors.IsNotFound(err) {
-			return fmt.Errorf("failed to get env secret %s: %w", envSecretName, err)
-		}
-	}
-
-	// Remove finalizers from user-provided secrets so they can be deleted
-	userSecretRefs := collectProtectedSecrets(o)
-	for _, secretRef := range userSecretRefs {
-		userSecret := &corev1.Secret{}
-		err := r.Get(ctx, client.ObjectKey{Name: secretRef.Name, Namespace: targetNS}, userSecret)
-		if err == nil {
-			if controllerutil.ContainsFinalizer(userSecret, userSecretFinalizer) {
-				controllerutil.RemoveFinalizer(userSecret, userSecretFinalizer)
-				if err := r.Update(ctx, userSecret); err != nil {
-					return fmt.Errorf("failed to remove finalizer from user secret %s: %w", secretRef.Name, err)
-				}
-				logger.Info("removed finalizer from user-supplied secret", "secret", secretRef.Name, "namespace", targetNS, "finalizer", userSecretFinalizer)
-			}
-		} else if !errors.IsNotFound(err) {
-			return fmt.Errorf("failed to get user secret %s: %w", secretRef.Name, err)
-		}
-	}
-
-	// Remove finalizers from auto-generated default secrets and delete them
-	// Use DNS-compliant names (lowercase, hyphens instead of underscores)
-	defaultSecretNames := []string{
-		o.Name + "-openrag-encryption-key-default",
-		o.Name + "-jwt-private-key-default",
-		o.Name + "-langflow-secret-key-default",
-	}
-	for _, secretName := range defaultSecretNames {
-		defaultSecret := &corev1.Secret{}
-		err := r.Get(ctx, client.ObjectKey{Name: secretName, Namespace: targetNS}, defaultSecret)
-		if err == nil {
-			// Remove finalizer first
-			if controllerutil.ContainsFinalizer(defaultSecret, userSecretFinalizer) {
-				controllerutil.RemoveFinalizer(defaultSecret, userSecretFinalizer)
-				if err := r.Update(ctx, defaultSecret); err != nil {
-					return fmt.Errorf("failed to remove finalizer from default secret %s: %w", secretName, err)
-				}
-			}
-			// Then delete the secret (necessary for cross-namespace or if owner ref not set)
-			if err := r.Delete(ctx, defaultSecret); err != nil && !errors.IsNotFound(err) {
-				return fmt.Errorf("failed to delete default secret %s: %w", secretName, err)
-			}
-		} else if !errors.IsNotFound(err) {
-			return fmt.Errorf("failed to get default secret %s: %w", secretName, err)
-		}
-	}
-
-	// If targetNamespace is different from CR namespace, we need to clean up resources
-	// We can only delete the namespace if WE created it (has managedByLabel)
-	// Otherwise, we must delete resources individually
-	if targetNS != o.Namespace {
-		ns := &corev1.Namespace{}
-		err := r.Get(ctx, client.ObjectKey{Name: targetNS}, ns)
-		if err != nil && !errors.IsNotFound(err) {
-			return err
-		}
-
-		// Check if we created this namespace
-		if err == nil && ns.Labels[managedByLabel] == o.Name {
-			// We created it, safe to delete the entire namespace
-			if err := r.Delete(ctx, ns); err != nil && !errors.IsNotFound(err) {
-				return err
-			}
-		} else {
-			// Namespace exists but we didn't create it (user-provided)
-			// Must delete resources individually to avoid orphans
-			if err := r.deleteResources(ctx, o, targetNS); err != nil {
-				return fmt.Errorf("failed to delete resources in namespace %s: %w", targetNS, err)
-			}
-		}
-	}
-	// If same namespace, owner references handle cleanup automatically
-
-	controllerutil.RemoveFinalizer(o, finalizer)
-	return r.Update(ctx, o)
-}
-
-// deleteResources explicitly deletes all resources created by the operator in the target namespace
-// This is necessary when deploying to an existing namespace that we don't manage
-func (r *OpenRAGReconciler) deleteResources(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) error {
-	logger := log.FromContext(ctx)
-
-	// Delete deployments
-	for _, name := range []string{resourceName("fe"), resourceName("be"), resourceName("lf")} {
-		deployment := &appsv1.Deployment{}
-		err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: targetNS}, deployment)
-		if err == nil {
-			if err := r.Delete(ctx, deployment); err != nil && !errors.IsNotFound(err) {
-				logger.Error(err, "failed to delete deployment", "name", name)
-			}
-		}
-	}
-
-	// Delete services
-	for _, name := range []string{getServiceName(o, "fe"), getServiceName(o, "be"), getServiceName(o, "lf")} {
-		service := &corev1.Service{}
-		err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: targetNS}, service)
-		if err == nil {
-			if err := r.Delete(ctx, service); err != nil && !errors.IsNotFound(err) {
-				logger.Error(err, "failed to delete service", "name", name)
-			}
-		}
-	}
-
-	// Delete service accounts (only if we created them)
-	for _, role := range []string{"fe", "be", "lf"} {
-		if shouldCreateServiceAccount(o, role) {
-			name := getServiceAccountName(o, role)
-			sa := &corev1.ServiceAccount{}
-			err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: targetNS}, sa)
-			if err == nil {
-				if err := r.Delete(ctx, sa); err != nil && !errors.IsNotFound(err) {
-					logger.Error(err, "failed to delete service account", "name", name)
-				}
-			}
-		}
-	}
-
-	// Delete PVCs based on pvcReclaimPolicy
-	// Default is "Retain" to preserve user data
-	policy := o.Spec.Langflow.PVCReclaimPolicy
-	if policy == "" {
-		policy = openragv1alpha1.PVCReclaimRetain // default if not specified
-	}
-
-	if policy == openragv1alpha1.PVCReclaimDelete {
-		pvc := &corev1.PersistentVolumeClaim{}
-		err := r.Get(ctx, client.ObjectKey{Name: resourceName("lf-data"), Namespace: targetNS}, pvc)
-		if err == nil {
-			logger.Info("Deleting Langflow PVC per pvcReclaimPolicy", "pvc", resourceName("lf-data"), "policy", policy)
-			if err := r.Delete(ctx, pvc); err != nil && !errors.IsNotFound(err) {
-				logger.Error(err, "failed to delete PVC", "name", resourceName("lf-data"))
-			}
-		}
-	} else {
-		logger.Info("Retaining Langflow PVC to preserve user data", "pvc", resourceName("lf-data"), "policy", policy)
-	}
-
-	// Delete network policy if enabled
-	if o.Spec.NetworkPolicy.Enabled {
-		np := &networkingv1.NetworkPolicy{}
-		err := r.Get(ctx, client.ObjectKey{Name: resourceName("lf-netpol"), Namespace: targetNS}, np)
-		if err == nil {
-			logger.Info("Deleting NetworkPolicy", "name", resourceName("lf-netpol"), "namespace", targetNS)
-			if err := r.Delete(ctx, np); err != nil && !errors.IsNotFound(err) {
-				logger.Error(err, "failed to delete network policy", "name", resourceName("lf-netpol"))
-			}
-		} else if !errors.IsNotFound(err) {
-			logger.Error(err, "failed to get network policy for deletion", "name", resourceName("lf-netpol"))
-		}
-	}
-
-	// Delete Docling components if enabled
-	if o.Spec.DoclingComponents != nil && o.Spec.DoclingComponents.Enabled {
-		// Delete Docling deployments (ds and dw)
-		for _, name := range []string{resourceName("ds"), resourceName("dw")} {
-			deployment := &appsv1.Deployment{}
-			err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: targetNS}, deployment)
-			if err == nil {
-				logger.Info("Deleting Docling deployment", "name", name)
-				if err := r.Delete(ctx, deployment); err != nil && !errors.IsNotFound(err) {
-					logger.Error(err, "failed to delete Docling deployment", "name", name)
-				}
-			}
-		}
-
-		// Delete Docling services
-		for _, name := range []string{getServiceName(o, "ds"), getServiceName(o, "dw")} {
-			service := &corev1.Service{}
-			err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: targetNS}, service)
-			if err == nil {
-				logger.Info("Deleting Docling service", "name", name)
-				if err := r.Delete(ctx, service); err != nil && !errors.IsNotFound(err) {
-					logger.Error(err, "failed to delete Docling service", "name", name)
-				}
-			}
-		}
-
-		// Delete Docling service accounts (only if we created them)
-		for _, role := range []string{"ds", "dw"} {
-			if shouldCreateServiceAccount(o, role) {
-				name := getServiceAccountName(o, role)
-				sa := &corev1.ServiceAccount{}
-				err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: targetNS}, sa)
-				if err == nil {
-					logger.Info("Deleting Docling service account", "name", name)
-					if err := r.Delete(ctx, sa); err != nil && !errors.IsNotFound(err) {
-						logger.Error(err, "failed to delete Docling service account", "name", name)
-					}
-				}
-			}
-		}
-
-		// Delete Docling HPAs if enabled
-		for _, name := range []string{resourceName("ds-hpa"), resourceName("dw-hpa")} {
-			hpa := &autoscalingv2.HorizontalPodAutoscaler{}
-			err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: targetNS}, hpa)
-			if err == nil {
-				logger.Info("Deleting Docling HPA", "name", name)
-				if err := r.Delete(ctx, hpa); err != nil && !errors.IsNotFound(err) {
-					logger.Error(err, "failed to delete Docling HPA", "name", name)
-				}
-			}
-		}
-
-		// Delete Docling PVCs if storage is enabled
-		// Note: Could add reclaim policy for Docling PVCs in future
-		for _, name := range []string{resourceName("ds-data"), resourceName("dw-data")} {
-			pvc := &corev1.PersistentVolumeClaim{}
-			err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: targetNS}, pvc)
-			if err == nil {
-				logger.Info("Deleting Docling PVC", "name", name)
-				if err := r.Delete(ctx, pvc); err != nil && !errors.IsNotFound(err) {
-					logger.Error(err, "failed to delete Docling PVC", "name", name)
-				}
-			}
-		}
-
-		// Delete Valkey resources if enabled
-		if o.Spec.DoclingComponents.Valkey != nil {
-			// Delete Valkey StatefulSet
-			sts := &appsv1.StatefulSet{}
-			err := r.Get(ctx, client.ObjectKey{Name: resourceName("valkey"), Namespace: targetNS}, sts)
-			if err == nil {
-				logger.Info("Deleting Valkey StatefulSet", "name", resourceName("valkey"))
-				if err := r.Delete(ctx, sts); err != nil && !errors.IsNotFound(err) {
-					logger.Error(err, "failed to delete Valkey StatefulSet")
-				}
-			}
-
-			// Delete Valkey services
-			for _, name := range []string{resourceName("valkey"), resourceName("valkey-headless")} {
-				service := &corev1.Service{}
-				err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: targetNS}, service)
-				if err == nil {
-					logger.Info("Deleting Valkey service", "name", name)
-					if err := r.Delete(ctx, service); err != nil && !errors.IsNotFound(err) {
-						logger.Error(err, "failed to delete Valkey service", "name", name)
-					}
-				}
-			}
-
-			// Delete Valkey ConfigMap
-			cm := &corev1.ConfigMap{}
-			err = r.Get(ctx, client.ObjectKey{Name: resourceName("valkey-config"), Namespace: targetNS}, cm)
-			if err == nil {
-				logger.Info("Deleting Valkey ConfigMap", "name", resourceName("valkey-config"))
-				if err := r.Delete(ctx, cm); err != nil && !errors.IsNotFound(err) {
-					logger.Error(err, "failed to delete Valkey ConfigMap")
-				}
-			}
-
-			// Delete Valkey Secret
-			secret := &corev1.Secret{}
-			err = r.Get(ctx, client.ObjectKey{Name: resourceName("valkey-auth"), Namespace: targetNS}, secret)
-			if err == nil {
-				logger.Info("Deleting Valkey Secret", "name", resourceName("valkey-auth"))
-				if err := r.Delete(ctx, secret); err != nil && !errors.IsNotFound(err) {
-					logger.Error(err, "failed to delete Valkey Secret")
-				}
-			}
-
-			// Delete Valkey PVCs (from StatefulSet)
-			// Note: StatefulSet PVCs have format: data-<statefulset-name>-<ordinal>
-			// We should delete these to avoid orphaned PVCs
-			for i := 0; i < 1; i++ { // Default replicas is 1
-				pvcName := fmt.Sprintf("data-%s-%d", resourceName("valkey"), i)
-				pvc := &corev1.PersistentVolumeClaim{}
-				err := r.Get(ctx, client.ObjectKey{Name: pvcName, Namespace: targetNS}, pvc)
-				if err == nil {
-					logger.Info("Deleting Valkey PVC", "name", pvcName)
-					if err := r.Delete(ctx, pvc); err != nil && !errors.IsNotFound(err) {
-						logger.Error(err, "failed to delete Valkey PVC", "name", pvcName)
-					}
-				}
-			}
-		}
-	}
-
-	return nil
+	return r.updateStatusSuccess(ctx, instance, targetNS)
 }
 
 func (r *OpenRAGReconciler) reconcileNamespace(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) error {
@@ -498,17 +176,29 @@ func (r *OpenRAGReconciler) reconcileNamespace(ctx context.Context, o *openragv1
 }
 
 func (r *OpenRAGReconciler) reconcileServiceAccounts(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) error {
-	for _, role := range []string{"fe", "be", "lf"} {
+	type saDef struct {
+		role string
+		spec openragv1alpha1.ComponentSpec
+	}
+	defs := []saDef{
+		{"fe", o.Spec.Frontend.ComponentSpec},
+		{"be", o.Spec.Backend.ComponentSpec},
+		{"lf", o.Spec.Langflow.ComponentSpec},
+	}
+
+	for _, d := range defs {
 		// Only create ServiceAccount if flag is true
-		if !shouldCreateServiceAccount(o, role) {
+		if !shouldCreateServiceAccount(o, d.role) {
 			continue
 		}
 
+		baseLabels := componentLabels(o.Name, d.role)
 		sa := &corev1.ServiceAccount{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      getServiceAccountName(o, role), // Use custom name if specified
-				Namespace: targetNS,
-				Labels:    componentLabels(o.Name, role),
+				Name:        getServiceAccountName(o, d.role),
+				Namespace:   targetNS,
+				Labels:      mergeServiceAccountLabels(o, d.spec, baseLabels),
+				Annotations: mergeServiceAccountAnnotations(o, d.spec),
 			},
 		}
 		if err := r.setOwnerOrLabel(o, sa, targetNS); err != nil {
@@ -528,7 +218,15 @@ func parseEnvValue(envContent, key string) string {
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, prefix) {
-			return strings.TrimPrefix(line, prefix)
+			val := strings.TrimPrefix(line, prefix)
+			// Unquote values written by BuildEnvFileContent (KEY="value" format).
+			// strconv.Unquote handles escape sequences in a single pass, avoiding
+			// ordering bugs (e.g. \\n must become \n, not a newline).
+			// Falls through for legacy unquoted values for backward compatibility.
+			if unquoted, err := strconv.Unquote(val); err == nil {
+				return unquoted
+			}
+			return val
 		}
 	}
 	return ""
@@ -537,64 +235,80 @@ func parseEnvValue(envContent, key string) string {
 // reconcileEnvSecrets creates / updates the backend and Langflow .env Secrets
 // from CR fields and fixed runtime defaults.
 // All sensitive values (whether user-provided or generated) are consolidated into .env files.
-func (r *OpenRAGReconciler) reconcileEnvSecrets(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) error {
+// Returns SHA256 hashes of the backend and langflow .env content to use as pod annotations.
+func (r *OpenRAGReconciler) reconcileEnvSecrets(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) (backendHash, langflowHash string, err error) {
 	// Build backend .env content with all secrets consolidated
 	backendEnvContent, err := r.buildBackendEnv(ctx, o, targetNS)
 	if err != nil {
-		return fmt.Errorf("failed to build backend env: %w", err)
+		return "", "", fmt.Errorf("failed to build backend env: %w", err)
 	}
 
 	// Build langflow .env content with all secrets consolidated
 	langflowEnvContent, err := r.buildLangflowEnv(ctx, o, targetNS)
 	if err != nil {
-		return fmt.Errorf("failed to build langflow env: %w", err)
+		return "", "", fmt.Errorf("failed to build langflow env: %w", err)
 	}
+
+	// Calculate SHA256 hashes of .env content for pod restart triggering
+	backendHash = calculateHash(backendEnvContent)
+	langflowHash = calculateHash(langflowEnvContent)
 
 	type envDef struct {
 		name    string
 		content string
+		spec    openragv1alpha1.ComponentSpec
 	}
 	defs := []envDef{
-		{resourceName("be-env"), backendEnvContent},
-		{resourceName("lf-env"), langflowEnvContent},
+		{instanceResourceName(o, "be-env"), backendEnvContent, o.Spec.Backend.ComponentSpec},
+		{instanceResourceName(o, "lf-env"), langflowEnvContent, o.Spec.Langflow.ComponentSpec},
 	}
 	for _, d := range defs {
+		baseLabels := map[string]string{"app.kubernetes.io/managed-by": "openrag-operator"}
+
+		// Merge custom labels and annotations
+		mergedLabels := mergeSecretLabels(o, d.spec, baseLabels)
+		mergedAnnotations := mergeSecretAnnotations(o, d.spec)
+		// Ensure immutable annotation is always present
+		mergedAnnotations[immutableAnnotation] = "true"
+
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      d.name,
-				Namespace: targetNS,
-				Labels:    map[string]string{"app.kubernetes.io/managed-by": "openrag-operator"},
-				Annotations: map[string]string{
-					immutableAnnotation: "true",
-				},
-				Finalizers: []string{envSecretFinalizer},
+				Name:        d.name,
+				Namespace:   targetNS,
+				Labels:      mergedLabels,
+				Annotations: mergedAnnotations,
+				Finalizers:  []string{envSecretFinalizer},
 			},
 			StringData: map[string]string{".env": d.content},
 		}
 		if err := r.setOwnerOrLabel(o, secret, targetNS); err != nil {
-			return err
+			return "", "", err
 		}
 		if err := r.createOrUpdate(ctx, secret); err != nil {
-			return err
+			return "", "", err
 		}
 	}
-	return nil
+	return backendHash, langflowHash, nil
 }
 
 func (r *OpenRAGReconciler) buildBackendEnv(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) (string, error) {
 	// Start with defaults, operator env, and CR env (three-level priority)
-	envVars := r.EnvVarManager.GetBackendEnvVars(o.Spec.Backend.Env)
+	// This now resolves ALL env vars (including secrets/configmaps) for inclusion in .env file
+	envVars, err := r.EnvVarManager.GetBackendEnvVars(ctx, r.Client, targetNS, o.Spec.Backend.Env)
+	if err != nil {
+		return "", fmt.Errorf("failed to merge backend env vars: %w", err)
+	}
 
 	// Get or generate encryption key (AES-256)
 	// Priority: 1) User-provided secret in CR, 2) Existing value in .env, 3) Generate new
-	encryptionKey, err := r.getOrGenerateSecret(ctx, o, targetNS, o.Spec.Backend.EncryptionKeySecret, "OPENRAG_ENCRYPTION_KEY", resourceName("be-env"), GenerateAESKeyString32)
+	encryptionKey, err := r.getOrGenerateSecret(ctx, o, targetNS, o.Spec.Backend.EncryptionKeySecret, "OPENRAG_ENCRYPTION_KEY", instanceResourceName(o, "be-env"), GenerateAESKeyString32)
 	if err != nil {
 		return "", fmt.Errorf("failed to get encryption key: %w", err)
 	}
 	envVars["OPENRAG_ENCRYPTION_KEY"] = encryptionKey
 
 	// Get or generate JWT signing key (base64 secret)
-	jwtSigningKey, err := r.getOrGenerateSecret(ctx, o, targetNS, o.Spec.Backend.JWTSigningKeySecret, "JWT_SIGNING_KEY", resourceName("be-env"), generateBase64SecretKey)
+	jwtSigningKey, err := r.getOrGenerateSecret(ctx, o, targetNS, o.Spec.Backend.JWTSigningKeySecret, "JWT_SIGNING_KEY", instanceResourceName(o, "be-env"), generateBase64SecretKey)
 	if err != nil {
 		return "", fmt.Errorf("failed to get JWT signing key: %w", err)
 	}
@@ -602,6 +316,7 @@ func (r *OpenRAGReconciler) buildBackendEnv(ctx context.Context, o *openragv1alp
 
 	// Operator-derived values (always set)
 	envVars["LANGFLOW_URL"] = "http://" + getServiceName(o, "lf") + ":7860"
+	envVars["OPENRAG_BACKEND_INTERNAL_URL"] = "http://" + getServiceName(o, "be") + ":8000"
 
 	// Override with CR-specific configuration
 	if o.Spec.TenantID != "" {
@@ -760,6 +475,9 @@ func (r *OpenRAGReconciler) buildBackendEnv(ctx context.Context, o *openragv1alp
 			port = 5001
 		}
 		envVars["DOCLING_SERVE_URL"] = fmt.Sprintf("%s://%s:%d", scheme, d.Host, port)
+		if d.VerifySsl != nil {
+			envVars["DOCLING_SERVE_VERIFY_SSL"] = strconv.FormatBool(*d.VerifySsl)
+		}
 	}
 
 	// Langflow custom components
@@ -778,10 +496,14 @@ func (r *OpenRAGReconciler) buildBackendEnv(ctx context.Context, o *openragv1alp
 
 func (r *OpenRAGReconciler) buildLangflowEnv(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) (string, error) {
 	// Start with defaults, operator env, and CR env (three-level priority)
-	envVars := r.EnvVarManager.GetLangflowEnvVars(o.Spec.Langflow.Env)
+	// This now resolves ALL env vars (including secrets/configmaps) for inclusion in .env file
+	envVars, err := r.EnvVarManager.GetLangflowEnvVars(ctx, r.Client, targetNS, o.Spec.Langflow.Env)
+	if err != nil {
+		return "", fmt.Errorf("failed to merge langflow env vars: %w", err)
+	}
 
 	// Get or generate Langflow secret key (Fernet key - base64, shared with backend)
-	langflowSecretKey, err := r.getOrGenerateSecret(ctx, o, targetNS, o.Spec.Langflow.SecretKeySecret, "LANGFLOW_SECRET_KEY", resourceName("lf-env"), generateBase64SecretKey)
+	langflowSecretKey, err := r.getOrGenerateSecret(ctx, o, targetNS, o.Spec.Langflow.SecretKeySecret, "LANGFLOW_SECRET_KEY", instanceResourceName(o, "lf-env"), generateBase64SecretKey)
 	if err != nil {
 		return "", fmt.Errorf("failed to get langflow secret key: %w", err)
 	}
@@ -841,7 +563,16 @@ func (r *OpenRAGReconciler) buildLangflowEnv(ctx context.Context, o *openragv1al
 	}
 
 	// Docling configuration from CR spec
-	if d := o.Spec.Docling; d != nil {
+	// Priority: DoclingComponents (operator-managed) > Docling (external)
+	if dc := o.Spec.DoclingComponents; dc != nil && dc.Enabled && dc.Serve != nil {
+		// Use operator-managed docling-serve
+		port := int32(5001)
+		if dc.Serve.Port > 0 {
+			port = dc.Serve.Port
+		}
+		envVars["DOCLING_SERVE_URL"] = fmt.Sprintf("http://%s:%d", getServiceName(o, "ds"), port)
+	} else if d := o.Spec.Docling; d != nil {
+		// Use external docling service
 		scheme := d.Scheme
 		if scheme == "" {
 			scheme = "http"
@@ -851,6 +582,9 @@ func (r *OpenRAGReconciler) buildLangflowEnv(ctx context.Context, o *openragv1al
 			port = 5001
 		}
 		envVars["DOCLING_SERVE_URL"] = fmt.Sprintf("%s://%s:%d", scheme, d.Host, port)
+		if d.VerifySsl != nil {
+			envVars["DOCLING_SERVE_VERIFY_SSL"] = strconv.FormatBool(*d.VerifySsl)
+		}
 	}
 
 	// Langflow custom components
@@ -863,6 +597,10 @@ func (r *OpenRAGReconciler) buildLangflowEnv(ctx context.Context, o *openragv1al
 		envVars["LANGFLOW_ALLOW_CUSTOM_COMPONENTS"] = fmt.Sprintf("%t", *o.Spec.Langflow.AllowCustomComponents)
 	}
 
+	// Ensure all variables in LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT exist with at least "None" value
+	// This is critical because the list can be customized via CR spec, operator env vars, or defaults
+	r.EnvVarManager.EnsureRequiredEnvVars(envVars)
+
 	// Convert map to .env file format
 	return r.EnvVarManager.BuildEnvFileContent(envVars), nil
 }
@@ -873,8 +611,8 @@ func (r *OpenRAGReconciler) reconcilePVCs(ctx context.Context, o *openragv1alpha
 		storage *openragv1alpha1.PersistenceSpec
 	}
 	defs := []pvcDef{
-		{resourceName("lf-data"), o.Spec.Langflow.Storage},
-		{resourceName("be-data"), o.Spec.Backend.Storage},
+		{instanceResourceName(o, "lf-data"), o.Spec.Langflow.Storage},
+		{instanceResourceName(o, "be-data"), o.Spec.Backend.Storage},
 	}
 	for _, d := range defs {
 		if d.storage == nil || !d.storage.Enabled || d.storage.ExistingClaim != "" {
@@ -886,11 +624,15 @@ func (r *OpenRAGReconciler) reconcilePVCs(ctx context.Context, o *openragv1alpha
 			accessModes = []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}
 		}
 
+		// Base labels that cannot be overridden
+		baseLabels := map[string]string{"app.kubernetes.io/managed-by": "openrag-operator"}
+
 		pvc := &corev1.PersistentVolumeClaim{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      d.name,
-				Namespace: targetNS,
-				Labels:    map[string]string{"app.kubernetes.io/managed-by": "openrag-operator"},
+				Name:        d.name,
+				Namespace:   targetNS,
+				Labels:      mergePVCLabels(o, d.storage, baseLabels),
+				Annotations: mergePVCAnnotations(o, d.storage),
 			},
 			Spec: corev1.PersistentVolumeClaimSpec{
 				AccessModes:      accessModes,
@@ -924,11 +666,12 @@ func (r *OpenRAGReconciler) reconcileServices(ctx context.Context, o *openragv1a
 	type svcDef struct {
 		role string
 		port int32
+		spec openragv1alpha1.ComponentSpec
 	}
 	defs := []svcDef{
-		{"fe", 3000},
-		{"be", 8000},
-		{"lf", 7860},
+		{"fe", 3000, o.Spec.Frontend.ComponentSpec},
+		{"be", 8000, o.Spec.Backend.ComponentSpec},
+		{"lf", 7860, o.Spec.Langflow.ComponentSpec},
 	}
 	for _, d := range defs {
 		// Only create Service if flag is true
@@ -936,18 +679,30 @@ func (r *OpenRAGReconciler) reconcileServices(ctx context.Context, o *openragv1a
 			continue
 		}
 
+		svcPorts := []corev1.ServicePort{
+			{Name: "http", Port: d.port, Protocol: corev1.ProtocolTCP},
+		}
+		// The backend optionally serves the ingestion-callback proxy router on
+		// its own port (OPENRAG_BACKEND_ROUTER_ENABLE); expose it so Langflow
+		// can reach only that endpoint instead of the full backend API.
+		if d.role == "be" {
+			svcPorts = append(svcPorts, corev1.ServicePort{
+				Name: "ingest-router", Port: backendIngestRouterPort, Protocol: corev1.ProtocolTCP,
+			})
+		}
+
+		baseLabels := componentLabels(o.Name, d.role)
 		svc := &corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      getServiceName(o, d.role), // Use custom name if specified
-				Namespace: targetNS,
-				Labels:    componentLabels(o.Name, d.role),
+				Name:        getServiceName(o, d.role),
+				Namespace:   targetNS,
+				Labels:      mergeServiceLabels(o, d.spec, baseLabels),
+				Annotations: mergeServiceAnnotations(o, d.spec),
 			},
 			Spec: corev1.ServiceSpec{
 				Type:     corev1.ServiceTypeClusterIP,
 				Selector: componentLabels(o.Name, d.role),
-				Ports: []corev1.ServicePort{
-					{Name: "http", Port: d.port, Protocol: corev1.ProtocolTCP},
-				},
+				Ports:    svcPorts,
 			},
 		}
 		if err := r.setOwnerOrLabel(o, svc, targetNS); err != nil {
@@ -960,11 +715,11 @@ func (r *OpenRAGReconciler) reconcileServices(ctx context.Context, o *openragv1a
 	return nil
 }
 
-func (r *OpenRAGReconciler) reconcileDeployments(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) error {
+func (r *OpenRAGReconciler) reconcileDeployments(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string, backendEnvHash, langflowEnvHash string) error {
 	deploys := []client.Object{
 		r.frontendDeployment(o, targetNS),
-		r.backendDeployment(o, targetNS),
-		r.langflowDeployment(o, targetNS),
+		r.backendDeployment(o, targetNS, backendEnvHash),
+		r.langflowDeployment(o, targetNS, langflowEnvHash),
 	}
 	for _, d := range deploys {
 		if err := r.setOwnerOrLabel(o, d, targetNS); err != nil {
@@ -987,7 +742,7 @@ func (r *OpenRAGReconciler) frontendDeployment(o *openragv1alpha1.OpenRAG, targe
 	podAnnotations := mergePodAnnotations(spec.PodAnnotations)
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        resourceName("fe"),
+			Name:        instanceResourceName(o, "fe"),
 			Namespace:   targetNS,
 			Labels:      deploymentLabels,
 			Annotations: deploymentAnnotations,
@@ -1029,7 +784,7 @@ func (r *OpenRAGReconciler) frontendDeployment(o *openragv1alpha1.OpenRAG, targe
 	}
 }
 
-func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, targetNS string) *appsv1.Deployment {
+func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, targetNS string, envHash string) *appsv1.Deployment {
 	spec := o.Spec.Backend
 	replicas := replicasOrDefault(spec.Replicas)
 
@@ -1041,7 +796,7 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, target
 		{
 			Name: "backend-env",
 			VolumeSource: corev1.VolumeSource{
-				Secret: &corev1.SecretVolumeSource{SecretName: resourceName("be-env")},
+				Secret: &corev1.SecretVolumeSource{SecretName: instanceResourceName(o, "be-env")},
 			},
 		},
 	}
@@ -1051,7 +806,7 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, target
 	}
 
 	if spec.Storage != nil && spec.Storage.Enabled {
-		pvcName := resourceName("be-data")
+		pvcName := instanceResourceName(o, "be-data")
 		if spec.Storage.ExistingClaim != "" {
 			pvcName = spec.Storage.ExistingClaim
 		}
@@ -1064,18 +819,21 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, target
 		mounts = append(mounts, corev1.VolumeMount{Name: "backend-data", MountPath: "/app/backend-data"})
 	}
 
-	// All sensitive values are now consolidated in the .env file
-	// Only use additional env vars from the CR spec
-	envVars := spec.Env
+	// ALL env vars (including spec.Env) are now in the .env file
+	// Container Env should be empty to prevent values from showing in 'env' command
+	// The .env file is mounted and sourced by the application
+	var envVars []corev1.EnvVar // Empty - all vars are in .env file
 
 	baseLabels := componentLabels(o.Name, "be")
 	deploymentLabels := mergeDeploymentLabels(baseLabels, spec.Labels)
 	deploymentAnnotations := mergeDeploymentAnnotations(spec.Annotations)
 	podLabels := mergePodLabels(baseLabels, spec.PodLabels)
 	podAnnotations := mergePodAnnotations(spec.PodAnnotations)
+	// Add .env secret hash to trigger pod restart when secret changes
+	podAnnotations["openr.ag/backend-env-hash"] = envHash
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        resourceName("be"),
+			Name:        instanceResourceName(o, "be"),
 			Namespace:   targetNS,
 			Labels:      deploymentLabels,
 			Annotations: deploymentAnnotations,
@@ -1102,13 +860,13 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, target
 							Name:            "backend",
 							Image:           spec.Image,
 							ImagePullPolicy: spec.ImagePullPolicy,
-							Ports:           []corev1.ContainerPort{{Name: "http", ContainerPort: 8000}},
+							Ports:           []corev1.ContainerPort{{Name: "http", ContainerPort: 8000}, {Name: "ingest-router", ContainerPort: backendIngestRouterPort}},
 							Env:             envVars,
 							Resources:       spec.Resources,
 							SecurityContext: spec.SecurityContext,
 							VolumeMounts:    mounts,
-							LivenessProbe:   httpProbe("/health", 8000, 45, 30),
-							ReadinessProbe:  httpProbe("/health", 8000, 45, 10),
+							LivenessProbe:   httpProbe("/health", 8000, 125, 30),
+							ReadinessProbe:  httpProbe("/health", 8000, 125, 15),
 						},
 					},
 				},
@@ -1117,7 +875,7 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, target
 	}
 }
 
-func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targetNS string) *appsv1.Deployment {
+func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targetNS string, envHash string) *appsv1.Deployment {
 	spec := o.Spec.Langflow
 	replicas := replicasOrDefault(spec.Replicas)
 
@@ -1129,7 +887,7 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 		{
 			Name: "langflow-env",
 			VolumeSource: corev1.VolumeSource{
-				Secret: &corev1.SecretVolumeSource{SecretName: resourceName("lf-env")},
+				Secret: &corev1.SecretVolumeSource{SecretName: instanceResourceName(o, "lf-env")},
 			},
 		},
 	}
@@ -1139,7 +897,7 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 	}
 
 	if spec.Storage != nil && spec.Storage.Enabled {
-		pvcName := resourceName("lf-data")
+		pvcName := instanceResourceName(o, "lf-data")
 		if spec.Storage.ExistingClaim != "" {
 			pvcName = spec.Storage.ExistingClaim
 		}
@@ -1152,6 +910,8 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 		mounts = append(mounts, corev1.VolumeMount{Name: "langflow-data", MountPath: "/app/data"})
 	}
 
+	// Only create initContainer if FlowsRef is specified
+	// Use nil (not empty slice) to ensure initContainers are removed when FlowsRef is cleared
 	var initContainers []corev1.Container
 	if spec.FlowsRef != "" {
 		volumes = append(volumes, corev1.Volume{
@@ -1177,20 +937,26 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 				},
 			},
 		}
+	} else {
+		// Explicitly set to nil when FlowsRef is empty to ensure initContainers are removed
+		initContainers = nil
 	}
 
-	// All sensitive values are now consolidated in the .env file
-	// Only use additional env vars from the CR spec
-	envVars := spec.Env
+	// ALL env vars (including spec.Env) are now in the .env file
+	// Container Env should be empty to prevent values from showing in 'env' command
+	// The .env file is mounted and sourced by the application
+	var envVars []corev1.EnvVar // Empty - all vars are in .env file
 
 	baseLabels := componentLabels(o.Name, "lf")
 	deploymentLabels := mergeDeploymentLabels(baseLabels, spec.Labels)
 	deploymentAnnotations := mergeDeploymentAnnotations(spec.Annotations)
 	podLabels := mergePodLabels(baseLabels, spec.PodLabels)
 	podAnnotations := mergePodAnnotations(spec.PodAnnotations)
+	// Add .env secret hash to trigger pod restart when secret changes
+	podAnnotations["openr.ag/langflow-env-hash"] = envHash
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        resourceName("lf"),
+			Name:        instanceResourceName(o, "lf"),
 			Namespace:   targetNS,
 			Labels:      deploymentLabels,
 			Annotations: deploymentAnnotations,
@@ -1218,15 +984,15 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 							Name:            "langflow",
 							Image:           spec.Image,
 							ImagePullPolicy: spec.ImagePullPolicy,
-							Args:            []string{"run", "--env-file", "/app/.env"},
-							Command:         []string{"langflow"},
+							Command:         commandOrDefault(spec.Command, []string{"langflow"}),
+							Args:            argsOrDefault(spec.Args, []string{"run", "--env-file", "/app/.env"}),
 							Ports:           []corev1.ContainerPort{{Name: "http", ContainerPort: 7860}},
 							Env:             envVars,
 							Resources:       spec.Resources,
 							SecurityContext: spec.SecurityContext,
 							VolumeMounts:    mounts,
-							LivenessProbe:   httpProbe("/health", 7860, 90, 30),
-							ReadinessProbe:  httpProbe("/health", 7860, 90, 30),
+							LivenessProbe:   httpProbe("/health", 7860, 110, 30),
+							ReadinessProbe:  httpProbe("/health", 7860, 110, 30),
 						},
 					},
 				},
@@ -1252,11 +1018,13 @@ func (r *OpenRAGReconciler) reconcileDoclingComponents(ctx context.Context, o *o
 
 	// Reconcile service accounts for docling components
 	if dc.Serve != nil && shouldCreateServiceAccount(o, "ds") {
+		baseLabels := componentLabels(o.Name, "ds")
 		sa := &corev1.ServiceAccount{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      getServiceAccountName(o, "ds"),
-				Namespace: targetNS,
-				Labels:    componentLabels(o.Name, "ds"),
+				Name:        getServiceAccountName(o, "ds"),
+				Namespace:   targetNS,
+				Labels:      mergeServiceAccountLabels(o, dc.Serve.ComponentSpec, baseLabels),
+				Annotations: mergeServiceAccountAnnotations(o, dc.Serve.ComponentSpec),
 			},
 		}
 		if err := r.setOwnerOrLabel(o, sa, targetNS); err != nil {
@@ -1268,11 +1036,13 @@ func (r *OpenRAGReconciler) reconcileDoclingComponents(ctx context.Context, o *o
 	}
 
 	if dc.Worker != nil && shouldCreateServiceAccount(o, "dw") {
+		baseLabels := componentLabels(o.Name, "dw")
 		sa := &corev1.ServiceAccount{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      getServiceAccountName(o, "dw"),
-				Namespace: targetNS,
-				Labels:    componentLabels(o.Name, "dw"),
+				Name:        getServiceAccountName(o, "dw"),
+				Namespace:   targetNS,
+				Labels:      mergeServiceAccountLabels(o, dc.Worker.ComponentSpec, baseLabels),
+				Annotations: mergeServiceAccountAnnotations(o, dc.Worker.ComponentSpec),
 			},
 		}
 		if err := r.setOwnerOrLabel(o, sa, targetNS); err != nil {
@@ -1285,7 +1055,7 @@ func (r *OpenRAGReconciler) reconcileDoclingComponents(ctx context.Context, o *o
 
 	// Reconcile PVCs for docling components
 	if dc.Serve != nil && dc.Serve.Storage != nil && dc.Serve.Storage.Enabled {
-		pvcName := resourceName("ds-data")
+		pvcName := instanceResourceName(o, "ds-data")
 		if dc.Serve.Storage.ExistingClaim == "" {
 			// Default to ReadWriteOnce if not specified
 			accessModes := dc.Serve.Storage.AccessModes
@@ -1293,11 +1063,13 @@ func (r *OpenRAGReconciler) reconcileDoclingComponents(ctx context.Context, o *o
 				accessModes = []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}
 			}
 
+			baseLabels := componentLabels(o.Name, "ds")
 			pvc := &corev1.PersistentVolumeClaim{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      pvcName,
-					Namespace: targetNS,
-					Labels:    componentLabels(o.Name, "ds"),
+					Name:        pvcName,
+					Namespace:   targetNS,
+					Labels:      mergePVCLabels(o, dc.Serve.Storage, baseLabels),
+					Annotations: mergePVCAnnotations(o, dc.Serve.Storage),
 				},
 				Spec: corev1.PersistentVolumeClaimSpec{
 					AccessModes: accessModes,
@@ -1319,7 +1091,7 @@ func (r *OpenRAGReconciler) reconcileDoclingComponents(ctx context.Context, o *o
 	}
 
 	if dc.Worker != nil && dc.Worker.Storage != nil && dc.Worker.Storage.Enabled {
-		pvcName := resourceName("dw-data")
+		pvcName := instanceResourceName(o, "dw-data")
 		if dc.Worker.Storage.ExistingClaim == "" {
 			// Default to ReadWriteOnce if not specified
 			accessModes := dc.Worker.Storage.AccessModes
@@ -1327,11 +1099,13 @@ func (r *OpenRAGReconciler) reconcileDoclingComponents(ctx context.Context, o *o
 				accessModes = []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}
 			}
 
+			baseLabels := componentLabels(o.Name, "dw")
 			pvc := &corev1.PersistentVolumeClaim{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      pvcName,
-					Namespace: targetNS,
-					Labels:    componentLabels(o.Name, "dw"),
+					Name:        pvcName,
+					Namespace:   targetNS,
+					Labels:      mergePVCLabels(o, dc.Worker.Storage, baseLabels),
+					Annotations: mergePVCAnnotations(o, dc.Worker.Storage),
 				},
 				Spec: corev1.PersistentVolumeClaimSpec{
 					AccessModes: accessModes,
@@ -1365,12 +1139,13 @@ func (r *OpenRAGReconciler) reconcileDoclingComponents(ctx context.Context, o *o
 			serviceType = corev1.ServiceTypeClusterIP
 		}
 
+		baseLabels := componentLabels(o.Name, "ds")
 		svc := &corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:        getServiceName(o, "ds"),
 				Namespace:   targetNS,
-				Labels:      componentLabels(o.Name, "ds"),
-				Annotations: dc.Serve.ServiceAnnotations,
+				Labels:      mergeServiceLabels(o, dc.Serve.ComponentSpec, baseLabels),
+				Annotations: mergeServiceAnnotations(o, dc.Serve.ComponentSpec),
 			},
 			Spec: corev1.ServiceSpec{
 				Type:     serviceType,
@@ -1422,7 +1197,7 @@ func (r *OpenRAGReconciler) reconcileDoclingComponents(ctx context.Context, o *o
 		// Delete HPA if it exists but is now disabled
 		hpa := &autoscalingv2.HorizontalPodAutoscaler{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      resourceName("ds-hpa"),
+				Name:      instanceResourceName(o, "ds-hpa"),
 				Namespace: targetNS,
 			},
 		}
@@ -1444,7 +1219,7 @@ func (r *OpenRAGReconciler) reconcileDoclingComponents(ctx context.Context, o *o
 		// Delete HPA if it exists but is now disabled
 		hpa := &autoscalingv2.HorizontalPodAutoscaler{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      resourceName("dw-hpa"),
+				Name:      instanceResourceName(o, "dw-hpa"),
 				Namespace: targetNS,
 			},
 		}
@@ -1595,7 +1370,7 @@ func (r *OpenRAGReconciler) doclingServeDeployment(o *openragv1alpha1.OpenRAG, t
 	}
 
 	if spec.Storage != nil && spec.Storage.Enabled {
-		pvcName := resourceName("ds-data")
+		pvcName := instanceResourceName(o, "ds-data")
 		if spec.Storage.ExistingClaim != "" {
 			pvcName = spec.Storage.ExistingClaim
 		}
@@ -1668,7 +1443,7 @@ func (r *OpenRAGReconciler) doclingServeDeployment(o *openragv1alpha1.OpenRAG, t
 
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        resourceName("ds"),
+			Name:        instanceResourceName(o, "ds"),
 			Namespace:   targetNS,
 			Labels:      deploymentLabels,
 			Annotations: deploymentAnnotations,
@@ -1692,7 +1467,7 @@ func (r *OpenRAGReconciler) doclingWorkerDeployment(o *openragv1alpha1.OpenRAG, 
 	}
 
 	if spec.Storage != nil && spec.Storage.Enabled {
-		pvcName := resourceName("dw-data")
+		pvcName := instanceResourceName(o, "dw-data")
 		if spec.Storage.ExistingClaim != "" {
 			pvcName = spec.Storage.ExistingClaim
 		}
@@ -1842,7 +1617,7 @@ func (r *OpenRAGReconciler) doclingWorkerDeployment(o *openragv1alpha1.OpenRAG, 
 
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        resourceName("dw"),
+			Name:        instanceResourceName(o, "dw"),
 			Namespace:   targetNS,
 			Labels:      deploymentLabels,
 			Annotations: deploymentAnnotations,
@@ -1853,7 +1628,7 @@ func (r *OpenRAGReconciler) doclingWorkerDeployment(o *openragv1alpha1.OpenRAG, 
 
 func (r *OpenRAGReconciler) doclingServeHPA(o *openragv1alpha1.OpenRAG, targetNS string) *autoscalingv2.HorizontalPodAutoscaler {
 	hpaSpec := o.Spec.DoclingComponents.Serve.HPA
-	minReplicas := ptr.To(int32(1))
+	minReplicas := new(int32(1))
 	if hpaSpec.MinReplicas != nil {
 		minReplicas = hpaSpec.MinReplicas
 	}
@@ -1887,7 +1662,7 @@ func (r *OpenRAGReconciler) doclingServeHPA(o *openragv1alpha1.OpenRAG, targetNS
 	baseLabels := componentLabels(o.Name, "ds")
 	return &autoscalingv2.HorizontalPodAutoscaler{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      resourceName("ds-hpa"),
+			Name:      instanceResourceName(o, "ds-hpa"),
 			Namespace: targetNS,
 			Labels:    baseLabels,
 		},
@@ -1895,7 +1670,7 @@ func (r *OpenRAGReconciler) doclingServeHPA(o *openragv1alpha1.OpenRAG, targetNS
 			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
 				APIVersion: "apps/v1",
 				Kind:       "Deployment",
-				Name:       resourceName("ds"),
+				Name:       instanceResourceName(o, "ds"),
 			},
 			MinReplicas: minReplicas,
 			MaxReplicas: hpaSpec.MaxReplicas,
@@ -1907,7 +1682,7 @@ func (r *OpenRAGReconciler) doclingServeHPA(o *openragv1alpha1.OpenRAG, targetNS
 
 func (r *OpenRAGReconciler) doclingWorkerHPA(o *openragv1alpha1.OpenRAG, targetNS string) *autoscalingv2.HorizontalPodAutoscaler {
 	hpaSpec := o.Spec.DoclingComponents.Worker.HPA
-	minReplicas := ptr.To(int32(1))
+	minReplicas := new(int32(1))
 	if hpaSpec.MinReplicas != nil {
 		minReplicas = hpaSpec.MinReplicas
 	}
@@ -1941,7 +1716,7 @@ func (r *OpenRAGReconciler) doclingWorkerHPA(o *openragv1alpha1.OpenRAG, targetN
 	baseLabels := componentLabels(o.Name, "dw")
 	return &autoscalingv2.HorizontalPodAutoscaler{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      resourceName("dw-hpa"),
+			Name:      instanceResourceName(o, "dw-hpa"),
 			Namespace: targetNS,
 			Labels:    baseLabels,
 		},
@@ -1949,7 +1724,7 @@ func (r *OpenRAGReconciler) doclingWorkerHPA(o *openragv1alpha1.OpenRAG, targetN
 			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
 				APIVersion: "apps/v1",
 				Kind:       "Deployment",
-				Name:       resourceName("dw"),
+				Name:       instanceResourceName(o, "dw"),
 			},
 			MinReplicas: minReplicas,
 			MaxReplicas: hpaSpec.MaxReplicas,
@@ -1965,11 +1740,13 @@ func (r *OpenRAGReconciler) reconcileValkey(ctx context.Context, o *openragv1alp
 
 	// Reconcile ServiceAccount
 	if shouldCreateServiceAccount(o, "valkey") {
+		baseLabels := componentLabels(o.Name, "valkey")
 		sa := &corev1.ServiceAccount{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      getServiceAccountName(o, "valkey"),
-				Namespace: targetNS,
-				Labels:    componentLabels(o.Name, "valkey"),
+				Name:        getServiceAccountName(o, "valkey"),
+				Namespace:   targetNS,
+				Labels:      mergeServiceAccountLabels(o, valkeySpec.ComponentSpec, baseLabels),
+				Annotations: mergeServiceAccountAnnotations(o, valkeySpec.ComponentSpec),
 			},
 		}
 		if err := r.setOwnerOrLabel(o, sa, targetNS); err != nil {
@@ -2048,7 +1825,7 @@ func (r *OpenRAGReconciler) valkeyStatefulSet(o *openragv1alpha1.OpenRAG, target
 			Name: "valkey-config",
 			VolumeSource: corev1.VolumeSource{
 				ConfigMap: &corev1.ConfigMapVolumeSource{
-					LocalObjectReference: corev1.LocalObjectReference{Name: resourceName("valkey-config")},
+					LocalObjectReference: corev1.LocalObjectReference{Name: instanceResourceName(o, "valkey-config")},
 				},
 			},
 		},
@@ -2064,7 +1841,7 @@ func (r *OpenRAGReconciler) valkeyStatefulSet(o *openragv1alpha1.OpenRAG, target
 			Name: "valkey-auth",
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
-					SecretName: resourceName("valkey-auth"),
+					SecretName: instanceResourceName(o, "valkey-auth"),
 				},
 			},
 		})
@@ -2089,13 +1866,13 @@ func (r *OpenRAGReconciler) valkeyStatefulSet(o *openragv1alpha1.OpenRAG, target
 
 	sts := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        resourceName("valkey"),
+			Name:        instanceResourceName(o, "valkey"),
 			Namespace:   targetNS,
 			Labels:      deploymentLabels,
 			Annotations: deploymentAnnotations,
 		},
 		Spec: appsv1.StatefulSetSpec{
-			ServiceName: resourceName("valkey-headless"),
+			ServiceName: instanceResourceName(o, "valkey-headless"),
 			Replicas:    &replicas,
 			Selector:    &metav1.LabelSelector{MatchLabels: baseLabels},
 			Template: corev1.PodTemplateSpec{
@@ -2159,8 +1936,9 @@ func (r *OpenRAGReconciler) valkeyStatefulSet(o *openragv1alpha1.OpenRAG, target
 		sts.Spec.VolumeClaimTemplates = []corev1.PersistentVolumeClaim{
 			{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:   "valkey-data",
-					Labels: baseLabels,
+					Name:        "valkey-data",
+					Labels:      mergePVCLabels(o, spec.Storage, baseLabels),
+					Annotations: mergePVCAnnotations(o, spec.Storage),
 				},
 				Spec: corev1.PersistentVolumeClaimSpec{
 					AccessModes: accessModes,
@@ -2204,9 +1982,10 @@ func (r *OpenRAGReconciler) valkeyService(o *openragv1alpha1.OpenRAG, targetNS s
 	baseLabels := componentLabels(o.Name, "valkey")
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      getServiceName(o, "valkey"),
-			Namespace: targetNS,
-			Labels:    baseLabels,
+			Name:        getServiceName(o, "valkey"),
+			Namespace:   targetNS,
+			Labels:      mergeServiceLabels(o, spec.ComponentSpec, baseLabels),
+			Annotations: mergeServiceAnnotations(o, spec.ComponentSpec),
 		},
 		Spec: corev1.ServiceSpec{
 			Type:     corev1.ServiceTypeClusterIP,
@@ -2228,9 +2007,10 @@ func (r *OpenRAGReconciler) valkeyHeadlessService(o *openragv1alpha1.OpenRAG, ta
 	baseLabels := componentLabels(o.Name, "valkey")
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      resourceName("valkey-headless"),
-			Namespace: targetNS,
-			Labels:    baseLabels,
+			Name:        instanceResourceName(o, "valkey-headless"),
+			Namespace:   targetNS,
+			Labels:      mergeServiceLabels(o, spec.ComponentSpec, baseLabels),
+			Annotations: mergeServiceAnnotations(o, spec.ComponentSpec),
 		},
 		Spec: corev1.ServiceSpec{
 			Type:      corev1.ServiceTypeClusterIP,
@@ -2277,7 +2057,7 @@ appendfilename "appendonly.aof"
 	baseLabels := componentLabels(o.Name, "valkey")
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      resourceName("valkey-config"),
+			Name:      instanceResourceName(o, "valkey-config"),
 			Namespace: targetNS,
 			Labels:    baseLabels,
 		},
@@ -2304,9 +2084,10 @@ func (r *OpenRAGReconciler) valkeySecret(ctx context.Context, o *openragv1alpha1
 	baseLabels := componentLabels(o.Name, "valkey")
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      resourceName("valkey-auth"),
-			Namespace: targetNS,
-			Labels:    baseLabels,
+			Name:        instanceResourceName(o, "valkey-auth"),
+			Namespace:   targetNS,
+			Labels:      mergeSecretLabels(o, spec.ComponentSpec, baseLabels),
+			Annotations: mergeSecretAnnotations(o, spec.ComponentSpec),
 		},
 		StringData: map[string]string{
 			"password": password,
@@ -2334,7 +2115,7 @@ func (r *OpenRAGReconciler) reconcileNetworkPolicy(ctx context.Context, o *openr
 
 	np := &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      resourceName("lf-netpol"),
+			Name:      instanceResourceName(o, "lf-netpol"),
 			Namespace: targetNS,
 			Labels:    labels,
 		},
@@ -2492,10 +2273,51 @@ func targetNamespace(o *openragv1alpha1.OpenRAG) string {
 	return o.Namespace
 }
 
-// resourceName generates a DNS-1035 compliant name for Kubernetes resources.
-// Since each namespace is tenant-exclusive, we don't need to include the CR name.
-// This provides clean, predictable names: openrag-fe, openrag-be, openrag-lf, docling-serve, docling-worker.
-func resourceName(role string) string {
+// instanceResourceName returns the resource name for a role, respecting InstanceName.
+// When InstanceName is empty (default), legacy static names are used for backwards
+// compatibility. When set, the InstanceName is embedded to allow multiple CRs per namespace.
+func instanceResourceName(o *openragv1alpha1.OpenRAG, role string) string {
+	if o.Spec.InstanceName != "" {
+		return resourceName(o.Spec.InstanceName, role)
+	}
+	return legacyResourceName(role)
+}
+
+// instanceSAName returns the ServiceAccount name for a role, respecting InstanceName.
+func instanceSAName(o *openragv1alpha1.OpenRAG, role string) string {
+	if o.Spec.InstanceName != "" {
+		return saName(o.Spec.InstanceName, role)
+	}
+	return legacySAName(role)
+}
+
+// resourceName generates a per-CR resource name with the openrag- prefix.
+// Max length with an 8-char instanceName: "openrag-"(8) + 8 + "-valkey-headless"(16) = 32 chars.
+func resourceName(crName, role string) string {
+	switch role {
+	case "ds":
+		return "openrag-" + crName + "-docling-serve"
+	case "dw":
+		return "openrag-" + crName + "-docling-worker"
+	default:
+		return "openrag-" + crName + "-" + role
+	}
+}
+
+// saName generates per-CR ServiceAccount names.
+func saName(crName, role string) string {
+	switch role {
+	case "ds":
+		return "openrag-" + crName + "-docling-serve"
+	case "dw":
+		return "openrag-" + crName + "-docling-worker"
+	default:
+		return "openrag-" + crName + "-" + role
+	}
+}
+
+// legacyResourceName returns the static resource names used before MultiInstance was introduced.
+func legacyResourceName(role string) string {
 	switch role {
 	case "ds":
 		return "docling-serve"
@@ -2506,9 +2328,8 @@ func resourceName(role string) string {
 	}
 }
 
-// saName generates service account names.
-// Since each namespace is tenant-exclusive, we don't need to include the CR name.
-func saName(role string) string {
+// legacySAName returns the static ServiceAccount names used before MultiInstance was introduced.
+func legacySAName(role string) string {
 	switch role {
 	case "ds":
 		return "docling-serve"
@@ -2546,7 +2367,7 @@ func getServiceAccountName(o *openragv1alpha1.OpenRAG, role string) string {
 	if customName != "" {
 		return customName
 	}
-	return saName(role)
+	return instanceSAName(o, role)
 }
 
 // shouldCreateServiceAccount returns true if the operator should create the ServiceAccount.
@@ -2607,7 +2428,7 @@ func getServiceName(o *openragv1alpha1.OpenRAG, role string) string {
 	if customName != "" {
 		return customName
 	}
-	return resourceName(role)
+	return instanceResourceName(o, role)
 }
 
 // shouldCreateService returns true if the operator should create the Service.
@@ -2721,6 +2542,118 @@ func mergeDeploymentAnnotations(customAnnotations map[string]string) map[string]
 	return mergeAnnotations(customAnnotations)
 }
 
+// Note on map ordering: While Go maps have random iteration order, this doesn't cause
+// unnecessary reconciliations because:
+// 1. The createOrUpdate() function uses desiredHash() for change detection
+// 2. desiredHash() uses json.Marshal() which sorts map keys alphabetically
+// 3. Therefore, maps with the same content produce the same hash regardless of build order
+
+// mergeResourceLabels merges labels for infrastructure resources (PVCs, Secrets, Services, ServiceAccounts).
+// Priority (highest to lowest):
+// 1. Base labels (operator-managed, cannot be overridden)
+// 2. Resource-specific labels (e.g., from PersistenceSpec.Labels)
+// 3. Component-level labels (e.g., from ComponentSpec.ServiceAccountLabels)
+// 4. Common resource labels (from OpenRAGSpec.CommonResourceLabels)
+func mergeResourceLabels(o *openragv1alpha1.OpenRAG, baseLabels, componentLabels, resourceLabels map[string]string) map[string]string {
+	merged := make(map[string]string)
+
+	// Start with common resource labels (lowest priority)
+	for k, v := range o.Spec.CommonResourceLabels {
+		merged[k] = v
+	}
+
+	// Add component-level labels
+	for k, v := range componentLabels {
+		merged[k] = v
+	}
+
+	// Add resource-specific labels
+	for k, v := range resourceLabels {
+		merged[k] = v
+	}
+
+	// Base labels always override (highest priority)
+	for k, v := range baseLabels {
+		merged[k] = v
+	}
+
+	return merged
+}
+
+// mergeResourceAnnotations merges annotations for infrastructure resources.
+// Priority (highest to lowest):
+// 1. Resource-specific annotations (e.g., from PersistenceSpec.Annotations)
+// 2. Component-level annotations (e.g., from ComponentSpec.ServiceAccountAnnotations)
+// 3. Common resource annotations (from OpenRAGSpec.CommonResourceAnnotations)
+func mergeResourceAnnotations(o *openragv1alpha1.OpenRAG, componentAnnotations, resourceAnnotations map[string]string) map[string]string {
+	merged := make(map[string]string)
+
+	// Start with common resource annotations (lowest priority)
+	for k, v := range o.Spec.CommonResourceAnnotations {
+		merged[k] = v
+	}
+
+	// Add component-level annotations
+	for k, v := range componentAnnotations {
+		merged[k] = v
+	}
+
+	// Add resource-specific annotations (highest priority)
+	for k, v := range resourceAnnotations {
+		merged[k] = v
+	}
+
+	return merged
+}
+
+// mergePVCLabels merges labels for PersistentVolumeClaim resources.
+func mergePVCLabels(o *openragv1alpha1.OpenRAG, storage *openragv1alpha1.PersistenceSpec, baseLabels map[string]string) map[string]string {
+	var storageLabels map[string]string
+	if storage != nil {
+		storageLabels = storage.Labels
+	}
+	return mergeResourceLabels(o, baseLabels, nil, storageLabels)
+}
+
+// mergePVCAnnotations merges annotations for PersistentVolumeClaim resources.
+func mergePVCAnnotations(o *openragv1alpha1.OpenRAG, storage *openragv1alpha1.PersistenceSpec) map[string]string {
+	var storageAnnotations map[string]string
+	if storage != nil {
+		storageAnnotations = storage.Annotations
+	}
+	return mergeResourceAnnotations(o, nil, storageAnnotations)
+}
+
+// mergeServiceAccountLabels merges labels for ServiceAccount resources.
+func mergeServiceAccountLabels(o *openragv1alpha1.OpenRAG, spec openragv1alpha1.ComponentSpec, baseLabels map[string]string) map[string]string {
+	return mergeResourceLabels(o, baseLabels, spec.ServiceAccountLabels, nil)
+}
+
+// mergeServiceAccountAnnotations merges annotations for ServiceAccount resources.
+func mergeServiceAccountAnnotations(o *openragv1alpha1.OpenRAG, spec openragv1alpha1.ComponentSpec) map[string]string {
+	return mergeResourceAnnotations(o, spec.ServiceAccountAnnotations, nil)
+}
+
+// mergeServiceLabels merges labels for Service resources.
+func mergeServiceLabels(o *openragv1alpha1.OpenRAG, spec openragv1alpha1.ComponentSpec, baseLabels map[string]string) map[string]string {
+	return mergeResourceLabels(o, baseLabels, spec.ServiceLabels, nil)
+}
+
+// mergeServiceAnnotations merges annotations for Service resources (includes existing ServiceAnnotations).
+func mergeServiceAnnotations(o *openragv1alpha1.OpenRAG, spec openragv1alpha1.ComponentSpec) map[string]string {
+	return mergeResourceAnnotations(o, spec.ServiceAnnotations, nil)
+}
+
+// mergeSecretLabels merges labels for Secret resources.
+func mergeSecretLabels(o *openragv1alpha1.OpenRAG, spec openragv1alpha1.ComponentSpec, baseLabels map[string]string) map[string]string {
+	return mergeResourceLabels(o, baseLabels, spec.SecretLabels, nil)
+}
+
+// mergeSecretAnnotations merges annotations for Secret resources.
+func mergeSecretAnnotations(o *openragv1alpha1.OpenRAG, spec openragv1alpha1.ComponentSpec) map[string]string {
+	return mergeResourceAnnotations(o, spec.SecretAnnotations, nil)
+}
+
 func replicasOrDefault(r *int32) int32 {
 	if r != nil {
 		return *r
@@ -2741,7 +2674,7 @@ func httpProbe(path string, port, initialDelay, period int32) *corev1.Probe {
 		InitialDelaySeconds: initialDelay,
 		PeriodSeconds:       period,
 		FailureThreshold:    5,
-		TimeoutSeconds:      10,
+		TimeoutSeconds:      15,
 	}
 }
 
@@ -2751,6 +2684,22 @@ func probeOrDefault(custom, defaultProbe *corev1.Probe) *corev1.Probe {
 		return custom
 	}
 	return defaultProbe
+}
+
+// commandOrDefault returns the custom command if provided, otherwise returns the default command.
+func commandOrDefault(custom, defaultCommand []string) []string {
+	if len(custom) > 0 {
+		return custom
+	}
+	return defaultCommand
+}
+
+// argsOrDefault returns the custom args if provided, otherwise returns the default args.
+func argsOrDefault(custom, defaultArgs []string) []string {
+	if len(custom) > 0 {
+		return custom
+	}
+	return defaultArgs
 }
 
 func tcpPort(p int32) networkingv1.NetworkPolicyPort {
@@ -2976,4 +2925,11 @@ func (r *OpenRAGReconciler) getOrGenerateSecret(ctx context.Context, o *openragv
 		"targetNamespace", targetNS)
 
 	return newSecret, nil
+}
+
+// calculateHash calculates the SHA256 hash of a string and returns the hex-encoded result.
+// This is used to create annotations on pod templates that trigger rolling restarts when secrets change.
+func calculateHash(content string) string {
+	hash := sha256.Sum256([]byte(content))
+	return hex.EncodeToString(hash[:])
 }

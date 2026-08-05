@@ -1,8 +1,13 @@
 """Idempotent seed for built-in roles and permissions.
 
-The full permission catalog and the role-permission default mapping live here
-so adding a permission or a role is a one-file change followed by an Alembic
-data migration. See plan §1.2 / §1.3 / §10.
+The full permission catalog and the role-permission default mapping live here.
+To add a permission, role, or default role grant: edit this file only —
+``seed_roles_and_permissions`` runs on application startup (after Alembic)
+and backfills missing rows on existing installs.
+
+To revoke a permission from a role on existing installs, add an explicit
+Alembic data migration (see ``0006_revoke_provider_override_nonadmin``);
+the seeder is additive-only and never removes rows.
 
 Built-in role IDs are stable, deterministic strings so cross-environment
 references (e.g. tests, docs) do not depend on UUIDs.
@@ -28,7 +33,6 @@ PERMISSIONS: list[tuple[str, str, str]] = [
     ("providers", "write", "Write workspace provider configuration"),
     ("providers", "override:self", "Override providers in own user preferences"),
     ("opensearch", "admin", "Administer OpenSearch security"),
-
     # Users / RBAC
     ("users", "list", "List users"),
     ("users", "read", "Read user profile"),
@@ -40,7 +44,6 @@ PERMISSIONS: list[tuple[str, str, str]] = [
     ("roles", "edit", "Edit custom roles"),
     ("roles", "delete", "Delete custom roles"),
     ("audit", "read", "Read audit log"),
-
     # Connectors
     ("connectors", "list:own", "List own connectors"),
     ("connectors", "list:all", "List all connectors in the workspace"),
@@ -48,18 +51,19 @@ PERMISSIONS: list[tuple[str, str, str]] = [
     ("connectors", "delete:own", "Delete own connectors"),
     ("connectors", "delete:any", "Delete any connector"),
     ("connectors", "use", "Use connector OAuth and browse"),
-
+    ("connectors", "manage:access", "Manage workspace connector availability"),
     # Knowledge
     ("knowledge", "upload", "Upload documents"),
     ("knowledge", "delete:own", "Delete own documents"),
     ("knowledge", "delete:any", "Delete any document"),
+    ("knowledge", "delete:anonymous", "Delete anonymous shared documents"),
     ("knowledge", "read:own", "Read own documents"),
     ("knowledge", "read:all", "Read all documents"),
     ("kf", "create", "Create knowledge filters"),
+    ("kf", "read", "Read knowledge filters"),
     ("kf", "edit:own", "Edit own knowledge filters"),
     ("kf", "edit:any", "Edit any knowledge filter"),
     ("kf", "share", "Share knowledge filters"),
-
     # Chat / search
     ("chat", "use", "Use chat"),
     ("search", "use", "Use search"),
@@ -67,13 +71,11 @@ PERMISSIONS: list[tuple[str, str, str]] = [
     ("conversations", "read:all", "Read all conversations"),
     ("conversations", "delete:own", "Delete own conversations"),
     ("conversations", "delete:any", "Delete any conversation"),
-
     # Flows / agent
     ("flows", "read", "Read flows"),
     ("flows", "edit", "Edit flows"),
     ("agent", "prompt:override", "Override agent system prompt for self"),
     ("agent", "prompt:global", "Edit global agent system prompt"),
-
     # API keys
     ("apikeys", "create:self", "Create own API keys"),
     ("apikeys", "revoke:self", "Revoke own API keys"),
@@ -93,7 +95,11 @@ def permission_name(resource: str, action: str) -> str:
 BUILTIN_ROLES: list[tuple[str, str, str]] = [
     # (id, name, description)
     ("role-admin", "admin", "Full control over infra, users, and all data."),
-    ("role-developer", "developer", "Manages own connectors, flows, and ingestion. No infra writes."),
+    (
+        "role-developer",
+        "developer",
+        "Manages own connectors, flows, and ingestion. No infra writes.",
+    ),
     ("role-user", "user", "Default end-user. Chat, search, and own connectors."),
     ("role-viewer", "viewer", "Read-only chat and search."),
 ]
@@ -105,36 +111,60 @@ def _admin_perms() -> set[str]:
 
 def _developer_perms() -> set[str]:
     return {
-        "providers:override:self",
-        "connectors:list:own", "connectors:create", "connectors:delete:own", "connectors:use",
-        "knowledge:upload", "knowledge:delete:own", "knowledge:read:own",
-        "kf:create", "kf:edit:own",
-        "chat:use", "search:use",
-        "conversations:read:own", "conversations:delete:own",
-        "flows:read", "flows:edit",
+        # NOTE: providers are admin-only — no provider perms for developers.
+        "connectors:list:own",
+        "connectors:create",
+        "connectors:delete:own",
+        "connectors:use",
+        "knowledge:upload",
+        "knowledge:delete:own",
+        "knowledge:read:own",
+        "kf:create",
+        "kf:read",
+        "kf:edit:own",
+        "chat:use",
+        "search:use",
+        "conversations:read:own",
+        "conversations:delete:own",
+        "flows:read",
+        "flows:edit",
         "agent:prompt:override",
-        "apikeys:create:self", "apikeys:revoke:self",
+        "apikeys:create:self",
+        "apikeys:revoke:self",
     }
 
 
 def _user_perms() -> set[str]:
     return {
-        "providers:override:self",
-        "connectors:list:own", "connectors:create", "connectors:delete:own", "connectors:use",
-        "knowledge:upload", "knowledge:delete:own", "knowledge:read:own",
-        "kf:create", "kf:edit:own",
-        "chat:use", "search:use",
-        "conversations:read:own", "conversations:delete:own",
+        # NOTE: providers are admin-only — no provider perms for users.
+        "connectors:list:own",
+        "connectors:create",
+        "connectors:delete:own",
+        "connectors:use",
+        "knowledge:upload",
+        "knowledge:delete:own",
+        "knowledge:read:own",
+        "kf:create",
+        "kf:read",
+        "kf:edit:own",
+        "chat:use",
+        "search:use",
+        "conversations:read:own",
+        "conversations:delete:own",
         "flows:read",
         "agent:prompt:override",
-        "apikeys:create:self", "apikeys:revoke:self",
+        "apikeys:create:self",
+        "apikeys:revoke:self",
     }
 
 
 def _viewer_perms() -> set[str]:
     return {
-        "chat:use", "search:use",
-        "conversations:read:own", "conversations:delete:own",
+        "chat:use",
+        "search:use",
+        "kf:read",
+        "conversations:read:own",
+        "conversations:delete:own",
         "flows:read",
     }
 
@@ -151,17 +181,17 @@ ROLE_PERMISSION_MAP: dict[str, set[str]] = {
 # Idempotent seeder
 # ---------------------------------------------------------------------------
 
+
 async def seed_roles_and_permissions(session: AsyncSession) -> None:
     """Insert any missing roles/permissions/role_permissions. Safe to call repeatedly.
 
-    Used by the second Alembic data migration AND from tests against an
-    in-memory SQLite. Does not commit — caller commits.
+    Alembic ``0002`` bootstraps greenfield installs; startup and tests call
+    this for additive catalog sync. Does not commit — caller commits.
     """
 
     # Permissions
     existing_perms = {
-        p.name: p
-        for p in (await session.execute(select(Permission))).scalars().all()
+        p.name: p for p in (await session.execute(select(Permission))).scalars().all()
     }
     perm_id_by_name: dict[str, str] = {p.name: p.id for p in existing_perms.values()}
 
@@ -183,10 +213,7 @@ async def seed_roles_and_permissions(session: AsyncSession) -> None:
     await session.flush()
 
     # Roles
-    existing_roles = {
-        r.name: r
-        for r in (await session.execute(select(Role))).scalars().all()
-    }
+    existing_roles = {r.name: r for r in (await session.execute(select(Role))).scalars().all()}
     for role_id, role_name, description in BUILTIN_ROLES:
         if role_name in existing_roles:
             continue
@@ -201,10 +228,7 @@ async def seed_roles_and_permissions(session: AsyncSession) -> None:
     await session.flush()
 
     # Re-fetch so we have IDs for the just-inserted rows.
-    role_id_by_name = {
-        r.name: r.id
-        for r in (await session.execute(select(Role))).scalars().all()
-    }
+    role_id_by_name = {r.name: r.id for r in (await session.execute(select(Role))).scalars().all()}
 
     # Role permissions (additive only — never remove perms set by an admin via UI)
     existing_rp = set(

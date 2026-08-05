@@ -14,19 +14,6 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const router = useRouter();
   const pathname = usePathname();
 
-  console.log(
-    "ProtectedRoute - isLoading:",
-    isLoading,
-    "isAuthenticated:",
-    isAuthenticated,
-    "isNoAuthMode:",
-    isNoAuthMode,
-    "isIbmAuthMode:",
-    isIbmAuthMode,
-    "pathname:",
-    pathname,
-  );
-
   useEffect(() => {
     if (isLoading) return;
 

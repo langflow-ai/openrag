@@ -3,12 +3,14 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { formatProviderErrorMessage } from "@/lib/chat-stream-errors";
 import { useGetSettingsQuery } from "./useGetSettingsQuery";
 
 export interface ModelOption {
   value: string;
   label: string;
   default?: boolean;
+  supports_images?: boolean;
 }
 
 export interface ModelsResponse {
@@ -18,10 +20,14 @@ export interface ModelsResponse {
 
 export interface OpenAIModelsParams {
   apiKey?: string;
+  /** When true, omit api_key so the backend uses configured/env credentials. */
+  useEnvKey?: boolean;
 }
 
 export interface AnthropicModelsParams {
   apiKey?: string;
+  /** When true, omit api_key so the backend uses configured/env credentials. */
+  useEnvKey?: boolean;
 }
 
 export interface OllamaModelsParams {
@@ -32,6 +38,20 @@ export interface IBMModelsParams {
   endpoint?: string;
   apiKey?: string;
   projectId?: string;
+  /** When true, omit api_key so the backend uses configured/env credentials. */
+  useEnvKey?: boolean;
+}
+
+async function throwModelsFetchError(
+  response: Response,
+  fallback: string,
+): Promise<never> {
+  const data = await response.json().catch(() => ({}));
+  const raw =
+    data && typeof data === "object" && typeof data.error === "string"
+      ? data.error
+      : fallback;
+  throw new Error(formatProviderErrorMessage(raw));
 }
 
 export const useGetOpenAIModelsQuery = (
@@ -39,41 +59,35 @@ export const useGetOpenAIModelsQuery = (
   options?: Omit<UseQueryOptions<ModelsResponse>, "queryKey" | "queryFn">,
 ) => {
   const queryClient = useQueryClient();
+  const useEnvKey = !!params?.useEnvKey;
+  const apiKey = useEnvKey ? "" : params?.apiKey || "";
 
-  async function getOpenAIModels(): Promise<ModelsResponse> {
-    const url = new URL("/api/models/openai", window.location.origin);
-    const body: { api_key?: string } = {};
-    if (params?.apiKey) {
-      body.api_key = params.apiKey;
-    }
-
-    const response = await fetch(url.toString(), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    });
-    if (response.ok) {
-      return await response.json();
-    } else {
-      throw new Error("Failed to fetch OpenAI models");
-    }
-  }
-
-  const queryResult = useQuery(
+  return useQuery(
     {
-      queryKey: ["models", "openai", params],
-      queryFn: getOpenAIModels,
-      staleTime: 0, // Always fetch fresh data
-      gcTime: 0, // Don't cache results
+      queryKey: ["models", "openai", useEnvKey, apiKey] as const,
+      queryFn: async (): Promise<ModelsResponse> => {
+        const body: { api_key?: string } = {};
+        if (!useEnvKey && apiKey) {
+          body.api_key = apiKey;
+        }
+
+        const response = await fetch("/api/models/openai", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (response.ok) {
+          return (await response.json()) as ModelsResponse;
+        }
+        return throwModelsFetchError(response, "Failed to fetch OpenAI models");
+      },
+      staleTime: 0,
+      gcTime: 0,
       retry: false,
       ...options,
     },
     queryClient,
   );
-
-  return queryResult;
 };
 
 export const useGetAnthropicModelsQuery = (
@@ -81,41 +95,38 @@ export const useGetAnthropicModelsQuery = (
   options?: Omit<UseQueryOptions<ModelsResponse>, "queryKey" | "queryFn">,
 ) => {
   const queryClient = useQueryClient();
+  const useEnvKey = !!params?.useEnvKey;
+  const apiKey = useEnvKey ? "" : params?.apiKey || "";
 
-  async function getAnthropicModels(): Promise<ModelsResponse> {
-    const url = new URL("/api/models/anthropic", window.location.origin);
-    const body: { api_key?: string } = {};
-    if (params?.apiKey) {
-      body.api_key = params.apiKey;
-    }
-
-    const response = await fetch(url.toString(), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    });
-    if (response.ok) {
-      return await response.json();
-    } else {
-      throw new Error("Failed to fetch Anthropic models");
-    }
-  }
-
-  const queryResult = useQuery(
+  return useQuery(
     {
-      queryKey: ["models", "anthropic", params],
-      queryFn: getAnthropicModels,
-      staleTime: 0, // Always fetch fresh data
-      gcTime: 0, // Don't cache results
+      queryKey: ["models", "anthropic", useEnvKey, apiKey] as const,
+      queryFn: async (): Promise<ModelsResponse> => {
+        const body: { api_key?: string } = {};
+        if (!useEnvKey && apiKey) {
+          body.api_key = apiKey;
+        }
+
+        const response = await fetch("/api/models/anthropic", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (response.ok) {
+          return (await response.json()) as ModelsResponse;
+        }
+        return throwModelsFetchError(
+          response,
+          "Failed to fetch Anthropic models",
+        );
+      },
+      staleTime: 0,
+      gcTime: 0,
       retry: false,
       ...options,
     },
     queryClient,
   );
-
-  return queryResult;
 };
 
 export const useGetOllamaModelsQuery = (
@@ -123,34 +134,30 @@ export const useGetOllamaModelsQuery = (
   options?: Omit<UseQueryOptions<ModelsResponse>, "queryKey" | "queryFn">,
 ) => {
   const queryClient = useQueryClient();
+  const endpoint = params?.endpoint || "";
 
-  async function getOllamaModels(): Promise<ModelsResponse> {
-    const url = new URL("/api/models/ollama", window.location.origin);
-    if (params?.endpoint) {
-      url.searchParams.set("endpoint", params.endpoint);
-    }
-
-    const response = await fetch(url.toString());
-    if (response.ok) {
-      return await response.json();
-    } else {
-      throw new Error("Failed to fetch Ollama models");
-    }
-  }
-
-  const queryResult = useQuery(
+  return useQuery(
     {
-      queryKey: ["models", "ollama", params],
-      queryFn: getOllamaModels,
-      staleTime: 0, // Always fetch fresh data
-      gcTime: 0, // Don't cache results
+      queryKey: ["models", "ollama", endpoint] as const,
+      queryFn: async (): Promise<ModelsResponse> => {
+        const url = new URL("/api/models/ollama", window.location.origin);
+        if (endpoint) {
+          url.searchParams.set("endpoint", endpoint);
+        }
+
+        const response = await fetch(url.toString());
+        if (response.ok) {
+          return (await response.json()) as ModelsResponse;
+        }
+        return throwModelsFetchError(response, "Failed to fetch Ollama models");
+      },
+      staleTime: 0,
+      gcTime: 0,
       retry: false,
       ...options,
     },
     queryClient,
   );
-
-  return queryResult;
 };
 
 export const useGetIBMModelsQuery = (
@@ -158,51 +165,54 @@ export const useGetIBMModelsQuery = (
   options?: Omit<UseQueryOptions<ModelsResponse>, "queryKey" | "queryFn">,
 ) => {
   const queryClient = useQueryClient();
+  const useEnvKey = !!params?.useEnvKey;
+  const endpoint = params?.endpoint || "";
+  const projectId = params?.projectId || "";
+  const apiKey = useEnvKey ? "" : params?.apiKey || "";
 
-  async function getIBMModels(): Promise<ModelsResponse> {
-    const url = new URL("/api/models/ibm", window.location.origin);
-    const body: {
-      endpoint?: string;
-      api_key?: string;
-      project_id?: string;
-    } = {};
-    if (params?.endpoint) {
-      body.endpoint = params.endpoint;
-    }
-    if (params?.apiKey) {
-      body.api_key = params.apiKey;
-    }
-    if (params?.projectId) {
-      body.project_id = params.projectId;
-    }
-
-    const response = await fetch(url.toString(), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    });
-    if (response.ok) {
-      return await response.json();
-    } else {
-      throw new Error("Failed to fetch IBM models");
-    }
-  }
-
-  const queryResult = useQuery(
+  return useQuery(
     {
-      queryKey: ["models", "ibm", params],
-      queryFn: getIBMModels,
-      staleTime: 0, // Always fetch fresh data
-      gcTime: 0, // Don't cache results
+      queryKey: [
+        "models",
+        "ibm",
+        useEnvKey,
+        endpoint,
+        projectId,
+        apiKey,
+      ] as const,
+      queryFn: async (): Promise<ModelsResponse> => {
+        const body: {
+          endpoint?: string;
+          api_key?: string;
+          project_id?: string;
+        } = {};
+        if (endpoint) {
+          body.endpoint = endpoint;
+        }
+        if (projectId) {
+          body.project_id = projectId;
+        }
+        if (!useEnvKey && apiKey) {
+          body.api_key = apiKey;
+        }
+
+        const response = await fetch("/api/models/ibm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (response.ok) {
+          return (await response.json()) as ModelsResponse;
+        }
+        return throwModelsFetchError(response, "Failed to fetch IBM models");
+      },
+      staleTime: 0,
+      gcTime: 0,
       retry: false,
       ...options,
     },
     queryClient,
   );
-
-  return queryResult;
 };
 
 /**
@@ -215,9 +225,8 @@ export const useGetCurrentProviderModelsQuery = (
   const { data: settings } = useGetSettingsQuery();
   const currentProvider = settings?.agent?.llm_provider;
 
-  // Determine which hook to use based on current provider
   const openaiModels = useGetOpenAIModelsQuery(
-    { apiKey: "" },
+    { useEnvKey: true },
     {
       enabled: currentProvider === "openai" && options?.enabled !== false,
       ...options,
@@ -225,7 +234,7 @@ export const useGetCurrentProviderModelsQuery = (
   );
 
   const anthropicModels = useGetAnthropicModelsQuery(
-    { apiKey: "" },
+    { useEnvKey: true },
     {
       enabled: currentProvider === "anthropic" && options?.enabled !== false,
       ...options,
@@ -246,8 +255,8 @@ export const useGetCurrentProviderModelsQuery = (
   const ibmModels = useGetIBMModelsQuery(
     {
       endpoint: settings?.providers?.watsonx?.endpoint,
-      apiKey: "",
       projectId: settings?.providers?.watsonx?.project_id,
+      useEnvKey: true,
     },
     {
       enabled:
@@ -259,7 +268,6 @@ export const useGetCurrentProviderModelsQuery = (
     },
   );
 
-  // Return the appropriate query result based on current provider
   switch (currentProvider) {
     case "openai":
       return openaiModels;
@@ -270,12 +278,6 @@ export const useGetCurrentProviderModelsQuery = (
     case "watsonx":
       return ibmModels;
     default:
-      // Return a default/disabled query if no provider is set
-      return {
-        data: undefined,
-        isLoading: false,
-        error: null,
-        refetch: async () => ({ data: undefined }),
-      } as ReturnType<typeof useGetOpenAIModelsQuery>;
+      return openaiModels;
   }
 };

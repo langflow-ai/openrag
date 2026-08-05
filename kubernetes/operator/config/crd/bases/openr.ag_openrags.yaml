@@ -633,8 +633,8 @@ spec:
                               most preferred is the one with the greatest sum of weights, i.e.
                               for each node that meets all of the scheduling requirements (resource
                               request, requiredDuringScheduling anti-affinity expressions, etc.),
-                              compute a sum by iterating through the elements of this field and adding
-                              "weight" to the sum if the node has pods which matches the corresponding podAffinityTerm; the
+                              compute a sum by iterating through the elements of this field and subtracting
+                              "weight" from the sum if the node has pods which matches the corresponding podAffinityTerm; the
                               node(s) with the highest sum are the most preferred.
                             items:
                               description: The weights of all of the matched WeightedPodAffinityTerm
@@ -1048,8 +1048,9 @@ spec:
                         in a Container.
                       properties:
                         name:
-                          description: Name of the environment variable. Must be a
-                            C_IDENTIFIER.
+                          description: |-
+                            Name of the environment variable.
+                            May consist of any printable ASCII characters except '='.
                           type: string
                         value:
                           description: |-
@@ -1105,6 +1106,43 @@ spec:
                                   type: string
                               required:
                               - fieldPath
+                              type: object
+                              x-kubernetes-map-type: atomic
+                            fileKeyRef:
+                              description: |-
+                                FileKeyRef selects a key of the env file.
+                                Requires the EnvFiles feature gate to be enabled.
+                              properties:
+                                key:
+                                  description: |-
+                                    The key within the env file. An invalid key will prevent the pod from starting.
+                                    The keys defined within a source may consist of any printable ASCII characters except '='.
+                                    During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
+                                  type: string
+                                optional:
+                                  default: false
+                                  description: |-
+                                    Specify whether the file or its key must be defined. If the file or key
+                                    does not exist, then the env var is not published.
+                                    If optional is set to true and the specified key does not exist,
+                                    the environment variable will not be set in the Pod's containers.
+
+                                    If optional is set to false and the specified key does not exist,
+                                    an error will be returned during Pod creation.
+                                  type: boolean
+                                path:
+                                  description: |-
+                                    The path within the volume from which to select the file.
+                                    Must be relative and may not contain the '..' path or start with '..'.
+                                  type: string
+                                volumeName:
+                                  description: The name of the volume mount containing
+                                    the env file.
+                                  type: string
+                              required:
+                              - key
+                              - path
+                              - volumeName
                               type: object
                               x-kubernetes-map-type: atomic
                             resourceFieldRef:
@@ -1573,7 +1611,7 @@ spec:
                           Claims lists the names of resources, defined in spec.resourceClaims,
                           that are used by this container.
 
-                          This is an alpha field and requires enabling the
+                          This field depends on the
                           DynamicResourceAllocation feature gate.
 
                           This field is immutable. It can only be set for containers.
@@ -1623,6 +1661,24 @@ spec:
                           otherwise to an implementation-defined value. Requests cannot exceed Limits.
                           More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                         type: object
+                    type: object
+                  secretAnnotations:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      SecretAnnotations are custom annotations to add to component-managed Secrets.
+                      Merged with CommonResourceAnnotations from OpenRAGSpec.
+                      Useful for secret injection tools (e.g., vault.hashicorp.com/agent-inject).
+                    maxProperties: 64
+                    type: object
+                  secretLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      SecretLabels are custom labels to add to component-managed Secrets (e.g., .env secrets).
+                      Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                      Useful for secret management tools, backup policies, and auditing.
+                    maxProperties: 64
                     type: object
                   securityContext:
                     description: SecurityContext holds container-level security attributes.
@@ -1696,7 +1752,6 @@ spec:
                           procMount denotes the type of proc mount to use for the containers.
                           The default value is Default which uses the container runtime defaults for
                           readonly paths and masked paths.
-                          This requires the ProcMountType feature flag to be enabled.
                           Note that this field cannot be set when spec.os.name is windows.
                         type: string
                       readOnlyRootFilesystem:
@@ -1816,6 +1871,24 @@ spec:
                             type: string
                         type: object
                     type: object
+                  serviceAccountAnnotations:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ServiceAccountAnnotations are custom annotations to add to the ServiceAccount resource.
+                      Merged with CommonResourceAnnotations from OpenRAGSpec.
+                      Useful for IAM role binding (e.g., eks.amazonaws.com/role-arn, iam.gke.io/gcp-service-account).
+                    maxProperties: 64
+                    type: object
+                  serviceAccountLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ServiceAccountLabels are custom labels to add to the ServiceAccount resource.
+                      Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                      Useful for RBAC policies, auditing, and IAM integration.
+                    maxProperties: 64
+                    type: object
                   serviceAccountName:
                     description: |-
                       ServiceAccountName is the name of the ServiceAccount to use for this component's pod.
@@ -1828,6 +1901,15 @@ spec:
                       type: string
                     description: ServiceAnnotations are annotations to add to the
                       Service resource.
+                    type: object
+                  serviceLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ServiceLabels are custom labels to add to the Service resource.
+                      Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                      Useful for service discovery, monitoring, and network policies.
+                    maxProperties: 64
                     type: object
                   serviceName:
                     description: |-
@@ -1849,6 +1931,15 @@ spec:
                         items:
                           type: string
                         type: array
+                      annotations:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Annotations are custom annotations to add to the PersistentVolumeClaim.
+                          Merged with CommonResourceAnnotations from OpenRAGSpec.
+                          Useful for volume provisioning hints and backup policies.
+                        maxProperties: 64
+                        type: object
                       enabled:
                         default: true
                         type: boolean
@@ -1856,6 +1947,15 @@ spec:
                         description: ExistingClaim reuses a pre-existing PVC instead
                           of creating one.
                         type: string
+                      labels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Labels are custom labels to add to the PersistentVolumeClaim.
+                          Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                          Useful for storage policies, backup tools (e.g., Velero), and cost allocation.
+                        maxProperties: 64
+                        type: object
                       size:
                         anyOf:
                         - type: integer
@@ -1888,9 +1988,10 @@ spec:
                         operator:
                           description: |-
                             Operator represents a key's relationship to the value.
-                            Valid operators are Exists and Equal. Defaults to Equal.
+                            Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
                             Exists is equivalent to wildcard for value, so that a pod can
                             tolerate all taints of a particular category.
+                            Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
                           type: string
                         tolerationSeconds:
                           description: |-
@@ -2085,6 +2186,27 @@ spec:
                 required:
                 - image
                 type: object
+              commonResourceAnnotations:
+                additionalProperties:
+                  type: string
+                description: |-
+                  CommonResourceAnnotations are annotations applied to all managed infrastructure resources
+                  (PVCs, Secrets, Services, ServiceAccounts). These annotations are merged with
+                  resource-specific annotations, with resource-specific annotations taking precedence.
+                  Useful for backup policies, monitoring configuration, and GitOps metadata.
+                maxProperties: 64
+                type: object
+              commonResourceLabels:
+                additionalProperties:
+                  type: string
+                description: |-
+                  CommonResourceLabels are labels applied to all managed infrastructure resources
+                  (PVCs, Secrets, Services, ServiceAccounts). These labels are merged with
+                  resource-specific labels, with resource-specific labels taking precedence.
+                  Operator-managed labels (e.g., app.kubernetes.io/managed-by) cannot be overridden.
+                  Useful for organization-wide policies, cost allocation, and resource grouping.
+                maxProperties: 64
+                type: object
               docling:
                 description: |-
                   Docling configures an optional external document-conversion service (legacy).
@@ -2100,6 +2222,9 @@ spec:
                   scheme:
                     default: http
                     type: string
+                  verifySsl:
+                    default: false
+                    type: boolean
                 required:
                 - host
                 type: object
@@ -2691,8 +2816,8 @@ spec:
                                   most preferred is the one with the greatest sum of weights, i.e.
                                   for each node that meets all of the scheduling requirements (resource
                                   request, requiredDuringScheduling anti-affinity expressions, etc.),
-                                  compute a sum by iterating through the elements of this field and adding
-                                  "weight" to the sum if the node has pods which matches the corresponding podAffinityTerm; the
+                                  compute a sum by iterating through the elements of this field and subtracting
+                                  "weight" from the sum if the node has pods which matches the corresponding podAffinityTerm; the
                                   node(s) with the highest sum are the most preferred.
                                 items:
                                   description: The weights of all of the matched WeightedPodAffinityTerm
@@ -3070,8 +3195,9 @@ spec:
                                 present in a Container.
                               properties:
                                 name:
-                                  description: Name of the environment variable. Must
-                                    be a C_IDENTIFIER.
+                                  description: |-
+                                    Name of the environment variable.
+                                    May consist of any printable ASCII characters except '='.
                                   type: string
                                 value:
                                   description: |-
@@ -3127,6 +3253,43 @@ spec:
                                           type: string
                                       required:
                                       - fieldPath
+                                      type: object
+                                      x-kubernetes-map-type: atomic
+                                    fileKeyRef:
+                                      description: |-
+                                        FileKeyRef selects a key of the env file.
+                                        Requires the EnvFiles feature gate to be enabled.
+                                      properties:
+                                        key:
+                                          description: |-
+                                            The key within the env file. An invalid key will prevent the pod from starting.
+                                            The keys defined within a source may consist of any printable ASCII characters except '='.
+                                            During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
+                                          type: string
+                                        optional:
+                                          default: false
+                                          description: |-
+                                            Specify whether the file or its key must be defined. If the file or key
+                                            does not exist, then the env var is not published.
+                                            If optional is set to true and the specified key does not exist,
+                                            the environment variable will not be set in the Pod's containers.
+
+                                            If optional is set to false and the specified key does not exist,
+                                            an error will be returned during Pod creation.
+                                          type: boolean
+                                        path:
+                                          description: |-
+                                            The path within the volume from which to select the file.
+                                            Must be relative and may not contain the '..' path or start with '..'.
+                                          type: string
+                                        volumeName:
+                                          description: The name of the volume mount
+                                            containing the env file.
+                                          type: string
+                                      required:
+                                      - key
+                                      - path
+                                      - volumeName
                                       type: object
                                       x-kubernetes-map-type: atomic
                                     resourceFieldRef:
@@ -3307,8 +3470,9 @@ spec:
                             in a Container.
                           properties:
                             name:
-                              description: Name of the environment variable. Must
-                                be a C_IDENTIFIER.
+                              description: |-
+                                Name of the environment variable.
+                                May consist of any printable ASCII characters except '='.
                               type: string
                             value:
                               description: |-
@@ -3364,6 +3528,43 @@ spec:
                                       type: string
                                   required:
                                   - fieldPath
+                                  type: object
+                                  x-kubernetes-map-type: atomic
+                                fileKeyRef:
+                                  description: |-
+                                    FileKeyRef selects a key of the env file.
+                                    Requires the EnvFiles feature gate to be enabled.
+                                  properties:
+                                    key:
+                                      description: |-
+                                        The key within the env file. An invalid key will prevent the pod from starting.
+                                        The keys defined within a source may consist of any printable ASCII characters except '='.
+                                        During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
+                                      type: string
+                                    optional:
+                                      default: false
+                                      description: |-
+                                        Specify whether the file or its key must be defined. If the file or key
+                                        does not exist, then the env var is not published.
+                                        If optional is set to true and the specified key does not exist,
+                                        the environment variable will not be set in the Pod's containers.
+
+                                        If optional is set to false and the specified key does not exist,
+                                        an error will be returned during Pod creation.
+                                      type: boolean
+                                    path:
+                                      description: |-
+                                        The path within the volume from which to select the file.
+                                        Must be relative and may not contain the '..' path or start with '..'.
+                                      type: string
+                                    volumeName:
+                                      description: The name of the volume mount containing
+                                        the env file.
+                                      type: string
+                                  required:
+                                  - key
+                                  - path
+                                  - volumeName
                                   type: object
                                   x-kubernetes-map-type: atomic
                                 resourceFieldRef:
@@ -3498,8 +3699,8 @@ spec:
                                       and scale-down and scale-up tolerances of 5% and 1% respectively, scaling will be
                                       triggered when the actual consumption falls below 95Mi or exceeds 101Mi.
 
-                                      This is an alpha field and requires enabling the HPAConfigurableTolerance
-                                      feature gate.
+                                      This is an beta field and requires the HPAConfigurableTolerance feature
+                                      gate to be enabled.
                                     pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                                     x-kubernetes-int-or-string: true
                                 type: object
@@ -3574,8 +3775,8 @@ spec:
                                       and scale-down and scale-up tolerances of 5% and 1% respectively, scaling will be
                                       triggered when the actual consumption falls below 95Mi or exceeds 101Mi.
 
-                                      This is an alpha field and requires enabling the HPAConfigurableTolerance
-                                      feature gate.
+                                      This is an beta field and requires the HPAConfigurableTolerance feature
+                                      gate to be enabled.
                                     pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                                     x-kubernetes-int-or-string: true
                                 type: object
@@ -4241,7 +4442,7 @@ spec:
                               Claims lists the names of resources, defined in spec.resourceClaims,
                               that are used by this container.
 
-                              This is an alpha field and requires enabling the
+                              This field depends on the
                               DynamicResourceAllocation feature gate.
 
                               This field is immutable. It can only be set for containers.
@@ -4291,6 +4492,24 @@ spec:
                               otherwise to an implementation-defined value. Requests cannot exceed Limits.
                               More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                             type: object
+                        type: object
+                      secretAnnotations:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          SecretAnnotations are custom annotations to add to component-managed Secrets.
+                          Merged with CommonResourceAnnotations from OpenRAGSpec.
+                          Useful for secret injection tools (e.g., vault.hashicorp.com/agent-inject).
+                        maxProperties: 64
+                        type: object
+                      secretLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          SecretLabels are custom labels to add to component-managed Secrets (e.g., .env secrets).
+                          Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                          Useful for secret management tools, backup policies, and auditing.
+                        maxProperties: 64
                         type: object
                       securityContext:
                         description: SecurityContext holds container-level security
@@ -4365,7 +4584,6 @@ spec:
                               procMount denotes the type of proc mount to use for the containers.
                               The default value is Default which uses the container runtime defaults for
                               readonly paths and masked paths.
-                              This requires the ProcMountType feature flag to be enabled.
                               Note that this field cannot be set when spec.os.name is windows.
                             type: string
                           readOnlyRootFilesystem:
@@ -4485,6 +4703,24 @@ spec:
                                 type: string
                             type: object
                         type: object
+                      serviceAccountAnnotations:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          ServiceAccountAnnotations are custom annotations to add to the ServiceAccount resource.
+                          Merged with CommonResourceAnnotations from OpenRAGSpec.
+                          Useful for IAM role binding (e.g., eks.amazonaws.com/role-arn, iam.gke.io/gcp-service-account).
+                        maxProperties: 64
+                        type: object
+                      serviceAccountLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          ServiceAccountLabels are custom labels to add to the ServiceAccount resource.
+                          Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                          Useful for RBAC policies, auditing, and IAM integration.
+                        maxProperties: 64
+                        type: object
                       serviceAccountName:
                         description: |-
                           ServiceAccountName is the name of the ServiceAccount to use for this component's pod.
@@ -4497,6 +4733,15 @@ spec:
                           type: string
                         description: ServiceAnnotations are annotations to add to
                           the Service resource.
+                        type: object
+                      serviceLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          ServiceLabels are custom labels to add to the Service resource.
+                          Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                          Useful for service discovery, monitoring, and network policies.
+                        maxProperties: 64
                         type: object
                       serviceName:
                         description: |-
@@ -4519,6 +4764,15 @@ spec:
                             items:
                               type: string
                             type: array
+                          annotations:
+                            additionalProperties:
+                              type: string
+                            description: |-
+                              Annotations are custom annotations to add to the PersistentVolumeClaim.
+                              Merged with CommonResourceAnnotations from OpenRAGSpec.
+                              Useful for volume provisioning hints and backup policies.
+                            maxProperties: 64
+                            type: object
                           enabled:
                             default: true
                             type: boolean
@@ -4526,6 +4780,15 @@ spec:
                             description: ExistingClaim reuses a pre-existing PVC instead
                               of creating one.
                             type: string
+                          labels:
+                            additionalProperties:
+                              type: string
+                            description: |-
+                              Labels are custom labels to add to the PersistentVolumeClaim.
+                              Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                              Useful for storage policies, backup tools (e.g., Velero), and cost allocation.
+                            maxProperties: 64
+                            type: object
                           size:
                             anyOf:
                             - type: integer
@@ -4558,9 +4821,10 @@ spec:
                             operator:
                               description: |-
                                 Operator represents a key's relationship to the value.
-                                Valid operators are Exists and Equal. Defaults to Equal.
+                                Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
                                 Exists is equivalent to wildcard for value, so that a pod can
                                 tolerate all taints of a particular category.
+                                Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
                               type: string
                             tolerationSeconds:
                               description: |-
@@ -5336,8 +5600,8 @@ spec:
                                   most preferred is the one with the greatest sum of weights, i.e.
                                   for each node that meets all of the scheduling requirements (resource
                                   request, requiredDuringScheduling anti-affinity expressions, etc.),
-                                  compute a sum by iterating through the elements of this field and adding
-                                  "weight" to the sum if the node has pods which matches the corresponding podAffinityTerm; the
+                                  compute a sum by iterating through the elements of this field and subtracting
+                                  "weight" from the sum if the node has pods which matches the corresponding podAffinityTerm; the
                                   node(s) with the highest sum are the most preferred.
                                 items:
                                   description: The weights of all of the matched WeightedPodAffinityTerm
@@ -5732,8 +5996,9 @@ spec:
                             in a Container.
                           properties:
                             name:
-                              description: Name of the environment variable. Must
-                                be a C_IDENTIFIER.
+                              description: |-
+                                Name of the environment variable.
+                                May consist of any printable ASCII characters except '='.
                               type: string
                             value:
                               description: |-
@@ -5789,6 +6054,43 @@ spec:
                                       type: string
                                   required:
                                   - fieldPath
+                                  type: object
+                                  x-kubernetes-map-type: atomic
+                                fileKeyRef:
+                                  description: |-
+                                    FileKeyRef selects a key of the env file.
+                                    Requires the EnvFiles feature gate to be enabled.
+                                  properties:
+                                    key:
+                                      description: |-
+                                        The key within the env file. An invalid key will prevent the pod from starting.
+                                        The keys defined within a source may consist of any printable ASCII characters except '='.
+                                        During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
+                                      type: string
+                                    optional:
+                                      default: false
+                                      description: |-
+                                        Specify whether the file or its key must be defined. If the file or key
+                                        does not exist, then the env var is not published.
+                                        If optional is set to true and the specified key does not exist,
+                                        the environment variable will not be set in the Pod's containers.
+
+                                        If optional is set to false and the specified key does not exist,
+                                        an error will be returned during Pod creation.
+                                      type: boolean
+                                    path:
+                                      description: |-
+                                        The path within the volume from which to select the file.
+                                        Must be relative and may not contain the '..' path or start with '..'.
+                                      type: string
+                                    volumeName:
+                                      description: The name of the volume mount containing
+                                        the env file.
+                                      type: string
+                                  required:
+                                  - key
+                                  - path
+                                  - volumeName
                                   type: object
                                   x-kubernetes-map-type: atomic
                                 resourceFieldRef:
@@ -6199,7 +6501,7 @@ spec:
                               Claims lists the names of resources, defined in spec.resourceClaims,
                               that are used by this container.
 
-                              This is an alpha field and requires enabling the
+                              This field depends on the
                               DynamicResourceAllocation feature gate.
 
                               This field is immutable. It can only be set for containers.
@@ -6249,6 +6551,24 @@ spec:
                               otherwise to an implementation-defined value. Requests cannot exceed Limits.
                               More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                             type: object
+                        type: object
+                      secretAnnotations:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          SecretAnnotations are custom annotations to add to component-managed Secrets.
+                          Merged with CommonResourceAnnotations from OpenRAGSpec.
+                          Useful for secret injection tools (e.g., vault.hashicorp.com/agent-inject).
+                        maxProperties: 64
+                        type: object
+                      secretLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          SecretLabels are custom labels to add to component-managed Secrets (e.g., .env secrets).
+                          Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                          Useful for secret management tools, backup policies, and auditing.
+                        maxProperties: 64
                         type: object
                       securityContext:
                         description: SecurityContext holds container-level security
@@ -6323,7 +6643,6 @@ spec:
                               procMount denotes the type of proc mount to use for the containers.
                               The default value is Default which uses the container runtime defaults for
                               readonly paths and masked paths.
-                              This requires the ProcMountType feature flag to be enabled.
                               Note that this field cannot be set when spec.os.name is windows.
                             type: string
                           readOnlyRootFilesystem:
@@ -6443,6 +6762,24 @@ spec:
                                 type: string
                             type: object
                         type: object
+                      serviceAccountAnnotations:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          ServiceAccountAnnotations are custom annotations to add to the ServiceAccount resource.
+                          Merged with CommonResourceAnnotations from OpenRAGSpec.
+                          Useful for IAM role binding (e.g., eks.amazonaws.com/role-arn, iam.gke.io/gcp-service-account).
+                        maxProperties: 64
+                        type: object
+                      serviceAccountLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          ServiceAccountLabels are custom labels to add to the ServiceAccount resource.
+                          Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                          Useful for RBAC policies, auditing, and IAM integration.
+                        maxProperties: 64
+                        type: object
                       serviceAccountName:
                         description: |-
                           ServiceAccountName is the name of the ServiceAccount to use for this component's pod.
@@ -6455,6 +6792,15 @@ spec:
                           type: string
                         description: ServiceAnnotations are annotations to add to
                           the Service resource.
+                        type: object
+                      serviceLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          ServiceLabels are custom labels to add to the Service resource.
+                          Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                          Useful for service discovery, monitoring, and network policies.
+                        maxProperties: 64
                         type: object
                       serviceName:
                         description: |-
@@ -6476,6 +6822,15 @@ spec:
                             items:
                               type: string
                             type: array
+                          annotations:
+                            additionalProperties:
+                              type: string
+                            description: |-
+                              Annotations are custom annotations to add to the PersistentVolumeClaim.
+                              Merged with CommonResourceAnnotations from OpenRAGSpec.
+                              Useful for volume provisioning hints and backup policies.
+                            maxProperties: 64
+                            type: object
                           enabled:
                             default: true
                             type: boolean
@@ -6483,6 +6838,15 @@ spec:
                             description: ExistingClaim reuses a pre-existing PVC instead
                               of creating one.
                             type: string
+                          labels:
+                            additionalProperties:
+                              type: string
+                            description: |-
+                              Labels are custom labels to add to the PersistentVolumeClaim.
+                              Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                              Useful for storage policies, backup tools (e.g., Velero), and cost allocation.
+                            maxProperties: 64
+                            type: object
                           size:
                             anyOf:
                             - type: integer
@@ -6515,9 +6879,10 @@ spec:
                             operator:
                               description: |-
                                 Operator represents a key's relationship to the value.
-                                Valid operators are Exists and Equal. Defaults to Equal.
+                                Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
                                 Exists is equivalent to wildcard for value, so that a pod can
                                 tolerate all taints of a particular category.
+                                Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
                               type: string
                             tolerationSeconds:
                               description: |-
@@ -7291,8 +7656,8 @@ spec:
                                   most preferred is the one with the greatest sum of weights, i.e.
                                   for each node that meets all of the scheduling requirements (resource
                                   request, requiredDuringScheduling anti-affinity expressions, etc.),
-                                  compute a sum by iterating through the elements of this field and adding
-                                  "weight" to the sum if the node has pods which matches the corresponding podAffinityTerm; the
+                                  compute a sum by iterating through the elements of this field and subtracting
+                                  "weight" from the sum if the node has pods which matches the corresponding podAffinityTerm; the
                                   node(s) with the highest sum are the most preferred.
                                 items:
                                   description: The weights of all of the matched WeightedPodAffinityTerm
@@ -7677,8 +8042,9 @@ spec:
                                 present in a Container.
                               properties:
                                 name:
-                                  description: Name of the environment variable. Must
-                                    be a C_IDENTIFIER.
+                                  description: |-
+                                    Name of the environment variable.
+                                    May consist of any printable ASCII characters except '='.
                                   type: string
                                 value:
                                   description: |-
@@ -7734,6 +8100,43 @@ spec:
                                           type: string
                                       required:
                                       - fieldPath
+                                      type: object
+                                      x-kubernetes-map-type: atomic
+                                    fileKeyRef:
+                                      description: |-
+                                        FileKeyRef selects a key of the env file.
+                                        Requires the EnvFiles feature gate to be enabled.
+                                      properties:
+                                        key:
+                                          description: |-
+                                            The key within the env file. An invalid key will prevent the pod from starting.
+                                            The keys defined within a source may consist of any printable ASCII characters except '='.
+                                            During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
+                                          type: string
+                                        optional:
+                                          default: false
+                                          description: |-
+                                            Specify whether the file or its key must be defined. If the file or key
+                                            does not exist, then the env var is not published.
+                                            If optional is set to true and the specified key does not exist,
+                                            the environment variable will not be set in the Pod's containers.
+
+                                            If optional is set to false and the specified key does not exist,
+                                            an error will be returned during Pod creation.
+                                          type: boolean
+                                        path:
+                                          description: |-
+                                            The path within the volume from which to select the file.
+                                            Must be relative and may not contain the '..' path or start with '..'.
+                                          type: string
+                                        volumeName:
+                                          description: The name of the volume mount
+                                            containing the env file.
+                                          type: string
+                                      required:
+                                      - key
+                                      - path
+                                      - volumeName
                                       type: object
                                       x-kubernetes-map-type: atomic
                                     resourceFieldRef:
@@ -7914,8 +8317,9 @@ spec:
                             in a Container.
                           properties:
                             name:
-                              description: Name of the environment variable. Must
-                                be a C_IDENTIFIER.
+                              description: |-
+                                Name of the environment variable.
+                                May consist of any printable ASCII characters except '='.
                               type: string
                             value:
                               description: |-
@@ -7971,6 +8375,43 @@ spec:
                                       type: string
                                   required:
                                   - fieldPath
+                                  type: object
+                                  x-kubernetes-map-type: atomic
+                                fileKeyRef:
+                                  description: |-
+                                    FileKeyRef selects a key of the env file.
+                                    Requires the EnvFiles feature gate to be enabled.
+                                  properties:
+                                    key:
+                                      description: |-
+                                        The key within the env file. An invalid key will prevent the pod from starting.
+                                        The keys defined within a source may consist of any printable ASCII characters except '='.
+                                        During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
+                                      type: string
+                                    optional:
+                                      default: false
+                                      description: |-
+                                        Specify whether the file or its key must be defined. If the file or key
+                                        does not exist, then the env var is not published.
+                                        If optional is set to true and the specified key does not exist,
+                                        the environment variable will not be set in the Pod's containers.
+
+                                        If optional is set to false and the specified key does not exist,
+                                        an error will be returned during Pod creation.
+                                      type: boolean
+                                    path:
+                                      description: |-
+                                        The path within the volume from which to select the file.
+                                        Must be relative and may not contain the '..' path or start with '..'.
+                                      type: string
+                                    volumeName:
+                                      description: The name of the volume mount containing
+                                        the env file.
+                                      type: string
+                                  required:
+                                  - key
+                                  - path
+                                  - volumeName
                                   type: object
                                   x-kubernetes-map-type: atomic
                                 resourceFieldRef:
@@ -8105,8 +8546,8 @@ spec:
                                       and scale-down and scale-up tolerances of 5% and 1% respectively, scaling will be
                                       triggered when the actual consumption falls below 95Mi or exceeds 101Mi.
 
-                                      This is an alpha field and requires enabling the HPAConfigurableTolerance
-                                      feature gate.
+                                      This is an beta field and requires the HPAConfigurableTolerance feature
+                                      gate to be enabled.
                                     pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                                     x-kubernetes-int-or-string: true
                                 type: object
@@ -8181,8 +8622,8 @@ spec:
                                       and scale-down and scale-up tolerances of 5% and 1% respectively, scaling will be
                                       triggered when the actual consumption falls below 95Mi or exceeds 101Mi.
 
-                                      This is an alpha field and requires enabling the HPAConfigurableTolerance
-                                      feature gate.
+                                      This is an beta field and requires the HPAConfigurableTolerance feature
+                                      gate to be enabled.
                                     pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                                     x-kubernetes-int-or-string: true
                                 type: object
@@ -8874,7 +9315,7 @@ spec:
                               Claims lists the names of resources, defined in spec.resourceClaims,
                               that are used by this container.
 
-                              This is an alpha field and requires enabling the
+                              This field depends on the
                               DynamicResourceAllocation feature gate.
 
                               This field is immutable. It can only be set for containers.
@@ -8924,6 +9365,24 @@ spec:
                               otherwise to an implementation-defined value. Requests cannot exceed Limits.
                               More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                             type: object
+                        type: object
+                      secretAnnotations:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          SecretAnnotations are custom annotations to add to component-managed Secrets.
+                          Merged with CommonResourceAnnotations from OpenRAGSpec.
+                          Useful for secret injection tools (e.g., vault.hashicorp.com/agent-inject).
+                        maxProperties: 64
+                        type: object
+                      secretLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          SecretLabels are custom labels to add to component-managed Secrets (e.g., .env secrets).
+                          Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                          Useful for secret management tools, backup policies, and auditing.
+                        maxProperties: 64
                         type: object
                       securityContext:
                         description: SecurityContext holds container-level security
@@ -8998,7 +9457,6 @@ spec:
                               procMount denotes the type of proc mount to use for the containers.
                               The default value is Default which uses the container runtime defaults for
                               readonly paths and masked paths.
-                              This requires the ProcMountType feature flag to be enabled.
                               Note that this field cannot be set when spec.os.name is windows.
                             type: string
                           readOnlyRootFilesystem:
@@ -9118,6 +9576,24 @@ spec:
                                 type: string
                             type: object
                         type: object
+                      serviceAccountAnnotations:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          ServiceAccountAnnotations are custom annotations to add to the ServiceAccount resource.
+                          Merged with CommonResourceAnnotations from OpenRAGSpec.
+                          Useful for IAM role binding (e.g., eks.amazonaws.com/role-arn, iam.gke.io/gcp-service-account).
+                        maxProperties: 64
+                        type: object
+                      serviceAccountLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          ServiceAccountLabels are custom labels to add to the ServiceAccount resource.
+                          Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                          Useful for RBAC policies, auditing, and IAM integration.
+                        maxProperties: 64
+                        type: object
                       serviceAccountName:
                         description: |-
                           ServiceAccountName is the name of the ServiceAccount to use for this component's pod.
@@ -9130,6 +9606,15 @@ spec:
                           type: string
                         description: ServiceAnnotations are annotations to add to
                           the Service resource.
+                        type: object
+                      serviceLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          ServiceLabels are custom labels to add to the Service resource.
+                          Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                          Useful for service discovery, monitoring, and network policies.
+                        maxProperties: 64
                         type: object
                       serviceName:
                         description: |-
@@ -9151,6 +9636,15 @@ spec:
                             items:
                               type: string
                             type: array
+                          annotations:
+                            additionalProperties:
+                              type: string
+                            description: |-
+                              Annotations are custom annotations to add to the PersistentVolumeClaim.
+                              Merged with CommonResourceAnnotations from OpenRAGSpec.
+                              Useful for volume provisioning hints and backup policies.
+                            maxProperties: 64
+                            type: object
                           enabled:
                             default: true
                             type: boolean
@@ -9158,6 +9652,15 @@ spec:
                             description: ExistingClaim reuses a pre-existing PVC instead
                               of creating one.
                             type: string
+                          labels:
+                            additionalProperties:
+                              type: string
+                            description: |-
+                              Labels are custom labels to add to the PersistentVolumeClaim.
+                              Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                              Useful for storage policies, backup tools (e.g., Velero), and cost allocation.
+                            maxProperties: 64
+                            type: object
                           size:
                             anyOf:
                             - type: integer
@@ -9190,9 +9693,10 @@ spec:
                             operator:
                               description: |-
                                 Operator represents a key's relationship to the value.
-                                Valid operators are Exists and Equal. Defaults to Equal.
+                                Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
                                 Exists is equivalent to wildcard for value, so that a pod can
                                 tolerate all taints of a particular category.
+                                Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
                               type: string
                             tolerationSeconds:
                               description: |-
@@ -9973,8 +10477,8 @@ spec:
                               most preferred is the one with the greatest sum of weights, i.e.
                               for each node that meets all of the scheduling requirements (resource
                               request, requiredDuringScheduling anti-affinity expressions, etc.),
-                              compute a sum by iterating through the elements of this field and adding
-                              "weight" to the sum if the node has pods which matches the corresponding podAffinityTerm; the
+                              compute a sum by iterating through the elements of this field and subtracting
+                              "weight" from the sum if the node has pods which matches the corresponding podAffinityTerm; the
                               node(s) with the highest sum are the most preferred.
                             items:
                               description: The weights of all of the matched WeightedPodAffinityTerm
@@ -10360,8 +10864,9 @@ spec:
                         in a Container.
                       properties:
                         name:
-                          description: Name of the environment variable. Must be a
-                            C_IDENTIFIER.
+                          description: |-
+                            Name of the environment variable.
+                            May consist of any printable ASCII characters except '='.
                           type: string
                         value:
                           description: |-
@@ -10417,6 +10922,43 @@ spec:
                                   type: string
                               required:
                               - fieldPath
+                              type: object
+                              x-kubernetes-map-type: atomic
+                            fileKeyRef:
+                              description: |-
+                                FileKeyRef selects a key of the env file.
+                                Requires the EnvFiles feature gate to be enabled.
+                              properties:
+                                key:
+                                  description: |-
+                                    The key within the env file. An invalid key will prevent the pod from starting.
+                                    The keys defined within a source may consist of any printable ASCII characters except '='.
+                                    During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
+                                  type: string
+                                optional:
+                                  default: false
+                                  description: |-
+                                    Specify whether the file or its key must be defined. If the file or key
+                                    does not exist, then the env var is not published.
+                                    If optional is set to true and the specified key does not exist,
+                                    the environment variable will not be set in the Pod's containers.
+
+                                    If optional is set to false and the specified key does not exist,
+                                    an error will be returned during Pod creation.
+                                  type: boolean
+                                path:
+                                  description: |-
+                                    The path within the volume from which to select the file.
+                                    Must be relative and may not contain the '..' path or start with '..'.
+                                  type: string
+                                volumeName:
+                                  description: The name of the volume mount containing
+                                    the env file.
+                                  type: string
+                              required:
+                              - key
+                              - path
+                              - volumeName
                               type: object
                               x-kubernetes-map-type: atomic
                             resourceFieldRef:
@@ -10784,7 +11326,7 @@ spec:
                           Claims lists the names of resources, defined in spec.resourceClaims,
                           that are used by this container.
 
-                          This is an alpha field and requires enabling the
+                          This field depends on the
                           DynamicResourceAllocation feature gate.
 
                           This field is immutable. It can only be set for containers.
@@ -10834,6 +11376,24 @@ spec:
                           otherwise to an implementation-defined value. Requests cannot exceed Limits.
                           More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                         type: object
+                    type: object
+                  secretAnnotations:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      SecretAnnotations are custom annotations to add to component-managed Secrets.
+                      Merged with CommonResourceAnnotations from OpenRAGSpec.
+                      Useful for secret injection tools (e.g., vault.hashicorp.com/agent-inject).
+                    maxProperties: 64
+                    type: object
+                  secretLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      SecretLabels are custom labels to add to component-managed Secrets (e.g., .env secrets).
+                      Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                      Useful for secret management tools, backup policies, and auditing.
+                    maxProperties: 64
                     type: object
                   securityContext:
                     description: SecurityContext holds container-level security attributes.
@@ -10907,7 +11467,6 @@ spec:
                           procMount denotes the type of proc mount to use for the containers.
                           The default value is Default which uses the container runtime defaults for
                           readonly paths and masked paths.
-                          This requires the ProcMountType feature flag to be enabled.
                           Note that this field cannot be set when spec.os.name is windows.
                         type: string
                       readOnlyRootFilesystem:
@@ -11027,6 +11586,24 @@ spec:
                             type: string
                         type: object
                     type: object
+                  serviceAccountAnnotations:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ServiceAccountAnnotations are custom annotations to add to the ServiceAccount resource.
+                      Merged with CommonResourceAnnotations from OpenRAGSpec.
+                      Useful for IAM role binding (e.g., eks.amazonaws.com/role-arn, iam.gke.io/gcp-service-account).
+                    maxProperties: 64
+                    type: object
+                  serviceAccountLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ServiceAccountLabels are custom labels to add to the ServiceAccount resource.
+                      Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                      Useful for RBAC policies, auditing, and IAM integration.
+                    maxProperties: 64
+                    type: object
                   serviceAccountName:
                     description: |-
                       ServiceAccountName is the name of the ServiceAccount to use for this component's pod.
@@ -11039,6 +11616,15 @@ spec:
                       type: string
                     description: ServiceAnnotations are annotations to add to the
                       Service resource.
+                    type: object
+                  serviceLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ServiceLabels are custom labels to add to the Service resource.
+                      Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                      Useful for service discovery, monitoring, and network policies.
+                    maxProperties: 64
                     type: object
                   serviceName:
                     description: |-
@@ -11071,9 +11657,10 @@ spec:
                         operator:
                           description: |-
                             Operator represents a key's relationship to the value.
-                            Valid operators are Exists and Equal. Defaults to Equal.
+                            Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
                             Exists is equivalent to wildcard for value, so that a pod can
                             tolerate all taints of a particular category.
+                            Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
                           type: string
                         tolerationSeconds:
                           description: |-
@@ -11291,6 +11878,20 @@ spec:
                 x-kubernetes-validations:
                 - message: imagePullSecret name cannot be empty
                   rule: self.all(x, x.name != '')
+              instanceName:
+                description: |-
+                  InstanceName is a short unique identifier embedded in all resource names, enabling
+                  multiple OpenRAG CRs to coexist in the same namespace (e.g. "prod", "staging").
+                  Must start with a lowercase letter and contain only lowercase letters, digits, and
+                  hyphens, with a maximum of 8 characters. When empty (default), resources use legacy
+                  static names (openrag-fe, openrag-be, openrag-lf) for backwards compatibility.
+                  This field is immutable after creation.
+                maxLength: 8
+                pattern: ^[a-z][a-z0-9-]*$
+                type: string
+                x-kubernetes-validations:
+                - message: instanceName is immutable after creation
+                  rule: self == oldSelf
               langflow:
                 description: Langflow configures the Langflow workflow engine.
                 properties:
@@ -11867,8 +12468,8 @@ spec:
                               most preferred is the one with the greatest sum of weights, i.e.
                               for each node that meets all of the scheduling requirements (resource
                               request, requiredDuringScheduling anti-affinity expressions, etc.),
-                              compute a sum by iterating through the elements of this field and adding
-                              "weight" to the sum if the node has pods which matches the corresponding podAffinityTerm; the
+                              compute a sum by iterating through the elements of this field and subtracting
+                              "weight" from the sum if the node has pods which matches the corresponding podAffinityTerm; the
                               node(s) with the highest sum are the most preferred.
                             items:
                               description: The weights of all of the matched WeightedPodAffinityTerm
@@ -12263,8 +12864,9 @@ spec:
                         in a Container.
                       properties:
                         name:
-                          description: Name of the environment variable. Must be a
-                            C_IDENTIFIER.
+                          description: |-
+                            Name of the environment variable.
+                            May consist of any printable ASCII characters except '='.
                           type: string
                         value:
                           description: |-
@@ -12320,6 +12922,43 @@ spec:
                                   type: string
                               required:
                               - fieldPath
+                              type: object
+                              x-kubernetes-map-type: atomic
+                            fileKeyRef:
+                              description: |-
+                                FileKeyRef selects a key of the env file.
+                                Requires the EnvFiles feature gate to be enabled.
+                              properties:
+                                key:
+                                  description: |-
+                                    The key within the env file. An invalid key will prevent the pod from starting.
+                                    The keys defined within a source may consist of any printable ASCII characters except '='.
+                                    During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
+                                  type: string
+                                optional:
+                                  default: false
+                                  description: |-
+                                    Specify whether the file or its key must be defined. If the file or key
+                                    does not exist, then the env var is not published.
+                                    If optional is set to true and the specified key does not exist,
+                                    the environment variable will not be set in the Pod's containers.
+
+                                    If optional is set to false and the specified key does not exist,
+                                    an error will be returned during Pod creation.
+                                  type: boolean
+                                path:
+                                  description: |-
+                                    The path within the volume from which to select the file.
+                                    Must be relative and may not contain the '..' path or start with '..'.
+                                  type: string
+                                volumeName:
+                                  description: The name of the volume mount containing
+                                    the env file.
+                                  type: string
+                              required:
+                              - key
+                              - path
+                              - volumeName
                               type: object
                               x-kubernetes-map-type: atomic
                             resourceFieldRef:
@@ -12714,7 +13353,7 @@ spec:
                           Claims lists the names of resources, defined in spec.resourceClaims,
                           that are used by this container.
 
-                          This is an alpha field and requires enabling the
+                          This field depends on the
                           DynamicResourceAllocation feature gate.
 
                           This field is immutable. It can only be set for containers.
@@ -12765,6 +13404,15 @@ spec:
                           More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                         type: object
                     type: object
+                  secretAnnotations:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      SecretAnnotations are custom annotations to add to component-managed Secrets.
+                      Merged with CommonResourceAnnotations from OpenRAGSpec.
+                      Useful for secret injection tools (e.g., vault.hashicorp.com/agent-inject).
+                    maxProperties: 64
+                    type: object
                   secretKeySecret:
                     description: |-
                       SecretKeySecret references the Secret key for LANGFLOW_SECRET_KEY,
@@ -12793,6 +13441,15 @@ spec:
                     - key
                     type: object
                     x-kubernetes-map-type: atomic
+                  secretLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      SecretLabels are custom labels to add to component-managed Secrets (e.g., .env secrets).
+                      Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                      Useful for secret management tools, backup policies, and auditing.
+                    maxProperties: 64
+                    type: object
                   securityContext:
                     description: SecurityContext holds container-level security attributes.
                     properties:
@@ -12865,7 +13522,6 @@ spec:
                           procMount denotes the type of proc mount to use for the containers.
                           The default value is Default which uses the container runtime defaults for
                           readonly paths and masked paths.
-                          This requires the ProcMountType feature flag to be enabled.
                           Note that this field cannot be set when spec.os.name is windows.
                         type: string
                       readOnlyRootFilesystem:
@@ -12985,6 +13641,24 @@ spec:
                             type: string
                         type: object
                     type: object
+                  serviceAccountAnnotations:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ServiceAccountAnnotations are custom annotations to add to the ServiceAccount resource.
+                      Merged with CommonResourceAnnotations from OpenRAGSpec.
+                      Useful for IAM role binding (e.g., eks.amazonaws.com/role-arn, iam.gke.io/gcp-service-account).
+                    maxProperties: 64
+                    type: object
+                  serviceAccountLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ServiceAccountLabels are custom labels to add to the ServiceAccount resource.
+                      Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                      Useful for RBAC policies, auditing, and IAM integration.
+                    maxProperties: 64
+                    type: object
                   serviceAccountName:
                     description: |-
                       ServiceAccountName is the name of the ServiceAccount to use for this component's pod.
@@ -12997,6 +13671,15 @@ spec:
                       type: string
                     description: ServiceAnnotations are annotations to add to the
                       Service resource.
+                    type: object
+                  serviceLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ServiceLabels are custom labels to add to the Service resource.
+                      Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                      Useful for service discovery, monitoring, and network policies.
+                    maxProperties: 64
                     type: object
                   serviceName:
                     description: |-
@@ -13019,6 +13702,15 @@ spec:
                         items:
                           type: string
                         type: array
+                      annotations:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Annotations are custom annotations to add to the PersistentVolumeClaim.
+                          Merged with CommonResourceAnnotations from OpenRAGSpec.
+                          Useful for volume provisioning hints and backup policies.
+                        maxProperties: 64
+                        type: object
                       enabled:
                         default: true
                         type: boolean
@@ -13026,6 +13718,15 @@ spec:
                         description: ExistingClaim reuses a pre-existing PVC instead
                           of creating one.
                         type: string
+                      labels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Labels are custom labels to add to the PersistentVolumeClaim.
+                          Merged with operator-managed labels and CommonResourceLabels from OpenRAGSpec.
+                          Useful for storage policies, backup tools (e.g., Velero), and cost allocation.
+                        maxProperties: 64
+                        type: object
                       size:
                         anyOf:
                         - type: integer
@@ -13058,9 +13759,10 @@ spec:
                         operator:
                           description: |-
                             Operator represents a key's relationship to the value.
-                            Valid operators are Exists and Equal. Defaults to Equal.
+                            Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
                             Exists is equivalent to wildcard for value, so that a pod can
                             tolerate all taints of a particular category.
+                            Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
                           type: string
                         tolerationSeconds:
                           description: |-

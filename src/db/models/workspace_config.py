@@ -11,8 +11,8 @@ the JSON envelope; no DB-level encryption is added here because the
 other fields (embedding model, prompt, etc.) are not secrets.
 """
 
-from datetime import datetime
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import JSON, Column
 from sqlmodel import Field, SQLModel
@@ -22,11 +22,9 @@ class WorkspaceConfig(SQLModel, table=True):
     __tablename__ = "workspace_config"
 
     section: str = Field(primary_key=True, max_length=64)
-    value: Optional[dict[str, Any]] = Field(
+    value: dict[str, Any] | None = Field(
         default_factory=dict,
         sa_column=Column("value", JSON, nullable=False),
     )
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_by: Optional[str] = Field(
-        default=None, foreign_key="users.id", max_length=64
-    )
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_by: str | None = Field(default=None, foreign_key="users.id", max_length=64)

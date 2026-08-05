@@ -1,11 +1,6 @@
 name: Publish Python SDK
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'sdks/python/pyproject.toml'
   workflow_dispatch:
 
 jobs:

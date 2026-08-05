@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   type CheckboxSelectionCallbackParams,
   type ColDef,
+  type ColumnState,
   type GetRowIdParams,
   themeQuartz,
   type ValueFormatterParams,
@@ -12,13 +13,14 @@ import {
 import { AgGridReact, type CustomCellRendererProps } from "ag-grid-react";
 import { AlertTriangle, Cloud, FileIcon, Globe, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { KnowledgeDropdown } from "@/components/knowledge-dropdown";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Banner, BannerIcon, BannerTitle } from "@/components/ui/banner";
 import { Button } from "@/components/ui/button";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
+import { trackButton } from "@/lib/analytics";
 import {
   EMPTY_SEARCH_RESULT,
   type File,
@@ -31,8 +33,10 @@ import "@/components/AgGrid/agGridStyles.css";
 import { toast } from "sonner";
 import { KnowledgeActionsDropdown } from "@/components/knowledge-actions-dropdown";
 import { KnowledgeBatchActionsBar } from "@/components/knowledge-batch-actions-bar";
+import { KnowledgePaginationFooter } from "@/components/knowledge-pagination-footer";
 import { KnowledgeSearchBar } from "@/components/knowledge-search-bar";
 import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
+import { RequirePermission } from "@/components/require-permission";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
   Tooltip,
@@ -40,6 +44,9 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useIsCloudBrand } from "@/contexts/brand-context";
+import { getConnectorDescriptor } from "@/lib/connectors/registry";
+import { formatFileSize } from "@/lib/file-format";
+import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
 import {
   buildKnowledgeTableRows,
   getKnowledgeFileIdentity,
@@ -50,14 +57,50 @@ import {
   DeleteConfirmationDialog,
   formatFilesToDelete,
 } from "../../components/delete-confirmation-dialog";
-import AwsLogo from "../../components/icons/aws-logo";
-import GoogleDriveIcon from "../../components/icons/google-drive-logo";
-import IBMCOSIcon from "../../components/icons/ibm-cos-icon";
-import OneDriveIcon from "../../components/icons/one-drive-logo";
-import SharePointIcon from "../../components/icons/share-point-logo";
+import { SyncConfirmDialog } from "../../components/sync-confirm-dialog";
 import { useDeleteDocument } from "../api/mutations/useDeleteDocument";
 import { useRefreshOpenragDocs } from "../api/mutations/useRefreshOpenragDocs";
-import { useSyncAllConnectors } from "../api/mutations/useSyncConnector";
+import {
+  type SyncAllPreviewResponse,
+  useSyncAllConnectors,
+  useSyncAllConnectorsPreview,
+} from "../api/mutations/useSyncConnector";
+
+function sameFileSelection(a: File[], b: File[]): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  const identities = new Set(b.map((row) => getKnowledgeFileIdentity(row)));
+  return a.every((row) => identities.has(getKnowledgeFileIdentity(row)));
+}
+
+/** Failed overlays can stay selected after they lose their checkbox (processing → failed). */
+function syncGridSelectionToDeletableRows(
+  api: NonNullable<AgGridReact<File>["api"]>,
+  isDeletable: (file?: File) => boolean,
+): File[] {
+  api.forEachNode((node) => {
+    if (node.isSelected() && !isDeletable(node.data)) {
+      node.setSelected(false);
+    }
+  });
+  return api.getSelectedRows().filter(isDeletable);
+}
+
+/** Deselect non-deletable rows in the grid only; returns whether anything changed. */
+function pruneNonDeletableGridSelection(
+  api: NonNullable<AgGridReact<File>["api"]>,
+  isDeletable: (file?: File) => boolean,
+): boolean {
+  let pruned = false;
+  api.forEachNode((node) => {
+    if (node.isSelected() && !isDeletable(node.data)) {
+      node.setSelected(false);
+      pruned = true;
+    }
+  });
+  return pruned;
+}
 
 /** List-files uses term filters; "*" means "any" in the UI — do not send it literally. */
 function listFilesFilterParam(values?: string[]): string | undefined {
@@ -70,32 +113,33 @@ function listFilesFilterParam(values?: string[]): string | undefined {
 
 // Function to get the appropriate icon for a connector type
 function getSourceIcon(connectorType?: string) {
+  if (connectorType) {
+    const Icon = getConnectorDescriptor(connectorType)?.Icon;
+    if (Icon) return <Icon className="h-4 w-4 text-foreground flex-shrink-0" />;
+  }
   switch (connectorType) {
-    case "google_drive":
-      return (
-        <GoogleDriveIcon className="h-4 w-4 text-foreground flex-shrink-0" />
-      );
-    case "onedrive":
-      return <OneDriveIcon className="h-4 w-4 text-foreground flex-shrink-0" />;
-    case "sharepoint":
-      return (
-        <SharePointIcon className="h-4 w-4 text-foreground flex-shrink-0" />
-      );
     case "openrag_docs":
     case "url":
       return <Globe className="h-4 w-4 text-muted-foreground flex-shrink-0" />;
     case "s3":
       return <Cloud className="h-4 w-4 text-foreground flex-shrink-0" />;
-    case "ibm_cos":
-      return <IBMCOSIcon className="h-4 w-4 flex-shrink-0" />;
-    case "aws_s3":
-      return <AwsLogo className="h-4 w-4 flex-shrink-0" />;
     default:
       return (
         <FileIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
       );
   }
 }
+
+const AG_FIELD_TO_SORT_BY: Record<string, string> = {
+  filename: "filename",
+  size: "file_size",
+  mimetype: "mimetype",
+  owner: "owner",
+  chunkCount: "chunk_count",
+  embedding_model: "embedding_model",
+  embedding_dimensions: "embedding_dimensions",
+  status: "status",
+};
 
 function SearchPage() {
   const isCloudBrand = useIsCloudBrand();
@@ -109,9 +153,23 @@ function SearchPage() {
     setRecentTasksExpanded,
     selectTask,
   } = useTask();
-  const { parsedFilterData, queryOverride, selectedFilter } =
-    useKnowledgeFilter();
+  const {
+    parsedFilterData,
+    queryOverride,
+    selectedFilter,
+    setSelectedSources,
+  } = useKnowledgeFilter();
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
+
+  const [sortBy, setSortBy] = useState<string>("filename");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+
+  useEffect(() => {
+    setSelectedSources(
+      selectedRows.flatMap((row) => (row.filename ? [row.filename] : [])),
+    );
+    return () => setSelectedSources([]);
+  }, [selectedRows, setSelectedSources]);
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
   const lastErrorRef = useRef<string | null>(null);
   const hasInitializedFailedFilesRef = useRef(false);
@@ -119,7 +177,61 @@ function SearchPage() {
 
   const deleteDocumentMutation = useDeleteDocument();
   const syncAllConnectorsMutation = useSyncAllConnectors();
+  const syncAllPreviewMutation = useSyncAllConnectorsPreview();
   const refreshOpenragDocsMutation = useRefreshOpenragDocs();
+  const [syncDialogOpen, setSyncDialogOpen] = useState(false);
+  const [syncPreview, setSyncPreview] = useState<SyncAllPreviewResponse | null>(
+    null,
+  );
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPageSize, setCurrentPageSize] = useState(25);
+
+  const cursorCacheRef = useRef<Map<number, Record<string, unknown>>>(
+    null as any,
+  );
+  if (!cursorCacheRef.current) {
+    cursorCacheRef.current = new Map();
+  }
+
+  const handleOpenSyncDialog = useCallback(async () => {
+    setSyncPreview(null);
+    setSyncDialogOpen(true);
+    try {
+      const preview = await syncAllPreviewMutation.mutateAsync();
+      setSyncPreview(preview);
+    } catch (error) {
+      setSyncDialogOpen(false);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to preview sync",
+      );
+    }
+  }, [syncAllPreviewMutation]);
+
+  const handleConfirmSync = useCallback(async () => {
+    try {
+      const result = await syncAllConnectorsMutation.mutateAsync();
+      if (result.status === "no_files") {
+        toast.info(
+          result.message ||
+            "No cloud files to sync. Add files from cloud connectors first.",
+        );
+      } else if (
+        result.synced_connectors &&
+        result.synced_connectors.length > 0
+      ) {
+        toast.success(
+          `Sync started for ${result.synced_connectors.join(", ")}. Check task notifications for progress.`,
+        );
+      } else if (result.errors && result.errors.length > 0) {
+        toast.error("Some connectors failed to sync");
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to sync connectors",
+      );
+    }
+  }, [syncAllConnectorsMutation]);
 
   useEffect(() => {
     refreshTasks();
@@ -158,27 +270,29 @@ function SearchPage() {
         ]),
       );
 
-      const mostRecent = [...candidates].sort((a, b) => {
-        const aMs =
-          taskTimestampMsById.get(a.task_id) ??
-          parseTimestampMs(a.updated_at) ??
-          parseTimestampMs(a.created_at) ??
-          0;
-        const bMs =
-          taskTimestampMsById.get(b.task_id) ??
-          parseTimestampMs(b.updated_at) ??
-          parseTimestampMs(b.created_at) ??
-          0;
-        return bMs - aMs;
-      })[0];
+      const mostRecent = candidates.reduce(
+        (best, cur) => {
+          const curMs =
+            taskTimestampMsById.get(cur.task_id) ??
+            parseTimestampMs(cur.updated_at) ??
+            parseTimestampMs(cur.created_at) ??
+            0;
+          if (!best) return cur;
+          const bestMs =
+            taskTimestampMsById.get(best.task_id) ??
+            parseTimestampMs(best.updated_at) ??
+            parseTimestampMs(best.created_at) ??
+            0;
+          return curMs > bestMs ? cur : best;
+        },
+        undefined as (typeof candidates)[0] | undefined,
+      );
 
       return mostRecent?.task_id || null;
     },
     [taskFiles, tasks],
   );
 
-  // Auto-open unified task panel only when a NEW task file transitions to failed
-  // (skip initial failed files that already existed on page load).
   useEffect(() => {
     const failedFiles = taskFiles.filter((file) => file.status === "failed");
     const seenKeys = seenFailedFileKeysRef.current;
@@ -219,22 +333,28 @@ function SearchPage() {
     getFailedFileKey,
   ]);
 
-  // Use server-side file listing for default/wildcard view; search otherwise.
-  // Wildcard follows bar text or saved filter query (bar is cleared when a filter is picked).
   const effectiveSearchText =
     queryOverride.trim() || parsedFilterData?.query?.trim() || "";
+  const hasActiveFilters = parsedFilterData?.filters
+    ? buildSearchPayloadFilters(parsedFilterData.filters) !== undefined
+    : false;
   const isWildcardQuery =
-    effectiveSearchText === "" || effectiveSearchText === "*";
+    (effectiveSearchText === "" || effectiveSearchText === "*") &&
+    !hasActiveFilters;
 
   const {
     data: listFilesData,
     isLoading: isListFilesLoading,
+    isFetching: isListFilesFetching,
     error: listFilesError,
     isError: isListFilesError,
   } = useListFiles(
     {
-      pageSize: 100,
-      search: isWildcardQuery ? undefined : queryOverride,
+      page: currentPage,
+      pageSize: currentPageSize,
+      sortBy,
+      sortOrder,
+      afterKey: cursorCacheRef.current.get(currentPage) ?? null,
       connectorType: listFilesFilterParam(
         parsedFilterData?.filters?.connector_types,
       ),
@@ -259,13 +379,18 @@ function SearchPage() {
   const { files: searchFiles, warnings: searchWarnings } =
     searchData as SearchResult;
 
-  // Merge data from whichever source is active
-  const effectiveData: File[] = isWildcardQuery
-    ? (listFilesData?.files ?? [])
-    : searchFiles;
   const isLoading = isWildcardQuery ? isListFilesLoading : isSearchLoading;
+
+  const isFetching = isWildcardQuery ? isListFilesFetching : isSearchLoading;
   const error = isWildcardQuery ? listFilesError : searchError;
   const isError = isWildcardQuery ? isListFilesError : isSearchError;
+
+  const effectiveData: File[] = isWildcardQuery
+    ? (listFilesData?.files ?? [])
+    : searchFiles.slice(
+        (currentPage - 1) * currentPageSize,
+        currentPage * currentPageSize,
+      );
 
   const isOpenragDocsRow = useCallback((file?: File) => {
     return (
@@ -278,28 +403,23 @@ function SearchPage() {
     return getKnowledgeFileIdentity(file);
   }, []);
 
-  const getOwnerLabel = useCallback((file?: File): string => {
-    return file?.owner_name?.trim() || file?.owner_email?.trim() || "—";
+  const isDeletableKnowledgeRow = useCallback((file?: File) => {
+    return (file?.status || "active") === "active";
   }, []);
 
-  const normalizeSourceForSort = useCallback((value?: string): string => {
-    const trimmed = (value || "").trim();
-    if (!trimmed) {
-      return "";
-    }
+  const resolveDeleteFilename = useCallback(
+    (row: File) => {
+      const identity = getKnowledgeFileIdentity(row);
+      const indexed = effectiveData.find(
+        (file) => getKnowledgeFileIdentity(file) === identity,
+      );
+      return indexed?.filename ?? row.filename;
+    },
+    [effectiveData],
+  );
 
-    try {
-      const parsed = new URL(trimmed);
-      const hostname = parsed.hostname.toLowerCase();
-      const pathname = parsed.pathname.replace(/\/+$/, "").toLowerCase();
-      return `${hostname}${pathname}`;
-    } catch {
-      return trimmed
-        .toLowerCase()
-        .replace(/^https?:\/\//, "")
-        .split(/[?#]/)[0]
-        .replace(/\/+$/, "");
-    }
+  const getOwnerLabel = useCallback((file?: File): string => {
+    return file?.owner_name?.trim() || file?.owner_email?.trim() || "—";
   }, []);
 
   const getStatusSortRank = useCallback((status?: File["status"]): number => {
@@ -358,36 +478,97 @@ function SearchPage() {
       lastErrorRef.current = null;
     }
   }, [isError, error]);
-  // Third arg: saved filter only — draft `parsedFilterData` (create mode) must still show task rows.
   const fileResults = buildKnowledgeTableRows(
     effectiveData,
     taskFiles,
     Boolean(selectedFilter),
   );
 
-  const gridRows = fileResults;
+  const serverTotal = isWildcardQuery
+    ? (listFilesData?.total ?? 0)
+    : searchFiles.length;
+  const gridRows: File[] = fileResults;
+  const totalPages = Math.max(1, Math.ceil(serverTotal / currentPageSize));
+
+  useEffect(() => {
+    cursorCacheRef.current = new Map();
+    setCurrentPage(1);
+  }, [effectiveSearchText]);
+
+  // when the server responds with an after_key for page N, cache it as the cursor for page N+1
+  useEffect(() => {
+    if (listFilesData?.after_key && listFilesData.page) {
+      const nextPage = listFilesData.page + 1;
+      cursorCacheRef.current.set(nextPage, listFilesData.after_key);
+    }
+  }, [listFilesData]);
   const gridRef = useRef<AgGridReact>(null);
+  const gridReadyRef = useRef(false);
+
+  const handleGridReady = useCallback(() => {
+    gridReadyRef.current = true;
+  }, []);
+
+  const handleGridPreDestroyed = useCallback(() => {
+    gridReadyRef.current = false;
+  }, []);
+
+  const getGridApi = useCallback(() => {
+    if (!gridReadyRef.current) return null;
+    return gridRef.current?.api ?? null;
+  }, []);
+
+  const onSortChanged = useCallback(() => {
+    const api = getGridApi();
+    if (!api) return;
+
+    const sortedCol: ColumnState | undefined = api
+      .getColumnState()
+      .find((col) => col.sort != null);
+
+    const newSortBy = sortedCol
+      ? (AG_FIELD_TO_SORT_BY[sortedCol.colId] ?? sortedCol.colId)
+      : "filename";
+    const newSortOrder: "asc" | "desc" =
+      sortedCol?.sort === "desc" ? "desc" : "asc";
+
+    // Changing sort invalidates all cursors; reset to page 1
+    cursorCacheRef.current = new Map();
+    setCurrentPage(1);
+    setSortBy(newSortBy);
+    setSortOrder(newSortOrder);
+  }, [getGridApi]);
+
+  const gridRowsSelectionKey = useMemo(
+    () =>
+      gridRows
+        .map(
+          (row) => `${getKnowledgeFileIdentity(row)}:${row.status ?? "active"}`,
+        )
+        .join("\0"),
+    [gridRows],
+  );
+
+  useEffect(() => {
+    const api = getGridApi();
+    if (!api) {
+      return;
+    }
+    pruneNonDeletableGridSelection(api, isDeletableKnowledgeRow);
+    const nextSelected = api.getSelectedRows().filter(isDeletableKnowledgeRow);
+    setSelectedRows((current) =>
+      sameFileSelection(current, nextSelected) ? current : nextSelected,
+    );
+  }, [gridRowsSelectionKey, isDeletableKnowledgeRow, getGridApi]);
 
   const columnDefs: ColDef<File>[] = [
     {
       field: "filename",
       headerName: "Source",
       sortable: true,
-      comparator: (valueA?: string, valueB?: string) => {
-        const sourceA = normalizeSourceForSort(valueA);
-        const sourceB = normalizeSourceForSort(valueB);
-        if (sourceA === sourceB) {
-          const fallbackA = (valueA || "").trim().toLowerCase();
-          const fallbackB = (valueB || "").trim().toLowerCase();
-          if (fallbackA === fallbackB) {
-            return 0;
-          }
-          return fallbackA < fallbackB ? -1 : 1;
-        }
-        return sourceA < sourceB ? -1 : 1;
-      },
+      comparator: () => 0,
       checkboxSelection: (params: CheckboxSelectionCallbackParams<File>) =>
-        (params?.data?.status || "active") === "active",
+        isDeletableKnowledgeRow(params?.data),
       headerCheckboxSelection: true,
       ...(isCloudBrand
         ? { flex: 2.2, minWidth: 260 }
@@ -451,10 +632,9 @@ function SearchPage() {
       headerName: "Size",
       ...(isCloudBrand ? { flex: 1, minWidth: 110 } : {}),
       sortable: true,
-      comparator: (valueA?: number, valueB?: number) =>
-        (valueA || 0) - (valueB || 0),
+      comparator: () => 0,
       valueFormatter: (params: ValueFormatterParams<File>) =>
-        params.value ? `${Math.round(params.value / 1024)} KB` : "-",
+        params.value ? formatFileSize(params.value) : "-",
       cellClass: isCloudBrand ? "text-muted-foreground" : undefined,
     },
     {
@@ -474,18 +654,14 @@ function SearchPage() {
       sortable: true,
       valueGetter: (params: ValueGetterParams<File>) =>
         getOwnerLabel(params.data),
-      comparator: (valueA?: string, valueB?: string) =>
-        (valueA || "—").localeCompare(valueB || "—", undefined, {
-          sensitivity: "base",
-        }),
+      comparator: () => 0,
     },
     {
       field: "chunkCount",
       headerName: "Chunks",
       ...(isCloudBrand ? { flex: 0.9, minWidth: 95 } : {}),
       sortable: true,
-      comparator: (valueA?: number, valueB?: number) =>
-        (valueA || 0) - (valueB || 0),
+      comparator: () => 0,
       valueFormatter: (params: ValueFormatterParams<File>) =>
         params.data?.chunkCount?.toString() || "-",
       cellClass: isCloudBrand ? "text-muted-foreground" : undefined,
@@ -529,8 +705,7 @@ function SearchPage() {
       headerName: "Dimensions",
       ...(isCloudBrand ? { flex: 0.9, minWidth: 110 } : { width: 110 }),
       sortable: true,
-      comparator: (valueA?: number, valueB?: number) =>
-        (valueA || 0) - (valueB || 0),
+      comparator: () => 0,
       cellRenderer: ({ data }: CustomCellRendererProps<File>) => (
         <span className="text-xs text-muted-foreground">
           {typeof data?.embedding_dimensions === "number"
@@ -636,60 +811,91 @@ function SearchPage() {
   };
 
   const onSelectionChanged = useCallback(() => {
-    if (gridRef.current) {
-      const selectedNodes = gridRef.current.api.getSelectedRows();
-      setSelectedRows(selectedNodes);
+    const api = getGridApi();
+    if (!api) {
+      return;
     }
-  }, []);
+    const nextSelected = syncGridSelectionToDeletableRows(
+      api,
+      isDeletableKnowledgeRow,
+    );
+    setSelectedRows((current) =>
+      sameFileSelection(current, nextSelected) ? current : nextSelected,
+    );
+  }, [isDeletableKnowledgeRow, getGridApi]);
 
   const handleBulkDelete = async () => {
-    if (selectedRows.length === 0) return;
+    const rowsToDelete = selectedRows.filter(isDeletableKnowledgeRow);
+    if (rowsToDelete.length === 0) return;
 
     try {
-      // Delete each file individually since the API expects one filename at a time
-      const deletePromises = selectedRows.map((row) =>
-        deleteDocumentMutation.mutateAsync({ filename: row.filename }),
+      const deleteResults = await Promise.allSettled(
+        rowsToDelete.map((row) =>
+          deleteDocumentMutation.mutateAsync({
+            filename: resolveDeleteFilename(row),
+          }),
+        ),
       );
 
-      const deleteResults = await Promise.all(deletePromises);
-      await refreshTasks();
-      await queryClient.invalidateQueries({ queryKey: ["search"] });
-      await queryClient.refetchQueries({ queryKey: ["search"] });
+      await Promise.all([
+        refreshTasks(),
+        queryClient.invalidateQueries({ queryKey: ["search"] }),
+        queryClient.invalidateQueries({ queryKey: ["listFiles"] }),
+        queryClient.refetchQueries({ queryKey: ["search"] }),
+        queryClient.refetchQueries({ queryKey: ["listFiles"] }),
+      ]);
 
-      const totalDeletedChunks = deleteResults.reduce(
-        (sum, result) => sum + (result.deleted_chunks || 0),
-        0,
+      const deleted = deleteResults.filter(
+        (
+          result,
+        ): result is PromiseFulfilledResult<
+          Awaited<ReturnType<typeof deleteDocumentMutation.mutateAsync>>
+        > =>
+          result.status === "fulfilled" &&
+          (result.value.deleted_chunks || 0) > 0,
       );
-      const filesWithNoDeletion = deleteResults.filter(
-        (result) => (result.deleted_chunks || 0) === 0,
+      const noChunks = deleteResults.filter(
+        (result) =>
+          result.status === "fulfilled" &&
+          (result.value.deleted_chunks || 0) === 0,
+      );
+      const failed = deleteResults.filter(
+        (result): result is PromiseRejectedResult =>
+          result.status === "rejected",
       );
 
-      if (totalDeletedChunks > 0) {
+      if (deleted.length > 0) {
         toast.success(
-          `Successfully deleted ${selectedRows.length} document${
-            selectedRows.length > 1 ? "s" : ""
-          }`,
+          `Deleted ${deleted.length} document${deleted.length > 1 ? "s" : ""}`,
         );
-      } else {
+      } else if (failed.length === 0) {
         toast.warning(
-          "No document chunks were deleted. Files may be owned by another context or already removed.",
+          "No document chunks were deleted. Files may be missing or not deletable in your current context.",
         );
       }
 
-      if (filesWithNoDeletion.length > 0 && totalDeletedChunks > 0) {
+      if (noChunks.length > 0 && deleted.length > 0) {
         toast.warning(
-          `${filesWithNoDeletion.length} selected file${
-            filesWithNoDeletion.length > 1 ? "s were" : " was"
-          } not deleted (0 chunks matched).`,
+          `${noChunks.length} selected file${noChunks.length > 1 ? "s had" : " had"} no matching chunks.`,
+        );
+      }
+
+      if (failed.length > 0) {
+        toast.error(
+          `${failed.length} document${failed.length > 1 ? "s" : ""} could not be deleted`,
+          {
+            description:
+              failed[0].reason instanceof Error
+                ? failed[0].reason.message
+                : undefined,
+          },
         );
       }
       setSelectedRows([]);
       setShowBulkDeleteDialog(false);
 
       // Clear selection in the grid
-      if (gridRef.current) {
-        gridRef.current.api.deselectAll();
-      }
+      getGridApi()?.deselectAll();
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -699,15 +905,6 @@ function SearchPage() {
       setShowBulkDeleteDialog(false);
     }
   };
-
-  // enables pagination in the grid
-  const pagination = true;
-
-  // sets 25 rows per page (default is 100)
-  const paginationPageSize = 25;
-
-  // allows the user to select the page size from a predefined list of page sizes
-  const paginationPageSizeSelector = [10, 25, 50, 100];
 
   return (
     <>
@@ -747,50 +944,28 @@ function SearchPage() {
                 onDelete={() => setShowBulkDeleteDialog(true)}
                 onCancel={() => {
                   setSelectedRows([]);
-                  gridRef.current?.api.deselectAll();
+                  getGridApi()?.deselectAll();
                 }}
               />
             </div>
           </div>
         ) : (
           /* Search Input Area */
-          <div className="flex-1 flex items-center flex-shrink-0 flex-wrap-reverse gap-3 mb-6">
+          <div className="flex items-center flex-shrink-0 flex-wrap-reverse gap-3 mb-6">
             <KnowledgeSearchInput />
 
             <Button
               type="button"
               variant="outline"
               className="rounded-lg flex-shrink-0"
-              disabled={syncAllConnectorsMutation.isPending}
-              onClick={async () => {
-                try {
-                  toast.info("Syncing all cloud connectors...");
-                  const result = await syncAllConnectorsMutation.mutateAsync();
-                  if (result.status === "no_files") {
-                    toast.info(
-                      result.message ||
-                        "No cloud files to sync. Add files from cloud connectors first.",
-                    );
-                  } else if (
-                    result.synced_connectors &&
-                    result.synced_connectors.length > 0
-                  ) {
-                    toast.success(
-                      `Sync started for ${result.synced_connectors.join(", ")}. Check task notifications for progress.`,
-                    );
-                  } else if (result.errors && result.errors.length > 0) {
-                    toast.error("Some connectors failed to sync");
-                  }
-                } catch (error) {
-                  toast.error(
-                    error instanceof Error
-                      ? error.message
-                      : "Failed to sync connectors",
-                  );
-                }
-              }}
+              disabled={
+                syncAllConnectorsMutation.isPending ||
+                syncAllPreviewMutation.isPending
+              }
+              onClick={handleOpenSyncDialog}
             >
-              {syncAllConnectorsMutation.isPending ? (
+              {syncAllConnectorsMutation.isPending ||
+              syncAllPreviewMutation.isPending ? (
                 <>
                   <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
                   Syncing...
@@ -802,31 +977,39 @@ function SearchPage() {
                 </>
               )}
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="rounded-lg flex-shrink-0"
-              disabled={refreshOpenragDocsMutation.isPending}
-              onClick={async () => {
-                try {
-                  toast.info("Refreshing OpenRAG docs...");
-                  const result = await refreshOpenragDocsMutation.mutateAsync();
-                  toast.success(result.message);
-                } catch (error) {
-                  toast.error(
-                    error instanceof Error
-                      ? error.message
-                      : "Failed to refresh OpenRAG docs",
-                  );
-                }
-              }}
-            >
-              {refreshOpenragDocsMutation.isPending ? (
-                <>Refreshing docs...</>
-              ) : (
-                <>Fetch latest docs</>
-              )}
-            </Button>
+            <RequirePermission perm="config:write">
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-lg flex-shrink-0"
+                disabled={refreshOpenragDocsMutation.isPending}
+                onClick={async () => {
+                  trackButton({
+                    CTA: "Fetch Latest Docs",
+                    elementId: "fetch-latest-docs-button",
+                    namespace: "knowledge",
+                  });
+                  try {
+                    toast.info("Refreshing OpenRAG docs...");
+                    const result =
+                      await refreshOpenragDocsMutation.mutateAsync();
+                    toast.success(result.message);
+                  } catch (error) {
+                    toast.error(
+                      error instanceof Error
+                        ? error.message
+                        : "Failed to refresh OpenRAG docs",
+                    );
+                  }
+                }}
+              >
+                {refreshOpenragDocsMutation.isPending ? (
+                  <>Refreshing docs...</>
+                ) : (
+                  <>Fetch latest docs</>
+                )}
+              </Button>
+            </RequirePermission>
             {selectedRows.length > 0 && (
               <Button
                 type="button"
@@ -880,68 +1063,85 @@ function SearchPage() {
           </div>
         )}
         {isCloudBrand ? (
-          <AgGridReact
-            className="w-full overflow-auto border"
-            columnDefs={columnDefs as ColDef<File>[]}
-            defaultColDef={defaultColDef}
-            loading={isLoading || deleteDocumentMutation.isPending}
-            ref={gridRef}
-            theme={themeQuartz.withParams({ browserColorScheme: "inherit" })}
-            rowData={gridRows}
-            rowSelection="multiple"
-            getRowId={(params: GetRowIdParams<File>) =>
-              getFileIdentity(params.data)
-            }
-            domLayout="normal"
-            onSelectionChanged={onSelectionChanged}
-            pagination={pagination}
-            paginationPageSize={paginationPageSize}
-            paginationPageSizeSelector={paginationPageSizeSelector}
-            headerHeight={64}
-            rowHeight={64}
-            noRowsOverlayComponent={() => (
-              <div className="text-center pb-[45px]">
-                <div className="text-lg text-primary font-semibold">
-                  No knowledge
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <AgGridReact
+              className="w-full h-full border"
+              columnDefs={columnDefs as ColDef<File>[]}
+              defaultColDef={defaultColDef}
+              loading={isLoading || deleteDocumentMutation.isPending}
+              ref={gridRef}
+              theme={themeQuartz.withParams({ browserColorScheme: "inherit" })}
+              rowData={gridRows}
+              rowSelection="multiple"
+              getRowId={(params: GetRowIdParams<File>) =>
+                getFileIdentity(params.data)
+              }
+              isRowSelectable={(params) => isDeletableKnowledgeRow(params.data)}
+              domLayout="normal"
+              onGridReady={handleGridReady}
+              onGridPreDestroyed={handleGridPreDestroyed}
+              onSelectionChanged={onSelectionChanged}
+              onSortChanged={onSortChanged}
+              headerHeight={64}
+              rowHeight={64}
+              noRowsOverlayComponent={() => (
+                <div className="text-center pb-[45px]">
+                  <div className="text-lg text-primary font-semibold">
+                    No knowledge
+                  </div>
+                  <div className="text-sm mt-1 text-muted-foreground">
+                    Add files from local or your preferred cloud.
+                  </div>
                 </div>
-                <div className="text-sm mt-1 text-muted-foreground">
-                  Add files from local or your preferred cloud.
-                </div>
-              </div>
-            )}
-          />
+              )}
+            />
+          </div>
         ) : (
-          <AgGridReact
-            className="w-full overflow-auto"
-            columnDefs={columnDefs as ColDef<File>[]}
-            defaultColDef={defaultColDef}
-            loading={isLoading || deleteDocumentMutation.isPending}
-            ref={gridRef}
-            theme={themeQuartz.withParams({ browserColorScheme: "inherit" })}
-            rowData={gridRows}
-            rowSelection="multiple"
-            rowMultiSelectWithClick={false}
-            suppressRowClickSelection={true}
-            getRowId={(params: GetRowIdParams<File>) =>
-              getFileIdentity(params.data)
-            }
-            domLayout="normal"
-            onSelectionChanged={onSelectionChanged}
-            pagination={pagination}
-            paginationPageSize={paginationPageSize}
-            paginationPageSizeSelector={paginationPageSizeSelector}
-            noRowsOverlayComponent={() => (
-              <div className="text-center pb-[45px]">
-                <div className="text-lg text-primary font-semibold">
-                  No knowledge
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <AgGridReact
+              className="w-full h-full"
+              columnDefs={columnDefs as ColDef<File>[]}
+              defaultColDef={defaultColDef}
+              loading={isLoading || deleteDocumentMutation.isPending}
+              ref={gridRef}
+              theme={themeQuartz.withParams({ browserColorScheme: "inherit" })}
+              rowData={gridRows}
+              rowSelection="multiple"
+              rowMultiSelectWithClick={false}
+              suppressRowClickSelection={true}
+              getRowId={(params: GetRowIdParams<File>) =>
+                getFileIdentity(params.data)
+              }
+              isRowSelectable={(params) => isDeletableKnowledgeRow(params.data)}
+              domLayout="normal"
+              onGridReady={handleGridReady}
+              onGridPreDestroyed={handleGridPreDestroyed}
+              onSelectionChanged={onSelectionChanged}
+              onSortChanged={onSortChanged}
+              noRowsOverlayComponent={() => (
+                <div className="text-center pb-[45px]">
+                  <div className="text-lg text-primary font-semibold">
+                    No knowledge
+                  </div>
+                  <div className="text-sm mt-1 text-muted-foreground">
+                    Add files from local or your preferred cloud.
+                  </div>
                 </div>
-                <div className="text-sm mt-1 text-muted-foreground">
-                  Add files from local or your preferred cloud.
-                </div>
-              </div>
-            )}
-          />
+              )}
+            />
+          </div>
         )}
+
+        <KnowledgePaginationFooter
+          currentPage={currentPage}
+          currentPageSize={currentPageSize}
+          totalPages={totalPages}
+          serverTotal={serverTotal}
+          isLoading={isFetching}
+          cursorCacheRef={cursorCacheRef}
+          setCurrentPage={setCurrentPage}
+          setCurrentPageSize={setCurrentPageSize}
+        />
       </div>
 
       {/* Bulk Delete Confirmation Dialog */}
@@ -961,6 +1161,18 @@ function SearchPage() {
         <p className="my-2">Documents to be deleted:</p>
         {formatFilesToDelete(selectedRows)}
       </DeleteConfirmationDialog>
+
+      <SyncConfirmDialog
+        open={syncDialogOpen}
+        onOpenChange={setSyncDialogOpen}
+        onConfirm={handleConfirmSync}
+        isLoading={syncAllPreviewMutation.isPending || syncPreview === null}
+        isSyncing={syncAllConnectorsMutation.isPending}
+        isSyncAll
+        orphansByType={syncPreview?.orphans_by_type}
+        orphansAvailableByType={syncPreview?.orphans_available_by_type}
+        syncedCountByType={syncPreview?.synced_count_by_type}
+      />
     </>
   );
 }

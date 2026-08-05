@@ -3,6 +3,7 @@ import {
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
+import { formatProviderErrorMessage } from "@/lib/chat-stream-errors";
 import { useGetCurrentProviderModelsQuery } from "../queries/useGetModelsQuery";
 import type { Settings } from "../queries/useGetSettingsQuery";
 
@@ -18,8 +19,20 @@ export interface UpdateSettingsRequest {
   table_structure?: boolean;
   ocr?: boolean;
   picture_descriptions?: boolean;
+  disable_ingest_with_langflow?: boolean;
   embedding_model?: string;
   embedding_provider?: string;
+
+  // Docling VLM pipeline settings
+  vlm_enabled?: boolean;
+  vlm_provider?: string;
+  vlm_model?: string;
+  vlm_prompt?: string;
+  vlm_response_format?: string;
+  vlm_max_tokens?: number;
+  vlm_concurrency?: number;
+  vlm_timeout?: number;
+  vlm_watsonx_api_version?: string;
 
   // Provider-specific settings (for dialogs)
   model_provider?: string; // Deprecated, kept for backward compatibility
@@ -50,16 +63,16 @@ export interface AffectedEmbeddingModel {
 // Typed error that preserves the structured 409 payload returned by
 // POST /api/settings when removing a provider whose embedding models are
 // still referenced by indexed documents.
-export class UpdateSettingsError extends Error {
+class UpdateSettingsError extends Error {
   readonly status: number;
   readonly code?: string;
   readonly affectedProvider?: string;
   readonly affectedModels?: AffectedEmbeddingModel[];
 
   constructor(status: number, data: Record<string, unknown>) {
-    const message =
+    const raw =
       typeof data.error === "string" ? data.error : "Failed to update settings";
-    super(message);
+    super(formatProviderErrorMessage(raw));
     this.name = "UpdateSettingsError";
     this.status = status;
     this.code = typeof data.code === "string" ? data.code : undefined;
@@ -86,6 +99,25 @@ export interface UpdateSettingsResponse {
   settings: Settings;
 }
 
+async function updateSettings(
+  variables: UpdateSettingsRequest,
+): Promise<UpdateSettingsResponse> {
+  const response = await fetch("/api/settings", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(variables),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new UpdateSettingsError(response.status, errorData);
+  }
+
+  return response.json();
+}
+
 export const useUpdateSettingsMutation = (
   options?: Omit<
     UseMutationOptions<UpdateSettingsResponse, Error, UpdateSettingsRequest>,
@@ -94,25 +126,6 @@ export const useUpdateSettingsMutation = (
 ) => {
   const queryClient = useQueryClient();
   const { refetch: refetchModels } = useGetCurrentProviderModelsQuery();
-
-  async function updateSettings(
-    variables: UpdateSettingsRequest,
-  ): Promise<UpdateSettingsResponse> {
-    const response = await fetch("/api/settings", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(variables),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new UpdateSettingsError(response.status, errorData);
-    }
-
-    return response.json();
-  }
 
   return useMutation({
     mutationFn: updateSettings,

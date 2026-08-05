@@ -68,7 +68,7 @@ const WatsonxSettingsDialog = ({
   useEffect(() => {
     // Reset form state on dialog open
     if (open) methods.reset();
-  }, [open]);
+  }, [open, methods.reset]);
 
   const { handleSubmit, watch } = methods;
   const endpoint = watch("endpoint");
@@ -168,9 +168,12 @@ const WatsonxSettingsDialog = ({
         setOpen(o);
       }}
     >
-      <DialogContent autoFocus={false} className="max-w-2xl">
+      <DialogContent autoFocus={false} className="max-w-2xl overflow-hidden">
         <FormProvider {...methods}>
-          <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4">
+          <form
+            onSubmit={handleSubmit(onSubmit)}
+            className="grid min-w-0 gap-4"
+          >
             <DialogHeader className="mb-2">
               <DialogTitle className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded flex items-center justify-center bg-white border">
@@ -193,7 +196,7 @@ const WatsonxSettingsDialog = ({
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
                 >
-                  <p className="rounded-lg border border-destructive p-4">
+                  <p className="rounded-lg border border-destructive p-4 min-w-0 [overflow-wrap:anywhere]">
                     {settingsMutation.error?.message}
                   </p>
                 </motion.div>
@@ -206,7 +209,7 @@ const WatsonxSettingsDialog = ({
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -10 }}
                   >
-                    <p className="rounded-lg border border-destructive p-4">
+                    <p className="rounded-lg border border-destructive p-4 min-w-0 [overflow-wrap:anywhere]">
                       {removeMutation.error?.message}
                     </p>
                   </motion.div>
@@ -228,6 +231,7 @@ const WatsonxSettingsDialog = ({
               isRemovePending={removeMutation.isPending}
               isConfigured={isWatsonxConfigured}
               canRemove={canRemoveWatsonx}
+              providerKey="watsonx"
               removeDisabledTooltip="Configure another model provider before removing IBM watsonx.ai"
               onRequestRemove={() => setShowRemoveConfirm(true)}
               onCancel={() => setOpen(false)}

@@ -8,6 +8,7 @@ On macOS with Podman the virtiofs layer does not faithfully propagate
 host-side chmod into the container, so permissions must be fixed from
 inside the container after the mount is established.
 """
+
 import os
 import pathlib
 import pwd
@@ -28,16 +29,31 @@ try:
     pw = pwd.getpwuid(1000)
     home = pw.pw_dir
     user = pw.pw_name
+    gid = pw.pw_gid
 except KeyError:
     home = "/app"
     user = "langflow"
+    gid = 0
 
-# Drop from root to langflow (uid=1000, gid=1000).
-os.setgid(1000)
+# Drop from root to langflow (uid=1000, gid=gid).
+os.setgid(gid)
 os.setuid(1000)
 
 # Restore environment variables to reflect the unprivileged user.
 os.environ["HOME"] = home
 os.environ["USER"] = user
+
+# Enable SQLite WAL (Write-Ahead Logging) mode and busy timeout to handle concurrent accesses cleanly.
+try:
+    import sqlite3
+
+    db_file = data_dir / "langflow.db"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db_file), timeout=10.0)
+    conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA busy_timeout=60000;")
+    conn.close()
+except Exception as e:
+    sys.stderr.write(f"Warning: could not configure SQLite WAL mode: {e}\n")
 
 os.execvp(sys.argv[1], sys.argv[1:])

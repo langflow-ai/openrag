@@ -3,8 +3,8 @@
 Returns a dict consumed by routes (via FastAPI Depends) and the lifespan hook.
 """
 
-from api.connector_router import ConnectorRouter
 from config.settings import (
+    ENABLE_BACKEND_DOCLING_POLLING,
     INGESTION_TIMEOUT,
     JWT_SIGNING_KEY,
     SESSION_SECRET,
@@ -12,17 +12,24 @@ from config.settings import (
     config_manager,
     get_embedding_model,
     get_index_name,
+    is_dev_azure_blob_enabled,
     is_no_auth_mode,
 )
-from connectors.langflow_connector_service import LangflowConnectorService
 from connectors.service import ConnectorService
 from services.api_key_service import APIKeyService
 from services.auth_service import AuthService
 from services.chat_service import ChatService
+from services.dls_principal_service import DLSPrincipalService
+from services.docling_polling_service import DoclingPollingService
+from services.document_index_writer import DocumentIndexWriter
 from services.document_service import DocumentService
+from services.file_service_v2 import FileServiceV2
 from services.flows_service import FlowsService
+from services.group_acl_service import GroupACLService
+from services.ingest_preview_service import IngestPreviewService
 from services.knowledge_filter_service import KnowledgeFilterService
 from services.langflow_file_service import LangflowFileService
+from services.langflow_ingest_token_service import LangflowIngestTokenService
 from services.langflow_mcp_service import LangflowMCPService
 from services.models_service import ModelsService
 from services.monitor_service import MonitorService
@@ -34,6 +41,19 @@ from utils.logging_config import get_logger
 from utils.telemetry import Category, MessageId, TelemetryClient
 
 logger = get_logger(__name__)
+
+
+def _should_load_persisted_connections() -> bool:
+    """Whether to load persisted connector connections at startup.
+
+    Normally skipped in no-auth mode because OAuth connectors are unusable
+    there — but dev bucket connectors (e.g. Azure Blob via
+    OPENRAG_DEV_AZURE_BLOB) DO work in no-auth mode and persist real
+    connections. Without loading them, a saved connection silently disappears
+    on restart (the in-memory dict empties), leaving the UI stuck on "Connect".
+    OR in those dev flags so their connections survive a restart.
+    """
+    return not is_no_auth_mode() or is_dev_azure_blob_enabled()
 
 
 async def initialize_services():
@@ -62,18 +82,36 @@ async def initialize_services():
     session_manager = SessionManager(SESSION_SECRET)
 
     models_service = ModelsService()
+    document_index_writer = DocumentIndexWriter()
+    langflow_ingest_token_service = LangflowIngestTokenService()
+    ingest_preview_service = IngestPreviewService()
     document_service = DocumentService(
         session_manager=session_manager,
         models_service=models_service,
         docling_service=clients.docling_service,
+        document_index_writer=document_index_writer,
     )
     search_service = SearchService(session_manager, models_service)
     register_search_service(search_service)
+
+    # Backend-side Docling polling coordinator. Constructed once as a
+    # singleton (it is stateless) and gated by ENABLE_BACKEND_DOCLING_POLLING
+    # so operators can roll back to the legacy single-call ingestion path
+    # without code changes. When disabled, downstream callers receive None
+    # and fall through to the legacy flow.
+    docling_polling_service = (
+        DoclingPollingService(clients.docling_service)
+        if ENABLE_BACKEND_DOCLING_POLLING and clients.docling_service is not None
+        else None
+    )
+
     task_service = TaskService(
         document_service,
         models_service,
         ingestion_timeout=INGESTION_TIMEOUT,
         docling_service=clients.docling_service,
+        docling_polling_service=docling_polling_service,
+        session_manager=session_manager,
     )
     flows_service = FlowsService()
     chat_service = ChatService(flows_service=flows_service)
@@ -82,16 +120,12 @@ async def initialize_services():
     langflow_file_service = LangflowFileService(
         flows_service=flows_service,
         docling_service=clients.docling_service,
+        document_index_writer=document_index_writer,
+        ingest_token_service=langflow_ingest_token_service,
     )
     langflow_mcp_service = LangflowMCPService()
 
-    langflow_connector_service = LangflowConnectorService(
-        task_service=task_service,
-        session_manager=session_manager,
-        flows_service=flows_service,
-        docling_service=clients.docling_service,
-    )
-    openrag_connector_service = ConnectorService(
+    connector_service = ConnectorService(
         patched_async_client=clients,
         embed_model=get_embedding_model(),
         index_name=get_index_name(),
@@ -100,12 +134,11 @@ async def initialize_services():
         models_service=models_service,
         document_service=document_service,
         docling_service=clients.docling_service,
+        flows_service=flows_service,
+        langflow_service=langflow_file_service,
     )
-
-    connector_service = ConnectorRouter(
-        langflow_connector_service=langflow_connector_service,
-        openrag_connector_service=openrag_connector_service,
-    )
+    group_acl_service = GroupACLService(connector_service)
+    dls_principal_service = DLSPrincipalService(connector_service)
 
     auth_service = AuthService(
         session_manager,
@@ -115,9 +148,9 @@ async def initialize_services():
     )
 
     # Load persisted connector connections at startup so webhooks and syncs
-    # can resolve existing subscriptions immediately after server boot
-    # Skip in no-auth mode since connectors require OAuth
-    if not is_no_auth_mode():
+    # can resolve existing subscriptions immediately after server boot.
+    # (See _should_load_persisted_connections for the no-auth/dev-bucket nuance.)
+    if _should_load_persisted_connections():
         try:
             await connector_service.initialize()
             loaded_count = len(connector_service.connection_manager.connections)
@@ -181,6 +214,8 @@ async def initialize_services():
     session_ownership_service._session_factory = _lazy_session_factory
     conversation_persistence._session_factory = _lazy_session_factory
 
+    file_service_v2 = FileServiceV2(session_manager=session_manager)
+
     return {
         "document_service": document_service,
         "search_service": search_service,
@@ -188,8 +223,12 @@ async def initialize_services():
         "chat_service": chat_service,
         "flows_service": flows_service,
         "langflow_file_service": langflow_file_service,
+        "document_index_writer": document_index_writer,
+        "langflow_ingest_token_service": langflow_ingest_token_service,
         "auth_service": auth_service,
         "connector_service": connector_service,
+        "group_acl_service": group_acl_service,
+        "dls_principal_service": dls_principal_service,
         "knowledge_filter_service": knowledge_filter_service,
         "models_service": models_service,
         "monitor_service": monitor_service,
@@ -197,6 +236,9 @@ async def initialize_services():
         "api_key_service": api_key_service,
         "langflow_mcp_service": langflow_mcp_service,
         "docling_service": clients.docling_service,
+        "docling_polling_service": docling_polling_service,
+        "ingest_preview_service": ingest_preview_service,
         "rbac_service": rbac_service,
         "workspace_config_service": workspace_config_service,
+        "file_service_v2": file_service_v2,
     }

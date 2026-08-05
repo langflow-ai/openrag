@@ -1,13 +1,14 @@
 # OpenRAG Operator Makefile
 #
-# Go version: managed via gvm.  The Makefile auto-selects go1.26.0 when found
-# under ~/.gvm/gos/go1.26.0, otherwise falls back to whatever 'go' is in PATH.
+# Go version: managed via gvm.  The Makefile auto-selects go1.26.4 when found
+# under ~/.gvm/gos/go1.26.4, otherwise falls back to whatever 'go' is in PATH.
 #
 # Quick start:
-#   make deps          # install controller-gen, kustomize, envtest into ./bin
-#   make manifests     # generate CRD + RBAC YAML under config/
-#   make generate      # regenerate zz_generated.deepcopy.go
-#   make build         # compile the operator binary
+#   make deps            # install controller-gen, kustomize, envtest into ./bin
+#   make manifests       # generate CRD + RBAC YAML under config/
+#   make generate        # regenerate zz_generated.deepcopy.go
+#   make generate-client # generate typed clientsets, listers, and informers
+#   make build           # compile the operator binary
 
 # Image to push/pull for the operator container.
 IMG ?= ghcr.io/langflow-ai/openrag-operator:latest
@@ -15,8 +16,8 @@ IMG ?= ghcr.io/langflow-ai/openrag-operator:latest
 # Kubernetes version used by envtest.
 ENVTEST_K8S_VERSION = 1.33.0
 
-# Go 1.26.0 via gvm — set PATH and GOROOT so sub-shells pick the right toolchain.
-GVM_GO_VERSION   ?= go1.26.0
+# Go 1.26.4 via gvm — set PATH and GOROOT so sub-shells pick the right toolchain.
+GVM_GO_VERSION   ?= go1.26.4
 GVM_GO_ROOT      := $(HOME)/.gvm/gos/$(GVM_GO_VERSION)
 ifneq ($(wildcard $(GVM_GO_ROOT)/bin/go),)
   export GOROOT := $(GVM_GO_ROOT)
@@ -55,6 +56,14 @@ manifests: controller-gen ## Generate CRD and RBAC manifests from Go type marker
 generate: controller-gen ## Regenerate zz_generated.deepcopy.go from type definitions.
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
 
+.PHONY: generate-client
+generate-client: ## Generate typed clientsets, listers, and informers.
+	@echo "Generating typed clientsets..."
+	bash hack/update-codegen.sh
+	@echo ""
+	@echo "⚠️  Remember to commit the generated files in pkg/generated/"
+	@echo "    CI will verify these are up to date on pull requests"
+
 .PHONY: fmt
 fmt: ## Run go fmt.
 	go fmt ./...
@@ -87,16 +96,22 @@ run: manifests generate fmt vet ## Run the operator locally (uses current kubeco
 	go run ./cmd/main.go
 
 .PHONY: docker-build
-docker-build: ## Build the operator container image.
-	$(CONTAINER_TOOL) build -t $(IMG) .
+docker-build: ## Build the operator container image for the local platform.
+	$(CONTAINER_TOOL) build -t $(IMG) \
+		--build-arg TARGETOS=linux \
+		--build-arg TARGETARCH=$$(go env GOARCH) \
+		.
 
 .PHONY: docker-push
 docker-push: ## Push the operator container image.
 	$(CONTAINER_TOOL) push $(IMG)
 
 .PHONY: docker-buildx
-docker-buildx: ## Build and push multi-arch image via buildx.
-	$(CONTAINER_TOOL) buildx build --platform linux/amd64,linux/arm64 --push -t $(IMG) .
+docker-buildx: ## Build and push multi-arch image (amd64 + arm64) via buildx.
+	$(CONTAINER_TOOL) buildx build \
+		--platform linux/amd64,linux/arm64 \
+		--build-arg TARGETOS=linux \
+		--push -t $(IMG) .
 
 ##@ Deployment
 

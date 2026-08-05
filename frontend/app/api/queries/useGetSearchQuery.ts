@@ -33,6 +33,11 @@ export interface ChunkResult {
   connector_type?: string;
   embedding_model?: string;
   embedding_dimensions?: number;
+  parser?: string;
+  chunk_size?: number;
+  chunk_overlap?: number;
+  chunk_id?: string;
+  id?: string;
   index?: number;
   allowed_users?: string[];
   allowed_groups?: string[];
@@ -80,27 +85,32 @@ export interface SearchResult {
 }
 
 const EMPTY_SEARCH_RESULT: SearchResult = { files: [], warnings: [] };
+
 export { EMPTY_SEARCH_RESULT };
+
+const getFileIdentity = (chunk: ChunkResult): string => {
+  const normalizedFilename = chunk.filename?.trim();
+  if (normalizedFilename) {
+    return normalizedFilename;
+  }
+
+  const normalizedSourceUrl = chunk.source_url?.trim();
+  if (normalizedSourceUrl) {
+    return normalizedSourceUrl;
+  }
+
+  return "Untitled source";
+};
 
 export const useGetSearchQuery = (
   query: string,
   queryData?: ParsedQueryData | null,
-  options?: Omit<UseQueryOptions, "queryKey" | "queryFn">,
+  options?: Omit<
+    UseQueryOptions<SearchResult, Error, SearchResult, unknown[]>,
+    "queryKey" | "queryFn"
+  >,
 ) => {
   const queryClient = useQueryClient();
-  const getFileIdentity = (chunk: ChunkResult): string => {
-    const normalizedFilename = chunk.filename?.trim();
-    if (normalizedFilename) {
-      return normalizedFilename;
-    }
-
-    const normalizedSourceUrl = chunk.source_url?.trim();
-    if (normalizedSourceUrl) {
-      return normalizedSourceUrl;
-    }
-
-    return "Untitled source";
-  };
 
   // Normalize the query to match what will actually be searched
   const effectiveQuery = query || queryData?.query || "*";
@@ -241,7 +251,7 @@ export const useGetSearchQuery = (
     }
   }
 
-  const queryResult = useQuery(
+  return useQuery(
     {
       queryKey: ["search", queryData, query],
       placeholderData: (prev) => prev,
@@ -252,6 +262,4 @@ export const useGetSearchQuery = (
     },
     queryClient,
   );
-
-  return queryResult;
 };

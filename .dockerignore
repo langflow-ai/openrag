@@ -7,6 +7,8 @@
 # Auth files
 .drive.json
 *.json
+!package-lock.json
+!package.json
 
 # Dependencies
 node_modules/
@@ -25,7 +27,7 @@ __pycache__/
 # Build outputs
 build/
 dist/
-.next/
+**/.next/
 out/
 
 # Development files
@@ -39,6 +41,7 @@ README.md
 # Logs
 *.log
 logs/
+frontend/tests/logs/
 
 # OS files
 .DS_Store

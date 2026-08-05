@@ -6,6 +6,11 @@ import type {
 } from "@/app/chat/_types/types";
 import { useChat } from "@/contexts/chat-context";
 import {
+  extractStreamProviderError,
+  formatProviderErrorMessage,
+  looksLikeProviderErrorContent,
+} from "@/lib/chat-stream-errors";
+import {
   detectImplicitToolCall,
   detectRAGFromContent,
   parseOpenAIChatChunk,
@@ -24,6 +29,8 @@ interface UseChatStreamingOptions {
 interface SendMessageOptions {
   prompt: string;
   previousResponseId?: string;
+  /** OpenRAG sidebar thread id (kept after errors; distinct from Langflow session). */
+  conversationId?: string;
   filters?: FilterInput;
   filter_id?: string;
   limit?: number;
@@ -47,6 +54,7 @@ export function useChatStreaming({
   const sendMessage = async ({
     prompt,
     previousResponseId,
+    conversationId,
     filters,
     filter_id,
     limit = 10,
@@ -55,6 +63,8 @@ export function useChatStreaming({
     // Set up timeout to detect stuck/hanging requests
     let timeoutId: NodeJS.Timeout | null = null;
     let hasReceivedData = false;
+    // Hoisted so the catch path can still attach a failed turn to history.
+    let newResponseId: string | null = null;
 
     try {
       setIsLoading(true);
@@ -86,6 +96,7 @@ export function useChatStreaming({
         prompt: string;
         stream: boolean;
         previous_response_id?: string;
+        conversation_id?: string;
         filters?: FilterInput;
         filter_id?: string;
         limit?: number;
@@ -101,6 +112,10 @@ export function useChatStreaming({
         requestBody.previous_response_id = previousResponseId;
       }
 
+      if (conversationId) {
+        requestBody.conversation_id = conversationId;
+      }
+
       if (filters) {
         const payloadFilters = buildSearchPayloadFilters(filters);
         if (payloadFilters) {
@@ -111,11 +126,6 @@ export function useChatStreaming({
       if (filter_id) {
         requestBody.filter_id = filter_id;
       }
-
-      console.log("[useChatStreaming] Sending request:", {
-        filter_id,
-        requestBody,
-      });
 
       const response = await fetch(endpoint, {
         method: "POST",
@@ -144,9 +154,8 @@ export function useChatStreaming({
       let buffer = "";
       const content = { value: "" };
       const currentFunctionCalls: FunctionCall[] = [];
-      let newResponseId: string | null = null;
-      let isError = false;
       const usage: { value: TokenUsage | undefined } = { value: undefined };
+      let providerStreamError: string | null = null;
 
       if (!controller.signal.aborted && thisStreamId === streamIdRef.current) {
         setStreamingMessage({
@@ -195,12 +204,10 @@ export function useChatStreaming({
                   parseOpenRAGChunk(chunk, content);
                 detectImplicitToolCall(chunk, currentFunctionCalls);
 
-                if (
-                  chunk.finish_reason === "error" ||
-                  chunk.status === "failed"
-                ) {
-                  console.error("Error detected in stream");
-                  isError = true;
+                const streamError = extractStreamProviderError(chunk);
+                if (streamError) {
+                  console.error("Error detected in stream", streamError);
+                  providerStreamError = streamError;
                   break streamLoop;
                 }
 
@@ -230,6 +237,21 @@ export function useChatStreaming({
         if (timeoutId) clearTimeout(timeoutId);
       }
 
+      // Prefer accumulated stream text when it carries the real provider dump —
+      // Langflow often sends finish_reason=error with an empty error payload.
+      if (content.value && looksLikeProviderErrorContent(content.value)) {
+        throw Object.assign(
+          new Error(formatProviderErrorMessage(content.value)),
+          { partialContent: content.value },
+        );
+      }
+
+      if (providerStreamError) {
+        throw Object.assign(new Error(providerStreamError), {
+          partialContent: content.value,
+        });
+      }
+
       if (
         !hasReceivedData ||
         (!content.value && currentFunctionCalls.length === 0)
@@ -251,7 +273,6 @@ export function useChatStreaming({
           currentFunctionCalls.length > 0 ? currentFunctionCalls : undefined,
         timestamp: new Date(),
         isStreaming: false,
-        error: isError,
         usage: usage.value,
       };
 
@@ -281,7 +302,9 @@ export function useChatStreaming({
 
       // Create user-friendly error message
       const errorMessage = (error as Error).message;
-      let errorContent = errorMessage; // Default to the actual error message
+      let errorContent = formatProviderErrorMessage(
+        errorMessage || "An error occurred while generating a response.",
+      );
 
       // Only override with generic messages for specific infrastructure errors
       if (errorMessage?.includes("timed out")) {
@@ -296,9 +319,30 @@ export function useChatStreaming({
         errorContent =
           "Network error. Please check your connection and try again.";
       }
-      // For all other errors (including Langflow errors), use the actual error message
 
-      onError?.(error as Error);
+      // Keep any mid-stream partial answer visible above the provider error,
+      // unless the "partial" is itself a provider failure dump with JSON.
+      const partialContent =
+        typeof (error as { partialContent?: unknown }).partialContent ===
+        "string"
+          ? (error as { partialContent: string }).partialContent.trim()
+          : "";
+      const partialLooksLikeProviderError =
+        partialContent.includes("{") ||
+        /api key|authenticat|unauthorized|permission denied|rate limit/i.test(
+          partialContent,
+        );
+      if (
+        partialContent &&
+        !partialLooksLikeProviderError &&
+        !errorContent.startsWith(partialContent) &&
+        !errorMessage?.includes("timed out") &&
+        !errorMessage?.includes("No response") &&
+        !errorMessage?.includes("NetworkError") &&
+        !errorMessage?.includes("Failed to fetch")
+      ) {
+        errorContent = `${partialContent}\n\n${errorContent}`;
+      }
 
       const errorMessageObj: Message = {
         role: "assistant",
@@ -308,10 +352,19 @@ export function useChatStreaming({
         error: true,
       };
 
-      // Pass error message to onComplete so it gets added to chat history
-      // This ensures errors appear immediately and persist on page refresh
-      if (!streamAbortRef.current?.signal.aborted) {
-        onComplete?.(errorMessageObj, null);
+      // onError owns side effects (flags, session reset). onComplete owns appending
+      // the error message and refreshing history — pass any stream/store id so a
+      // failed first turn still appears in the conversation list.
+      onError?.(
+        Object.assign(new Error(errorContent), {
+          partialContent,
+        }) as Error,
+      );
+      // User aborts skip completion; timeout aborts still surface the error card.
+      const isTimeout = errorMessage?.includes("timed out");
+      if (!streamAbortRef.current?.signal.aborted || isTimeout) {
+        onComplete?.(errorMessageObj, newResponseId);
+        refreshConversations(true);
       }
 
       return errorMessageObj;

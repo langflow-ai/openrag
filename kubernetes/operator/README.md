@@ -108,7 +108,53 @@ make install
 Run the operator locally:
 
 ```bash
-go run cmd/main.go
+make run
+```
+
+Apply a sample CR (create the namespace first; the operator does not create it when `metadata.namespace` equals `targetNamespace`):
+
+```bash
+kubectl create namespace my-tenant
+# kind/Colima clusters usually have only 2 CPUs — use the kind-local sample:
+kubectl apply -f config/samples/openrag_v1alpha1_openrag-kind-local.yaml
+kubectl get pods -n my-tenant
+```
+
+On a 2-CPU kind node, the default sample (`openrag_v1alpha1_openrag.yaml`) requests 1500m CPU for frontend+backend+langflow and langflow will stay `Pending` with `Insufficient cpu`.
+
+### Build app images locally and use them in kind (Colima/Docker)
+
+From the **repository root** (not `kubernetes/operator/`):
+
+```bash
+# Build backend, frontend, langflow and load into the kind node
+make kind-build-load-apps
+
+# In another terminal: operator + CR (kind-local sets imagePullPolicy: Never)
+cd kubernetes/operator
+make install
+make run
+
+kubectl create namespace my-tenant
+kubectl apply -f config/samples/openrag_v1alpha1_openrag-kind-local.yaml
+```
+
+Images are tagged the same as upstream (`langflowai/openrag-*:latest`) so the kind-local sample does not need custom names. `imagePullPolicy: Never` forces the cluster to use the copies loaded with `kind load docker-image`.
+
+After you change code and rebuild:
+
+```bash
+make kind-build-load-apps   # or build only what changed, then make kind-load-app-images
+kubectl rollout restart deployment -n my-tenant openrag-fe openrag-be openrag-lf
+```
+
+Optional: build/load the **operator** image the same way:
+
+```bash
+cd kubernetes/operator
+make docker-build IMG=openrag-operator:dev
+kind load docker-image openrag-operator:dev --name openrag
+make deploy IMG=openrag-operator:dev   # instead of make run
 ```
 
 ### 5. Tear down

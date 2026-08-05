@@ -29,7 +29,7 @@ import atexit
 import httpx  # noqa: F401
 
 from app.factory import create_app
-from config.settings import ACCESS_LOG_ENABLED
+from config.settings import ACCESS_LOG_ENABLED, OPENRAG_BACKEND_PORT
 from services.default_docs_service import (
     _get_remote_docs_signature,
     _should_use_url_default_docs_ingest,
@@ -87,11 +87,22 @@ if __name__ == "__main__":
 
     app = asyncio.run(create_app())
 
+    # Optionally spin up the standalone ingestion-callback proxy router in this
+    # same process (own daemon thread + port) so Langflow calls back to it
+    # instead of the full backend internal API surface.
+    from config.settings import OPENRAG_BACKEND_ROUTER_ENABLE, OPENRAG_BACKEND_ROUTER_PORT
+
+    if OPENRAG_BACKEND_ROUTER_ENABLE:
+        from app.router_app import start_backend_router
+
+        start_backend_router()
+        logger.info("Backend ingestion router enabled", port=OPENRAG_BACKEND_ROUTER_PORT)
+
     uvicorn.run(
         app,
         workers=1,
         host="0.0.0.0",
-        port=8000,
+        port=OPENRAG_BACKEND_PORT,
         reload=False,
         access_log=ACCESS_LOG_ENABLED,
         log_config=None,

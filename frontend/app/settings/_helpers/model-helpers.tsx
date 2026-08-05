@@ -3,7 +3,12 @@ import IBMLogo from "@/components/icons/ibm-logo";
 import OllamaLogo from "@/components/icons/ollama-logo";
 import OpenAILogo from "@/components/icons/openai-logo";
 
-export type ModelProvider = "openai" | "anthropic" | "ollama" | "watsonx";
+export type ModelProvider =
+  | "openai"
+  | "anthropic"
+  | "ollama"
+  | "watsonx"
+  | "local";
 
 // Full ordered list of providers for settings / cards
 export const ALL_PROVIDERS: ModelProvider[] = [
@@ -47,6 +52,30 @@ export function getModelLogo(modelValue: string, provider?: ModelProvider) {
     return <OllamaLogo className="w-4 h-4" />;
   } else if (provider === "watsonx") {
     return <IBMLogo className="w-4 h-4" />;
+  } else if (provider === "local") {
+    return (
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="w-4 h-4 text-muted-foreground"
+      >
+        <rect x="4" y="4" width="16" height="16" rx="2" />
+        <rect x="9" y="9" width="6" height="6" />
+        <path d="M9 1v3" />
+        <path d="M15 1v3" />
+        <path d="M9 20v3" />
+        <path d="M15 20v3" />
+        <path d="M20 9h3" />
+        <path d="M20 15h3" />
+        <path d="M1 9h3" />
+        <path d="M1 15h3" />
+      </svg>
+    );
   }
 
   // Fallback to model name analysis
@@ -71,9 +100,22 @@ export function getFallbackModels(provider: ModelProvider) {
     case "openai":
       return {
         language: [
-          { value: "gpt-4", label: "GPT-4" },
-          { value: "gpt-4-turbo", label: "GPT-4 Turbo" },
-          { value: "gpt-3.5-turbo", label: "GPT-3.5 Turbo" },
+          { value: "gpt-5.4", label: "GPT-5.4" },
+          { value: "gpt-5.4-mini", label: "GPT-5.4 Mini" },
+          { value: "gpt-5.4-pro", label: "GPT-5.4 Pro" },
+          { value: "gpt-5.3-codex", label: "GPT-5.3 Codex" },
+          { value: "gpt-5.2", label: "GPT-5.2" },
+          { value: "gpt-5.1", label: "GPT-5.1" },
+          { value: "gpt-5", label: "GPT-5" },
+          { value: "gpt-5-mini", label: "GPT-5 Mini" },
+          { value: "gpt-5-nano", label: "GPT-5 Nano" },
+          { value: "gpt-4o-mini", label: "GPT-4o Mini" },
+          { value: "gpt-4o", label: "GPT-4o" },
+          { value: "gpt-4.1", label: "GPT-4.1" },
+          { value: "gpt-4.1-mini", label: "GPT-4.1 Mini" },
+          { value: "o3", label: "o3" },
+          { value: "o3-pro", label: "o3 Pro" },
+          { value: "o4-mini-high", label: "o4 Mini High" },
         ],
         embedding: [
           { value: "text-embedding-ada-002", label: "text-embedding-ada-002" },
@@ -84,9 +126,9 @@ export function getFallbackModels(provider: ModelProvider) {
     case "anthropic":
       return {
         language: [
+          { value: "claude-opus-4-6", label: "Claude Opus 4.6" },
+          { value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
           { value: "claude-sonnet-4-5-20250929", label: "Claude Sonnet 4.5" },
-          { value: "claude-opus-4-1-20250805", label: "Claude Opus 4.1" },
-          { value: "claude-opus-4-20250514", label: "Claude Opus 4" },
         ],
       };
     case "ollama":
@@ -120,9 +162,22 @@ export function getFallbackModels(provider: ModelProvider) {
     default:
       return {
         language: [
-          { value: "gpt-4", label: "GPT-4" },
-          { value: "gpt-4-turbo", label: "GPT-4 Turbo" },
-          { value: "gpt-3.5-turbo", label: "GPT-3.5 Turbo" },
+          { value: "gpt-5.4", label: "GPT-5.4" },
+          { value: "gpt-5.4-mini", label: "GPT-5.4 Mini" },
+          { value: "gpt-5.4-pro", label: "GPT-5.4 Pro" },
+          { value: "gpt-5.3-codex", label: "GPT-5.3 Codex" },
+          { value: "gpt-5.2", label: "GPT-5.2" },
+          { value: "gpt-5.1", label: "GPT-5.1" },
+          { value: "gpt-5", label: "GPT-5" },
+          { value: "gpt-5-mini", label: "GPT-5 Mini" },
+          { value: "gpt-5-nano", label: "GPT-5 Nano" },
+          { value: "gpt-4o-mini", label: "GPT-4o Mini" },
+          { value: "gpt-4o", label: "GPT-4o" },
+          { value: "gpt-4.1", label: "GPT-4.1" },
+          { value: "gpt-4.1-mini", label: "GPT-4.1 Mini" },
+          { value: "o3", label: "o3" },
+          { value: "o3-pro", label: "o3 Pro" },
+          { value: "o4-mini-high", label: "o4 Mini High" },
         ],
         embedding: [
           { value: "text-embedding-ada-002", label: "text-embedding-ada-002" },

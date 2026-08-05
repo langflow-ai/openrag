@@ -1,30 +1,30 @@
 """Configuration screen for OpenRAG TUI."""
 
 import os
-from zxcvbn import zxcvbn
+from pathlib import Path
+
+from rich.text import Text
 from textual.app import ComposeResult
-from textual.containers import Container, Vertical, Horizontal, ScrollableContainer
+from textual.containers import Container, Horizontal, ScrollableContainer, Vertical
 from textual.screen import Screen
+from textual.validation import ValidationResult, Validator
 from textual.widgets import (
-    Footer,
-    Static,
     Button,
+    Footer,
     Input,
     Label,
-    Checkbox,
+    Static,
 )
-from textual.validation import ValidationResult, Validator
-from rich.text import Text
-from pathlib import Path
+from zxcvbn import zxcvbn
 
 from ..config_fields import CONFIG_SECTIONS, ConfigField
 from ..managers.env_manager import EnvManager
 from ..utils.validation import (
-    validate_openai_api_key,
     validate_anthropic_api_key,
-    validate_ollama_endpoint,
-    validate_watsonx_endpoint,
     validate_documents_paths,
+    validate_ollama_endpoint,
+    validate_openai_api_key,
+    validate_watsonx_endpoint,
 )
 
 
@@ -125,7 +125,9 @@ class PasswordValidator(Validator):
             elif suggestions:
                 return self.failure(f"Password is {current_strength}. {suggestions[0]}")
             else:
-                return self.failure(f"Password is {current_strength}. Use a longer, more unique password.")
+                return self.failure(
+                    f"Password is {current_strength}. Use a longer, more unique password."
+                )
 
         return self.success()
 
@@ -143,8 +145,8 @@ class ConfigScreen(Screen):
         super().__init__()
         self.mode = mode  # "no_auth" or "full"
         self.env_manager = EnvManager()
-        self.inputs = {}
-        
+        self.inputs: dict[str, Input] = {}
+
         # Check if .env file exists
         self.has_env_file = self.env_manager.env_file.exists()
 
@@ -307,10 +309,9 @@ class ConfigScreen(Screen):
         yield Static(" ")
 
     def _render_langflow_superuser_password(self, field: ConfigField) -> ComposeResult:
-        """Langflow password with generate checkbox and eye toggle."""
-        with Horizontal():
-            yield Label("Admin Password (optional)")
-            yield Checkbox("Generate password", id="generate-langflow-password")
+        """Langflow password with eye toggle."""
+        yield Label("Admin Password *")
+        yield Static(field.helper_text, classes="helper-text")
         current_value = getattr(self.env_manager.config, field.name, "")
         with Horizontal(id="langflow-password-row"):
             input_widget = Input(
@@ -408,13 +409,8 @@ class ConfigScreen(Screen):
         self.inputs[field.name] = input_widget
         yield Static(" ")
 
-
     def on_mount(self) -> None:
         """Initialize the screen when mounted."""
-        # Set initial visibility of username field based on password
-        current_password = getattr(self.env_manager.config, "langflow_superuser_password", "")
-        self._update_langflow_username_visibility(current_password)
-
         # Focus the first input field
         try:
             # Find the first input field and focus it
@@ -423,26 +419,6 @@ class ConfigScreen(Screen):
                 inputs[0].focus()
         except Exception:
             pass
-
-    def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
-        """Handle checkbox changes."""
-        if event.checkbox.id == "generate-langflow-password":
-            langflow_password_input = self.inputs.get("langflow_superuser_password")
-            if event.value:
-                # Generate password when checked
-                password = self.env_manager.generate_secure_password()
-                if langflow_password_input:
-                    langflow_password_input.value = password
-                    # Show username field
-                    self._update_langflow_username_visibility(password)
-                self.notify("Generated Langflow password", severity="information")
-            else:
-                # Clear password when unchecked (enable autologin)
-                if langflow_password_input:
-                    langflow_password_input.value = ""
-                    # Hide username field
-                    self._update_langflow_username_visibility("")
-                self.notify("Cleared Langflow password - autologin enabled", severity="information")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
@@ -479,20 +455,38 @@ class ConfigScreen(Screen):
         if encryption_key_input:
             self.env_manager.config.openrag_encryption_key = encryption_key_input.value
 
-        # Only generate OpenSearch password if empty
+        langflow_input = self.inputs.get("langflow_superuser_password")
+        if langflow_input:
+            self.env_manager.config.langflow_superuser_password = langflow_input.value
+
+        # Generate passwords if empty
         if not self.env_manager.config.opensearch_password:
-            self.env_manager.config.opensearch_password = self.env_manager.generate_secure_password()
+            self.env_manager.config.opensearch_password = (
+                self.env_manager.generate_secure_password()
+            )
+
+        if not self.env_manager.config.langflow_superuser_password:
+            self.env_manager.config.langflow_superuser_password = (
+                self.env_manager.generate_secure_password()
+            )
 
         # Update secret keys
         if not self.env_manager.config.langflow_secret_key:
-            self.env_manager.config.langflow_secret_key = self.env_manager.generate_langflow_secret_key()
+            self.env_manager.config.langflow_secret_key = (
+                self.env_manager.generate_langflow_secret_key()
+            )
 
         if not self.env_manager.config.openrag_encryption_key:
-            self.env_manager.config.openrag_encryption_key = self.env_manager.generate_openrag_encryption_key()
+            self.env_manager.config.openrag_encryption_key = (
+                self.env_manager.generate_openrag_encryption_key()
+            )
 
         # Update input fields with generated values
         if opensearch_input:
             opensearch_input.value = self.env_manager.config.opensearch_password
+
+        if langflow_input:
+            langflow_input.value = self.env_manager.config.langflow_superuser_password
 
         if encryption_key_input:
             encryption_key_input.value = self.env_manager.config.openrag_encryption_key
@@ -573,13 +567,9 @@ class ConfigScreen(Screen):
                 start = Path(first).expanduser()
 
         # Prefer SelectDirectory for directories; fallback to FileOpen
-        PickerClass = getattr(fsp, "SelectDirectory", None) or getattr(
-            fsp, "FileOpen", None
-        )
+        PickerClass = getattr(fsp, "SelectDirectory", None) or getattr(fsp, "FileOpen", None)
         if PickerClass is None:
-            self.notify(
-                "No compatible picker found in textual-fspicker", severity="warning"
-            )
+            self.notify("No compatible picker found in textual-fspicker", severity="warning")
             return
         try:
             picker = PickerClass(location=start)
@@ -604,9 +594,9 @@ class ConfigScreen(Screen):
 
         # Push with callback when supported; otherwise, use on_screen_dismissed fallback
         try:
-            self.app.push_screen(picker, _append_path)  # type: ignore[arg-type]
+            self.app.push_screen(picker, _append_path)
         except TypeError:
-            self._docs_pick_callback = _append_path  # type: ignore[attr-defined]
+            self._docs_pick_callback = _append_path
             self.app.push_screen(picker)
 
     def action_pick_langflow_data_path(self) -> None:
@@ -630,13 +620,9 @@ class ConfigScreen(Screen):
                 elif candidate.parent.exists():
                     start = candidate.parent
 
-        PickerClass = getattr(fsp, "SelectDirectory", None) or getattr(
-            fsp, "FileOpen", None
-        )
+        PickerClass = getattr(fsp, "SelectDirectory", None) or getattr(fsp, "FileOpen", None)
         if PickerClass is None:
-            self.notify(
-                "No compatible picker found in textual-fspicker", severity="warning"
-            )
+            self.notify("No compatible picker found in textual-fspicker", severity="warning")
             return
         try:
             picker = PickerClass(location=start)
@@ -656,12 +642,12 @@ class ConfigScreen(Screen):
             input_widget.value = path_str
 
         try:
-            self.app.push_screen(picker, _set_path)  # type: ignore[arg-type]
+            self.app.push_screen(picker, _set_path)
         except TypeError:
-            self._langflow_data_pick_callback = _set_path  # type: ignore[attr-defined]
+            self._langflow_data_pick_callback = _set_path
             self.app.push_screen(picker)
 
-    def on_screen_dismissed(self, event) -> None:  # type: ignore[override]
+    def on_screen_dismissed(self, event) -> None:
         try:
             # textual-fspicker screens should dismiss with a result; hand to callback if present
             cb = getattr(self, "_docs_pick_callback", None)
@@ -671,7 +657,7 @@ class ConfigScreen(Screen):
                     delattr(self, "_docs_pick_callback")
                 except Exception:
                     pass
-            
+
             # Handle OpenSearch data path picker callback
             cb = getattr(self, "_opensearch_data_pick_callback", None)
             if cb is not None:
@@ -694,31 +680,4 @@ class ConfigScreen(Screen):
 
     def on_input_changed(self, event: Input.Changed) -> None:
         """Handle input changes for real-time validation feedback."""
-        # Handle Langflow password changes - show/hide username field
-        if event.input.id == "input-langflow_superuser_password":
-            self._update_langflow_username_visibility(event.value)
-        # This will trigger validation display in real-time
         pass
-
-    def _update_langflow_username_visibility(self, password_value: str) -> None:
-        """Show or hide the Langflow username field based on password presence."""
-        has_password = bool(password_value and password_value.strip())
-
-        # Get the widgets
-        try:
-            username_label = self.query_one("#langflow-username-label")
-            username_input = self.query_one("#input-langflow_superuser")
-            username_spacer = self.query_one("#langflow-username-spacer")
-
-            # Show or hide based on password presence
-            if has_password:
-                username_label.display = True
-                username_input.display = True
-                username_spacer.display = True
-            else:
-                username_label.display = False
-                username_input.display = False
-                username_spacer.display = False
-        except Exception:
-            # Widgets don't exist yet, ignore
-            pass

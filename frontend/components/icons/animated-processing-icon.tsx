@@ -60,8 +60,7 @@ const AnimatedProcessingIcon = ({
       {...props}
     >
       <title>Animated Processing Icon</title>
-      {/* Inject animation styles into the SVG's shadow */}
-      <style dangerouslySetInnerHTML={{ __html: animationCSS }} />
+      <style>{animationCSS}</style>
 
       {/* State 1 */}
       <g className="state-1">

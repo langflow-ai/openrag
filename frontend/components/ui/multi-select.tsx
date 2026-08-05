@@ -49,6 +49,7 @@ export function MultiSelect({
 }: MultiSelectProps) {
   const [open, setOpen] = React.useState(false);
   const [searchValue, setSearchValue] = React.useState("");
+  const listboxId = React.useId();
 
   // Normalize value to empty array if undefined/null to prevent crashes
   const safeValue = value ?? [];
@@ -109,13 +110,18 @@ export function MultiSelect({
           variant="outline"
           role="combobox"
           aria-expanded={open}
+          aria-controls={listboxId}
           className={cn("w-full justify-between h-8 py-0 text-left", className)}
         >
           <span className="text-foreground text-sm">{getDisplayText()}</span>
           <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="p-0" align="start">
+      <PopoverContent
+        className="p-0"
+        align="start"
+        style={{ width: "var(--radix-popover-trigger-width)" }}
+      >
         <Command>
           <CommandInput
             placeholder={searchPlaceholder}
@@ -123,7 +129,7 @@ export function MultiSelect({
             onValueChange={setSearchValue}
           />
           <CommandEmpty>No items found.</CommandEmpty>
-          <CommandGroup>
+          <CommandGroup id={listboxId}>
             <ScrollArea className="max-h-64">
               {showAllOption && (
                 <CommandItem
@@ -131,7 +137,9 @@ export function MultiSelect({
                   onSelect={() => handleSelect("*")}
                   className="cursor-pointer"
                 >
-                  <span className="flex-1">{allOptionLabel}</span>
+                  <span className="flex-1 truncate min-w-0">
+                    {allOptionLabel}
+                  </span>
                   <Check
                     className={cn(
                       "mr-2 h-4 w-4",
@@ -146,7 +154,9 @@ export function MultiSelect({
                   onSelect={() => handleSelect(option.value)}
                   className="cursor-pointer"
                 >
-                  <span className="flex-1">{option.label}</span>
+                  <span className="flex-1 truncate min-w-0">
+                    {option.label}
+                  </span>
                   {option.count !== undefined && (
                     <span className="text-xs text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded ml-2">
                       {option.count}

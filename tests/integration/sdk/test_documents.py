@@ -6,6 +6,7 @@ import uuid
 from pathlib import Path
 
 import pytest
+from openrag_sdk.exceptions import NotFoundError, OpenRAGError
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("SKIP_SDK_INTEGRATION_TESTS") == "true",
@@ -21,31 +22,41 @@ class TestDocuments:
         """wait=False returns a task_id immediately; polling reaches a terminal state."""
         result = await client.documents.ingest(file_path=str(test_file), wait=False)
         assert result.task_id is not None
+        assert isinstance(result.task_id, str) and result.task_id
 
-        final_status = await client.documents.wait_for_task(result.task_id)
-        assert final_status.status is not None
-        assert final_status.successful_files >= 0
+        try:
+            final_status = await client.documents.wait_for_task(result.task_id)
+            assert final_status.status is not None
+            assert final_status.successful_files >= 0
+        finally:
+            await client.documents.delete(test_file.name)
 
     @pytest.mark.asyncio
     async def test_ingest_document(self, client, test_file: Path):
         """wait=True polls until completion and returns a terminal status."""
-        result = await client.documents.ingest(file_path=str(test_file))
-        assert result.status is not None
-        assert result.successful_files >= 0
+        try:
+            result = await client.documents.ingest(file_path=str(test_file))
+            assert result.status is not None
+            assert result.successful_files >= 0
+            assert result.total_files >= 1
+            assert result.processed_files >= 0
+            assert result.failed_files >= 0
+        finally:
+            await client.documents.delete(test_file.name)
 
     @pytest.mark.asyncio
     async def test_delete_document(self, client, test_file: Path):
         """Deleting an ingested document succeeds when chunks were indexed."""
         ingest_result = await client.documents.ingest(file_path=str(test_file))
+        assert ingest_result.successful_files > 0, (
+            "Ingestion did not succeed for any file "
+            f"(status={ingest_result.status}, failed_files={ingest_result.failed_files}); "
+            "cannot deterministically test deletion of an indexed document"
+        )
 
         result = await client.documents.delete(test_file.name)
-
-        if ingest_result.successful_files > 0:
-            assert result.success is True
-            assert result.deleted_chunks > 0
-        else:
-            assert result.success is False
-            assert result.deleted_chunks == 0
+        assert result.success is True
+        assert result.deleted_chunks > 0
 
     @pytest.mark.asyncio
     async def test_delete_missing_document_is_idempotent(self, client):
@@ -57,6 +68,38 @@ class TestDocuments:
         assert result.deleted_chunks == 0
         assert result.filename == missing_filename
         assert result.error is not None
+
+    @pytest.mark.asyncio
+    async def test_get_task_status_nonexistent_raises_not_found(self, client):
+        """Fetching status for a task id that doesn't exist must raise NotFoundError."""
+        with pytest.raises(NotFoundError):
+            await client.documents.get_task_status(f"nonexistent-{uuid.uuid4().hex}")
+
+    @pytest.mark.asyncio
+    async def test_delete_by_nonexistent_filter_id_raises_not_found(self, client):
+        """Deleting by a genuinely nonexistent filter_id must raise NotFoundError.
+
+        Distinct from the wildcard-data_sources rejection test in
+        TestDeleteByFilterId, which raises a generic OpenRAGError (validation),
+        not NotFoundError.
+        """
+        with pytest.raises(NotFoundError):
+            await client.documents.delete(filter_id=f"nonexistent-uuid-{uuid.uuid4().hex}")
+
+    @pytest.mark.asyncio
+    async def test_wait_for_task_timeout_raises_timeout_error(self, client):
+        """wait_for_task() with timeout=0 must raise TimeoutError without polling.
+
+        A timeout racing real task duration (e.g. a tiny nonzero value) is
+        inherently flaky: if the task happens to reach a terminal status on
+        the very first poll -- which can happen near-instantly, including on
+        failure -- wait_for_task returns normally instead of raising,
+        regardless of how small the timeout was. timeout=0 makes the
+        elapsed<timeout loop guard false before the first poll, so this is
+        deterministic and doesn't require a real ingest at all.
+        """
+        with pytest.raises(TimeoutError):
+            await client.documents.wait_for_task(f"nonexistent-{uuid.uuid4().hex}", timeout=0)
 
 
 class TestDocumentsExtended:
@@ -73,11 +116,12 @@ class TestDocumentsExtended:
         ).encode()
 
         filename = f"file_obj_{unique_token[:8]}.md"
-        result = await client.documents.ingest(file=io.BytesIO(content), filename=filename)
-        assert result.status is not None
-        assert result.successful_files >= 0
-
-        await client.documents.delete(filename)
+        try:
+            result = await client.documents.ingest(file=io.BytesIO(content), filename=filename)
+            assert result.status is not None
+            assert result.successful_files >= 0
+        finally:
+            await client.documents.delete(filename)
 
     @pytest.mark.asyncio
     async def test_reingest_same_filename_does_not_raise(self, client, tmp_path):
@@ -86,22 +130,25 @@ class TestDocumentsExtended:
         file_path = tmp_path / f"reingest_{unique_token[:8]}.md"
         file_path.write_text(f"# Reingest Test\n\nToken: {unique_token}\n")
 
-        result1 = await client.documents.ingest(file_path=str(file_path))
-        assert result1.status is not None
+        try:
+            result1 = await client.documents.ingest(file_path=str(file_path))
+            assert result1.status is not None
 
-        result2 = await client.documents.ingest(file_path=str(file_path))
-        assert result2.status is not None
-
-        await client.documents.delete(file_path.name)
+            result2 = await client.documents.ingest(file_path=str(file_path))
+            assert result2.status is not None
+        finally:
+            await client.documents.delete(file_path.name)
 
     @pytest.mark.asyncio
     async def test_ingest_markdown_format(self, client, tmp_path):
         """Verify .md files are accepted and processed without error."""
         file_path = tmp_path / f"format_md_{uuid.uuid4().hex[:8]}.md"
         file_path.write_text("# Markdown Format\n\n## Section\n\nContent here.\n")
-        result = await client.documents.ingest(file_path=str(file_path))
-        assert result.status is not None
-        await client.documents.delete(file_path.name)
+        try:
+            result = await client.documents.ingest(file_path=str(file_path))
+            assert result.status is not None
+        finally:
+            await client.documents.delete(file_path.name)
 
     @pytest.mark.asyncio
     async def test_task_status_polling(self, client, tmp_path):
@@ -109,13 +156,105 @@ class TestDocumentsExtended:
         file_path = tmp_path / f"poll_{uuid.uuid4().hex[:8]}.md"
         file_path.write_text("# Polling Test\n\nContent for polling test.\n")
 
-        task_response = await client.documents.ingest(file_path=str(file_path), wait=False)
-        assert task_response.task_id is not None
+        try:
+            task_response = await client.documents.ingest(file_path=str(file_path), wait=False)
+            assert task_response.task_id is not None
 
-        status = await client.documents.get_task_status(task_response.task_id)
-        assert status.status is not None
+            status = await client.documents.get_task_status(task_response.task_id)
+            assert status.status is not None
 
-        final = await client.documents.wait_for_task(task_response.task_id)
-        assert final.status in ("completed", "failed")
+            final = await client.documents.wait_for_task(task_response.task_id)
+            assert final.status in ("completed", "failed")
+        finally:
+            await client.documents.delete(file_path.name)
 
-        await client.documents.delete(file_path.name)
+
+class TestDeleteByFilterId:
+    """Verify DELETE /v1/documents resolves filter_id to data_sources and deletes those files only."""
+
+    async def _ingest_two(self, client, tmp_path):
+        """Helper: ingest two docs and return their Paths."""
+        token = uuid.uuid4().hex[:8]
+        alpha = tmp_path / f"alpha_{token}.md"
+        beta = tmp_path / f"beta_{token}.md"
+        alpha.write_text("# Alpha\n\nUnique content about purple elephants.\n")
+        beta.write_text("# Beta\n\nUnique content about yellow tigers.\n")
+        await client.documents.ingest(file_path=str(alpha))
+        await client.documents.ingest(file_path=str(beta))
+        return alpha, beta
+
+    async def _create_filter(self, client, data_sources: list[str]) -> str:
+        result = await client.knowledge_filters.create(
+            {
+                "name": f"SDK delete-filter {uuid.uuid4().hex[:6]}",
+                "description": "Auto-created by SDK delete-by-filter test",
+                "queryData": {
+                    "query": "",
+                    "filters": {
+                        "data_sources": data_sources,
+                        "document_types": ["*"],
+                        "owners": ["*"],
+                        "connector_types": ["*"],
+                    },
+                    "limit": 10,
+                    "scoreThreshold": 0,
+                },
+            }
+        )
+        assert result.success is True, f"Failed to create filter: {result.error}"
+        assert isinstance(result.id, str) and result.id, (
+            f"Filter creation returned no id: {result.error}"
+        )
+        return result.id
+
+    @pytest.mark.asyncio
+    async def test_delete_documents_by_filter_id(self, client, tmp_path):
+        """Deleting by filter_id removes only the filenames in the filter's data_sources."""
+        alpha, beta = await self._ingest_two(client, tmp_path)
+        filter_id = None
+
+        try:
+            filter_id = await self._create_filter(client, [alpha.name])
+            result = await client.documents.delete(filter_id=filter_id)
+            assert result.success is True
+            assert result.filter_id == filter_id
+            assert alpha.name in (result.filenames or [])
+            assert beta.name not in (result.filenames or [])
+            # Beta still exists; scope the verification to beta's filename so
+            # the assertion does not depend on semantic ranking.
+            still_there = await client.search.query(
+                "*", filters={"data_sources": [beta.name]}, limit=5
+            )
+            assert any(r.filename == beta.name for r in still_there.results), (
+                "Beta should still be present after filter-id delete of alpha"
+            )
+        finally:
+            if filter_id is not None:
+                await client.knowledge_filters.delete(filter_id)
+            # Best-effort cleanup
+            await client.documents.delete(alpha.name)
+            await client.documents.delete(beta.name)
+
+    @pytest.mark.asyncio
+    async def test_delete_by_filter_id_with_wildcard_rejects(self, client):
+        """A filter whose data_sources list contains `"*"` is rejected."""
+        filter_id = None
+        try:
+            filter_id = await self._create_filter(client, ["*"])
+            with pytest.raises(OpenRAGError):
+                await client.documents.delete(filter_id=filter_id)
+        finally:
+            if filter_id is not None:
+                await client.knowledge_filters.delete(filter_id)
+
+    @pytest.mark.asyncio
+    async def test_delete_with_both_filename_and_filter_id_rejects(self, client):
+        """Passing both filename and filter_id must be rejected by the SDK."""
+        with pytest.raises(ValueError):
+            await client.documents.delete("foo.pdf", filter_id="something")
+
+    @pytest.mark.asyncio
+    async def test_delete_with_neither_filename_nor_filter_id_rejects(self, client):
+        """Passing neither filename nor filter_id must be rejected by the SDK."""
+        with pytest.raises(ValueError):
+            await client.documents.delete()

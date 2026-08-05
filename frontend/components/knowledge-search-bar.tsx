@@ -1,19 +1,19 @@
 import { ArrowRight, RefreshCw, Search, X } from "lucide-react";
-import {
-  type ChangeEvent,
-  type FormEvent,
-  useCallback,
-  useEffect,
-  useState,
-} from "react";
+import { type ChangeEvent, type FormEvent, useCallback, useState } from "react";
 import { toast } from "sonner";
 import { useRefreshOpenragDocs } from "@/app/api/mutations/useRefreshOpenragDocs";
-import { useSyncAllConnectors } from "@/app/api/mutations/useSyncConnector";
+import {
+  type SyncAllPreviewResponse,
+  useSyncAllConnectors,
+  useSyncAllConnectorsPreview,
+} from "@/app/api/mutations/useSyncConnector";
+import { RequirePermission } from "@/components/require-permission";
 import { Button } from "@/components/ui/button";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { cn } from "@/lib/utils";
 import { KnowledgeDropdown } from "./knowledge-dropdown";
 import { filterAccentClasses } from "./knowledge-filter-panel";
+import { SyncConfirmDialog } from "./sync-confirm-dialog";
 
 export const KnowledgeSearchBar = () => {
   const {
@@ -25,6 +25,11 @@ export const KnowledgeSearchBar = () => {
   } = useKnowledgeFilter();
 
   const [searchQueryInput, setSearchQueryInput] = useState(queryOverride || "");
+  const [prevQueryOverride, setPrevQueryOverride] = useState(queryOverride);
+  if (queryOverride !== prevQueryOverride) {
+    setPrevQueryOverride(queryOverride);
+    setSearchQueryInput(queryOverride);
+  }
 
   const handleSearch = useCallback(
     (e?: FormEvent<HTMLFormElement>) => {
@@ -39,12 +44,52 @@ export const KnowledgeSearchBar = () => {
     setQueryOverride("");
   }, [setQueryOverride]);
 
-  useEffect(() => {
-    setSearchQueryInput(queryOverride);
-  }, [queryOverride]);
-
   const syncAllConnectorsMutation = useSyncAllConnectors();
+  const syncAllPreviewMutation = useSyncAllConnectorsPreview();
   const refreshOpenragDocsMutation = useRefreshOpenragDocs();
+  const [syncDialogOpen, setSyncDialogOpen] = useState(false);
+  const [syncPreview, setSyncPreview] = useState<SyncAllPreviewResponse | null>(
+    null,
+  );
+
+  const handleOpenSyncDialog = useCallback(async () => {
+    setSyncPreview(null);
+    setSyncDialogOpen(true);
+    try {
+      const preview = await syncAllPreviewMutation.mutateAsync();
+      setSyncPreview(preview);
+    } catch (error) {
+      setSyncDialogOpen(false);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to preview sync",
+      );
+    }
+  }, [syncAllPreviewMutation]);
+
+  const handleConfirmSync = useCallback(async () => {
+    try {
+      const result = await syncAllConnectorsMutation.mutateAsync();
+      if (result.status === "no_files") {
+        toast.info(
+          result.message ||
+            "No cloud files to sync. Add files from cloud connectors first.",
+        );
+      } else if (
+        result.synced_connectors &&
+        result.synced_connectors.length > 0
+      ) {
+        toast.success(
+          `Sync started for ${result.synced_connectors.join(", ")}. Check task notifications for progress.`,
+        );
+      } else if (result.errors && result.errors.length > 0) {
+        toast.error("Some connectors failed to sync");
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to sync connectors",
+      );
+    }
+  }, [syncAllConnectorsMutation]);
 
   return (
     <form onSubmit={handleSearch} className={"flex w-full items-stretch"}>
@@ -111,67 +156,57 @@ export const KnowledgeSearchBar = () => {
         <Button
           type="button"
           variant="ghost"
-          disabled={syncAllConnectorsMutation.isPending}
+          disabled={
+            syncAllConnectorsMutation.isPending ||
+            syncAllPreviewMutation.isPending
+          }
           size="icon"
           className="h-auto flex-shrink-0 rounded-none hover:bg-accent hover:text-foreground"
           aria-label="Sync"
-          onClick={async () => {
-            try {
-              toast.info("Syncing all cloud connectors...");
-              const result = await syncAllConnectorsMutation.mutateAsync();
-              if (result.status === "no_files") {
-                toast.info(
-                  result.message ||
-                    "No cloud files to sync. Add files from cloud connectors first.",
-                );
-              } else if (
-                result.synced_connectors &&
-                result.synced_connectors.length > 0
-              ) {
-                toast.success(
-                  `Sync started for ${result.synced_connectors.join(", ")}. Check task notifications for progress.`,
-                );
-              } else if (result.errors && result.errors.length > 0) {
-                toast.error("Some connectors failed to sync");
-              }
-            } catch (error) {
-              toast.error(
-                error instanceof Error
-                  ? error.message
-                  : "Failed to sync connectors",
-              );
-            }
-          }}
+          onClick={handleOpenSyncDialog}
         >
           <RefreshCw className="h-4 w-4 m-4 text-[var(--icon-primary)]" />
         </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          disabled={refreshOpenragDocsMutation.isPending}
-          className="h-auto flex-shrink-0 rounded-none px-3 text-sm hover:bg-accent hover:text-foreground"
-          onClick={async () => {
-            try {
-              toast.info("Refreshing OpenRAG docs...");
-              const result = await refreshOpenragDocsMutation.mutateAsync();
-              toast.success(result.message);
-            } catch (error) {
-              toast.error(
-                error instanceof Error
-                  ? error.message
-                  : "Failed to refresh OpenRAG docs",
-              );
-            }
-          }}
-        >
-          {refreshOpenragDocsMutation.isPending
-            ? "Refreshing docs..."
-            : "Fetch latest docs"}
-        </Button>
+        <RequirePermission perm="config:write">
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={refreshOpenragDocsMutation.isPending}
+            className="h-auto flex-shrink-0 rounded-none px-3 text-sm hover:bg-accent hover:text-foreground"
+            onClick={async () => {
+              try {
+                toast.info("Refreshing OpenRAG docs...");
+                const result = await refreshOpenragDocsMutation.mutateAsync();
+                toast.success(result.message);
+              } catch (error) {
+                toast.error(
+                  error instanceof Error
+                    ? error.message
+                    : "Failed to refresh OpenRAG docs",
+                );
+              }
+            }}
+          >
+            {refreshOpenragDocsMutation.isPending
+              ? "Refreshing docs..."
+              : "Fetch latest docs"}
+          </Button>
+        </RequirePermission>
         <div className="ml-auto">
           <KnowledgeDropdown />
         </div>
       </div>
+      <SyncConfirmDialog
+        open={syncDialogOpen}
+        onOpenChange={setSyncDialogOpen}
+        onConfirm={handleConfirmSync}
+        isLoading={syncAllPreviewMutation.isPending || syncPreview === null}
+        isSyncing={syncAllConnectorsMutation.isPending}
+        isSyncAll
+        orphansByType={syncPreview?.orphans_by_type}
+        orphansAvailableByType={syncPreview?.orphans_available_by_type}
+        syncedCountByType={syncPreview?.synced_count_by_type}
+      />
     </form>
   );
 };

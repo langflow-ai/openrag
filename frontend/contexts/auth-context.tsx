@@ -3,11 +3,12 @@
 import React, {
   createContext,
   ReactNode,
+  use,
   useCallback,
-  useContext,
   useEffect,
   useState,
 } from "react";
+import { hasRbacPermission } from "@/lib/brand";
 import { encodeBase64 } from "@/lib/utils";
 
 interface User {
@@ -27,6 +28,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isNoAuthMode: boolean;
   isIbmAuthMode: boolean;
+  runMode: string | null;
   version: string | null;
   permissions: Set<string>;
   roles: string[];
@@ -38,6 +40,10 @@ interface AuthContextType {
    * matches the backend behavior.
    */
   rbacEnforced: boolean;
+  /** SaaS/cloud context from backend (connector policy, gated settings). */
+  cloudContext: boolean;
+  /** False until the first /api/users/me permissions fetch finishes. */
+  permissionsResolved: boolean;
   /** True iff the workspace has been onboarded. Sourced from the public
    * GET /api/onboarding-status endpoint (no auth needed). */
   isOnboarded: boolean | null;
@@ -55,7 +61,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function useAuth() {
-  const context = useContext(AuthContext);
+  const context = use(AuthContext);
   if (context === undefined) {
     throw new Error("useAuth must be used within an AuthProvider");
   }
@@ -72,6 +78,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [isNoAuthMode, setIsNoAuthMode] = useState(false);
   const [isIbmAuthMode, setIsIbmAuthMode] = useState(false);
   const [version, setVersion] = useState<string | null>(null);
+  const [runMode, setRunMode] = useState<string | null>(null);
 
   const checkAuth = useCallback(async () => {
     setIsLoading(true);
@@ -80,26 +87,19 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       // If we can't reach the backend, keep loading
       if (!response.ok && (response.status === 0 || response.status >= 500)) {
-        console.log("Backend not ready, retrying in 2 seconds...");
         setTimeout(checkAuth, 2000);
         return;
       }
 
       const data = await response.json();
-      console.log("[checkAuth] /api/auth/me response:", data);
       if (data.version) setVersion(data.version);
+      if (data.run_mode) setRunMode(data.run_mode);
 
       // Check auth mode flags
       if (data.ibm_auth_mode) {
         setIsIbmAuthMode(true);
         setIsNoAuthMode(false);
         setUser(data.authenticated && data.user ? data.user : null);
-        console.log(
-          "[checkAuth] IBM auth mode — authenticated:",
-          data.authenticated,
-          "user:",
-          data.user,
-        );
       } else if (data.no_auth_mode) {
         setIsNoAuthMode(true);
         setIsIbmAuthMode(false);
@@ -115,11 +115,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
 
       setIsLoading(false);
-      console.log("[checkAuth] done — isLoading: false");
     } catch (error) {
       console.error("Auth check failed:", error);
-      // Network error - backend not ready, keep loading and retry
-      console.log("Backend not ready, retrying in 2 seconds...");
       setTimeout(checkAuth, 2000);
     }
   }, []);
@@ -127,20 +124,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const login = () => {
     // Don't allow login in no-auth mode or IBM auth mode
     if (isNoAuthMode) {
-      console.log("Login attempted in no-auth mode - ignored");
       return;
     }
     if (isIbmAuthMode) {
-      console.log(
-        "Login attempted in IBM auth mode - ignored (auth managed by IBM Watsonx Data)",
-      );
       return;
     }
 
     // Use the correct auth callback URL, not connectors callback
     const redirectUri = `${window.location.origin}/auth/callback`;
-
-    console.log("Starting login with redirect URI:", redirectUri);
 
     fetch("/api/auth/init", {
       method: "POST",
@@ -156,8 +147,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
     })
       .then((response) => response.json())
       .then((result) => {
-        console.log("Auth init response:", result);
-
         if (result.oauth_config) {
           // Store that this is for app authentication
           localStorage.setItem("auth_purpose", "app_auth");
@@ -165,23 +154,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
           localStorage.setItem("connecting_connector_type", "app_auth");
           localStorage.setItem("auth_redirect_to", window.location.pathname);
 
-          console.log("Stored localStorage items:", {
-            auth_purpose: localStorage.getItem("auth_purpose"),
-            connecting_connector_id: localStorage.getItem(
-              "connecting_connector_id",
-            ),
-            connecting_connector_type: localStorage.getItem(
-              "connecting_connector_type",
-            ),
-          });
-
           const state = isIbmAuthMode
             ? encodeBase64(
                 `id=${result.connection_id}&return=${window.location.origin}/auth/callback`,
               )
             : result.connection_id;
-
-          console.log("OAuth state (encoded):", state);
 
           const authUrl =
             `${result.oauth_config.authorization_endpoint}?` +
@@ -190,10 +167,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
             `scope=${result.oauth_config.scopes.join(" ")}&` +
             `redirect_uri=${encodeURIComponent(result.oauth_config.redirect_uri)}&` +
             `access_type=offline&` +
-            `prompt=select_account&` +
+            `prompt=${result.oauth_config.prompt ?? "consent"}&` +
             `state=${encodeURIComponent(state)}`;
-
-          console.log("Redirecting to OAuth URL:", authUrl);
           window.location.href = authUrl;
         } else {
           console.error("No oauth_config in response:", result);
@@ -205,23 +180,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
   };
 
   const loginWithIbm = async (username: string, password: string) => {
-    console.log("[loginWithIbm] posting to /api/auth/ibm/login");
     const response = await fetch("/api/auth/ibm/login", {
       method: "POST",
       headers: {
         Authorization: "Basic " + btoa(username + ":" + password),
       },
     });
-    console.log(
-      "[loginWithIbm] response status:",
-      response.status,
-      "ok:",
-      response.ok,
-    );
-    console.log(
-      "[loginWithIbm] response cookies after login:",
-      document.cookie,
-    );
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
       throw new Error(data.detail || "Login failed");
@@ -244,9 +208,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   };
 
-  const refreshAuth = async () => {
+  const refreshAuth = useCallback(async () => {
     await checkAuth();
-  };
+  }, [checkAuth]);
 
   const [permissions, setPermissions] = useState<Set<string>>(new Set());
   const [roles, setRoles] = useState<string[]>([]);
@@ -254,13 +218,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
   // load before /api/users/me responds. The backend is authoritative;
   // this is just a UI affordance.
   const [rbacEnforced, setRbacEnforced] = useState<boolean>(true);
+  const [cloudContext, setCloudContext] = useState<boolean>(false);
+  const [permissionsResolved, setPermissionsResolved] =
+    useState<boolean>(false);
+
+  const resetPermissionState = useCallback(() => {
+    setPermissions(new Set());
+    setRoles([]);
+    setRbacEnforced(true);
+    setCloudContext(false);
+  }, []);
 
   const fetchPermissions = useCallback(async () => {
     try {
       const r = await fetch("/api/users/me");
       if (!r.ok) {
-        setPermissions(new Set());
-        setRoles([]);
+        resetPermissionState();
         return;
       }
       const data = await r.json();
@@ -274,11 +247,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setRbacEnforced(
         typeof data?.rbac_enforced === "boolean" ? data.rbac_enforced : true,
       );
+      setCloudContext(
+        typeof data?.cloud_context === "boolean" ? data.cloud_context : false,
+      );
     } catch {
-      setPermissions(new Set());
-      setRoles([]);
+      resetPermissionState();
+    } finally {
+      setPermissionsResolved(true);
     }
-  }, []);
+  }, [resetPermissionState]);
 
   const refreshPermissions = useCallback(async () => {
     await fetchPermissions();
@@ -316,23 +293,28 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   useEffect(() => {
     if (user || isNoAuthMode || isIbmAuthMode) {
-      fetchPermissions();
+      setPermissionsResolved(false);
+      void fetchPermissions();
     } else {
-      setPermissions(new Set());
-      setRoles([]);
+      resetPermissionState();
+      setPermissionsResolved(true);
     }
-  }, [user, isNoAuthMode, isIbmAuthMode, fetchPermissions]);
+  }, [
+    user,
+    isNoAuthMode,
+    isIbmAuthMode,
+    fetchPermissions,
+    resetPermissionState,
+  ]);
 
   useEffect(() => {
     checkAuth();
   }, [checkAuth]);
 
   const can = useCallback(
-    (perm: string): boolean => {
-      if (isNoAuthMode) return true;
-      return permissions.has(perm);
-    },
-    [permissions, isNoAuthMode],
+    (perm: string): boolean =>
+      hasRbacPermission(perm, { isNoAuthMode, rbacEnforced, permissions }),
+    [permissions, isNoAuthMode, rbacEnforced],
   );
 
   const value: AuthContextType = {
@@ -341,10 +323,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
     isAuthenticated: !!user,
     isNoAuthMode,
     isIbmAuthMode,
+    runMode,
     version,
     permissions,
     roles,
     rbacEnforced,
+    cloudContext,
+    permissionsResolved,
     isOnboarded,
     onboardingStep,
     can,

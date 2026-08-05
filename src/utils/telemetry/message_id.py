@@ -7,18 +7,18 @@ Format: ORB_<CATEGORY>_<ACTION>[_<STATUS>]
 
 class MessageId:
     """Telemetry message IDs."""
-    
+
     # Category: APPLICATION_STARTUP ------------------------------------------->
-    
+
     # Message: Application started successfully
     ORB_APP_STARTED = "ORB_APP_STARTED"
     # Message: Application startup initiated
     ORB_APP_START_INIT = "ORB_APP_START_INIT"
     # Message: Application shutdown initiated
     ORB_APP_SHUTDOWN = "ORB_APP_SHUTDOWN"
-    
+
     # Category: SERVICE_INITIALIZATION ----------------------------------------->
-    
+
     # Message: Services initialized successfully
     ORB_SVC_INIT_SUCCESS = "ORB_SVC_INIT_SUCCESS"
     # Message: Service initialization started
@@ -29,9 +29,9 @@ class MessageId:
     ORB_SVC_OS_CLIENT_FAIL = "ORB_SVC_OS_CLIENT_FAIL"
     # Message: Failed to generate JWT keys
     ORB_SVC_JWT_KEY_FAIL = "ORB_SVC_JWT_KEY_FAIL"
-    
+
     # Category: OPENSEARCH_SETUP ---------------------------------------------->
-    
+
     # Message: OpenSearch connection established
     ORB_OS_CONN_ESTABLISHED = "ORB_OS_CONN_ESTABLISHED"
     # Message: OpenSearch connection failed
@@ -40,9 +40,9 @@ class MessageId:
     ORB_OS_WAITING = "ORB_OS_WAITING"
     # Message: OpenSearch ready check timeout
     ORB_OS_TIMEOUT = "ORB_OS_TIMEOUT"
-    
+
     # Category: OPENSEARCH_INDEX ---------------------------------------------->
-    
+
     # Message: OpenSearch index created successfully
     ORB_OS_INDEX_CREATED = "ORB_OS_INDEX_CREATED"
     # Message: OpenSearch index already exists
@@ -55,9 +55,9 @@ class MessageId:
     ORB_OS_KF_INDEX_CREATED = "ORB_OS_KF_INDEX_CREATED"
     # Message: Failed to create knowledge filters index
     ORB_OS_KF_INDEX_FAIL = "ORB_OS_KF_INDEX_FAIL"
-    
+
     # Category: DOCUMENT_INGESTION -------------------------------------------->
-    
+
     # Message: Document ingestion started
     ORB_DOC_INGEST_START = "ORB_DOC_INGEST_START"
     # Message: Document ingestion completed successfully
@@ -84,9 +84,9 @@ class MessageId:
     ORB_DOC_REFRESH_COMPLETE = "ORB_DOC_REFRESH_COMPLETE"
     # Message: Default docs refresh failed
     ORB_DOC_REFRESH_FAILED = "ORB_DOC_REFRESH_FAILED"
-    
+
     # Category: DOCUMENT_PROCESSING -------------------------------------------->
-    
+
     # Message: Document processing started
     ORB_DOC_PROCESS_START = "ORB_DOC_PROCESS_START"
     # Message: Document processing completed
@@ -95,9 +95,9 @@ class MessageId:
     ORB_DOC_PROCESS_FAILED = "ORB_DOC_PROCESS_FAILED"
     # Message: Process pool recreation attempted
     ORB_DOC_POOL_RECREATE = "ORB_DOC_POOL_RECREATE"
-    
+
     # Category: AUTHENTICATION ------------------------------------------------>
-    
+
     # Message: Authentication successful
     ORB_AUTH_SUCCESS = "ORB_AUTH_SUCCESS"
     # Message: Authentication failed
@@ -108,9 +108,9 @@ class MessageId:
     ORB_AUTH_OAUTH_CALLBACK = "ORB_AUTH_OAUTH_CALLBACK"
     # Message: OAuth callback failed
     ORB_AUTH_OAUTH_FAILED = "ORB_AUTH_OAUTH_FAILED"
-    
+
     # Category: CONNECTOR_OPERATIONS ------------------------------------------->
-    
+
     # Message: Connector connection established
     ORB_CONN_CONNECTED = "ORB_CONN_CONNECTED"
     # Message: Connector connection failed
@@ -127,9 +127,9 @@ class MessageId:
     ORB_CONN_WEBHOOK_FAILED = "ORB_CONN_WEBHOOK_FAILED"
     # Message: Failed to load persisted connections
     ORB_CONN_LOAD_FAILED = "ORB_CONN_LOAD_FAILED"
-    
+
     # Category: FLOW_OPERATIONS ------------------------------------------------>
-    
+
     # Message: Flow backup completed
     ORB_FLOW_BACKUP_COMPLETE = "ORB_FLOW_BACKUP_COMPLETE"
     # Message: Flow backup failed
@@ -140,38 +140,40 @@ class MessageId:
     ORB_FLOW_RESET_CHECK_FAIL = "ORB_FLOW_RESET_CHECK_FAIL"
     # Message: Settings reapplied after flow reset
     ORB_FLOW_SETTINGS_REAPPLIED = "ORB_FLOW_SETTINGS_REAPPLIED"
-    
+
     # Category: TASK_OPERATIONS ------------------------------------------------>
-    
+
     # Message: Task created successfully
     ORB_TASK_CREATED = "ORB_TASK_CREATED"
     # Message: Task completed successfully
     ORB_TASK_COMPLETE = "ORB_TASK_COMPLETE"
     # Message: Task failed
     ORB_TASK_FAILED = "ORB_TASK_FAILED"
+    # Message: Task retry requested
+    ORB_TASK_RETRIED = "ORB_TASK_RETRIED"
     # Message: Task cancelled
     ORB_TASK_CANCELLED = "ORB_TASK_CANCELLED"
     # Message: Task cancellation failed
     ORB_TASK_CANCEL_FAILED = "ORB_TASK_CANCEL_FAILED"
-    
+
     # Category: CHAT_OPERATIONS ------------------------------------------------>
-    
+
     # Message: Chat request received
     ORB_CHAT_REQUEST_RECV = "ORB_CHAT_REQUEST_RECV"
     # Message: Chat request completed
     ORB_CHAT_REQUEST_COMPLETE = "ORB_CHAT_REQUEST_COMPLETE"
     # Message: Chat request failed
     ORB_CHAT_REQUEST_FAILED = "ORB_CHAT_REQUEST_FAILED"
-    
+
     # Category: ERROR_CONDITIONS ----------------------------------------------->
-    
+
     # Message: Critical error occurred
     ORB_ERROR_CRITICAL = "ORB_ERROR_CRITICAL"
     # Message: Warning condition
     ORB_ERROR_WARNING = "ORB_ERROR_WARNING"
-    
+
     # Category: SETTINGS_OPERATIONS -------------------------------------------->
-    
+
     # Message: Settings updated successfully
     ORB_SETTINGS_UPDATED = "ORB_SETTINGS_UPDATED"
     # Message: Settings update failed
@@ -194,9 +196,9 @@ class MessageId:
     ORB_SETTINGS_INDEX_NAME_UPDATED = "ORB_SETTINGS_INDEX_NAME_UPDATED"
     # Message: Provider credentials updated
     ORB_SETTINGS_PROVIDER_CREDS = "ORB_SETTINGS_PROVIDER_CREDS"
-    
+
     # Category: ONBOARDING ----------------------------------------------------->
-    
+
     # Message: Onboarding started
     ORB_ONBOARD_START = "ORB_ONBOARD_START"
     # Message: Onboarding completed successfully

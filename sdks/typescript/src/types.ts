@@ -77,6 +77,15 @@ export interface DeleteDocumentResponse {
   filename?: string | null;
   message?: string | null;
   error?: string | null;
+  // Populated when deleting by filter_id — one entry per resolved data_source.
+  filenames?: string[] | null;
+  filter_id?: string | null;
+  per_file?: Array<Record<string, unknown>> | null;
+}
+
+export interface DeleteDocumentOptions {
+  filename?: string;
+  filterId?: string;
 }
 
 // Chat history types
@@ -106,6 +115,7 @@ export interface ConversationListResponse {
 export interface AgentSettings {
   llm_provider?: string | null;
   llm_model?: string | null;
+  system_prompt?: string | null;
 }
 
 export interface KnowledgeSettings {
@@ -113,6 +123,9 @@ export interface KnowledgeSettings {
   embedding_model?: string | null;
   chunk_size?: number | null;
   chunk_overlap?: number | null;
+  table_structure?: boolean | null;
+  ocr?: boolean | null;
+  picture_descriptions?: boolean | null;
 }
 
 export interface SettingsResponse {

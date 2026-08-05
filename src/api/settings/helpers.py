@@ -8,6 +8,7 @@ Lifted verbatim from the original `src/api/settings.py` (lines 371–480 and
 1388–1455). No behavior change.
 """
 
+from datetime import UTC
 from typing import Any
 
 from fastapi.responses import JSONResponse
@@ -18,20 +19,70 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 
+# Provider names in priority order. LLM supports anthropic; embeddings do not.
+_LLM_PROVIDER_NAMES = ("openai", "anthropic", "watsonx", "ollama")
+_EMBEDDING_PROVIDER_NAMES = ("openai", "watsonx", "ollama")
+
+
+def _configured_provider_names(config, provider_names) -> list:
+    """Return the provider names from `provider_names` marked configured in the OpenRAG config."""
+    providers = config.providers
+    return [name for name in provider_names if getattr(providers, name).configured]
+
+
 def _first_configured_llm_provider(config, excluding: str) -> str:
     """Return the first configured LLM provider that isn't `excluding`."""
-    for p in ["openai", "anthropic", "watsonx", "ollama"]:
+    for p in _LLM_PROVIDER_NAMES:
         if p != excluding and getattr(config.providers, p).configured:
             return p
     return "openai"
 
 
 def _first_configured_embedding_provider(config, excluding: str) -> str:
-    """Return the first configured embedding provider (openai/watsonx/ollama) that isn't `excluding`."""
-    for p in ["openai", "watsonx", "ollama"]:
+    """Return the first configured embedding provider (openai/watsonx/ollama) that isn't `excluding`, or "" if none."""
+    for p in _EMBEDDING_PROVIDER_NAMES:
         if p != excluding and getattr(config.providers, p).configured:
             return p
-    return "openai"
+    return ""
+
+
+def _default_llm_model(provider: str) -> str:
+    """Return the default LLM model for a provider."""
+    from config.model_constants import (
+        ANTHROPIC_DEFAULT_LANGUAGE_MODEL,
+        OPENAI_DEFAULT_LANGUAGE_MODEL,
+    )
+
+    return {
+        "openai": OPENAI_DEFAULT_LANGUAGE_MODEL,
+        "anthropic": ANTHROPIC_DEFAULT_LANGUAGE_MODEL,
+        "watsonx": "ibm/granite-4-h-small",
+        "ollama": "llama3",
+    }.get(provider, "")
+
+
+def _default_embedding_model(provider: str) -> str:
+    """Return a fallback embedding model for `provider` on provider-removal
+    reshuffle, or "" if none can be assumed safe.
+
+    No provider gets a hardcoded model name here. A provider name like
+    "openai" or "watsonx" doesn't reliably tell you which models are
+    actually deployed — it's frequently an internal OpenAI/watsonx-
+    compatible gateway with a curated, deployment-specific model subset.
+    A hardcoded guess can silently select a model the gateway doesn't
+    serve, breaking every ingestion with no clear signal why (see
+    incident: hardcoded "text-embedding-3-small" was selected in an
+    environment whose gateway only served "text-embedding-3-large").
+
+    Instead, defer to whatever the deployment itself declared via
+    EMBEDDING_MODEL/EMBEDDING_PROVIDER (see
+    ``get_declared_default_embedding_model``). If the deployment hasn't
+    declared a default for this provider, return "" and force the admin
+    to pick a model the settings UI confirms is actually available.
+    """
+    from config.embedding_constants import get_declared_default_embedding_model
+
+    return get_declared_default_embedding_model(provider)
 
 
 async def _affected_embedding_models(
@@ -170,8 +221,8 @@ async def _create_openrag_docs_filter(knowledge_filter_service, session_manager,
         "owner": owner_user_id,
         "allowed_users": [],
         "allowed_groups": [],
-        "created_at": datetime.utcnow().isoformat(),
-        "updated_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
+        "updated_at": datetime.now(UTC).isoformat(),
     }
 
     result = await knowledge_filter_service.create_knowledge_filter(

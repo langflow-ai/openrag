@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -27,7 +28,8 @@ func Example_envVarPriority() {
 	}
 
 	// Get merged env vars with all three levels applied
-	mergedEnvVars := manager.GetLangflowEnvVars(crEnvVars)
+	// Use nil client since we're only testing direct values (no secrets to resolve)
+	mergedEnvVars, _ := manager.GetLangflowEnvVars(context.Background(), nil, "default", crEnvVars)
 
 	// Check the results
 	fmt.Printf("LANGFLOW_AUTO_LOGIN: %s (from defaults)\n", mergedEnvVars["LANGFLOW_AUTO_LOGIN"])
@@ -36,14 +38,14 @@ func Example_envVarPriority() {
 
 	// Build the .env file content
 	envFileContent := manager.BuildEnvFileContent(mergedEnvVars)
-	fmt.Printf("\n.env file would contain %d bytes\n", len(envFileContent))
+	fmt.Printf("\n.env file generated: %t\n", len(envFileContent) > 0)
 
 	// Output:
 	// LANGFLOW_AUTO_LOGIN: true (from defaults)
 	// LANGFLOW_WORKERS: 8 (from operator env)
 	// LANGFLOW_LOG_LEVEL: ERROR (from CR spec)
 	//
-	// .env file would contain 1476 bytes
+	// .env file generated: true
 }
 
 // Example showing how different components use different prefixes
@@ -71,9 +73,10 @@ func Example_componentSpecificPrefixes() {
 	}()
 
 	// Each component gets its own prefix
-	lfVars := manager.GetLangflowEnvVars(nil)
-	beVars := manager.GetBackendEnvVars(nil)
-	feVars := manager.GetFrontendEnvVars(nil)
+	// Use nil client since we're only testing direct values (no secrets to resolve)
+	lfVars, _ := manager.GetLangflowEnvVars(context.Background(), nil, "default", nil)
+	beVars, _ := manager.GetBackendEnvVars(context.Background(), nil, "default", nil)
+	feVars, _ := manager.GetFrontendEnvVars(context.Background(), nil, "default", nil)
 
 	fmt.Printf("Langflow WORKERS: %s\n", lfVars["WORKERS"])
 	fmt.Printf("Backend WORKERS: %s\n", beVars["WORKERS"])

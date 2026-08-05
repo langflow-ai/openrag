@@ -1,17 +1,477 @@
 """Provider validation utilities for testing API keys and models during onboarding."""
 
 import json
+import re
+
 import httpx
+
 from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+# Peel leading "Error <label>:" wrappers (e.g. Langflow graph/component noise).
+# Requires a label after "Error" so bare "Error: …" messages are preserved.
+_ERROR_LABEL_PREFIX_RE = re.compile(r"^Error\s+\S[^:]*:\s*", re.IGNORECASE)
+
+
+def _strip_error_label_prefixes(text: str) -> str:
+    """Remove leading ``Error <label>:`` segments; keep the innermost message."""
+    cleaned = text.strip()
+    while True:
+        updated = _ERROR_LABEL_PREFIX_RE.sub("", cleaned, count=1).strip()
+        if updated == cleaned:
+            return cleaned
+        cleaned = updated
+
+
+_PROVIDER_CREDENTIAL_ERROR_MARKERS = (
+    "incorrect api key",
+    "invalid api key",
+    "invalid_api_key",
+    "api key could not be found",
+    "api key is invalid",
+    "api key has been revoked",
+    "api key revoked",
+    "revoked api key",
+    "provided api key could not be found",
+    # IBM IAM returns this when the key still exists but is toggled off.
+    "api key is disabled",
+    "api key disabled",
+    "authentication_error",
+    "failed to authenticate",
+    "invalid x-api-key",
+    "unauthorized",
+    "authentication failed",
+    "invalid credentials",
+    "could not authenticate",
+)
+
+
+_PROVIDER_ERROR_CONTENT_MARKERS = _PROVIDER_CREDENTIAL_ERROR_MARKERS + (
+    "rate limit",
+    "rate_limit",
+    "permission denied",
+    "quota exceeded",
+    "provider request failed",
+    "insufficient_quota",
+)
+
+
+def _extract_balanced_json_object(text: str) -> str | None:
+    """Return the first top-level `{...}` substring, ignoring trailing junk."""
+    start = text.find("{")
+    if start < 0:
+        return None
+    depth = 0
+    in_string = False
+    escape = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return None
+
+
+def _humanize_provider_error_message(message: str) -> str:
+    """Rewrite provider-specific messages into clearer user-facing copy."""
+    lowered = message.lower()
+    # IBM IAM returns "could not be found" for invalid/unknown keys.
+    if "api key could not be found" in lowered:
+        return "Provided API key is Invalid."
+    return message
+
+
+def format_provider_error_message(exc: BaseException | str) -> str:
+    """Return a concise, user-facing provider error string from an exception or text."""
+    text = _strip_error_label_prefixes((str(exc) if not isinstance(exc, str) else exc).strip())
+    if not text:
+        return "An error occurred while generating a response."
+
+    parsed = _parse_json_error_message(text)
+    if parsed != text:
+        # Pure JSON (or JSON-shaped) payloads: prefer the extracted message only.
+        return _humanize_provider_error_message(_strip_error_label_prefixes(parsed))
+
+    json_blob = _extract_balanced_json_object(text)
+    if json_blob:
+        nested = _parse_json_error_message(json_blob)
+        if nested != json_blob:
+            # Embedded provider JSON already has the real message — drop wrappers.
+            return _humanize_provider_error_message(_strip_error_label_prefixes(nested))
+
+    return _humanize_provider_error_message(text)
+
+
+def is_provider_credential_error(text: str | BaseException | None) -> bool:
+    """True when the error indicates an invalid, missing, or revoked provider API key."""
+    if text is None:
+        return False
+    lowered = (str(text) if not isinstance(text, str) else text).lower()
+    return any(marker in lowered for marker in _PROVIDER_CREDENTIAL_ERROR_MARKERS)
+
+
+_GENERIC_UPSTREAM_ERROR_MARKERS = (
+    "an unknown error occurred",
+    "an error occurred while generating a response",
+    "unknown error occurred",
+    "something went wrong",
+)
+
+
+def is_generic_upstream_error(text: str | BaseException | None) -> bool:
+    """True when upstream returned an opaque error with no actionable detail."""
+    if text is None:
+        return True
+    lowered = (str(text) if not isinstance(text, str) else text).strip().lower().rstrip(".")
+    if not lowered:
+        return True
+    generics = {marker.rstrip(".") for marker in _GENERIC_UPSTREAM_ERROR_MARKERS}
+    return lowered in generics
+
+
+def looks_like_provider_error_content(text: str | None) -> bool:
+    """True when assistant text looks like a provider/auth failure rather than a normal reply."""
+    if not text or not text.strip():
+        return False
+    content = text.strip()
+    if content.startswith("Error:"):
+        return True
+    if is_generic_upstream_error(content):
+        return True
+    lowered = content.lower()
+    if any(marker in lowered for marker in _PROVIDER_ERROR_CONTENT_MARKERS):
+        return True
+    # Raw provider payloads often embed JSON error objects.
+    if "{" in content and (
+        '"error"' in lowered
+        or '"errormessage"' in lowered
+        or '"errorcode"' in lowered
+        or '"errors"' in lowered
+    ):
+        return True
+    return False
+
+
+def sanitize_provider_error_content(text: str | BaseException | None) -> str:
+    """Format provider error text and fall back when JSON still leaks through."""
+    if text is None:
+        return "An error occurred while generating a response."
+    if not isinstance(text, str):
+        text = str(text)
+    if not text.strip():
+        return "An error occurred while generating a response."
+    cleaned = format_provider_error_message(text)
+    if "{" in cleaned or "}" in cleaned:
+        if is_provider_credential_error(text) or is_provider_credential_error(cleaned):
+            return (
+                "The configured API key is invalid or has been revoked. "
+                "Update it in Settings and retry."
+            )
+        # Strip the first JSON object as a last resort.
+        json_start = cleaned.find("{")
+        prefix = cleaned[:json_start].rstrip(": ").strip()
+        return prefix or "An error occurred while generating a response."
+    return cleaned
+
+
+_LANGFLOW_TRANSPORT_ERROR_MARKERS = (
+    "server disconnected",
+    "disconnected without sending a response",
+    "remote protocol error",
+    "connection reset",
+    "broken pipe",
+    "all connection attempts failed",
+    "connection refused",
+)
+
+
+def is_langflow_transport_error(text: str | BaseException | None) -> bool:
+    """True when Langflow dropped the HTTP connection mid-ingest."""
+    if text is None:
+        return False
+    lowered = (str(text) if not isinstance(text, str) else text).lower()
+    return any(marker in lowered for marker in _LANGFLOW_TRANSPORT_ERROR_MARKERS)
+
+
+async def _probe_provider_credential_error(
+    *,
+    provider: str | None,
+    api_key: str | None,
+    endpoint: str | None = None,
+    project_id: str | None = None,
+    embedding_model: str | None = None,
+    llm_model: str | None = None,
+) -> str | None:
+    """Run a lightweight provider check; return a cleaned credential error if auth fails."""
+    if not provider:
+        return None
+    try:
+        await validate_provider_setup(
+            provider=provider,
+            api_key=api_key,
+            embedding_model=embedding_model,
+            llm_model=llm_model,
+            endpoint=endpoint,
+            project_id=project_id,
+            test_completion=False,
+        )
+    except Exception as probe_exc:
+        cleaned = sanitize_provider_error_content(probe_exc)
+        if is_provider_credential_error(probe_exc) or is_provider_credential_error(cleaned):
+            return cleaned
+    return None
+
+
+async def probe_provider_credential_error() -> str | None:
+    """Return a credential error if any ingest-relevant provider key fails auth.
+
+    Langflow receives every configured provider key, so a revoked watsonx key can
+    crash ingest even when the selected embedding provider is OpenAI.
+    """
+    from config.settings import get_openrag_config
+
+    config = get_openrag_config()
+    checked: set[str] = set()
+
+    candidates: list[tuple[str | None, object, str | None, str | None]] = [
+        (
+            config.knowledge.embedding_provider,
+            config.get_embedding_provider_config(),
+            config.knowledge.embedding_model,
+            None,
+        ),
+        (
+            config.agent.llm_provider,
+            config.get_llm_provider_config(),
+            None,
+            config.agent.llm_model,
+        ),
+    ]
+    for name in ("openai", "anthropic", "watsonx", "ollama"):
+        candidates.append((name, getattr(config.providers, name, None), None, None))
+
+    for provider, provider_config, embedding_model, llm_model in candidates:
+        if not provider or provider in checked or provider_config is None:
+            continue
+        checked.add(provider)
+        api_key = getattr(provider_config, "api_key", None)
+        endpoint = getattr(provider_config, "endpoint", None)
+        if provider == "ollama":
+            if not endpoint:
+                continue
+        elif (
+            provider
+            not in (
+                config.knowledge.embedding_provider,
+                config.agent.llm_provider,
+            )
+            and not api_key
+        ):
+            continue
+
+        error = await _probe_provider_credential_error(
+            provider=provider,
+            api_key=api_key,
+            endpoint=endpoint,
+            project_id=getattr(provider_config, "project_id", None),
+            embedding_model=embedding_model,
+            llm_model=llm_model,
+        )
+        if error:
+            return error
+    return None
+
+
+async def probe_chat_llm_error() -> str | None:
+    """Return a cleaned error if the configured chat LLM fails auth or inference.
+
+    Unlike :func:`probe_provider_credential_error`, this runs a completion check
+    against the selected ``llm_model`` so missing/deprecated models surface
+    instead of being misreported as API-key failures (or left as opaque
+    Langflow text).
+    """
+    from config.settings import get_openrag_config
+
+    config = get_openrag_config()
+    provider = config.agent.llm_provider
+    llm_model = (config.agent.llm_model or "").strip()
+    if not provider or not llm_model:
+        return None
+
+    provider_config = config.get_llm_provider_config()
+    if provider_config is None:
+        return None
+
+    api_key = getattr(provider_config, "api_key", None)
+    endpoint = getattr(provider_config, "endpoint", None)
+    if provider == "ollama":
+        if not endpoint:
+            return None
+    elif not api_key:
+        return None
+
+    try:
+        # Pass only llm_model so validate_provider_setup runs completion (not
+        # the embedding branch of the test_completion if/elif).
+        await validate_provider_setup(
+            provider=provider,
+            api_key=api_key,
+            llm_model=llm_model,
+            endpoint=endpoint,
+            project_id=getattr(provider_config, "project_id", None),
+            test_completion=True,
+        )
+    except Exception as probe_exc:
+        return sanitize_provider_error_content(probe_exc)
+    return None
+
+
+async def probe_embedding_error() -> str | None:
+    """Return a cleaned error if the configured embedding model fails auth or inference."""
+    from config.settings import get_openrag_config
+
+    config = get_openrag_config()
+    provider = config.knowledge.embedding_provider
+    embedding_model = (config.knowledge.embedding_model or "").strip()
+    if not provider or not embedding_model:
+        return None
+
+    provider_config = config.get_embedding_provider_config()
+    if provider_config is None:
+        return None
+
+    api_key = getattr(provider_config, "api_key", None)
+    endpoint = getattr(provider_config, "endpoint", None)
+    if provider == "ollama":
+        if not endpoint:
+            return None
+    elif not api_key:
+        return None
+
+    try:
+        await validate_provider_setup(
+            provider=provider,
+            api_key=api_key,
+            embedding_model=embedding_model,
+            endpoint=endpoint,
+            project_id=getattr(provider_config, "project_id", None),
+            test_completion=True,
+        )
+    except Exception as probe_exc:
+        return sanitize_provider_error_content(probe_exc)
+    return None
+
+
+async def resolve_ingest_error_message(exc: BaseException | str) -> str:
+    """Sanitize ingest failures; probe model/setup when Langflow is opaque or mislabels auth.
+
+    Langflow often reports disconnects or "API key is invalid" when the real issue is a
+    missing/deprecated model. Mirror chat/banner diagnosis: test the configured embedding
+    and chat LLM (``test_completion``) before falling back to lightweight credential probes.
+    """
+    raw = (str(exc) if not isinstance(exc, str) else exc).strip() or "Ingestion failed"
+    cleaned = sanitize_provider_error_content(raw)
+
+    should_probe = (
+        is_generic_upstream_error(cleaned)
+        or is_langflow_transport_error(raw)
+        or is_langflow_transport_error(cleaned)
+        or is_provider_credential_error(raw)
+        or is_provider_credential_error(cleaned)
+    )
+
+    if should_probe:
+        # Ingest primarily uses embeddings; also probe chat LLM so task UI matches the
+        # banner when the selected LLM model is missing/deprecated.
+        for probe_name, probe_fn in (
+            ("embedding", probe_embedding_error),
+            ("llm", probe_chat_llm_error),
+            ("credentials", probe_provider_credential_error),
+        ):
+            probe = await probe_fn()
+            if not probe:
+                continue
+            logger.info(
+                "Ingest failure attributed via provider probe",
+                upstream_error=cleaned,
+                probe=probe_name,
+                resolved_error=probe,
+            )
+            return probe
+
+    if is_provider_credential_error(raw) or is_provider_credential_error(cleaned):
+        return cleaned
+
+    # Prefer the sanitized form whenever JSON / boilerplate was stripped.
+    if cleaned != raw and "{" not in cleaned:
+        return cleaned
+    return raw
+
+
+def resolve_chat_stream_error_message(text: str | BaseException | None) -> str:
+    """Sanitize chat stream errors synchronously (no provider probing)."""
+    raw = (str(text) if not isinstance(text, str) else text) if text is not None else ""
+    if not raw.strip():
+        return "An error occurred while generating a response."
+    return sanitize_provider_error_content(raw)
+
+
+async def resolve_chat_stream_error_message_async(
+    text: str | BaseException | None,
+) -> str:
+    """Sanitize chat stream errors, probing the active LLM for opaque upstream text.
+
+    Langflow often collapses auth/model failures to "An unknown error occurred."
+    Probe only when the sanitized message is still generic/transport-level so we
+    do not overwrite a more specific upstream failure.
+
+    Order matters: diagnose the selected chat LLM (credentials + model) before
+    scanning other configured keys. Otherwise a revoked secondary key can mask
+    the real chat failure (e.g. missing watsonx model).
+    """
+    cleaned = resolve_chat_stream_error_message(text)
+    if is_generic_upstream_error(cleaned) or is_langflow_transport_error(cleaned):
+        llm_probe = await probe_chat_llm_error()
+        if llm_probe:
+            logger.info(
+                "Chat stream opaque error attributed to configured LLM",
+                upstream_error=cleaned,
+                llm_error=llm_probe,
+            )
+            return llm_probe
+
+        cred_probe = await probe_provider_credential_error()
+        if cred_probe:
+            logger.info(
+                "Chat stream opaque error attributed to provider credentials",
+                upstream_error=cleaned,
+                credential_error=cred_probe,
+            )
+            return cred_probe
+    return cleaned
+
+
 def _parse_json_error_message(error_text: str) -> str:
     """Parse JSON error message and extract just the message field."""
     try:
         # Try to parse as JSON
         error_data = json.loads(error_text)
-        
+
         if isinstance(error_data, dict):
             # WatsonX format: {"errors": [{"code": "...", "message": "..."}], ...}
             if "errors" in error_data and isinstance(error_data["errors"], list):
@@ -23,7 +483,7 @@ def _parse_json_error_message(error_text: str) -> str:
                     code = errors[0].get("code", "")
                     if code:
                         return f"Error: {code}"
-            
+
             # OpenAI format: {"error": {"message": "...", "type": "...", "code": "..."}}
             if "error" in error_data:
                 error_obj = error_data["error"]
@@ -31,17 +491,21 @@ def _parse_json_error_message(error_text: str) -> str:
                     message = error_obj.get("message", "")
                     if message:
                         return message
-            
+
             # Direct message field
             if "message" in error_data:
                 return error_data["message"]
-            
+
+            # IBM IAM format: {"errorCode": "...", "errorMessage": "...", "context": {...}}
+            if "errorMessage" in error_data:
+                return error_data["errorMessage"]
+
             # Generic format: {"detail": "..."}
             if "detail" in error_data:
                 return error_data["detail"]
     except (json.JSONDecodeError, ValueError, TypeError):
         pass
-    
+
     # Return original text if not JSON or can't parse
     return error_text
 
@@ -51,7 +515,7 @@ def _extract_error_details(response: httpx.Response) -> str:
     try:
         # Try to parse JSON error response
         error_data = response.json()
-        
+
         # Common error response formats
         if isinstance(error_data, dict):
             # WatsonX format: {"errors": [{"code": "...", "message": "..."}], ...}
@@ -66,37 +530,34 @@ def _extract_error_details(response: httpx.Response) -> str:
                     code = errors[0].get("code", "")
                     if code:
                         return f"Error: {code}"
-            
+
             # OpenAI format: {"error": {"message": "...", "type": "...", "code": "..."}}
             if "error" in error_data:
                 error_obj = error_data["error"]
                 if isinstance(error_obj, dict):
                     message = error_obj.get("message", "")
-                    error_type = error_obj.get("type", "")
-                    code = error_obj.get("code", "")
                     if message:
-                        details = message
-                        if error_type:
-                            details += f" (type: {error_type})"
-                        if code:
-                            details += f" (code: {code})"
-                        return details
-            
-            # Anthropic format: {"error": {"message": "...", "type": "..."}}
+                        return message
+
+            # Anthropic / generic: {"message": "..."}
             if "message" in error_data:
                 return error_data["message"]
-            
-            # Generic format: {"message": "..."}
+
+            # IBM IAM format: {"errorCode": "...", "errorMessage": "...", "context": {...}}
+            if "errorMessage" in error_data:
+                return error_data["errorMessage"]
+
+            # Generic format: {"detail": "..."}
             if "detail" in error_data:
                 return error_data["detail"]
-        
+
         # If JSON parsing worked but no structured error found, try parsing text
         response_text = response.text[:500]
         parsed = _parse_json_error_message(response_text)
         if parsed != response_text:
             return parsed
         return response_text
-        
+
     except (json.JSONDecodeError, ValueError):
         # If JSON parsing fails, try parsing the text as JSON string
         response_text = response.text[:500] if response.text else f"HTTP {response.status_code}"
@@ -134,7 +595,9 @@ async def validate_provider_setup(
     provider_lower = provider.lower()
 
     try:
-        logger.info(f"Starting validation for provider: {provider_lower} (test_completion={test_completion})")
+        logger.info(
+            f"Starting validation for provider: {provider_lower} (test_completion={test_completion})"
+        )
 
         if test_completion:
             # Full validation with completion/embedding tests (consumes credits)
@@ -236,7 +699,7 @@ async def test_embedding(
 # OpenAI validation functions
 async def _test_openai_lightweight_health(api_key: str) -> None:
     """Test OpenAI API key validity with lightweight check.
-    
+
     Only checks if the API key is valid without consuming credits.
     Uses the /v1/models endpoint which doesn't consume credits.
     """
@@ -256,14 +719,16 @@ async def _test_openai_lightweight_health(api_key: str) -> None:
 
             if response.status_code != 200:
                 error_details = _extract_error_details(response)
-                logger.error(f"OpenAI lightweight health check failed: {response.status_code} - {error_details}")
-                raise Exception(f"OpenAI API key validation failed: {error_details}")
+                logger.error(
+                    f"OpenAI lightweight health check failed: {response.status_code} - {error_details}"
+                )
+                raise Exception(error_details)
 
             logger.info("OpenAI lightweight health check passed")
 
     except httpx.TimeoutException:
         logger.error("OpenAI lightweight health check timed out")
-        raise Exception("OpenAI API request timed out")
+        raise Exception("OpenAI API request timed out") from None
     except Exception as e:
         logger.error(f"OpenAI lightweight health check failed: {str(e)}")
         raise
@@ -280,9 +745,7 @@ async def _test_openai_completion_with_tools(api_key: str, llm_model: str) -> No
         # Simple tool calling test
         base_payload = {
             "model": llm_model,
-            "messages": [
-                {"role": "user", "content": "What tools do you have available?"}
-            ],
+            "messages": [{"role": "user", "content": "What tools do you have available?"}],
             "tools": [
                 {
                     "type": "function",
@@ -292,14 +755,11 @@ async def _test_openai_completion_with_tools(api_key: str, llm_model: str) -> No
                         "parameters": {
                             "type": "object",
                             "properties": {
-                                "location": {
-                                    "type": "string",
-                                    "description": "The city and state"
-                                }
+                                "location": {"type": "string", "description": "The city and state"}
                             },
-                            "required": ["location"]
-                        }
-                    }
+                            "required": ["location"],
+                        },
+                    },
                 }
             ],
         }
@@ -316,7 +776,9 @@ async def _test_openai_completion_with_tools(api_key: str, llm_model: str) -> No
 
             # If max_tokens doesn't work, try with max_completion_tokens
             if response.status_code != 200:
-                logger.warning("[API] max_tokens parameter failed, trying max_completion_tokens instead")
+                logger.warning(
+                    "[API] max_tokens parameter failed, trying max_completion_tokens instead"
+                )
                 payload = {**base_payload, "max_completion_tokens": 50}
                 response = await client.post(
                     "https://api.openai.com/v1/chat/completions",
@@ -327,14 +789,16 @@ async def _test_openai_completion_with_tools(api_key: str, llm_model: str) -> No
 
             if response.status_code != 200:
                 error_details = _extract_error_details(response)
-                logger.error(f"OpenAI completion test failed: {response.status_code} - {error_details}")
-                raise Exception(f"OpenAI API error: {error_details}")
+                logger.error(
+                    f"OpenAI completion test failed: {response.status_code} - {error_details}"
+                )
+                raise Exception(error_details)
 
             logger.info("OpenAI completion with tool calling test passed")
 
     except httpx.TimeoutException:
         logger.error("OpenAI completion test timed out")
-        raise Exception("Request timed out")
+        raise Exception("Request timed out") from None
     except Exception as e:
         logger.error(f"OpenAI completion test failed: {str(e)}")
         raise
@@ -363,8 +827,10 @@ async def _test_openai_embedding(api_key: str, embedding_model: str) -> None:
 
             if response.status_code != 200:
                 error_details = _extract_error_details(response)
-                logger.error(f"OpenAI embedding test failed: {response.status_code} - {error_details}")
-                raise Exception(f"OpenAI API error: {error_details}")
+                logger.error(
+                    f"OpenAI embedding test failed: {response.status_code} - {error_details}"
+                )
+                raise Exception(error_details)
 
             data = response.json()
             if not data.get("data") or len(data["data"]) == 0:
@@ -374,18 +840,16 @@ async def _test_openai_embedding(api_key: str, embedding_model: str) -> None:
 
     except httpx.TimeoutException:
         logger.error("OpenAI embedding test timed out")
-        raise Exception("Request timed out")
+        raise Exception("Request timed out") from None
     except Exception as e:
         logger.error(f"OpenAI embedding test failed: {str(e)}")
         raise
 
 
 # IBM Watson validation functions
-async def _test_watsonx_lightweight_health(
-    api_key: str, endpoint: str, project_id: str
-) -> None:
+async def _test_watsonx_lightweight_health(api_key: str, endpoint: str, project_id: str) -> None:
     """Test WatsonX API key validity with lightweight check.
-    
+
     Only checks if the API key is valid by getting a bearer token.
     Does not consume credits by avoiding model inference requests.
     """
@@ -404,8 +868,10 @@ async def _test_watsonx_lightweight_health(
 
             if token_response.status_code != 200:
                 error_details = _extract_error_details(token_response)
-                logger.error(f"IBM IAM token request failed: {token_response.status_code} - {error_details}")
-                raise Exception(f"Failed to authenticate with IBM Watson: {error_details}")
+                logger.error(
+                    f"IBM IAM token request failed: {token_response.status_code} - {error_details}"
+                )
+                raise Exception(error_details)
 
             bearer_token = token_response.json().get("access_token")
             if not bearer_token:
@@ -415,7 +881,7 @@ async def _test_watsonx_lightweight_health(
 
     except httpx.TimeoutException:
         logger.error("WatsonX lightweight health check timed out")
-        raise Exception("WatsonX API request timed out")
+        raise Exception("WatsonX API request timed out") from None
     except Exception as e:
         logger.error(f"WatsonX lightweight health check failed: {str(e)}")
         raise
@@ -440,8 +906,10 @@ async def _test_watsonx_completion_with_tools(
 
             if token_response.status_code != 200:
                 error_details = _extract_error_details(token_response)
-                logger.error(f"IBM IAM token request failed: {token_response.status_code} - {error_details}")
-                raise Exception(f"Failed to authenticate with IBM Watson: {error_details}")
+                logger.error(
+                    f"IBM IAM token request failed: {token_response.status_code} - {error_details}"
+                )
+                raise Exception(error_details)
 
             bearer_token = token_response.json().get("access_token")
             if not bearer_token:
@@ -458,9 +926,7 @@ async def _test_watsonx_completion_with_tools(
         payload = {
             "model_id": llm_model,
             "project_id": project_id,
-            "messages": [
-                {"role": "user", "content": "What tools do you have available?"}
-            ],
+            "messages": [{"role": "user", "content": "What tools do you have available?"}],
             "tools": [
                 {
                     "type": "function",
@@ -470,14 +936,11 @@ async def _test_watsonx_completion_with_tools(
                         "parameters": {
                             "type": "object",
                             "properties": {
-                                "location": {
-                                    "type": "string",
-                                    "description": "The city and state"
-                                }
+                                "location": {"type": "string", "description": "The city and state"}
                             },
-                            "required": ["location"]
-                        }
-                    }
+                            "required": ["location"],
+                        },
+                    },
                 }
             ],
             "max_tokens": 50,
@@ -494,16 +957,18 @@ async def _test_watsonx_completion_with_tools(
 
             if response.status_code != 200:
                 error_details = _extract_error_details(response)
-                logger.error(f"IBM Watson completion test failed: {response.status_code} - {error_details}")
+                logger.error(
+                    f"IBM Watson completion test failed: {response.status_code} - {error_details}"
+                )
                 # If error_details is still JSON, parse it to extract just the message
                 parsed_details = _parse_json_error_message(error_details)
-                raise Exception(f"IBM Watson API error: {parsed_details}")
+                raise Exception(parsed_details)
 
             logger.info("IBM Watson completion with tool calling test passed")
 
     except httpx.TimeoutException:
         logger.error("IBM Watson completion test timed out")
-        raise Exception("Request timed out")
+        raise Exception("Request timed out") from None
     except Exception as e:
         logger.error(f"IBM Watson completion test failed: {str(e)}")
         # If the error message contains JSON, parse it to extract just the message
@@ -512,7 +977,7 @@ async def _test_watsonx_completion_with_tools(
             json_part = error_str.split("IBM Watson API error: ", 1)[1]
             parsed_message = _parse_json_error_message(json_part)
             if parsed_message != json_part:
-                raise Exception(f"IBM Watson API error: {parsed_message}")
+                raise Exception(parsed_message) from e
         raise
 
 
@@ -535,8 +1000,10 @@ async def _test_watsonx_embedding(
 
             if token_response.status_code != 200:
                 error_details = _extract_error_details(token_response)
-                logger.error(f"IBM IAM token request failed: {token_response.status_code} - {error_details}")
-                raise Exception(f"Failed to authenticate with IBM Watson: {error_details}")
+                logger.error(
+                    f"IBM IAM token request failed: {token_response.status_code} - {error_details}"
+                )
+                raise Exception(error_details)
 
             bearer_token = token_response.json().get("access_token")
             if not bearer_token:
@@ -567,10 +1034,12 @@ async def _test_watsonx_embedding(
 
             if response.status_code != 200:
                 error_details = _extract_error_details(response)
-                logger.error(f"IBM Watson embedding test failed: {response.status_code} - {error_details}")
+                logger.error(
+                    f"IBM Watson embedding test failed: {response.status_code} - {error_details}"
+                )
                 # If error_details is still JSON, parse it to extract just the message
                 parsed_details = _parse_json_error_message(error_details)
-                raise Exception(f"IBM Watson API error: {parsed_details}")
+                raise Exception(parsed_details)
 
             data = response.json()
             if not data.get("results") or len(data["results"]) == 0:
@@ -580,7 +1049,7 @@ async def _test_watsonx_embedding(
 
     except httpx.TimeoutException:
         logger.error("IBM Watson embedding test timed out")
-        raise Exception("Request timed out")
+        raise Exception("Request timed out") from None
     except Exception as e:
         logger.error(f"IBM Watson embedding test failed: {str(e)}")
         # If the error message contains JSON, parse it to extract just the message
@@ -589,14 +1058,14 @@ async def _test_watsonx_embedding(
             json_part = error_str.split("IBM Watson API error: ", 1)[1]
             parsed_message = _parse_json_error_message(json_part)
             if parsed_message != json_part:
-                raise Exception(f"IBM Watson API error: {parsed_message}")
+                raise Exception(parsed_message) from e
         raise
 
 
 # Ollama validation functions
 async def _test_ollama_lightweight_health(endpoint: str) -> None:
     """Test Ollama availability with lightweight status check.
-    
+
     Only checks if the endpoint returns a 200 status without fetching data.
     """
     try:
@@ -610,14 +1079,16 @@ async def _test_ollama_lightweight_health(endpoint: str) -> None:
 
             if response.status_code != 200:
                 error_details = _extract_error_details(response)
-                logger.error(f"Ollama lightweight health check failed: {response.status_code} - {error_details}")
-                raise Exception(f"Ollama endpoint not responding: {error_details}")
+                logger.error(
+                    f"Ollama lightweight health check failed: {response.status_code} - {error_details}"
+                )
+                raise Exception(error_details)
 
             logger.info("Ollama lightweight health check passed")
 
     except httpx.TimeoutException:
         logger.error("Ollama lightweight health check timed out")
-        raise Exception("Ollama endpoint timed out")
+        raise Exception("Ollama endpoint timed out") from None
     except Exception as e:
         logger.error(f"Ollama lightweight health check failed: {str(e)}")
         raise
@@ -631,9 +1102,7 @@ async def _test_ollama_completion_with_tools(llm_model: str, endpoint: str) -> N
 
         payload = {
             "model": llm_model,
-            "messages": [
-                {"role": "user", "content": "What tools do you have available?"}
-            ],
+            "messages": [{"role": "user", "content": "What tools do you have available?"}],
             "tools": [
                 {
                     "type": "function",
@@ -643,14 +1112,11 @@ async def _test_ollama_completion_with_tools(llm_model: str, endpoint: str) -> N
                         "parameters": {
                             "type": "object",
                             "properties": {
-                                "location": {
-                                    "type": "string",
-                                    "description": "The city and state"
-                                }
+                                "location": {"type": "string", "description": "The city and state"}
                             },
-                            "required": ["location"]
-                        }
-                    }
+                            "required": ["location"],
+                        },
+                    },
                 }
             ],
             "stream": False,
@@ -665,14 +1131,16 @@ async def _test_ollama_completion_with_tools(llm_model: str, endpoint: str) -> N
 
             if response.status_code != 200:
                 error_details = _extract_error_details(response)
-                logger.error(f"Ollama completion test failed: {response.status_code} - {error_details}")
-                raise Exception(f"Ollama API error: {error_details}")
+                logger.error(
+                    f"Ollama completion test failed: {response.status_code} - {error_details}"
+                )
+                raise Exception(error_details)
 
             logger.info("Ollama completion with tool calling test passed")
 
     except httpx.TimeoutException:
         logger.error("Ollama completion test timed out")
-        raise httpx.TimeoutException("Ollama is busy or model inference timed out")
+        raise httpx.TimeoutException("Ollama is busy or model inference timed out") from None
     except Exception as e:
         logger.error(f"Ollama completion test failed: {str(e)}")
         raise
@@ -698,8 +1166,10 @@ async def _test_ollama_embedding(embedding_model: str, endpoint: str) -> None:
 
             if response.status_code != 200:
                 error_details = _extract_error_details(response)
-                logger.error(f"Ollama embedding test failed: {response.status_code} - {error_details}")
-                raise Exception(f"Ollama API error: {error_details}")
+                logger.error(
+                    f"Ollama embedding test failed: {response.status_code} - {error_details}"
+                )
+                raise Exception(error_details)
 
             data = response.json()
             if not data.get("embedding"):
@@ -709,7 +1179,7 @@ async def _test_ollama_embedding(embedding_model: str, endpoint: str) -> None:
 
     except httpx.TimeoutException:
         logger.error("Ollama embedding test timed out")
-        raise httpx.TimeoutException("Ollama is busy or embedding generation timed out")
+        raise httpx.TimeoutException("Ollama is busy or embedding generation timed out") from None
     except Exception as e:
         logger.error(f"Ollama embedding test failed: {str(e)}")
         raise
@@ -718,7 +1188,7 @@ async def _test_ollama_embedding(embedding_model: str, endpoint: str) -> None:
 # Anthropic validation functions
 async def _test_anthropic_lightweight_health(api_key: str) -> None:
     """Test Anthropic API key validity with lightweight check.
-    
+
     Only checks if the API key is valid without consuming credits.
     Uses the /v1/models endpoint which doesn't consume credits.
     """
@@ -738,14 +1208,16 @@ async def _test_anthropic_lightweight_health(api_key: str) -> None:
 
             if response.status_code != 200:
                 error_details = _extract_error_details(response)
-                logger.error(f"Anthropic lightweight health check failed: {response.status_code} - {error_details}")
-                raise Exception(f"Anthropic API key validation failed: {error_details}")
+                logger.error(
+                    f"Anthropic lightweight health check failed: {response.status_code} - {error_details}"
+                )
+                raise Exception(error_details)
 
             logger.info("Anthropic lightweight health check passed")
 
     except httpx.TimeoutException:
         logger.error("Anthropic lightweight health check timed out")
-        raise Exception("Anthropic API request timed out")
+        raise Exception("Anthropic API request timed out") from None
     except Exception as e:
         logger.error(f"Anthropic lightweight health check failed: {str(e)}")
         raise
@@ -764,9 +1236,7 @@ async def _test_anthropic_completion_with_tools(api_key: str, llm_model: str) ->
         payload = {
             "model": llm_model,
             "max_tokens": 50,
-            "messages": [
-                {"role": "user", "content": "What tools do you have available?"}
-            ],
+            "messages": [{"role": "user", "content": "What tools do you have available?"}],
             "tools": [
                 {
                     "name": "get_weather",
@@ -774,13 +1244,10 @@ async def _test_anthropic_completion_with_tools(api_key: str, llm_model: str) ->
                     "input_schema": {
                         "type": "object",
                         "properties": {
-                            "location": {
-                                "type": "string",
-                                "description": "The city and state"
-                            }
+                            "location": {"type": "string", "description": "The city and state"}
                         },
-                        "required": ["location"]
-                    }
+                        "required": ["location"],
+                    },
                 }
             ],
         }
@@ -795,14 +1262,16 @@ async def _test_anthropic_completion_with_tools(api_key: str, llm_model: str) ->
 
             if response.status_code != 200:
                 error_details = _extract_error_details(response)
-                logger.error(f"Anthropic completion test failed: {response.status_code} - {error_details}")
-                raise Exception(f"Anthropic API error: {error_details}")
+                logger.error(
+                    f"Anthropic completion test failed: {response.status_code} - {error_details}"
+                )
+                raise Exception(error_details)
 
             logger.info("Anthropic completion with tool calling test passed")
 
     except httpx.TimeoutException:
         logger.error("Anthropic completion test timed out")
-        raise Exception("Request timed out")
+        raise Exception("Request timed out") from None
     except Exception as e:
         logger.error(f"Anthropic completion test failed: {str(e)}")
         raise

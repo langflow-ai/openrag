@@ -1,34 +1,84 @@
-from typing import Optional
+import re
 
+import httpx
 from fastapi import Depends
-from pydantic import BaseModel
 from fastapi.responses import JSONResponse
-from utils.logging_config import get_logger
+from pydantic import BaseModel
+
+from api.provider_validation import (
+    is_provider_credential_error,
+    sanitize_provider_error_content,
+)
 from config.settings import get_openrag_config
-from dependencies import get_models_service, get_current_user
+from dependencies import get_models_service, require_permission
 from session_manager import User
+from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+_CREDENTIAL_PATTERNS = (
+    # OpenAI / Anthropic / Langflow-style secret prefixes echoed by providers.
+    re.compile(r"\bsk-(?:ant-|lf-)?[A-Za-z0-9_\-]{3,}\b"),
+    re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._\-]+\b"),
+    re.compile(r"(?i)\b(?:api[_-]?key|apikey|x-api-key)\s*[:=]\s*['\"]?[^\s'\",}]+"),
+)
+
+
+def _redact_credentials(message: str) -> str:
+    """Strip provider-echoed secrets before returning errors to clients."""
+    redacted = message
+    for pattern in _CREDENTIAL_PATTERNS:
+        redacted = pattern.sub("[REDACTED]", redacted)
+    return redacted
+
 
 class OpenAIBody(BaseModel):
-    api_key: Optional[str] = None
+    api_key: str | None = None
 
 
 class AnthropicBody(BaseModel):
-    api_key: Optional[str] = None
+    api_key: str | None = None
 
 
 class IBMBody(BaseModel):
-    api_key: Optional[str] = None
-    endpoint: Optional[str] = None
-    project_id: Optional[str] = None
+    api_key: str | None = None
+    endpoint: str | None = None
+    project_id: str | None = None
+
+
+def _models_error_response(exc: Exception) -> JSONResponse:
+    """Map model-route failures to client (400) vs upstream (502) vs server (500).
+
+    ``models_service`` raises bare ``Exception(user_message)`` for actionable
+    provider/config failures (invalid key, empty model list, bad project). Those
+    must reach onboarding as sanitized text. Unexpected internals (e.g.
+    ``RuntimeError``) stay behind the generic 500.
+    """
+    if isinstance(exc, (httpx.TimeoutException, httpx.RequestError)):
+        return JSONResponse(
+            {"error": "Unable to reach the model provider. Please try again."},
+            status_code=502,
+        )
+
+    error = sanitize_provider_error_content(exc)
+    redacted = _redact_credentials(error)
+    if is_provider_credential_error(exc) or is_provider_credential_error(error):
+        return JSONResponse({"error": redacted}, status_code=400)
+    if isinstance(exc, (ValueError, TypeError)) or type(exc) is Exception:
+        # Bare Exception is the models_service user-facing contract; keep JSON
+        # / traceback leaks behind the generic response.
+        if redacted and "{" not in redacted and "}" not in redacted:
+            return JSONResponse({"error": redacted}, status_code=400)
+    return JSONResponse(
+        {"error": "An unexpected error occurred while fetching models."},
+        status_code=500,
+    )
 
 
 async def get_openai_models(
-    body: Optional[OpenAIBody] = None,
+    body: OpenAIBody | None = None,
     models_service=Depends(get_models_service),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("providers:read")),
 ):
     """Get available OpenAI models"""
     try:
@@ -50,13 +100,13 @@ async def get_openai_models(
         return JSONResponse(models)
     except Exception as e:
         logger.error(f"Failed to get OpenAI models: {str(e)}")
-        return JSONResponse({"error": f"Failed to retrieve OpenAI models: {str(e)}"}, status_code=500)
+        return _models_error_response(e)
 
 
 async def get_anthropic_models(
-    body: Optional[AnthropicBody] = None,
+    body: AnthropicBody | None = None,
     models_service=Depends(get_models_service),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("providers:read")),
 ):
     """Get available Anthropic models"""
     try:
@@ -70,7 +120,9 @@ async def get_anthropic_models(
 
         if not api_key:
             return JSONResponse(
-                {"error": "Anthropic API key is required either in request body or in configuration"},
+                {
+                    "error": "Anthropic API key is required either in request body or in configuration"
+                },
                 status_code=400,
             )
 
@@ -78,13 +130,13 @@ async def get_anthropic_models(
         return JSONResponse(models)
     except Exception as e:
         logger.error(f"Failed to get Anthropic models: {str(e)}")
-        return JSONResponse({"error": f"Failed to retrieve Anthropic models: {str(e)}"}, status_code=500)
+        return _models_error_response(e)
 
 
 async def get_ollama_models(
-    endpoint: Optional[str] = None,
+    endpoint: str | None = None,
     models_service=Depends(get_models_service),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("providers:read")),
 ):
     """Get available Ollama models"""
     try:
@@ -105,13 +157,13 @@ async def get_ollama_models(
         return JSONResponse(models)
     except Exception as e:
         logger.error(f"Failed to get Ollama models: {str(e)}")
-        return JSONResponse({"error": f"Failed to retrieve Ollama models: {str(e)}"}, status_code=500)
+        return _models_error_response(e)
 
 
 async def get_ibm_models(
-    body: Optional[IBMBody] = None,
+    body: IBMBody | None = None,
     models_service=Depends(get_models_service),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("providers:read")),
 ):
     """Get available IBM Watson models"""
     try:
@@ -162,4 +214,4 @@ async def get_ibm_models(
         return JSONResponse(models)
     except Exception as e:
         logger.error(f"Failed to get IBM models: {str(e)}")
-        return JSONResponse({"error": f"Failed to retrieve IBM models: {str(e)}"}, status_code=500)
+        return _models_error_response(e)

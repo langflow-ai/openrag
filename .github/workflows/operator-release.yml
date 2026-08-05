@@ -36,9 +36,11 @@ jobs:
 
       - name: Resolve image tag
         id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "value=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+            echo "value=${INPUT_TAG}" >> $GITHUB_OUTPUT
           else
             # Strip the "operator/" prefix from the git tag
             echo "value=${GITHUB_REF_NAME#operator/}" >> $GITHUB_OUTPUT
@@ -60,6 +62,9 @@ jobs:
           platforms: ${{ matrix.platform }}
           push: true
           tags: ${{ env.IMAGE }}:${{ steps.tag.outputs.value }}-${{ matrix.arch }}
+          build-args: |
+            TARGETOS=linux
+            TARGETARCH=${{ matrix.arch }}
           cache-from: type=gha,scope=operator-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=operator-${{ matrix.arch }}
 
@@ -75,9 +80,11 @@ jobs:
 
       - name: Resolve image tag
         id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "value=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+            echo "value=${INPUT_TAG}" >> $GITHUB_OUTPUT
           else
             echo "value=${GITHUB_REF_NAME#operator/}" >> $GITHUB_OUTPUT
           fi

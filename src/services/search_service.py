@@ -1,14 +1,16 @@
 import asyncio
 import copy
 import os
-import json
+import re
 from collections import Counter
-from typing import Any, Dict
+from typing import Any
+
 from agentd.tool_decorator import tool
-from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
-from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL
-from utils.container_utils import transform_localhost_url
+
 from auth_context import get_auth_context
+from config.embedding_constants import get_declared_default_embedding_model
+from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
+from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -22,6 +24,88 @@ EMBED_RETRY_MAX_DELAY = 8.0
 _global_search_service = None
 
 
+def _is_exact_token_query(query: str) -> bool:
+    """Return True for code/token-like queries (identifiers, versions, SKUs)
+    that warrant exact-file narrowing; ordinary prose returns False."""
+    query = query.strip()
+    if not query or len(query) < 3:
+        return False
+
+    if re.search(r"[^a-zA-Z0-9\s]", query):
+        return True
+
+    return bool(re.search(r"[a-zA-Z]", query) and re.search(r"\d", query))
+
+
+def _apply_exact_match_file_filter(
+    query: str,
+    chunks: list[dict[str, Any]],
+    aggregations: dict[str, Any],
+    *,
+    is_wildcard_match_all: bool,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """If a token-like query appears verbatim in a subset of files, prefer those files.
+
+    This avoids broad semantic spillover for unique lookups. Narrowing only
+    applies to token-like queries (see _is_exact_token_query); multi-word prose
+    searches keep their full hybrid-ranked results. When no file contains the
+    query verbatim, the ranked results are returned untouched — hits must never
+    be discarded just because the query looks token-like (e.g. "chunk_overlap",
+    "v1.2", "SKU-1234").
+    """
+    normalized_query = query.strip().lower()
+    if (
+        not normalized_query
+        or is_wildcard_match_all
+        or len(normalized_query) < 4
+        or not _is_exact_token_query(normalized_query)
+    ):
+        return chunks, aggregations
+
+    exact_files = {
+        filename
+        for chunk in chunks
+        for filename in [chunk.get("filename")]
+        if isinstance(filename, str)
+        and (
+            normalized_query in filename.lower()
+            or (
+                isinstance(chunk.get("text"), str)
+                and normalized_query in chunk.get("text", "").lower()
+            )
+        )
+    }
+    if not exact_files:
+        return chunks, aggregations
+
+    # Filter to only chunks from files with exact matches
+    chunks = [chunk for chunk in chunks if chunk.get("filename") in exact_files]
+
+    def _build_terms_agg(field: str) -> dict[str, Any]:
+        counts = Counter(
+            value
+            for chunk in chunks
+            for value in [chunk.get(field)]
+            if isinstance(value, str) and value
+        )
+        return {
+            "doc_count_error_upper_bound": 0,
+            "sum_other_doc_count": 0,
+            "buckets": [{"key": key, "doc_count": count} for key, count in counts.most_common()],
+        }
+
+    # Keep aggregations consistent with the post-filtered result set.
+    aggregations = {
+        **aggregations,
+        "data_sources": _build_terms_agg("filename"),
+        "document_types": _build_terms_agg("mimetype"),
+        "owners": _build_terms_agg("owner"),
+        "connector_types": _build_terms_agg("connector_type"),
+        "embedding_models": _build_terms_agg("embedding_model"),
+    }
+    return chunks, aggregations
+
+
 def register_search_service(service: "SearchService") -> None:
     """
     Explicitly register the active search service for the @tool wrapper.
@@ -32,7 +116,7 @@ def register_search_service(service: "SearchService") -> None:
 
 
 @tool
-async def search_tool(query: str, embedding_model: str = None) -> Dict[str, Any]:
+async def search_tool(query: str, embedding_model: str = None) -> dict[str, Any]:
     """
     Use this tool to search for documents relevant to the query.
 
@@ -70,7 +154,7 @@ class SearchService:
         except Exception as e:
             logger.warning("[SEARCH] Could not configure Ollama endpoint from config", error=str(e))
 
-    async def search_tool(self, query: str, embedding_model: str = None) -> Dict[str, Any]:
+    async def search_tool(self, query: str, embedding_model: str = None) -> dict[str, Any]:
         """
         Use this tool to search for documents relevant to the query.
 
@@ -88,7 +172,13 @@ class SearchService:
         # Strategy: Use provided model, or default to the configured embedding
         # model. This assumes documents are embedded with that model by default.
         # Future enhancement: Could auto-detect available models in corpus.
-        embedding_model = embedding_model or get_embedding_model() or OPENAI_DEFAULT_EMBEDDING_MODEL
+        embedding_model = (
+            embedding_model
+            or get_embedding_model()
+            or get_declared_default_embedding_model(
+                get_openrag_config().knowledge.embedding_provider
+            )
+        )
         embedding_field_name = get_embedding_field_name(embedding_model)
 
         logger.info(
@@ -102,9 +192,9 @@ class SearchService:
         user_id, jwt_token = get_auth_context()
         # Get search filters, limit, and score threshold from context
         from auth_context import (
+            get_score_threshold,
             get_search_filters,
             get_search_limit,
-            get_score_threshold,
         )
 
         filters = get_search_filters() or {}
@@ -122,7 +212,7 @@ class SearchService:
 
         if not is_wildcard_match_all:
             # Build filter clauses first so we can use them in model detection
-            filter_clauses = []
+            filter_clauses: list[dict[str, Any]] = []
             if filters:
                 # Map frontend filter names to backend field names
                 field_mapping = {
@@ -249,7 +339,7 @@ class SearchService:
                 return_exceptions=True,
             )
 
-            for model_name, result in zip(available_models, embedding_results):
+            for model_name, result in zip(available_models, embedding_results, strict=False):
                 if isinstance(result, BaseException):
                     failed_models.append(model_name)
                     logger.warning(
@@ -299,7 +389,7 @@ class SearchService:
         if is_wildcard_match_all:
             # Match all documents; still allow filters to narrow scope
             if filter_clauses:
-                query_block = {"bool": {"filter": filter_clauses}}
+                query_block: dict[str, Any] = {"bool": {"filter": filter_clauses}}
             else:
                 query_block = {"match_all": {}}
         else:
@@ -328,7 +418,9 @@ class SearchService:
             # fallback mode.
             all_filters = list(filter_clauses)
             if knn_queries:
-                exists_should = [{"exists": {"field": f}} for f in embedding_fields_to_check]
+                exists_should: list[dict[str, Any]] = [
+                    {"exists": {"field": f}} for f in embedding_fields_to_check
+                ]
                 # Docs indexed under a failed provider have none of the successful
                 # embedding fields, but keyword matching should still surface them.
                 # Allow them through by matching on their embedding_model value.
@@ -402,7 +494,7 @@ class SearchService:
                 }
             }
 
-        search_body = {
+        search_body: dict[str, Any] = {
             "query": query_block,
             "aggs": {
                 "data_sources": {"terms": {"field": "filename", "size": 20}},
@@ -424,8 +516,12 @@ class SearchService:
                 "connector_type",
                 "embedding_model",  # Include embedding model in results
                 "embedding_dimensions",
+                "parser",
+                "chunk_size",
+                "chunk_overlap",
                 "allowed_users",
                 "allowed_groups",
+                "allowed_principal_labels",
             ],
             "size": limit,
         }
@@ -436,7 +532,7 @@ class SearchService:
 
         # Prepare fallback search body without num_candidates for clusters that don't support it.
         # Only relevant when we actually dispatched KNN queries.
-        fallback_search_body = None
+        fallback_search_body: dict[str, Any] | None = None
         if not is_wildcard_match_all and query_embeddings:
             try:
                 fallback_search_body = copy.deepcopy(search_body)
@@ -466,10 +562,11 @@ class SearchService:
         opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
 
         from opensearchpy.exceptions import RequestError
+
         from utils.opensearch_utils import (
+            DISK_SPACE_ERROR_MESSAGE,
             OpenSearchDiskSpaceError,
             is_disk_space_error,
-            DISK_SPACE_ERROR_MESSAGE,
         )
 
         search_params = {"terminate_after": 0}
@@ -551,62 +648,31 @@ class SearchService:
                     "connector_type": source.get("connector_type"),
                     "embedding_model": source.get("embedding_model"),  # Include in results
                     "embedding_dimensions": source.get("embedding_dimensions"),
+                    "parser": source.get("parser"),
+                    "chunk_size": source.get("chunk_size"),
+                    "chunk_overlap": source.get("chunk_overlap"),
+                    "chunk_id": hit.get("_id"),
+                    "id": hit.get("_id"),
                     # ACL fields (may be missing for some documents)
                     "allowed_users": source.get("allowed_users", []),
                     "allowed_groups": source.get("allowed_groups", []),
+                    "allowed_principal_labels": source.get("allowed_principal_labels", []),
                 }
             )
 
         # If query text appears verbatim in one subset of files, prefer those files
         # to avoid broad semantic spillover for unique lookups.
-        normalized_query = query.strip().lower()
-        aggregations = results.get("aggregations", {})
-        if normalized_query and not is_wildcard_match_all and len(normalized_query) >= 4:
-            exact_files = {
-                filename
-                for chunk in chunks
-                for filename in [chunk.get("filename")]
-                if isinstance(filename, str)
-                and (
-                    normalized_query in filename.lower()
-                    or (
-                        isinstance(chunk.get("text"), str)
-                        and normalized_query in chunk.get("text", "").lower()
-                    )
-                )
-            }
-            if exact_files:
-                chunks = [chunk for chunk in chunks if chunk.get("filename") in exact_files]
-
-                def _build_terms_agg(field: str) -> Dict[str, Any]:
-                    counts = Counter(
-                        value
-                        for chunk in chunks
-                        for value in [chunk.get(field)]
-                        if isinstance(value, str) and value
-                    )
-                    return {
-                        "doc_count_error_upper_bound": 0,
-                        "sum_other_doc_count": 0,
-                        "buckets": [
-                            {"key": key, "doc_count": count} for key, count in counts.most_common()
-                        ],
-                    }
-
-                # Keep aggregations consistent with the post-filtered result set.
-                aggregations = {
-                    **aggregations,
-                    "data_sources": _build_terms_agg("filename"),
-                    "document_types": _build_terms_agg("mimetype"),
-                    "owners": _build_terms_agg("owner"),
-                    "connector_types": _build_terms_agg("connector_type"),
-                    "embedding_models": _build_terms_agg("embedding_model"),
-                }
+        chunks, aggregations = _apply_exact_match_file_filter(
+            query,
+            chunks,
+            results.get("aggregations", {}),
+            is_wildcard_match_all=is_wildcard_match_all,
+        )
 
         # Return both transformed results and aggregations. Surface degraded
         # semantic-search signals so the UI can show a non-fatal warning
         # instead of treating partial-embedding failure as a hard error.
-        response: Dict[str, Any] = {
+        response: dict[str, Any] = {
             "results": chunks,
             "aggregations": aggregations,
             "total": len(chunks),
@@ -633,11 +699,11 @@ class SearchService:
         query: str,
         user_id: str = None,
         jwt_token: str = None,
-        filters: Dict[str, Any] = None,
+        filters: dict[str, Any] = None,
         limit: int = 10,
         score_threshold: float = 0,
         embedding_model: str = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Public search method for API endpoints
 
         Args:
@@ -658,7 +724,7 @@ class SearchService:
 
             set_search_filters(filters)
 
-        from auth_context import set_search_limit, set_score_threshold
+        from auth_context import set_score_threshold, set_search_limit
 
         set_search_limit(limit)
         set_score_threshold(score_threshold)

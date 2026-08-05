@@ -1,16 +1,19 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
+import { useIsFetching, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   type OnboardingVariables,
   useOnboardingMutation,
 } from "@/app/api/mutations/useOnboardingMutation";
 import { useOnboardingRollbackMutation } from "@/app/api/mutations/useOnboardingRollbackMutation";
-import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
+import {
+  type ProviderSettings,
+  useGetSettingsQuery,
+} from "@/app/api/queries/useGetSettingsQuery";
 import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import type { ProviderHealthResponse } from "@/app/api/queries/useProviderHealthQuery";
 import {
@@ -36,6 +39,7 @@ import {
   trackProcessFailure,
   trackProcessSuccess,
 } from "@/lib/analytics";
+import { formatProviderErrorMessage } from "@/lib/chat-stream-errors";
 import { cn } from "@/lib/utils";
 import { AnimatedProviderSteps } from "./animated-provider-steps";
 import { AnthropicOnboarding } from "./anthropic-onboarding";
@@ -48,8 +52,6 @@ interface OnboardingCardProps {
   onComplete: () => void;
   isCompleted?: boolean;
   isEmbedding?: boolean;
-  setIsLoadingModels?: (isLoading: boolean) => void;
-  setLoadingStatus?: (status: string[]) => void;
 }
 
 const STEP_LIST = [
@@ -77,7 +79,8 @@ const OnboardingCard = ({
     isEmbedding ? "openai" : "anthropic",
   );
 
-  const [isLoadingModels, setIsLoadingModels] = useState<boolean>(false);
+  // Read model-fetch loading from React Query instead of syncing it up from children.
+  const isLoadingModels = useIsFetching({ queryKey: ["models"] }) > 0;
 
   const queryClient = useQueryClient();
 
@@ -85,49 +88,50 @@ const OnboardingCard = ({
   const { data: currentSettings } = useGetSettingsQuery();
 
   // Auto-select the first provider that has an API key set in env vars
-  useEffect(() => {
-    if (!currentSettings?.providers) return;
+  const [prevProviders, setPrevProviders] = useState<
+    ProviderSettings | undefined | null
+  >(null);
+  if (currentSettings?.providers !== prevProviders) {
+    setPrevProviders(currentSettings?.providers);
+    if (currentSettings?.providers) {
+      const fullOrder = isEmbedding
+        ? EMBEDDING_PROVIDER_ORDER
+        : LLM_PROVIDER_ORDER;
+      const providerOrder = isCloudBrand
+        ? fullOrder.filter((p) => !CLOUD_EXCLUDED_PROVIDERS.includes(p))
+        : fullOrder;
 
-    // Define provider order based on whether it's embedding or not
-    const fullOrder = isEmbedding
-      ? EMBEDDING_PROVIDER_ORDER
-      : LLM_PROVIDER_ORDER;
-    const providerOrder = isCloudBrand
-      ? fullOrder.filter((p) => !CLOUD_EXCLUDED_PROVIDERS.includes(p))
-      : fullOrder;
-
-    // Find the first provider with an API key
-    for (const provider of providerOrder) {
-      if (
-        provider === "anthropic" &&
-        currentSettings.providers.anthropic?.has_api_key
-      ) {
-        setModelProvider("anthropic");
-        return;
-      } else if (
-        provider === "openai" &&
-        currentSettings.providers.openai?.has_api_key
-      ) {
-        setModelProvider("openai");
-        return;
-      } else if (
-        provider === "watsonx" &&
-        currentSettings.providers.watsonx?.has_api_key
-      ) {
-        setModelProvider("watsonx");
-        return;
-      } else if (
-        provider === "ollama" &&
-        currentSettings.providers.ollama?.endpoint
-      ) {
-        setModelProvider("ollama");
-        return;
+      for (const provider of providerOrder) {
+        if (
+          provider === "anthropic" &&
+          currentSettings.providers.anthropic?.has_api_key
+        ) {
+          setModelProvider("anthropic");
+          break;
+        } else if (
+          provider === "openai" &&
+          currentSettings.providers.openai?.has_api_key
+        ) {
+          setModelProvider("openai");
+          break;
+        } else if (
+          provider === "watsonx" &&
+          currentSettings.providers.watsonx?.has_api_key
+        ) {
+          setModelProvider("watsonx");
+          break;
+        } else if (
+          provider === "ollama" &&
+          currentSettings.providers.ollama?.endpoint
+        ) {
+          setModelProvider("ollama");
+          break;
+        }
       }
     }
-  }, [currentSettings, isEmbedding, isCloudBrand]);
+  }
 
   const handleSetModelProvider = (provider: string) => {
-    setIsLoadingModels(false);
     setModelProvider(provider);
     setSettings({
       [isEmbedding ? "embedding_provider" : "llm_provider"]: provider,
@@ -191,6 +195,20 @@ const OnboardingCard = ({
   // Track which tasks we've already handled to prevent infinite loops
   const handledFailedTasksRef = useRef<Set<string>>(new Set());
 
+  // Delay calling onComplete so the "Done" step is briefly visible.
+  const [pendingComplete, setPendingComplete] = useState(false);
+  const onCompleteEvent = useEffectEvent(onComplete);
+  useEffect(() => {
+    if (!pendingComplete) {
+      return;
+    }
+    const timeoutId = setTimeout(() => {
+      onCompleteEvent();
+      setPendingComplete(false);
+    }, 1000);
+    return () => clearTimeout(timeoutId);
+  }, [pendingComplete]);
+
   // Query tasks to track completion
   const { data: tasks } = useGetTasksQuery({
     enabled: currentStep !== null && !isCompleted, // Only poll when onboarding has started and stop once step is complete
@@ -200,7 +218,6 @@ const OnboardingCard = ({
   // Rollback mutation
   const rollbackMutation = useOnboardingRollbackMutation({
     onSuccess: () => {
-      console.log("Onboarding rolled back successfully");
       // Reset to provider selection step
       // Error message is already set before calling mutate
       setCurrentStep(null);
@@ -219,8 +236,6 @@ const OnboardingCard = ({
   // Mutations
   const onboardingMutation = useOnboardingMutation({
     onSuccess: (data) => {
-      console.log("Onboarding completed successfully", data);
-
       if (data.task_id) {
         setOnboardingTaskId(data.task_id);
       }
@@ -244,9 +259,7 @@ const OnboardingCard = ({
           category: "Setup",
         });
         setCurrentStep(totalSteps);
-        setTimeout(() => {
-          onComplete();
-        }, 1000);
+        setPendingComplete(true);
       } else {
         trackProcessSuccess({
           processType: "Onboarding",
@@ -258,13 +271,14 @@ const OnboardingCard = ({
       }
     },
     onError: (error) => {
+      const message = formatProviderErrorMessage(error.message);
       trackProcessFailure({
         processType: "Onboarding",
         process: isEmbedding ? "Embedding Setup" : "LLM Setup",
-        resultValue: error.message,
+        resultValue: message,
         category: "Setup",
       });
-      setError(error.message);
+      setError(message);
       setCurrentStep(totalSteps);
       rollbackMutation.mutate({ embedding_only: isEmbedding });
     },
@@ -334,31 +348,28 @@ const OnboardingCard = ({
       // Mark this task as handled to prevent infinite loops
       handledFailedTasksRef.current.add(taskWithFailure.task_id);
 
-      // Extract error messages from failed files
+      // Prefer sanitized user_facing_message from enhanced tasks, then raw error.
       const errorMessages: string[] = [];
       if (taskWithFailure.files) {
         Object.values(taskWithFailure.files).forEach((file) => {
-          if (
-            (file.status === "failed" || file.status === "error") &&
-            file.error
-          ) {
-            errorMessages.push(file.error);
+          if (file.status !== "failed" && file.status !== "error") {
+            return;
+          }
+          const msg = file.user_facing_message || file.error;
+          if (msg) {
+            errorMessages.push(msg);
           }
         });
       }
 
-      // Also check task-level error
       if (taskWithFailure.error) {
         errorMessages.push(taskWithFailure.error);
       }
 
-      // Use the first error message, or a generic message if no errors found
-      const errorMessage =
-        errorMessages.length > 0
-          ? errorMessages[0]
-          : "Sample data ingestion failed. Please try again.";
+      const errorMessage = formatProviderErrorMessage(
+        errorMessages[0] || "Sample data ingestion failed. Please try again.",
+      );
 
-      // Set error message and jump back one step (exactly like onboardingMutation.onError)
       trackProcessFailure({
         processType: "Onboarding",
         process: "Sample Data Ingest",
@@ -370,6 +381,7 @@ const OnboardingCard = ({
         failed_files: taskWithFailure.failed_files,
       });
 
+      setPendingComplete(false);
       setError(errorMessage);
       setCurrentStep(totalSteps);
       rollbackMutation.mutate({ embedding_only: isEmbedding });
@@ -401,17 +413,13 @@ const OnboardingCard = ({
         successful_files: completedTask?.successful_files,
       });
 
-      // Set to final step to show "Done"
+      // Set to final step to show "Done", then delay onComplete via pendingComplete.
       setCurrentStep(totalSteps);
-      // Wait a bit before completing
-      setTimeout(() => {
-        onComplete();
-      }, 1000);
+      setPendingComplete(true);
     }
   }, [
     tasks,
     currentStep,
-    onComplete,
     isCompleted,
     isEmbedding,
     totalSteps,
@@ -510,7 +518,10 @@ const OnboardingCard = ({
                 >
                   <div className="pb-6 flex items-center gap-4">
                     <X className="w-4 h-4 text-destructive shrink-0" />
-                    <span className="text-mmd text-muted-foreground">
+                    <span
+                      data-testid="onboarding-error"
+                      className="text-mmd text-muted-foreground"
+                    >
                       {error}
                     </span>
                   </div>
@@ -662,7 +673,6 @@ const OnboardingCard = ({
                   <TabsContent value="anthropic">
                     <AnthropicOnboarding
                       setSettings={setSettings}
-                      setIsLoadingModels={setIsLoadingModels}
                       isEmbedding={isEmbedding}
                       hasEnvApiKey={
                         currentSettings?.providers?.anthropic?.has_api_key ===
@@ -674,7 +684,6 @@ const OnboardingCard = ({
                 <TabsContent value="openai">
                   <OpenAIOnboarding
                     setSettings={setSettings}
-                    setIsLoadingModels={setIsLoadingModels}
                     isEmbedding={isEmbedding}
                     hasEnvApiKey={
                       currentSettings?.providers?.openai?.has_api_key === true
@@ -687,7 +696,6 @@ const OnboardingCard = ({
                 <TabsContent value="watsonx">
                   <IBMOnboarding
                     setSettings={setSettings}
-                    setIsLoadingModels={setIsLoadingModels}
                     isEmbedding={isEmbedding}
                     alreadyConfigured={
                       providerAlreadyConfigured && modelProvider === "watsonx"
@@ -707,7 +715,6 @@ const OnboardingCard = ({
                   <TabsContent value="ollama">
                     <OllamaOnboarding
                       setSettings={setSettings}
-                      setIsLoadingModels={setIsLoadingModels}
                       isEmbedding={isEmbedding}
                       alreadyConfigured={
                         providerAlreadyConfigured && modelProvider === "ollama"
@@ -738,8 +745,8 @@ const OnboardingCard = ({
                   <TooltipContent>
                     {isLoadingModels
                       ? "Loading models..."
-                      : !!settings.llm_model &&
-                          !!settings.embedding_model &&
+                      : settings.llm_model &&
+                          settings.embedding_model &&
                           !isDoclingHealthy
                         ? "docling-serve must be running to continue"
                         : "Please fill in all required fields"}

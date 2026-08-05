@@ -1,6 +1,6 @@
 # Agent Instructions
 
-This repository ships with **agent skills** that any compliant agent can use to help users install OpenRAG and integrate the OpenRAG SDK. The canonical skill files are markdown with YAML frontmatter (the [Agent Skills](https://github.com/anthropics/skills) format), and live under `plugins/openrag/skills/`.
+This repository ships with **agent skills** that any compliant agent can use to help users install OpenRAG, integrate the OpenRAG SDK, and run the local dev stack. The canonical skill files are markdown with YAML frontmatter (the [Agent Skills](https://github.com/anthropics/skills) format), and live under `plugins/openrag/skills/`.
 
 ## Available skills
 
@@ -8,6 +8,7 @@ This repository ships with **agent skills** that any compliant agent can use to 
 | --- | --- | --- |
 | `openrag_install` | [`plugins/openrag/skills/install/SKILL.md`](plugins/openrag/skills/install/SKILL.md) | Plan and execute a minimal OpenRAG installation, verify locally. |
 | `openrag_sdk` | [`plugins/openrag/skills/sdk/SKILL.md`](plugins/openrag/skills/sdk/SKILL.md) | Guide SDK integration (Python, TypeScript, MCP) with code examples. |
+| `openrag_dev_stack` | [`plugins/openrag/skills/dev-stack/SKILL.md`](plugins/openrag/skills/dev-stack/SKILL.md) | Start, monitor, restart, or stop the local dev stack (Docker infra + host backend + host frontend). |
 
 ## How to use these skills
 
@@ -15,7 +16,7 @@ Pick the path that matches your agent runtime.
 
 ### Claude Code (this repo)
 
-`.claude/skills/` symlinks into the plugin, so after cloning the repo the skills are auto-discovered by Claude Code — invoke with `/install` or `/sdk`, or let Claude trigger them automatically based on the description fields.
+`.claude/skills/` symlinks into the plugin, so after cloning the repo the skills are auto-discovered by Claude Code — invoke with `/install`, `/sdk`, or `/dev-stack`, or let Claude trigger them automatically based on the description fields.
 
 ### Claude Code (install globally, any repo)
 
@@ -44,7 +45,7 @@ Read the `SKILL.md` files directly. The frontmatter `description` tells you when
 
 **RBAC is opt-in.** `OPENRAG_RBAC_ENFORCE` defaults to `false`, which makes OpenRAG behave like the pre-RBAC release: every authenticated user has full access; API-key role overrides are also bypassed. To turn the permissions system on (admin/developer/user/viewer roles, `require_permission` gates, audit denials), set `OPENRAG_RBAC_ENFORCE=true`. Available in all `OPENRAG_RUN_MODE` values — operators own the trade-off. The startup event logs the enforcement state on every boot.
 
-**Dev-local with backend on host.** When you run `make dev-local-cpu` (or `dev-local`) and then `make backend` on the host, OpenSearch needs to resolve `openrag-backend` to the host machine so it can fetch JWKS for OIDC validation. The base `docker-compose.yml` does NOT add this alias — it would break CI, where the backend is a docker-compose service. To enable the host-backend mode, layer the override file:
+**Dev-local with backend on host.** When you run `make dev-local-cpu` (or `dev-local`) and then `make backend` on the host, OpenSearch needs to resolve `openrag-backend` to the host machine so it can fetch JWKS for OIDC validation. Langflow also needs that name for backend ingest callbacks. The base `docker-compose.yml` does NOT add this alias — it would break CI, where the backend is a docker-compose service. To enable the host-backend mode, layer the override file:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.host-backend.yml up -d opensearch dashboards langflow
@@ -52,4 +53,4 @@ make backend     # in another terminal
 make frontend    # in another terminal
 ```
 
-The override only adds `extra_hosts: openrag-backend:host-gateway` to the OpenSearch service. Without it, OIDC works because docker DNS routes `openrag-backend` to the in-compose backend container.
+The override only adds `extra_hosts: openrag-backend:host-gateway` to the OpenSearch and Langflow services. Without it, OIDC and ingest callbacks work because docker DNS routes `openrag-backend` to the in-compose backend container.

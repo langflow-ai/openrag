@@ -1,6 +1,6 @@
 {
   "name": "openrag-sdk",
-  "version": "0.3.1",
+  "version": "0.4.0-dev0",
   "description": "Official TypeScript/JavaScript SDK for OpenRAG API",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
@@ -47,10 +47,15 @@
     "url": "https://github.com/langflow-ai/openrag/issues"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
-    "tsup": "^8.0.0",
-    "typescript": "^5.0.0",
-    "vitest": "^1.0.0"
+    "@types/node": "^26.0.1",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9"
+  },
+  "overrides": {
+    "picomatch": "^4.0.4",
+    "postcss": "^8.5.10",
+    "rollup": "^4.59.0"
   },
   "engines": {
     "node": ">=18.0.0"

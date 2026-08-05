@@ -5,12 +5,12 @@ import { useGetAllFiltersQuery } from "@/app/api/queries/useGetAllFiltersQuery";
 import type { KnowledgeFilter } from "@/app/api/queries/useGetFiltersSearchQuery";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
-import { cn } from "@/lib/utils";
 import {
   type FilterColor,
   type IconKey,
   iconKeyToComponent,
-} from "./filter-icon-popover";
+} from "@/lib/filter-constants";
+import { cn } from "@/lib/utils";
 import { filterAccentClasses } from "./knowledge-filter-panel";
 
 interface ParsedQueryData {
@@ -30,6 +30,22 @@ interface KnowledgeFilterListProps {
   selectedFilter: KnowledgeFilter | null;
   onFilterSelect: (filter: KnowledgeFilter | null) => void;
 }
+
+const parseQueryData = (queryData: string): ParsedQueryData => {
+  const parsed = JSON.parse(queryData);
+  return {
+    query: parsed.query ?? "",
+    filters: {
+      data_sources: parsed.filters?.data_sources ?? ["*"],
+      document_types: parsed.filters?.document_types ?? ["*"],
+      owners: parsed.filters?.owners ?? ["*"],
+    },
+    limit: parsed.limit ?? 10,
+    scoreThreshold: parsed.scoreThreshold ?? 0,
+    color: parsed.color ?? "zinc",
+    icon: parsed.icon ?? "filter",
+  };
+};
 
 export function KnowledgeFilterList({
   selectedFilter,
@@ -54,23 +70,6 @@ export function KnowledgeFilterList({
   const handleCreateNew = () => {
     closeMenu();
     startCreateMode();
-  };
-
-  const parseQueryData = (queryData: string): ParsedQueryData => {
-    const parsed = JSON.parse(queryData);
-    // Provide defaults for missing fields to handle API-created filters
-    return {
-      query: parsed.query ?? "",
-      filters: {
-        data_sources: parsed.filters?.data_sources ?? ["*"],
-        document_types: parsed.filters?.document_types ?? ["*"],
-        owners: parsed.filters?.owners ?? ["*"],
-      },
-      limit: parsed.limit ?? 10,
-      scoreThreshold: parsed.scoreThreshold ?? 0,
-      color: parsed.color ?? "zinc",
-      icon: parsed.icon ?? "filter",
-    };
   };
 
   return (
@@ -155,7 +154,8 @@ export function KnowledgeFilterList({
                           const dataSources = parseQueryData(filter.query_data)
                             .filters.data_sources;
                           if (dataSources[0] === "*") return "All sources";
-                          const count = dataSources.length;
+                          const count =
+                            filter.active_source_count ?? dataSources.length;
                           return `${count} ${
                             count === 1 ? "source" : "sources"
                           }`;

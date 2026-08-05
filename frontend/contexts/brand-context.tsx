@@ -1,9 +1,23 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import {
+  createContext,
+  use,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useAuth } from "@/contexts/auth-context";
+import {
+  type Brand,
+  DEFAULT_BRAND,
+  isCloudBrand,
+  resolveBrand,
+} from "@/lib/brand";
 
-export type Brand = "oss" | "ibm";
+export type { Brand } from "@/lib/brand";
+export { IBM_THEME_DEV } from "@/lib/brand";
 
 interface BrandContextValue {
   brand: Brand;
@@ -11,7 +25,7 @@ interface BrandContextValue {
 }
 
 const BrandContext = createContext<BrandContextValue>({
-  brand: "oss",
+  brand: DEFAULT_BRAND,
   setBrand: () => {},
 });
 
@@ -24,33 +38,42 @@ function applyBrand(brand: Brand) {
 }
 
 export function BrandProvider({ children }: { children: React.ReactNode }) {
-  const [brand, setBrandState] = useState<Brand>("oss");
+  const [storedBrand, setStoredBrandState] = useState<Brand>(DEFAULT_BRAND);
   const { isIbmAuthMode } = useAuth();
+  // IBM auth always presents as IBM in context; dev OSS/IBM toggle uses localStorage.
+  const brand: Brand = isIbmAuthMode ? "ibm" : storedBrand;
 
   useEffect(() => {
-    if (isIbmAuthMode) {
-      applyBrand("ibm");
-      setBrandState("ibm");
-    } else {
-      const stored = (localStorage.getItem("brand") as Brand) ?? "oss";
-      applyBrand(stored);
-      setBrandState(stored);
+    if (!isIbmAuthMode) {
+      const stored = resolveBrand(localStorage.getItem("brand") ?? undefined);
+      localStorage.setItem("brand", stored);
+      setStoredBrandState(stored);
     }
   }, [isIbmAuthMode]);
 
-  function setBrand(newBrand: Brand) {
-    localStorage.setItem("brand", newBrand);
-    applyBrand(newBrand);
-    setBrandState(newBrand);
-  }
+  useEffect(() => {
+    applyBrand(brand);
+  }, [brand]);
+
+  const setBrand = useCallback(
+    (newBrand: Brand) => {
+      if (isIbmAuthMode) return;
+      localStorage.setItem("brand", newBrand);
+      setStoredBrandState(newBrand);
+    },
+    [isIbmAuthMode],
+  );
+
+  const value = useMemo(() => ({ brand, setBrand }), [brand, setBrand]);
 
   return (
-    <BrandContext.Provider value={{ brand, setBrand }}>
-      {children}
-    </BrandContext.Provider>
+    <BrandContext.Provider value={value}>{children}</BrandContext.Provider>
   );
 }
 
-export const useBrand = () => useContext(BrandContext);
+export const useBrand = () => use(BrandContext);
 
-export const useIsCloudBrand = () => useContext(BrandContext).brand === "ibm";
+export const useIsCloudBrand = () => {
+  const { brand } = use(BrandContext);
+  return isCloudBrand(brand);
+};

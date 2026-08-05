@@ -4,10 +4,27 @@ import type { OnboardingVariables } from "../../api/mutations/useOnboardingMutat
 
 interface ConfigValues {
   apiKey?: string;
+  /** When true, clear the provider key (e.g. environment-key mode). */
+  clearApiKey?: boolean;
   endpoint?: string;
   projectId?: string;
   languageModel?: string;
   embeddingModel?: string;
+}
+
+function resolveApiKey(
+  apiKey: string | undefined,
+  clearApiKey: boolean | undefined,
+  previous: string | undefined,
+): string {
+  if (clearApiKey) {
+    return "";
+  }
+  // Explicit empty clears a typed key; omit (undefined) to reuse previous.
+  if (apiKey !== undefined) {
+    return apiKey;
+  }
+  return previous || "";
 }
 
 export function useUpdateSettings(
@@ -31,15 +48,26 @@ export function useUpdateSettings(
         updatedSettings.llm_provider = provider;
       }
 
-      // Map provider-specific API keys
-      if (config.apiKey) {
-        if (provider === "openai") {
-          updatedSettings.openai_api_key = config.apiKey;
-        } else if (provider === "anthropic") {
-          updatedSettings.anthropic_api_key = config.apiKey;
-        } else if (provider === "watsonx") {
-          updatedSettings.watsonx_api_key = config.apiKey;
-        }
+      // Map provider-specific API keys. undefined preserves prior credentials;
+      // "" or clearApiKey clears; a non-empty string replaces.
+      if (provider === "openai") {
+        updatedSettings.openai_api_key = resolveApiKey(
+          config.apiKey,
+          config.clearApiKey,
+          prev.openai_api_key,
+        );
+      } else if (provider === "anthropic") {
+        updatedSettings.anthropic_api_key = resolveApiKey(
+          config.apiKey,
+          config.clearApiKey,
+          prev.anthropic_api_key,
+        );
+      } else if (provider === "watsonx") {
+        updatedSettings.watsonx_api_key = resolveApiKey(
+          config.apiKey,
+          config.clearApiKey,
+          prev.watsonx_api_key,
+        );
       }
 
       // Map provider-specific endpoints
@@ -61,6 +89,7 @@ export function useUpdateSettings(
   }, [
     provider,
     config.apiKey,
+    config.clearApiKey,
     config.endpoint,
     config.projectId,
     config.languageModel,
