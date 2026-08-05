@@ -1,6 +1,7 @@
+from unittest.mock import AsyncMock
+
 import pytest
 
-from unittest.mock import AsyncMock
 
 def _make_service():
     from services.chat_service import ChatService
@@ -14,7 +15,7 @@ async def test_bulk_delete_mixed_outcomes():
 
     async def fake_delete(user_id, session_id):
         if session_id == "s2":
-            return {"success": False,  "error": "Conversation not found"}
+            return {"success": False, "error": "Conversation not found"}
         return {"success": True, "error": None}
 
     svc.delete_session = AsyncMock(side_effect=fake_delete)

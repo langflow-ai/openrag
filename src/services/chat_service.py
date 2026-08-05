@@ -939,7 +939,7 @@ class ChatService:
 
     async def delete_sessions(self, user_id: str, session_ids: list[str]) -> dict[str, list[str]]:
         """Best-effort bulk delete, any failures are returned in response + logged
-        
+
         Returns {"deleted": [ids], "failed": [ids]}.
         """
         deleted: list[str] = []

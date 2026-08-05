@@ -258,10 +258,12 @@ async def bulk_delete_sessions_endpoint(
 
     try:
         result = await chat_service.delete_sessions(storage_user_id, authorized)
-        return JSONResponse({
-            "deleted": result.get("deleted", []),
-            "failed": result.get("failed", []) + forbidden,
-        })
+        return JSONResponse(
+            {
+                "deleted": result.get("deleted", []),
+                "failed": result.get("failed", []) + forbidden,
+            }
+        )
     except Exception:
         logger.exception("Error bulk-deleting sessions")
 
