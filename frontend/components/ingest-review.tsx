@@ -110,17 +110,21 @@ function useStaggeredPostLayoutReveal(
 ): number {
   const [revealed, setRevealed] = useState(0);
   const [prevResetKey, setPrevResetKey] = useState(resetKey);
+  const [prevEnabled, setPrevEnabled] = useState(enabled);
 
+  // Reset inline when the file or stagger gate flips — avoid a stale paint.
+  // https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes
   if (resetKey !== prevResetKey) {
     setPrevResetKey(resetKey);
     setRevealed(0);
   }
+  if (enabled !== prevEnabled) {
+    setPrevEnabled(enabled);
+    setRevealed(0);
+  }
 
   useEffect(() => {
-    if (!enabled) {
-      setRevealed(0);
-      return;
-    }
+    if (!enabled) return;
     // First step stays "active" briefly, then each completes in sequence.
     const delays = [700, 1400, 2100];
     const timers = delays.map((ms, index) =>
