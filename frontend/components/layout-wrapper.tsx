@@ -143,6 +143,12 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const isRightPanelOpen =
     isMenuOpen || (isPanelOpen && isOnKnowledgePage && !isMenuOpen);
 
+  // The floating status button's dot reflects provider / API-key failures
+  // (shown as a card inside the panel) in addition to backend infra health.
+  const overallStatus = isProviderUnhealthy
+    ? "unhealthy"
+    : statusData?.overall_status;
+
   return (
     <div
       className={cn(
