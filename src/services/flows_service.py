@@ -23,6 +23,14 @@ from utils.telemetry import Category, MessageId, TelemetryClient
 
 logger = get_logger(__name__)
 
+# Providers Langflow's unified Language Model / Embedding Model components can
+# route to (see change_langflow_model_value). azure_openai is deliberately
+# excluded: Langflow has no unified-catalog embeddings support for it and only
+# exposes it via a separate legacy standalone component.
+LANGFLOW_MODEL_VALUE_PROVIDERS = frozenset(
+    {"watsonx", "ollama", "openai", "anthropic", "azure_ai_foundry"}
+)
+
 
 class FlowsService:
     def __init__(self) -> None:
@@ -642,6 +650,8 @@ class FlowsService:
             return "Ollama"
         if provider == "anthropic":
             return "Anthropic"
+        if provider == "azure_ai_foundry":
+            return "Azure AI Foundry"
         return "OpenAI"
 
     async def _update_flow_field(
@@ -963,15 +973,15 @@ class FlowsService:
         Change dropdown values for provider-specific components across flows
 
         Args:
-            provider: The provider ("watsonx", "ollama", "openai", "anthropic")
+            provider: The provider ("watsonx", "ollama", "openai", "anthropic", "azure_ai_foundry")
             embedding_model: The embedding model name to set
             llm_model: The LLM model name to set
             force_embedding_update: If True, update embeddings even if model is None
             force_llm_update: If True, update LLM even if model is None
             flow_configs: Optional list of flow configs to update
         """
-        if provider not in ["watsonx", "ollama", "openai", "anthropic"]:
-            raise ValueError("provider must be 'watsonx', 'ollama', 'openai', or 'anthropic'")
+        if provider not in LANGFLOW_MODEL_VALUE_PROVIDERS:
+            raise ValueError(f"provider must be one of {sorted(LANGFLOW_MODEL_VALUE_PROVIDERS)}")
 
         try:
             # Use provided flow_configs or default to all flows
@@ -1352,6 +1362,7 @@ class FlowsService:
                 "openai": "OPENAI_API_KEY",
                 "watsonx": "WATSONX_APIKEY",
                 "anthropic": "ANTHROPIC_API_KEY",
+                "azure_ai_foundry": "AZURE_AI_FOUNDRY_API_KEY",
             },
             "api_base": {
                 "ollama": "OLLAMA_BASE_URL",
