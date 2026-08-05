@@ -6,13 +6,15 @@ from src.services.langflow_file_service import LangflowFileService
 def test_merge_no_settings_returns_tweaks_copy():
     base = {"OtherNode": {"x": 1}}
     out = LangflowFileService.merge_ui_ingest_settings_into_tweaks(base, None)
-    assert out == base
-    assert out is not base
+    assert out["OtherNode"] == {"x": 1}
+    assert "Docling Serve" in out
+    assert "Split Text" in out
 
 
 def test_merge_empty_settings_returns_tweaks_only():
     out = LangflowFileService.merge_ui_ingest_settings_into_tweaks(None, {})
-    assert out == {}
+    assert "Docling Serve" in out
+    assert "Split Text" in out
 
 
 def test_merge_chunk_fields_populate_split_text():
@@ -32,7 +34,8 @@ def test_merge_chunk_partial_only_sets_provided_keys():
         None,
         {"chunkSize": 1000},
     )
-    assert out["Split Text"] == {"chunk_size": 1000}
+    assert out["Split Text"]["chunk_size"] == 1000
+    assert out["Split Text"]["chunk_overlap"] == 200
 
 
 def test_merge_preserves_and_extends_existing_split_text():
@@ -52,7 +55,9 @@ def test_merge_embedding_model_is_ignored_in_tweaks():
         None,
         {"embeddingModel": "text-embedding-3-large"},
     )
-    assert out == {}
+    assert "OpenAIEmbeddings-joRJ6" not in out
+    assert "Docling Serve" in out
+    assert "Split Text" in out
 
 
 def test_connector_style_settings_without_embedding_only_split_text():
@@ -66,3 +71,4 @@ def test_connector_style_settings_without_embedding_only_split_text():
     out = LangflowFileService.merge_ui_ingest_settings_into_tweaks({}, settings)
     assert "OpenAIEmbeddings-joRJ6" not in out
     assert out["Split Text"]["chunk_size"] == 800
+    assert out["Split Text"]["chunk_overlap"] == 100

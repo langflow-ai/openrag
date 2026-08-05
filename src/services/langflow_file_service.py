@@ -79,7 +79,7 @@ class LangflowFileService:
         """
         final_tweaks = dict(tweaks) if tweaks else {}
 
-        from config.settings import get_openrag_config
+        from config.settings import DEFAULT_CHUNK_OVERLAP, DEFAULT_CHUNK_SIZE, get_openrag_config
 
         config = get_openrag_config()
 
@@ -100,10 +100,12 @@ class LangflowFileService:
         if "Split Text" not in final_tweaks:
             final_tweaks["Split Text"] = {}
         if "chunk_size" not in final_tweaks["Split Text"]:
-            final_tweaks["Split Text"]["chunk_size"] = getattr(config.knowledge, "chunk_size", 1000)
+            final_tweaks["Split Text"]["chunk_size"] = getattr(
+                config.knowledge, "chunk_size", DEFAULT_CHUNK_SIZE
+            )
         if "chunk_overlap" not in final_tweaks["Split Text"]:
             final_tweaks["Split Text"]["chunk_overlap"] = getattr(
-                config.knowledge, "chunk_overlap", 200
+                config.knowledge, "chunk_overlap", DEFAULT_CHUNK_OVERLAP
             )
 
         if not settings:
@@ -467,6 +469,7 @@ class LangflowFileService:
         )
 
         # Get the current embedding model and provider credentials from config
+        from config.settings import DEFAULT_CHUNK_OVERLAP, DEFAULT_CHUNK_SIZE
         from utils.langflow_headers import (
             add_provider_credentials_to_headers,
             build_model_provider_headers,
@@ -477,9 +480,11 @@ class LangflowFileService:
             embedding_model = selected_embedding_model
 
         split_tweaks = tweaks.get("Split Text", {}) if isinstance(tweaks, dict) else {}
-        chunk_size = split_tweaks.get("chunk_size", getattr(config.knowledge, "chunk_size", 1000))
+        chunk_size = split_tweaks.get(
+            "chunk_size", getattr(config.knowledge, "chunk_size", DEFAULT_CHUNK_SIZE)
+        )
         chunk_overlap = split_tweaks.get(
-            "chunk_overlap", getattr(config.knowledge, "chunk_overlap", 200)
+            "chunk_overlap", getattr(config.knowledge, "chunk_overlap", DEFAULT_CHUNK_OVERLAP)
         )
 
         headers = {
@@ -653,7 +658,7 @@ class LangflowFileService:
         if not tweaks:
             tweaks = {}
 
-        from config.settings import get_openrag_config
+        from config.settings import DEFAULT_CHUNK_OVERLAP, DEFAULT_CHUNK_SIZE, get_openrag_config
         from utils.langflow_headers import (
             add_provider_credentials_to_headers,
             build_model_provider_headers,
@@ -663,8 +668,8 @@ class LangflowFileService:
         embedding_model = config.knowledge.embedding_model
         resolved_document_id = hash_id(io.BytesIO(docs_url.encode("utf-8")))
         split_tweaks = tweaks.get("Split Text", {}) if isinstance(tweaks, dict) else {}
-        default_chunk_size = getattr(config.knowledge, "chunk_size", 1000)
-        default_chunk_overlap = getattr(config.knowledge, "chunk_overlap", 200)
+        default_chunk_size = getattr(config.knowledge, "chunk_size", DEFAULT_CHUNK_SIZE)
+        default_chunk_overlap = getattr(config.knowledge, "chunk_overlap", DEFAULT_CHUNK_OVERLAP)
         chunk_size = split_tweaks.get("chunk_size", default_chunk_size)
         chunk_overlap = split_tweaks.get("chunk_overlap", default_chunk_overlap)
         headers = {
