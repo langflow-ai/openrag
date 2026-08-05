@@ -942,11 +942,19 @@ class ChatService:
 
         Returns {"deleted": [ids], "failed": [ids]}.
         """
+        from services.session_ownership_service import session_ownership_service
+
         deleted: list[str] = []
         failed: list[str] = []
 
-        for session_id in session_ids:
+        for session_id in dict.fromkeys(session_ids):
             try:
+                owner = await session_ownership_service.get_session_owner(session_id)
+                if owner != user_id:
+                    logger.warning("bulk_delete: %s not owned by %s", session_id, user_id)
+                    failed.append(session_id)
+                    continue
+                
                 result = await self.delete_session(user_id, session_id)
                 if result.get("success"):
                     deleted.append(session_id)

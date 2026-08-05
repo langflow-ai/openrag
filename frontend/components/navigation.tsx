@@ -447,7 +447,7 @@ export function Navigation({
                 )}
                 <button
                   type="button"
-                  data-testid="caht-select-toggle"
+                  data-testid="chat-select-toggle"
                   className="text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded hover:bg-accent bg-accent/50"
                   onClick={() =>
                     selection.isSelecting ? selection.exit() : selection.enter()

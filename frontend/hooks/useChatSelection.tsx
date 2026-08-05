@@ -11,13 +11,13 @@ export function useChatSelection({
   const enter = useCallback(() => {
     setIsSelecting(true);
     onChange?.(true);
-  }, []);
+  }, [onChange]);
   const clear = useCallback(() => setSelectedIds(new Set()), []);
   const exit = useCallback(() => {
     setIsSelecting(false);
     setSelectedIds(new Set());
     onChange?.(false);
-  }, []);
+  }, [onChange]);
   const toggle = useCallback((id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);

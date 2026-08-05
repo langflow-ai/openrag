@@ -238,30 +238,18 @@ async def bulk_delete_sessions_endpoint(
     user: User = Depends(require_permission("conversations:delete:own")),
 ) -> JSONResponse:
     """Best-effort bulk delete of chat sessions owned by user (caller)"""
-    from services.session_ownership_service import session_ownership_service
-
     if not body.session_ids:
         raise HTTPException(status_code=400, detail={"error": "no_session_ids"})
     if len(body.session_ids) > MAX_BULK_DELETE:
         raise HTTPException(status_code=400, detail={"error": "too_many_session_ids"})
 
     storage_user_id = _openrag_user_id(user)
-    authorized: list[str] = []
-    forbidden: list[str] = []
-
-    for session_id in body.session_ids:
-        owner = await session_ownership_service.get_session_owner(session_id)
-        if owner == storage_user_id:
-            authorized.append(session_id)
-        else:
-            forbidden.append(session_id)
-
     try:
-        result = await chat_service.delete_sessions(storage_user_id, authorized)
+        result = await chat_service.delete_sessions(storage_user_id, body.session_ids)
         return JSONResponse(
             {
                 "deleted": result.get("deleted", []),
-                "failed": result.get("failed", []) + forbidden,
+                "failed": result.get("failed", []),
             }
         )
     except Exception:

@@ -1,4 +1,3 @@
-from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -11,38 +10,25 @@ class _User:
         self.user_id = uid
 
 
-def _fake_ownership(owners: dict[str, Any]) -> AsyncMock:
-    svc = AsyncMock()
-    svc.get_session_owner = AsyncMock(side_effect=lambda sid: owners.get(sid))
-
-    return svc
-
-
 @pytest.mark.asyncio
-async def test_bulk_delete_authorized_ids_passed_to_service(monkeypatch):
+async def test_bulk_delete_forwards_ids_and_maps_response():
     import json
 
     from api import chat as chat_module
 
-    monkeypatch.setattr(
-        "services.session_ownership_service.session_ownership_service",
-        _fake_ownership({"a": "alice", "b": "bob"}),
-    )
     fake_service = AsyncMock()
-    fake_service.delete_sessions = AsyncMock(return_value={"deleted": ["a"], "failed": []})
+    fake_service.delete_sessions = AsyncMock(return_value={"deleted": ["a"], "failed": ["b"]})
     body = chat_module.BulkDeleteBody(session_ids=["a", "b"])
 
     resp = await chat_module.bulk_delete_sessions_endpoint(
         body=body,
         chat_service=fake_service,
-        user=_User("alice"),  # type: ignore
+        user=_User("alice"),
     )
 
-    payload = json.loads(resp.body)  # type: ignore
-    fake_service.delete_sessions.assert_awaited_once_with("alice", ["a"])
-
-    assert payload["deleted"] == ["a"]
-    assert "b" in payload["failed"]
+    payload = json.loads(resp.body)
+    fake_service.delete_sessions.assert_awaited_once_with("alice", ["a", "b"])
+    assert payload == {"deleted": ["a"], "failed": ["b"]}
 
 
 @pytest.mark.asyncio
@@ -56,6 +42,6 @@ async def test_bulk_delete_reject_cases(session_ids):
         await chat_module.bulk_delete_sessions_endpoint(
             body=body,
             chat_service=AsyncMock(),
-            user=_User("alice"),  # type: ignore
+            user=_User("alice"),
         )
     assert exc.value.status_code == 400
