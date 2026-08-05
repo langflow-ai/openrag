@@ -6,12 +6,14 @@ import { DevRoleToggle } from "@/components/dev-role-toggle";
 import Logo from "@/components/icons/openrag-logo";
 import { UserNav } from "@/components/user-nav";
 import { useIsCloudBrand } from "@/contexts/brand-context";
+import { useConsoleStatus } from "@/contexts/console-status-context";
 import { useTask } from "@/contexts/task-context";
 import { cn } from "@/lib/utils";
 
 export function Header() {
   const isCloudBrand = useIsCloudBrand();
   const { tasks, toggleMenu } = useTask();
+  const { hasProblem } = useConsoleStatus();
 
   // Calculate active tasks for the bell icon
   const activeTasks = tasks.filter(
@@ -20,6 +22,9 @@ export function Header() {
       task.status === "running" ||
       task.status === "processing",
   );
+
+  // The bell dot lights for in-flight tasks OR a degraded/down component.
+  const showNotificationDot = activeTasks.length > 0 || hasProblem;
 
   return (
     <header className={cn(`flex w-full h-full items-center justify-between`)}>
@@ -58,7 +63,7 @@ export function Header() {
             </>
           )}
 
-          {/* Task Notification Bell */}
+          {/* Task + System Notification Bell */}
           <button
             type="button"
             onClick={toggleMenu}
@@ -71,7 +76,7 @@ export function Header() {
                 isCloudBrand ? "text-foreground" : "text-muted-foreground"
               }
             />
-            {activeTasks.length > 0 && <div className="header-notifications" />}
+            {showNotificationDot && <div className="header-notifications" />}
           </button>
 
           {/* Separator */}
