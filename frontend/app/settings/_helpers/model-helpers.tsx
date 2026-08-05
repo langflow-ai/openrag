@@ -11,7 +11,8 @@ export type ModelProvider =
   | "ollama"
   | "watsonx"
   | "azure_ai_foundry"
-  | "azure_openai";
+  | "azure_openai"
+  | "local";
 
 // Full ordered list of providers for settings / cards
 export const ALL_PROVIDERS: ModelProvider[] = [
@@ -65,6 +66,30 @@ export function getModelLogo(modelValue: string, provider?: ModelProvider) {
     return <AzureAIFoundryLogo className="w-4 h-4" />;
   } else if (provider === "azure_openai") {
     return <AzureOpenAILogo className="w-4 h-4" />;
+  } else if (provider === "local") {
+    return (
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="w-4 h-4 text-muted-foreground"
+      >
+        <rect x="4" y="4" width="16" height="16" rx="2" />
+        <rect x="9" y="9" width="6" height="6" />
+        <path d="M9 1v3" />
+        <path d="M15 1v3" />
+        <path d="M9 20v3" />
+        <path d="M15 20v3" />
+        <path d="M20 9h3" />
+        <path d="M20 15h3" />
+        <path d="M1 9h3" />
+        <path d="M1 15h3" />
+      </svg>
+    );
   }
 
   // Fallback to model name analysis

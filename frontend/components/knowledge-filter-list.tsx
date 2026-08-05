@@ -5,12 +5,12 @@ import { useGetAllFiltersQuery } from "@/app/api/queries/useGetAllFiltersQuery";
 import type { KnowledgeFilter } from "@/app/api/queries/useGetFiltersSearchQuery";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
-import { cn } from "@/lib/utils";
 import {
   type FilterColor,
   type IconKey,
   iconKeyToComponent,
-} from "./filter-icon-popover";
+} from "@/lib/filter-constants";
+import { cn } from "@/lib/utils";
 import { filterAccentClasses } from "./knowledge-filter-panel";
 
 interface ParsedQueryData {
@@ -154,7 +154,8 @@ export function KnowledgeFilterList({
                           const dataSources = parseQueryData(filter.query_data)
                             .filters.data_sources;
                           if (dataSources[0] === "*") return "All sources";
-                          const count = dataSources.length;
+                          const count =
+                            filter.active_source_count ?? dataSources.length;
                           return `${count} ${
                             count === 1 ? "source" : "sources"
                           }`;

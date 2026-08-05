@@ -132,7 +132,8 @@ async def test_standard_processor_uses_shared_writer_for_embedding_mapping_and_w
     assert user_client.index_calls == []
     assert admin_client.bulk_calls
     bulk_body = admin_client.bulk_calls[0]["body"]
-    assert bulk_body[0] == {"index": {"_index": "documents", "_id": "file-1_0"}}
+    assert bulk_body[0]["index"]["_index"] == "documents"
+    assert bulk_body[0]["index"]["_id"].endswith("_file-1_0")
     assert bulk_body[1]["document_id"] == "file-1"
     assert bulk_body[1]["owner"] == "user-1"
     assert bulk_body[1]["chunk_embedding_text_embedding_3_small"] == [0.1, 0.2, 0.3]

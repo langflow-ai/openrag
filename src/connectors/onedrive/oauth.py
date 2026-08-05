@@ -1,11 +1,16 @@
 import json
-import logging
 import os
 from typing import Any
 
 import msal
 
-logger = logging.getLogger(__name__)
+from connectors.microsoft_oauth_utils import verify_ms_access_token
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
+
+# Backward-compat alias used by get_access_token() call sites in this module.
+_verify_access_token = verify_ms_access_token
 
 
 class OneDriveOAuth:
@@ -346,8 +351,10 @@ class OneDriveOAuth:
                     self.RESOURCE_SCOPES, account=self._current_account
                 )
                 if result and "access_token" in result:
+                    access_token = result["access_token"]
+                    _verify_access_token(access_token)  # raises JWTVerificationError on failure
                     logger.info("OneDrive get_access_token: Success with current account")
-                    return result["access_token"]
+                    return access_token
                 else:
                     logger.warning(
                         f"OneDrive get_access_token: Failed with account, result: {result}"
@@ -357,8 +364,10 @@ class OneDriveOAuth:
             logger.info("OneDrive get_access_token: Fallback - trying without account")
             result = self.app.acquire_token_silent(self.RESOURCE_SCOPES, account=None)
             if result and "access_token" in result:
+                access_token = result["access_token"]
+                _verify_access_token(access_token)  # raises JWTVerificationError on failure
                 logger.info("OneDrive get_access_token: Fallback success")
-                return result["access_token"]
+                return access_token
 
             # If we get here, authentication has failed
             error_msg = (

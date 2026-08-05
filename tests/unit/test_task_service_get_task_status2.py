@@ -123,6 +123,32 @@ class TestInferFailureMetadata:
         assert meta is not None
         assert meta["actionable_by"] == "USER_ACTIONABLE"
 
+    def test_password_protected_pdf_maps_to_clean_message(self, task_service):
+        ft = _make_file_task(
+            docling_status=DoclingPhaseStatus.FAILED,
+            error=(
+                "Docling conversion did not complete (failed): "
+                "Docling result unavailable after SUCCESS status: Docling processing "
+                "failed: docling-parse could not load document "
+                "cbfc231c73e85df69b34cfa56b4bb0696dc0f10d0536bcca821f92c324041bac: "
+                "Failed to load document (PDFium: Incorrect password error)."
+            ),
+        )
+        meta = task_service._infer_failure_metadata(ft)
+        assert meta is not None
+        assert meta["actionable_by"] == "USER_ACTIONABLE"
+        assert meta["component"] == "docling"
+        assert meta["failure_phase"] == "parsing"
+        msg = meta["user_facing_message"]
+        assert "password-protected" in msg.lower()
+        assert "not supported" in msg.lower()
+        assert "remove the password" in msg.lower()
+        assert "upload the pdf again" in msg.lower()
+        # no internals leaked
+        assert "pdfium" not in msg.lower()
+        assert "docling-parse" not in msg.lower()
+        assert "cbfc231c" not in msg
+
     def test_langflow_empty_content_not_retryable(self, task_service):
         ft = _make_file_task(
             phase=IngestionPhase.LANGFLOW,
@@ -169,6 +195,74 @@ class TestInferFailureMetadata:
         assert meta["component"] == "langflow"
         assert meta["failure_phase"] == "unknown"
         assert meta["actionable_by"] == "RETRYABLE"
+
+    def test_langflow_model_not_found_surfaces_specific_message(self, task_service):
+        ft = _make_file_task(
+            phase=IngestionPhase.LANGFLOW,
+            docling_status=DoclingPhaseStatus.SUCCESS,
+            error=(
+                "Model 'ibm/granite-4-h-small' was not found. "
+                "This model may be unsupported, deprecated, or removed."
+            ),
+        )
+        meta = task_service._infer_failure_metadata(ft)
+        assert meta is not None
+        assert meta["component"] == "langflow"
+        assert meta["actionable_by"] == "USER_ACTIONABLE"
+        assert "granite-4-h-small" in meta["user_facing_message"]
+        assert "unexpectedly" not in meta["user_facing_message"].lower()
+
+    def test_langflow_revoked_api_key_failure(self, task_service):
+        ft = _make_file_task(
+            phase=IngestionPhase.LANGFLOW,
+            docling_status=DoclingPhaseStatus.SUCCESS,
+            error=(
+                'Failed to authenticate with IBM Watson: {"errorCode":"BXNIM0415E",'
+                '"errorMessage":"Provided API key could not be found."}'
+            ),
+        )
+        meta = task_service._infer_failure_metadata(ft)
+        assert meta is not None
+        assert meta["component"] == "openrag"
+        assert meta["failure_phase"] == "embedding"
+        assert meta["actionable_by"] == "USER_ACTIONABLE"
+        assert "API key" in meta["user_facing_message"]
+        assert "{" not in meta["user_facing_message"]
+
+    def test_langflow_disabled_api_key_failure(self, task_service):
+        """Disabled (not deleted) IBM keys must not fall through to generic Langflow copy."""
+        ft = _make_file_task(
+            phase=IngestionPhase.LANGFLOW,
+            docling_status=DoclingPhaseStatus.SUCCESS,
+            error=(
+                "Error building Component Embedding Model: Failed to initialize IBM "
+                "WatsonX embedding model: Attempt of authenticating connection to "
+                "service failed, please validate your credentials. Error: "
+                '{"errorCode":"BXNIM0420E","errorMessage":"Provided API key is disabled."}'
+            ),
+        )
+        meta = task_service._infer_failure_metadata(ft)
+        assert meta is not None
+        assert meta["component"] == "openrag"
+        assert meta["failure_phase"] == "embedding"
+        assert meta["actionable_by"] == "USER_ACTIONABLE"
+        assert "disabled" in meta["user_facing_message"].lower()
+        assert "unexpectedly" not in meta["user_facing_message"].lower()
+        assert "error building component" not in meta["user_facing_message"].lower()
+        assert "error running graph" not in meta["user_facing_message"].lower()
+        assert "{" not in meta["user_facing_message"]
+
+    def test_langflow_disconnect_with_api_key_text_prefers_credentials(self, task_service):
+        ft = _make_file_task(
+            phase=IngestionPhase.LANGFLOW,
+            docling_status=DoclingPhaseStatus.SUCCESS,
+            error=("Server disconnected without sending a response. Incorrect API key provided"),
+        )
+        meta = task_service._infer_failure_metadata(ft)
+        assert meta is not None
+        assert meta["failure_phase"] == "embedding"
+        assert "API key" in meta["user_facing_message"]
+        assert "connection was lost" not in meta["user_facing_message"].lower()
 
     def test_duplicate_file_error(self, task_service):
         ft = _make_file_task(
@@ -280,6 +374,7 @@ class TestGetTaskStatus2FailureMetadata:
         assert file_entry["component"] == "langflow"
         assert file_entry["failure_phase"] == "unknown"
         assert file_entry["actionable_by"] == "RETRYABLE"
+        assert file_entry["user_facing_message"] == "Langflow run failed"
 
     def test_duplicate_file_failure_adds_metadata(self, task_service):
         ft = _make_file_task(

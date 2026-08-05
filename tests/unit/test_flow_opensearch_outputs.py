@@ -76,3 +76,34 @@ def test_parser_components_are_not_forked_for_list_data():
         code = parser_node["data"]["node"]["template"]["code"]["value"]
 
         assert "return DataFrame(data=[item.data for item in input_data]), None" not in code
+
+
+def test_opensearch_component_fences_retrieved_text_as_untrusted():
+    """VULN-13906: retrieved chunk text must be fenced so the LLM treats it as data, not instructions."""
+    code = Path("flows/components/opensearch_multimodal.py").read_text(encoding="utf-8")
+
+    assert 'UNTRUSTED_CHUNK_FENCE_START = "<<<UNTRUSTED_DOC_CHUNK>>>"' in code
+    assert 'UNTRUSTED_CHUNK_FENCE_END = "<<<END_UNTRUSTED_DOC_CHUNK>>>"' in code
+    assert "def fence_untrusted_text(text: str) -> str:" in code
+    assert '"page_content": fence_untrusted_text(hit["_source"].get("text", ""))' in code
+    assert 'source["text"] = fence_untrusted_text(source["text"])' in code
+
+
+def test_embedded_opensearch_nodes_fence_untrusted_text():
+    """The fencing fix must be synced into every flow JSON embedding this component."""
+    py_code = Path("flows/components/opensearch_multimodal.py").read_text(encoding="utf-8")
+
+    for flow_path in (
+        "flows/ingestion_flow.json",
+        "flows/openrag_agent.json",
+        "flows/openrag_nudges.json",
+        "flows/openrag_url_mcp.json",
+    ):
+        flow = _load_flow(flow_path)
+        for node in _opensearch_nodes(flow):
+            embedded_code = node["data"]["node"]["template"]["code"]["value"]
+            assert embedded_code == py_code, (
+                f"{flow_path} node {node.get('id')} embedded code is out of sync with "
+                "flows/components/opensearch_multimodal.py — re-run "
+                "scripts/update_flow_components.py"
+            )

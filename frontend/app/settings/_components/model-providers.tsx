@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import AnthropicLogo from "@/components/icons/anthropic-logo";
 import AzureAIFoundryLogo from "@/components/icons/azure-ai-foundry-logo";
@@ -39,9 +39,11 @@ export const ModelProviders = () => {
 
   const [dialogOpen, setDialogOpen] = useState<ModelProvider | undefined>();
 
-  const allProviderKeys = isCloudBrand
-    ? ALL_PROVIDERS.filter((p) => !CLOUD_EXCLUDED_PROVIDERS.includes(p))
-    : ALL_PROVIDERS;
+  const allProviderKeys = useMemo(() => {
+    return isCloudBrand
+      ? ALL_PROVIDERS.filter((p) => !CLOUD_EXCLUDED_PROVIDERS.includes(p))
+      : ALL_PROVIDERS;
+  }, [isCloudBrand]);
 
   // Handle URL search param to open dialogs
   useEffect(() => {
@@ -49,7 +51,7 @@ export const ModelProviders = () => {
     if (searchParam && allProviderKeys.includes(searchParam as ModelProvider)) {
       setDialogOpen(searchParam as ModelProvider);
     }
-  }, [searchParams]);
+  }, [searchParams, allProviderKeys]);
 
   // Function to close dialog and remove search param
   const handleCloseDialog = () => {
@@ -107,6 +109,34 @@ export const ModelProviders = () => {
       logo: AzureOpenAILogo,
       logoColor: "text-white",
       logoBgColor: "bg-[#0078D4]",
+    },
+    local: {
+      name: "Local",
+      logo: (props) => (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          {...props}
+        >
+          <rect x="4" y="4" width="16" height="16" rx="2" />
+          <rect x="9" y="9" width="6" height="6" />
+          <path d="M9 1v3" />
+          <path d="M15 1v3" />
+          <path d="M9 20v3" />
+          <path d="M15 20v3" />
+          <path d="M20 9h3" />
+          <path d="M20 15h3" />
+          <path d="M1 9h3" />
+          <path d="M1 15h3" />
+        </svg>
+      ),
+      logoColor: "text-muted-foreground",
+      logoBgColor: "bg-white",
     },
   };
 

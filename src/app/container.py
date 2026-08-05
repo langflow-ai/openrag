@@ -23,8 +23,10 @@ from services.dls_principal_service import DLSPrincipalService
 from services.docling_polling_service import DoclingPollingService
 from services.document_index_writer import DocumentIndexWriter
 from services.document_service import DocumentService
+from services.file_service_v2 import FileServiceV2
 from services.flows_service import FlowsService
 from services.group_acl_service import GroupACLService
+from services.ingest_preview_service import IngestPreviewService
 from services.knowledge_filter_service import KnowledgeFilterService
 from services.langflow_file_service import LangflowFileService
 from services.langflow_ingest_token_service import LangflowIngestTokenService
@@ -82,6 +84,7 @@ async def initialize_services():
     models_service = ModelsService()
     document_index_writer = DocumentIndexWriter()
     langflow_ingest_token_service = LangflowIngestTokenService()
+    ingest_preview_service = IngestPreviewService()
     document_service = DocumentService(
         session_manager=session_manager,
         models_service=models_service,
@@ -211,6 +214,8 @@ async def initialize_services():
     session_ownership_service._session_factory = _lazy_session_factory
     conversation_persistence._session_factory = _lazy_session_factory
 
+    file_service_v2 = FileServiceV2(session_manager=session_manager)
+
     return {
         "document_service": document_service,
         "search_service": search_service,
@@ -232,6 +237,8 @@ async def initialize_services():
         "langflow_mcp_service": langflow_mcp_service,
         "docling_service": clients.docling_service,
         "docling_polling_service": docling_polling_service,
+        "ingest_preview_service": ingest_preview_service,
         "rbac_service": rbac_service,
         "workspace_config_service": workspace_config_service,
+        "file_service_v2": file_service_v2,
     }

@@ -29,7 +29,7 @@ from utils.telemetry import Category, MessageId, TelemetryClient
 logger = get_logger(__name__)
 
 
-async def _update_mcp_server_urls(langflow_mcp_service):
+async def _update_mcp_server_urls(langflow_mcp_service) -> None:
     """Update MCP server URLs (patch localhost and convert to streamable HTTP)."""
     try:
         result = await langflow_mcp_service.update_all_mcp_server_urls()
@@ -38,12 +38,27 @@ async def _update_mcp_server_urls(langflow_mcp_service):
         logger.warning(f"Failed to update MCP server URLs after settings change: {str(mcp_error)}")
 
 
-async def startup_tasks(services):
+async def startup_tasks(services) -> None:
     """Startup tasks"""
     from config.settings import IBM_AUTH_ENABLED
 
     logger.info("Starting startup tasks")
     await TelemetryClient.send_event(Category.APPLICATION_STARTUP, MessageId.ORB_APP_START_INIT)
+
+    # Warm the in-process cache of workspace-level OAuth connector credential
+    # overrides (see services.connector_oauth_config_service) so BaseConnector's
+    # synchronous get_client_id()/get_client_secret() resolve overrides without a
+    # DB session. Reuses the same lazy session factory wired into workspace_config_service.
+    try:
+        from services.connector_oauth_config_service import warm_cache
+
+        await warm_cache(services["workspace_config_service"]._session_factory)
+    except Exception as e:
+        logger.error(
+            "Failed to warm connector OAuth config cache — overrides unavailable "
+            "until the next restart, env vars still work",
+            error=str(e),
+        )
 
     # Update model registry to allow further search calls to be instant
     try:
@@ -155,13 +170,11 @@ async def startup_tasks(services):
     # Update MCP server URLs (patch localhost and convert to streamable HTTP)
     await _update_mcp_server_urls(services["langflow_mcp_service"])
 
-    # Ensure all configured flows exist in Langflow (create-only, never overwrites).
-    # This replaces LANGFLOW_LOAD_FLOWS_PATH, which performed a blind upsert on
-    # every container start and discarded any user edits made in the Langflow UI.
-    newly_created: set[str] = set()
+    # Ensure all configured flows exist in Langflow (create-only, never overwrites existing).
+    # If a flow does not exist, it is created and active configuration settings are reapplied.
     try:
         flows_service = services["flows_service"]
-        newly_created = await flows_service.ensure_flows_exist()
+        await flows_service.ensure_flows_exist()
     except Exception as e:
         logger.error(
             "Failed to ensure Langflow flows exist at startup — "
@@ -169,38 +182,15 @@ async def startup_tasks(services):
             error=str(e),
         )
 
-    # Check if flows were reset and reapply settings if config is edited
+    # Older Langflow databases may have plain-string globals stored as Credential
+    # variables because environment-seeded globals used Credential by default.
     try:
-        config = get_openrag_config()
-        if config.edited:
-            logger.info("Checking if Langflow flows were reset")
-            flows_service = services["flows_service"]
-            reset_flows = await flows_service.check_flows_reset()
-            # Exclude flows that were just seeded — they match the JSON by design,
-            # not because they were externally reset.
-            reset_flows = [f for f in reset_flows if f not in newly_created]
+        from api.settings.langflow_sync import ensure_required_langflow_global_variables
 
-            if reset_flows:
-                logger.info(
-                    f"Detected reset flows: {', '.join(reset_flows)}. Reapplying all settings."
-                )
-                await TelemetryClient.send_event(
-                    Category.FLOW_OPERATIONS, MessageId.ORB_FLOW_RESET_DETECTED
-                )
-                from api.settings import reapply_all_settings
-
-                await reapply_all_settings(session_manager=services["session_manager"])
-                logger.info("Successfully reapplied settings after detecting flow resets")
-                await TelemetryClient.send_event(
-                    Category.FLOW_OPERATIONS, MessageId.ORB_FLOW_SETTINGS_REAPPLIED
-                )
-            else:
-                logger.info("No flows detected as reset, skipping settings reapplication")
-        else:
-            logger.debug("Configuration not yet edited, skipping flow reset check")
+        await ensure_required_langflow_global_variables(get_openrag_config())
+        logger.info("Ensured required Langflow global variables")
     except Exception as e:
-        logger.error(f"Failed to check flows reset or reapply settings: {str(e)}")
-        await TelemetryClient.send_event(
-            Category.FLOW_OPERATIONS, MessageId.ORB_FLOW_RESET_CHECK_FAIL
+        logger.error(
+            "Failed to ensure required Langflow global variables at startup",
+            error=str(e),
         )
-        # Don't fail startup if this check fails

@@ -298,17 +298,15 @@ class DoclingManager:
                 "--python",
                 "3.13",
                 "--from",
-                "docling-serve[ui]==1.20.0",
+                "docling-serve[ui]==1.26.0",
                 "--with",
                 "onnxruntime",
                 "--with",
                 "easyocr",
                 "--with",
-                f"docling[{docling_extras}]==2.95.0",
+                f"docling[{docling_extras}]==2.108.0",
                 "--with",
-                "docling-core==2.77.1",
-                "--with",
-                "docling-jobkit==1.20.0",
+                "docling-core==2.85.0",
                 "--with",
                 "transformers>=5.8.1,<5.9.0",
             ]
@@ -337,11 +335,27 @@ class DoclingManager:
             # async task state (leading to 404 on /v1/result/{id}).
             self._log_file_path.parent.mkdir(parents=True, exist_ok=True)
             log_file = open(self._log_file_path, "w")
+
+            env = os.environ.copy()
+
+            # Disable PyTorch model compilation to prevent Dynamo/AttributeError issues on CPU/Mac
+            env["TORCH_COMPILE_DISABLE"] = "1"
+            env["TORCH_DYNAMO_DISABLE"] = "1"
+
+            # Add docling serve environment variables
+            if "DOCLING_SERVE_ENG_RAY_TENANT_ID_HEADER" not in env:
+                env["DOCLING_SERVE_ENG_RAY_TENANT_ID_HEADER"] = "X-Docling-Tenant-Id"
+            if "DOCLING_SERVE_ENABLE_REMOTE_SERVICES" not in env:
+                env["DOCLING_SERVE_ENABLE_REMOTE_SERVICES"] = "true"
+            if "DOCLING_SERVE_ALLOW_CUSTOM_VLM_CONFIG" not in env:
+                env["DOCLING_SERVE_ALLOW_CUSTOM_VLM_CONFIG"] = "true"
+
             self._process = subprocess.Popen(
                 cmd,
                 stdout=log_file,
                 stderr=subprocess.STDOUT,  # Merge stderr into stdout log file
                 start_new_session=True,  # Detach from parent process group
+                env=env,
             )
             # Close parent's copy of the fd; the child has its own
             log_file.close()

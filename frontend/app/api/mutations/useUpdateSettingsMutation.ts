@@ -3,6 +3,7 @@ import {
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
+import { formatProviderErrorMessage } from "@/lib/chat-stream-errors";
 import { useGetCurrentProviderModelsQuery } from "../queries/useGetModelsQuery";
 import type { Settings } from "../queries/useGetSettingsQuery";
 
@@ -21,6 +22,17 @@ export interface UpdateSettingsRequest {
   disable_ingest_with_langflow?: boolean;
   embedding_model?: string;
   embedding_provider?: string;
+
+  // Docling VLM pipeline settings
+  vlm_enabled?: boolean;
+  vlm_provider?: string;
+  vlm_model?: string;
+  vlm_prompt?: string;
+  vlm_response_format?: string;
+  vlm_max_tokens?: number;
+  vlm_concurrency?: number;
+  vlm_timeout?: number;
+  vlm_watsonx_api_version?: string;
 
   // Provider-specific settings (for dialogs)
   model_provider?: string; // Deprecated, kept for backward compatibility
@@ -65,9 +77,9 @@ class UpdateSettingsError extends Error {
   readonly affectedModels?: AffectedEmbeddingModel[];
 
   constructor(status: number, data: Record<string, unknown>) {
-    const message =
+    const raw =
       typeof data.error === "string" ? data.error : "Failed to update settings";
-    super(message);
+    super(formatProviderErrorMessage(raw));
     this.name = "UpdateSettingsError";
     this.status = status;
     this.code = typeof data.code === "string" ? data.code : undefined;

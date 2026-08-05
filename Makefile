@@ -3,6 +3,7 @@ ENV_FILE ?= .env
 
 # Load variables from $(ENV_FILE) if present so `make` commands pick them up
 # Strip quotes from values to avoid issues with tools that don't handle them like python-dotenv does
+
 ifneq (,$(wildcard $(ENV_FILE)))
   include $(ENV_FILE)
   export $(shell sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' $(ENV_FILE))
@@ -104,7 +105,7 @@ endef
        ci-build-images ci-save-images \
        backend frontend docling docling-stop install-be install-fe build-be build-fe build-os build-lf logs-be logs-fe logs-lf logs-os \
        shell-be shell-lf shell-os restart status health db-reset clear-os-data flow-upload setup factory-reset \
-       dev-branch build-langflow-dev stop-dev clean-dev logs-dev logs-lf-dev shell-lf-dev restart-dev status-dev \
+       dev-branch dev-branch-cpu dev-branch-local dev-branch-local-cpu build-langflow-dev stop-dev clean-dev logs-dev logs-lf-dev shell-lf-dev restart-dev status-dev \
        ensure-langflow-data ensure-backend-volumes
 
 all: help
@@ -266,6 +267,9 @@ help_dev: ## Show development environment commands
 	@echo "  $(PURPLE)make dev-branch$(NC)      - Build & run with custom Langflow branch"
 	@echo "                         Usage: make dev-branch BRANCH=test-openai-responses"
 	@echo "                                make dev-branch BRANCH=feature-x REPO=https://github.com/org/langflow.git"
+	@echo "  $(PURPLE)make dev-branch-cpu$(NC)  - Build & run (CPU only) with custom Langflow branch"
+	@echo "  $(PURPLE)make dev-branch-local$(NC) - Start local infrastructure only with custom Langflow branch"
+	@echo "  $(PURPLE)make dev-branch-local-cpu$(NC) - Start local infrastructure only (CPU only) with custom Langflow branch"
 	@echo "  $(PURPLE)make build-langflow-dev$(NC) - Build only the Langflow dev image (no cache)"
 	@echo "  $(PURPLE)make stop-dev$(NC)        - Stop dev environment containers"
 	@echo "  $(PURPLE)make restart-dev$(NC)     - Restart dev environment"
@@ -426,7 +430,7 @@ dev: ensure-langflow-data ensure-backend-volumes ## Start full stack with GPU su
 
 dev-cpu: ensure-langflow-data ensure-backend-volumes ## Start full stack with CPU only
 	@echo "$(YELLOW)Starting OpenRAG with CPU only...$(NC)"
-	$(COMPOSE_CMD) up -d
+	$(COMPOSE_CMD) up -d $(SERVICES)
 	@echo "$(PURPLE)Services started!$(NC)"
 	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
 	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:$${FRONTEND_PORT:-3000}"
@@ -519,6 +523,38 @@ dev-branch-cpu: ensure-langflow-data ensure-backend-volumes ## Build & run full 
 	@echo "   $(CYAN)Frontend:$(NC)              http://localhost:$${FRONTEND_PORT:-3000}"
 	@echo "   $(CYAN)OpenSearch:$(NC)            http://localhost:$${OPENSEARCH_PORT:-9200}"
 	@echo "   $(CYAN)Dashboards:$(NC)            http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
+
+dev-branch-local: ensure-langflow-data ensure-backend-volumes ## Start infrastructure for local development with custom Langflow branch
+	@echo "$(YELLOW)Building Langflow from branch: $(BRANCH)$(NC)"
+	@echo "   $(CYAN)Repository:$(NC) $(REPO)"
+	@echo ""
+	@echo "$(YELLOW)This may take several minutes for the first build...$(NC)"
+	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.dev.yml build langflow
+	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml build opensearch
+	@echo "$(YELLOW)Starting infrastructure only (for local development) with custom Langflow build...$(NC)"
+	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.dev.yml -f docker-compose.host-backend.yml up -d opensearch dashboards langflow
+	@echo "$(PURPLE)Infrastructure started!$(NC)"
+	@echo "   $(CYAN)Langflow ($(BRANCH)):$(NC) http://localhost:$${LANGFLOW_PORT:-7860}"
+	@echo "   $(CYAN)OpenSearch:$(NC)            http://localhost:$${OPENSEARCH_PORT:-9200}"
+	@echo "   $(CYAN)Dashboards:$(NC)            http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
+	@echo ""
+	@echo "$(YELLOW)Now run 'make backend' and 'make frontend' in separate terminals$(NC)"
+
+dev-branch-local-cpu: ensure-langflow-data ensure-backend-volumes ## Start infrastructure for local development, with CPU only and custom Langflow branch
+	@echo "$(YELLOW)Building Langflow from branch: $(BRANCH)$(NC)"
+	@echo "   $(CYAN)Repository:$(NC) $(REPO)"
+	@echo ""
+	@echo "$(YELLOW)This may take several minutes for the first build...$(NC)"
+	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.dev.yml build langflow
+	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.host-backend.yml build opensearch
+	@echo "$(YELLOW)Starting infrastructure only (for local development) with CPU only and custom Langflow build...$(NC)"
+	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.host-backend.yml up -d opensearch dashboards langflow
+	@echo "$(PURPLE)Infrastructure started!$(NC)"
+	@echo "   $(CYAN)Langflow ($(BRANCH)):$(NC) http://localhost:$${LANGFLOW_PORT:-7860}"
+	@echo "   $(CYAN)OpenSearch:$(NC)            http://localhost:$${OPENSEARCH_PORT:-9200}"
+	@echo "   $(CYAN)Dashboards:$(NC)            http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
+	@echo ""
+	@echo "$(YELLOW)Now run 'make backend' and 'make frontend' in separate terminals$(NC)"
 
 build-langflow-dev: ## Build only the Langflow dev image (no cache)
 	@echo "$(YELLOW)Building Langflow dev image from branch: $(BRANCH)$(NC)"
@@ -725,14 +761,22 @@ backend: ## Run backend locally
 frontend: ## Run frontend locally
 	@echo "$(YELLOW)Starting frontend locally...$(NC)"
 	@if [ ! -d "frontend/node_modules" ]; then echo "$(YELLOW)Installing frontend dependencies first...$(NC)"; cd frontend && npm install; fi
+	@ARCH=$$(uname -m); \
+	export ENV_FILE="$(abspath $(ENV_FILE))"; \
+	PORT=$${FRONTEND_PORT:-3000}; \
+	export NEXT_DIST_DIR=$${NEXT_DIST_DIR:-$$( [ "$$PORT" = "3000" ] && echo .next || echo .next-$$PORT )}; \
 	cd frontend && \
-		export ENV_FILE="$(abspath $(ENV_FILE))"; \
-		PORT=$${FRONTEND_PORT:-3000}; \
-		export NEXT_DIST_DIR=$${NEXT_DIST_DIR:-$$( [ "$$PORT" = "3000" ] && echo .next || echo .next-$$PORT )}; \
-		echo "$(YELLOW)Using distDir $$NEXT_DIST_DIR$(NC)"; \
+	echo "$(YELLOW)Using distDir $$NEXT_DIST_DIR$(NC)"; \
+	if [ "$$ARCH" = "ppc64le" ] || [ "$$ARCH" = "ppc64" ]; then \
+		echo "$(YELLOW)Detected Power architecture ($$ARCH) — using Webpack fallback$(NC)"; \
+		npx next dev --webpack \
+			--port $$PORT \
+			--hostname $(hostname); \
+	else \
 		npx next dev \
 			--port $$PORT \
-			--hostname $(hostname)
+			--hostname $(hostname); \
+	fi
 
 docling: ## Start docling-serve for document processing
 	@echo "$(YELLOW)Starting docling-serve...$(NC)"
@@ -877,14 +921,10 @@ ci-build-images: ## Build all OpenRAG images for CI artifact sharing
 	@set -e; \
 	IMAGE_TAG=$${OPENRAG_VERSION:-latest}; \
 	echo "$(YELLOW)Building all OpenRAG images with tag '$$IMAGE_TAG'...$(NC)"; \
-	$(CONTAINER_RUNTIME) build -t langflowai/openrag-opensearch:$$IMAGE_TAG -f Dockerfile . & PID1=$$!; \
-	$(CONTAINER_RUNTIME) build -t langflowai/openrag-backend:$$IMAGE_TAG -f Dockerfile.backend . & PID2=$$!; \
-	$(CONTAINER_RUNTIME) build -t langflowai/openrag-frontend:$$IMAGE_TAG -f Dockerfile.frontend . & PID3=$$!; \
-	$(CONTAINER_RUNTIME) build -t langflowai/openrag-langflow:$$IMAGE_TAG -f Dockerfile.langflow . & PID4=$$!; \
-	wait $$PID1 || exit 1; \
-	wait $$PID2 || exit 1; \
-	wait $$PID3 || exit 1; \
-	wait $$PID4 || exit 1; \
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-opensearch:$$IMAGE_TAG -f Dockerfile .; \
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-backend:$$IMAGE_TAG -f Dockerfile.backend .; \
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-frontend:$$IMAGE_TAG -f Dockerfile.frontend .; \
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-langflow:$$IMAGE_TAG -f Dockerfile.langflow .; \
 	echo "$(GREEN)All images built successfully!$(NC)"
 
 ci-save-images: ## Save CI-built OpenRAG images to .ci-artifacts/openrag-ci-images.tar
@@ -916,8 +956,8 @@ test-ci: ensure-langflow-data ensure-backend-volumes ## Start infra, run integra
 	$(CONTAINER_RUNTIME) build --no-cache -t langflowai/openrag-opensearch:latest -f Dockerfile .; \
 	echo "::endgroup::"; \
 	echo "::group::Start Infrastructure"; \
-	echo "$(YELLOW)Starting infra (OpenSearch + Dashboards + Langflow + Backend + Frontend) with CPU containers$(NC)"; \
-	OPENSEARCH_HOST=opensearch $(COMPOSE_CMD) up -d opensearch dashboards langflow openrag-backend openrag-frontend; \
+	echo "$(YELLOW)Starting infra (OpenSearch + Langflow + Backend + Frontend) with CPU containers$(NC)"; \
+	OPENSEARCH_HOST=opensearch $(COMPOSE_CMD) up -d opensearch langflow openrag-backend openrag-frontend; \
 	echo "$(CYAN)Architecture: $$(uname -m), Platform: $$(uname -s)$(NC)"; \
 	echo "$(YELLOW)Starting docling-serve...$(NC)"; \
 	DOCLING_START_FAILED=0; \
@@ -1045,9 +1085,9 @@ test-ci-local: ensure-langflow-data ensure-backend-volumes ## Same as test-ci bu
 	$(CONTAINER_RUNTIME) build -t langflowai/openrag-langflow:latest -f Dockerfile.langflow .; \
 	echo "::endgroup::"; \
 	echo "::group::Start Infrastructure"; \
-	echo "$(YELLOW)Starting infra (OpenSearch + Dashboards + Langflow + Backend + Frontend) with CPU containers$(NC)"; \
+	echo "$(YELLOW)Starting infra (OpenSearch + Langflow + Backend + Frontend) with CPU containers$(NC)"; \
 	echo "$(CYAN)Architecture: $$(uname -m), Platform: $$(uname -s)$(NC)"; \
-	OPENSEARCH_HOST=opensearch $(COMPOSE_CMD) up -d opensearch dashboards langflow openrag-backend openrag-frontend; \
+	OPENSEARCH_HOST=opensearch $(COMPOSE_CMD) up -d opensearch langflow openrag-backend openrag-frontend; \
 	echo "$(YELLOW)Starting docling-serve...$(NC)"; \
 	DOCLING_START_FAILED=0; \
 	DOCLING_START_OUTPUT=$$(uv run python scripts/docling_ctl.py start --port 5001 --timeout 180 2>&1) || DOCLING_START_FAILED=1; \
@@ -1153,10 +1193,11 @@ test-ci-local: ensure-langflow-data ensure-backend-volumes ## Same as test-ci bu
 	if [ $$TEST_RESULT -ne 0 ]; then \
 		echo "$(RED)=== Tests failed, saving container logs to service-logs/ ===$(NC)"; \
 		mkdir -p service-logs; \
-		$(CONTAINER_RUNTIME) logs langflow > service-logs/langflow.log 2>&1 || echo "$(RED)Could not get Langflow logs$(NC)"; \
-		$(CONTAINER_RUNTIME) logs openrag-backend > service-logs/backend.log 2>&1 || echo "$(RED)Could not get backend logs$(NC)"; \
-		$(CONTAINER_RUNTIME) logs openrag-frontend > service-logs/frontend.log 2>&1 || echo "$(RED)Could not get frontend logs$(NC)"; \
-		$(CONTAINER_RUNTIME) logs os > service-logs/opensearch.log 2>&1 || echo "$(RED)Could not get OpenSearch logs$(NC)"; \
+		$(CONTAINER_RUNTIME) logs $(COMPOSE_PROJECT_NAME)-langflow > service-logs/langflow.log 2>&1 || echo "$(RED)Could not get Langflow logs$(NC)"; \
+		$(CONTAINER_RUNTIME) logs $(COMPOSE_PROJECT_NAME)-backend > service-logs/backend.log 2>&1 || echo "$(RED)Could not get backend logs$(NC)"; \
+		$(CONTAINER_RUNTIME) logs $(COMPOSE_PROJECT_NAME)-frontend > service-logs/frontend.log 2>&1 || echo "$(RED)Could not get frontend logs$(NC)"; \
+		$(CONTAINER_RUNTIME) logs $(COMPOSE_PROJECT_NAME)-opensearch > service-logs/opensearch.log 2>&1 || echo "$(RED)Could not get OpenSearch logs$(NC)"; \
+		if [ -f ~/.openrag/tui/docling-serve.log ]; then cp ~/.openrag/tui/docling-serve.log service-logs/docling.log 2>/dev/null || echo "$(RED)Could not get Docling logs$(NC)"; fi; \
 	fi; \
 	echo "::group::Test Failure Report"; \
 	uv run python scripts/ci/generate_test_report.py service-logs || true; \
@@ -1199,8 +1240,16 @@ health: ## Check health of all services
 	@printf "$(PURPLE)Health check:$(NC)\n"
 	@printf "$(CYAN)Frontend:$(NC)   "
 	@if curl -s -k --fail http://127.0.0.1:$${FRONTEND_PORT:-3000}/ >/dev/null 2>&1; then printf "$(GREEN)Healthy$(NC)\n"; else printf "$(RED)Not responding$(NC)\n"; fi
-	@printf "$(CYAN)Backend:$(NC)    "
-	@if curl -s -k --fail http://127.0.0.1:$${OPENRAG_BACKEND_PORT:-8000}/health >/dev/null 2>&1; then printf "$(GREEN)Healthy$(NC)\n"; else printf "$(RED)Not responding$(NC)\n"; fi
+	@printf "$(CYAN)Backend:$(NC)     "
+	@if curl -s -k --fail http://127.0.0.1:$${OPENRAG_BACKEND_PORT:-8000}/health >/dev/null 2>&1; then \
+		printf "$(GREEN)Healthy$(NC)\n"; \
+	elif command -v podman >/dev/null 2>&1 && podman ps --format "{{.Names}}" | grep -q "^openrag-backend$$" && podman exec openrag-backend curl -s -k --fail http://127.0.0.1:8000/health >/dev/null 2>&1; then \
+		printf "$(GREEN)Healthy$(NC)\n"; \
+	elif command -v docker >/dev/null 2>&1 && docker ps --format "{{.Names}}" | grep -q "^openrag-backend$$" && docker exec openrag-backend curl -s -k --fail http://127.0.0.1:8000/health >/dev/null 2>&1; then \
+		printf "$(GREEN)Healthy$(NC)\n"; \
+	else \
+		printf "$(RED)Not responding$(NC)\n"; \
+	fi
 	@printf "$(CYAN)Langflow:$(NC)   "
 	@if curl -s -k --fail http://127.0.0.1:$${LANGFLOW_PORT:-7860}/health >/dev/null 2>&1; then printf "$(GREEN)Healthy$(NC)\n"; else printf "$(RED)Not responding$(NC)\n"; fi
 	@printf "$(CYAN)OpenSearch:$(NC) "

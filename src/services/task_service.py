@@ -91,6 +91,28 @@ def _is_task_cancellation_error(error: str) -> bool:
     return any(marker in lowered for marker in _TASK_CANCELLATION_ERROR_MARKERS)
 
 
+def _provider_credential_failure_metadata(error: str) -> dict | None:
+    """Classify invalid/revoked provider API key failures for ingestion toasts/UI."""
+    if not error:
+        return None
+
+    from api.provider_validation import (
+        is_provider_credential_error,
+        sanitize_provider_error_content,
+    )
+
+    cleaned = sanitize_provider_error_content(error)
+    if not (is_provider_credential_error(error) or is_provider_credential_error(cleaned)):
+        return None
+
+    return {
+        "component": "openrag",
+        "failure_phase": "embedding",
+        "user_facing_message": cleaned,
+        "actionable_by": "USER_ACTIONABLE",
+    }
+
+
 def _is_transient_connectivity_error(error: str) -> bool:
     lowered = error.lower()
     return any(marker in lowered for marker in _TRANSIENT_CONNECTIVITY_ERROR_MARKERS)
@@ -253,6 +275,7 @@ class TaskService:
         original_filenames: dict | None = None,
         replace_duplicates: bool = False,
         settings: dict | None = None,
+        preview_mode: bool = False,
     ) -> str:
         """Create a new upload task for bulk file processing"""
         # Use default DocumentFileProcessor with user context
@@ -276,6 +299,7 @@ class TaskService:
             processor,
             original_filenames=original_filenames,
             temp_file_paths=file_paths,
+            preview_mode=preview_mode,
         )
 
     async def create_langflow_upload_task(
@@ -295,6 +319,7 @@ class TaskService:
         connector_type: str = "local",
         existing_task_id: str = None,
         temp_file_paths: list | None = None,
+        preview_mode: bool = False,
     ) -> str:
         """Create a new upload task for Langflow file processing with upload and ingest"""
         # Use LangflowFileProcessor with user context
@@ -321,6 +346,7 @@ class TaskService:
             original_filenames,
             existing_task_id=existing_task_id,
             temp_file_paths=temp_file_paths if temp_file_paths is not None else file_paths,
+            preview_mode=preview_mode,
         )
 
     async def create_langflow_url_upload_task(
@@ -366,6 +392,7 @@ class TaskService:
         original_filenames: dict | None = None,
         existing_task_id: str = None,
         temp_file_paths: list | None = None,
+        preview_mode: bool = False,
     ) -> str:
         """Create a new task with custom processor for any type of items"""
         import os
@@ -400,6 +427,7 @@ class TaskService:
                 task_id=task_id,
                 total_files=len(items),
                 file_tasks=file_tasks,
+                preview_mode=preview_mode,
             )
             upload_task.processor = processor
             if store_user_id not in self.task_store:
@@ -754,6 +782,10 @@ class TaskService:
                 return self.task_store[candidate_user_id][task_id]
         return None
 
+    def get_upload_task(self, user_id: str, task_id: str) -> UploadTask | None:
+        """Public accessor for upload task lookup."""
+        return self._resolve_upload_task(user_id, task_id)
+
     def _resolve_upload_task_store(
         self, user_id: str, task_id: str
     ) -> tuple[str, UploadTask] | None:
@@ -956,6 +988,14 @@ class TaskService:
                 "actionable_by": "USER_ACTIONABLE",
             }
 
+        if "incorrect password" in error.lower():  # for password protected pdf cases
+            return {
+                "component": "docling",
+                "failure_phase": "parsing",
+                "user_facing_message": "This PDF is password-protected. Password-protected PDFs are not supported. Remove the password and upload the PDF again.",
+                "actionable_by": "USER_ACTIONABLE",
+            }
+
         if docling_status == DoclingPhaseStatus.EXPIRED:
             return {
                 "component": "docling",
@@ -1078,6 +1118,14 @@ class TaskService:
                 "actionable_by": "USER_ACTIONABLE",
             }
 
+        # Prefer credential failures over transport messages. Langflow may report
+        # "server disconnected" when the real cause is a revoked embedding API key;
+        # resolve_ingest_error_message() rewrites file_task.error in that case, and
+        # this check also covers errors that mention both disconnect + API key text.
+        credential_meta = _provider_credential_failure_metadata(error)
+        if credential_meta:
+            return credential_meta
+
         if _is_transient_connectivity_error(error) or _is_langflow_transport_failure(error):
             return {
                 "component": "langflow",
@@ -1100,6 +1148,45 @@ class TaskService:
                     ),
                     "actionable_by": "RETRYABLE",
                 }
+
+            # Prefer a sanitized specific provider/Langflow message (model missing,
+            # project misconfig, etc.) over a generic "unexpectedly" toast.
+            from api.provider_validation import (
+                is_generic_upstream_error,
+                is_provider_credential_error,
+                sanitize_provider_error_content,
+            )
+
+            cleaned = sanitize_provider_error_content(error)
+            if (
+                cleaned
+                and not is_generic_upstream_error(cleaned)
+                and "{" not in cleaned
+                and "}" not in cleaned
+            ):
+                lowered = cleaned.lower()
+                user_actionable = is_provider_credential_error(cleaned) or any(
+                    marker in lowered
+                    for marker in (
+                        "model",
+                        "project",
+                        "not found",
+                        "not properly configured",
+                        "no models",
+                        "unauthorized",
+                        "forbidden",
+                        "permission",
+                        "quota",
+                        "rate limit",
+                    )
+                )
+                return {
+                    "component": "langflow",
+                    "failure_phase": "unknown",
+                    "user_facing_message": cleaned,
+                    "actionable_by": ("USER_ACTIONABLE" if user_actionable else "RETRYABLE"),
+                }
+
             return {
                 "component": "langflow",
                 "failure_phase": "unknown",
@@ -1216,7 +1303,11 @@ class TaskService:
                 file_statuses = {}
 
                 for file_path, file_task in upload_task.file_tasks.items():
-                    if file_task.status != TaskStatus.COMPLETED:
+                    # The task panel only surfaces in-flight/failed files to keep
+                    # the list tidy. Preview-mode tasks instead need every file
+                    # (including completed ones) so the live preview carousel can
+                    # still enumerate them and render their cached Docling layout.
+                    if file_task.status != TaskStatus.COMPLETED or upload_task.preview_mode:
                         entry = self._serialize_file_task(file_task)
                         if file_task.status == TaskStatus.FAILED:
                             metadata = self._infer_failure_metadata(file_task)

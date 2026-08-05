@@ -3,6 +3,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import type { FunctionCall } from "@/app/chat/_types/types";
 
 export interface AgentSettings {
   llm_model?: string;
@@ -19,6 +20,15 @@ export interface KnowledgeSettings {
   ocr?: boolean;
   picture_descriptions?: boolean;
   disable_ingest_with_langflow?: boolean;
+  vlm_enabled?: boolean;
+  vlm_provider?: string;
+  vlm_model?: string;
+  vlm_prompt?: string;
+  vlm_response_format?: string;
+  vlm_max_tokens?: number;
+  vlm_concurrency?: number;
+  vlm_timeout?: number;
+  vlm_watsonx_api_version?: string;
 }
 
 export interface ProviderSettings {
@@ -55,6 +65,9 @@ export interface ProviderSettings {
     llm_deployment_name?: string;
     embedding_deployment_name?: string;
   };
+  local?: {
+    configured?: boolean;
+  };
 }
 
 export interface OnboardingState {
@@ -63,6 +76,7 @@ export interface OnboardingState {
     role: string;
     content: string;
     timestamp: string;
+    functionCalls?: FunctionCall[] | null;
   } | null;
   selected_nudge?: string | null;
   card_steps?: Record<string, unknown> | null;
@@ -92,6 +106,10 @@ export interface Settings {
   localhost_url?: string;
   ingest_via_chat?: boolean;
   show_provider_ingest_settings?: boolean;
+  show_vlm_settings?: boolean;
+  local_vlm_models?: string[];
+  show_shared_upload_toggle?: boolean;
+  show_workspace_oauth_overrides?: boolean;
   segment_write_key?: string;
   environment?: string;
   langflow_port?: string | number | null;

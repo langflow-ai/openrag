@@ -3,11 +3,15 @@
 import React, {
   createContext,
   type ReactNode,
+  use,
   useCallback,
-  useContext,
   useState,
 } from "react";
-import { FilterColor, IconKey } from "@/components/filter-icon-popover";
+import {
+  FILTER_COLORS,
+  type FilterColor,
+  type IconKey,
+} from "@/lib/filter-constants";
 
 interface KnowledgeFilter {
   id: string;
@@ -49,6 +53,9 @@ interface KnowledgeFilterContextType {
   endCreateMode: () => void;
   queryOverride: string;
   setQueryOverride: (query: string) => void;
+  /** Filenames checked in the knowledge table; seeds data_sources on create. */
+  selectedSources: string[];
+  setSelectedSources: (sources: string[]) => void;
 }
 
 const KnowledgeFilterContext = createContext<
@@ -56,7 +63,7 @@ const KnowledgeFilterContext = createContext<
 >(undefined);
 
 export function useKnowledgeFilter() {
-  const context = useContext(KnowledgeFilterContext);
+  const context = use(KnowledgeFilterContext);
   if (context === undefined) {
     throw new Error(
       "useKnowledgeFilter must be used within a KnowledgeFilterProvider",
@@ -82,6 +89,7 @@ export function KnowledgeFilterProvider({
   );
   const [createMode, setCreateMode] = useState(false);
   const [queryOverride, setQueryOverride] = useState("");
+  const [selectedSources, setSelectedSources] = useState<string[]>([]);
 
   const setSelectedFilter = (filter: KnowledgeFilter | null) => {
     setSelectedFilterState(filter);
@@ -145,21 +153,21 @@ export function KnowledgeFilterProvider({
   }, []);
 
   const startCreateMode = () => {
-    // Initialize defaults
+    // Initialize defaults; checked table rows pre-populate the sources filter
     setPanelMode("filters");
     setCreateMode(true);
     setSelectedFilterState(null);
     setParsedFilterData({
       query: "",
       filters: {
-        data_sources: ["*"],
+        data_sources: selectedSources.length > 0 ? [...selectedSources] : ["*"],
         document_types: ["*"],
         owners: ["*"],
         connector_types: ["*"],
       },
       limit: 10,
       scoreThreshold: 0,
-      color: "amber",
+      color: FILTER_COLORS[Math.floor(Math.random() * FILTER_COLORS.length)],
       icon: "filter",
     });
     setIsPanelOpen(true);
@@ -192,6 +200,8 @@ export function KnowledgeFilterProvider({
     endCreateMode,
     queryOverride,
     setQueryOverride,
+    selectedSources,
+    setSelectedSources,
   };
 
   return (

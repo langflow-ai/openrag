@@ -50,8 +50,8 @@ export function WatsonxSettingsForm({
   } = useFormContext<WatsonxSettingsFormData>();
 
   return (
-    <div className="space-y-4">
-      <div className="space-y-2">
+    <div className="min-w-0 space-y-4">
+      <div className="min-w-0 space-y-2">
         <LabelWrapper
           label="watsonx.ai API Endpoint"
           helperText="Base URL of the API"
@@ -80,7 +80,9 @@ export function WatsonxSettingsForm({
           />
         </LabelWrapper>
         {errors.endpoint && (
-          <p className="text-sm text-destructive">{errors.endpoint.message}</p>
+          <p className="text-sm text-destructive min-w-0 [overflow-wrap:anywhere]">
+            {errors.endpoint.message}
+          </p>
         )}
       </div>
       <div className="space-y-2">
@@ -103,7 +105,9 @@ export function WatsonxSettingsForm({
           />
         </LabelWrapper>
         {errors.projectId && (
-          <p className="text-sm text-destructive">{errors.projectId.message}</p>
+          <p className="text-sm text-destructive min-w-0 [overflow-wrap:anywhere]">
+            {errors.projectId.message}
+          </p>
         )}
       </div>
       <div className="space-y-2">
@@ -127,7 +131,9 @@ export function WatsonxSettingsForm({
           />
         </LabelWrapper>
         {errors.apiKey && (
-          <p className="text-sm text-destructive">{errors.apiKey.message}</p>
+          <p className="text-sm text-destructive min-w-0 [overflow-wrap:anywhere]">
+            {errors.apiKey.message}
+          </p>
         )}
         {isLoadingModels && (
           <p className="text-sm text-muted-foreground">
@@ -135,8 +141,8 @@ export function WatsonxSettingsForm({
           </p>
         )}
         {modelsError && (
-          <p className="text-sm text-destructive">
-            Connection failed. Check your configuration.
+          <p className="text-sm text-destructive min-w-0 [overflow-wrap:anywhere]">
+            {modelsError.message}
           </p>
         )}
       </div>

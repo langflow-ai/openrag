@@ -29,6 +29,8 @@ interface AzureBlobSettingsFormProps {
   connectionStringSet?: boolean;
   accountKeySet?: boolean;
   formError?: string | null;
+  showContainers?: boolean;
+  onAuthModeChange?: () => void;
 }
 
 export function AzureBlobSettingsForm({
@@ -41,6 +43,8 @@ export function AzureBlobSettingsForm({
   connectionStringSet,
   accountKeySet,
   formError,
+  showContainers,
+  onAuthModeChange,
 }: AzureBlobSettingsFormProps) {
   const {
     register,
@@ -69,7 +73,13 @@ export function AzureBlobSettingsForm({
           control={control}
           name="auth_mode"
           render={({ field }) => (
-            <Tabs value={field.value} onValueChange={(v) => field.onChange(v)}>
+            <Tabs
+              value={field.value}
+              onValueChange={(v) => {
+                field.onChange(v);
+                onAuthModeChange?.();
+              }}
+            >
               <TabsList className="w-full">
                 <TabsTrigger value="connection_string">
                   <span className="font-semibold text-sm">
@@ -213,7 +223,7 @@ export function AzureBlobSettingsForm({
       )}
 
       {/* Container selector */}
-      {containers !== null && (
+      {containers !== null && showContainers && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <Label className="text-sm font-medium">

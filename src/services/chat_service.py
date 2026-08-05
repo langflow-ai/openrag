@@ -4,6 +4,7 @@ from typing import Any
 from agent import async_chat, async_chat_stream, async_langflow
 from auth_context import set_auth_context
 from config.settings import LANGFLOW_CHAT_FLOW_ID, LANGFLOW_URL, NUDGES_FLOW_ID, clients
+from utils.langflow_utils import fence_untrusted_text
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -59,6 +60,7 @@ class ChatService:
         user_id: str = None,
         jwt_token: str = None,
         previous_response_id: str = None,
+        conversation_id: str = None,
         stream: bool = False,
         filter_id: str = None,
         owner: str = None,
@@ -76,18 +78,26 @@ class ChatService:
                 "LANGFLOW_URL and LANGFLOW_CHAT_FLOW_ID environment variables are required"
             )
 
-        # Prepare extra headers for JWT authentication and embedding model
+        # Prepare extra headers for JWT authentication and embedding model.
+        # NOTE: extra_headers accumulates raw secrets (JWT, provider API keys —
+        # see add_provider_credentials_to_headers below). Never log this dict or
+        # pass it to a logger call (e.g. logger.info(..., extra_headers=...)).
         extra_headers = {}
         if jwt_token:
             extra_headers["X-LANGFLOW-GLOBAL-VAR-JWT"] = jwt_token
 
         # Pass the selected embedding model as a global variable
         from config.settings import get_openrag_config
-        from utils.langflow_headers import add_provider_credentials_to_headers
+        from utils.langflow_headers import (
+            add_provider_credentials_to_headers,
+            build_model_provider_headers,
+        )
 
         config = get_openrag_config()
         embedding_model = config.knowledge.embedding_model
-        extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL"] = embedding_model
+        chunk_size = getattr(config.knowledge, "chunk_size", 1000)
+        chunk_overlap = getattr(config.knowledge, "chunk_overlap", 200)
+        extra_headers.update(build_model_provider_headers(config))
 
         # Configure ingest callback credentials/vars like ingestion does
         import uuid
@@ -120,6 +130,9 @@ class ChatService:
             ingest_run_id=ingest_run_id,
             is_sample_data=False,
             index_name=get_index_name(),
+            parser="URL Ingester",
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
         )
         token_service = LangflowIngestTokenService()
         ingest_token = token_service.create_token(context)
@@ -207,6 +220,7 @@ class ChatService:
                 conversation_user_id,
                 extra_headers=extra_headers,
                 previous_response_id=previous_response_id,
+                conversation_id=conversation_id,
                 filter_id=filter_id,
             )
         else:
@@ -219,6 +233,7 @@ class ChatService:
                 conversation_user_id,
                 extra_headers=extra_headers,
                 previous_response_id=previous_response_id,
+                conversation_id=conversation_id,
                 filter_id=filter_id,
             )
             response_data = {"response": response_text}
@@ -244,18 +259,22 @@ class ChatService:
         if not LANGFLOW_URL or not NUDGES_FLOW_ID:
             raise ValueError("LANGFLOW_URL and NUDGES_FLOW_ID environment variables are required")
 
-        # Prepare extra headers for JWT authentication and embedding model
+        # Prepare extra headers for JWT authentication and embedding model.
+        # NOTE: extra_headers accumulates raw secrets (JWT, provider API keys —
+        # see add_provider_credentials_to_headers below). Never log this dict or
+        # pass it to a logger call (e.g. logger.info(..., extra_headers=...)).
         extra_headers = {}
         if jwt_token:
             extra_headers["X-LANGFLOW-GLOBAL-VAR-JWT"] = jwt_token
 
-        # Pass the selected embedding model as a global variable
         from config.settings import get_openrag_config
-        from utils.langflow_headers import add_provider_credentials_to_headers
+        from utils.langflow_headers import (
+            add_provider_credentials_to_headers,
+            build_model_provider_headers,
+        )
 
         config = get_openrag_config()
-        embedding_model = config.knowledge.embedding_model
-        extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL"] = embedding_model
+        extra_headers.update(build_model_provider_headers(config))
 
         # Add provider credentials to headers
         await add_provider_credentials_to_headers(
@@ -484,22 +503,33 @@ class ChatService:
         storage_user_id: str = None,
     ):
         """Send document content as user message to get proper response_id"""
-        document_prompt = f"I'm uploading a document called '{filename}'. Here is its content:\n\n{document_content}\n\nPlease confirm you've received this document and are ready to answer questions about it."
+        document_prompt = (
+            f"I'm uploading a document called '{filename}'. Here is its content:\n\n"
+            f"{fence_untrusted_text(document_content)}\n\n"
+            "Please confirm you've received this document and are ready to answer questions about it."
+        )
         conversation_user_id = storage_user_id or user_id
 
         if endpoint == "langflow":
-            # Prepare extra headers for JWT authentication and embedding model
+            # Prepare extra headers for JWT authentication and embedding model.
+            # NOTE: extra_headers accumulates raw secrets (JWT, provider API keys).
+            # Never log this dict or pass it to a logger call
+            # (e.g. logger.info(..., extra_headers=...)).
             extra_headers = {}
             if jwt_token:
                 extra_headers["X-LANGFLOW-GLOBAL-VAR-JWT"] = jwt_token
 
-            # Pass the selected embedding model as a global variable
             from config.settings import get_openrag_config
-            from utils.langflow_headers import add_provider_credentials_to_headers
+            from utils.langflow_headers import (
+                add_provider_credentials_to_headers,
+                build_model_provider_headers,
+            )
 
             config = get_openrag_config()
             embedding_model = config.knowledge.embedding_model
-            extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL"] = embedding_model
+            chunk_size = getattr(config.knowledge, "chunk_size", 1000)
+            chunk_overlap = getattr(config.knowledge, "chunk_overlap", 200)
+            extra_headers.update(build_model_provider_headers(config))
 
             # Configure ingest callback credentials/vars like ingestion does
             import uuid
@@ -532,6 +562,9 @@ class ChatService:
                 ingest_run_id=ingest_run_id,
                 is_sample_data=False,
                 index_name=get_index_name(),
+                parser="URL Ingester",
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
             )
             token_service = LangflowIngestTokenService()
             ingest_token = token_service.create_token(context)
@@ -682,20 +715,45 @@ class ChatService:
             "total_conversations": len(conversations),
         }
 
+    @staticmethod
+    def _messages_from_active_conversation(conversation_state: dict) -> list[dict]:
+        """Serialize in-memory OpenRAG thread messages for the history API."""
+        messages = []
+        for msg in conversation_state.get("messages", []):
+            if msg.get("role") not in ["user", "assistant"]:
+                continue
+            message_data = {
+                "role": msg["role"],
+                "content": msg["content"],
+                "timestamp": msg.get("timestamp").isoformat()
+                if hasattr(msg.get("timestamp"), "isoformat")
+                else msg.get("timestamp"),
+                "source": "openrag_memory",
+            }
+            if msg.get("error"):
+                message_data["error"] = True
+            if msg.get("chunks"):
+                message_data["chunks"] = msg["chunks"]
+            if msg.get("response_data"):
+                message_data["response_data"] = msg["response_data"]
+            messages.append(message_data)
+        return messages
+
     async def get_langflow_history(self, user_id: str):
         """Get langflow conversation history for a user - now fetches from both OpenRAG memory and Langflow database"""
-        from agent import get_user_conversations
+        from agent import active_conversations, get_user_conversations
         from services.langflow_history_service import langflow_history_service
 
         if not user_id:
             return {"error": "User ID is required", "conversations": []}
 
         all_conversations = []
+        local_metadata: dict = {}
+        in_memory = active_conversations.get(user_id, {})
 
         try:
             # 1. Get local conversation metadata (no actual messages stored here)
             conversations_dict = await get_user_conversations(user_id)
-            local_metadata = {}
 
             for response_id, conversation_metadata in conversations_dict.items():
                 # Store metadata for later use with Langflow data
@@ -737,56 +795,102 @@ class ChatService:
 
                         messages.append(message_data)
 
-                    if messages:
-                        # Use local metadata if available, otherwise generate from Langflow data
-                        metadata = local_metadata.get(session_id, {})
+                    # Prefer OpenRAG memory when it has more turns (error retries use a
+                    # fresh Langflow session under the same OpenRAG thread id).
+                    memory_messages = self._messages_from_active_conversation(
+                        in_memory.get(session_id, {})
+                    )
+                    if len(memory_messages) > len(messages):
+                        messages = memory_messages
+                        source = "openrag_memory_preferred"
+                    else:
+                        source = "langflow_enhanced"
 
-                        if not metadata.get("title"):
-                            first_user_msg = next(
-                                (msg for msg in messages if msg["role"] == "user"), None
-                            )
-                            title = (
-                                first_user_msg["content"][:50] + "..."
-                                if first_user_msg and len(first_user_msg["content"]) > 50
-                                else first_user_msg["content"]
-                                if first_user_msg
-                                else "Langflow chat"
-                            )
-                        else:
-                            title = metadata["title"]
+                    if messages:
+                        metadata = local_metadata.get(session_id, {})
+                        first_user_msg = next(
+                            (msg for msg in messages if msg["role"] == "user"), None
+                        )
+                        title = metadata.get("title") or (
+                            first_user_msg["content"][:50] + "..."
+                            if first_user_msg and len(first_user_msg["content"]) > 50
+                            else first_user_msg["content"]
+                            if first_user_msg
+                            else "Langflow chat"
+                        )
 
                         all_conversations.append(
                             {
                                 "response_id": session_id,
                                 "title": title,
                                 "endpoint": "langflow",
-                                "messages": messages,  # Function calls preserved from Langflow
+                                "messages": messages,
                                 "created_at": metadata.get("created_at")
                                 or conversation.get("created_at"),
                                 "last_activity": metadata.get("last_activity")
                                 or conversation.get("last_activity"),
                                 "filter_id": metadata.get("filter_id"),
                                 "total_messages": len(messages),
-                                "source": "langflow_enhanced",
+                                "source": source,
                                 "langflow_session_id": session_id,
                                 "langflow_flow_id": conversation.get("flow_id"),
                             }
                         )
 
-            if langflow_history.get("conversations"):
-                logger.debug(
-                    f"Added {len(langflow_history['conversations'])} historical conversations from Langflow"
-                )
-            elif langflow_history.get("error"):
-                logger.debug(
-                    f"Could not fetch Langflow history for user {user_id}: {langflow_history['error']}"
-                )
-            else:
-                logger.debug(f"No Langflow conversations found for user {user_id}")
-
         except Exception as e:
             logger.error(f"Failed to fetch Langflow history: {e}")
-            # Continue with just in-memory conversations
+
+        # Local-only threads + upgrade listed ones from memory/metadata snapshots
+        # (Langflow history is incomplete after fresh-session error retries).
+        listed_ids = {c["response_id"] for c in all_conversations}
+        for response_id, metadata in local_metadata.items():
+            conversation_state = in_memory.get(response_id, {})
+            messages = self._messages_from_active_conversation(conversation_state)
+            if not messages and isinstance(metadata.get("messages"), list):
+                messages = [
+                    m
+                    for m in metadata["messages"]
+                    if isinstance(m, dict) and m.get("role") in ["user", "assistant"]
+                ]
+
+            if response_id in listed_ids:
+                existing = next(c for c in all_conversations if c["response_id"] == response_id)
+                if len(messages) > len(existing.get("messages") or []):
+                    existing["messages"] = messages
+                    existing["total_messages"] = len(messages)
+                    existing["source"] = "openrag_memory_preferred"
+                continue
+
+            if not messages and not metadata.get("title"):
+                continue
+
+            first_user_msg = next((msg for msg in messages if msg["role"] == "user"), None)
+            title = metadata.get("title") or (
+                first_user_msg["content"][:50] + "..."
+                if first_user_msg and len(first_user_msg["content"]) > 50
+                else first_user_msg["content"]
+                if first_user_msg
+                else "New Chat"
+            )
+            created_at = metadata.get("created_at") or conversation_state.get("created_at")
+            last_activity = metadata.get("last_activity") or conversation_state.get("last_activity")
+            all_conversations.append(
+                {
+                    "response_id": response_id,
+                    "title": title,
+                    "endpoint": "langflow",
+                    "messages": messages,
+                    "created_at": created_at.isoformat()
+                    if hasattr(created_at, "isoformat")
+                    else created_at,
+                    "last_activity": last_activity.isoformat()
+                    if hasattr(last_activity, "isoformat")
+                    else last_activity,
+                    "filter_id": metadata.get("filter_id") or conversation_state.get("filter_id"),
+                    "total_messages": len(messages) or metadata.get("total_messages", 0),
+                    "source": "local_error_fallback",
+                }
+            )
 
         # Sort by last activity (most recent first)
         all_conversations.sort(key=lambda c: c.get("last_activity", ""), reverse=True)

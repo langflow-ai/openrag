@@ -17,7 +17,7 @@ If you are installing OpenRAG on macOS, and the installation fails with `unable 
 open "/Applications/Python 3.13/Install Certificates.command"
 ```
 
-## No container runtime found, or Docker/Podman not ready
+## No container runtime found, or Docker/Podman not ready {#no-container-runtime-found-or-dockerpodman-not-ready}
 
 When you start OpenRAG, `No container runtime found` and `Docker/Podman not ready` errors indicate that OpenRAG cannot find or start a running Docker or Podman machine to run the OpenRAG containers.
 
@@ -29,6 +29,42 @@ Before starting OpenRAG, do the following:
 Either run `podman machine start` or a similar command, or start the Docker/Podman Desktop app.
 
 For Linux environments, you can find more troubleshooting advice in the [Podman installation documentation](https://podman.io/docs/installation#installing-on-linux) and the [Docker installation documentation](https://docs.docker.com/engine/install/).
+
+## Container image pull failures {#image-pull-failures}
+
+Before pulling a missing image, OpenRAG verifies that the image exists in its registry.
+If the check fails, OpenRAG stops rather than attempting the pull, and reports an error in the following form:
+
+```
+ERROR: Cannot pull image 'REGISTRY/ORG/IMAGE:TAG': REASON
+```
+
+The reason identifies which part of your [image and registry configuration](/reference/configuration#container-image-and-registry-settings) is wrong:
+
+| Reason | Cause | Resolution |
+|---|---|---|
+| `Image 'IMAGE' not found in registry` | If the registry is reachable and your credentials are valid, then the registry has no image at the given repository path and tag. | Verify that `IMAGE_ORG` matches the organization in your registry, and that the tag from `OPENRAG_IMAGE_TAG` or `OPENRAG_VERSION` exists. This commonly occurs when neither tag variable is set, because OpenRAG then requests the `latest` tag, which many private registries don't populate. |
+| `Authentication failure accessing 'IMAGE'` | The registry rejected the request with a `401` or `403`. | Sign in to the registry with `docker login REGISTRY` or `podman login REGISTRY` on the host that runs the containers, then retry. If you are already signed in, confirm that the account can read the repository, because some registries return an authentication error rather than a not-found error for repositories you can't access. |
+| `Registry unreachable for 'IMAGE'` | The registry host couldn't be reached because of a DNS, network, or TLS failure. | Check that the hostname in `IMAGE_REGISTRY` resolves and is reachable from the host. If your registry uses a private certificate authority, add the certificate to your container runtime's trust store. If your registry listens on a non-standard port, include it in the variable, such as `registry.example.com:5000`. |
+| `Timed out contacting registry for 'IMAGE'` | The registry didn't respond within 30 seconds. | Check for a proxy or firewall that silently drops the connection, and confirm the registry is healthy. |
+| `Image reference 'IMAGE' could not be parsed`, or `Image reference is malformed` | The resolved image reference isn't a valid image name. | Remove any scheme (`https://`) or trailing slash from `IMAGE_REGISTRY` and `IMAGE_ORG`, and make sure neither variable contains spaces or is set to an empty value. |
+| `Container runtime 'docker' not found on PATH` | The container runtime executable is unavailable. | See [No container runtime found, or Docker/Podman not ready](#no-container-runtime-found-or-dockerpodman-not-ready). |
+
+This check only covers the OpenRAG-owned images.
+The OpenSearch Dashboards image isn't validated in advance, so an incorrect `DASHBOARDS_REGISTRY` value doesn't produce one of the errors above.
+Instead, the deployment fails later with a pull error from Docker or Podman.
+Because the repository path and tag for that image are fixed, confirm that the mirrored image is available at `DASHBOARDS_REGISTRY/opensearchproject/opensearch-dashboards:3.6.0`, and make sure `DASHBOARDS_REGISTRY` is set correctly.
+
+For instructions on mirroring the images, see [Deploy OpenRAG from a private registry](/docker#private-registry).
+
+## The terminal session doesn't report available upgrades {#no-upgrade-check-with-private-registry}
+
+The terminal session checks for new OpenRAG versions by querying the Docker Hub API.
+If you set `IMAGE_REGISTRY` to any host other than `docker.io`, this check can't run.
+
+The **Status** page then reports neither an available upgrade nor an up-to-date confirmation, and no notification appears.
+This is expected, and it doesn't indicate a problem with your deployment.
+To track new releases, monitor your own registry or the [OpenRAG releases page](https://github.com/langflow-ai/openrag/releases), and then [upgrade](/upgrade) by mirroring the new images and updating `OPENRAG_IMAGE_TAG` or `OPENRAG_VERSION`.
 
 ## Container out of memory errors {#container-out-of-memory-errors}
 

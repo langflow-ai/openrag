@@ -261,27 +261,17 @@ async def run_startup(app: FastAPI):
         from utils.opensearch_init import wait_for_opensearch
         from utils.opensearch_utils import setup_opensearch_security
         from utils.run_mode_utils import (
+            get_run_mode,
             is_run_mode_on_prem,
-            is_run_mode_oss,
+            is_run_mode_saas,
         )
 
         # Choose the OpenSearch client + admin identity, by run mode:
-        #   saas    -> platform service token (JWT); admin from its claim
-        #   on_prem -> OpenSearch basic auth; OpenSearch username as admin
-        #   oss     -> OpenSearch basic auth; OpenSearch username as admin
+        #   saas/on_prem -> platform service token (JWT); admin from its claim
+        #   oss          -> OpenSearch basic auth; OpenSearch username as admin
         admin_username = None
         opensearch_client = None
-        if is_run_mode_on_prem() or is_run_mode_oss():
-            admin_username = get_opensearch_username()
-            opensearch_client = clients.create_basic_opensearch_client(
-                admin_username, get_opensearch_password()
-            )
-            logger.info(
-                "OpenSearch startup client: %s mode, using OpenSearch basic auth"
-                % ("on_prem" if is_run_mode_on_prem() else "oss"),
-                admin_username=admin_username,
-            )
-        else:
+        if is_run_mode_saas() or is_run_mode_on_prem():
             service_token = get_openrag_service_token()
             if not service_token:
                 # A missing service token is fatal only when security bootstrap
@@ -293,8 +283,9 @@ async def run_startup(app: FastAPI):
                         "OPENRAG_SERVICE_TOKEN is not set"
                     )
                 logger.warning(
-                    "Skipping startup OpenSearch replica reconciliation: saas mode "
-                    "requires OPENRAG_SERVICE_TOKEN, which is not set"
+                    "Skipping startup OpenSearch replica reconciliation: "
+                    f"{get_run_mode()} mode requires OPENRAG_SERVICE_TOKEN, "
+                    "which is not set"
                 )
             else:
                 from auth.ibm_auth import admin_username_from_service_jwt
@@ -307,9 +298,19 @@ async def run_startup(app: FastAPI):
                     )
                 opensearch_client = clients.create_opensearch_client_from_jwt(service_token)
                 logger.info(
-                    "OpenSearch startup client: saas mode, using platform service token",
+                    f"OpenSearch startup client: {get_run_mode()} mode, "
+                    "using platform service token",
                     admin_username=admin_username,
                 )
+        else:
+            admin_username = get_opensearch_username()
+            opensearch_client = clients.create_basic_opensearch_client(
+                admin_username, get_opensearch_password()
+            )
+            logger.info(
+                "OpenSearch startup client: oss mode, using OpenSearch basic auth",
+                admin_username=admin_username,
+            )
 
         if opensearch_client is not None:
             try:

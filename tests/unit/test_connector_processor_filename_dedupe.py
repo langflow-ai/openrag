@@ -49,6 +49,13 @@ def _make_search_response(has_hit: bool) -> dict:
     return {"hits": {"hits": [{"_id": "x"}] if has_hit else []}}
 
 
+def _make_filename_agg_response(has_hit: bool, filename: str = "My Report.pdf") -> dict:
+    """The filename duplicate check runs a terms aggregation (see
+    utils/opensearch_filenames), not a hits query."""
+    buckets = [{"key": filename, "doc_count": 1}] if has_hit else []
+    return {"aggregations": {"filenames": {"buckets": buckets}}}
+
+
 def _make_upload_task() -> UploadTask:
     return UploadTask(task_id="task-1", total_files=1)
 
@@ -94,6 +101,10 @@ def _wire_connector_processor(
             return _make_search_response(rename_stale_exists)
         if "document_id" in query_str:
             return _make_search_response(hash_exists)
+        if isinstance(body, dict) and "aggs" in body:
+            # Bulk duplicate check (terms aggregation over filename aliases).
+            return _make_filename_agg_response(filename_exists)
+        # Hits-based filename scroll (delete_document_by_filename id collection).
         return _make_search_response(filename_exists)
 
     opensearch_client.search = mock_search
@@ -220,9 +231,14 @@ async def test_connector_processor_deletes_chunks_when_source_returns_404(
     search_call = opensearch_client.search.await_args
     query = search_call.kwargs["body"]["query"]
     shoulds = query["bool"]["filter"][0]["bool"]["should"]
-    fields = {next(iter(c["term"])): next(iter(c["term"].values())) for c in shoulds}
-    assert fields["connector_file_id"] == "file-id-1"
-    assert fields["document_id"] == "file-id-1"
+    fields = {next(iter(c["terms"])): next(iter(c["terms"].values())) for c in shoulds}
+    assert fields["connector_file_id"] == ["file-id-1"]
+    assert fields["document_id"] == ["file-id-1"]
+
+    # ...and stay scoped to this connector type, so an id that collides with a
+    # different connector's id can't take its chunks down with it.
+    terms = [f["term"] for f in query["bool"]["filter"] if "term" in f]
+    assert {"connector_type": "sharepoint"} in terms
 
 
 @pytest.mark.asyncio
@@ -256,31 +272,6 @@ async def test_connector_processor_indexes_cleaned_filename(monkeypatch):
     assert mock_process.await_args.kwargs["original_filename"] == "My Report.pdf"
     metadata_call = processor.connector_service._update_connector_metadata.await_args
     assert metadata_call.kwargs["indexed_filename"] == "My Report.pdf"
-
-
-@pytest.mark.asyncio
-async def test_langflow_connector_processor_uses_cleaned_filename(monkeypatch):
-    monkeypatch.setattr("config.settings.DISABLE_INGEST_WITH_LANGFLOW", False)
-    processor = _build_langflow_processor(replace_duplicates=False)
-    document = ConnectorDocument(
-        id="doc-id-1",
-        filename="My Report",
-        mimetype="application/vnd.google-apps.document",
-        content=b"%PDF-1.4 dummy",
-        source_url="https://example.google.com/file",
-        acl=DocumentACL(owner="user@example.com"),
-        modified_time=datetime.now(),
-        created_time=datetime.now(),
-    )
-    _wire_langflow_processor(processor, document, filename_exists=False)
-
-    file_task = _make_file_task()
-    upload_task = _make_upload_task()
-
-    await processor.process_item(upload_task, "file-id-1", file_task)
-
-    upload_call = processor.connector_service.langflow_service.upload_and_ingest_file.await_args
-    assert upload_call.kwargs["file_tuple"][0] == "My Report.pdf"
 
 
 @pytest.mark.asyncio
@@ -329,6 +320,7 @@ def _wire_langflow_processor(
     filename_exists: bool,
     hash_exists: bool = False,
     rename_stale_exists: bool = False,
+    connector_id_exists: bool = False,
 ):
     opensearch_client = AsyncMock()
 
@@ -336,8 +328,19 @@ def _wire_langflow_processor(
         query_str = str(body)
         if "connector_file_id" in query_str:
             return _make_search_response(rename_stale_exists)
-        if "document_id" in query_str:
+        document_id = (
+            body.get("query", {}).get("term", {}).get("document_id")
+            if isinstance(body, dict)
+            else None
+        )
+        if document_id == document.id:
+            return _make_search_response(connector_id_exists)
+        if document_id:
             return _make_search_response(hash_exists)
+        if isinstance(body, dict) and "aggs" in body:
+            # Bulk duplicate check (terms aggregation over filename aliases).
+            return _make_filename_agg_response(filename_exists)
+        # Hits-based filename scroll (delete_document_by_filename id collection).
         return _make_search_response(filename_exists)
 
     opensearch_client.search = mock_search
@@ -387,13 +390,38 @@ async def test_langflow_connector_processor_skips_on_filename_collision(monkeypa
 
 
 @pytest.mark.asyncio
+async def test_langflow_connector_processor_uses_cleaned_filename(monkeypatch):
+    monkeypatch.setattr("config.settings.DISABLE_INGEST_WITH_LANGFLOW", False)
+    processor = _build_langflow_processor(replace_duplicates=False)
+    document = ConnectorDocument(
+        id="doc-id-1",
+        filename="My Report",
+        mimetype="application/vnd.google-apps.document",
+        content=b"%PDF-1.4 dummy",
+        source_url="https://example.google.com/file",
+        acl=DocumentACL(owner="user@example.com"),
+        modified_time=datetime.now(),
+        created_time=datetime.now(),
+    )
+    _wire_langflow_processor(processor, document, filename_exists=False, connector_id_exists=True)
+
+    file_task = _make_file_task()
+    upload_task = _make_upload_task()
+
+    await processor.process_item(upload_task, "file-id-1", file_task)
+
+    upload_call = processor.connector_service.langflow_service.upload_and_ingest_file.await_args
+    assert upload_call.kwargs["file_tuple"][0] == "My Report.pdf"
+
+
+@pytest.mark.asyncio
 async def test_langflow_connector_processor_overwrites_when_replace_true(
     monkeypatch, backend_write_client
 ):
     monkeypatch.setattr("config.settings.DISABLE_INGEST_WITH_LANGFLOW", False)
     processor = _build_langflow_processor(replace_duplicates=True)
     document = _make_document()
-    _wire_langflow_processor(processor, document, filename_exists=True)
+    _wire_langflow_processor(processor, document, filename_exists=True, connector_id_exists=True)
 
     file_task = _make_file_task()
     upload_task = _make_upload_task()
@@ -573,10 +601,14 @@ async def test_rename_cleanup_matches_both_id_fields(monkeypatch, backend_write_
         )
 
     shoulds = captured["query"]["bool"]["filter"][0]["bool"]["should"]
-    fields = {next(iter(c["term"])) for c in shoulds}
-    assert fields == {"document_id", "connector_file_id"}
+    fields = {next(iter(c["terms"])) for c in shoulds}
+    assert fields == {"document_id", "connector_file_id", "connector_file_id.keyword"}
     excluded = captured["query"]["bool"]["must_not"][0]["terms"]["filename"]
     assert set(get_filename_aliases("Renamed.pdf")).issubset(set(excluded))
+    # Scoped to this connector type, matching the value the chunks were indexed
+    # under, so a colliding id from another connector is left alone.
+    terms = [f["term"] for f in captured["query"]["bool"]["filter"] if "term" in f]
+    assert {"connector_type": "sharepoint"} in terms
 
 
 @pytest.mark.asyncio

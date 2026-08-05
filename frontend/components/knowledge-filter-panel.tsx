@@ -10,11 +10,7 @@ import {
   EMPTY_SEARCH_RESULT,
   useGetSearchQuery,
 } from "@/app/api/queries/useGetSearchQuery";
-import {
-  type FilterColor,
-  FilterIconPopover,
-  type IconKey,
-} from "@/components/filter-icon-popover";
+import { FilterIconPopover } from "@/components/filter-icon-popover";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -32,6 +28,7 @@ import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
 import { usePermissions } from "@/hooks/use-permissions";
 import { trackButton } from "@/lib/analytics";
+import type { FilterColor, IconKey } from "@/lib/filter-constants";
 import {
   buildActiveSourceOptions,
   buildKnowledgeTableRows,
@@ -39,7 +36,7 @@ import {
 
 interface FacetBucket {
   key: string;
-  count: number;
+  count?: number;
 }
 
 interface AvailableFacets {
@@ -118,6 +115,7 @@ export function KnowledgeFilterPanel() {
   // Load current filter data into controls when a filter is selected
   useEffect(() => {
     if (selectedFilter && parsedFilterData) {
+      setNameError(null);
       setQuery(parsedFilterData.query || "");
 
       // Set the actual filter selections from the saved knowledge filter
@@ -133,8 +131,6 @@ export function KnowledgeFilterPanel() {
         connector_types: filters.connector_types ?? ["*"],
       };
 
-      console.log("[DEBUG] Loading filter selections:", processedFilters);
-
       setSelectedFilters(processedFilters);
       setResultLimit(parsedFilterData.limit || 10);
       setScoreThreshold(parsedFilterData.scoreThreshold || 0);
@@ -148,6 +144,7 @@ export function KnowledgeFilterPanel() {
   // Initialize defaults when entering create mode
   useEffect(() => {
     if (createMode && parsedFilterData) {
+      setNameError(null);
       setQuery(parsedFilterData.query || "");
       // Provide defaults for missing filter fields
       const filters = parsedFilterData.filters || {};
@@ -181,17 +178,20 @@ export function KnowledgeFilterPanel() {
 
   useEffect(() => {
     if (!aggregations) return;
+    const extractKeys = (buckets: { key: string }[] = []): FacetBucket[] =>
+      buckets.map((b) => ({ key: b.key }));
     const facets = {
-      data_sources: aggregations.data_sources?.buckets || [],
-      document_types: aggregations.document_types?.buckets || [],
-      owners: aggregations.owners?.buckets || [],
-      connector_types: aggregations.connector_types?.buckets || [],
+      data_sources: extractKeys(aggregations.data_sources?.buckets),
+      document_types: extractKeys(aggregations.document_types?.buckets),
+      owners: extractKeys(aggregations.owners?.buckets),
+      connector_types: extractKeys(aggregations.connector_types?.buckets),
     };
     setAvailableFacets(facets);
   }, [aggregations]);
 
   const tableRows = buildKnowledgeTableRows(allSearchData, taskFiles);
   const sourceOptions = buildActiveSourceOptions(tableRows);
+  const availableSourceValues = new Set(sourceOptions.map((o) => o.value));
 
   // Don't render if panel is closed or we don't have any data
   if (!isPanelOpen || !parsedFilterData) return null;
@@ -327,18 +327,19 @@ export function KnowledgeFilterPanel() {
                 />
               </div>
             </div>
-            {!createMode && selectedFilter?.created_at && (
-              <div className="space-y-2 text-xs text-right text-muted-foreground">
-                <span className="text-placeholder-foreground">Created</span>{" "}
-                {formatDate(selectedFilter.created_at)}
-              </div>
-            )}
-            {createMode && (
-              <div className="space-y-2 text-xs text-right text-muted-foreground">
-                <span className="text-placeholder-foreground">Created</span>{" "}
-                {formatDate(new Date().toISOString())}
-              </div>
-            )}
+            <div className="text-xs min-h-[1.25rem]">
+              {nameError ? (
+                <span className="text-destructive">{nameError}</span>
+              ) : (
+                !createMode &&
+                selectedFilter?.created_at && (
+                  <span className="text-muted-foreground">
+                    <span className="text-placeholder-foreground">Created</span>{" "}
+                    {formatDate(selectedFilter.created_at)}
+                  </span>
+                )
+              )}
+            </div>
             <div className="space-y-2">
               <Label htmlFor="filter-description">Description</Label>
               <Textarea
@@ -372,7 +373,13 @@ export function KnowledgeFilterPanel() {
             <div className="space-y-2">
               <MultiSelect
                 options={sourceOptions}
-                value={selectedFilters.data_sources}
+                value={
+                  selectedFilters.data_sources[0] === "*"
+                    ? selectedFilters.data_sources
+                    : selectedFilters.data_sources.filter((source) =>
+                        availableSourceValues.has(source),
+                      )
+                }
                 onValueChange={(values) =>
                   handleFilterChange("data_sources", values)
                 }
@@ -387,7 +394,6 @@ export function KnowledgeFilterPanel() {
                   (bucket) => ({
                     value: bucket.key,
                     label: bucket.key,
-                    count: bucket.count,
                   }),
                 )}
                 value={selectedFilters.document_types}
@@ -404,7 +410,6 @@ export function KnowledgeFilterPanel() {
                 options={(availableFacets.owners || []).map((bucket) => ({
                   value: bucket.key,
                   label: bucket.key,
-                  count: bucket.count,
                 }))}
                 value={selectedFilters.owners}
                 onValueChange={(values) => handleFilterChange("owners", values)}
@@ -419,7 +424,6 @@ export function KnowledgeFilterPanel() {
                   (bucket) => ({
                     value: bucket.key,
                     label: bucket.key,
-                    count: bucket.count,
                   }),
                 )}
                 value={selectedFilters.connector_types}
@@ -496,7 +500,6 @@ export function KnowledgeFilterPanel() {
           </div>
         </CardContent>
         <CardFooter className="mt-auto align-bottom justify-end gap-2">
-          {/* Save Configuration Button */}
           {createMode && (
             <Button
               onClick={closePanelOnly}

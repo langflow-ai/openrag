@@ -140,9 +140,10 @@ CONFIG_SECTIONS: list[ConfigSection] = [
                 "langflow_superuser_password",
                 "LANGFLOW_SUPERUSER_PASSWORD",
                 "Admin Password",
-                placeholder="Langflow password",
+                placeholder="Auto-generated secure password",
                 secret=True,
-                helper_text="Leave empty for autologin (no password required)",
+                required=True,
+                helper_text="Langflow admin password (auto-generates if empty)",
             ),
             ConfigField(
                 "langflow_superuser",
@@ -267,6 +268,17 @@ CONFIG_SECTIONS: list[ConfigSection] = [
                 "Client Secret",
                 placeholder="",
                 secret=True,
+            ),
+            ConfigField(
+                "microsoft_allowed_tenant_ids",
+                "MICROSOFT_ALLOWED_TENANT_IDS",
+                "Allowed Tenant IDs (optional)",
+                placeholder="uuid1,uuid2",
+                helper_text=(
+                    "Comma-separated Azure AD tenant UUIDs. When set, tokens from unlisted tenants "
+                    "are rejected after signature verification (business policy — not required by "
+                    "OAuth standards). Leave empty to allow any tenant."
+                ),
             ),
         ],
         advanced=True,

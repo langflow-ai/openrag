@@ -644,6 +644,13 @@ class ContainerManager:
 
         return True, images, ""
 
+    def _resolve_service_name(self, compose_service: str | None, container_name: str) -> str | None:
+        """Resolve a container to its canonical OpenRAG service name"""
+        if compose_service and compose_service in self.expected_services:
+            return compose_service
+
+        return self.container_name_map.get(container_name)
+
     def _process_service_json(self, service: dict, services: dict[str, ServiceInfo]) -> None:
         """Process a service JSON object and add it to the services dict."""
         # Debug print to see the actual service data
@@ -651,8 +658,8 @@ class ContainerManager:
 
         container_name = service.get("Name", "")
 
-        # Map container name to service name
-        service_name = self.container_name_map.get(container_name)
+        # Resolve to canonical service name (compose 'Service' field first, then name map)
+        service_name = self._resolve_service_name(service.get("Service"), container_name)
         if not service_name:
             return
 
@@ -802,7 +809,10 @@ class ContainerManager:
                             continue
 
                         container_name = names[0]
-                        service_name = self.container_name_map.get(container_name)
+                        labels = container.get("Labels") or {}
+                        service_name = self._resolve_service_name(
+                            labels.get("com.docker.compose.service"), container_name
+                        )
                         if not service_name:
                             continue
 
@@ -1076,12 +1086,21 @@ class ContainerManager:
             yield False, "No container runtime available", False
             return
 
-        # Ensure OPENRAG_VERSION is set in .env file
+        # Ensure secure defaults and OPENRAG_VERSION are set in .env file
         try:
             from ..managers.env_manager import EnvManager
 
             env_manager = EnvManager()
-            env_manager.ensure_openrag_version()
+            env_manager.load_existing_env()
+            env_manager.setup_secure_defaults()
+            env_manager.save_env_file()
+            if not env_manager.config.langflow_superuser_password:
+                yield (
+                    False,
+                    "ERROR: Langflow superuser password is required but not configured.",
+                    False,
+                )
+                return
         except Exception:
             pass  # Continue even if version setting fails
 

@@ -10,6 +10,7 @@ import hashlib
 import json
 from typing import Any
 
+from config.settings import get_index_name
 from src.connectors.base import DocumentACL
 from utils.logging_config import get_logger
 
@@ -41,12 +42,22 @@ def _build_id_query(document_id: str, id_fields: tuple[str, ...]) -> dict:
     ``connector_file_id`` while ``document_id`` holds the content hash, whereas
     Langflow chunks and local uploads store the id in ``document_id``. Matching
     multiple fields lets a single id reliably target chunks from either pipeline.
+
+    Also matches ``connector_file_id.keyword``: some deployments' indices
+    predate that field's addition to the explicit mapping, so OpenSearch
+    dynamically mapped it as analyzed text (with a ``.keyword`` multi-field)
+    instead of the intended ``keyword`` type, and a plain term query against
+    it tokenizes the query value instead of matching the raw id. This clause
+    is a no-op on indices where the field is already ``keyword``.
     """
-    if len(id_fields) == 1:
-        return {"term": {id_fields[0]: document_id}}
+    clauses = [{"term": {field: document_id}} for field in id_fields]
+    if "connector_file_id" in id_fields:
+        clauses.append({"term": {"connector_file_id.keyword": document_id}})
+    if len(clauses) == 1:
+        return clauses[0]
     return {
         "bool": {
-            "should": [{"term": {field: document_id}} for field in id_fields],
+            "should": clauses,
             "minimum_should_match": 1,
         }
     }
@@ -66,7 +77,7 @@ async def should_update_acl(
     """
     try:
         response = await opensearch_client.search(
-            index="documents",
+            index=get_index_name(),
             body={
                 "query": _build_id_query(document_id, id_fields),
                 "size": 1,
@@ -126,7 +137,7 @@ async def update_document_acl(
 
     try:
         response = await write_client.update_by_query(
-            index="documents",
+            index=get_index_name(),
             body={
                 "query": _build_id_query(document_id, id_fields),
                 "script": {
@@ -189,7 +200,7 @@ async def batch_update_acls(
 
     update_tasks = [
         write_client.update_by_query(
-            index="documents",
+            index=get_index_name(),
             body={
                 "query": _build_id_query(doc_id, id_fields),
                 "script": {

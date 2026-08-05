@@ -53,8 +53,8 @@ export function TaskDialogCategoryChips({
               isCloudBrand ? "rounded-full" : "rounded-lg",
               isCloudBrand
                 ? isActive
-                  ? "border-[var(--border-border-interactive)] bg-[#333333] text-foreground"
-                  : "border-border-subtle-contextual bg-[#333333] text-layer-contextual-foreground hover:bg-[#333333] hover:text-foreground"
+                  ? "border-[var(--border-border-interactive)] bg-muted text-foreground"
+                  : "border-border-subtle-contextual bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
                 : isActive
                   ? "border-border bg-task-dialog-oss-selected text-foreground"
                   : "border-border bg-muted hover:bg-badge hover:text-badge-foreground",

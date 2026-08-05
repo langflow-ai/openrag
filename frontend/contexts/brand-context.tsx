@@ -1,6 +1,13 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import {
+  createContext,
+  use,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useAuth } from "@/contexts/auth-context";
 import {
   type Brand,
@@ -48,22 +55,25 @@ export function BrandProvider({ children }: { children: React.ReactNode }) {
     applyBrand(brand);
   }, [brand]);
 
-  function setBrand(newBrand: Brand) {
-    if (isIbmAuthMode) return;
-    localStorage.setItem("brand", newBrand);
-    setStoredBrandState(newBrand);
-  }
+  const setBrand = useCallback(
+    (newBrand: Brand) => {
+      if (isIbmAuthMode) return;
+      localStorage.setItem("brand", newBrand);
+      setStoredBrandState(newBrand);
+    },
+    [isIbmAuthMode],
+  );
+
+  const value = useMemo(() => ({ brand, setBrand }), [brand, setBrand]);
 
   return (
-    <BrandContext.Provider value={{ brand, setBrand }}>
-      {children}
-    </BrandContext.Provider>
+    <BrandContext.Provider value={value}>{children}</BrandContext.Provider>
   );
 }
 
-export const useBrand = () => useContext(BrandContext);
+export const useBrand = () => use(BrandContext);
 
 export const useIsCloudBrand = () => {
-  const { brand } = useContext(BrandContext);
+  const { brand } = use(BrandContext);
   return isCloudBrand(brand);
 };

@@ -34,6 +34,7 @@ import { Label } from "@/components/ui/label";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useTask } from "@/contexts/task-context";
 import { usePermissions } from "@/hooks/use-permissions";
+import { useSupportedFileTypes } from "@/hooks/use-supported-file-types";
 import {
   trackButton,
   trackProcessFailure,
@@ -49,37 +50,6 @@ import {
   uploadFile as uploadFileUtil,
 } from "@/lib/upload-utils";
 import { cn } from "@/lib/utils";
-
-/**
- * Local / chat file picker + folder ingest filter — single source of truth.
- * Only extensions verified to ingest successfully in the Langflow pipeline.
- * If modified, update docs (docs/docs/core-components/ingestion.mdx).
- *
- * documents: txt, md, html, htm, adoc, asciidoc, asc, pdf, docx
- * spreadsheets: csv
- *
- * TODO: Re-add other MIME/extension groups (images, xlsx/xls/ppt, rtf/odt, etc.)
- * once ingestion is verified end-to-end in Langflow; keep this list and ingestion.mdx in sync.
- */
-export const SUPPORTED_FILE_TYPES = {
-  "text/plain": [".txt"],
-  "text/markdown": [".md"],
-  "text/html": [".html", ".htm"],
-  "text/asciidoc": [".adoc", ".asciidoc", ".asc"],
-  "application/pdf": [".pdf"],
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [
-    ".docx",
-  ],
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [
-    ".xlsx",
-  ],
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation": [
-    ".pptx",
-  ],
-  "text/csv": [".csv"],
-};
-
-export const SUPPORTED_EXTENSIONS = Object.values(SUPPORTED_FILE_TYPES).flat();
 
 const getFilenameVariants = (filename: string): string[] => {
   const dotIndex = filename.lastIndexOf(".");
@@ -121,6 +91,8 @@ const FolderIconWithColor = ({ className }: { className?: string }) => (
 );
 
 export function KnowledgeDropdown() {
+  const { supportedExtensions, supportedExtensionSet } =
+    useSupportedFileTypes();
   const { can } = usePermissions();
   const canUpload = can("knowledge:upload");
   const isCloudBrand = useIsCloudBrand();
@@ -243,51 +215,54 @@ export function KnowledgeDropdown() {
             };
           } = {};
 
-          for (const type of cloudConnectorTypes) {
-            if (connectorsResult.connectors[type]) {
-              connectorInfo[type] = {
-                name: connectorsResult.connectors[type].name,
-                available: connectorsResult.connectors[type].available,
-                connected: false,
-                hasToken: false,
-              };
+          const availableTypes = cloudConnectorTypes.filter(
+            (type) => connectorsResult.connectors?.[type],
+          );
 
-              // Check connection status
+          for (const type of availableTypes) {
+            connectorInfo[type] = {
+              name: connectorsResult.connectors?.[type]?.name ?? type,
+              available:
+                connectorsResult.connectors?.[type]?.available ?? false,
+              connected: false,
+              hasToken: false,
+            };
+          }
+
+          await Promise.all(
+            availableTypes.map(async (type) => {
               try {
                 const statusRes = await fetch(`/api/connectors/${type}/status`);
-                if (statusRes.ok) {
-                  const statusData = await statusRes.json();
-                  const connections = statusData.connections || [];
-                  const activeConnection = connections.find(
-                    (conn: { is_active: boolean; connection_id: string }) =>
-                      conn.is_active,
+                if (!statusRes.ok) return;
+
+                const statusData = await statusRes.json();
+                const connections = statusData.connections || [];
+                const activeConnection = connections.find(
+                  (conn: { is_active: boolean; connection_id: string }) =>
+                    conn.is_active,
+                );
+                if (!activeConnection) return;
+
+                connectorInfo[type].connected = true;
+
+                try {
+                  const tokenRes = await fetch(
+                    `/api/connectors/${type}/token?connection_id=${activeConnection.connection_id}`,
                   );
-                  const isConnected = activeConnection !== undefined;
-
-                  if (isConnected && activeConnection) {
-                    connectorInfo[type].connected = true;
-
-                    // Check token availability
-                    try {
-                      const tokenRes = await fetch(
-                        `/api/connectors/${type}/token?connection_id=${activeConnection.connection_id}`,
-                      );
-                      if (tokenRes.ok) {
-                        const tokenData = await tokenRes.json();
-                        if (tokenData.access_token) {
-                          connectorInfo[type].hasToken = true;
-                        }
-                      }
-                    } catch {
-                      // Token check failed
+                  if (tokenRes.ok) {
+                    const tokenData = await tokenRes.json();
+                    if (tokenData.access_token) {
+                      connectorInfo[type].hasToken = true;
                     }
                   }
+                } catch {
+                  // Token check failed
                 }
               } catch {
                 // Status check failed
               }
-            }
-          }
+            }),
+          );
 
           setCloudConnectors(connectorInfo);
         }
@@ -323,11 +298,9 @@ export function KnowledgeDropdown() {
       // File selection will close dropdown automatically
 
       try {
-        console.log("[Duplicate Check] Checking file:", file.name);
         const exists = await isDuplicateFile(file);
 
         if (exists) {
-          console.log("[Duplicate Check] Duplicate detected, showing dialog");
           resetDuplicateDialogState();
           setPendingFile(file);
           setDuplicateFilename(file.name);
@@ -335,9 +308,6 @@ export function KnowledgeDropdown() {
           resetFileInput();
           return;
         }
-
-        // No duplicate, proceed with upload
-        console.log("[Duplicate Check] No duplicate, proceeding with upload");
         await uploadFile(file, false);
       } catch (error) {
         console.error("[Duplicate Check] Exception:", error);
@@ -404,10 +374,6 @@ export function KnowledgeDropdown() {
     for (let i = 0; i < filesToUpload.length; i += uploadBatchSize) {
       batches.push(filesToUpload.slice(i, i + uploadBatchSize));
     }
-
-    console.log(
-      `[Folder Upload] Uploading ${filesToUpload.length} file(s) in ${batches.length} batch(es), replace=${replace}`,
-    );
 
     for (const batch of batches) {
       try {
@@ -523,7 +489,7 @@ export function KnowledgeDropdown() {
         const ext = file.name
           .substring(file.name.lastIndexOf("."))
           .toLowerCase();
-        return SUPPORTED_EXTENSIONS.includes(ext);
+        return supportedExtensionSet.has(ext);
       });
       const unsupportedCount = fileList.length - filteredFiles.length;
 
@@ -582,9 +548,6 @@ export function KnowledgeDropdown() {
       }
 
       if (duplicateCount > 0) {
-        console.log(
-          `[Folder Upload] Found ${duplicateCount} duplicate file(s), showing overwrite dialog`,
-        );
         resetDuplicateDialogState();
         setPendingFolderUpload({
           allFiles: cleanFiles,
@@ -861,7 +824,7 @@ export function KnowledgeDropdown() {
         type="file"
         onChange={handleFileChange}
         className="hidden"
-        accept={SUPPORTED_EXTENSIONS.join(",")}
+        accept={supportedExtensions.join(",")}
       />
 
       <input

@@ -8,8 +8,9 @@ so the event loop stays responsive while staying consistent with the cached
 client lifecycle used by the AWS S3 / IBM COS connectors.
 
 DLS (v1): owner-based. The connector returns an empty-principal ``DocumentACL``;
-``service.process_connector_document`` assigns ``owner`` to the ingesting
-OpenRAG user. Container→group principal mapping is a planned fast-follow.
+``TaskProcessor.process_document_standard`` (``models/processors.py``) assigns
+``owner`` to the ingesting OpenRAG user. Container→group principal mapping is
+a planned fast-follow.
 """
 
 import asyncio
@@ -19,7 +20,11 @@ from datetime import UTC, datetime
 from posixpath import basename
 from typing import Any
 
-from config.settings import IBM_AUTH_ENABLED, is_dev_azure_blob_enabled
+from config.settings import (
+    IBM_AUTH_ENABLED,
+    is_azure_blob_enabled,
+    is_dev_azure_blob_enabled,
+)
 from connectors.base import BaseConnector, ConnectorDocument, DocumentACL
 from utils.logging_config import get_logger
 
@@ -64,6 +69,7 @@ class AzureBlobConnector(BaseConnector):
 
     CONNECTOR_TYPE = "azure_blob"
     CONNECTOR_KIND = "bucket"
+    CHANGE_DETECTION = "timestamp"
     CONNECTOR_NAME = "Azure Blob Storage"
     CONNECTOR_DESCRIPTION = "Add knowledge from Azure Blob Storage"
     CONNECTOR_ICON = "azure-blob"
@@ -71,17 +77,19 @@ class AzureBlobConnector(BaseConnector):
     SECRET_CONFIG_KEYS = ("connection_string", "account_key")
 
     # BaseConnector uses these for the default env-availability probe; the
-    # bucket-kind override below makes availability hinge on IBM_AUTH_ENABLED
-    # (or OPENRAG_DEV_AZURE_BLOB for local dev).
+    # bucket-kind override below makes availability hinge on the kill switch and
+    # IBM_AUTH_ENABLED (or OPENRAG_DEV_AZURE_BLOB for local dev).
     CLIENT_ID_ENV_VAR = "AZURE_STORAGE_ACCOUNT_NAME"
     CLIENT_SECRET_ENV_VAR = "AZURE_STORAGE_ACCOUNT_KEY"
 
     @classmethod
     def is_available(cls, manager, user_id=None) -> bool:
-        # Gated by feature flag like the other bucket connectors (aws_s3, ibm_cos).
-        # OPENRAG_DEV_AZURE_BLOB=true bypasses the IBM_AUTH_ENABLED requirement for
-        # local dev testing (e.g. against Azurite). Never use in production.
-        return IBM_AUTH_ENABLED or is_dev_azure_blob_enabled()
+        # OPENRAG_AZURE_BLOB_ENABLED is a kill switch (default true): set it false
+        # to force-hide the connector even when IBM auth is on. When true, the
+        # Enterprise/SaaS gate still applies -- IBM_AUTH_ENABLED like the other
+        # bucket connectors (aws_s3, ibm_cos), or OPENRAG_DEV_AZURE_BLOB=true to
+        # bypass IBM auth for local dev (e.g. against Azurite; never in production).
+        return is_azure_blob_enabled() and (IBM_AUTH_ENABLED or is_dev_azure_blob_enabled())
 
     @classmethod
     def register_routes(cls, app) -> None:
@@ -328,7 +336,7 @@ class AzureBlobConnector(BaseConnector):
         filename = basename(blob_name) or blob_name
 
         # Owner-based DLS (v1): no per-blob principals — ownership is assigned to
-        # the ingesting OpenRAG user by service.process_connector_document.
+        # the ingesting OpenRAG user by TaskProcessor.process_document_standard.
         acl = DocumentACL(owner=None, allowed_users=[], allowed_groups=[], allowed_principals=[])
 
         return ConnectorDocument(

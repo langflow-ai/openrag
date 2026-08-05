@@ -1,6 +1,5 @@
 import asyncio
 import io
-import os
 import time
 from collections import deque
 from collections.abc import Iterable
@@ -121,12 +120,16 @@ class GoogleDriveConnector(BaseConnector):
     def __init__(self, config: dict[str, Any]) -> None:
         super().__init__(config)
 
-        # Read from config OR env (backend env, not NEXT_PUBLIC_*):
-        env_client_id = os.getenv(self.CLIENT_ID_ENV_VAR)
-        env_client_secret = os.getenv(self.CLIENT_SECRET_ENV_VAR)
-
-        client_id = config.get("client_id") or env_client_id
-        client_secret = config.get("client_secret") or env_client_secret
+        # Resolve credentials via the centralized lookup: per-connection config,
+        # then the workspace-level admin override, then the environment variable.
+        try:
+            client_id = self.get_client_id()
+        except (ValueError, NotImplementedError):
+            client_id = None
+        try:
+            client_secret = self.get_client_secret()
+        except (ValueError, NotImplementedError):
+            client_secret = None
 
         # Token file default - use data directory for persistence
         from config.paths import get_data_file
@@ -136,13 +139,13 @@ class GoogleDriveConnector(BaseConnector):
 
         if not isinstance(client_id, str) or not client_id.strip():
             raise RuntimeError(
-                f"Missing Google Drive OAuth client_id. "
-                f"Provide config['client_id'] or set {self.CLIENT_ID_ENV_VAR}."
+                f"Missing Google Drive OAuth client_id. Provide config['client_id'], "
+                f"set it in Settings → Connector Settings, or set {self.CLIENT_ID_ENV_VAR}."
             )
         if not isinstance(client_secret, str) or not client_secret.strip():
             raise RuntimeError(
-                f"Missing Google Drive OAuth client_secret. "
-                f"Provide config['client_secret'] or set {self.CLIENT_SECRET_ENV_VAR}."
+                f"Missing Google Drive OAuth client_secret. Provide config['client_secret'], "
+                f"set it in Settings → Connector Settings, or set {self.CLIENT_SECRET_ENV_VAR}."
             )
 
         # Normalize incoming IDs from any of the supported alias keys

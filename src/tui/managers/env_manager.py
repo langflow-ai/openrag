@@ -61,6 +61,7 @@ class EnvConfig:
     google_oauth_client_secret: str = ""
     microsoft_graph_oauth_client_id: str = ""
     microsoft_graph_oauth_client_secret: str = ""
+    microsoft_allowed_tenant_ids: str = ""
 
     # Optional settings
     webhook_base_url: str = ""
@@ -215,6 +216,7 @@ class EnvManager:
             "GOOGLE_OAUTH_CLIENT_SECRET": "google_oauth_client_secret",  # pragma: allowlist secret
             "MICROSOFT_GRAPH_OAUTH_CLIENT_ID": "microsoft_graph_oauth_client_id",
             "MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET": "microsoft_graph_oauth_client_secret",  # pragma: allowlist secret
+            "MICROSOFT_ALLOWED_TENANT_IDS": "microsoft_allowed_tenant_ids",
             "WEBHOOK_BASE_URL": "webhook_base_url",
             "AWS_ACCESS_KEY_ID": "aws_access_key_id",
             "AWS_SECRET_ACCESS_KEY": "aws_secret_access_key",  # pragma: allowlist secret
@@ -320,6 +322,9 @@ class EnvManager:
         if not self.config.openrag_encryption_key:
             self.config.openrag_encryption_key = self.generate_openrag_encryption_key()
 
+        if not self.config.langflow_superuser_password:
+            self.config.langflow_superuser_password = self.generate_secure_password()
+
         # Set OPENRAG_VERSION to TUI version if not already set
         if not self.config.openrag_version:
             try:
@@ -332,17 +337,10 @@ class EnvManager:
                 # If we can't get version, leave it empty (will use 'latest' from compose)
                 pass
 
-        # Configure autologin based on whether password is set
-        if not self.config.langflow_superuser_password:
-            # If no password is set, enable autologin mode
-            self.config.langflow_auto_login = "True"
-            self.config.langflow_new_user_is_active = "True"
-            self.config.langflow_enable_superuser_cli = "True"
-        else:
-            # If password is set, disable autologin mode
-            self.config.langflow_auto_login = "False"
-            self.config.langflow_new_user_is_active = "False"
-            self.config.langflow_enable_superuser_cli = "False"
+        # Always enable autologin mode per requirements
+        self.config.langflow_auto_login = "True"
+        self.config.langflow_new_user_is_active = "True"
+        self.config.langflow_enable_superuser_cli = "True"
 
     def validate_config(self, mode: str = "full") -> bool:
         """
@@ -417,9 +415,10 @@ class EnvManager:
         if not validate_non_empty(self.config.opensearch_password):
             self.config.validation_errors["opensearch_password"] = "OpenSearch password is required"
 
-        # Langflow secret key is auto-generated; no user input required
-
-        # Langflow password is now optional - if not provided, autologin mode will be enabled
+        if not validate_non_empty(self.config.langflow_superuser_password):
+            self.config.validation_errors["langflow_superuser_password"] = (
+                "Langflow superuser password is required"
+            )
 
         if mode == "full":
             # Validate OAuth settings if provided
@@ -481,14 +480,12 @@ class EnvManager:
                 f.write(
                     f"LANGFLOW_SECRET_KEY={self._quote_env_value(self.config.langflow_secret_key)}\n"
                 )
-                # Only write LANGFLOW_SUPERUSER and password if password is set
-                if self.config.langflow_superuser_password:
-                    f.write(
-                        f"LANGFLOW_SUPERUSER={self._quote_env_value(self.config.langflow_superuser)}\n"
-                    )
-                    f.write(
-                        f"LANGFLOW_SUPERUSER_PASSWORD={self._quote_env_value(self.config.langflow_superuser_password)}\n"
-                    )
+                f.write(
+                    f"LANGFLOW_SUPERUSER={self._quote_env_value(self.config.langflow_superuser or 'admin')}\n"
+                )
+                f.write(
+                    f"LANGFLOW_SUPERUSER_PASSWORD={self._quote_env_value(self.config.langflow_superuser_password)}\n"
+                )
                 f.write(
                     f"LANGFLOW_CHAT_FLOW_ID={self._quote_env_value(self.config.langflow_chat_flow_id)}\n"
                 )
@@ -660,6 +657,10 @@ class EnvManager:
                     f.write(
                         f"MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET={self._quote_env_value(self.config.microsoft_graph_oauth_client_secret)}\n"
                     )
+                    if self.config.microsoft_allowed_tenant_ids:
+                        f.write(
+                            f"MICROSOFT_ALLOWED_TENANT_IDS={self._quote_env_value(self.config.microsoft_allowed_tenant_ids)}\n"
+                        )
                     f.write("\n")
 
                 # Optional settings
@@ -768,6 +769,12 @@ class EnvManager:
             (
                 "microsoft_graph_oauth_client_secret",
                 "Microsoft Graph Client Secret",
+                "",
+                False,
+            ),
+            (
+                "microsoft_allowed_tenant_ids",
+                "Microsoft Allowed Tenant IDs",
                 "",
                 False,
             ),

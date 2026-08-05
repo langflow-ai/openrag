@@ -55,9 +55,9 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <Providers>
-            <Analytics />
             <TooltipProvider>
               <AuthProvider>
+                <Analytics />
                 <BrandProvider>
                   <TaskProvider>
                     <KnowledgeFilterProvider>

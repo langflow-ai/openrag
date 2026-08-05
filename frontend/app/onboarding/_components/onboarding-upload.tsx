@@ -7,9 +7,9 @@ import { useUpdateOnboardingStateMutation } from "@/app/api/mutations/useUpdateO
 import { useGetNudgesQuery } from "@/app/api/queries/useGetNudgesQuery";
 import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import { AnimatedProviderSteps } from "@/app/onboarding/_components/animated-provider-steps";
-import { SUPPORTED_EXTENSIONS } from "@/components/knowledge-dropdown";
 import { Button } from "@/components/ui/button";
 import { trackButton } from "@/lib/analytics";
+import { SUPPORTED_EXTENSIONS } from "@/lib/supported-file-types";
 import { uploadFile } from "@/lib/upload-utils";
 
 interface OnboardingUploadProps {
@@ -150,11 +150,6 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
               await updateOnboardingMutation.mutateAsync({
                 user_doc_filter_id: result.filter.id,
               });
-
-              console.log(
-                "Created knowledge filter for uploaded document",
-                result.filter.id,
-              );
             }
           })
           .catch((error) => {
@@ -192,6 +187,8 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
     uploadedTaskId,
     createFilterMutation,
     isCreatingFilter,
+    updateOnboardingMutation.mutateAsync,
+    STEP_LIST.length,
   ]);
 
   const resetFileInput = () => {
@@ -215,7 +212,6 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
     try {
       setCurrentStep(0);
       const result = await uploadFile(file, true, true); // Pass createFilter=true
-      console.log("Document upload task started successfully");
 
       // Store task ID to track the specific upload task
       if (result.taskId) {

@@ -16,7 +16,7 @@ from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL
 from config.paths import get_flows_path
 from utils.container_utils import determine_docling_host, get_container_host
 from utils.embedding_fields import build_knn_vector_field
-from utils.env_utils import get_env_float, get_env_int
+from utils.env_utils import get_env_float, get_env_int, get_env_set
 from utils.logging_config import get_logger
 
 # Import configuration manager
@@ -35,6 +35,23 @@ OPENSEARCH_URL = f"https://{OPENSEARCH_HOST}:{OPENSEARCH_PORT}"
 # Optional: Langflow-specific OpenSearch endpoint
 LANGFLOW_OPENSEARCH_HOST = os.getenv("LANGFLOW_OPENSEARCH_HOST")
 LANGFLOW_OPENSEARCH_PORT = get_env_int("LANGFLOW_OPENSEARCH_PORT")
+
+
+def get_langflow_opensearch_url() -> str:
+    """OpenSearch URL for Langflow to use.
+
+    Uses LANGFLOW_OPENSEARCH_HOST (and LANGFLOW_OPENSEARCH_PORT or OPENSEARCH_PORT)
+    when configured, otherwise falls back to OPENSEARCH_URL env var or container default.
+    """
+    if LANGFLOW_OPENSEARCH_HOST:
+        port = LANGFLOW_OPENSEARCH_PORT or OPENSEARCH_PORT
+        return f"https://{LANGFLOW_OPENSEARCH_HOST}:{port}"
+    return os.getenv(
+        "OPENSEARCH_URL",
+        f"https://{os.getenv('OPENSEARCH_HOST', 'opensearch')}:"
+        f"{os.getenv('OPENSEARCH_INTERNAL_PORT', '9200')}",
+    )
+
 
 OPENSEARCH_USERNAME = os.getenv("OPENSEARCH_USERNAME", "admin")
 OPENSEARCH_PASSWORD = os.getenv("OPENSEARCH_PASSWORD")
@@ -186,12 +203,16 @@ SESSION_SECRET = os.getenv("SESSION_SECRET") or "your-secret-key-change-in-produ
 # os.environ directly.
 JWT_SIGNING_KEY = os.getenv("JWT_SIGNING_KEY")
 GOOGLE_OAUTH_CLIENT_ID = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
+MICROSOFT_GRAPH_OAUTH_CLIENT_ID = os.getenv("MICROSOFT_GRAPH_OAUTH_CLIENT_ID")
+MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET = os.getenv("MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET")
 GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
+# Optional comma-separated list of Azure AD tenant UUIDs. When set, tokens from
+# tenants not in this list are rejected (business policy, not a standards requirement).
+# When unset, any tenant whose token passes signature/audience/expiry checks is accepted.
+MICROSOFT_ALLOWED_TENANT_IDS: set[str] | None = get_env_set("MICROSOFT_ALLOWED_TENANT_IDS")
 
 # IBM AMS authentication (Watsonx Data embedded mode)
 IBM_AUTH_ENABLED = os.getenv("IBM_AUTH_ENABLED", "false").lower() in ("true", "1", "yes")
-PLATFORM_USERNAME = os.getenv("PLATFORM_USERNAME")
-PLATFORM_PASSWORD = os.getenv("PLATFORM_PASSWORD")
 OPENRAG_TENANT_ID = os.getenv("OPENRAG_TENANT_ID", "openrag")
 IBM_JWT_PUBLIC_KEY_URL = os.getenv("IBM_JWT_PUBLIC_KEY_URL", "")
 IBM_SESSION_COOKIE_NAME = os.getenv("IBM_SESSION_COOKIE_NAME", "ibm-openrag-session")
@@ -257,6 +278,55 @@ def is_dev_azure_blob_enabled() -> bool:
     Requires ``OPENRAG_DEV_AZURE_BLOB=true``.
     """
     raw = os.getenv("OPENRAG_DEV_AZURE_BLOB", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
+def is_dev_ibm_cos_enabled() -> bool:
+    """Local dev: enable the IBM COS connector without IBM_AUTH_ENABLED.
+
+    Allows testing the IBM COS connector (e.g. against MinIO in HMAC mode) in a
+    local environment where IBM auth is not configured. Never enable in
+    production. Requires ``OPENRAG_DEV_IBM_COS=true``.
+    """
+    raw = os.getenv("OPENRAG_DEV_IBM_COS", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
+def is_azure_blob_enabled() -> bool:
+    """Feature kill switch for the Azure Blob connector (default: enabled).
+
+    Independent of ``IBM_AUTH_ENABLED``. Set ``OPENRAG_AZURE_BLOB_ENABLED=false``
+    to force-hide the connector in the UI even when IBM auth is on. When true
+    (the default), availability still requires the Enterprise/SaaS gate
+    (``IBM_AUTH_ENABLED``) or the ``OPENRAG_DEV_AZURE_BLOB`` dev bypass -- this
+    flag is subtractive (AND-ed with that gate), not an override.
+    """
+    raw = os.getenv("OPENRAG_AZURE_BLOB_ENABLED", "true").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
+def is_ingest_preview_flag_enabled() -> bool:
+    """Raw opt-in flag for the preview-mode ingest backend.
+
+    Read per-call (like the other feature-flag accessors in this module) so
+    runtime/test overrides of ``OPENRAG_INGEST_PREVIEW_ENABLED`` take effect
+    without a restart. This is only the flag itself; run-mode gating is applied
+    by ``utils.ingest_preview_flag.is_ingest_preview_enabled()``.
+    """
+    raw = os.getenv("OPENRAG_INGEST_PREVIEW_ENABLED", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
+def is_workspace_oauth_overrides_enabled() -> bool:
+    """Feature flag for workspace-level OAuth connector credential overrides.
+
+    Default off. Gates: the admin UI + API for setting per-workspace client
+    id/secret overrides on OAuth-kind connectors, resolution of those
+    overrides in BaseConnector.get_client_id()/get_client_secret() (env vars
+    still work either way), and the OAuth "test connection" flow. Set
+    ``OPENRAG_WORKSPACE_OAUTH_OVERRIDES_ENABLED=true`` to turn it on.
+    """
+    raw = os.getenv("OPENRAG_WORKSPACE_OAUTH_OVERRIDES_ENABLED", "false").strip().lower()
     return raw in ("true", "1", "yes", "on")
 
 
@@ -347,6 +417,10 @@ def get_jwt_verify_signature() -> bool:
 
 
 DOCLING_OCR_ENGINE = os.getenv("DOCLING_OCR_ENGINE")
+
+# Hugging Face cache root override (standard HF_HOME env var). Used to locate
+# locally downloaded VLM weights; falls back to ~/.cache/huggingface when unset.
+HF_HOME = os.getenv("HF_HOME")
 SEGMENT_WRITE_KEY = os.getenv("SEGMENT_WRITE_KEY", "")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "")
 PLATFORM_AUTH_DEV_MODE = os.getenv("PLATFORM_AUTH_DEV_MODE", "false").lower() in (
@@ -489,6 +563,17 @@ else:
     DOCLING_SERVE_URL = f"http://{DOCLING_HOST_IP}:5001"
     logger.info("Auto-detected Docling host: %s (URL: %s)", DOCLING_HOST_IP, DOCLING_SERVE_URL)
 
+
+def get_langflow_docling_url() -> str:
+    """Docling Serve URL for Langflow to use.
+
+    Uses DOCLING_SERVE_URL env var if set, otherwise defaults to
+    http://host.docker.internal:5001 so Langflow running inside a container
+    can reach docling-serve on the host.
+    """
+    return os.getenv("DOCLING_SERVE_URL", "http://host.docker.internal:5001")
+
+
 # Ingestion configuration
 DISABLE_INGEST_WITH_LANGFLOW = os.getenv("DISABLE_INGEST_WITH_LANGFLOW", "false").lower() in (
     "true",
@@ -506,6 +591,23 @@ OPENRAG_INGEST_VIA_CHAT = os.getenv("OPENRAG_INGEST_VIA_CHAT", "false").lower() 
 # Show per-upload ingest settings (chunk size, overlap, OCR, etc.) in cloud picker flows
 OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS = os.getenv(
     "OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS", "false"
+).lower() in ("true", "1", "yes")
+
+# Show the "Advanced Vision Model (VLM) Settings" section in ingest settings.
+# On by default; set to "false" to hide the VLM UI (kill switch — the backend
+# VLM settings endpoints stay functional either way).
+OPENRAG_SHOW_VLM_SETTINGS = os.getenv("OPENRAG_SHOW_VLM_SETTINGS", "true").lower() in (
+    "true",
+    "1",
+    "yes",
+)
+
+# Show the "Make documents available to all users" (shared) toggle for COS bucket
+# ingestion, independent of OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS. Deployments that
+# hide the general per-upload ingest tuning knobs (e.g. SaaS) still get just this
+# toggle. On by default; set to "false" to hide it.
+OPENRAG_SHOW_SHARED_UPLOAD_TOGGLE = os.getenv(
+    "OPENRAG_SHOW_SHARED_UPLOAD_TOGGLE", "true"
 ).lower() in ("true", "1", "yes")
 
 # Ingest sample data configuration
@@ -737,42 +839,71 @@ async def get_langflow_api_key(force_regenerate: bool = False):
         logger.warning("[LF] Forcing Langflow API key regeneration due to auth failure")
         LANGFLOW_KEY = None
 
-    # Use default langflow/langflow credentials if auto-login is enabled and credentials not set
-    username = LANGFLOW_SUPERUSER
-    password = LANGFLOW_SUPERUSER_PASSWORD
-
-    if LANGFLOW_AUTO_LOGIN and (not username or not password):
-        logger.info("LANGFLOW_AUTO_LOGIN is enabled, using default langflow/langflow credentials")
-        username = username or "langflow"
-        password = password or "langflow"
-
-    if not username or not password:
-        logger.warning(
-            "LANGFLOW_SUPERUSER and LANGFLOW_SUPERUSER_PASSWORD not set, skipping API key generation"
-        )
-        return None
-
     try:
-        logger.info("Generating Langflow API key using superuser credentials")
+        logger.info("Generating Langflow API key")
         max_attempts = get_env_int("LANGFLOW_KEY_RETRIES", 15)
         delay_seconds = get_env_float("LANGFLOW_KEY_RETRY_DELAY", 2.0)
 
         async with httpx.AsyncClient(timeout=10.0) as client:
             for attempt in range(1, max_attempts + 1):
                 try:
-                    # Login to get access token
-                    login_response = await client.post(
-                        f"{LANGFLOW_URL}/api/v1/login",
-                        headers={"Content-Type": "application/x-www-form-urlencoded"},
-                        data={
-                            "username": username,
-                            "password": password,
-                        },
-                    )
-                    login_response.raise_for_status()
-                    access_token = login_response.json().get("access_token")
+                    access_token = None
+                    auto_login_disabled = False
+
+                    # Check /auto_login endpoint to discover if auto login is enabled in Langflow
+                    try:
+                        auto_login_response = await client.get(f"{LANGFLOW_URL}/api/v1/auto_login")
+                        if auto_login_response.status_code == 200:
+                            access_token = auto_login_response.json().get("access_token")
+                            if access_token:
+                                logger.info(
+                                    "Langflow auto_login is enabled; acquired access token via /auto_login"
+                                )
+                        elif auto_login_response.status_code in (401, 403, 404):
+                            auto_login_disabled = True
+                        else:
+                            auto_login_response.raise_for_status()
+                    except (httpx.HTTPStatusError, httpx.RequestError):
+                        raise
+                    except Exception as e:
+                        logger.debug("Failed probing Langflow /auto_login", error=str(e))
+
+                    # If auto_login token is not available, use superuser credentials login
                     if not access_token:
-                        raise KeyError("access_token")
+                        username = LANGFLOW_SUPERUSER
+                        password = LANGFLOW_SUPERUSER_PASSWORD
+
+                        if LANGFLOW_AUTO_LOGIN and (not username or not password):
+                            logger.info(
+                                "LANGFLOW_AUTO_LOGIN is enabled, using default langflow/langflow credentials"
+                            )
+                            username = username or "langflow"
+                            password = password or "langflow"
+
+                        if not username or not password:
+                            if auto_login_disabled:
+                                logger.warning(
+                                    "Auto-login is disabled in Langflow and superuser credentials not set, skipping API key generation"
+                                )
+                                return None
+                            else:
+                                raise httpx.RequestError(
+                                    "Auto-login token unavailable and superuser credentials not set"
+                                )
+
+                        # Login to get access token
+                        login_response = await client.post(
+                            f"{LANGFLOW_URL}/api/v1/login",
+                            headers={"Content-Type": "application/x-www-form-urlencoded"},
+                            data={
+                                "username": username,
+                                "password": password,
+                            },
+                        )
+                        login_response.raise_for_status()
+                        access_token = login_response.json().get("access_token")
+                        if not access_token:
+                            raise KeyError("access_token")
 
                     # Create API key
                     api_key_response = await client.post(
@@ -843,36 +974,32 @@ class AppClients:
 
     async def initialize(self):
         from utils.run_mode_utils import (
+            get_run_mode,
             is_run_mode_on_prem,
-            is_run_mode_oss,
             is_run_mode_saas,
         )
 
         # Credentials for the global (backend-owned) writer client, by run mode:
-        #   saas    -> platform service token (JWT) when available, else unauthenticated
-        #   on_prem -> OpenSearch basic auth
-        #   oss     -> OpenSearch basic auth
-        service_token = get_openrag_service_token() if is_run_mode_saas() else None
-        if service_token:
+        #   saas/on_prem -> platform service token (JWT); required, raises if unset
+        #   oss          -> OpenSearch basic auth
+        if is_run_mode_saas() or is_run_mode_on_prem():
+            service_token = get_openrag_service_token()
+            if not service_token:
+                raise RuntimeError(
+                    "OPENRAG_SERVICE_TOKEN is required to initialize the global "
+                    f"OpenSearch writer client in {get_run_mode()} mode."
+                )
             logger.info(
-                "Initializing global OpenSearch writer client: saas mode, "
+                f"Initializing global OpenSearch writer client: {get_run_mode()} mode, "
                 "using platform service token"
             )
             self.opensearch = self.create_opensearch_client_from_jwt(service_token)
         else:
-            if is_run_mode_on_prem() or is_run_mode_oss():
-                os_auth = (get_opensearch_username(), get_opensearch_password())
-                logger.info(
-                    "Initializing global OpenSearch writer client: %s mode, "
-                    "using OpenSearch basic auth" % ("on_prem" if is_run_mode_on_prem() else "oss")
-                )
-            else:
-                os_auth = None
-                logger.info(
-                    "Initializing global OpenSearch writer client: saas mode without "
-                    "service token, using the unauthenticated client"
-                )
-
+            os_auth = (get_opensearch_username(), get_opensearch_password())
+            logger.info(
+                "Initializing global OpenSearch writer client: oss mode, "
+                "using OpenSearch basic auth"
+            )
             self.opensearch = AsyncOpenSearch(
                 hosts=[{"host": OPENSEARCH_HOST, "port": OPENSEARCH_PORT}],
                 connection_class=AIOHttpConnection,
@@ -1381,13 +1508,19 @@ class AppClients:
             raise last_error
         raise RuntimeError("Langflow request failed without a response")
 
-    async def _create_langflow_global_variable(self, name: str, value: str, modify: bool = False):
+    async def _create_langflow_global_variable(
+        self,
+        name: str,
+        value: str,
+        modify: bool = False,
+        variable_type: str = "Credential",
+    ):
         """Create a global variable in Langflow via API"""
         payload = {
             "name": name,
             "value": value,
             "default_fields": [],
-            "type": "Credential",
+            "type": variable_type,
         }
 
         try:
@@ -1404,7 +1537,9 @@ class AppClients:
                         "Langflow global variable already exists, attempting to update",
                         variable_name=name,
                     )
-                    await self._update_langflow_global_variable(name, value)
+                    await self._update_langflow_global_variable(
+                        name, value, variable_type=variable_type
+                    )
                 else:
                     logger.info(
                         "Langflow global variable already exists",
@@ -1424,7 +1559,12 @@ class AppClients:
             )
             raise e
 
-    async def _update_langflow_global_variable(self, name: str, value: str):
+    async def _update_langflow_global_variable(
+        self,
+        name: str,
+        value: str,
+        variable_type: str = "Credential",
+    ):
         """Update an existing global variable in Langflow via API"""
         try:
             # First, get all variables to find the one with the matching name
@@ -1456,12 +1596,67 @@ class AppClients:
                 logger.error("Variable ID not found for update", variable_name=name)
                 return
 
+            current_type = target_variable.get("type")
+            if current_type and current_type != variable_type:
+                delete_response = await self.langflow_request(
+                    "DELETE", f"/api/v1/variables/{variable_id}"
+                )
+                if delete_response.status_code not in [200, 204]:
+                    logger.warning(
+                        "Failed to delete Langflow global variable before type migration",
+                        variable_name=name,
+                        variable_id=variable_id,
+                        current_type=current_type,
+                        target_type=variable_type,
+                        status_code=delete_response.status_code,
+                        response_text=delete_response.text,
+                    )
+                    return
+
+                recreate_payload = {
+                    "name": name,
+                    "value": value,
+                    "default_fields": target_variable.get("default_fields", []),
+                    "type": variable_type,
+                }
+                recreate_response = await self.langflow_request(
+                    "POST", "/api/v1/variables/", json=recreate_payload
+                )
+                if recreate_response.status_code not in [200, 201]:
+                    recreate_response = await self.langflow_request(
+                        "POST", "/api/v1/variables/", json=recreate_payload
+                    )
+                if recreate_response.status_code in [200, 201]:
+                    logger.info(
+                        "Migrated Langflow global variable type",
+                        variable_name=name,
+                        variable_id=variable_id,
+                        old_type=current_type,
+                        new_type=variable_type,
+                    )
+                else:
+                    raise RuntimeError(
+                        f"Failed to recreate Langflow global variable '{name}' after type migration: "
+                        f"status_code={recreate_response.status_code}, response={recreate_response.text}"
+                    )
+                return
+
+            current_value = target_variable.get("value")
+            if current_value == value:
+                logger.debug(
+                    "Langflow global variable already up to date, skipping update",
+                    variable_name=name,
+                    variable_id=variable_id,
+                )
+                return
+
             # Update the variable using PATCH
             update_payload = {
                 "id": variable_id,
                 "name": name,
                 "value": value,
                 "default_fields": target_variable.get("default_fields", []),
+                "type": variable_type,
             }
 
             patch_response = await self.langflow_request(
@@ -1542,49 +1737,34 @@ class AppClients:
         """Create the OpenSearch client used for index administration
         (init_index: index creation, mapping/settings updates), by run mode:
 
-          saas    -> platform service token — the end-user JWT identity can
-                     search/write documents but lacks index-admin privileges on
-                     managed OpenSearch, so admin calls (e.g. HEAD /<index>)
-                     fail. Falls back to the user's token for legacy
-                     deployments without OPENRAG_SERVICE_TOKEN.
-          on_prem -> OpenSearch basic auth
-          oss     -> OpenSearch basic auth
+          saas/on_prem -> platform service token (JWT); required, raises if
+                          unset. The end-user JWT (``user_jwt_token``, kept
+                          for call-site compatibility but no longer consulted)
+                          lacks index-admin privileges on managed OpenSearch,
+                          so admin calls (e.g. HEAD /<index>) would fail.
+          oss          -> OpenSearch basic auth
 
-        Returns None when no suitable credentials exist; callers should then
-        use the global writer client (clients.opensearch).
+        Raises RuntimeError when saas/on_prem is missing OPENRAG_SERVICE_TOKEN.
         """
-        from utils.run_mode_utils import (
-            is_run_mode_on_prem,
-            is_run_mode_oss,
-            is_run_mode_saas,
-        )
+        from utils.run_mode_utils import get_run_mode, is_run_mode_on_prem, is_run_mode_saas
 
-        if is_run_mode_saas():
+        if is_run_mode_saas() or is_run_mode_on_prem():
             service_token = get_openrag_service_token()
-            if service_token:
-                logger.info(
-                    "Index admin OpenSearch client: saas mode, using platform service token"
+            if not service_token:
+                raise RuntimeError(
+                    "OPENRAG_SERVICE_TOKEN is required for the index-admin "
+                    f"OpenSearch client in {get_run_mode()} mode."
                 )
-                return self.create_opensearch_client_from_jwt(service_token)
-            if user_jwt_token:
-                logger.warning(
-                    "Index admin OpenSearch client: saas mode without "
-                    "OPENRAG_SERVICE_TOKEN; falling back to the requesting "
-                    "user's token (backward-compatibility path)"
-                )
-                return self.create_opensearch_client_from_jwt(user_jwt_token)
             logger.info(
-                "Index admin OpenSearch client: saas mode with no service or "
-                "user token; using the global writer client"
+                f"Index admin OpenSearch client: {get_run_mode()} mode, "
+                "using platform service token"
             )
-            return None
-        if is_run_mode_on_prem() or is_run_mode_oss():
-            # Build a fresh basic-auth client so credentials updated after
-            # startup (e.g. during onboarding) take effect immediately.
-            return self.create_basic_opensearch_client(
-                get_opensearch_username(), get_opensearch_password()
-            )
-        return None
+            return self.create_opensearch_client_from_jwt(service_token)
+        # oss: build a fresh basic-auth client so credentials updated after
+        # startup (e.g. during onboarding) take effect immediately.
+        return self.create_basic_opensearch_client(
+            get_opensearch_username(), get_opensearch_password()
+        )
 
 
 # Component template paths — derived from the centralized flows directory

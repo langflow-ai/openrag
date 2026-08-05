@@ -25,6 +25,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 import db.models  # noqa: E402,F401
+from auth.user_identity_cache import _ENSURED_USER_IDS, _user_cache_key  # noqa: E402
 from db.models import (  # noqa: E402
     Permission,
     Role,
@@ -34,8 +35,6 @@ from db.models import User as UserRow  # noqa: E402
 from db.repositories import RoleRepo  # noqa: E402
 from db.seed import seed_roles_and_permissions  # noqa: E402
 from dependencies import (  # noqa: E402
-    _ENSURED_USER_IDS,
-    _user_cache_key,
     get_current_user,
     get_rbac_service,
     require_all_permissions,

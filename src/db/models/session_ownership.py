@@ -9,8 +9,7 @@ state may reference user_ids that haven't been backfilled into the
 violations.
 """
 
-from datetime import datetime
-from typing import Optional
+from datetime import UTC, datetime
 
 from sqlmodel import Field, SQLModel
 
@@ -20,5 +19,5 @@ class SessionOwnership(SQLModel, table=True):
 
     response_id: str = Field(primary_key=True, max_length=64)
     user_id: str = Field(max_length=64, index=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    last_accessed: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    last_accessed: datetime | None = Field(default=None)

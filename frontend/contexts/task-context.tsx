@@ -4,8 +4,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import type React from "react";
 import {
   createContext,
+  use,
   useCallback,
-  useContext,
   useEffect,
   useRef,
   useState,
@@ -28,6 +28,7 @@ import {
   getKnowledgeFileIdentity,
   inferTaskFileConnectorType,
 } from "@/lib/knowledge-table-state";
+import { getTaskFailureToastDescription } from "@/lib/task-error-display";
 import {
   didTaskReachCompleted,
   didTaskReachTerminalState,
@@ -321,6 +322,12 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 
               const fileError = (() => {
                 if (
+                  typeof fileInfoEntry.user_facing_message === "string" &&
+                  fileInfoEntry.user_facing_message.trim().length > 0
+                ) {
+                  return fileInfoEntry.user_facing_message.trim();
+                }
+                if (
                   typeof fileInfoEntry.error === "string" &&
                   fileInfoEntry.error.trim().length > 0
                 ) {
@@ -496,9 +503,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
             };
             if (isTotalFailure) {
               toast.error("Task failed", {
-                description: `${failedFiles} file${
-                  failedFiles !== 1 ? "s" : ""
-                } failed`,
+                description: getTaskFailureToastDescription(currentTask),
                 action: toastAction,
               });
             } else {
@@ -626,9 +631,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
             resultValue: currentTask.error,
           });
           toast.error("Task failed", {
-            description: `Task ${currentTask.task_id} failed: ${
-              currentTask.error || "Unknown error"
-            }`,
+            description: getTaskFailureToastDescription(currentTask),
           });
 
           // Set chat error flag to trigger test_completion=true on health checks
@@ -656,6 +659,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     isOnboardingActive,
     clearTaskMetadata,
     queryClient,
+    selectTask,
   ]);
 
   const addTask = useCallback(
@@ -767,7 +771,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 }
 
 export function useTask() {
-  const context = useContext(TaskContext);
+  const context = use(TaskContext);
   if (context === undefined) {
     throw new Error("useTask must be used within a TaskProvider");
   }

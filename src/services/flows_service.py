@@ -1,7 +1,7 @@
 import asyncio
 import json
 import os
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from cachetools import LRUCache
@@ -25,6 +25,48 @@ logger = get_logger(__name__)
 
 
 class FlowsService:
+    def __init__(self) -> None:
+        # Ephemeral dict of dismissed flow update notifications per user_id
+        self._dismissed_updates: dict[str, set[str]] = {}
+        # Cache for flow file mappings to avoid repeated filesystem scans
+        self._flow_file_cache: dict[str, str] = {}
+        # Semaphores to prevent race conditions when updating the same flow concurrently
+        self._flow_locks = LRUCache(maxsize=128)
+        self._lock_creation_lock = asyncio.Lock()
+        # Cache for enabled models to avoid redundant API calls
+        self._enabled_models_cache: dict[str, Any] | None = None
+        self._enabled_models_cache_time: datetime | None = None
+        self._enabled_models_cache_ttl = 60  # seconds
+        self._enabled_models_lock = asyncio.Lock()
+        # Cache for available custom flow updates
+        self._custom_updates_cache: list[dict[str, Any]] | None = None
+
+    def dismiss_flows_updates(
+        self, flow_types: list[str] | None = None, user_id: str | None = None
+    ) -> None:
+        """Dismiss flow update notifications ephemerally in backend memory per user."""
+        if not hasattr(self, "_dismissed_updates") or not isinstance(self._dismissed_updates, dict):
+            self._dismissed_updates = {}
+        target_user = user_id or "default"
+        if target_user not in self._dismissed_updates:
+            self._dismissed_updates[target_user] = set()
+
+        if flow_types:
+            self._dismissed_updates[target_user].update(flow_types)
+        else:
+            self._dismissed_updates[target_user].update(
+                ["nudges", "retrieval", "ingest", "url_ingest"]
+            )
+
+    def clear_dismissed_update(self, flow_type: str, user_id: str | None = None):
+        if hasattr(self, "_dismissed_updates") and isinstance(self._dismissed_updates, dict):
+            if user_id:
+                if user_id in self._dismissed_updates:
+                    self._dismissed_updates[user_id].discard(flow_type)
+            else:
+                for user_set in self._dismissed_updates.values():
+                    user_set.discard(flow_type)
+
     async def resolve_ollama_url(self, endpoint: str, force_refresh: bool = False) -> str:
         """Find the correct Ollama URL by probing candidates via Langflow's validate-provider API."""
         from config.config_manager import config_manager
@@ -86,18 +128,6 @@ class FlowsService:
             logger.debug(f"Saved resolved Ollama URL to config: {resolved_url}")
 
         return resolved_url
-
-    def __init__(self):
-        # Cache for flow file mappings to avoid repeated filesystem scans
-        self._flow_file_cache = {}
-        # Semaphores to prevent race conditions when updating the same flow concurrently
-        self._flow_locks = LRUCache(maxsize=128)
-        self._lock_creation_lock = asyncio.Lock()
-        # Cache for enabled models to avoid redundant API calls
-        self._enabled_models_cache = None
-        self._enabled_models_cache_time = None
-        self._enabled_models_cache_ttl = 60  # seconds
-        self._enabled_models_lock = asyncio.Lock()
 
     async def _get_flow_lock(self, flow_id: str) -> asyncio.Lock:
         """Get or create an asyncio.Lock for a specific flow ID"""
@@ -305,8 +335,12 @@ class FlowsService:
         for result in results:
             if not result:
                 continue
-            backup_results[result["type"]].append(result["data"])
-            if result["type"] == "failed":
+            res_type = result.get("type")
+            if res_type in ("backed_up", "skipped", "failed"):
+                target_list = backup_results[res_type]
+                if isinstance(target_list, list):
+                    target_list.append(result.get("data"))
+            if res_type == "failed":
                 backup_results["success"] = False
 
         logger.info(
@@ -328,7 +362,7 @@ class FlowsService:
 
         return backup_results
 
-    async def _backup_flow(self, flow_id: str, flow_type: str, flow_data: dict = None):
+    async def _backup_flow(self, flow_id: str, flow_type: str, flow_data: dict | None = None):
         """
         Backup a single flow to the backup folder.
 
@@ -435,19 +469,7 @@ class FlowsService:
         logger.warning(f"Flow with ID {flow_id} not found in flows directory")
         return None
 
-    async def reset_langflow_flow(self, flow_type: str):
-        """Reset a Langflow flow by uploading the corresponding JSON file
-
-        Args:
-            flow_type: Either 'nudges', 'retrieval', or 'ingest'
-
-        Returns:
-            dict: Success/error response
-        """
-        if not LANGFLOW_URL:
-            raise ValueError("LANGFLOW_URL environment variable is required")
-
-        # Determine flow ID based on type
+    def _get_flow_id_by_type(self, flow_type: str) -> str:
         if flow_type == "nudges":
             flow_id = NUDGES_FLOW_ID
         elif flow_type == "retrieval":
@@ -460,9 +482,64 @@ class FlowsService:
             raise ValueError(
                 "flow_type must be either 'nudges', 'retrieval', 'ingest', or 'url_ingest'"
             )
-
         if not flow_id:
             raise ValueError(f"Flow ID not configured for flow_type '{flow_type}'")
+        return flow_id
+
+    async def reset_langflow_flow(self, flow_type: str):
+        """Reset a Langflow flow by uploading the corresponding JSON file
+
+        Args:
+            flow_type: Either 'nudges', 'retrieval', 'ingest', or 'url_ingest'
+
+        Returns:
+            dict: Success/error response
+        """
+        flow_id = self._get_flow_id_by_type(flow_type)
+        flow_lock = await self._get_flow_lock(flow_id)
+        async with flow_lock:
+            result = await self._reset_langflow_flow_locked(flow_type, flow_id)
+        if result.get("success"):
+            self._custom_updates_cache = None
+            try:
+                config = get_openrag_config()
+                if config.edited:
+                    from api.settings import reapply_all_settings
+
+                    await reapply_all_settings()
+            except Exception as e:
+                logger.error(f"Error reapplying settings after flow reset: {e}")
+        return result
+
+    async def _unlock_flow(self, flow_id: str):
+        """Unlock a flow before making changes."""
+        try:
+            response = await clients.langflow_request(
+                "PATCH", f"/api/v1/flows/{flow_id}", json={"locked": False}
+            )
+            if response.status_code not in (200, 404):
+                logger.warning(
+                    f"Failed to unlock flow {flow_id}: HTTP {response.status_code} - {response.text}"
+                )
+        except Exception as e:
+            logger.warning(f"Error unlocking flow {flow_id}: {e}")
+
+    async def _lock_flow(self, flow_id: str):
+        """Lock a flow after making changes."""
+        try:
+            response = await clients.langflow_request(
+                "PATCH", f"/api/v1/flows/{flow_id}", json={"locked": True}
+            )
+            if response.status_code not in (200, 404):
+                logger.warning(
+                    f"Failed to lock flow {flow_id}: HTTP {response.status_code} - {response.text}"
+                )
+        except Exception as e:
+            logger.warning(f"Error locking flow {flow_id}: {e}")
+
+    async def _reset_langflow_flow_locked(self, flow_type: str, flow_id: str):
+        if not LANGFLOW_URL:
+            raise ValueError("LANGFLOW_URL environment variable is required")
 
         # Dynamically find the flow file by ID
         flow_path = self._find_flow_file_by_id(flow_id)
@@ -481,6 +558,8 @@ class FlowsService:
         except FileNotFoundError as e:
             raise ValueError(f"Flow file not found: {flow_path}") from e
 
+        await self._unlock_flow(flow_id)
+
         # Make PATCH request to Langflow API to update the flow using shared client
         try:
             response = await clients.langflow_request(
@@ -488,73 +567,12 @@ class FlowsService:
             )
 
             if response.status_code == 200:
+                await self._lock_flow(flow_id)
                 logger.info(
                     f"Successfully reset {flow_type} flow",
                     flow_id=flow_id,
                     flow_file=os.path.basename(flow_path),
                 )
-
-                # Now update the flow with current configuration settings
-                try:
-                    config = get_openrag_config()
-
-                    # Check if configuration has been edited (onboarding completed)
-                    if config.edited:
-                        logger.info(
-                            f"Updating {flow_type} flow with current configuration settings"
-                        )
-
-                        # Update current LLM provider
-                        update_result = await self._update_provider_components(
-                            {"name": flow_type, "flow_id": flow_id},
-                            config.agent.llm_provider.lower(),
-                            llm_model=config.agent.llm_model,
-                            force_llm_update=True,
-                        )
-
-                        # Update all configured embedding providers
-                        embedding_providers = []
-                        if config.providers.openai.configured:
-                            embedding_providers.append("openai")
-                        if config.providers.watsonx.configured:
-                            embedding_providers.append("watsonx")
-                        if config.providers.ollama.configured:
-                            embedding_providers.append("ollama")
-
-                        current_emb_provider = config.knowledge.embedding_provider.lower()
-                        for provider in embedding_providers:
-                            model = (
-                                config.knowledge.embedding_model
-                                if provider == current_emb_provider
-                                else None
-                            )
-                            await self._update_provider_components(
-                                {"name": flow_type, "flow_id": flow_id},
-                                provider,
-                                embedding_model=model,
-                                force_embedding_update=True,
-                            )
-
-                        if update_result.get("success"):
-                            logger.info(
-                                f"Successfully updated {flow_type} flow with current configuration"
-                            )
-                        else:
-                            logger.warning(
-                                f"Failed to update {flow_type} flow with current configuration: {update_result.get('error', 'Unknown error')}"
-                            )
-                    else:
-                        logger.info(
-                            f"Configuration not yet edited (onboarding not completed), skipping model updates for {flow_type} flow"
-                        )
-
-                except Exception as e:
-                    logger.error(
-                        f"Error updating {flow_type} flow with current configuration",
-                        error=str(e),
-                    )
-                    # Don't fail the entire reset operation if configuration update fails
-
                 return {
                     "success": True,
                     "message": f"Successfully reset {flow_type} flow",
@@ -616,7 +634,8 @@ class FlowsService:
             return model_val[0].get("provider")
         return None
 
-    def _get_provider_name_display(self, provider: str):
+    def _get_provider_name_display(self, provider: str) -> str:
+        """Map internal provider key to Langflow display name."""
         if provider == "watsonx":
             return "IBM WatsonX"
         if provider == "ollama":
@@ -626,7 +645,7 @@ class FlowsService:
         return "OpenAI"
 
     async def _update_flow_field(
-        self, flow_id: str, field_name: str, field_value: Any, node_display_name: str = None
+        self, flow_id: str, field_name: str, field_value: Any, node_display_name: str | None = None
     ):
         """
         Generic helper function to update any field in any Langflow component.
@@ -683,6 +702,8 @@ class FlowsService:
             identifier = node_display_name
             raise Exception(f"{field_name} field not found in {identifier} component")
 
+        await self._unlock_flow(flow_id)
+
         # Update the flow via PATCH request
         patch_response = await clients.langflow_request(
             "PATCH", f"/api/v1/flows/{flow_id}", json=flow_data
@@ -693,28 +714,18 @@ class FlowsService:
                 f"Failed to update flow: HTTP {patch_response.status_code} - {patch_response.text}"
             )
 
-    async def update_chat_flow_model(self, model_name: str, provider: str):
-        """Helper function to update the model in the chat flow"""
-        if not LANGFLOW_CHAT_FLOW_ID:
-            raise ValueError("LANGFLOW_CHAT_FLOW_ID is not configured")
+        await self._lock_flow(flow_id)
 
-        # Determine target component IDs based on provider
-        target_llm_id = self._get_provider_component_ids(provider)[1]
-
-        await self._update_flow_field(
-            LANGFLOW_CHAT_FLOW_ID, "model_name", model_name, node_display_name=target_llm_id
-        )
-
-    async def update_chat_flow_system_prompt(self, system_prompt: str, provider: str):
+    async def update_chat_flow_system_prompt(self, system_prompt: str):
         """Helper function to update the system prompt in the chat flow"""
         if not LANGFLOW_CHAT_FLOW_ID:
             raise ValueError("LANGFLOW_CHAT_FLOW_ID is not configured")
 
-        # Determine target component IDs based on provider
-        target_agent_id = self._get_provider_component_ids(provider)[1]
-
         await self._update_flow_field(
-            LANGFLOW_CHAT_FLOW_ID, "system_prompt", system_prompt, node_display_name=target_agent_id
+            LANGFLOW_CHAT_FLOW_ID,
+            "system_prompt",
+            system_prompt,
+            node_display_name=AGENT_COMPONENT_DISPLAY_NAME,
         )
 
     async def update_flow_docling_preset(self, preset: str, preset_config: dict):
@@ -753,40 +764,33 @@ class FlowsService:
             node_display_name="Split Text",
         )
 
-    async def update_ingest_flow_embedding_model(self, embedding_model: str, provider: str):
-        """Helper function to update embedding model in the ingest flow"""
-        if not LANGFLOW_INGEST_FLOW_ID:
-            raise ValueError("LANGFLOW_INGEST_FLOW_ID is not configured")
-
-        # Determine target component IDs based on provider
-        target_embedding_id = self._get_provider_component_ids(provider)[0]
-
-        await self._update_flow_field(
-            LANGFLOW_INGEST_FLOW_ID, "model", embedding_model, node_display_name=target_embedding_id
-        )
-
-    def _replace_node_in_flow(self, flow_data, old_display_name, new_node):
-        """Replace a node in the flow data"""
-        nodes = flow_data.get("data", {}).get("nodes", [])
-        for i, node in enumerate(nodes):
-            if node.get("data", {}).get("node", {}).get("display_name") == old_display_name:
-                nodes[i] = new_node
-                return True
-        return False
-
-    def _normalize_flow_structure(self, flow_data):
+    def _normalize_flow_structure(self, flow_data: dict[str, Any]) -> dict[str, Any]:
         """
         Normalize flow structure for comparison by removing dynamic fields.
-        Keeps structural elements: nodes (types, display names, templates), edges (connections).
-        Removes: IDs, timestamps, positions, etc. but keeps template structure.
+        Keeps structural elements: nodes (types, display names, template definitions), edges (connections).
+        Removes: IDs, timestamps, positions, dynamic runtime field values, and dynamic options lists.
         """
-        normalized = {"data": {"nodes": [], "edges": []}}
+        normalized: dict[str, Any] = {"data": {"nodes": [], "edges": []}}
 
-        # Normalize nodes - keep structural info including templates
+        # Normalize nodes - keep structural info including template definitions
         nodes = flow_data.get("data", {}).get("nodes", [])
         for node in nodes:
             node_data = node.get("data", {})
             node_template = node_data.get("node", {})
+
+            template = node_template.get("template", {})
+            normalized_template: dict[str, Any] = {}
+            if isinstance(template, dict):
+                for field_name, field_def in template.items():
+                    if isinstance(field_def, dict):
+                        normalized_template[field_name] = {
+                            "type": field_def.get("type"),
+                            "display_name": field_def.get("display_name"),
+                            "required": field_def.get("required"),
+                            "input_types": field_def.get("input_types"),
+                        }
+                    else:
+                        normalized_template[field_name] = {"value": str(field_def)}
 
             normalized_node = {
                 "id": node.get("id"),  # Keep ID for edge matching
@@ -796,7 +800,7 @@ class FlowsService:
                         "display_name": node_template.get("display_name"),
                         "name": node_template.get("name"),
                         "base_classes": node_template.get("base_classes", []),
-                        "template": node_template.get("template", {}),  # Include template structure
+                        "template": normalized_template,
                     }
                 },
             }
@@ -815,70 +819,51 @@ class FlowsService:
 
         return normalized
 
-    async def _compare_flow_with_file(self, flow_id: str):
+    async def _check_flow_update(
+        self, flow_type: str, flow_id: str, flow_data: dict[str, Any] | None = None
+    ) -> dict[str, Any] | None:
         """
-        Compare a Langflow flow with its JSON file.
-        Returns True if flows match (indicating a reset), False otherwise.
+        Check if a flow has a newer version on disk compared to Langflow.
+        Returns flow update info dict if an update is available, None otherwise.
         """
-        try:
-            # Get flow from Langflow API
-            response = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
-            if response.status_code != 200:
-                logger.warning(
-                    f"Failed to get flow {flow_id} from Langflow: HTTP {response.status_code}"
-                )
-                return False
+        if not flow_id:
+            return None
+        flow_path = self._find_flow_file_by_id(flow_id)
+        if not flow_path or not os.path.exists(flow_path):
+            return None
+        local_mtime = os.path.getmtime(flow_path)
 
-            langflow_flow = response.json()
+        if flow_data is None:
+            try:
+                response = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
+                if response.status_code != 200:
+                    return None
+                flow_data = response.json()
+            except Exception as e:
+                logger.error(f"Failed to fetch flow {flow_id} for update check: {e}")
+                return None
 
-            # Find and load the corresponding JSON file
-            flow_path = self._find_flow_file_by_id(flow_id)
-            if not flow_path:
-                logger.warning(f"Flow file not found for flow ID: {flow_id}")
-                return False
+        langflow_updated_at_str = flow_data.get("updated_at")
+        langflow_mtime: float = 0.0
+        if langflow_updated_at_str:
+            if langflow_updated_at_str.endswith("Z"):
+                langflow_updated_at_str = langflow_updated_at_str[:-1] + "+00:00"
+            try:
+                dt = datetime.fromisoformat(langflow_updated_at_str)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=UTC)
+                langflow_mtime = dt.timestamp()
+            except ValueError:
+                pass
 
-            with open(flow_path) as f:
-                file_flow = json.load(f)
-
-            # Normalize both flows for comparison
-            normalized_langflow = self._normalize_flow_structure(langflow_flow)
-            normalized_file = self._normalize_flow_structure(file_flow)
-
-            # Compare entire normalized structures exactly
-            # Sort nodes and edges for consistent comparison
-            normalized_langflow["data"]["nodes"] = sorted(
-                normalized_langflow["data"]["nodes"],
-                key=lambda x: (x.get("id", ""), x.get("type", "")),
-            )
-            normalized_file["data"]["nodes"] = sorted(
-                normalized_file["data"]["nodes"], key=lambda x: (x.get("id", ""), x.get("type", ""))
-            )
-
-            normalized_langflow["data"]["edges"] = sorted(
-                normalized_langflow["data"]["edges"],
-                key=lambda x: (
-                    x.get("source", ""),
-                    x.get("target", ""),
-                    x.get("sourceHandle", ""),
-                    x.get("targetHandle", ""),
-                ),
-            )
-            normalized_file["data"]["edges"] = sorted(
-                normalized_file["data"]["edges"],
-                key=lambda x: (
-                    x.get("source", ""),
-                    x.get("target", ""),
-                    x.get("sourceHandle", ""),
-                    x.get("targetHandle", ""),
-                ),
-            )
-
-            # Compare entire normalized structures
-            return normalized_langflow == normalized_file
-
-        except Exception as e:
-            logger.error(f"Error comparing flow {flow_id} with file: {str(e)}")
-            return False
+        if local_mtime > langflow_mtime + 1.0:
+            is_locked = flow_data.get("locked", False)
+            return {
+                "flow_type": flow_type,
+                "flow_id": flow_id,
+                "is_custom": not is_locked,
+            }
+        return None
 
     async def ensure_flows_exist(self) -> set[str]:
         """
@@ -888,9 +873,6 @@ class FlowsService:
         the Langflow database.  This is intentionally create-only: it never
         patches or overwrites an existing flow, preserving any edits the user
         has made in the Langflow UI.
-
-        This replaces the LANGFLOW_LOAD_FLOWS_PATH mechanism, which performed a
-        blind upsert on every container start and discarded user edits.
 
         Returns the set of flow type names that were actually created.
         """
@@ -951,47 +933,31 @@ class FlowsService:
         tasks = [ensure_single_flow_exists(ft, fi) for ft, fi in flow_configs]
         results = await asyncio.gather(*tasks)
         created_flow_types = {r for r in results if r is not None}
+
+        if created_flow_types:
+            try:
+                config = get_openrag_config()
+                if config.edited:
+                    logger.info(
+                        f"Newly created flows detected ({', '.join(created_flow_types)}), reapplying settings."
+                    )
+                    from api.settings import reapply_all_settings
+
+                    await reapply_all_settings()
+                    logger.info("Successfully reapplied settings for newly created flows")
+            except Exception as e:
+                logger.error(f"Failed to reapply settings for newly created flows: {e}")
+
         return created_flow_types
-
-    async def check_flows_reset(self):
-        """
-        Check if any flows have been reset by comparing with JSON files.
-        Returns list of flow types that were reset.
-        """
-        reset_flows = []
-
-        flow_configs = [
-            ("nudges", NUDGES_FLOW_ID),
-            ("retrieval", LANGFLOW_CHAT_FLOW_ID),
-            ("ingest", LANGFLOW_INGEST_FLOW_ID),
-            ("url_ingest", LANGFLOW_URL_INGEST_FLOW_ID),
-        ]
-
-        async def check_single_flow_reset(flow_type, flow_id):
-            if not flow_id:
-                return None
-            logger.info(f"Checking if {flow_type} flow (ID: {flow_id}) was reset")
-            is_reset = await self._compare_flow_with_file(flow_id)
-            if is_reset:
-                logger.info(f"Flow {flow_type} (ID: {flow_id}) appears to have been reset")
-                return flow_type
-            else:
-                logger.info(f"Flow {flow_type} (ID: {flow_id}) does not match reset state")
-                return None
-
-        tasks = [check_single_flow_reset(ft, fi) for ft, fi in flow_configs]
-        results = await asyncio.gather(*tasks)
-        reset_flows = [r for r in results if r is not None]
-        return reset_flows
 
     async def change_langflow_model_value(
         self,
         provider: str,
-        embedding_model: str = None,
-        llm_model: str = None,
+        embedding_model: str | None = None,
+        llm_model: str | None = None,
         force_embedding_update: bool = False,
         force_llm_update: bool = False,
-        flow_configs: list = None,
+        flow_configs: list | None = None,
     ):
         """
         Change dropdown values for provider-specific components across flows
@@ -1052,191 +1018,234 @@ class FlowsService:
 
     async def _update_provider_components(
         self,
-        config,
-        provider: str,
-        embedding_model: str = None,
-        llm_model: str = None,
+        config: dict,
+        provider_name: str,
+        embedding_model: str | None = None,
+        llm_model: str | None = None,
         force_embedding_update: bool = False,
         force_llm_update: bool = False,
     ):
         """Update provider components and their dropdown values in a flow"""
-        flow_name = config["name"]
         flow_id = config["flow_id"]
-        # Use a flow-specific lock to prevent race conditions during the GET-Modify-PATCH cycle
         flow_lock = await self._get_flow_lock(flow_id)
         async with flow_lock:
-            # Get flow data from Langflow API instead of file
-            response = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
+            return await self._update_provider_components_locked(
+                config,
+                provider_name,
+                embedding_model=embedding_model,
+                llm_model=llm_model,
+                force_embedding_update=force_embedding_update,
+                force_llm_update=force_llm_update,
+            )
 
-            if response.status_code != 200:
-                raise Exception(
-                    f"Failed to get flow from Langflow: HTTP {response.status_code} - {response.text}"
-                )
+    async def _update_provider_components_locked(
+        self,
+        config: dict,
+        provider_name: str,
+        embedding_model: str | None = None,
+        llm_model: str | None = None,
+        force_embedding_update: bool = False,
+        force_llm_update: bool = False,
+    ):
+        """Internal helper to update provider components when flow_lock is already held"""
+        flow_name = config["name"]
+        flow_id = config["flow_id"]
+        # Get flow data from Langflow API instead of file
+        response = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
 
-            flow_data = response.json()
-            updates_made = []
-            node_tasks = []
+        if response.status_code != 200:
+            raise Exception(
+                f"Failed to get flow from Langflow: HTTP {response.status_code} - {response.text}"
+            )
 
-            async def wrap_node_update(node, p, m, label):
-                if await self._update_component_fields(node, p, m):
-                    return label
-                return None
+        flow_data = response.json()
+        provider = provider_name
+        updates_made = []
+        node_tasks: list[Any] = []
+
+        async def wrap_node_update(node, p, m, label):
+            if await self._update_component_fields(node, p, m):
+                return label
+            return None
+
+            # Get all embedding nodes in the flow to check if flow is new (no 3 embeddings)
+            embedding_nodes = self._find_nodes_in_flow(
+                flow_data, display_name=OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME
+            )
+            logger.info(
+                f"Found {len(embedding_nodes)} embedding nodes in flow {flow_name} with display name '{OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME}'"
+            )
+            is_new_flow = len(embedding_nodes) < 3
+
+            provider_name = self._get_provider_name_display(provider)
 
             # Update embedding component
             if not get_openrag_config().knowledge.disable_ingest_with_langflow and (
                 embedding_model or force_embedding_update
             ):
-                # Get all embedding nodes in the flow
-                embedding_nodes = self._find_nodes_in_flow(
-                    flow_data, display_name=OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME
-                )
-                logger.info(
-                    f"Found {len(embedding_nodes)} embedding nodes in flow {flow_name} with display name '{OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME}'"
-                )
-
-                # Count configured embedding-enabled providers
-                config_obj = get_openrag_config()
-                configured_providers = []
-                if config_obj.providers.openai.configured:
-                    configured_providers.append("openai")
-                if config_obj.providers.watsonx.configured:
-                    configured_providers.append("watsonx")
-                if config_obj.providers.ollama.configured:
-                    configured_providers.append("ollama")
-
-                # Ensure current provider is in the list for counting purposes if it's being configured
-                if (
-                    provider in ["openai", "watsonx", "ollama"]
-                    and provider not in configured_providers
-                ):
-                    configured_providers.append(provider)
-
-                all_possible = ["openai", "watsonx", "ollama"]
-                configured_providers = [p for p in all_possible if p in configured_providers]
-                provider_count = len(configured_providers)
-                logger.info(
-                    f"Configured embedding providers: {configured_providers} (count: {provider_count})"
-                )
-
-                # 1. Check if any node is already this provider - always update those first
-                matched_nodes = []
-                provider_display = self._get_provider_name_display(provider)
-                for node, idx in embedding_nodes:
-                    if self._get_node_provider(node) == provider_display:
-                        matched_nodes.append((node, idx))
-
-                if matched_nodes:
+                if is_new_flow:
+                    if embedding_model:
+                        await self._enable_model_in_langflow(provider_name, embedding_model)
                     logger.info(
-                        f"Found {len(matched_nodes)} nodes already configured for provider '{provider}'"
+                        f"Flow {flow_name} has {len(embedding_nodes)} embedding nodes (< 3). "
+                        f"Flow is updated to generic embedding component; enabled model in Langflow, skipping legacy component patching."
                     )
-                    for node, _idx in matched_nodes:
-                        node_tasks.append(
-                            wrap_node_update(
-                                node,
-                                provider,
-                                embedding_model,
-                                f"embedding model: {embedding_model} (updated existing {provider} node)",
-                            )
-                        )
                 else:
-                    # 2. No existing node matched, use slot-based logic
-                    try:
-                        p_index = configured_providers.index(provider)
-                        logger.info(
-                            f"Using slot-based logic for provider '{provider}' (p_index: {p_index}, total configured: {provider_count})"
-                        )
+                    # Count configured embedding-enabled providers
+                    config_obj = get_openrag_config()
+                    configured_providers = []
+                    if config_obj.providers.openai.configured:
+                        configured_providers.append("openai")
+                    if config_obj.providers.watsonx.configured:
+                        configured_providers.append("watsonx")
+                    if config_obj.providers.ollama.configured:
+                        configured_providers.append("ollama")
 
-                        if provider_count == 1:
-                            # Single provider mode: update all available nodes (up to 3)
-                            logger.info(
-                                f"Single provider mode: updating all available embedding nodes (available: {len(embedding_nodes)})"
-                            )
-                            for i in range(min(3, len(embedding_nodes))):
-                                node, idx = embedding_nodes[i]
-                                node_tasks.append(
-                                    wrap_node_update(
-                                        node,
-                                        provider,
-                                        embedding_model,
-                                        f"embedding model: {embedding_model} (set node {i + 1})",
-                                    )
-                                )
-                        else:
-                            # Multiple providers: each gets one slot based on its list index
-                            if p_index < len(embedding_nodes):
-                                node, idx = embedding_nodes[p_index]
-                                logger.info(
-                                    f"Multiple provider mode: assigning provider '{provider}' to node slot {p_index} (node {p_index + 1})"
-                                )
-                                node_tasks.append(
-                                    wrap_node_update(
-                                        node,
-                                        provider,
-                                        embedding_model,
-                                        f"embedding model: {embedding_model} (set node {p_index + 1})",
-                                    )
-                                )
-                            else:
-                                logger.info(
-                                    f"Provider index {p_index} exceeds available embedding nodes ({len(embedding_nodes)}) - skipping automatic assignment"
-                                )
-                    except ValueError:
-                        logger.warning(
-                            f"Current provider '{provider}' not found in configured providers list: {configured_providers}"
+                    # Ensure current provider is in the list for counting purposes if it's being configured
+                    if (
+                        provider in ["openai", "watsonx", "ollama"]
+                        and provider not in configured_providers
+                    ):
+                        configured_providers.append(provider)
+
+                    all_possible = ["openai", "watsonx", "ollama"]
+                    configured_providers = [p for p in all_possible if p in configured_providers]
+                    provider_count = len(configured_providers)
+                    logger.info(
+                        f"Configured embedding providers: {configured_providers} (count: {provider_count})"
+                    )
+
+                    # 1. Check if any node is already this provider - always update those first
+                    matched_nodes = []
+                    provider_display = provider_name
+                    for node, idx in embedding_nodes:
+                        if self._get_node_provider(node) == provider_display:
+                            matched_nodes.append((node, idx))
+
+                    if matched_nodes:
+                        logger.info(
+                            f"Found {len(matched_nodes)} nodes already configured for provider '{provider}'"
                         )
+                        for node, _idx in matched_nodes:
+                            node_tasks.append(
+                                wrap_node_update(
+                                    node,
+                                    provider,
+                                    embedding_model,
+                                    f"embedding model: {embedding_model} (updated existing {provider} node)",
+                                )
+                            )
+                    else:
+                        # 2. No existing node matched, use slot-based logic
+                        try:
+                            p_index = configured_providers.index(provider)
+                            logger.info(
+                                f"Using slot-based logic for provider '{provider}' (p_index: {p_index}, total configured: {provider_count})"
+                            )
+
+                            if provider_count == 1:
+                                # Single provider mode: update all available nodes (up to 3)
+                                logger.info(
+                                    f"Single provider mode: updating all available embedding nodes (available: {len(embedding_nodes)})"
+                                )
+                                for i in range(min(3, len(embedding_nodes))):
+                                    node, idx = embedding_nodes[i]
+                                    node_tasks.append(
+                                        wrap_node_update(
+                                            node,
+                                            provider,
+                                            embedding_model,
+                                            f"embedding model: {embedding_model} (set node {i + 1})",
+                                        )
+                                    )
+                            else:
+                                # Multiple providers: each gets one slot based on its list index
+                                if p_index < len(embedding_nodes):
+                                    node, idx = embedding_nodes[p_index]
+                                    logger.info(
+                                        f"Multiple provider mode: assigning provider '{provider}' to node slot {p_index} (node {p_index + 1})"
+                                    )
+                                    node_tasks.append(
+                                        wrap_node_update(
+                                            node,
+                                            provider,
+                                            embedding_model,
+                                            f"embedding model: {embedding_model} (set node {p_index + 1})",
+                                        )
+                                    )
+                                else:
+                                    logger.info(
+                                        f"Provider index {p_index} exceeds available embedding nodes ({len(embedding_nodes)}) - skipping automatic assignment"
+                                    )
+                        except ValueError:
+                            logger.warning(
+                                f"Current provider '{provider}' not found in configured providers list: {configured_providers}"
+                            )
 
             # Update LLM component (if exists in this flow)
             if llm_model or force_llm_update:
-                llm_node, _ = self._find_node_in_flow(
-                    flow_data, display_name=OPENAI_LLM_COMPONENT_DISPLAY_NAME
-                )
-                if llm_node:
-                    node_tasks.append(
-                        wrap_node_update(llm_node, provider, llm_model, f"llm model: {llm_model}")
+                if is_new_flow:
+                    if llm_model:
+                        await self._enable_model_in_langflow(provider_name, llm_model)
+                    logger.info(
+                        f"Flow {flow_name} has {len(embedding_nodes)} embedding nodes (< 3). "
+                        f"Flow is updated to generic components; enabled model in Langflow, skipping legacy LLM component patching."
                     )
-
-                agent_node, _ = self._find_node_in_flow(
-                    flow_data, display_name=AGENT_COMPONENT_DISPLAY_NAME
-                )
-                if agent_node:
-                    node_tasks.append(
-                        wrap_node_update(
-                            agent_node, provider, llm_model, f"agent model: {llm_model}"
+                else:
+                    llm_node, _ = self._find_node_in_flow(
+                        flow_data, display_name=OPENAI_LLM_COMPONENT_DISPLAY_NAME
+                    )
+                    if llm_node:
+                        node_tasks.append(
+                            wrap_node_update(
+                                llm_node, provider, llm_model, f"llm model: {llm_model}"
+                            )
                         )
+
+                    agent_node, _ = self._find_node_in_flow(
+                        flow_data, display_name=AGENT_COMPONENT_DISPLAY_NAME
                     )
+                    if agent_node:
+                        node_tasks.append(
+                            wrap_node_update(
+                                agent_node, provider, llm_model, f"agent model: {llm_model}"
+                            )
+                        )
 
-            # Execute all node updates simultaneously
-            if node_tasks:
-                node_results = await asyncio.gather(*node_tasks)
-                updates_made.extend([r for r in node_results if r])
+        # Execute all node updates simultaneously
+        if node_tasks:
+            node_results = await asyncio.gather(*node_tasks)
+            updates_made.extend([r for r in node_results if r])
 
-            # If no updates were made, return skip message
-            if not updates_made:
-                return {
-                    "flow": flow_name,
-                    "success": True,
-                    "message": f"No compatible components found in {flow_name} flow (skipped)",
-                    "flow_id": flow_id,
-                }
-
-            logger.info(f"Updated {', '.join(updates_made)} in {flow_name} flow")
-
-            # PATCH the updated flow
-            response = await clients.langflow_request(
-                "PATCH", f"/api/v1/flows/{flow_id}", json=flow_data
-            )
-
-            if response.status_code != 200:
-                raise Exception(
-                    f"Failed to update flow: HTTP {response.status_code} - {response.text}"
-                )
-
+        # If no updates were made, return skip message
+        if not updates_made:
             return {
                 "flow": flow_name,
                 "success": True,
-                "message": f"Successfully updated {', '.join(updates_made)}",
+                "message": f"No compatible components found in {flow_name} flow (skipped)",
                 "flow_id": flow_id,
             }
+
+        logger.info(f"Updated {', '.join(updates_made)} in {flow_name} flow")
+
+        await self._unlock_flow(flow_id)
+
+        # PATCH the updated flow
+        response = await clients.langflow_request(
+            "PATCH", f"/api/v1/flows/{flow_id}", json=flow_data
+        )
+
+        if response.status_code != 200:
+            raise Exception(f"Failed to update flow: HTTP {response.status_code} - {response.text}")
+
+        await self._lock_flow(flow_id)
+
+        return {
+            "flow": flow_name,
+            "success": True,
+            "message": f"Successfully updated {', '.join(updates_made)}",
+            "flow_id": flow_id,
+        }
 
     async def _update_component_langflow(self, template, model: Any):
         # Call custom_component/update endpoint to get updated template
@@ -1294,7 +1303,8 @@ class FlowsService:
                 return False
 
             # Enable the model in Langflow first
-            await self._enable_model_in_langflow(provider_name, model_value)
+            if model_value:
+                await self._enable_model_in_langflow(provider_name, model_value)
             # Update template via Langflow API to get latest options
             template = (
                 await self._update_component_langflow(template, template["model"]["value"])
@@ -1445,3 +1455,174 @@ class FlowsService:
         elif provider == "anthropic":
             return (None, "Anthropic")
         return (None, None)
+
+    async def get_flows_updates_available(self, user_id: str | None = None) -> list[dict[str, Any]]:
+        """
+        Check for available flow updates.
+        Uses cached update results from startup/previous checks if available.
+        Surfaces all available updates regardless of locked status.
+        """
+        target_user = user_id or "default"
+        if not hasattr(self, "_custom_updates_cache") or self._custom_updates_cache is None:
+            flow_configs = [
+                ("nudges", NUDGES_FLOW_ID),
+                ("retrieval", LANGFLOW_CHAT_FLOW_ID),
+                ("ingest", LANGFLOW_INGEST_FLOW_ID),
+                ("url_ingest", LANGFLOW_URL_INGEST_FLOW_ID),
+            ]
+            cache = []
+            for flow_type, flow_id in flow_configs:
+                update_info = await self._check_flow_update(flow_type, flow_id)
+                if update_info:
+                    cache.append(update_info)
+            self._custom_updates_cache = cache
+
+        updates = []
+        for item in self._custom_updates_cache:
+            is_dismissed = False
+            if hasattr(self, "_dismissed_updates") and isinstance(self._dismissed_updates, dict):
+                is_dismissed = item["flow_type"] in self._dismissed_updates.get(target_user, set())
+            updates.append(
+                {
+                    **item,
+                    "dismissed": is_dismissed,
+                }
+            )
+
+        return updates
+
+    async def bulk_update_flows(self, flow_types: list[str], backup_custom: bool = True):
+        """
+        Bulk updates multiple flows.
+        If backup_custom is True, flows are backed up in Langflow before resetting.
+        Local file backups are always saved via _backup_flow prior to resetting.
+        Returns the backup flow details if any.
+        """
+        results: list[dict[str, Any]] = []
+        flow_configs_dict = {
+            "nudges": NUDGES_FLOW_ID,
+            "retrieval": LANGFLOW_CHAT_FLOW_ID,
+            "ingest": LANGFLOW_INGEST_FLOW_ID,
+            "url_ingest": LANGFLOW_URL_INGEST_FLOW_ID,
+        }
+
+        for flow_type in flow_types:
+            flow_id = flow_configs_dict.get(flow_type)
+            if not flow_id:
+                results.append(
+                    {"flow_type": flow_type, "success": False, "error": "Invalid flow_type"}
+                )
+                continue
+
+            flow_lock = await self._get_flow_lock(flow_id)
+            async with flow_lock:
+                backup_path = None
+                backup_flow_id = None
+                flow_check_ok = False
+
+                try:
+                    response = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
+                    if response.status_code == 200:
+                        flow_check_ok = True
+                        flow_data = response.json()
+
+                        # Always attempt local file backup for safety
+                        backup_path = await self._backup_flow(flow_id, flow_type, flow_data)
+
+                        if backup_custom:
+                            logger.info(f"Backing up flow {flow_type} in Langflow before update.")
+                            # Create a backup flow directly in Langflow
+                            backup_payload = dict(flow_data)
+                            backup_payload.pop("id", None)
+                            flow_name = flow_data.get("name", flow_type.capitalize())
+                            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+                            backup_payload["name"] = f"Backup - {flow_name} ({timestamp})"
+                            backup_payload["description"] = (
+                                f"Backup of flow '{flow_name}' created before flow update on {timestamp}. "
+                                "Use this flow to reference or redo your modifications."
+                            )
+                            backup_payload["locked"] = False
+
+                            lf_create_res = await clients.langflow_request(
+                                "POST", "/api/v1/flows/", json=backup_payload
+                            )
+                            if lf_create_res.status_code in (200, 201):
+                                created_flow = lf_create_res.json()
+                                backup_flow_id = created_flow.get("id")
+                                logger.info(
+                                    f"Created backup flow in Langflow for {flow_type}: '{backup_payload['name']}' (ID: {backup_flow_id})"
+                                )
+                            else:
+                                logger.warning(
+                                    f"Failed to create backup flow in Langflow for {flow_type}: HTTP {lf_create_res.status_code}"
+                                )
+                except Exception as e:
+                    logger.error(f"Failed to check/backup flow {flow_id} before update: {e}")
+
+                if not flow_check_ok:
+                    logger.error(
+                        f"Pre-flight check failed for flow {flow_type}; aborting update to protect flow modifications."
+                    )
+                    results.append(
+                        {
+                            "flow_type": flow_type,
+                            "success": False,
+                            "error": "Pre-flight check failed; update aborted to avoid losing changes",
+                            "backup_path": None,
+                            "backup_flow_id": None,
+                        }
+                    )
+                    continue
+
+                # If backup_custom is enabled, abort update if BOTH backups failed
+                if backup_custom and backup_path is None and backup_flow_id is None:
+                    logger.error(
+                        f"Backup failed for flow {flow_type}; aborting update to protect flow modifications."
+                    )
+                    results.append(
+                        {
+                            "flow_type": flow_type,
+                            "success": False,
+                            "error": "Backup failed; update aborted to avoid losing changes",
+                            "backup_path": None,
+                            "backup_flow_id": None,
+                        }
+                    )
+                    continue
+
+                try:
+                    reset_res = await self._reset_langflow_flow_locked(flow_type, flow_id)
+                    if reset_res.get("success"):
+                        self.clear_dismissed_update(flow_type)
+                    results.append(
+                        {
+                            "flow_type": flow_type,
+                            "success": reset_res.get("success", False),
+                            "error": reset_res.get("error"),
+                            "backup_path": backup_path,
+                            "backup_flow_id": backup_flow_id,
+                        }
+                    )
+                except Exception as e:
+                    results.append(
+                        {
+                            "flow_type": flow_type,
+                            "success": False,
+                            "error": str(e),
+                            "backup_path": backup_path,
+                            "backup_flow_id": backup_flow_id,
+                        }
+                    )
+
+        if results and any(r.get("success") for r in results):
+            self._custom_updates_cache = None
+            try:
+                config = get_openrag_config()
+                if config.edited:
+                    from api.settings import reapply_all_settings
+
+                    await reapply_all_settings()
+            except Exception as e:
+                logger.error(f"Error reapplying settings after bulk update: {e}")
+
+        return results
