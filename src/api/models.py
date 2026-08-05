@@ -35,6 +35,7 @@ def _redact_credentials(message: str) -> str:
 
 class OpenAIBody(BaseModel):
     api_key: str | None = None
+    base_url: str | None = None
 
 
 class AnthropicBody(BaseModel):
@@ -84,10 +85,13 @@ async def get_openai_models(
     """Get available OpenAI models"""
     try:
         api_key = body.api_key if body else None
-        if not api_key:
+        base_url = body.base_url if body else None
+        if not api_key or base_url is None:
             try:
                 config = get_openrag_config()
-                api_key = config.providers.openai.api_key
+                api_key = api_key or config.providers.openai.api_key
+                if base_url is None:
+                    base_url = config.providers.openai.base_url or None
             except Exception as e:
                 logger.error(f"Failed to get config: {e}")
 
@@ -97,7 +101,7 @@ async def get_openai_models(
                 status_code=400,
             )
 
-        models = await models_service.get_openai_models(api_key=api_key)
+        models = await models_service.get_openai_models(api_key=api_key, base_url=base_url)
         return JSONResponse(hide_excluded_live_models("openai", models))
     except Exception as e:
         logger.error(f"Failed to get OpenAI models: {str(e)}")
