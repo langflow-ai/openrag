@@ -33,6 +33,7 @@ from api import (
 from api import keys as api_keys
 from api.health import health_check, opensearch_health_ready
 from api.schemas.tasks import ErrorResponse, TaskRetryResponse
+from api.v2 import files as files_v2
 from connectors.registry import get_connector_classes
 
 
@@ -127,9 +128,13 @@ def register_internal_routes(app: FastAPI):
     # Search endpoint
     app.add_api_route("/search", search.search, methods=["POST"], tags=["internal"])
 
-    # File listing/search endpoints
+    # File listing/search endpoints (v1 — terms-agg, in-memory sort)
     app.add_api_route("/files", files.list_files, methods=["GET"], tags=["internal"])
     app.add_api_route("/files/search", files.search_files, methods=["GET"], tags=["internal"])
+
+    # File listing/search endpoints (v2 — composite-agg, cursor pagination)
+    app.add_api_route("/v2/files/search", files_v2.search_files, methods=["GET"], tags=["internal"])
+    app.add_api_route("/v2/files", files_v2.list_files, methods=["GET"], tags=["internal"])
 
     # Knowledge Filter endpoints
     app.add_api_route(
@@ -428,6 +433,26 @@ def register_internal_routes(app: FastAPI):
     app.add_api_route(
         "/reset-flow/{flow_type}",
         flows.reset_flow_endpoint,
+        methods=["POST"],
+        tags=["internal"],
+    )
+
+    # Flow updates endpoints
+    app.add_api_route(
+        "/settings/flows/updates-available",
+        flows.get_flows_updates_endpoint,
+        methods=["GET"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/settings/flows/update",
+        flows.bulk_update_flows_endpoint,
+        methods=["POST"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/settings/flows/dismiss-update",
+        flows.dismiss_flows_update_endpoint,
         methods=["POST"],
         tags=["internal"],
     )

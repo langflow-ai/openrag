@@ -234,8 +234,116 @@
     --component-icon: #0f62fe;
     --flow-icon: #0043ce;
 
-    --radius: 0rem; /* IBM uses sharp corners */
+    --radius: 0rem; /* IBM theme dialogs (Carbon design system style) */
+  }
 
+  [data-theme="ibm"] [data-slot="dialog-content"],
+  [data-theme="ibm"] [role="dialog"] {
+    border-radius: 0 !important;
+    background-color: #262626 !important;
+    border: none !important;
+    color: #f4f4f4 !important;
+    padding: 1.5rem !important;
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.5) !important;
+  }
+
+  [data-theme="ibm"] [data-slot="dialog-content"] > button[class*="absolute"],
+  [data-theme="ibm"] [role="dialog"] > button[class*="absolute"] {
+    display: none !important;
+  }
+
+  [data-theme="ibm"] [data-slot="dialog-header"] {
+    margin-left: -1.5rem !important;
+    margin-right: -1.5rem !important;
+    margin-top: -1.5rem !important;
+    padding-left: 1.5rem !important;
+    padding-right: 1.5rem !important;
+    padding-top: 1.5rem !important;
+    padding-bottom: 1rem !important;
+    border-bottom: 1px solid #393939 !important;
+  }
+
+  [data-theme="ibm"] [data-slot="dialog-title"] {
+    font-size: 1.25rem !important;
+    font-weight: 400 !important;
+    color: #f4f4f4 !important;
+  }
+
+  [data-theme="ibm"] [data-slot="dialog-description"] {
+    font-size: 0.875rem !important;
+    color: #c6c6c6 !important;
+    font-weight: 400 !important;
+    margin-top: 0.25rem !important;
+  }
+
+  [data-theme="ibm"] [data-slot="dialog-footer"] {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 1px !important;
+    background-color: #262626 !important;
+    margin-left: -1.5rem !important;
+    margin-right: -1.5rem !important;
+    margin-bottom: -1.5rem !important;
+    margin-top: 1rem !important;
+    padding-top: 0 !important;
+  }
+
+  [data-theme="ibm"] [data-slot="dialog-footer"] > button {
+    width: 100% !important;
+    margin: 0 !important;
+    border: 0 !important;
+    border-width: 0 !important;
+    outline: none !important;
+    box-shadow: none !important;
+  }
+
+  [data-theme="ibm"] [data-slot="dialog-footer"] button:first-child {
+    background-color: #6f6f6f !important;
+    color: #ffffff !important;
+    border-radius: 0 !important;
+    height: 4rem !important;
+    font-size: 0.875rem !important;
+    font-weight: 400 !important;
+    justify-content: flex-start !important;
+    align-items: flex-start !important;
+    padding-left: 1rem !important;
+    padding-top: 1rem !important;
+    border: 0 !important;
+    outline: none !important;
+    box-shadow: none !important;
+  }
+
+  [data-theme="ibm"] [data-slot="dialog-footer"] button:first-child:hover {
+    background-color: #525252 !important;
+    border: 0 !important;
+    outline: none !important;
+    box-shadow: none !important;
+  }
+
+  [data-theme="ibm"] [data-slot="dialog-footer"] button:last-child {
+    background-color: #0f62fe !important;
+    color: #ffffff !important;
+    border-radius: 0 !important;
+    height: 4rem !important;
+    font-size: 0.875rem !important;
+    font-weight: 400 !important;
+    justify-content: flex-start !important;
+    align-items: flex-start !important;
+    padding-left: 1rem !important;
+    padding-top: 1rem !important;
+    border: 0 !important;
+    outline: none !important;
+    box-shadow: none !important;
+  }
+
+  [data-theme="ibm"] [data-slot="dialog-footer"] button:last-child:hover {
+    background-color: #0353e9 !important;
+    border: 0 !important;
+    outline: none !important;
+    box-shadow: none !important;
+  }
+
+  [data-theme="ibm"] {
     /* Chat (IBM) */
     --chat-surface-bg: hsl(var(--background));
     --chat-surface-border: hsl(var(--muted));
@@ -262,6 +370,7 @@
     --text-text-01: 0 0% 9%;
     --link-primary: 217 100% 45%;
     --button-tertiary: 217 100% 45%;
+    --brand-amber: 47 89% 53%; /* #f1c21b */
     --border-border-interactive: #4589ff;
     /* IBM dark grey action button (#393939 → #474747); not --badge (dark badge is #525252) */
     --ibm-overwrite-button: 0 0% 22.4%; /* #393939 */
@@ -326,6 +435,7 @@
     --accent-pink-foreground: 329 86% 70%;
     --accent-purple: 274 66% 32%;
     --accent-purple-foreground: 270 95% 75%;
+    --brand-amber: 47 89% 53%; /* #f1c21b */
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
