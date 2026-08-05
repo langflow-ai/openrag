@@ -1068,149 +1068,149 @@ class FlowsService:
                 return label
             return None
 
-            # Get all embedding nodes in the flow to check if flow is new (no 3 embeddings)
-            embedding_nodes = self._find_nodes_in_flow(
-                flow_data, display_name=OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME
-            )
-            logger.info(
-                f"Found {len(embedding_nodes)} embedding nodes in flow {flow_name} with display name '{OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME}'"
-            )
-            is_new_flow = len(embedding_nodes) < 3
+        # Get all embedding nodes in the flow to check if flow is new (no 3 embeddings)
+        embedding_nodes = self._find_nodes_in_flow(
+            flow_data, display_name=OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME
+        )
+        logger.info(
+            f"Found {len(embedding_nodes)} embedding nodes in flow {flow_name} with display name '{OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME}'"
+        )
+        is_new_flow = len(embedding_nodes) < 3
 
-            provider_name = self._get_provider_name_display(provider)
+        provider_name = self._get_provider_name_display(provider)
 
-            # Update embedding component
-            if not get_openrag_config().knowledge.disable_ingest_with_langflow and (
-                embedding_model or force_embedding_update
-            ):
-                if is_new_flow:
-                    if embedding_model:
-                        await self._enable_model_in_langflow(provider_name, embedding_model)
+        # Update embedding component
+        if not get_openrag_config().knowledge.disable_ingest_with_langflow and (
+            embedding_model or force_embedding_update
+        ):
+            if is_new_flow:
+                if embedding_model:
+                    await self._enable_model_in_langflow(provider_name, embedding_model)
+                logger.info(
+                    f"Flow {flow_name} has {len(embedding_nodes)} embedding nodes (< 3). "
+                    f"Flow is updated to generic embedding component; enabled model in Langflow, skipping legacy component patching."
+                )
+            else:
+                # Count configured embedding-enabled providers
+                config_obj = get_openrag_config()
+                configured_providers = []
+                if config_obj.providers.openai.configured:
+                    configured_providers.append("openai")
+                if config_obj.providers.watsonx.configured:
+                    configured_providers.append("watsonx")
+                if config_obj.providers.ollama.configured:
+                    configured_providers.append("ollama")
+
+                # Ensure current provider is in the list for counting purposes if it's being configured
+                if (
+                    provider in ["openai", "watsonx", "ollama"]
+                    and provider not in configured_providers
+                ):
+                    configured_providers.append(provider)
+
+                all_possible = ["openai", "watsonx", "ollama"]
+                configured_providers = [p for p in all_possible if p in configured_providers]
+                provider_count = len(configured_providers)
+                logger.info(
+                    f"Configured embedding providers: {configured_providers} (count: {provider_count})"
+                )
+
+                # 1. Check if any node is already this provider - always update those first
+                matched_nodes = []
+                provider_display = provider_name
+                for node, idx in embedding_nodes:
+                    if self._get_node_provider(node) == provider_display:
+                        matched_nodes.append((node, idx))
+
+                if matched_nodes:
                     logger.info(
-                        f"Flow {flow_name} has {len(embedding_nodes)} embedding nodes (< 3). "
-                        f"Flow is updated to generic embedding component; enabled model in Langflow, skipping legacy component patching."
+                        f"Found {len(matched_nodes)} nodes already configured for provider '{provider}'"
                     )
+                    for node, _idx in matched_nodes:
+                        node_tasks.append(
+                            wrap_node_update(
+                                node,
+                                provider,
+                                embedding_model,
+                                f"embedding model: {embedding_model} (updated existing {provider} node)",
+                            )
+                        )
                 else:
-                    # Count configured embedding-enabled providers
-                    config_obj = get_openrag_config()
-                    configured_providers = []
-                    if config_obj.providers.openai.configured:
-                        configured_providers.append("openai")
-                    if config_obj.providers.watsonx.configured:
-                        configured_providers.append("watsonx")
-                    if config_obj.providers.ollama.configured:
-                        configured_providers.append("ollama")
-
-                    # Ensure current provider is in the list for counting purposes if it's being configured
-                    if (
-                        provider in ["openai", "watsonx", "ollama"]
-                        and provider not in configured_providers
-                    ):
-                        configured_providers.append(provider)
-
-                    all_possible = ["openai", "watsonx", "ollama"]
-                    configured_providers = [p for p in all_possible if p in configured_providers]
-                    provider_count = len(configured_providers)
-                    logger.info(
-                        f"Configured embedding providers: {configured_providers} (count: {provider_count})"
-                    )
-
-                    # 1. Check if any node is already this provider - always update those first
-                    matched_nodes = []
-                    provider_display = provider_name
-                    for node, idx in embedding_nodes:
-                        if self._get_node_provider(node) == provider_display:
-                            matched_nodes.append((node, idx))
-
-                    if matched_nodes:
+                    # 2. No existing node matched, use slot-based logic
+                    try:
+                        p_index = configured_providers.index(provider)
                         logger.info(
-                            f"Found {len(matched_nodes)} nodes already configured for provider '{provider}'"
+                            f"Using slot-based logic for provider '{provider}' (p_index: {p_index}, total configured: {provider_count})"
                         )
-                        for node, _idx in matched_nodes:
-                            node_tasks.append(
-                                wrap_node_update(
-                                    node,
-                                    provider,
-                                    embedding_model,
-                                    f"embedding model: {embedding_model} (updated existing {provider} node)",
-                                )
-                            )
-                    else:
-                        # 2. No existing node matched, use slot-based logic
-                        try:
-                            p_index = configured_providers.index(provider)
+
+                        if provider_count == 1:
+                            # Single provider mode: update all available nodes (up to 3)
                             logger.info(
-                                f"Using slot-based logic for provider '{provider}' (p_index: {p_index}, total configured: {provider_count})"
+                                f"Single provider mode: updating all available embedding nodes (available: {len(embedding_nodes)})"
                             )
-
-                            if provider_count == 1:
-                                # Single provider mode: update all available nodes (up to 3)
-                                logger.info(
-                                    f"Single provider mode: updating all available embedding nodes (available: {len(embedding_nodes)})"
+                            for i in range(min(3, len(embedding_nodes))):
+                                node, idx = embedding_nodes[i]
+                                node_tasks.append(
+                                    wrap_node_update(
+                                        node,
+                                        provider,
+                                        embedding_model,
+                                        f"embedding model: {embedding_model} (set node {i + 1})",
+                                    )
                                 )
-                                for i in range(min(3, len(embedding_nodes))):
-                                    node, idx = embedding_nodes[i]
-                                    node_tasks.append(
-                                        wrap_node_update(
-                                            node,
-                                            provider,
-                                            embedding_model,
-                                            f"embedding model: {embedding_model} (set node {i + 1})",
-                                        )
+                        else:
+                            # Multiple providers: each gets one slot based on its list index
+                            if p_index < len(embedding_nodes):
+                                node, idx = embedding_nodes[p_index]
+                                logger.info(
+                                    f"Multiple provider mode: assigning provider '{provider}' to node slot {p_index} (node {p_index + 1})"
+                                )
+                                node_tasks.append(
+                                    wrap_node_update(
+                                        node,
+                                        provider,
+                                        embedding_model,
+                                        f"embedding model: {embedding_model} (set node {p_index + 1})",
                                     )
+                                )
                             else:
-                                # Multiple providers: each gets one slot based on its list index
-                                if p_index < len(embedding_nodes):
-                                    node, idx = embedding_nodes[p_index]
-                                    logger.info(
-                                        f"Multiple provider mode: assigning provider '{provider}' to node slot {p_index} (node {p_index + 1})"
-                                    )
-                                    node_tasks.append(
-                                        wrap_node_update(
-                                            node,
-                                            provider,
-                                            embedding_model,
-                                            f"embedding model: {embedding_model} (set node {p_index + 1})",
-                                        )
-                                    )
-                                else:
-                                    logger.info(
-                                        f"Provider index {p_index} exceeds available embedding nodes ({len(embedding_nodes)}) - skipping automatic assignment"
-                                    )
-                        except ValueError:
-                            logger.warning(
-                                f"Current provider '{provider}' not found in configured providers list: {configured_providers}"
-                            )
-
-            # Update LLM component (if exists in this flow)
-            if llm_model or force_llm_update:
-                if is_new_flow:
-                    if llm_model:
-                        await self._enable_model_in_langflow(provider_name, llm_model)
-                    logger.info(
-                        f"Flow {flow_name} has {len(embedding_nodes)} embedding nodes (< 3). "
-                        f"Flow is updated to generic components; enabled model in Langflow, skipping legacy LLM component patching."
-                    )
-                else:
-                    llm_node, _ = self._find_node_in_flow(
-                        flow_data, display_name=OPENAI_LLM_COMPONENT_DISPLAY_NAME
-                    )
-                    if llm_node:
-                        node_tasks.append(
-                            wrap_node_update(
-                                llm_node, provider, llm_model, f"llm model: {llm_model}"
-                            )
+                                logger.info(
+                                    f"Provider index {p_index} exceeds available embedding nodes ({len(embedding_nodes)}) - skipping automatic assignment"
+                                )
+                    except ValueError:
+                        logger.warning(
+                            f"Current provider '{provider}' not found in configured providers list: {configured_providers}"
                         )
 
-                    agent_node, _ = self._find_node_in_flow(
-                        flow_data, display_name=AGENT_COMPONENT_DISPLAY_NAME
-                    )
-                    if agent_node:
-                        node_tasks.append(
-                            wrap_node_update(
-                                agent_node, provider, llm_model, f"agent model: {llm_model}"
-                            )
+        # Update LLM component (if exists in this flow)
+        if llm_model or force_llm_update:
+            if is_new_flow:
+                if llm_model:
+                    await self._enable_model_in_langflow(provider_name, llm_model)
+                logger.info(
+                    f"Flow {flow_name} has {len(embedding_nodes)} embedding nodes (< 3). "
+                    f"Flow is updated to generic components; enabled model in Langflow, skipping legacy LLM component patching."
+                )
+            else:
+                llm_node, _ = self._find_node_in_flow(
+                    flow_data, display_name=OPENAI_LLM_COMPONENT_DISPLAY_NAME
+                )
+                if llm_node:
+                    node_tasks.append(
+                        wrap_node_update(
+                            llm_node, provider, llm_model, f"llm model: {llm_model}"
                         )
+                    )
+
+                agent_node, _ = self._find_node_in_flow(
+                    flow_data, display_name=AGENT_COMPONENT_DISPLAY_NAME
+                )
+                if agent_node:
+                    node_tasks.append(
+                        wrap_node_update(
+                            agent_node, provider, llm_model, f"agent model: {llm_model}"
+                        )
+                    )
 
         # Execute all node updates simultaneously
         if node_tasks:
