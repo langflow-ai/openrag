@@ -954,7 +954,7 @@ class ChatService:
                     logger.warning("bulk_delete: %s not owned by %s", session_id, user_id)
                     failed.append(session_id)
                     continue
-                
+
                 result = await self.delete_session(user_id, session_id)
                 if result.get("success"):
                     deleted.append(session_id)
