@@ -242,8 +242,15 @@ class FileServiceV2:
                 {
                     "bool": {
                         "should": [
-                            {"wildcard": {"filename": {"value": f"*{search.lower()}*"}}},
-                            {"prefix": {"filename": search.lower()}},
+                            {
+                                "wildcard": {
+                                    "filename": {
+                                        "value": f"*{search.lower()}*",
+                                        "case_insensitive": True,
+                                    }
+                                }
+                            },
+                            {"prefix": {"filename": {"value": search.lower(), "case_insensitive": True}}},
                         ],
                         "minimum_should_match": 1,
                     }

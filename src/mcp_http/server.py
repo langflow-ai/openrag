@@ -188,6 +188,15 @@ COMPONENT_CUSTOMIZATIONS: dict[tuple[str, str], dict[str, str]] = {
         "name": "openrag_delete_knowledge_filter",
         "description": "Delete a knowledge filter by ID.",
     },
+    #files endpoints
+    ("/v1/files", "GET"): {
+        "name": "openrag_list_files",
+        "description": "List all ingested files",
+    },
+    ("/v1/files/search", "GET"): {
+        "name": "openrag_search_files",
+        "description": "Search files by query parameters.",
+    },
 }
 
 

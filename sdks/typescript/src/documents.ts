@@ -6,8 +6,11 @@ import type { OpenRAGClient } from "./client";
 import type {
   DeleteDocumentOptions,
   DeleteDocumentResponse,
+  FileRecord,
   IngestResponse,
   IngestTaskStatus,
+  ListFilesOptions,
+  ListFilesResponse,
   NotFoundError,
 } from "./types";
 
@@ -142,6 +145,39 @@ export class DocumentsClient {
 
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * List ingested files in the knowledge base.
+   *
+   * @param options - Filtering, sorting, and pagination options.
+   * @returns ListFilesResponse with files list, total count, and next after_key.
+   */
+  async listFiles(options: ListFilesOptions = {}): Promise<ListFilesResponse> {
+    const params = new URLSearchParams();
+    if (options.page !== undefined) params.set("page", String(options.page));
+    if (options.page_size !== undefined) params.set("page_size", String(options.page_size));
+    if (options.sort_by !== undefined) params.set("sort_by", options.sort_by);
+    if (options.sort_order !== undefined) params.set("sort_order", options.sort_order);
+    if (options.connector_type !== undefined) params.set("connector_type", options.connector_type);
+    if (options.mimetype !== undefined) params.set("mimetype", options.mimetype);
+    if (options.owner !== undefined) params.set("owner", options.owner);
+    if (options.search !== undefined) params.set("search", options.search);
+    if (options.after_key !== undefined) params.set("after_key", options.after_key);
+
+    const qs = params.toString();
+    const path = qs ? `/api/v1/files?${qs}` : "/api/v1/files";
+    const response = await this.client._request("GET", path);
+    const data = await response.json();
+
+    return {
+      files: (data.files ?? []) as FileRecord[],
+      total: data.total ?? 0,
+      is_approximate: data.is_approximate ?? true,
+      page: data.page ?? 1,
+      page_size: data.page_size ?? 25,
+      after_key: data.after_key ?? null,
+    };
   }
 
   /**
