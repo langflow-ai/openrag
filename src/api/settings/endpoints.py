@@ -475,7 +475,11 @@ async def update_settings(
 
                     # Apply any updates from the request
                     api_key = getattr(llm_provider_config, "api_key", None)
-                    endpoint = getattr(llm_provider_config, "endpoint", None)
+                    # "endpoint" doubles as the validation target's base URL;
+                    # openai's provider config exposes that as "base_url" instead.
+                    endpoint = getattr(llm_provider_config, "endpoint", None) or getattr(
+                        llm_provider_config, "base_url", None
+                    )
                     project_id = getattr(llm_provider_config, "project_id", None)
                     llm_provider_key = _provider_key(llm_provider)
                     submitted_credentials = {
@@ -495,6 +499,8 @@ async def update_settings(
                         api_key = getattr(body, f"{llm_provider}_api_key", None)
                     if getattr(body, f"{llm_provider}_endpoint", None) is not None:
                         endpoint = getattr(body, f"{llm_provider}_endpoint", None)
+                    if getattr(body, f"{llm_provider}_base_url", None) is not None:
+                        endpoint = getattr(body, f"{llm_provider}_base_url", None)
                     if getattr(body, f"{llm_provider}_project_id", None) is not None:
                         project_id = getattr(body, f"{llm_provider}_project_id", None)
 
@@ -528,7 +534,11 @@ async def update_settings(
 
                     # Apply any updates from the request
                     api_key = getattr(embedding_provider_config, "api_key", None)
-                    endpoint = getattr(embedding_provider_config, "endpoint", None)
+                    # "endpoint" doubles as the validation target's base URL;
+                    # openai's provider config exposes that as "base_url" instead.
+                    endpoint = getattr(embedding_provider_config, "endpoint", None) or getattr(
+                        embedding_provider_config, "base_url", None
+                    )
                     project_id = getattr(embedding_provider_config, "project_id", None)
                     embedding_provider_key = _provider_key(embedding_provider)
                     submitted_credentials = {
@@ -548,6 +558,8 @@ async def update_settings(
                         api_key = getattr(body, f"{embedding_provider}_api_key", None)
                     if getattr(body, f"{embedding_provider}_endpoint", None) is not None:
                         endpoint = getattr(body, f"{embedding_provider}_endpoint", None)
+                    if getattr(body, f"{embedding_provider}_base_url", None) is not None:
+                        endpoint = getattr(body, f"{embedding_provider}_base_url", None)
                     if getattr(body, f"{embedding_provider}_project_id", None) is not None:
                         project_id = getattr(body, f"{embedding_provider}_project_id", None)
 
@@ -1281,7 +1293,10 @@ async def onboarding(
                     provider=llm_provider,
                     api_key=getattr(llm_provider_config, "api_key", None),
                     llm_model=current_config.agent.llm_model,
-                    endpoint=getattr(llm_provider_config, "endpoint", None),
+                    # "endpoint" doubles as the validation target's base URL;
+                    # openai's provider config exposes that as "base_url" instead.
+                    endpoint=getattr(llm_provider_config, "endpoint", None)
+                    or getattr(llm_provider_config, "base_url", None),
                     project_id=getattr(llm_provider_config, "project_id", None),
                     test_completion=True,  # Full validation with completion test - ensures provider health
                     credentials=current_config.providers.credential_values(llm_provider),
@@ -1302,7 +1317,10 @@ async def onboarding(
                     provider=embedding_provider,
                     api_key=getattr(embedding_provider_config, "api_key", None),
                     embedding_model=current_config.knowledge.embedding_model,
-                    endpoint=getattr(embedding_provider_config, "endpoint", None),
+                    # "endpoint" doubles as the validation target's base URL;
+                    # openai's provider config exposes that as "base_url" instead.
+                    endpoint=getattr(embedding_provider_config, "endpoint", None)
+                    or getattr(embedding_provider_config, "base_url", None),
                     project_id=getattr(embedding_provider_config, "project_id", None),
                     test_completion=True,  # Full validation with completion test - ensures provider health
                     credentials=current_config.providers.credential_values(embedding_provider),
