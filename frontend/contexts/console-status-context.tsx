@@ -53,7 +53,6 @@ function severityOf(status: ComponentState | undefined): StatusSeverity {
     case "unknown":
       return "warn";
     default:
-      // "healthy" or no data yet
       return "ok";
   }
 }
