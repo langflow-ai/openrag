@@ -5,7 +5,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO
 
 from .exceptions import NotFoundError
-from .models import DeleteDocumentResponse, FileRecord, IngestResponse, IngestTaskStatus, ListFilesResponse
+from .models import (
+    DeleteDocumentResponse,
+    FileRecord,
+    IngestResponse,
+    IngestTaskStatus,
+    ListFilesResponse,
+)
 
 if TYPE_CHECKING:
     from .client import OpenRAGClient

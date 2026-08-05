@@ -37,9 +37,7 @@ class TestListFiles:
             await client.documents.delete(test_file.name)
 
     @pytest.mark.asyncio
-    async def test_list_files_record_has_all_knowledge_filter_fields(
-        self, client, test_file: Path
-    ):
+    async def test_list_files_record_has_all_knowledge_filter_fields(self, client, test_file: Path):
         """Each FileRecord contains the fields needed to build a knowledge filter."""
         await client.documents.ingest(file_path=str(test_file))
         try:
@@ -95,21 +93,22 @@ class TestListFiles:
                 "Expected an after_key cursor with 3 matching files at page_size=2"
             )
 
-            page2 = await client.documents.list_files(
-                page_size=2,
-                search=f"pg_{token}",
-                after_key=json.dumps(page1.after_key),
-            )
-            assert isinstance(page2.files, list)
-            assert len(page2.files) >= 1, (
-                f"Expected at least 1 file on page 2, got {len(page2.files)}"
-            )
-            # Pages must not overlap by filename
-            p1_names = {f.filename for f in page1.files}
-            p2_names = {f.filename for f in page2.files}
-            assert p1_names.isdisjoint(p2_names), (
-                f"Pages overlap: {p1_names & p2_names}"
-            )
+if page1.after_key is not None:
+    page2 = await client.documents.list_files(
+        page_size=2,
+        search=f"pg_{token}",
+        after_key=json.dumps(page1.after_key),
+    )
+    assert isinstance(page2.files, list)
+    assert len(page2.files) >= 1, (
+        f"Expected at least 1 file on page 2, got {len(page2.files)}"
+    )
+    # Pages must not overlap by filename
+    p1_names = {f.filename for f in page1.files}
+    p2_names = {f.filename for f in page2.files}
+    assert p1_names.isdisjoint(p2_names), (
+        f"Pages overlap: {p1_names & p2_names}"
+    )
         finally:
             for p in files:
                 await client.documents.delete(p.name)
@@ -158,21 +157,23 @@ class TestListFiles:
             assert len(page.files) >= 1, "Ingested file must appear in list"
 
             filenames = [f.filename for f in page.files]
-            result = await client.knowledge_filters.create({
-                "name": f"list-then-filter {uuid.uuid4().hex[:6]}",
-                "description": "Created by SDK list_files integration test",
-                "queryData": {
-                    "query": "",
-                    "filters": {
-                        "data_sources": filenames,
-                        "document_types": ["*"],
-                        "owners": ["*"],
-                        "connector_types": ["*"],
+            result = await client.knowledge_filters.create(
+                {
+                    "name": f"list-then-filter {uuid.uuid4().hex[:6]}",
+                    "description": "Created by SDK list_files integration test",
+                    "queryData": {
+                        "query": "",
+                        "filters": {
+                            "data_sources": filenames,
+                            "document_types": ["*"],
+                            "owners": ["*"],
+                            "connector_types": ["*"],
+                        },
+                        "limit": 10,
+                        "scoreThreshold": 0,
                     },
-                    "limit": 10,
-                    "scoreThreshold": 0,
-                },
-            })
+                }
+            )
             assert result.success is True
             assert result.id is not None
             filter_id = result.id
