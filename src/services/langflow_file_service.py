@@ -80,10 +80,12 @@ class LangflowFileService:
         final_tweaks = dict(tweaks) if tweaks else {}
 
         from config.settings import get_openrag_config
+
         config = get_openrag_config()
 
         # Build and merge Docling Serve tweaks
         from services.docling_service import get_docling_preset_configs
+
         preset_config = get_docling_preset_configs(
             table_structure=config.knowledge.table_structure,
             ocr=config.knowledge.ocr,
@@ -100,7 +102,9 @@ class LangflowFileService:
         if "chunk_size" not in final_tweaks["Split Text"]:
             final_tweaks["Split Text"]["chunk_size"] = getattr(config.knowledge, "chunk_size", 1000)
         if "chunk_overlap" not in final_tweaks["Split Text"]:
-            final_tweaks["Split Text"]["chunk_overlap"] = getattr(config.knowledge, "chunk_overlap", 200)
+            final_tweaks["Split Text"]["chunk_overlap"] = getattr(
+                config.knowledge, "chunk_overlap", 200
+            )
 
         if not settings:
             return final_tweaks
@@ -425,6 +429,7 @@ class LangflowFileService:
             tweaks = {}
 
         from config.settings import get_openrag_config
+
         config = get_openrag_config()
 
         # Pass files via tweaks to File component (File-PSU37 from the flow)
@@ -473,7 +478,9 @@ class LangflowFileService:
 
         split_tweaks = tweaks.get("Split Text", {}) if isinstance(tweaks, dict) else {}
         chunk_size = split_tweaks.get("chunk_size", getattr(config.knowledge, "chunk_size", 1000))
-        chunk_overlap = split_tweaks.get("chunk_overlap", getattr(config.knowledge, "chunk_overlap", 200))
+        chunk_overlap = split_tweaks.get(
+            "chunk_overlap", getattr(config.knowledge, "chunk_overlap", 200)
+        )
 
         headers = {
             "X-Langflow-Global-Var-JWT": str(jwt_token or ""),

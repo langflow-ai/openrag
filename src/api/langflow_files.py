@@ -86,9 +86,7 @@ async def run_ingestion(
             file_tuples.append((filename, b"", "application/octet-stream"))
 
     settings = body.settings or {}
-    tweaks = langflow_file_service.merge_ui_ingest_settings_into_tweaks(
-        body.tweaks or {}, settings
-    )
+    tweaks = langflow_file_service.merge_ui_ingest_settings_into_tweaks(body.tweaks or {}, settings)
 
     jwt_token = user.jwt_token
 
