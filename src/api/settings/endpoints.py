@@ -584,11 +584,17 @@ async def update_settings(
             )
             logger.info(f"Embedding model changed from {old_model} to {new_embedding_model}")
             # Persist Azure deployment name independently so it survives provider switches
-            effective_embedding_provider = body.embedding_provider or current_config.knowledge.embedding_provider
+            effective_embedding_provider = (
+                body.embedding_provider or current_config.knowledge.embedding_provider
+            )
             if effective_embedding_provider == "azure_ai_foundry":
-                current_config.providers.azure_ai_foundry.embedding_deployment_name = new_embedding_model
+                current_config.providers.azure_ai_foundry.embedding_deployment_name = (
+                    new_embedding_model
+                )
             elif effective_embedding_provider == "azure_openai":
-                current_config.providers.azure_openai.embedding_deployment_name = new_embedding_model
+                current_config.providers.azure_openai.embedding_deployment_name = (
+                    new_embedding_model
+                )
 
         if body.embedding_provider is not None:
             old_provider = working_config.knowledge.embedding_provider
@@ -1058,9 +1064,7 @@ async def update_settings(
                     "azure_openai", session_manager, user, models_service
                 )
                 if affected:
-                    return _embedding_conflict_response(
-                        "Azure OpenAI", "azure_openai", affected
-                    )
+                    return _embedding_conflict_response("Azure OpenAI", "azure_openai", affected)
             current_config.providers.azure_openai.api_key = ""
             current_config.providers.azure_openai.endpoint = ""
             current_config.providers.azure_openai.api_version = ""
