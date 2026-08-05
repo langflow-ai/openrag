@@ -20,7 +20,7 @@ def test_merge_chunk_fields_populate_split_text():
         None,
         {"chunkSize": 512, "chunkOverlap": 64, "separator": "\n\n"},
     )
-    assert out["SplitText-QIKhg"] == {
+    assert out["Split Text"] == {
         "chunk_size": 512,
         "chunk_overlap": 64,
         "separator": "\n\n",
@@ -32,15 +32,15 @@ def test_merge_chunk_partial_only_sets_provided_keys():
         None,
         {"chunkSize": 1000},
     )
-    assert out["SplitText-QIKhg"] == {"chunk_size": 1000}
+    assert out["Split Text"] == {"chunk_size": 1000}
 
 
 def test_merge_preserves_and_extends_existing_split_text():
     out = LangflowFileService.merge_ui_ingest_settings_into_tweaks(
-        {"SplitText-QIKhg": {"chunk_size": 100, "existing": "keep"}},
+        {"Split Text": {"chunk_size": 100, "existing": "keep"}},
         {"chunkOverlap": 20},
     )
-    assert out["SplitText-QIKhg"] == {
+    assert out["Split Text"] == {
         "chunk_size": 100,
         "existing": "keep",
         "chunk_overlap": 20,
@@ -65,4 +65,4 @@ def test_connector_style_settings_without_embedding_only_split_text():
     }
     out = LangflowFileService.merge_ui_ingest_settings_into_tweaks({}, settings)
     assert "OpenAIEmbeddings-joRJ6" not in out
-    assert out["SplitText-QIKhg"]["chunk_size"] == 800
+    assert out["Split Text"]["chunk_size"] == 800

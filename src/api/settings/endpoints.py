@@ -185,8 +185,8 @@ async def get_settings(
                         for node in flow_data["data"]["nodes"]:
                             node_template = node.get("data", {}).get("node", {}).get("template", {})
 
-                            # Split Text component (SplitText-QIKhg)
-                            if node.get("id") == "SplitText-QIKhg":
+                            # Split Text component
+                            if node.get("data", {}).get("node", {}).get("display_name") == "Split Text":
                                 if node_template.get("chunk_size", {}).get("value"):
                                     ingestion_defaults["chunkSize"] = node_template["chunk_size"][
                                         "value"
@@ -197,13 +197,6 @@ async def get_settings(
                                     ]["value"]
                                 if node_template.get("separator", {}).get("value"):
                                     ingestion_defaults["separator"] = node_template["separator"][
-                                        "value"
-                                    ]
-
-                            # OpenAI Embeddings component (OpenAIEmbeddings-joRJ6)
-                            elif node.get("id") == "OpenAIEmbeddings-joRJ6":
-                                if node_template.get("model", {}).get("value"):
-                                    ingestion_defaults["embeddingModel"] = node_template["model"][
                                         "value"
                                     ]
 
