@@ -269,6 +269,7 @@ class SettingsResponse(BaseModel):
     local_vlm_models: list[str] = Field(default_factory=list)
     show_shared_upload_toggle: bool = False
     show_workspace_oauth_overrides: bool = False
+    show_azure_ai_providers: bool = False
     segment_write_key: str | None = None
     environment: str | None = None
     langflow_port: str | None = None

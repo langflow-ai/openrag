@@ -110,6 +110,7 @@ export interface Settings {
   local_vlm_models?: string[];
   show_shared_upload_toggle?: boolean;
   show_workspace_oauth_overrides?: boolean;
+  show_azure_ai_providers?: boolean;
   segment_write_key?: string;
   environment?: string;
   langflow_port?: string | number | null;

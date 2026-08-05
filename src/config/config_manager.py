@@ -466,25 +466,40 @@ class ConfigManager:
         if os.getenv("OLLAMA_ENDPOINT"):
             config_data["providers"]["ollama"]["endpoint"] = os.getenv("OLLAMA_ENDPOINT")
 
-        # Azure AI Foundry provider settings
-        if os.getenv("AZURE_AI_API_KEY"):
-            config_data["providers"]["azure_ai_foundry"]["api_key"] = os.getenv("AZURE_AI_API_KEY")
-            config_data["providers"]["azure_ai_foundry"]["configured"] = True
-        if os.getenv("AZURE_AI_API_BASE"):
-            config_data["providers"]["azure_ai_foundry"]["endpoint"] = os.getenv(
-                "AZURE_AI_API_BASE"
-            )
+        # Azure AI Foundry / Azure OpenAI provider settings — gated behind the
+        # feature flag (default off) so setting these env vars alone can't
+        # silently re-enable the feature. Read the raw env var here (not
+        # config.settings.is_azure_ai_enabled) to avoid a circular import.
+        azure_ai_enabled = os.getenv("OPENRAG_AZURE_AI_ENABLED", "false").strip().lower() in (
+            "true",
+            "1",
+            "yes",
+            "on",
+        )
+        if azure_ai_enabled:
+            if os.getenv("AZURE_AI_API_KEY"):
+                config_data["providers"]["azure_ai_foundry"]["api_key"] = os.getenv(
+                    "AZURE_AI_API_KEY"
+                )
+                config_data["providers"]["azure_ai_foundry"]["configured"] = True
+            if os.getenv("AZURE_AI_API_BASE"):
+                config_data["providers"]["azure_ai_foundry"]["endpoint"] = os.getenv(
+                    "AZURE_AI_API_BASE"
+                )
 
-        # Azure OpenAI Service provider settings
-        if os.getenv("AZURE_OPENAI_API_KEY"):
-            config_data["providers"]["azure_openai"]["api_key"] = os.getenv("AZURE_OPENAI_API_KEY")
-            config_data["providers"]["azure_openai"]["configured"] = True
-        if os.getenv("AZURE_OPENAI_ENDPOINT"):
-            config_data["providers"]["azure_openai"]["endpoint"] = os.getenv("AZURE_OPENAI_ENDPOINT")
-        if os.getenv("AZURE_OPENAI_API_VERSION"):
-            config_data["providers"]["azure_openai"]["api_version"] = os.getenv(
-                "AZURE_OPENAI_API_VERSION"
-            )
+            if os.getenv("AZURE_OPENAI_API_KEY"):
+                config_data["providers"]["azure_openai"]["api_key"] = os.getenv(
+                    "AZURE_OPENAI_API_KEY"
+                )
+                config_data["providers"]["azure_openai"]["configured"] = True
+            if os.getenv("AZURE_OPENAI_ENDPOINT"):
+                config_data["providers"]["azure_openai"]["endpoint"] = os.getenv(
+                    "AZURE_OPENAI_ENDPOINT"
+                )
+            if os.getenv("AZURE_OPENAI_API_VERSION"):
+                config_data["providers"]["azure_openai"]["api_version"] = os.getenv(
+                    "AZURE_OPENAI_API_VERSION"
+                )
 
         # Knowledge settings
         if os.getenv("EMBEDDING_MODEL"):

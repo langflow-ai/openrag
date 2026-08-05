@@ -9,7 +9,7 @@ from api.provider_validation import (
     is_provider_credential_error,
     sanitize_provider_error_content,
 )
-from config.settings import get_openrag_config
+from config.settings import get_openrag_config, is_azure_ai_enabled
 from dependencies import get_models_service, require_permission
 from session_manager import User
 from utils.logging_config import get_logger
@@ -250,6 +250,9 @@ async def get_azure_ai_foundry_models(
     When test_completion=True, runs real inference calls against the deployment
     names to verify end-to-end connectivity (consumes credits).
     """
+    if not is_azure_ai_enabled():
+        return JSONResponse({"error": "Azure AI providers are not enabled"}, status_code=404)
+
     import httpx
 
     from api.provider_validation import (
@@ -440,6 +443,9 @@ async def get_azure_openai_models(
     When test_completion=True, runs real inference calls against the deployment
     names to verify end-to-end connectivity (consumes credits).
     """
+    if not is_azure_ai_enabled():
+        return JSONResponse({"error": "Azure AI providers are not enabled"}, status_code=404)
+
     from api.provider_validation import (
         _test_azure_openai_completion,
         _test_azure_openai_embedding,

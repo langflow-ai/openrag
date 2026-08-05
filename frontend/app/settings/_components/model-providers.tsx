@@ -39,11 +39,21 @@ export const ModelProviders = () => {
 
   const [dialogOpen, setDialogOpen] = useState<ModelProvider | undefined>();
 
+  const showAzureAiProviders = settings.show_azure_ai_providers === true;
+
   const allProviderKeys = useMemo(() => {
-    return isCloudBrand
-      ? ALL_PROVIDERS.filter((p) => !CLOUD_EXCLUDED_PROVIDERS.includes(p))
-      : ALL_PROVIDERS;
-  }, [isCloudBrand]);
+    const excluded = isCloudBrand ? CLOUD_EXCLUDED_PROVIDERS : [];
+    return ALL_PROVIDERS.filter((p) => {
+      if (excluded.includes(p)) return false;
+      if (
+        !showAzureAiProviders &&
+        (p === "azure_ai_foundry" || p === "azure_openai")
+      ) {
+        return false;
+      }
+      return true;
+    });
+  }, [isCloudBrand, showAzureAiProviders]);
 
   // Handle URL search param to open dialogs
   useEffect(() => {

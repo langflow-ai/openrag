@@ -78,6 +78,7 @@ from config.settings import (
     clients,
     config_manager,
     get_openrag_config,
+    is_azure_ai_enabled,
     is_workspace_oauth_overrides_enabled,
 )
 from dependencies import (
@@ -251,20 +252,39 @@ async def get_settings(
                     endpoint=openrag_config.providers.ollama.endpoint or None,
                     configured=openrag_config.providers.ollama.configured,
                 ),
-                azure_ai_foundry=AzureAIFoundryProviderConfig(
-                    has_api_key=bool(openrag_config.providers.azure_ai_foundry.api_key),
-                    endpoint=openrag_config.providers.azure_ai_foundry.endpoint or None,
-                    configured=openrag_config.providers.azure_ai_foundry.configured,
-                    llm_deployment_name=openrag_config.providers.azure_ai_foundry.llm_deployment_name or None,
-                    embedding_deployment_name=openrag_config.providers.azure_ai_foundry.embedding_deployment_name or None,
+                # Redact Azure provider state entirely while the feature flag is
+                # off — the UI should never learn stored Azure creds/deployment
+                # names exist, let alone whether they're "configured".
+                azure_ai_foundry=(
+                    AzureAIFoundryProviderConfig(
+                        has_api_key=bool(openrag_config.providers.azure_ai_foundry.api_key),
+                        endpoint=openrag_config.providers.azure_ai_foundry.endpoint or None,
+                        configured=openrag_config.providers.azure_ai_foundry.configured,
+                        llm_deployment_name=openrag_config.providers.azure_ai_foundry.llm_deployment_name
+                        or None,
+                        embedding_deployment_name=openrag_config.providers.azure_ai_foundry.embedding_deployment_name
+                        or None,
+                    )
+                    if is_azure_ai_enabled()
+                    else AzureAIFoundryProviderConfig(
+                        has_api_key=False, endpoint=None, configured=False
+                    )
                 ),
-                azure_openai=AzureOpenAIProviderConfig(
-                    has_api_key=bool(openrag_config.providers.azure_openai.api_key),
-                    endpoint=openrag_config.providers.azure_openai.endpoint or None,
-                    api_version=openrag_config.providers.azure_openai.api_version or None,
-                    configured=openrag_config.providers.azure_openai.configured,
-                    llm_deployment_name=openrag_config.providers.azure_openai.llm_deployment_name or None,
-                    embedding_deployment_name=openrag_config.providers.azure_openai.embedding_deployment_name or None,
+                azure_openai=(
+                    AzureOpenAIProviderConfig(
+                        has_api_key=bool(openrag_config.providers.azure_openai.api_key),
+                        endpoint=openrag_config.providers.azure_openai.endpoint or None,
+                        api_version=openrag_config.providers.azure_openai.api_version or None,
+                        configured=openrag_config.providers.azure_openai.configured,
+                        llm_deployment_name=openrag_config.providers.azure_openai.llm_deployment_name
+                        or None,
+                        embedding_deployment_name=openrag_config.providers.azure_openai.embedding_deployment_name
+                        or None,
+                    )
+                    if is_azure_ai_enabled()
+                    else AzureOpenAIProviderConfig(
+                        has_api_key=False, endpoint=None, api_version=None, configured=False
+                    )
                 ),
             )
             if show_providers
@@ -304,6 +324,7 @@ async def get_settings(
             local_vlm_models=await asyncio.to_thread(_detect_local_vlm_models),
             show_shared_upload_toggle=OPENRAG_SHOW_SHARED_UPLOAD_TOGGLE,
             show_workspace_oauth_overrides=is_workspace_oauth_overrides_enabled(),
+            show_azure_ai_providers=is_azure_ai_enabled(),
             segment_write_key=SEGMENT_WRITE_KEY or None,
             environment=ENVIRONMENT or None,
             langflow_port=str(LANGFLOW_PORT),
@@ -354,6 +375,23 @@ async def update_settings(
         ]
 
         should_validate = any(getattr(body, field) is not None for field in provider_fields)
+
+        # Reject any attempt to select or configure Azure providers while the
+        # feature flag is off, before running provider validation network calls.
+        azure_touched = (
+            body.llm_provider in ("azure_ai_foundry", "azure_openai")
+            or body.embedding_provider in ("azure_ai_foundry", "azure_openai")
+            or body.azure_ai_foundry_api_key is not None
+            or body.azure_ai_foundry_endpoint is not None
+            or body.azure_openai_api_key is not None
+            or body.azure_openai_endpoint is not None
+            or body.azure_openai_api_version is not None
+        )
+        if azure_touched and not is_azure_ai_enabled():
+            return JSONResponse(
+                {"error": "Azure AI providers are not enabled on this deployment."},
+                status_code=403,
+            )
 
         # Docling VLM settings reuse provider credentials, so they are gated
         # like the Providers page. They don't trigger provider validation.
@@ -1121,6 +1159,21 @@ async def onboarding(
         await TelemetryClient.send_event(Category.ONBOARDING, MessageId.ORB_ONBOARD_START)
 
         log_bootstrap_env(logger, "onboarding")
+
+        azure_touched = (
+            body.llm_provider in ("azure_ai_foundry", "azure_openai")
+            or body.embedding_provider in ("azure_ai_foundry", "azure_openai")
+            or body.azure_ai_foundry_api_key is not None
+            or body.azure_ai_foundry_endpoint is not None
+            or body.azure_openai_api_key is not None
+            or body.azure_openai_endpoint is not None
+            or body.azure_openai_api_version is not None
+        )
+        if azure_touched and not is_azure_ai_enabled():
+            return JSONResponse(
+                {"error": "Azure AI providers are not enabled on this deployment."},
+                status_code=403,
+            )
 
         # Get current configuration
         current_config = get_openrag_config()

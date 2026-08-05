@@ -330,6 +330,21 @@ def is_workspace_oauth_overrides_enabled() -> bool:
     return raw in ("true", "1", "yes", "on")
 
 
+def is_azure_ai_enabled() -> bool:
+    """Feature flag for the Azure AI Foundry / Azure OpenAI providers.
+
+    Default off. Gates: the Azure provider tiles and setup dialogs in the
+    Settings UI, the ``/models/azure-ai-foundry`` and ``/models/azure-openai``
+    model-listing/validation endpoints, and acceptance of Azure provider
+    credentials or provider selection via ``/settings`` and ``/onboarding``.
+    Read per-call (like the other feature-flag accessors in this module) so
+    runtime/test overrides take effect without a restart. Set
+    ``OPENRAG_AZURE_AI_ENABLED=true`` to turn it on.
+    """
+    raw = os.getenv("OPENRAG_AZURE_AI_ENABLED", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
 def is_cloud_context() -> bool:
     """True when connector policy and SaaS settings guards should apply."""
     from utils.run_mode_utils import is_run_mode_saas
