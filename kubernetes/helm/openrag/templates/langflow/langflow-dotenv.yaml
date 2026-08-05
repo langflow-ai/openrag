@@ -44,8 +44,6 @@ stringData:
     {{- end }}
     LANGFLOW_DEACTIVATE_TRACING={{ .Values.langflow.deactivateTracing | quote }}
     LANGFLOW_LOG_LEVEL={{ .Values.langflow.logLevel | quote }}
-    LANGFLOW_ALLOW_CUSTOM_COMPONENTS={{ .Values.langflow.allowCustomComponents | default "false" | quote }}
-    LANGFLOW_COMPONENTS_INDEX_PATH={{ .Values.langflow.componentsIndexPath | default "/app/component_index.json" | quote }}
     HIDE_GETTING_STARTED_PROGRESS="true"
 
     # Langflow API secret key (https://docs.langflow.org/api-keys-and-authentication#langflow-secret-key)

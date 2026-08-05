@@ -43,18 +43,16 @@ func NewEnvVarManager() *EnvVarManager {
 			"LANGFLOW_ENABLE_SUPERUSER_CLI": "false",
 
 			// Langflow runtime configuration
-			"LANGFLOW_WORKERS":                 "4",
-			"LANGFLOW_CONFIG_DIR":              "/tmp",
-			"LANGFLOW_LOG_LEVEL":               "DEBUG",
-			"HIDE_GETTING_STARTED_PROGRESS":    "true",
-			"LANGFLOW_ALEMBIC_LOG_TO_STDOUT":   "true",
-			"LANGFLOW_DEACTIVATE_TRACING":      "true",
-			"LANGFLOW_ALLOW_CUSTOM_COMPONENTS": "false",
-			"LANGFLOW_COMPONENTS_INDEX_PATH":   "/app/component_index.json",
-			"LANGFLOW_LOAD_FLOWS_PATH":         "/app/flows",
-			"LANGFUSE_HOST":                    "https://cloud.langfuse.com",
-			"LANGFLOW_KEY_RETRIES":             "15",
-			"LANGFLOW_KEY_RETRY_DELAY":         "2",
+			"LANGFLOW_WORKERS":               "4",
+			"LANGFLOW_CONFIG_DIR":            "/tmp",
+			"LANGFLOW_LOG_LEVEL":             "DEBUG",
+			"HIDE_GETTING_STARTED_PROGRESS":  "true",
+			"LANGFLOW_ALEMBIC_LOG_TO_STDOUT": "true",
+			"LANGFLOW_DEACTIVATE_TRACING":    "true",
+			"LANGFLOW_LOAD_FLOWS_PATH":       "/app/flows",
+			"LANGFUSE_HOST":                  "https://cloud.langfuse.com",
+			"LANGFLOW_KEY_RETRIES":           "15",
+			"LANGFLOW_KEY_RETRY_DELAY":       "2",
 
 			// Flow context defaults
 			"JWT":                       "None",

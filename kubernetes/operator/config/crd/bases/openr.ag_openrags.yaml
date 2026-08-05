@@ -12814,11 +12814,6 @@ spec:
                             x-kubernetes-list-type: atomic
                         type: object
                     type: object
-                  allowCustomComponents:
-                    default: false
-                    description: AllowCustomComponents enables creation of custom
-                      components in Langflow (LANGFLOW_ALLOW_CUSTOM_COMPONENTS).
-                    type: boolean
                   annotations:
                     additionalProperties:
                       type: string
@@ -12838,10 +12833,6 @@ spec:
                     items:
                       type: string
                     type: array
-                  componentsIndexPath:
-                    description: ComponentsIndexPath is the path to the component
-                      index JSON file (LANGFLOW_COMPONENTS_INDEX_PATH).
-                    type: string
                   createService:
                     default: true
                     description: |-

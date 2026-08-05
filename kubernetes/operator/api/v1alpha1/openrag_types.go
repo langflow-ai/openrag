@@ -274,15 +274,6 @@ type LangflowSpec struct {
 	// +optional
 	Storage *PersistenceSpec `json:"storage,omitempty"`
 
-	// AllowCustomComponents enables creation of custom components in Langflow (LANGFLOW_ALLOW_CUSTOM_COMPONENTS).
-	// +optional
-	// +kubebuilder:default=false
-	AllowCustomComponents *bool `json:"allowCustomComponents,omitempty"`
-
-	// ComponentsIndexPath is the path to the component index JSON file (LANGFLOW_COMPONENTS_INDEX_PATH).
-	// +optional
-	ComponentsIndexPath string `json:"componentsIndexPath,omitempty"`
-
 	// PVCReclaimPolicy determines what happens to the Langflow PVC when the OpenRAG CR is deleted.
 	// - "Retain" (default): PVC is retained to preserve user data (flows, SQLite database)
 	// - "Delete": PVC is deleted along with other resources (WARNING: permanent data loss)
