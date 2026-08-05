@@ -96,7 +96,7 @@ export function Navigation({
     conversationLoaded,
     loading,
   } = useChat();
-  const selection = useChatSelection();
+  const selection = useChatSelection({ onChange: onSelectionChange });
 
   useEffect(() => {
     onSelectionChange?.(selection.isSelecting);
@@ -549,6 +549,7 @@ export function Navigation({
                           <label className="flex items-center gap-2 cursor-pointer font-bold">
                             <input
                               type="checkbox"
+                              aria-label="Select all conversations"
                               data-testid="chat-select-all"
                               checked={selection.isAllSelected(allIds)}
                               onChange={() => selection.toggleAll(allIds)}
@@ -592,6 +593,7 @@ export function Navigation({
                               {selection.isSelecting && (
                                 <input
                                   type="checkbox"
+                                  aria-label={`Select ${conversation.title}`}
                                   data-testid={`chat-select-${conversation.response_id}`}
                                   checked={selection.selectedIds.has(
                                     conversation.response_id,

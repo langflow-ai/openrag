@@ -1,14 +1,22 @@
 import { useCallback, useState } from "react";
 
-export function useChatSelection() {
+export function useChatSelection({
+  onChange,
+}: {
+  onChange?: (isSelecting: boolean) => void;
+} = {}) {
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  const enter = useCallback(() => setIsSelecting(true), []);
+  const enter = useCallback(() => {
+    setIsSelecting(true);
+    onChange?.(true);
+  }, []);
   const clear = useCallback(() => setSelectedIds(new Set()), []);
   const exit = useCallback(() => {
     setIsSelecting(false);
     setSelectedIds(new Set());
+    onChange?.(false);
   }, []);
   const toggle = useCallback((id: string) => {
     setSelectedIds((prev) => {
