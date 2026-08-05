@@ -99,6 +99,41 @@ function useDemoPreviewPhase(enabled: boolean): number {
   return phase;
 }
 
+/**
+ * Live index-proof returns chunks + embeddings + ready together. Reveal the
+ * last three pipeline steps ~700ms apart so they don't all check off at once.
+ * Returns how many of those steps to show as done (0–3).
+ */
+function useStaggeredPostLayoutReveal(
+  enabled: boolean,
+  resetKey: string,
+): number {
+  const [revealed, setRevealed] = useState(0);
+  const [prevResetKey, setPrevResetKey] = useState(resetKey);
+
+  if (resetKey !== prevResetKey) {
+    setPrevResetKey(resetKey);
+    setRevealed(0);
+  }
+
+  useEffect(() => {
+    if (!enabled) {
+      setRevealed(0);
+      return;
+    }
+    // First step stays "active" briefly, then each completes in sequence.
+    const delays = [700, 1400, 2100];
+    const timers = delays.map((ms, index) =>
+      setTimeout(() => setRevealed(index + 1), ms),
+    );
+    return () => {
+      for (const timer of timers) clearTimeout(timer);
+    };
+  }, [enabled, resetKey]);
+
+  return revealed;
+}
+
 function previewFrameClass(expanded: boolean): string {
   return cn(
     "overflow-auto rounded-md bg-background",
@@ -976,21 +1011,35 @@ function useIngestReviewModel({
     void refetchParsePreview();
   };
   const chunkCount = indexProof?.chunk_count ?? 0;
+  const embeddingsReady = Boolean(indexProof?.embedding_dimensions);
+  const storedReady = Boolean(indexProof?.ready);
+  // Index-proof is atomic after COMPLETE — stagger only the live UI reveal.
+  const proofComplete = chunkCount > 0 && embeddingsReady && storedReady;
+  const staggerReveal = useStaggeredPostLayoutReveal(
+    !demo && !failed && proofComplete,
+    activeSelectionKey,
+  );
+  const chunksDone =
+    chunkCount > 0 && (demo || failed || !proofComplete || staggerReveal >= 1);
+  const embeddingsDone =
+    embeddingsReady && (demo || failed || !proofComplete || staggerReveal >= 2);
+  const storedDone =
+    storedReady && (demo || failed || !proofComplete || staggerReveal >= 3);
   const steps: PipelineStep[] = [
     {
       id: "layout",
       done: layoutReady || doclingFinished,
       label: "Reading layout",
     },
-    { id: "chunks", done: chunkCount > 0, label: "Creating chunks" },
+    { id: "chunks", done: chunksDone, label: "Creating chunks" },
     {
       id: "embeddings",
-      done: Boolean(indexProof?.embedding_dimensions),
+      done: embeddingsDone,
       label: "Generating embeddings",
     },
     {
       id: "stored",
-      done: Boolean(indexProof?.ready),
+      done: storedDone,
       label: demo ? "Ready for retrieval" : "Stored in OpenSearch",
     },
   ];
