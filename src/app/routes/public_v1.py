@@ -132,7 +132,15 @@ def register_public_v1_routes(app: FastAPI):
         tags=["public"],
     )
 
-    # Status endpoint
+    # Status endpoints — component logs route must be registered before the
+    # bare /v1/status route so Starlette matches the literal "/logs" suffix
+    # rather than treating it as a {component} path parameter.
+    app.add_api_route(
+        "/v1/status/{component}/logs",
+        v1_status.get_component_logs_endpoint,
+        methods=["GET"],
+        tags=["public"],
+    )
     app.add_api_route(
         "/v1/status",
         v1_status.get_status_endpoint,
