@@ -24,6 +24,7 @@ RUN pip install --no-cache-dir \
     "langchain-ibm~=1.1.0"
 
 COPY flows/ /app/flows/
+COPY custom_components/ /app/custom_components/
 
 # Copy the entrypoint before switching to root so the COPY runs as uid=1000
 # (which owns /app), then switch to root so the entrypoint can correct
@@ -31,9 +32,10 @@ COPY flows/ /app/flows/
 COPY --chmod=755 scripts/langflow-entrypoint.py /usr/local/bin/langflow-entrypoint
 COPY flows/component_index.json /app/component_index.json
 USER root
-ENV LANGFLOW_ALLOW_CUSTOM_COMPONENTS=true
 ENV LANGFLOW_SSRF_ALLOWED_HOSTS=localhost,127.0.0.1,host.docker.internal
 ENV LANGFLOW_LOG_TRACE_LOCALS=false
+ENV LANGFLOW_BLOCK_CODE_INTERPRETER_COMPONENTS=true
+ENV LANGFLOW_COMPONENTS_PATH=/app/custom_components
 
 EXPOSE 7860
 
