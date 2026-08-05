@@ -3,7 +3,6 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 
 from api.schemas.status import ComponentState, ComponentStatus, StatusResponse
-from services.component_logs import record
 from services.status_checks import (
     check_docling,
     check_langflow,
@@ -20,37 +19,19 @@ CHECK_SPECS = [check_openrag_backend, check_docling, check_langflow, check_opens
 
 
 async def _run_check(fn: Callable[[], Awaitable[ComponentStatus]]) -> ComponentStatus:
-    """Run one check function, wrapping timeouts and unexpected exceptions.
-
-    Both failure modes are recorded to the component log buffer so that the
-    /v1/status/{component}/logs endpoint can surface the detail later.
-    """
-    name = fn.__name__.replace("check_", "")
+    """TODO: add docstrings here"""
     try:
         return await asyncio.wait_for(fn(), timeout=CHECK_TIMEOUT_S)
-    except TimeoutError:
-        msg = f"Status check timed out after {CHECK_TIMEOUT_S}s"
-        logger.warning("Status check timed out", component=name, timeout_s=CHECK_TIMEOUT_S)
-        record(name, "error", msg, detail=f"asyncio.TimeoutError — timeout={CHECK_TIMEOUT_S}s")
+    except Exception as e:
+        name = fn.__name__.replace("check_", "")
+        logger.warning("Status check did not complete", component=name, error=str(e))
+
         return ComponentStatus(
             name=name,
             display_name=name.title(),
             status=ComponentState.UNKNOWN,
             required=True,
             message="Status check did not complete",
-            last_error=msg,
-        )
-    except Exception as e:
-        msg = "Status check did not complete"
-        logger.warning("Status check did not complete", component=name, error=str(e))
-        record(name, "error", msg, detail=f"{type(e).__name__}: {e}")
-        return ComponentStatus(
-            name=name,
-            display_name=name.title(),
-            status=ComponentState.UNKNOWN,
-            required=True,
-            message=msg,
-            last_error=f"{type(e).__name__}: {e}",
         )
 
 

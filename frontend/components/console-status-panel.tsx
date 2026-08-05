@@ -16,8 +16,6 @@ import {
   type ComponentStatus,
   useConsoleStatusQuery,
 } from "@/app/api/queries/useConsoleStatusQuery";
-import type { ProviderHealthResponse } from "@/app/api/queries/useProviderHealthQuery";
-import { useProviderHealth } from "@/components/provider-health-banner";
 import { cn } from "@/lib/utils";
 
 // ─── status helpers ──────────────────────────────────────────────────────────
@@ -210,68 +208,6 @@ function ComponentCard({ component }: ComponentCardProps) {
   );
 }
 
-// ─── provider / api-key health ───────────────────────────────────────────────
-
-/** Map the /provider/health status onto the console-status component states. */
-function providerHealthState(
-  status: ProviderHealthResponse["status"],
-): ComponentState {
-  switch (status) {
-    case "healthy":
-      return "healthy";
-    case "unhealthy":
-    case "error":
-      return "unhealthy";
-    default:
-      // "backend-unavailable" (or anything unexpected) — can't determine.
-      return "unknown";
-  }
-}
-
-/** Prefer the specific llm/embedding key errors; fall back to the summary. */
-function providerHealthMessage(health: ProviderHealthResponse): string {
-  if (health.status === "healthy") {
-    return health.message || "Providers configured and validated";
-  }
-  const { llm_error: llmError, embedding_error: embeddingError } = health;
-  if (llmError && embeddingError) {
-    return llmError === embeddingError
-      ? llmError
-      : `${llmError}; ${embeddingError}`;
-  }
-  return (
-    llmError || embeddingError || health.message || "Provider validation failed"
-  );
-}
-
-/** Adapt a provider-health response into a synthetic status component so the
- *  panel renders API-key health with the same card UI as backend components. */
-function providerHealthToComponent(
-  health: ProviderHealthResponse,
-): ComponentStatus {
-  const metadata: Record<string, unknown> = {};
-  const llmProvider = health.llm_provider ?? health.provider;
-  if (llmProvider) metadata["LLM provider"] = llmProvider;
-  if (health.embedding_provider) {
-    metadata["Embedding provider"] = health.embedding_provider;
-  }
-  if (health.details?.llm_model) {
-    metadata["LLM model"] = health.details.llm_model;
-  }
-  if (health.details?.embedding_model) {
-    metadata["Embedding model"] = health.details.embedding_model;
-  }
-
-  return {
-    name: "providers",
-    display_name: "Model Providers",
-    status: providerHealthState(health.status),
-    required: true,
-    message: providerHealthMessage(health),
-    metadata,
-  };
-}
-
 // ─── main panel ──────────────────────────────────────────────────────────────
 
 interface ConsoleStatusPanelProps {
@@ -293,21 +229,8 @@ export function ConsoleStatusPanel({ onClose }: ConsoleStatusPanelProps) {
     void refetch();
   }, [refetch]);
 
-  // Reuses the shared /provider/health query (same cache as the banner), so an
-  // API-key failure surfaces here without an extra network round-trip.
-  const { health: providerHealth } = useProviderHealth();
-
   // Defensive: always read from data.components array
-  const backendComponents = Array.isArray(data?.components)
-    ? data.components
-    : [];
-
-  // Append provider / API-key health as a card so the panel is the single
-  // place to spot a key failure. Skipped while the query has no result yet
-  // (e.g. non-admins under RBAC, or during active ingestion).
-  const components = providerHealth
-    ? [...backendComponents, providerHealthToComponent(providerHealth)]
-    : backendComponents;
+  const components = Array.isArray(data?.components) ? data.components : [];
 
   const counts = {
     healthy: components.filter((c) => c.status === "healthy").length,

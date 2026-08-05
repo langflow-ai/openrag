@@ -28,22 +28,6 @@ class ComponentStatus(BaseModel):
     version: str | None = None
     build: ComponentBuild = Field(default_factory=ComponentBuild)
     metadata: dict[str, Any] = Field(default_factory=dict)
-    # Added by #2178 — None when healthy, last exception detail when not.
-    # The frontend uses this as the signal to show the Logs button.
-    last_error: str | None = None
-
-
-class LogEntry(BaseModel):
-    timestamp: str  # ISO-8601 UTC
-    level: str
-    message: str
-    detail: str | None = None
-
-
-class LogsResponse(BaseModel):
-    component: str
-    entries: list[LogEntry] = Field(default_factory=list)
-    count: int
 
 
 class StatusResponse(BaseModel):
