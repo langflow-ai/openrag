@@ -65,8 +65,8 @@ _SAMPLE_RESPONSE = {
 # list_files
 # ---------------------------------------------------------------------------
 
-class TestListFiles:
 
+class TestListFiles:
     @pytest.mark.asyncio
     async def test_returns_file_list_on_success(self):
         """Handler returns the service response as JSONResponse."""
@@ -89,13 +89,21 @@ class TestListFiles:
 
         assert response.status_code == 200
         import json
+
         body = json.loads(response.body)
         assert body["total"] == 1
         assert body["files"][0]["filename"] == "report.pdf"
         # Verify all filter/knowledge fields are present
         f = body["files"][0]
-        for field in ("document_id", "mimetype", "file_size", "connector_type",
-                      "chunk_count", "indexed_time", "allowed_users"):
+        for field in (
+            "document_id",
+            "mimetype",
+            "file_size",
+            "connector_type",
+            "chunk_count",
+            "indexed_time",
+            "allowed_users",
+        ):
             assert field in f, f"Missing field: {field}"
 
     @pytest.mark.asyncio
@@ -136,15 +144,21 @@ class TestListFiles:
         from opensearchpy.exceptions import AuthenticationException
 
         file_service = MagicMock()
-        file_service.list_files = AsyncMock(
-            side_effect=AuthenticationException(401, "auth failed")
-        )
+        file_service.list_files = AsyncMock(side_effect=AuthenticationException(401, "auth failed"))
         user = _make_user()
 
         response = await list_files(
-            page=1, page_size=25, sort_by="filename", sort_order="asc",
-            connector_type=None, mimetype=None, owner=None, search=None,
-            after_key=None, file_service=file_service, user=user,
+            page=1,
+            page_size=25,
+            sort_by="filename",
+            sort_order="asc",
+            connector_type=None,
+            mimetype=None,
+            owner=None,
+            search=None,
+            after_key=None,
+            file_service=file_service,
+            user=user,
         )
 
         assert response.status_code == 401
@@ -157,9 +171,17 @@ class TestListFiles:
         user = _make_user()
 
         response = await list_files(
-            page=1, page_size=25, sort_by="filename", sort_order="asc",
-            connector_type=None, mimetype=None, owner=None, search=None,
-            after_key=None, file_service=file_service, user=user,
+            page=1,
+            page_size=25,
+            sort_by="filename",
+            sort_order="asc",
+            connector_type=None,
+            mimetype=None,
+            owner=None,
+            search=None,
+            after_key=None,
+            file_service=file_service,
+            user=user,
         )
 
         assert response.status_code == 500
@@ -174,10 +196,17 @@ class TestListFiles:
 
         with pytest.raises(HTTPException) as exc_info:
             await list_files(
-                page=1, page_size=25, sort_by="filename", sort_order="asc",
-                connector_type=None, mimetype=None, owner=None, search=None,
+                page=1,
+                page_size=25,
+                sort_by="filename",
+                sort_order="asc",
+                connector_type=None,
+                mimetype=None,
+                owner=None,
+                search=None,
                 after_key="not-valid-json",
-                file_service=file_service, user=user,
+                file_service=file_service,
+                user=user,
             )
 
         assert exc_info.value.status_code == 400
@@ -185,18 +214,26 @@ class TestListFiles:
     @pytest.mark.asyncio
     async def test_after_key_non_dict_returns_400(self):
         """A valid JSON non-dict after_key (e.g. a string) raises HTTPException 400."""
-        from fastapi import HTTPException
         import json
+
+        from fastapi import HTTPException
 
         file_service = _make_file_service(_SAMPLE_RESPONSE)
         user = _make_user()
 
         with pytest.raises(HTTPException) as exc_info:
             await list_files(
-                page=1, page_size=25, sort_by="filename", sort_order="asc",
-                connector_type=None, mimetype=None, owner=None, search=None,
+                page=1,
+                page_size=25,
+                sort_by="filename",
+                sort_order="asc",
+                connector_type=None,
+                mimetype=None,
+                owner=None,
+                search=None,
                 after_key=json.dumps("just-a-string"),
-                file_service=file_service, user=user,
+                file_service=file_service,
+                user=user,
             )
 
         assert exc_info.value.status_code == 400
@@ -206,8 +243,8 @@ class TestListFiles:
 # search_files
 # ---------------------------------------------------------------------------
 
-class TestSearchFiles:
 
+class TestSearchFiles:
     @pytest.mark.asyncio
     async def test_returns_search_results_on_success(self):
         """search_files delegates to v2.search_files and returns its result."""
@@ -228,6 +265,7 @@ class TestSearchFiles:
 
         assert response.status_code == 200
         import json
+
         body = json.loads(response.body)
         assert "files" in body
 

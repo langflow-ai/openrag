@@ -9,6 +9,9 @@ from api.v1 import (
     documents as v1_documents,
 )
 from api.v1 import (
+    files as v1_files,
+)
+from api.v1 import (
     knowledge_filters as v1_knowledge_filters,
 )
 from api.v1 import (
@@ -20,9 +23,7 @@ from api.v1 import (
 from api.v1 import (
     settings as v1_settings,
 )
-from api.v1 import (
-    files as v1_files,
-)
+
 
 def register_public_v1_routes(app: FastAPI):
 

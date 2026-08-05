@@ -250,7 +250,11 @@ class FileServiceV2:
                                     }
                                 }
                             },
-                            {"prefix": {"filename": {"value": search.lower(), "case_insensitive": True}}},
+                            {
+                                "prefix": {
+                                    "filename": {"value": search.lower(), "case_insensitive": True}
+                                }
+                            },
                         ],
                         "minimum_should_match": 1,
                     }
