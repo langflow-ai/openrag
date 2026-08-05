@@ -454,7 +454,7 @@ function DemoChunksList({
               </Badge>
             </div>
             {showContents ? (
-              <blockquote className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap">
+              <blockquote className="min-w-0 text-xs text-muted-foreground leading-relaxed break-words [overflow-wrap:anywhere] whitespace-pre-wrap">
                 {chunk.text_preview}
               </blockquote>
             ) : (

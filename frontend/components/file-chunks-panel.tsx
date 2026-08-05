@@ -67,7 +67,7 @@ function FileChunkCard({
   onSelect?: () => void;
 }) {
   const cardClass = cn(
-    "rounded-lg border border-border/50 bg-muted p-3 text-left",
+    "min-w-0 rounded-lg border border-border/50 bg-muted p-3 text-left",
     compact && "p-2.5",
     interactive && "w-full transition-colors hover:border-primary/40",
     selected && "border-primary/60 ring-1 ring-primary/30",
@@ -111,7 +111,7 @@ function FileChunkCard({
       {showContents ? (
         <blockquote
           className={cn(
-            "text-muted-foreground leading-relaxed",
+            "min-w-0 text-muted-foreground leading-relaxed break-words [overflow-wrap:anywhere] whitespace-pre-wrap",
             compact ? "text-xs" : "text-sm ml-1.5",
           )}
         >

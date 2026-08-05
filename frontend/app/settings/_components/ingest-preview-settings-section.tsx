@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import {
+  INGEST_PREVIEW_AUTO_OPEN_OPTIONS,
   type IngestPreviewSettings,
   useIngestPreviewSettings,
 } from "@/hooks/use-ingest-preview-settings";
@@ -45,6 +46,10 @@ export function IngestPreviewSettingsSection() {
   }
 
   const isDirty = !settingsEqual(draft, settings);
+  const autoOpenDescription =
+    INGEST_PREVIEW_AUTO_OPEN_OPTIONS.find(
+      (option) => option.value === draft.autoOpen,
+    )?.description ?? INGEST_PREVIEW_AUTO_OPEN_OPTIONS[0].description;
 
   const patchDraft = (patch: Partial<IngestPreviewSettings>) => {
     setDraft((prev) => ({ ...prev, ...patch }));
@@ -68,8 +73,7 @@ export function IngestPreviewSettingsSection() {
             Auto-open ingest preview
           </Label>
           <p className="text-sm text-muted-foreground mt-1">
-            Controls Knowledge uploads. Onboarding always opens the review when
-            the feature is enabled; Onboarding only skips Knowledge auto-open.
+            {autoOpenDescription}
           </p>
         </div>
         <IngestPreviewAutoOpenControl

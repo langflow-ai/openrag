@@ -35,11 +35,25 @@ const AUTO_OPEN_VALUES: IngestPreviewAutoOpen[] = [
 export const INGEST_PREVIEW_AUTO_OPEN_OPTIONS: ReadonlyArray<{
   value: IngestPreviewAutoOpen;
   label: string;
+  description: string;
 }> = [
-  { value: "every", label: "Every upload" },
+  {
+    value: "every",
+    label: "Every upload",
+    description: "Open the review automatically when a document is ingested.",
+  },
   // Value kept as first-run for localStorage compat; means onboarding only.
-  { value: "first-run", label: "Onboarding only" },
-  { value: "never", label: "Never" },
+  {
+    value: "first-run",
+    label: "Onboarding only",
+    description:
+      "Open the review only when you upload a document during onboarding.",
+  },
+  {
+    value: "never",
+    label: "Never",
+    description: "Never open the preview.",
+  },
 ];
 
 /** Read persisted settings, falling back to defaults for any missing/invalid field. */
