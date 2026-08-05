@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { type QueryKey, useQuery, useQueryClient } from "@tanstack/react-query";
 
 export interface DoclingPreviewStats {
   page_count: number;
@@ -39,8 +39,19 @@ export interface IndexProofResponse {
   document_id?: string | null;
 }
 
-const MAX_PREVIEW_POLLS = 60;
-const PREVIEW_POLL_INTERVAL_MS = 1500;
+/**
+ * Index-proof can flip to ready without a task phase change, so it still
+ * polls. Docling preview does not — it refetches on task phase / retry.
+ */
+const INDEX_PROOF_POLL_INTERVAL_MS = 1500;
+const INDEX_PROOF_MAX_POLLS = 60;
+
+export const ingestPreviewQueryKeys = {
+  docling: (taskId: string | null, filePath?: string | null) =>
+    ["ingest-preview", "docling", taskId, filePath ?? null] as const,
+  indexProof: (taskId: string | null, filePath?: string | null) =>
+    ["ingest-preview", "index-proof", taskId, filePath ?? null] as const,
+};
 
 function withFileParam(path: string, filePath?: string | null): string {
   return filePath ? `${path}?file=${encodeURIComponent(filePath)}` : path;
@@ -71,62 +82,36 @@ async function fetchPreviewJson<T>(
   return response.json() as Promise<T>;
 }
 
-function usePreviewPollQuery<T>({
-  queryKey,
-  queryFn,
-  enabled,
-  staleTime,
-  isDone,
-  retry,
-}: {
-  queryKey: unknown[];
-  queryFn: () => Promise<T>;
-  enabled: boolean;
-  staleTime: number;
-  isDone: (data: T | undefined) => boolean;
-  retry?: number;
-}) {
-  const queryClient = useQueryClient();
-
-  return useQuery(
-    {
-      queryKey,
-      queryFn,
-      enabled,
-      staleTime,
-      refetchInterval: (query) => {
-        if (query.state.error) return false;
-        if (isDone(query.state.data)) return false;
-        if (query.state.dataUpdateCount >= MAX_PREVIEW_POLLS) return false;
-        return PREVIEW_POLL_INTERVAL_MS;
-      },
-      retry: retry ?? false,
-      refetchOnWindowFocus: false,
-    },
-    queryClient,
-  );
-}
-
-/** Poll Docling layout cache; 404 while parsing means "not ready yet". */
+/**
+ * Fetch Docling layout cache once. 404 → null ("not cached yet").
+ * No interval polling — callers refetch when the ingest task phase advances
+ * or when the user retries.
+ */
 export function useDoclingPreviewQuery(
   taskId: string | null,
   enabled: boolean,
   filePath?: string | null,
 ) {
-  return usePreviewPollQuery<DoclingPreviewResponse | null>({
-    queryKey: ["ingest-preview", "docling", taskId, filePath ?? null],
-    queryFn: () =>
-      fetchPreviewJson<DoclingPreviewResponse>(
-        `/api/ingest/preview/${taskId}/docling`,
-        filePath,
-        { notFoundAsNull: true },
-      ),
-    enabled: enabled && !!taskId,
-    // Document JSON embeds page rasters — keep it cached for the session.
-    staleTime: Number.POSITIVE_INFINITY,
-    isDone: (data) => Boolean(data?.document),
-    retry: 1,
-  });
+  const queryClient = useQueryClient();
+
+  return useQuery(
+    {
+      queryKey: ingestPreviewQueryKeys.docling(taskId, filePath),
+      queryFn: () =>
+        fetchPreviewJson<DoclingPreviewResponse>(
+          `/api/ingest/preview/${taskId}/docling`,
+          filePath,
+          { notFoundAsNull: true },
+        ),
+      enabled: enabled && !!taskId,
+      // Keep large documents cached once loaded; null/404 stays stale so a
+      // later phase-driven refetch can replace it.
+      staleTime: (q) => (q.state.data?.document ? Number.POSITIVE_INFINITY : 0),
+      retry: 1,
+      refetchOnWindowFocus: false,
+    },
+    queryClient,
+  );
 }
 
 /**
@@ -141,15 +126,27 @@ export function useIndexProofQuery(
   enabled: boolean,
   filePath?: string | null,
 ) {
-  return usePreviewPollQuery<IndexProofResponse>({
-    queryKey: ["ingest-preview", "index-proof", taskId, filePath ?? null],
-    queryFn: () =>
-      fetchPreviewJson<IndexProofResponse>(
-        `/api/ingest/preview/${taskId}/index-proof`,
-        filePath,
-      ),
-    enabled: enabled && !!taskId,
-    staleTime: 5_000,
-    isDone: (data) => Boolean(data?.ready),
-  });
+  const queryClient = useQueryClient();
+
+  return useQuery(
+    {
+      queryKey: ingestPreviewQueryKeys.indexProof(taskId, filePath) as QueryKey,
+      queryFn: () =>
+        fetchPreviewJson<IndexProofResponse>(
+          `/api/ingest/preview/${taskId}/index-proof`,
+          filePath,
+        ),
+      enabled: enabled && !!taskId,
+      staleTime: 5_000,
+      refetchInterval: (query) => {
+        if (query.state.error) return false;
+        if (query.state.data?.ready) return false;
+        if (query.state.dataUpdateCount >= INDEX_PROOF_MAX_POLLS) return false;
+        return INDEX_PROOF_POLL_INTERVAL_MS;
+      },
+      retry: false,
+      refetchOnWindowFocus: false,
+    },
+    queryClient,
+  );
 }

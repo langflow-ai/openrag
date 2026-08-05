@@ -1,5 +1,6 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Check,
   ChevronDown,
@@ -21,6 +22,7 @@ import {
 import {
   type DoclingPreviewResponse,
   type IndexProofChunk,
+  ingestPreviewQueryKeys,
   useDoclingPreviewQuery,
   useIndexProofQuery,
 } from "@/app/api/queries/useIngestPreviewQuery";
@@ -224,6 +226,8 @@ function DocumentPane({
   chunkLabel,
   hasChunks,
   expanded = false,
+  waitingForDocument = true,
+  onRetryPreview,
 }: {
   failed: boolean;
   failureMessage: string;
@@ -234,6 +238,9 @@ function DocumentPane({
   chunkLabel?: string;
   hasChunks: boolean;
   expanded?: boolean;
+  /** Still polling Docling cache (404/null). False once exhausted or errored. */
+  waitingForDocument?: boolean;
+  onRetryPreview?: () => void;
 }) {
   const doclingDocument = parsePreview?.document;
   const frameClass = previewFrameClass(expanded);
@@ -292,7 +299,36 @@ function DocumentPane({
     );
   }
 
-  return <DoclingDocSkeleton expanded={expanded} />;
+  if (waitingForDocument) {
+    return <DoclingDocSkeleton expanded={expanded} />;
+  }
+
+  return (
+    <div
+      className="flex h-56 flex-col items-center justify-center gap-3 px-4 text-center text-muted-foreground"
+      data-testid="ingest-review-doc-unavailable"
+    >
+      <p className="text-md font-medium text-foreground">
+        Document preview unavailable
+      </p>
+      <p className="text-xs">
+        Ingest may have finished, but the parse preview never arrived. You can
+        retry or close this dialog — the file is still searchable if indexing
+        completed.
+      </p>
+      {onRetryPreview ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onRetryPreview}
+          data-testid="ingest-review-doc-retry"
+        >
+          Retry preview
+        </Button>
+      ) : null}
+    </div>
+  );
 }
 
 // --- Right column: indexing pipeline + chunks -------------------------------
@@ -815,8 +851,16 @@ function useIngestReviewModel({
 
   const failed = !demo && isFileEntryFailed(active?.entry);
   const activeFilePath = active?.filePath ?? null;
+  const queryClient = useQueryClient();
+  const previewReady = !demo && isPreviewReady(active?.entry);
 
-  const { data: liveParsePreview } = useDoclingPreviewQuery(
+  const {
+    data: liveParsePreview,
+    isFetching: parsePreviewFetching,
+    isPending: parsePreviewPending,
+    isError: parsePreviewError,
+    refetch: refetchParsePreview,
+  } = useDoclingPreviewQuery(
     activeTaskId,
     Boolean(activeTaskId) && !failed,
     activeFilePath,
@@ -826,6 +870,29 @@ function useIngestReviewModel({
     Boolean(activeTaskId) && !failed,
     activeFilePath,
   );
+
+  // No Docling interval poll. useQuery fetches on mount / query-key change;
+  // invalidate only when phase or preview-ready *transitions* while we still
+  // lack a document (avoids a mount double-fetch and effect cascades).
+  const filePhase = active?.entry?.phase;
+  const phaseReadyKey = `${activeTaskId ?? ""}:${activeFilePath ?? ""}:${filePhase ?? ""}:${previewReady}`;
+  const prevPhaseReadyKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    const prev = prevPhaseReadyKeyRef.current;
+    prevPhaseReadyKeyRef.current = phaseReadyKey;
+    if (prev === null || prev === phaseReadyKey) return;
+    if (!activeTaskId || failed || liveParsePreview?.document) return;
+    void queryClient.invalidateQueries({
+      queryKey: ingestPreviewQueryKeys.docling(activeTaskId, activeFilePath),
+    });
+  }, [
+    phaseReadyKey,
+    activeTaskId,
+    activeFilePath,
+    failed,
+    liveParsePreview?.document,
+    queryClient,
+  ]);
 
   const parsePreview: DoclingPreviewResponse | null | undefined = demo
     ? demoPhase >= 1 && demoDocument
@@ -888,8 +955,26 @@ function useIngestReviewModel({
   const chunkLabel =
     chunkHighlight != null ? `Chunk ${chunkHighlight.index}` : undefined;
 
-  const doclingFinished = demo ? demoPhase >= 1 : isPreviewReady(active?.entry);
+  const doclingFinished = demo ? demoPhase >= 1 : previewReady;
   const layoutReady = Boolean(parsePreview?.document);
+  // Skeleton while ingest is still parsing, or while a fetch/retry is in flight.
+  // Once preview-ready and settled with no document → unavailable + retry.
+  const waitingForDocument = demo
+    ? demoPhase < 1
+    : Boolean(activeTaskId) &&
+      !failed &&
+      !parsePreview?.document &&
+      (!previewReady ||
+        parsePreviewPending ||
+        parsePreviewFetching ||
+        (liveParsePreview === undefined && !parsePreviewError));
+  const retryParsePreview = () => {
+    if (!activeTaskId) return;
+    void queryClient.invalidateQueries({
+      queryKey: ingestPreviewQueryKeys.docling(activeTaskId, activeFilePath),
+    });
+    void refetchParsePreview();
+  };
   const chunkCount = indexProof?.chunk_count ?? 0;
   const steps: PipelineStep[] = [
     {
@@ -943,6 +1028,8 @@ function useIngestReviewModel({
     activeTaskId,
     failed,
     parsePreview,
+    waitingForDocument,
+    retryParsePreview,
     chunkHighlight,
     setChunkHighlight,
     chunkSearch,
@@ -1042,6 +1129,8 @@ function IngestReviewDocumentColumn({
   chunkLabel,
   hasChunks,
   expanded,
+  waitingForDocument,
+  onRetryPreview,
 }: {
   failed: boolean;
   failureMessage: string;
@@ -1052,6 +1141,8 @@ function IngestReviewDocumentColumn({
   chunkLabel?: string;
   hasChunks: boolean;
   expanded: boolean;
+  waitingForDocument: boolean;
+  onRetryPreview: () => void;
 }) {
   return (
     <div
@@ -1074,6 +1165,8 @@ function IngestReviewDocumentColumn({
           chunkLabel={chunkLabel}
           hasChunks={hasChunks}
           expanded={expanded}
+          waitingForDocument={waitingForDocument}
+          onRetryPreview={onRetryPreview}
         />
       </div>
     </div>
@@ -1126,6 +1219,8 @@ function IngestReviewContent({
     activeTaskId,
     failed,
     parsePreview,
+    waitingForDocument,
+    retryParsePreview,
     chunkHighlight,
     setChunkHighlight,
     chunkSearch,
@@ -1191,6 +1286,8 @@ function IngestReviewContent({
           chunkLabel={chunkLabel}
           hasChunks={chunkCount > 0}
           expanded={expanded}
+          waitingForDocument={waitingForDocument}
+          onRetryPreview={retryParsePreview}
         />
         <IndexPane
           steps={steps}
