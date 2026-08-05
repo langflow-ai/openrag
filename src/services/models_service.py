@@ -164,7 +164,9 @@ class ModelsService:
                 if config.providers.openai.api_key:
                     try:
                         res = await self.get_openai_models(
-                            config.providers.openai.api_key, update_index=False
+                            config.providers.openai.api_key,
+                            base_url=config.providers.openai.base_url or None,
+                            update_index=False,
                         )
                         self.add_models(res, "openai", new_registry)
                     except Exception as e:
@@ -326,7 +328,7 @@ class ModelsService:
         return False
 
     async def get_openai_models(
-        self, api_key: str, update_index: bool = True
+        self, api_key: str, base_url: str = None, update_index: bool = True
     ) -> dict[str, list[dict[str, str]]]:
         """Fetch available models from OpenAI API with lightweight validation"""
         try:
@@ -334,11 +336,14 @@ class ModelsService:
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             }
+            # Optional override to list models from a self-hosted OpenAI-compatible
+            # gateway instead of api.openai.com.
+            models_url = f"{(base_url or 'https://api.openai.com/v1').rstrip('/')}/models"
 
             # Lightweight validation: check if API key is valid with retry logic
             response = await _http_request_with_retry(
                 "GET",
-                "https://api.openai.com/v1/models",
+                models_url,
                 headers=headers,
                 timeout=30.0,
             )
