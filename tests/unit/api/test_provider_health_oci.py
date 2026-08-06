@@ -105,6 +105,9 @@ class TestCheckProviderHealthOciAuthMethod:
         with patch("api.provider_validation._test_oci_signer_construction") as mock_signer:
             response = await check_provider_health(provider="oci", test_completion=False, user=None)
 
-        mock_signer.assert_called_once_with("instance_principal")
+        # compartment_id rides along: litellm requires it on every embed call
+        # regardless of auth method, so validation checks it for signer-based
+        # auth too (see _test_oci_signer_construction).
+        mock_signer.assert_called_once_with("instance_principal", "ocid1.compartment.oc1..xxx")
         assert response.status_code == 200
         assert _body(response)["status"] == "healthy"

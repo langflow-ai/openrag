@@ -781,7 +781,7 @@ async def test_lightweight_health(
                 oci_user, oci_fingerprint, oci_tenancy, oci_compartment_id, oci_key, oci_key_file
             )
         else:
-            await _test_oci_signer_construction(oci_auth_method)
+            await _test_oci_signer_construction(oci_auth_method, oci_compartment_id)
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -840,7 +840,7 @@ async def test_embedding(
                 oci_user, oci_fingerprint, oci_tenancy, oci_compartment_id, oci_key, oci_key_file
             )
         else:
-            await _test_oci_signer_construction(oci_auth_method)
+            await _test_oci_signer_construction(oci_auth_method, oci_compartment_id)
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -1564,7 +1564,9 @@ async def _test_oci_credential_shape(
     logger.info("OCI credential shape check passed")
 
 
-async def _test_oci_signer_construction(oci_auth_method: str) -> None:
+async def _test_oci_signer_construction(
+    oci_auth_method: str, oci_compartment_id: str = None
+) -> None:
     """Validate OCI instance_principal / workload_identity auth by
     attempting to construct the real signer.
 
@@ -1576,8 +1578,19 @@ async def _test_oci_signer_construction(oci_auth_method: str) -> None:
     impact, and it's the only way to catch a missing dynamic-group policy
     or a cluster without Workload Identity enabled before a real embedding
     call fails with a much less obvious error.
+
+    compartment_id is checked here too, even though the signer never uses
+    it: litellm requires oci_compartment_id on every embedText call
+    regardless of auth method (see OCIEmbeddingConfig.validate_environment),
+    and ``utils.embedding_kwargs.oci_credential_kwargs`` omits the kwarg
+    entirely when it's empty. Without this check, a signer-based
+    configuration with no compartment_id passes onboarding/settings
+    validation and only fails at the first real embedding call.
     """
     from utils.oci_auth import build_oci_signer
+
+    if not oci_compartment_id:
+        raise Exception("OCI configuration is missing required field(s): compartment_id")
 
     build_oci_signer(oci_auth_method)
     logger.info(f"OCI {oci_auth_method} signer construction check passed")
