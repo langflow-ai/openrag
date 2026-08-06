@@ -76,12 +76,12 @@ async def _run_ingest(monkeypatch, tmp_path, *, embedding_model: str, formatted_
     )
     monkeypatch.setattr("config.settings.get_index_name", lambda: "documents")
     monkeypatch.setattr("models.processors.get_index_name", lambda: "documents")
-    monkeypatch.setattr(
-        "services.document_service.get_embedding_model", lambda: embedding_model
-    )
+    monkeypatch.setattr("services.document_service.get_embedding_model", lambda: embedding_model)
     monkeypatch.setattr(
         "models.processors.get_openrag_config",
-        lambda: SimpleNamespace(knowledge=SimpleNamespace(embedding_model="")),
+        lambda: SimpleNamespace(
+            knowledge=SimpleNamespace(embedding_model="", chunk_size=1000, chunk_overlap=200)
+        ),
     )
     monkeypatch.setattr(
         "services.document_index_writer.ensure_embedding_field_exists",
@@ -153,6 +153,78 @@ class TestNonCohereModelOmitsInputType:
 
         assert len(calls) == 1
         assert "input_type" not in calls[0]
+
+
+class TestBedrockCredentialsTravelPerCall:
+    """Bedrock's keys are passed as litellm kwargs rather than exported to
+    AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY, which the AWS S3 connector reads
+    as its credential fallback (connectors/aws_s3/auth.py)."""
+
+    @staticmethod
+    def _bedrock_config(access_key_id="", secret_access_key=""):
+        return SimpleNamespace(
+            providers=SimpleNamespace(
+                bedrock=SimpleNamespace(
+                    region="us-east-1",
+                    access_key_id=access_key_id,
+                    secret_access_key=secret_access_key,
+                )
+            )
+        )
+
+    @pytest.mark.asyncio
+    async def test_explicit_credentials_are_attached_to_the_embed_call(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(
+            "config.settings.get_openrag_config",
+            lambda: TestBedrockCredentialsTravelPerCall._bedrock_config(
+                "AKIAEXAMPLE", "supersecret"
+            ),
+        )
+
+        calls = await _run_ingest(
+            monkeypatch,
+            tmp_path,
+            embedding_model="cohere.embed-multilingual-v3",
+            formatted_model="bedrock/cohere.embed-multilingual-v3",
+        )
+
+        assert calls[0]["aws_access_key_id"] == "AKIAEXAMPLE"
+        assert calls[0]["aws_secret_access_key"] == "supersecret"
+
+    @pytest.mark.asyncio
+    async def test_iam_role_mode_attaches_nothing(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(
+            "config.settings.get_openrag_config",
+            lambda: TestBedrockCredentialsTravelPerCall._bedrock_config(),
+        )
+
+        calls = await _run_ingest(
+            monkeypatch,
+            tmp_path,
+            embedding_model="cohere.embed-multilingual-v3",
+            formatted_model="bedrock/cohere.embed-multilingual-v3",
+        )
+
+        assert "aws_access_key_id" not in calls[0]
+        assert "aws_secret_access_key" not in calls[0]
+
+    @pytest.mark.asyncio
+    async def test_non_bedrock_model_attaches_nothing(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(
+            "config.settings.get_openrag_config",
+            lambda: TestBedrockCredentialsTravelPerCall._bedrock_config(
+                "AKIAEXAMPLE", "supersecret"
+            ),
+        )
+
+        calls = await _run_ingest(
+            monkeypatch,
+            tmp_path,
+            embedding_model="text-embedding-3-small",
+            formatted_model="text-embedding-3-small",
+        )
+
+        assert "aws_access_key_id" not in calls[0]
 
 
 class TestQueryVsIngestInputTypeDiffer:
