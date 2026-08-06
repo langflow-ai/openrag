@@ -35,6 +35,17 @@ _EMBEDDING_PROVIDER_NAMES = ("openai", "watsonx", "ollama")
 _ALL_EMBEDDING_PROVIDER_NAMES = (*_EMBEDDING_PROVIDER_NAMES, "bedrock")
 
 
+def _is_langflow_embedding_provider(provider: str) -> bool:
+    """Whether `provider` has a Langflow embedding component that can be synced.
+
+    Embedding providers outside `_EMBEDDING_PROVIDER_NAMES` (currently
+    bedrock) are served entirely by the native, non-Langflow path, and
+    `flows_service.change_langflow_model_value()` raises ValueError for
+    them. Callers must skip the Langflow flow sync for those providers.
+    """
+    return (provider or "").lower() in _EMBEDDING_PROVIDER_NAMES
+
+
 def _configured_provider_names(config, provider_names) -> list:
     """Return the provider names from `provider_names` marked configured in the OpenRAG config."""
     providers = config.providers
