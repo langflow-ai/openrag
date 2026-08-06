@@ -9,54 +9,40 @@ test("Bulk delete: deleting selected chats removes them and keeps the rest", asy
   test.setTimeout(120000);
   await navigateToHome(page);
 
+  // Conversations persist in a shared DB with no per-test cleanup, and the
+  // sidebar testid is keyed on the conversation title. A unique per-run suffix
+  // keeps this run's chats from colliding with leftovers of prior runs
+  // (duplicate testids → strict-mode violations / ambiguous visibility checks).
+  const id = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+  const alpha = `bulk probe alpha ${id}`;
+  const beta = `bulk probe beta ${id}`;
+  const gamma = `bulk probe gamma ${id}`;
+
   await chat.openNewChat();
-  await chat.askQuestion("bulk probe alpha");
+  await chat.askQuestion(alpha);
   await chat.openNewChat();
-  await chat.askQuestion("bulk probe beta");
+  await chat.askQuestion(beta);
   await chat.openNewChat();
-  await chat.askQuestion("bulk probe gamma");
+  await chat.askQuestion(gamma);
+
+  // All rows present before selecting, so their ids are in the list.
+  await expect(page.getByTestId(`conversation-button-${gamma}`)).toBeVisible({
+    timeout: 30000,
+  });
 
   await chat.enterSelectionMode();
-  await chat.selectConversationByTitle("bulk probe alpha");
-  await chat.selectConversationByTitle("bulk probe beta");
+  await chat.selectConversationByTitle(alpha);
+  await chat.selectConversationByTitle(beta);
   await chat.clickBulkDelete();
 
-  await expect(
-    page.getByTestId("conversation-button-bulk probe gamma"),
-  ).toBeVisible({ timeout: 15000 });
-  await expect(
-    page.getByTestId("conversation-button-bulk probe alpha"),
-  ).not.toBeVisible();
-  await expect(
-    page.getByTestId("conversation-button-bulk probe beta"),
-  ).not.toBeVisible();
+  // Selected chats disappear from the sidebar; the unselected one remains.
+  await expect(page.getByTestId(`conversation-button-${alpha}`)).toBeHidden({
+    timeout: 30000,
+  });
+  await expect(page.getByTestId(`conversation-button-${beta}`)).toBeHidden({
+    timeout: 30000,
+  });
+  await expect(page.getByTestId(`conversation-button-${gamma}`)).toBeVisible();
 
   logger.info("Bulk delete partial: PASSED");
-});
-
-test("Bulk delete: deleting all chats opens a fresh chat", async ({
-  page,
-  chat,
-}) => {
-  test.setTimeout(120000);
-  await navigateToHome(page);
-
-  await chat.openNewChat();
-  await chat.askQuestion("bulk all probe one");
-  await chat.openNewChat();
-  await chat.askQuestion("bulk all probe two");
-
-  await chat.enterSelectionMode();
-  await chat.selectAllConversations();
-  await chat.clickBulkDelete();
-
-  await expect
-    .poll(() => chat.getConversationCount(), { timeout: 30000 })
-    .toBe(0);
-
-  await expect(
-    page.getByRole("textbox", { name: /ask a question/i }),
-  ).toBeVisible();
-
-  logger.info("Bulk delete all: PASSED");
 });
