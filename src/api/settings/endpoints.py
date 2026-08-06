@@ -433,6 +433,7 @@ async def update_settings(
             "oci_key",
             "oci_key_file",
             "oci_region",
+            "oci_auth_method",
             "provider_credentials",
             "remove_provider_config",
         ]
