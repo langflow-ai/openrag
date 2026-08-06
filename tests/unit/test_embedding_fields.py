@@ -233,8 +233,7 @@ class TestNormalizeModelNameBedrockCohere:
 
     def test_bedrock_multilingual_v3_normalizes_as_expected(self) -> None:
         assert (
-            normalize_model_name("cohere.embed-multilingual-v3")
-            == "cohere_embed_multilingual_v3"
+            normalize_model_name("cohere.embed-multilingual-v3") == "cohere_embed_multilingual_v3"
         )
 
     def test_bedrock_english_v3_normalizes_as_expected(self) -> None:
