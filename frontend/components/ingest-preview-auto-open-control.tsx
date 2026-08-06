@@ -43,9 +43,6 @@ export function IngestPreviewAutoOpenControl({
               "px-3 py-1.5 text-xs sm:text-sm",
               isCloudBrand &&
                 "!rounded-none dark:hover:!bg-[#F4F4F4] dark:hover:!text-neutral-900 dark:data-[state=active]:!bg-[#F4F4F4] dark:data-[state=active]:!text-neutral-900",
-              isCloudBrand &&
-                option.value === "first-run" &&
-                "!border-y-0 !border-l !border-r !border-border",
             )}
           >
             {option.label}

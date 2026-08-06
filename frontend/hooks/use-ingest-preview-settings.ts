@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-export type IngestPreviewAutoOpen = "every" | "first-run" | "never";
+export type IngestPreviewAutoOpen = "every" | "never";
 
 export interface IngestPreviewSettings {
   /** When the review opens automatically after a Knowledge ingest starts. */
@@ -18,7 +18,7 @@ export interface IngestPreviewSettings {
 }
 
 export const DEFAULT_INGEST_PREVIEW_SETTINGS: IngestPreviewSettings = {
-  autoOpen: "first-run",
+  autoOpen: "never",
   showChunkBoundaries: true,
   showIndexingPipeline: true,
   showChunkContents: true,
@@ -26,11 +26,6 @@ export const DEFAULT_INGEST_PREVIEW_SETTINGS: IngestPreviewSettings = {
 };
 
 const SETTINGS_KEY = "openrag.ingest-preview.settings";
-const AUTO_OPEN_VALUES: IngestPreviewAutoOpen[] = [
-  "every",
-  "first-run",
-  "never",
-];
 
 export const INGEST_PREVIEW_AUTO_OPEN_OPTIONS: ReadonlyArray<{
   value: IngestPreviewAutoOpen;
@@ -42,19 +37,20 @@ export const INGEST_PREVIEW_AUTO_OPEN_OPTIONS: ReadonlyArray<{
     label: "Every upload",
     description: "Open the review automatically when a document is ingested.",
   },
-  // Value kept as first-run for localStorage compat; means onboarding only.
-  {
-    value: "first-run",
-    label: "Onboarding only",
-    description:
-      "Open the review only when you upload a document during onboarding.",
-  },
   {
     value: "never",
     label: "Never",
     description: "Never open the preview.",
   },
 ];
+
+/** Map legacy localStorage values to the current two-option set. */
+function normalizeAutoOpen(value: unknown): IngestPreviewAutoOpen | null {
+  if (value === "every" || value === "never") return value;
+  // Former "Onboarding only" — same Knowledge behavior as Never.
+  if (value === "first-run") return "never";
+  return null;
+}
 
 /** Read persisted settings, falling back to defaults for any missing/invalid field. */
 export function readIngestPreviewSettings(): IngestPreviewSettings {
@@ -74,11 +70,9 @@ export function readIngestPreviewSettings(): IngestPreviewSettings {
     }
     const settings = parsed as Partial<IngestPreviewSettings>;
     return {
-      autoOpen: AUTO_OPEN_VALUES.includes(
-        settings.autoOpen as IngestPreviewAutoOpen,
-      )
-        ? (settings.autoOpen as IngestPreviewAutoOpen)
-        : DEFAULT_INGEST_PREVIEW_SETTINGS.autoOpen,
+      autoOpen:
+        normalizeAutoOpen(settings.autoOpen) ??
+        DEFAULT_INGEST_PREVIEW_SETTINGS.autoOpen,
       showChunkBoundaries:
         typeof settings.showChunkBoundaries === "boolean"
           ? settings.showChunkBoundaries
@@ -109,7 +103,7 @@ function writeIngestPreviewSettings(settings: IngestPreviewSettings): void {
 /**
  * Whether Knowledge uploads should auto-open the review.
  * Onboarding always opens when the feature flag is on (ignores this).
- * `first-run` / "Onboarding only" → Knowledge does not auto-open.
+ * `never` → Knowledge does not auto-open.
  */
 export function shouldAutoOpenIngestPreview(
   settings: IngestPreviewSettings = readIngestPreviewSettings(),
