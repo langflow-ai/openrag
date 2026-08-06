@@ -23,6 +23,8 @@ from utils.telemetry import Category, MessageId, TelemetryClient
 
 logger = get_logger(__name__)
 
+_UNSET = object()
+
 
 class FlowsService:
     def __init__(self) -> None:
@@ -645,7 +647,12 @@ class FlowsService:
         return "OpenAI"
 
     async def _update_flow_field(
-        self, flow_id: str, field_name: str, field_value: Any, node_display_name: str | None = None
+        self,
+        flow_id: str,
+        field_name: str,
+        field_value: Any,
+        node_display_name: str | None = None,
+        expected_value: Any = _UNSET,
     ):
         """
         Generic helper function to update any field in any Langflow component.
@@ -655,7 +662,7 @@ class FlowsService:
             field_name: The name of the field to update (e.g., 'model_name', 'system_message', 'docling_serve_opts')
             field_value: The new value to set
             node_display_name: The display name to search for (optional)
-            node_id: The node ID to search for (optional, used as fallback or primary)
+            expected_value: Optional expected current value to revalidate before writing
         """
         if not flow_id:
             raise ValueError("flow_id is required")
@@ -682,6 +689,12 @@ class FlowsService:
         # Update the field value directly in the existing node
         template = target_node.get("data", {}).get("node", {}).get("template", {})
         if template.get(field_name):
+            if expected_value is not _UNSET:
+                current_val = template[field_name].get("value")
+                if current_val != expected_value:
+                    raise Exception(
+                        f"Field '{field_name}' in '{node_display_name}' component has changed from expected value"
+                    )
             flow_data["data"]["nodes"][target_node_index]["data"]["node"]["template"][field_name][
                 "value"
             ] = field_value
@@ -719,17 +732,26 @@ class FlowsService:
     async def get_chat_flow_system_prompt(self) -> str | None:
         """Helper function to get the current system prompt from the chat flow"""
         if not LANGFLOW_CHAT_FLOW_ID:
-            return None
-        
-        response = await clients.langflow_request("GET", f"/api/v1/flows/{LANGFLOW_CHAT_FLOW_ID}")
-        if response.status_code == 200:
-            flow_data = response.json()
-            target_node, _ = self._find_node_in_flow(flow_data, display_name=AGENT_COMPONENT_DISPLAY_NAME)
-            if target_node:
-                return target_node.get("data", {}).get("node", {}).get("template", {}).get("system_prompt", {}).get("value")
-        return None
+            raise ValueError("LANGFLOW_CHAT_FLOW_ID is not configured")
 
-    async def update_chat_flow_system_prompt(self, system_prompt: str):
+        response = await clients.langflow_request("GET", f"/api/v1/flows/{LANGFLOW_CHAT_FLOW_ID}")
+        if response.status_code != 200:
+            raise Exception(
+                f"Failed to get flow {LANGFLOW_CHAT_FLOW_ID}: HTTP {response.status_code} - {response.text}"
+            )
+
+        flow_data = response.json()
+        target_node, _ = self._find_node_in_flow(flow_data, display_name=AGENT_COMPONENT_DISPLAY_NAME)
+        if target_node is None:
+            raise Exception(
+                f"Component '{AGENT_COMPONENT_DISPLAY_NAME}' not found in flow {LANGFLOW_CHAT_FLOW_ID}"
+            )
+
+        return target_node.get("data", {}).get("node", {}).get("template", {}).get("system_prompt", {}).get("value")
+
+    async def update_chat_flow_system_prompt(
+        self, system_prompt: str, expected_prompt: Any = _UNSET
+    ):
         """Helper function to update the system prompt in the chat flow"""
         if not LANGFLOW_CHAT_FLOW_ID:
             raise ValueError("LANGFLOW_CHAT_FLOW_ID is not configured")
@@ -739,6 +761,7 @@ class FlowsService:
             "system_prompt",
             system_prompt,
             node_display_name=AGENT_COMPONENT_DISPLAY_NAME,
+            expected_value=expected_prompt,
         )
 
     async def update_flow_docling_preset(self, preset: str, preset_config: dict):

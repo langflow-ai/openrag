@@ -183,14 +183,23 @@ async def startup_tasks(services) -> None:
         config_prompt = get_openrag_config().agent.system_prompt
         # If the config prompt is a user customization, we don't need to auto-upgrade anything
         if config_prompt in LEGACY_SYSTEM_PROMPTS or config_prompt == DEFAULT_SYSTEM_PROMPT:
-            current_prompt = await flows_service.get_chat_flow_system_prompt()
-            # Only update if the Langflow prompt is a known default/legacy AND it differs from our config prompt
-            if (not current_prompt or current_prompt in LEGACY_SYSTEM_PROMPTS or current_prompt == DEFAULT_SYSTEM_PROMPT):
-                if current_prompt != config_prompt:
-                    await flows_service.update_chat_flow_system_prompt(config_prompt)
-                    logger.info("Ensured system prompt is synced to Langflow")
+            try:
+                current_prompt = await flows_service.get_chat_flow_system_prompt()
+            except Exception as e:
+                logger.warning(
+                    "Could not read current chat flow system prompt; skipping system prompt sync",
+                    error=str(e),
+                )
             else:
-                logger.info("Preserved custom system prompt in Langflow")
+                # Only update if the Langflow prompt is a known default/legacy AND it differs from our config prompt
+                if (not current_prompt or current_prompt in LEGACY_SYSTEM_PROMPTS or current_prompt == DEFAULT_SYSTEM_PROMPT):
+                    if current_prompt != config_prompt:
+                        await flows_service.update_chat_flow_system_prompt(
+                            config_prompt, expected_prompt=current_prompt
+                        )
+                        logger.info("Ensured system prompt is synced to Langflow")
+                else:
+                    logger.info("Preserved custom system prompt in Langflow")
     except Exception as e:
         logger.error(
             "Failed to ensure Langflow flows exist at startup — "
