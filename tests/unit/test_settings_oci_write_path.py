@@ -22,6 +22,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from fastapi import HTTPException
 
 import api.settings.endpoints as settings_endpoints
 import utils.oci_auth as oci_auth
@@ -260,3 +261,58 @@ async def test_update_settings_oci_auth_method_override_reaches_validation(monke
     # Proves the working_config write also lands: the new auth_method is
     # what actually gets persisted, not just what validation saw.
     assert saved_configs[0].providers.oci.auth_method == "instance_principal"
+
+
+class _DenyingRBAC:
+    """RBAC service that grants nothing, and records what was asked for."""
+
+    def __init__(self):
+        self.checked = []
+
+    async def has_permission(self, uid, permission):
+        self.checked.append(permission)
+        return False
+
+    async def audit_denied(self, uid, permission):
+        return None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("oci_auth_method", "instance_principal"),
+        # Reference cases: the sibling oci_* fields were already listed in
+        # provider_fields and have always been gated.
+        ("oci_region", "us-ashburn-1"),
+        ("oci_compartment_id", "ocid1.compartment.oc1..xxx"),
+    ],
+)
+async def test_update_settings_requires_providers_write_for_oci_fields(monkeypatch, field, value):
+    """``update_settings``'s outer dependency only requires ``config:write``;
+    the ``providers:write`` check is applied inside, gated on ``should_validate``
+    -- which is computed from the ``provider_fields`` list.
+
+    ``oci_auth_method`` was missing from that list while still being written
+    through to ``providers.oci.auth_method``, so a request setting ONLY that
+    field skipped the ``providers:write`` check (and provider validation)
+    entirely: a caller scoped to ``config:write`` alone could flip the OCI
+    auth method unchecked.
+    """
+    settings_endpoints._background_tasks.clear()
+    config = _make_config(oci_configured=True, embedding_provider="oci")
+    _patch_common(monkeypatch, config)
+    monkeypatch.setattr(settings_endpoints, "is_rbac_enforced", lambda: True, raising=True)
+    rbac = _DenyingRBAC()
+
+    with pytest.raises(HTTPException) as excinfo:
+        await settings_endpoints.update_settings(
+            SettingsUpdateBody(**{field: value}),
+            session_manager=object(),
+            user=SimpleNamespace(db_user_id="user-1", user_id="user-1"),
+            rbac=rbac,
+        )
+
+    assert excinfo.value.status_code == 403
+    assert excinfo.value.detail["required"] == "providers:write"
+    assert rbac.checked == ["providers:write"]
