@@ -5,7 +5,7 @@ import time
 from typing import TYPE_CHECKING, Any, Literal
 
 from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
-from services.models_service import is_cohere_embedding_model
+from services.models_service import bedrock_credential_kwargs, is_cohere_embedding_model
 from session_manager import AnonymousUser
 from utils.document_processing import (
     extract_relevant,
@@ -569,6 +569,10 @@ class TaskProcessor:
         embed_kwargs = {}
         if is_cohere_embedding_model(embedding_model):
             embed_kwargs["input_type"] = "search_document"
+
+        # Bedrock credentials travel per call rather than via the process-wide
+        # AWS_* env vars the S3 connector also reads.
+        embed_kwargs.update(bedrock_credential_kwargs(litellm_embedding_model))
 
         for batch in text_batches:
             resp = await clients.patched_embedding_client.embeddings.create(

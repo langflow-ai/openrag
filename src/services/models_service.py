@@ -52,6 +52,41 @@ def is_cohere_embedding_model(model_name: str) -> bool:
     """
     return "cohere" in (model_name or "").lower()
 
+
+def bedrock_credential_kwargs(litellm_model_name: str) -> dict[str, str]:
+    """Return the per-call AWS credential kwargs for a Bedrock-routed model.
+
+    Bedrock's credentials are passed explicitly on each embedding call rather
+    than exported as ``AWS_ACCESS_KEY_ID``/``AWS_SECRET_ACCESS_KEY``: those
+    process-wide variables are the credential fallback the AWS S3 connector
+    reads (see ``connectors/aws_s3/auth.py``), so exporting Bedrock's keys
+    there would silently reauthenticate every S3 connector relying on it.
+
+    Returns an empty dict for non-Bedrock models, and also for Bedrock when no
+    explicit keys are configured - that is the IAM role / IRSA mode, where
+    litellm's default boto3 credential chain must be left to resolve
+    credentials on its own.
+    """
+    if not (litellm_model_name or "").lower().startswith("bedrock/"):
+        return {}
+
+    from config.settings import get_openrag_config
+
+    try:
+        bedrock = get_openrag_config().providers.bedrock
+    except Exception as e:
+        logger.debug("Could not read Bedrock credentials from config", error=str(e))
+        return {}
+
+    if not (bedrock.access_key_id and bedrock.secret_access_key):
+        return {}
+
+    return {
+        "aws_access_key_id": bedrock.access_key_id,
+        "aws_secret_access_key": bedrock.secret_access_key,
+    }
+
+
 # OpenAI /v1/models is a flat inventory. These IDs are real products but not
 # usable as OpenRAG agent LLMs (wrong modality / API surface).
 _OPENAI_NON_CHAT_PREFIXES = (
@@ -819,7 +854,7 @@ class ModelsService:
 
     async def get_bedrock_models(
         self, update_index: bool = True
-    ) -> Dict[str, List[Dict[str, str]]]:
+    ) -> dict[str, list[dict[str, str]]]:
         """Return the static list of AWS Bedrock Cohere Embed models OpenRAG supports.
 
         Unlike the other providers, this is not fetched via a live API call:
@@ -830,7 +865,7 @@ class ModelsService:
         doesn't change often enough to justify one. Bedrock is currently
         wired as an embedding-only provider, so "language_models" is empty.
         """
-        result: Dict[str, List[Dict[str, str]]] = {
+        result: dict[str, list[dict[str, str]]] = {
             "language_models": [],
             "embedding_models": [
                 {

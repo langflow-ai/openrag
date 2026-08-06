@@ -1211,18 +1211,23 @@ class AppClients:
                     os.environ["OLLAMA_ENDPOINT"] = config.providers.ollama.endpoint
                     logger.debug("Loaded Ollama endpoint from config")
 
-                # Set Bedrock credentials. access_key_id/secret_access_key are
-                # only set if explicitly configured, so an IAM role (e.g.
-                # IRSA) can be used with zero explicit creds; region is
-                # always set whenever configured since LiteLLM needs it to
-                # route/sign every Bedrock request regardless of auth mode.
-                if config.providers.bedrock.access_key_id:
-                    os.environ["AWS_ACCESS_KEY_ID"] = config.providers.bedrock.access_key_id
-                if config.providers.bedrock.secret_access_key:
-                    os.environ["AWS_SECRET_ACCESS_KEY"] = config.providers.bedrock.secret_access_key
+                # Set Bedrock region. LiteLLM needs it to route/sign every
+                # Bedrock request regardless of auth mode, and it is a
+                # LiteLLM-only variable (boto3 and the AWS S3 connector read
+                # AWS_REGION/AWS_DEFAULT_REGION instead), so it is safe to
+                # export process-wide.
+                #
+                # The access key and secret are deliberately NOT exported:
+                # AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY are the credential
+                # fallback the AWS S3 connector reads (see
+                # connectors/aws_s3/auth.py), so writing Bedrock's keys there
+                # would silently reauthenticate every S3 connector relying on
+                # that fallback. They are passed as per-call kwargs at the
+                # embedding call sites instead - see
+                # services/models_service.bedrock_credential_kwargs().
                 if config.providers.bedrock.region:
                     os.environ["AWS_REGION_NAME"] = config.providers.bedrock.region
-                    logger.debug("Loaded Bedrock credentials from config")
+                    logger.debug("Loaded Bedrock region from config")
 
                 # Determine model and provider for both probe and production client
                 model_name = config.knowledge.embedding_model or OPENAI_DEFAULT_EMBEDDING_MODEL
