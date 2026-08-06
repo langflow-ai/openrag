@@ -175,7 +175,7 @@ async def startup_tasks(services) -> None:
     try:
         flows_service = services["flows_service"]
         await flows_service.ensure_flows_exist()
-        
+
         # Ensure the system prompt is synced to Langflow (in case of legacy prompt auto-upgrades)
         await flows_service.update_chat_flow_system_prompt(get_openrag_config().agent.system_prompt)
         logger.info("Ensured system prompt is synced to Langflow")

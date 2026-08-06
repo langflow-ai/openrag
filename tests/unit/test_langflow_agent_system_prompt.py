@@ -61,9 +61,7 @@ async def test_update_chat_flow_system_prompt_updates_agent_node(monkeypatch):
     monkeypatch.setattr(service, "_unlock_flow", AsyncMock())
     monkeypatch.setattr(service, "_lock_flow", AsyncMock())
 
-    await service.update_chat_flow_system_prompt(
-        "updated system prompt for testing purposes"
-    )
+    await service.update_chat_flow_system_prompt("updated system prompt for testing purposes")
 
     sent_flow = request.call_args_list[1].kwargs["json"]
     agent_node = _find_node_by_display_name(sent_flow, "Agent")
@@ -72,6 +70,3 @@ async def test_update_chat_flow_system_prompt_updates_agent_node(monkeypatch):
         agent_node["data"]["node"]["template"]["system_prompt"]["value"]
         == "updated system prompt for testing purposes"
     )
-
-
-

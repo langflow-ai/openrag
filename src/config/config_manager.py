@@ -211,6 +211,7 @@ class AgentConfig:
 
     def __post_init__(self):
         from config.legacy_prompts import LEGACY_SYSTEM_PROMPTS
+
         if self.system_prompt in LEGACY_SYSTEM_PROMPTS:
             self.system_prompt = DEFAULT_SYSTEM_PROMPT
 

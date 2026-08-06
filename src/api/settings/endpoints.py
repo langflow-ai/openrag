@@ -24,7 +24,6 @@ from api.settings.helpers import (
     _first_configured_llm_provider,
     _get_flows_service,
 )
-from config.config_manager import DEFAULT_SYSTEM_PROMPT
 from api.settings.langflow_sync import (
     _background_tasks,
     _run_async_post_save_langflow_updates,
@@ -57,7 +56,11 @@ from api.settings.models import (
     SettingsUpdateResponse,
     WatsonXProviderConfig,
 )
-from config.config_manager import ALLOWED_INDEX_NAME_PATTERNS, is_permitted_index_name
+from config.config_manager import (
+    ALLOWED_INDEX_NAME_PATTERNS,
+    DEFAULT_SYSTEM_PROMPT,
+    is_permitted_index_name,
+)
 from config.settings import (
     DEFAULT_DOCS_URL,
     ENVIRONMENT,

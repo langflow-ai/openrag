@@ -1,8 +1,8 @@
 import uuid
 from typing import Any
 
-from services.conversation_persistence_service import conversation_persistence
 from config.config_manager import DEFAULT_SYSTEM_PROMPT
+from services.conversation_persistence_service import conversation_persistence
 from utils.langflow_utils import parse_knowledge_chunks, strip_untrusted_fence_recursive
 from utils.logging_config import get_logger
 
