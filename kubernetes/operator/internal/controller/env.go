@@ -150,6 +150,12 @@ func NewEnvVarManager() *EnvVarManager {
 			"WATSONX_PROJECT_ID":       "",
 			"DOCLING_SERVE_VERIFY_SSL": "false",
 
+			// AWS Bedrock embedding provider. Leave the key/secret empty to
+			// use the pod's ambient AWS credentials (IRSA / instance role).
+			"BEDROCK_REGION":            "",
+			"BEDROCK_ACCESS_KEY_ID":     "",
+			"BEDROCK_SECRET_ACCESS_KEY": "",
+
 			// Azure Blob Storage connector (Enterprise/SaaS; gated by IBM_AUTH_ENABLED or OPENRAG_DEV_AZURE_BLOB for local dev).
 			// Optional env defaults — credentials are normally entered per-connection
 			// in the UI. Override via the CR spec.env when env-based defaults are wanted.
