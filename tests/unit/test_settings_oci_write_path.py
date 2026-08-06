@@ -160,6 +160,12 @@ async def test_update_settings_remove_oci_config_clears_fields(monkeypatch):
     settings_endpoints._background_tasks.clear()
     config = _make_config(oci_configured=True, embedding_provider="oci")
     _fake_task, _post_save_mock, saved_configs = _patch_common(monkeypatch, config)
+    # _default_embedding_model() no longer hardcodes a per-provider model name;
+    # it echoes back whatever the deployment declared via EMBEDDING_PROVIDER /
+    # EMBEDDING_MODEL (see config.embedding_constants). Declare one so the
+    # fallback resolves to a concrete model.
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "openai")
+    monkeypatch.setenv("EMBEDDING_MODEL", OPENAI_DEFAULT_EMBEDDING_MODEL)
 
     response = await settings_endpoints.update_settings(
         SettingsUpdateBody(remove_oci_config=True),
