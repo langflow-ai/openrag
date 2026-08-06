@@ -87,7 +87,7 @@ async def test_standard_processor_passes_cohere_input_type_and_oci_credentials(
         auth_method="api_key",
     )
     fake_openrag_config = SimpleNamespace(
-        knowledge=SimpleNamespace(embedding_model=""),
+        knowledge=SimpleNamespace(embedding_model="", chunk_size=None, chunk_overlap=None),
         providers=SimpleNamespace(oci=oci_config),
     )
 
