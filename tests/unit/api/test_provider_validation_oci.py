@@ -194,24 +194,54 @@ class TestOciSignerConstructionValidation:
     # lookup to find. Patching the real oci.auth.signers module directly (as
     # tests/unit/utils/test_oci_auth.py already does for build_oci_signer
     # itself) is the pattern that actually intercepts the call.
+    COMPARTMENT_ID = "ocid1.compartment.oc1..xxx"
+
     @pytest.mark.asyncio
     @patch("oci.auth.signers.InstancePrincipalsSecurityTokenSigner")
     async def test_instance_principal_success(self, mock_signer_cls):
         mock_signer_cls.return_value = MagicMock()
-        await _test_oci_signer_construction("instance_principal")  # must not raise
+        # must not raise
+        await _test_oci_signer_construction("instance_principal", self.COMPARTMENT_ID)
 
     @pytest.mark.asyncio
     @patch("oci.auth.signers.InstancePrincipalsSecurityTokenSigner")
     async def test_instance_principal_failure_raises(self, mock_signer_cls):
         mock_signer_cls.side_effect = Exception("not on OCI compute")
         with pytest.raises(OCISignerConstructionError):
-            await _test_oci_signer_construction("instance_principal")
+            await _test_oci_signer_construction("instance_principal", self.COMPARTMENT_ID)
 
     @pytest.mark.asyncio
     @patch("oci.auth.signers.get_oke_workload_identity_resource_principal_signer")
     async def test_workload_identity_success(self, mock_factory):
         mock_factory.return_value = MagicMock()
-        await _test_oci_signer_construction("workload_identity")  # must not raise
+        # must not raise
+        await _test_oci_signer_construction("workload_identity", self.COMPARTMENT_ID)
+
+    # compartment_id scopes which resource the embed call targets, not how the
+    # request is signed, so the signer path never touches it -- but litellm
+    # requires oci_compartment_id on every embedText call regardless of auth
+    # method, and utils.embedding_kwargs.oci_credential_kwargs omits the kwarg
+    # entirely when it's empty. Without the check below, an
+    # instance_principal/workload_identity setup with no compartment_id passes
+    # onboarding and settings validation and only fails at the first real
+    # embedding call.
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("auth_method", ["instance_principal", "workload_identity"])
+    @pytest.mark.parametrize("compartment_id", [None, ""])
+    @patch("oci.auth.signers.get_oke_workload_identity_resource_principal_signer")
+    @patch("oci.auth.signers.InstancePrincipalsSecurityTokenSigner")
+    async def test_missing_compartment_id_rejected(
+        self, mock_signer_cls, mock_factory, auth_method, compartment_id
+    ):
+        mock_signer_cls.return_value = MagicMock()
+        mock_factory.return_value = MagicMock()
+
+        with pytest.raises(Exception, match="compartment_id"):
+            await _test_oci_signer_construction(auth_method, compartment_id)
+
+        # Rejected before any instance-metadata / proxymux round-trip.
+        mock_signer_cls.assert_not_called()
+        mock_factory.assert_not_called()
 
 
 class TestValidateProviderSetupOciAuthMethodDispatch:
@@ -232,6 +262,10 @@ class TestValidateProviderSetupOciAuthMethodDispatch:
     @patch("api.provider_validation._test_oci_signer_construction")
     @patch("api.provider_validation._test_oci_credential_shape")
     async def test_instance_principal_uses_signer_construction_check(self, mock_shape, mock_signer):
-        await run_lightweight_health(provider="oci", oci_auth_method="instance_principal")
-        mock_signer.assert_called_once_with("instance_principal")
+        await run_lightweight_health(
+            provider="oci",
+            oci_auth_method="instance_principal",
+            oci_compartment_id="ocid1.compartment.oc1..xxx",
+        )
+        mock_signer.assert_called_once_with("instance_principal", "ocid1.compartment.oc1..xxx")
         mock_shape.assert_not_called()
