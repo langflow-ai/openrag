@@ -1,11 +1,14 @@
-"""Unit tests for the Bedrock credential env-var block in
+"""Unit tests for the Bedrock env-var block in
 `config.settings.AppClients.patched_async_client`.
 
-Mirrors the WatsonX block exactly: access_key_id/secret_access_key are only
-set as env vars when explicitly configured (so IAM role/IRSA auth keeps
-working with zero explicit creds), while region is always set whenever
-configured, since LiteLLM needs it to route/sign every Bedrock request
-regardless of auth mode.
+Only the region is exported: LiteLLM needs AWS_REGION_NAME to route/sign
+every Bedrock request regardless of auth mode, and no other component reads
+that variable. The access key and secret must NOT be exported as
+AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY - those are the credential fallback
+the AWS S3 connector reads (connectors/aws_s3/auth.py), so configuring
+Bedrock would silently reauthenticate every S3 connector relying on it.
+They are passed per call instead; see
+tests/unit/services/test_models_service_bedrock_credentials.py.
 """
 
 from types import SimpleNamespace
@@ -66,7 +69,9 @@ class TestBedrockCredentialEnvVars:
         assert "AWS_ACCESS_KEY_ID" not in __import__("os").environ
         assert "AWS_SECRET_ACCESS_KEY" not in __import__("os").environ
 
-    def test_explicit_credentials_are_all_set(self, monkeypatch):
+    def test_explicit_credentials_never_leak_into_the_shared_aws_env_vars(self, monkeypatch):
+        """Regression: AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY are the AWS S3
+        connector's credential fallback. Bedrock must not overwrite them."""
         monkeypatch.setattr(
             "config.settings.get_openrag_config",
             lambda: _config(
@@ -82,8 +87,29 @@ class TestBedrockCredentialEnvVars:
         import os
 
         assert os.environ.get("AWS_REGION_NAME") == "us-east-1"
-        assert os.environ.get("AWS_ACCESS_KEY_ID") == "AKIAEXAMPLE"
-        assert os.environ.get("AWS_SECRET_ACCESS_KEY") == "supersecret"
+        assert "AWS_ACCESS_KEY_ID" not in os.environ
+        assert "AWS_SECRET_ACCESS_KEY" not in os.environ
+
+    def test_preexisting_s3_connector_credentials_survive(self, monkeypatch):
+        """The S3 connector's env credentials must be left untouched."""
+        monkeypatch.setenv("AWS_ACCESS_KEY_ID", "S3-KEY")
+        monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "s3-secret")
+        monkeypatch.setattr(
+            "config.settings.get_openrag_config",
+            lambda: _config(
+                region="us-east-1",
+                access_key_id="AKIAEXAMPLE",
+                secret_access_key="supersecret",
+            ),
+        )
+
+        client = AppClients()
+        _ = client.patched_async_client
+
+        import os
+
+        assert os.environ["AWS_ACCESS_KEY_ID"] == "S3-KEY"
+        assert os.environ["AWS_SECRET_ACCESS_KEY"] == "s3-secret"
 
     def test_no_bedrock_config_sets_no_aws_env_vars(self, monkeypatch):
         monkeypatch.setattr(
