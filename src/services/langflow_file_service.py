@@ -70,7 +70,7 @@ class LangflowFileService:
         """Merge UI ingest dict (camelCase) into Langflow run ``tweaks``.
 
         - ``chunkSize`` / ``chunkOverlap`` / ``separator`` update the flow's
-          ``SplitText-QIKhg`` node when any of those keys are present.
+          ``Split Text`` node when any of those keys are present.
         - ``embeddingModel`` is intentionally not mapped to a component tweak.
           The embedding model should be supplied via
           ``run_ingestion_flow(..., selected_embedding_model=...)`` so Langflow
@@ -78,18 +78,46 @@ class LangflowFileService:
           provider-specific component ids.
         """
         final_tweaks = dict(tweaks) if tweaks else {}
+
+        from config.settings import DEFAULT_CHUNK_OVERLAP, DEFAULT_CHUNK_SIZE, get_openrag_config
+
+        config = get_openrag_config()
+
+        # Build and merge Docling Serve tweaks
+        from services.docling_service import get_docling_preset_configs
+
+        preset_config = get_docling_preset_configs(
+            table_structure=config.knowledge.table_structure,
+            ocr=config.knowledge.ocr,
+            picture_descriptions=config.knowledge.picture_descriptions,
+        )
+        if "Docling Serve" not in final_tweaks:
+            final_tweaks["Docling Serve"] = {}
+        if "docling_serve_opts" not in final_tweaks["Docling Serve"]:
+            final_tweaks["Docling Serve"]["docling_serve_opts"] = preset_config
+
+        # Merge in default Split Text tweaks
+        if "Split Text" not in final_tweaks:
+            final_tweaks["Split Text"] = {}
+        if "chunk_size" not in final_tweaks["Split Text"]:
+            final_tweaks["Split Text"]["chunk_size"] = getattr(
+                config.knowledge, "chunk_size", DEFAULT_CHUNK_SIZE
+            )
+        if "chunk_overlap" not in final_tweaks["Split Text"]:
+            final_tweaks["Split Text"]["chunk_overlap"] = getattr(
+                config.knowledge, "chunk_overlap", DEFAULT_CHUNK_OVERLAP
+            )
+
         if not settings:
             return final_tweaks
 
         if settings.get("chunkSize") or settings.get("chunkOverlap") or settings.get("separator"):
-            if "SplitText-QIKhg" not in final_tweaks:
-                final_tweaks["SplitText-QIKhg"] = {}
             if settings.get("chunkSize"):
-                final_tweaks["SplitText-QIKhg"]["chunk_size"] = settings["chunkSize"]
+                final_tweaks["Split Text"]["chunk_size"] = settings["chunkSize"]
             if settings.get("chunkOverlap"):
-                final_tweaks["SplitText-QIKhg"]["chunk_overlap"] = settings["chunkOverlap"]
+                final_tweaks["Split Text"]["chunk_overlap"] = settings["chunkOverlap"]
             if settings.get("separator"):
-                final_tweaks["SplitText-QIKhg"]["separator"] = settings["separator"]
+                final_tweaks["Split Text"]["separator"] = settings["separator"]
 
         return final_tweaks
 
@@ -402,21 +430,15 @@ class LangflowFileService:
         if not tweaks:
             tweaks = {}
 
+        from config.settings import get_openrag_config
+
+        config = get_openrag_config()
+
         # Pass files via tweaks to File component (File-PSU37 from the flow)
         if file_paths:
-            tweaks["DoclingRemote-Dp3PX"] = {"path": file_paths}
-
-        # Pass metadata via tweaks to OpenSearch component
-        metadata_tweaks = []
-        if owner:
-            metadata_tweaks.append({"key": "owner", "value": owner})
-        if owner_name:
-            metadata_tweaks.append({"key": "owner_name", "value": owner_name})
-        if owner_email:
-            metadata_tweaks.append({"key": "owner_email", "value": owner_email})
-        if connector_type:
-            metadata_tweaks.append({"key": "connector_type", "value": connector_type})
-        logger.info(f"[LF] Metadata tweaks {metadata_tweaks}")
+            if "Docling Serve" not in tweaks:
+                tweaks["Docling Serve"] = {}
+            tweaks["Docling Serve"]["path"] = file_paths
 
         if session_id:
             payload["session_id"] = session_id
@@ -447,22 +469,23 @@ class LangflowFileService:
         )
 
         # Get the current embedding model and provider credentials from config
-        from config.settings import get_openrag_config
+        from config.settings import DEFAULT_CHUNK_OVERLAP, DEFAULT_CHUNK_SIZE
         from utils.langflow_headers import (
             add_provider_credentials_to_headers,
             build_model_provider_headers,
         )
 
-        config = get_openrag_config()
         embedding_model = config.knowledge.embedding_model
         if selected_embedding_model:
             embedding_model = selected_embedding_model
 
-        split_tweaks = tweaks.get("SplitText-QIKhg", {}) if isinstance(tweaks, dict) else {}
-        default_chunk_size = getattr(config.knowledge, "chunk_size", 1000)
-        default_chunk_overlap = getattr(config.knowledge, "chunk_overlap", 200)
-        chunk_size = split_tweaks.get("chunk_size", default_chunk_size)
-        chunk_overlap = split_tweaks.get("chunk_overlap", default_chunk_overlap)
+        split_tweaks = tweaks.get("Split Text", {}) if isinstance(tweaks, dict) else {}
+        chunk_size = split_tweaks.get(
+            "chunk_size", getattr(config.knowledge, "chunk_size", DEFAULT_CHUNK_SIZE)
+        )
+        chunk_overlap = split_tweaks.get(
+            "chunk_overlap", getattr(config.knowledge, "chunk_overlap", DEFAULT_CHUNK_OVERLAP)
+        )
 
         headers = {
             "X-Langflow-Global-Var-JWT": str(jwt_token or ""),
@@ -635,7 +658,7 @@ class LangflowFileService:
         if not tweaks:
             tweaks = {}
 
-        from config.settings import get_openrag_config
+        from config.settings import DEFAULT_CHUNK_OVERLAP, DEFAULT_CHUNK_SIZE, get_openrag_config
         from utils.langflow_headers import (
             add_provider_credentials_to_headers,
             build_model_provider_headers,
@@ -644,9 +667,9 @@ class LangflowFileService:
         config = get_openrag_config()
         embedding_model = config.knowledge.embedding_model
         resolved_document_id = hash_id(io.BytesIO(docs_url.encode("utf-8")))
-        split_tweaks = tweaks.get("SplitText-QIKhg", {}) if isinstance(tweaks, dict) else {}
-        default_chunk_size = getattr(config.knowledge, "chunk_size", 1000)
-        default_chunk_overlap = getattr(config.knowledge, "chunk_overlap", 200)
+        split_tweaks = tweaks.get("Split Text", {}) if isinstance(tweaks, dict) else {}
+        default_chunk_size = getattr(config.knowledge, "chunk_size", DEFAULT_CHUNK_SIZE)
+        default_chunk_overlap = getattr(config.knowledge, "chunk_overlap", DEFAULT_CHUNK_OVERLAP)
         chunk_size = split_tweaks.get("chunk_size", default_chunk_size)
         chunk_overlap = split_tweaks.get("chunk_overlap", default_chunk_overlap)
         headers = {
