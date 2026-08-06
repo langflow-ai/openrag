@@ -58,13 +58,17 @@ class TestProviderHealthAcceptsBedrock:
         config = _config()
         monkeypatch.setattr("api.provider_health.get_openrag_config", lambda: config)
         monkeypatch.setattr(
-            "config.config_manager.config_manager", type("M", (), {"get_config": lambda self: config})()
+            "config.config_manager.config_manager",
+            type("M", (), {"get_config": lambda self: config})(),
         )
 
         response = await check_provider_health(provider="bedrock", test_completion=False)
 
         payload = json.loads(response.body)
-        assert payload.get("message") != "Invalid provider: bedrock. Must be one of: openai, ollama, watsonx, anthropic"
+        assert (
+            payload.get("message")
+            != "Invalid provider: bedrock. Must be one of: openai, ollama, watsonx, anthropic"
+        )
         assert response.status_code != 400
 
     @pytest.mark.asyncio
@@ -72,7 +76,8 @@ class TestProviderHealthAcceptsBedrock:
         config = _config(bedrock_region="eu-central-1")
         monkeypatch.setattr("api.provider_health.get_openrag_config", lambda: config)
         monkeypatch.setattr(
-            "config.config_manager.config_manager", type("M", (), {"get_config": lambda self: config})()
+            "config.config_manager.config_manager",
+            type("M", (), {"get_config": lambda self: config})(),
         )
 
         response = await check_provider_health(provider="bedrock", test_completion=False)
@@ -86,7 +91,8 @@ class TestProviderHealthAcceptsBedrock:
         config = _config(bedrock_region="")
         monkeypatch.setattr("api.provider_health.get_openrag_config", lambda: config)
         monkeypatch.setattr(
-            "config.config_manager.config_manager", type("M", (), {"get_config": lambda self: config})()
+            "config.config_manager.config_manager",
+            type("M", (), {"get_config": lambda self: config})(),
         )
 
         response = await check_provider_health(provider="bedrock", test_completion=False)
