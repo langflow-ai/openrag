@@ -88,6 +88,16 @@ export interface DeleteDocumentOptions {
   filterId?: string;
 }
 
+/** A principal label entry in a file's ACL (connector-ingested files only). */
+export interface PrincipalLabel {
+  principal: string;
+  kind: string;
+  provider: string;
+  display_name?: string;
+  email?: string;
+  external_id?: string;
+}
+
 // File structure type
 export interface FileRecord {
   filename: string;
@@ -105,7 +115,7 @@ export interface FileRecord {
   chunk_count: number;
   allowed_users: string[];
   allowed_groups: string[];
-  allowed_principal_labels: string[];
+  allowed_principal_labels: PrincipalLabel[];
 }
 
 //Response from the list-files endpoint

@@ -286,6 +286,17 @@ class DeleteKnowledgeFilterResponse(BaseModel):
     error: str | None = None
 
 
+class PrincipalLabel(BaseModel):
+    """A principal label entry in a file's ACL (connector-ingested files only)."""
+
+    principal: str
+    kind: str
+    provider: str
+    display_name: str = ""
+    email: str = ""
+    external_id: str = ""
+
+
 class FileRecord(BaseModel):
     """A single ingested file record returned by the list-files endpoint."""
 
@@ -304,7 +315,7 @@ class FileRecord(BaseModel):
     chunk_count: int
     allowed_users: list[str] = Field(default_factory=list)
     allowed_groups: list[str] = Field(default_factory=list)
-    allowed_principal_labels: list[str] = Field(default_factory=list)
+    allowed_principal_labels: list[PrincipalLabel] = Field(default_factory=list)
 
 
 class ListFilesResponse(BaseModel):

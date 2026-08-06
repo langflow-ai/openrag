@@ -23,8 +23,22 @@ def test_file_service_query_omits_application_acl_filter():
         {
             "bool": {
                 "should": [
-                    {"wildcard": {"filename": {"value": "*roadmap*"}}},
-                    {"prefix": {"filename": "roadmap"}},
+                    {
+                        "wildcard": {
+                            "filename": {
+                                "value": "*roadmap*",
+                                "case_insensitive": True,
+                            }
+                        }
+                    },
+                    {
+                        "prefix": {
+                            "filename": {
+                                "value": "roadmap",
+                                "case_insensitive": True,
+                            }
+                        }
+                    },
                 ],
                 "minimum_should_match": 1,
             }

@@ -58,6 +58,7 @@ from .models import (
     KnowledgeSettings,
     ListFilesResponse,
     Message,
+    PrincipalLabel,
     SearchFilters,
     SearchResponse,
     SearchResult,
@@ -87,6 +88,7 @@ __all__ = [
     # File models
     "FileRecord",
     "ListFilesResponse",
+    "PrincipalLabel",
     # Models
     "ChatResponse",
     "ContentEvent",
