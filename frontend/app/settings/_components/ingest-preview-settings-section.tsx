@@ -129,7 +129,7 @@ export function IngestPreviewSettingsSection() {
           onClick={runSampleIngest}
           data-testid="ingest-preview-run-sample"
         >
-          Run a sample ingest
+          <div>Run a sample ingest</div>
         </Button>
         <Button
           type="button"
