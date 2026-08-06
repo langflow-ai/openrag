@@ -25,9 +25,7 @@ def _patch_bedrock_config(monkeypatch, **bedrock_kwargs):
     monkeypatch.setattr(
         "config.config_manager.config_manager",
         SimpleNamespace(
-            get_config=lambda: SimpleNamespace(
-                providers=SimpleNamespace(bedrock=bedrock_config)
-            )
+            get_config=lambda: SimpleNamespace(providers=SimpleNamespace(bedrock=bedrock_config))
         ),
     )
 
@@ -76,9 +74,7 @@ class TestBedrockLightweightHealthCredentialShape:
 
         class ExplodingClient:
             def __init__(self, *a, **k):
-                raise AssertionError(
-                    "Bedrock lightweight health check must not touch the network"
-                )
+                raise AssertionError("Bedrock lightweight health check must not touch the network")
 
         monkeypatch.setattr("httpx.AsyncClient", ExplodingClient)
         await _test_bedrock_lightweight_health()  # must not raise / not touch httpx

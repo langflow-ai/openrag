@@ -143,8 +143,7 @@ class TestUpdateModelRegistryBedrockBranch:
         await service.update_model_registry()
 
         assert (
-            ModelsService._model_provider_registry.get("cohere.embed-multilingual-v3")
-            == "bedrock"
+            ModelsService._model_provider_registry.get("cohere.embed-multilingual-v3") == "bedrock"
         )
         assert ModelsService._model_provider_registry.get("cohere.embed-english-v3") == "bedrock"
 
