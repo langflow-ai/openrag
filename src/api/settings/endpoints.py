@@ -24,6 +24,7 @@ from api.settings.helpers import (
     _first_configured_llm_provider,
     _get_flows_service,
 )
+from config.config_manager import DEFAULT_SYSTEM_PROMPT
 from api.settings.langflow_sync import (
     _background_tasks,
     _run_async_post_save_langflow_updates,
@@ -272,6 +273,7 @@ async def get_settings(
                 llm_model=agent_config.llm_model,
                 llm_provider=agent_config.llm_provider,
                 system_prompt=agent_config.system_prompt,
+                default_system_prompt=DEFAULT_SYSTEM_PROMPT,
             ),
             localhost_url=LOCALHOST_URL,
             langflow_edit_url=langflow_edit_url,

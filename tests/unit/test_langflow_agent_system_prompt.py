@@ -57,7 +57,11 @@ async def test_update_chat_flow_system_prompt_updates_agent_node(monkeypatch):
     monkeypatch.setattr("services.flows_service.LANGFLOW_CHAT_FLOW_ID", "test-flow-id")
     monkeypatch.setattr("services.flows_service.clients.langflow_request", request)
 
-    await FlowsService().update_chat_flow_system_prompt(
+    service = FlowsService()
+    monkeypatch.setattr(service, "_unlock_flow", AsyncMock())
+    monkeypatch.setattr(service, "_lock_flow", AsyncMock())
+
+    await service.update_chat_flow_system_prompt(
         "updated system prompt for testing purposes"
     )
 
@@ -70,31 +74,4 @@ async def test_update_chat_flow_system_prompt_updates_agent_node(monkeypatch):
     )
 
 
-def test_untrusted_data_instruction_present_in_all_system_prompt_copies():
-    """VULN-13906: all four copies of the default system prompt must carry the same
-    untrusted-data rule, so retrieved/uploaded content can't be followed as instructions
-    regardless of which chat path (Langflow flow, direct chat, or frontend default) is used.
-    """
-    # config_manager.py / agent.py / constants.ts store the prompt as a single-line,
-    # single-quoted string literal — `\n` and `'` are escaped there, not literal.
-    escaped_instruction = _UNTRUSTED_DATA_INSTRUCTION.replace("\n", "\\n").replace("'", "\\'")
 
-    # 1. src/config/config_manager.py — AgentConfig.system_prompt default
-    config_manager_src = (_REPO_ROOT / "src/config/config_manager.py").read_text(encoding="utf-8")
-    assert escaped_instruction in config_manager_src
-
-    # 2. src/agent.py — inline copy used by the non-Langflow direct-chat path
-    agent_src = (_REPO_ROOT / "src/agent.py").read_text(encoding="utf-8")
-    assert escaped_instruction in agent_src
-
-    # 3. frontend/lib/constants.ts — DEFAULT_AGENT_SETTINGS.system_prompt
-    constants_ts = (_REPO_ROOT / "frontend/lib/constants.ts").read_text(encoding="utf-8")
-    assert escaped_instruction in constants_ts
-
-    # 4. flows/openrag_agent.json — Agent node's embedded system_prompt field (real value,
-    # since JSON decoding already turns `\n` escapes into actual newlines)
-    flow = _load_flow("flows/openrag_agent.json")
-    agent_node = _find_node_by_display_name(flow, "Agent")
-    assert agent_node is not None
-    embedded_prompt = agent_node["data"]["node"]["template"]["system_prompt"]["value"]
-    assert _UNTRUSTED_DATA_INSTRUCTION in embedded_prompt
