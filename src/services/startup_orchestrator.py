@@ -175,10 +175,22 @@ async def startup_tasks(services) -> None:
     try:
         flows_service = services["flows_service"]
         await flows_service.ensure_flows_exist()
-
-        # Ensure the system prompt is synced to Langflow (in case of legacy prompt auto-upgrades)
-        await flows_service.update_chat_flow_system_prompt(get_openrag_config().agent.system_prompt)
-        logger.info("Ensured system prompt is synced to Langflow")
+        
+        # Check if we should upgrade the system prompt (only if it's a legacy or default prompt, preserving user customizations)
+        from config.legacy_prompts import LEGACY_SYSTEM_PROMPTS
+        from config.config_manager import DEFAULT_SYSTEM_PROMPT
+        
+        config_prompt = get_openrag_config().agent.system_prompt
+        # If the config prompt is a user customization, we don't need to auto-upgrade anything
+        if config_prompt in LEGACY_SYSTEM_PROMPTS or config_prompt == DEFAULT_SYSTEM_PROMPT:
+            current_prompt = await flows_service.get_chat_flow_system_prompt()
+            # Only update if the Langflow prompt is a known default/legacy AND it differs from our config prompt
+            if (not current_prompt or current_prompt in LEGACY_SYSTEM_PROMPTS or current_prompt == DEFAULT_SYSTEM_PROMPT):
+                if current_prompt != config_prompt:
+                    await flows_service.update_chat_flow_system_prompt(config_prompt)
+                    logger.info("Ensured system prompt is synced to Langflow")
+            else:
+                logger.info("Preserved custom system prompt in Langflow")
     except Exception as e:
         logger.error(
             "Failed to ensure Langflow flows exist at startup — "

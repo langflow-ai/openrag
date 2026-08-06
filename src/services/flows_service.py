@@ -716,6 +716,19 @@ class FlowsService:
 
         await self._lock_flow(flow_id)
 
+    async def get_chat_flow_system_prompt(self) -> str | None:
+        """Helper function to get the current system prompt from the chat flow"""
+        if not LANGFLOW_CHAT_FLOW_ID:
+            return None
+        
+        response = await clients.langflow_request("GET", f"/api/v1/flows/{LANGFLOW_CHAT_FLOW_ID}")
+        if response.status_code == 200:
+            flow_data = response.json()
+            target_node, _ = self._find_node_in_flow(flow_data, display_name=AGENT_COMPONENT_DISPLAY_NAME)
+            if target_node:
+                return target_node.get("data", {}).get("node", {}).get("template", {}).get("system_prompt", {}).get("value")
+        return None
+
     async def update_chat_flow_system_prompt(self, system_prompt: str):
         """Helper function to update the system prompt in the chat flow"""
         if not LANGFLOW_CHAT_FLOW_ID:
