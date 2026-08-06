@@ -25,6 +25,8 @@ data:
     providers:
       anthropic:
         configured: {{ .Values.llmProviders.anthropic.enabled }}
+      oci:
+        configured: {{ .Values.llmProviders.oci.enabled }}
       ollama:
         configured: {{ .Values.llmProviders.ollama.enabled }}
         {{- if .Values.llmProviders.ollama.endpoint }}

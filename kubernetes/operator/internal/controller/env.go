@@ -150,6 +150,18 @@ func NewEnvVarManager() *EnvVarManager {
 			"WATSONX_PROJECT_ID":       "",
 			"DOCLING_SERVE_VERIFY_SSL": "false",
 
+			// OCI Generative AI embedding provider. OCI_COMPARTMENT_ID is
+			// required on every embed call regardless of OCI_AUTH_METHOD;
+			// user/fingerprint/tenancy/key/key_file apply to "api_key" only.
+			"OCI_AUTH_METHOD":    "",
+			"OCI_USER":           "",
+			"OCI_FINGERPRINT":    "",
+			"OCI_TENANCY":        "",
+			"OCI_COMPARTMENT_ID": "",
+			"OCI_KEY":            "",
+			"OCI_KEY_FILE":       "",
+			"OCI_REGION":         "",
+
 			// Azure Blob Storage connector (Enterprise/SaaS; gated by IBM_AUTH_ENABLED or OPENRAG_DEV_AZURE_BLOB for local dev).
 			// Optional env defaults — credentials are normally entered per-connection
 			// in the UI. Override via the CR spec.env when env-based defaults are wanted.
