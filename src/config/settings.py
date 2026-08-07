@@ -1228,6 +1228,13 @@ class AppClients:
                 if config.providers.bedrock.region:
                     os.environ["AWS_REGION_NAME"] = config.providers.bedrock.region
                     logger.debug("Loaded Bedrock region from config")
+                else:
+                    # Explicitly clear rather than leaving a stale value: this
+                    # block only runs when the client is (re)initialized (see
+                    # refresh_patched_client below), so a region that was
+                    # configured and then removed would otherwise linger in
+                    # the environment and keep being used for routing/signing.
+                    os.environ.pop("AWS_REGION_NAME", None)
 
                 # Determine model and provider for both probe and production client
                 model_name = config.knowledge.embedding_model or OPENAI_DEFAULT_EMBEDDING_MODEL

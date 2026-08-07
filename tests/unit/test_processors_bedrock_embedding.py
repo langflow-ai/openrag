@@ -23,7 +23,15 @@ class _FakeModelsService:
         return self.formatted_model
 
 
-async def _run_ingest(monkeypatch, tmp_path, *, embedding_model: str, formatted_model: str):
+async def _run_ingest(
+    monkeypatch,
+    tmp_path,
+    *,
+    embedding_model: str,
+    formatted_model: str,
+    content: str = None,
+    config_chunk_size: int = 1000,
+):
     user_client = SimpleNamespace(search_calls=[])
     admin_client = SimpleNamespace(bulk_calls=[], refresh_calls=[])
 
@@ -80,7 +88,9 @@ async def _run_ingest(monkeypatch, tmp_path, *, embedding_model: str, formatted_
     monkeypatch.setattr(
         "models.processors.get_openrag_config",
         lambda: SimpleNamespace(
-            knowledge=SimpleNamespace(embedding_model="", chunk_size=1000, chunk_overlap=200)
+            knowledge=SimpleNamespace(
+                embedding_model="", chunk_size=config_chunk_size, chunk_overlap=200
+            )
         ),
     )
     monkeypatch.setattr(
@@ -89,7 +99,7 @@ async def _run_ingest(monkeypatch, tmp_path, *, embedding_model: str, formatted_
     )
 
     file_path = tmp_path / "doc.md"
-    file_path.write_text("# Test\n\nhello world", encoding="utf-8")
+    file_path.write_text(content if content is not None else "# Test\n\nhello world", encoding="utf-8")
     document_service = SimpleNamespace(
         session_manager=SessionManager(),
         document_index_writer=DocumentIndexWriter(opensearch_client=admin_client),
@@ -225,6 +235,66 @@ class TestBedrockCredentialsTravelPerCall:
         )
 
         assert "aws_access_key_id" not in calls[0]
+
+
+class TestBedrockChunkSizeCap:
+    """Bedrock's Cohere Embed v3 hard-limits input to 512 tokens per text
+    entry (CodeRabbit finding on PR #2064, confirmed real: AWS's own docs
+    put the limit at 512, and litellm 1.84.0 doesn't chunk/truncate for you -
+    an oversized chunk reaches Bedrock as-is and gets rejected with a 400).
+    Every other provider's default is 8000, so without a Bedrock-specific
+    cap, ingestion into a Bedrock-backed index would routinely fail on any
+    chunk bigger than a couple of sentences."""
+
+    @pytest.mark.asyncio
+    async def test_oversized_chunk_is_split_below_the_512_token_limit(self, monkeypatch, tmp_path):
+        import tiktoken
+
+        encoding = tiktoken.get_encoding("cl100k_base")
+        # One unbroken paragraph (no blank lines), well over the 512-token
+        # cap. Earlier pipeline stages (character-window resplitting,
+        # markdown-structure parsing) may also chip this up before the
+        # max_tokens split runs - that's fine, since any additional
+        # splitting only makes pieces smaller, never bigger, so the ≤512
+        # invariant this test checks holds either way.
+        long_text = "# Doc\n\n" + ("The quick brown fox jumps over the lazy dog. " * 200)
+        assert len(encoding.encode(long_text)) > 512
+
+        calls = await _run_ingest(
+            monkeypatch,
+            tmp_path,
+            embedding_model="cohere.embed-multilingual-v3",
+            formatted_model="bedrock/cohere.embed-multilingual-v3",
+            content=long_text,
+        )
+
+        for text in calls[0]["input"]:
+            assert len(encoding.encode(text)) <= 512
+
+    @pytest.mark.asyncio
+    async def test_same_oversized_chunk_stays_above_512_tokens_for_openai(self, monkeypatch, tmp_path):
+        """Regression guard: the new bedrock branch must not affect the
+        existing 8000-token default other providers rely on - the same text
+        that gets forced under 512 tokens for Bedrock is free to stay above
+        it for OpenAI."""
+        import tiktoken
+
+        encoding = tiktoken.get_encoding("cl100k_base")
+        # A large config_chunk_size keeps the earlier character-window
+        # resplit from also shrinking this below 512 tokens, so only the
+        # max_tokens cap under test governs the outcome.
+        long_text = "# Doc\n\n" + ("The quick brown fox jumps over the lazy dog. " * 200)
+
+        calls = await _run_ingest(
+            monkeypatch,
+            tmp_path,
+            embedding_model="text-embedding-3-small",
+            formatted_model="text-embedding-3-small",
+            content=long_text,
+            config_chunk_size=100_000,
+        )
+
+        assert any(len(encoding.encode(text)) > 512 for text in calls[0]["input"])
 
 
 class TestQueryVsIngestInputTypeDiffer:

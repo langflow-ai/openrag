@@ -62,10 +62,13 @@ def bedrock_credential_kwargs(litellm_model_name: str) -> dict[str, str]:
     reads (see ``connectors/aws_s3/auth.py``), so exporting Bedrock's keys
     there would silently reauthenticate every S3 connector relying on it.
 
-    Returns an empty dict for non-Bedrock models, and also for Bedrock when no
-    explicit keys are configured - that is the IAM role / IRSA mode, where
-    litellm's default boto3 credential chain must be left to resolve
-    credentials on its own.
+    Returns an empty dict for non-Bedrock models. The access key/secret pair
+    is omitted when no explicit keys are configured - that is the IAM role /
+    IRSA mode, where litellm's default boto3 credential chain must be left to
+    resolve credentials on its own - but the region is included whenever
+    configured, in both modes, since it's required either way and passing it
+    explicitly means a correctly-configured call doesn't depend on the
+    process-wide AWS_REGION_NAME env var also being in sync.
     """
     if not (litellm_model_name or "").lower().startswith("bedrock/"):
         return {}
@@ -78,13 +81,13 @@ def bedrock_credential_kwargs(litellm_model_name: str) -> dict[str, str]:
         logger.debug("Could not read Bedrock credentials from config", error=str(e))
         return {}
 
-    if not (bedrock.access_key_id and bedrock.secret_access_key):
-        return {}
-
-    return {
-        "aws_access_key_id": bedrock.access_key_id,
-        "aws_secret_access_key": bedrock.secret_access_key,
-    }
+    kwargs: dict[str, str] = {}
+    if bedrock.region:
+        kwargs["aws_region_name"] = bedrock.region
+    if bedrock.access_key_id and bedrock.secret_access_key:
+        kwargs["aws_access_key_id"] = bedrock.access_key_id
+        kwargs["aws_secret_access_key"] = bedrock.secret_access_key
+    return kwargs
 
 
 # OpenAI /v1/models is a flat inventory. These IDs are real products but not

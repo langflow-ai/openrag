@@ -547,6 +547,14 @@ class TaskProcessor:
             max_tokens = 500
         elif "ollama" in litellm_model_lower:
             max_tokens = 2000
+        elif "bedrock" in litellm_model_lower:
+            # Bedrock's Cohere Embed v3 hard-limits input to 512 tokens per
+            # text entry; litellm 1.84.0 doesn't chunk/truncate for you, so an
+            # oversized chunk reaches Bedrock as-is and gets rejected with a
+            # 400. Embed v4 (also servable via Bedrock) raises this to a much
+            # higher limit, but 512 is the safe floor for any Cohere model
+            # this provider currently serves.
+            max_tokens = 512
         else:
             max_tokens = 8000
 
