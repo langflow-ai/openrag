@@ -15,15 +15,7 @@ from lfx.base.mcp.util import (
 )
 from lfx.custom.custom_component.component_with_cache import ComponentWithCache
 from lfx.inputs.inputs import InputTypes  # noqa: TC001
-from lfx.io import (
-    BoolInput,
-    DictInput,
-    DropdownInput,
-    McpInput,
-    MessageTextInput,
-    Output,
-    TableInput,
-)
+from lfx.io import BoolInput, DictInput, DropdownInput, McpInput, MessageTextInput, Output, TableInput
 from lfx.io.schema import flatten_schema, schema_to_langflow_inputs
 from lfx.log.logger import logger
 from lfx.schema.dataframe import DataFrame
@@ -69,9 +61,7 @@ class MCPToolsComponent(ComponentWithCache):
         self._ensure_cache_structure()
 
         # Initialize clients with access to the component cache
-        self.stdio_client: MCPStdioClient = MCPStdioClient(
-            component_cache=self._shared_component_cache
-        )
+        self.stdio_client: MCPStdioClient = MCPStdioClient(component_cache=self._shared_component_cache)
         self.streamable_http_client: MCPStreamableHttpClient = MCPStreamableHttpClient(
             component_cache=self._shared_component_cache
         )
@@ -213,9 +203,7 @@ class MCPToolsComponent(ComponentWithCache):
 
     async def update_tool_list(self, mcp_server_value=None):
         # Accepts mcp_server_value as dict {name, config} or uses self.mcp_server
-        mcp_server = (
-            mcp_server_value if mcp_server_value is not None else getattr(self, "mcp_server", None)
-        )
+        mcp_server = mcp_server_value if mcp_server_value is not None else getattr(self, "mcp_server", None)
         server_name = None
         server_config_from_value = None
         if isinstance(mcp_server, dict):
@@ -309,11 +297,7 @@ class MCPToolsComponent(ComponentWithCache):
                 component_headers_dict = {}
 
                 # TableInput.validate_value normalizes single items to lists
-                items = (
-                    component_headers
-                    if isinstance(component_headers, list)
-                    else [component_headers]
-                )
+                items = component_headers if isinstance(component_headers, list) else [component_headers]
 
                 for item in items:
                     if not item:
@@ -419,9 +403,7 @@ class MCPToolsComponent(ComponentWithCache):
         else:
             return tool_list, {"name": server_name, "config": server_config}
 
-    async def update_build_config(
-        self, build_config: dict, field_value: str, field_name: str | None = None
-    ) -> dict:
+    async def update_build_config(self, build_config: dict, field_value: str, field_name: str | None = None) -> dict:
         """Toggle the visibility of connection-specific fields based on the selected mode."""
         try:
             if field_name == "tool":
@@ -431,10 +413,7 @@ class MCPToolsComponent(ComponentWithCache):
                     use_cache = getattr(self, "use_cache", False)
                     if len(self.tools) == 0 or not use_cache:
                         try:
-                            (
-                                self.tools,
-                                build_config["mcp_server"]["value"],
-                            ) = await self.update_tool_list()
+                            self.tools, build_config["mcp_server"]["value"] = await self.update_tool_list()
                             build_config["tool"]["options"] = [tool.name for tool in self.tools]
                             build_config["tool"]["placeholder"] = "Select a tool"
                         except (TimeoutError, asyncio.TimeoutError) as e:
@@ -486,18 +465,12 @@ class MCPToolsComponent(ComponentWithCache):
 
                 build_config["tool_placeholder"]["tool_mode"] = True
 
-                current_server_name = (
-                    field_value.get("name") if isinstance(field_value, dict) else field_value
-                )
-                _last_selected_server = safe_cache_get(
-                    self._shared_component_cache, "last_selected_server", ""
-                )
+                current_server_name = field_value.get("name") if isinstance(field_value, dict) else field_value
+                _last_selected_server = safe_cache_get(self._shared_component_cache, "last_selected_server", "")
                 # Only treat as a server change if there was a previous server selection.
                 # Cold cache (_last_selected_server="") on initial flow load is NOT a server change —
                 # the user didn't switch anything, the backend just hasn't seen this component yet.
-                server_changed = bool(
-                    _last_selected_server and current_server_name != _last_selected_server
-                )
+                server_changed = bool(_last_selected_server and current_server_name != _last_selected_server)
 
                 # Determine if "Tool Mode" is active by checking if the tool dropdown is hidden.
                 is_in_tool_mode = build_config["tools_metadata"]["show"]
@@ -516,20 +489,12 @@ class MCPToolsComponent(ComponentWithCache):
                     else:
                         if not is_in_tool_mode:
                             build_config["tool"]["show"] = True
-                        safe_cache_set(
-                            self._shared_component_cache,
-                            "last_selected_server",
-                            current_server_name,
-                        )
+                        safe_cache_set(self._shared_component_cache, "last_selected_server", current_server_name)
                         return build_config
 
                 # To avoid unnecessary updates, only proceed if the server has actually changed
                 # OR if caching is disabled (to force refresh in non-tool mode)
-                if (
-                    (_last_selected_server in (current_server_name, ""))
-                    and build_config["tool"]["show"]
-                    and use_cache
-                ):
+                if (_last_selected_server in (current_server_name, "")) and build_config["tool"]["show"] and use_cache:
                     if current_server_name:
                         servers_cache = safe_cache_get(self._shared_component_cache, "servers", {})
                         if isinstance(servers_cache, dict):
@@ -541,9 +506,7 @@ class MCPToolsComponent(ComponentWithCache):
                                     return build_config
                     else:
                         return build_config
-                safe_cache_set(
-                    self._shared_component_cache, "last_selected_server", current_server_name
-                )
+                safe_cache_set(self._shared_component_cache, "last_selected_server", current_server_name)
 
                 # When cache is disabled, clear any cached data for this server
                 # This ensures we always fetch fresh data from the database
@@ -595,10 +558,9 @@ class MCPToolsComponent(ComponentWithCache):
                         # update_build_config call for the "tool" field after this response,
                         # so we must populate the options here.
                         try:
-                            (
-                                self.tools,
-                                build_config["mcp_server"]["value"],
-                            ) = await self.update_tool_list(mcp_server_value=field_value)
+                            self.tools, build_config["mcp_server"]["value"] = await self.update_tool_list(
+                                mcp_server_value=field_value
+                            )
                             build_config["tool"]["options"] = [tool.name for tool in self.tools]
                             build_config["tool"]["placeholder"] = "Select a tool"
                         except (TimeoutError, asyncio.TimeoutError) as e:
@@ -606,13 +568,7 @@ class MCPToolsComponent(ComponentWithCache):
                             await logger.awarning(msg)
                             build_config["tool"]["options"] = []
                             build_config["tool"]["placeholder"] = "Timeout on MCP server"
-                        except (
-                            ValueError,
-                            ImportError,
-                            ConnectionError,
-                            OSError,
-                            RuntimeError,
-                        ) as e:
+                        except (ValueError, ImportError, ConnectionError, OSError, RuntimeError) as e:
                             msg = f"Error loading tools for MCP server: {e!s}"
                             await logger.awarning(msg)
                             build_config["tool"]["options"] = []
@@ -628,9 +584,7 @@ class MCPToolsComponent(ComponentWithCache):
 
             elif field_name == "tool_mode":
                 build_config["tool"]["placeholder"] = ""
-                build_config["tool"]["show"] = not bool(field_value) and bool(
-                    build_config["mcp_server"]
-                )
+                build_config["tool"]["show"] = not bool(field_value) and bool(build_config["mcp_server"])
                 self.remove_non_default_keys(build_config)
                 self.tool = build_config["tool"]["value"]
                 if field_value:
@@ -640,10 +594,7 @@ class MCPToolsComponent(ComponentWithCache):
                     build_config["tool"]["show"] = True
                     # Fetch tools immediately instead of showing "Loading tools..."
                     try:
-                        (
-                            self.tools,
-                            build_config["mcp_server"]["value"],
-                        ) = await self.update_tool_list()
+                        self.tools, build_config["mcp_server"]["value"] = await self.update_tool_list()
                         build_config["tool"]["options"] = [tool.name for tool in self.tools]
                         build_config["tool"]["placeholder"] = "Select a tool"
                     except (TimeoutError, asyncio.TimeoutError) as e:
@@ -785,9 +736,7 @@ class MCPToolsComponent(ComponentWithCache):
                     item_dict = self.process_output_item(item_dict)
                     tool_content.append(item_dict)
 
-                if isinstance(tool_content, list) and all(
-                    isinstance(x, dict) for x in tool_content
-                ):
+                if isinstance(tool_content, list) and all(isinstance(x, dict) for x in tool_content):
                     return DataFrame(tool_content)
                 return DataFrame(data=tool_content)
             return DataFrame(data=[{"error": "You must select a tool"}])

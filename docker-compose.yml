@@ -163,6 +163,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
+      - LANGFLOW_ALLOW_CUSTOM_COMPONENTS=${LANGFLOW_ALLOW_CUSTOM_COMPONENTS:-false}
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
       - LANGFUSE_HOST=${LANGFUSE_HOST:-}
@@ -218,7 +219,6 @@ services:
       - LANGFLOW_ENABLE_SUPERUSER_CLI=${LANGFLOW_ENABLE_SUPERUSER_CLI}
       # - DEFAULT_FOLDER_NAME=OpenRAG
       - HIDE_GETTING_STARTED_PROGRESS=true
-      - LANGFLOW_ALLOW_CUSTOM_COMPONENTS=${LANGFLOW_ALLOW_CUSTOM_COMPONENTS:-true}
       - LANGFLOW_SSRF_ALLOWED_HOSTS=${LANGFLOW_SSRF_ALLOWED_HOSTS:-localhost,127.0.0.1,host.docker.internal}
 
   # Azurite: local Azure Storage emulator for manually testing the Azure Blob
