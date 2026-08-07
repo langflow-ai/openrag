@@ -72,6 +72,10 @@ def _patch_update_settings_deps(monkeypatch, config):
     monkeypatch.setattr(settings_api.clients, "refresh_patched_client", _noop_refresh, raising=True)
     monkeypatch.setattr(settings_api.TelemetryClient, "send_event", AsyncMock(), raising=True)
     monkeypatch.setattr(settings_api.asyncio, "create_task", _fake_create_task, raising=True)
+    # These tests exercise the persistence path, not provider validation, which
+    # now also runs for an openai_base_url-only update (see
+    # test_settings_openai_base_url_validation.py for that coverage).
+    monkeypatch.setattr(settings_api, "validate_provider_setup", AsyncMock(), raising=True)
     return fake_task, saved_configs
 
 
@@ -157,6 +161,10 @@ async def test_onboarding_persists_openai_base_url(monkeypatch):
     monkeypatch.setattr(settings_api.clients, "refresh_patched_client", _noop_refresh, raising=True)
     monkeypatch.setattr(settings_api.TelemetryClient, "send_event", AsyncMock(), raising=True)
     monkeypatch.setattr(settings_api, "wait_for_langflow", AsyncMock(), raising=True)
+    # This test exercises the persistence path, not provider validation, which
+    # now also runs for an openai_base_url-only update against the (default)
+    # openai llm/embedding provider.
+    monkeypatch.setattr(settings_api, "validate_provider_setup", AsyncMock(), raising=True)
 
     response = await settings_api.onboarding(
         settings_api.OnboardingBody(openai_base_url="https://gateway.example.com/v1"),
