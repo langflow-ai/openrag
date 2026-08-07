@@ -77,7 +77,7 @@ containerPorts:
     name: metrics
     protocol: TCP
   - containerPort: 8080
-    name: openrag-oss-controller
+    name: orag-controller
     protocol: TCP
 
 # Node selector for pod assignment
