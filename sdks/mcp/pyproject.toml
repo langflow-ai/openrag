@@ -1,6 +1,6 @@
 [project]
 name = "openrag-mcp"
-version = "0.3.0"
+version = "0.5.0"
 description = "RETIRED — OpenRAG MCP is now built into the OpenRAG backend as a streamable-HTTP endpoint at /mcp. See README for migration."
 readme = "README.md"
 requires-python = ">=3.10"

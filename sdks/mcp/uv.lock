@@ -4,5 +4,5 @@ requires-python = ">=3.10"
 
 [[package]]
 name = "openrag-mcp"
-version = "0.3.0"
+version = "0.5.0"
 source = { editable = "." }
