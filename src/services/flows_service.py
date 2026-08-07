@@ -741,13 +741,21 @@ class FlowsService:
             )
 
         flow_data = response.json()
-        target_node, _ = self._find_node_in_flow(flow_data, display_name=AGENT_COMPONENT_DISPLAY_NAME)
+        target_node, _ = self._find_node_in_flow(
+            flow_data, display_name=AGENT_COMPONENT_DISPLAY_NAME
+        )
         if target_node is None:
             raise Exception(
                 f"Component '{AGENT_COMPONENT_DISPLAY_NAME}' not found in flow {LANGFLOW_CHAT_FLOW_ID}"
             )
 
-        return target_node.get("data", {}).get("node", {}).get("template", {}).get("system_prompt", {}).get("value")
+        return (
+            target_node.get("data", {})
+            .get("node", {})
+            .get("template", {})
+            .get("system_prompt", {})
+            .get("value")
+        )
 
     async def update_chat_flow_system_prompt(
         self, system_prompt: str, expected_prompt: Any = _UNSET
@@ -1233,9 +1241,7 @@ class FlowsService:
                 )
                 if llm_node:
                     node_tasks.append(
-                        wrap_node_update(
-                            llm_node, provider, llm_model, f"llm model: {llm_model}"
-                        )
+                        wrap_node_update(llm_node, provider, llm_model, f"llm model: {llm_model}")
                     )
 
                 agent_node, _ = self._find_node_in_flow(
