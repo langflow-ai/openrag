@@ -1467,9 +1467,7 @@ async def _test_azure_openai_lightweight_health(
 
     except httpx.TimeoutException:
         logger.error("Azure OpenAI health check timed out")
-        raise Exception(
-            "Azure OpenAI endpoint did not respond. Check the endpoint URL."
-        ) from None
+        raise Exception("Azure OpenAI endpoint did not respond. Check the endpoint URL.") from None
     except Exception as e:
         logger.error(f"Azure OpenAI health check failed: {str(e)}")
         raise
