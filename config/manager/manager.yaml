@@ -14,6 +14,10 @@ spec:
   replicas: 1
   template:
     metadata:
+      annotations:
+        prometheus.io/path: /metrics
+        prometheus.io/port: "9090"
+        prometheus.io/scrape: "true"
       labels:
         control-plane: controller-manager
     spec:
@@ -23,6 +27,13 @@ spec:
         runAsNonRoot: true
       containers:
       - name: manager
+        ports:
+        - containerPort: 9090
+          name: metrics
+          protocol: TCP
+        - containerPort: 8080
+          name: openrag-oss-controller
+          protocol: TCP
         image: controller:latest
         args:
         - --leader-elect

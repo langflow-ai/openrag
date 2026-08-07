@@ -35,6 +35,10 @@ spec:
         - --leader-elect
         {{- end }}
         - --health-probe-bind-address={{ .Values.healthProbe.bindAddress }}
+        {{- with .Values.containerPorts }}
+        ports:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
         securityContext:
           {{- toYaml .Values.securityContext | nindent 10 }}
         livenessProbe:

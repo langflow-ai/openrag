@@ -28,8 +28,13 @@ serviceAccount:
   # If not set and create is true, a name is generated using the fullname template
   name: ""
 
-# Pod annotations
-podAnnotations: {}
+# Prometheus metrics exposed by OSS operator on a separate port.
+podAnnotations:
+  # When true, the chart adds prometheus.io/* annotations to the pod template
+  # so annotation-based scrape discovery picks up this deployment.
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9090"
+  prometheus.io/path: "/metrics"
 
 # Pod security context
 podSecurityContext:
@@ -65,6 +70,15 @@ leaderElection:
 # Health probe configuration
 healthProbe:
   bindAddress: ":8080"
+
+# Container ports
+containerPorts:
+  - containerPort: 9090
+    name: metrics
+    protocol: TCP
+  - containerPort: 8080
+    name: openrag-oss-controller
+    protocol: TCP
 
 # Node selector for pod assignment
 nodeSelector: {}
