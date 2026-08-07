@@ -132,6 +132,52 @@ async def test_update_settings_embedding_provider_validates_against_already_save
 
 
 @pytest.mark.asyncio
+async def test_update_settings_base_url_only_validates_active_openai_llm_provider(monkeypatch):
+    """CodeRabbit finding on PR #2063, confirmed real: a base_url-only PATCH
+    (no llm_provider/llm_model/embedding_provider/embedding_model in the same
+    request) used to skip validate_provider_setup entirely even when openai
+    was the active, already-configured provider - a broken gateway URL would
+    persist without ever being checked."""
+    settings_api._background_tasks.clear()
+    config = _make_config(openai=OpenAIConfig(api_key="sk-gateway-key", configured=True))
+    config.agent.llm_provider = "openai"
+    config.knowledge.embedding_provider = "watsonx"  # only the LLM side should fire here
+    validate_mock = AsyncMock()
+    _patch_update_settings_deps(monkeypatch, config, validate_mock)
+
+    await settings_api.update_settings(
+        settings_api.SettingsUpdateBody(openai_base_url=GATEWAY_URL),
+        session_manager=object(),
+        user=None,
+    )
+
+    validate_mock.assert_awaited_once()
+    call = validate_mock.await_args
+    assert call.kwargs["provider"] == "openai"
+    assert call.kwargs["endpoint"] == GATEWAY_URL
+
+
+@pytest.mark.asyncio
+async def test_update_settings_base_url_only_skips_validation_for_inactive_openai(monkeypatch):
+    """Mirror image of the above: if openai isn't the active llm/embedding
+    provider, a base_url-only update shouldn't spuriously validate it."""
+    settings_api._background_tasks.clear()
+    config = _make_config(openai=OpenAIConfig(api_key="sk-gateway-key", configured=True))
+    config.agent.llm_provider = "watsonx"
+    config.knowledge.embedding_provider = "watsonx"
+    validate_mock = AsyncMock()
+    _patch_update_settings_deps(monkeypatch, config, validate_mock)
+
+    await settings_api.update_settings(
+        settings_api.SettingsUpdateBody(openai_base_url=GATEWAY_URL),
+        session_manager=object(),
+        user=None,
+    )
+
+    validate_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_onboarding_validates_against_configured_base_url(monkeypatch):
     """current_config is mutated with openai_base_url before the onboarding
     validation block runs, so the saved base_url must reach
