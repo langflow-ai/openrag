@@ -252,11 +252,10 @@ class TestBedrockChunkSizeCap:
 
         encoding = tiktoken.get_encoding("cl100k_base")
         # One unbroken paragraph (no blank lines), well over the 512-token
-        # cap. Earlier pipeline stages (character-window resplitting,
-        # markdown-structure parsing) may also chip this up before the
-        # max_tokens split runs - that's fine, since any additional
-        # splitting only makes pieces smaller, never bigger, so the ≤512
-        # invariant this test checks holds either way.
+        # cap. A large config_chunk_size keeps the earlier character-window
+        # resplit from also shrinking this below 512 tokens on its own,
+        # so only the max_tokens cap under test governs the outcome -
+        # otherwise this would pass even with a broken/missing cap.
         long_text = "# Doc\n\n" + ("The quick brown fox jumps over the lazy dog. " * 200)
         assert len(encoding.encode(long_text)) > 512
 
@@ -266,10 +265,13 @@ class TestBedrockChunkSizeCap:
             embedding_model="cohere.embed-multilingual-v3",
             formatted_model="bedrock/cohere.embed-multilingual-v3",
             content=long_text,
+            config_chunk_size=100_000,
         )
 
-        for text in calls[0]["input"]:
-            assert len(encoding.encode(text)) <= 512
+        assert calls, "expected at least one embeddings.create call"
+        for call in calls:
+            for text in call["input"]:
+                assert len(encoding.encode(text)) <= 512
 
     @pytest.mark.asyncio
     async def test_same_oversized_chunk_stays_above_512_tokens_for_openai(self, monkeypatch, tmp_path):
