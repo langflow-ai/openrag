@@ -126,6 +126,31 @@ class TestBedrockCredentialEnvVars:
         assert "AWS_ACCESS_KEY_ID" not in os.environ
         assert "AWS_SECRET_ACCESS_KEY" not in os.environ
 
+    @pytest.mark.asyncio
+    async def test_region_removed_then_refreshed_clears_stale_env_var(self, monkeypatch):
+        """CodeRabbit finding, confirmed real: AWS_REGION_NAME is process-wide
+        and refresh_patched_client() only closes the old client - it never
+        touched the env var. Configure a region, refresh after removing it,
+        and confirm the stale value doesn't linger for the next client."""
+        current = {"region": "eu-central-1"}
+        monkeypatch.setattr(
+            "config.settings.get_openrag_config",
+            lambda: _config(region=current["region"]),
+        )
+
+        client = AppClients()
+        _ = client.patched_async_client
+
+        import os
+
+        assert os.environ.get("AWS_REGION_NAME") == "eu-central-1"
+
+        current["region"] = ""
+        await client.refresh_patched_client()
+        _ = client.patched_async_client
+
+        assert "AWS_REGION_NAME" not in os.environ
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
