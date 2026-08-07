@@ -31,6 +31,7 @@ logger = get_logger(__name__)
 OPENSEARCH_HOST = os.getenv("OPENSEARCH_HOST", "localhost")
 OPENSEARCH_PORT = get_env_int("OPENSEARCH_PORT", 9200)
 OPENSEARCH_URL = f"https://{OPENSEARCH_HOST}:{OPENSEARCH_PORT}"
+OPENSEARCH_POOL_MAXSIZE: int = max(get_env_int("OPENSEARCH_POOL_MAXSIZE", 8) or 8, 1)
 
 # Optional: Langflow-specific OpenSearch endpoint
 LANGFLOW_OPENSEARCH_HOST = os.getenv("LANGFLOW_OPENSEARCH_HOST")
@@ -1011,6 +1012,7 @@ class AppClients:
                 ssl_assert_fingerprint=None,
                 http_auth=os_auth,
                 http_compress=True,
+                pool_maxsize=OPENSEARCH_POOL_MAXSIZE,
             )
 
         # Initialize patched OpenAI client if API key is available
@@ -1687,6 +1689,7 @@ class AppClients:
             timeout=30,  # 30 second timeout
             max_retries=3,
             retry_on_timeout=True,
+            pool_maxsize=OPENSEARCH_POOL_MAXSIZE,
         )
 
     def create_basic_opensearch_client(self, username: str, password: str):
@@ -1703,6 +1706,7 @@ class AppClients:
             timeout=30,
             max_retries=3,
             retry_on_timeout=True,
+            pool_maxsize=OPENSEARCH_POOL_MAXSIZE,
         )
 
     def create_user_opensearch_client(self, jwt_token: str):
