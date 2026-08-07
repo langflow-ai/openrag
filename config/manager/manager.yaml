@@ -32,7 +32,7 @@ spec:
           name: metrics
           protocol: TCP
         - containerPort: 8080
-          name: openrag-oss-controller
+          name: orag-controller
           protocol: TCP
         image: controller:latest
         args:
