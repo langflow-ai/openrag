@@ -56,7 +56,11 @@ from api.settings.models import (
     SettingsUpdateResponse,
     WatsonXProviderConfig,
 )
-from config.config_manager import ALLOWED_INDEX_NAME_PATTERNS, is_permitted_index_name
+from config.config_manager import (
+    ALLOWED_INDEX_NAME_PATTERNS,
+    DEFAULT_SYSTEM_PROMPT,
+    is_permitted_index_name,
+)
 from config.settings import (
     DEFAULT_DOCS_URL,
     ENVIRONMENT,
@@ -272,6 +276,7 @@ async def get_settings(
                 llm_model=agent_config.llm_model,
                 llm_provider=agent_config.llm_provider,
                 system_prompt=agent_config.system_prompt,
+                default_system_prompt=DEFAULT_SYSTEM_PROMPT,
             ),
             localhost_url=LOCALHOST_URL,
             langflow_edit_url=langflow_edit_url,
