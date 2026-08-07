@@ -36,23 +36,36 @@ class TestBedrockCredentialKwargs:
         assert bedrock_credential_kwargs("bedrock/cohere.embed-multilingual-v3") == {
             "aws_access_key_id": "AKIAEXAMPLE",
             "aws_secret_access_key": "supersecret",
+            "aws_region_name": "us-east-1",
         }
 
-    def test_iam_role_mode_passes_nothing(self, monkeypatch):
+    def test_iam_role_mode_passes_region_but_not_credentials(self, monkeypatch):
         """No explicit keys: leave litellm/boto3's default credential chain
-        alone so IRSA / instance roles keep working."""
+        alone so IRSA / instance roles keep working, but still forward the
+        configured region - it's required in this mode too, and litellm
+        shouldn't have to depend solely on the process-wide env var for it."""
         monkeypatch.setattr("config.settings.get_openrag_config", lambda: _config())
+
+        assert bedrock_credential_kwargs("bedrock/cohere.embed-multilingual-v3") == {
+            "aws_region_name": "us-east-1"
+        }
+
+    def test_no_region_and_no_credentials_passes_nothing(self, monkeypatch):
+        monkeypatch.setattr("config.settings.get_openrag_config", lambda: _config(region=""))
 
         assert bedrock_credential_kwargs("bedrock/cohere.embed-multilingual-v3") == {}
 
     def test_partial_credentials_are_ignored(self, monkeypatch):
-        """Half a credential pair is not usable - fall back to the chain."""
+        """Half a credential pair is not usable - fall back to the chain -
+        but the region is still forwarded."""
         monkeypatch.setattr(
             "config.settings.get_openrag_config",
             lambda: _config(access_key_id="AKIAEXAMPLE"),
         )
 
-        assert bedrock_credential_kwargs("bedrock/cohere.embed-multilingual-v3") == {}
+        assert bedrock_credential_kwargs("bedrock/cohere.embed-multilingual-v3") == {
+            "aws_region_name": "us-east-1"
+        }
 
     @pytest.mark.parametrize(
         "model",
@@ -159,6 +172,8 @@ class TestEmbeddingCallSitesAttachCredentials:
 
         assert "aws_access_key_id" not in calls[0]
         assert "aws_secret_access_key" not in calls[0]
+        # Region is still required in IAM-role mode.
+        assert calls[0]["aws_region_name"] == "us-east-1"
 
     @pytest.mark.asyncio
     async def test_non_bedrock_query_embedding_gets_no_aws_kwargs(self, monkeypatch):
