@@ -82,3 +82,25 @@ def test_opensearch_client_uses_configured_pool_maxsize():
         cwd=str(ROOT),
     )
     assert result.stdout.splitlines()[-1].strip() == "48"
+
+
+def test_settings_clamps_zero_pool_maxsize_to_one():
+    env = _python_env(
+        {
+            "OPENSEARCH_POOL_MAXSIZE": "0",
+            "PYTHONPATH": str(SRC),
+        }
+    )
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from config.settings import OPENSEARCH_POOL_MAXSIZE; print(OPENSEARCH_POOL_MAXSIZE)",
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+        env=env,
+        cwd=str(ROOT),
+    )
+    assert result.stdout.splitlines()[-1].strip() == "1"
