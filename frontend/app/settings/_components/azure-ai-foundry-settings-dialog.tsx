@@ -78,23 +78,19 @@ const AzureAIFoundrySettingsDialog = ({
     },
   });
 
+  // Clear test result whenever any form value changes
   useEffect(() => {
-    if (open) {
-      methods.reset();
+    const subscription = methods.watch(() => {
       setTestConnectionResult(null);
-    }
-  }, [open]);
+    });
+    return () => subscription.unsubscribe();
+  }, [methods.watch]);
 
   const { handleSubmit, watch } = methods;
   const endpoint = watch("endpoint");
   const apiKey = watch("apiKey");
   const llmDeploymentName = watch("llmDeploymentName");
   const embeddingDeploymentName = watch("embeddingDeploymentName");
-
-  // Clear test result whenever any form value changes
-  useEffect(() => {
-    setTestConnectionResult(null);
-  }, [endpoint, apiKey, llmDeploymentName, embeddingDeploymentName]);
 
   const { refetch: validateCredentials } = useGetAzureAIFoundryModelsQuery(
     { endpoint, apiKey },
@@ -217,6 +213,10 @@ const AzureAIFoundrySettingsDialog = ({
     <Dialog
       open={open}
       onOpenChange={(o) => {
+        if (o) {
+          methods.reset();
+          setTestConnectionResult(null);
+        }
         setShowRemoveConfirm(false);
         setAffectedModels(undefined);
         setOpen(o);

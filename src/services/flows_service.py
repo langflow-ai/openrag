@@ -1140,6 +1140,7 @@ class FlowsService:
             if is_new_flow:
                 if embedding_model:
                     await self._enable_model_in_langflow(provider_name, embedding_model)
+                    updates_made.append(f"enabled embedding model: {embedding_model}")
                 logger.info(
                     f"Flow {flow_name} has {len(embedding_nodes)} embedding nodes (< 3). "
                     f"Flow is updated to generic embedding component; enabled model in Langflow, skipping legacy component patching."
@@ -1241,6 +1242,7 @@ class FlowsService:
             if is_new_flow:
                 if llm_model:
                     await self._enable_model_in_langflow(provider_name, llm_model)
+                    updates_made.append(f"enabled llm model: {llm_model}")
                 logger.info(
                     f"Flow {flow_name} has {len(embedding_nodes)} embedding nodes (< 3). "
                     f"Flow is updated to generic components; enabled model in Langflow, skipping legacy LLM component patching."
@@ -1279,6 +1281,14 @@ class FlowsService:
             }
 
         logger.info(f"Updated {', '.join(updates_made)} in {flow_name} flow")
+
+        if not node_tasks:
+            return {
+                "flow": flow_name,
+                "success": True,
+                "message": f"Successfully updated {', '.join(updates_made)}",
+                "flow_id": flow_id,
+            }
 
         await self._unlock_flow(flow_id)
 
