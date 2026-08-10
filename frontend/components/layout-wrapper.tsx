@@ -245,7 +245,8 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
           onToggle={toggleStatus}
           onClose={closeStatus}
           overallStatus={overallStatus}
-        />
+        /> 
+      )}
       {(isAuthenticated || isNoAuthMode) && runMode === "oss" && (
         <FlowsUpdateDialog />
       )}
