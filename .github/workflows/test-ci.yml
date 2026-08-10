@@ -220,7 +220,7 @@ jobs:
           docker compose -f docker-compose.yml down -v --remove-orphans || true
           docker system prune -f || true
           for i in 1 2 3; do
-            docker run --rm -v $(pwd):/work alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows /work/openrag-documents" && break
+            docker run --rm -v $(pwd):/work alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows/backup /work/openrag-documents" && break
             echo "Attempt $i failed, retrying in 5s..."
             sleep 5
           done || true
@@ -332,7 +332,7 @@ jobs:
           make clean || true
           docker system prune -f || true
           for i in 1 2 3; do
-            docker run --rm -v $(pwd):/work alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows /work/openrag-documents" && break
+            docker run --rm -v $(pwd):/work alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows/backup /work/openrag-documents" && break
             echo "Attempt $i failed, retrying in 5s..."
             sleep 5
           done || true
@@ -505,7 +505,7 @@ jobs:
           make clean || true
           docker system prune -f || true
           for i in 1 2 3; do
-            docker run --rm -v $(pwd):/work alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows /work/openrag-documents" && break
+            docker run --rm -v $(pwd):/work alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows/backup /work/openrag-documents" && break
             echo "Attempt $i failed, retrying in 5s..."
             sleep 5
           done || true

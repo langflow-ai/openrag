@@ -158,6 +158,29 @@ Configure OpenSearch database authentication.
 | `LANGFLOW_OPENSEARCH_HOST` | Not set | By default, OpenRAG passes the `OPENSEARCH_HOST` value to Langflow. Use the `LANGFLOW_OPENSEARCH_*` variables to set a different OpenSearch endpoint for Langflow specifically. OpenRAG itself still uses the `OPENSEARCH_HOST` value. |
 | `LANGFLOW_OPENSEARCH_PORT` | Not set | By default, OpenRAG passes the `OPENSEARCH_PORT` value to Langflow. Use the `LANGFLOW_OPENSEARCH_*` variables to set a different OpenSearch endpoint for Langflow specifically. OpenRAG itself still uses the `OPENSEARCH_PORT` value. |
 
+## Container image and registry settings {#container-image-and-registry-settings}
+
+By default, OpenRAG pulls its container images from Docker Hub under the `langflowai` organization.
+Use these variables to pull images from a private registry or an internal mirror instead, such as in an enterprise or air-gapped environment.
+
+For a complete walkthrough, including how to mirror the images, see [Deploy OpenRAG from a private registry](/docker#private-registry).
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `IMAGE_REGISTRY` | `docker.io` | Registry host for the OpenRAG-owned images (`openrag-backend`, `openrag-frontend`, `openrag-langflow`, and `openrag-opensearch`). Set this to your registry hostname, and include the port if your registry uses a non-standard one, such as `registry.example.com:5000`. Don't include a scheme (`https://`) or a trailing slash. This variable doesn't affect the OpenSearch Dashboards image; use `DASHBOARDS_REGISTRY` for that image. |
+| `IMAGE_ORG` | `langflowai` | Organization or namespace that contains the OpenRAG-owned images within `IMAGE_REGISTRY`. Together, these variables form the repository path `IMAGE_REGISTRY/IMAGE_ORG/IMAGE_NAME`. For example, `IMAGE_REGISTRY=registry.example.com` and `IMAGE_ORG=platform-team` resolves the backend image to `registry.example.com/platform-team/openrag-backend`. |
+| `OPENRAG_IMAGE_TAG` | Not set | Overrides the image tag applied to all OpenRAG-owned images. When set, this variable takes precedence over `OPENRAG_VERSION`. When it isn't set, OpenRAG falls back to `OPENRAG_VERSION`, and then to `latest`. Use this variable when your mirror re-tags images and the tags don't match the OpenRAG release versions. |
+| `DASHBOARDS_REGISTRY` | `docker.io` | Registry host for the OpenSearch Dashboards image only. This lets you point Dashboards at a mirror without redirecting the OpenRAG-owned images. The repository path and tag within the registry are fixed, so the mirrored image must be available at `DASHBOARDS_REGISTRY/opensearchproject/opensearch-dashboards:3.6.0`. |
+
+:::important
+These variables are read by Docker Compose, so they apply to [self-managed deployments](/docker).
+Terminal-managed deployments read them from `~/.openrag/tui/.env`, where they determine which images the terminal session treats as OpenRAG-owned when it pulls or cleans up images.
+
+Setting `IMAGE_REGISTRY` to a host other than `docker.io` also disables the terminal session's update check, because that check queries the Docker Hub API. The **Status** page reports neither an available upgrade nor an up-to-date confirmation. Track new releases through your registry or the [OpenRAG releases page](https://github.com/langflow-ai/openrag/releases) instead.
+
+Kubernetes deployments don't use these variables. The Helm charts in [`kubernetes/helm`](https://github.com/langflow-ai/openrag/tree/main/kubernetes/helm) configure images through their own `global.imageRegistry`, `global.imageTag`, and `global.imagePullSecrets` values. Note that the chart's `global.imageRegistry` value holds the organization (`langflowai` by default), which is the equivalent of `IMAGE_ORG` rather than `IMAGE_REGISTRY`.
+:::
+
 ## System settings
 
 Configure general system components, session management, and logging.
@@ -165,7 +188,7 @@ Configure general system components, session management, and logging.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `FRONTEND_PORT` | `3000` | Host port for the OpenRAG frontend web interface. Change this if port 3000 is already in use on your system. |
-| `OPENRAG_VERSION` | `latest` | The version of the OpenRAG Docker images to run. For more information, see [Upgrade OpenRAG](/upgrade) |
+| `OPENRAG_VERSION` | `latest` | The version of the OpenRAG Docker images to run. If [`OPENRAG_IMAGE_TAG`](#container-image-and-registry-settings) is set, it takes precedence over this variable. For more information, see [Upgrade OpenRAG](/upgrade) |
 | `NEXT_ALLOWED_DEV_ORIGINS` | `http://localhost:3000` | Only used when [running OpenRAG in development mode](/support/contribute). Accepts a comma-separated list of hostnames to allow additional origins to make requests to the Next.js development server. |
 | `MAX_WORKERS` | `min(4, CPU_COUNT // 2)` | Number of Backend worker processes for concurrent request handling.  Be mindful of hardware limitations to avoid overtaxing system resources. |
 | `LANGFLOW_WORKERS` | `1` | Number of Langflow worker processes for concurrent request handling. Be mindful of hardware limitations to avoid overtaxing system resources. |

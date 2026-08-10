@@ -197,6 +197,27 @@ async def test_build_docling_options_toggles(docling_service):
     assert options["do_ocr"] is True
     assert options["do_picture_description"] is False
     assert options["to_formats"] == "json"
+    assert options["image_export_mode"] == "placeholder"
+    assert "include_page_images" not in options
+    assert "include_images" not in options
+
+
+@pytest.mark.asyncio
+async def test_build_docling_options_preview_mode_embeds_page_images(docling_service):
+    """Preview mode requests embedded page rasters for PDF bbox overlays."""
+    mock_config = MagicMock()
+    mock_config.knowledge.table_structure = False
+    mock_config.knowledge.ocr = False
+    mock_config.knowledge.picture_descriptions = False
+    mock_config.knowledge.vlm_enabled = False
+
+    with patch("services.docling_service.get_openrag_config", return_value=mock_config):
+        options = await docling_service._build_docling_options_async(preview_mode=True)
+
+    assert options["to_formats"] == "json"
+    assert options["image_export_mode"] == "embedded"
+    assert options["include_page_images"] is True
+    assert options["include_images"] is True
 
 
 def test_preset_configs_macos():

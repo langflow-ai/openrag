@@ -32,6 +32,7 @@ import {
   ConsoleStatusButton,
   ConsoleStatusPanel,
 } from "./console-status-panel";
+import { FlowsUpdateDialog } from "./flows-update-dialog";
 import { Header } from "./header";
 import FailedTasksInfo from "./tasks_details";
 
@@ -87,7 +88,8 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     }
   }, [isMenuOpen, closePanelOnly]);
 
-  const { isLoading, isAuthenticated, isNoAuthMode, isIbmAuthMode } = useAuth();
+  const { isLoading, isAuthenticated, isNoAuthMode, isIbmAuthMode, runMode } =
+    useAuth();
   const { isOnboardingComplete } = useChat();
 
   const authPaths = ["/login", "/auth/callback", "/unauthorized"];
@@ -242,6 +244,8 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
           onClose={() => setIsStatusOpen(false)}
           overallStatus={overallStatus}
         />
+      {(isAuthenticated || isNoAuthMode) && runMode === "oss" && (
+        <FlowsUpdateDialog />
       )}
     </div>
   );

@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.responses import JSONResponse
 
-from api.ingest_preview import get_index_proof
+from api.ingest_preview import get_index_proof, get_parse_preview
 from session_manager import User
 
 
@@ -23,6 +23,14 @@ def user():
 @pytest.fixture
 def preview_service():
     service = MagicMock()
+    service.get_docling_preview.return_value = {
+        "document": {"pages": [{"page_no": 1}], "texts": [], "tables": [], "pictures": []},
+        "stats": {"page_count": 1, "text_count": 0, "table_count": 0, "picture_count": 0},
+        "expires_at": 9999999999.0,
+        "document_id": "hash-1",
+        "file_path": "/tmp/a.pdf",
+        "filename": "a.pdf",
+    }
     service.get_index_proof = AsyncMock(
         return_value={
             "ready": True,
@@ -45,6 +53,67 @@ def task_service():
     service = MagicMock()
     service.get_upload_task.return_value = upload_task
     return service
+
+
+@pytest.mark.asyncio
+async def test_get_parse_preview_returns_docling_document(user, preview_service, task_service):
+    response = await get_parse_preview(
+        task_id="task-1",
+        preview_service=preview_service,
+        task_service=task_service,
+        user=user,
+    )
+
+    assert isinstance(response, JSONResponse)
+    assert response.status_code == 200
+    body = response.body.decode()
+    assert "document" in body
+    assert "stats" in body
+    preview_service.get_docling_preview.assert_called_once_with("user-1", "task-1", file_path=None)
+
+
+@pytest.mark.asyncio
+async def test_get_parse_preview_passes_file_param(user, preview_service, task_service):
+    response = await get_parse_preview(
+        task_id="task-1",
+        preview_service=preview_service,
+        task_service=task_service,
+        user=user,
+        file="/tmp/b.pdf",
+    )
+
+    assert response.status_code == 200
+    preview_service.get_docling_preview.assert_called_once_with(
+        "user-1", "task-1", file_path="/tmp/b.pdf"
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_parse_preview_not_found(user, preview_service, task_service):
+    preview_service.get_docling_preview.return_value = None
+
+    response = await get_parse_preview(
+        task_id="missing",
+        preview_service=preview_service,
+        task_service=task_service,
+        user=user,
+    )
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_parse_preview_unavailable_when_disabled(user, preview_service, task_service):
+    with patch("api.ingest_preview.is_ingest_preview_enabled", return_value=False):
+        response = await get_parse_preview(
+            task_id="task-1",
+            preview_service=preview_service,
+            task_service=task_service,
+            user=user,
+        )
+
+    assert response.status_code == 404
+    preview_service.get_docling_preview.assert_not_called()
 
 
 @pytest.mark.asyncio

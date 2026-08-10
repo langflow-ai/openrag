@@ -170,13 +170,40 @@ async def startup_tasks(services) -> None:
     # Update MCP server URLs (patch localhost and convert to streamable HTTP)
     await _update_mcp_server_urls(services["langflow_mcp_service"])
 
-    # Ensure all configured flows exist in Langflow (create-only, never overwrites).
-    # This replaces LANGFLOW_LOAD_FLOWS_PATH, which performed a blind upsert on
-    # every container start and discarded any user edits made in the Langflow UI.
-    newly_created: set[str] = set()
+    # Ensure all configured flows exist in Langflow (create-only, never overwrites existing).
+    # If a flow does not exist, it is created and active configuration settings are reapplied.
     try:
         flows_service = services["flows_service"]
-        newly_created = await flows_service.ensure_flows_exist()
+        await flows_service.ensure_flows_exist()
+
+        # Check if we should upgrade the system prompt (only if it's a legacy or default prompt, preserving user customizations)
+        from config.config_manager import DEFAULT_SYSTEM_PROMPT
+        from config.legacy_prompts import LEGACY_SYSTEM_PROMPTS
+
+        config_prompt = get_openrag_config().agent.system_prompt
+        # If the config prompt is a user customization, we don't need to auto-upgrade anything
+        if config_prompt in LEGACY_SYSTEM_PROMPTS or config_prompt == DEFAULT_SYSTEM_PROMPT:
+            try:
+                current_prompt = await flows_service.get_chat_flow_system_prompt()
+            except Exception as e:
+                logger.warning(
+                    "Could not read current chat flow system prompt; skipping system prompt sync",
+                    error=str(e),
+                )
+            else:
+                # Only update if the Langflow prompt is a known default/legacy AND it differs from our config prompt
+                if (
+                    not current_prompt
+                    or current_prompt in LEGACY_SYSTEM_PROMPTS
+                    or current_prompt == DEFAULT_SYSTEM_PROMPT
+                ):
+                    if current_prompt != config_prompt:
+                        await flows_service.update_chat_flow_system_prompt(
+                            config_prompt, expected_prompt=current_prompt
+                        )
+                        logger.info("Ensured system prompt is synced to Langflow")
+                else:
+                    logger.info("Preserved custom system prompt in Langflow")
     except Exception as e:
         logger.error(
             "Failed to ensure Langflow flows exist at startup — "
@@ -196,39 +223,3 @@ async def startup_tasks(services) -> None:
             "Failed to ensure required Langflow global variables at startup",
             error=str(e),
         )
-
-    # Check if flows were reset and reapply settings if config is edited
-    try:
-        config = get_openrag_config()
-        if config.edited:
-            logger.info("Checking if Langflow flows were reset")
-            flows_service = services["flows_service"]
-            reset_flows = await flows_service.check_flows_reset()
-            # Exclude flows that were just seeded — they match the JSON by design,
-            # not because they were externally reset.
-            reset_flows = [f for f in reset_flows if f not in newly_created]
-
-            if reset_flows:
-                logger.info(
-                    f"Detected reset flows: {', '.join(reset_flows)}. Reapplying all settings."
-                )
-                await TelemetryClient.send_event(
-                    Category.FLOW_OPERATIONS, MessageId.ORB_FLOW_RESET_DETECTED
-                )
-                from api.settings import reapply_all_settings
-
-                await reapply_all_settings(session_manager=services["session_manager"])
-                logger.info("Successfully reapplied settings after detecting flow resets")
-                await TelemetryClient.send_event(
-                    Category.FLOW_OPERATIONS, MessageId.ORB_FLOW_SETTINGS_REAPPLIED
-                )
-            else:
-                logger.info("No flows detected as reset, skipping settings reapplication")
-        else:
-            logger.debug("Configuration not yet edited, skipping flow reset check")
-    except Exception as e:
-        logger.error(f"Failed to check flows reset or reapply settings: {str(e)}")
-        await TelemetryClient.send_event(
-            Category.FLOW_OPERATIONS, MessageId.ORB_FLOW_RESET_CHECK_FAIL
-        )
-        # Don't fail startup if this check fails

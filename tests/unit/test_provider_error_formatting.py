@@ -25,6 +25,20 @@ def test_parse_ibm_iam_error_message():
     assert format_provider_error_message(raw) == "Provided API key is Invalid."
 
 
+def test_format_dedupes_identical_auth_failures_with_different_request_ids():
+    first = (
+        'Failed to authenticate with IBM Watson: {"errorCode":"BXNIM0415E",'
+        '"errorMessage":"Provided API key could not be found.",'
+        '"context":{"requestId":"req-1"}}'
+    )
+    second = (
+        'Failed to authenticate with IBM Watson: {"errorCode":"BXNIM0415E",'
+        '"errorMessage":"Provided API key could not be found.",'
+        '"context":{"requestId":"req-2"}}'
+    )
+    assert format_provider_error_message(first) == format_provider_error_message(second)
+
+
 def test_format_extracts_json_with_trailing_text():
     raw = (
         "Failed to initialize IBM WatsonX embedding model: Attempt of authenticating "
