@@ -62,7 +62,9 @@ export const useConsoleStatusQuery = (
       queryFn: fetchConsoleStatus,
       retry: 1,
       refetchInterval: 30000,
-      refetchOnWindowFocus: false,
+      // Re-check when the user returns to the tab so a status change that
+      // happened while away surfaces promptly (drives the header notification).
+      refetchOnWindowFocus: true,
       staleTime: 15000,
       ...options,
     },
