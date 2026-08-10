@@ -27,6 +27,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useIsCloudBrand } from "@/contexts/brand-context";
+import { useConsoleStatus } from "@/contexts/console-status-context";
 import { Task, useTask } from "@/contexts/task-context";
 import {
   hasIssueFileEntries,
@@ -149,6 +150,7 @@ export function TaskNotificationMenu() {
     closeMenu,
     openTaskDialog,
   } = useTask();
+  const { problems, hasProblem, open: openConsoleStatus } = useConsoleStatus();
   const [isPastOpen, setIsPastOpen] = useState(true);
   const lastHandledSelectionTriggerRef = useRef(0);
 
@@ -342,6 +344,47 @@ export function TaskNotificationMenu() {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto">
+          {/* System Status events — a container / service is degraded or down.
+              Clicking an event opens the Console Status panel. */}
+          {hasProblem && (
+            <div className="flex flex-col gap-2 p-4">
+              <h4 className="text-sm font-medium text-muted-foreground">
+                System Status
+              </h4>
+              {problems.map((component) => {
+                const isDown = component.status === "unhealthy";
+                return (
+                  <button
+                    key={component.name}
+                    type="button"
+                    data-testid="system-status-event"
+                    onClick={() => {
+                      openConsoleStatus();
+                      closeMenu();
+                    }}
+                    className="w-full rounded-lg border border-muted p-3 text-left transition-colors hover:bg-muted/60"
+                  >
+                    <div className="flex items-center gap-2">
+                      {isDown ? (
+                        <XCircle className="size-4 shrink-0 text-destructive" />
+                      ) : (
+                        <AlertCircle className="size-4 shrink-0 text-brand-amber" />
+                      )}
+                      <span className="text-sm font-medium">
+                        {component.display_name}{" "}
+                        {isDown ? "is down" : `is ${component.status}`}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {component.message ||
+                        "Open Console Status for more details."}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           {/* Active Tasks */}
           {activeTasks.length > 0 && (
             <div className="flex flex-col gap-2 p-4">
@@ -524,18 +567,20 @@ export function TaskNotificationMenu() {
           </div>
 
           {/* Empty State */}
-          {activeTasks.length === 0 && terminalTasks.length === 0 && (
-            <div className="p-8 text-center">
-              <Bell className="h-12 w-12 text-muted-foreground/50 mx-auto mb-4" />
-              <h4 className="text-sm font-medium text-muted-foreground mb-2">
-                No tasks yet
-              </h4>
-              <p className="text-xs text-muted-foreground">
-                Task notifications will appear here when you upload files or
-                sync connectors.
-              </p>
-            </div>
-          )}
+          {activeTasks.length === 0 &&
+            terminalTasks.length === 0 &&
+            !hasProblem && (
+              <div className="p-8 text-center">
+                <Bell className="h-12 w-12 text-muted-foreground/50 mx-auto mb-4" />
+                <h4 className="text-sm font-medium text-muted-foreground mb-2">
+                  No tasks yet
+                </h4>
+                <p className="text-xs text-muted-foreground">
+                  Task notifications will appear here when you upload files or
+                  sync connectors.
+                </p>
+              </div>
+            )}
         </div>
       </div>
     </div>

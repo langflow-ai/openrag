@@ -2,9 +2,8 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { createPortal } from "react-dom";
-import { useConsoleStatusQuery } from "@/app/api/queries/useConsoleStatusQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import {
   DoclingHealthBanner,
@@ -20,6 +19,7 @@ import { TaskNotificationMenu } from "@/components/task-notification-menu";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useChat } from "@/contexts/chat-context";
+import { useConsoleStatus } from "@/contexts/console-status-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
 import { usePortal } from "@/hooks/use-portal";
@@ -73,10 +73,12 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const { isPanelOpen, panelMode, closePanelOnly } = useKnowledgeFilter();
   const failedTasks = tasks.filter(isFailureLikeTask);
 
-  const [isStatusOpen, setIsStatusOpen] = useState(false);
-  const { data: statusData } = useConsoleStatusQuery({
-    enabled: true,
-  });
+  const {
+    isOpen: isStatusOpen,
+    toggle: toggleStatus,
+    close: closeStatus,
+    overallStatus: consoleOverallStatus,
+  } = useConsoleStatus();
 
   const isOnKnowledgePage = pathname.startsWith("/knowledge");
 
@@ -84,9 +86,9 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (isMenuOpen) {
       closePanelOnly();
-      setIsStatusOpen(false);
+      closeStatus();
     }
-  }, [isMenuOpen, closePanelOnly]);
+  }, [isMenuOpen, closePanelOnly, closeStatus]);
 
   const { isLoading, isAuthenticated, isNoAuthMode, isIbmAuthMode, runMode } =
     useAuth();
@@ -147,7 +149,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   // (shown as a card inside the panel) in addition to backend infra health.
   const overallStatus = isProviderUnhealthy
     ? "unhealthy"
-    : statusData?.overall_status;
+    : consoleOverallStatus;
 
   return (
     <div
@@ -240,8 +242,8 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
       {isOnboardingComplete && (
         <ConsoleStatusPortal
           isOpen={isStatusOpen}
-          onToggle={() => setIsStatusOpen((v) => !v)}
-          onClose={() => setIsStatusOpen(false)}
+          onToggle={toggleStatus}
+          onClose={closeStatus}
           overallStatus={overallStatus}
         />
       {(isAuthenticated || isNoAuthMode) && runMode === "oss" && (
