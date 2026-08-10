@@ -450,21 +450,15 @@ export function ConsoleStatusButton({
       <Settings size={14} className="shrink-0 text-zinc-400" />
       <span>Console Status</span>
       {overallStatus && (
-        <span className="relative flex h-2 w-2 shrink-0">
-          {overallStatus === "unhealthy" && (
-            // Pulsing ring draws the eye to an outage; hidden under reduced motion.
-            <span className="absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75 animate-ping motion-reduce:hidden" />
+        <span
+          className={cn(
+            "w-2 h-2 rounded-full shrink-0",
+            overallStatus === "healthy" && "bg-emerald-400",
+            overallStatus === "degraded" && "bg-amber-400",
+            overallStatus === "unhealthy" && "bg-red-400",
+            overallStatus === "unknown" && "bg-zinc-400",
           )}
-          <span
-            className={cn(
-              "relative inline-flex h-2 w-2 rounded-full",
-              overallStatus === "healthy" && "bg-emerald-400",
-              overallStatus === "degraded" && "bg-amber-400",
-              overallStatus === "unhealthy" && "bg-red-400",
-              overallStatus === "unknown" && "bg-zinc-400",
-            )}
-          />
-        </span>
+        />
       )}
     </button>
   );

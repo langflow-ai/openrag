@@ -9,7 +9,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/contexts/auth-context";
 import { BrandProvider } from "@/contexts/brand-context";
 import { ChatProvider } from "@/contexts/chat-context";
-import { ConsoleStatusProvider } from "@/contexts/console-status-context";
 import { KnowledgeFilterProvider } from "@/contexts/knowledge-filter-context";
 import { TaskProvider } from "@/contexts/task-context";
 import Providers from "./providers";
@@ -62,11 +61,9 @@ export default function RootLayout({
                 <BrandProvider>
                   <TaskProvider>
                     <KnowledgeFilterProvider>
-                      <ConsoleStatusProvider>
-                        <ChatProvider>
-                          <LayoutWrapper>{children}</LayoutWrapper>
-                        </ChatProvider>
-                      </ConsoleStatusProvider>
+                      <ChatProvider>
+                        <LayoutWrapper>{children}</LayoutWrapper>
+                      </ChatProvider>
                     </KnowledgeFilterProvider>
                   </TaskProvider>
                 </BrandProvider>
