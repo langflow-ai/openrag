@@ -24,6 +24,7 @@ RUN pip install --no-cache-dir \
     "langchain-ibm~=1.1.0"
 
 COPY flows/ /app/flows/
+RUN rm -f /app/flows/component_index.json
 COPY custom_components/ /app/custom_components/
 
 # Copy the entrypoint before switching to root so the COPY runs as uid=1000
