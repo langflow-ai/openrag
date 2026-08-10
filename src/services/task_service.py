@@ -338,6 +338,7 @@ class TaskService:
             replace_duplicates=replace_duplicates,
             connector_type=connector_type,
             docling_polling_service=self.docling_polling_service,
+            preview_mode=preview_mode,
         )
         return await self.create_custom_task(
             user_id,
@@ -985,6 +986,14 @@ class TaskService:
             return {
                 "failure_phase": "cancelled",
                 "user_facing_message": "Ingestion was cancelled.",
+                "actionable_by": "USER_ACTIONABLE",
+            }
+
+        if "incorrect password" in error.lower():  # for password protected pdf cases
+            return {
+                "component": "docling",
+                "failure_phase": "parsing",
+                "user_facing_message": "This PDF is password-protected. Password-protected PDFs are not supported. Remove the password and upload the PDF again.",
                 "actionable_by": "USER_ACTIONABLE",
             }
 

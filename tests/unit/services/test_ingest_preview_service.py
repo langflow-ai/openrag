@@ -1,16 +1,64 @@
-"""Tests for preview-mode index proof helpers."""
+"""Tests for preview-mode Docling cache and index proof helpers."""
 
+import time
 from unittest.mock import AsyncMock
 
 import pytest
 
 from models.tasks import FileTask, IngestionPhase, TaskStatus, UploadTask
 from services.ingest_preview_service import (
+    MAX_PREVIEWS_PER_TASK,
     IngestPreviewService,
     _chunk_sequence,
     _extract_hit_total,
     _sort_hits,
+    summarize_docling_document,
 )
+
+
+def test_summarize_docling_document_counts_layout_elements():
+    doc = {
+        "pages": [{"page_no": 1}, {"page_no": 2}],
+        "texts": [{"text": "Title"}, {"text": "Body"}],
+        "tables": [{"data": {}}],
+        "pictures": [{"image": {}}],
+    }
+
+    stats = summarize_docling_document(doc)
+
+    assert stats == {
+        "page_count": 2,
+        "text_count": 2,
+        "table_count": 1,
+        "picture_count": 1,
+    }
+
+
+def test_store_and_get_docling_preview():
+    service = IngestPreviewService(ttl_seconds=300)
+    doc = {"pages": [{"page_no": 1}], "texts": [], "tables": [], "pictures": []}
+
+    service.store_docling_preview("user-1", "task-1", doc, document_id="hash-abc")
+
+    preview = service.get_docling_preview("user-1", "task-1")
+    assert preview is not None
+    assert preview["document"] == doc
+    assert preview["stats"]["page_count"] == 1
+    assert preview["document_id"] == "hash-abc"
+    assert preview["expires_at"] > time.time()
+
+
+def test_store_docling_preview_caps_entries_per_task():
+    service = IngestPreviewService(ttl_seconds=300)
+    doc = {"pages": [{"page_no": 1}], "texts": [], "tables": [], "pictures": []}
+
+    for i in range(MAX_PREVIEWS_PER_TASK + 5):
+        service.store_docling_preview(
+            "user-1", "task-1", doc, file_path=f"/tmp/file-{i}.pdf", document_id=f"hash-{i}"
+        )
+
+    stored = [k for k in service._entries if k[0] == "user-1" and k[1] == "task-1"]
+    assert len(stored) == MAX_PREVIEWS_PER_TASK
 
 
 def test_chunk_sequence_parses_numeric_suffix():

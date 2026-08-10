@@ -376,7 +376,19 @@ export function AgentSettingsSection() {
               {systemPrompt.length}/{MAX_SYSTEM_PROMPT_CHARS} characters
             </span>
           </div>
-          <div className="flex justify-end pt-2">
+          <div className="flex justify-end pt-2 gap-2">
+            {settings.agent?.default_system_prompt && (
+              <Button
+                onClick={() =>
+                  setSystemPrompt(settings.agent?.default_system_prompt || "")
+                }
+                variant="outline"
+                size="sm"
+                disabled={systemPrompt === settings.agent.default_system_prompt}
+              >
+                Restore Default
+              </Button>
+            )}
             <Button
               onClick={handleSystemPromptSave}
               disabled={

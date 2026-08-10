@@ -2,7 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Loader2 } from "lucide-react";
+import { File, Loader2 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useUpdateOnboardingStateMutation } from "@/app/api/mutations/useUpdateOnboardingStateMutation";
@@ -52,6 +52,7 @@ export function ChatRenderer({
     setConversationFilter,
     setOnboardingComplete,
   } = useChat();
+  const [isSelectingChats, setIsSelectingChats] = useState(false);
 
   // Initialize onboarding state from backend settings
   const [currentStep, setCurrentStep] = useState<number>(
@@ -294,13 +295,30 @@ export function ChatRenderer({
               conversations={conversations}
               isConversationsLoading={isConversationsLoading}
               onNewConversation={handleNewConversation}
+              onSelectionChange={setIsSelectingChats}
             />
           )}
         </AnimatedConditional>
       </div>
 
       {/* Main Content */}
-      <main className="overflow-hidden flex-1 flex items-center justify-center">
+      <main className="overflow-hidden flex-1 flex items-center justify-center relative">
+        {isSelectingChats && (
+          <div className="absolute inset-0 z-10 backdrop-blur-sm bg-background/60 flex items-center justify-center">
+            <div className="flex flex-col items-center gap-3 text-center px-8">
+              <div className="p-4 rounded-xl bg-muted">
+                <File className="h-8 w-8 text-muted-foreground" />
+              </div>
+              <p className="font-semibold text-foreground">
+                Select chats to delete
+              </p>
+              <p className="text-sm text-muted-foreground max-w-72">
+                Choose conversations from the sidebar then delete them all at
+                once
+              </p>
+            </div>
+          </div>
+        )}
         <motion.div
           initial={{
             width: showLayout ? "100%" : "100vw",
