@@ -21,6 +21,16 @@ import {
   type ComponentStatus,
   useConsoleStatusQuery,
 } from "@/app/api/queries/useConsoleStatusQuery";
+import {
+  type ProviderHealthResponse,
+  useProviderHealthQuery,
+} from "@/app/api/queries/useProviderHealthQuery";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 // ─── status helpers ──────────────────────────────────────────────────────────
@@ -460,7 +470,7 @@ export function ConsoleStatusPanel({ onClose }: ConsoleStatusPanelProps) {
 
   // Reuses the shared /provider/health query (same cache as the banner), so an
   // API-key failure surfaces here without an extra network round-trip.
-  const { health: providerHealth } = useProviderHealth();
+  const { data: providerHealth } = useProviderHealthQuery();
 
   // Defensive: always read from data.components array
   const backendComponents = Array.isArray(data?.components)
