@@ -1395,7 +1395,9 @@ def _build_azure_ai_foundry_url(
         end_segments = [s for s in target_subpath.split("/") if s] or ["models"]
         new_path = "/" + "/".join(base_segments + end_segments)
         existing_versions = [
-            v for v in query_params.get("api-version", []) if v in _AZURE_AI_FOUNDRY_OPENAI_V1_API_VERSIONS
+            v
+            for v in query_params.get("api-version", [])
+            if v in _AZURE_AI_FOUNDRY_OPENAI_V1_API_VERSIONS
         ]
         if existing_versions:
             query_params["api-version"] = existing_versions
