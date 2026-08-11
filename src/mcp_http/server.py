@@ -188,7 +188,7 @@ COMPONENT_CUSTOMIZATIONS: dict[tuple[str, str], dict[str, str]] = {
         "name": "openrag_delete_knowledge_filter",
         "description": "Delete a knowledge filter by ID.",
     },
-    # files endpoints
+    # files endpoints (v1)
     ("/v1/files/getAll", "GET"): {
         "name": "openrag_get_all_files",
         "description": (
@@ -198,9 +198,10 @@ COMPONENT_CUSTOMIZATIONS: dict[tuple[str, str], dict[str, str]] = {
             "Default limit is 100; maximum is 500."
         ),
     },
+    # files endpoints (v2 — composite-agg cursor pagination)
     ("/v2/files", "GET"): {
         "name": "openrag_list_files_v2",
-        "description": "lists all ingested files.",
+        "description": "List all ingested files with cursor-based composite-aggregation pagination.",
     },
     ("/v2/files/search", "GET"): {
         "name": "openrag_search_files_v2",
