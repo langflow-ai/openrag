@@ -68,6 +68,7 @@ __all__ = [
     "get_auth_service",
     "get_file_service_v2",
     "get_chat_service",
+    "get_chunk_draft_service",
     "get_connector_service",
     "get_current_user",
     "get_db_session",
@@ -159,6 +160,10 @@ def get_langflow_file_service(services: dict = Depends(get_services)):
 
 def get_ingest_preview_service(services: dict = Depends(get_services)):
     return services["ingest_preview_service"]
+
+
+def get_chunk_draft_service(services: dict = Depends(get_services)):
+    return services["chunk_draft_service"]
 
 
 def get_document_index_writer(services: dict = Depends(get_services)):

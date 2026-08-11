@@ -19,6 +19,7 @@ from connectors.service import ConnectorService
 from services.api_key_service import APIKeyService
 from services.auth_service import AuthService
 from services.chat_service import ChatService
+from services.chunk_draft_service import ChunkDraftService
 from services.dls_principal_service import DLSPrincipalService
 from services.docling_polling_service import DoclingPollingService
 from services.document_index_writer import DocumentIndexWriter
@@ -85,6 +86,7 @@ async def initialize_services():
     document_index_writer = DocumentIndexWriter()
     langflow_ingest_token_service = LangflowIngestTokenService()
     ingest_preview_service = IngestPreviewService()
+    chunk_draft_service = ChunkDraftService()
     document_service = DocumentService(
         session_manager=session_manager,
         models_service=models_service,
@@ -239,6 +241,7 @@ async def initialize_services():
         "docling_service": clients.docling_service,
         "docling_polling_service": docling_polling_service,
         "ingest_preview_service": ingest_preview_service,
+        "chunk_draft_service": chunk_draft_service,
         "rbac_service": rbac_service,
         "workspace_config_service": workspace_config_service,
         "file_service_v2": file_service_v2,

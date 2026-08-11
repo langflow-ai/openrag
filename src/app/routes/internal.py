@@ -89,6 +89,36 @@ def register_internal_routes(app: FastAPI):
         methods=["GET"],
         tags=["internal"],
     )
+    app.add_api_route(
+        "/ingest/preview/{task_id}/chunks",
+        ingest_preview.get_chunk_draft,
+        methods=["GET"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/ingest/preview/{task_id}/chunks/revert",
+        ingest_preview.revert_chunk_draft,
+        methods=["POST"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/ingest/preview/{task_id}/chunks/commit",
+        ingest_preview.commit_chunk_draft,
+        methods=["POST"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/ingest/preview/{task_id}/chunks/{chunk_id}",
+        ingest_preview.patch_chunk_draft,
+        methods=["PATCH"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/ingest/preview/{task_id}/chunks/{chunk_id}",
+        ingest_preview.delete_chunk_draft,
+        methods=["DELETE"],
+        tags=["internal"],
+    )
 
     # Task endpoints
     # Literal sub-paths must be registered before the parameterised /{task_id}
