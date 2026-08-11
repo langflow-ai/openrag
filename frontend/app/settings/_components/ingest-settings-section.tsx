@@ -6,7 +6,6 @@ import { toast } from "sonner";
 import {
   useGetAnthropicModelsQuery,
   useGetAzureAIFoundryModelsQuery,
-  useGetAzureOpenAIModelsQuery,
   useGetIBMModelsQuery,
   useGetOllamaModelsQuery,
   useGetOpenAIModelsQuery,
@@ -138,21 +137,6 @@ export function IngestSettingsSection() {
           !!settings?.providers?.azure_ai_foundry?.endpoint,
       },
     );
-  const { data: azureOpenAIModels, isLoading: azureOpenAILoading } =
-    useGetAzureOpenAIModelsQuery(
-      {
-        endpoint: settings?.providers?.azure_openai?.endpoint,
-        apiVersion: settings?.providers?.azure_openai?.api_version,
-        apiKey: "",
-      },
-      {
-        enabled:
-          settings?.providers?.azure_openai?.configured === true &&
-          !!settings?.providers?.azure_openai?.endpoint &&
-          !!settings?.providers?.azure_openai?.api_version,
-      },
-    );
-
   const groupedEmbeddingModels = useMemo(
     () =>
       [
@@ -184,13 +168,6 @@ export function IngestSettingsSection() {
           models: azureModels?.embedding_models || [],
           configured: settings.providers?.azure_ai_foundry?.configured === true,
         },
-        {
-          group: "Azure OpenAI",
-          provider: "azure_openai",
-          icon: getModelLogo("", "azure_openai"),
-          models: azureOpenAIModels?.embedding_models || [],
-          configured: settings.providers?.azure_openai?.configured === true,
-        },
       ]
         .filter((p) => p.configured)
         .map((p) => ({
@@ -203,21 +180,15 @@ export function IngestSettingsSection() {
       ollamaModels?.embedding_models,
       watsonxModels?.embedding_models,
       azureModels?.embedding_models,
-      azureOpenAIModels?.embedding_models,
       settings.providers?.openai?.configured,
       settings.providers?.ollama?.configured,
       settings.providers?.watsonx?.configured,
       settings.providers?.azure_ai_foundry?.configured,
-      settings.providers?.azure_openai?.configured,
     ],
   );
 
   const isLoadingAnyEmbeddingModels =
-    openaiLoading ||
-    ollamaLoading ||
-    watsonxLoading ||
-    azureLoading ||
-    azureOpenAILoading;
+    openaiLoading || ollamaLoading || watsonxLoading || azureLoading;
 
   const groupedVlmModels = useMemo(() => {
     const list: any[] = [];

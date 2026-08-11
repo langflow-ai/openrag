@@ -26,9 +26,7 @@ logger = get_logger(__name__)
 _UNSET = object()
 
 # Providers Langflow's unified Language Model / Embedding Model components can
-# route to (see change_langflow_model_value). azure_openai is deliberately
-# excluded: Langflow has no unified-catalog embeddings support for it and only
-# exposes it via a separate legacy standalone component.
+# route to (see change_langflow_model_value).
 LANGFLOW_MODEL_VALUE_PROVIDERS = frozenset(
     {"watsonx", "ollama", "openai", "anthropic", "azure_ai_foundry"}
 )

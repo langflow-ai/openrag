@@ -204,39 +204,38 @@ async def _update_langflow_global_variables(config, flows_service=None):
         # optional in Settings, and Azure's model inference API rejects
         # requests with no api-version at all, so Langflow needs the same
         # default OpenRAG's own calls already fall back to.
+        #
+        # Exception: the OpenAI-compatible ".../openai/v1" endpoint form takes
+        # no dated api-version at all (only the literal "v1"/"preview", and
+        # only for the /models listing route — never for actual chat/embedding
+        # calls). Sending a dated value there is what previously made
+        # Langflow-routed calls (onboarding ingestion) fail on that endpoint
+        # form even though Settings' own validation — which already has this
+        # same is_openai_v1 check — succeeded. Skip syncing this global
+        # variable entirely in that case so the Dockerfile.langflow patch's
+        # `if api_version_value:` naturally omits api_version/default_query.
         if config.providers.azure_ai_foundry.endpoint:
-            from api.provider_validation import AZURE_AI_FOUNDRY_DEFAULT_API_VERSION
-
-            await clients._create_langflow_global_variable(
-                "AZURE_AI_FOUNDRY_API_VERSION",
-                config.providers.azure_ai_foundry.api_version
-                or AZURE_AI_FOUNDRY_DEFAULT_API_VERSION,
-                modify=True,
+            from api.provider_validation import (
+                AZURE_AI_FOUNDRY_DEFAULT_API_VERSION,
+                is_azure_ai_foundry_openai_v1_endpoint,
             )
-            logger.info("Set AZURE_AI_FOUNDRY_API_VERSION global variable in Langflow")
 
-        # Azure OpenAI Service global variables
-        if config.providers.azure_openai.api_key:
-            await clients._create_langflow_global_variable(
-                "AZURE_API_KEY", config.providers.azure_openai.api_key, modify=True
-            )
-            logger.info("Set AZURE_API_KEY global variable in Langflow")
-
-        if config.providers.azure_openai.endpoint:
-            from utils.container_utils import normalize_azure_openai_base
-
-            await clients._create_langflow_global_variable(
-                "AZURE_API_BASE",
-                normalize_azure_openai_base(config.providers.azure_openai.endpoint),
-                modify=True,
-            )
-            logger.info("Set AZURE_API_BASE global variable in Langflow")
-
-        if config.providers.azure_openai.api_version:
-            await clients._create_langflow_global_variable(
-                "AZURE_API_VERSION", config.providers.azure_openai.api_version, modify=True
-            )
-            logger.info("Set AZURE_API_VERSION global variable in Langflow")
+            if is_azure_ai_foundry_openai_v1_endpoint(config.providers.azure_ai_foundry.endpoint):
+                await clients._create_langflow_global_variable(
+                    "AZURE_AI_FOUNDRY_API_VERSION", "", modify=True
+                )
+                logger.info(
+                    "Cleared AZURE_AI_FOUNDRY_API_VERSION global variable in Langflow "
+                    "(openai/v1 endpoint takes no dated api-version)"
+                )
+            else:
+                await clients._create_langflow_global_variable(
+                    "AZURE_AI_FOUNDRY_API_VERSION",
+                    config.providers.azure_ai_foundry.api_version
+                    or AZURE_AI_FOUNDRY_DEFAULT_API_VERSION,
+                    modify=True,
+                )
+                logger.info("Set AZURE_AI_FOUNDRY_API_VERSION global variable in Langflow")
 
         if config.knowledge.embedding_model:
             await _upsert_langflow_global_variable(
@@ -410,8 +409,6 @@ async def _update_langflow_model_values(
             current_llm_provider = config.agent.llm_provider.lower()
             for provider in llm_providers:
                 if provider not in LANGFLOW_MODEL_VALUE_PROVIDERS:
-                    # e.g. azure_openai: configured for direct LiteLLM calls but
-                    # not routable through Langflow's unified flow components.
                     logger.debug(f"Skipping Langflow flow sync for provider {provider}")
                     continue
                 # Use configured model for current provider, or None (first available) for others

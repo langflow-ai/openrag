@@ -37,7 +37,6 @@ from api.settings.models import (
     AgentConfig,
     AnthropicProviderConfig,
     AzureAIFoundryProviderConfig,
-    AzureOpenAIProviderConfig,
     DoclingPresetBody,
     DoclingPresetResponse,
     IngestionDefaultsConfig,
@@ -271,22 +270,6 @@ async def get_settings(
                         has_api_key=False, endpoint=None, api_version=None, configured=False
                     )
                 ),
-                azure_openai=(
-                    AzureOpenAIProviderConfig(
-                        has_api_key=bool(openrag_config.providers.azure_openai.api_key),
-                        endpoint=openrag_config.providers.azure_openai.endpoint or None,
-                        api_version=openrag_config.providers.azure_openai.api_version or None,
-                        configured=openrag_config.providers.azure_openai.configured,
-                        llm_deployment_name=openrag_config.providers.azure_openai.llm_deployment_name
-                        or None,
-                        embedding_deployment_name=openrag_config.providers.azure_openai.embedding_deployment_name
-                        or None,
-                    )
-                    if is_azure_ai_enabled()
-                    else AzureOpenAIProviderConfig(
-                        has_api_key=False, endpoint=None, api_version=None, configured=False
-                    )
-                ),
             )
             if show_providers
             else None,
@@ -372,9 +355,6 @@ async def update_settings(
             "azure_ai_foundry_api_key",
             "azure_ai_foundry_endpoint",
             "azure_ai_foundry_api_version",
-            "azure_openai_api_key",
-            "azure_openai_endpoint",
-            "azure_openai_api_version",
         ]
 
         should_validate = any(getattr(body, field) is not None for field in provider_fields)
@@ -382,14 +362,11 @@ async def update_settings(
         # Reject any attempt to select or configure Azure providers while the
         # feature flag is off, before running provider validation network calls.
         azure_touched = (
-            body.llm_provider in ("azure_ai_foundry", "azure_openai")
-            or body.embedding_provider in ("azure_ai_foundry", "azure_openai")
+            body.llm_provider == "azure_ai_foundry"
+            or body.embedding_provider == "azure_ai_foundry"
             or body.azure_ai_foundry_api_key is not None
             or body.azure_ai_foundry_endpoint is not None
             or body.azure_ai_foundry_api_version is not None
-            or body.azure_openai_api_key is not None
-            or body.azure_openai_endpoint is not None
-            or body.azure_openai_api_version is not None
         )
         if azure_touched and not is_azure_ai_enabled():
             return JSONResponse(
@@ -549,8 +526,6 @@ async def update_settings(
             effective_llm_provider = body.llm_provider or working_config.agent.llm_provider
             if effective_llm_provider == "azure_ai_foundry":
                 working_config.providers.azure_ai_foundry.llm_deployment_name = body.llm_model
-            elif effective_llm_provider == "azure_openai":
-                working_config.providers.azure_openai.llm_deployment_name = body.llm_model
 
         if body.llm_provider is not None:
             old_provider = working_config.agent.llm_provider
@@ -593,10 +568,6 @@ async def update_settings(
             )
             if effective_embedding_provider == "azure_ai_foundry":
                 working_config.providers.azure_ai_foundry.embedding_deployment_name = (
-                    new_embedding_model
-                )
-            elif effective_embedding_provider == "azure_openai":
-                working_config.providers.azure_openai.embedding_deployment_name = (
                     new_embedding_model
                 )
 
@@ -872,30 +843,6 @@ async def update_settings(
             config_updated = True
             provider_updated = True
 
-        if body.azure_openai_api_key is not None and body.azure_openai_api_key.strip():
-            working_config.providers.azure_openai.api_key = body.azure_openai_api_key.strip()
-            working_config.providers.azure_openai.configured = True
-            config_updated = True
-            provider_updated = True
-
-        if body.azure_openai_endpoint is not None:
-            from utils.container_utils import normalize_azure_openai_base
-
-            working_config.providers.azure_openai.endpoint = normalize_azure_openai_base(
-                body.azure_openai_endpoint.strip()
-            )
-            working_config.providers.azure_openai.configured = True
-            config_updated = True
-            provider_updated = True
-
-        if body.azure_openai_api_version is not None:
-            working_config.providers.azure_openai.api_version = (
-                body.azure_openai_api_version.strip()
-            )
-            working_config.providers.azure_openai.configured = True
-            config_updated = True
-            provider_updated = True
-
         if body.remove_ollama_config:
             other_providers_configured = (
                 working_config.providers.openai.configured
@@ -1055,44 +1002,6 @@ async def update_settings(
             config_updated = True
             provider_updated = True
 
-        if body.remove_azure_openai_config:
-            other_providers_configured = (
-                working_config.providers.openai.configured
-                or working_config.providers.anthropic.configured
-                or working_config.providers.watsonx.configured
-                or working_config.providers.ollama.configured
-                or working_config.providers.azure_ai_foundry.configured
-            )
-            if not other_providers_configured:
-                return JSONResponse(
-                    {
-                        "error": "Cannot remove Azure OpenAI configuration: configure another model provider first."
-                    },
-                    status_code=400,
-                )
-            if not body.force_remove:
-                affected = await _affected_embedding_models(
-                    "azure_openai", session_manager, user, models_service
-                )
-                if affected:
-                    return _embedding_conflict_response("Azure OpenAI", "azure_openai", affected)
-            working_config.providers.azure_openai.api_key = ""
-            working_config.providers.azure_openai.endpoint = ""
-            working_config.providers.azure_openai.api_version = ""
-            working_config.providers.azure_openai.configured = False
-            working_config.providers.azure_openai.llm_deployment_name = ""
-            working_config.providers.azure_openai.embedding_deployment_name = ""
-            if working_config.agent.llm_provider == "azure_openai":
-                fb = _first_configured_llm_provider(working_config, "azure_openai")
-                working_config.agent.llm_provider = fb
-                working_config.agent.llm_model = _default_llm_model(fb)
-            if working_config.knowledge.embedding_provider == "azure_openai":
-                fb = _first_configured_embedding_provider(working_config, "azure_openai")
-                working_config.knowledge.embedding_provider = fb
-                working_config.knowledge.embedding_model = _default_embedding_model(fb)
-            config_updated = True
-            provider_updated = True
-
         if provider_updated:
             await TelemetryClient.send_event(
                 Category.SETTINGS_OPERATIONS, MessageId.ORB_SETTINGS_PROVIDER_CREDS
@@ -1176,14 +1085,11 @@ async def onboarding(
         log_bootstrap_env(logger, "onboarding")
 
         azure_touched = (
-            body.llm_provider in ("azure_ai_foundry", "azure_openai")
-            or body.embedding_provider in ("azure_ai_foundry", "azure_openai")
+            body.llm_provider == "azure_ai_foundry"
+            or body.embedding_provider == "azure_ai_foundry"
             or body.azure_ai_foundry_api_key is not None
             or body.azure_ai_foundry_endpoint is not None
             or body.azure_ai_foundry_api_version is not None
-            or body.azure_openai_api_key is not None
-            or body.azure_openai_endpoint is not None
-            or body.azure_openai_api_version is not None
         )
         if azure_touched and not is_azure_ai_enabled():
             return JSONResponse(
@@ -1221,8 +1127,6 @@ async def onboarding(
             effective_llm_provider = body.llm_provider or current_config.agent.llm_provider
             if effective_llm_provider == "azure_ai_foundry":
                 current_config.providers.azure_ai_foundry.llm_deployment_name = llm_model_selected
-            elif effective_llm_provider == "azure_openai":
-                current_config.providers.azure_openai.llm_deployment_name = llm_model_selected
 
         if body.llm_provider:
             llm_provider_selected = body.llm_provider.strip()
@@ -1255,10 +1159,6 @@ async def onboarding(
             )
             if effective_embedding_provider == "azure_ai_foundry":
                 current_config.providers.azure_ai_foundry.embedding_deployment_name = (
-                    embedding_model_selected
-                )
-            elif effective_embedding_provider == "azure_openai":
-                current_config.providers.azure_openai.embedding_deployment_name = (
                     embedding_model_selected
                 )
 
@@ -1326,27 +1226,6 @@ async def onboarding(
             )
             config_updated = True
 
-        if body.azure_openai_api_key:
-            current_config.providers.azure_openai.api_key = body.azure_openai_api_key.strip()
-            current_config.providers.azure_openai.configured = True
-            config_updated = True
-
-        if body.azure_openai_endpoint:
-            from utils.container_utils import normalize_azure_openai_base
-
-            current_config.providers.azure_openai.endpoint = normalize_azure_openai_base(
-                body.azure_openai_endpoint.strip()
-            )
-            current_config.providers.azure_openai.configured = True
-            config_updated = True
-
-        if body.azure_openai_api_version:
-            current_config.providers.azure_openai.api_version = (
-                body.azure_openai_api_version.strip()
-            )
-            current_config.providers.azure_openai.configured = True
-            config_updated = True
-
         # Mark providers as configured if they were chosen during onboarding
         # Check LLM provider
         if body.llm_provider:
@@ -1375,14 +1254,6 @@ async def onboarding(
             ):
                 current_config.providers.azure_ai_foundry.configured = True
                 logger.info("Marked Azure AI Foundry as configured (chosen as LLM provider)")
-            elif (
-                llm_provider == "azure_openai"
-                and current_config.providers.azure_openai.api_key
-                and current_config.providers.azure_openai.endpoint
-                and current_config.providers.azure_openai.api_version
-            ):
-                current_config.providers.azure_openai.configured = True
-                logger.info("Marked Azure OpenAI as configured (chosen as LLM provider)")
 
         # Check embedding provider
         if body.embedding_provider:
@@ -1408,14 +1279,6 @@ async def onboarding(
             ):
                 current_config.providers.azure_ai_foundry.configured = True
                 logger.info("Marked Azure AI Foundry as configured (chosen as embedding provider)")
-            elif (
-                embedding_provider == "azure_openai"
-                and current_config.providers.azure_openai.api_key
-                and current_config.providers.azure_openai.endpoint
-                and current_config.providers.azure_openai.api_version
-            ):
-                current_config.providers.azure_openai.configured = True
-                logger.info("Marked Azure OpenAI as configured (chosen as embedding provider)")
 
         should_ingest_sample_data = INGEST_SAMPLE_DATA
         if should_ingest_sample_data:
@@ -1502,9 +1365,6 @@ async def onboarding(
                     body.azure_ai_foundry_api_key,
                     body.azure_ai_foundry_endpoint,
                     body.azure_ai_foundry_api_version,
-                    body.azure_openai_api_key,
-                    body.azure_openai_endpoint,
-                    body.azure_openai_api_version,
                 ]
             )
 

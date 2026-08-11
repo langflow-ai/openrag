@@ -26,9 +26,8 @@ _LLM_PROVIDER_NAMES = (
     "watsonx",
     "ollama",
     "azure_ai_foundry",
-    "azure_openai",
 )
-_EMBEDDING_PROVIDER_NAMES = ("openai", "watsonx", "ollama", "azure_ai_foundry", "azure_openai")
+_EMBEDDING_PROVIDER_NAMES = ("openai", "watsonx", "ollama", "azure_ai_foundry")
 
 
 def _configured_provider_names(config, provider_names) -> list:

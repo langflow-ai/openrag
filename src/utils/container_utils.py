@@ -200,26 +200,6 @@ def transform_localhost_url(url: str) -> str:
     return replace_localhost_patterns(url, container_host)
 
 
-def normalize_azure_openai_base(endpoint: str) -> str:
-    """Reduce an Azure OpenAI endpoint to its resource root (no trailing slash).
-
-    LiteLLM's ``azure/`` route appends ``/openai/deployments/<name>/...`` to
-    ``AZURE_API_BASE`` itself, so the base must be the bare resource root
-    (``https://<resource>.openai.azure.com``). Users commonly paste the v1
-    surface (``…/openai/v1``) or a stray ``…/openai`` suffix; left un-normalized
-    those produce a doubled path and a 404 ("Resource not found") at inference
-    time even though a hand-built validation call succeeds.
-    """
-    if not endpoint:
-        return endpoint
-    base = endpoint.strip().rstrip("/")
-    for suffix in ("/openai/v1", "/openai"):
-        if base.endswith(suffix):
-            base = base[: -len(suffix)]
-            break
-    return base.rstrip("/")
-
-
 def guess_host_ip_for_containers(logger=None) -> str:
     """Best-effort detection of a host IP reachable from container networks.
 
