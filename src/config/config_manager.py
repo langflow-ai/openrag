@@ -145,6 +145,7 @@ class AzureAIFoundryConfig:
 
     api_key: str = ""
     endpoint: str = ""  # e.g. https://<resource>.services.ai.azure.com/models
+    api_version: str = ""  # optional, e.g. 2024-05-01-preview
     configured: bool = False
     llm_deployment_name: str = ""
     embedding_deployment_name: str = ""
@@ -494,6 +495,10 @@ class ConfigManager:
             if os.getenv("AZURE_AI_API_BASE"):
                 config_data["providers"]["azure_ai_foundry"]["endpoint"] = os.getenv(
                     "AZURE_AI_API_BASE"
+                )
+            if os.getenv("AZURE_AI_API_VERSION"):
+                config_data["providers"]["azure_ai_foundry"]["api_version"] = os.getenv(
+                    "AZURE_AI_API_VERSION"
                 )
 
             if os.getenv("AZURE_OPENAI_API_KEY"):

@@ -2,6 +2,7 @@
 
 import json
 import re
+from urllib.parse import quote
 
 import httpx
 
@@ -9,6 +10,14 @@ from utils.container_utils import normalize_azure_openai_base, transform_localho
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+
+def _with_api_version(url: str, api_version: str | None) -> str:
+    """Append ``api-version`` as a query parameter, if provided."""
+    if not api_version:
+        return url
+    separator = "&" if "?" in url else "?"
+    return f"{url}{separator}api-version={quote(api_version, safe='')}"
 
 # Peel leading "Error <label>:" wrappers (e.g. Langflow graph/component noise).
 # Requires a label after "Error" so bare "Error: …" messages are preserved.
@@ -589,7 +598,7 @@ async def validate_provider_setup(
         project_id: Project ID (required for watsonx)
         test_completion: If True, performs full validation with completion/embedding tests (consumes credits).
                         If False, performs lightweight validation (no credits consumed). Default: False.
-        api_version: API version (required for azure_openai).
+        api_version: API version (required for azure_openai; optional for azure_ai_foundry).
 
     Raises:
         Exception: If validation fails, raises the original exception with the actual error message.
@@ -659,7 +668,7 @@ async def test_lightweight_health(
     elif provider == "anthropic":
         await _test_anthropic_lightweight_health(api_key)
     elif provider == "azure_ai_foundry":
-        await _test_azure_ai_foundry_lightweight_health(api_key, endpoint)
+        await _test_azure_ai_foundry_lightweight_health(api_key, endpoint, api_version)
     elif provider == "azure_openai":
         await _test_azure_openai_lightweight_health(api_key, endpoint, api_version)
     else:
@@ -685,7 +694,7 @@ async def test_completion_with_tools(
     elif provider == "anthropic":
         await _test_anthropic_completion_with_tools(api_key, llm_model)
     elif provider == "azure_ai_foundry":
-        await _test_azure_ai_foundry_completion(api_key, llm_model, endpoint)
+        await _test_azure_ai_foundry_completion(api_key, llm_model, endpoint, api_version)
     elif provider == "azure_openai":
         await _test_azure_openai_completion(api_key, llm_model, endpoint, api_version)
     else:
@@ -709,7 +718,7 @@ async def test_embedding(
     elif provider == "ollama":
         await _test_ollama_embedding(embedding_model, endpoint)
     elif provider == "azure_ai_foundry":
-        await _test_azure_ai_foundry_embedding(api_key, embedding_model, endpoint)
+        await _test_azure_ai_foundry_embedding(api_key, embedding_model, endpoint, api_version)
     elif provider == "azure_openai":
         await _test_azure_openai_embedding(api_key, embedding_model, endpoint, api_version)
     else:
@@ -1298,7 +1307,9 @@ async def _test_anthropic_completion_with_tools(api_key: str, llm_model: str) ->
 
 
 # Azure AI Foundry validation functions
-async def _test_azure_ai_foundry_lightweight_health(api_key: str, endpoint: str) -> None:
+async def _test_azure_ai_foundry_lightweight_health(
+    api_key: str, endpoint: str, api_version: str | None = None
+) -> None:
     """Test Azure AI Foundry credentials with a lightweight GET to the models endpoint."""
     if not api_key:
         raise Exception("Azure AI Foundry API key is required.")
@@ -1308,7 +1319,7 @@ async def _test_azure_ai_foundry_lightweight_health(api_key: str, endpoint: str)
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                endpoint.rstrip("/"),
+                _with_api_version(endpoint.rstrip("/"), api_version),
                 headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                 timeout=10.0,
             )
@@ -1329,7 +1340,9 @@ async def _test_azure_ai_foundry_lightweight_health(api_key: str, endpoint: str)
         raise
 
 
-async def _test_azure_ai_foundry_completion(api_key: str, llm_model: str, endpoint: str) -> None:
+async def _test_azure_ai_foundry_completion(
+    api_key: str, llm_model: str, endpoint: str, api_version: str | None = None
+) -> None:
     """Test Azure AI Foundry chat completion with the given deployment."""
     if not api_key:
         raise Exception("Azure AI Foundry API key is required.")
@@ -1339,7 +1352,9 @@ async def _test_azure_ai_foundry_completion(api_key: str, llm_model: str, endpoi
         raise Exception("A deployment name is required to test Azure AI Foundry completion.")
 
     try:
-        completions_url = f"{endpoint.rstrip('/')}/chat/completions"
+        completions_url = _with_api_version(
+            f"{endpoint.rstrip('/')}/chat/completions", api_version
+        )
         payload = {
             "model": llm_model,
             "messages": [{"role": "user", "content": "Hello"}],
@@ -1378,7 +1393,7 @@ async def _test_azure_ai_foundry_completion(api_key: str, llm_model: str, endpoi
 
 
 async def _test_azure_ai_foundry_embedding(
-    api_key: str, embedding_model: str, endpoint: str
+    api_key: str, embedding_model: str, endpoint: str, api_version: str | None = None
 ) -> None:
     """Test Azure AI Foundry embedding generation with the given deployment."""
     if not api_key:
@@ -1389,7 +1404,7 @@ async def _test_azure_ai_foundry_embedding(
         raise Exception("A deployment name is required to test Azure AI Foundry embeddings.")
 
     try:
-        embeddings_url = f"{endpoint.rstrip('/')}/embeddings"
+        embeddings_url = _with_api_version(f"{endpoint.rstrip('/')}/embeddings", api_version)
         payload = {"model": embedding_model, "input": ["test"]}
         async with httpx.AsyncClient() as client:
             response = await client.post(

@@ -1,4 +1,5 @@
-import { useFormContext } from "react-hook-form";
+import { Controller, useFormContext } from "react-hook-form";
+import { ModelSelector } from "@/app/onboarding/_components/model-selector";
 import { LabelWrapper } from "@/components/label-wrapper";
 import { Input } from "@/components/ui/input";
 
@@ -10,6 +11,17 @@ export interface AzureOpenAISettingsFormData {
   embeddingDeploymentName: string;
 }
 
+// Common Azure OpenAI API versions. Not exhaustive — Azure ships new versions
+// regularly, so the combobox also accepts a custom value.
+const apiVersionOptions = [
+  { value: "2024-10-21", label: "2024-10-21 (GA)" },
+  { value: "2024-08-01-preview", label: "2024-08-01-preview" },
+  { value: "2024-06-01", label: "2024-06-01" },
+  { value: "2024-05-01-preview", label: "2024-05-01-preview" },
+  { value: "2024-02-01", label: "2024-02-01" },
+  { value: "2023-05-15", label: "2023-05-15" },
+];
+
 export function AzureOpenAISettingsForm({
   modelsError,
   isLoadingModels,
@@ -18,6 +30,7 @@ export function AzureOpenAISettingsForm({
   isLoadingModels?: boolean;
 }) {
   const {
+    control,
     register,
     formState: { errors },
   } = useFormContext<AzureOpenAISettingsFormData>();
@@ -74,20 +87,26 @@ export function AzureOpenAISettingsForm({
       <div className="space-y-2">
         <LabelWrapper
           label="API Version"
-          helperText="e.g. 2024-10-21 (from the deployment's Target URI)"
+          helperText="From the deployment's Target URI. Pick a version below or type a custom one."
           required
           id="azure-openai-api-version"
         >
-          <Input
-            {...register("apiVersion", {
-              required: "API version is required",
-            })}
-            className={
-              errors.apiVersion || modelsError ? "!border-destructive" : ""
-            }
-            id="azure-openai-api-version"
-            type="text"
-            placeholder="2024-10-21"
+          <Controller
+            control={control}
+            name="apiVersion"
+            rules={{ required: "API version is required" }}
+            render={({ field }) => (
+              <ModelSelector
+                options={apiVersionOptions}
+                value={field.value}
+                custom
+                onValueChange={field.onChange}
+                searchPlaceholder="Search or enter a version..."
+                noOptionsPlaceholder="No API versions available"
+                placeholder="Select API version..."
+                hasError={!!errors.apiVersion || !!modelsError}
+              />
+            )}
           />
         </LabelWrapper>
         {errors.apiVersion && (

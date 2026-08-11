@@ -57,6 +57,7 @@ async function throwModelsFetchError(
 export interface AzureAIFoundryModelsParams {
   endpoint?: string;
   apiKey?: string;
+  apiVersion?: string;
   llmDeploymentName?: string;
   embeddingDeploymentName?: string;
   testCompletion?: boolean;
@@ -243,12 +244,14 @@ export const useGetAzureAIFoundryModelsQuery = (
     const body: {
       endpoint?: string;
       api_key?: string;
+      api_version?: string;
       llm_deployment_name?: string;
       embedding_deployment_name?: string;
       test_completion?: boolean;
     } = {};
     if (params?.endpoint) body.endpoint = params.endpoint;
     if (params?.apiKey) body.api_key = params.apiKey;
+    if (params?.apiVersion) body.api_version = params.apiVersion;
     if (params?.llmDeploymentName)
       body.llm_deployment_name = params.llmDeploymentName;
     if (params?.embeddingDeploymentName)
@@ -390,6 +393,7 @@ export const useGetCurrentProviderModelsQuery = (
   const azureModels = useGetAzureAIFoundryModelsQuery(
     {
       endpoint: settings?.providers?.azure_ai_foundry?.endpoint,
+      apiVersion: settings?.providers?.azure_ai_foundry?.api_version,
       apiKey: "",
     },
     {

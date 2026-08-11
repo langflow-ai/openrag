@@ -71,6 +71,7 @@ const AzureAIFoundrySettingsDialog = ({
     defaultValues: {
       endpoint: settings.providers?.azure_ai_foundry?.endpoint ?? "",
       apiKey: "",
+      apiVersion: settings.providers?.azure_ai_foundry?.api_version ?? "",
       llmDeploymentName:
         settings.providers?.azure_ai_foundry?.llm_deployment_name ?? "",
       embeddingDeploymentName:
@@ -89,11 +90,12 @@ const AzureAIFoundrySettingsDialog = ({
   const { handleSubmit, watch } = methods;
   const endpoint = watch("endpoint");
   const apiKey = watch("apiKey");
+  const apiVersion = watch("apiVersion");
   const llmDeploymentName = watch("llmDeploymentName");
   const embeddingDeploymentName = watch("embeddingDeploymentName");
 
   const { refetch: validateCredentials } = useGetAzureAIFoundryModelsQuery(
-    { endpoint, apiKey },
+    { endpoint, apiKey, apiVersion: apiVersion || undefined },
     { enabled: false },
   );
 
@@ -101,6 +103,7 @@ const AzureAIFoundrySettingsDialog = ({
     {
       endpoint,
       apiKey,
+      apiVersion: apiVersion || undefined,
       llmDeploymentName: llmDeploymentName || undefined,
       embeddingDeploymentName: embeddingDeploymentName || undefined,
       testCompletion: true,
@@ -186,6 +189,7 @@ const AzureAIFoundrySettingsDialog = ({
     const payload: {
       azure_ai_foundry_endpoint: string;
       azure_ai_foundry_api_key?: string;
+      azure_ai_foundry_api_version?: string;
       llm_model?: string;
       llm_provider?: string;
       embedding_model?: string;
@@ -196,6 +200,9 @@ const AzureAIFoundrySettingsDialog = ({
 
     if (data.apiKey) {
       payload.azure_ai_foundry_api_key = data.apiKey;
+    }
+    if (data.apiVersion) {
+      payload.azure_ai_foundry_api_version = data.apiVersion;
     }
     if (data.llmDeploymentName) {
       payload.llm_model = data.llmDeploymentName;

@@ -210,6 +210,7 @@ const OnboardingCard = ({
     ollama_endpoint: "",
     azure_ai_foundry_api_key: "",
     azure_ai_foundry_endpoint: "",
+    azure_ai_foundry_api_version: "",
     azure_openai_api_key: "",
     azure_openai_endpoint: "",
     azure_openai_api_version: "",
@@ -517,6 +518,10 @@ const OnboardingCard = ({
       if (settings.azure_ai_foundry_endpoint) {
         onboardingData.azure_ai_foundry_endpoint =
           settings.azure_ai_foundry_endpoint;
+      }
+      if (settings.azure_ai_foundry_api_version) {
+        onboardingData.azure_ai_foundry_api_version =
+          settings.azure_ai_foundry_api_version;
       }
     } else if (currentProvider === "azure_openai") {
       if (settings.azure_openai_api_key) {
@@ -861,6 +866,10 @@ const OnboardingCard = ({
                       }
                       existingEndpoint={
                         currentSettings?.providers?.azure_ai_foundry?.endpoint
+                      }
+                      existingApiVersion={
+                        currentSettings?.providers?.azure_ai_foundry
+                          ?.api_version
                       }
                     />
                   </TabsContent>

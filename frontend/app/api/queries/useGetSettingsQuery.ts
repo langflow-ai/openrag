@@ -54,6 +54,7 @@ export interface ProviderSettings {
   azure_ai_foundry?: {
     has_api_key?: boolean;
     endpoint?: string;
+    api_version?: string;
     configured?: boolean;
     llm_deployment_name?: string;
     embedding_deployment_name?: string;

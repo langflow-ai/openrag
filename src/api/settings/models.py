@@ -46,6 +46,7 @@ class SettingsUpdateBody(BaseModel):
     ollama_endpoint: str | None = Field(None, min_length=1)
     azure_ai_foundry_api_key: str | None = Field(None, min_length=1)
     azure_ai_foundry_endpoint: str | None = Field(None, min_length=1)
+    azure_ai_foundry_api_version: str | None = Field(None, min_length=1)
     azure_openai_api_key: str | None = Field(None, min_length=1)
     azure_openai_endpoint: str | None = Field(None, min_length=1)
     azure_openai_api_version: str | None = Field(None, min_length=1)
@@ -78,6 +79,7 @@ class OnboardingBody(BaseModel):
     ollama_endpoint: str | None = Field(None, min_length=1)
     azure_ai_foundry_api_key: str | None = Field(None, min_length=1)
     azure_ai_foundry_endpoint: str | None = Field(None, min_length=1)
+    azure_ai_foundry_api_version: str | None = Field(None, min_length=1)
     azure_openai_api_key: str | None = Field(None, min_length=1)
     azure_openai_endpoint: str | None = Field(None, min_length=1)
     azure_openai_api_version: str | None = Field(None, min_length=1)
@@ -191,6 +193,7 @@ class OllamaProviderConfig(BaseModel):
 class AzureAIFoundryProviderConfig(BaseModel):
     has_api_key: bool
     endpoint: str | None
+    api_version: str | None = None
     configured: bool
     llm_deployment_name: str | None = None
     embedding_deployment_name: str | None = None

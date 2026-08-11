@@ -259,6 +259,7 @@ async def get_settings(
                     AzureAIFoundryProviderConfig(
                         has_api_key=bool(openrag_config.providers.azure_ai_foundry.api_key),
                         endpoint=openrag_config.providers.azure_ai_foundry.endpoint or None,
+                        api_version=openrag_config.providers.azure_ai_foundry.api_version or None,
                         configured=openrag_config.providers.azure_ai_foundry.configured,
                         llm_deployment_name=openrag_config.providers.azure_ai_foundry.llm_deployment_name
                         or None,
@@ -267,7 +268,7 @@ async def get_settings(
                     )
                     if is_azure_ai_enabled()
                     else AzureAIFoundryProviderConfig(
-                        has_api_key=False, endpoint=None, configured=False
+                        has_api_key=False, endpoint=None, api_version=None, configured=False
                     )
                 ),
                 azure_openai=(
@@ -370,6 +371,7 @@ async def update_settings(
             "ollama_endpoint",
             "azure_ai_foundry_api_key",
             "azure_ai_foundry_endpoint",
+            "azure_ai_foundry_api_version",
             "azure_openai_api_key",
             "azure_openai_endpoint",
             "azure_openai_api_version",
@@ -384,6 +386,7 @@ async def update_settings(
             or body.embedding_provider in ("azure_ai_foundry", "azure_openai")
             or body.azure_ai_foundry_api_key is not None
             or body.azure_ai_foundry_endpoint is not None
+            or body.azure_ai_foundry_api_version is not None
             or body.azure_openai_api_key is not None
             or body.azure_openai_endpoint is not None
             or body.azure_openai_api_version is not None
@@ -862,6 +865,13 @@ async def update_settings(
             config_updated = True
             provider_updated = True
 
+        if body.azure_ai_foundry_api_version is not None:
+            current_config.providers.azure_ai_foundry.api_version = (
+                body.azure_ai_foundry_api_version.strip()
+            )
+            config_updated = True
+            provider_updated = True
+
         if body.azure_openai_api_key is not None and body.azure_openai_api_key.strip():
             current_config.providers.azure_openai.api_key = body.azure_openai_api_key.strip()
             current_config.providers.azure_openai.configured = True
@@ -1170,6 +1180,7 @@ async def onboarding(
             or body.embedding_provider in ("azure_ai_foundry", "azure_openai")
             or body.azure_ai_foundry_api_key is not None
             or body.azure_ai_foundry_endpoint is not None
+            or body.azure_ai_foundry_api_version is not None
             or body.azure_openai_api_key is not None
             or body.azure_openai_endpoint is not None
             or body.azure_openai_api_version is not None
@@ -1307,6 +1318,12 @@ async def onboarding(
                 body.azure_ai_foundry_endpoint.strip()
             )
             current_config.providers.azure_ai_foundry.configured = True
+            config_updated = True
+
+        if body.azure_ai_foundry_api_version:
+            current_config.providers.azure_ai_foundry.api_version = (
+                body.azure_ai_foundry_api_version.strip()
+            )
             config_updated = True
 
         if body.azure_openai_api_key:
@@ -1486,6 +1503,7 @@ async def onboarding(
                     body.ollama_endpoint,
                     body.azure_ai_foundry_api_key,
                     body.azure_ai_foundry_endpoint,
+                    body.azure_ai_foundry_api_version,
                     body.azure_openai_api_key,
                     body.azure_openai_endpoint,
                     body.azure_openai_api_version,

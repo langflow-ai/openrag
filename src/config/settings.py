@@ -3,7 +3,7 @@ import concurrent.futures
 import os
 import threading
 from typing import Any
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import quote, urlsplit, urlunsplit
 
 import httpx
 from agentd.patch import patch_openai_with_mcp
@@ -1189,7 +1189,18 @@ class AppClients:
                     os.environ["AZURE_AI_API_KEY"] = config.providers.azure_ai_foundry.api_key
                     logger.debug("Loaded Azure AI Foundry API key from config")
                 if config.providers.azure_ai_foundry.endpoint:
-                    os.environ["AZURE_AI_API_BASE"] = config.providers.azure_ai_foundry.endpoint
+                    azure_ai_api_base = config.providers.azure_ai_foundry.endpoint
+                    # LiteLLM's azure_ai transformation only adds "?api-version=..."
+                    # from an explicit api_version kwarg it never receives here, so
+                    # bake it into the base URL instead — litellm preserves any
+                    # existing query params on api_base when building the request.
+                    if config.providers.azure_ai_foundry.api_version:
+                        separator = "&" if "?" in azure_ai_api_base else "?"
+                        azure_ai_api_base = (
+                            f"{azure_ai_api_base}{separator}api-version="
+                            f"{quote(config.providers.azure_ai_foundry.api_version, safe='')}"
+                        )
+                    os.environ["AZURE_AI_API_BASE"] = azure_ai_api_base
                     logger.debug("Loaded Azure AI Foundry endpoint from config")
 
                 # Set Azure OpenAI Service credentials (LiteLLM azure/ prefix).

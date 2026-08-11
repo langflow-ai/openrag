@@ -1,10 +1,23 @@
 import type { Dispatch, SetStateAction } from "react";
 import { useState } from "react";
 import { LabelInput } from "@/components/label-input";
+import { LabelWrapper } from "@/components/label-wrapper";
 import { useDebouncedValue } from "@/lib/debounce";
 import type { OnboardingVariables } from "../../api/mutations/useOnboardingMutation";
 import { useGetAzureOpenAIModelsQuery } from "../../api/queries/useGetModelsQuery";
 import { useUpdateSettings } from "../_hooks/useUpdateSettings";
+import { ModelSelector } from "./model-selector";
+
+// Common Azure OpenAI API versions. Not exhaustive — Azure ships new versions
+// regularly, so the combobox also accepts a custom value.
+const apiVersionOptions = [
+  { value: "2024-10-21", label: "2024-10-21 (GA)" },
+  { value: "2024-08-01-preview", label: "2024-08-01-preview" },
+  { value: "2024-06-01", label: "2024-06-01" },
+  { value: "2024-05-01-preview", label: "2024-05-01-preview" },
+  { value: "2024-02-01", label: "2024-02-01" },
+  { value: "2023-05-15", label: "2023-05-15" },
+];
 
 export function AzureOpenAIOnboarding({
   setSettings,
@@ -100,16 +113,23 @@ export function AzureOpenAIOnboarding({
             />
           </div>
           <div className="space-y-1">
-            <LabelInput
+            <LabelWrapper
               label="API version"
-              helperText="e.g. 2024-10-21 (from the deployment's Target URI)"
-              className={showModelsError ? "!border-destructive" : ""}
+              helperText="From the deployment's Target URI. Pick a version below or type a custom one."
               id="azure-openai-api-version"
               required
-              placeholder="2024-10-21"
-              value={apiVersion}
-              onChange={(e) => setApiVersion(e.target.value)}
-            />
+            >
+              <ModelSelector
+                options={apiVersionOptions}
+                value={apiVersion}
+                custom
+                onValueChange={setApiVersion}
+                searchPlaceholder="Search or enter a version..."
+                noOptionsPlaceholder="No API versions available"
+                placeholder="Select API version..."
+                hasError={showModelsError}
+              />
+            </LabelWrapper>
             {(isLoadingModels || isFetchingModels) && (
               <p className="text-mmd text-muted-foreground">
                 Validating configuration...

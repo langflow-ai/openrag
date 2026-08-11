@@ -1,13 +1,22 @@
-import { useFormContext } from "react-hook-form";
+import { Controller, useFormContext } from "react-hook-form";
+import { ModelSelector } from "@/app/onboarding/_components/model-selector";
 import { LabelWrapper } from "@/components/label-wrapper";
 import { Input } from "@/components/ui/input";
 
 export interface AzureAIFoundrySettingsFormData {
   endpoint: string;
   apiKey: string;
+  apiVersion: string;
   llmDeploymentName: string;
   embeddingDeploymentName: string;
 }
+
+// Known Azure AI model inference API versions. Optional — most deployments
+// work without one — and the combobox also accepts a custom value.
+const apiVersionOptions = [
+  { value: "2024-05-01-preview", label: "2024-05-01-preview" },
+  { value: "2024-04-01-preview", label: "2024-04-01-preview" },
+];
 
 export function AzureAIFoundrySettingsForm({
   modelsError,
@@ -17,6 +26,7 @@ export function AzureAIFoundrySettingsForm({
   isLoadingModels?: boolean;
 }) {
   const {
+    control,
     register,
     formState: { errors },
   } = useFormContext<AzureAIFoundrySettingsFormData>();
@@ -79,6 +89,29 @@ export function AzureAIFoundrySettingsForm({
             Connection failed. Check your endpoint URL and API key.
           </p>
         )}
+      </div>
+      <div className="space-y-2">
+        <LabelWrapper
+          label="API Version"
+          helperText="Optional. Only needed if your endpoint requires one — added to the request as ?api-version=..."
+          id="azure-api-version"
+        >
+          <Controller
+            control={control}
+            name="apiVersion"
+            render={({ field }) => (
+              <ModelSelector
+                options={apiVersionOptions}
+                value={field.value}
+                custom
+                onValueChange={field.onChange}
+                searchPlaceholder="Search or enter a version..."
+                noOptionsPlaceholder="No API versions available"
+                placeholder="None (optional)"
+              />
+            )}
+          />
+        </LabelWrapper>
       </div>
       <div className="space-y-2">
         <LabelWrapper

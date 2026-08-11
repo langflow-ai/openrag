@@ -49,6 +49,7 @@ class IBMBody(BaseModel):
 class AzureAIFoundryBody(BaseModel):
     api_key: str | None = None
     endpoint: str | None = None
+    api_version: str | None = None
     deployment_name: str | None = None
     llm_deployment_name: str | None = None
     embedding_deployment_name: str | None = None
@@ -258,6 +259,7 @@ async def get_azure_ai_foundry_models(
     from api.provider_validation import (
         _test_azure_ai_foundry_completion,
         _test_azure_ai_foundry_embedding,
+        _with_api_version,
     )
 
     try:
@@ -265,6 +267,9 @@ async def get_azure_ai_foundry_models(
 
         api_key = (body.api_key if body else None) or config.providers.azure_ai_foundry.api_key
         endpoint = (body.endpoint if body else None) or config.providers.azure_ai_foundry.endpoint
+        api_version = (
+            body.api_version if body else None
+        ) or config.providers.azure_ai_foundry.api_version
         deployment_name = body.deployment_name if body else None
         llm_deployment_name = (body.llm_deployment_name if body else None) or deployment_name
         embedding_deployment_name = body.embedding_deployment_name if body else None
@@ -299,7 +304,9 @@ async def get_azure_ai_foundry_models(
 
             if llm_deployment_name:
                 try:
-                    await _test_azure_ai_foundry_completion(api_key, llm_deployment_name, endpoint)
+                    await _test_azure_ai_foundry_completion(
+                        api_key, llm_deployment_name, endpoint, api_version
+                    )
                     language_models.append(
                         {"value": llm_deployment_name, "label": llm_deployment_name}
                     )
@@ -310,7 +317,7 @@ async def get_azure_ai_foundry_models(
             if embedding_deployment_name:
                 try:
                     await _test_azure_ai_foundry_embedding(
-                        api_key, embedding_deployment_name, endpoint
+                        api_key, embedding_deployment_name, endpoint, api_version
                     )
                     embedding_models.append(
                         {"value": embedding_deployment_name, "label": embedding_deployment_name}
@@ -332,7 +339,7 @@ async def get_azure_ai_foundry_models(
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(
-                    endpoint.rstrip("/"),
+                    _with_api_version(endpoint.rstrip("/"), api_version),
                     headers={
                         "Authorization": f"Bearer {api_key}",
                         "Content-Type": "application/json",
@@ -372,7 +379,7 @@ async def get_azure_ai_foundry_models(
         try:
             async with httpx.AsyncClient() as client:
                 list_response = await client.get(
-                    endpoint.rstrip("/"),
+                    _with_api_version(endpoint.rstrip("/"), api_version),
                     headers={
                         "Authorization": f"Bearer {api_key}",
                         "Content-Type": "application/json",

@@ -101,9 +101,13 @@ export function useUpdateSettings(
         updatedSettings.watsonx_project_id = config.projectId;
       }
 
-      // Map API version (Azure OpenAI only)
-      if (config.apiVersion && provider === "azure_openai") {
-        updatedSettings.azure_openai_api_version = config.apiVersion;
+      // Map API version (Azure providers only)
+      if (config.apiVersion) {
+        if (provider === "azure_ai_foundry") {
+          updatedSettings.azure_ai_foundry_api_version = config.apiVersion;
+        } else if (provider === "azure_openai") {
+          updatedSettings.azure_openai_api_version = config.apiVersion;
+        }
       }
 
       return updatedSettings;
