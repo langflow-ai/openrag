@@ -30,6 +30,10 @@ export class Chat {
     this.page.getByRole("button", { name: /^delete$/i });
   private readonly conversationDeletedToast = () =>
     this.page.getByText(/conversation deleted successfully/i);
+  private readonly selectToggleButton = () =>
+    this.page.getByTestId("chat-select-toggle");
+  private readonly selectAllCheckBox = () =>
+    this.page.getByTestId("chat-select-all");
 
   /**
    * Get locator for a filter option by name
@@ -634,5 +638,32 @@ export class Chat {
         await expect(completedBadge.first()).toBeVisible({ timeout });
       }
     }
+  }
+
+  async getConversationCount(): Promise<number> {
+    return this.page.locator('[data-testid^="conversation-button-"]').count();
+  }
+
+  async enterSelectionMode() {
+    await this.selectToggleButton().click();
+    await expect(this.selectAllCheckBox()).toBeVisible({ timeout: 5000 });
+  }
+
+  async exitSelectionMode() {
+    await this.selectToggleButton().click();
+  }
+
+  async selectAllConversations() {
+    await this.selectAllCheckBox().check();
+  }
+
+  async clickBulkDelete() {
+    await this.page.getByTestId("bulk-delete-confirm").click();
+  }
+
+  async selectConversationByTitle(title: string) {
+    const row = this.page.getByTestId(`conversation-button-${title}`);
+    const checkbox = row.locator('input[type="checkbox"]');
+    await checkbox.check();
   }
 }

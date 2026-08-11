@@ -65,6 +65,10 @@ export {
   // Document types
   IngestResponse,
   DeleteDocumentResponse,
+  PrincipalLabel,
+  FileRecord,
+  ListFilesResponse,
+  ListFilesOptions,
   // Conversation types
   Conversation,
   ConversationDetail,

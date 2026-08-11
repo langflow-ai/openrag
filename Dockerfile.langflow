@@ -32,6 +32,7 @@ COPY custom_components/ /app/custom_components/
 COPY --chmod=755 scripts/langflow-entrypoint.py /usr/local/bin/langflow-entrypoint
 COPY flows/component_index.json /app/component_index.json
 USER root
+RUN rm -f /app/flows/component_index.json
 ENV LANGFLOW_SSRF_ALLOWED_HOSTS=localhost,127.0.0.1,host.docker.internal
 ENV LANGFLOW_LOG_TRACE_LOCALS=false
 ENV LANGFLOW_BLOCK_CODE_INTERPRETER_COMPONENTS=true

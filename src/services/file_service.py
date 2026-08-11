@@ -123,13 +123,25 @@ class FileService:
             filter_clauses.append({"term": {"owner": owner}})
 
         if search:
-            # Combine wildcard (partial), prefix, and fuzzy for flexible matching
+            # Combine wildcard (partial) and prefix for flexible matching.
+            # case_insensitive=True so "jason" matches "JASON_RESUME.pdf".
             must.append(
                 {
                     "bool": {
                         "should": [
-                            {"wildcard": {"filename": {"value": f"*{search.lower()}*"}}},
-                            {"prefix": {"filename": search.lower()}},
+                            {
+                                "wildcard": {
+                                    "filename": {
+                                        "value": f"*{search.lower()}*",
+                                        "case_insensitive": True,
+                                    }
+                                }
+                            },
+                            {
+                                "prefix": {
+                                    "filename": {"value": search.lower(), "case_insensitive": True}
+                                }
+                            },
                         ],
                         "minimum_should_match": 1,
                     }
