@@ -1390,9 +1390,7 @@ async def onboarding(
                 and current_config.providers.azure_ai_foundry.endpoint
             ):
                 current_config.providers.azure_ai_foundry.configured = True
-                logger.info(
-                    "Marked Azure AI Foundry as configured (chosen as embedding provider)"
-                )
+                logger.info("Marked Azure AI Foundry as configured (chosen as embedding provider)")
             elif (
                 embedding_provider == "azure_openai"
                 and current_config.providers.azure_openai.api_key
