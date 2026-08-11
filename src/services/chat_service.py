@@ -937,6 +937,36 @@ class ChatService:
             logger.error(f"Error deleting session {session_id} for user {user_id}: {e}")
             return {"success": False, "error": str(e)}
 
+    async def delete_sessions(self, user_id: str, session_ids: list[str]) -> dict[str, list[str]]:
+        """Best-effort bulk delete, any failures are returned in response + logged
+
+        Returns {"deleted": [ids], "failed": [ids]}.
+        """
+        from services.session_ownership_service import session_ownership_service
+
+        deleted: list[str] = []
+        failed: list[str] = []
+
+        for session_id in dict.fromkeys(session_ids):
+            try:
+                owner = await session_ownership_service.get_session_owner(session_id)
+                if owner != user_id:
+                    logger.warning("bulk_delete: %s not owned by %s", session_id, user_id)
+                    failed.append(session_id)
+                    continue
+
+                result = await self.delete_session(user_id, session_id)
+                if result.get("success"):
+                    deleted.append(session_id)
+                else:
+                    logger.warning("bulk_delete: %s error: %s", session_id, result.get("error"))
+                    failed.append(session_id)
+            except Exception:
+                logger.exception("bulk_delete: %s unexpected error", session_id)
+                failed.append(session_id)
+
+        return {"deleted": deleted, "failed": failed}
+
     async def _delete_langflow_session(self, session_id: str):
         """Delete a session from Langflow using the monitor API"""
         try:
