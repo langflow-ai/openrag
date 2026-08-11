@@ -197,6 +197,14 @@ COMPONENT_CUSTOMIZATIONS: dict[tuple[str, str], dict[str, str]] = {
         "name": "openrag_search_files",
         "description": "Search files by query parameters.",
     },
+    ("/v2/files", "GET"): {
+        "name": "openrag_list_files_v2",
+        "description": "lists all ingested files.",
+    },
+    ("/v2/files/search", "GET"): {
+        "name": "openrag_search_files_v2",
+        "description": "Search ingested files by file name (case-insensitive).",
+    },
 }
 
 
@@ -222,14 +230,16 @@ def _customize_mcp_component(
 
 def create_mcp_server(app: FastAPI) -> FastMCP:
     """
-    Build a FastMCP server from the FastAPI app, exposing only /v1/ routes as tools.
+    Build a FastMCP server from the FastAPI app.
 
     Must be called AFTER all routes are registered on `app` so that
     FastMCP.from_fastapi() can discover them.
 
     Route mapping:
+    - POST /v1/documents/ingest → excluded (multipart not supported by FastMCP proxy)
     - /v1/* routes → MCP tools (GET, POST, PUT, DELETE, PATCH)
-    - All other routes → excluded
+    - GET /v2/files, GET /v2/files/search → MCP tools
+    - all other routes → excluded
 
     Note: GET endpoints are exposed as TOOLS, not resources/resource templates.
     The MCP convention is "GET = resource," but most LLM clients in agent mode
@@ -250,13 +260,19 @@ def create_mcp_server(app: FastAPI) -> FastMCP:
             pattern=r"^/v1/documents/ingest$",
             mcp_type=MCPType.EXCLUDE,
         ),
-        # Expose all /v1/ routes (read + write) as MCP tools.
+        # expose all /v1/ routes as tools
         RouteMap(
             methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
             pattern=r"^/v1/",
             mcp_type=MCPType.TOOL,
         ),
-        # Exclude everything else
+        # expose /v2/files and /v2/files/search as tools
+        RouteMap(
+            methods=["GET"],
+            pattern=r"^/v2/files",
+            mcp_type=MCPType.TOOL,
+        ),
+        # exclude everything else
         RouteMap(
             pattern=r".*",
             mcp_type=MCPType.EXCLUDE,
