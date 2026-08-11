@@ -439,19 +439,51 @@ check-env: ## Verify required environment variables are set in .env
 		echo "$(YELLOW)Set them in $(ENV_FILE) and try again.$(NC)"; \
 		echo "Tip: 'make generate-langflow-password' can auto-generate Langflow credentials."; \
 		exit 1; \
+	fi; \
+	pw="$${OPENSEARCH_PASSWORD}"; \
+	pw_errors=""; \
+	if [ $${#pw} -lt 8 ]; then \
+		pw_errors="$$pw_errors\n  - at least 8 characters"; \
+	fi; \
+	if ! printf '%s' "$$pw" | grep -q '[A-Z]'; then \
+		pw_errors="$$pw_errors\n  - at least one uppercase letter"; \
+	fi; \
+	if ! printf '%s' "$$pw" | grep -q '[a-z]'; then \
+		pw_errors="$$pw_errors\n  - at least one lowercase letter"; \
+	fi; \
+	if ! printf '%s' "$$pw" | grep -q '[0-9]'; then \
+		pw_errors="$$pw_errors\n  - at least one digit"; \
+	fi; \
+	if ! printf '%s' "$$pw" | grep -q '[^A-Za-z0-9]'; then \
+		pw_errors="$$pw_errors\n  - at least one special character"; \
+	fi; \
+	if [ -n "$$pw_errors" ]; then \
+		echo "$(RED)Error: OPENSEARCH_PASSWORD does not meet the required policy:$(NC)"; \
+		printf "$$pw_errors\n"; \
+		echo ""; \
+		echo "$(YELLOW)Update OPENSEARCH_PASSWORD in $(ENV_FILE) and try again.$(NC)"; \
+		exit 1; \
 	fi
 
 generate-langflow-password: ## Auto-generate and append Langflow superuser credentials to .env
-	@PW=$$(openssl rand -base64 24 | tr -d '/+=' | head -c 24); \
+	@PW=$$(openssl rand -base64 24 | tr -d '/+=' | head -c 24) || \
+		{ echo "$(RED)Error: failed to generate password$(NC)"; exit 1; }; \
+	if [ -z "$$PW" ]; then \
+		echo "$(RED)Error: generated password is empty$(NC)"; exit 1; \
+	fi; \
 	if grep -q '^LANGFLOW_SUPERUSER=' "$(ENV_FILE)" 2>/dev/null; then \
-		sed -i '' "s/^LANGFLOW_SUPERUSER=.*/LANGFLOW_SUPERUSER='admin'/" "$(ENV_FILE)"; \
+		sed -i.bak "s/^LANGFLOW_SUPERUSER=.*/LANGFLOW_SUPERUSER='admin'/" "$(ENV_FILE)" && rm -f "$(ENV_FILE).bak" || \
+			{ rm -f "$(ENV_FILE).bak"; echo "$(RED)Error: failed to update LANGFLOW_SUPERUSER in $(ENV_FILE)$(NC)"; exit 1; }; \
 	else \
-		echo "LANGFLOW_SUPERUSER='admin'" >> "$(ENV_FILE)"; \
+		echo "LANGFLOW_SUPERUSER='admin'" >> "$(ENV_FILE)" || \
+			{ echo "$(RED)Error: failed to append LANGFLOW_SUPERUSER to $(ENV_FILE)$(NC)"; exit 1; }; \
 	fi; \
 	if grep -q '^LANGFLOW_SUPERUSER_PASSWORD=' "$(ENV_FILE)" 2>/dev/null; then \
-		sed -i '' "s/^LANGFLOW_SUPERUSER_PASSWORD=.*/LANGFLOW_SUPERUSER_PASSWORD='$$PW'/" "$(ENV_FILE)"; \
+		sed -i.bak "s/^LANGFLOW_SUPERUSER_PASSWORD=.*/LANGFLOW_SUPERUSER_PASSWORD='$$PW'/" "$(ENV_FILE)" && rm -f "$(ENV_FILE).bak" || \
+			{ rm -f "$(ENV_FILE).bak"; echo "$(RED)Error: failed to update LANGFLOW_SUPERUSER_PASSWORD in $(ENV_FILE)$(NC)"; exit 1; }; \
 	else \
-		echo "LANGFLOW_SUPERUSER_PASSWORD='$$PW'" >> "$(ENV_FILE)"; \
+		echo "LANGFLOW_SUPERUSER_PASSWORD='$$PW'" >> "$(ENV_FILE)" || \
+			{ echo "$(RED)Error: failed to append LANGFLOW_SUPERUSER_PASSWORD to $(ENV_FILE)$(NC)"; exit 1; }; \
 	fi; \
 	echo "$(GREEN)Langflow superuser credentials written to $(ENV_FILE)$(NC)"; \
 	echo "  LANGFLOW_SUPERUSER=admin"; \
