@@ -424,5 +424,3 @@ async def get_azure_ai_foundry_models(
         return JSONResponse(
             {"error": "Failed to retrieve Azure AI Foundry models"}, status_code=500
         )
-
-

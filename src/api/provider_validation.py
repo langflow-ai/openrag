@@ -1579,5 +1579,3 @@ async def _test_azure_ai_foundry_embedding(
     except Exception as e:
         logger.error(f"Azure AI Foundry embedding test failed: {str(e)}")
         raise
-
-
