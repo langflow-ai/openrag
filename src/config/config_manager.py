@@ -467,10 +467,10 @@ class ConfigManager:
             config_data["providers"]["ollama"]["endpoint"] = os.getenv("OLLAMA_ENDPOINT")
 
         # Azure AI Foundry / Azure OpenAI provider settings — gated behind the
-        # feature flag (default off) so setting these env vars alone can't
-        # silently re-enable the feature. Read the raw env var here (not
+        # feature flag (default on) so it can still be disabled by setting
+        # OPENRAG_AZURE_AI_ENABLED=false. Read the raw env var here (not
         # config.settings.is_azure_ai_enabled) to avoid a circular import.
-        azure_ai_enabled = os.getenv("OPENRAG_AZURE_AI_ENABLED", "false").strip().lower() in (
+        azure_ai_enabled = os.getenv("OPENRAG_AZURE_AI_ENABLED", "true").strip().lower() in (
             "true",
             "1",
             "yes",

@@ -22,6 +22,11 @@ export interface OnboardingVariables {
   watsonx_endpoint?: string;
   watsonx_project_id?: string;
   ollama_endpoint?: string;
+  azure_ai_foundry_api_key?: string;
+  azure_ai_foundry_endpoint?: string;
+  azure_openai_api_key?: string;
+  azure_openai_endpoint?: string;
+  azure_openai_api_version?: string;
 }
 
 interface OnboardingResponse {

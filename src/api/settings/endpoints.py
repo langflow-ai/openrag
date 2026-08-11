@@ -1205,6 +1205,12 @@ async def onboarding(
                 metadata={"llm_model": llm_model_selected},
             )
             logger.info(f"LLM model selected during onboarding: {llm_model_selected}")
+            # Persist Azure deployment name independently so it survives provider switches
+            effective_llm_provider = body.llm_provider or current_config.agent.llm_provider
+            if effective_llm_provider == "azure_ai_foundry":
+                current_config.providers.azure_ai_foundry.llm_deployment_name = llm_model_selected
+            elif effective_llm_provider == "azure_openai":
+                current_config.providers.azure_openai.llm_deployment_name = llm_model_selected
 
         if body.llm_provider:
             llm_provider_selected = body.llm_provider.strip()
@@ -1231,6 +1237,18 @@ async def onboarding(
                 metadata={"embedding_model": embedding_model_selected},
             )
             logger.info(f"Embedding model selected during onboarding: {embedding_model_selected}")
+            # Persist Azure deployment name independently so it survives provider switches
+            effective_embedding_provider = (
+                body.embedding_provider or current_config.knowledge.embedding_provider
+            )
+            if effective_embedding_provider == "azure_ai_foundry":
+                current_config.providers.azure_ai_foundry.embedding_deployment_name = (
+                    embedding_model_selected
+                )
+            elif effective_embedding_provider == "azure_openai":
+                current_config.providers.azure_openai.embedding_deployment_name = (
+                    embedding_model_selected
+                )
 
         if body.embedding_provider:
             embedding_provider_selected = body.embedding_provider.strip()
@@ -1276,6 +1294,41 @@ async def onboarding(
             current_config.providers.ollama.configured = True
             config_updated = True
 
+        if body.azure_ai_foundry_api_key:
+            current_config.providers.azure_ai_foundry.api_key = (
+                body.azure_ai_foundry_api_key.strip()
+            )
+            current_config.providers.azure_ai_foundry.configured = True
+            config_updated = True
+
+        if body.azure_ai_foundry_endpoint:
+            current_config.providers.azure_ai_foundry.endpoint = (
+                body.azure_ai_foundry_endpoint.strip()
+            )
+            current_config.providers.azure_ai_foundry.configured = True
+            config_updated = True
+
+        if body.azure_openai_api_key:
+            current_config.providers.azure_openai.api_key = body.azure_openai_api_key.strip()
+            current_config.providers.azure_openai.configured = True
+            config_updated = True
+
+        if body.azure_openai_endpoint:
+            from utils.container_utils import normalize_azure_openai_base
+
+            current_config.providers.azure_openai.endpoint = normalize_azure_openai_base(
+                body.azure_openai_endpoint.strip()
+            )
+            current_config.providers.azure_openai.configured = True
+            config_updated = True
+
+        if body.azure_openai_api_version:
+            current_config.providers.azure_openai.api_version = (
+                body.azure_openai_api_version.strip()
+            )
+            current_config.providers.azure_openai.configured = True
+            config_updated = True
+
         # Mark providers as configured if they were chosen during onboarding
         # Check LLM provider
         if body.llm_provider:
@@ -1297,6 +1350,21 @@ async def onboarding(
             elif llm_provider == "ollama" and current_config.providers.ollama.endpoint:
                 current_config.providers.ollama.configured = True
                 logger.info("Marked Ollama as configured (chosen as LLM provider)")
+            elif (
+                llm_provider == "azure_ai_foundry"
+                and current_config.providers.azure_ai_foundry.api_key
+                and current_config.providers.azure_ai_foundry.endpoint
+            ):
+                current_config.providers.azure_ai_foundry.configured = True
+                logger.info("Marked Azure AI Foundry as configured (chosen as LLM provider)")
+            elif (
+                llm_provider == "azure_openai"
+                and current_config.providers.azure_openai.api_key
+                and current_config.providers.azure_openai.endpoint
+                and current_config.providers.azure_openai.api_version
+            ):
+                current_config.providers.azure_openai.configured = True
+                logger.info("Marked Azure OpenAI as configured (chosen as LLM provider)")
 
         # Check embedding provider
         if body.embedding_provider:
@@ -1315,6 +1383,23 @@ async def onboarding(
             elif embedding_provider == "ollama" and current_config.providers.ollama.endpoint:
                 current_config.providers.ollama.configured = True
                 logger.info("Marked Ollama as configured (chosen as embedding provider)")
+            elif (
+                embedding_provider == "azure_ai_foundry"
+                and current_config.providers.azure_ai_foundry.api_key
+                and current_config.providers.azure_ai_foundry.endpoint
+            ):
+                current_config.providers.azure_ai_foundry.configured = True
+                logger.info(
+                    "Marked Azure AI Foundry as configured (chosen as embedding provider)"
+                )
+            elif (
+                embedding_provider == "azure_openai"
+                and current_config.providers.azure_openai.api_key
+                and current_config.providers.azure_openai.endpoint
+                and current_config.providers.azure_openai.api_version
+            ):
+                current_config.providers.azure_openai.configured = True
+                logger.info("Marked Azure OpenAI as configured (chosen as embedding provider)")
 
         should_ingest_sample_data = INGEST_SAMPLE_DATA
         if should_ingest_sample_data:
@@ -1341,6 +1426,7 @@ async def onboarding(
                     llm_model=current_config.agent.llm_model,
                     endpoint=getattr(llm_provider_config, "endpoint", None),
                     project_id=getattr(llm_provider_config, "project_id", None),
+                    api_version=getattr(llm_provider_config, "api_version", None),
                     test_completion=True,  # Full validation with completion test - ensures provider health
                 )
                 logger.info(
@@ -1361,6 +1447,7 @@ async def onboarding(
                     embedding_model=current_config.knowledge.embedding_model,
                     endpoint=getattr(embedding_provider_config, "endpoint", None),
                     project_id=getattr(embedding_provider_config, "project_id", None),
+                    api_version=getattr(embedding_provider_config, "api_version", None),
                     test_completion=True,  # Full validation with completion test - ensures provider health
                 )
                 logger.info(
@@ -1396,6 +1483,11 @@ async def onboarding(
                     body.watsonx_endpoint,
                     body.watsonx_project_id,
                     body.ollama_endpoint,
+                    body.azure_ai_foundry_api_key,
+                    body.azure_ai_foundry_endpoint,
+                    body.azure_openai_api_key,
+                    body.azure_openai_endpoint,
+                    body.azure_openai_api_version,
                 ]
             )
 
