@@ -10,6 +10,7 @@ import {
   canAccessConnectorAccessTab,
   canShowRbacGatedSettingsTab,
 } from "@/lib/brand";
+import { isIngestPreviewEnabled } from "@/lib/ingest-preview";
 import { cn } from "@/lib/utils";
 
 const TABS = [
@@ -23,6 +24,7 @@ const TABS = [
     label: "Connector Settings",
     perm: "connectors:manage:access",
   },
+  { value: "ingest-preview", label: "Ingest preview", ingestPreviewTab: true },
 ] as const;
 
 export function SettingsNav() {
@@ -34,6 +36,7 @@ export function SettingsNav() {
     isIbmAuthMode,
     isLoading,
     permissionsResolved,
+    runMode,
   } = useAuth();
   const isCloudBrand = useIsCloudBrand();
   const tabAccess = useSettingsTabAccess();
@@ -47,6 +50,8 @@ export function SettingsNav() {
     if ("perm" in tab) return canShowRbacGatedSettingsTab(tab.perm, tabAccess);
     if ("apiKeysTab" in tab)
       return (isAuthenticated || isNoAuthMode) && !isIbmAuthMode;
+    if ("ingestPreviewTab" in tab)
+      return isIngestPreviewEnabled(runMode, { isCloudBrand });
     return true;
   });
 

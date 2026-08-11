@@ -1321,7 +1321,9 @@ async def _test_azure_ai_foundry_lightweight_health(api_key: str, endpoint: str)
 
     except httpx.TimeoutException:
         logger.error("Azure AI Foundry health check timed out")
-        raise Exception("Azure AI Foundry endpoint did not respond. Check the endpoint URL.")
+        raise Exception(
+            "Azure AI Foundry endpoint did not respond. Check the endpoint URL."
+        ) from None
     except Exception as e:
         logger.error(f"Azure AI Foundry health check failed: {str(e)}")
         raise
@@ -1369,7 +1371,7 @@ async def _test_azure_ai_foundry_completion(api_key: str, llm_model: str, endpoi
 
     except httpx.TimeoutException:
         logger.error("Azure AI Foundry completion test timed out")
-        raise Exception("Request timed out")
+        raise Exception("Request timed out") from None
     except Exception as e:
         logger.error(f"Azure AI Foundry completion test failed: {str(e)}")
         raise
@@ -1411,7 +1413,7 @@ async def _test_azure_ai_foundry_embedding(
 
     except httpx.TimeoutException:
         logger.error("Azure AI Foundry embedding test timed out")
-        raise Exception("Request timed out")
+        raise Exception("Request timed out") from None
     except Exception as e:
         logger.error(f"Azure AI Foundry embedding test failed: {str(e)}")
         raise
@@ -1465,7 +1467,7 @@ async def _test_azure_openai_lightweight_health(
 
     except httpx.TimeoutException:
         logger.error("Azure OpenAI health check timed out")
-        raise Exception("Azure OpenAI endpoint did not respond. Check the endpoint URL.")
+        raise Exception("Azure OpenAI endpoint did not respond. Check the endpoint URL.") from None
     except Exception as e:
         logger.error(f"Azure OpenAI health check failed: {str(e)}")
         raise
@@ -1536,7 +1538,7 @@ async def _test_azure_openai_completion(
 
     except httpx.TimeoutException:
         logger.error("Azure OpenAI completion test timed out")
-        raise Exception("Request timed out")
+        raise Exception("Request timed out") from None
     except Exception as e:
         logger.error(f"Azure OpenAI completion test failed: {str(e)}")
         raise
@@ -1585,7 +1587,7 @@ async def _test_azure_openai_embedding(
 
     except httpx.TimeoutException:
         logger.error("Azure OpenAI embedding test timed out")
-        raise Exception("Request timed out")
+        raise Exception("Request timed out") from None
     except Exception as e:
         logger.error(f"Azure OpenAI embedding test failed: {str(e)}")
         raise

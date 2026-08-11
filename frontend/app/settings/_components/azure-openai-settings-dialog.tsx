@@ -80,12 +80,13 @@ const AzureOpenAISettingsDialog = ({
     },
   });
 
+  // Clear test result whenever any form value changes
   useEffect(() => {
-    if (open) {
-      methods.reset();
+    const subscription = methods.watch(() => {
       setTestConnectionResult(null);
-    }
-  }, [open]);
+    });
+    return () => subscription.unsubscribe();
+  }, [methods.watch]);
 
   const { handleSubmit, watch } = methods;
   const endpoint = watch("endpoint");
@@ -93,17 +94,6 @@ const AzureOpenAISettingsDialog = ({
   const apiVersion = watch("apiVersion");
   const llmDeploymentName = watch("llmDeploymentName");
   const embeddingDeploymentName = watch("embeddingDeploymentName");
-
-  // Clear test result whenever any form value changes
-  useEffect(() => {
-    setTestConnectionResult(null);
-  }, [
-    endpoint,
-    apiKey,
-    apiVersion,
-    llmDeploymentName,
-    embeddingDeploymentName,
-  ]);
 
   const { refetch: validateCredentials } = useGetAzureOpenAIModelsQuery(
     { endpoint, apiKey, apiVersion },
@@ -229,6 +219,10 @@ const AzureOpenAISettingsDialog = ({
     <Dialog
       open={open}
       onOpenChange={(o) => {
+        if (o) {
+          methods.reset();
+          setTestConnectionResult(null);
+        }
         setShowRemoveConfirm(false);
         setAffectedModels(undefined);
         setOpen(o);

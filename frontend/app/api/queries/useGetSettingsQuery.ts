@@ -9,6 +9,7 @@ export interface AgentSettings {
   llm_model?: string;
   llm_provider?: string;
   system_prompt?: string;
+  default_system_prompt?: string;
 }
 
 export interface KnowledgeSettings {
