@@ -24,6 +24,221 @@ RUN pip install --no-cache-dir \
     "ibm-watsonx-ai>=1.3.1,<2.0.0" \
     "langchain-ibm~=1.1.0"
 
+# NOTE — this is a POC-grade stopgap, not the real fix. We're source-patching
+# a third-party vendored package at Docker build time because we can't touch
+# Langflow's own repo from here. That's inherently fragile (see the
+# drift-guard assertion below) and it hardcodes a single default api-version
+# rather than letting it be configured. The actual fix belongs upstream in
+# Langflow itself: request_azure_ai_foundry_model_entries (and the Azure AI
+# Foundry credential/component inputs generally) should accept api_version as
+# a real input parameter — e.g. a Global Variable like
+# AZURE_AI_FOUNDRY_API_VERSION, analogous to how Azure OpenAI already takes
+# one — instead of building the probe URL with no version at all. Once
+# Langflow ships that upstream, this whole patch step should be deleted.
+#
+# Patch two bugs in the base image's vendored `lfx` package's Azure AI
+# Foundry credential-validation probe (request_azure_ai_foundry_model_entries
+# in lfx/base/models/model_utils.py, called from
+# lfx/base/models/unified_models/credentials.py when a Global Variable is
+# saved — any exception there is caught and re-raised as "Could not validate
+# Azure AI Foundry credentials: ...", blocking the save):
+#
+#   1. It builds "<endpoint>/models" with no api-version query param. Azure
+#      always requires one — same root cause as the fix in this repo's
+#      src/api/provider_validation.py::_build_azure_ai_foundry_url.
+#   2. Even with api-version fixed, "Microsoft Foundry" project-scoped
+#      endpoints (".../api/projects/<project>/models") can reject this GET
+#      with 400 BadRequest regardless — Azure has no reliable "list deployed
+#      models" catalog API across all Azure AI Foundry resource shapes. Only
+#      401/403 (genuinely bad credentials) should block the save; every other
+#      response just means "no catalog available", which this repo's own
+#      backend already treats as fine (Azure AI Foundry deployment names are
+#      user-typed, not fetched — see get_azure_ai_foundry_models in
+#      src/api/models.py).
+#
+# Pinned to langflow base-0.11.2. The `assert old in src` below makes the
+# build fail loudly if upstream lfx changes this function, rather than
+# silently no-op — that failure is the signal to update or remove this step.
+RUN python <<'EOF'
+import importlib.util
+import pathlib
+
+import lfx.base.models.model_utils as m
+
+path = pathlib.Path(m.__file__)
+src = path.read_text()
+
+old = '''def request_azure_ai_foundry_model_entries(endpoint: str, api_key: str) -> list[dict]:
+    """Probe Foundry /models for credential validation (catalog, not deployments)."""
+    response = requests.get(
+        f"{endpoint.rstrip('/')}/models",
+        headers={"api-key": api_key},
+        timeout=AZURE_AI_FOUNDRY_FETCH_TIMEOUT,
+        allow_redirects=False,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    raw_models = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(raw_models, list):
+        msg = f"Unexpected Azure AI Foundry /models payload (data is {type(raw_models).__name__})"
+        raise TypeError(msg)
+    return raw_models
+'''
+if old not in src:
+    raise SystemExit(
+        "lfx model_utils.py no longer matches the expected "
+        "request_azure_ai_foundry_model_entries source; update or drop "
+        "this Dockerfile.langflow patch"
+    )
+
+new = '''def _azure_ai_foundry_models_url(endpoint: str) -> str:
+    """Build the Foundry /models probe URL.
+
+    Merges a /models path segment (deduping if the endpoint already ends in
+    one, e.g. project endpoints like .../api/projects/<project>) and ensures
+    an api-version query param, preserving one already present in `endpoint`.
+    Uses proper URL parsing rather than string concatenation — an endpoint
+    that already carries both a path and a query string (e.g.
+    ".../models?api-version=X") breaks naive `rstrip("/") + "/models"`
+    concatenation, since the appended path would land after the query string.
+    """
+    from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+
+    parsed = urlparse(endpoint.strip())
+    base_path = parsed.path.rstrip("/")
+    base_segments = [s for s in base_path.split("/") if s]
+    end_segments = ["models"]
+    for i in range(len(base_segments)):
+        if base_segments[i:] == end_segments[: len(base_segments) - i]:
+            new_path = "/" + "/".join(base_segments[:i] + end_segments)
+            break
+    else:
+        new_path = "/" + "/".join(base_segments + end_segments)
+
+    query = parse_qs(parsed.query, keep_blank_values=True)
+    if "api-version" not in query and "api_version" not in query:
+        query["api-version"] = ["2024-05-01-preview"]
+    new_query = urlencode(query, doseq=True)
+    return urlunparse(
+        (parsed.scheme, parsed.netloc, new_path, parsed.params, new_query, parsed.fragment)
+    )
+
+
+def request_azure_ai_foundry_model_entries(endpoint: str, api_key: str) -> list[dict]:
+    """Probe Foundry /models for credential validation (catalog, not deployments).
+
+    Only 401/403 are treated as a hard credential failure. Azure AI Foundry
+    has no reliable "list deployed models" catalog API across resource
+    shapes — project-scoped resources can reject this GET with 400 even with
+    valid credentials and a correct api-version — so any other non-2xx
+    response, or an unexpected payload shape, degrades to an empty catalog
+    instead of blocking the credential save.
+    """
+    response = requests.get(
+        _azure_ai_foundry_models_url(endpoint),
+        headers={"api-key": api_key},
+        timeout=AZURE_AI_FOUNDRY_FETCH_TIMEOUT,
+        allow_redirects=False,
+    )
+    if response.status_code in (401, 403):
+        response.raise_for_status()
+    if not response.ok:
+        return []
+    try:
+        payload = response.json()
+    except ValueError:
+        return []
+    raw_models = payload.get("data") if isinstance(payload, dict) else None
+    return raw_models if isinstance(raw_models, list) else []
+'''
+
+new_src = src.replace(old, new, 1)
+if new_src == src:
+    raise SystemExit(
+        "replace of request_azure_ai_foundry_model_entries was a no-op; investigate"
+    )
+path.write_text(new_src)
+
+# The base image ships a precompiled __pycache__/*.pyc for this module.
+# BuildKit normalizes file mtimes on export, so the freshly rewritten .py
+# can end up with the same mtime CPython recorded when it cached that
+# stale bytecode — Python then silently keeps running the OLD compiled
+# function instead of recompiling from the patched source. Delete the
+# cache so the next import recompiles for real.
+cache_file = pathlib.Path(importlib.util.cache_from_source(str(path)))
+cache_file.unlink(missing_ok=True)
+
+print(f"Patched {path}")
+EOF
+
+# Build-time functional self-test: fail the build if the patch doesn't
+# actually change the probe's outgoing URL or its failure handling, rather
+# than discovering it later at runtime.
+RUN python <<'EOF'
+from unittest import mock
+
+import requests
+
+import lfx.base.models.model_utils as m
+
+# 1. The outgoing URL carries an api-version.
+with mock.patch("requests.get") as get:
+    get.return_value.status_code = 200
+    get.return_value.ok = True
+    get.return_value.raise_for_status.return_value = None
+    get.return_value.json.return_value = {"data": []}
+    m.request_azure_ai_foundry_model_entries(
+        "https://example.services.ai.azure.com/api/projects/proj-default", "fake-key"
+    )
+    url = get.call_args.args[0]
+    if "api-version=" not in url:
+        raise SystemExit(f"Dockerfile.langflow patch did not take effect; probe URL was: {url}")
+    print(f"Verified patched probe URL: {url}")
+
+# 2. A 400 BadRequest (unsupported list operation) degrades to [] instead of raising.
+with mock.patch("requests.get") as get:
+    get.return_value.status_code = 400
+    get.return_value.ok = False
+    result = m.request_azure_ai_foundry_model_entries(
+        "https://example.services.ai.azure.com/api/projects/proj-default", "fake-key"
+    )
+    if result != []:
+        raise SystemExit(f"expected [] on 400 BadRequest, got: {result!r}")
+    print("Verified 400 BadRequest degrades to an empty catalog instead of raising")
+
+# 3. A 401 Unauthorized (genuinely bad credentials) still raises.
+with mock.patch("requests.get") as get:
+    get.return_value.status_code = 401
+    get.return_value.ok = False
+    get.return_value.raise_for_status.side_effect = requests.HTTPError("401 Unauthorized")
+    try:
+        m.request_azure_ai_foundry_model_entries(
+            "https://example.services.ai.azure.com/api/projects/proj-default", "fake-key"
+        )
+    except requests.HTTPError:
+        print("Verified 401 Unauthorized still raises")
+    else:
+        raise SystemExit("expected 401 Unauthorized to raise, but it didn't")
+
+# 4. An endpoint that already has both a path and a query string is preserved
+#    verbatim, not mangled by naive string concatenation (a real bug caught
+#    while developing this patch: rstrip("/") + "/models" appends the new
+#    segment AFTER an existing "?api-version=..." query string instead of
+#    merging it in).
+with mock.patch("requests.get") as get:
+    get.return_value.status_code = 200
+    get.return_value.ok = True
+    get.return_value.json.return_value = {"data": [{"id": "gpt-5-nano"}]}
+    m.request_azure_ai_foundry_model_entries(
+        "https://example.services.ai.azure.com/models?api-version=2024-08-01-preview", "fake-key"
+    )
+    url = get.call_args.args[0]
+    expected = "https://example.services.ai.azure.com/models?api-version=2024-08-01-preview"
+    if url != expected:
+        raise SystemExit(f"expected {expected!r}, got {url!r}")
+    print(f"Verified existing path+query is preserved: {url}")
+EOF
+
 COPY flows/ /app/flows/
 COPY custom_components/ /app/custom_components/
 
