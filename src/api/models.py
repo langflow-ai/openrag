@@ -257,9 +257,9 @@ async def get_azure_ai_foundry_models(
     import httpx
 
     from api.provider_validation import (
+        _build_azure_ai_foundry_url,
         _test_azure_ai_foundry_completion,
         _test_azure_ai_foundry_embedding,
-        _with_api_version,
     )
 
     try:
@@ -339,9 +339,10 @@ async def get_azure_ai_foundry_models(
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(
-                    _with_api_version(endpoint.rstrip("/"), api_version),
+                    _build_azure_ai_foundry_url(endpoint, api_version=api_version),
                     headers={
                         "Authorization": f"Bearer {api_key}",
+                        "api-key": api_key,
                         "Content-Type": "application/json",
                     },
                     timeout=10.0,
@@ -379,9 +380,10 @@ async def get_azure_ai_foundry_models(
         try:
             async with httpx.AsyncClient() as client:
                 list_response = await client.get(
-                    _with_api_version(endpoint.rstrip("/"), api_version),
+                    _build_azure_ai_foundry_url(endpoint, api_version=api_version),
                     headers={
                         "Authorization": f"Bearer {api_key}",
+                        "api-key": api_key,
                         "Content-Type": "application/json",
                     },
                     timeout=10.0,

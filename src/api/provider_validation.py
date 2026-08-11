@@ -2,7 +2,7 @@
 
 import json
 import re
-from urllib.parse import quote
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 import httpx
 
@@ -10,14 +10,6 @@ from utils.container_utils import normalize_azure_openai_base, transform_localho
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
-
-
-def _with_api_version(url: str, api_version: str | None) -> str:
-    """Append ``api-version`` as a query parameter, if provided."""
-    if not api_version:
-        return url
-    separator = "&" if "?" in url else "?"
-    return f"{url}{separator}api-version={quote(api_version, safe='')}"
 
 # Peel leading "Error <label>:" wrappers (e.g. Langflow graph/component noise).
 # Requires a label after "Error" so bare "Error: …" messages are preserved.
@@ -1307,6 +1299,49 @@ async def _test_anthropic_completion_with_tools(api_key: str, llm_model: str) ->
 
 
 # Azure AI Foundry validation functions
+def _build_azure_ai_foundry_url(
+    endpoint: str, target_subpath: str = "", api_version: str | None = None
+) -> str:
+    """Build a valid Azure AI Foundry URL with target subpath and api-version parameter.
+
+    Preserves existing query parameters (such as api-version in user endpoints).
+    An explicit `api_version` always wins over whatever is embedded in `endpoint`;
+    absent both, defaults to '2024-05-01-preview' — Azure AI Foundry's model
+    inference API rejects requests with no api-version at all.
+    """
+    if not endpoint:
+        return endpoint
+
+    clean_endpoint = endpoint.strip()
+    parsed = urlparse(clean_endpoint)
+    scheme = parsed.scheme or "https"
+    netloc = parsed.netloc or (parsed.path.split("/")[0] if parsed.path else "")
+    path = (
+        parsed.path
+        if parsed.scheme
+        else ("/" + "/".join(parsed.path.split("/")[1:]) if "/" in parsed.path else parsed.path)
+    )
+
+    base_path = path.rstrip("/")
+    if target_subpath:
+        if base_path.endswith(target_subpath):
+            new_path = base_path
+        else:
+            new_path = f"{base_path}{target_subpath}"
+    else:
+        new_path = base_path or "/"
+
+    query_params = parse_qs(parsed.query, keep_blank_values=True)
+    if api_version:
+        query_params["api-version"] = [api_version]
+        query_params.pop("api_version", None)
+    elif "api-version" not in query_params and "api_version" not in query_params:
+        query_params["api-version"] = ["2024-05-01-preview"]
+
+    new_query = urlencode(query_params, doseq=True)
+    return urlunparse((scheme, netloc, new_path, parsed.params, new_query, parsed.fragment))
+
+
 async def _test_azure_ai_foundry_lightweight_health(
     api_key: str, endpoint: str, api_version: str | None = None
 ) -> None:
@@ -1317,10 +1352,16 @@ async def _test_azure_ai_foundry_lightweight_health(
         raise Exception("Azure AI Foundry endpoint URL is required.")
 
     try:
+        health_url = _build_azure_ai_foundry_url(endpoint, api_version=api_version)
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "api-key": api_key,
+            "Content-Type": "application/json",
+        }
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                _with_api_version(endpoint.rstrip("/"), api_version),
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                health_url,
+                headers=headers,
                 timeout=10.0,
             )
             if response.status_code == 401:
@@ -1352,9 +1393,14 @@ async def _test_azure_ai_foundry_completion(
         raise Exception("A deployment name is required to test Azure AI Foundry completion.")
 
     try:
-        completions_url = _with_api_version(
-            f"{endpoint.rstrip('/')}/chat/completions", api_version
+        completions_url = _build_azure_ai_foundry_url(
+            endpoint, "/chat/completions", api_version=api_version
         )
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "api-key": api_key,
+            "Content-Type": "application/json",
+        }
         payload = {
             "model": llm_model,
             "messages": [{"role": "user", "content": "Hello"}],
@@ -1363,7 +1409,7 @@ async def _test_azure_ai_foundry_completion(
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 completions_url,
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                headers=headers,
                 json=payload,
                 timeout=30.0,
             )
@@ -1404,12 +1450,19 @@ async def _test_azure_ai_foundry_embedding(
         raise Exception("A deployment name is required to test Azure AI Foundry embeddings.")
 
     try:
-        embeddings_url = _with_api_version(f"{endpoint.rstrip('/')}/embeddings", api_version)
+        embeddings_url = _build_azure_ai_foundry_url(
+            endpoint, "/embeddings", api_version=api_version
+        )
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "api-key": api_key,
+            "Content-Type": "application/json",
+        }
         payload = {"model": embedding_model, "input": ["test"]}
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 embeddings_url,
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                headers=headers,
                 json=payload,
                 timeout=30.0,
             )

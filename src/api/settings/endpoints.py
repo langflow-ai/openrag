@@ -546,11 +546,11 @@ async def update_settings(
             )
             logger.info(f"LLM model changed from {old_model} to {body.llm_model}")
             # Persist Azure deployment name independently so it survives provider switches
-            effective_llm_provider = body.llm_provider or current_config.agent.llm_provider
+            effective_llm_provider = body.llm_provider or working_config.agent.llm_provider
             if effective_llm_provider == "azure_ai_foundry":
-                current_config.providers.azure_ai_foundry.llm_deployment_name = body.llm_model
+                working_config.providers.azure_ai_foundry.llm_deployment_name = body.llm_model
             elif effective_llm_provider == "azure_openai":
-                current_config.providers.azure_openai.llm_deployment_name = body.llm_model
+                working_config.providers.azure_openai.llm_deployment_name = body.llm_model
 
         if body.llm_provider is not None:
             old_provider = working_config.agent.llm_provider
@@ -589,14 +589,14 @@ async def update_settings(
             logger.info(f"Embedding model changed from {old_model} to {new_embedding_model}")
             # Persist Azure deployment name independently so it survives provider switches
             effective_embedding_provider = (
-                body.embedding_provider or current_config.knowledge.embedding_provider
+                body.embedding_provider or working_config.knowledge.embedding_provider
             )
             if effective_embedding_provider == "azure_ai_foundry":
-                current_config.providers.azure_ai_foundry.embedding_deployment_name = (
+                working_config.providers.azure_ai_foundry.embedding_deployment_name = (
                     new_embedding_model
                 )
             elif effective_embedding_provider == "azure_openai":
-                current_config.providers.azure_openai.embedding_deployment_name = (
+                working_config.providers.azure_openai.embedding_deployment_name = (
                     new_embedding_model
                 )
 
@@ -850,49 +850,49 @@ async def update_settings(
             provider_updated = True
 
         if body.azure_ai_foundry_api_key is not None and body.azure_ai_foundry_api_key.strip():
-            current_config.providers.azure_ai_foundry.api_key = (
+            working_config.providers.azure_ai_foundry.api_key = (
                 body.azure_ai_foundry_api_key.strip()
             )
-            current_config.providers.azure_ai_foundry.configured = True
+            working_config.providers.azure_ai_foundry.configured = True
             config_updated = True
             provider_updated = True
 
         if body.azure_ai_foundry_endpoint is not None:
-            current_config.providers.azure_ai_foundry.endpoint = (
+            working_config.providers.azure_ai_foundry.endpoint = (
                 body.azure_ai_foundry_endpoint.strip()
             )
-            current_config.providers.azure_ai_foundry.configured = True
+            working_config.providers.azure_ai_foundry.configured = True
             config_updated = True
             provider_updated = True
 
         if body.azure_ai_foundry_api_version is not None:
-            current_config.providers.azure_ai_foundry.api_version = (
+            working_config.providers.azure_ai_foundry.api_version = (
                 body.azure_ai_foundry_api_version.strip()
             )
             config_updated = True
             provider_updated = True
 
         if body.azure_openai_api_key is not None and body.azure_openai_api_key.strip():
-            current_config.providers.azure_openai.api_key = body.azure_openai_api_key.strip()
-            current_config.providers.azure_openai.configured = True
+            working_config.providers.azure_openai.api_key = body.azure_openai_api_key.strip()
+            working_config.providers.azure_openai.configured = True
             config_updated = True
             provider_updated = True
 
         if body.azure_openai_endpoint is not None:
             from utils.container_utils import normalize_azure_openai_base
 
-            current_config.providers.azure_openai.endpoint = normalize_azure_openai_base(
+            working_config.providers.azure_openai.endpoint = normalize_azure_openai_base(
                 body.azure_openai_endpoint.strip()
             )
-            current_config.providers.azure_openai.configured = True
+            working_config.providers.azure_openai.configured = True
             config_updated = True
             provider_updated = True
 
         if body.azure_openai_api_version is not None:
-            current_config.providers.azure_openai.api_version = (
+            working_config.providers.azure_openai.api_version = (
                 body.azure_openai_api_version.strip()
             )
-            current_config.providers.azure_openai.configured = True
+            working_config.providers.azure_openai.configured = True
             config_updated = True
             provider_updated = True
 
@@ -1019,10 +1019,10 @@ async def update_settings(
 
         if body.remove_azure_ai_foundry_config:
             other_providers_configured = (
-                current_config.providers.openai.configured
-                or current_config.providers.anthropic.configured
-                or current_config.providers.watsonx.configured
-                or current_config.providers.ollama.configured
+                working_config.providers.openai.configured
+                or working_config.providers.anthropic.configured
+                or working_config.providers.watsonx.configured
+                or working_config.providers.ollama.configured
             )
             if not other_providers_configured:
                 return JSONResponse(
@@ -1039,29 +1039,29 @@ async def update_settings(
                     return _embedding_conflict_response(
                         "Azure AI Foundry", "azure_ai_foundry", affected
                     )
-            current_config.providers.azure_ai_foundry.api_key = ""
-            current_config.providers.azure_ai_foundry.endpoint = ""
-            current_config.providers.azure_ai_foundry.configured = False
-            current_config.providers.azure_ai_foundry.llm_deployment_name = ""
-            current_config.providers.azure_ai_foundry.embedding_deployment_name = ""
-            if current_config.agent.llm_provider == "azure_ai_foundry":
-                fb = _first_configured_llm_provider(current_config, "azure_ai_foundry")
-                current_config.agent.llm_provider = fb
-                current_config.agent.llm_model = _default_llm_model(fb)
-            if current_config.knowledge.embedding_provider == "azure_ai_foundry":
-                fb = _first_configured_embedding_provider(current_config, "azure_ai_foundry")
-                current_config.knowledge.embedding_provider = fb
-                current_config.knowledge.embedding_model = _default_embedding_model(fb)
+            working_config.providers.azure_ai_foundry.api_key = ""
+            working_config.providers.azure_ai_foundry.endpoint = ""
+            working_config.providers.azure_ai_foundry.configured = False
+            working_config.providers.azure_ai_foundry.llm_deployment_name = ""
+            working_config.providers.azure_ai_foundry.embedding_deployment_name = ""
+            if working_config.agent.llm_provider == "azure_ai_foundry":
+                fb = _first_configured_llm_provider(working_config, "azure_ai_foundry")
+                working_config.agent.llm_provider = fb
+                working_config.agent.llm_model = _default_llm_model(fb)
+            if working_config.knowledge.embedding_provider == "azure_ai_foundry":
+                fb = _first_configured_embedding_provider(working_config, "azure_ai_foundry")
+                working_config.knowledge.embedding_provider = fb
+                working_config.knowledge.embedding_model = _default_embedding_model(fb)
             config_updated = True
             provider_updated = True
 
         if body.remove_azure_openai_config:
             other_providers_configured = (
-                current_config.providers.openai.configured
-                or current_config.providers.anthropic.configured
-                or current_config.providers.watsonx.configured
-                or current_config.providers.ollama.configured
-                or current_config.providers.azure_ai_foundry.configured
+                working_config.providers.openai.configured
+                or working_config.providers.anthropic.configured
+                or working_config.providers.watsonx.configured
+                or working_config.providers.ollama.configured
+                or working_config.providers.azure_ai_foundry.configured
             )
             if not other_providers_configured:
                 return JSONResponse(
@@ -1076,20 +1076,20 @@ async def update_settings(
                 )
                 if affected:
                     return _embedding_conflict_response("Azure OpenAI", "azure_openai", affected)
-            current_config.providers.azure_openai.api_key = ""
-            current_config.providers.azure_openai.endpoint = ""
-            current_config.providers.azure_openai.api_version = ""
-            current_config.providers.azure_openai.configured = False
-            current_config.providers.azure_openai.llm_deployment_name = ""
-            current_config.providers.azure_openai.embedding_deployment_name = ""
-            if current_config.agent.llm_provider == "azure_openai":
-                fb = _first_configured_llm_provider(current_config, "azure_openai")
-                current_config.agent.llm_provider = fb
-                current_config.agent.llm_model = _default_llm_model(fb)
-            if current_config.knowledge.embedding_provider == "azure_openai":
-                fb = _first_configured_embedding_provider(current_config, "azure_openai")
-                current_config.knowledge.embedding_provider = fb
-                current_config.knowledge.embedding_model = _default_embedding_model(fb)
+            working_config.providers.azure_openai.api_key = ""
+            working_config.providers.azure_openai.endpoint = ""
+            working_config.providers.azure_openai.api_version = ""
+            working_config.providers.azure_openai.configured = False
+            working_config.providers.azure_openai.llm_deployment_name = ""
+            working_config.providers.azure_openai.embedding_deployment_name = ""
+            if working_config.agent.llm_provider == "azure_openai":
+                fb = _first_configured_llm_provider(working_config, "azure_openai")
+                working_config.agent.llm_provider = fb
+                working_config.agent.llm_model = _default_llm_model(fb)
+            if working_config.knowledge.embedding_provider == "azure_openai":
+                fb = _first_configured_embedding_provider(working_config, "azure_openai")
+                working_config.knowledge.embedding_provider = fb
+                working_config.knowledge.embedding_model = _default_embedding_model(fb)
             config_updated = True
             provider_updated = True
 
@@ -1407,9 +1407,7 @@ async def onboarding(
                 and current_config.providers.azure_ai_foundry.endpoint
             ):
                 current_config.providers.azure_ai_foundry.configured = True
-                logger.info(
-                    "Marked Azure AI Foundry as configured (chosen as embedding provider)"
-                )
+                logger.info("Marked Azure AI Foundry as configured (chosen as embedding provider)")
             elif (
                 embedding_provider == "azure_openai"
                 and current_config.providers.azure_openai.api_key
