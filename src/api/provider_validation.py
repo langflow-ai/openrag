@@ -1311,9 +1311,7 @@ def _build_azure_ai_foundry_url(endpoint: str, target_subpath: str = "") -> str:
     clean_endpoint = endpoint.strip()
     parsed = urlparse(clean_endpoint)
     scheme = parsed.scheme or "https"
-    netloc = parsed.netloc or (
-        parsed.path.split("/")[0] if parsed.path else ""
-    )
+    netloc = parsed.netloc or (parsed.path.split("/")[0] if parsed.path else "")
     path = (
         parsed.path
         if parsed.scheme
