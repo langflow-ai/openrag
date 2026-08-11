@@ -2,6 +2,7 @@
 
 import json
 import re
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 import httpx
 
@@ -1298,6 +1299,44 @@ async def _test_anthropic_completion_with_tools(api_key: str, llm_model: str) ->
 
 
 # Azure AI Foundry validation functions
+def _build_azure_ai_foundry_url(endpoint: str, target_subpath: str = "") -> str:
+    """Build a valid Azure AI Foundry URL with target subpath and api-version parameter.
+
+    Preserves existing query parameters (such as api-version in user endpoints)
+    and ensures api-version defaults to '2024-05-01-preview' if not supplied.
+    """
+    if not endpoint:
+        return endpoint
+
+    clean_endpoint = endpoint.strip()
+    parsed = urlparse(clean_endpoint)
+    scheme = parsed.scheme or "https"
+    netloc = parsed.netloc or (
+        parsed.path.split("/")[0] if parsed.path else ""
+    )
+    path = (
+        parsed.path
+        if parsed.scheme
+        else ("/" + "/".join(parsed.path.split("/")[1:]) if "/" in parsed.path else parsed.path)
+    )
+
+    base_path = path.rstrip("/")
+    if target_subpath:
+        if base_path.endswith(target_subpath):
+            new_path = base_path
+        else:
+            new_path = f"{base_path}{target_subpath}"
+    else:
+        new_path = base_path or "/"
+
+    query_params = parse_qs(parsed.query, keep_blank_values=True)
+    if "api-version" not in query_params and "api_version" not in query_params:
+        query_params["api-version"] = ["2024-05-01-preview"]
+
+    new_query = urlencode(query_params, doseq=True)
+    return urlunparse((scheme, netloc, new_path, parsed.params, new_query, parsed.fragment))
+
+
 async def _test_azure_ai_foundry_lightweight_health(api_key: str, endpoint: str) -> None:
     """Test Azure AI Foundry credentials with a lightweight GET to the models endpoint."""
     if not api_key:
@@ -1306,10 +1345,16 @@ async def _test_azure_ai_foundry_lightweight_health(api_key: str, endpoint: str)
         raise Exception("Azure AI Foundry endpoint URL is required.")
 
     try:
+        health_url = _build_azure_ai_foundry_url(endpoint)
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "api-key": api_key,
+            "Content-Type": "application/json",
+        }
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                endpoint.rstrip("/"),
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                health_url,
+                headers=headers,
                 timeout=10.0,
             )
             if response.status_code == 401:
@@ -1339,7 +1384,12 @@ async def _test_azure_ai_foundry_completion(api_key: str, llm_model: str, endpoi
         raise Exception("A deployment name is required to test Azure AI Foundry completion.")
 
     try:
-        completions_url = f"{endpoint.rstrip('/')}/chat/completions"
+        completions_url = _build_azure_ai_foundry_url(endpoint, "/chat/completions")
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "api-key": api_key,
+            "Content-Type": "application/json",
+        }
         payload = {
             "model": llm_model,
             "messages": [{"role": "user", "content": "Hello"}],
@@ -1348,7 +1398,7 @@ async def _test_azure_ai_foundry_completion(api_key: str, llm_model: str, endpoi
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 completions_url,
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                headers=headers,
                 json=payload,
                 timeout=30.0,
             )
@@ -1389,12 +1439,17 @@ async def _test_azure_ai_foundry_embedding(
         raise Exception("A deployment name is required to test Azure AI Foundry embeddings.")
 
     try:
-        embeddings_url = f"{endpoint.rstrip('/')}/embeddings"
+        embeddings_url = _build_azure_ai_foundry_url(endpoint, "/embeddings")
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "api-key": api_key,
+            "Content-Type": "application/json",
+        }
         payload = {"model": embedding_model, "input": ["test"]}
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 embeddings_url,
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                headers=headers,
                 json=payload,
                 timeout=30.0,
             )

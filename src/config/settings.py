@@ -1189,8 +1189,19 @@ class AppClients:
                     os.environ["AZURE_AI_API_KEY"] = config.providers.azure_ai_foundry.api_key
                     logger.debug("Loaded Azure AI Foundry API key from config")
                 if config.providers.azure_ai_foundry.endpoint:
+                    from urllib.parse import parse_qs, urlparse
+
                     os.environ["AZURE_AI_API_BASE"] = config.providers.azure_ai_foundry.endpoint
                     logger.debug("Loaded Azure AI Foundry endpoint from config")
+                    parsed_ep = urlparse(config.providers.azure_ai_foundry.endpoint)
+                    ep_qs = parse_qs(parsed_ep.query)
+                    foundry_api_ver = (
+                        ep_qs.get("api-version")
+                        or ep_qs.get("api_version")
+                        or ["2024-05-01-preview"]
+                    )[0]
+                    os.environ["AZURE_AI_API_VERSION"] = foundry_api_ver
+                    logger.debug("Loaded Azure AI Foundry API version from config")
 
                 # Set Azure OpenAI Service credentials (LiteLLM azure/ prefix).
                 # AZURE_API_BASE must be the bare resource root — LiteLLM appends
