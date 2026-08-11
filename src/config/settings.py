@@ -1196,6 +1196,20 @@ class AppClients:
                     # litellm's unrelated azure_ai image_edit module). So bake
                     # api-version into the base URL itself; litellm preserves
                     # existing query params on api_base when building the request.
+                    #
+                    # KNOWN LIMITATION: litellm's azure_ai get_complete_url
+                    # unconditionally appends "/models/chat/completions" for ANY
+                    # services.ai.azure.com host — it has no concept of the
+                    # OpenAI-compatible ".../openai/v1" endpoint form at all (see
+                    # litellm/llms/azure_ai/chat/transformation.py). For a
+                    # v1-form endpoint this produces the wrong URL
+                    # (".../openai/v1/models/chat/completions" instead of
+                    # ".../openai/v1/chat/completions") no matter what we put
+                    # here — that's hardcoded in litellm itself, not something
+                    # fixable via this env var. Real fix: detect the v1 form and
+                    # route those calls through litellm's plain "openai/" custom
+                    # -base-url provider instead of "azure_ai/" in
+                    # models_service.get_litellm_model_name. Not yet implemented.
                     from api.provider_validation import _build_azure_ai_foundry_url
 
                     os.environ["AZURE_AI_API_BASE"] = _build_azure_ai_foundry_url(

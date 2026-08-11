@@ -1322,7 +1322,19 @@ def _merge_azure_ai_foundry_path(base_path: str, ending_path: str) -> str:
 # Per Microsoft's own Azure AI Model Inference REST API reference (chat
 # completions + embeddings), which uses this value in every example request:
 # https://learn.microsoft.com/en-us/rest/api/aifoundry/modelinference/
+#
+# This default ONLY applies to that generic model-inference form
+# (".../models/..."). It does NOT apply to the OpenAI-compatible
+# ".../openai/v1" form some Foundry resources use instead (see
+# _build_azure_ai_foundry_url) — that form is path-versioned and takes no
+# dated api-version at all; Azure's own docs: "api-version is no longer a
+# required parameter with the v1 GA API."
+# https://learn.microsoft.com/en-us/azure/foundry/openai/api-version-lifecycle
 AZURE_AI_FOUNDRY_DEFAULT_API_VERSION = "2025-04-01"
+
+# The openai/v1 route's own api-version query param (distinct from the dated
+# versions above) accepts only these literal values — never a dated string.
+_AZURE_AI_FOUNDRY_OPENAI_V1_API_VERSIONS = frozenset({"v1", "preview"})
 
 
 # Azure AI Foundry validation functions
@@ -1331,21 +1343,31 @@ def _build_azure_ai_foundry_url(
 ) -> str:
     """Build a valid Azure AI Foundry URL with target subpath and api-version parameter.
 
-    Always resolves under a `/models` segment (e.g. `.../models/chat/completions`)
-    regardless of what's already in `endpoint` — LiteLLM's azure_ai handler
-    unconditionally inserts that segment for any `services.ai.azure.com` host
-    (see `get_complete_url` in litellm/llms/azure_ai/chat/transformation.py), so
-    a "Microsoft Foundry" project endpoint like
-    `https://<resource>.services.ai.azure.com/api/projects/<project>` resolves to
-    `.../api/projects/<project>/models/chat/completions`, not `.../chat/completions`
-    — the latter 404s because that flat route doesn't exist on project-based
-    resources. Segment overlap is deduped so an endpoint that already ends in
-    `/models` doesn't get a duplicate `/models/models/...`.
+    Foundry hands out (at least) two incompatible endpoint forms, and this
+    branches on which one `endpoint` already targets:
 
-    Preserves existing query parameters (such as api-version in user endpoints).
-    An explicit `api_version` always wins over whatever is embedded in `endpoint`;
-    absent both, defaults to AZURE_AI_FOUNDRY_DEFAULT_API_VERSION — Azure AI
-    Foundry's model inference API rejects requests with no api-version at all.
+    - **OpenAI-compatible** (`.../openai/v1`): the target subpath (e.g.
+      `/chat/completions`) is appended directly with NO `/models` segment and
+      NO dated api-version — this route is path-versioned and Azure rejects a
+      dated `api-version` value here (only the literal "v1"/"preview" are
+      valid, and only for the `/models` listing route, never for actual
+      chat/embedding calls). Sending a `/models`-prefixed path here 404s
+      ("deployment not found") because that route doesn't exist on this form.
+    - **Everything else** (generic model-inference, or a "Microsoft Foundry"
+      project endpoint like `.../api/projects/<project>`): always resolves
+      under a `/models` segment (e.g. `.../models/chat/completions`) —
+      LiteLLM's azure_ai handler unconditionally inserts that segment for any
+      `services.ai.azure.com` host (see `get_complete_url` in
+      litellm/llms/azure_ai/chat/transformation.py), so a project endpoint
+      resolves to `.../api/projects/<project>/models/chat/completions`, not
+      `.../chat/completions` (the latter 404s: that flat route doesn't exist
+      on project-based resources). An explicit `api_version` always wins over
+      whatever is embedded in `endpoint`; absent both, defaults to
+      AZURE_AI_FOUNDRY_DEFAULT_API_VERSION — this form rejects requests with
+      no api-version at all.
+
+    Segment overlap is deduped either way so an endpoint that already ends in
+    the target segment doesn't get a duplicate.
     """
     if not endpoint:
         return endpoint
@@ -1361,15 +1383,35 @@ def _build_azure_ai_foundry_url(
     )
 
     base_path = path.rstrip("/")
-    ending_path = f"/models{target_subpath}" if target_subpath else "/models"
-    new_path = _merge_azure_ai_foundry_path(base_path, ending_path)
-
+    base_segments = [s for s in base_path.split("/") if s]
+    is_openai_v1 = [s.lower() for s in base_segments[-2:]] == ["openai", "v1"]
     query_params = parse_qs(parsed.query, keep_blank_values=True)
-    if api_version:
-        query_params["api-version"] = [api_version]
+
+    if is_openai_v1:
+        # /models is the only sub-route documented for this form outside of
+        # actual inference; treat a blank target_subpath (the credential
+        # health-check probe) as "list models" rather than the bare /openai/v1
+        # root, mirroring the generic form's "empty subpath -> /models" below.
+        end_segments = [s for s in target_subpath.split("/") if s] or ["models"]
+        new_path = "/" + "/".join(base_segments + end_segments)
+        existing_versions = [
+            v for v in query_params.get("api-version", []) if v in _AZURE_AI_FOUNDRY_OPENAI_V1_API_VERSIONS
+        ]
+        if existing_versions:
+            query_params["api-version"] = existing_versions
+        elif api_version in _AZURE_AI_FOUNDRY_OPENAI_V1_API_VERSIONS:
+            query_params["api-version"] = [api_version]
+        else:
+            query_params.pop("api-version", None)
         query_params.pop("api_version", None)
-    elif "api-version" not in query_params and "api_version" not in query_params:
-        query_params["api-version"] = [AZURE_AI_FOUNDRY_DEFAULT_API_VERSION]
+    else:
+        ending_path = f"/models{target_subpath}" if target_subpath else "/models"
+        new_path = _merge_azure_ai_foundry_path(base_path, ending_path)
+        if api_version:
+            query_params["api-version"] = [api_version]
+            query_params.pop("api_version", None)
+        elif "api-version" not in query_params and "api_version" not in query_params:
+            query_params["api-version"] = [AZURE_AI_FOUNDRY_DEFAULT_API_VERSION]
 
     new_query = urlencode(query_params, doseq=True)
     return urlunparse((scheme, netloc, new_path, parsed.params, new_query, parsed.fragment))
@@ -1386,6 +1428,7 @@ async def _test_azure_ai_foundry_lightweight_health(
 
     try:
         health_url = _build_azure_ai_foundry_url(endpoint, api_version=api_version)
+        logger.info(f"Azure AI Foundry health check request URL: {health_url}")
         headers = {
             "Authorization": f"Bearer {api_key}",
             "api-key": api_key,
@@ -1429,6 +1472,7 @@ async def _test_azure_ai_foundry_completion(
         completions_url = _build_azure_ai_foundry_url(
             endpoint, "/chat/completions", api_version=api_version
         )
+        logger.info(f"Azure AI Foundry completion request URL: {completions_url}")
         headers = {
             "Authorization": f"Bearer {api_key}",
             "api-key": api_key,
@@ -1486,6 +1530,7 @@ async def _test_azure_ai_foundry_embedding(
         embeddings_url = _build_azure_ai_foundry_url(
             endpoint, "/embeddings", api_version=api_version
         )
+        logger.info(f"Azure AI Foundry embedding request URL: {embeddings_url}")
         headers = {
             "Authorization": f"Bearer {api_key}",
             "api-key": api_key,

@@ -502,6 +502,10 @@
         },
         "dragging": false,
         "id": "SplitText-QIKhg",
+        "measured": {
+          "height": 415,
+          "width": 320
+        },
         "position": {
           "x": 2332.4637753484953,
           "y": 1432.2596523183522
@@ -946,6 +950,10 @@
         },
         "dragging": false,
         "id": "URLComponent-lnA0q",
+        "measured": {
+          "height": 295,
+          "width": 320
+        },
         "position": {
           "x": 1096.8262171482047,
           "y": 1435.8586464311813
@@ -981,9 +989,8 @@
             "frozen": false,
             "icon": "MessagesSquare",
             "legacy": false,
-            "lf_version": "0.11.2rc0",
             "metadata": {
-              "code_hash": "7a26c54d89ed",
+              "code_hash": "45974e6b1909",
               "dependencies": {
                 "dependencies": [
                   {
@@ -1021,6 +1028,7 @@
               "_type": "Component",
               "code": {
                 "advanced": true,
+                "api_editable": false,
                 "dynamic": true,
                 "fileTypes": [],
                 "file_path": "",
@@ -1035,11 +1043,12 @@
                 "show": true,
                 "title_case": false,
                 "type": "code",
-                "value": "from lfx.base.data.utils import IMG_FILE_TYPES, TEXT_FILE_TYPES\nfrom lfx.base.io.chat import ChatComponent\nfrom lfx.inputs.inputs import BoolInput\nfrom lfx.io import (\n    DropdownInput,\n    FileInput,\n    MessageTextInput,\n    MultilineInput,\n    Output,\n)\nfrom lfx.schema.message import Message\nfrom lfx.utils.constants import (\n    MESSAGE_SENDER_AI,\n    MESSAGE_SENDER_NAME_USER,\n    MESSAGE_SENDER_USER,\n)\n\n\nclass ChatInput(ChatComponent):\n    display_name = \"Chat Input\"\n    description = \"Get chat inputs from the Playground.\"\n    documentation: str = \"https://docs.langflow.org/chat-input-and-output\"\n    icon = \"MessagesSquare\"\n    name = \"ChatInput\"\n    minimized = True\n\n    inputs = [\n        MultilineInput(\n            name=\"input_value\",\n            display_name=\"Input Text\",\n            value=\"\",\n            info=\"Message to be passed as input.\",\n            input_types=[],\n        ),\n        BoolInput(\n            name=\"should_store_message\",\n            display_name=\"Store Messages\",\n            info=\"Store the message in the history.\",\n            value=True,\n            advanced=True,\n        ),\n        DropdownInput(\n            name=\"sender\",\n            display_name=\"Sender Type\",\n            options=[MESSAGE_SENDER_AI, MESSAGE_SENDER_USER],\n            value=MESSAGE_SENDER_USER,\n            info=\"Type of sender.\",\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"sender_name\",\n            display_name=\"Sender Name\",\n            info=\"Name of the sender.\",\n            value=MESSAGE_SENDER_NAME_USER,\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"session_id\",\n            display_name=\"Session ID\",\n            info=\"The session ID of the chat. If empty, the current session ID parameter will be used.\",\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"context_id\",\n            display_name=\"Context ID\",\n            info=\"The context ID of the chat. Adds an extra layer to the local memory.\",\n            value=\"\",\n            advanced=True,\n        ),\n        FileInput(\n            name=\"files\",\n            display_name=\"Files\",\n            file_types=TEXT_FILE_TYPES + IMG_FILE_TYPES,\n            info=\"Files to be sent with the message.\",\n            advanced=True,\n            is_list=True,\n            temp_file=True,\n        ),\n    ]\n    outputs = [\n        Output(display_name=\"Chat Message\", name=\"message\", method=\"message_response\"),\n    ]\n\n    async def message_response(self) -> Message:\n        # Ensure files is a list and filter out empty/None values\n        files = self.files if self.files else []\n        if files and not isinstance(files, list):\n            files = [files]\n        # Filter out None/empty values\n        files = [f for f in files if f is not None and f != \"\"]\n\n        session_id = self.session_id or self.graph.session_id or \"\"\n        message = await Message.create(\n            text=self.input_value,\n            sender=self.sender,\n            sender_name=self.sender_name,\n            session_id=session_id,\n            context_id=self.context_id,\n            files=files,\n        )\n        if session_id and isinstance(message, Message) and self.should_store_message:\n            stored_message = await self.send_message(\n                message,\n            )\n            self.message.value = stored_message\n            message = stored_message\n\n        self.status = message\n        return message\n"
+                "value": "from lfx.base.data.utils import IMG_FILE_TYPES, TEXT_FILE_TYPES\nfrom lfx.base.io.chat import ChatComponent\nfrom lfx.inputs.inputs import BoolInput\nfrom lfx.io import (\n    DropdownInput,\n    FileInput,\n    MessageTextInput,\n    MultilineInput,\n    Output,\n)\nfrom lfx.schema.image import get_file_paths\nfrom lfx.schema.message import Message\nfrom lfx.services.deps import get_settings_service\nfrom lfx.utils.constants import (\n    MESSAGE_SENDER_AI,\n    MESSAGE_SENDER_NAME_USER,\n    MESSAGE_SENDER_USER,\n)\nfrom lfx.utils.file_path_security import (\n    component_file_access_scopes,\n    enforce_local_file_access,\n    is_local_file_access_restricted,\n)\n\n\nclass ChatInput(ChatComponent):\n    display_name = \"Chat Input\"\n    description = \"Get chat inputs from the Playground.\"\n    documentation: str = \"https://docs.langflow.org/chat-input-and-output\"\n    icon = \"MessagesSquare\"\n    name = \"ChatInput\"\n    minimized = True\n\n    inputs = [\n        MultilineInput(\n            name=\"input_value\",\n            display_name=\"Input Text\",\n            value=\"\",\n            info=\"Message to be passed as input.\",\n            input_types=[],\n        ),\n        BoolInput(\n            name=\"should_store_message\",\n            display_name=\"Store Messages\",\n            info=\"Store the message in the history.\",\n            value=True,\n            advanced=True,\n        ),\n        DropdownInput(\n            name=\"sender\",\n            display_name=\"Sender Type\",\n            options=[MESSAGE_SENDER_AI, MESSAGE_SENDER_USER],\n            value=MESSAGE_SENDER_USER,\n            info=\"Type of sender.\",\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"sender_name\",\n            display_name=\"Sender Name\",\n            info=\"Name of the sender.\",\n            value=MESSAGE_SENDER_NAME_USER,\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"session_id\",\n            display_name=\"Session ID\",\n            info=\"The session ID of the chat. If empty, the current session ID parameter will be used.\",\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"context_id\",\n            display_name=\"Context ID\",\n            info=\"The context ID of the chat. Adds an extra layer to the local memory.\",\n            value=\"\",\n            advanced=True,\n        ),\n        FileInput(\n            name=\"files\",\n            display_name=\"Files\",\n            file_types=TEXT_FILE_TYPES + IMG_FILE_TYPES,\n            info=\"Files to be sent with the message.\",\n            advanced=True,\n            is_list=True,\n            temp_file=True,\n        ),\n    ]\n    outputs = [\n        Output(display_name=\"Chat Message\", name=\"message\", method=\"message_response\"),\n    ]\n\n    async def message_response(self) -> Message:\n        # Ensure files is a list and filter out empty/None values\n        files = self.files if self.files else []\n        if files and not isinstance(files, list):\n            files = [files]\n        # Filter out None/empty values\n        files = [f for f in files if f is not None and f != \"\"]\n\n        # Build endpoints inject caller-controlled file references directly into\n        # ChatInput. Resolve and validate local references before the Message can\n        # later read them while constructing model attachment content.\n        if files:\n            settings_service = get_settings_service()\n            storage_type = getattr(getattr(settings_service, \"settings\", None), \"storage_type\", \"local\")\n            # The storage factory falls back to local storage for unsupported\n            # values, so only the explicitly configured S3 backend may bypass\n            # filesystem containment.\n            if str(storage_type).lower() != \"s3\" and is_local_file_access_restricted():\n                scope_ids = list(component_file_access_scopes(self))\n                # Public executions replace graph.flow_id with a per-visitor\n                # virtual ID. Only the server-populated source provenance may\n                # restore the already-validated public attachment namespace.\n                source_flow_id = getattr(self.graph, \"source_flow_id\", None)\n                if source_flow_id:\n                    scope_ids.append(source_flow_id)\n                for file_path in get_file_paths(files):\n                    enforce_local_file_access(file_path, scope_ids=scope_ids)\n\n        session_id = self.session_id or self.graph.session_id or \"\"\n        message = await Message.create(\n            text=self.input_value,\n            sender=self.sender,\n            sender_name=self.sender_name,\n            session_id=session_id,\n            context_id=self.context_id,\n            files=files,\n        )\n        if session_id and isinstance(message, Message) and self.should_store_message:\n            stored_message = await self.send_message(\n                message,\n            )\n            self.message.value = stored_message\n            message = stored_message\n\n        self.status = message\n        return message\n"
               },
               "context_id": {
                 "_input_type": "MessageTextInput",
                 "advanced": true,
+                "api_editable": false,
                 "display_name": "Context ID",
                 "dynamic": false,
                 "info": "The context ID of the chat. Adds an extra layer to the local memory.",
@@ -1065,6 +1074,7 @@
               "files": {
                 "_input_type": "FileInput",
                 "advanced": true,
+                "api_editable": false,
                 "display_name": "Files",
                 "dynamic": false,
                 "fileTypes": [
@@ -1113,6 +1123,7 @@
                 "_input_type": "MultilineInput",
                 "advanced": false,
                 "ai_enabled": false,
+                "api_editable": false,
                 "copy_field": false,
                 "display_name": "Input Text",
                 "dynamic": false,
@@ -1124,6 +1135,7 @@
                 "multiline": true,
                 "name": "input_value",
                 "override_skip": false,
+                "password": false,
                 "placeholder": "",
                 "required": false,
                 "show": true,
@@ -1138,6 +1150,7 @@
               "sender": {
                 "_input_type": "DropdownInput",
                 "advanced": true,
+                "api_editable": false,
                 "combobox": false,
                 "dialog_inputs": {},
                 "display_name": "Sender Type",
@@ -1165,6 +1178,7 @@
               "sender_name": {
                 "_input_type": "MessageTextInput",
                 "advanced": true,
+                "api_editable": false,
                 "display_name": "Sender Name",
                 "dynamic": false,
                 "info": "Name of the sender.",
@@ -1190,6 +1204,7 @@
               "session_id": {
                 "_input_type": "MessageTextInput",
                 "advanced": true,
+                "api_editable": false,
                 "display_name": "Session ID",
                 "dynamic": false,
                 "info": "The session ID of the chat. If empty, the current session ID parameter will be used.",
@@ -1215,6 +1230,7 @@
               "should_store_message": {
                 "_input_type": "BoolInput",
                 "advanced": true,
+                "api_editable": false,
                 "display_name": "Store Messages",
                 "dynamic": false,
                 "info": "Store the message in the history.",
@@ -1240,6 +1256,10 @@
         },
         "dragging": false,
         "id": "ChatInput-sskrk",
+        "measured": {
+          "height": 207,
+          "width": 320
+        },
         "position": {
           "x": 682.6862404451078,
           "y": 1455.821005659169
@@ -1540,6 +1560,10 @@
         },
         "dragging": false,
         "id": "ChatOutput-0XHyo",
+        "measured": {
+          "height": 52,
+          "width": 192
+        },
         "position": {
           "x": 3588.211427790188,
           "y": 1759.283136230774
@@ -2901,6 +2925,10 @@
         },
         "dragging": false,
         "id": "Operations-uhog5",
+        "measured": {
+          "height": 415,
+          "width": 320
+        },
         "position": {
           "x": 3160.0211180473734,
           "y": 1481.6904008526296
@@ -2987,7 +3015,7 @@
                 "value": "72c3d17c-2dac-4a73-b48a-6518473d7830"
               },
               "_frontend_node_folder_id": {
-                "value": "203c7c12-9e1d-4561-bb14-16102afec154"
+                "value": "f7c676a8-ae39-4d16-9ab6-d1e14e68da9b"
               },
               "_type": "Component",
               "api_base": {
@@ -3265,76 +3293,23 @@
                     "provider": "OpenAI"
                   },
                   {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
+                    "category": "Azure AI Foundry",
+                    "icon": "Azure",
                     "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
+                      "embedding_class": "OpenAIEmbeddings",
                       "model_type": "embeddings",
                       "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
+                        "api_base": "base_url",
+                        "api_key": "api_key",
+                        "chunk_size": "chunk_size",
+                        "dimensions": "dimensions",
+                        "max_retries": "max_retries",
+                        "model": "model",
+                        "request_timeout": "timeout"
                       }
                     },
-                    "name": "ibm/granite-embedding-278m-multilingual",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "ibm/slate-125m-english-rtrvr-v2",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "ibm/slate-30m-english-rtrvr-v2",
-                    "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "IBM WatsonX",
-                    "icon": "WatsonxAI",
-                    "metadata": {
-                      "embedding_class": "WatsonxEmbeddings",
-                      "model_type": "embeddings",
-                      "param_mapping": {
-                        "api_key": "apikey",
-                        "model_id": "model_id",
-                        "project_id": "project_id",
-                        "request_timeout": "request_timeout",
-                        "space_id": "space_id",
-                        "url": "url"
-                      }
-                    },
-                    "name": "intfloat/multilingual-e5-large",
-                    "provider": "IBM WatsonX"
+                    "name": "gpt-5-nano",
+                    "provider": "Azure AI Foundry"
                   }
                 ],
                 "override_skip": false,
@@ -3556,6 +3531,10 @@
         },
         "dragging": false,
         "id": "EmbeddingModel-4xlif",
+        "measured": {
+          "height": 52,
+          "width": 192
+        },
         "position": {
           "x": 2444.1500041374215,
           "y": 2107.674145700942
@@ -4917,6 +4896,10 @@
         },
         "dragging": false,
         "id": "Operations-jsRu6",
+        "measured": {
+          "height": 497,
+          "width": 320
+        },
         "position": {
           "x": 1516.6788573085516,
           "y": 1370.0763185443127
@@ -6278,6 +6261,10 @@
         },
         "dragging": false,
         "id": "Operations-fX1Im",
+        "measured": {
+          "height": 497,
+          "width": 320
+        },
         "position": {
           "x": 1917.4709329555637,
           "y": 1390.8717018547147
@@ -7183,6 +7170,10 @@
         },
         "dragging": false,
         "id": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-D6eM3",
+        "measured": {
+          "height": 1213,
+          "width": 320
+        },
         "position": {
           "x": 2759.252152496372,
           "y": 1353.207638077407
@@ -7192,17 +7183,16 @@
       }
     ],
     "viewport": {
-      "x": -68.2665033451334,
-      "y": -269.25441306974096,
-      "zoom": 0.3565064293410352
+      "x": -240.23660439277762,
+      "y": -848.4087661468586,
+      "zoom": 0.7395611353486734
     }
   },
   "description": "This flow is to ingest the URL to open search.",
   "endpoint_name": null,
   "id": "72c3d17c-2dac-4a73-b48a-6518473d7830",
   "is_component": false,
-  "mcp_enabled": true,
-  "last_tested_version": "0.11.2",
+  "last_tested_version": "1.11.3",
   "locked": true,
   "name": "OpenSearch URL Ingestion Flow",
   "tags": [
