@@ -333,15 +333,15 @@ def is_workspace_oauth_overrides_enabled() -> bool:
 
 
 def is_azure_ai_enabled() -> bool:
-    """Feature flag for the Azure AI Foundry / Azure OpenAI providers.
+    """Feature flag for the Azure AI Foundry provider.
 
-    Default on. Gates: the Azure provider tiles and setup dialogs in the
-    Settings UI, the ``/models/azure-ai-foundry`` and ``/models/azure-openai``
-    model-listing/validation endpoints, and acceptance of Azure provider
-    credentials or provider selection via ``/settings`` and ``/onboarding``.
-    Read per-call (like the other feature-flag accessors in this module) so
-    runtime/test overrides take effect without a restart. Set
-    ``OPENRAG_AZURE_AI_ENABLED=false`` to turn it off.
+    Default on. Gates: the Azure provider tile and setup dialog in the
+    Settings UI, the ``/models/azure-ai-foundry`` model-listing/validation
+    endpoint, and acceptance of Azure provider credentials or provider
+    selection via ``/settings`` and ``/onboarding``. Read per-call (like the
+    other feature-flag accessors in this module) so runtime/test overrides
+    take effect without a restart. Set ``OPENRAG_AZURE_AI_ENABLED=false`` to
+    turn it off.
     """
     raw = os.getenv("OPENRAG_AZURE_AI_ENABLED", "true").strip().lower()
     return raw in ("true", "1", "yes", "on")
@@ -1217,24 +1217,6 @@ class AppClients:
                         api_version=config.providers.azure_ai_foundry.api_version or None,
                     )
                     logger.debug("Loaded Azure AI Foundry endpoint from config")
-
-                # Set Azure OpenAI Service credentials (LiteLLM azure/ prefix).
-                # AZURE_API_BASE must be the bare resource root — LiteLLM appends
-                # /openai/deployments/<name>/... itself, so a pasted /openai/v1
-                # suffix would otherwise produce a doubled path (404 at inference).
-                if config.providers.azure_openai.api_key:
-                    os.environ["AZURE_API_KEY"] = config.providers.azure_openai.api_key
-                    logger.debug("Loaded Azure OpenAI API key from config")
-                if config.providers.azure_openai.endpoint:
-                    from utils.container_utils import normalize_azure_openai_base
-
-                    os.environ["AZURE_API_BASE"] = normalize_azure_openai_base(
-                        config.providers.azure_openai.endpoint
-                    )
-                    logger.debug("Loaded Azure OpenAI endpoint from config")
-                if config.providers.azure_openai.api_version:
-                    os.environ["AZURE_API_VERSION"] = config.providers.azure_openai.api_version
-                    logger.debug("Loaded Azure OpenAI API version from config")
 
                 # Determine model and provider for both probe and production client
                 model_name = config.knowledge.embedding_model or OPENAI_DEFAULT_EMBEDDING_MODEL

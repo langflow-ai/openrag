@@ -24,7 +24,6 @@ import {
 import { useDoclingHealth } from "@/components/docling-health-banner";
 import AnthropicLogo from "@/components/icons/anthropic-logo";
 import AzureAIFoundryLogo from "@/components/icons/azure-ai-foundry-logo";
-import AzureOpenAILogo from "@/components/icons/azure-openai-logo";
 import IBMLogo from "@/components/icons/ibm-logo";
 import OllamaLogo from "@/components/icons/ollama-logo";
 import OpenAILogo from "@/components/icons/openai-logo";
@@ -46,7 +45,6 @@ import { cn } from "@/lib/utils";
 import { AnimatedProviderSteps } from "./animated-provider-steps";
 import { AnthropicOnboarding } from "./anthropic-onboarding";
 import { AzureAIFoundryOnboarding } from "./azure-ai-foundry-onboarding";
-import { AzureOpenAIOnboarding } from "./azure-openai-onboarding";
 import { IBMOnboarding } from "./ibm-onboarding";
 import { OllamaOnboarding } from "./ollama-onboarding";
 import { OpenAIOnboarding } from "./openai-onboarding";
@@ -106,10 +104,7 @@ const OnboardingCard = ({
         : LLM_PROVIDER_ORDER;
       const providerOrder = fullOrder.filter((p) => {
         if (isCloudBrand && CLOUD_EXCLUDED_PROVIDERS.includes(p)) return false;
-        if (
-          !showAzureAiProviders &&
-          (p === "azure_ai_foundry" || p === "azure_openai")
-        ) {
+        if (!showAzureAiProviders && p === "azure_ai_foundry") {
           return false;
         }
         return true;
@@ -146,12 +141,6 @@ const OnboardingCard = ({
         ) {
           setModelProvider("azure_ai_foundry");
           break;
-        } else if (
-          provider === "azure_openai" &&
-          currentSettings.providers.azure_openai?.has_api_key
-        ) {
-          setModelProvider("azure_openai");
-          break;
         }
       }
     }
@@ -182,8 +171,6 @@ const OnboardingCard = ({
       return currentSettings.providers.ollama?.configured === true;
     } else if (provider === "azure_ai_foundry") {
       return currentSettings.providers.azure_ai_foundry?.configured === true;
-    } else if (provider === "azure_openai") {
-      return currentSettings.providers.azure_openai?.configured === true;
     }
     return false;
   };
@@ -211,9 +198,6 @@ const OnboardingCard = ({
     azure_ai_foundry_api_key: "",
     azure_ai_foundry_endpoint: "",
     azure_ai_foundry_api_version: "",
-    azure_openai_api_key: "",
-    azure_openai_endpoint: "",
-    azure_openai_api_version: "",
   });
 
   const [currentStep, setCurrentStep] = useState<number | null>(
@@ -523,17 +507,6 @@ const OnboardingCard = ({
         onboardingData.azure_ai_foundry_api_version =
           settings.azure_ai_foundry_api_version;
       }
-    } else if (currentProvider === "azure_openai") {
-      if (settings.azure_openai_api_key) {
-        onboardingData.azure_openai_api_key = settings.azure_openai_api_key;
-      }
-      if (settings.azure_openai_endpoint) {
-        onboardingData.azure_openai_endpoint = settings.azure_openai_endpoint;
-      }
-      if (settings.azure_openai_api_version) {
-        onboardingData.azure_openai_api_version =
-          settings.azure_openai_api_version;
-      }
     }
 
     trackButton({
@@ -728,41 +701,6 @@ const OnboardingCard = ({
                       </TabTrigger>
                     </TabsTrigger>
                   )}
-                  {showAzureAiProviders && (
-                    <TabsTrigger
-                      value="azure_openai"
-                      data-testid={`azure-openai-${isEmbedding ? "embedding" : "llm"}-tab`}
-                      className={cn(
-                        error &&
-                          modelProvider === "azure_openai" &&
-                          "data-[state=active]:border-destructive",
-                      )}
-                    >
-                      <TabTrigger
-                        selected={modelProvider === "azure_openai"}
-                        isLoading={isLoadingModels}
-                      >
-                        <div
-                          className={cn(
-                            "flex items-center justify-center gap-2 w-8 h-8 rounded-none border",
-                            modelProvider === "azure_openai"
-                              ? "bg-[#0078D4]"
-                              : "bg-muted",
-                          )}
-                        >
-                          <AzureOpenAILogo
-                            className={cn(
-                              "w-4 h-4 shrink-0",
-                              modelProvider === "azure_openai"
-                                ? "text-white"
-                                : "text-muted-foreground",
-                            )}
-                          />
-                        </div>
-                        Azure OpenAI
-                      </TabTrigger>
-                    </TabsTrigger>
-                  )}
                   {!isCloudBrand && (
                     <TabsTrigger
                       value="ollama"
@@ -870,24 +808,6 @@ const OnboardingCard = ({
                       existingApiVersion={
                         currentSettings?.providers?.azure_ai_foundry
                           ?.api_version
-                      }
-                    />
-                  </TabsContent>
-                )}
-                {showAzureAiProviders && (
-                  <TabsContent value="azure_openai">
-                    <AzureOpenAIOnboarding
-                      setSettings={setSettings}
-                      isEmbedding={isEmbedding}
-                      alreadyConfigured={
-                        providerAlreadyConfigured &&
-                        modelProvider === "azure_openai"
-                      }
-                      existingEndpoint={
-                        currentSettings?.providers?.azure_openai?.endpoint
-                      }
-                      existingApiVersion={
-                        currentSettings?.providers?.azure_openai?.api_version
                       }
                     />
                   </TabsContent>
