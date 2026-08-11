@@ -95,6 +95,15 @@ fi
 mkdir -p langflow-data
 chmod 777 langflow-data
 
+# Ensure LANGFLOW_SECRET_KEY is set (CI provides most vars via env, but not this one)
+if [ -z "${LANGFLOW_SECRET_KEY:-}" ]; then
+    LANGFLOW_SECRET_KEY=$(openssl rand -base64 32)
+    export LANGFLOW_SECRET_KEY
+fi
+if ! grep -q '^LANGFLOW_SECRET_KEY=' .env 2>/dev/null; then
+    echo "LANGFLOW_SECRET_KEY='${LANGFLOW_SECRET_KEY}'" >> .env
+fi
+
 # Start required services (CPU)
 echo "Starting required services (CPU)..."
 make dev-cpu SERVICES="opensearch langflow openrag-backend openrag-frontend"
