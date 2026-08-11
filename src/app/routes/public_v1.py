@@ -141,6 +141,15 @@ def register_public_v1_routes(app: FastAPI):
     app.add_api_route(
         "/v1/status/{component}/logs",
         v1_status.get_component_logs_endpoint,
+    )
+
+    app.add_api_route(
+        "/v1/status",
+        v1_status.get_status_endpoint,
+        methods=["GET"],
+        tags=["public"],
+    )
+
     # Files endpoints
     # /v1/files/search must be registered before /v1/files to avoid path shadowing
     app.add_api_route(
@@ -149,9 +158,8 @@ def register_public_v1_routes(app: FastAPI):
         methods=["GET"],
         tags=["public"],
     )
+
     app.add_api_route(
-        "/v1/status",
-        v1_status.get_status_endpoint,
         "/v1/files",
         v1_files.list_files,
         methods=["GET"],
