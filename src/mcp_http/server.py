@@ -203,7 +203,7 @@ COMPONENT_CUSTOMIZATIONS: dict[tuple[str, str], dict[str, str]] = {
     },
     ("/v2/files/search", "GET"): {
         "name": "openrag_search_files_v2",
-         "description": "Search ingested files by file name (case-insensitive).",
+        "description": "Search ingested files by file name (case-insensitive).",
     },
 }
 
