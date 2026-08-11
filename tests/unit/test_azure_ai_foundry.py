@@ -55,7 +55,9 @@ def test_build_azure_ai_foundry_url_preserves_custom_api_version():
 
 
 def test_build_azure_ai_foundry_url_prevents_duplicate_subpath():
-    endpoint = "https://my-foundry.services.ai.azure.com/models/chat/completions?api-version=2025-04-01"
+    endpoint = (
+        "https://my-foundry.services.ai.azure.com/models/chat/completions?api-version=2025-04-01"
+    )
     url = _build_azure_ai_foundry_url(endpoint, "/chat/completions")
     assert (
         url
