@@ -682,7 +682,7 @@ export function Navigation({
             )}
           </div>
           {selection.isSelecting && (
-            <div className="flex-shrink-0 py-3 border-t mx-3">
+            <div className="flex-shrink-0 py-3 border-t mx-3 mb-[4.5rem]">
               <div className="flex items-center justify-between pb-1 text-xs text-muted-foreground">
                 <span>{selection.count} selected</span>
                 <span>of {conversations.length}</span>

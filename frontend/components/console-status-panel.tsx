@@ -328,7 +328,7 @@ export function ConsoleStatusPanel({ onClose }: ConsoleStatusPanelProps) {
      */
     <div
       className={cn(
-        "fixed right-6 bottom-[5.5rem] z-[9999]",
+        "fixed left-6 bottom-[5.5rem] z-[9999]",
         "w-[440px] max-h-[calc(100vh-8rem)] flex flex-col",
         "bg-zinc-900 border border-zinc-700/70 rounded-2xl shadow-2xl overflow-hidden",
       )}
@@ -441,7 +441,7 @@ export function ConsoleStatusButton({
       onClick={onClick}
       aria-pressed={isOpen}
       className={cn(
-        "fixed bottom-6 right-6 z-[9999] flex items-center gap-2 px-3 py-2 rounded-lg",
+        "fixed bottom-6 left-6 z-[9999] flex items-center gap-2 px-3 py-2 rounded-lg",
         "bg-zinc-800 border border-zinc-700 text-zinc-200 text-sm font-medium",
         "hover:bg-zinc-700 hover:border-zinc-600 transition-colors shadow-lg",
         isOpen && "bg-zinc-700 border-zinc-500",
