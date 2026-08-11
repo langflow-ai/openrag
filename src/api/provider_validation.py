@@ -1313,6 +1313,18 @@ def _merge_azure_ai_foundry_path(base_path: str, ending_path: str) -> str:
     return "/" + "/".join(base_segments + end_segments)
 
 
+# Azure AI Foundry's model inference API rejects requests with no
+# api-version at all. Shared with langflow_sync.py, which must apply the
+# same default when syncing AZURE_AI_FOUNDRY_API_VERSION to Langflow so its
+# embedding/chat calls don't fail even when the user leaves the (optional)
+# API Version field blank in Settings.
+#
+# Per Microsoft's own Azure AI Model Inference REST API reference (chat
+# completions + embeddings), which uses this value in every example request:
+# https://learn.microsoft.com/en-us/rest/api/aifoundry/modelinference/
+AZURE_AI_FOUNDRY_DEFAULT_API_VERSION = "2025-04-01"
+
+
 # Azure AI Foundry validation functions
 def _build_azure_ai_foundry_url(
     endpoint: str, target_subpath: str = "", api_version: str | None = None
@@ -1332,8 +1344,8 @@ def _build_azure_ai_foundry_url(
 
     Preserves existing query parameters (such as api-version in user endpoints).
     An explicit `api_version` always wins over whatever is embedded in `endpoint`;
-    absent both, defaults to '2024-05-01-preview' — Azure AI Foundry's model
-    inference API rejects requests with no api-version at all.
+    absent both, defaults to AZURE_AI_FOUNDRY_DEFAULT_API_VERSION — Azure AI
+    Foundry's model inference API rejects requests with no api-version at all.
     """
     if not endpoint:
         return endpoint
@@ -1357,7 +1369,7 @@ def _build_azure_ai_foundry_url(
         query_params["api-version"] = [api_version]
         query_params.pop("api_version", None)
     elif "api-version" not in query_params and "api_version" not in query_params:
-        query_params["api-version"] = ["2024-05-01-preview"]
+        query_params["api-version"] = [AZURE_AI_FOUNDRY_DEFAULT_API_VERSION]
 
     new_query = urlencode(query_params, doseq=True)
     return urlunparse((scheme, netloc, new_path, parsed.params, new_query, parsed.fragment))

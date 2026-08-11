@@ -145,7 +145,7 @@ class AzureAIFoundryConfig:
 
     api_key: str = ""
     endpoint: str = ""  # e.g. https://<resource>.services.ai.azure.com/models
-    api_version: str = ""  # optional, e.g. 2024-05-01-preview
+    api_version: str = ""  # optional, e.g. 2025-04-01
     configured: bool = False
     llm_deployment_name: str = ""
     embedding_deployment_name: str = ""

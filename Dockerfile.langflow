@@ -117,7 +117,10 @@ new = '''def _azure_ai_foundry_models_url(endpoint: str) -> str:
 
     query = parse_qs(parsed.query, keep_blank_values=True)
     if "api-version" not in query and "api_version" not in query:
-        query["api-version"] = ["2024-05-01-preview"]
+        # Per Microsoft's own Azure AI Model Inference REST API reference,
+        # which uses this value in every example request:
+        # https://learn.microsoft.com/en-us/rest/api/aifoundry/modelinference/
+        query["api-version"] = ["2025-04-01"]
     new_query = urlencode(query, doseq=True)
     return urlunparse(
         (parsed.scheme, parsed.netloc, new_path, parsed.params, new_query, parsed.fragment)
@@ -237,6 +240,215 @@ with mock.patch("requests.get") as get:
     if url != expected:
         raise SystemExit(f"expected {expected!r}, got {url!r}")
     print(f"Verified existing path+query is preserved: {url}")
+EOF
+
+# Same class of issue as the model_utils.py patch above (and same "this is a
+# POC-grade stopgap, the real fix belongs upstream in Langflow" caveat
+# applies): lfx.base.models.unified_models.instantiation never threads an
+# api-version through for Azure AI Foundry, in either the chat path
+# (get_llm, using langchain_azure_ai's AzureAIOpenAIApiChatModel — which DOES
+# accept an api_version constructor param natively, Langflow just never sets
+# it) or the embeddings path (_compose_embedding_kwargs, using plain
+# langchain_openai.OpenAIEmbeddings via a base_url override — which has no
+# Azure-aware api-version handling at all, but does forward an arbitrary
+# default_query dict verbatim to the OpenAI SDK client). Both fail identically
+# with "API version not supported" / "Missing required query parameter:
+# api-version" once a real chat/embedding call is attempted (e.g. during
+# ingestion, "Error building Component OpenSearch (Multi-Model
+# Multi-Embedding)"). Reads a new AZURE_AI_FOUNDRY_API_VERSION Langflow
+# Global Variable (synced from src/api/settings/langflow_sync.py, same
+# pattern as AZURE_AI_FOUNDRY_API_KEY/ENDPOINT) — if unset, both branches
+# behave exactly as before (the class's own default, if any, applies).
+RUN python <<'EOF'
+import importlib.util
+import pathlib
+
+import lfx.base.models.unified_models.instantiation as m
+
+path = pathlib.Path(m.__file__)
+src = path.read_text()
+
+old_llm = '''    elif provider == "Azure AI Foundry":
+        from lfx.base.models.model_utils import AZURE_AI_FOUNDRY_REQUEST_TIMEOUT
+
+        provider_vars = unified_models_module.get_all_variables_for_provider(user_id, provider)
+        endpoint_value = provider_vars.get("AZURE_AI_FOUNDRY_ENDPOINT") or _env_if_allowed("AZURE_AI_FOUNDRY_ENDPOINT")
+        if not endpoint_value:
+            msg = (
+                "Azure AI Foundry endpoint is required. Configure AZURE_AI_FOUNDRY_ENDPOINT "
+                "in Settings → Model Providers or set the environment variable."
+            )
+            raise ValueError(msg)
+        kwargs["endpoint"] = endpoint_value
+        connection_url_param = "endpoint"
+        # Bound hung/blackholed endpoints the same way live discovery does.
+        kwargs["request_timeout"] = AZURE_AI_FOUNDRY_REQUEST_TIMEOUT
+'''
+if old_llm not in src:
+    raise SystemExit(
+        "lfx instantiation.py no longer matches the expected get_llm Azure AI "
+        "Foundry branch source; update or drop this Dockerfile.langflow patch"
+    )
+
+new_llm = '''    elif provider == "Azure AI Foundry":
+        from lfx.base.models.model_utils import AZURE_AI_FOUNDRY_REQUEST_TIMEOUT
+
+        provider_vars = unified_models_module.get_all_variables_for_provider(user_id, provider)
+        endpoint_value = provider_vars.get("AZURE_AI_FOUNDRY_ENDPOINT") or _env_if_allowed("AZURE_AI_FOUNDRY_ENDPOINT")
+        if not endpoint_value:
+            msg = (
+                "Azure AI Foundry endpoint is required. Configure AZURE_AI_FOUNDRY_ENDPOINT "
+                "in Settings → Model Providers or set the environment variable."
+            )
+            raise ValueError(msg)
+        kwargs["endpoint"] = endpoint_value
+        connection_url_param = "endpoint"
+        # Bound hung/blackholed endpoints the same way live discovery does.
+        kwargs["request_timeout"] = AZURE_AI_FOUNDRY_REQUEST_TIMEOUT
+        # AzureAIOpenAIApiChatModel accepts api_version natively (falls back to
+        # AZURE_OPENAI_API_VERSION env var otherwise, which OpenRAG doesn't
+        # set) — without it Azure rejects requests with "API version not
+        # supported". Same root cause as the embeddings-side fix below.
+        api_version_value = provider_vars.get("AZURE_AI_FOUNDRY_API_VERSION") or _env_if_allowed(
+            "AZURE_AI_FOUNDRY_API_VERSION"
+        )
+        if api_version_value:
+            kwargs["api_version"] = api_version_value
+'''
+
+new_src = src.replace(old_llm, new_llm, 1)
+if new_src == src:
+    raise SystemExit("replace of get_llm's Azure AI Foundry branch was a no-op; investigate")
+
+old_embed = '''    if provider == "Azure AI Foundry" and "api_base" in param_mapping:
+        foundry_vars = unified_models_module.get_all_variables_for_provider(user_id, provider)
+        endpoint_value = (
+            api_base_value
+            or _to_str(foundry_vars.get("AZURE_AI_FOUNDRY_ENDPOINT"))
+            or _to_str(_env_if_allowed("AZURE_AI_FOUNDRY_ENDPOINT"))
+        )
+        if not endpoint_value:
+            if use_component_overrides:
+                msg = (
+                    "Azure AI Foundry endpoint is required. Configure AZURE_AI_FOUNDRY_ENDPOINT "
+                    "in Settings → Model Providers or set the environment variable."
+                )
+                raise ValueError(msg)
+            return None
+        connection_url_param = param_mapping["api_base"]
+        kwargs[connection_url_param] = endpoint_value
+'''
+if old_embed not in new_src:
+    raise SystemExit(
+        "lfx instantiation.py no longer matches the expected "
+        "_compose_embedding_kwargs Azure AI Foundry branch source; update or "
+        "drop this Dockerfile.langflow patch"
+    )
+
+new_embed = '''    if provider == "Azure AI Foundry" and "api_base" in param_mapping:
+        foundry_vars = unified_models_module.get_all_variables_for_provider(user_id, provider)
+        endpoint_value = (
+            api_base_value
+            or _to_str(foundry_vars.get("AZURE_AI_FOUNDRY_ENDPOINT"))
+            or _to_str(_env_if_allowed("AZURE_AI_FOUNDRY_ENDPOINT"))
+        )
+        if not endpoint_value:
+            if use_component_overrides:
+                msg = (
+                    "Azure AI Foundry endpoint is required. Configure AZURE_AI_FOUNDRY_ENDPOINT "
+                    "in Settings → Model Providers or set the environment variable."
+                )
+                raise ValueError(msg)
+            return None
+        connection_url_param = param_mapping["api_base"]
+        kwargs[connection_url_param] = endpoint_value
+        # OpenAIEmbeddings (the class Foundry embeddings use — see
+        # EMBEDDING_PROVIDER_CLASS_MAPPING) has no Azure-aware api-version
+        # handling; without it Azure rejects the request with "API version
+        # not supported". default_query is forwarded verbatim to the OpenAI
+        # SDK client and merged into every request's query params correctly.
+        api_version_value = _to_str(foundry_vars.get("AZURE_AI_FOUNDRY_API_VERSION")) or _to_str(
+            _env_if_allowed("AZURE_AI_FOUNDRY_API_VERSION")
+        )
+        if api_version_value:
+            kwargs["default_query"] = {"api-version": api_version_value}
+'''
+
+final_src = new_src.replace(old_embed, new_embed, 1)
+if final_src == new_src:
+    raise SystemExit(
+        "replace of _compose_embedding_kwargs's Azure AI Foundry branch was a "
+        "no-op; investigate"
+    )
+path.write_text(final_src)
+
+cache_file = pathlib.Path(importlib.util.cache_from_source(str(path)))
+cache_file.unlink(missing_ok=True)
+
+print(f"Patched {path}")
+EOF
+
+# Build-time functional self-test.
+#
+# get_llm's Azure branch does `from lfx.base.models import unified_models as
+# unified_models_module` as a LOCAL import inside the function, so there is
+# no module-level `instantiation.unified_models_module` attribute to patch —
+# fully exercising get_llm would additionally require constructing a real
+# AzureAIOpenAIApiChatModel (network/credential-dependent, unsafe to attempt
+# in a build step). So get_llm is verified statically via inspect.getsource
+# below instead.
+#
+# _compose_embedding_kwargs takes unified_models_module as a plain parameter
+# and — critically — never instantiates the embedding class itself (it
+# returns `(embedding_class, kwargs)`; instantiation happens in its caller),
+# so it's safe to call for real with a stub module.
+RUN python <<'EOF'
+import inspect
+from types import SimpleNamespace
+
+import lfx.base.models.unified_models.instantiation as m
+
+FOUNDRY_ENDPOINT = "https://example.services.ai.azure.com/api/projects/proj-default"
+
+
+def make_stub(api_version=None):
+    variables = {"AZURE_AI_FOUNDRY_ENDPOINT": FOUNDRY_ENDPOINT}
+    if api_version:
+        variables["AZURE_AI_FOUNDRY_API_VERSION"] = api_version
+    return SimpleNamespace(
+        get_all_variables_for_provider=lambda user_id, provider: variables,
+        get_api_key_for_provider=lambda user_id, provider, override: "fake-key",
+        get_embedding_class=lambda name: object,
+    )
+
+
+def compose(api_version=None):
+    return m._compose_embedding_kwargs(
+        "Azure AI Foundry",
+        "gpt-5-nano",
+        None,
+        make_stub(api_version),
+        selected_provider="Azure AI Foundry",
+    )
+
+
+result = compose(api_version="2024-08-01-preview")
+if result is None:
+    raise SystemExit("_compose_embedding_kwargs returned None with a configured endpoint")
+_, kwargs = result
+if kwargs.get("default_query") != {"api-version": "2024-08-01-preview"}:
+    raise SystemExit(f"expected default_query with api-version, got kwargs={kwargs!r}")
+print("Verified _compose_embedding_kwargs sets default_query from AZURE_AI_FOUNDRY_API_VERSION")
+
+_, kwargs = compose(api_version=None)
+if "default_query" in kwargs:
+    raise SystemExit(f"expected no default_query when AZURE_AI_FOUNDRY_API_VERSION is unset, got kwargs={kwargs!r}")
+print("Verified _compose_embedding_kwargs omits default_query entirely when unset")
+
+llm_source = inspect.getsource(m.get_llm)
+if "AZURE_AI_FOUNDRY_API_VERSION" not in llm_source or 'kwargs["api_version"]' not in llm_source:
+    raise SystemExit("get_llm source does not contain the expected api_version patch")
+print("Verified get_llm source contains the expected api_version patch")
 EOF
 
 COPY flows/ /app/flows/

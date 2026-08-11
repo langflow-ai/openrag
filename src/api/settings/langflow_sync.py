@@ -194,6 +194,27 @@ async def _update_langflow_global_variables(config, flows_service=None):
             )
             logger.info("Set AZURE_AI_FOUNDRY_ENDPOINT global variable in Langflow")
 
+        # Consumed by the Dockerfile.langflow patch on
+        # instantiation.py's get_llm()/_compose_embedding_kwargs() Azure AI
+        # Foundry branches — Langflow's own lfx package never threads
+        # api-version through for this provider otherwise (see
+        # _build_azure_ai_foundry_url in provider_validation.py for the
+        # equivalent fix on OpenRAG's own direct calls). Always synced (not
+        # gated on the user having set one) — the API Version field is
+        # optional in Settings, and Azure's model inference API rejects
+        # requests with no api-version at all, so Langflow needs the same
+        # default OpenRAG's own calls already fall back to.
+        if config.providers.azure_ai_foundry.endpoint:
+            from api.provider_validation import AZURE_AI_FOUNDRY_DEFAULT_API_VERSION
+
+            await clients._create_langflow_global_variable(
+                "AZURE_AI_FOUNDRY_API_VERSION",
+                config.providers.azure_ai_foundry.api_version
+                or AZURE_AI_FOUNDRY_DEFAULT_API_VERSION,
+                modify=True,
+            )
+            logger.info("Set AZURE_AI_FOUNDRY_API_VERSION global variable in Langflow")
+
         # Azure OpenAI Service global variables
         if config.providers.azure_openai.api_key:
             await clients._create_langflow_global_variable(

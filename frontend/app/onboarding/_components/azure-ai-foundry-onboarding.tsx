@@ -8,12 +8,13 @@ import { useGetAzureAIFoundryModelsQuery } from "../../api/queries/useGetModelsQ
 import { useUpdateSettings } from "../_hooks/useUpdateSettings";
 import { ModelSelector } from "./model-selector";
 
-// Known Azure AI model inference API versions. Optional — most deployments
-// work without one — and the combobox also accepts a custom value.
-const apiVersionOptions = [
-  { value: "2024-05-01-preview", label: "2024-05-01-preview" },
-  { value: "2024-04-01-preview", label: "2024-04-01-preview" },
-];
+// Per Microsoft's Azure AI Model Inference REST API reference, which uses
+// this value in every example request (chat completions and embeddings):
+// https://learn.microsoft.com/en-us/rest/api/aifoundry/modelinference/
+// Left blank, the backend applies this same default — the field is only
+// exposed so it can be overridden for a resource pinned to an older version.
+// The combobox also accepts an arbitrary custom value.
+const apiVersionOptions = [{ value: "2025-04-01", label: "2025-04-01" }];
 
 export function AzureAIFoundryOnboarding({
   setSettings,
@@ -120,7 +121,7 @@ export function AzureAIFoundryOnboarding({
         <div className="space-y-1">
           <LabelWrapper
             label="API version"
-            helperText="Optional. Only needed if your endpoint requires one — added to the request as ?api-version=..."
+            helperText="Azure requires one on every request. Defaults to 2025-04-01 if left blank — only override this for a resource pinned to a different version."
             id="azure-ai-foundry-api-version"
           >
             <ModelSelector
@@ -130,7 +131,7 @@ export function AzureAIFoundryOnboarding({
               onValueChange={setApiVersion}
               searchPlaceholder="Search or enter a version..."
               noOptionsPlaceholder="No API versions available"
-              placeholder="None (optional)"
+              placeholder="2025-04-01 (default)"
             />
           </LabelWrapper>
         </div>
