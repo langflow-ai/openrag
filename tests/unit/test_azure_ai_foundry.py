@@ -4,11 +4,35 @@ from api.provider_validation import _build_azure_ai_foundry_url
 
 
 def test_build_azure_ai_foundry_url_base():
+    # LiteLLM's azure_ai handler always inserts a /models segment for any
+    # services.ai.azure.com host, regardless of what's already in api_base.
     endpoint = "https://my-foundry.services.ai.azure.com"
     url = _build_azure_ai_foundry_url(endpoint, "/chat/completions")
     assert (
         url
-        == "https://my-foundry.services.ai.azure.com/chat/completions?api-version=2024-05-01-preview"
+        == "https://my-foundry.services.ai.azure.com/models/chat/completions?api-version=2024-05-01-preview"
+    )
+
+
+def test_build_azure_ai_foundry_url_project_endpoint():
+    # "Microsoft Foundry" project-style endpoints have no flat /chat/completions
+    # route — only /<project>/models/chat/completions resolves (404 otherwise).
+    endpoint = "https://my-foundry.services.ai.azure.com/api/projects/my-project"
+    url = _build_azure_ai_foundry_url(endpoint, "/chat/completions")
+    assert url == (
+        "https://my-foundry.services.ai.azure.com"
+        "/api/projects/my-project/models/chat/completions"
+        "?api-version=2024-05-01-preview"
+    )
+
+
+def test_build_azure_ai_foundry_url_project_endpoint_health():
+    endpoint = "https://my-foundry.services.ai.azure.com/api/projects/my-project"
+    url = _build_azure_ai_foundry_url(endpoint)
+    assert url == (
+        "https://my-foundry.services.ai.azure.com"
+        "/api/projects/my-project/models"
+        "?api-version=2024-05-01-preview"
     )
 
 
@@ -42,8 +66,8 @@ def test_build_azure_ai_foundry_url_prevents_duplicate_subpath():
 def test_build_azure_ai_foundry_url_embeddings():
     endpoint = "https://my-foundry.services.ai.azure.com"
     url = _build_azure_ai_foundry_url(endpoint, "/embeddings")
-    assert (
-        url == "https://my-foundry.services.ai.azure.com/embeddings?api-version=2024-05-01-preview"
+    assert url == (
+        "https://my-foundry.services.ai.azure.com/models/embeddings?api-version=2024-05-01-preview"
     )
 
 

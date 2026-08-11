@@ -1298,11 +1298,37 @@ async def _test_anthropic_completion_with_tools(api_key: str, llm_model: str) ->
         raise
 
 
+def _merge_azure_ai_foundry_path(base_path: str, ending_path: str) -> str:
+    """Append `ending_path` onto `base_path`, deduping overlapping segments.
+
+    Mirrors LiteLLM's own `_add_path_to_api_base` exactly (litellm/utils.py),
+    since the real inference call is made by LiteLLM and must resolve to the
+    identical URL our own validation/listing calls hit.
+    """
+    base_segments = [s for s in base_path.split("/") if s]
+    end_segments = [s for s in ending_path.split("/") if s]
+    for i in range(len(base_segments)):
+        if base_segments[i:] == end_segments[: len(base_segments) - i]:
+            return "/" + "/".join(base_segments[:i] + end_segments)
+    return "/" + "/".join(base_segments + end_segments)
+
+
 # Azure AI Foundry validation functions
 def _build_azure_ai_foundry_url(
     endpoint: str, target_subpath: str = "", api_version: str | None = None
 ) -> str:
     """Build a valid Azure AI Foundry URL with target subpath and api-version parameter.
+
+    Always resolves under a `/models` segment (e.g. `.../models/chat/completions`)
+    regardless of what's already in `endpoint` — LiteLLM's azure_ai handler
+    unconditionally inserts that segment for any `services.ai.azure.com` host
+    (see `get_complete_url` in litellm/llms/azure_ai/chat/transformation.py), so
+    a "Microsoft Foundry" project endpoint like
+    `https://<resource>.services.ai.azure.com/api/projects/<project>` resolves to
+    `.../api/projects/<project>/models/chat/completions`, not `.../chat/completions`
+    — the latter 404s because that flat route doesn't exist on project-based
+    resources. Segment overlap is deduped so an endpoint that already ends in
+    `/models` doesn't get a duplicate `/models/models/...`.
 
     Preserves existing query parameters (such as api-version in user endpoints).
     An explicit `api_version` always wins over whatever is embedded in `endpoint`;
@@ -1323,13 +1349,8 @@ def _build_azure_ai_foundry_url(
     )
 
     base_path = path.rstrip("/")
-    if target_subpath:
-        if base_path.endswith(target_subpath):
-            new_path = base_path
-        else:
-            new_path = f"{base_path}{target_subpath}"
-    else:
-        new_path = base_path or "/"
+    ending_path = f"/models{target_subpath}" if target_subpath else "/models"
+    new_path = _merge_azure_ai_foundry_path(base_path, ending_path)
 
     query_params = parse_qs(parsed.query, keep_blank_values=True)
     if api_version:
