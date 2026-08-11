@@ -394,6 +394,7 @@ export function AgentSettingsSection() {
                     : "No language models detected. Configure a provider first."
                 }
                 value={settings.agent?.llm_model || ""}
+                selectedProvider={settings.agent?.llm_provider}
                 onValueChange={handleModelChange}
                 defaultOpen={openLlmSelector}
               />

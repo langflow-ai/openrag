@@ -699,6 +699,7 @@ export function IngestSettingsSection() {
                     : "No embedding models detected. Configure a provider first."
                 }
                 value={settings.knowledge?.embedding_model || ""}
+                selectedProvider={settings.knowledge?.embedding_provider}
                 onValueChange={handleEmbeddingModelChange}
               />
             </LabelWrapper>
@@ -906,6 +907,7 @@ export function IngestSettingsSection() {
                               : "No models detected. Configure OpenAI, Anthropic, Ollama, or IBM watsonx.ai first."
                           }
                           value={vlmModel}
+                          selectedProvider={vlmProvider}
                           onValueChange={handleVlmModelChange}
                           hasError={!!validationError}
                           disabled={!pictureDescriptions}

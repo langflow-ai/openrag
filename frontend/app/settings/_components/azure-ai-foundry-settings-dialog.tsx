@@ -1,10 +1,9 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { FormProvider, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import {
@@ -16,7 +15,6 @@ import { useGetAzureAIFoundryModelsQuery } from "@/app/api/queries/useGetModelsQ
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import type { ProviderHealthResponse } from "@/app/api/queries/useProviderHealthQuery";
 import AzureAIFoundryLogo from "@/components/icons/azure-ai-foundry-logo";
-import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -41,11 +39,6 @@ const AzureAIFoundrySettingsDialog = ({
   const queryClient = useQueryClient();
   const [isValidating, setIsValidating] = useState(false);
   const [validationError, setValidationError] = useState<Error | null>(null);
-  const [isTestingConnection, setIsTestingConnection] = useState(false);
-  const [testConnectionResult, setTestConnectionResult] = useState<{
-    success: boolean;
-    message: string;
-  } | null>(null);
   const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
   const [affectedModels, setAffectedModels] = useState<
     AffectedEmbeddingModel[] | undefined
@@ -79,61 +72,22 @@ const AzureAIFoundrySettingsDialog = ({
     },
   });
 
-  // Clear test result whenever any form value changes
-  useEffect(() => {
-    const subscription = methods.watch(() => {
-      setTestConnectionResult(null);
-    });
-    return () => subscription.unsubscribe();
-  }, [methods.watch]);
-
   const { handleSubmit, watch } = methods;
   const endpoint = watch("endpoint");
   const apiKey = watch("apiKey");
   const apiVersion = watch("apiVersion");
-  const llmDeploymentName = watch("llmDeploymentName");
-  const embeddingDeploymentName = watch("embeddingDeploymentName");
 
+  // Lightweight credential check on save, matching every other provider
+  // dialog (OpenAI/Anthropic/watsonx only verify the key works, they don't
+  // test a specific model). Deliberately NOT testCompletion: true — that
+  // exercises the actual deployment and can fail for reasons unrelated to
+  // whether the credentials are valid (e.g. an api-version mismatch for one
+  // specific deployment), which must not block saving otherwise-good
+  // endpoint/API key changes.
   const { refetch: validateCredentials } = useGetAzureAIFoundryModelsQuery(
     { endpoint, apiKey, apiVersion: apiVersion || undefined },
     { enabled: false },
   );
-
-  const { refetch: runConnectionTest } = useGetAzureAIFoundryModelsQuery(
-    {
-      endpoint,
-      apiKey,
-      apiVersion: apiVersion || undefined,
-      llmDeploymentName: llmDeploymentName || undefined,
-      embeddingDeploymentName: embeddingDeploymentName || undefined,
-      testCompletion: true,
-    },
-    { enabled: false },
-  );
-
-  const handleTestConnection = async () => {
-    setIsTestingConnection(true);
-    setTestConnectionResult(null);
-    const result = await runConnectionTest();
-    setIsTestingConnection(false);
-    if (result.isError) {
-      setTestConnectionResult({
-        success: false,
-        message: result.error?.message ?? "Connection test failed",
-      });
-    } else {
-      const tested = [
-        llmDeploymentName && "LLM",
-        embeddingDeploymentName && "embedding",
-      ]
-        .filter(Boolean)
-        .join(" and ");
-      setTestConnectionResult({
-        success: true,
-        message: `Connection verified — ${tested} deployment${tested.includes("and") ? "s" : ""} responded successfully.`,
-      });
-    }
-  };
 
   const settingsMutation = useUpdateSettingsMutation({
     onSuccess: () => {
@@ -222,7 +176,6 @@ const AzureAIFoundrySettingsDialog = ({
       onOpenChange={(o) => {
         if (o) {
           methods.reset();
-          setTestConnectionResult(null);
         }
         setShowRemoveConfirm(false);
         setAffectedModels(undefined);
@@ -245,44 +198,6 @@ const AzureAIFoundrySettingsDialog = ({
               modelsError={validationError}
               isLoadingModels={isValidating}
             />
-
-            <div className="flex items-center gap-3">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleTestConnection}
-                disabled={
-                  isTestingConnection ||
-                  (!llmDeploymentName && !embeddingDeploymentName)
-                }
-              >
-                {isTestingConnection ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Testing...
-                  </>
-                ) : (
-                  "Test connection"
-                )}
-              </Button>
-              {testConnectionResult && (
-                <span
-                  className={`flex items-center gap-1.5 text-sm ${
-                    testConnectionResult.success
-                      ? "text-green-600 dark:text-green-400"
-                      : "text-destructive"
-                  }`}
-                >
-                  {testConnectionResult.success ? (
-                    <CheckCircle2 className="h-4 w-4 shrink-0" />
-                  ) : (
-                    <XCircle className="h-4 w-4 shrink-0" />
-                  )}
-                  {testConnectionResult.message}
-                </span>
-              )}
-            </div>
 
             <AnimatePresence mode="wait">
               {settingsMutation.isError && (
