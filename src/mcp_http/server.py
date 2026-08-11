@@ -188,12 +188,11 @@ COMPONENT_CUSTOMIZATIONS: dict[tuple[str, str], dict[str, str]] = {
         "name": "openrag_delete_knowledge_filter",
         "description": "Delete a knowledge filter by ID.",
     },
-    # files endpoints
+    # files endpoints (v1)
     ("/v1/files", "GET"): {
         "name": "openrag_list_files",
-        "description": "List all ingested files",
+        "description": "List ingested files with cursor-based pagination.",
     },
-    
     ("/v1/files/search", "GET"): {
         "name": "openrag_search_files",
         "description": "Search files by query parameters.",
@@ -206,8 +205,16 @@ COMPONENT_CUSTOMIZATIONS: dict[tuple[str, str], dict[str, str]] = {
             "connector_type, mimetype, and owner, plus filename search. "
             "Default limit is 100; maximum is 500."
         ),
-    }
-    
+    },
+    # files endpoints (v2 — composite-agg cursor pagination)
+    ("/v2/files", "GET"): {
+        "name": "openrag_list_files_v2",
+        "description": "List all ingested files with cursor-based composite-aggregation pagination.",
+    },
+    ("/v2/files/search", "GET"): {
+        "name": "openrag_search_files_v2",
+        "description": "Search ingested files by file name (case-insensitive).",
+    },
 }
 
 
@@ -233,14 +240,16 @@ def _customize_mcp_component(
 
 def create_mcp_server(app: FastAPI) -> FastMCP:
     """
-    Build a FastMCP server from the FastAPI app, exposing only /v1/ routes as tools.
+    Build a FastMCP server from the FastAPI app.
 
     Must be called AFTER all routes are registered on `app` so that
     FastMCP.from_fastapi() can discover them.
 
     Route mapping:
+    - POST /v1/documents/ingest → excluded (multipart not supported by FastMCP proxy)
     - /v1/* routes → MCP tools (GET, POST, PUT, DELETE, PATCH)
-    - All other routes → excluded
+    - GET /v2/files, GET /v2/files/search → MCP tools
+    - all other routes → excluded
 
     Note: GET endpoints are exposed as TOOLS, not resources/resource templates.
     The MCP convention is "GET = resource," but most LLM clients in agent mode
