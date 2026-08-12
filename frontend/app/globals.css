@@ -352,11 +352,12 @@
     border-bottom-color: hsl(var(--border)) !important;
   }
 
-  /* Task dialog: flush footer to bottom, no extra top gap from default margin-top. */
+  /* Task dialog: flush footer to bottom; use contextual layer (not Carbon #262626). */
   [data-theme="ibm"]
     [data-slot="dialog-content"].h-task-dialog
     [data-slot="dialog-footer"] {
     margin-top: 0 !important;
+    background-color: hsl(var(--layer-contextual)) !important;
   }
 
   [data-theme="ibm"] [data-slot="dialog-footer"] > button {
@@ -384,6 +385,11 @@
     background-color: #525252 !important;
     border: 0 !important;
     outline: none !important;
+  }
+
+  [data-theme="ibm"]
+    [data-slot="dialog-footer"]
+    > button:first-of-type:hover:not(:focus-visible) {
     box-shadow: none !important;
   }
 
@@ -396,7 +402,20 @@
     background-color: #0353e9 !important;
     border: 0 !important;
     outline: none !important;
+  }
+
+  [data-theme="ibm"]
+    [data-slot="dialog-footer"]
+    > button:last-of-type:hover:not(:focus-visible) {
     box-shadow: none !important;
+  }
+
+  /* After hover resets: restore a visible focus ring (matches Button focus-visible:ring). */
+  [data-theme="ibm"] [data-slot="dialog-footer"] > button:focus-visible {
+    outline: none !important;
+    box-shadow:
+      0 0 0 2px hsl(var(--background)),
+      0 0 0 4px hsl(var(--ring)) !important;
   }
 
   [data-theme="ibm"] {

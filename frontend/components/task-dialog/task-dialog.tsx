@@ -173,7 +173,10 @@ function TaskDialogContent({
           ignoreTitleCase
           className={cn(
             isCloudBrand
-              ? "shrink-0 justify-start rounded-none px-4 text-left"
+              ? cn(
+                  "shrink-0 justify-start rounded-none px-4 text-left",
+                  isCancelOnly && "col-span-2",
+                )
               : "shrink-0",
           )}
           onClick={onClose}
