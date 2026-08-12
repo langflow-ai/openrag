@@ -81,6 +81,12 @@ spec:
       annotations:
         snapshot.storage.kubernetes.io/is-default-class: "true"
 
+    # if you are hitting github rate limits for flow download uncomment this and set
+    # the secret 
+    # flowsGithubTokenSecret:
+    #   name: github-token
+    #   key: token
+
   doclingComponents:
     enabled: true
 
@@ -127,3 +133,17 @@ spec:
         labels:
           storage-purpose: queue-persistence
           backup-frequency: hourly
+
+# Optional secret you can set since sometimes you will hit github rate limits on downloading flows
+# from github. To obtain do:
+# from your github -> settings -> developer settings -> Personal Access Tokens
+# -> fine grained token -> create a new token with read access and paste it here
+# ---
+# apiVersion: v1
+# kind: Secret
+# metadata:
+#   name: github-token
+#   namespace: my-tenant
+# type: Opaque
+# stringData:
+#   token: <your-github-pat>

@@ -65,7 +65,7 @@ spec:
 
   # External OpenSearch — required unless credentials are in backend envSecret
   # opensearch:
-  #   host: opensearch-coordinating.opensearch.svc.cluster.local
+  #   host: opensearch.opensearch.svc.cluster.local
   #   port: 9200
   #   scheme: https
   #   indexName: documents
@@ -159,3 +159,17 @@ spec:
 
   networkPolicy:
     enabled: false
+
+# Optional secret you can set since sometimes you will hit github rate limits on downloading flows
+# from github. To obtain do:
+# from your github -> settings -> developer settings -> Personal Access Tokens
+# -> fine grained token -> create a new token with read access and paste it here
+# ---
+# apiVersion: v1
+# kind: Secret
+# metadata:
+#   name: github-token
+#   namespace: my-tenant
+# type: Opaque
+# stringData:
+#   token: <your-github-pat>

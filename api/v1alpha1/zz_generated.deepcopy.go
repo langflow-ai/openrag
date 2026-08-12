@@ -640,6 +640,11 @@ func (in *LangflowSpec) DeepCopyInto(out *LangflowSpec) {
 		*out = new(v1.SecretKeySelector)
 		(*in).DeepCopyInto(*out)
 	}
+	if in.FlowsGithubTokenSecret != nil {
+		in, out := &in.FlowsGithubTokenSecret, &out.FlowsGithubTokenSecret
+		*out = new(v1.SecretKeySelector)
+		(*in).DeepCopyInto(*out)
+	}
 	if in.Storage != nil {
 		in, out := &in.Storage, &out.Storage
 		*out = new(PersistenceSpec)

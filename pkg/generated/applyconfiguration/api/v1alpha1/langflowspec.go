@@ -30,6 +30,7 @@ type LangflowSpecApplyConfiguration struct {
 	SecretKeySecret                 *v1.SecretKeySelector              `json:"secretKeySecret,omitempty"`
 	FlowsRef                        *string                            `json:"flowsRef,omitempty"`
 	FlowsInitImage                  *string                            `json:"flowsInitImage,omitempty"`
+	FlowsGithubTokenSecret          *v1.SecretKeySelector              `json:"flowsGithubTokenSecret,omitempty"`
 	Storage                         *PersistenceSpecApplyConfiguration `json:"storage,omitempty"`
 	PVCReclaimPolicy                *apiv1alpha1.PVCReclaimPolicy      `json:"pvcReclaimPolicy,omitempty"`
 }
@@ -399,6 +400,14 @@ func (b *LangflowSpecApplyConfiguration) WithFlowsRef(value string) *LangflowSpe
 // If called multiple times, the FlowsInitImage field is set to the value of the last call.
 func (b *LangflowSpecApplyConfiguration) WithFlowsInitImage(value string) *LangflowSpecApplyConfiguration {
 	b.FlowsInitImage = &value
+	return b
+}
+
+// WithFlowsGithubTokenSecret sets the FlowsGithubTokenSecret field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the FlowsGithubTokenSecret field is set to the value of the last call.
+func (b *LangflowSpecApplyConfiguration) WithFlowsGithubTokenSecret(value v1.SecretKeySelector) *LangflowSpecApplyConfiguration {
+	b.FlowsGithubTokenSecret = &value
 	return b
 }
 

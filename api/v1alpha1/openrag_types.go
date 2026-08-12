@@ -317,6 +317,11 @@ type LangflowSpec struct {
 	// +optional
 	FlowsInitImage string `json:"flowsInitImage,omitempty"`
 
+	// FlowsGithubTokenSecret references a Secret key containing a GitHub personal access token
+	// used to authenticate flow downloads and avoid API rate limits.
+	// +optional
+	FlowsGithubTokenSecret *corev1.SecretKeySelector `json:"flowsGithubTokenSecret,omitempty"`
+
 	// Storage configures a PVC mounted at /app/data (Langflow SQLite + flows).
 	// +optional
 	Storage *PersistenceSpec `json:"storage,omitempty"`

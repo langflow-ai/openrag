@@ -1105,14 +1105,23 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 		if initImage == "" {
 			initImage = "python:3-alpine"
 		}
+		initEnv := []corev1.EnvVar{
+			{Name: "FLOWS_REF", Value: spec.FlowsRef},
+		}
+		if spec.FlowsGithubTokenSecret != nil {
+			initEnv = append(initEnv, corev1.EnvVar{
+				Name: "GITHUB_TOKEN",
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: spec.FlowsGithubTokenSecret,
+				},
+			})
+		}
 		initContainers = []corev1.Container{
 			{
 				Name:    "download-flows",
 				Image:   initImage,
 				Command: []string{"python3", "-c", flowsDownloadScript},
-				Env: []corev1.EnvVar{
-					{Name: "FLOWS_REF", Value: spec.FlowsRef},
-				},
+				Env:     initEnv,
 				VolumeMounts: []corev1.VolumeMount{
 					{Name: "langflow-flows", MountPath: "/app/flows"},
 				},
@@ -2514,11 +2523,15 @@ func setAnnotation(obj client.Object, key, value string) {
 const flowsDownloadScript = `
 import urllib.request, json, os
 ref = os.environ['FLOWS_REF']
-api = 'https://api.github.com/repos/langflow-ai/openrag/contents/flows?ref=' + ref
-req = urllib.request.Request(api, headers={
+token = os.environ.get('GITHUB_TOKEN', '')
+headers = {
     'Accept': 'application/vnd.github.v3+json',
     'User-Agent': 'openrag-operator/1.0',
-})
+}
+if token:
+    headers['Authorization'] = 'Bearer ' + token
+api = 'https://api.github.com/repos/langflow-ai/openrag/contents/flows?ref=' + ref
+req = urllib.request.Request(api, headers=headers)
 with urllib.request.urlopen(req) as r:
     entries = json.load(r)
 os.makedirs('/app/flows', exist_ok=True)
@@ -2526,7 +2539,8 @@ for e in entries:
     if not e['name'].endswith('.json'):
         continue
     print('Downloading ' + e['name'] + '...', flush=True)
-    with urllib.request.urlopen(e['download_url']) as r:
+    dl_req = urllib.request.Request(e['download_url'], headers=headers)
+    with urllib.request.urlopen(dl_req) as r:
         data = r.read()
     with open('/app/flows/' + e['name'], 'wb') as f:
         f.write(data)
