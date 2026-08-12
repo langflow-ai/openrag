@@ -11,7 +11,9 @@ import { AgentSettingsSection } from "../_components/agent-settings-section";
 import { ApiKeysSection } from "../_components/api-keys-section";
 import { ConnectorAccessSection } from "../_components/connector-access-section";
 import { ConnectorsTab } from "../_components/connectors-tab";
+import { IngestPreviewSettingsSection } from "../_components/ingest-preview-settings-section";
 import { IngestSettingsSection } from "../_components/ingest-settings-section";
+import { LangflowUpdatesBanner } from "../_components/langflow-updates-banner";
 import ModelProviders from "../_components/model-providers";
 
 const VALID_TABS = [
@@ -20,6 +22,7 @@ const VALID_TABS = [
   "langflow",
   "api-keys",
   "connector-access",
+  "ingest-preview",
 ] as const;
 
 type Tab = (typeof VALID_TABS)[number];
@@ -143,12 +146,14 @@ export default async function SettingsTabPage({
       {tab === "providers" && <ModelProviders />}
       {tab === "langflow" && (
         <div className="space-y-6">
+          <LangflowUpdatesBanner />
           <AgentSettingsSection />
           <IngestSettingsSection />
         </div>
       )}
       {tab === "api-keys" && <ApiKeysSection />}
       {tab === "connector-access" && <ConnectorAccessSection />}
+      {tab === "ingest-preview" && <IngestPreviewSettingsSection />}
     </HydrationBoundary>
   );
 }

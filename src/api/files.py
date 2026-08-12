@@ -1,8 +1,8 @@
 """
 File listing and search API endpoints.
 
-Provides server-side file-level views over the chunk-based OpenSearch index,
-replacing the client-side chunk-to-file aggregation pattern.
+Provides server-side file-level views over the chunk-based OpenSearch index.
+Uses terms aggregation with in-memory sort/slice (v1).
 """
 
 from fastapi import Depends, Query

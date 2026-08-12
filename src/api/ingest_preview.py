@@ -35,6 +35,39 @@ def _require_preview_task(task_service: Any, user: User, task_id: str):
     return upload_task, None
 
 
+async def get_parse_preview(
+    task_id: str,
+    preview_service: Annotated[Any, Depends(get_ingest_preview_service)],
+    task_service: Annotated[Any, Depends(get_task_service)],
+    user: Annotated[User, Depends(require_permission("knowledge:upload"))],
+    file: str | None = None,
+):
+    """Return cached Docling JSON for a preview-mode ingest task.
+
+    ``file`` selects a specific file within a multi-file preview task (the
+    file_path key from the task status). Omitted = first available file.
+    """
+    _, error = _require_preview_task(task_service, user, task_id)
+    if error is not None:
+        return error
+
+    preview = preview_service.get_docling_preview(user.user_id, task_id, file_path=file)
+    if preview is None:
+        return JSONResponse({"error": "Parse preview not available yet"}, status_code=404)
+
+    return JSONResponse(
+        {
+            "task_id": task_id,
+            "document": preview["document"],
+            "stats": preview["stats"],
+            "expires_at": preview["expires_at"],
+            "document_id": preview.get("document_id"),
+            "file_path": preview.get("file_path"),
+            "filename": preview.get("filename"),
+        }
+    )
+
+
 async def get_index_proof(
     task_id: str,
     preview_service: Annotated[Any, Depends(get_ingest_preview_service)],

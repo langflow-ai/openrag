@@ -123,13 +123,25 @@ class FileService:
             filter_clauses.append({"term": {"owner": owner}})
 
         if search:
-            # Combine wildcard (partial), prefix, and fuzzy for flexible matching
+            # Combine wildcard (partial) and prefix for flexible matching.
+            # case_insensitive=True so "jason" matches "JASON_RESUME.pdf".
             must.append(
                 {
                     "bool": {
                         "should": [
-                            {"wildcard": {"filename": {"value": f"*{search.lower()}*"}}},
-                            {"prefix": {"filename": search.lower()}},
+                            {
+                                "wildcard": {
+                                    "filename": {
+                                        "value": f"*{search.lower()}*",
+                                        "case_insensitive": True,
+                                    }
+                                }
+                            },
+                            {
+                                "prefix": {
+                                    "filename": {"value": search.lower(), "case_insensitive": True}
+                                }
+                            },
                         ],
                         "minimum_should_match": 1,
                     }
@@ -238,8 +250,9 @@ class FileService:
 
         reverse = sort_order.lower() == "desc"
 
-        return sorted(
-            files,
-            key=lambda f: f.get(sort_by) or "",
-            reverse=reverse,
-        )
+        _numeric_sort_fields = {"file_size", "chunk_count"}
+
+        def _sort_key(f):
+            return f.get(sort_by) or (0 if sort_by in _numeric_sort_fields else "")
+
+        return sorted(files, key=_sort_key, reverse=reverse)

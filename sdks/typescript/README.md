@@ -201,6 +201,46 @@ const result = await client.documents.delete("report.pdf");
 console.log(`Success: ${result.success}`);
 ```
 
+## Listing Files
+
+`client.documents.listFiles()` inventories everything in the knowledge base and
+returns the metadata needed to drive knowledge filters and search.
+
+```typescript
+// List the first page of files
+const firstPage = await client.documents.listFiles({ page_size: 50 });
+for (const f of firstPage.files) {
+  console.log(`${f.filename}  (${f.mimetype}, ${f.chunk_count} chunks)`);
+}
+
+// Cursor-paginate through all files
+let afterKey: string | undefined;
+do {
+  const page = await client.documents.listFiles({ page_size: 100, after_key: afterKey });
+  for (const f of page.files) console.log(f.filename);
+  afterKey = page.after_key ? JSON.stringify(page.after_key) : undefined;
+} while (afterKey);
+
+// Filter and sort
+const sortedPage = await client.documents.listFiles({
+  connector_type: "sharepoint",
+  sort_by: "indexed_time",
+  sort_order: "desc",
+});
+
+// List → create knowledge filter workflow
+const sharepointPage = await client.documents.listFiles({ connector_type: "sharepoint" });
+const filenames = sharepointPage.files.map(f => f.filename);
+const { id: filterId } = await client.knowledgeFilters.create({
+  name: "SharePoint docs",
+  queryData: { filters: { data_sources: filenames } },
+});
+
+// Use the filter in search and chat
+const results = await client.search.query("quarterly report", { filterId });
+const response = await client.chat.create({ message: "Summarise Q3", filterId });
+```
+
 ## Settings
 
 ```typescript

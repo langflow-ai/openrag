@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   type CheckboxSelectionCallbackParams,
   type ColDef,
+  type ColumnState,
   type GetRowIdParams,
   themeQuartz,
   type ValueFormatterParams,
@@ -32,6 +33,7 @@ import "@/components/AgGrid/agGridStyles.css";
 import { toast } from "sonner";
 import { KnowledgeActionsDropdown } from "@/components/knowledge-actions-dropdown";
 import { KnowledgeBatchActionsBar } from "@/components/knowledge-batch-actions-bar";
+import { KnowledgePaginationFooter } from "@/components/knowledge-pagination-footer";
 import { KnowledgeSearchBar } from "@/components/knowledge-search-bar";
 import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
 import { RequirePermission } from "@/components/require-permission";
@@ -128,6 +130,17 @@ function getSourceIcon(connectorType?: string) {
   }
 }
 
+const AG_FIELD_TO_SORT_BY: Record<string, string> = {
+  filename: "filename",
+  size: "file_size",
+  mimetype: "mimetype",
+  owner: "owner",
+  chunkCount: "chunk_count",
+  embedding_model: "embedding_model",
+  embedding_dimensions: "embedding_dimensions",
+  status: "status",
+};
+
 function SearchPage() {
   const isCloudBrand = useIsCloudBrand();
   const queryClient = useQueryClient();
@@ -148,8 +161,9 @@ function SearchPage() {
   } = useKnowledgeFilter();
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
 
-  // Keep the filter context aware of checked rows so "Create New Filter"
-  // can pre-populate its sources from the current selection.
+  const [sortBy, setSortBy] = useState<string>("filename");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+
   useEffect(() => {
     setSelectedSources(
       selectedRows.flatMap((row) => (row.filename ? [row.filename] : [])),
@@ -169,6 +183,16 @@ function SearchPage() {
   const [syncPreview, setSyncPreview] = useState<SyncAllPreviewResponse | null>(
     null,
   );
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPageSize, setCurrentPageSize] = useState(25);
+
+  const cursorCacheRef = useRef<Map<number, Record<string, unknown>>>(
+    null as any,
+  );
+  if (!cursorCacheRef.current) {
+    cursorCacheRef.current = new Map();
+  }
 
   const handleOpenSyncDialog = useCallback(async () => {
     setSyncPreview(null);
@@ -269,8 +293,6 @@ function SearchPage() {
     [taskFiles, tasks],
   );
 
-  // Auto-open unified task panel only when a NEW task file transitions to failed
-  // (skip initial failed files that already existed on page load).
   useEffect(() => {
     const failedFiles = taskFiles.filter((file) => file.status === "failed");
     const seenKeys = seenFailedFileKeysRef.current;
@@ -311,8 +333,6 @@ function SearchPage() {
     getFailedFileKey,
   ]);
 
-  // Use server-side file listing for default/wildcard view; search otherwise.
-  // Wildcard follows bar text or saved filter query (bar is cleared when a filter is picked).
   const effectiveSearchText =
     queryOverride.trim() || parsedFilterData?.query?.trim() || "";
   const hasActiveFilters = parsedFilterData?.filters
@@ -325,12 +345,16 @@ function SearchPage() {
   const {
     data: listFilesData,
     isLoading: isListFilesLoading,
+    isFetching: isListFilesFetching,
     error: listFilesError,
     isError: isListFilesError,
   } = useListFiles(
     {
-      pageSize: 100,
-      search: isWildcardQuery ? undefined : queryOverride,
+      page: currentPage,
+      pageSize: currentPageSize,
+      sortBy,
+      sortOrder,
+      afterKey: cursorCacheRef.current.get(currentPage) ?? null,
       connectorType: listFilesFilterParam(
         parsedFilterData?.filters?.connector_types,
       ),
@@ -355,13 +379,18 @@ function SearchPage() {
   const { files: searchFiles, warnings: searchWarnings } =
     searchData as SearchResult;
 
-  // Merge data from whichever source is active
-  const effectiveData: File[] = isWildcardQuery
-    ? (listFilesData?.files ?? [])
-    : searchFiles;
   const isLoading = isWildcardQuery ? isListFilesLoading : isSearchLoading;
+
+  const isFetching = isWildcardQuery ? isListFilesFetching : isSearchLoading;
   const error = isWildcardQuery ? listFilesError : searchError;
   const isError = isWildcardQuery ? isListFilesError : isSearchError;
+
+  const effectiveData: File[] = isWildcardQuery
+    ? (listFilesData?.files ?? [])
+    : searchFiles.slice(
+        (currentPage - 1) * currentPageSize,
+        currentPage * currentPageSize,
+      );
 
   const isOpenragDocsRow = useCallback((file?: File) => {
     return (
@@ -391,26 +420,6 @@ function SearchPage() {
 
   const getOwnerLabel = useCallback((file?: File): string => {
     return file?.owner_name?.trim() || file?.owner_email?.trim() || "—";
-  }, []);
-
-  const normalizeSourceForSort = useCallback((value?: string): string => {
-    const trimmed = (value || "").trim();
-    if (!trimmed) {
-      return "";
-    }
-
-    try {
-      const parsed = new URL(trimmed);
-      const hostname = parsed.hostname.toLowerCase();
-      const pathname = parsed.pathname.replace(/\/+$/, "").toLowerCase();
-      return `${hostname}${pathname}`;
-    } catch {
-      return trimmed
-        .toLowerCase()
-        .replace(/^https?:\/\//, "")
-        .split(/[?#]/)[0]
-        .replace(/\/+$/, "");
-    }
   }, []);
 
   const getStatusSortRank = useCallback((status?: File["status"]): number => {
@@ -469,14 +478,30 @@ function SearchPage() {
       lastErrorRef.current = null;
     }
   }, [isError, error]);
-  // Third arg: saved filter only — draft `parsedFilterData` (create mode) must still show task rows.
   const fileResults = buildKnowledgeTableRows(
     effectiveData,
     taskFiles,
     Boolean(selectedFilter),
   );
 
-  const gridRows = fileResults;
+  const serverTotal = isWildcardQuery
+    ? (listFilesData?.total ?? 0)
+    : searchFiles.length;
+  const gridRows: File[] = fileResults;
+  const totalPages = Math.max(1, Math.ceil(serverTotal / currentPageSize));
+
+  useEffect(() => {
+    cursorCacheRef.current = new Map();
+    setCurrentPage(1);
+  }, [effectiveSearchText]);
+
+  // when the server responds with an after_key for page N, cache it as the cursor for page N+1
+  useEffect(() => {
+    if (listFilesData?.after_key && listFilesData.page) {
+      const nextPage = listFilesData.page + 1;
+      cursorCacheRef.current.set(nextPage, listFilesData.after_key);
+    }
+  }, [listFilesData]);
   const gridRef = useRef<AgGridReact>(null);
   const gridReadyRef = useRef(false);
 
@@ -493,7 +518,27 @@ function SearchPage() {
     return gridRef.current?.api ?? null;
   }, []);
 
-  // Re-run only when row identity/status changes, not on every list poll reference.
+  const onSortChanged = useCallback(() => {
+    const api = getGridApi();
+    if (!api) return;
+
+    const sortedCol: ColumnState | undefined = api
+      .getColumnState()
+      .find((col) => col.sort != null);
+
+    const newSortBy = sortedCol
+      ? (AG_FIELD_TO_SORT_BY[sortedCol.colId] ?? sortedCol.colId)
+      : "filename";
+    const newSortOrder: "asc" | "desc" =
+      sortedCol?.sort === "desc" ? "desc" : "asc";
+
+    // Changing sort invalidates all cursors; reset to page 1
+    cursorCacheRef.current = new Map();
+    setCurrentPage(1);
+    setSortBy(newSortBy);
+    setSortOrder(newSortOrder);
+  }, [getGridApi]);
+
   const gridRowsSelectionKey = useMemo(
     () =>
       gridRows
@@ -521,19 +566,7 @@ function SearchPage() {
       field: "filename",
       headerName: "Source",
       sortable: true,
-      comparator: (valueA?: string, valueB?: string) => {
-        const sourceA = normalizeSourceForSort(valueA);
-        const sourceB = normalizeSourceForSort(valueB);
-        if (sourceA === sourceB) {
-          const fallbackA = (valueA || "").trim().toLowerCase();
-          const fallbackB = (valueB || "").trim().toLowerCase();
-          if (fallbackA === fallbackB) {
-            return 0;
-          }
-          return fallbackA < fallbackB ? -1 : 1;
-        }
-        return sourceA < sourceB ? -1 : 1;
-      },
+      comparator: () => 0,
       checkboxSelection: (params: CheckboxSelectionCallbackParams<File>) =>
         isDeletableKnowledgeRow(params?.data),
       headerCheckboxSelection: true,
@@ -599,8 +632,7 @@ function SearchPage() {
       headerName: "Size",
       ...(isCloudBrand ? { flex: 1, minWidth: 110 } : {}),
       sortable: true,
-      comparator: (valueA?: number, valueB?: number) =>
-        (valueA || 0) - (valueB || 0),
+      comparator: () => 0,
       valueFormatter: (params: ValueFormatterParams<File>) =>
         params.value ? formatFileSize(params.value) : "-",
       cellClass: isCloudBrand ? "text-muted-foreground" : undefined,
@@ -622,18 +654,14 @@ function SearchPage() {
       sortable: true,
       valueGetter: (params: ValueGetterParams<File>) =>
         getOwnerLabel(params.data),
-      comparator: (valueA?: string, valueB?: string) =>
-        (valueA || "—").localeCompare(valueB || "—", undefined, {
-          sensitivity: "base",
-        }),
+      comparator: () => 0,
     },
     {
       field: "chunkCount",
       headerName: "Chunks",
       ...(isCloudBrand ? { flex: 0.9, minWidth: 95 } : {}),
       sortable: true,
-      comparator: (valueA?: number, valueB?: number) =>
-        (valueA || 0) - (valueB || 0),
+      comparator: () => 0,
       valueFormatter: (params: ValueFormatterParams<File>) =>
         params.data?.chunkCount?.toString() || "-",
       cellClass: isCloudBrand ? "text-muted-foreground" : undefined,
@@ -677,8 +705,7 @@ function SearchPage() {
       headerName: "Dimensions",
       ...(isCloudBrand ? { flex: 0.9, minWidth: 110 } : { width: 110 }),
       sortable: true,
-      comparator: (valueA?: number, valueB?: number) =>
-        (valueA || 0) - (valueB || 0),
+      comparator: () => 0,
       cellRenderer: ({ data }: CustomCellRendererProps<File>) => (
         <span className="text-xs text-muted-foreground">
           {typeof data?.embedding_dimensions === "number"
@@ -879,15 +906,6 @@ function SearchPage() {
     }
   };
 
-  // enables pagination in the grid
-  const pagination = true;
-
-  // sets 25 rows per page (default is 100)
-  const paginationPageSize = 25;
-
-  // allows the user to select the page size from a predefined list of page sizes
-  const paginationPageSizeSelector = [10, 25, 50, 100];
-
   return (
     <>
       <div className="flex flex-col h-full">
@@ -933,7 +951,7 @@ function SearchPage() {
           </div>
         ) : (
           /* Search Input Area */
-          <div className="flex-1 flex items-center flex-shrink-0 flex-wrap-reverse gap-3 mb-6">
+          <div className="flex items-center flex-shrink-0 flex-wrap-reverse gap-3 mb-6">
             <KnowledgeSearchInput />
 
             <Button
@@ -1045,74 +1063,85 @@ function SearchPage() {
           </div>
         )}
         {isCloudBrand ? (
-          <AgGridReact
-            className="w-full overflow-auto border"
-            columnDefs={columnDefs as ColDef<File>[]}
-            defaultColDef={defaultColDef}
-            loading={isLoading || deleteDocumentMutation.isPending}
-            ref={gridRef}
-            theme={themeQuartz.withParams({ browserColorScheme: "inherit" })}
-            rowData={gridRows}
-            rowSelection="multiple"
-            getRowId={(params: GetRowIdParams<File>) =>
-              getFileIdentity(params.data)
-            }
-            isRowSelectable={(params) => isDeletableKnowledgeRow(params.data)}
-            domLayout="normal"
-            onGridReady={handleGridReady}
-            onGridPreDestroyed={handleGridPreDestroyed}
-            onSelectionChanged={onSelectionChanged}
-            pagination={pagination}
-            paginationPageSize={paginationPageSize}
-            paginationPageSizeSelector={paginationPageSizeSelector}
-            headerHeight={64}
-            rowHeight={64}
-            noRowsOverlayComponent={() => (
-              <div className="text-center pb-[45px]">
-                <div className="text-lg text-primary font-semibold">
-                  No knowledge
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <AgGridReact
+              className="w-full h-full border"
+              columnDefs={columnDefs as ColDef<File>[]}
+              defaultColDef={defaultColDef}
+              loading={isLoading || deleteDocumentMutation.isPending}
+              ref={gridRef}
+              theme={themeQuartz.withParams({ browserColorScheme: "inherit" })}
+              rowData={gridRows}
+              rowSelection="multiple"
+              getRowId={(params: GetRowIdParams<File>) =>
+                getFileIdentity(params.data)
+              }
+              isRowSelectable={(params) => isDeletableKnowledgeRow(params.data)}
+              domLayout="normal"
+              onGridReady={handleGridReady}
+              onGridPreDestroyed={handleGridPreDestroyed}
+              onSelectionChanged={onSelectionChanged}
+              onSortChanged={onSortChanged}
+              headerHeight={64}
+              rowHeight={64}
+              noRowsOverlayComponent={() => (
+                <div className="text-center pb-[45px]">
+                  <div className="text-lg text-primary font-semibold">
+                    No knowledge
+                  </div>
+                  <div className="text-sm mt-1 text-muted-foreground">
+                    Add files from local or your preferred cloud.
+                  </div>
                 </div>
-                <div className="text-sm mt-1 text-muted-foreground">
-                  Add files from local or your preferred cloud.
-                </div>
-              </div>
-            )}
-          />
+              )}
+            />
+          </div>
         ) : (
-          <AgGridReact
-            className="w-full overflow-auto"
-            columnDefs={columnDefs as ColDef<File>[]}
-            defaultColDef={defaultColDef}
-            loading={isLoading || deleteDocumentMutation.isPending}
-            ref={gridRef}
-            theme={themeQuartz.withParams({ browserColorScheme: "inherit" })}
-            rowData={gridRows}
-            rowSelection="multiple"
-            rowMultiSelectWithClick={false}
-            suppressRowClickSelection={true}
-            getRowId={(params: GetRowIdParams<File>) =>
-              getFileIdentity(params.data)
-            }
-            isRowSelectable={(params) => isDeletableKnowledgeRow(params.data)}
-            domLayout="normal"
-            onGridReady={handleGridReady}
-            onGridPreDestroyed={handleGridPreDestroyed}
-            onSelectionChanged={onSelectionChanged}
-            pagination={pagination}
-            paginationPageSize={paginationPageSize}
-            paginationPageSizeSelector={paginationPageSizeSelector}
-            noRowsOverlayComponent={() => (
-              <div className="text-center pb-[45px]">
-                <div className="text-lg text-primary font-semibold">
-                  No knowledge
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <AgGridReact
+              className="w-full h-full"
+              columnDefs={columnDefs as ColDef<File>[]}
+              defaultColDef={defaultColDef}
+              loading={isLoading || deleteDocumentMutation.isPending}
+              ref={gridRef}
+              theme={themeQuartz.withParams({ browserColorScheme: "inherit" })}
+              rowData={gridRows}
+              rowSelection="multiple"
+              rowMultiSelectWithClick={false}
+              suppressRowClickSelection={true}
+              getRowId={(params: GetRowIdParams<File>) =>
+                getFileIdentity(params.data)
+              }
+              isRowSelectable={(params) => isDeletableKnowledgeRow(params.data)}
+              domLayout="normal"
+              onGridReady={handleGridReady}
+              onGridPreDestroyed={handleGridPreDestroyed}
+              onSelectionChanged={onSelectionChanged}
+              onSortChanged={onSortChanged}
+              noRowsOverlayComponent={() => (
+                <div className="text-center pb-[45px]">
+                  <div className="text-lg text-primary font-semibold">
+                    No knowledge
+                  </div>
+                  <div className="text-sm mt-1 text-muted-foreground">
+                    Add files from local or your preferred cloud.
+                  </div>
                 </div>
-                <div className="text-sm mt-1 text-muted-foreground">
-                  Add files from local or your preferred cloud.
-                </div>
-              </div>
-            )}
-          />
+              )}
+            />
+          </div>
         )}
+
+        <KnowledgePaginationFooter
+          currentPage={currentPage}
+          currentPageSize={currentPageSize}
+          totalPages={totalPages}
+          serverTotal={serverTotal}
+          isLoading={isFetching}
+          cursorCacheRef={cursorCacheRef}
+          setCurrentPage={setCurrentPage}
+          setCurrentPageSize={setCurrentPageSize}
+        />
       </div>
 
       {/* Bulk Delete Confirmation Dialog */}
