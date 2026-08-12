@@ -302,7 +302,12 @@ export function ChatRenderer({
       </div>
 
       {/* Main Content */}
-      <main className="overflow-hidden flex-1 flex items-center justify-center relative">
+      <main
+        className={cn(
+          "overflow-hidden flex-1 flex items-center justify-center",
+          isSelectingChats && "relative",
+        )}
+      >
         {isSelectingChats && (
           <div className="absolute inset-0 z-10 backdrop-blur-sm bg-background/60 flex items-center justify-center">
             <div className="flex flex-col items-center gap-3 text-center px-8">
