@@ -7,6 +7,7 @@ import {
 export interface FacetBucket {
   key: string;
   count?: number;
+  doc_count?: number;
 }
 
 export interface SearchAggregations {

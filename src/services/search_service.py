@@ -37,6 +37,67 @@ def _is_exact_token_query(query: str) -> bool:
     return bool(re.search(r"[a-zA-Z]", query) and re.search(r"\d", query))
 
 
+def _build_file_facet_aggregations(size_overrides: dict[str, int] | None = None) -> dict[str, Any]:
+    size_overrides = size_overrides or {}
+    facet_fields = {
+        "data_sources": "filename",
+        "document_types": "mimetype",
+        "owners": "owner",
+        "connector_types": "connector_type",
+        "embedding_models": "embedding_model",
+    }
+
+    aggregations: dict[str, Any] = {}
+    for facet_name, field_name in facet_fields.items():
+        aggregations[facet_name] = {
+            "terms": {
+                "field": field_name,
+                "size": size_overrides.get(facet_name, 1000),
+            },
+            "aggs": {
+                "files": {
+                    "cardinality": {
+                        "field": "filename",
+                    }
+                }
+            },
+        }
+    return aggregations
+
+
+
+def _normalize_file_facet_aggregations(aggregations: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(aggregations)
+    for facet_name in (
+        "data_sources",
+        "document_types",
+        "owners",
+        "connector_types",
+        "embedding_models",
+    ):
+        facet = aggregations.get(facet_name)
+        if not isinstance(facet, dict):
+            normalized[facet_name] = {"buckets": []}
+            continue
+
+        buckets = facet.get("buckets", [])
+        normalized[facet_name] = {
+            **facet,
+            "buckets": [
+                {
+                    "key": bucket.get("key"),
+                    "doc_count": bucket.get("files", {}).get(
+                        "value", bucket.get("doc_count", 0)
+                    ),
+                }
+                for bucket in buckets
+                if bucket.get("key")
+            ],
+        }
+    return normalized
+
+
+
 def _apply_exact_match_file_filter(
     query: str,
     chunks: list[dict[str, Any]],
@@ -82,12 +143,17 @@ def _apply_exact_match_file_filter(
     chunks = [chunk for chunk in chunks if chunk.get("filename") in exact_files]
 
     def _build_terms_agg(field: str) -> dict[str, Any]:
-        counts = Counter(
-            value
-            for chunk in chunks
-            for value in [chunk.get(field)]
-            if isinstance(value, str) and value
-        )
+        file_counts = Counter()
+        for chunk in chunks:
+            value = chunk.get(field)
+            filename = chunk.get("filename")
+            if not isinstance(value, str) or not value:
+                continue
+            if not isinstance(filename, str) or not filename:
+                continue
+            file_counts[(value, filename)] += 1
+
+        counts = Counter(value for value, _filename in file_counts)
         return {
             "doc_count_error_upper_bound": 0,
             "sum_other_doc_count": 0,
@@ -496,13 +562,7 @@ class SearchService:
 
         search_body: dict[str, Any] = {
             "query": query_block,
-            "aggs": {
-                "data_sources": {"terms": {"field": "filename", "size": 20}},
-                "document_types": {"terms": {"field": "mimetype", "size": 10}},
-                "owners": {"terms": {"field": "owner", "size": 10}},
-                "connector_types": {"terms": {"field": "connector_type", "size": 10}},
-                "embedding_models": {"terms": {"field": "embedding_model", "size": 10}},
-            },
+            "aggs": _build_file_facet_aggregations(),
             "_source": [
                 "filename",
                 "mimetype",
@@ -665,7 +725,7 @@ class SearchService:
         chunks, aggregations = _apply_exact_match_file_filter(
             query,
             chunks,
-            results.get("aggregations", {}),
+            _normalize_file_facet_aggregations(results.get("aggregations", {})),
             is_wildcard_match_all=is_wildcard_match_all,
         )
 

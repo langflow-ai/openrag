@@ -5,11 +5,10 @@ import { useEffect, useRef, useState } from "react";
 import { useCreateFilter } from "@/app/api/mutations/useCreateFilter";
 import { useDeleteFilter } from "@/app/api/mutations/useDeleteFilter";
 import { useUpdateFilter } from "@/app/api/mutations/useUpdateFilter";
-import { useGetSearchAggregations } from "@/app/api/queries/useGetSearchAggregations";
 import {
-  EMPTY_SEARCH_RESULT,
-  useGetSearchQuery,
-} from "@/app/api/queries/useGetSearchQuery";
+  type FacetBucket,
+  useGetSearchAggregations,
+} from "@/app/api/queries/useGetSearchAggregations";
 import { FilterIconPopover } from "@/components/filter-icon-popover";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,19 +24,9 @@ import { MultiSelect } from "@/components/ui/multi-select";
 import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
-import { useTask } from "@/contexts/task-context";
 import { usePermissions } from "@/hooks/use-permissions";
 import { trackButton } from "@/lib/analytics";
 import type { FilterColor, IconKey } from "@/lib/filter-constants";
-import {
-  buildActiveSourceOptions,
-  buildKnowledgeTableRows,
-} from "@/lib/knowledge-table-state";
-
-interface FacetBucket {
-  key: string;
-  count?: number;
-}
 
 interface AvailableFacets {
   data_sources: FacetBucket[];
@@ -77,7 +66,6 @@ export function KnowledgeFilterPanel() {
     createMode,
     endCreateMode,
   } = useKnowledgeFilter();
-  const { files: taskFiles } = useTask();
   const deleteFilterMutation = useDeleteFilter();
   const updateFilterMutation = useUpdateFilter();
   const createFilterMutation = useCreateFilter();
@@ -171,26 +159,29 @@ export function KnowledgeFilterPanel() {
     gcTime: 5 * 60_000,
   });
 
-  const { data = EMPTY_SEARCH_RESULT } = useGetSearchQuery("*", null, {
-    enabled: isPanelOpen,
-  });
-  const allSearchData = data.files;
-
   useEffect(() => {
     if (!aggregations) return;
-    const extractKeys = (buckets: { key: string }[] = []): FacetBucket[] =>
-      buckets.map((b) => ({ key: b.key }));
+    const extractBuckets = (buckets: FacetBucket[] = []): FacetBucket[] =>
+      buckets.map((bucket) => ({
+        key: bucket.key,
+        count: bucket.doc_count ?? bucket.count,
+      }));
     const facets = {
-      data_sources: extractKeys(aggregations.data_sources?.buckets),
-      document_types: extractKeys(aggregations.document_types?.buckets),
-      owners: extractKeys(aggregations.owners?.buckets),
-      connector_types: extractKeys(aggregations.connector_types?.buckets),
+      data_sources: extractBuckets(aggregations.data_sources?.buckets),
+      document_types: extractBuckets(aggregations.document_types?.buckets),
+      owners: extractBuckets(aggregations.owners?.buckets),
+      connector_types: extractBuckets(aggregations.connector_types?.buckets),
     };
     setAvailableFacets(facets);
   }, [aggregations]);
 
-  const tableRows = buildKnowledgeTableRows(allSearchData, taskFiles);
-  const sourceOptions = buildActiveSourceOptions(tableRows);
+  const sourceOptions = (availableFacets.data_sources || []).map((bucket) => ({
+    value: bucket.key,
+    label:
+      typeof bucket.count === "number"
+        ? `${bucket.key} (${bucket.count})`
+        : bucket.key,
+  }));
   const availableSourceValues = new Set(sourceOptions.map((o) => o.value));
 
   // Don't render if panel is closed or we don't have any data
@@ -393,7 +384,10 @@ export function KnowledgeFilterPanel() {
                 options={(availableFacets.document_types || []).map(
                   (bucket) => ({
                     value: bucket.key,
-                    label: bucket.key,
+                    label:
+                      typeof bucket.count === "number"
+                        ? `${bucket.key} (${bucket.count})`
+                        : bucket.key,
                   }),
                 )}
                 value={selectedFilters.document_types}
@@ -409,7 +403,10 @@ export function KnowledgeFilterPanel() {
               <MultiSelect
                 options={(availableFacets.owners || []).map((bucket) => ({
                   value: bucket.key,
-                  label: bucket.key,
+                  label:
+                    typeof bucket.count === "number"
+                      ? `${bucket.key} (${bucket.count})`
+                      : bucket.key,
                 }))}
                 value={selectedFilters.owners}
                 onValueChange={(values) => handleFilterChange("owners", values)}
@@ -423,7 +420,10 @@ export function KnowledgeFilterPanel() {
                 options={(availableFacets.connector_types || []).map(
                   (bucket) => ({
                     value: bucket.key,
-                    label: bucket.key,
+                    label:
+                      typeof bucket.count === "number"
+                        ? `${bucket.key} (${bucket.count})`
+                        : bucket.key,
                   }),
                 )}
                 value={selectedFilters.connector_types}
