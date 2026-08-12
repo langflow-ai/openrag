@@ -19,7 +19,8 @@ RUN microdnf install -y \
     && microdnf clean all \
     && curl -LsSf https://astral.sh/uv/install.sh | sh \
     && python -m ensurepip --upgrade \
-    && python -m pip install --no-cache-dir --upgrade "pip>=26.1" "setuptools>=78.1.1"
+    && python -m pip install --no-cache-dir --upgrade "pip>=26.1" "setuptools>=78.1.1" \
+    && find /usr -path "*/setuptools-70*" -name "METADATA" -exec dirname {} \; | xargs rm -rf
 
 ENV PATH="/root/.local/bin:$PATH" \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
@@ -43,8 +44,10 @@ WORKDIR /app
 
 # Dependency layer: reuse as long as lockfile and pyproject don't change
 COPY pyproject.toml uv.lock ./
-RUN --mount=type=cache,target=/root/.cache/uv,uid=0,gid=0 \
-    uv sync
+RUN uv sync
+
+# Build msgpack wheel using builder's gcc — installed into runtime stage below
+RUN pip wheel --no-deps --wheel-dir /tmp/wheels "msgpack>=1.2.1"
 
 # Application (invalidates after deps only when src/flows change)
 COPY src/ ./src/
@@ -65,7 +68,7 @@ COPY openrag-documents/ ./openrag-documents/
 # -----------------------------------------------------------------------------
 FROM registry.access.redhat.com/ubi10/python-314-minimal AS runtime
 
-# Install runtime dependencies
+# Install runtime dependencies and upgrade base image packages with CVEs
 USER 0
 RUN microdnf install -y \
     ca-certificates \
@@ -74,7 +77,16 @@ RUN microdnf install -y \
     util-linux \
     && microdnf clean all \
     && python -m ensurepip --upgrade \
-    && python -m pip install --no-cache-dir --upgrade "pip>=26.1" "setuptools>=78.1.1"
+    && python -m pip install --no-cache-dir --upgrade "pip>=26.1" "setuptools>=78.1.1" \
+    && find /usr -path "*/setuptools-70*" -name "METADATA" -exec dirname {} \; | xargs rm -rf \
+    && find /usr -path "*/msgpack-1.1*" -name "METADATA" -exec dirname {} \; | xargs rm -rf
+
+# Install msgpack from wheel built in builder stage (no gcc needed in runtime)
+COPY --from=builder /tmp/wheels /tmp/wheels
+RUN python -m pip install --no-cache-dir --no-index --find-links /tmp/wheels "msgpack>=1.2.1" \
+    && rm -rf /tmp/wheels \
+    && rm -f /opt/app-root/lib/python3.14/site-packages/pip/_vendor/bom.cdx.json \
+             /opt/app-root/lib/python3.14/site-packages/pip/_vendor/vendor.txt
 
 # Create a non-root user/group.
 # UID/GID 1000 is the conventional first non-root account and
@@ -114,3 +126,4 @@ EXPOSE 8100
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["python", "src/main.py"]
+
