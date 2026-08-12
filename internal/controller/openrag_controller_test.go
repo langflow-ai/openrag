@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -710,6 +711,192 @@ func TestReconcile_RevertsManualServiceSelectorLabelAddition(t *testing.T) {
 				"role %s: selector should have exactly 4 managed labels after reconcile", role)
 		})
 	}
+}
+
+// TestReconcile_RevertsManualNetworkPolicyIngressChange verifies that patching a
+// NetworkPolicy's ingress rules to add unauthorized CIDR blocks (e.g., 0.0.0.0/0)
+// is detected and reverted to the operator-managed private IP ranges on the next
+// reconcile. This is critical for security as manual patches could open the cluster
+// to unauthorized internet access.
+func TestReconcile_RevertsManualNetworkPolicyIngressChange(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("my-openrag", "my-ns")
+	// Enable NetworkPolicy
+	cr.Spec.NetworkPolicy.Enabled = true
+
+	r, c := reconciler(s, cr)
+
+	reconcileOnce(t, r, cr)
+
+	// Verify NetworkPolicy was created
+	np := &networkingv1.NetworkPolicy{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: instanceResourceName(cr, "lf-netpol"), Namespace: "my-ns"}, np))
+
+	// Verify initial ingress rules contain only private IP ranges
+	require.Len(t, np.Spec.Ingress, 1, "should have exactly one ingress rule")
+	require.Len(t, np.Spec.Ingress[0].From, 3, "should have exactly 3 private IP blocks")
+
+	initialCIDRs := make([]string, 0, 3)
+	for _, peer := range np.Spec.Ingress[0].From {
+		require.NotNil(t, peer.IPBlock, "peer should have IPBlock")
+		initialCIDRs = append(initialCIDRs, peer.IPBlock.CIDR)
+	}
+	assert.Contains(t, initialCIDRs, "10.0.0.0/8", "should contain 10.0.0.0/8")
+	assert.Contains(t, initialCIDRs, "172.16.0.0/12", "should contain 172.16.0.0/12")
+	assert.Contains(t, initialCIDRs, "192.168.0.0/16", "should contain 192.168.0.0/16")
+
+	// Simulate a malicious user manually patching the NetworkPolicy to add 0.0.0.0/0
+	// (opening Langflow to the entire internet)
+	np.Spec.Ingress[0].From = append(np.Spec.Ingress[0].From, networkingv1.NetworkPolicyPeer{
+		IPBlock: &networkingv1.IPBlock{CIDR: "0.0.0.0/0"},
+	})
+	require.NoError(t, c.Update(context.Background(), np))
+
+	// Confirm the malicious patch took effect
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: instanceResourceName(cr, "lf-netpol"), Namespace: "my-ns"}, np))
+	require.Len(t, np.Spec.Ingress[0].From, 4, "should have 4 peers after malicious patch")
+
+	patchedCIDRs := make([]string, 0, 4)
+	for _, peer := range np.Spec.Ingress[0].From {
+		require.NotNil(t, peer.IPBlock)
+		patchedCIDRs = append(patchedCIDRs, peer.IPBlock.CIDR)
+	}
+	assert.Contains(t, patchedCIDRs, "0.0.0.0/0", "malicious 0.0.0.0/0 should be present")
+
+	// Reconcile again — the controller must detect drift and revert to safe private IPs
+	reconcileOnce(t, r, cr)
+
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: instanceResourceName(cr, "lf-netpol"), Namespace: "my-ns"}, np))
+
+	// Verify the malicious 0.0.0.0/0 was removed
+	require.Len(t, np.Spec.Ingress[0].From, 3, "should be reverted to exactly 3 private IP blocks")
+
+	revertedCIDRs := make([]string, 0, 3)
+	for _, peer := range np.Spec.Ingress[0].From {
+		require.NotNil(t, peer.IPBlock)
+		revertedCIDRs = append(revertedCIDRs, peer.IPBlock.CIDR)
+	}
+	assert.Contains(t, revertedCIDRs, "10.0.0.0/8", "should contain 10.0.0.0/8 after revert")
+	assert.Contains(t, revertedCIDRs, "172.16.0.0/12", "should contain 172.16.0.0/12 after revert")
+	assert.Contains(t, revertedCIDRs, "192.168.0.0/16", "should contain 192.168.0.0/16 after revert")
+	assert.NotContains(t, revertedCIDRs, "0.0.0.0/0", "malicious 0.0.0.0/0 should be removed after reconcile")
+}
+
+// TestReconcile_RevertsManualNetworkPolicyEgressChange verifies that patching a
+// NetworkPolicy's egress rules is detected and reverted on the next reconcile.
+func TestReconcile_RevertsManualNetworkPolicyEgressChange(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("my-openrag", "my-ns")
+	cr.Spec.NetworkPolicy.Enabled = true
+
+	r, c := reconciler(s, cr)
+	reconcileOnce(t, r, cr)
+
+	// Get the NetworkPolicy
+	np := &networkingv1.NetworkPolicy{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: instanceResourceName(cr, "lf-netpol"), Namespace: "my-ns"}, np))
+
+	// Verify initial egress rules
+	initialEgressCount := len(np.Spec.Egress)
+	require.Greater(t, initialEgressCount, 0, "should have egress rules")
+
+	// Simulate a user manually removing all egress rules (malicious or accidental)
+	np.Spec.Egress = []networkingv1.NetworkPolicyEgressRule{}
+	require.NoError(t, c.Update(context.Background(), np))
+
+	// Confirm the patch took effect
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: instanceResourceName(cr, "lf-netpol"), Namespace: "my-ns"}, np))
+	assert.Len(t, np.Spec.Egress, 0, "egress rules should be cleared after patch")
+
+	// Reconcile again — the controller must restore egress rules
+	reconcileOnce(t, r, cr)
+
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: instanceResourceName(cr, "lf-netpol"), Namespace: "my-ns"}, np))
+	assert.Len(t, np.Spec.Egress, initialEgressCount, "egress rules should be restored after reconcile")
+}
+
+// TestReconcile_RevertsManualNetworkPolicyPodSelectorChange verifies that patching a
+// NetworkPolicy's podSelector is detected and reverted on the next reconcile.
+func TestReconcile_RevertsManualNetworkPolicyPodSelectorChange(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("my-openrag", "my-ns")
+	cr.Spec.NetworkPolicy.Enabled = true
+
+	r, c := reconciler(s, cr)
+	reconcileOnce(t, r, cr)
+
+	// Get the NetworkPolicy
+	np := &networkingv1.NetworkPolicy{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: instanceResourceName(cr, "lf-netpol"), Namespace: "my-ns"}, np))
+
+	// Verify initial podSelector has the correct labels
+	require.NotEmpty(t, np.Spec.PodSelector.MatchLabels, "should have podSelector labels")
+	initialLabels := make(map[string]string)
+	for k, v := range np.Spec.PodSelector.MatchLabels {
+		initialLabels[k] = v
+	}
+
+	// Simulate a user manually clearing the podSelector (would affect all pods in namespace)
+	np.Spec.PodSelector = metav1.LabelSelector{MatchLabels: map[string]string{}}
+	require.NoError(t, c.Update(context.Background(), np))
+
+	// Confirm the patch took effect
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: instanceResourceName(cr, "lf-netpol"), Namespace: "my-ns"}, np))
+	assert.Empty(t, np.Spec.PodSelector.MatchLabels, "podSelector should be cleared after patch")
+
+	// Reconcile again — the controller must restore the correct podSelector
+	reconcileOnce(t, r, cr)
+
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: instanceResourceName(cr, "lf-netpol"), Namespace: "my-ns"}, np))
+	assert.Equal(t, initialLabels, np.Spec.PodSelector.MatchLabels, "podSelector should be restored after reconcile")
+}
+
+// TestReconcile_RevertsManualNetworkPolicyTypeChange verifies that patching a
+// NetworkPolicy's policyTypes is detected and reverted on the next reconcile.
+func TestReconcile_RevertsManualNetworkPolicyTypeChange(t *testing.T) {
+	s := newScheme(t)
+	cr := minimalCR("my-openrag", "my-ns")
+	cr.Spec.NetworkPolicy.Enabled = true
+
+	r, c := reconciler(s, cr)
+	reconcileOnce(t, r, cr)
+
+	// Get the NetworkPolicy
+	np := &networkingv1.NetworkPolicy{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: instanceResourceName(cr, "lf-netpol"), Namespace: "my-ns"}, np))
+
+	// Verify initial policyTypes includes both Ingress and Egress
+	require.Len(t, np.Spec.PolicyTypes, 2, "should have both Ingress and Egress policy types")
+	assert.Contains(t, np.Spec.PolicyTypes, networkingv1.PolicyTypeIngress)
+	assert.Contains(t, np.Spec.PolicyTypes, networkingv1.PolicyTypeEgress)
+
+	// Simulate a user manually changing policyTypes to only Ingress (removes egress enforcement)
+	np.Spec.PolicyTypes = []networkingv1.PolicyType{networkingv1.PolicyTypeIngress}
+	require.NoError(t, c.Update(context.Background(), np))
+
+	// Confirm the patch took effect
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: instanceResourceName(cr, "lf-netpol"), Namespace: "my-ns"}, np))
+	assert.Len(t, np.Spec.PolicyTypes, 1, "should have only one policy type after patch")
+
+	// Reconcile again — the controller must restore both policy types
+	reconcileOnce(t, r, cr)
+
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: instanceResourceName(cr, "lf-netpol"), Namespace: "my-ns"}, np))
+	assert.Len(t, np.Spec.PolicyTypes, 2, "should have both policy types after reconcile")
+	assert.Contains(t, np.Spec.PolicyTypes, networkingv1.PolicyTypeIngress)
+	assert.Contains(t, np.Spec.PolicyTypes, networkingv1.PolicyTypeEgress)
 }
 
 func TestReconcile_CreatesServiceAccounts(t *testing.T) {

@@ -2302,44 +2302,56 @@ func (r *OpenRAGReconciler) valkeySecret(ctx context.Context, o *openragv1alpha1
 func (r *OpenRAGReconciler) reconcileNetworkPolicy(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) error {
 	labels := componentLabels(o.Name, "lf")
 
-	egress := []networkingv1.NetworkPolicyEgressRule{
-		{
-			Ports: []networkingv1.NetworkPolicyPort{tcpPort(7860)},
-			To:    []networkingv1.NetworkPolicyPeer{{PodSelector: &metav1.LabelSelector{MatchLabels: labels}}},
-		},
-		{Ports: []networkingv1.NetworkPolicyPort{udpPort(53), tcpPort(53)}},
-		{Ports: []networkingv1.NetworkPolicyPort{tcpPort(9200), tcpPort(443)}},
-	}
-
-	if o.Spec.Docling != nil {
-		egress = append(egress, networkingv1.NetworkPolicyEgressRule{
-			Ports: []networkingv1.NetworkPolicyPort{tcpPort(int32(o.Spec.Docling.Port))},
-		})
-	}
-
 	np := &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      instanceResourceName(o, "lf-netpol"),
 			Namespace: targetNS,
-			Labels:    labels,
 		},
-		Spec: networkingv1.NetworkPolicySpec{
-			PodSelector: metav1.LabelSelector{MatchLabels: labels},
-			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress, networkingv1.PolicyTypeEgress},
-			Ingress: []networkingv1.NetworkPolicyIngressRule{
-				{From: []networkingv1.NetworkPolicyPeer{
-					{IPBlock: &networkingv1.IPBlock{CIDR: "10.0.0.0/8"}},
-					{IPBlock: &networkingv1.IPBlock{CIDR: "172.16.0.0/12"}},
-					{IPBlock: &networkingv1.IPBlock{CIDR: "192.168.0.0/16"}},
-				}},
+	}
+
+	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, np, func() error {
+		// Set labels
+		if np.Labels == nil {
+			np.Labels = make(map[string]string)
+		}
+		for k, v := range labels {
+			np.Labels[k] = v
+		}
+
+		// Build egress rules based on CR spec
+		egress := []networkingv1.NetworkPolicyEgressRule{
+			{
+				Ports: []networkingv1.NetworkPolicyPort{tcpPort(7860)},
+				To:    []networkingv1.NetworkPolicyPeer{{PodSelector: &metav1.LabelSelector{MatchLabels: labels}}},
 			},
-			Egress: egress,
-		},
-	}
-	if err := r.setOwnerOrLabel(o, np, targetNS); err != nil {
-		return err
-	}
-	return r.createOrUpdate(ctx, np)
+			{Ports: []networkingv1.NetworkPolicyPort{udpPort(53), tcpPort(53)}},
+			{Ports: []networkingv1.NetworkPolicyPort{tcpPort(9200), tcpPort(443)}},
+		}
+
+		if o.Spec.Docling != nil {
+			egress = append(egress, networkingv1.NetworkPolicyEgressRule{
+				Ports: []networkingv1.NetworkPolicyPort{tcpPort(int32(o.Spec.Docling.Port))},
+			})
+		}
+
+		// Set the desired NetworkPolicy spec
+		// This automatically reverts any manual changes (drift detection)
+		np.Spec.PodSelector = metav1.LabelSelector{MatchLabels: labels}
+		np.Spec.PolicyTypes = []networkingv1.PolicyType{networkingv1.PolicyTypeIngress, networkingv1.PolicyTypeEgress}
+		np.Spec.Ingress = []networkingv1.NetworkPolicyIngressRule{
+			{From: []networkingv1.NetworkPolicyPeer{
+				{IPBlock: &networkingv1.IPBlock{CIDR: "10.0.0.0/8"}},
+				{IPBlock: &networkingv1.IPBlock{CIDR: "172.16.0.0/12"}},
+				{IPBlock: &networkingv1.IPBlock{CIDR: "192.168.0.0/16"}},
+			}},
+		}
+		np.Spec.Egress = egress
+
+		// Set owner reference or label
+		return r.setOwnerOrLabel(o, np, targetNS)
+	})
+
+	return err
 }
 
 func (r *OpenRAGReconciler) setOwnerOrLabel(o *openragv1alpha1.OpenRAG, obj client.Object, targetNS string) error {
