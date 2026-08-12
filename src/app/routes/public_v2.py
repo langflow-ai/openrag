@@ -14,11 +14,14 @@ async def _list_files(
     page_size: int = Query(25, ge=1, le=500, description="Items per page"),
     sort_by: str = Query("filename", description="Sort field"),
     sort_order: str = Query("asc", pattern="^(asc|desc)$", description="Sort order"),
-    connector_type: str | None = Query(None, description="Filter by connector type"),
-    mimetype: str | None = Query(None, description="Filter by MIME type"),
-    owner: str | None = Query(None, description="Filter by owner"),
+    connector_type: list[str] | None = Query(
+        None, description="Filter by connector type (repeatable)"
+    ),
+    mimetype: list[str] | None = Query(None, description="Filter by MIME type (repeatable)"),
+    owner: list[str] | None = Query(None, description="Filter by owner (repeatable)"),
     search: str | None = Query(None, description="Search filename"),
     after_key: str | None = Query(None, description="Composite pagination cursor (JSON-encoded)"),
+    data_sources: list[str] | None = Query(None, description="Filename whitelist (repeatable)"),
     file_service=Depends(get_file_service_v2),
     user: User = Depends(require_api_key_permission("knowledge:read:own")),
 ):
@@ -33,6 +36,7 @@ async def _list_files(
         owner=owner,
         search=search,
         after_key=after_key,
+        data_sources=data_sources,
         file_service=file_service,
         user=user,
     )
@@ -42,10 +46,13 @@ async def _search_files(
     q: str = Query(..., min_length=1, description="Search query"),
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(25, ge=1, le=500, description="Items per page"),
-    connector_type: str | None = Query(None, description="Filter by connector type"),
-    mimetype: str | None = Query(None, description="Filter by MIME type"),
-    owner: str | None = Query(None, description="Filter by owner"),
+    connector_type: list[str] | None = Query(
+        None, description="Filter by connector type (repeatable)"
+    ),
+    mimetype: list[str] | None = Query(None, description="Filter by MIME type (repeatable)"),
+    owner: list[str] | None = Query(None, description="Filter by owner (repeatable)"),
     after_key: str | None = Query(None, description="Composite pagination cursor (JSON-encoded)"),
+    data_sources: list[str] | None = Query(None, description="Filename whitelist (repeatable)"),
     file_service=Depends(get_file_service_v2),
     user: User = Depends(require_api_key_permission("knowledge:read:own")),
 ):
@@ -58,6 +65,7 @@ async def _search_files(
         mimetype=mimetype,
         owner=owner,
         after_key=after_key,
+        data_sources=data_sources,
         file_service=file_service,
         user=user,
     )

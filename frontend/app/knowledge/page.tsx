@@ -102,15 +102,6 @@ function pruneNonDeletableGridSelection(
   return pruned;
 }
 
-/** List-files uses term filters; "*" means "any" in the UI — do not send it literally. */
-function listFilesFilterParam(values?: string[]): string | undefined {
-  const raw = values?.[0]?.trim();
-  if (!raw || raw === "*") {
-    return undefined;
-  }
-  return raw;
-}
-
 // Function to get the appropriate icon for a connector type
 function getSourceIcon(connectorType?: string) {
   if (connectorType) {
@@ -355,11 +346,18 @@ function SearchPage() {
       sortBy,
       sortOrder,
       afterKey: cursorCacheRef.current.get(currentPage) ?? null,
-      connectorType: listFilesFilterParam(
-        parsedFilterData?.filters?.connector_types,
-      ),
-      mimetype: listFilesFilterParam(parsedFilterData?.filters?.document_types),
-      owner: listFilesFilterParam(parsedFilterData?.filters?.owners),
+      connectorType:
+        parsedFilterData?.filters?.connector_types?.filter((v) => v !== "*") ||
+        undefined,
+      mimetype:
+        parsedFilterData?.filters?.document_types?.filter((v) => v !== "*") ||
+        undefined,
+      owner:
+        parsedFilterData?.filters?.owners?.filter((v) => v !== "*") ||
+        undefined,
+      dataSources:
+        parsedFilterData?.filters?.data_sources?.filter((v) => v !== "*") ||
+        undefined,
     },
     {
       refetchInterval: 5000,
