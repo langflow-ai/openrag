@@ -32,7 +32,7 @@ OPENSEARCH_HOST = os.getenv("OPENSEARCH_HOST", "localhost")
 OPENSEARCH_PORT = get_env_int("OPENSEARCH_PORT", 9200)
 OPENSEARCH_URL = f"https://{OPENSEARCH_HOST}:{OPENSEARCH_PORT}"
 _os_pool_maxsize = get_env_int("OPENSEARCH_POOL_MAXSIZE")
-OPENSEARCH_POOL_MAXSIZE: int = max(8 if _os_pool_maxsize is None else _os_pool_maxsize, 1)
+OPENSEARCH_POOL_MAXSIZE: int = max(10 if _os_pool_maxsize is None else _os_pool_maxsize, 1)
 
 # Optional: Langflow-specific OpenSearch endpoint
 LANGFLOW_OPENSEARCH_HOST = os.getenv("LANGFLOW_OPENSEARCH_HOST")
