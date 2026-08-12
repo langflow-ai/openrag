@@ -28,10 +28,7 @@ import { isFailureLikeTask } from "@/lib/task-utils";
 import { cn } from "@/lib/utils";
 import { AnimatedConditional } from "./animated-conditional";
 import { ChatRenderer } from "./chat-renderer";
-import {
-  ConsoleStatusButton,
-  ConsoleStatusPanel,
-} from "./console-status-panel";
+import { ConsoleStatusPanel } from "./console-status-panel";
 import { FlowsUpdateDialog } from "./flows-update-dialog";
 import { Header } from "./header";
 import FailedTasksInfo from "./tasks_details";
@@ -41,26 +38,15 @@ import FailedTasksInfo from "./tasks_details";
  *  slide animation) cannot break `position: fixed` viewport anchoring. */
 function ConsoleStatusPortal({
   isOpen,
-  onToggle,
   onClose,
-  overallStatus,
 }: {
   isOpen: boolean;
-  onToggle: () => void;
   onClose: () => void;
-  overallStatus?: import("@/app/api/queries/useConsoleStatusQuery").ComponentState;
 }) {
   const host = usePortal("console-status-portal");
   if (!host) return null;
   return createPortal(
-    <>
-      <ConsoleStatusButton
-        onClick={onToggle}
-        isOpen={isOpen}
-        overallStatus={overallStatus}
-      />
-      {isOpen && <ConsoleStatusPanel onClose={onClose} />}
-    </>,
+    isOpen ? <ConsoleStatusPanel onClose={onClose} /> : null,
     host,
   );
 }
@@ -73,12 +59,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const { isPanelOpen, panelMode, closePanelOnly } = useKnowledgeFilter();
   const failedTasks = tasks.filter(isFailureLikeTask);
 
-  const {
-    isOpen: isStatusOpen,
-    toggle: toggleStatus,
-    close: closeStatus,
-    overallStatus: consoleOverallStatus,
-  } = useConsoleStatus();
+  const { isOpen: isStatusOpen, close: closeStatus } = useConsoleStatus();
 
   const isOnKnowledgePage = pathname.startsWith("/knowledge");
 
@@ -144,12 +125,6 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
 
   const isRightPanelOpen =
     isMenuOpen || (isPanelOpen && isOnKnowledgePage && !isMenuOpen);
-
-  // The floating status button's dot reflects provider / API-key failures
-  // (shown as a card inside the panel) in addition to backend infra health.
-  const overallStatus = isProviderUnhealthy
-    ? "unhealthy"
-    : consoleOverallStatus;
 
   return (
     <div
@@ -240,12 +215,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
       {/* Console Status — portalled into document.body so fixed positioning
           is always relative to the viewport, not to any transformed ancestor */}
       {isOnboardingComplete && (
-        <ConsoleStatusPortal
-          isOpen={isStatusOpen}
-          onToggle={toggleStatus}
-          onClose={closeStatus}
-          overallStatus={overallStatus}
-        />
+        <ConsoleStatusPortal isOpen={isStatusOpen} onClose={closeStatus} />
       )}
       {(isAuthenticated || isNoAuthMode) && runMode === "oss" && (
         <FlowsUpdateDialog />
