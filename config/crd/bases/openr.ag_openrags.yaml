@@ -3031,13 +3031,6 @@ spec:
                       defaults to port 8000
                     format: int32
                     type: integer
-                  prometheusScrape:
-                    default: true
-                    description: |-
-                      PrometheusScrape enables the standard Prometheus pod annotations
-                      (prometheus.io/scrape, prometheus.io/port, prometheus.io/path) for auto-discovery.
-                      defaults to true un
-                    type: boolean
                   replicas:
                     default: 1
                     format: int32
@@ -31144,6 +31137,12 @@ spec:
                   provider:
                     type: string
                 type: object
+              metricsScrapingDisabled:
+                description: |-
+                  MetricsScrapingDisabled controls whether Prometheus metrics scraping annotations and ports are enabled or disabled.
+                  When set to true, prometheus.io/scrape annotation is set to "false".
+                  When set to false or omitted, prometheus.io/scrape is set to "true".
+                type: boolean
               networkPolicy:
                 description: NetworkPolicy controls creation of a NetworkPolicy for
                   the Langflow pod.
