@@ -23,11 +23,11 @@
 
 services:
   opensearch:
-    image: ${IMAGE_REGISTRY:-docker.io}/${IMAGE_ORG:-langflowai}/openrag-opensearch:${OPENRAG_IMAGE_TAG:-${OPENRAG_VERSION:-latest}}
+    image: ${OPENSEARCH_IMAGE:-${IMAGE_REGISTRY:-docker.io}/${IMAGE_ORG:-langflowai}/openrag-opensearch:${OPENRAG_IMAGE_TAG:-${OPENRAG_VERSION:-latest}}}
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: ${COMPOSE_PROJECT_NAME:-openrag}-opensearch
+    container_name: os
     environment:
       - discovery.type=single-node
       - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_PASSWORD}
@@ -48,7 +48,7 @@ services:
       - "${OPENSEARCH_PERF_PORT:-9600}:9600"
     volumes:
       - opensearch-data:/usr/share/opensearch/data
-    stop_grace_period: 2m
+    stop_grace_period: 30s
     healthcheck:
       test: ["CMD-SHELL", "curl -ku admin:$$OPENSEARCH_PASSWORD 'https://localhost:9200/_cluster/health' -s | grep -qE '\"status\":\"(green|yellow)\"'"]
       interval: 15s
@@ -58,8 +58,8 @@ services:
     restart: unless-stopped
 
   dashboards:
-    image: ${DASHBOARDS_REGISTRY:-docker.io}/opensearchproject/opensearch-dashboards:3.6.0
-    container_name: ${COMPOSE_PROJECT_NAME:-openrag}-dashboards
+    image: ${DASHBOARDS_IMAGE:-${IMAGE_REGISTRY:-docker.io}/opensearchproject/opensearch-dashboards:3.6.0}
+    container_name: osdash
     depends_on:
       - opensearch
     environment:
@@ -74,9 +74,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.backend
-    container_name: ${COMPOSE_PROJECT_NAME:-openrag}-backend
+    container_name: openrag-backend
     depends_on:
-      - langflow
+      langflow:
+        condition: service_healthy
     environment:
       - OPENSEARCH_HOST=${OPENSEARCH_HOST:-opensearch}
       - LANGFLOW_URL=http://langflow:7860
@@ -158,25 +159,40 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
+    healthcheck:
+        test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+        interval: 5s
+        timeout: 3s
+        retries: 10
+        start_period: 30s
+
   openrag-frontend:
     image: ${IMAGE_REGISTRY:-docker.io}/${IMAGE_ORG:-langflowai}/openrag-frontend:${OPENRAG_IMAGE_TAG:-${OPENRAG_VERSION:-latest}}
     build:
       context: .
       dockerfile: Dockerfile.frontend
-    container_name: ${COMPOSE_PROJECT_NAME:-openrag}-frontend
+    container_name: openrag-frontend
     depends_on:
-      - openrag-backend
+      openrag-backend:
+        condition: service_healthy
     environment:
       - OPENRAG_BACKEND_HOST=openrag-backend
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
 
   langflow:
-    image: ${IMAGE_REGISTRY:-docker.io}/${IMAGE_ORG:-langflowai}/openrag-langflow:${OPENRAG_IMAGE_TAG:-${OPENRAG_VERSION:-latest}}
+    image: ${LANGFLOW_IMAGE:-${IMAGE_REGISTRY:-docker.io}/${IMAGE_ORG:-langflowai}/openrag-langflow:${OPENRAG_IMAGE_TAG:-${OPENRAG_VERSION:-latest}}}
     build:
       context: .
       dockerfile: Dockerfile.langflow
-    container_name: ${COMPOSE_PROJECT_NAME:-openrag}-langflow
+    container_name: langflow
+    user: root
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:7860/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 120s
     ports:
       - "${LANGFLOW_PORT:-7860}:7860"
     volumes:

@@ -21,12 +21,12 @@ class DoclingManager:
     _instance = None
     _initialized = False
 
-    def __new__(cls) -> Any:
+    def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self) -> None:
+    def __init__(self):
         # Only initialize once
         if self._initialized:
             return
@@ -58,7 +58,7 @@ class DoclingManager:
         # Try to recover existing process from PID file
         self._recover_from_pid_file()
 
-    def cleanup(self) -> None:
+    def cleanup(self):
         """Cleanup resources but keep docling-serve running across sessions."""
         # Don't stop the process on exit - let it persist
         # Just clean up our references
@@ -285,33 +285,51 @@ class DoclingManager:
             fd, override_path = tempfile.mkstemp(suffix=".txt", prefix="docling_cv_override_")
             with os.fdopen(fd, "w") as f:
                 f.write('opencv-python ; python_version < "0"\n')
+                # opencv-python-headless 5.x has no ppc64le wheel and fails to build from source
+                f.write('opencv-python-headless<5\n')
+                # Pillow >=12 has no ppc64le wheel
+                if os.uname().machine in ("ppc64le", "ppc64"):
+                    f.write("pillow<12.0.0\n")
 
         try:
             docling_extras = (
                 "ocrmac,easyocr,rapidocr,vlm"
-                if sys.platform == "darwin"
+                if sys.platform == "darwin" or os.uname().machine in ("ppc64le", "ppc64")
                 else "easyocr,rapidocr,vlm"
             )
 
             cmd = [
                 "uvx",
-                "--python",
-                "3.13",
                 "--from",
-                "docling-serve[ui]==1.26.0",
+                "docling-serve[ui]==1.20.0",
+                "--with",
+                "ray==2.52.1",  # pin older ray version
+                "--with",
+                "kfp[kubernetes]==2.16.1",  # pin kubernetes version
+                "--with",
+                "av==16.1.0",  # pin older av version
+                "--with",
+                "pyarrow==23.0.1",  # pin older pyarrow version
                 "--with",
                 "onnxruntime",
                 "--with",
                 "easyocr",
                 "--with",
-                f"docling[{docling_extras}]==2.108.0",
+                f"docling[{docling_extras}]",
                 "--with",
-                "docling-core==2.85.0",
+                "docling-core==2.77.1",
                 "--with",
                 "transformers>=5.8.1,<5.9.0",
+                "--with",
+                "scipy==1.17.1",
             ]
+
+            uv_devpi = os.getenv("UV_DEVPI")
+            if uv_devpi:
+                cmd += ["--extra-index-url", uv_devpi]
+
             if override_path:
-                cmd += ["--override", override_path, "--with", "opencv-python-headless"]
+                cmd += ["--override", override_path, "--with", "opencv-python-headless==4.13.0.92"]  # pin version
             cmd += [
                 "docling-serve",
                 "run",
@@ -335,27 +353,11 @@ class DoclingManager:
             # async task state (leading to 404 on /v1/result/{id}).
             self._log_file_path.parent.mkdir(parents=True, exist_ok=True)
             log_file = open(self._log_file_path, "w")
-
-            env = os.environ.copy()
-
-            # Disable PyTorch model compilation to prevent Dynamo/AttributeError issues on CPU/Mac
-            env["TORCH_COMPILE_DISABLE"] = "1"
-            env["TORCH_DYNAMO_DISABLE"] = "1"
-
-            # Add docling serve environment variables
-            if "DOCLING_SERVE_ENG_RAY_TENANT_ID_HEADER" not in env:
-                env["DOCLING_SERVE_ENG_RAY_TENANT_ID_HEADER"] = "X-Docling-Tenant-Id"
-            if "DOCLING_SERVE_ENABLE_REMOTE_SERVICES" not in env:
-                env["DOCLING_SERVE_ENABLE_REMOTE_SERVICES"] = "true"
-            if "DOCLING_SERVE_ALLOW_CUSTOM_VLM_CONFIG" not in env:
-                env["DOCLING_SERVE_ALLOW_CUSTOM_VLM_CONFIG"] = "true"
-
             self._process = subprocess.Popen(
                 cmd,
                 stdout=log_file,
                 stderr=subprocess.STDOUT,  # Merge stderr into stdout log file
                 start_new_session=True,  # Detach from parent process group
-                env=env,
             )
             # Close parent's copy of the fd; the child has its own
             log_file.close()
@@ -460,10 +462,10 @@ class DoclingManager:
                     pass
             return False, f"Error starting docling serve: {str(e)}"
 
-    def _start_output_capture(self) -> None:
-        """Start a thread to capture log file output."""
+    def _start_output_capture(self):
+        """Start a thread to tail the docling-serve log file."""
 
-        def tail_log_file() -> None:
+        def tail_log_file():
             if not self._log_file_path.exists():
                 self._add_log_entry("No log file available")
                 return

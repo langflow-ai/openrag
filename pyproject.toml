@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "openrag"
-version = "0.5.0"
+version = "0.5.1"
 description = "OpenRAG is a comprehensive Retrieval-Augmented Generation platform that enables intelligent document search and AI-powered conversations."
 readme = "README.md"
 requires-python = ">=3.13"
@@ -54,7 +54,7 @@ dependencies = [
     "protobuf>=7.35.0",
     "litellm==1.84.0",
     "pyyaml>=6.0",
-    "tiktoken>=0.7.0",
+    "tiktoken>=0.7.0,<0.13.0",
     "fastmcp>=3.2.3",
     "openai==2.24.0",
     "tenacity>=9.1.4",
@@ -71,6 +71,7 @@ dependencies = [
     "cachetools>=5.5.0",
     "idna>=3.15",
     "urllib3>=2.7.0",
+    "grpcio==1.80.0",
 ]
 
 [dependency-groups]
@@ -97,6 +98,16 @@ markers = [
 [tool.uv]
 package = true
 override-dependencies = ["python-dotenv>=1.1.0"]
+
+[tool.uv.sources]
+# Pull ppc64le-compatible wheels from the private Artifactory index
+tiktoken = { index = "power_rag" }
+grpcio = { index = "power_rag" }
+
+[[tool.uv.index]]
+name = "power_rag"
+url = "https://na.artifactory.swg-devops.com/artifactory/api/pypi/hyc-cpd-skywalker-team-lakehouse-on-prem-op-rag-pypi-local/simple"
+explicit = true
 
 # Ruff and mypy run only against files changed in a PR (see
 # .github/workflows/lint-backend.yml). The configs below stay

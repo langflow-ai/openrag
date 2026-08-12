@@ -701,21 +701,18 @@ def migrate_legacy_data_directories():
 
 
 def _reclaim_host_ownership(directories: list[Path]) -> None:
-    """Re-own directories to the current host user via a container running as root.
+    """Re-own directories to the current host user.
 
-    On Linux with rootful Docker the backend entrypoint.sh calls
+    On Linux with rootful Docker/Podman the backend entrypoint.sh calls
     ``chown -R appuser:appuser`` on volume-mounted directories, changing their
     *host-side* ownership to UID 1000.  Subsequent TUI startups then cannot
     chmod or write into those directories (e.g. to regenerate JWT keys after a
     reset), causing a silent crash.
 
-    This mirrors the ``fix_backend_volume_ownership`` Makefile define: an Alpine
-    container is launched as root and asked to chown the directories back to the
-    host user.  Silently skips directories that are already owned by the current
-    user, or when no container runtime is available.
+    Uses os.chown natively (no container pull required) rather than spinning up
+    an Alpine container, which would time out on air-gapped or registry-restricted
+    hosts (e.g. ppc64le machines that cannot reach docker.io).
     """
-    import shutil as _shutil
-
     host_uid = os.getuid()
     host_gid = os.getgid()
 
@@ -723,28 +720,18 @@ def _reclaim_host_ownership(directories: list[Path]) -> None:
     if not needs_reclaim:
         return
 
-    runtime = (
-        "docker" if _shutil.which("docker")
-        else "podman" if _shutil.which("podman")
-        else None
-    )
-    if not runtime:
-        logger.error("No container runtime found; cannot reclaim directory ownership")
-        return
-
     for directory in needs_reclaim:
         try:
-            subprocess.run(
-                [
-                    runtime, "run", "--rm",
-                    "-v", f"{directory}:/mnt/target",
-                    "alpine", "chown", "-R", f"{host_uid}:{host_gid}", "/mnt/target",
-                ],
-                check=True,
-                capture_output=True,
-                timeout=30,
-            )
+            for root, subdirs, files in os.walk(directory):
+                os.chown(root, host_uid, host_gid)
+                for name in files:
+                    os.chown(os.path.join(root, name), host_uid, host_gid)
             logger.info(f"Reclaimed ownership of {directory} → {host_uid}:{host_gid}")
+        except PermissionError:
+            logger.warning(
+                f"Cannot chown {directory} natively (not owned by current user or root); "
+                "run manually: sudo chown -R $(id -u):$(id -g) " + str(directory)
+            )
         except Exception as e:
             logger.error(f"Could not reclaim ownership of {directory}: {e}")
 
