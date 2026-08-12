@@ -77,10 +77,18 @@ function FileChunkCard({
     <>
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <span className={cn("font-bold", compact ? "text-xs" : "text-sm")}>
+          <span
+            className={cn(
+              "font-bold text-foreground",
+              compact ? "text-xs" : "text-sm",
+            )}
+          >
             Chunk {chunk.index}
           </span>
-          <Badge variant="secondary" className="text-xxs">
+          <Badge
+            variant="secondary"
+            className="text-xxs bg-background text-foreground border border-border"
+          >
             {chunk.text.length} chars
           </Badge>
           {!compact && (
@@ -103,7 +111,10 @@ function FileChunkCard({
           )}
         </div>
         {typeof chunk.score === "number" && chunk.score > 0 && (
-          <Badge variant="secondary" className="shrink-0 text-xxs">
+          <Badge
+            variant="secondary"
+            className="shrink-0 text-xxs bg-background text-foreground border border-border"
+          >
             {chunk.score.toFixed(2)} score
           </Badge>
         )}
@@ -111,7 +122,7 @@ function FileChunkCard({
       {showContents ? (
         <blockquote
           className={cn(
-            "min-w-0 text-muted-foreground leading-relaxed break-words [overflow-wrap:anywhere] whitespace-pre-wrap",
+            "min-w-0 text-foreground leading-relaxed break-words [overflow-wrap:anywhere] whitespace-pre-wrap",
             compact ? "text-xs" : "text-sm ml-1.5",
           )}
         >
