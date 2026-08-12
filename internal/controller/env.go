@@ -30,6 +30,11 @@ type EnvVarManager struct {
 func NewEnvVarManager() *EnvVarManager {
 	return &EnvVarManager{
 		DefaultLangflowEnvVars: map[string]string{
+
+			// Uncomment for local kind deployment
+			// Without this Langflow binds localhost only, unreachable from the backend pod or health probes.
+			// "LANGFLOW_HOST": "0.0.0.0",
+
 			// Database configuration
 			"LANGFLOW_DATABASE_URL": "sqlite:////app/data/langflow.db",
 
