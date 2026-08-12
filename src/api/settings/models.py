@@ -200,6 +200,7 @@ class AgentConfig(BaseModel):
     llm_model: str | None
     llm_provider: str | None
     system_prompt: str | None
+    default_system_prompt: str | None = None
 
 
 class IngestionDefaultsConfig(BaseModel):

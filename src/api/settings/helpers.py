@@ -47,7 +47,12 @@ def _first_configured_embedding_provider(config, excluding: str) -> str:
 
 
 def _default_llm_model(provider: str) -> str:
-    """Return the default LLM model for a provider."""
+    """Return the static preferred LLM model for a provider.
+
+    OpenAI/Anthropic have stable preferred defaults. Ollama/watsonx model IDs are
+    dynamic from the live provider list — return empty so the frontend picks from
+    the live list (default flag or first available).
+    """
     from config.model_constants import (
         ANTHROPIC_DEFAULT_LANGUAGE_MODEL,
         OPENAI_DEFAULT_LANGUAGE_MODEL,
@@ -56,8 +61,8 @@ def _default_llm_model(provider: str) -> str:
     return {
         "openai": OPENAI_DEFAULT_LANGUAGE_MODEL,
         "anthropic": ANTHROPIC_DEFAULT_LANGUAGE_MODEL,
-        "watsonx": "ibm/granite-4-h-small",
-        "ollama": "llama3",
+        "watsonx": "",
+        "ollama": "",
     }.get(provider, "")
 
 

@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import type { File as SearchFile } from "@/app/api/queries/useGetSearchQuery";
 import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import { DuplicateHandlingDialog } from "@/components/duplicate-handling-dialog";
+import { IngestReviewDialog } from "@/components/ingest-review";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -31,8 +32,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useTask } from "@/contexts/task-context";
+import { shouldAutoOpenIngestPreview } from "@/hooks/use-ingest-preview-settings";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useSupportedFileTypes } from "@/hooks/use-supported-file-types";
 import {
@@ -44,6 +47,11 @@ import {
   getConnectorDescriptor,
   getConnectorDescriptors,
 } from "@/lib/connectors/registry";
+import {
+  EMPTY_PREVIEW,
+  isIngestPreviewEnabled,
+  type PreviewDialogState,
+} from "@/lib/ingest-preview";
 import {
   duplicateCheck,
   uploadFiles,
@@ -91,6 +99,7 @@ const FolderIconWithColor = ({ className }: { className?: string }) => (
 );
 
 export function KnowledgeDropdown() {
+  const { runMode } = useAuth();
   const { supportedExtensions, supportedExtensionSet } =
     useSupportedFileTypes();
   const { can } = usePermissions();
@@ -100,6 +109,9 @@ export function KnowledgeDropdown() {
   const { refetch: refetchTasks } = useGetTasksQuery();
   const queryClient = useQueryClient();
   const router = useRouter();
+  const ingestPreviewEnabled = isIngestPreviewEnabled(runMode, {
+    isCloudBrand,
+  });
   const [mounted, setMounted] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showFolderDialog, setShowFolderDialog] = useState(false);
@@ -117,6 +129,7 @@ export function KnowledgeDropdown() {
   >({});
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [duplicateFilename, setDuplicateFilename] = useState<string>("");
+  const [preview, setPreview] = useState<PreviewDialogState>(EMPTY_PREVIEW);
   const [pendingFolderUpload, setPendingFolderUpload] = useState<{
     allFiles: File[];
     nonDuplicateFiles: File[];
@@ -320,8 +333,54 @@ export function KnowledgeDropdown() {
     resetFileInput();
   };
 
+  const openPreviewForFiles = (files: File[], label: string) => {
+    if (!(ingestPreviewEnabled && shouldAutoOpenIngestPreview())) {
+      return;
+    }
+    setPreview({
+      open: true,
+      taskIds: [],
+      filename: label,
+      files,
+    });
+  };
+
+  /**
+   * Bind upload task IDs into the review dialog.
+   *
+   * Previously this always spread `prev` and only set `taskIds`. When Knowledge
+   * auto-open is off, `openPreviewForFiles` never runs, so `prev.open` stays
+   * false and the dialog kept a taskId while remaining invisible.
+   *
+   * Rules:
+   * - Dialog already open → attach taskIds (normal auto-open path).
+   * - Dialog closed but auto-open is on → open now with files (recovers a
+   *   missed optimistic open).
+   * - Dialog closed and auto-open is off → leave closed; tasks stay in the tray.
+   */
+  const attachPreviewTaskIds = (
+    taskIds: string[],
+    fallback?: { files: File[]; filename: string },
+  ) => {
+    setPreview((prev) => {
+      if (prev.open) {
+        return { ...prev, open: true, taskIds };
+      }
+      if (shouldAutoOpenIngestPreview() && fallback) {
+        return {
+          open: true,
+          taskIds,
+          filename: fallback.filename,
+          files: fallback.files,
+        };
+      }
+      return prev;
+    });
+  };
+
   const uploadFile = async (file: File, replace: boolean) => {
     setFileUploading(true);
+    openPreviewForFiles([file], file.name);
     trackStartProcess({
       processType: "Ingestion",
       process: "Document Upload",
@@ -331,8 +390,26 @@ export function KnowledgeDropdown() {
     });
 
     try {
-      await uploadFileUtil(file, replace);
+      const result = await uploadFileUtil(
+        file,
+        replace,
+        false,
+        undefined,
+        ingestPreviewEnabled,
+      );
       refetchTasks();
+      if (result.taskId) {
+        // Always track in the task tray; preview dialog is optional (auto-open).
+        addTask(result.taskId, { source: "file" });
+        if (result.previewMode) {
+          attachPreviewTaskIds([result.taskId as string], {
+            files: [file],
+            filename: file.name,
+          });
+        } else {
+          setPreview(EMPTY_PREVIEW);
+        }
+      }
     } catch (error) {
       trackProcessFailure({
         processType: "Ingestion",
@@ -353,6 +430,7 @@ export function KnowledgeDropdown() {
       toast.error("Upload failed", {
         description: error instanceof Error ? error.message : "Unknown error",
       });
+      setPreview(EMPTY_PREVIEW);
     } finally {
       setFileUploading(false);
     }
@@ -370,31 +448,85 @@ export function KnowledgeDropdown() {
       total_files: filesToUpload.length,
     });
 
+    openPreviewForFiles(filesToUpload, `${filesToUpload.length} files`);
+
     const batches: File[][] = [];
     for (let i = 0; i < filesToUpload.length; i += uploadBatchSize) {
       batches.push(filesToUpload.slice(i, i + uploadBatchSize));
     }
 
-    for (const batch of batches) {
-      try {
-        const result = await uploadFiles(batch, replace);
-        addTask(result.taskId, { source: "folder" });
-      } catch (error) {
-        trackProcessFailure({
-          processType: "Ingestion",
-          process: "Document Upload",
-          category: "Knowledge",
-          source: "folder",
-          resultValue: error instanceof Error ? error.message : "Unknown error",
-        });
-        console.error("[Folder Upload] Batch upload failed:", error);
-        toast.error("Batch upload failed", {
-          description: error instanceof Error ? error.message : "Unknown error",
-        });
+    const taskIdsByBatch: (string | undefined)[] = [];
+    const failedBatchIndexes: number[] = [];
+    // Cap parallel batch uploads so large folders don't open every request at once.
+    const batchConcurrency = Math.min(2, batches.length);
+    let nextBatchIndex = 0;
+    // Set by any worker that gets previewMode=true; checked once after all
+    // batches finish so a concurrent false cannot close a successful open.
+    let previewModeConfirmed = false;
+
+    const runNextBatch = async () => {
+      while (nextBatchIndex < batches.length) {
+        const batchIndex = nextBatchIndex;
+        nextBatchIndex += 1;
+        const batch = batches[batchIndex];
+        if (!batch) continue;
+
+        try {
+          const result = await uploadFiles(
+            batch,
+            replace,
+            ingestPreviewEnabled,
+          );
+          addTask(result.taskId, { source: "folder" });
+          if (result.previewMode) {
+            previewModeConfirmed = true;
+            taskIdsByBatch[batchIndex] = result.taskId;
+            attachPreviewTaskIds(
+              taskIdsByBatch.filter((id): id is string => id !== undefined),
+              {
+                files: filesToUpload,
+                filename: `${filesToUpload.length} files`,
+              },
+            );
+            refetchTasks();
+          }
+        } catch (error) {
+          failedBatchIndexes.push(batchIndex);
+          trackProcessFailure({
+            processType: "Ingestion",
+            process: "Document Upload",
+            category: "Knowledge",
+            source: "folder",
+            resultValue:
+              error instanceof Error ? error.message : "Unknown error",
+          });
+          console.error("[Folder Upload] Batch upload failed:", error);
+          toast.error("Batch upload failed", {
+            description:
+              error instanceof Error ? error.message : "Unknown error",
+          });
+        }
       }
+    };
+
+    await Promise.all(
+      Array.from({ length: batchConcurrency }, () => runNextBatch()),
+    );
+
+    // Close the optimistic open only after all workers finish. Doing this
+    // inside a worker races: a late previewMode=false can wipe a sibling's
+    // successful open between awaits.
+    if (!previewModeConfirmed) {
+      setPreview(EMPTY_PREVIEW);
     }
 
     refetchTasks();
+
+    if (failedBatchIndexes.length > 0) {
+      throw new Error(
+        `${failedBatchIndexes.length} of ${batches.length} batch upload(s) failed`,
+      );
+    }
   };
 
   const handleOverwriteFile = async () => {
@@ -402,12 +534,20 @@ export function KnowledgeDropdown() {
       isFolderOverwriteConfirmedRef.current = true;
       const { allFiles, duplicateNames, unsupportedCount } =
         pendingFolderUpload;
-      await uploadFolderBatches(allFiles, true);
-      const unsupportedMessage =
-        unsupportedCount > 0 ? `, skipped ${unsupportedCount} unsupported` : "";
-      toast.success(
-        `Processed ${allFiles.length} file(s), including ${duplicateNames.length} overwrite(s)${unsupportedMessage}`,
-      );
+      try {
+        await uploadFolderBatches(allFiles, true);
+        const unsupportedMessage =
+          unsupportedCount > 0
+            ? `, skipped ${unsupportedCount} unsupported`
+            : "";
+        toast.success(
+          `Processed ${allFiles.length} file(s), including ${duplicateNames.length} overwrite(s)${unsupportedMessage}`,
+        );
+      } catch (error) {
+        toast.error("Folder upload incomplete", {
+          description: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
       resetDuplicateDialogState();
       return;
     }
@@ -448,19 +588,26 @@ export function KnowledgeDropdown() {
         const { nonDuplicateFiles, duplicateNames, unsupportedCount } =
           pendingFolderUpload;
         if (nonDuplicateFiles.length > 0) {
-          await uploadFolderBatches(nonDuplicateFiles, false);
-          const extraParts: string[] = [];
-          if (duplicateNames.length > 0) {
-            extraParts.push(`skipped ${duplicateNames.length} duplicate(s)`);
+          try {
+            await uploadFolderBatches(nonDuplicateFiles, false);
+            const extraParts: string[] = [];
+            if (duplicateNames.length > 0) {
+              extraParts.push(`skipped ${duplicateNames.length} duplicate(s)`);
+            }
+            if (unsupportedCount > 0) {
+              extraParts.push(`skipped ${unsupportedCount} unsupported`);
+            }
+            const suffix =
+              extraParts.length > 0 ? `, ${extraParts.join(", ")}` : "";
+            toast.success(
+              `Processed ${nonDuplicateFiles.length} file(s)${suffix}`,
+            );
+          } catch (error) {
+            toast.error("Folder upload incomplete", {
+              description:
+                error instanceof Error ? error.message : "Unknown error",
+            });
           }
-          if (unsupportedCount > 0) {
-            extraParts.push(`skipped ${unsupportedCount} unsupported`);
-          }
-          const suffix =
-            extraParts.length > 0 ? `, ${extraParts.join(", ")}` : "";
-          toast.success(
-            `Processed ${nonDuplicateFiles.length} file(s)${suffix}`,
-          );
         } else {
           toast.info(
             "Skipped duplicate files. All selected files were duplicates, so nothing was uploaded.",
@@ -886,6 +1033,15 @@ export function KnowledgeDropdown() {
         isLoading={fileUploading || folderLoading}
         duplicateLabel={duplicateFilename}
         duplicateNames={pendingFolderUpload?.duplicateNames}
+      />
+
+      <IngestReviewDialog
+        open={preview.open}
+        onOpenChange={(open) =>
+          setPreview((prev) => (open ? { ...prev, open } : EMPTY_PREVIEW))
+        }
+        taskIds={preview.taskIds}
+        previewFiles={preview.files}
       />
     </>
   );
