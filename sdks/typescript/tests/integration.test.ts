@@ -943,4 +943,107 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
       ).rejects.toThrow(NotFoundError);
     });
   });
+
+  describe("Files (listFiles)", () => {
+    it("returns a valid ListFilesResponse shape", async () => {
+      const result = await client.documents.listFiles({ page_size: 10 });
+
+      expect(typeof result.total).toBe("number");
+      expect(result.total).toBeGreaterThanOrEqual(0);
+      expect(typeof result.is_approximate).toBe("boolean");
+      expect(result.page).toBe(1);
+      expect(result.page_size).toBe(10);
+      expect(Array.isArray(result.files)).toBe(true);
+      // after_key is null on a single page or a cursor dict on multi-page
+      expect(result.after_key === null || typeof result.after_key === "object").toBe(true);
+    });
+
+    it("each FileRecord contains fields required for knowledge filter construction", async () => {
+      // Ingest a known file so there is at least one record
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "sdk-lf-"));
+      const fname = `lf_test_${Date.now()}.md`;
+      const fpath = path.join(tmpDir, fname);
+      fs.writeFileSync(fpath, "# List Files Test\n\nUnique content about silver foxes.\n");
+      await client.documents.ingest({ filePath: fpath });
+
+      try {
+        const result = await client.documents.listFiles({ search: fname });
+        const match = result.files.find((r) => r.filename === fname);
+        expect(match).toBeDefined();
+
+        const f = match!;
+        // Core identity
+        expect(typeof f.filename).toBe("string");
+        expect(f.filename.length).toBeGreaterThan(0);
+        expect(typeof f.document_id).toBe("string");
+        // Knowledge-filter fields
+        expect(typeof f.connector_type).toBe("string");
+        expect(typeof f.mimetype).toBe("string");
+        expect(typeof f.owner).toBe("string");
+        // Pagination / metadata
+        expect(typeof f.chunk_count).toBe("number");
+        expect(f.chunk_count).toBeGreaterThanOrEqual(0);
+        expect(typeof f.file_size).toBe("number");
+        expect(typeof f.indexed_time).toBe("string");
+        // ACL fields
+        expect(Array.isArray(f.allowed_users)).toBe(true);
+        expect(Array.isArray(f.allowed_groups)).toBe(true);
+        expect(Array.isArray(f.allowed_principal_labels)).toBe(true);
+      } finally {
+        await client.documents.delete(fname);
+      }
+    }, 120_000);
+
+    it("cursor pagination returns non-overlapping pages", async () => {
+      const page1 = await client.documents.listFiles({ page_size: 1 });
+      expect(page1.files.length).toBeLessThanOrEqual(1);
+
+      if (page1.after_key !== null && page1.total > 1) {
+        const page2 = await client.documents.listFiles({
+          page_size: 1,
+          after_key: JSON.stringify(page1.after_key),
+        });
+        const p1Names = new Set(page1.files.map((f) => f.filename));
+        const p2Names = new Set(page2.files.map((f) => f.filename));
+        for (const n of p2Names) {
+          expect(p1Names.has(n)).toBe(false);
+        }
+      }
+    });
+
+    it("list → create filter workflow produces a usable filter", async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "sdk-lf-wf-"));
+      const fname = `lf_wf_${Date.now()}.md`;
+      const fpath = path.join(tmpDir, fname);
+      fs.writeFileSync(fpath, "# Workflow Test\n\nContent about crimson crabs.\n");
+      await client.documents.ingest({ filePath: fpath });
+      let filterId: string | undefined;
+
+      try {
+        const page = await client.documents.listFiles({ search: fname });
+        const match = page.files.find((f) => f.filename === fname);
+        expect(match).toBeDefined();
+
+        const createResult = await client.knowledgeFilters.create({
+          name: `TS list-files workflow ${Date.now()}`,
+          queryData: {
+            filters: {
+              data_sources: [match!.filename],
+              document_types: ["*"],
+              owners: ["*"],
+              connector_types: ["*"],
+            },
+            limit: 10,
+            scoreThreshold: 0,
+          },
+        });
+        expect(createResult.success).toBe(true);
+        expect(createResult.id).toBeDefined();
+        filterId = createResult.id!;
+      } finally {
+        if (filterId) await client.knowledgeFilters.delete(filterId);
+        await client.documents.delete(fname);
+      }
+    }, 120_000);
+  });
 });
