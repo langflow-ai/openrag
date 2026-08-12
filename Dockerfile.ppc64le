@@ -7,7 +7,9 @@ USER root
 
 # jvector is already bundled in the image; remove the stock knn/neural-search plugins
 RUN opensearch-plugin remove opensearch-neural-search || true && \
-    opensearch-plugin remove opensearch-knn || true
+    opensearch-plugin remove opensearch-knn || true && \
+    # remove due to Jetty CVE
+    opensearch-plugin remove opensearch-skills || true
 
 #Install jvector and prometheus exporter plugin, .zip files is included in image
 RUN echo y | opensearch-plugin install file://`pwd`/opensearch-jvector-3.6.0.0.zip && \
@@ -24,12 +26,13 @@ RUN opensearch-plugin install --batch repository-gcs && \
     opensearch-plugin install --batch repository-azure
 
 # Apply Netty patch
-COPY patch-netty.sh /tmp/
-RUN bash /tmp/patch-netty.sh
+COPY patch-netty.sh patch-jackson.sh /tmp/
+RUN bash /tmp/patch-netty.sh && \
+    bash /tmp/patch-jackson.sh
+
 
 # Set permissions for OpenShift compatibility before copying
 RUN chmod -R g=u /usr/share/opensearch
-
 
 ########################################
 # Stage 2: Build async-profiler from source
