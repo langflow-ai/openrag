@@ -143,7 +143,7 @@ function TaskDialogContent({
             className={cn(
               "min-w-0",
               isCloudBrand
-                ? "w-1/2 justify-start rounded-none px-4 text-left"
+                ? "justify-start rounded-none px-4 text-left"
                 : "flex-1",
             )}
             disabled={isRetrying || !task}
@@ -158,7 +158,7 @@ function TaskDialogContent({
             className={cn(
               "min-w-0",
               isCloudBrand
-                ? "w-1/2 justify-start rounded-none px-4 text-left"
+                ? "justify-start rounded-none px-4 text-left"
                 : "flex-1",
             )}
             disabled={isRetrying || !task}
@@ -173,9 +173,8 @@ function TaskDialogContent({
           ignoreTitleCase
           className={cn(
             isCloudBrand
-              ? "w-1/2 shrink-0 justify-start rounded-none px-4 text-left"
+              ? "shrink-0 justify-start rounded-none px-4 text-left"
               : "shrink-0",
-            isCloudBrand && showRetryActions && "ml-auto",
           )}
           onClick={onClose}
           disabled={isRetrying}
