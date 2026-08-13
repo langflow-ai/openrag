@@ -31,7 +31,12 @@ from api import (
     upload,
 )
 from api import keys as api_keys
-from api.health import get_console_component_logs, get_console_status, health_check, opensearch_health_ready
+from api.health import (
+    get_console_component_logs,
+    get_console_status,
+    health_check,
+    opensearch_health_ready,
+)
 from api.schemas.tasks import ErrorResponse, TaskRetryResponse
 from api.v2 import files as files_v2
 from connectors.registry import get_connector_classes
