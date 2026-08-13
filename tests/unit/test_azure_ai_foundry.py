@@ -165,10 +165,7 @@ async def test_azure_ai_foundry_litellm_model_name_routing():
         )
     )
     service._config_manager = FakeConfigManager(cfg1)
-    assert (
-        await service.get_litellm_model_name("gpt-4o", "azure_ai_foundry")
-        == "azure/gpt-4o"
-    )
+    assert await service.get_litellm_model_name("gpt-4o", "azure_ai_foundry") == "azure/gpt-4o"
 
     # Case 2: Serverless/Foundry endpoint routes to azure_ai/{model_name}
     cfg2 = providers_config(
