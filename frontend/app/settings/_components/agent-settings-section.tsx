@@ -7,7 +7,6 @@ import { toast } from "sonner";
 import {
   useGetAnthropicModelsQuery,
   useGetAzureAIFoundryModelsQuery,
-  useGetAzureOpenAIModelsQuery,
   useGetIBMModelsQuery,
   useGetOllamaModelsQuery,
   useGetOpenAIModelsQuery,
@@ -161,8 +160,7 @@ export function AgentSettingsSection() {
     anthropicLoading ||
     ollamaLoading ||
     watsonxLoading ||
-    azureLoading ||
-    azureOpenAILoading;
+    azureLoading;
 
   const updateSettingsMutation = useUpdateSettingsMutation({
     onSuccess: () => {

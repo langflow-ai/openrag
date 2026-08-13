@@ -1483,7 +1483,7 @@ async def _test_azure_ai_foundry_completion(
             )
             payload = {
                 "messages": [{"role": "user", "content": "Hello"}],
-                "max_tokens": 10,
+                "max_completion_tokens": 10,
             }
         else:
             completions_url = _build_azure_ai_foundry_url(
@@ -1492,7 +1492,7 @@ async def _test_azure_ai_foundry_completion(
             payload = {
                 "model": llm_model,
                 "messages": [{"role": "user", "content": "Hello"}],
-                "max_tokens": 10,
+                "max_completion_tokens": 10,
             }
         logger.info(f"Azure AI Foundry completion request URL: {completions_url}")
         async with httpx.AsyncClient() as client:

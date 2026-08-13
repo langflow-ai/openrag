@@ -6,7 +6,6 @@ import { toast } from "sonner";
 import {
   useGetAnthropicModelsQuery,
   useGetAzureAIFoundryModelsQuery,
-  useGetAzureOpenAIModelsQuery,
   useGetIBMModelsQuery,
   useGetOllamaModelsQuery,
   useGetOpenAIModelsQuery,

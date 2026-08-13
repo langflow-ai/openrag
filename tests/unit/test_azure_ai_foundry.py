@@ -1,5 +1,7 @@
 """Unit tests for Azure AI Foundry endpoint URL construction and validation."""
 
+import pytest
+
 from api.provider_validation import _build_azure_ai_foundry_url
 
 
@@ -120,29 +122,99 @@ def test_build_azure_ai_foundry_url_openai_v1_preserves_literal_api_version():
     assert url == "https://my-foundry.services.ai.azure.com/openai/v1/models?api-version=preview"
 
 
-def test_azure_ai_foundry_litellm_model_name_routing():
-    from config.config_manager import AzureAIFoundryConfig, ProvidersConfig
+@pytest.mark.asyncio
+async def test_azure_ai_foundry_litellm_model_name_routing():
+    from config.config_manager import (
+        AnthropicConfig,
+        AzureAIFoundryConfig,
+        OllamaConfig,
+        OpenAIConfig,
+        ProvidersConfig,
+        WatsonXConfig,
+    )
     from services.models_service import ModelsService
 
     service = ModelsService()
 
+    def providers_config(azure_ai_foundry: AzureAIFoundryConfig) -> ProvidersConfig:
+        return ProvidersConfig(
+            openai=OpenAIConfig(),
+            anthropic=AnthropicConfig(),
+            watsonx=WatsonXConfig(),
+            ollama=OllamaConfig(),
+            azure_ai_foundry=azure_ai_foundry,
+        )
+
+    class FakeConfigManager:
+        def __init__(self, providers: ProvidersConfig):
+            self._providers = providers
+
+        def get_config(self):
+            class Config:
+                pass
+
+            config = Config()
+            config.providers = self._providers
+            return config
+
     # Case 1: .openai.azure.com endpoint routes to azure/{model_name}
-    cfg1 = ProvidersConfig(
-        azure_ai_foundry=AzureAIFoundryConfig(
+    cfg1 = providers_config(
+        AzureAIFoundryConfig(
             endpoint="https://my-resource.openai.azure.com",
             llm_deployment_name="gpt-4o",
         )
     )
-    assert service.get_litellm_model_name("azure_ai_foundry", "gpt-4o", cfg1) == "azure/gpt-4o"
+    service._config_manager = FakeConfigManager(cfg1)
+    assert (
+        await service.get_litellm_model_name("gpt-4o", "azure_ai_foundry")
+        == "azure/gpt-4o"
+    )
 
     # Case 2: Serverless/Foundry endpoint routes to azure_ai/{model_name}
-    cfg2 = ProvidersConfig(
-        azure_ai_foundry=AzureAIFoundryConfig(
+    cfg2 = providers_config(
+        AzureAIFoundryConfig(
             endpoint="https://my-foundry.services.ai.azure.com",
             llm_deployment_name="deepseek-r1",
         )
     )
+    service._config_manager = FakeConfigManager(cfg2)
     assert (
-        service.get_litellm_model_name("azure_ai_foundry", "deepseek-r1", cfg2)
+        await service.get_litellm_model_name("deepseek-r1", "azure_ai_foundry")
         == "azure_ai/deepseek-r1"
     )
+
+
+@pytest.mark.asyncio
+async def test_azure_ai_foundry_completion_uses_max_completion_tokens(monkeypatch):
+    from api import provider_validation
+
+    captured: dict[str, object] = {}
+
+    class FakeResponse:
+        status_code = 200
+
+    class FakeAsyncClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def post(self, url, *, headers, json, timeout):
+            captured["url"] = url
+            captured["headers"] = headers
+            captured["json"] = json
+            captured["timeout"] = timeout
+            return FakeResponse()
+
+    monkeypatch.setattr(provider_validation.httpx, "AsyncClient", FakeAsyncClient)
+
+    await provider_validation._test_azure_ai_foundry_completion(
+        "key",
+        "gpt-5-nano",
+        "https://my-foundry.services.ai.azure.com",
+    )
+
+    payload = captured["json"]
+    assert payload["max_completion_tokens"] == 10
+    assert "max_tokens" not in payload
