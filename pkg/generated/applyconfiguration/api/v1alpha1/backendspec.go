@@ -32,6 +32,7 @@ type BackendSpecApplyConfiguration struct {
 	OAuthBrokerURL                  *string                            `json:"oauthBrokerUrl,omitempty"`
 	IBMAuthEnabled                  *bool                              `json:"ibmAuthEnabled,omitempty"`
 	OAuth                           *OAuthSpecApplyConfiguration       `json:"oauth,omitempty"`
+	PrometheusScrape                *bool                              `json:"prometheusScrape,omitempty"`
 	PrometheusPort                  *int32                             `json:"prometheusPort,omitempty"`
 	PrometheusPath                  *string                            `json:"prometheusPath,omitempty"`
 }
@@ -425,6 +426,14 @@ func (b *BackendSpecApplyConfiguration) WithIBMAuthEnabled(value bool) *BackendS
 // If called multiple times, the OAuth field is set to the value of the last call.
 func (b *BackendSpecApplyConfiguration) WithOAuth(value *OAuthSpecApplyConfiguration) *BackendSpecApplyConfiguration {
 	b.OAuth = value
+	return b
+}
+
+// WithPrometheusScrape sets the PrometheusScrape field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the PrometheusScrape field is set to the value of the last call.
+func (b *BackendSpecApplyConfiguration) WithPrometheusScrape(value bool) *BackendSpecApplyConfiguration {
+	b.PrometheusScrape = &value
 	return b
 }
 

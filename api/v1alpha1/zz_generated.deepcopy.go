@@ -803,11 +803,6 @@ func (in *OpenRAGSpec) DeepCopyInto(out *OpenRAGSpec) {
 			(*out)[key] = val
 		}
 	}
-	if in.MetricsScrapingDisabled != nil {
-		in, out := &in.MetricsScrapingDisabled, &out.MetricsScrapingDisabled
-		*out = new(bool)
-		**out = **in
-	}
 	in.Frontend.DeepCopyInto(&out.Frontend)
 	in.Backend.DeepCopyInto(&out.Backend)
 	in.Langflow.DeepCopyInto(&out.Langflow)

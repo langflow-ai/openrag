@@ -274,6 +274,13 @@ type BackendSpec struct {
 	// +optional
 	OAuth *OAuthSpec `json:"oauth,omitempty"`
 
+	// PrometheusScrape enables the standard Prometheus pod annotations
+	// (prometheus.io/scrape, prometheus.io/port, prometheus.io/path) for auto-discovery.
+	// defaults to true un
+	// +optional
+	// +kubebuilder:default=true
+	PrometheusScrape bool `json:"prometheusScrape,omitempty"`
+
 	// PrometheusPort is the port Prometheus should scrape.
 	// defaults to port 8000
 	// +optional
@@ -767,12 +774,6 @@ type OpenRAGSpec struct {
 	// +optional
 	// +kubebuilder:validation:MaxProperties=64
 	CommonResourceAnnotations map[string]string `json:"commonResourceAnnotations,omitempty"`
-
-	// MetricsScrapingDisabled controls whether Prometheus metrics scraping annotations and ports are enabled or disabled.
-	// When set to true, prometheus.io/scrape annotation is set to "false".
-	// When set to false or omitted, prometheus.io/scrape is set to "true".
-	// +optional
-	MetricsScrapingDisabled *bool `json:"metricsScrapingDisabled,omitempty"`
 
 	// Frontend configures the OpenRAG Next.js frontend.
 	// +kubebuilder:validation:Required

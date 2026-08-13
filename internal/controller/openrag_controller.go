@@ -703,10 +703,6 @@ func (r *OpenRAGReconciler) reconcileServices(ctx context.Context, o *openragv1a
 			svcPorts = append(svcPorts, corev1.ServicePort{
 				Name: "ingest-router", Port: backendIngestRouterPort, TargetPort: intstr.FromInt32(backendIngestRouterPort), Protocol: corev1.ProtocolTCP,
 			})
-		} else if !isMetricsScrapingDisabled(o) {
-			svcPorts = append(svcPorts, corev1.ServicePort{
-				Name: "metrics", Port: 9090, TargetPort: intstr.FromInt32(9090), Protocol: corev1.ProtocolTCP,
-			})
 		}
 
 		baseLabels := componentLabels(o.Name, d.role)
@@ -912,16 +908,6 @@ func (r *OpenRAGReconciler) frontendDeployment(o *openragv1alpha1.OpenRAG, targe
 	deploymentAnnotations := mergeDeploymentAnnotations(spec.Annotations)
 	podLabels := mergePodLabels(baseLabels, spec.PodLabels)
 	podAnnotations := mergePodAnnotations(spec.PodAnnotations)
-	metricsDisabled := isMetricsScrapingDisabled(o)
-	if !metricsDisabled {
-		podAnnotations["prometheus.io/scrape"] = "true"
-		podAnnotations["prometheus.io/port"] = "9090"
-		podAnnotations["prometheus.io/path"] = "/metrics"
-	}
-	fePorts := []corev1.ContainerPort{{Name: "http", ContainerPort: 3000}}
-	if !metricsDisabled {
-		fePorts = append(fePorts, corev1.ContainerPort{Name: "metrics", ContainerPort: 9090})
-	}
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        instanceResourceName(o, "fe"),
@@ -958,7 +944,7 @@ func (r *OpenRAGReconciler) frontendDeployment(o *openragv1alpha1.OpenRAG, targe
 							Name:            "frontend",
 							Image:           spec.Image,
 							ImagePullPolicy: spec.ImagePullPolicy,
-							Ports:           fePorts,
+							Ports:           []corev1.ContainerPort{{Name: "http", ContainerPort: 3000}},
 							Env: append([]corev1.EnvVar{
 								{Name: "OPENRAG_BACKEND_HOST", Value: getServiceName(o, "be")},
 							}, spec.Env...),
@@ -1021,23 +1007,9 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, target
 	podAnnotations := mergePodAnnotations(spec.PodAnnotations)
 	// Add .env secret hash to trigger pod restart when secret changes
 	podAnnotations["openr.ag/backend-env-hash"] = envHash
-	// BackendSpec exposes PrometheusPort and PrometheusPath as user-configurable fields,
-	// unlike Frontend and Langflow whose port (9090) and path (/metrics) are hardcoded constants.
-	// The if-statements below are defaulting logic: if the user did not provide a value,
-	// fall back to port 8000 and path /metrics respectively.
-	if !isMetricsScrapingDisabled(o) {
-		prometheusPort := spec.PrometheusPort
-		if prometheusPort == 0 {
-			prometheusPort = 8000
-		}
-		prometheusPath := spec.PrometheusPath
-		if prometheusPath == "" {
-			prometheusPath = "/metrics"
-		}
-		podAnnotations["prometheus.io/scrape"] = "true"
-		podAnnotations["prometheus.io/port"] = fmt.Sprintf("%d", prometheusPort)
-		podAnnotations["prometheus.io/path"] = prometheusPath
-	}
+	podAnnotations["prometheus.io/scrape"] = fmt.Sprintf("%t", spec.PrometheusScrape)
+	podAnnotations["prometheus.io/port"] = fmt.Sprintf("%d", spec.PrometheusPort)
+	podAnnotations["prometheus.io/path"] = spec.PrometheusPath
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        instanceResourceName(o, "be"),
@@ -1172,16 +1144,6 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 	podAnnotations := mergePodAnnotations(spec.PodAnnotations)
 	// Add .env secret hash to trigger pod restart when secret changes
 	podAnnotations["openr.ag/langflow-env-hash"] = envHash
-	lfMetricsDisabled := isMetricsScrapingDisabled(o)
-	if !lfMetricsDisabled {
-		podAnnotations["prometheus.io/scrape"] = "true"
-		podAnnotations["prometheus.io/port"] = "9090"
-		podAnnotations["prometheus.io/path"] = "/metrics"
-	}
-	lfPorts := []corev1.ContainerPort{{Name: "http", ContainerPort: 7860}}
-	if !lfMetricsDisabled {
-		lfPorts = append(lfPorts, corev1.ContainerPort{Name: "metrics", ContainerPort: 9090})
-	}
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        instanceResourceName(o, "lf"),
@@ -1215,7 +1177,7 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 							ImagePullPolicy: spec.ImagePullPolicy,
 							Command:         commandOrDefault(spec.Command, []string{"langflow"}),
 							Args:            argsOrDefault(spec.Args, []string{"run", "--env-file", "/app/.env"}),
-							Ports:           lfPorts,
+							Ports:           []corev1.ContainerPort{{Name: "http", ContainerPort: 7860}},
 							Env:             envVars,
 							Resources:       spec.Resources,
 							SecurityContext: spec.SecurityContext,
@@ -2845,14 +2807,6 @@ func mergeImagePullSecrets(global, component []corev1.LocalObjectReference) []co
 	}
 
 	return merged
-}
-
-// isMetricsScrapingDisabled returns true if MetricsScrapingDisabled is explicitly set to true on the OpenRAG spec.
-func isMetricsScrapingDisabled(o *openragv1alpha1.OpenRAG) bool {
-	if o.Spec.MetricsScrapingDisabled != nil {
-		return *o.Spec.MetricsScrapingDisabled
-	}
-	return false
 }
 
 // mergeAnnotations merges custom annotations.

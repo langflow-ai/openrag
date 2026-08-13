@@ -31,7 +31,6 @@ type OpenRAGSpecApplyConfiguration struct {
 	ImagePullSecrets          []v1.LocalObjectReference                `json:"imagePullSecrets,omitempty"`
 	CommonResourceLabels      map[string]string                        `json:"commonResourceLabels,omitempty"`
 	CommonResourceAnnotations map[string]string                        `json:"commonResourceAnnotations,omitempty"`
-	MetricsScrapingDisabled   *bool                                    `json:"metricsScrapingDisabled,omitempty"`
 	Frontend                  *FrontendSpecApplyConfiguration          `json:"frontend,omitempty"`
 	Backend                   *BackendSpecApplyConfiguration           `json:"backend,omitempty"`
 	Langflow                  *LangflowSpecApplyConfiguration          `json:"langflow,omitempty"`
@@ -109,14 +108,6 @@ func (b *OpenRAGSpecApplyConfiguration) WithCommonResourceAnnotations(entries ma
 	for k, v := range entries {
 		b.CommonResourceAnnotations[k] = v
 	}
-	return b
-}
-
-// WithMetricsScrapingDisabled sets the MetricsScrapingDisabled field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the MetricsScrapingDisabled field is set to the value of the last call.
-func (b *OpenRAGSpecApplyConfiguration) WithMetricsScrapingDisabled(value bool) *OpenRAGSpecApplyConfiguration {
-	b.MetricsScrapingDisabled = &value
 	return b
 }
 
