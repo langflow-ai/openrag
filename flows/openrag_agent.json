@@ -259,6 +259,7 @@
       },
       {
         "animated": false,
+        "className": "",
         "data": {
           "sourceHandle": {
             "dataType": "OpenSearchVectorStoreComponentMultimodalMultiEmbedding",
@@ -343,14 +344,13 @@
             "frozen": false,
             "icon": "MessagesSquare",
             "legacy": false,
-            "lf_version": "1.9.0",
             "metadata": {
-              "code_hash": "7a26c54d89ed",
+              "code_hash": "45974e6b1909",
               "dependencies": {
                 "dependencies": [
                   {
                     "name": "lfx",
-                    "version": null
+                    "version": "1.11.3"
                   }
                 ],
                 "total_dependencies": 1
@@ -383,6 +383,7 @@
               "_type": "Component",
               "code": {
                 "advanced": true,
+                "api_editable": false,
                 "dynamic": true,
                 "fileTypes": [],
                 "file_path": "",
@@ -397,11 +398,12 @@
                 "show": true,
                 "title_case": false,
                 "type": "code",
-                "value": "from lfx.base.data.utils import IMG_FILE_TYPES, TEXT_FILE_TYPES\nfrom lfx.base.io.chat import ChatComponent\nfrom lfx.inputs.inputs import BoolInput\nfrom lfx.io import (\n    DropdownInput,\n    FileInput,\n    MessageTextInput,\n    MultilineInput,\n    Output,\n)\nfrom lfx.schema.message import Message\nfrom lfx.utils.constants import (\n    MESSAGE_SENDER_AI,\n    MESSAGE_SENDER_NAME_USER,\n    MESSAGE_SENDER_USER,\n)\n\n\nclass ChatInput(ChatComponent):\n    display_name = \"Chat Input\"\n    description = \"Get chat inputs from the Playground.\"\n    documentation: str = \"https://docs.langflow.org/chat-input-and-output\"\n    icon = \"MessagesSquare\"\n    name = \"ChatInput\"\n    minimized = True\n\n    inputs = [\n        MultilineInput(\n            name=\"input_value\",\n            display_name=\"Input Text\",\n            value=\"\",\n            info=\"Message to be passed as input.\",\n            input_types=[],\n        ),\n        BoolInput(\n            name=\"should_store_message\",\n            display_name=\"Store Messages\",\n            info=\"Store the message in the history.\",\n            value=True,\n            advanced=True,\n        ),\n        DropdownInput(\n            name=\"sender\",\n            display_name=\"Sender Type\",\n            options=[MESSAGE_SENDER_AI, MESSAGE_SENDER_USER],\n            value=MESSAGE_SENDER_USER,\n            info=\"Type of sender.\",\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"sender_name\",\n            display_name=\"Sender Name\",\n            info=\"Name of the sender.\",\n            value=MESSAGE_SENDER_NAME_USER,\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"session_id\",\n            display_name=\"Session ID\",\n            info=\"The session ID of the chat. If empty, the current session ID parameter will be used.\",\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"context_id\",\n            display_name=\"Context ID\",\n            info=\"The context ID of the chat. Adds an extra layer to the local memory.\",\n            value=\"\",\n            advanced=True,\n        ),\n        FileInput(\n            name=\"files\",\n            display_name=\"Files\",\n            file_types=TEXT_FILE_TYPES + IMG_FILE_TYPES,\n            info=\"Files to be sent with the message.\",\n            advanced=True,\n            is_list=True,\n            temp_file=True,\n        ),\n    ]\n    outputs = [\n        Output(display_name=\"Chat Message\", name=\"message\", method=\"message_response\"),\n    ]\n\n    async def message_response(self) -> Message:\n        # Ensure files is a list and filter out empty/None values\n        files = self.files if self.files else []\n        if files and not isinstance(files, list):\n            files = [files]\n        # Filter out None/empty values\n        files = [f for f in files if f is not None and f != \"\"]\n\n        session_id = self.session_id or self.graph.session_id or \"\"\n        message = await Message.create(\n            text=self.input_value,\n            sender=self.sender,\n            sender_name=self.sender_name,\n            session_id=session_id,\n            context_id=self.context_id,\n            files=files,\n        )\n        if session_id and isinstance(message, Message) and self.should_store_message:\n            stored_message = await self.send_message(\n                message,\n            )\n            self.message.value = stored_message\n            message = stored_message\n\n        self.status = message\n        return message\n"
+                "value": "from lfx.base.data.utils import IMG_FILE_TYPES, TEXT_FILE_TYPES\nfrom lfx.base.io.chat import ChatComponent\nfrom lfx.inputs.inputs import BoolInput\nfrom lfx.io import (\n    DropdownInput,\n    FileInput,\n    MessageTextInput,\n    MultilineInput,\n    Output,\n)\nfrom lfx.schema.image import get_file_paths\nfrom lfx.schema.message import Message\nfrom lfx.services.deps import get_settings_service\nfrom lfx.utils.constants import (\n    MESSAGE_SENDER_AI,\n    MESSAGE_SENDER_NAME_USER,\n    MESSAGE_SENDER_USER,\n)\nfrom lfx.utils.file_path_security import (\n    component_file_access_scopes,\n    enforce_local_file_access,\n    is_local_file_access_restricted,\n)\n\n\nclass ChatInput(ChatComponent):\n    display_name = \"Chat Input\"\n    description = \"Get chat inputs from the Playground.\"\n    documentation: str = \"https://docs.langflow.org/chat-input-and-output\"\n    icon = \"MessagesSquare\"\n    name = \"ChatInput\"\n    minimized = True\n\n    inputs = [\n        MultilineInput(\n            name=\"input_value\",\n            display_name=\"Input Text\",\n            value=\"\",\n            info=\"Message to be passed as input.\",\n            input_types=[],\n        ),\n        BoolInput(\n            name=\"should_store_message\",\n            display_name=\"Store Messages\",\n            info=\"Store the message in the history.\",\n            value=True,\n            advanced=True,\n        ),\n        DropdownInput(\n            name=\"sender\",\n            display_name=\"Sender Type\",\n            options=[MESSAGE_SENDER_AI, MESSAGE_SENDER_USER],\n            value=MESSAGE_SENDER_USER,\n            info=\"Type of sender.\",\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"sender_name\",\n            display_name=\"Sender Name\",\n            info=\"Name of the sender.\",\n            value=MESSAGE_SENDER_NAME_USER,\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"session_id\",\n            display_name=\"Session ID\",\n            info=\"The session ID of the chat. If empty, the current session ID parameter will be used.\",\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"context_id\",\n            display_name=\"Context ID\",\n            info=\"The context ID of the chat. Adds an extra layer to the local memory.\",\n            value=\"\",\n            advanced=True,\n        ),\n        FileInput(\n            name=\"files\",\n            display_name=\"Files\",\n            file_types=TEXT_FILE_TYPES + IMG_FILE_TYPES,\n            info=\"Files to be sent with the message.\",\n            advanced=True,\n            is_list=True,\n            temp_file=True,\n        ),\n    ]\n    outputs = [\n        Output(display_name=\"Chat Message\", name=\"message\", method=\"message_response\"),\n    ]\n\n    async def message_response(self) -> Message:\n        # Ensure files is a list and filter out empty/None values\n        files = self.files if self.files else []\n        if files and not isinstance(files, list):\n            files = [files]\n        # Filter out None/empty values\n        files = [f for f in files if f is not None and f != \"\"]\n\n        # Build endpoints inject caller-controlled file references directly into\n        # ChatInput. Resolve and validate local references before the Message can\n        # later read them while constructing model attachment content.\n        if files:\n            settings_service = get_settings_service()\n            storage_type = getattr(getattr(settings_service, \"settings\", None), \"storage_type\", \"local\")\n            # The storage factory falls back to local storage for unsupported\n            # values, so only the explicitly configured S3 backend may bypass\n            # filesystem containment.\n            if str(storage_type).lower() != \"s3\" and is_local_file_access_restricted():\n                scope_ids = list(component_file_access_scopes(self))\n                # Public executions replace graph.flow_id with a per-visitor\n                # virtual ID. Only the server-populated source provenance may\n                # restore the already-validated public attachment namespace.\n                source_flow_id = getattr(self.graph, \"source_flow_id\", None)\n                if source_flow_id:\n                    scope_ids.append(source_flow_id)\n                for file_path in get_file_paths(files):\n                    enforce_local_file_access(file_path, scope_ids=scope_ids)\n\n        session_id = self.session_id or self.graph.session_id or \"\"\n        message = await Message.create(\n            text=self.input_value,\n            sender=self.sender,\n            sender_name=self.sender_name,\n            session_id=session_id,\n            context_id=self.context_id,\n            files=files,\n        )\n        if session_id and isinstance(message, Message) and self.should_store_message:\n            stored_message = await self.send_message(\n                message,\n            )\n            self.message.value = stored_message\n            message = stored_message\n\n        self.status = message\n        return message\n"
               },
               "context_id": {
                 "_input_type": "MessageTextInput",
                 "advanced": true,
+                "api_editable": false,
                 "display_name": "Context ID",
                 "dynamic": false,
                 "info": "The context ID of the chat. Adds an extra layer to the local memory.",
@@ -427,6 +429,7 @@
               "files": {
                 "_input_type": "FileInput",
                 "advanced": true,
+                "api_editable": false,
                 "display_name": "Files",
                 "dynamic": false,
                 "fileTypes": [
@@ -475,6 +478,7 @@
                 "_input_type": "MultilineInput",
                 "advanced": false,
                 "ai_enabled": false,
+                "api_editable": false,
                 "copy_field": false,
                 "display_name": "Input Text",
                 "dynamic": false,
@@ -486,6 +490,7 @@
                 "multiline": true,
                 "name": "input_value",
                 "override_skip": false,
+                "password": false,
                 "placeholder": "",
                 "required": false,
                 "show": true,
@@ -500,6 +505,7 @@
               "sender": {
                 "_input_type": "DropdownInput",
                 "advanced": true,
+                "api_editable": false,
                 "combobox": false,
                 "dialog_inputs": {},
                 "display_name": "Sender Type",
@@ -527,6 +533,7 @@
               "sender_name": {
                 "_input_type": "MessageTextInput",
                 "advanced": true,
+                "api_editable": false,
                 "display_name": "Sender Name",
                 "dynamic": false,
                 "info": "Name of the sender.",
@@ -552,6 +559,7 @@
               "session_id": {
                 "_input_type": "MessageTextInput",
                 "advanced": true,
+                "api_editable": false,
                 "display_name": "Session ID",
                 "dynamic": false,
                 "info": "The session ID of the chat. If empty, the current session ID parameter will be used.",
@@ -577,6 +585,7 @@
               "should_store_message": {
                 "_input_type": "BoolInput",
                 "advanced": true,
+                "api_editable": false,
                 "display_name": "Store Messages",
                 "dynamic": false,
                 "info": "Store the message in the history.",
@@ -602,10 +611,6 @@
         },
         "dragging": false,
         "id": "ChatInput-ci8VE",
-        "measured": {
-          "height": 52,
-          "width": 192
-        },
         "position": {
           "x": 1136.2811923974275,
           "y": 2503.9876597481666
@@ -907,10 +912,6 @@
         },
         "dragging": false,
         "id": "ChatOutput-gWl8E",
-        "measured": {
-          "height": 52,
-          "width": 192
-        },
         "position": {
           "x": 2458.4563028144366,
           "y": 2074.662957908784
@@ -1034,7 +1035,7 @@
               },
               "_frontend_node_folder_id": {
                 "input_types": [],
-                "value": "4ba72334-e332-41b0-9361-6fca436c5bf1"
+                "value": "33ef63cd-87fa-4d16-b6fe-049f8dcc5fcd"
               },
               "_type": "Component",
               "add_calculator_tool": {
@@ -1356,9 +1357,13 @@
                       "context_length": 128000,
                       "max_tokens_field_name": "max_tokens",
                       "model_class": "ChatAnthropic",
-                      "model_name_param": "model"
+                      "model_name_param": "model",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "claude-opus-5"
+                      ]
                     },
-                    "name": "claude-opus-4-6",
+                    "name": "claude-opus-5",
                     "provider": "Anthropic"
                   },
                   {
@@ -1369,9 +1374,13 @@
                       "context_length": 128000,
                       "max_tokens_field_name": "max_tokens",
                       "model_class": "ChatAnthropic",
-                      "model_name_param": "model"
+                      "model_name_param": "model",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "claude-sonnet-5"
+                      ]
                     },
-                    "name": "claude-sonnet-4-6",
+                    "name": "claude-sonnet-5",
                     "provider": "Anthropic"
                   },
                   {
@@ -1382,9 +1391,13 @@
                       "context_length": 128000,
                       "max_tokens_field_name": "max_tokens",
                       "model_class": "ChatAnthropic",
-                      "model_name_param": "model"
+                      "model_name_param": "model",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "claude-fable-5"
+                      ]
                     },
-                    "name": "claude-haiku-4-5-20251001",
+                    "name": "claude-fable-5",
                     "provider": "Anthropic"
                   },
                   {
@@ -1395,9 +1408,13 @@
                       "context_length": 128000,
                       "max_tokens_field_name": "max_tokens",
                       "model_class": "ChatAnthropic",
-                      "model_name_param": "model"
+                      "model_name_param": "model",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "claude-opus-4-8"
+                      ]
                     },
-                    "name": "claude-opus-4-5-20251101",
+                    "name": "claude-opus-4-8",
                     "provider": "Anthropic"
                   },
                   {
@@ -1408,9 +1425,13 @@
                       "context_length": 128000,
                       "max_tokens_field_name": "max_tokens",
                       "model_class": "ChatAnthropic",
-                      "model_name_param": "model"
+                      "model_name_param": "model",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "claude-opus-4-7"
+                      ]
                     },
-                    "name": "claude-sonnet-4-5-20250929",
+                    "name": "claude-opus-4-7",
                     "provider": "Anthropic"
                   },
                   {
@@ -1424,10 +1445,10 @@
                       "model_name_param": "model",
                       "reasoning": true,
                       "reasoning_models": [
-                        "gpt-5.4"
+                        "gpt-5.6-sol"
                       ]
                     },
-                    "name": "gpt-5.4",
+                    "name": "gpt-5.6-sol",
                     "provider": "OpenAI"
                   },
                   {
@@ -1441,10 +1462,10 @@
                       "model_name_param": "model",
                       "reasoning": true,
                       "reasoning_models": [
-                        "gpt-5.4-mini"
+                        "gpt-5.6"
                       ]
                     },
-                    "name": "gpt-5.4-mini",
+                    "name": "gpt-5.6",
                     "provider": "OpenAI"
                   },
                   {
@@ -1458,10 +1479,10 @@
                       "model_name_param": "model",
                       "reasoning": true,
                       "reasoning_models": [
-                        "gpt-5.4-pro"
+                        "gpt-5.6-luna"
                       ]
                     },
-                    "name": "gpt-5.4-pro",
+                    "name": "gpt-5.6-luna",
                     "provider": "OpenAI"
                   },
                   {
@@ -1475,10 +1496,10 @@
                       "model_name_param": "model",
                       "reasoning": true,
                       "reasoning_models": [
-                        "gpt-5.3-codex"
+                        "gpt-5.6-terra"
                       ]
                     },
-                    "name": "gpt-5.3-codex",
+                    "name": "gpt-5.6-terra",
                     "provider": "OpenAI"
                   },
                   {
@@ -1492,10 +1513,10 @@
                       "model_name_param": "model",
                       "reasoning": true,
                       "reasoning_models": [
-                        "gpt-5.2"
+                        "gpt-realtime-2.1"
                       ]
                     },
-                    "name": "gpt-5.2",
+                    "name": "gpt-realtime-2.1",
                     "provider": "OpenAI"
                   },
                   {
@@ -1572,24 +1593,6 @@
                     },
                     "name": "mistralai/mistral-medium-2505",
                     "provider": "IBM WatsonX"
-                  },
-                  {
-                    "category": "Anthropic",
-                    "icon": "Anthropic",
-                    "metadata": {
-                      "api_key_param": "api_key",
-                      "context_length": 128000,
-                      "max_tokens_field_name": "max_tokens",
-                      "model_class": "ChatAnthropic",
-                      "model_name_param": "model",
-                      "not_enabled_locally": true,
-                      "reasoning": true,
-                      "reasoning_models": [
-                        "claude-opus-5"
-                      ]
-                    },
-                    "name": "claude-opus-5",
-                    "provider": "Anthropic"
                   }
                 ],
                 "override_skip": false,
@@ -1821,10 +1824,6 @@
         },
         "dragging": false,
         "id": "Agent-Nfw7u",
-        "measured": {
-          "height": 431,
-          "width": 320
-        },
         "position": {
           "x": 2064.9341782775937,
           "y": 1693.5833129555906
@@ -1853,7 +1852,7 @@
             ],
             "frozen": false,
             "icon": "calculator",
-            "last_updated": "2026-08-13T21:04:59.146Z",
+            "last_updated": "2026-08-13T21:32:58.329Z",
             "legacy": false,
             "metadata": {
               "code_hash": "d0b2936e74fa",
@@ -1896,7 +1895,7 @@
                 "value": "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
               },
               "_frontend_node_folder_id": {
-                "value": "4ba72334-e332-41b0-9361-6fca436c5bf1"
+                "value": "33ef63cd-87fa-4d16-b6fe-049f8dcc5fcd"
               },
               "_type": "Component",
               "code": {
@@ -1994,10 +1993,6 @@
         },
         "dragging": false,
         "id": "CalculatorComponent-KrlMH",
-        "measured": {
-          "height": 227,
-          "width": 320
-        },
         "position": {
           "x": 1498.151476724705,
           "y": 1719.4446700170724
@@ -2085,7 +2080,7 @@
                 "value": "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
               },
               "_frontend_node_folder_id": {
-                "value": "4ba72334-e332-41b0-9361-6fca436c5bf1"
+                "value": "33ef63cd-87fa-4d16-b6fe-049f8dcc5fcd"
               },
               "_type": "Component",
               "api_base": {
@@ -2657,10 +2652,6 @@
         },
         "dragging": false,
         "id": "EmbeddingModel-zLHKs",
-        "measured": {
-          "height": 52,
-          "width": 192
-        },
         "position": {
           "x": 665.0615885834427,
           "y": 1838.806979140434
@@ -2872,10 +2863,6 @@
         },
         "dragging": false,
         "id": "Prompt Template-7kZsI",
-        "measured": {
-          "height": 429,
-          "width": 320
-        },
         "position": {
           "x": 1496.7915215019298,
           "y": 2019.0970114283145
@@ -3031,10 +3018,6 @@
         },
         "dragging": false,
         "id": "TextInput-i0a3P",
-        "measured": {
-          "height": 284,
-          "width": 320
-        },
         "position": {
           "x": 471.417983121568,
           "y": 2079.013458520555
@@ -3066,7 +3049,7 @@
             ],
             "frozen": false,
             "icon": "Mcp",
-            "last_updated": "2026-08-13T21:04:59.150Z",
+            "last_updated": "2026-08-13T21:33:02.257Z",
             "legacy": false,
             "metadata": {
               "code_hash": "ccd98ac0a0fb",
@@ -3117,7 +3100,7 @@
                 "value": "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
               },
               "_frontend_node_folder_id": {
-                "value": "4ba72334-e332-41b0-9361-6fca436c5bf1"
+                "value": "33ef63cd-87fa-4d16-b6fe-049f8dcc5fcd"
               },
               "_type": "Component",
               "code": {
@@ -3370,7 +3353,7 @@
                 "list_add_label": "Add More",
                 "name": "tools_metadata",
                 "override_skip": false,
-                "placeholder": "",
+                "placeholder": "Loading actions...",
                 "real_time_refresh": true,
                 "required": false,
                 "show": true,
@@ -3379,48 +3362,7 @@
                 "trace_as_metadata": true,
                 "track_in_telemetry": false,
                 "type": "tools",
-                "value": [
-                  {
-                    "approval_actions": [],
-                    "args": {
-                      "input_value": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ],
-                        "default": null,
-                        "description": "Message to be passed as input.",
-                        "title": "Input Value"
-                      },
-                      "session_id": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ],
-                        "default": null,
-                        "description": "Optional session identifier used to persist conversation history across tool calls. Omit to start a new session.",
-                        "title": "Session Id"
-                      }
-                    },
-                    "description": "This flow is to ingest the URL to open search.",
-                    "display_description": "This flow is to ingest the URL to open search.",
-                    "display_name": "opensearch_url_ingestion_flow",
-                    "name": "opensearch_url_ingestion_flow",
-                    "readonly": false,
-                    "status": true,
-                    "tags": [
-                      "opensearch_url_ingestion_flow"
-                    ]
-                  }
-                ]
+                "value": []
               },
               "use_cache": {
                 "_input_type": "BoolInput",
@@ -3470,10 +3412,6 @@
         },
         "dragging": false,
         "id": "MCPTools-uu7m3",
-        "measured": {
-          "height": 293,
-          "width": 320
-        },
         "position": {
           "x": 1499.1989099237799,
           "y": 1358.0838292705346
@@ -3582,7 +3520,7 @@
                 "value": "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
               },
               "_frontend_node_folder_id": {
-                "value": "4ba72334-e332-41b0-9361-6fca436c5bf1"
+                "value": "33ef63cd-87fa-4d16-b6fe-049f8dcc5fcd"
               },
               "_type": "Component",
               "api_key": {
@@ -3747,9 +3685,13 @@
                       "context_length": 128000,
                       "max_tokens_field_name": "max_tokens",
                       "model_class": "ChatAnthropic",
-                      "model_name_param": "model"
+                      "model_name_param": "model",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "claude-opus-5"
+                      ]
                     },
-                    "name": "claude-opus-4-6",
+                    "name": "claude-opus-5",
                     "provider": "Anthropic"
                   },
                   {
@@ -3760,9 +3702,13 @@
                       "context_length": 128000,
                       "max_tokens_field_name": "max_tokens",
                       "model_class": "ChatAnthropic",
-                      "model_name_param": "model"
+                      "model_name_param": "model",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "claude-sonnet-5"
+                      ]
                     },
-                    "name": "claude-sonnet-4-6",
+                    "name": "claude-sonnet-5",
                     "provider": "Anthropic"
                   },
                   {
@@ -3773,9 +3719,13 @@
                       "context_length": 128000,
                       "max_tokens_field_name": "max_tokens",
                       "model_class": "ChatAnthropic",
-                      "model_name_param": "model"
+                      "model_name_param": "model",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "claude-fable-5"
+                      ]
                     },
-                    "name": "claude-haiku-4-5-20251001",
+                    "name": "claude-fable-5",
                     "provider": "Anthropic"
                   },
                   {
@@ -3786,9 +3736,13 @@
                       "context_length": 128000,
                       "max_tokens_field_name": "max_tokens",
                       "model_class": "ChatAnthropic",
-                      "model_name_param": "model"
+                      "model_name_param": "model",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "claude-opus-4-8"
+                      ]
                     },
-                    "name": "claude-opus-4-5-20251101",
+                    "name": "claude-opus-4-8",
                     "provider": "Anthropic"
                   },
                   {
@@ -3799,9 +3753,13 @@
                       "context_length": 128000,
                       "max_tokens_field_name": "max_tokens",
                       "model_class": "ChatAnthropic",
-                      "model_name_param": "model"
+                      "model_name_param": "model",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "claude-opus-4-7"
+                      ]
                     },
-                    "name": "claude-sonnet-4-5-20250929",
+                    "name": "claude-opus-4-7",
                     "provider": "Anthropic"
                   },
                   {
@@ -3815,10 +3773,10 @@
                       "model_name_param": "model",
                       "reasoning": true,
                       "reasoning_models": [
-                        "gpt-5.4"
+                        "gpt-5.6-sol"
                       ]
                     },
-                    "name": "gpt-5.4",
+                    "name": "gpt-5.6-sol",
                     "provider": "OpenAI"
                   },
                   {
@@ -3832,10 +3790,10 @@
                       "model_name_param": "model",
                       "reasoning": true,
                       "reasoning_models": [
-                        "gpt-5.4-mini"
+                        "gpt-5.6"
                       ]
                     },
-                    "name": "gpt-5.4-mini",
+                    "name": "gpt-5.6",
                     "provider": "OpenAI"
                   },
                   {
@@ -3849,10 +3807,10 @@
                       "model_name_param": "model",
                       "reasoning": true,
                       "reasoning_models": [
-                        "gpt-5.4-pro"
+                        "gpt-5.6-luna"
                       ]
                     },
-                    "name": "gpt-5.4-pro",
+                    "name": "gpt-5.6-luna",
                     "provider": "OpenAI"
                   },
                   {
@@ -3866,10 +3824,10 @@
                       "model_name_param": "model",
                       "reasoning": true,
                       "reasoning_models": [
-                        "gpt-5.3-codex"
+                        "gpt-5.6-terra"
                       ]
                     },
-                    "name": "gpt-5.3-codex",
+                    "name": "gpt-5.6-terra",
                     "provider": "OpenAI"
                   },
                   {
@@ -3883,10 +3841,10 @@
                       "model_name_param": "model",
                       "reasoning": true,
                       "reasoning_models": [
-                        "gpt-5.2"
+                        "gpt-realtime-2.1"
                       ]
                     },
-                    "name": "gpt-5.2",
+                    "name": "gpt-realtime-2.1",
                     "provider": "OpenAI"
                   },
                   {
@@ -3963,6 +3921,23 @@
                     },
                     "name": "mistralai/mistral-medium-2505",
                     "provider": "IBM WatsonX"
+                  },
+                  {
+                    "icon": "OpenAI",
+                    "metadata": {
+                      "api_key_param": "api_key",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_tokens",
+                      "model_class": "ChatOpenAI",
+                      "model_name_param": "model",
+                      "not_enabled_locally": true,
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "gpt-5.4-mini"
+                      ]
+                    },
+                    "name": "gpt-5.4-mini",
+                    "provider": "OpenAI"
                   }
                 ],
                 "override_skip": false,
@@ -4175,10 +4150,6 @@
         },
         "dragging": false,
         "id": "LanguageModelComponent-MfLsT",
-        "measured": {
-          "height": 52,
-          "width": 192
-        },
         "position": {
           "x": 1832.8173400251,
           "y": 1806.741236642841
@@ -4238,7 +4209,7 @@
             ],
             "frozen": false,
             "icon": "OpenSearch",
-            "last_updated": "2026-08-13T21:05:17.453Z",
+            "last_updated": "2026-08-13T21:32:58.334Z",
             "legacy": false,
             "metadata": {
               "code_hash": "fb23213c3308",
@@ -4275,7 +4246,7 @@
               {
                 "allows_loop": false,
                 "cache": true,
-                "display_name": "Toolset",
+                "display_name": "Search Results",
                 "group_outputs": false,
                 "hidden": null,
                 "loop_types": null,
@@ -4297,7 +4268,7 @@
                 "value": "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
               },
               "_frontend_node_folder_id": {
-                "value": "4ba72334-e332-41b0-9361-6fca436c5bf1"
+                "value": "33ef63cd-87fa-4d16-b6fe-049f8dcc5fcd"
               },
               "_type": "Component",
               "auth_mode": {
@@ -5154,10 +5125,6 @@
         },
         "dragging": false,
         "id": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-Ji9kZ",
-        "measured": {
-          "height": 1053,
-          "width": 320
-        },
         "position": {
           "x": 1018.3951511071341,
           "y": 1400.1504172377802
@@ -5167,16 +5134,16 @@
       }
     ],
     "viewport": {
-      "x": -210.7536602081741,
-      "y": -840.170648662717,
-      "zoom": 0.659580220187266
+      "x": -60.222186869380835,
+      "y": -517.7793241061472,
+      "zoom": 0.5121094402152025
     }
   },
   "description": "OpenRAG OpenSearch Agent",
   "endpoint_name": null,
   "id": "1098eea1-6649-4e1d-aed1-b77249fb8dd0",
   "is_component": false,
-  "last_tested_version": "0.11.2",
+  "last_tested_version": "0.11.3",
   "locked": true,
   "name": "OpenRAG OpenSearch Agent Flow",
   "tags": [
