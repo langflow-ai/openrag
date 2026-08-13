@@ -3,12 +3,13 @@
 import asyncio
 
 import httpx
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
-from api.schemas.status import StatusResponse
+from api.schemas.status import LogEntry, LogsResponse, StatusResponse
 from config.settings import clients
 from dependencies import require_permission
+from services.component_logs import KNOWN_COMPONENTS, get_entries
 from services.status_service import aggregate_status
 from session_manager import User
 from utils.logging_config import get_logger
@@ -25,6 +26,24 @@ async def get_console_status(
     except Exception as e:
         logger.error("Failed to get console status", error=str(e))
         raise HTTPException(status_code=500, detail="Failed to get status") from e
+
+
+async def get_console_component_logs(
+    component: str,
+    tail: int = Query(default=100, ge=1, le=500),
+    user: User = Depends(require_permission("providers:read")),
+) -> LogsResponse:
+    """Return recent log entries for one component. GET /status/{component}/logs"""
+    if component not in KNOWN_COMPONENTS:
+        valid = ", ".join(sorted(KNOWN_COMPONENTS))
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown component '{component}'. Valid names: {valid}",
+        )
+
+    raw = get_entries(component, tail=tail)
+    entries = [LogEntry(**e) for e in raw]
+    return LogsResponse(component=component, entries=entries, count=len(entries))
 
 
 async def health_check(request: Request):

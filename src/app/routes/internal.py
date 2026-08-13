@@ -31,7 +31,7 @@ from api import (
     upload,
 )
 from api import keys as api_keys
-from api.health import get_console_status, health_check, opensearch_health_ready
+from api.health import get_console_component_logs, get_console_status, health_check, opensearch_health_ready
 from api.schemas.tasks import ErrorResponse, TaskRetryResponse
 from api.v2 import files as files_v2
 from connectors.registry import get_connector_classes
@@ -392,7 +392,14 @@ def register_internal_routes(app: FastAPI):
     app.add_api_route("/health", health_check, methods=["GET"], tags=["internal"])
     app.add_api_route("/search/health", opensearch_health_ready, methods=["GET"], tags=["internal"])
 
-    # Console status endpoint (browser session auth — mirrors /v1/status for the UI)
+    # Console status endpoints (browser session auth — mirrors /v1/status* for the UI)
+    # The specific /logs sub-route must be registered before the bare /status route.
+    app.add_api_route(
+        "/status/{component}/logs",
+        get_console_component_logs,
+        methods=["GET"],
+        tags=["internal"],
+    )
     app.add_api_route("/status", get_console_status, methods=["GET"], tags=["internal"])
 
     # Models endpoints

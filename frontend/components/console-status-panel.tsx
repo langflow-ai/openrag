@@ -158,7 +158,7 @@ function ComponentLogsModal({
         )}
       >
         {/* Modal header */}
-        <DialogHeader className="shrink-0 flex flex-row items-center justify-between px-4 py-3 border-b border-zinc-700/60">
+        <DialogHeader className="shrink-0 flex flex-row items-center justify-between pl-4 pr-10 py-3 border-b border-zinc-700/60">
           <div className="flex items-center gap-2">
             <ScrollText size={14} className="text-zinc-400" />
             <DialogTitle className="text-sm font-semibold text-zinc-100">
@@ -252,6 +252,7 @@ interface ComponentCardProps {
 function ComponentCard({ component }: ComponentCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [logsOpen, setLogsOpen] = useState(false);
+  const showLogsButton = component.name !== "providers";
 
   const {
     display_name,
@@ -261,10 +262,7 @@ function ComponentCard({ component }: ComponentCardProps) {
     message,
     build,
     metadata,
-    last_error,
   } = component;
-
-  const showLogsButton = last_error != null;
 
   const hasBuildDetails =
     build &&
@@ -352,7 +350,7 @@ function ComponentCard({ component }: ComponentCardProps) {
             </p>
           )}
 
-          {/* Logs button — only shown when last_error is set */}
+          {/* Logs button — not shown for the synthetic Model Providers card */}
           {showLogsButton && (
             <div className="pt-1.5">
               <button
