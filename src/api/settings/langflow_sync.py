@@ -219,8 +219,7 @@ async def _update_langflow_global_variables(config, flows_service=None):
             config.agent.llm_provider == "azure_ai_foundry" and config.agent.llm_model
         ):
             llm_dep = (
-                config.providers.azure_ai_foundry.llm_deployment_name
-                or config.agent.llm_model
+                config.providers.azure_ai_foundry.llm_deployment_name or config.agent.llm_model
             )
             await clients._create_langflow_global_variable(
                 "AZURE_AI_FOUNDRY_LLM_DEPLOYMENT_NAME", llm_dep, modify=True
@@ -238,7 +237,9 @@ async def _update_langflow_global_variables(config, flows_service=None):
             await clients._create_langflow_global_variable(
                 "AZURE_AI_FOUNDRY_EMBEDDING_DEPLOYMENT_NAME", embed_dep, modify=True
             )
-            logger.info("Set AZURE_AI_FOUNDRY_EMBEDDING_DEPLOYMENT_NAME global variable in Langflow")
+            logger.info(
+                "Set AZURE_AI_FOUNDRY_EMBEDDING_DEPLOYMENT_NAME global variable in Langflow"
+            )
 
         if config.knowledge.embedding_model:
             await _upsert_langflow_global_variable(

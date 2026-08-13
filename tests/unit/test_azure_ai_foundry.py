@@ -121,8 +121,8 @@ def test_build_azure_ai_foundry_url_openai_v1_preserves_literal_api_version():
 
 
 def test_azure_ai_foundry_litellm_model_name_routing():
+    from config.config_manager import AzureAIFoundryConfig, ProvidersConfig
     from services.models_service import ModelsService
-    from config.config_manager import ProvidersConfig, AzureAIFoundryConfig
 
     service = ModelsService()
 
@@ -142,5 +142,7 @@ def test_azure_ai_foundry_litellm_model_name_routing():
             llm_deployment_name="deepseek-r1",
         )
     )
-    assert service.get_litellm_model_name("azure_ai_foundry", "deepseek-r1", cfg2) == "azure_ai/deepseek-r1"
-
+    assert (
+        service.get_litellm_model_name("azure_ai_foundry", "deepseek-r1", cfg2)
+        == "azure_ai/deepseek-r1"
+    )
