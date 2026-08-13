@@ -64,11 +64,8 @@ ENV LANGFLOW_COMPONENTS_PATH=/app/custom_components
 ENV LANGFLOW_COMPONENTS_INDEX_PATH=/app/component_index.json
 ENV LANGFLOW_ALLOW_CUSTOM_COMPONENTS=false
 
-# CWE-426 fix: explicitly set PATH so system-owned directories are always resolved
-# first. App venv dirs are appended last so they cannot shadow system binaries.
-# Matches the ordering used by the upstream image but with system dirs promoted
-# to the front.
-ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/app-root/bin:/opt/app-root/src/bin:/opt/app-root/src/.local/bin
+# CWE-426 fix: explicitly set PATH so system-owned directories are always resolved first.
+ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Start the backend server
 CMD ["uv", "run", "langflow", "run", "--host", "0.0.0.0", "--port", "7860"]
