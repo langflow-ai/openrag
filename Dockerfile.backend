@@ -91,7 +91,9 @@ COPY --chown=appuser:appuser cloud_securityconfig/ ./cloud_securityconfig/
 COPY --chown=appuser:appuser scripts/backend-entrypoint.sh /entrypoint.sh
 
 ENV VIRTUAL_ENV=/app/.venv
-ENV PATH="$PATH:/root/.local/bin"
+# CWE-426 fix: explicitly set PATH so system-owned directories are always resolved
+# first. App venv dirs are appended last so they cannot shadow system binaries.
+ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/app-root/bin:/opt/app-root/src/bin:/opt/app-root/src/.local/bin:/app/.venv/bin
 
 # Pre-create every directory the app writes to at runtime so they are owned
 # by appuser in the image layer. When Docker/Podman mounts a host volume over
@@ -113,4 +115,4 @@ EXPOSE 8000
 EXPOSE 8100
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["python", "src/main.py"]
+CMD ["/app/.venv/bin/python", "src/main.py"]
