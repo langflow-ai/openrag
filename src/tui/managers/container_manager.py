@@ -128,14 +128,20 @@ class ContainerManager:
             f"{project_name}-langflow": "langflow",
         }
 
-        # Build the allow-list after .env is resolved so that private-registry
-        # overrides (IMAGE_REGISTRY, IMAGE_ORG) are reflected correctly.
-        self._openrag_image_repos: set[str] = set(all_openrag_repos())
-
     @staticmethod
     def _extract_repository(image_tag: str) -> str:
         """Extract repository name from <repository>:<tag> image reference."""
         return image_tag.rsplit(":", 1)[0] if ":" in image_tag else image_tag
+
+    @functools.cached_property
+    def _openrag_image_repos(self) -> set[str]:
+        """Allow-list of OpenRAG image repositories, resolved on first use.
+
+        Resolved lazily rather than in ``__init__`` so it picks up the
+        private-registry overrides (``IMAGE_REGISTRY``, ``IMAGE_ORG``) that
+        ``.env`` loading installs.
+        """
+        return set(all_openrag_repos())
 
     def _is_openrag_repository(self, repository: str) -> bool:
         """Check whether repository is OpenRAG-related, with optional registry prefix."""
