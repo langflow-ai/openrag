@@ -55,7 +55,9 @@ def _build_file_facet_aggregations(size_overrides: dict[str, int] | None = None)
                 "size": size_overrides.get(facet_name, 1000),
             },
         }
-        if facet_name != "data_sources": #cardinality within buckets always 1 (filename) so just drop
+        if (
+            facet_name != "data_sources"
+        ):  # cardinality within buckets always 1 (filename) so just drop
             agg["aggs"] = {"files": {"cardinality": {"field": "filename"}}}
         aggregations[facet_name] = agg
     return aggregations
