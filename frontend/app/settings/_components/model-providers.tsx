@@ -5,7 +5,6 @@ import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import AnthropicLogo from "@/components/icons/anthropic-logo";
 import AzureAIFoundryLogo from "@/components/icons/azure-ai-foundry-logo";
-import AzureOpenAILogo from "@/components/icons/azure-openai-logo";
 import IBMLogo from "@/components/icons/ibm-logo";
 import OllamaLogo from "@/components/icons/ollama-logo";
 import OpenAILogo from "@/components/icons/openai-logo";
@@ -19,7 +18,6 @@ import {
 } from "../_helpers/model-helpers";
 import AnthropicSettingsDialog from "./anthropic-settings-dialog";
 import AzureAIFoundrySettingsDialog from "./azure-ai-foundry-settings-dialog";
-import AzureOpenAISettingsDialog from "./azure-openai-settings-dialog";
 import ModelProviderCard from "./model-provider-card";
 import OllamaSettingsDialog from "./ollama-settings-dialog";
 import OpenAISettingsDialog from "./openai-settings-dialog";
@@ -45,10 +43,7 @@ export const ModelProviders = () => {
     const excluded = isCloudBrand ? CLOUD_EXCLUDED_PROVIDERS : [];
     return ALL_PROVIDERS.filter((p) => {
       if (excluded.includes(p)) return false;
-      if (
-        !showAzureAiProviders &&
-        (p === "azure_ai_foundry" || p === "azure_openai")
-      ) {
+      if (!showAzureAiProviders && p === "azure_ai_foundry") {
         return false;
       }
       return true;
@@ -111,12 +106,6 @@ export const ModelProviders = () => {
     azure_ai_foundry: {
       name: "Azure AI Foundry",
       logo: AzureAIFoundryLogo,
-      logoColor: "text-white",
-      logoBgColor: "bg-[#0078D4]",
-    },
-    azure_openai: {
-      name: "Azure OpenAI",
-      logo: AzureOpenAILogo,
       logoColor: "text-white",
       logoBgColor: "bg-[#0078D4]",
     },
@@ -194,10 +183,6 @@ export const ModelProviders = () => {
       />
       <AzureAIFoundrySettingsDialog
         open={dialogOpen === "azure_ai_foundry"}
-        setOpen={handleCloseDialog}
-      />
-      <AzureOpenAISettingsDialog
-        open={dialogOpen === "azure_openai"}
         setOpen={handleCloseDialog}
       />
     </>

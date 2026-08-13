@@ -118,3 +118,29 @@ def test_build_azure_ai_foundry_url_openai_v1_preserves_literal_api_version():
     endpoint = "https://my-foundry.services.ai.azure.com/openai/v1?api-version=preview"
     url = _build_azure_ai_foundry_url(endpoint, "/models")
     assert url == "https://my-foundry.services.ai.azure.com/openai/v1/models?api-version=preview"
+
+
+def test_azure_ai_foundry_litellm_model_name_routing():
+    from services.models_service import ModelsService
+    from config.config_manager import ProvidersConfig, AzureAIFoundryConfig
+
+    service = ModelsService()
+
+    # Case 1: .openai.azure.com endpoint routes to azure/{model_name}
+    cfg1 = ProvidersConfig(
+        azure_ai_foundry=AzureAIFoundryConfig(
+            endpoint="https://my-resource.openai.azure.com",
+            llm_deployment_name="gpt-4o",
+        )
+    )
+    assert service.get_litellm_model_name("azure_ai_foundry", "gpt-4o", cfg1) == "azure/gpt-4o"
+
+    # Case 2: Serverless/Foundry endpoint routes to azure_ai/{model_name}
+    cfg2 = ProvidersConfig(
+        azure_ai_foundry=AzureAIFoundryConfig(
+            endpoint="https://my-foundry.services.ai.azure.com",
+            llm_deployment_name="deepseek-r1",
+        )
+    )
+    assert service.get_litellm_model_name("azure_ai_foundry", "deepseek-r1", cfg2) == "azure_ai/deepseek-r1"
+

@@ -215,28 +215,30 @@ async def _update_langflow_global_variables(config, flows_service=None):
             )
             logger.info("Set AZURE_AI_FOUNDRY_API_VERSION global variable in Langflow")
 
-        # Azure OpenAI Service global variables
-        if config.providers.azure_openai.api_key:
-            await clients._create_langflow_global_variable(
-                "AZURE_API_KEY", config.providers.azure_openai.api_key, modify=True
+        if config.providers.azure_ai_foundry.llm_deployment_name or (
+            config.agent.llm_provider == "azure_ai_foundry" and config.agent.llm_model
+        ):
+            llm_dep = (
+                config.providers.azure_ai_foundry.llm_deployment_name
+                or config.agent.llm_model
             )
-            logger.info("Set AZURE_API_KEY global variable in Langflow")
-
-        if config.providers.azure_openai.endpoint:
-            from utils.container_utils import normalize_azure_openai_base
-
             await clients._create_langflow_global_variable(
-                "AZURE_API_BASE",
-                normalize_azure_openai_base(config.providers.azure_openai.endpoint),
-                modify=True,
+                "AZURE_AI_FOUNDRY_LLM_DEPLOYMENT_NAME", llm_dep, modify=True
             )
-            logger.info("Set AZURE_API_BASE global variable in Langflow")
+            logger.info("Set AZURE_AI_FOUNDRY_LLM_DEPLOYMENT_NAME global variable in Langflow")
 
-        if config.providers.azure_openai.api_version:
-            await clients._create_langflow_global_variable(
-                "AZURE_API_VERSION", config.providers.azure_openai.api_version, modify=True
+        if config.providers.azure_ai_foundry.embedding_deployment_name or (
+            config.knowledge.embedding_provider == "azure_ai_foundry"
+            and config.knowledge.embedding_model
+        ):
+            embed_dep = (
+                config.providers.azure_ai_foundry.embedding_deployment_name
+                or config.knowledge.embedding_model
             )
-            logger.info("Set AZURE_API_VERSION global variable in Langflow")
+            await clients._create_langflow_global_variable(
+                "AZURE_AI_FOUNDRY_EMBEDDING_DEPLOYMENT_NAME", embed_dep, modify=True
+            )
+            logger.info("Set AZURE_AI_FOUNDRY_EMBEDDING_DEPLOYMENT_NAME global variable in Langflow")
 
         if config.knowledge.embedding_model:
             await _upsert_langflow_global_variable(
@@ -410,8 +412,6 @@ async def _update_langflow_model_values(
             current_llm_provider = config.agent.llm_provider.lower()
             for provider in llm_providers:
                 if provider not in LANGFLOW_MODEL_VALUE_PROVIDERS:
-                    # e.g. azure_openai: configured for direct LiteLLM calls but
-                    # not routable through Langflow's unified flow components.
                     logger.debug(f"Skipping Langflow flow sync for provider {provider}")
                     continue
                 # Use configured model for current provider, or None (first available) for others

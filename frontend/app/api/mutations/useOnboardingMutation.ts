@@ -25,9 +25,6 @@ export interface OnboardingVariables {
   azure_ai_foundry_api_key?: string;
   azure_ai_foundry_endpoint?: string;
   azure_ai_foundry_api_version?: string;
-  azure_openai_api_key?: string;
-  azure_openai_endpoint?: string;
-  azure_openai_api_version?: string;
 }
 
 interface OnboardingResponse {

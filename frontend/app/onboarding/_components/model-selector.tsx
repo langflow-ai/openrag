@@ -194,59 +194,79 @@ export function ModelSelector({
                       No models available
                     </CommandItem>
                   ) : (
-                    group.options.map((option) => (
-                      <CommandItem
-                        key={option.value}
-                        value={option.value}
-                        data-testid={`model-option-${option.value}`}
-                        onSelect={(currentValue) => {
-                          if (currentValue !== value) {
-                            onValueChange(currentValue, option.provider);
-                          }
-                          setOpen(false);
-                        }}
-                      >
-                        <CheckIcon
-                          className={cn(
-                            "mr-2 h-4 w-4",
-                            value === option.value
-                              ? "opacity-100"
-                              : "opacity-0",
-                          )}
-                        />
-                        <div className="flex items-center gap-2">
-                          {option.label}
-                        </div>
-                      </CommandItem>
-                    ))
+                    group.options.map((option) => {
+                      const isSelected =
+                        value === option.value &&
+                        (!selectedProvider ||
+                          !option.provider ||
+                          selectedProvider === option.provider);
+                      return (
+                        <CommandItem
+                          key={`${option.provider || group.group}:${option.value}`}
+                          value={`${option.provider || group.group}:${option.value}`}
+                          data-testid={`model-option-${option.value}`}
+                          onSelect={() => {
+                            if (
+                              option.value !== value ||
+                              (option.provider &&
+                                option.provider !== selectedProvider)
+                            ) {
+                              onValueChange(option.value, option.provider);
+                            }
+                            setOpen(false);
+                          }}
+                        >
+                          <CheckIcon
+                            className={cn(
+                              "mr-2 h-4 w-4",
+                              isSelected ? "opacity-100" : "opacity-0",
+                            )}
+                          />
+                          <div className="flex items-center gap-2">
+                            {option.label}
+                          </div>
+                        </CommandItem>
+                      );
+                    })
                   )}
                 </CommandGroup>
               ))
             ) : (
               <CommandGroup>
-                {allOptions.map((option) => (
-                  <CommandItem
-                    key={option.value}
-                    value={option.value}
-                    data-testid={`model-option-${option.value}`}
-                    onSelect={(currentValue) => {
-                      if (currentValue !== value) {
-                        onValueChange(currentValue, option.provider);
-                      }
-                      setOpen(false);
-                    }}
-                  >
-                    <CheckIcon
-                      className={cn(
-                        "mr-2 h-4 w-4",
-                        value === option.value ? "opacity-100" : "opacity-0",
-                      )}
-                    />
-                    <div className="flex items-center gap-2">
-                      {option.label}
-                    </div>
-                  </CommandItem>
-                ))}
+                {allOptions.map((option) => {
+                  const isSelected =
+                    value === option.value &&
+                    (!selectedProvider ||
+                      !option.provider ||
+                      selectedProvider === option.provider);
+                  return (
+                    <CommandItem
+                      key={`${option.provider || "default"}:${option.value}`}
+                      value={`${option.provider || "default"}:${option.value}`}
+                      data-testid={`model-option-${option.value}`}
+                      onSelect={() => {
+                        if (
+                          option.value !== value ||
+                          (option.provider &&
+                            option.provider !== selectedProvider)
+                        ) {
+                          onValueChange(option.value, option.provider);
+                        }
+                        setOpen(false);
+                      }}
+                    >
+                      <CheckIcon
+                        className={cn(
+                          "mr-2 h-4 w-4",
+                          isSelected ? "opacity-100" : "opacity-0",
+                        )}
+                      />
+                      <div className="flex items-center gap-2">
+                        {option.label}
+                      </div>
+                    </CommandItem>
+                  );
+                })}
                 {custom &&
                   searchValue &&
                   !allOptions.find(

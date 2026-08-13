@@ -1,6 +1,5 @@
 import AnthropicLogo from "@/components/icons/anthropic-logo";
 import AzureAIFoundryLogo from "@/components/icons/azure-ai-foundry-logo";
-import AzureOpenAILogo from "@/components/icons/azure-openai-logo";
 import IBMLogo from "@/components/icons/ibm-logo";
 import OllamaLogo from "@/components/icons/ollama-logo";
 import OpenAILogo from "@/components/icons/openai-logo";
@@ -11,7 +10,6 @@ export type ModelProvider =
   | "ollama"
   | "watsonx"
   | "azure_ai_foundry"
-  | "azure_openai"
   | "local";
 
 // Full ordered list of providers for settings / cards
@@ -21,7 +19,6 @@ export const ALL_PROVIDERS: ModelProvider[] = [
   "watsonx",
   "anthropic",
   "azure_ai_foundry",
-  "azure_openai",
 ];
 
 // Preferred auto-select order for the LLM onboarding step
@@ -30,7 +27,6 @@ export const LLM_PROVIDER_ORDER: ModelProvider[] = [
   "openai",
   "watsonx",
   "azure_ai_foundry",
-  "azure_openai",
   "ollama",
 ];
 
@@ -39,7 +35,6 @@ export const EMBEDDING_PROVIDER_ORDER: ModelProvider[] = [
   "openai",
   "watsonx",
   "azure_ai_foundry",
-  "azure_openai",
   "ollama",
 ];
 
@@ -64,8 +59,6 @@ export function getModelLogo(modelValue: string, provider?: ModelProvider) {
     return <IBMLogo className="w-4 h-4" />;
   } else if (provider === "azure_ai_foundry") {
     return <AzureAIFoundryLogo className="w-4 h-4" />;
-  } else if (provider === "azure_openai") {
-    return <AzureOpenAILogo className="w-4 h-4" />;
   } else if (provider === "local") {
     return (
       <svg
@@ -188,18 +181,6 @@ export function getFallbackModels(provider: ModelProvider) {
       return {
         language: [
           { value: "my-gpt4o-deployment", label: "Enter your deployment name" },
-        ],
-        embedding: [
-          {
-            value: "my-embedding-deployment",
-            label: "Enter your deployment name",
-          },
-        ],
-      };
-    case "azure_openai":
-      return {
-        language: [
-          { value: "my-gpt-deployment", label: "Enter your deployment name" },
         ],
         embedding: [
           {

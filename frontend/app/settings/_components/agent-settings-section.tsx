@@ -96,20 +96,6 @@ export function AgentSettingsSection() {
           !!settings?.providers?.azure_ai_foundry?.endpoint,
       },
     );
-  const { data: azureOpenAIModels, isLoading: azureOpenAILoading } =
-    useGetAzureOpenAIModelsQuery(
-      {
-        endpoint: settings?.providers?.azure_openai?.endpoint,
-        apiVersion: settings?.providers?.azure_openai?.api_version,
-        apiKey: "",
-      },
-      {
-        enabled:
-          settings?.providers?.azure_openai?.configured === true &&
-          !!settings?.providers?.azure_openai?.endpoint &&
-          !!settings?.providers?.azure_openai?.api_version,
-      },
-    );
 
   const groupedLlmModels = useMemo(
     () =>
@@ -149,13 +135,6 @@ export function AgentSettingsSection() {
           models: azureModels?.language_models || [],
           configured: settings.providers?.azure_ai_foundry?.configured === true,
         },
-        {
-          group: "Azure OpenAI",
-          provider: "azure_openai",
-          icon: getModelLogo("", "azure_openai"),
-          models: azureOpenAIModels?.language_models || [],
-          configured: settings.providers?.azure_openai?.configured === true,
-        },
       ]
         .filter((p) => p.configured)
         .map((p) => ({
@@ -169,13 +148,11 @@ export function AgentSettingsSection() {
       ollamaModels?.language_models,
       watsonxModels?.language_models,
       azureModels?.language_models,
-      azureOpenAIModels?.language_models,
       settings.providers?.openai?.configured,
       settings.providers?.anthropic?.configured,
       settings.providers?.ollama?.configured,
       settings.providers?.watsonx?.configured,
       settings.providers?.azure_ai_foundry?.configured,
-      settings.providers?.azure_openai?.configured,
     ],
   );
 

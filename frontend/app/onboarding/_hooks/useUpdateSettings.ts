@@ -75,12 +75,6 @@ export function useUpdateSettings(
           config.clearApiKey,
           prev.azure_ai_foundry_api_key,
         );
-      } else if (provider === "azure_openai") {
-        updatedSettings.azure_openai_api_key = resolveApiKey(
-          config.apiKey,
-          config.clearApiKey,
-          prev.azure_openai_api_key,
-        );
       }
 
       // Map provider-specific endpoints
@@ -91,8 +85,6 @@ export function useUpdateSettings(
           updatedSettings.ollama_endpoint = config.endpoint;
         } else if (provider === "azure_ai_foundry") {
           updatedSettings.azure_ai_foundry_endpoint = config.endpoint;
-        } else if (provider === "azure_openai") {
-          updatedSettings.azure_openai_endpoint = config.endpoint;
         }
       }
 
@@ -101,12 +93,10 @@ export function useUpdateSettings(
         updatedSettings.watsonx_project_id = config.projectId;
       }
 
-      // Map API version (Azure providers only)
+      // Map API version (Azure provider only)
       if (config.apiVersion) {
         if (provider === "azure_ai_foundry") {
           updatedSettings.azure_ai_foundry_api_version = config.apiVersion;
-        } else if (provider === "azure_openai") {
-          updatedSettings.azure_openai_api_version = config.apiVersion;
         }
       }
 

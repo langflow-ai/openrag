@@ -63,15 +63,6 @@ export interface AzureAIFoundryModelsParams {
   testCompletion?: boolean;
 }
 
-export interface AzureOpenAIModelsParams {
-  endpoint?: string;
-  apiKey?: string;
-  apiVersion?: string;
-  llmDeploymentName?: string;
-  embeddingDeploymentName?: string;
-  testCompletion?: boolean;
-}
-
 export const useGetOpenAIModelsQuery = (
   params?: OpenAIModelsParams,
   options?: Omit<UseQueryOptions<ModelsResponse>, "queryKey" | "queryFn">,
@@ -285,58 +276,6 @@ export const useGetAzureAIFoundryModelsQuery = (
   );
 };
 
-export const useGetAzureOpenAIModelsQuery = (
-  params?: AzureOpenAIModelsParams,
-  options?: Omit<UseQueryOptions<ModelsResponse>, "queryKey" | "queryFn">,
-) => {
-  const queryClient = useQueryClient();
-
-  async function getAzureOpenAIModels(): Promise<ModelsResponse> {
-    const url = new URL("/api/models/azure-openai", window.location.origin);
-    const body: {
-      endpoint?: string;
-      api_key?: string;
-      api_version?: string;
-      llm_deployment_name?: string;
-      embedding_deployment_name?: string;
-      test_completion?: boolean;
-    } = {};
-    if (params?.endpoint) body.endpoint = params.endpoint;
-    if (params?.apiKey) body.api_key = params.apiKey;
-    if (params?.apiVersion) body.api_version = params.apiVersion;
-    if (params?.llmDeploymentName)
-      body.llm_deployment_name = params.llmDeploymentName;
-    if (params?.embeddingDeploymentName)
-      body.embedding_deployment_name = params.embeddingDeploymentName;
-    if (params?.testCompletion) body.test_completion = params.testCompletion;
-
-    const response = await fetch(url.toString(), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (response.ok) {
-      return await response.json();
-    }
-    const data = await response.json().catch(() => null);
-    throw new Error(
-      data?.error ?? "Failed to validate Azure OpenAI credentials",
-    );
-  }
-
-  return useQuery(
-    {
-      queryKey: ["models", "azure_openai", params],
-      queryFn: getAzureOpenAIModels,
-      staleTime: 0,
-      gcTime: 0,
-      retry: false,
-      ...options,
-    },
-    queryClient,
-  );
-};
-
 /**
  * Hook that automatically fetches models for the current LLM provider
  * based on the settings configuration
@@ -405,22 +344,6 @@ export const useGetCurrentProviderModelsQuery = (
     },
   );
 
-  const azureOpenAIModels = useGetAzureOpenAIModelsQuery(
-    {
-      endpoint: settings?.providers?.azure_openai?.endpoint,
-      apiVersion: settings?.providers?.azure_openai?.api_version,
-      apiKey: "",
-    },
-    {
-      enabled:
-        currentProvider === "azure_openai" &&
-        !!settings?.providers?.azure_openai?.endpoint &&
-        !!settings?.providers?.azure_openai?.api_version &&
-        options?.enabled !== false,
-      ...options,
-    },
-  );
-
   // Return the appropriate query result based on current provider
   switch (currentProvider) {
     case "openai":
@@ -433,8 +356,6 @@ export const useGetCurrentProviderModelsQuery = (
       return ibmModels;
     case "azure_ai_foundry":
       return azureModels;
-    case "azure_openai":
-      return azureOpenAIModels;
     default:
       return openaiModels;
   }

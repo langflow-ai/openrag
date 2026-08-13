@@ -54,7 +54,6 @@ async def check_provider_health(
             "watsonx",
             "anthropic",
             "azure_ai_foundry",
-            "azure_openai",
         ]
         if provider not in valid_providers:
             return JSONResponse(
@@ -179,7 +178,7 @@ async def check_provider_health(
                         "llm_model": llm_model,
                         "embedding_model": embedding_model,
                         "endpoint": endpoint
-                        if provider in ["ollama", "watsonx", "azure_ai_foundry", "azure_openai"]
+                        if provider in ["ollama", "watsonx", "azure_ai_foundry"]
                         else None,
                     },
                 },

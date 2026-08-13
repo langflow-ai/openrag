@@ -164,6 +164,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         *[i.name for i in LCVectorStoreComponent.inputs],  # search_query, add_documents, etc.
         "embedding",
         "embedding_model_name",
+        "embedding_model_provider",
         "vector_field",
         "number_of_results",
         "auth_mode",
@@ -306,6 +307,17 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                 "Leave empty to use the first embedding. Error message will show all available identifiers."
             ),
             advanced=False,
+        ),
+        StrInput(
+            name="embedding_model_provider",
+            display_name="Embedding Model Provider",
+            value="",
+            info=(
+                "Optional provider of the embedding model. Used alongside embedding_model_name to "
+                "differentiate embedding models with identical names across different providers."
+            ),
+            advanced=False,
+            load_from_db=True,
         ),
         StrInput(
             name="vector_field",
@@ -597,45 +609,57 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         Raises:
             ValueError: If embedding model name cannot be determined
         """
+        provider_name = (
+            self.embedding_model_provider.strip()
+            if hasattr(self, "embedding_model_provider") and self.embedding_model_provider
+            else ""
+        )
+
+        model_name = ""
         # First try explicit embedding_model_name input
         if hasattr(self, "embedding_model_name") and self.embedding_model_name:
-            return self.embedding_model_name.strip()
+            model_name = self.embedding_model_name.strip()
 
         # Try to get from provided embedding object
-        if embedding_obj:
+        if not model_name and embedding_obj:
             # Priority: deployment > model > model_id > model_name
             if hasattr(embedding_obj, "deployment") and embedding_obj.deployment:
-                return str(embedding_obj.deployment)
-            if hasattr(embedding_obj, "model") and embedding_obj.model:
-                return str(embedding_obj.model)
-            if hasattr(embedding_obj, "model_id") and embedding_obj.model_id:
-                return str(embedding_obj.model_id)
-            if hasattr(embedding_obj, "model_name") and embedding_obj.model_name:
-                return str(embedding_obj.model_name)
+                model_name = str(embedding_obj.deployment)
+            elif hasattr(embedding_obj, "model") and embedding_obj.model:
+                model_name = str(embedding_obj.model)
+            elif hasattr(embedding_obj, "model_id") and embedding_obj.model_id:
+                model_name = str(embedding_obj.model_id)
+            elif hasattr(embedding_obj, "model_name") and embedding_obj.model_name:
+                model_name = str(embedding_obj.model_name)
 
         # Try to get from embedding component (legacy single embedding)
-        if hasattr(self, "embedding") and self.embedding:
+        if not model_name and hasattr(self, "embedding") and self.embedding:
             # Handle list of embeddings
             if isinstance(self.embedding, list) and len(self.embedding) > 0:
                 first_emb = self.embedding[0]
                 if hasattr(first_emb, "deployment") and first_emb.deployment:
-                    return str(first_emb.deployment)
-                if hasattr(first_emb, "model") and first_emb.model:
-                    return str(first_emb.model)
-                if hasattr(first_emb, "model_id") and first_emb.model_id:
-                    return str(first_emb.model_id)
-                if hasattr(first_emb, "model_name") and first_emb.model_name:
-                    return str(first_emb.model_name)
+                    model_name = str(first_emb.deployment)
+                elif hasattr(first_emb, "model") and first_emb.model:
+                    model_name = str(first_emb.model)
+                elif hasattr(first_emb, "model_id") and first_emb.model_id:
+                    model_name = str(first_emb.model_id)
+                elif hasattr(first_emb, "model_name") and first_emb.model_name:
+                    model_name = str(first_emb.model_name)
             # Handle single embedding
             elif not isinstance(self.embedding, list):
                 if hasattr(self.embedding, "deployment") and self.embedding.deployment:
-                    return str(self.embedding.deployment)
-                if hasattr(self.embedding, "model") and self.embedding.model:
-                    return str(self.embedding.model)
-                if hasattr(self.embedding, "model_id") and self.embedding.model_id:
-                    return str(self.embedding.model_id)
-                if hasattr(self.embedding, "model_name") and self.embedding.model_name:
-                    return str(self.embedding.model_name)
+                    model_name = str(self.embedding.deployment)
+                elif hasattr(self.embedding, "model") and self.embedding.model:
+                    model_name = str(self.embedding.model)
+                elif hasattr(self.embedding, "model_id") and self.embedding.model_id:
+                    model_name = str(self.embedding.model_id)
+                elif hasattr(self.embedding, "model_name") and self.embedding.model_name:
+                    model_name = str(self.embedding.model_name)
+
+        if model_name:
+            if provider_name and ":" not in model_name:
+                return f"{provider_name}:{model_name}"
+            return model_name
 
         msg = (
             "Could not determine embedding model name. "

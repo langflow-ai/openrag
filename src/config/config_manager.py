@@ -152,23 +152,6 @@ class AzureAIFoundryConfig:
 
 
 @dataclass
-class AzureOpenAIConfig:
-    """Azure OpenAI Service provider configuration.
-
-    Distinct from Azure AI Foundry serverless: GPT/OpenAI models deployed on
-    Azure OpenAI use LiteLLM's ``azure/`` prefix, require an ``api_version``,
-    and take the deployment name in the request URL path.
-    """
-
-    api_key: str = ""
-    endpoint: str = ""  # e.g. https://<resource>.openai.azure.com
-    api_version: str = ""  # e.g. 2024-10-21
-    configured: bool = False
-    llm_deployment_name: str = ""
-    embedding_deployment_name: str = ""
-
-
-@dataclass
 class ProvidersConfig:
     """All provider configurations."""
 
@@ -177,7 +160,6 @@ class ProvidersConfig:
     watsonx: WatsonXConfig
     ollama: OllamaConfig
     azure_ai_foundry: AzureAIFoundryConfig
-    azure_openai: AzureOpenAIConfig
 
     def any_configured(self) -> bool:
         """Return True if at least one provider is marked as configured."""
@@ -189,7 +171,6 @@ class ProvidersConfig:
                 self.watsonx,
                 self.ollama,
                 self.azure_ai_foundry,
-                self.azure_openai,
             )
         )
 
@@ -206,8 +187,6 @@ class ProvidersConfig:
             return self.ollama
         elif provider_lower == "azure_ai_foundry":
             return self.azure_ai_foundry
-        elif provider_lower == "azure_openai":
-            return self.azure_openai
         else:
             raise ValueError(f"Unknown provider: {provider}")
 
@@ -308,9 +287,6 @@ class OpenRAGConfig:
                 ollama=OllamaConfig(**_decrypt_provider(providers_data.get("ollama", {}))),
                 azure_ai_foundry=AzureAIFoundryConfig(
                     **_decrypt_provider(providers_data.get("azure_ai_foundry", {}))
-                ),
-                azure_openai=AzureOpenAIConfig(
-                    **_decrypt_provider(providers_data.get("azure_openai", {}))
                 ),
             ),
             knowledge=KnowledgeConfig(**data.get("knowledge", {})),
