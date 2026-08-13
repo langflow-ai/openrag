@@ -77,7 +77,8 @@ def _normalize_file_facet_aggregations(aggregations: dict[str, Any]) -> dict[str
             normalized[facet_name] = {"buckets": []}
             continue
 
-        buckets = facet.get("buckets", [])
+        raw_buckets = facet.get("buckets", [])
+        buckets = raw_buckets if isinstance(raw_buckets, list) else []
         normalized[facet_name] = {
             **facet,
             "buckets": [
@@ -94,7 +95,7 @@ def _normalize_file_facet_aggregations(aggregations: dict[str, Any]) -> dict[str
                     ),
                 }
                 for bucket in buckets
-                if bucket.get("key")
+                if isinstance(bucket, dict) and bucket.get("key")
             ],
         }
     return normalized
