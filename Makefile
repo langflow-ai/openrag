@@ -95,6 +95,10 @@ build: manifests generate fmt vet ## Build the operator binary to bin/manager.
 run: manifests generate fmt vet ## Run the operator locally (uses current kubeconfig).
 	go run ./cmd/main.go
 
+.PHONY: kind-run
+kind-run: manifests generate fmt vet ## Run the operator locally against a kind cluster (sets LANGFLOW_HOST=0.0.0.0).
+	OPTLF_LANGFLOW_HOST=0.0.0.0 go run ./cmd/main.go
+
 .PHONY: docker-build
 docker-build: ## Build the operator container image for the local platform.
 	$(CONTAINER_TOOL) build -t $(IMG) \
@@ -129,6 +133,12 @@ uninstall: manifests kustomize ## Uninstall CRDs from the cluster.
 
 .PHONY: deploy
 deploy: manifests kustomize ## Deploy the operator to the cluster.
+	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
+	$(KUSTOMIZE) build config/default | kubectl apply -f -
+
+.PHONY: kind-deploy
+kind-deploy: manifests kustomize ## Deploy the operator to the cluster.
+	PTLF_LANGFLOW_HOST=0.0.0.0
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
 	$(KUSTOMIZE) build config/default | kubectl apply -f -
 

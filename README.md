@@ -99,25 +99,52 @@ make docker-build IMG=openrag-operator:dev
 podman save openrag-operator:dev | kind load image-archive /dev/stdin --name openrag
 ```
 
-Install CRD
+Install CRDs:
 
 ```bash
 make install
 ```
 
-Run the operator locally:
+Run the operator locally against the kind cluster.
+`kind-run` sets `LANGFLOW_HOST=0.0.0.0` so Langflow binds all interfaces and is reachable from other pods and health probes inside the cluster:
 
 ```bash
-make run
+make kind-run
 ```
 
-Apply a sample CR (create the namespace first; the operator does not create it when `metadata.namespace` equals `targetNamespace`):
+### 5. Deploy OpenSearch (local single-node)
+
+A single-node OpenSearch manifest is provided for local development:
 
 ```bash
 kubectl create namespace my-tenant
+kubectl apply -f config/samples/opensearch_local.yaml
+```
+
+This creates:
+- A `opensearch-credentials` Secret (`admin` / `YourStr0ngPassword!`) — edit the password in the file before applying if desired
+- A 2 Gi `PersistentVolumeClaim` for OpenSearch data
+- A single-node OpenSearch `Deployment` reachable at `opensearch.my-tenant.svc.cluster.local:9200`
+
+### 6. Apply the OpenRAG CR
+
+The kind-local sample is pre-configured to point at the OpenSearch instance above:
+
+```bash
 # kind/Colima clusters usually have only 2 CPUs — use the kind-local sample:
 kubectl apply -f config/samples/openrag_v1alpha1_openrag-kind-local.yaml
 kubectl get pods -n my-tenant
+```
+
+The CR's `opensearch` block references the local service and credentials secret:
+
+```yaml
+opensearch:
+  host: opensearch.my-tenant.svc.cluster.local
+  port: 9200
+  scheme: http
+  indexName: documents
+  credentialsSecret: opensearch-credentials   # keys: username, password
 ```
 
 On a 2-CPU kind node, the default sample (`openrag_v1alpha1_openrag.yaml`) requests 1500m CPU for frontend+backend+langflow and langflow will stay `Pending` with `Insufficient cpu`.
@@ -133,9 +160,10 @@ make kind-build-load-apps
 # In another terminal: operator + CR (kind-local sets imagePullPolicy: Never)
 cd kubernetes/operator
 make install
-make run
+make kind-run
 
 kubectl create namespace my-tenant
+kubectl apply -f config/samples/opensearch_local.yaml
 kubectl apply -f config/samples/openrag_v1alpha1_openrag-kind-local.yaml
 ```
 

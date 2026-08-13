@@ -35,6 +35,11 @@ spec:
   backend:
     image: langflowai/openrag-backend:latest
     imagePullPolicy: IfNotPresent
+    # opensearch_local.yaml is a single-node cluster; skip the multi-node
+    # (3 data/cluster-manager/coordinating) readiness check meant for production.
+    env:
+      - name: OPENSEARCH_NODE_COUNT_CHECK_ENABLED
+        value: "false"
     resources:
       requests:
         cpu: "100m"
@@ -52,10 +57,10 @@ spec:
     resources:
       requests:
         cpu: "100m"
-        memory: "512Mi"
+        memory: "4Gi"
       limits:
-        cpu: "1"
-        memory: "2Gi"
+        cpu: "2"
+        memory: "4Gi"
     storage:
       enabled: true
       size: "1Gi"
@@ -65,6 +70,14 @@ spec:
     # flowsGithubTokenSecret:
     #   name: github-token
     #   key: token
+
+  # External OpenSearch — required unless credentials are in backend envSecret
+  opensearch:
+    host: opensearch.my-tenant.svc.cluster.local
+    port: 9200
+    scheme: http
+    indexName: documents
+    credentialsSecret: opensearch-credentials   # keys: username, password
 
   networkPolicy:
     enabled: false
