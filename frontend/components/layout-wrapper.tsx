@@ -213,10 +213,13 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
       </div>
 
       {/* Console Status — portalled into document.body so fixed positioning
-          is always relative to the viewport, not to any transformed ancestor */}
-      {isOnboardingComplete && (
-        <ConsoleStatusPortal isOpen={isStatusOpen} onClose={closeStatus} />
-      )}
+          is always relative to the viewport, not to any transformed ancestor.
+          OSS-only: not rendered in saas or on_prem deployments. */}
+      {isOnboardingComplete &&
+        (isAuthenticated || isNoAuthMode) &&
+        runMode === "oss" && (
+          <ConsoleStatusPortal isOpen={isStatusOpen} onClose={closeStatus} />
+        )}
       {(isAuthenticated || isNoAuthMode) && runMode === "oss" && (
         <FlowsUpdateDialog />
       )}

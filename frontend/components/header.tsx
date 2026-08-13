@@ -6,6 +6,7 @@ import { ConsoleStatusButton } from "@/components/console-status-panel";
 import { DevRoleToggle } from "@/components/dev-role-toggle";
 import Logo from "@/components/icons/openrag-logo";
 import { UserNav } from "@/components/user-nav";
+import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useConsoleStatus } from "@/contexts/console-status-context";
 import { useTask } from "@/contexts/task-context";
@@ -15,6 +16,7 @@ import { useProviderHealth } from "./provider-health-banner";
 export function Header() {
   const isCloudBrand = useIsCloudBrand();
   const { tasks, toggleMenu } = useTask();
+  const { runMode } = useAuth();
 
   const {
     hasProblem,
@@ -75,13 +77,17 @@ export function Header() {
             </>
           )}
 
-          {/* Console Status button */}
-          <ConsoleStatusButton
-            onClick={toggle}
-            isOpen={isOpen}
-            overallStatus={overallStatus}
-          />
-          <div className="w-px h-6 bg-border mx-3" />
+          {/* Console Status button — OSS only */}
+          {runMode === "oss" && (
+            <>
+              <ConsoleStatusButton
+                onClick={toggle}
+                isOpen={isOpen}
+                overallStatus={overallStatus}
+              />
+              <div className="w-px h-6 bg-border mx-3" />
+            </>
+          )}
 
           {/* Task + System Notification Bell */}
           <button
