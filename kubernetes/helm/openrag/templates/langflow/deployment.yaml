@@ -36,6 +36,17 @@ spec:
 
 
       containers:
+        {{- if .Values.langflow.redis.enabled }}
+        - name: redis
+          image: "{{ .Values.langflow.redis.image.repository }}:{{ .Values.langflow.redis.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: redis
+              containerPort: {{ .Values.langflow.redis.port | default 6379 }}
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.langflow.redis.resources | nindent 12 }}
+        {{- end }}
         - name: langflow
           image: "{{ .Values.langflow.image.repository }}:{{ .Values.langflow.image.tag | default .Values.global.imageTag }}"
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}

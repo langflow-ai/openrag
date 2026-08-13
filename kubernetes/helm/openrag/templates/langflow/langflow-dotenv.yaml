@@ -46,6 +46,14 @@ stringData:
     LANGFLOW_LOG_LEVEL={{ .Values.langflow.logLevel | quote }}
     HIDE_GETTING_STARTED_PROGRESS="true"
 
+    # Redis job queue & worker settings
+    {{- if .Values.langflow.redis.enabled }}
+    LANGFLOW_JOB_QUEUE_TYPE="redis"
+    LANGFLOW_REDIS_HOST={{ .Values.langflow.redis.host | default "127.0.0.1" | quote }}
+    LANGFLOW_REDIS_PORT={{ .Values.langflow.redis.port | default 6379 | quote }}
+    {{- end }}
+    LANGFLOW_WORKERS={{ .Values.langflow.workers | default 4 | quote }}
+
     # Langflow API secret key (https://docs.langflow.org/api-keys-and-authentication#langflow-secret-key)
     {{- if .Values.langflow.auth.secretKey }}
     LANGFLOW_SECRET_KEY={{ .Values.langflow.auth.secretKey | quote }}

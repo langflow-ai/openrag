@@ -141,10 +141,27 @@ langflow:
     enableSuperuserCli: false
 
   # Runtime settings
+  workers: 4
   deactivateTracing: true
   logLevel: "INFO"                        # DEBUG, INFO, WARNING, ERROR
   doclingServeUrl: "http://host.docker.internal:5001"
   openragQueryFilter: "{}"
+
+  redis:
+    enabled: true
+    host: "127.0.0.1"
+    port: 6379
+    image:
+      repository: redis
+      tag: 7-alpine
+    resources:
+      limits:
+        cpu: 250m
+        memory: 256Mi
+      requests:
+        cpu: 50m
+        memory: 64Mi
+
 
   # Flow context default variables (injected into every flow execution)
   flowDefaults:
