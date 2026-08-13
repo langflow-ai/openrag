@@ -1188,6 +1188,18 @@ class ContainerManager:
                 ) as exc:
                     yield False, f"ERROR: Cannot pull image {image!r}: {exc}", False
                     return
+                except Exception as exc:
+                    # e.g. PermissionError — an OSError that validate_image_reachable's
+                    # FileNotFoundError/TimeoutExpired handlers don't cover.  Without
+                    # this, it escapes the generator and the consumer reports a bare
+                    # "Error starting services" with no image named.  Wording matches
+                    # the documented "Cannot pull image ...: REASON" form.
+                    yield (
+                        False,
+                        f"ERROR: Cannot pull image {image!r}: validation failed ({exc})",
+                        False,
+                    )
+                    return
 
             images_list = ", ".join(missing_images)
             yield False, f"Pulling container images ({images_list})...", False
