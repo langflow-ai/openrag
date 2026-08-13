@@ -55,6 +55,11 @@ const formatDate = (dateString: string) => {
   });
 };
 
+const formatFacetLabel = (bucket: FacetBucket) =>
+  typeof bucket.count === "number"
+    ? `${bucket.key} (${bucket.count})`
+    : bucket.key;
+
 export function KnowledgeFilterPanel() {
   const {
     queryOverride,
@@ -177,7 +182,7 @@ export function KnowledgeFilterPanel() {
 
   const sourceOptions = (availableFacets.data_sources || []).map((bucket) => ({
     value: bucket.key,
-    label: bucket.key,
+    label: formatFacetLabel(bucket),
   }));
   const availableSourceValues = new Set(sourceOptions.map((o) => o.value));
 
@@ -381,10 +386,7 @@ export function KnowledgeFilterPanel() {
                 options={(availableFacets.document_types || []).map(
                   (bucket) => ({
                     value: bucket.key,
-                    label:
-                      typeof bucket.count === "number"
-                        ? `${bucket.key} (${bucket.count})`
-                        : bucket.key,
+                    label: formatFacetLabel(bucket),
                   }),
                 )}
                 value={selectedFilters.document_types}
@@ -400,10 +402,7 @@ export function KnowledgeFilterPanel() {
               <MultiSelect
                 options={(availableFacets.owners || []).map((bucket) => ({
                   value: bucket.key,
-                  label:
-                    typeof bucket.count === "number"
-                      ? `${bucket.key} (${bucket.count})`
-                      : bucket.key,
+                  label: formatFacetLabel(bucket),
                 }))}
                 value={selectedFilters.owners}
                 onValueChange={(values) => handleFilterChange("owners", values)}
@@ -417,10 +416,7 @@ export function KnowledgeFilterPanel() {
                 options={(availableFacets.connector_types || []).map(
                   (bucket) => ({
                     value: bucket.key,
-                    label:
-                      typeof bucket.count === "number"
-                        ? `${bucket.key} (${bucket.count})`
-                        : bucket.key,
+                    label: formatFacetLabel(bucket),
                   }),
                 )}
                 value={selectedFilters.connector_types}

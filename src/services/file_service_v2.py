@@ -233,30 +233,40 @@ class FileServiceV2:
         search: str | None = None,
         data_sources: list[str] | None = None,
     ) -> dict[str, Any]:
+        def _effective_values(values: list[str] | None) -> list[str]:
+            return [value for value in (values or []) if value != "*"]
+
         must = []
         filter_clauses = []
 
-        if connector_type:
+        effective_connector_types = _effective_values(connector_type)
+        if effective_connector_types:
             clause = (
-                {"term": {"connector_type": connector_type[0]}}
-                if len(connector_type) == 1
-                else {"terms": {"connector_type": connector_type}}
-            )
-            filter_clauses.append(clause)
-        if mimetype:
-            clause = (
-                {"term": {"mimetype": mimetype[0]}}
-                if len(mimetype) == 1
-                else {"terms": {"mimetype": mimetype}}
-            )
-            filter_clauses.append(clause)
-        if owner:
-            clause = (
-                {"term": {"owner": owner[0]}} if len(owner) == 1 else {"terms": {"owner": owner}}
+                {"term": {"connector_type": effective_connector_types[0]}}
+                if len(effective_connector_types) == 1
+                else {"terms": {"connector_type": effective_connector_types}}
             )
             filter_clauses.append(clause)
 
-        effective_sources = [s for s in (data_sources or []) if s != "*"]
+        effective_mimetypes = _effective_values(mimetype)
+        if effective_mimetypes:
+            clause = (
+                {"term": {"mimetype": effective_mimetypes[0]}}
+                if len(effective_mimetypes) == 1
+                else {"terms": {"mimetype": effective_mimetypes}}
+            )
+            filter_clauses.append(clause)
+
+        effective_owners = _effective_values(owner)
+        if effective_owners:
+            clause = (
+                {"term": {"owner": effective_owners[0]}}
+                if len(effective_owners) == 1
+                else {"terms": {"owner": effective_owners}}
+            )
+            filter_clauses.append(clause)
+
+        effective_sources = _effective_values(data_sources)
         if effective_sources:
             clause = (
                 {"term": {"filename": effective_sources[0]}}

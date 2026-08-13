@@ -132,6 +132,11 @@ const AG_FIELD_TO_SORT_BY: Record<string, string> = {
   status: "status",
 };
 
+function listFilesFilterValues(values?: string[]) {
+  const filtered = values?.filter((value) => value !== "*");
+  return filtered && filtered.length > 0 ? filtered : undefined;
+}
+
 function SearchPage() {
   const isCloudBrand = useIsCloudBrand();
   const queryClient = useQueryClient();
@@ -346,18 +351,16 @@ function SearchPage() {
       sortBy,
       sortOrder,
       afterKey: cursorCacheRef.current.get(currentPage) ?? null,
-      connectorType:
-        parsedFilterData?.filters?.connector_types?.filter((v) => v !== "*") ||
-        undefined,
-      mimetype:
-        parsedFilterData?.filters?.document_types?.filter((v) => v !== "*") ||
-        undefined,
-      owner:
-        parsedFilterData?.filters?.owners?.filter((v) => v !== "*") ||
-        undefined,
-      dataSources:
-        parsedFilterData?.filters?.data_sources?.filter((v) => v !== "*") ||
-        undefined,
+      connectorType: listFilesFilterValues(
+        parsedFilterData?.filters?.connector_types,
+      ),
+      mimetype: listFilesFilterValues(
+        parsedFilterData?.filters?.document_types,
+      ),
+      owner: listFilesFilterValues(parsedFilterData?.filters?.owners),
+      dataSources: listFilesFilterValues(
+        parsedFilterData?.filters?.data_sources,
+      ),
     },
     {
       refetchInterval: 5000,
