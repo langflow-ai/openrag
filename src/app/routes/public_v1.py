@@ -9,6 +9,9 @@ from api.v1 import (
     documents as v1_documents,
 )
 from api.v1 import (
+    files as v1_files,
+)
+from api.v1 import (
     knowledge_filters as v1_knowledge_filters,
 )
 from api.v1 import (
@@ -135,5 +138,19 @@ def register_public_v1_routes(app: FastAPI):
         "/v1/knowledge-filters/{filter_id}",
         v1_knowledge_filters.delete_endpoint,
         methods=["DELETE"],
+        tags=["public"],
+    )
+    # Files endpoints
+    # /v1/files/search must be registered before /v1/files to avoid path shadowing
+    app.add_api_route(
+        "/v1/files/search",
+        v1_files.search_files,
+        methods=["GET"],
+        tags=["public"],
+    )
+    app.add_api_route(
+        "/v1/files",
+        v1_files.list_files,
+        methods=["GET"],
         tags=["public"],
     )

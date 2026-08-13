@@ -171,6 +171,50 @@ result = await client.documents.delete("report.pdf")
 print(f"Success: {result.success}")
 ```
 
+## Listing Files
+
+`client.documents.list_files()` inventories everything in the knowledge base and
+returns the metadata needed to drive knowledge filters and search.
+
+```python
+import json
+
+# List the first page of files
+page = await client.documents.list_files(page_size=50)
+for f in page.files:
+    print(f"{f.filename}  ({f.mimetype}, {f.chunk_count} chunks)")
+
+# Cursor-paginate through all files
+after_key = None
+while True:
+    page = await client.documents.list_files(page_size=100, after_key=after_key)
+    for f in page.files:
+        print(f.filename)
+    if page.after_key is None:
+        break
+    after_key = json.dumps(page.after_key)
+
+# Filter and sort
+page = await client.documents.list_files(
+    connector_type="sharepoint",
+    sort_by="indexed_time",
+    sort_order="desc",
+)
+
+# List → create knowledge filter workflow
+page = await client.documents.list_files(connector_type="sharepoint")
+filenames = [f.filename for f in page.files]
+result = await client.knowledge_filters.create({
+    "name": "SharePoint docs",
+    "queryData": {"filters": {"data_sources": filenames}},
+})
+filter_id = result.id
+
+# Use the filter in search and chat
+results = await client.search.query("quarterly report", filter_id=filter_id)
+response = await client.chat.create(message="Summarise Q3", filter_id=filter_id)
+```
+
 ## Settings
 
 ```python

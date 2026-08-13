@@ -298,3 +298,46 @@ class DeleteKnowledgeFilterResponse(BaseModel):
 
     success: bool
     error: str | None = None
+
+
+class PrincipalLabel(BaseModel):
+    """A principal label entry in a file's ACL (connector-ingested files only)."""
+
+    principal: str
+    kind: str
+    provider: str
+    display_name: str = ""
+    email: str = ""
+    external_id: str = ""
+
+
+class FileRecord(BaseModel):
+    """A single ingested file record returned by the list-files endpoint."""
+
+    filename: str
+    document_id: str
+    mimetype: str
+    file_size: int
+    source_url: str
+    owner: str
+    owner_name: str
+    owner_email: str
+    connector_type: str
+    embedding_model: str
+    embedding_dimensions: int | None = None
+    indexed_time: str
+    chunk_count: int
+    allowed_users: list[str] = Field(default_factory=list)
+    allowed_groups: list[str] = Field(default_factory=list)
+    allowed_principal_labels: list[PrincipalLabel] = Field(default_factory=list)
+
+
+class ListFilesResponse(BaseModel):
+    """Response from the list-files endpoint."""
+
+    files: list[FileRecord]
+    total: int
+    is_approximate: bool
+    page: int
+    page_size: int
+    after_key: dict | None = None

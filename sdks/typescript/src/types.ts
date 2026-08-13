@@ -111,6 +111,68 @@ export interface DeleteDocumentOptions {
   filterId?: string;
 }
 
+/** A principal label entry in a file's ACL (connector-ingested files only). */
+export interface PrincipalLabel {
+  principal: string;
+  kind: string;
+  provider: string;
+  display_name?: string;
+  email?: string;
+  external_id?: string;
+}
+
+// File structure type
+export interface FileRecord {
+  filename: string;
+  document_id: string;
+  mimetype: string;
+  file_size: number;
+  source_url: string;
+  owner: string;
+  owner_name: string;
+  owner_email: string;
+  connector_type: string;
+  embedding_model: string;
+  embedding_dimensions: number | null;
+  indexed_time: string;
+  chunk_count: number;
+  allowed_users: string[];
+  allowed_groups: string[];
+  allowed_principal_labels: PrincipalLabel[];
+}
+
+//Response from the list-files endpoint
+export interface ListFilesResponse {
+  files: FileRecord[];
+  total: number;
+  is_approximate: boolean;
+  page: number;
+  page_size: number;
+  after_key: Record<string, unknown> | null;
+}
+
+/** Options for listing files. */
+export interface ListFilesOptions {
+  /** Page number (display only; use after_key for cursor navigation). Default: 1. */
+  page?: number;
+  /** Files per page (1–500). Default: 25. */
+  page_size?: number;
+  /** Sort field: filename | file_size | mimetype | indexed_time | connector_type | chunk_count | owner. */
+  sort_by?: string;
+  /** Sort direction. Default: "asc". */
+  sort_order?: "asc" | "desc";
+  /** Filter by connector type. */
+  connector_type?: string;
+  /** Filter by MIME type. */
+  mimetype?: string;
+  /** Filter by owner user ID. */
+  owner?: string;
+  /** Substring/prefix filename search. */
+  search?: string;
+  /** JSON-encoded composite cursor from a previous response's after_key. */
+  after_key?: string;
+}
+
 // Chat history types
 export interface Message {
   role: string;
