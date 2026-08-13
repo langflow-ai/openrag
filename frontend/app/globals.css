@@ -322,6 +322,43 @@
     padding-top: 0 !important;
   }
 
+  /*
+   * Carbon 3-button footer (e.g. Remove + Cancel + Save): a 2-column grid
+   * wraps the third action onto a new row. Use 4 columns so tertiary sits
+   * at 25% left and secondary/primary occupy 25% each on the right.
+   */
+  [data-theme="ibm"] [data-slot="dialog-footer"]:has(> :nth-child(3)) {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    background-color: hsl(var(--background)) !important;
+  }
+
+  [data-theme="ibm"]
+    [data-slot="dialog-footer"]:has(> :nth-child(3))
+    > :nth-child(1) {
+    grid-column: 1;
+    margin: 0 !important;
+  }
+
+  [data-theme="ibm"]
+    [data-slot="dialog-footer"]:has(> :nth-child(3))
+    > :nth-child(2) {
+    grid-column: 3;
+  }
+
+  [data-theme="ibm"]
+    [data-slot="dialog-footer"]:has(> :nth-child(3))
+    > :nth-child(3) {
+    grid-column: 4;
+  }
+
+  /* Tooltip wrappers (Remove) must fill the tertiary cell. */
+  [data-theme="ibm"] [data-slot="dialog-footer"] > span {
+    display: flex;
+    width: 100%;
+    min-height: 4rem;
+    margin: 0 !important;
+  }
+
   /* Task dialog: flush footer; match task surface tokens. */
   [data-theme="ibm"] [data-slot="dialog-content"].h-task-dialog {
     background-color: hsl(var(--layer-contextual)) !important;
@@ -335,7 +372,8 @@
     background-color: hsl(var(--layer-contextual)) !important;
   }
 
-  [data-theme="ibm"] [data-slot="dialog-footer"] > button {
+  [data-theme="ibm"] [data-slot="dialog-footer"] > button,
+  [data-theme="ibm"] [data-slot="dialog-footer"] > span button {
     width: 100% !important;
     height: 4rem !important;
     margin: 0 !important;
@@ -386,7 +424,8 @@
   }
 
   /* After hover resets: restore a visible focus ring (matches Button focus-visible:ring). */
-  [data-theme="ibm"] [data-slot="dialog-footer"] > button:focus-visible {
+  [data-theme="ibm"] [data-slot="dialog-footer"] > button:focus-visible,
+  [data-theme="ibm"] [data-slot="dialog-footer"] > span button:focus-visible {
     outline: none !important;
     box-shadow:
       0 0 0 2px hsl(var(--background)),
