@@ -168,6 +168,22 @@ class MalformedImageRefError(Exception):
     """Raised when the image reference cannot be parsed by the runtime."""
 
 
+#: Cap on embedded runtime output, so a verbose registry cannot flood the log pane.
+_MAX_RUNTIME_DETAIL_CHARS = 300
+
+
+def _runtime_detail(output: str) -> str:
+    """Flatten runtime output into one bounded line for an error message.
+
+    Consumers render one line per message, so newlines in the runtime's output
+    break their line accounting and can scroll the error off screen.
+    """
+    detail = " ".join(output.split())
+    if len(detail) > _MAX_RUNTIME_DETAIL_CHARS:
+        detail = detail[:_MAX_RUNTIME_DETAIL_CHARS].rstrip() + "…"
+    return detail
+
+
 def validate_image_reachable(image_ref: str, runtime: str = "docker") -> None:
     """Test whether *image_ref* exists in its registry without downloading layers.
 
@@ -211,15 +227,14 @@ def validate_image_reachable(image_ref: str, runtime: str = "docker") -> None:
         return  # Image exists — all good.
 
     combined = (result.stdout + result.stderr).lower()
+    detail = _runtime_detail(result.stderr or result.stdout)
 
     # Authentication failures
     if any(
         token in combined
         for token in ("unauthorized", "denied", "403", "401", "authentication", "forbidden")
     ):
-        raise RegistryAuthError(
-            f"Authentication failure accessing {image_ref!r}: {(result.stderr or result.stdout).strip()}"
-        )
+        raise RegistryAuthError(f"Authentication failure accessing {image_ref!r}: {detail}")
 
     # DNS / network failures
     if any(
@@ -236,9 +251,7 @@ def validate_image_reachable(image_ref: str, runtime: str = "docker") -> None:
             "certificate",
         )
     ):
-        raise RegistryUnreachableError(
-            f"Registry unreachable for {image_ref!r}: {(result.stderr or result.stdout).strip()}"
-        )
+        raise RegistryUnreachableError(f"Registry unreachable for {image_ref!r}: {detail}")
 
     # Malformed reference reported by the runtime
     if any(
@@ -251,11 +264,7 @@ def validate_image_reachable(image_ref: str, runtime: str = "docker") -> None:
             "malformed",
         )
     ):
-        raise MalformedImageRefError(
-            f"Image reference {image_ref!r} could not be parsed: {(result.stderr or result.stdout).strip()}"
-        )
+        raise MalformedImageRefError(f"Image reference {image_ref!r} could not be parsed: {detail}")
 
     # Default: image / tag not found
-    raise ImageNotFoundError(
-        f"Image {image_ref!r} not found in registry: {(result.stderr or result.stdout).strip()}"
-    )
+    raise ImageNotFoundError(f"Image {image_ref!r} not found in registry: {detail}")
