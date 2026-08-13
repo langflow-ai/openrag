@@ -73,15 +73,14 @@ IMAGE_NAME_BACKEND: str = "openrag-backend"
 IMAGE_NAME_FRONTEND: str = "openrag-frontend"
 IMAGE_NAME_LANGFLOW: str = "openrag-langflow"
 IMAGE_NAME_OPENSEARCH: str = "openrag-opensearch"
-IMAGE_NAME_DASHBOARDS: str = "openrag-dashboards"
 
-#: All OpenRAG-owned image short names.
+#: All OpenRAG-owned image short names.  Dashboards is absent on purpose — the
+#: stack uses upstream ``opensearchproject/opensearch-dashboards``.
 OPENRAG_IMAGE_NAMES: tuple[str, ...] = (
     IMAGE_NAME_BACKEND,
     IMAGE_NAME_FRONTEND,
     IMAGE_NAME_LANGFLOW,
     IMAGE_NAME_OPENSEARCH,
-    IMAGE_NAME_DASHBOARDS,
 )
 
 #: Third-party images referenced in the compose stack (used for cleanup
