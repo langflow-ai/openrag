@@ -124,37 +124,6 @@
       },
       {
         "animated": false,
-        "className": "",
-        "data": {
-          "sourceHandle": {
-            "dataType": "SplitText",
-            "id": "SplitText-QIKhg",
-            "name": "dataframe",
-            "output_types": [
-              "Table"
-            ]
-          },
-          "targetHandle": {
-            "fieldName": "ingest_data",
-            "id": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-Wwoh1",
-            "inputTypes": [
-              "Data",
-              "DataFrame",
-              "Table"
-            ],
-            "type": "other"
-          }
-        },
-        "id": "xy-edge__SplitText-QIKhg{œdataTypeœ:œSplitTextœ,œidœ:œSplitText-QIKhgœ,œnameœ:œdataframeœ,œoutput_typesœ:[œTableœ]}-ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-Wwoh1{œfieldNameœ:œingest_dataœ,œidœ:œext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-Wwoh1œ,œinputTypesœ:[œDataœ,œDataFrameœ,œTableœ],œtypeœ:œotherœ}",
-        "selected": false,
-        "source": "SplitText-QIKhg",
-        "sourceHandle": "{œdataTypeœ:œSplitTextœ,œidœ:œSplitText-QIKhgœ,œnameœ:œdataframeœ,œoutput_typesœ:[œTableœ]}",
-        "target": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-Wwoh1",
-        "targetHandle": "{œfieldNameœ:œingest_dataœ,œidœ:œext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-Wwoh1œ,œinputTypesœ:[œDataœ,œDataFrameœ,œTableœ],œtypeœ:œotherœ}"
-      },
-      {
-        "animated": false,
-        "className": "",
         "data": {
           "sourceHandle": {
             "dataType": "EmbeddingModel",
@@ -166,19 +135,48 @@
           },
           "targetHandle": {
             "fieldName": "embedding",
-            "id": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-Wwoh1",
+            "id": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-UxDQw",
             "inputTypes": [
               "Embeddings"
             ],
             "type": "other"
           }
         },
-        "id": "xy-edge__EmbeddingModel-d8FQn{œdataTypeœ:œEmbeddingModelœ,œidœ:œEmbeddingModel-d8FQnœ,œnameœ:œembeddingsœ,œoutput_typesœ:[œEmbeddingsœ]}-ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-Wwoh1{œfieldNameœ:œembeddingœ,œidœ:œext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-Wwoh1œ,œinputTypesœ:[œEmbeddingsœ],œtypeœ:œotherœ}",
+        "id": "xy-edge__EmbeddingModel-d8FQn{œdataTypeœ:œEmbeddingModelœ,œidœ:œEmbeddingModel-d8FQnœ,œnameœ:œembeddingsœ,œoutput_typesœ:[œEmbeddingsœ]}-ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-UxDQw{œfieldNameœ:œembeddingœ,œidœ:œext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-UxDQwœ,œinputTypesœ:[œEmbeddingsœ],œtypeœ:œotherœ}",
         "selected": false,
         "source": "EmbeddingModel-d8FQn",
         "sourceHandle": "{œdataTypeœ:œEmbeddingModelœ,œidœ:œEmbeddingModel-d8FQnœ,œnameœ:œembeddingsœ,œoutput_typesœ:[œEmbeddingsœ]}",
-        "target": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-Wwoh1",
-        "targetHandle": "{œfieldNameœ:œembeddingœ,œidœ:œext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-Wwoh1œ,œinputTypesœ:[œEmbeddingsœ],œtypeœ:œotherœ}"
+        "target": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-UxDQw",
+        "targetHandle": "{œfieldNameœ:œembeddingœ,œidœ:œext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-UxDQwœ,œinputTypesœ:[œEmbeddingsœ],œtypeœ:œotherœ}"
+      },
+      {
+        "animated": false,
+        "data": {
+          "sourceHandle": {
+            "dataType": "SplitText",
+            "id": "SplitText-QIKhg",
+            "name": "dataframe",
+            "output_types": [
+              "Table"
+            ]
+          },
+          "targetHandle": {
+            "fieldName": "ingest_data",
+            "id": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-UxDQw",
+            "inputTypes": [
+              "Data",
+              "DataFrame",
+              "Table"
+            ],
+            "type": "other"
+          }
+        },
+        "id": "xy-edge__SplitText-QIKhg{œdataTypeœ:œSplitTextœ,œidœ:œSplitText-QIKhgœ,œnameœ:œdataframeœ,œoutput_typesœ:[œTableœ]}-ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-UxDQw{œfieldNameœ:œingest_dataœ,œidœ:œext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-UxDQwœ,œinputTypesœ:[œDataœ,œDataFrameœ,œTableœ],œtypeœ:œotherœ}",
+        "selected": false,
+        "source": "SplitText-QIKhg",
+        "sourceHandle": "{œdataTypeœ:œSplitTextœ,œidœ:œSplitText-QIKhgœ,œnameœ:œdataframeœ,œoutput_typesœ:[œTableœ]}",
+        "target": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-UxDQw",
+        "targetHandle": "{œfieldNameœ:œingest_dataœ,œidœ:œext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-UxDQwœ,œinputTypesœ:[œDataœ,œDataFrameœ,œTableœ],œtypeœ:œotherœ}"
       }
     ],
     "nodes": [
@@ -679,6 +677,10 @@
         },
         "dragging": false,
         "id": "DoclingRemote-Dp3PX",
+        "measured": {
+          "height": 52,
+          "width": 192
+        },
         "position": {
           "x": 377.3513331245854,
           "y": 1841.1174193072818
@@ -951,6 +953,10 @@
         },
         "dragging": false,
         "id": "ExportDoclingDocument-zZdRg",
+        "measured": {
+          "height": 52,
+          "width": 192
+        },
         "position": {
           "x": 648.3765412475954,
           "y": 1839.7464467523132
@@ -2336,6 +2342,10 @@
         },
         "dragging": false,
         "id": "Operations-IC6CD",
+        "measured": {
+          "height": 80,
+          "width": 192
+        },
         "position": {
           "x": 922.8558031751697,
           "y": 1830.0439761689086
@@ -3694,6 +3704,10 @@
         },
         "dragging": false,
         "id": "Operations-VUCJC",
+        "measured": {
+          "height": 80,
+          "width": 192
+        },
         "position": {
           "x": 1209.814890352602,
           "y": 1833.3550221261078
@@ -3965,6 +3979,10 @@
         },
         "dragging": false,
         "id": "SplitText-QIKhg",
+        "measured": {
+          "height": 80,
+          "width": 192
+        },
         "position": {
           "x": 1483.6566983203961,
           "y": 1839.4043723057894
@@ -4621,6 +4639,10 @@
         },
         "dragging": false,
         "id": "EmbeddingModel-d8FQn",
+        "measured": {
+          "height": 52,
+          "width": 192
+        },
         "position": {
           "x": 1489.0121472829765,
           "y": 1954.4725071351013
@@ -4630,21 +4652,22 @@
       },
       {
         "data": {
-          "description": "Store and search documents using OpenSearch with multi-model hybrid semantic and keyword search. To search use the tools search_documents and raw_search. Search documents takes a query for vector search, for example\n  {search_query: \"components in openrag\"}",
-          "display_name": "OpenSearch (Multi-Model Multi-Embedding)",
-          "id": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-Wwoh1",
+          "id": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-UxDQw",
           "node": {
             "base_classes": [
               "JSON",
               "VectorStore"
             ],
             "beta": false,
+            "bundle": "openrag",
             "conditional_paths": [],
             "custom_fields": {},
             "description": "Store and search documents using OpenSearch with multi-model hybrid semantic and keyword search. To search use the tools search_documents and raw_search. Search documents takes a query for vector search, for example\n  {search_query: \"components in openrag\"}",
             "display_name": "OpenSearch (Multi-Model Multi-Embedding)",
             "documentation": "",
             "edited": false,
+            "extension": "openrag",
+            "extension_version": "0.0.0",
             "field_order": [
               "docs_metadata",
               "opensearch_url",
@@ -4680,7 +4703,7 @@
             ],
             "frozen": false,
             "icon": "OpenSearch",
-            "last_updated": "2026-08-13T21:33:29.160Z",
+            "last_updated": "2026-08-13T21:40:50.066Z",
             "legacy": false,
             "metadata": {
               "code_hash": "fb23213c3308",
@@ -4709,9 +4732,11 @@
                 ],
                 "total_dependencies": 5
               },
-              "module": "custom_components.opensearch_multimodel_multiembedding"
+              "module": "_lfx_ext.extra.openrag.opensearch_multimodal"
             },
             "minimized": false,
+            "name": "OpenSearchVectorStoreComponentMultimodalMultiEmbedding",
+            "namespaced_id": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra",
             "output_types": [],
             "outputs": [
               {
@@ -5542,22 +5567,26 @@
           },
           "selected_output": "search_results",
           "showNode": true,
-          "type": "OpenSearchVectorStoreComponentMultimodalMultiEmbedding"
+          "type": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra"
         },
         "dragging": false,
-        "id": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-Wwoh1",
+        "id": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-UxDQw",
+        "measured": {
+          "height": 1295,
+          "width": 320
+        },
         "position": {
-          "x": 1763.0458706275317,
-          "y": 1383.9439123714653
+          "x": 1781.3365755417167,
+          "y": 1394.6962326028893
         },
         "selected": false,
         "type": "genericNode"
       }
     ],
     "viewport": {
-      "x": -90.9876041522241,
-      "y": -758.7565763353509,
-      "zoom": 0.6083922100813252
+      "x": -501.2264270657088,
+      "y": -782.1575609251784,
+      "zoom": 0.5950461982104408
     }
   },
   "description": "Load your data for chat context with Retrieval Augmented Generation.",

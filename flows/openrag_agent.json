@@ -203,7 +203,6 @@
       },
       {
         "animated": false,
-        "className": "",
         "data": {
           "sourceHandle": {
             "dataType": "EmbeddingModel",
@@ -215,23 +214,22 @@
           },
           "targetHandle": {
             "fieldName": "embedding",
-            "id": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-Ji9kZ",
+            "id": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-x5tAG",
             "inputTypes": [
               "Embeddings"
             ],
             "type": "other"
           }
         },
-        "id": "xy-edge__EmbeddingModel-zLHKs{œdataTypeœ:œEmbeddingModelœ,œidœ:œEmbeddingModel-zLHKsœ,œnameœ:œembeddingsœ,œoutput_typesœ:[œEmbeddingsœ]}-ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-Ji9kZ{œfieldNameœ:œembeddingœ,œidœ:œext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-Ji9kZœ,œinputTypesœ:[œEmbeddingsœ],œtypeœ:œotherœ}",
+        "id": "xy-edge__EmbeddingModel-zLHKs{œdataTypeœ:œEmbeddingModelœ,œidœ:œEmbeddingModel-zLHKsœ,œnameœ:œembeddingsœ,œoutput_typesœ:[œEmbeddingsœ]}-ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-x5tAG{œfieldNameœ:œembeddingœ,œidœ:œext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-x5tAGœ,œinputTypesœ:[œEmbeddingsœ],œtypeœ:œotherœ}",
         "selected": false,
         "source": "EmbeddingModel-zLHKs",
         "sourceHandle": "{œdataTypeœ:œEmbeddingModelœ,œidœ:œEmbeddingModel-zLHKsœ,œnameœ:œembeddingsœ,œoutput_typesœ:[œEmbeddingsœ]}",
-        "target": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-Ji9kZ",
-        "targetHandle": "{œfieldNameœ:œembeddingœ,œidœ:œext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-Ji9kZœ,œinputTypesœ:[œEmbeddingsœ],œtypeœ:œotherœ}"
+        "target": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-x5tAG",
+        "targetHandle": "{œfieldNameœ:œembeddingœ,œidœ:œext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-x5tAGœ,œinputTypesœ:[œEmbeddingsœ],œtypeœ:œotherœ}"
       },
       {
         "animated": false,
-        "className": "",
         "data": {
           "sourceHandle": {
             "dataType": "TextInput",
@@ -243,27 +241,25 @@
           },
           "targetHandle": {
             "fieldName": "filter_expression",
-            "id": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-Ji9kZ",
+            "id": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-x5tAG",
             "inputTypes": [
               "Message"
             ],
             "type": "str"
           }
         },
-        "id": "xy-edge__TextInput-i0a3P{œdataTypeœ:œTextInputœ,œidœ:œTextInput-i0a3Pœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}-ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-Ji9kZ{œfieldNameœ:œfilter_expressionœ,œidœ:œext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-Ji9kZœ,œinputTypesœ:[œMessageœ],œtypeœ:œstrœ}",
+        "id": "xy-edge__TextInput-i0a3P{œdataTypeœ:œTextInputœ,œidœ:œTextInput-i0a3Pœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}-ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-x5tAG{œfieldNameœ:œfilter_expressionœ,œidœ:œext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-x5tAGœ,œinputTypesœ:[œMessageœ],œtypeœ:œstrœ}",
         "selected": false,
         "source": "TextInput-i0a3P",
         "sourceHandle": "{œdataTypeœ:œTextInputœ,œidœ:œTextInput-i0a3Pœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}",
-        "target": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-Ji9kZ",
-        "targetHandle": "{œfieldNameœ:œfilter_expressionœ,œidœ:œext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-Ji9kZœ,œinputTypesœ:[œMessageœ],œtypeœ:œstrœ}"
+        "target": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-x5tAG",
+        "targetHandle": "{œfieldNameœ:œfilter_expressionœ,œidœ:œext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-x5tAGœ,œinputTypesœ:[œMessageœ],œtypeœ:œstrœ}"
       },
       {
-        "animated": false,
-        "className": "",
         "data": {
           "sourceHandle": {
-            "dataType": "OpenSearchVectorStoreComponentMultimodalMultiEmbedding",
-            "id": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-Ji9kZ",
+            "dataType": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra",
+            "id": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-x5tAG",
             "name": "component_as_tool",
             "output_types": [
               "Tool"
@@ -278,10 +274,9 @@
             "type": "other"
           }
         },
-        "id": "xy-edge__ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-Ji9kZ{œdataTypeœ:œOpenSearchVectorStoreComponentMultimodalMultiEmbeddingœ,œidœ:œext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-Ji9kZœ,œnameœ:œcomponent_as_toolœ,œoutput_typesœ:[œToolœ]}-Agent-Nfw7u{œfieldNameœ:œtoolsœ,œidœ:œAgent-Nfw7uœ,œinputTypesœ:[œToolœ],œtypeœ:œotherœ}",
-        "selected": false,
-        "source": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-Ji9kZ",
-        "sourceHandle": "{œdataTypeœ:œOpenSearchVectorStoreComponentMultimodalMultiEmbeddingœ,œidœ:œext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-Ji9kZœ,œnameœ:œcomponent_as_toolœ,œoutput_typesœ:[œToolœ]}",
+        "id": "xy-edge__ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-x5tAG{œdataTypeœ:œext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extraœ,œidœ:œext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-x5tAGœ,œnameœ:œcomponent_as_toolœ,œoutput_typesœ:[œToolœ]}-Agent-Nfw7u{œfieldNameœ:œtoolsœ,œidœ:œAgent-Nfw7uœ,œinputTypesœ:[œToolœ],œtypeœ:œotherœ}",
+        "source": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-x5tAG",
+        "sourceHandle": "{œdataTypeœ:œext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extraœ,œidœ:œext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-x5tAGœ,œnameœ:œcomponent_as_toolœ,œoutput_typesœ:[œToolœ]}",
         "target": "Agent-Nfw7u",
         "targetHandle": "{œfieldNameœ:œtoolsœ,œidœ:œAgent-Nfw7uœ,œinputTypesœ:[œToolœ],œtypeœ:œotherœ}"
       }
@@ -611,6 +606,10 @@
         },
         "dragging": false,
         "id": "ChatInput-ci8VE",
+        "measured": {
+          "height": 52,
+          "width": 192
+        },
         "position": {
           "x": 1136.2811923974275,
           "y": 2503.9876597481666
@@ -912,6 +911,10 @@
         },
         "dragging": false,
         "id": "ChatOutput-gWl8E",
+        "measured": {
+          "height": 52,
+          "width": 192
+        },
         "position": {
           "x": 2458.4563028144366,
           "y": 2074.662957908784
@@ -1824,6 +1827,10 @@
         },
         "dragging": false,
         "id": "Agent-Nfw7u",
+        "measured": {
+          "height": 431,
+          "width": 320
+        },
         "position": {
           "x": 2064.9341782775937,
           "y": 1693.5833129555906
@@ -1852,7 +1859,7 @@
             ],
             "frozen": false,
             "icon": "calculator",
-            "last_updated": "2026-08-13T21:32:58.329Z",
+            "last_updated": "2026-08-13T21:41:16.261Z",
             "legacy": false,
             "metadata": {
               "code_hash": "d0b2936e74fa",
@@ -1993,6 +2000,10 @@
         },
         "dragging": false,
         "id": "CalculatorComponent-KrlMH",
+        "measured": {
+          "height": 227,
+          "width": 320
+        },
         "position": {
           "x": 1498.151476724705,
           "y": 1719.4446700170724
@@ -2652,6 +2663,10 @@
         },
         "dragging": false,
         "id": "EmbeddingModel-zLHKs",
+        "measured": {
+          "height": 52,
+          "width": 192
+        },
         "position": {
           "x": 665.0615885834427,
           "y": 1838.806979140434
@@ -2863,6 +2878,10 @@
         },
         "dragging": false,
         "id": "Prompt Template-7kZsI",
+        "measured": {
+          "height": 429,
+          "width": 320
+        },
         "position": {
           "x": 1496.7915215019298,
           "y": 2019.0970114283145
@@ -3018,6 +3037,10 @@
         },
         "dragging": false,
         "id": "TextInput-i0a3P",
+        "measured": {
+          "height": 284,
+          "width": 320
+        },
         "position": {
           "x": 471.417983121568,
           "y": 2079.013458520555
@@ -3049,7 +3072,7 @@
             ],
             "frozen": false,
             "icon": "Mcp",
-            "last_updated": "2026-08-13T21:33:02.257Z",
+            "last_updated": "2026-08-13T21:41:16.379Z",
             "legacy": false,
             "metadata": {
               "code_hash": "ccd98ac0a0fb",
@@ -3078,7 +3101,7 @@
               {
                 "allows_loop": false,
                 "cache": true,
-                "display_name": "Toolset",
+                "display_name": "Response",
                 "group_outputs": false,
                 "hidden": null,
                 "loop_types": null,
@@ -3353,7 +3376,7 @@
                 "list_add_label": "Add More",
                 "name": "tools_metadata",
                 "override_skip": false,
-                "placeholder": "Loading actions...",
+                "placeholder": "",
                 "real_time_refresh": true,
                 "required": false,
                 "show": true,
@@ -3362,7 +3385,48 @@
                 "trace_as_metadata": true,
                 "track_in_telemetry": false,
                 "type": "tools",
-                "value": []
+                "value": [
+                  {
+                    "approval_actions": [],
+                    "args": {
+                      "input_value": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "description": "Message to be passed as input.",
+                        "title": "Input Value"
+                      },
+                      "session_id": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "description": "Optional session identifier used to persist conversation history across tool calls. Omit to start a new session.",
+                        "title": "Session Id"
+                      }
+                    },
+                    "description": "This flow is to ingest the URL to open search.",
+                    "display_description": "This flow is to ingest the URL to open search.",
+                    "display_name": "opensearch_url_ingestion_flow",
+                    "name": "opensearch_url_ingestion_flow",
+                    "readonly": false,
+                    "status": true,
+                    "tags": [
+                      "opensearch_url_ingestion_flow"
+                    ]
+                  }
+                ]
               },
               "use_cache": {
                 "_input_type": "BoolInput",
@@ -3412,6 +3476,10 @@
         },
         "dragging": false,
         "id": "MCPTools-uu7m3",
+        "measured": {
+          "height": 293,
+          "width": 320
+        },
         "position": {
           "x": 1499.1989099237799,
           "y": 1358.0838292705346
@@ -4150,6 +4218,10 @@
         },
         "dragging": false,
         "id": "LanguageModelComponent-MfLsT",
+        "measured": {
+          "height": 52,
+          "width": 192
+        },
         "position": {
           "x": 1832.8173400251,
           "y": 1806.741236642841
@@ -4159,21 +4231,22 @@
       },
       {
         "data": {
-          "description": "Store and search documents using OpenSearch with multi-model hybrid semantic and keyword search. To search use the tools search_documents and raw_search. Search documents takes a query for vector search, for example\n  {search_query: \"components in openrag\"}",
-          "display_name": "OpenSearch (Multi-Model Multi-Embedding)",
-          "id": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-Ji9kZ",
+          "id": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-x5tAG",
           "node": {
             "base_classes": [
               "JSON",
               "VectorStore"
             ],
             "beta": false,
+            "bundle": "openrag",
             "conditional_paths": [],
             "custom_fields": {},
             "description": "Store and search documents using OpenSearch with multi-model hybrid semantic and keyword search. To search use the tools search_documents and raw_search. Search documents takes a query for vector search, for example\n  {search_query: \"components in openrag\"}",
             "display_name": "OpenSearch (Multi-Model Multi-Embedding)",
             "documentation": "",
             "edited": false,
+            "extension": "openrag",
+            "extension_version": "0.0.0",
             "field_order": [
               "docs_metadata",
               "opensearch_url",
@@ -4209,7 +4282,7 @@
             ],
             "frozen": false,
             "icon": "OpenSearch",
-            "last_updated": "2026-08-13T21:32:58.334Z",
+            "last_updated": "2026-08-13T21:42:21.856Z",
             "legacy": false,
             "metadata": {
               "code_hash": "fb23213c3308",
@@ -4221,7 +4294,7 @@
                   },
                   {
                     "name": "lfx",
-                    "version": "1.11.2"
+                    "version": "1.11.3"
                   },
                   {
                     "name": "opensearchpy",
@@ -4238,15 +4311,17 @@
                 ],
                 "total_dependencies": 5
               },
-              "module": "custom_components.opensearch_multimodel_multiembedding"
+              "module": "_lfx_ext.extra.openrag.opensearch_multimodal"
             },
             "minimized": false,
+            "name": "OpenSearchVectorStoreComponentMultimodalMultiEmbedding",
+            "namespaced_id": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra",
             "output_types": [],
             "outputs": [
               {
                 "allows_loop": false,
                 "cache": true,
-                "display_name": "Search Results",
+                "display_name": "Toolset",
                 "group_outputs": false,
                 "hidden": null,
                 "loop_types": null,
@@ -4281,7 +4356,6 @@
                 "dynamic": false,
                 "external_options": {},
                 "info": "Authentication method: 'basic' for username/password authentication, 'jwt' for JSON Web Token (Bearer) authentication, or 'openrag' to delegate writes to the OpenRAG backend ingest callback (no direct OpenSearch credentials required — only OPENRAG_* fields).",
-                "load_from_db": false,
                 "name": "auth_mode",
                 "options": [
                   "basic",
@@ -5121,22 +5195,26 @@
           },
           "selected_output": "search_results",
           "showNode": true,
-          "type": "OpenSearchVectorStoreComponentMultimodalMultiEmbedding"
+          "type": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra"
         },
         "dragging": false,
-        "id": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-Ji9kZ",
-        "position": {
-          "x": 1018.3951511071341,
-          "y": 1400.1504172377802
+        "id": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-x5tAG",
+        "measured": {
+          "height": 1053,
+          "width": 320
         },
-        "selected": false,
+        "position": {
+          "x": 1028.3427984024295,
+          "y": 1377.140768642754
+        },
+        "selected": true,
         "type": "genericNode"
       }
     ],
     "viewport": {
-      "x": -60.222186869380835,
-      "y": -517.7793241061472,
-      "zoom": 0.5121094402152025
+      "x": -508.7611125253793,
+      "y": -826.9246313348858,
+      "zoom": 0.6914131944155041
     }
   },
   "description": "OpenRAG OpenSearch Agent",
