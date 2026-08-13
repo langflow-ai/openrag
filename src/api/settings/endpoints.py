@@ -56,7 +56,11 @@ from api.settings.models import (
     SettingsUpdateResponse,
     WatsonXProviderConfig,
 )
-from config.config_manager import ALLOWED_INDEX_NAME_PREFIXES, is_permitted_index_name
+from config.config_manager import (
+    ALLOWED_INDEX_NAME_PATTERNS,
+    DEFAULT_SYSTEM_PROMPT,
+    is_permitted_index_name,
+)
 from config.settings import (
     DEFAULT_DOCS_URL,
     ENVIRONMENT,
@@ -185,8 +189,11 @@ async def get_settings(
                         for node in flow_data["data"]["nodes"]:
                             node_template = node.get("data", {}).get("node", {}).get("template", {})
 
-                            # Split Text component (SplitText-QIKhg)
-                            if node.get("id") == "SplitText-QIKhg":
+                            # Split Text component
+                            if (
+                                node.get("data", {}).get("node", {}).get("display_name")
+                                == "Split Text"
+                            ):
                                 if node_template.get("chunk_size", {}).get("value"):
                                     ingestion_defaults["chunkSize"] = node_template["chunk_size"][
                                         "value"
@@ -197,13 +204,6 @@ async def get_settings(
                                     ]["value"]
                                 if node_template.get("separator", {}).get("value"):
                                     ingestion_defaults["separator"] = node_template["separator"][
-                                        "value"
-                                    ]
-
-                            # OpenAI Embeddings component (OpenAIEmbeddings-joRJ6)
-                            elif node.get("id") == "OpenAIEmbeddings-joRJ6":
-                                if node_template.get("model", {}).get("value"):
-                                    ingestion_defaults["embeddingModel"] = node_template["model"][
                                         "value"
                                     ]
 
@@ -276,6 +276,7 @@ async def get_settings(
                 llm_model=agent_config.llm_model,
                 llm_provider=agent_config.llm_provider,
                 system_prompt=agent_config.system_prompt,
+                default_system_prompt=DEFAULT_SYSTEM_PROMPT,
             ),
             localhost_url=LOCALHOST_URL,
             langflow_edit_url=langflow_edit_url,
@@ -632,8 +633,8 @@ async def update_settings(
                     status_code=422,
                     detail=(
                         f"Index name '{new_index_name}' is not permitted. The OpenSearch "
-                        "security role only grants search access to indices starting "
-                        f"with {' or '.join(ALLOWED_INDEX_NAME_PREFIXES)}."
+                        "security role only grants search access to indices matching "
+                        f"{' or '.join(ALLOWED_INDEX_NAME_PATTERNS)}."
                     ),
                 )
             working_config.knowledge.index_name = new_index_name
@@ -646,7 +647,10 @@ async def update_settings(
             # Also update global variable with new index name
             try:
                 await clients._create_langflow_global_variable(
-                    "OPENSEARCH_INDEX_NAME", new_index_name, modify=True
+                    "OPENSEARCH_INDEX_NAME",
+                    new_index_name,
+                    modify=True,
+                    variable_type="Generic",
                 )
                 logger.info(
                     f"Successfully updated global variable with new index name {new_index_name}"
@@ -896,6 +900,14 @@ async def update_settings(
 
         # Run expensive Langflow sync in the background to keep settings updates responsive.
         if should_validate or provider_updated:
+            update_llm = (
+                body.llm_provider is not None or body.llm_model is not None or provider_updated
+            )
+            update_embedding = (
+                body.embedding_provider is not None
+                or body.embedding_model is not None
+                or provider_updated
+            )
             task = asyncio.create_task(
                 _run_async_post_save_langflow_updates(
                     session_manager=session_manager,
@@ -905,13 +917,10 @@ async def update_settings(
                         or body.embedding_model is not None
                         or provider_updated
                     ),
-                    update_model_values=(
-                        body.llm_provider is not None
-                        or body.llm_model is not None
-                        or body.embedding_provider is not None
-                        or body.embedding_model is not None
-                        or provider_updated
-                    ),
+                    update_model_values=update_llm or update_embedding,
+                    update_llm=update_llm,
+                    update_embedding=update_embedding,
+                    update_global_variables=provider_updated,
                 )
             )
             # Keep a strong reference until completion to avoid premature GC cancellation.

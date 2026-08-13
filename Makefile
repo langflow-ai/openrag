@@ -13,6 +13,10 @@ endif
 
 hostname ?= 0.0.0.0
 
+# Environment variables that must be non-empty in .env for dev targets to work.
+# Add new vars here as they become required.
+REQUIRED_ENV_VARS := LANGFLOW_SUPERUSER LANGFLOW_SUPERUSER_PASSWORD OPENSEARCH_PASSWORD LANGFLOW_SECRET_KEY
+
 # Default values for dev-branch builds (can be overridden via command line)
 # Usage: make dev-branch BRANCH=test-openai-responses REPO=https://github.com/myorg/langflow.git
 BRANCH ?= main
@@ -105,7 +109,7 @@ endef
        ci-build-images ci-save-images \
        backend frontend docling docling-stop install-be install-fe build-be build-fe build-os build-lf logs-be logs-fe logs-lf logs-os \
        shell-be shell-lf shell-os restart status health db-reset clear-os-data flow-upload setup factory-reset \
-       dev-branch build-langflow-dev stop-dev clean-dev logs-dev logs-lf-dev shell-lf-dev restart-dev status-dev \
+       dev-branch dev-branch-cpu dev-branch-local dev-branch-local-cpu build-langflow-dev stop-dev clean-dev logs-dev logs-lf-dev shell-lf-dev restart-dev status-dev \
        ensure-langflow-data ensure-backend-volumes
 
 all: help
@@ -267,6 +271,9 @@ help_dev: ## Show development environment commands
 	@echo "  $(PURPLE)make dev-branch$(NC)      - Build & run with custom Langflow branch"
 	@echo "                         Usage: make dev-branch BRANCH=test-openai-responses"
 	@echo "                                make dev-branch BRANCH=feature-x REPO=https://github.com/org/langflow.git"
+	@echo "  $(PURPLE)make dev-branch-cpu$(NC)  - Build & run (CPU only) with custom Langflow branch"
+	@echo "  $(PURPLE)make dev-branch-local$(NC) - Start local infrastructure only with custom Langflow branch"
+	@echo "  $(PURPLE)make dev-branch-local-cpu$(NC) - Start local infrastructure only (CPU only) with custom Langflow branch"
 	@echo "  $(PURPLE)make build-langflow-dev$(NC) - Build only the Langflow dev image (no cache)"
 	@echo "  $(PURPLE)make stop-dev$(NC)        - Stop dev environment containers"
 	@echo "  $(PURPLE)make restart-dev$(NC)     - Restart dev environment"
@@ -415,7 +422,74 @@ ensure-backend-volumes: ## Create and permission backend volume directories
 	@chmod 775 flows keys config data openrag-documents 2>/dev/null \
 		|| echo "$(YELLOW)Warning: Could not chmod backend volume directories.$(NC)"
 
-dev: ensure-langflow-data ensure-backend-volumes ## Start full stack with GPU support
+check-env: ## Verify required environment variables are set in .env
+	@missing=""; \
+	for var in $(REQUIRED_ENV_VARS); do \
+		val="$$(eval echo "\$$$$var")"; \
+		if [ -z "$$val" ]; then \
+			missing="$$missing $$var"; \
+		fi; \
+	done; \
+	if [ -n "$$missing" ]; then \
+		echo "$(RED)Error: the following required variables are missing or empty in $(ENV_FILE):$(NC)"; \
+		for var in $$missing; do \
+			echo "  - $$var"; \
+		done; \
+		echo ""; \
+		echo "$(YELLOW)Set them in $(ENV_FILE) and try again.$(NC)"; \
+		echo "Tip: 'make generate-langflow-password' can auto-generate Langflow credentials."; \
+		exit 1; \
+	fi; \
+	pw="$${OPENSEARCH_PASSWORD}"; \
+	pw_errors=""; \
+	if [ $${#pw} -lt 8 ]; then \
+		pw_errors="$$pw_errors\n  - at least 8 characters"; \
+	fi; \
+	if ! printf '%s' "$$pw" | grep -q '[A-Z]'; then \
+		pw_errors="$$pw_errors\n  - at least one uppercase letter"; \
+	fi; \
+	if ! printf '%s' "$$pw" | grep -q '[a-z]'; then \
+		pw_errors="$$pw_errors\n  - at least one lowercase letter"; \
+	fi; \
+	if ! printf '%s' "$$pw" | grep -q '[0-9]'; then \
+		pw_errors="$$pw_errors\n  - at least one digit"; \
+	fi; \
+	if ! printf '%s' "$$pw" | grep -q '[^A-Za-z0-9]'; then \
+		pw_errors="$$pw_errors\n  - at least one special character"; \
+	fi; \
+	if [ -n "$$pw_errors" ]; then \
+		echo "$(RED)Error: OPENSEARCH_PASSWORD does not meet the required policy:$(NC)"; \
+		printf "$$pw_errors\n"; \
+		echo ""; \
+		echo "$(YELLOW)Update OPENSEARCH_PASSWORD in $(ENV_FILE) and try again.$(NC)"; \
+		exit 1; \
+	fi
+
+generate-langflow-password: ## Auto-generate and append Langflow superuser credentials to .env
+	@PW=$$(openssl rand -base64 24 | tr -d '/+=' | head -c 24) || \
+		{ echo "$(RED)Error: failed to generate password$(NC)"; exit 1; }; \
+	if [ -z "$$PW" ]; then \
+		echo "$(RED)Error: generated password is empty$(NC)"; exit 1; \
+	fi; \
+	if grep -q '^LANGFLOW_SUPERUSER=' "$(ENV_FILE)" 2>/dev/null; then \
+		sed -i.bak "s/^LANGFLOW_SUPERUSER=.*/LANGFLOW_SUPERUSER='admin'/" "$(ENV_FILE)" && rm -f "$(ENV_FILE).bak" || \
+			{ rm -f "$(ENV_FILE).bak"; echo "$(RED)Error: failed to update LANGFLOW_SUPERUSER in $(ENV_FILE)$(NC)"; exit 1; }; \
+	else \
+		echo "LANGFLOW_SUPERUSER='admin'" >> "$(ENV_FILE)" || \
+			{ echo "$(RED)Error: failed to append LANGFLOW_SUPERUSER to $(ENV_FILE)$(NC)"; exit 1; }; \
+	fi; \
+	if grep -q '^LANGFLOW_SUPERUSER_PASSWORD=' "$(ENV_FILE)" 2>/dev/null; then \
+		sed -i.bak "s/^LANGFLOW_SUPERUSER_PASSWORD=.*/LANGFLOW_SUPERUSER_PASSWORD='$$PW'/" "$(ENV_FILE)" && rm -f "$(ENV_FILE).bak" || \
+			{ rm -f "$(ENV_FILE).bak"; echo "$(RED)Error: failed to update LANGFLOW_SUPERUSER_PASSWORD in $(ENV_FILE)$(NC)"; exit 1; }; \
+	else \
+		echo "LANGFLOW_SUPERUSER_PASSWORD='$$PW'" >> "$(ENV_FILE)" || \
+			{ echo "$(RED)Error: failed to append LANGFLOW_SUPERUSER_PASSWORD to $(ENV_FILE)$(NC)"; exit 1; }; \
+	fi; \
+	echo "$(GREEN)Langflow superuser credentials written to $(ENV_FILE)$(NC)"; \
+	echo "  LANGFLOW_SUPERUSER=admin"; \
+	echo "  LANGFLOW_SUPERUSER_PASSWORD=$$PW"
+
+dev: ensure-langflow-data ensure-backend-volumes check-env ## Start full stack with GPU support
 	@echo "$(YELLOW)Starting OpenRAG with GPU support...$(NC)"
 	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml up -d
 	@echo "$(PURPLE)Services started!$(NC)"
@@ -425,7 +499,7 @@ dev: ensure-langflow-data ensure-backend-volumes ## Start full stack with GPU su
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
 	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
 
-dev-cpu: ensure-langflow-data ensure-backend-volumes ## Start full stack with CPU only
+dev-cpu: ensure-langflow-data ensure-backend-volumes check-env ## Start full stack with CPU only
 	@echo "$(YELLOW)Starting OpenRAG with CPU only...$(NC)"
 	$(COMPOSE_CMD) up -d $(SERVICES)
 	@echo "$(PURPLE)Services started!$(NC)"
@@ -435,7 +509,7 @@ dev-cpu: ensure-langflow-data ensure-backend-volumes ## Start full stack with CP
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
 	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
 
-dev-build: ensure-langflow-data ensure-backend-volumes ## Start full stack with GPU support, building all images first
+dev-build: ensure-langflow-data ensure-backend-volumes check-env ## Start full stack with GPU support, building all images first
 	@echo "$(YELLOW)Building all OpenRAG images...$(NC)"
 	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml build
 	@echo "$(YELLOW)Starting OpenRAG with GPU support...$(NC)"
@@ -447,7 +521,7 @@ dev-build: ensure-langflow-data ensure-backend-volumes ## Start full stack with 
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
 	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
 
-dev-build-cpu: ensure-langflow-data ensure-backend-volumes ## Start full stack with CPU only, building all images first
+dev-build-cpu: ensure-langflow-data ensure-backend-volumes check-env ## Start full stack with CPU only, building all images first
 	@echo "$(YELLOW)Building all OpenRAG images (CPU)...$(NC)"
 	$(COMPOSE_CMD) build
 	@echo "$(YELLOW)Starting OpenRAG with CPU only...$(NC)"
@@ -459,7 +533,7 @@ dev-build-cpu: ensure-langflow-data ensure-backend-volumes ## Start full stack w
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
 	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
 
-dev-local: ensure-langflow-data ensure-backend-volumes ## Start infrastructure for local development
+dev-local: ensure-langflow-data ensure-backend-volumes check-env ## Start infrastructure for local development
 	@echo "$(YELLOW)Building Langflow and OpenSearch images...$(NC)"
 	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml build langflow opensearch
 	@echo "$(YELLOW)Starting infrastructure only (for local development)...$(NC)"
@@ -471,7 +545,7 @@ dev-local: ensure-langflow-data ensure-backend-volumes ## Start infrastructure f
 	@echo ""
 	@echo "$(YELLOW)Now run 'make backend' and 'make frontend' in separate terminals$(NC)"
 
-dev-local-cpu: ensure-langflow-data ensure-backend-volumes ## Start infrastructure for local development, with CPU only
+dev-local-cpu: ensure-langflow-data ensure-backend-volumes check-env ## Start infrastructure for local development, with CPU only
 	@echo "$(YELLOW)Building Langflow and OpenSearch images (CPU)...$(NC)"
 	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.host-backend.yml build langflow opensearch
 	@echo "$(YELLOW)Starting infrastructure only (for local development)...$(NC)"
@@ -489,7 +563,7 @@ dev-local-cpu: ensure-langflow-data ensure-backend-volumes ## Start infrastructu
 # Usage: make dev-branch BRANCH=test-openai-responses
 #        make dev-branch BRANCH=feature-x REPO=https://github.com/myorg/langflow.git
 
-dev-branch: ensure-langflow-data ensure-backend-volumes ## Build & run full stack with custom Langflow branch
+dev-branch: ensure-langflow-data ensure-backend-volumes check-env ## Build & run full stack with custom Langflow branch
 	@echo "$(YELLOW)Building Langflow from branch: $(BRANCH)$(NC)"
 	@echo "   $(CYAN)Repository:$(NC) $(REPO)"
 	@echo ""
@@ -505,7 +579,7 @@ dev-branch: ensure-langflow-data ensure-backend-volumes ## Build & run full stac
 	@echo "   $(CYAN)OpenSearch:$(NC)            http://localhost:$${OPENSEARCH_PORT:-9200}"
 	@echo "   $(CYAN)Dashboards:$(NC)            http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
 
-dev-branch-cpu: ensure-langflow-data ensure-backend-volumes ## Build & run full stack with custom Langflow branch and CPU only mode
+dev-branch-cpu: ensure-langflow-data ensure-backend-volumes check-env ## Build & run full stack with custom Langflow branch and CPU only mode
 	@echo "$(YELLOW)Building Langflow from branch: $(BRANCH)$(NC)"
 	@echo "   $(CYAN)Repository:$(NC) $(REPO)"
 	@echo ""
@@ -520,6 +594,38 @@ dev-branch-cpu: ensure-langflow-data ensure-backend-volumes ## Build & run full 
 	@echo "   $(CYAN)Frontend:$(NC)              http://localhost:$${FRONTEND_PORT:-3000}"
 	@echo "   $(CYAN)OpenSearch:$(NC)            http://localhost:$${OPENSEARCH_PORT:-9200}"
 	@echo "   $(CYAN)Dashboards:$(NC)            http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
+
+dev-branch-local: ensure-langflow-data ensure-backend-volumes check-env ## Start infrastructure for local development with custom Langflow branch
+	@echo "$(YELLOW)Building Langflow from branch: $(BRANCH)$(NC)"
+	@echo "   $(CYAN)Repository:$(NC) $(REPO)"
+	@echo ""
+	@echo "$(YELLOW)This may take several minutes for the first build...$(NC)"
+	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.dev.yml build langflow
+	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml build opensearch
+	@echo "$(YELLOW)Starting infrastructure only (for local development) with custom Langflow build...$(NC)"
+	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.dev.yml -f docker-compose.host-backend.yml up -d opensearch dashboards langflow
+	@echo "$(PURPLE)Infrastructure started!$(NC)"
+	@echo "   $(CYAN)Langflow ($(BRANCH)):$(NC) http://localhost:$${LANGFLOW_PORT:-7860}"
+	@echo "   $(CYAN)OpenSearch:$(NC)            http://localhost:$${OPENSEARCH_PORT:-9200}"
+	@echo "   $(CYAN)Dashboards:$(NC)            http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
+	@echo ""
+	@echo "$(YELLOW)Now run 'make backend' and 'make frontend' in separate terminals$(NC)"
+
+dev-branch-local-cpu: ensure-langflow-data ensure-backend-volumes check-env ## Start infrastructure for local development, with CPU only and custom Langflow branch
+	@echo "$(YELLOW)Building Langflow from branch: $(BRANCH)$(NC)"
+	@echo "   $(CYAN)Repository:$(NC) $(REPO)"
+	@echo ""
+	@echo "$(YELLOW)This may take several minutes for the first build...$(NC)"
+	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.dev.yml build langflow
+	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.host-backend.yml build opensearch
+	@echo "$(YELLOW)Starting infrastructure only (for local development) with CPU only and custom Langflow build...$(NC)"
+	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.host-backend.yml up -d opensearch dashboards langflow
+	@echo "$(PURPLE)Infrastructure started!$(NC)"
+	@echo "   $(CYAN)Langflow ($(BRANCH)):$(NC) http://localhost:$${LANGFLOW_PORT:-7860}"
+	@echo "   $(CYAN)OpenSearch:$(NC)            http://localhost:$${OPENSEARCH_PORT:-9200}"
+	@echo "   $(CYAN)Dashboards:$(NC)            http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
+	@echo ""
+	@echo "$(YELLOW)Now run 'make backend' and 'make frontend' in separate terminals$(NC)"
 
 build-langflow-dev: ## Build only the Langflow dev image (no cache)
 	@echo "$(YELLOW)Building Langflow dev image from branch: $(BRANCH)$(NC)"

@@ -122,7 +122,7 @@ def _preview_service_with_working_connection():
 
 @pytest.mark.asyncio
 async def test_connector_sync_passes_preview_mode_to_sync_specific_files(monkeypatch):
-    """body.preview=True threads preview_mode=True into sync_specific_files (OSS/SaaS)."""
+    """body.preview=True threads preview_mode=True into sync_specific_files."""
     from api import connectors as connectors_api
     from api import documents as documents_api
 

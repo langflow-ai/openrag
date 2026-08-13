@@ -30,6 +30,10 @@ export class Chat {
     this.page.getByRole("button", { name: /^delete$/i });
   private readonly conversationDeletedToast = () =>
     this.page.getByText(/conversation deleted successfully/i);
+  private readonly selectToggleButton = () =>
+    this.page.getByTestId("chat-select-toggle");
+  private readonly selectAllCheckBox = () =>
+    this.page.getByTestId("chat-select-all");
 
   /**
    * Get locator for a filter option by name
@@ -136,25 +140,19 @@ export class Chat {
           if (chunk.response?.text) {
             fullResponse = chunk.response.text; // final override
           }
+          if (chunk.item?.results?.length > 0) {
+            for (const result of chunk.item.results) {
+              if (result.filename && !fullResponse.includes(result.filename)) {
+                fullResponse += `Source: ${result.filename}`;
+              }
+            }
+          }
         } catch {
           // ignore malformed chunks
         }
       }
     } catch {
       // fallback to UI
-    }
-
-    // Always wait for the UI response to be visible and stable
-    const lastResponse = this.lastMarkdownResponse();
-    await lastResponse.waitFor({ state: "visible", timeout });
-
-    // Retrieve text content from the enclosing message bubble to ensure both LLM text and citations/filenames are included
-    const messageContainer = lastResponse.locator(
-      'xpath=ancestor::div[contains(@class, "flex-1")][1]',
-    );
-    const uiText = (await messageContainer.textContent()) || "";
-    if (uiText) {
-      fullResponse = uiText;
     }
 
     return fullResponse.trim();
@@ -640,5 +638,32 @@ export class Chat {
         await expect(completedBadge.first()).toBeVisible({ timeout });
       }
     }
+  }
+
+  async getConversationCount(): Promise<number> {
+    return this.page.locator('[data-testid^="conversation-button-"]').count();
+  }
+
+  async enterSelectionMode() {
+    await this.selectToggleButton().click();
+    await expect(this.selectAllCheckBox()).toBeVisible({ timeout: 5000 });
+  }
+
+  async exitSelectionMode() {
+    await this.selectToggleButton().click();
+  }
+
+  async selectAllConversations() {
+    await this.selectAllCheckBox().check();
+  }
+
+  async clickBulkDelete() {
+    await this.page.getByTestId("bulk-delete-confirm").click();
+  }
+
+  async selectConversationByTitle(title: string) {
+    const row = this.page.getByTestId(`conversation-button-${title}`);
+    const checkbox = row.locator('input[type="checkbox"]');
+    await checkbox.check();
   }
 }

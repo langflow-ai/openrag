@@ -234,8 +234,166 @@
     --component-icon: #0f62fe;
     --flow-icon: #0043ce;
 
-    --radius: 0rem; /* IBM uses sharp corners */
+    --radius: 0rem; /* IBM theme dialogs (Carbon design system style) */
+  }
 
+  /* IBM dialog chrome follows light/dark theme tokens (not always-dark Carbon). */
+  [data-theme="ibm"] [data-slot="dialog-content"],
+  [data-theme="ibm"] [role="dialog"] {
+    border-radius: 0 !important;
+    background-color: hsl(var(--background)) !important;
+    border: none !important;
+    color: hsl(var(--foreground)) !important;
+    padding: 0 !important;
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.5) !important;
+  }
+
+  [data-theme="ibm"] [data-slot="dialog-content"] > button[class*="absolute"],
+  [data-theme="ibm"] [role="dialog"] > button[class*="absolute"] {
+    display: none !important;
+  }
+
+  [data-theme="ibm"] [data-slot="dialog-content"] form {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+
+  /* Non-form dialogs (delete confirm, etc.): inset body between header and footer. */
+  [data-theme="ibm"]
+    [data-slot="dialog-content"]
+    > :not([data-slot="dialog-header"]):not([data-slot="dialog-footer"]):not(
+      button
+    ):not(form) {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+
+  /* Task dialog manages its own layout padding. */
+  [data-theme="ibm"] [data-slot="dialog-content"].h-task-dialog > div {
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  [data-theme="ibm"]
+    [data-slot="dialog-content"]
+    form
+    [data-slot="dialog-header"],
+  [data-theme="ibm"]
+    [data-slot="dialog-content"]
+    form
+    [data-slot="dialog-footer"] {
+    margin-left: -1.5rem !important;
+    margin-right: -1.5rem !important;
+  }
+
+  [data-theme="ibm"] [data-slot="dialog-header"] {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    margin-top: 0 !important;
+    padding-left: 1.5rem !important;
+    padding-right: 1.5rem !important;
+    padding-top: 1.5rem !important;
+    padding-bottom: 1rem !important;
+    border-bottom: 1px solid hsl(var(--border)) !important;
+  }
+
+  [data-theme="ibm"] [data-slot="dialog-title"] {
+    font-size: 1.25rem !important;
+    font-weight: 400 !important;
+    color: hsl(var(--foreground)) !important;
+  }
+
+  [data-theme="ibm"] [data-slot="dialog-description"] {
+    font-size: 0.875rem !important;
+    color: hsl(var(--muted-foreground)) !important;
+    font-weight: 400 !important;
+    margin-top: 0.25rem !important;
+  }
+
+  [data-theme="ibm"] [data-slot="dialog-footer"] {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 1px !important;
+    background-color: hsl(var(--border)) !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    margin-bottom: 0 !important;
+    margin-top: 1rem !important;
+    padding-top: 0 !important;
+  }
+
+  /* Task dialog: flush footer; match task surface tokens. */
+  [data-theme="ibm"] [data-slot="dialog-content"].h-task-dialog {
+    background-color: hsl(var(--layer-contextual)) !important;
+    color: hsl(var(--layer-contextual-foreground)) !important;
+  }
+
+  [data-theme="ibm"]
+    [data-slot="dialog-content"].h-task-dialog
+    [data-slot="dialog-footer"] {
+    margin-top: 0 !important;
+    background-color: hsl(var(--layer-contextual)) !important;
+  }
+
+  [data-theme="ibm"] [data-slot="dialog-footer"] > button {
+    width: 100% !important;
+    height: 4rem !important;
+    margin: 0 !important;
+    border: 0 !important;
+    border-width: 0 !important;
+    border-radius: 0 !important;
+    outline: none !important;
+    box-shadow: none !important;
+    font-size: 0.875rem !important;
+    font-weight: 400 !important;
+    justify-content: flex-start !important;
+    align-items: flex-start !important;
+    padding: 1rem 0 0 1rem !important;
+  }
+
+  [data-theme="ibm"] [data-slot="dialog-footer"] > button:first-of-type {
+    background-color: #6f6f6f !important;
+    color: #ffffff !important;
+  }
+
+  [data-theme="ibm"] [data-slot="dialog-footer"] > button:first-of-type:hover {
+    background-color: #525252 !important;
+    border: 0 !important;
+    outline: none !important;
+  }
+
+  [data-theme="ibm"]
+    [data-slot="dialog-footer"]
+    > button:first-of-type:hover:not(:focus-visible) {
+    box-shadow: none !important;
+  }
+
+  [data-theme="ibm"] [data-slot="dialog-footer"] > button:last-of-type {
+    background-color: #0f62fe !important;
+    color: #ffffff !important;
+  }
+
+  [data-theme="ibm"] [data-slot="dialog-footer"] > button:last-of-type:hover {
+    background-color: #0353e9 !important;
+    border: 0 !important;
+    outline: none !important;
+  }
+
+  [data-theme="ibm"]
+    [data-slot="dialog-footer"]
+    > button:last-of-type:hover:not(:focus-visible) {
+    box-shadow: none !important;
+  }
+
+  /* After hover resets: restore a visible focus ring (matches Button focus-visible:ring). */
+  [data-theme="ibm"] [data-slot="dialog-footer"] > button:focus-visible {
+    outline: none !important;
+    box-shadow:
+      0 0 0 2px hsl(var(--background)),
+      0 0 0 4px hsl(var(--ring)) !important;
+  }
+
+  [data-theme="ibm"] {
     /* Chat (IBM) */
     --chat-surface-bg: hsl(var(--background));
     --chat-surface-border: hsl(var(--muted));
@@ -262,6 +420,7 @@
     --text-text-01: 0 0% 9%;
     --link-primary: 217 100% 45%;
     --button-tertiary: 217 100% 45%;
+    --brand-amber: 47 89% 53%; /* #f1c21b */
     --border-border-interactive: #4589ff;
     /* IBM dark grey action button (#393939 → #474747); not --badge (dark badge is #525252) */
     --ibm-overwrite-button: 0 0% 22.4%; /* #393939 */
@@ -326,6 +485,7 @@
     --accent-pink-foreground: 329 86% 70%;
     --accent-purple: 274 66% 32%;
     --accent-purple-foreground: 270 95% 75%;
+    --brand-amber: 47 89% 53%; /* #f1c21b */
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
@@ -441,6 +601,8 @@
     border-radius: 0;
     border-bottom: 2px solid hsl(var(--input));
     background-color: hsl(var(--layer-contextual));
+    /* Explicit color so dialog `color: #f4f4f4` does not win over light input backgrounds */
+    color: hsl(var(--layer-contextual-foreground));
   }
 
   [data-theme="ibm"].dark .primary-input {

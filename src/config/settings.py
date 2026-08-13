@@ -36,6 +36,23 @@ OPENSEARCH_URL = f"https://{OPENSEARCH_HOST}:{OPENSEARCH_PORT}"
 LANGFLOW_OPENSEARCH_HOST = os.getenv("LANGFLOW_OPENSEARCH_HOST")
 LANGFLOW_OPENSEARCH_PORT = get_env_int("LANGFLOW_OPENSEARCH_PORT")
 
+
+def get_langflow_opensearch_url() -> str:
+    """OpenSearch URL for Langflow to use.
+
+    Uses LANGFLOW_OPENSEARCH_HOST (and LANGFLOW_OPENSEARCH_PORT or OPENSEARCH_PORT)
+    when configured, otherwise falls back to OPENSEARCH_URL env var or container default.
+    """
+    if LANGFLOW_OPENSEARCH_HOST:
+        port = LANGFLOW_OPENSEARCH_PORT or OPENSEARCH_PORT
+        return f"https://{LANGFLOW_OPENSEARCH_HOST}:{port}"
+    return os.getenv(
+        "OPENSEARCH_URL",
+        f"https://{os.getenv('OPENSEARCH_HOST', 'opensearch')}:"
+        f"{os.getenv('OPENSEARCH_INTERNAL_PORT', '9200')}",
+    )
+
+
 OPENSEARCH_USERNAME = os.getenv("OPENSEARCH_USERNAME", "admin")
 OPENSEARCH_PASSWORD = os.getenv("OPENSEARCH_PASSWORD")
 
@@ -86,6 +103,8 @@ LANGFLOW_INGEST_FLOW_ID = (
 LANGFLOW_URL_INGEST_FLOW_ID = (
     os.getenv("LANGFLOW_URL_INGEST_FLOW_ID") or "72c3d17c-2dac-4a73-b48a-6518473d7830"
 )
+DEFAULT_CHUNK_SIZE = 1000
+DEFAULT_CHUNK_OVERLAP = 200
 OPENRAG_BACKEND_PORT = get_env_int("OPENRAG_BACKEND_PORT", 8000)
 OPENRAG_BACKEND_INTERNAL_URL = os.getenv(
     "OPENRAG_BACKEND_INTERNAL_URL",
@@ -546,6 +565,17 @@ else:
     DOCLING_SERVE_URL = f"http://{DOCLING_HOST_IP}:5001"
     logger.info("Auto-detected Docling host: %s (URL: %s)", DOCLING_HOST_IP, DOCLING_SERVE_URL)
 
+
+def get_langflow_docling_url() -> str:
+    """Docling Serve URL for Langflow to use.
+
+    Uses DOCLING_SERVE_URL env var if set, otherwise defaults to
+    http://host.docker.internal:5001 so Langflow running inside a container
+    can reach docling-serve on the host.
+    """
+    return os.getenv("DOCLING_SERVE_URL", "http://host.docker.internal:5001")
+
+
 # Ingestion configuration
 DISABLE_INGEST_WITH_LANGFLOW = os.getenv("DISABLE_INGEST_WITH_LANGFLOW", "false").lower() in (
     "true",
@@ -811,42 +841,71 @@ async def get_langflow_api_key(force_regenerate: bool = False):
         logger.warning("[LF] Forcing Langflow API key regeneration due to auth failure")
         LANGFLOW_KEY = None
 
-    # Use default langflow/langflow credentials if auto-login is enabled and credentials not set
-    username = LANGFLOW_SUPERUSER
-    password = LANGFLOW_SUPERUSER_PASSWORD
-
-    if LANGFLOW_AUTO_LOGIN and (not username or not password):
-        logger.info("LANGFLOW_AUTO_LOGIN is enabled, using default langflow/langflow credentials")
-        username = username or "langflow"
-        password = password or "langflow"
-
-    if not username or not password:
-        logger.warning(
-            "LANGFLOW_SUPERUSER and LANGFLOW_SUPERUSER_PASSWORD not set, skipping API key generation"
-        )
-        return None
-
     try:
-        logger.info("Generating Langflow API key using superuser credentials")
+        logger.info("Generating Langflow API key")
         max_attempts = get_env_int("LANGFLOW_KEY_RETRIES", 15)
         delay_seconds = get_env_float("LANGFLOW_KEY_RETRY_DELAY", 2.0)
 
         async with httpx.AsyncClient(timeout=10.0) as client:
             for attempt in range(1, max_attempts + 1):
                 try:
-                    # Login to get access token
-                    login_response = await client.post(
-                        f"{LANGFLOW_URL}/api/v1/login",
-                        headers={"Content-Type": "application/x-www-form-urlencoded"},
-                        data={
-                            "username": username,
-                            "password": password,
-                        },
-                    )
-                    login_response.raise_for_status()
-                    access_token = login_response.json().get("access_token")
+                    access_token = None
+                    auto_login_disabled = False
+
+                    # Check /auto_login endpoint to discover if auto login is enabled in Langflow
+                    try:
+                        auto_login_response = await client.get(f"{LANGFLOW_URL}/api/v1/auto_login")
+                        if auto_login_response.status_code == 200:
+                            access_token = auto_login_response.json().get("access_token")
+                            if access_token:
+                                logger.info(
+                                    "Langflow auto_login is enabled; acquired access token via /auto_login"
+                                )
+                        elif auto_login_response.status_code in (401, 403, 404):
+                            auto_login_disabled = True
+                        else:
+                            auto_login_response.raise_for_status()
+                    except (httpx.HTTPStatusError, httpx.RequestError):
+                        raise
+                    except Exception as e:
+                        logger.debug("Failed probing Langflow /auto_login", error=str(e))
+
+                    # If auto_login token is not available, use superuser credentials login
                     if not access_token:
-                        raise KeyError("access_token")
+                        username = LANGFLOW_SUPERUSER
+                        password = LANGFLOW_SUPERUSER_PASSWORD
+
+                        if LANGFLOW_AUTO_LOGIN and (not username or not password):
+                            logger.info(
+                                "LANGFLOW_AUTO_LOGIN is enabled, using default langflow/langflow credentials"
+                            )
+                            username = username or "langflow"
+                            password = password or "langflow"
+
+                        if not username or not password:
+                            if auto_login_disabled:
+                                logger.warning(
+                                    "Auto-login is disabled in Langflow and superuser credentials not set, skipping API key generation"
+                                )
+                                return None
+                            else:
+                                raise httpx.RequestError(
+                                    "Auto-login token unavailable and superuser credentials not set"
+                                )
+
+                        # Login to get access token
+                        login_response = await client.post(
+                            f"{LANGFLOW_URL}/api/v1/login",
+                            headers={"Content-Type": "application/x-www-form-urlencoded"},
+                            data={
+                                "username": username,
+                                "password": password,
+                            },
+                        )
+                        login_response.raise_for_status()
+                        access_token = login_response.json().get("access_token")
+                        if not access_token:
+                            raise KeyError("access_token")
 
                     # Create API key
                     api_key_response = await client.post(
@@ -1425,13 +1484,19 @@ class AppClients:
             raise last_error
         raise RuntimeError("Langflow request failed without a response")
 
-    async def _create_langflow_global_variable(self, name: str, value: str, modify: bool = False):
+    async def _create_langflow_global_variable(
+        self,
+        name: str,
+        value: str,
+        modify: bool = False,
+        variable_type: str = "Credential",
+    ):
         """Create a global variable in Langflow via API"""
         payload = {
             "name": name,
             "value": value,
             "default_fields": [],
-            "type": "Credential",
+            "type": variable_type,
         }
 
         try:
@@ -1448,7 +1513,9 @@ class AppClients:
                         "Langflow global variable already exists, attempting to update",
                         variable_name=name,
                     )
-                    await self._update_langflow_global_variable(name, value)
+                    await self._update_langflow_global_variable(
+                        name, value, variable_type=variable_type
+                    )
                 else:
                     logger.info(
                         "Langflow global variable already exists",
@@ -1468,7 +1535,12 @@ class AppClients:
             )
             raise e
 
-    async def _update_langflow_global_variable(self, name: str, value: str):
+    async def _update_langflow_global_variable(
+        self,
+        name: str,
+        value: str,
+        variable_type: str = "Credential",
+    ):
         """Update an existing global variable in Langflow via API"""
         try:
             # First, get all variables to find the one with the matching name
@@ -1500,12 +1572,67 @@ class AppClients:
                 logger.error("Variable ID not found for update", variable_name=name)
                 return
 
+            current_type = target_variable.get("type")
+            if current_type and current_type != variable_type:
+                delete_response = await self.langflow_request(
+                    "DELETE", f"/api/v1/variables/{variable_id}"
+                )
+                if delete_response.status_code not in [200, 204]:
+                    logger.warning(
+                        "Failed to delete Langflow global variable before type migration",
+                        variable_name=name,
+                        variable_id=variable_id,
+                        current_type=current_type,
+                        target_type=variable_type,
+                        status_code=delete_response.status_code,
+                        response_text=delete_response.text,
+                    )
+                    return
+
+                recreate_payload = {
+                    "name": name,
+                    "value": value,
+                    "default_fields": target_variable.get("default_fields", []),
+                    "type": variable_type,
+                }
+                recreate_response = await self.langflow_request(
+                    "POST", "/api/v1/variables/", json=recreate_payload
+                )
+                if recreate_response.status_code not in [200, 201]:
+                    recreate_response = await self.langflow_request(
+                        "POST", "/api/v1/variables/", json=recreate_payload
+                    )
+                if recreate_response.status_code in [200, 201]:
+                    logger.info(
+                        "Migrated Langflow global variable type",
+                        variable_name=name,
+                        variable_id=variable_id,
+                        old_type=current_type,
+                        new_type=variable_type,
+                    )
+                else:
+                    raise RuntimeError(
+                        f"Failed to recreate Langflow global variable '{name}' after type migration: "
+                        f"status_code={recreate_response.status_code}, response={recreate_response.text}"
+                    )
+                return
+
+            current_value = target_variable.get("value")
+            if current_value == value:
+                logger.debug(
+                    "Langflow global variable already up to date, skipping update",
+                    variable_name=name,
+                    variable_id=variable_id,
+                )
+                return
+
             # Update the variable using PATCH
             update_payload = {
                 "id": variable_id,
                 "name": name,
                 "value": value,
                 "default_fields": target_variable.get("default_fields", []),
+                "type": variable_type,
             }
 
             patch_response = await self.langflow_request(

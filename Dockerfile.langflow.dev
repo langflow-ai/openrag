@@ -37,10 +37,11 @@ RUN uv sync --frozen --no-install-project --no-editable --extra postgresql
 
 # Build frontend (split into steps to reduce peak memory usage)
 WORKDIR /app/src/frontend
+ENV PUPPETEER_SKIP_DOWNLOAD=true
 # Install dependencies first
 RUN npm ci --maxsockets 1
-# Build with reduced memory - 2GB should be safer for most systems
-RUN NODE_OPTIONS="--max_old_space_size=2048 --max-semi-space-size=128" npm run build
+# Build with reduced memory - 4GB should be safer for most systems
+RUN NODE_OPTIONS="--max_old_space_size=4096 --max-semi-space-size=128" npm run build
 # Copy built frontend
 RUN mkdir -p /app/src/backend/base/langflow/frontend && \
     cp -r build/* /app/src/backend/base/langflow/frontend/
@@ -50,8 +51,18 @@ WORKDIR /app
 RUN uv sync --frozen --no-dev --no-editable --extra postgresql
 RUN uv pip uninstall litellm ragstack-ai-knowledge-store
 
+COPY flows/component_index.json /app/component_index.json
+COPY custom_components/ /app/custom_components/
+
 # Expose ports
 EXPOSE 7860
+
+ENV LANGFLOW_SSRF_ALLOWED_HOSTS=localhost,127.0.0.1,host.docker.internal
+ENV LANGFLOW_LOG_TRACE_LOCALS=false
+ENV LANGFLOW_BLOCK_CODE_INTERPRETER_COMPONENTS=true
+ENV LANGFLOW_COMPONENTS_PATH=/app/custom_components
+ENV LANGFLOW_COMPONENTS_INDEX_PATH=/app/component_index.json
+ENV LANGFLOW_ALLOW_CUSTOM_COMPONENTS=false
 
 # Start the backend server
 CMD ["uv", "run", "langflow", "run", "--host", "0.0.0.0", "--port", "7860"]

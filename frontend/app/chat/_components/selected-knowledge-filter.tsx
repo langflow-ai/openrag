@@ -1,6 +1,6 @@
 import { X } from "lucide-react";
-import type { FilterColor } from "@/components/filter-icon-popover";
 import { filterAccentClasses } from "@/components/knowledge-filter-panel";
+import type { FilterColor } from "@/lib/filter-constants";
 import type { KnowledgeFilterData } from "../_types/types";
 
 interface SelectedKnowledgeFilterProps {
