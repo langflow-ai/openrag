@@ -146,7 +146,7 @@ def _apply_exact_match_file_filter(
     chunks = [chunk for chunk in chunks if chunk.get("filename") in exact_files]
 
     def _build_terms_agg(field: str) -> dict[str, Any]:
-        file_counts = Counter()
+        file_counts: Counter[Any] = Counter()
         for chunk in chunks:
             value = chunk.get(field)
             filename = chunk.get("filename")
