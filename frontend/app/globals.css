@@ -389,6 +389,11 @@
     padding: 1rem 0 0 1rem !important;
   }
 
+  /* Tertiary (Remove) is full-bleed; match form/header 1.5rem text inset. */
+  [data-theme="ibm"] [data-slot="dialog-footer"] > span button {
+    padding-left: 1.5rem !important;
+  }
+
   [data-theme="ibm"] [data-slot="dialog-footer"] > button:first-of-type {
     background-color: #6f6f6f !important;
     color: #ffffff !important;
