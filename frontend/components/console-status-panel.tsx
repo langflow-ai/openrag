@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  EvCharger,
   HelpCircle,
   RefreshCw,
   ScrollText,
@@ -501,7 +502,7 @@ export function ConsoleStatusPanel({ onClose }: ConsoleStatusPanelProps) {
      */
     <div
       className={cn(
-        "fixed left-6 bottom-[5.5rem] z-[9999]",
+        "fixed right-6 top-[64px] z-[9999]",
         "w-[440px] max-h-[calc(100vh-8rem)] flex flex-col",
         "bg-zinc-900 border border-zinc-700/70 rounded-2xl shadow-2xl overflow-hidden",
       )}
@@ -509,7 +510,7 @@ export function ConsoleStatusPanel({ onClose }: ConsoleStatusPanelProps) {
       {/* Panel header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-700/60 shrink-0">
         <div className="flex items-center gap-2">
-          <Settings size={15} className="text-zinc-400" />
+          <EvCharger size={15} className="text-zinc-400" />
           <h2 className="text-sm font-semibold text-zinc-100">
             Console Status
           </h2>
@@ -614,13 +615,13 @@ export function ConsoleStatusButton({
       onClick={onClick}
       aria-pressed={isOpen}
       className={cn(
-        "fixed bottom-6 left-6 z-[9999] flex items-center gap-2 px-3 py-2 rounded-lg",
+        "flex items-center gap-2 px-3 py-2 rounded-lg",
         "bg-zinc-800 border border-zinc-700 text-zinc-200 text-sm font-medium",
         "hover:bg-zinc-700 hover:border-zinc-600 transition-colors shadow-lg",
         isOpen && "bg-zinc-700 border-zinc-500",
       )}
     >
-      <Settings size={14} className="shrink-0 text-zinc-400" />
+      <EvCharger size={14} className="shrink-0 text-zinc-400" />
       <span>Console Status</span>
       {overallStatus && (
         <span className="relative flex h-2 w-2 shrink-0">

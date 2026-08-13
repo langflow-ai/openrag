@@ -2,18 +2,32 @@
 
 import { Bell } from "lucide-react";
 import { BrandSwitcher } from "@/components/brand-switcher";
+import { ConsoleStatusButton } from "@/components/console-status-panel";
 import { DevRoleToggle } from "@/components/dev-role-toggle";
 import Logo from "@/components/icons/openrag-logo";
 import { UserNav } from "@/components/user-nav";
+import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useConsoleStatus } from "@/contexts/console-status-context";
 import { useTask } from "@/contexts/task-context";
 import { cn } from "@/lib/utils";
+import { useProviderHealth } from "./provider-health-banner";
 
 export function Header() {
   const isCloudBrand = useIsCloudBrand();
   const { tasks, toggleMenu } = useTask();
-  const { hasProblem } = useConsoleStatus();
+  const { runMode } = useAuth();
+
+  const {
+    hasProblem,
+    toggle,
+    isOpen,
+    overallStatus: consoleOverallStatus,
+  } = useConsoleStatus();
+  const { isUnhealthy: isProviderUnhealthy } = useProviderHealth();
+  const overallStatus = isProviderUnhealthy
+    ? "unhealthy"
+    : consoleOverallStatus;
 
   // Calculate active tasks for the bell icon
   const activeTasks = tasks.filter(
@@ -59,6 +73,18 @@ export function Header() {
               <BrandSwitcher />
               <DevRoleToggle />
               {/* Separator */}
+              <div className="w-px h-6 bg-border mx-3" />
+            </>
+          )}
+
+          {/* Console Status button — OSS only */}
+          {runMode === "oss" && (
+            <>
+              <ConsoleStatusButton
+                onClick={toggle}
+                isOpen={isOpen}
+                overallStatus={overallStatus}
+              />
               <div className="w-px h-6 bg-border mx-3" />
             </>
           )}

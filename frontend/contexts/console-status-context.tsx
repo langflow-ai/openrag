@@ -17,6 +17,7 @@ import {
   type ConsoleStatusResponse,
   useConsoleStatusQuery,
 } from "@/app/api/queries/useConsoleStatusQuery";
+import { useAuth } from "@/contexts/auth-context";
 
 /** Collapses the four component states into the two things the UI reacts to:
  *  a warning (amber) or an outage (red). `ok` means nothing to show. */
@@ -81,9 +82,13 @@ export function ConsoleStatusProvider({
 }: {
   children: React.ReactNode;
 }) {
+  const { runMode } = useAuth();
+  const isOss = runMode === "oss";
+
   // Shares the ["console-status"] cache key with the panel/button — React Query
   // dedupes, so mounting this provider does not add a second poll.
-  const { data, isError } = useConsoleStatusQuery();
+  // Disabled outside OSS so polling never fires in saas or on_prem.
+  const { data, isError } = useConsoleStatusQuery({ enabled: isOss });
 
   const [isOpen, setIsOpen] = useState(false);
 
@@ -151,12 +156,21 @@ export function ConsoleStatusProvider({
   );
 }
 
-export function useConsoleStatus() {
-  const context = use(ConsoleStatusContext);
-  if (context === undefined) {
-    throw new Error(
-      "useConsoleStatus must be used within a ConsoleStatusProvider",
-    );
-  }
-  return context;
+// Safe default returned when the feature is disabled (non-OSS run modes).
+// Consumers such as header.tsx and task-notification-menu.tsx receive
+// hasProblem=false and no-op callbacks, keeping the UI inert.
+const NOOP_STATUS: Readonly<ConsoleStatusContextType> = Object.freeze({
+  overallStatus: undefined,
+  problems: [],
+  severity: "ok" as StatusSeverity,
+  hasProblem: false,
+  isError: false,
+  isOpen: false,
+  open: () => {},
+  close: () => {},
+  toggle: () => {},
+});
+
+export function useConsoleStatus(): ConsoleStatusContextType {
+  return use(ConsoleStatusContext) ?? NOOP_STATUS;
 }

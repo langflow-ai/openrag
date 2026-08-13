@@ -40,6 +40,7 @@ from api.health import (
 from api.schemas.tasks import ErrorResponse, TaskRetryResponse
 from api.v2 import files as files_v2
 from connectors.registry import get_connector_classes
+from utils.run_mode_utils import is_run_mode_oss
 
 
 def register_internal_routes(app: FastAPI):
@@ -406,6 +407,10 @@ def register_internal_routes(app: FastAPI):
         tags=["internal"],
     )
     app.add_api_route("/status", get_console_status, methods=["GET"], tags=["internal"])
+    # Console status endpoint (browser session auth — mirrors /v1/status for the UI).
+    # OSS-only: not registered in saas or on_prem deployments.
+    if is_run_mode_oss():
+        app.add_api_route("/status", get_console_status, methods=["GET"], tags=["internal"])
 
     # Models endpoints
     app.add_api_route(
