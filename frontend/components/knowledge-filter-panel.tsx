@@ -177,10 +177,7 @@ export function KnowledgeFilterPanel() {
 
   const sourceOptions = (availableFacets.data_sources || []).map((bucket) => ({
     value: bucket.key,
-    label:
-      typeof bucket.count === "number"
-        ? `${bucket.key} (${bucket.count})`
-        : bucket.key,
+    label: bucket.key,
   }));
   const availableSourceValues = new Set(sourceOptions.map((o) => o.value));
 

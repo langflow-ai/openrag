@@ -49,21 +49,16 @@ def _build_file_facet_aggregations(size_overrides: dict[str, int] | None = None)
 
     aggregations: dict[str, Any] = {}
     for facet_name, field_name in facet_fields.items():
-        aggregations[facet_name] = {
+        agg: dict[str, Any] = {
             "terms": {
                 "field": field_name,
                 "size": size_overrides.get(facet_name, 1000),
             },
-            "aggs": {
-                "files": {
-                    "cardinality": {
-                        "field": "filename",
-                    }
-                }
-            },
         }
+        if facet_name != "data_sources": #cardinality within buckets always 1 (filename) so just drop
+            agg["aggs"] = {"files": {"cardinality": {"field": "filename"}}}
+        aggregations[facet_name] = agg
     return aggregations
-
 
 
 def _normalize_file_facet_aggregations(aggregations: dict[str, Any]) -> dict[str, Any]:
@@ -86,8 +81,14 @@ def _normalize_file_facet_aggregations(aggregations: dict[str, Any]) -> dict[str
             "buckets": [
                 {
                     "key": bucket.get("key"),
-                    "doc_count": bucket.get("files", {}).get(
-                        "value", bucket.get("doc_count", 0)
+                    **(
+                        {}
+                        if facet_name == "data_sources"
+                        else {
+                            "doc_count": bucket.get("files", {}).get(
+                                "value", bucket.get("doc_count", 0)
+                            )
+                        }
                     ),
                 }
                 for bucket in buckets
@@ -95,7 +96,6 @@ def _normalize_file_facet_aggregations(aggregations: dict[str, Any]) -> dict[str
             ],
         }
     return normalized
-
 
 
 def _apply_exact_match_file_filter(
