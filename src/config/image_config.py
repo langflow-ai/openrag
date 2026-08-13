@@ -46,8 +46,11 @@ def get_registry() -> str:
 
     Defaults to ``"docker.io"``.  Override via the ``IMAGE_REGISTRY``
     environment variable (or ``~/.openrag/tui/.env``).
+
+    Empty falls back to the default, matching Compose's
+    ``${IMAGE_REGISTRY:-docker.io}``.
     """
-    return os.environ.get("IMAGE_REGISTRY", "docker.io")
+    return os.environ.get("IMAGE_REGISTRY") or "docker.io"
 
 
 def get_org() -> str:
@@ -55,8 +58,11 @@ def get_org() -> str:
 
     Defaults to ``"langflowai"``.  Override via the ``IMAGE_ORG``
     environment variable (or ``~/.openrag/tui/.env``).
+
+    Empty falls back to the default, matching Compose's
+    ``${IMAGE_ORG:-langflowai}``.
     """
-    return os.environ.get("IMAGE_ORG", "langflowai")
+    return os.environ.get("IMAGE_ORG") or "langflowai"
 
 
 # ---------------------------------------------------------------------------
