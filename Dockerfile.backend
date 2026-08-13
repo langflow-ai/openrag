@@ -21,7 +21,7 @@ RUN microdnf install -y \
     && python -m ensurepip --upgrade \
     && python -m pip install --no-cache-dir --upgrade "pip>=26.1" "setuptools>=78.1.1"
 
-ENV PATH="/root/.local/bin:$PATH" \
+ENV PATH="$PATH:/root/.local/bin" \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1
 
@@ -91,7 +91,7 @@ COPY --chown=appuser:appuser cloud_securityconfig/ ./cloud_securityconfig/
 COPY --chown=appuser:appuser scripts/backend-entrypoint.sh /entrypoint.sh
 
 ENV VIRTUAL_ENV=/app/.venv
-ENV PATH="/app/.venv/bin:$PATH"
+ENV PATH="$PATH:/root/.local/bin"
 
 # Pre-create every directory the app writes to at runtime so they are owned
 # by appuser in the image layer. When Docker/Podman mounts a host volume over
