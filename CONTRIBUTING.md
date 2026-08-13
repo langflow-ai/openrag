@@ -14,9 +14,11 @@ This guide will help you set up your development environment and start contribut
 ## Table of Contents
 
 - [Quickstart](#quickstart)
+- [What's in this repo](#whats-in-this-repo)
 - [Prerequisites](#prerequisites)
 - [Initial Setup](#initial-setup)
 - [Development Workflows](#development-workflows)
+- [Frequently Used `make` Commands](#frequently-used-make-commands)
 - [Service Management](#service-management)
 - [Reset & Cleanup](#reset--cleanup)
 - [Makefile Help System](#makefile-help-system)
@@ -45,16 +47,75 @@ OpenRAG is now running locally on the following ports:
 
 ---
 
+## What's in this repo
+
+OpenRAG is a monorepo. Here's the shape of it and where to look depending on what you're changing:
+
+| Component | Where | What it is |
+|---|---|---|
+| **Backend** | `src/` | A FastAPI (Python 3.13) service — REST API, RBAC/auth, connectors, document ingestion orchestration, and the built-in MCP server. Runs on port `8000`. |
+| **Frontend** | `frontend/` | A Next.js (App Router, TypeScript, Tailwind) app — chat UI, document management, settings. Runs on port `3000` and proxies API/MCP calls to the backend. |
+| **Langflow** | (pulled as a container, or built from source — see [Branch Development](#c-branch-development-custom-langflow)) | Powers the actual RAG flows: ingestion, retrieval, and agentic nudges. Runs on port `7860`. |
+| **Python SDK** | `sdks/python/` | `openrag-sdk` on PyPI — a thin client for the OpenRAG REST API (chat, search, ingestion, settings). See `sdks/python/README.md` or run `/sdk`. |
+| **TypeScript SDK** | `sdks/typescript/` | `openrag-sdk` on npm — same API surface as the Python SDK, for JS/TS apps. See `sdks/typescript/README.md`. |
+| **MCP** | built into the backend, docs in `sdks/mcp/` | OpenRAG exposes a [Model Context Protocol](https://modelcontextprotocol.io/) server over streamable HTTP at `/mcp` (no separate process to run). Any MCP client (Cursor, Claude Desktop, etc.) can connect using an OpenRAG API key. The old standalone `openrag-mcp` PyPI package is deprecated — use the built-in endpoint instead. |
+| **Flows** | `flows/` | Langflow flow JSON definitions (ingestion, retrieval, agents) that ship with OpenRAG. |
+| **Docs** | `docs/` | The docs site source (published to [docs.openr.ag](https://docs.openr.ag)). |
+| **Kubernetes operator** | `kubernetes/operator/` | Go operator for running OpenRAG on Kubernetes; see `kubernetes/operator/README.md`. |
+
+If you're a first-time contributor, the [Development Workflows](#development-workflows) section below is the fastest way to get all of these running locally.
+
+---
+
 ## Prerequisites
 
 ### Required Tools
 
 | Tool | Version | Installation |
 |------|---------|--------------|
-| Docker or Podman | Latest | [Docker](https://docs.docker.com/get-docker/) or [Podman](https://podman.io/getting-started/installation) |
+| Docker, Podman, or Colima | Latest | [Docker](https://docs.docker.com/get-docker/), [Podman](https://podman.io/getting-started/installation), or [Colima](https://github.com/abiosoft/colima) |
 | Python | 3.13+ | With [uv](https://github.com/astral-sh/uv) package manager |
 | Node.js | 18+ | With npm |
 | Make | Any | Usually pre-installed on macOS/Linux |
+
+You only need one container runtime — pick whichever you're comfortable with. On macOS, most contributors use either Colima (lightweight, scriptable, no GUI) or Podman.
+
+### Colima Setup (macOS)
+
+[Colima](https://github.com/abiosoft/colima) runs a Linux VM and exposes a standard `docker` CLI/socket, so the Makefile's `docker compose` commands work without any changes — it's a drop-in replacement for Docker Desktop.
+
+```bash
+colima start \
+  --cpu 8 \
+  --memory 16 \
+  --vm-type vz \
+  --vz-rosetta \
+  --mount-type virtiofs \
+  --ssh-port 2222 \
+  --port-forwarder grpc
+```
+
+What these flags are doing:
+
+| Flag | Why |
+|---|---|
+| `--cpu 8 --memory 16` | Gives the VM enough headroom to run OpenSearch, Langflow, and Docling side by side. Lower is fine for a lighter stack (e.g. just `make backend` + `make frontend`), but 8 CPU / 16GB is comfortable for the full stack. |
+| `--vm-type vz` | Uses Apple's native Virtualization.framework instead of QEMU — noticeably faster on Apple Silicon. |
+| `--vz-rosetta` | Enables Rosetta translation inside the VM, so `x86_64` images run at near-native speed on Apple Silicon. |
+| `--mount-type virtiofs` | Faster host↔VM filesystem mounts than the default (matters for volume-mounted dev reloads). |
+| `--ssh-port 2222` | Avoids clashing with a real SSH server on port 22. |
+| `--port-forwarder grpc` | More reliable port forwarding for the many ports OpenRAG exposes (3000, 7860, 8000, 9200, 5601, ...). |
+
+Once Colima is running, `docker` (and `docker compose`) point at it automatically — everything in this guide works as-is. Useful commands:
+
+```bash
+colima status   # check the VM is running
+colima stop     # stop the VM
+colima delete   # remove the VM entirely (fresh start)
+```
+
+> [!TIP]
+> If you resize the VM later, just `colima stop` and re-run `colima start` with the new flags.
 
 ### Podman Setup (macOS)
 
@@ -168,7 +229,7 @@ make docling
 
 ### C) Branch Development (Custom Langflow)
 
-Build and run OpenRAG with a custom Langflow branch:
+If you need to test a Langflow change that hasn't shipped yet — your own fork/branch, or an upstream feature branch — use `dev-branch` instead of `dev`/`dev-cpu`. Instead of pulling the published Langflow image, it clones `REPO` at `BRANCH` and builds the Langflow image from source, then starts the rest of the stack normally:
 
 ```bash
 # Full stack with custom branch
@@ -208,6 +269,31 @@ Docling handles document parsing and OCR:
 make docling       # Start docling-serve
 make docling-stop  # Stop docling-serve
 ```
+
+---
+
+## Frequently Used `make` Commands
+
+A quick-reference cheat sheet of the commands you'll reach for most while contributing. Run `make help` at any time for the full, color-coded list.
+
+| Command | What it does |
+|---|---|
+| `make check_tools` | Verify Docker/Podman/Colima, Python, uv, Node.js, and npm are installed and meet version requirements. |
+| `make setup` | Install backend + frontend dependencies and scaffold `.env` from `.env.example`. Run once, and again after pulling changes that touch dependencies. |
+| `make dev` / `make dev-cpu` | Start the **full stack** in containers (GPU or CPU). Simplest option, best for just trying OpenRAG out — not ideal for iterating on code. |
+| `make dev-local-cpu` | Start **infra only** (OpenSearch, Dashboards, Langflow) in containers, with the backend/frontend run on the host. This is the recommended loop for active development — see [Local Development](#b-local-development-recommended-for-development). |
+| `make backend` | Run the FastAPI backend on the host (`uv run python src/main.py`), hot-reloading on code changes. Requires infra started via `make dev-local-cpu` first. |
+| `make frontend` | Run the Next.js frontend on the host (`npx next dev`), hot-reloading on code changes. |
+| `make docling` / `make docling-stop` | Start/stop the Docling service used for document parsing and OCR. |
+| `make dev-branch BRANCH=<name>` | Build and run the full stack with a custom Langflow branch instead of the published image — see [Branch Development](#c-branch-development-custom-langflow). |
+| `make stop` | Stop and remove all OpenRAG containers. |
+| `make clean` | Stop containers and delete volumes (data is wiped). |
+| `make factory-reset` | Full reset — containers, volumes, and on-disk data. Use when you want a completely clean slate. |
+| `make logs` / `make logs-be` / `make logs-fe` / `make logs-lf` | Tail logs for all services, or just backend/frontend/Langflow. |
+| `make status` / `make health` | Check container status / service health. |
+| `make test` | Run the backend test suite. |
+| `make lint` | Run linting checks. |
+| `make help` | Show the full command reference, grouped by category (`make help_dev`, `make help_docker`, `make help_test`, `make help_local`, `make help_utils`). |
 
 ---
 
@@ -354,6 +440,10 @@ openrag/
 If containers crash or are slow:
 
 ```bash
+# For Colima, stop and restart with more resources
+colima stop
+colima start --cpu 8 --memory 16 --vm-type vz --vz-rosetta --mount-type virtiofs --ssh-port 2222 --port-forwarder grpc
+
 # For Podman on macOS, increase VM memory
 podman machine stop
 podman machine rm
