@@ -206,15 +206,6 @@ COMPONENT_CUSTOMIZATIONS: dict[tuple[str, str], dict[str, str]] = {
             "Default limit is 100; maximum is 500."
         ),
     },
-    # files endpoints (v2 — composite-agg cursor pagination)
-    ("/v2/files", "GET"): {
-        "name": "openrag_list_files_v2",
-        "description": "List all ingested files with cursor-based composite-aggregation pagination.",
-    },
-    ("/v2/files/search", "GET"): {
-        "name": "openrag_search_files_v2",
-        "description": "Search ingested files by file name (case-insensitive).",
-    },
 }
 
 
