@@ -60,6 +60,14 @@ RUN microdnf install -y \
 # 0.9.6), so those clients are installed explicitly. The provider packages
 # below mirror the set azure-ai-rebase-main installs against this same
 # Langflow version.
+
+# UBI 9 ships pip 24.2, whose vendored packaging blows up resolving
+# langchain-azure-ai: that package declares an extra literally named
+# "hosting", and evaluating its `extra == "hosting"` markers during the
+# metadata-consistency check coerces "hosting" into a Version, raising
+# "InvalidVersion: 'hosting'". Upgrading pip first fixes the resolve.
+RUN pip install --no-cache-dir --upgrade pip
+
 RUN pip install --no-cache-dir \
     --extra-index-url https://download.pytorch.org/whl/cpu \
     torch \
