@@ -24,6 +24,81 @@ RUN pip install --no-cache-dir \
     "ibm-watsonx-ai>=1.3.1,<2.0.0" \
     "langchain-ibm~=1.1.0"
 
+# Patch a bug in the base image's vendored `lfx` package: the "Language
+# Model" component's real Azure AI Foundry chat/completion calls reuse
+# AZURE_AI_FOUNDRY_FETCH_TIMEOUT — a 10s timeout meant for the lightweight
+# credential-validation /models probe — as their request_timeout (see
+# lfx/base/models/unified_models/instantiation.py, the "Azure AI Foundry"
+# branch: `kwargs["request_timeout"] = AZURE_AI_FOUNDRY_REQUEST_TIMEOUT`).
+# 10s is too short for a real completion under normal Azure latency, so
+# chat/nudges flows using Azure AI Foundry fail with
+# "Error building Component Language Model: Request timed out." even when
+# credentials and api-version are correct. Decouple the two: keep the 10s
+# probe timeout as-is, give the real request timeout its own, longer
+# default, overridable via the AZURE_AI_FOUNDRY_REQUEST_TIMEOUT env var.
+#
+# Pinned to langflow base-0.11.3. Fails the build loudly (not silently
+# no-op) if upstream lfx changes this, per the assert below.
+RUN python <<'EOF'
+import pathlib
+
+import lfx.base.models.model_utils as m
+
+path = pathlib.Path(m.__file__)
+src = path.read_text()
+
+old = (
+    "AZURE_AI_FOUNDRY_FETCH_TIMEOUT = 10.0\n"
+    "# Shared wall-clock bound for Foundry HTTP (discovery) and SDK (validate/get_llm).\n"
+    "AZURE_AI_FOUNDRY_REQUEST_TIMEOUT = AZURE_AI_FOUNDRY_FETCH_TIMEOUT\n"
+)
+if old not in src:
+    raise SystemExit(
+        "lfx model_utils.py's AZURE_AI_FOUNDRY_FETCH_TIMEOUT/"
+        "AZURE_AI_FOUNDRY_REQUEST_TIMEOUT block no longer matches the "
+        "expected source; update or drop this Dockerfile.langflow patch"
+    )
+
+new = (
+    "AZURE_AI_FOUNDRY_FETCH_TIMEOUT = 10.0\n"
+    "# Real chat/completion requests get their own, longer timeout — a\n"
+    "# validation-probe timeout is too tight for actual inference latency.\n"
+    "# Override via the AZURE_AI_FOUNDRY_REQUEST_TIMEOUT env var.\n"
+    "import os as _os\n"
+    'AZURE_AI_FOUNDRY_REQUEST_TIMEOUT = float(_os.getenv("AZURE_AI_FOUNDRY_REQUEST_TIMEOUT", "120"))\n'
+)
+
+new_src = src.replace(old, new, 1)
+if new_src == src:
+    raise SystemExit("replace of the timeout block was a no-op; investigate")
+path.write_text(new_src)
+
+import importlib.util
+
+cache_file = pathlib.Path(importlib.util.cache_from_source(str(path)))
+cache_file.unlink(missing_ok=True)
+
+print(f"Patched {path}")
+EOF
+
+# Build-time functional self-test: fail the build if the patch didn't
+# actually decouple the two timeouts.
+RUN python <<'EOF'
+import importlib
+
+import lfx.base.models.model_utils as m
+
+if m.AZURE_AI_FOUNDRY_REQUEST_TIMEOUT == m.AZURE_AI_FOUNDRY_FETCH_TIMEOUT:
+    raise SystemExit(
+        "Dockerfile.langflow patch did not take effect; "
+        f"REQUEST_TIMEOUT still equals FETCH_TIMEOUT ({m.AZURE_AI_FOUNDRY_FETCH_TIMEOUT})"
+    )
+print(
+    f"Verified: fetch_timeout={m.AZURE_AI_FOUNDRY_FETCH_TIMEOUT}, "
+    f"request_timeout={m.AZURE_AI_FOUNDRY_REQUEST_TIMEOUT}"
+)
+EOF
+
 COPY flows/ /app/flows/
 COPY custom_components/ /app/custom_components/
 
