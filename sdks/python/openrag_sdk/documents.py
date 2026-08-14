@@ -214,7 +214,8 @@ class DocumentsClient:
                 after_key field. Pass to fetch the next page.
 
         Returns:
-            ListFilesResponse with files list, approximate total, and next after_key cursor.
+            ListFilesResponse with files list, approximate total, and next
+            after_key cursor.
         """
         params: dict[str, str | int] = {
             "page": page,
