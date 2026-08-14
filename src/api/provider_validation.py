@@ -862,9 +862,7 @@ async def _test_openai_completion_with_tools(api_key: str, llm_model: str) -> No
 
         if response.status_code != 200:
             error_details = _extract_error_details(response)
-            logger.error(
-                f"OpenAI completion test failed: {response.status_code} - {error_details}"
-            )
+            logger.error(f"OpenAI completion test failed: {response.status_code} - {error_details}")
             raise Exception(error_details)
 
         logger.info("OpenAI completion with tool calling test passed")
@@ -900,9 +898,7 @@ async def _test_openai_embedding(api_key: str, embedding_model: str) -> None:
 
         if response.status_code != 200:
             error_details = _extract_error_details(response)
-            logger.error(
-                f"OpenAI embedding test failed: {response.status_code} - {error_details}"
-            )
+            logger.error(f"OpenAI embedding test failed: {response.status_code} - {error_details}")
             raise Exception(error_details)
 
         data = response.json()
