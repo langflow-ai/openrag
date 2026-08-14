@@ -1,26 +1,27 @@
 from typing import Any, Dict
 
 from fastapi import Depends
-from pydantic import BaseModel, Field
 from fastapi.responses import JSONResponse
-from utils.logging_config import get_logger
-from utils.opensearch_utils import OpenSearchDiskSpaceError, DISK_SPACE_ERROR_MESSAGE
+from pydantic import BaseModel, Field
 
 from dependencies import (
+    get_current_user,
     get_search_service,
     get_session_manager,
-    get_current_user,
     require_permission,
 )
 from session_manager import User
+from utils.logging_config import get_logger
+from utils.opensearch_utils import DISK_SPACE_ERROR_MESSAGE, OpenSearchDiskSpaceError
 
 logger = get_logger(__name__)
 
 
 class SearchBody(BaseModel):
     query: str
-    filters: Dict[str, Any] = Field(default_factory=dict)
+    filters: dict[str, Any] = Field(default_factory=dict)
     limit: int = 10
+    offset: int = Field(default=0, ge=0, description="Number of chunks to skip (for pagination)")
     scoreThreshold: float = Field(default=0, alias="scoreThreshold")
 
     model_config = {"populate_by_name": True}
@@ -43,6 +44,7 @@ async def search(
             query=body.query,
             filters=body.filters,
             limit=body.limit,
+            offset=body.offset,
             score_threshold=body.scoreThreshold,
         )
 
@@ -52,6 +54,7 @@ async def search(
             jwt_token=jwt_token,
             filters=body.filters,
             limit=body.limit,
+            offset=body.offset,
             score_threshold=body.scoreThreshold,
         )
         return JSONResponse(result, status_code=200)
@@ -59,10 +62,7 @@ async def search(
         return JSONResponse({"error": DISK_SPACE_ERROR_MESSAGE}, status_code=507)
     except Exception as e:
         error_msg = str(e)
-        if (
-            "AuthenticationException" in error_msg
-            or "access denied" in error_msg.lower()
-        ):
+        if "AuthenticationException" in error_msg or "access denied" in error_msg.lower():
             return JSONResponse({"error": error_msg}, status_code=403)
         else:
             return JSONResponse({"error": error_msg}, status_code=500)
