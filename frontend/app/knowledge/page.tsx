@@ -137,6 +137,22 @@ function listFilesFilterValues(values?: string[]) {
   return filtered && filtered.length > 0 ? filtered : undefined;
 }
 
+function buildFilterPageResetKey(
+  parsedFilterData: ReturnType<typeof useKnowledgeFilter>["parsedFilterData"],
+) {
+  if (!parsedFilterData) {
+    return "";
+  }
+
+  return JSON.stringify({
+    query: parsedFilterData.query,
+    connector_types: parsedFilterData.filters.connector_types,
+    document_types: parsedFilterData.filters.document_types,
+    owners: parsedFilterData.filters.owners,
+    data_sources: parsedFilterData.filters.data_sources,
+  });
+}
+
 function SearchPage() {
   const isCloudBrand = useIsCloudBrand();
   const queryClient = useQueryClient();
@@ -337,6 +353,7 @@ function SearchPage() {
   const isWildcardQuery =
     (effectiveSearchText === "" || effectiveSearchText === "*") &&
     !hasActiveFilters;
+  const filterPageResetKey = buildFilterPageResetKey(parsedFilterData);
 
   const {
     data: listFilesData,
@@ -494,7 +511,7 @@ function SearchPage() {
   useEffect(() => {
     cursorCacheRef.current = new Map();
     setCurrentPage(1);
-  }, [effectiveSearchText]);
+  }, [effectiveSearchText, filterPageResetKey]);
 
   // when the server responds with an after_key for page N, cache it as the cursor for page N+1
   useEffect(() => {
