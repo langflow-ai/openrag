@@ -86,10 +86,16 @@ RUN mkdir -p /app/langflow && chown -R 1000:0 /app/langflow && chmod -R g+rwX /a
 # Copy flows with proper ownership from the start to prevent chown duplication
 COPY --chown=root:0 flows/ /app/flows/
 
-# Custom components, referenced by the flows as ext:openrag:<Class>@extra.
-# LANGFLOW_COMPONENTS_INDEX_PATH below points Langflow at the index that
-# registers them; without this the flows cannot resolve their vector-store node.
+# Custom components. The directory name under LANGFLOW_COMPONENTS_PATH is the
+# namespace, so custom_components/openrag/ is what makes the flows'
+# ext:openrag:<Class>@extra references resolvable. Canonical sources for the
+# code embedded in flows/*.json (see scripts/update_flow_components.py).
 COPY --chown=root:0 custom_components/ /app/custom_components/
+
+# Pre-built metadata index for Langflow's own built-in components (131
+# components, 17 namespaces — it does NOT contain the openrag namespace).
+# Its "version" field is 1.11.3 and must stay in step with the installed
+# lfx/langflow-base, hence the 0.11.3 pin above.
 COPY --chown=root:0 flows/component_index.json /app/component_index.json
 
 # component_index.json is not a flow: Langflow scans /app/flows/ and crashes
@@ -111,9 +117,10 @@ ENV LANGFLOW_CONFIG_DIR=/app/langflow
 ENV GUNICORN_CMD_ARGS="--worker-tmp-dir /tmp"
 ENV LANGFLOW_ALEMBIC_LOG_TO_STDOUT=true
 
-# External components: the index registers custom_components under the
-# "openrag" namespace so flows can reference ext:openrag:<Class>@extra without
-# arbitrary user-authored components being enabled.
+# COMPONENTS_PATH supplies the openrag namespace from the directory layout;
+# COMPONENTS_INDEX_PATH pins the built-in component set. ALLOW_CUSTOM_COMPONENTS
+# stays false: it blocks user-authored code in the UI and does not affect the
+# components shipped on COMPONENTS_PATH.
 ENV LANGFLOW_COMPONENTS_PATH=/app/custom_components
 ENV LANGFLOW_COMPONENTS_INDEX_PATH=/app/component_index.json
 ENV LANGFLOW_ALLOW_CUSTOM_COMPONENTS=false
