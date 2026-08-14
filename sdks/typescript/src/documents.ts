@@ -7,6 +7,8 @@ import type {
   DeleteDocumentOptions,
   DeleteDocumentResponse,
   FileRecord,
+  GetAllFilesOptions,
+  GetAllFilesResponse,
   IngestResponse,
   IngestTaskStatus,
   ListFilesOptions,
@@ -148,10 +150,10 @@ export class DocumentsClient {
   }
 
   /**
-   * List ingested files in the knowledge base.
+   * List ingested files with cursor-based composite-aggregation pagination (v2).
    *
-   * @param options - Filtering, sorting, and pagination options.
-   * @returns ListFilesResponse with files list, total count, and next after_key.
+   * @param options - Filtering, sorting, and cursor pagination options.
+   * @returns ListFilesResponse with files list, approximate total, and next after_key cursor.
    */
   async listFiles(options: ListFilesOptions = {}): Promise<ListFilesResponse> {
     const params = new URLSearchParams();
@@ -166,7 +168,7 @@ export class DocumentsClient {
     if (options.after_key !== undefined) params.set("after_key", options.after_key);
 
     const qs = params.toString();
-    const path = qs ? `/api/v1/files?${qs}` : "/api/v1/files";
+    const path = qs ? `/api/v2/files?${qs}` : "/api/v2/files";
     const response = await this.client._request("GET", path);
     const data = await response.json();
 
@@ -177,6 +179,38 @@ export class DocumentsClient {
       page: data.page ?? 1,
       page_size: data.page_size ?? 25,
       after_key: data.after_key ?? null,
+    };
+  }
+
+  /**
+   * Return up to `limit` ingested files using simple offset pagination (v1).
+   *
+   * No cursor required or returned. Use this for a straightforward "get all files"
+   * call without managing pagination state.
+   *
+   * @param options - Filtering, sorting, and limit options.
+   * @returns GetAllFilesResponse with files list and total count.
+   */
+  async getAllFiles(options: GetAllFilesOptions = {}): Promise<GetAllFilesResponse> {
+    const params = new URLSearchParams();
+    if (options.limit !== undefined) params.set("limit", String(options.limit));
+    if (options.sort_by !== undefined) params.set("sort_by", options.sort_by);
+    if (options.sort_order !== undefined) params.set("sort_order", options.sort_order);
+    if (options.connector_type !== undefined) params.set("connector_type", options.connector_type);
+    if (options.mimetype !== undefined) params.set("mimetype", options.mimetype);
+    if (options.owner !== undefined) params.set("owner", options.owner);
+    if (options.search !== undefined) params.set("search", options.search);
+
+    const qs = params.toString();
+    const path = qs ? `/api/v1/files/getAll?${qs}` : "/api/v1/files/getAll";
+    const response = await this.client._request("GET", path);
+    const data = await response.json();
+
+    return {
+      files: (data.files ?? []) as FileRecord[],
+      total: data.total ?? 0,
+      page: data.page ?? 1,
+      page_size: data.page_size ?? 100,
     };
   }
 

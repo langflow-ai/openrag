@@ -118,7 +118,26 @@ export interface FileRecord {
   allowed_principal_labels: PrincipalLabel[];
 }
 
-//Response from the list-files endpoint
+/** Response from GET /v1/files/getAll (original v1 offset pagination) */
+export interface GetAllFilesResponse {
+  files: FileRecord[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+/** Options for GET /v1/files/getAll. */
+export interface GetAllFilesOptions {
+  limit?: number;
+  sort_by?: string;
+  sort_order?: "asc" | "desc";
+  connector_type?: string;
+  mimetype?: string;
+  owner?: string;
+  search?: string;
+}
+
+/** Response from GET /v2/files (cursor-based composite-aggregation pagination) */
 export interface ListFilesResponse {
   files: FileRecord[];
   total: number;
@@ -128,25 +147,16 @@ export interface ListFilesResponse {
   after_key: Record<string, unknown> | null;
 }
 
-/** Options for listing files. */
+/** Options for GET /v2/files (cursor-based pagination). */
 export interface ListFilesOptions {
-  /** Page number (display only; use after_key for cursor navigation). Default: 1. */
   page?: number;
-  /** Files per page (1–500). Default: 25. */
   page_size?: number;
-  /** Sort field: filename | file_size | mimetype | indexed_time | connector_type | chunk_count | owner. */
   sort_by?: string;
-  /** Sort direction. Default: "asc". */
   sort_order?: "asc" | "desc";
-  /** Filter by connector type. */
   connector_type?: string;
-  /** Filter by MIME type. */
   mimetype?: string;
-  /** Filter by owner user ID. */
   owner?: string;
-  /** Substring/prefix filename search. */
   search?: string;
-  /** JSON-encoded composite cursor from a previous response's after_key. */
   after_key?: string;
 }
 

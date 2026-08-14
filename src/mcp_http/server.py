@@ -188,7 +188,7 @@ COMPONENT_CUSTOMIZATIONS: dict[tuple[str, str], dict[str, str]] = {
         "name": "openrag_delete_knowledge_filter",
         "description": "Delete a knowledge filter by ID.",
     },
-    # files endpoints (v1)
+    # files endpoints (v1 — offset pagination)
     ("/v1/files/getAll", "GET"): {
         "name": "openrag_get_all_files",
         "description": (
@@ -268,13 +268,21 @@ def create_mcp_server(app: FastAPI) -> FastMCP:
             pattern=r"^/v1/",
             mcp_type=MCPType.TOOL,
         ),
+<<<<<<< HEAD
         # expose /v2/files and /v2/files/search as tools
+=======
+        # Expose v2 file listing/search endpoints as MCP tools.
+>>>>>>> e1e7eccf (Updated v1 and v2 endpoints respectively to required states)
         RouteMap(
             methods=["GET"],
             pattern=r"^/v2/files",
             mcp_type=MCPType.TOOL,
         ),
+<<<<<<< HEAD
         # exclude everything else
+=======
+        # Exclude everything else
+>>>>>>> e1e7eccf (Updated v1 and v2 endpoints respectively to required states)
         RouteMap(
             pattern=r".*",
             mcp_type=MCPType.EXCLUDE,
