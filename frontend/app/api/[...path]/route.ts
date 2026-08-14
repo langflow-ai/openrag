@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-	backendProxyDuration,
-	backendProxyErrors,
-	backendProxyTotal,
+  backendProxyDuration,
+  backendProxyErrors,
+  backendProxyTotal,
 } from "@/lib/metrics";
 
 function getRequestId(request: NextRequest): string {
