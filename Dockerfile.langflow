@@ -49,13 +49,30 @@ RUN microdnf install -y \
     expat \
     && microdnf clean all
 
-# Install Langflow with targeted extras and CPU-only wheels for PyTorch/Docling
+# Install Langflow with targeted extras and CPU-only wheels for PyTorch/Docling.
+#
+# Pinned to 0.11.3 to match langflowai/langflow:base-0.11.3 on
+# azure-ai-rebase-main. The flows in flows/ reference their vector-store node
+# as ext:openrag:...@extra, which needs the external-component resolution and
+# component index that only 0.11.x supports.
+#
+# The "openai" and "anthropic" extras were removed in 0.11.x (they exist in
+# 0.9.6), so those clients are installed explicitly. The provider packages
+# below mirror the set azure-ai-rebase-main installs against this same
+# Langflow version.
 RUN pip install --no-cache-dir \
     --extra-index-url https://download.pytorch.org/whl/cpu \
     torch \
     torchvision \
-    "langflow-base[docling,openai,anthropic,google,ollama,opensearch,langfuse]==0.9.6" \
+    "langflow-base[docling,google,ollama,opensearch,langfuse]==0.11.3" \
+    openai \
+    langchain-openai \
+    anthropic \
+    langchain-anthropic \
+    langchain-ollama \
     langchain-azure-ai \
+    "ibm-watsonx-ai>=1.3.1,<2.0.0" \
+    "langchain-ibm~=1.1.0" \
     uv \
     && pip uninstall -y clickhouse-connect
 
@@ -69,10 +86,18 @@ RUN mkdir -p /app/langflow && chown -R 1000:0 /app/langflow && chmod -R g+rwX /a
 # Copy flows with proper ownership from the start to prevent chown duplication
 COPY --chown=root:0 flows/ /app/flows/
 
+# Custom components, referenced by the flows as ext:openrag:<Class>@extra.
+# LANGFLOW_COMPONENTS_INDEX_PATH below points Langflow at the index that
+# registers them; without this the flows cannot resolve their vector-store node.
+COPY --chown=root:0 custom_components/ /app/custom_components/
+COPY --chown=root:0 flows/component_index.json /app/component_index.json
+
 # component_index.json is not a flow: Langflow scans /app/flows/ and crashes
-# trying to load it as one. It ships under flows/ for the component tooling,
-# so drop it from the image. Same fix as PR #2246 on azure-ai-rebase-main,
-# adapted to this stage (every stage here already runs as USER 0).
+# trying to load it as one. It ships under flows/ for the component tooling and
+# is copied to /app above, so drop the copy under flows/. Same fix as PR #2246
+# on azure-ai-rebase-main, adapted to this stage (every stage here runs as
+# USER 0). Note: docker-compose bind-mounts ./flows over /app/flows, which
+# shadows this layer — compose runs still see the file, as on main.
 RUN rm -f /app/flows/component_index.json
 
 # Copy the entrypoint script
@@ -85,6 +110,13 @@ ENV MEM0_DIR=/tmp/.mem0
 ENV LANGFLOW_CONFIG_DIR=/app/langflow
 ENV GUNICORN_CMD_ARGS="--worker-tmp-dir /tmp"
 ENV LANGFLOW_ALEMBIC_LOG_TO_STDOUT=true
+
+# External components: the index registers custom_components under the
+# "openrag" namespace so flows can reference ext:openrag:<Class>@extra without
+# arbitrary user-authored components being enabled.
+ENV LANGFLOW_COMPONENTS_PATH=/app/custom_components
+ENV LANGFLOW_COMPONENTS_INDEX_PATH=/app/component_index.json
+ENV LANGFLOW_ALLOW_CUSTOM_COMPONENTS=false
 
 # Set proper ownership for the app directory with OpenShift compatibility
 # Use root group (GID 0) with group-write permissions for OpenShift arbitrary UIDs
