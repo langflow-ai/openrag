@@ -55,9 +55,19 @@ def _build_file_facet_aggregations(size_overrides: dict[str, int] | None = None)
                 "size": size_overrides.get(facet_name, 1000),
             },
         }
-        if (
-            facet_name != "data_sources"
-        ):  # cardinality within buckets always 1 (filename) so just drop
+        if facet_name == "owners":
+            agg["aggs"] = {
+                "files": {"cardinality": {"field": "filename"}},
+                "owner_metadata": {
+                    "top_hits": {
+                        "size": 1,
+                        "_source": {
+                            "includes": ["owner_name", "owner_email", "owner"],
+                        },
+                    }
+                },
+            }
+        elif facet_name != "data_sources":
             agg["aggs"] = {"files": {"cardinality": {"field": "filename"}}}
         aggregations[facet_name] = agg
     return aggregations
@@ -79,24 +89,31 @@ def _normalize_file_facet_aggregations(aggregations: dict[str, Any]) -> dict[str
 
         raw_buckets = facet.get("buckets", [])
         buckets = raw_buckets if isinstance(raw_buckets, list) else []
+        normalized_buckets: list[dict[str, Any]] = []
+        for bucket in buckets:
+            if not isinstance(bucket, dict) or not bucket.get("key"):
+                continue
+
+            normalized_bucket = {"key": bucket.get("key")}
+            if facet_name == "owners":
+                owner_hits = bucket.get("owner_metadata", {}).get("hits", {}).get("hits", [])
+                owner_source = owner_hits[0].get("_source", {}) if owner_hits else {}
+                normalized_bucket["label"] = (
+                    owner_source.get("owner_name")
+                    or owner_source.get("owner_email")
+                    or bucket.get("key")
+                )
+
+            if facet_name != "data_sources":
+                normalized_bucket["doc_count"] = bucket.get("files", {}).get(
+                    "value", bucket.get("doc_count", 0)
+                )
+
+            normalized_buckets.append(normalized_bucket)
+
         normalized[facet_name] = {
             **facet,
-            "buckets": [
-                {
-                    "key": bucket.get("key"),
-                    **(
-                        {}
-                        if facet_name == "data_sources"
-                        else {
-                            "doc_count": bucket.get("files", {}).get(
-                                "value", bucket.get("doc_count", 0)
-                            )
-                        }
-                    ),
-                }
-                for bucket in buckets
-                if isinstance(bucket, dict) and bucket.get("key")
-            ],
+            "buckets": normalized_buckets,
         }
     return normalized
 
@@ -145,8 +162,9 @@ def _apply_exact_match_file_filter(
     # Filter to only chunks from files with exact matches
     chunks = [chunk for chunk in chunks if chunk.get("filename") in exact_files]
 
-    def _build_terms_agg(field: str) -> dict[str, Any]:
+    def _build_terms_agg(field: str, label_field: str | None = None) -> dict[str, Any]:
         file_counts: Counter[Any] = Counter()
+        labels_by_value: dict[str, str] = {}
         for chunk in chunks:
             value = chunk.get(field)
             filename = chunk.get("filename")
@@ -155,12 +173,23 @@ def _apply_exact_match_file_filter(
             if not isinstance(filename, str) or not filename:
                 continue
             file_counts[(value, filename)] += 1
+            if label_field and value not in labels_by_value:
+                label = chunk.get(label_field)
+                if isinstance(label, str) and label:
+                    labels_by_value[value] = label
 
         counts = Counter(value for value, _filename in file_counts)
         return {
             "doc_count_error_upper_bound": 0,
             "sum_other_doc_count": 0,
-            "buckets": [{"key": key, "doc_count": count} for key, count in counts.most_common()],
+            "buckets": [
+                {
+                    "key": key,
+                    "doc_count": count,
+                    **({"label": labels_by_value.get(key, key)} if label_field else {}),
+                }
+                for key, count in counts.most_common()
+            ],
         }
 
     # Keep aggregations consistent with the post-filtered result set.
@@ -168,7 +197,7 @@ def _apply_exact_match_file_filter(
         **aggregations,
         "data_sources": _build_terms_agg("filename"),
         "document_types": _build_terms_agg("mimetype"),
-        "owners": _build_terms_agg("owner"),
+        "owners": _build_terms_agg("owner", label_field="owner_name"),
         "connector_types": _build_terms_agg("connector_type"),
         "embedding_models": _build_terms_agg("embedding_model"),
     }

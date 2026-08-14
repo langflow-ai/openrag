@@ -6,6 +6,7 @@ import {
 
 export interface FacetBucket {
   key: string;
+  label?: string;
   count?: number;
   doc_count?: number;
 }

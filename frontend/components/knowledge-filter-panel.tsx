@@ -55,10 +55,12 @@ const formatDate = (dateString: string) => {
   });
 };
 
-const formatFacetLabel = (bucket: FacetBucket) =>
-  typeof bucket.count === "number"
-    ? `${bucket.key} (${bucket.count})`
-    : bucket.key;
+const formatFacetLabel = (bucket: FacetBucket) => {
+  const displayValue = bucket.label ?? bucket.key;
+  return typeof bucket.count === "number"
+    ? `${displayValue} (${bucket.count})`
+    : displayValue;
+};
 
 export function KnowledgeFilterPanel() {
   const {
@@ -169,6 +171,7 @@ export function KnowledgeFilterPanel() {
     const extractBuckets = (buckets: FacetBucket[] = []): FacetBucket[] =>
       buckets.map((bucket) => ({
         key: bucket.key,
+        label: bucket.label,
         count: bucket.doc_count ?? bucket.count,
       }));
     const facets = {
