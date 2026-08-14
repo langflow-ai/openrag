@@ -529,6 +529,71 @@ async def get_langflow_api_key(force_regenerate: bool = False):
         return None
 
 
+def _embedding_call_overrides() -> dict:
+    """Per-call api_base/api_key for embedding providers LiteLLM can't route
+    from the model prefix alone.
+
+    Azure AI Foundry's OpenAI-compatible endpoint (".../openai/v1") is reached
+    via LiteLLM's plain "openai/" provider (see
+    ModelsService.get_litellm_model_name), which would otherwise default to
+    OPENAI_API_KEY against api.openai.com. Point it at the Foundry endpoint
+    with the Foundry key instead. Passed per call rather than via env vars so
+    the real OpenAI provider keeps working for everything else.
+    """
+    try:
+        config = get_openrag_config()
+        if config.knowledge.embedding_provider != "azure_ai_foundry":
+            return {}
+
+        from api.provider_validation import (
+            _build_azure_ai_foundry_url,
+            is_azure_ai_foundry_openai_v1_endpoint,
+        )
+
+        foundry = config.providers.azure_ai_foundry
+        endpoint = foundry.endpoint or ""
+        if not is_azure_ai_foundry_openai_v1_endpoint(endpoint):
+            # Other Foundry endpoint forms stay on the azure_ai/ provider,
+            # which reads AZURE_AI_API_BASE / AZURE_AI_API_KEY from env.
+            return {}
+
+        return {
+            "api_base": _build_azure_ai_foundry_url(
+                endpoint,
+                target_subpath=None,
+                api_version=foundry.api_version or None,
+            ),
+            "api_key": foundry.api_key,
+        }
+    except Exception as e:
+        logger.warning("Could not resolve embedding provider overrides", error=str(e))
+        return {}
+
+
+class _LiteLLMEmbeddingsNamespace:
+    """Mimics AsyncOpenAI's `.embeddings` namespace but routes through LiteLLM
+    so calls honor the resolved provider prefix (openai/, watsonx/, azure_ai/,
+    ollama/) instead of always hitting api.openai.com."""
+
+    @staticmethod
+    async def create(model: str, input: list[str], **kwargs):
+        import litellm
+
+        overrides = {k: v for k, v in _embedding_call_overrides().items() if k not in kwargs}
+        return await litellm.aembedding(model=model, input=input, **overrides, **kwargs)
+
+
+class _LiteLLMEmbeddingClient:
+    """Adapter exposing an OpenAI-SDK-shaped `.embeddings.create()` so it's a
+    drop-in replacement for callers built against AsyncOpenAI, while actually
+    routing through LiteLLM per knowledge.embedding_provider."""
+
+    embeddings = _LiteLLMEmbeddingsNamespace()
+
+
+_litellm_embedding_client = _LiteLLMEmbeddingClient()
+
+
 class AppClients:
     def __init__(self):
         self.opensearch = None
@@ -739,27 +804,20 @@ class AppClients:
 
                     os.environ["AZURE_AI_API_BASE"] = _build_azure_ai_foundry_url(
                         config.providers.azure_ai_foundry.endpoint,
+                        target_subpath=None,
                         api_version=config.providers.azure_ai_foundry.api_version or None,
                     )
                     logger.debug("Loaded Azure AI Foundry endpoint from config")
 
-                # Set Azure OpenAI Service credentials (LiteLLM azure/ prefix).
-                # AZURE_API_BASE must be the bare resource root — LiteLLM appends
-                # /openai/deployments/<name>/... itself, so a pasted /openai/v1
-                # suffix would otherwise produce a doubled path (404 at inference).
-                if config.providers.azure_openai.api_key:
-                    os.environ["AZURE_API_KEY"] = config.providers.azure_openai.api_key
-                    logger.debug("Loaded Azure OpenAI API key from config")
-                if config.providers.azure_openai.endpoint:
-                    from utils.container_utils import normalize_azure_openai_base
-
-                    os.environ["AZURE_API_BASE"] = normalize_azure_openai_base(
-                        config.providers.azure_openai.endpoint
-                    )
-                    logger.debug("Loaded Azure OpenAI endpoint from config")
-                if config.providers.azure_openai.api_version:
-                    os.environ["AZURE_API_VERSION"] = config.providers.azure_openai.api_version
-                    logger.debug("Loaded Azure OpenAI API version from config")
+                # NOTE: the standalone Azure OpenAI Service provider (LiteLLM
+                # "azure/" prefix, AZURE_API_KEY/AZURE_API_BASE) was removed from
+                # ProvidersConfig — Azure resources are configured through
+                # azure_ai_foundry above. The block that used to read
+                # config.providers.azure_openai here raised AttributeError inside
+                # this try, which silently aborted ALL the credential loading
+                # above it (WatsonX, Ollama, Foundry) and fell through to the
+                # except branch. Don't reintroduce a reference to a config field
+                # that doesn't exist.
 
                 # Determine model and provider for both probe and production client
                 model_name = config.knowledge.embedding_model or OPENAI_DEFAULT_EMBEDDING_MODEL
@@ -866,8 +924,16 @@ class AppClients:
 
     @property
     def patched_embedding_client(self):
-        """Alias for patched_async_client - for backward compatibility with code expecting separate clients."""
-        return self.patched_async_client
+        """Embedding-only client, routed through LiteLLM so it honors
+        knowledge.embedding_provider (openai/watsonx/azure_ai_foundry/ollama)
+        instead of unconditionally calling OpenAI like patched_llm_client does.
+
+        Accessing patched_async_client as a side effect loads every configured
+        provider's credentials into env vars (AZURE_AI_API_KEY, WATSONX_API_KEY,
+        etc.) which is what LiteLLM reads for routing.
+        """
+        _ = self.patched_async_client  # side effect: export provider env vars
+        return _litellm_embedding_client
 
     async def refresh_patched_client(self):
         """Reset patched client so next use picks up updated provider credentials."""
