@@ -6,6 +6,7 @@ interface ConfigValues {
   apiKey?: string;
   endpoint?: string;
   projectId?: string;
+  apiVersion?: string;
   languageModel?: string;
   embeddingModel?: string;
 }
@@ -39,6 +40,8 @@ export function useUpdateSettings(
           updatedSettings.anthropic_api_key = config.apiKey;
         } else if (provider === "watsonx") {
           updatedSettings.watsonx_api_key = config.apiKey;
+        } else if (provider === "azure_ai_foundry") {
+          updatedSettings.azure_ai_foundry_api_key = config.apiKey;
         }
       }
 
@@ -48,12 +51,21 @@ export function useUpdateSettings(
           updatedSettings.watsonx_endpoint = config.endpoint;
         } else if (provider === "ollama") {
           updatedSettings.ollama_endpoint = config.endpoint;
+        } else if (provider === "azure_ai_foundry") {
+          updatedSettings.azure_ai_foundry_endpoint = config.endpoint;
         }
       }
 
       // Map project ID (WatsonX only)
       if (config.projectId && provider === "watsonx") {
         updatedSettings.watsonx_project_id = config.projectId;
+      }
+
+      // Map API version (Azure provider only)
+      if (config.apiVersion) {
+        if (provider === "azure_ai_foundry") {
+          updatedSettings.azure_ai_foundry_api_version = config.apiVersion;
+        }
       }
 
       return updatedSettings;
@@ -63,6 +75,7 @@ export function useUpdateSettings(
     config.apiKey,
     config.endpoint,
     config.projectId,
+    config.apiVersion,
     config.languageModel,
     config.embeddingModel,
     setSettings,

@@ -10,7 +10,7 @@ from session_manager import User
 
 logger = get_logger(__name__)
 
-FlowType = Literal["nudges", "retrieval", "ingest"]
+FlowType = Literal["nudges", "retrieval", "ingest", "url_ingest"]
 
 
 async def reset_flow_endpoint(
@@ -18,12 +18,12 @@ async def reset_flow_endpoint(
     flows_service=Depends(get_flows_service),
     user: User = Depends(require_permission("flows:edit")),
 ):
-    """Reset a Langflow flow by type (nudges, retrieval, or ingest)"""
-    if flow_type not in ["nudges", "retrieval", "ingest"]:
+    """Reset a Langflow flow by type (nudges, retrieval, ingest, or url_ingest)"""
+    if flow_type not in ["nudges", "retrieval", "ingest", "url_ingest"]:
         return JSONResponse(
             {
                 "success": False,
-                "error": "Invalid flow type. Must be 'nudges', 'retrieval', or 'ingest'"
+                "error": "Invalid flow type. Must be 'nudges', 'retrieval', 'ingest', or 'url_ingest'",
             },
             status_code=400
         )

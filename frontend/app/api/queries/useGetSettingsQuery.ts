@@ -40,6 +40,14 @@ export interface ProviderSettings {
     endpoint?: string;
     configured?: boolean;
   };
+  azure_ai_foundry?: {
+    has_api_key?: boolean;
+    endpoint?: string;
+    api_version?: string;
+    configured?: boolean;
+    llm_deployment_name?: string;
+    embedding_deployment_name?: string;
+  };
 }
 
 export interface OnboardingState {
@@ -77,6 +85,7 @@ export interface Settings {
   localhost_url?: string;
   ingest_via_chat?: boolean;
   show_provider_ingest_settings?: boolean;
+  show_azure_ai_providers?: boolean;
   segment_write_key?: string;
   environment?: string;
 }

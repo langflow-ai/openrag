@@ -121,6 +121,18 @@ class OllamaConfig:
 
 
 @dataclass
+class AzureAIFoundryConfig:
+    """Azure AI Foundry provider configuration."""
+
+    api_key: str = ""
+    endpoint: str = ""  # e.g. https://<resource>.services.ai.azure.com/models
+    api_version: str = ""  # optional, e.g. 2025-04-01
+    configured: bool = False
+    llm_deployment_name: str = ""
+    embedding_deployment_name: str = ""
+
+
+@dataclass
 class ProvidersConfig:
     """All provider configurations."""
 
@@ -128,10 +140,20 @@ class ProvidersConfig:
     anthropic: AnthropicConfig
     watsonx: WatsonXConfig
     ollama: OllamaConfig
+    azure_ai_foundry: AzureAIFoundryConfig
 
     def any_configured(self) -> bool:
         """Return True if at least one provider is marked as configured."""
-        return any(p.configured for p in (self.openai, self.anthropic, self.watsonx, self.ollama))
+        return any(
+            p.configured
+            for p in (
+                self.openai,
+                self.anthropic,
+                self.watsonx,
+                self.ollama,
+                self.azure_ai_foundry,
+            )
+        )
 
     def get_provider_config(self, provider: str):
         """Get configuration for a specific provider."""
@@ -144,6 +166,8 @@ class ProvidersConfig:
             return self.watsonx
         elif provider_lower == "ollama":
             return self.ollama
+        elif provider_lower == "azure_ai_foundry":
+            return self.azure_ai_foundry
         else:
             raise ValueError(f"Unknown provider: {provider}")
 
@@ -217,6 +241,9 @@ class OpenRAGConfig:
                 anthropic=AnthropicConfig(**_decrypt_provider(providers_data.get("anthropic", {}))),
                 watsonx=WatsonXConfig(**_decrypt_provider(providers_data.get("watsonx", {}))),
                 ollama=OllamaConfig(**_decrypt_provider(providers_data.get("ollama", {}))),
+                azure_ai_foundry=AzureAIFoundryConfig(
+                    **_decrypt_provider(providers_data.get("azure_ai_foundry", {}))
+                ),
             ),
             knowledge=KnowledgeConfig(**data.get("knowledge", {})),
             agent=AgentConfig(**data.get("agent", {})),
@@ -281,6 +308,8 @@ class ConfigManager:
                 "anthropic": {},
                 "watsonx": {},
                 "ollama": {},
+                "azure_ai_foundry": {},
+                "azure_openai": {},
             },
             "knowledge": {},
             "agent": {},
@@ -302,7 +331,14 @@ class ConfigManager:
 
                 # Merge file config
                 if "providers" in file_config:
-                    for provider in ["openai", "anthropic", "watsonx", "ollama"]:
+                    for provider in [
+                        "openai",
+                        "anthropic",
+                        "watsonx",
+                        "ollama",
+                        "azure_ai_foundry",
+                        "azure_openai",
+                    ]:
                         if provider in file_config["providers"]:
                             provider_data = file_config["providers"][provider]
                             # Check if api_key is unencrypted and we have a key
@@ -371,6 +407,45 @@ class ConfigManager:
         # Ollama provider settings
         if os.getenv("OLLAMA_ENDPOINT"):
             config_data["providers"]["ollama"]["endpoint"] = os.getenv("OLLAMA_ENDPOINT")
+
+        # Azure AI Foundry / Azure OpenAI provider settings — gated behind the
+        # feature flag (default on) so it can still be disabled by setting
+        # OPENRAG_AZURE_AI_ENABLED=false. Read the raw env var here (not
+        # config.settings.is_azure_ai_enabled) to avoid a circular import.
+        azure_ai_enabled = os.getenv("OPENRAG_AZURE_AI_ENABLED", "true").strip().lower() in (
+            "true",
+            "1",
+            "yes",
+            "on",
+        )
+        if azure_ai_enabled:
+            if os.getenv("AZURE_AI_API_KEY"):
+                config_data["providers"]["azure_ai_foundry"]["api_key"] = os.getenv(
+                    "AZURE_AI_API_KEY"
+                )
+                config_data["providers"]["azure_ai_foundry"]["configured"] = True
+            if os.getenv("AZURE_AI_API_BASE"):
+                config_data["providers"]["azure_ai_foundry"]["endpoint"] = os.getenv(
+                    "AZURE_AI_API_BASE"
+                )
+            if os.getenv("AZURE_AI_API_VERSION"):
+                config_data["providers"]["azure_ai_foundry"]["api_version"] = os.getenv(
+                    "AZURE_AI_API_VERSION"
+                )
+
+            if os.getenv("AZURE_OPENAI_API_KEY"):
+                config_data["providers"]["azure_openai"]["api_key"] = os.getenv(
+                    "AZURE_OPENAI_API_KEY"
+                )
+                config_data["providers"]["azure_openai"]["configured"] = True
+            if os.getenv("AZURE_OPENAI_ENDPOINT"):
+                config_data["providers"]["azure_openai"]["endpoint"] = os.getenv(
+                    "AZURE_OPENAI_ENDPOINT"
+                )
+            if os.getenv("AZURE_OPENAI_API_VERSION"):
+                config_data["providers"]["azure_openai"]["api_version"] = os.getenv(
+                    "AZURE_OPENAI_API_VERSION"
+                )
 
         # Knowledge settings
         if os.getenv("EMBEDDING_MODEL"):

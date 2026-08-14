@@ -55,6 +55,7 @@ RUN pip install --no-cache-dir \
     torch \
     torchvision \
     "langflow-base[docling,openai,anthropic,google,ollama,opensearch,langfuse]==0.9.6" \
+    langchain-azure-ai \
     uv \
     && pip uninstall -y clickhouse-connect
 

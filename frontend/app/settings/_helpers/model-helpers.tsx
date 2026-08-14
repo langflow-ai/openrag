@@ -1,9 +1,15 @@
 import AnthropicLogo from "@/components/icons/anthropic-logo";
+import AzureAIFoundryLogo from "@/components/icons/azure-ai-foundry-logo";
 import IBMLogo from "@/components/icons/ibm-logo";
 import OllamaLogo from "@/components/icons/ollama-logo";
 import OpenAILogo from "@/components/icons/openai-logo";
 
-export type ModelProvider = "openai" | "anthropic" | "ollama" | "watsonx";
+export type ModelProvider =
+  | "openai"
+  | "anthropic"
+  | "ollama"
+  | "watsonx"
+  | "azure_ai_foundry";
 
 // Full ordered list of providers for settings / cards
 export const ALL_PROVIDERS: ModelProvider[] = [
@@ -11,6 +17,7 @@ export const ALL_PROVIDERS: ModelProvider[] = [
   "ollama",
   "watsonx",
   "anthropic",
+  "azure_ai_foundry",
 ];
 
 // Preferred auto-select order for the LLM onboarding step
@@ -18,6 +25,7 @@ export const LLM_PROVIDER_ORDER: ModelProvider[] = [
   "anthropic",
   "openai",
   "watsonx",
+  "azure_ai_foundry",
   "ollama",
 ];
 
@@ -25,6 +33,7 @@ export const LLM_PROVIDER_ORDER: ModelProvider[] = [
 export const EMBEDDING_PROVIDER_ORDER: ModelProvider[] = [
   "openai",
   "watsonx",
+  "azure_ai_foundry",
   "ollama",
 ];
 
@@ -47,6 +56,8 @@ export function getModelLogo(modelValue: string, provider?: ModelProvider) {
     return <OllamaLogo className="w-4 h-4" />;
   } else if (provider === "watsonx") {
     return <IBMLogo className="w-4 h-4" />;
+  } else if (provider === "azure_ai_foundry") {
+    return <AzureAIFoundryLogo className="w-4 h-4" />;
   }
 
   // Fallback to model name analysis
@@ -114,6 +125,18 @@ export function getFallbackModels(provider: ModelProvider) {
           {
             value: "ibm/slate-125m-english-rtrvr",
             label: "Slate 125M English Retriever",
+          },
+        ],
+      };
+    case "azure_ai_foundry":
+      return {
+        language: [
+          { value: "my-gpt4o-deployment", label: "Enter your deployment name" },
+        ],
+        embedding: [
+          {
+            value: "my-embedding-deployment",
+            label: "Enter your deployment name",
           },
         ],
       };

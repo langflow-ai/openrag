@@ -4,6 +4,7 @@ import { ArrowUpRight, Loader2, Minus, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
+  useGetAzureAIFoundryModelsQuery,
   useGetIBMModelsQuery,
   useGetOllamaModelsQuery,
   useGetOpenAIModelsQuery,
@@ -81,6 +82,15 @@ export function IngestSettingsSection() {
           !!settings?.providers?.watsonx?.project_id,
       },
     );
+  const { data: azureModels, isLoading: azureLoading } =
+    useGetAzureAIFoundryModelsQuery(
+      { endpoint: settings?.providers?.azure_ai_foundry?.endpoint, apiKey: "" },
+      {
+        enabled:
+          settings?.providers?.azure_ai_foundry?.configured === true &&
+          !!settings?.providers?.azure_ai_foundry?.endpoint,
+      },
+    );
 
   const groupedEmbeddingModels = [
     {
@@ -104,6 +114,13 @@ export function IngestSettingsSection() {
       models: watsonxModels?.embedding_models || [],
       configured: settings.providers?.watsonx?.configured === true,
     },
+    {
+      group: "Azure AI Foundry",
+      provider: "azure_ai_foundry",
+      icon: getModelLogo("", "azure_ai_foundry"),
+      models: azureModels?.embedding_models || [],
+      configured: settings.providers?.azure_ai_foundry?.configured === true,
+    },
   ]
     .filter((p) => p.configured)
     .map((p) => ({
@@ -113,7 +130,7 @@ export function IngestSettingsSection() {
     }));
 
   const isLoadingAnyEmbeddingModels =
-    openaiLoading || ollamaLoading || watsonxLoading;
+    openaiLoading || ollamaLoading || watsonxLoading || azureLoading;
 
   const updateSettingsMutation = useUpdateSettingsMutation({
     onSuccess: () => {
@@ -329,6 +346,7 @@ export function IngestSettingsSection() {
                     : "No embedding models detected. Configure a provider first."
                 }
                 value={settings.knowledge?.embedding_model || ""}
+                selectedProvider={settings.knowledge?.embedding_provider}
                 onValueChange={handleEmbeddingModelChange}
               />
             </LabelWrapper>

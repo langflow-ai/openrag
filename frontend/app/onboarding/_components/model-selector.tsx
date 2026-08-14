@@ -37,6 +37,15 @@ export interface ModelSelectorProps extends ButtonProps {
   groupedOptions?: GroupedModelOption[];
   value: string;
   icon?: React.ReactNode;
+  /**
+   * The provider the currently selected `value` actually belongs to (e.g.
+   * `settings.agent.llm_provider`). Disambiguates the selected-icon lookup
+   * when the same model name exists under more than one provider's group
+   * (e.g. "gpt-5-nano" as both an OpenAI model and an Azure AI Foundry
+   * deployment name) — without it, the first group containing a matching
+   * value wins, which can show the wrong provider's logo.
+   */
+  selectedProvider?: string;
   placeholder?: string;
   searchPlaceholder?: string;
   noOptionsPlaceholder?: string;
@@ -52,6 +61,7 @@ export function ModelSelector({
   value = "",
   onValueChange,
   icon,
+  selectedProvider,
   placeholder = "Select model...",
   searchPlaceholder = "Search model...",
   noOptionsPlaceholder = "No models available",
@@ -70,10 +80,22 @@ export function ModelSelector({
   const allOptions =
     groupedOptions?.flatMap((group) => group.options) || options || [];
 
-  // Find the group icon for the selected value
-  const selectedOptionGroup = groupedOptions?.find((group) =>
-    group.options.some((opt) => opt.value === value),
-  );
+  // Find the group icon for the selected value. The same model name can
+  // exist under more than one provider's group (e.g. "gpt-5-nano" as both an
+  // OpenAI model and an Azure AI Foundry deployment name) — when the caller
+  // tells us which provider is actually selected, prefer the group whose
+  // option matches on value AND provider so the icon doesn't just default to
+  // whichever group happens to list that value first.
+  const selectedOptionGroup =
+    (selectedProvider &&
+      groupedOptions?.find((group) =>
+        group.options.some(
+          (opt) => opt.value === value && opt.provider === selectedProvider,
+        ),
+      )) ||
+    groupedOptions?.find((group) =>
+      group.options.some((opt) => opt.value === value),
+    );
   const selectedIcon = selectedOptionGroup?.icon || icon;
 
   useEffect(() => {
@@ -168,59 +190,79 @@ export function ModelSelector({
                       No models available
                     </CommandItem>
                   ) : (
-                    group.options.map((option) => (
-                      <CommandItem
-                        key={option.value}
-                        value={option.value}
-                        data-testid={`model-option-${option.value}`}
-                        onSelect={(currentValue) => {
-                          if (currentValue !== value) {
-                            onValueChange(currentValue, option.provider);
-                          }
-                          setOpen(false);
-                        }}
-                      >
-                        <CheckIcon
-                          className={cn(
-                            "mr-2 h-4 w-4",
-                            value === option.value
-                              ? "opacity-100"
-                              : "opacity-0",
-                          )}
-                        />
-                        <div className="flex items-center gap-2">
-                          {option.label}
-                        </div>
-                      </CommandItem>
-                    ))
+                    group.options.map((option) => {
+                      const isSelected =
+                        value === option.value &&
+                        (!selectedProvider ||
+                          !option.provider ||
+                          selectedProvider === option.provider);
+                      return (
+                        <CommandItem
+                          key={`${option.provider || group.group}:${option.value}`}
+                          value={`${option.provider || group.group}:${option.value}`}
+                          data-testid={`model-option-${option.value}`}
+                          onSelect={() => {
+                            if (
+                              option.value !== value ||
+                              (option.provider &&
+                                option.provider !== selectedProvider)
+                            ) {
+                              onValueChange(option.value, option.provider);
+                            }
+                            setOpen(false);
+                          }}
+                        >
+                          <CheckIcon
+                            className={cn(
+                              "mr-2 h-4 w-4",
+                              isSelected ? "opacity-100" : "opacity-0",
+                            )}
+                          />
+                          <div className="flex items-center gap-2">
+                            {option.label}
+                          </div>
+                        </CommandItem>
+                      );
+                    })
                   )}
                 </CommandGroup>
               ))
             ) : (
               <CommandGroup>
-                {allOptions.map((option) => (
-                  <CommandItem
-                    key={option.value}
-                    value={option.value}
-                    data-testid={`model-option-${option.value}`}
-                    onSelect={(currentValue) => {
-                      if (currentValue !== value) {
-                        onValueChange(currentValue, option.provider);
-                      }
-                      setOpen(false);
-                    }}
-                  >
-                    <CheckIcon
-                      className={cn(
-                        "mr-2 h-4 w-4",
-                        value === option.value ? "opacity-100" : "opacity-0",
-                      )}
-                    />
-                    <div className="flex items-center gap-2">
-                      {option.label}
-                    </div>
-                  </CommandItem>
-                ))}
+                {allOptions.map((option) => {
+                  const isSelected =
+                    value === option.value &&
+                    (!selectedProvider ||
+                      !option.provider ||
+                      selectedProvider === option.provider);
+                  return (
+                    <CommandItem
+                      key={`${option.provider || "default"}:${option.value}`}
+                      value={`${option.provider || "default"}:${option.value}`}
+                      data-testid={`model-option-${option.value}`}
+                      onSelect={() => {
+                        if (
+                          option.value !== value ||
+                          (option.provider &&
+                            option.provider !== selectedProvider)
+                        ) {
+                          onValueChange(option.value, option.provider);
+                        }
+                        setOpen(false);
+                      }}
+                    >
+                      <CheckIcon
+                        className={cn(
+                          "mr-2 h-4 w-4",
+                          isSelected ? "opacity-100" : "opacity-0",
+                        )}
+                      />
+                      <div className="flex items-center gap-2">
+                        {option.label}
+                      </div>
+                    </CommandItem>
+                  );
+                })}
                 {custom &&
                   searchValue &&
                   !allOptions.find(

@@ -1,8 +1,12 @@
 """Provider validation utilities for testing API keys and models during onboarding."""
 
 import json
+import re
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+
 import httpx
-from utils.container_utils import transform_localhost_url
+
+from utils.container_utils import normalize_azure_openai_base, transform_localhost_url
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -114,12 +118,13 @@ async def validate_provider_setup(
     endpoint: str = None,
     project_id: str = None,
     test_completion: bool = False,
+    api_version: str = None,
 ) -> None:
     """
     Validate provider setup by testing completion with tool calling and embedding.
 
     Args:
-        provider: Provider name ('openai', 'watsonx', 'ollama', 'anthropic')
+        provider: Provider name ('openai', 'watsonx', 'ollama', 'anthropic', 'azure_ai_foundry', 'azure_openai')
         api_key: API key for the provider (optional for ollama)
         embedding_model: Embedding model to test
         llm_model: LLM model to test
@@ -127,6 +132,7 @@ async def validate_provider_setup(
         project_id: Project ID (required for watsonx)
         test_completion: If True, performs full validation with completion/embedding tests (consumes credits).
                         If False, performs lightweight validation (no credits consumed). Default: False.
+        api_version: API version (required for azure_openai; optional for azure_ai_foundry).
 
     Raises:
         Exception: If validation fails, raises the original exception with the actual error message.
@@ -146,6 +152,7 @@ async def validate_provider_setup(
                     embedding_model=embedding_model,
                     endpoint=endpoint,
                     project_id=project_id,
+                    api_version=api_version,
                 )
             elif llm_model:
                 # Test completion with tool calling
@@ -155,6 +162,7 @@ async def validate_provider_setup(
                     llm_model=llm_model,
                     endpoint=endpoint,
                     project_id=project_id,
+                    api_version=api_version,
                 )
         else:
             # Lightweight validation (no credits consumed)
@@ -163,6 +171,7 @@ async def validate_provider_setup(
                 api_key=api_key,
                 endpoint=endpoint,
                 project_id=project_id,
+                api_version=api_version,
             )
 
         logger.info(f"Validation successful for provider: {provider_lower}")
@@ -178,6 +187,7 @@ async def test_lightweight_health(
     api_key: str = None,
     endpoint: str = None,
     project_id: str = None,
+    api_version: str = None,
 ) -> None:
     """Test provider health with lightweight check (no credits consumed)."""
 
@@ -189,6 +199,8 @@ async def test_lightweight_health(
         await _test_ollama_lightweight_health(endpoint)
     elif provider == "anthropic":
         await _test_anthropic_lightweight_health(api_key)
+    elif provider == "azure_ai_foundry":
+        await _test_azure_ai_foundry_lightweight_health(api_key, endpoint, api_version)
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -199,6 +211,7 @@ async def test_completion_with_tools(
     llm_model: str = None,
     endpoint: str = None,
     project_id: str = None,
+    api_version: str = None,
 ) -> None:
     """Test completion with tool calling for the provider."""
 
@@ -210,6 +223,8 @@ async def test_completion_with_tools(
         await _test_ollama_completion_with_tools(llm_model, endpoint)
     elif provider == "anthropic":
         await _test_anthropic_completion_with_tools(api_key, llm_model)
+    elif provider == "azure_ai_foundry":
+        await _test_azure_ai_foundry_completion(api_key, llm_model, endpoint, api_version)
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -220,6 +235,7 @@ async def test_embedding(
     embedding_model: str = None,
     endpoint: str = None,
     project_id: str = None,
+    api_version: str = None,
 ) -> None:
     """Test embedding generation for the provider."""
 
@@ -229,6 +245,8 @@ async def test_embedding(
         await _test_watsonx_embedding(api_key, embedding_model, endpoint, project_id)
     elif provider == "ollama":
         await _test_ollama_embedding(embedding_model, endpoint)
+    elif provider == "azure_ai_foundry":
+        await _test_azure_ai_foundry_embedding(api_key, embedding_model, endpoint, api_version)
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -805,4 +823,297 @@ async def _test_anthropic_completion_with_tools(api_key: str, llm_model: str) ->
         raise Exception("Request timed out")
     except Exception as e:
         logger.error(f"Anthropic completion test failed: {str(e)}")
+        raise
+
+
+def _merge_azure_ai_foundry_path(base_path: str, ending_path: str) -> str:
+    """Append `ending_path` onto `base_path`, deduping overlapping segments.
+
+    Mirrors LiteLLM's own `_add_path_to_api_base` exactly (litellm/utils.py),
+    since the real inference call is made by LiteLLM and must resolve to the
+    identical URL our own validation/listing calls hit.
+    """
+    base_segments = [s for s in base_path.split("/") if s]
+    end_segments = [s for s in ending_path.split("/") if s]
+    for i in range(len(base_segments)):
+        if base_segments[i:] == end_segments[: len(base_segments) - i]:
+            return "/" + "/".join(base_segments[:i] + end_segments)
+    return "/" + "/".join(base_segments + end_segments)
+
+
+# Azure AI Foundry's model inference API rejects requests with no
+# api-version at all. Shared with langflow_sync.py, which must apply the
+# same default when syncing AZURE_AI_FOUNDRY_API_VERSION to Langflow so its
+# embedding/chat calls don't fail even when the user leaves the (optional)
+# API Version field blank in Settings.
+#
+# Per Microsoft's own Azure AI Model Inference REST API reference (chat
+# completions + embeddings), which uses this value in every example request:
+# https://learn.microsoft.com/en-us/rest/api/aifoundry/modelinference/
+#
+# This default ONLY applies to that generic model-inference form
+# (".../models/..."). It does NOT apply to the OpenAI-compatible
+# ".../openai/v1" form some Foundry resources use instead (see
+# _build_azure_ai_foundry_url) — that form is path-versioned and takes no
+# dated api-version at all; Azure's own docs: "api-version is no longer a
+# required parameter with the v1 GA API."
+# https://learn.microsoft.com/en-us/azure/foundry/openai/api-version-lifecycle
+AZURE_AI_FOUNDRY_DEFAULT_API_VERSION = "2025-04-01"
+
+# The openai/v1 route's own api-version query param (distinct from the dated
+# versions above) accepts only these literal values — never a dated string.
+_AZURE_AI_FOUNDRY_OPENAI_V1_API_VERSIONS = frozenset({"v1", "preview"})
+
+
+# Azure AI Foundry validation functions
+def _build_azure_ai_foundry_url(
+    endpoint: str, target_subpath: str = "", api_version: str | None = None
+) -> str:
+    """Build a valid Azure AI Foundry URL with target subpath and api-version parameter.
+
+    Foundry hands out (at least) two incompatible endpoint forms, and this
+    branches on which one `endpoint` already targets:
+
+    - **OpenAI-compatible** (`.../openai/v1`): the target subpath (e.g.
+      `/chat/completions`) is appended directly with NO `/models` segment and
+      NO dated api-version — this route is path-versioned and Azure rejects a
+      dated `api-version` value here (only the literal "v1"/"preview" are
+      valid, and only for the `/models` listing route, never for actual
+      chat/embedding calls). Sending a `/models`-prefixed path here 404s
+      ("deployment not found") because that route doesn't exist on this form.
+    - **Everything else** (generic model-inference, or a "Microsoft Foundry"
+      project endpoint like `.../api/projects/<project>`): always resolves
+      under a `/models` segment (e.g. `.../models/chat/completions`) —
+      LiteLLM's azure_ai handler unconditionally inserts that segment for any
+      `services.ai.azure.com` host (see `get_complete_url` in
+      litellm/llms/azure_ai/chat/transformation.py), so a project endpoint
+      resolves to `.../api/projects/<project>/models/chat/completions`, not
+      `.../chat/completions` (the latter 404s: that flat route doesn't exist
+      on project-based resources). An explicit `api_version` always wins over
+      whatever is embedded in `endpoint`; absent both, defaults to
+      AZURE_AI_FOUNDRY_DEFAULT_API_VERSION — this form rejects requests with
+      no api-version at all.
+
+    Segment overlap is deduped either way so an endpoint that already ends in
+    the target segment doesn't get a duplicate.
+    """
+    if not endpoint:
+        return endpoint
+
+    clean_endpoint = endpoint.strip()
+    parsed = urlparse(clean_endpoint)
+    scheme = parsed.scheme or "https"
+    netloc = parsed.netloc or (parsed.path.split("/")[0] if parsed.path else "")
+    path = (
+        parsed.path
+        if parsed.scheme
+        else ("/" + "/".join(parsed.path.split("/")[1:]) if "/" in parsed.path else parsed.path)
+    )
+
+    base_path = path.rstrip("/")
+    base_segments = [s for s in base_path.split("/") if s]
+    is_openai_v1 = [s.lower() for s in base_segments[-2:]] == ["openai", "v1"]
+    query_params = parse_qs(parsed.query, keep_blank_values=True)
+
+    if is_openai_v1:
+        # /models is the only sub-route documented for this form outside of
+        # actual inference; treat a blank target_subpath (the credential
+        # health-check probe) as "list models" rather than the bare /openai/v1
+        # root, mirroring the generic form's "empty subpath -> /models" below.
+        end_segments = [s for s in target_subpath.split("/") if s] or ["models"]
+        new_path = "/" + "/".join(base_segments + end_segments)
+        existing_versions = [
+            v
+            for v in query_params.get("api-version", [])
+            if v in _AZURE_AI_FOUNDRY_OPENAI_V1_API_VERSIONS
+        ]
+        if existing_versions:
+            query_params["api-version"] = existing_versions
+        elif api_version in _AZURE_AI_FOUNDRY_OPENAI_V1_API_VERSIONS:
+            query_params["api-version"] = [api_version]
+        else:
+            query_params.pop("api-version", None)
+        query_params.pop("api_version", None)
+    else:
+        ending_path = f"/models{target_subpath}" if target_subpath else "/models"
+        new_path = _merge_azure_ai_foundry_path(base_path, ending_path)
+        if api_version:
+            query_params["api-version"] = [api_version]
+            query_params.pop("api_version", None)
+        elif "api-version" not in query_params and "api_version" not in query_params:
+            query_params["api-version"] = [AZURE_AI_FOUNDRY_DEFAULT_API_VERSION]
+
+    new_query = urlencode(query_params, doseq=True)
+    return urlunparse((scheme, netloc, new_path, parsed.params, new_query, parsed.fragment))
+
+
+async def _test_azure_ai_foundry_lightweight_health(
+    api_key: str, endpoint: str, api_version: str | None = None
+) -> None:
+    """Test Azure AI Foundry credentials with a lightweight GET to the models endpoint."""
+    if not api_key:
+        raise Exception("Azure AI Foundry API key is required.")
+    if not endpoint:
+        raise Exception("Azure AI Foundry endpoint URL is required.")
+
+    try:
+        if ".openai.azure.com" in endpoint.lower():
+            v = api_version or "2024-10-21"
+            health_url = f"{normalize_azure_openai_base(endpoint)}/openai/models?api-version={v}"
+            headers = {"api-key": api_key, "Content-Type": "application/json"}
+        else:
+            health_url = _build_azure_ai_foundry_url(endpoint, api_version=api_version)
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "api-key": api_key,
+                "Content-Type": "application/json",
+            }
+        logger.info(f"Azure AI Foundry health check request URL: {health_url}")
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                health_url,
+                headers=headers,
+                timeout=10.0,
+            )
+            if response.status_code == 401:
+                raise Exception("Invalid API key. Verify the key in Azure AI Foundry portal.")
+            if response.status_code == 403:
+                raise Exception("Access denied. Verify the API key has the required permissions.")
+            # 200 or 404 (empty catalog) both confirm the endpoint is reachable and the key is accepted.
+            logger.info("Azure AI Foundry lightweight health check passed")
+
+    except httpx.TimeoutException:
+        logger.error("Azure AI Foundry health check timed out")
+        raise Exception(
+            "Azure AI Foundry endpoint did not respond. Check the endpoint URL."
+        ) from None
+    except Exception as e:
+        logger.error(f"Azure AI Foundry health check failed: {str(e)}")
+        raise
+
+
+async def _test_azure_ai_foundry_completion(
+    api_key: str, llm_model: str, endpoint: str, api_version: str | None = None
+) -> None:
+    """Test Azure AI Foundry chat completion with the given deployment."""
+    if not api_key:
+        raise Exception("Azure AI Foundry API key is required.")
+    if not endpoint:
+        raise Exception("Azure AI Foundry endpoint URL is required.")
+    if not llm_model:
+        raise Exception("A deployment name is required to test Azure AI Foundry completion.")
+
+    try:
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "api-key": api_key,
+            "Content-Type": "application/json",
+        }
+        if ".openai.azure.com" in endpoint.lower():
+            v = api_version or "2024-10-21"
+            completions_url = (
+                f"{normalize_azure_openai_base(endpoint)}/openai/deployments/{llm_model}"
+                f"/chat/completions?api-version={v}"
+            )
+            payload = {
+                "messages": [{"role": "user", "content": "Hello"}],
+                "max_completion_tokens": 10,
+            }
+        else:
+            completions_url = _build_azure_ai_foundry_url(
+                endpoint, "/chat/completions", api_version=api_version
+            )
+            payload = {
+                "model": llm_model,
+                "messages": [{"role": "user", "content": "Hello"}],
+                "max_completion_tokens": 10,
+            }
+        logger.info(f"Azure AI Foundry completion request URL: {completions_url}")
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                completions_url,
+                headers=headers,
+                json=payload,
+                timeout=30.0,
+            )
+            if response.status_code != 200:
+                error_details = _extract_error_details(response)
+                if response.status_code == 401:
+                    raise Exception("Invalid API key. Verify the key in Azure AI Foundry portal.")
+                if response.status_code == 403:
+                    raise Exception(
+                        "Access denied. Verify the API key has the required permissions."
+                    )
+                if response.status_code == 404:
+                    raise Exception(
+                        f"Deployment '{llm_model}' not found. Check that the deployment name matches exactly what was created in Azure AI Foundry."
+                    )
+                if response.status_code == 429:
+                    raise Exception("Azure AI Foundry rate limit exceeded.")
+                raise Exception(f"Azure AI Foundry API error: {error_details}")
+            logger.info("Azure AI Foundry completion test passed")
+
+    except httpx.TimeoutException:
+        logger.error("Azure AI Foundry completion test timed out")
+        raise Exception("Request timed out") from None
+    except Exception as e:
+        logger.error(f"Azure AI Foundry completion test failed: {str(e)}")
+        raise
+
+
+async def _test_azure_ai_foundry_embedding(
+    api_key: str, embedding_model: str, endpoint: str, api_version: str | None = None
+) -> None:
+    """Test Azure AI Foundry embedding generation with the given deployment."""
+    if not api_key:
+        raise Exception("Azure AI Foundry API key is required.")
+    if not endpoint:
+        raise Exception("Azure AI Foundry endpoint URL is required.")
+    if not embedding_model:
+        raise Exception("A deployment name is required to test Azure AI Foundry embeddings.")
+
+    try:
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "api-key": api_key,
+            "Content-Type": "application/json",
+        }
+        if ".openai.azure.com" in endpoint.lower():
+            v = api_version or "2024-10-21"
+            embeddings_url = (
+                f"{normalize_azure_openai_base(endpoint)}/openai/deployments/{embedding_model}"
+                f"/embeddings?api-version={v}"
+            )
+            payload = {"input": ["test"]}
+        else:
+            embeddings_url = _build_azure_ai_foundry_url(
+                endpoint, "/embeddings", api_version=api_version
+            )
+            payload = {"model": embedding_model, "input": ["test"]}
+        logger.info(f"Azure AI Foundry embedding request URL: {embeddings_url}")
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                embeddings_url,
+                headers=headers,
+                json=payload,
+                timeout=30.0,
+            )
+            if response.status_code != 200:
+                error_details = _extract_error_details(response)
+                if response.status_code == 401:
+                    raise Exception("Invalid API key. Verify the key in Azure AI Foundry portal.")
+                if response.status_code == 404:
+                    raise Exception(
+                        f"Embedding deployment '{embedding_model}' not found. Check that the deployment name matches exactly what was created in Azure AI Foundry."
+                    )
+                if response.status_code == 429:
+                    raise Exception("Azure AI Foundry rate limit exceeded.")
+                raise Exception(f"Azure AI Foundry embedding error: {error_details}")
+            logger.info("Azure AI Foundry embedding test passed")
+
+    except httpx.TimeoutException:
+        logger.error("Azure AI Foundry embedding test timed out")
+        raise Exception("Request timed out") from None
+    except Exception as e:
+        logger.error(f"Azure AI Foundry embedding test failed: {str(e)}")
         raise

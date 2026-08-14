@@ -114,6 +114,21 @@ def get_role_claim_viewer() -> str | None:
     return os.getenv("OPENRAG_ROLE_CLAIM_VIEWER")
 
 
+def is_azure_ai_enabled() -> bool:
+    """Feature flag for the Azure AI Foundry / Azure OpenAI providers.
+
+    Default on. Gates: the Azure provider tiles and setup dialogs in the
+    Settings UI, the ``/models/azure-ai-foundry`` and ``/models/azure-openai``
+    model-listing/validation endpoints, and acceptance of Azure provider
+    credentials or provider selection via ``/settings`` and ``/onboarding``.
+    Read per-call (like the other feature-flag accessors in this module) so
+    runtime/test overrides take effect without a restart. Set
+    ``OPENRAG_AZURE_AI_ENABLED=false`` to turn it off.
+    """
+    raw = os.getenv("OPENRAG_AZURE_AI_ENABLED", "true").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
 def get_openrag_service_token() -> str | None:
     """Platform-issued service JWT used at startup to bootstrap the OpenSearch
     security context (admin role mapping). Read per-call — like the JWT-claim
@@ -693,6 +708,58 @@ class AppClients:
                     os.environ["OLLAMA_BASE_URL"] = config.providers.ollama.endpoint
                     os.environ["OLLAMA_ENDPOINT"] = config.providers.ollama.endpoint
                     logger.debug("Loaded Ollama endpoint from config")
+
+                # Set Azure AI Foundry credentials
+                if config.providers.azure_ai_foundry.api_key:
+                    os.environ["AZURE_AI_API_KEY"] = config.providers.azure_ai_foundry.api_key
+                    logger.debug("Loaded Azure AI Foundry API key from config")
+                if config.providers.azure_ai_foundry.endpoint:
+                    # LiteLLM's azure_ai transformation only reads api-version off
+                    # an explicit api_version kwarg it never receives here, OR off
+                    # any query params already present on api_base — it does NOT
+                    # consult AZURE_AI_API_VERSION (that env var is only read by
+                    # litellm's unrelated azure_ai image_edit module). So bake
+                    # api-version into the base URL itself; litellm preserves
+                    # existing query params on api_base when building the request.
+                    #
+                    # KNOWN LIMITATION: litellm's azure_ai get_complete_url
+                    # unconditionally appends "/models/chat/completions" for ANY
+                    # services.ai.azure.com host — it has no concept of the
+                    # OpenAI-compatible ".../openai/v1" endpoint form at all (see
+                    # litellm/llms/azure_ai/chat/transformation.py). For a
+                    # v1-form endpoint this produces the wrong URL
+                    # (".../openai/v1/models/chat/completions" instead of
+                    # ".../openai/v1/chat/completions") no matter what we put
+                    # here — that's hardcoded in litellm itself, not something
+                    # fixable via this env var. Real fix: detect the v1 form and
+                    # route those calls through litellm's plain "openai/" custom
+                    # -base-url provider instead of "azure_ai/" in
+                    # models_service.get_litellm_model_name. Not yet implemented.
+                    from api.provider_validation import _build_azure_ai_foundry_url
+
+                    os.environ["AZURE_AI_API_BASE"] = _build_azure_ai_foundry_url(
+                        config.providers.azure_ai_foundry.endpoint,
+                        api_version=config.providers.azure_ai_foundry.api_version or None,
+                    )
+                    logger.debug("Loaded Azure AI Foundry endpoint from config")
+
+                # Set Azure OpenAI Service credentials (LiteLLM azure/ prefix).
+                # AZURE_API_BASE must be the bare resource root — LiteLLM appends
+                # /openai/deployments/<name>/... itself, so a pasted /openai/v1
+                # suffix would otherwise produce a doubled path (404 at inference).
+                if config.providers.azure_openai.api_key:
+                    os.environ["AZURE_API_KEY"] = config.providers.azure_openai.api_key
+                    logger.debug("Loaded Azure OpenAI API key from config")
+                if config.providers.azure_openai.endpoint:
+                    from utils.container_utils import normalize_azure_openai_base
+
+                    os.environ["AZURE_API_BASE"] = normalize_azure_openai_base(
+                        config.providers.azure_openai.endpoint
+                    )
+                    logger.debug("Loaded Azure OpenAI endpoint from config")
+                if config.providers.azure_openai.api_version:
+                    os.environ["AZURE_API_VERSION"] = config.providers.azure_openai.api_version
+                    logger.debug("Loaded Azure OpenAI API version from config")
 
                 # Determine model and provider for both probe and production client
                 model_name = config.knowledge.embedding_model or OPENAI_DEFAULT_EMBEDDING_MODEL
