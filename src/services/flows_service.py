@@ -1493,4 +1493,11 @@ class FlowsService:
             return (OLLAMA_EMBEDDING_COMPONENT_DISPLAY_NAME, OLLAMA_LLM_COMPONENT_DISPLAY_NAME)
         elif provider == "anthropic":
             return (None, "Anthropic")
+        elif provider == "azure_ai_foundry":
+            # Azure has no per-provider node: the flows route it through the
+            # unified "Embedding Model"/"Language Model" components, which is
+            # what the OPENAI_* constants actually name. Without this branch the
+            # fallthrough returns (None, None) and every system-prompt/model
+            # update fails with "Component 'None' not found in flow".
+            return (OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME, OPENAI_LLM_COMPONENT_DISPLAY_NAME)
         return (None, None)
