@@ -761,10 +761,10 @@ async def _http_request_with_retry(
                 )
                 await asyncio.sleep(backoff_factor * (2**attempt))
             else:
-                raise last_exc
+                raise
 
     if last_exc:
-        raise last_exc
+        raise last_exc from None
     raise RuntimeError(f"HTTP request to {url} failed after retries")
 
 
