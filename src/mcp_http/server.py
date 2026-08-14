@@ -67,13 +67,20 @@ logger = get_logger(__name__)
 # Tool/resource customizations: map (path, method) to custom name and description
 COMPONENT_CUSTOMIZATIONS: dict[tuple[str, str], dict[str, str]] = {
     # Chat endpoints
-    ("/v1/chat", "POST"): {
+    ("/v2/chat", "POST"): {
         "name": "openrag_chat",
         "description": (
             "Send a message to OpenRAG and get a RAG-enhanced response. "
-            "The response is informed by documents in your knowledge base. "
+            "The response is informed by documents in your knowledge base and includes "
+            "search_results citation artifacts for IBM Watson Orchestrate. "
             "Use chat_id to continue a previous conversation, or filter_id "
             "to apply a knowledge filter."
+        ),
+    },
+    ("/v1/chat", "POST"): {
+        "name": "openrag_chat_v1",
+        "description": (
+            "Send a message to OpenRAG and get a RAG-enhanced response (v1 endpoint)."
         ),
     },
     ("/v1/chat", "GET"): {
@@ -266,7 +273,12 @@ def create_mcp_server(app: FastAPI) -> FastMCP:
             pattern=r"^/v1/",
             mcp_type=MCPType.TOOL,
         ),
-        # expose /v2/files and /v2/files/search as tools
+        # expose /v2/chat, /v2/files, and /v2/files/search as tools
+        RouteMap(
+            methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
+            pattern=r"^/v2/chat",
+            mcp_type=MCPType.TOOL,
+        ),
         RouteMap(
             methods=["GET"],
             pattern=r"^/v2/files",

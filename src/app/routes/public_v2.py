@@ -2,7 +2,13 @@
 
 from fastapi import Depends, FastAPI, Query
 
+from api.v1 import (
+    chat as v1_chat,
+)
 from api.v2 import files as files_v2
+from api.v2 import (
+    chat as v2_chat,
+)
 from dependencies import get_file_service_v2, require_api_key_permission
 from session_manager import User
 
@@ -65,6 +71,22 @@ async def _search_files(
 
 def register_public_v2_routes(app: FastAPI):
 
+    # Chat v2 endpoints (with citation search_results support)
+    app.add_api_route("/v2/chat", v2_chat.chat_v2_create_endpoint, methods=["POST"], tags=["public"])
+    app.add_api_route("/v2/chat", v1_chat.chat_list_endpoint, methods=["GET"], tags=["public"])
+    app.add_api_route(
+        "/v2/chat/{chat_id}",
+        v1_chat.chat_get_endpoint,
+        methods=["GET"],
+        tags=["public"],
+    )
+    app.add_api_route(
+        "/v2/chat/{chat_id}",
+        v1_chat.chat_delete_endpoint,
+        methods=["DELETE"],
+        tags=["public"],
+    )
+
     # /v2/files/search must be registered before /v2/files to avoid path shadowing
     app.add_api_route(
         "/v2/files/search",
@@ -78,3 +100,4 @@ def register_public_v2_routes(app: FastAPI):
         methods=["GET"],
         tags=["public"],
     )
+
