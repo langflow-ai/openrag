@@ -189,13 +189,14 @@ COMPONENT_CUSTOMIZATIONS: dict[tuple[str, str], dict[str, str]] = {
         "description": "Delete a knowledge filter by ID.",
     },
     # files endpoints
-    ("/v1/files", "GET"): {
-        "name": "openrag_list_files",
-        "description": "List all ingested files",
-    },
-    ("/v1/files/search", "GET"): {
-        "name": "openrag_search_files",
-        "description": "Search files by query parameters.",
+    ("/v1/files/getAll", "GET"): {
+        "name": "openrag_get_all_files",
+        "description": (
+            "Return up to `limit` ingested files from the knowledge base using "
+            "simple offset pagination (no cursor required). Supports filtering by "
+            "connector_type, mimetype, and owner, plus filename search. "
+            "Default limit is 100; maximum is 500."
+        ),
     },
     ("/v2/files", "GET"): {
         "name": "openrag_list_files_v2",

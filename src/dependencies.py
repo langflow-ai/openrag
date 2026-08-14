@@ -177,6 +177,10 @@ def get_api_key_service(services: dict = Depends(get_services)):
     return services["api_key_service"]
 
 
+def get_file_service(services: dict = Depends(get_services)):
+    return services["file_service"]
+
+
 def get_file_service_v2(services: dict = Depends(get_services)):
     return services["file_service_v2"]
 

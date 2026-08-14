@@ -183,25 +183,25 @@ class DocumentsClient:
         data = response.json()
         return DeleteDocumentResponse(**data)
 
-    async def list_files(
+    async def get_all_files(
         self,
         *,
-        page: int = 1,
-        page_size: int = 25,
+        limit: int = 100,
         sort_by: str = "filename",
         sort_order: str = "asc",
         connector_type: str | None = None,
         mimetype: str | None = None,
         owner: str | None = None,
         search: str | None = None,
-        after_key: str | None = None,
     ) -> ListFilesResponse:
         """
-        List ingested files in the knowledge base.
+        Return up to ``limit`` ingested files from the knowledge base.
+
+        Uses simple offset-based pagination (always page 1); no cursor is required
+        or returned. This is the v1 public endpoint.
 
         Args:
-            page: Page number (display only; use after_key for cursor navigation).
-            page_size: Number of files per page (1–500, default 25).
+            limit: Maximum number of files to return (1–500, default 100).
             sort_by: Field to sort by. One of: filename, file_size, mimetype,
                 indexed_time, connector_type, chunk_count, owner.
             sort_order: "asc" or "desc".
@@ -209,15 +209,12 @@ class DocumentsClient:
             mimetype: Filter to files with a specific MIME type.
             owner: Filter to files owned by a specific user ID.
             search: Substring/prefix match against filename.
-            after_key: JSON-encoded composite cursor from a previous response's
-                after_key field. Pass to fetch the next page.
 
         Returns:
-            ListFilesResponse with files list, total count, and next after_key.
+            ListFilesResponse with files list, total count, page, and page_size.
         """
         params: dict[str, str | int] = {
-            "page": page,
-            "page_size": page_size,
+            "limit": limit,
             "sort_by": sort_by,
             "sort_order": sort_order,
         }
@@ -229,20 +226,16 @@ class DocumentsClient:
             params["owner"] = owner
         if search is not None:
             params["search"] = search
-        if after_key is not None:
-            params["after_key"] = after_key
 
         response = await self._client._request(
             "GET",
-            "/api/v1/files",
+            "/api/v1/files/getAll",
             params=params,
         )
         data = response.json()
         return ListFilesResponse(
             files=[FileRecord(**f) for f in data.get("files", [])],
             total=data.get("total", 0),
-            is_approximate=data.get("is_approximate", True),
-            page=data.get("page", page),
-            page_size=data.get("page_size", page_size),
-            after_key=data.get("after_key"),
+            page=data.get("page", 1),
+            page_size=data.get("page_size", limit),
         )
