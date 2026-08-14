@@ -318,10 +318,21 @@ class FileRecord(BaseModel):
     allowed_principal_labels: list[PrincipalLabel] = Field(default_factory=list)
 
 
-class ListFilesResponse(BaseModel):
-    """Response from the GET /v1/files/getAll endpoint."""
+class GetAllFilesResponse(BaseModel):
+    """Response from GET /v1/files/getAll — offset pagination, no cursor."""
 
     files: list[FileRecord]
     total: int
     page: int
     page_size: int
+
+
+class ListFilesResponse(BaseModel):
+    """Response from GET /v2/files — cursor-based composite-aggregation pagination."""
+
+    files: list[FileRecord]
+    total: int
+    is_approximate: bool
+    page: int
+    page_size: int
+    after_key: dict | None = None

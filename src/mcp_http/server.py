@@ -188,15 +188,7 @@ COMPONENT_CUSTOMIZATIONS: dict[tuple[str, str], dict[str, str]] = {
         "name": "openrag_delete_knowledge_filter",
         "description": "Delete a knowledge filter by ID.",
     },
-    # files endpoints (v1)
-    ("/v1/files", "GET"): {
-        "name": "openrag_list_files",
-        "description": "List ingested files with cursor-based pagination.",
-    },
-    ("/v1/files/search", "GET"): {
-        "name": "openrag_search_files",
-        "description": "Search files by query parameters.",
-    },
+    # files endpoints (v1 — offset pagination)
     ("/v1/files/getAll", "GET"): {
         "name": "openrag_get_all_files",
         "description": (
@@ -205,6 +197,15 @@ COMPONENT_CUSTOMIZATIONS: dict[tuple[str, str], dict[str, str]] = {
             "connector_type, mimetype, and owner, plus filename search. "
             "Default limit is 100; maximum is 500."
         ),
+    },
+    # files endpoints (v2 — composite-agg cursor pagination)
+    ("/v2/files", "GET"): {
+        "name": "openrag_list_files_v2",
+        "description": "List all ingested files with cursor-based composite-aggregation pagination.",
+    },
+    ("/v2/files/search", "GET"): {
+        "name": "openrag_search_files_v2",
+        "description": "Search ingested files by file name (case-insensitive).",
     },
 }
 
@@ -265,6 +266,12 @@ def create_mcp_server(app: FastAPI) -> FastMCP:
         RouteMap(
             methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
             pattern=r"^/v1/",
+            mcp_type=MCPType.TOOL,
+        ),
+        # Expose v2 file listing/search endpoints as MCP tools.
+        RouteMap(
+            methods=["GET"],
+            pattern=r"^/v2/files",
             mcp_type=MCPType.TOOL,
         ),
         # Exclude everything else
