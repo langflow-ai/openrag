@@ -704,21 +704,24 @@ async def _http_request_with_retry(
     max_retries: int = 2,
     backoff_factor: float = 0.5,
     retryable_status_codes: tuple[int, ...] = (429, 500, 502, 503, 504),
+    retry_timeout_on_post: bool = False,
     client: httpx.AsyncClient | None = None,
     **kwargs,
 ) -> httpx.Response:
     """Execute an HTTP request with retries for transient network/timeout/server errors.
 
-    Retries up to `max_retries` times on httpx timeout/network errors or retryable status codes (429, 5xx).
-    Does NOT retry on 401, 403, 404 or other 4xx client errors.
+    Retries GET requests on network timeouts and 429/5xx status codes.
+    For POST requests, retries status codes (429/5xx) by default, and only retries
+    network timeouts if `retry_timeout_on_post=True` is explicitly set (e.g. for test probes).
     """
     last_exc: Exception | None = None
+    is_post = method.upper() == "POST"
     for attempt in range(max_retries + 1):
         try:
             if client is not None:
                 if method.upper() == "GET":
                     response = await client.get(url, **kwargs)
-                elif method.upper() == "POST":
+                elif is_post:
                     response = await client.post(url, **kwargs)
                 else:
                     response = await client.request(method, url, **kwargs)
@@ -726,7 +729,7 @@ async def _http_request_with_retry(
                 async with httpx.AsyncClient() as ac:
                     if method.upper() == "GET":
                         response = await ac.get(url, **kwargs)
-                    elif method.upper() == "POST":
+                    elif is_post:
                         response = await ac.post(url, **kwargs)
                     else:
                         response = await ac.request(method, url, **kwargs)
@@ -750,7 +753,7 @@ async def _http_request_with_retry(
             httpx.ConnectError,
         ) as exc:
             last_exc = exc
-            if attempt < max_retries:
+            if attempt < max_retries and (not is_post or retry_timeout_on_post):
                 logger.warning(
                     "Transient %s requesting %s (attempt %d/%d), retrying in %.2fs...",
                     type(exc).__name__,
@@ -844,6 +847,7 @@ async def _test_openai_completion_with_tools(api_key: str, llm_model: str) -> No
             headers=headers,
             json=payload,
             timeout=45.0,
+            retry_timeout_on_post=True,
         )
 
         # If max_tokens doesn't work, try with max_completion_tokens
@@ -858,6 +862,7 @@ async def _test_openai_completion_with_tools(api_key: str, llm_model: str) -> No
                 headers=headers,
                 json=payload,
                 timeout=45.0,
+                retry_timeout_on_post=True,
             )
 
         if response.status_code != 200:
@@ -894,6 +899,7 @@ async def _test_openai_embedding(api_key: str, embedding_model: str) -> None:
             headers=headers,
             json=payload,
             timeout=45.0,
+            retry_timeout_on_post=True,
         )
 
         if response.status_code != 200:

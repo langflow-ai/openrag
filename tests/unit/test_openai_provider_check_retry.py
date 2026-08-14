@@ -70,6 +70,47 @@ async def test_http_request_with_retry_does_not_retry_auth_failure():
 
 
 @pytest.mark.asyncio
+async def test_post_timeout_does_not_retry_without_flag():
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.post.side_effect = httpx.TimeoutException("POST timed out")
+
+    with pytest.raises(httpx.TimeoutException):
+        await _http_request_with_retry(
+            "POST",
+            "https://api.openai.com/v1/chat/completions",
+            max_retries=2,
+            backoff_factor=0.01,
+            retry_timeout_on_post=False,
+            client=mock_client,
+        )
+
+    # Must NOT retry POST on ambiguous network timeout without explicit flag
+    assert mock_client.post.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_post_timeout_retries_with_explicit_flag():
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    ok_response = httpx.Response(200, json={"choices": []})
+    mock_client.post.side_effect = [
+        httpx.TimeoutException("POST timed out"),
+        ok_response,
+    ]
+
+    resp = await _http_request_with_retry(
+        "POST",
+        "https://api.openai.com/v1/chat/completions",
+        max_retries=2,
+        backoff_factor=0.01,
+        retry_timeout_on_post=True,
+        client=mock_client,
+    )
+
+    assert resp.status_code == 200
+    assert mock_client.post.call_count == 2
+
+
+@pytest.mark.asyncio
 async def test_openai_lightweight_health_succeeds_with_retry(monkeypatch):
     ok_response = httpx.Response(200, json={"data": [{"id": "gpt-4o"}]})
     attempts = 0
