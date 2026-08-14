@@ -487,13 +487,18 @@ function DemoChunksList({
             }
           >
             <div className="mb-2 flex min-w-0 flex-wrap items-center gap-2">
-              <span className="text-xs font-bold">Chunk {chunkIndex}</span>
-              <Badge variant="secondary" className="text-xxs">
+              <span className="text-xs font-bold text-foreground">
+                Chunk {chunkIndex}
+              </span>
+              <Badge
+                variant="secondary"
+                className="text-xxs bg-background text-foreground border border-border"
+              >
                 {chunk.char_count} chars
               </Badge>
             </div>
             {showContents ? (
-              <blockquote className="min-w-0 text-xs text-muted-foreground leading-relaxed break-words [overflow-wrap:anywhere] whitespace-pre-wrap">
+              <blockquote className="min-w-0 text-xs text-foreground leading-relaxed break-words [overflow-wrap:anywhere] whitespace-pre-wrap">
                 {chunk.text_preview}
               </blockquote>
             ) : (
