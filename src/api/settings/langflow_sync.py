@@ -20,6 +20,7 @@ from api.settings.helpers import (
 from config.settings import clients, get_openrag_config
 from services.docling_service import get_docling_preset_configs
 from services.flows_service import LANGFLOW_MODEL_VALUE_PROVIDERS
+from utils.langflow_headers import map_provider
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -52,6 +53,9 @@ LANGFLOW_GENERIC_GLOBAL_VARIABLES = frozenset(
         "OPENSEARCH_INDEX_NAME",
         "OPENSEARCH_URL",
         "SELECTED_EMBEDDING_MODEL",
+        "SELECTED_EMBEDDING_MODEL_PROVIDER",
+        "SELECTED_LANGUAGE_MODEL",
+        "SELECTED_LANGUAGE_MODEL_PROVIDER",
         "WATSONX_PROJECT_ID",
         "WATSONX_URL",
     }
@@ -83,6 +87,7 @@ def _required_generic_global_values(config) -> dict[str, str]:
 
     knowledge = getattr(config, "knowledge", None)
     providers = getattr(config, "providers", None)
+    agent = getattr(config, "agent", None)
     watsonx = getattr(providers, "watsonx", None)
     ollama = getattr(providers, "ollama", None)
 
@@ -97,6 +102,11 @@ def _required_generic_global_values(config) -> dict[str, str]:
         or "documents",
         "OPENSEARCH_URL": settings.get_langflow_opensearch_url(),
         "SELECTED_EMBEDDING_MODEL": _string_value(getattr(knowledge, "embedding_model", None)),
+        "SELECTED_EMBEDDING_MODEL_PROVIDER": map_provider(
+            getattr(knowledge, "embedding_provider", None)
+        ),
+        "SELECTED_LANGUAGE_MODEL": _string_value(getattr(agent, "llm_model", None)),
+        "SELECTED_LANGUAGE_MODEL_PROVIDER": map_provider(getattr(agent, "llm_provider", None)),
         "WATSONX_PROJECT_ID": _string_value(getattr(watsonx, "project_id", None)),
         "WATSONX_URL": _string_value(getattr(watsonx, "endpoint", None)),
     }
@@ -249,6 +259,35 @@ async def _update_langflow_global_variables(config, flows_service=None):
             )
             logger.info(
                 f"Set SELECTED_EMBEDDING_MODEL global variable to {config.knowledge.embedding_model}"
+            )
+
+        # The flows bind EmbeddingModel.provider and the vector store's
+        # embedding_model_provider to these globals with load_from_db, so a
+        # provider switch in Settings only reaches Langflow through them.
+        if config.knowledge.embedding_provider:
+            mapped_provider = map_provider(config.knowledge.embedding_provider)
+            await _upsert_langflow_global_variable(
+                "SELECTED_EMBEDDING_MODEL_PROVIDER", mapped_provider, modify=True
+            )
+            logger.info(
+                f"Set SELECTED_EMBEDDING_MODEL_PROVIDER global variable to {mapped_provider}"
+            )
+
+        if config.agent.llm_model:
+            await _upsert_langflow_global_variable(
+                "SELECTED_LANGUAGE_MODEL", config.agent.llm_model, modify=True
+            )
+            logger.info(
+                f"Set SELECTED_LANGUAGE_MODEL global variable to {config.agent.llm_model}"
+            )
+
+        if config.agent.llm_provider:
+            mapped_llm_provider = map_provider(config.agent.llm_provider)
+            await _upsert_langflow_global_variable(
+                "SELECTED_LANGUAGE_MODEL_PROVIDER", mapped_llm_provider, modify=True
+            )
+            logger.info(
+                f"Set SELECTED_LANGUAGE_MODEL_PROVIDER global variable to {mapped_llm_provider}"
             )
 
     except Exception as e:

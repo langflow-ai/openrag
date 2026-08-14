@@ -85,11 +85,11 @@ class ChatService:
 
         # Pass the selected embedding model as a global variable
         from config.settings import get_openrag_config
-        from utils.langflow_headers import add_provider_credentials_to_headers
+        from utils.langflow_headers import add_provider_credentials_to_headers, build_model_provider_headers
         
         config = get_openrag_config()
         embedding_model = config.knowledge.embedding_model
-        extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL"] = embedding_model
+        extra_headers.update(build_model_provider_headers(config, embedding_model))
         
         # Add provider credentials to headers
         await add_provider_credentials_to_headers(extra_headers, config, flows_service=self.flows_service, jwt_token=jwt_token)
@@ -211,11 +211,11 @@ class ChatService:
 
         # Pass the selected embedding model as a global variable
         from config.settings import get_openrag_config
-        from utils.langflow_headers import add_provider_credentials_to_headers
+        from utils.langflow_headers import add_provider_credentials_to_headers, build_model_provider_headers
         
         config = get_openrag_config()
         embedding_model = config.knowledge.embedding_model
-        extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL"] = embedding_model
+        extra_headers.update(build_model_provider_headers(config, embedding_model))
         
         # Add provider credentials to headers
         await add_provider_credentials_to_headers(extra_headers, config, flows_service=self.flows_service, jwt_token=jwt_token)
@@ -346,11 +346,11 @@ class ChatService:
 
             # Pass the selected embedding model as a global variable
             from config.settings import get_openrag_config
-            from utils.langflow_headers import add_provider_credentials_to_headers
+            from utils.langflow_headers import add_provider_credentials_to_headers, build_model_provider_headers
             
             config = get_openrag_config()
             embedding_model = config.knowledge.embedding_model
-            extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL"] = embedding_model
+            extra_headers.update(build_model_provider_headers(config, embedding_model))
             
             # Add provider credentials to headers
             await add_provider_credentials_to_headers(extra_headers, config, flows_service=self.flows_service, jwt_token=jwt_token)

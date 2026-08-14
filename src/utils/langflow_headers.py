@@ -94,4 +94,29 @@ async def add_provider_credentials_to_headers(
         headers.update(build_ibm_opensearch_vars(jwt_token, prefix="X-LANGFLOW-GLOBAL-VAR-"))
 
 
+def build_model_provider_headers(config, embedding_model: str = None) -> Dict[str, str]:
+    """Build Langflow global-variable headers for the selected models/providers.
+
+    The flows bind EmbeddingModel.provider and the vector store's
+    embedding_model_provider to SELECTED_EMBEDDING_MODEL_PROVIDER with
+    load_from_db, so the provider has to reach Langflow as a global. It must be
+    the display name Langflow's unified model components expect ("Azure AI
+    Foundry"), not the raw config value ("azure_ai_foundry") — hence
+    map_provider.
+    """
+    knowledge = getattr(config, "knowledge", None)
+    agent = getattr(config, "agent", None)
+    emb_model = embedding_model or getattr(knowledge, "embedding_model", None)
+    emb_provider = getattr(knowledge, "embedding_provider", None)
+    llm_model = getattr(agent, "llm_model", None)
+    llm_provider = getattr(agent, "llm_provider", None)
+
+    return {
+        "X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL": str(emb_model or ""),
+        "X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL_PROVIDER": map_provider(emb_provider),
+        "X-LANGFLOW-GLOBAL-VAR-SELECTED_LANGUAGE_MODEL": str(llm_model or ""),
+        "X-LANGFLOW-GLOBAL-VAR-SELECTED_LANGUAGE_MODEL_PROVIDER": map_provider(llm_provider),
+    }
+
+
 

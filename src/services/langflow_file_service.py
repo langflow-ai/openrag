@@ -11,6 +11,7 @@ from config.settings import (
     LANGFLOW_URL_INGEST_FLOW_ID,
     clients,
 )
+from utils.langflow_headers import map_provider
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -211,6 +212,9 @@ class LangflowFileService:
             "X-Langflow-Global-Var-MIMETYPE": mimetype,
             "X-Langflow-Global-Var-FILESIZE": str(file_size_bytes),
             "X-Langflow-Global-Var-SELECTED_EMBEDDING_MODEL": str(embedding_model),
+            "X-Langflow-Global-Var-SELECTED_EMBEDDING_MODEL_PROVIDER": map_provider(
+                config.knowledge.embedding_provider
+            ),
             "X-Langflow-Global-Var-DOCUMENT_ID": str(document_id) if document_id else "",
             "X-Langflow-Global-Var-SOURCE_URL": str(source_url) if source_url else "",
             "X-Langflow-Global-Var-DOCLING_TASK_ID": str(docling_task_id)
@@ -343,6 +347,9 @@ class LangflowFileService:
             "X-Langflow-Global-Var-OWNER_EMAIL": str(owner_email),
             "X-Langflow-Global-Var-CONNECTOR_TYPE": str(connector_type),
             "X-Langflow-Global-Var-SELECTED_EMBEDDING_MODEL": str(embedding_model),
+            "X-Langflow-Global-Var-SELECTED_EMBEDDING_MODEL_PROVIDER": map_provider(
+                config.knowledge.embedding_provider
+            ),
             "X-Langflow-Global-Var-DOCUMENT_ID": "",
             "X-Langflow-Global-Var-SOURCE_URL": str(docs_url),
             "X-Langflow-Global-Var-ALLOWED_USERS": json.dumps([]),
