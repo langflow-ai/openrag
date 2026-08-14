@@ -50,6 +50,14 @@ WORKDIR /app
 RUN uv sync --frozen --no-dev --no-editable --extra postgresql
 RUN uv pip uninstall litellm
 
+# langchain-azure-ai (needed for Azure AI Foundry chat support,
+# lfx.base.models.unified_models.class_registry's AzureAIOpenAIApiChatModel)
+# is declared under src/bundles/lfx-bundles's own "azure"/"all" extras, not
+# as a top-level extra on the root project — `uv sync --extra azure` at the
+# workspace root wouldn't resolve it. Install explicitly instead, matching
+# the same package this repo's own Dockerfile.langflow installs.
+RUN uv pip install langchain-azure-ai
+
 # Expose ports
 EXPOSE 7860
 

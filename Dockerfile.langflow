@@ -55,6 +55,7 @@ RUN pip install --no-cache-dir \
     torch \
     torchvision \
     "langflow-base[docling,openai,anthropic,google,ollama,opensearch,langfuse]==0.9.6" \
+    langchain-azure-ai \
     uv \
     && pip uninstall -y clickhouse-connect
 
@@ -67,6 +68,12 @@ RUN mkdir -p /app/langflow && chown -R 1000:0 /app/langflow && chmod -R g+rwX /a
 
 # Copy flows with proper ownership from the start to prevent chown duplication
 COPY --chown=root:0 flows/ /app/flows/
+
+# component_index.json is not a flow: Langflow scans /app/flows/ and crashes
+# trying to load it as one. It ships under flows/ for the component tooling,
+# so drop it from the image. Same fix as PR #2246 on azure-ai-rebase-main,
+# adapted to this stage (every stage here already runs as USER 0).
+RUN rm -f /app/flows/component_index.json
 
 # Copy the entrypoint script
 COPY --chmod=755 scripts/langflow-entrypoint.py /usr/local/bin/langflow-entrypoint

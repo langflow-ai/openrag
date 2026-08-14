@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   useGetAnthropicModelsQuery,
+  useGetAzureAIFoundryModelsQuery,
   useGetIBMModelsQuery,
   useGetOllamaModelsQuery,
   useGetOpenAIModelsQuery,
@@ -83,6 +84,15 @@ export function AgentSettingsSection() {
           !!settings?.providers?.watsonx?.project_id,
       },
     );
+  const { data: azureModels, isLoading: azureLoading } =
+    useGetAzureAIFoundryModelsQuery(
+      { endpoint: settings?.providers?.azure_ai_foundry?.endpoint, apiKey: "" },
+      {
+        enabled:
+          settings?.providers?.azure_ai_foundry?.configured === true &&
+          !!settings?.providers?.azure_ai_foundry?.endpoint,
+      },
+    );
 
   const groupedLlmModels = [
     {
@@ -113,6 +123,13 @@ export function AgentSettingsSection() {
       models: watsonxModels?.language_models || [],
       configured: settings.providers?.watsonx?.configured === true,
     },
+    {
+      group: "Azure AI Foundry",
+      provider: "azure_ai_foundry",
+      icon: getModelLogo("", "azure_ai_foundry"),
+      models: azureModels?.language_models || [],
+      configured: settings.providers?.azure_ai_foundry?.configured === true,
+    },
   ]
     .filter((p) => p.configured)
     .map((p) => ({
@@ -122,7 +139,11 @@ export function AgentSettingsSection() {
     }));
 
   const isLoadingAnyLlmModels =
-    openaiLoading || anthropicLoading || ollamaLoading || watsonxLoading;
+    openaiLoading ||
+    anthropicLoading ||
+    ollamaLoading ||
+    watsonxLoading ||
+    azureLoading;
 
   const updateSettingsMutation = useUpdateSettingsMutation({
     onSuccess: () => {
@@ -277,6 +298,7 @@ export function AgentSettingsSection() {
                     : "No language models detected. Configure a provider first."
                 }
                 value={settings.agent?.llm_model || ""}
+                selectedProvider={settings.agent?.llm_provider}
                 onValueChange={handleModelChange}
                 defaultOpen={openLlmSelector}
               />

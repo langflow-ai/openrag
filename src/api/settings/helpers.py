@@ -18,20 +18,83 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 
+# Provider names in priority order. LLM supports anthropic; embeddings do not.
+_LLM_PROVIDER_NAMES = (
+    "openai",
+    "anthropic",
+    "watsonx",
+    "ollama",
+    "azure_ai_foundry",
+)
+_EMBEDDING_PROVIDER_NAMES = ("openai", "watsonx", "ollama", "azure_ai_foundry")
+
+
+def _configured_provider_names(config, provider_names) -> list:
+    """Return the provider names from `provider_names` marked configured in the OpenRAG config."""
+    providers = config.providers
+    return [name for name in provider_names if getattr(providers, name).configured]
+
+
 def _first_configured_llm_provider(config, excluding: str) -> str:
     """Return the first configured LLM provider that isn't `excluding`."""
-    for p in ["openai", "anthropic", "watsonx", "ollama"]:
+    for p in _LLM_PROVIDER_NAMES:
         if p != excluding and getattr(config.providers, p).configured:
             return p
     return "openai"
 
 
 def _first_configured_embedding_provider(config, excluding: str) -> str:
-    """Return the first configured embedding provider (openai/watsonx/ollama) that isn't `excluding`."""
-    for p in ["openai", "watsonx", "ollama"]:
+    """Return the first configured embedding provider that isn't `excluding`.
+
+    Falls back to "openai" when nothing else is configured, matching the
+    long-standing behavior on this release branch.
+    """
+    for p in _EMBEDDING_PROVIDER_NAMES:
         if p != excluding and getattr(config.providers, p).configured:
             return p
     return "openai"
+
+
+def _default_llm_model(provider: str) -> str:
+    """Return the static preferred LLM model for a provider.
+
+    OpenAI/Anthropic have stable preferred defaults. Ollama/watsonx model IDs are
+    dynamic from the live provider list — return empty so the frontend picks from
+    the live list (default flag or first available).
+    """
+    from config.model_constants import (
+        ANTHROPIC_DEFAULT_LANGUAGE_MODEL,
+        OPENAI_DEFAULT_LANGUAGE_MODEL,
+    )
+
+    return {
+        "openai": OPENAI_DEFAULT_LANGUAGE_MODEL,
+        "anthropic": ANTHROPIC_DEFAULT_LANGUAGE_MODEL,
+        "watsonx": "",
+        "ollama": "",
+        "azure_ai_foundry": "",
+    }.get(provider, "")
+
+
+def _default_embedding_model(provider: str) -> str:
+    """Return a fallback embedding model for `provider` on provider-removal
+    reshuffle, or "" if none can be assumed safe.
+
+    No provider gets a hardcoded model name here. A provider name like
+    "openai" or "watsonx" doesn't reliably tell you which models are
+    actually deployed — it's frequently an internal OpenAI/watsonx-
+    compatible gateway with a curated, deployment-specific model subset.
+    A hardcoded guess can silently select a model the gateway doesn't
+    serve, breaking every ingestion with no clear signal why.
+
+    Upstream resolves this from the deployment's declared
+    EMBEDDING_MODEL/EMBEDDING_PROVIDER via
+    ``config.embedding_constants.get_declared_default_embedding_model``,
+    which this release branch does not carry. Until that lands here,
+    return "" and force the admin to pick a model the settings UI has
+    confirmed is actually available.
+    """
+    return ""
 
 
 async def _affected_embedding_models(
