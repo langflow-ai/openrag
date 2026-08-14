@@ -7,74 +7,50 @@ but overrides the user dependency to use API keys.
 """
 
 from fastapi import Depends, Query
+from fastapi.responses import JSONResponse
 
 from api.v2 import files as files_v2
-from dependencies import get_file_service_v2, require_api_key_permission
+from dependencies import get_file_service, get_file_service_v2, require_api_key_permission
 from session_manager import User
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
 
-async def list_files(
-    page: int = Query(
-        1, ge=1, description="Page number (for display only; navigation uses after_key cursor)"
-    ),
-    page_size: int = Query(25, ge=1, le=500, description="Items per page"),
+async def get_all_files(
+    limit: int = Query(100, ge=1, le=500, description="Maximum number of files to return"),
     sort_by: str = Query("filename", description="Sort field"),
     sort_order: str = Query("asc", pattern="^(asc|desc)$", description="Sort order"),
     connector_type: str | None = Query(None, description="Filter by connector type"),
     mimetype: str | None = Query(None, description="Filter by MIME type"),
     owner: str | None = Query(None, description="Filter by owner"),
     search: str | None = Query(None, description="Search filename"),
-    after_key: str | None = Query(None, description="Composite pagination cursor (JSON-encoded)"),
-    file_service=Depends(get_file_service_v2),
+    file_service=Depends(get_file_service),
     user: User = Depends(require_api_key_permission("knowledge:read:own")),
 ):
     """
-    List all ingested files.
+    Return up to `limit` ingested files using offset-based pagination (page 1).
 
-    GET /v1/files
+    GET /v1/files/getAll
     """
-    return await files_v2.list_files(
-        page=page,
-        page_size=page_size,
-        sort_by=sort_by,
-        sort_order=sort_order,
-        connector_type=connector_type,
-        mimetype=mimetype,
-        owner=owner,
-        search=search,
-        after_key=after_key,
-        file_service=file_service,
-        user=user,
-    )
+    try:
+        result = await file_service.list_files(
+            user_id=user.user_id,
+            jwt_token=user.jwt_token,
+            page=1,
+            page_size=limit,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            connector_type=connector_type,
+            mimetype=mimetype,
+            owner=owner,
+            search=search,
+        )
+        return JSONResponse(result)
+    except Exception as e:
+        logger.error("Failed to get all files (v1)", error=str(e))
+        from utils.opensearch_utils import AUTH_ERROR_MESSAGE, is_opensearch_auth_error
 
-
-async def search_files(
-    q: str = Query(..., min_length=1, description="Search query"),
-    page: int = Query(1, ge=1, description="Page number"),
-    page_size: int = Query(25, ge=1, le=500, description="Items per page"),
-    connector_type: str | None = Query(None, description="Filter by connector type"),
-    mimetype: str | None = Query(None, description="Filter by MIME type"),
-    owner: str | None = Query(None, description="Filter by owner"),
-    after_key: str | None = Query(None, description="Composite pagination cursor (JSON-encoded)"),
-    file_service=Depends(get_file_service_v2),
-    user: User = Depends(require_api_key_permission("knowledge:read:own")),
-):
-    """
-    Search ingested files by name with fuzzy/partial matching.
-
-    GET /v1/files/search
-    """
-    return await files_v2.search_files(
-        q=q,
-        page=page,
-        page_size=page_size,
-        connector_type=connector_type,
-        mimetype=mimetype,
-        owner=owner,
-        after_key=after_key,
-        file_service=file_service,
-        user=user,
-    )
+        if is_opensearch_auth_error(e):
+            return JSONResponse({"error": AUTH_ERROR_MESSAGE}, status_code=401)
+        return JSONResponse({"error": "Failed to get files"}, status_code=500)

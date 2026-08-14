@@ -133,17 +133,11 @@ def register_public_v1_routes(app: FastAPI):
         methods=["DELETE"],
         tags=["public"],
     )
-    # Files endpoints
-    # /v1/files/search must be registered before /v1/files to avoid path shadowing
+
+    # Files getAll endpoint
     app.add_api_route(
-        "/v1/files/search",
-        v1_files.search_files,
-        methods=["GET"],
-        tags=["public"],
-    )
-    app.add_api_route(
-        "/v1/files",
-        v1_files.list_files,
+        "/v1/files/getAll",
+        v1_files.get_all_files,
         methods=["GET"],
         tags=["public"],
     )

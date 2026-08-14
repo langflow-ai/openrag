@@ -319,11 +319,9 @@ class FileRecord(BaseModel):
 
 
 class ListFilesResponse(BaseModel):
-    """Response from the list-files endpoint."""
+    """Response from the GET /v1/files/getAll endpoint."""
 
     files: list[FileRecord]
     total: int
-    is_approximate: bool
     page: int
     page_size: int
-    after_key: dict | None = None
