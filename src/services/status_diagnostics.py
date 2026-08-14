@@ -34,7 +34,11 @@ def diagnose_component(
     display = _DISPLAY.get(component, status.display_name or component)
     target = _target(component)
     last_err = next(
-        (e.get("detail") for e in reversed(entries or []) if e.get("level") in ("error", "critical")),
+        (
+            e.get("detail")
+            for e in reversed(entries or [])
+            if e.get("level") in ("error", "critical")
+        ),
         None,
     )
     detail = status.last_error or last_err
