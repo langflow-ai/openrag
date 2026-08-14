@@ -33,6 +33,11 @@ COPY custom_components/ /app/custom_components/
 COPY --chmod=755 scripts/langflow-entrypoint.py /usr/local/bin/langflow-entrypoint
 COPY flows/component_index.json /app/component_index.json
 USER root
+# component_index.json is not a flow: Langflow scans /app/flows/ and crashes
+# trying to load it as one. Drop the copy under flows/ and keep only the one at
+# LANGFLOW_COMPONENTS_INDEX_PATH below. Must run after USER root — as uid=1000
+# the rm fails on the /app/flows/ directory.
+RUN rm -f /app/flows/component_index.json
 ENV LANGFLOW_SSRF_ALLOWED_HOSTS=localhost,127.0.0.1,host.docker.internal
 ENV LANGFLOW_LOG_TRACE_LOCALS=false
 ENV LANGFLOW_BLOCK_CODE_INTERPRETER_COMPONENTS=true
