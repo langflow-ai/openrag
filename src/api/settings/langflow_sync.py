@@ -28,39 +28,141 @@ logger = get_logger(__name__)
 # garbage-collected mid-flight when the originating request returns.
 _background_tasks: set[asyncio.Task] = set()
 
+# Globals the flows read into plain (non-secret) component fields. Langflow
+# 1.11 refuses to build a component when a Credential-typed global is bound to
+# such a field — it keeps secret values out of component outputs, logs and
+# traces — so these must be created as "Generic". Everything not listed here
+# defaults to "Credential" (API keys, tokens, passwords).
+#
+# Symptom when this is wrong:
+#   Error building Component Docling Serve: Cannot use a Credential-typed
+#   global variable in 'api_url'.
+LANGFLOW_GENERIC_GLOBAL_VARIABLES = frozenset(
+    {
+        "AZURE_AI_FOUNDRY_API_VERSION",
+        "AZURE_AI_FOUNDRY_EMBEDDING_DEPLOYMENT_NAME",
+        "AZURE_AI_FOUNDRY_ENDPOINT",
+        "AZURE_AI_FOUNDRY_LLM_DEPLOYMENT_NAME",
+        "DOCLING_SERVE_URL",
+        "DOCLING_TASK_ID",
+        "FILESIZE",
+        "MIMETYPE",
+        "OLLAMA_BASE_URL",
+        "OPENRAG-QUERY-FILTER",
+        "OPENSEARCH_INDEX_NAME",
+        "OPENSEARCH_URL",
+        "SELECTED_EMBEDDING_MODEL",
+        "WATSONX_PROJECT_ID",
+        "WATSONX_URL",
+    }
+)
+
+
+def _langflow_global_variable_type(name: str) -> str:
+    """Generic for plain-field globals, Credential for secrets."""
+    return "Generic" if name in LANGFLOW_GENERIC_GLOBAL_VARIABLES else "Credential"
+
+
+async def _upsert_langflow_global_variable(name: str, value: str, modify: bool = True):
+    """Create/update a Langflow global with the right type for its usage."""
+    await clients._create_langflow_global_variable(
+        name,
+        value,
+        modify=modify,
+        variable_type=_langflow_global_variable_type(name),
+    )
+
+
+def _string_value(value) -> str:
+    return "" if value is None else str(value)
+
+
+def _required_generic_global_values(config) -> dict[str, str]:
+    """Values for globals Langflow would otherwise auto-create as Credential."""
+    from config import settings
+
+    knowledge = getattr(config, "knowledge", None)
+    providers = getattr(config, "providers", None)
+    watsonx = getattr(providers, "watsonx", None)
+    ollama = getattr(providers, "ollama", None)
+
+    return {
+        "DOCLING_SERVE_URL": settings.get_langflow_docling_url(),
+        "DOCLING_TASK_ID": "None",
+        "FILESIZE": "0",
+        "MIMETYPE": "None",
+        "OLLAMA_BASE_URL": _string_value(getattr(ollama, "endpoint", None)),
+        "OPENRAG-QUERY-FILTER": "{}",
+        "OPENSEARCH_INDEX_NAME": _string_value(getattr(knowledge, "index_name", None))
+        or "documents",
+        "OPENSEARCH_URL": settings.get_langflow_opensearch_url(),
+        "SELECTED_EMBEDDING_MODEL": _string_value(getattr(knowledge, "embedding_model", None)),
+        "WATSONX_PROJECT_ID": _string_value(getattr(watsonx, "project_id", None)),
+        "WATSONX_URL": _string_value(getattr(watsonx, "endpoint", None)),
+    }
+
+
+async def ensure_required_langflow_global_variables(config=None):
+    """Re-type plain-string globals to Generic.
+
+    Langflow auto-creates a global for every name in
+    LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT, and creates them as
+    Credential. Flows bind several of those to non-secret fields
+    (DOCLING_SERVE_URL -> Docling's api_url, OPENSEARCH_INDEX_NAME ->
+    the vector store's index_name), which Langflow 1.11 then refuses to
+    build. Upserting them here migrates the type — the client deletes and
+    recreates when the existing type differs, since PATCH cannot change it.
+
+    Only names this deployment can supply a value for are touched; the
+    Azure globals are handled by _update_langflow_global_variables when
+    the provider is actually configured.
+    """
+    config = config or get_openrag_config()
+    values = _required_generic_global_values(config)
+
+    for name in sorted(values):
+        try:
+            await _upsert_langflow_global_variable(name, values[name])
+        except Exception as e:
+            logger.warning(
+                "Failed to ensure Generic type for Langflow global variable",
+                variable_name=name,
+                error=str(e),
+            )
+
 
 async def _update_langflow_global_variables(config, flows_service=None):
     """Update Langflow global variables for all configured providers"""
     try:
         # WatsonX global variables
         if config.providers.watsonx.api_key:
-            await clients._create_langflow_global_variable(
+            await _upsert_langflow_global_variable(
                 "WATSONX_APIKEY", config.providers.watsonx.api_key, modify=True
             )
             logger.info("Set WATSONX_APIKEY global variable in Langflow")
 
         if config.providers.watsonx.project_id:
-            await clients._create_langflow_global_variable(
+            await _upsert_langflow_global_variable(
                 "WATSONX_PROJECT_ID", config.providers.watsonx.project_id, modify=True
             )
             logger.info("Set WATSONX_PROJECT_ID global variable in Langflow")
 
         if config.providers.watsonx.endpoint:
-            await clients._create_langflow_global_variable(
+            await _upsert_langflow_global_variable(
                 "WATSONX_URL", config.providers.watsonx.endpoint, modify=True
             )
             logger.info("Set WATSONX_URL global variable in Langflow")
 
         # OpenAI global variables
         if config.providers.openai.api_key:
-            await clients._create_langflow_global_variable(
+            await _upsert_langflow_global_variable(
                 "OPENAI_API_KEY", config.providers.openai.api_key, modify=True
             )
             logger.info("Set OPENAI_API_KEY global variable in Langflow")
 
         # Anthropic global variables
         if config.providers.anthropic.api_key:
-            await clients._create_langflow_global_variable(
+            await _upsert_langflow_global_variable(
                 "ANTHROPIC_API_KEY", config.providers.anthropic.api_key, modify=True
             )
             logger.info("Set ANTHROPIC_API_KEY global variable in Langflow")
@@ -73,7 +175,7 @@ async def _update_langflow_global_variables(config, flows_service=None):
             endpoint = await flows_service.resolve_ollama_url(
                 config.providers.ollama.endpoint, force_refresh=True
             )
-            await clients._create_langflow_global_variable("OLLAMA_BASE_URL", endpoint, modify=True)
+            await _upsert_langflow_global_variable("OLLAMA_BASE_URL", endpoint, modify=True)
             logger.info("Set OLLAMA_BASE_URL global variable in Langflow")
 
         # Azure AI Foundry global variables — names match Langflow's native
@@ -81,13 +183,13 @@ async def _update_langflow_global_variables(config, flows_service=None):
         # AZURE_AI_FOUNDRY_ENDPOINT), not LiteLLM's azure_ai/ env var
         # convention used elsewhere for OpenRAG's own direct LiteLLM calls.
         if config.providers.azure_ai_foundry.api_key:
-            await clients._create_langflow_global_variable(
+            await _upsert_langflow_global_variable(
                 "AZURE_AI_FOUNDRY_API_KEY", config.providers.azure_ai_foundry.api_key, modify=True
             )
             logger.info("Set AZURE_AI_FOUNDRY_API_KEY global variable in Langflow")
 
         if config.providers.azure_ai_foundry.endpoint:
-            await clients._create_langflow_global_variable(
+            await _upsert_langflow_global_variable(
                 "AZURE_AI_FOUNDRY_ENDPOINT",
                 config.providers.azure_ai_foundry.endpoint,
                 modify=True,
@@ -107,7 +209,7 @@ async def _update_langflow_global_variables(config, flows_service=None):
         if config.providers.azure_ai_foundry.endpoint:
             from api.provider_validation import AZURE_AI_FOUNDRY_DEFAULT_API_VERSION
 
-            await clients._create_langflow_global_variable(
+            await _upsert_langflow_global_variable(
                 "AZURE_AI_FOUNDRY_API_VERSION",
                 config.providers.azure_ai_foundry.api_version
                 or AZURE_AI_FOUNDRY_DEFAULT_API_VERSION,
@@ -121,7 +223,7 @@ async def _update_langflow_global_variables(config, flows_service=None):
             llm_dep = (
                 config.providers.azure_ai_foundry.llm_deployment_name or config.agent.llm_model
             )
-            await clients._create_langflow_global_variable(
+            await _upsert_langflow_global_variable(
                 "AZURE_AI_FOUNDRY_LLM_DEPLOYMENT_NAME", llm_dep, modify=True
             )
             logger.info("Set AZURE_AI_FOUNDRY_LLM_DEPLOYMENT_NAME global variable in Langflow")
@@ -134,7 +236,7 @@ async def _update_langflow_global_variables(config, flows_service=None):
                 config.providers.azure_ai_foundry.embedding_deployment_name
                 or config.knowledge.embedding_model
             )
-            await clients._create_langflow_global_variable(
+            await _upsert_langflow_global_variable(
                 "AZURE_AI_FOUNDRY_EMBEDDING_DEPLOYMENT_NAME", embed_dep, modify=True
             )
             logger.info(
@@ -142,7 +244,7 @@ async def _update_langflow_global_variables(config, flows_service=None):
             )
 
         if config.knowledge.embedding_model:
-            await clients._create_langflow_global_variable(
+            await _upsert_langflow_global_variable(
                 "SELECTED_EMBEDDING_MODEL", config.knowledge.embedding_model, modify=True
             )
             logger.info(

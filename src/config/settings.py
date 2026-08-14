@@ -256,6 +256,25 @@ else:
     DOCLING_SERVE_URL = f"http://{DOCLING_HOST_IP}:5001"
     logger.info("Auto-detected Docling host: %s (URL: %s)", DOCLING_HOST_IP, DOCLING_SERVE_URL)
 
+
+def get_langflow_docling_url() -> str:
+    """Docling Serve URL for Langflow to use.
+
+    Deliberately not DOCLING_SERVE_URL above: that one is auto-detected from
+    the backend's perspective and can resolve to localhost, which is wrong
+    inside the Langflow container. Defaults to host.docker.internal so Langflow
+    can reach docling-serve on the host.
+    """
+    return os.getenv("DOCLING_SERVE_URL", "http://host.docker.internal:5001")
+
+
+def get_langflow_opensearch_url() -> str:
+    """OpenSearch URL for Langflow to use."""
+    if LANGFLOW_OPENSEARCH_HOST:
+        port = LANGFLOW_OPENSEARCH_PORT or OPENSEARCH_PORT
+        return f"https://{LANGFLOW_OPENSEARCH_HOST}:{port}"
+    return os.getenv("OPENSEARCH_URL", f"https://{OPENSEARCH_HOST}:{OPENSEARCH_PORT}")
+
 # Ingestion configuration
 DISABLE_INGEST_WITH_LANGFLOW = os.getenv("DISABLE_INGEST_WITH_LANGFLOW", "false").lower() in (
     "true",
@@ -1065,13 +1084,26 @@ class AppClients:
             raise last_error
         raise RuntimeError("Langflow request failed without a response")
 
-    async def _create_langflow_global_variable(self, name: str, value: str, modify: bool = False):
-        """Create a global variable in Langflow via API"""
+    async def _create_langflow_global_variable(
+        self,
+        name: str,
+        value: str,
+        modify: bool = False,
+        variable_type: str = "Credential",
+    ):
+        """Create a global variable in Langflow via API.
+
+        ``variable_type`` must be "Generic" for any variable a flow reads into a
+        non-secret field. Langflow 1.11 rejects Credential-typed globals in
+        plain fields (e.g. Docling's api_url, OpenSearch's index_name) to keep
+        secrets out of component outputs, logs and traces. See
+        api.settings.langflow_sync._langflow_global_variable_type.
+        """
         payload = {
             "name": name,
             "value": value,
             "default_fields": [],
-            "type": "Credential",
+            "type": variable_type,
         }
 
         try:
@@ -1088,7 +1120,9 @@ class AppClients:
                         "Langflow global variable already exists, attempting to update",
                         variable_name=name,
                     )
-                    await self._update_langflow_global_variable(name, value)
+                    await self._update_langflow_global_variable(
+                        name, value, variable_type=variable_type
+                    )
                 else:
                     logger.info(
                         "Langflow global variable already exists",
@@ -1108,8 +1142,20 @@ class AppClients:
             )
             raise e
 
-    async def _update_langflow_global_variable(self, name: str, value: str):
-        """Update an existing global variable in Langflow via API"""
+    async def _update_langflow_global_variable(
+        self,
+        name: str,
+        value: str,
+        variable_type: str = "Credential",
+    ):
+        """Update an existing global variable in Langflow via API.
+
+        Langflow's PATCH cannot change a variable's type, so a variable that
+        already exists under the wrong type is deleted and recreated. This is
+        what migrates globals created before typing was applied — otherwise a
+        pre-existing Credential-typed OPENSEARCH_INDEX_NAME or DOCLING_SERVE_URL
+        keeps failing flow builds even once the calling code asks for Generic.
+        """
         try:
             # First, get all variables to find the one with the matching name
             get_response = await self.langflow_request("GET", "/api/v1/variables/")
@@ -1138,6 +1184,46 @@ class AppClients:
             variable_id = target_variable.get("id")
             if not variable_id:
                 logger.error("Variable ID not found for update", variable_name=name)
+                return
+
+            current_type = target_variable.get("type")
+            if current_type and current_type != variable_type:
+                delete_response = await self.langflow_request(
+                    "DELETE", f"/api/v1/variables/{variable_id}"
+                )
+                if delete_response.status_code not in [200, 204]:
+                    logger.warning(
+                        "Failed to delete Langflow global variable before type migration",
+                        variable_name=name,
+                        variable_id=variable_id,
+                        current_type=current_type,
+                        target_type=variable_type,
+                        status_code=delete_response.status_code,
+                    )
+                    return
+
+                recreate_payload = {
+                    "name": name,
+                    "value": value,
+                    "default_fields": target_variable.get("default_fields", []),
+                    "type": variable_type,
+                }
+                recreate_response = await self.langflow_request(
+                    "POST", "/api/v1/variables/", json=recreate_payload
+                )
+                if recreate_response.status_code in [200, 201]:
+                    logger.info(
+                        "Migrated Langflow global variable type",
+                        variable_name=name,
+                        old_type=current_type,
+                        new_type=variable_type,
+                    )
+                else:
+                    logger.error(
+                        "Failed to recreate Langflow global variable after type migration",
+                        variable_name=name,
+                        status_code=recreate_response.status_code,
+                    )
                 return
 
             # Update the variable using PATCH

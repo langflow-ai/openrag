@@ -204,3 +204,18 @@ async def startup_tasks(services):
             Category.FLOW_OPERATIONS, MessageId.ORB_FLOW_RESET_CHECK_FAIL
         )
         # Don't fail startup if this check fails
+
+    # Langflow seeds a global for every LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT
+    # name as a Credential variable. Several of those are bound to plain
+    # (non-secret) component fields, which Langflow 1.11 refuses to build, so
+    # re-type them to Generic here.
+    try:
+        from api.settings.langflow_sync import ensure_required_langflow_global_variables
+
+        await ensure_required_langflow_global_variables(get_openrag_config())
+        logger.info("Ensured required Langflow global variables")
+    except Exception as e:
+        logger.error(
+            "Failed to ensure required Langflow global variables at startup",
+            error=str(e),
+        )

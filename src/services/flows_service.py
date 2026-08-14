@@ -443,6 +443,38 @@ class FlowsService:
         logger.warning(f"Flow with ID {flow_id} not found in flows directory")
         return None
 
+    async def _unlock_flow(self, flow_id: str):
+        """Unlock a flow before making changes.
+
+        The shipped flows are locked (``"locked": true`` in flows/*.json).
+        Langflow 1.11 enforces that on PATCH and answers HTTP 423
+        ("Flow is locked. Unlock it before making changes."), so every
+        flow-mutating request has to unlock first and re-lock afterwards.
+        """
+        try:
+            response = await clients.langflow_request(
+                "PATCH", f"/api/v1/flows/{flow_id}", json={"locked": False}
+            )
+            if response.status_code not in (200, 404):
+                logger.warning(
+                    f"Failed to unlock flow {flow_id}: HTTP {response.status_code} - {response.text}"
+                )
+        except Exception as e:
+            logger.warning(f"Error unlocking flow {flow_id}: {e}")
+
+    async def _lock_flow(self, flow_id: str):
+        """Lock a flow again after making changes."""
+        try:
+            response = await clients.langflow_request(
+                "PATCH", f"/api/v1/flows/{flow_id}", json={"locked": True}
+            )
+            if response.status_code not in (200, 404):
+                logger.warning(
+                    f"Failed to lock flow {flow_id}: HTTP {response.status_code} - {response.text}"
+                )
+        except Exception as e:
+            logger.warning(f"Error locking flow {flow_id}: {e}")
+
     async def reset_langflow_flow(self, flow_type: str):
         """Reset a Langflow flow by uploading the corresponding JSON file
 
@@ -491,9 +523,11 @@ class FlowsService:
 
         # Make PATCH request to Langflow API to update the flow using shared client
         try:
+            await self._unlock_flow(flow_id)
             response = await clients.langflow_request(
                 "PATCH", f"/api/v1/flows/{flow_id}", json=flow_data
             )
+            await self._lock_flow(flow_id)
 
             if response.status_code == 200:
                 logger.info(
@@ -694,9 +728,11 @@ class FlowsService:
             raise Exception(f"{field_name} field not found in {identifier} component")
 
         # Update the flow via PATCH request
+        await self._unlock_flow(flow_id)
         patch_response = await clients.langflow_request(
             "PATCH", f"/api/v1/flows/{flow_id}", json=flow_data
         )
+        await self._lock_flow(flow_id)
 
         if patch_response.status_code != 200:
             raise Exception(
@@ -1232,9 +1268,11 @@ class FlowsService:
             logger.info(f"Updated {', '.join(updates_made)} in {flow_name} flow")
 
             # PATCH the updated flow
+            await self._unlock_flow(flow_id)
             response = await clients.langflow_request(
                 "PATCH", f"/api/v1/flows/{flow_id}", json=flow_data
             )
+            await self._lock_flow(flow_id)
 
             if response.status_code != 200:
                 raise Exception(

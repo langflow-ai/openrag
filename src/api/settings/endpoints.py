@@ -28,6 +28,7 @@ from api.settings.langflow_sync import (
     _run_async_post_save_langflow_updates,
     _update_langflow_docling_settings,
     _update_langflow_global_variables,
+    _upsert_langflow_global_variable,
     _update_langflow_model_values,
     _update_langflow_system_prompt,
     _update_mcp_server_urls,
@@ -599,7 +600,7 @@ async def update_settings(
 
             # Also update global variable with new index name
             try:
-                await clients._create_langflow_global_variable(
+                await _upsert_langflow_global_variable(
                     "OPENSEARCH_INDEX_NAME", new_index_name, modify=True
                 )
                 logger.info(
