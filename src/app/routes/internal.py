@@ -406,6 +406,12 @@ def register_internal_routes(app: FastAPI):
         "/models/ollama", models.get_ollama_models, methods=["GET"], tags=["internal"]
     )
     app.add_api_route("/models/ibm", models.get_ibm_models, methods=["POST"], tags=["internal"])
+    app.add_api_route(
+        "/models/azure-ai-foundry",
+        models.get_azure_ai_foundry_models,
+        methods=["POST"],
+        tags=["internal"],
+    )
 
     # Onboarding endpoints
     app.add_api_route("/onboarding", settings.onboarding, methods=["POST"], tags=["internal"])

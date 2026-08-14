@@ -15,7 +15,7 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-KNOWN_PREFIXES = ["openai", "ollama", "watsonx", "anthropic"]
+KNOWN_PREFIXES = ["openai", "ollama", "watsonx", "anthropic", "azure_ai", "azure"]
 
 # OpenAI /v1/models is a flat inventory. These IDs are real products but not
 # usable as OpenRAG agent LLMs (wrong modality / API surface).
@@ -183,6 +183,19 @@ class ModelsService:
                     except Exception as e:
                         logger.debug(f"Could not fetch WatsonX models for registry: {str(e)}")
 
+                # Azure AI Foundry — register configured deployment names statically;
+                # the user provides deployment names manually (no remote model fetch).
+                if config.providers.azure_ai_foundry.configured:
+                    embedding_model = config.knowledge.embedding_model
+                    llm_model = config.agent.llm_model
+                    if (
+                        embedding_model
+                        and config.knowledge.embedding_provider == "azure_ai_foundry"
+                    ):
+                        new_registry[embedding_model] = "azure_ai_foundry"
+                    if llm_model and config.agent.llm_provider == "azure_ai_foundry":
+                        new_registry[llm_model] = "azure_ai_foundry"
+
                 ModelsService._model_provider_registry = new_registry
                 logger.info(
                     f"Model registry updated: {len(ModelsService._model_provider_registry)} models registered"
@@ -234,6 +247,16 @@ class ModelsService:
                 model_name=model_name,
             )
             return model_name  # OpenAI-compatible models work without a prefix
+
+        if provider_lower == "azure_ai_foundry":
+            endpoint = ""
+            if hasattr(self, "_config_manager") and self._config_manager:
+                endpoint = (
+                    self._config_manager.get_config().providers.azure_ai_foundry.endpoint or ""
+                )
+            if ".openai.azure.com" in endpoint.lower():
+                return f"azure/{model_name}"
+            return f"azure_ai/{model_name}"
 
         return f"{provider_lower}/{model_name}" if provider_lower != "openai" else model_name
 

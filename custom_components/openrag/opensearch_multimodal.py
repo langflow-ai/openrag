@@ -53,7 +53,9 @@ def _log_watsonx_rate_limit_headers(error: Exception) -> None:
         if not headers:
             return
         status = getattr(response, "status_code", "unknown")
-        observed = {h: headers.get(h) for h in _WATSONX_RATE_LIMIT_HEADERS if headers.get(h) is not None}
+        observed = {
+            h: headers.get(h) for h in _WATSONX_RATE_LIMIT_HEADERS if headers.get(h) is not None
+        }
         if str(status) == "429" or observed:
             logger.warning(f"watsonx rate-limit response (status={status}): {observed}")
     except Exception as log_error:  # never let diagnostics mask the real error
@@ -114,9 +116,9 @@ def fence_untrusted_text(text: str) -> str:
     """
     if not text:
         return text
-    escaped = text.replace(
-        UNTRUSTED_CHUNK_FENCE_START, "\\" + UNTRUSTED_CHUNK_FENCE_START
-    ).replace(UNTRUSTED_CHUNK_FENCE_END, "\\" + UNTRUSTED_CHUNK_FENCE_END)
+    escaped = text.replace(UNTRUSTED_CHUNK_FENCE_START, "\\" + UNTRUSTED_CHUNK_FENCE_START).replace(
+        UNTRUSTED_CHUNK_FENCE_END, "\\" + UNTRUSTED_CHUNK_FENCE_END
+    )
     return f"{UNTRUSTED_CHUNK_FENCE_START}\n{escaped}\n{UNTRUSTED_CHUNK_FENCE_END}"
 
 
@@ -164,6 +166,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         *[i.name for i in LCVectorStoreComponent.inputs],  # search_query, add_documents, etc.
         "embedding",
         "embedding_model_name",
+        "embedding_model_provider",
         "vector_field",
         "number_of_results",
         "auth_mode",
@@ -308,6 +311,17 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             advanced=False,
         ),
         StrInput(
+            name="embedding_model_provider",
+            display_name="Embedding Model Provider",
+            value="",
+            info=(
+                "Optional provider of the embedding model. Used alongside embedding_model_name to "
+                "differentiate embedding models with identical names across different providers."
+            ),
+            advanced=False,
+            load_from_db=True,
+        ),
+        StrInput(
             name="vector_field",
             display_name="Legacy Vector Field Name",
             value="chunk_embedding",
@@ -379,7 +393,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                 "Valid JSON Web Token for authentication. "
                 "Will be sent in the Authorization header (with optional 'Bearer ' prefix)."
             ),
-            required=False
+            required=False,
         ),
         StrInput(
             name="jwt_header",
@@ -544,10 +558,8 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
 
             # Apply score_threshold / scoreThreshold as min_score if not already set
             if "min_score" not in query_body:
-
                 score_threshold = self._resolve_score_threshold(filter_obj)
                 if score_threshold is not None:
-
                     query_body["min_score"] = score_threshold
 
         client = self.build_client()
@@ -597,45 +609,57 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         Raises:
             ValueError: If embedding model name cannot be determined
         """
+        provider_name = (
+            self.embedding_model_provider.strip()
+            if hasattr(self, "embedding_model_provider") and self.embedding_model_provider
+            else ""
+        )
+
+        model_name = ""
         # First try explicit embedding_model_name input
         if hasattr(self, "embedding_model_name") and self.embedding_model_name:
-            return self.embedding_model_name.strip()
+            model_name = self.embedding_model_name.strip()
 
         # Try to get from provided embedding object
-        if embedding_obj:
+        if not model_name and embedding_obj:
             # Priority: deployment > model > model_id > model_name
             if hasattr(embedding_obj, "deployment") and embedding_obj.deployment:
-                return str(embedding_obj.deployment)
-            if hasattr(embedding_obj, "model") and embedding_obj.model:
-                return str(embedding_obj.model)
-            if hasattr(embedding_obj, "model_id") and embedding_obj.model_id:
-                return str(embedding_obj.model_id)
-            if hasattr(embedding_obj, "model_name") and embedding_obj.model_name:
-                return str(embedding_obj.model_name)
+                model_name = str(embedding_obj.deployment)
+            elif hasattr(embedding_obj, "model") and embedding_obj.model:
+                model_name = str(embedding_obj.model)
+            elif hasattr(embedding_obj, "model_id") and embedding_obj.model_id:
+                model_name = str(embedding_obj.model_id)
+            elif hasattr(embedding_obj, "model_name") and embedding_obj.model_name:
+                model_name = str(embedding_obj.model_name)
 
         # Try to get from embedding component (legacy single embedding)
-        if hasattr(self, "embedding") and self.embedding:
+        if not model_name and hasattr(self, "embedding") and self.embedding:
             # Handle list of embeddings
             if isinstance(self.embedding, list) and len(self.embedding) > 0:
                 first_emb = self.embedding[0]
                 if hasattr(first_emb, "deployment") and first_emb.deployment:
-                    return str(first_emb.deployment)
-                if hasattr(first_emb, "model") and first_emb.model:
-                    return str(first_emb.model)
-                if hasattr(first_emb, "model_id") and first_emb.model_id:
-                    return str(first_emb.model_id)
-                if hasattr(first_emb, "model_name") and first_emb.model_name:
-                    return str(first_emb.model_name)
+                    model_name = str(first_emb.deployment)
+                elif hasattr(first_emb, "model") and first_emb.model:
+                    model_name = str(first_emb.model)
+                elif hasattr(first_emb, "model_id") and first_emb.model_id:
+                    model_name = str(first_emb.model_id)
+                elif hasattr(first_emb, "model_name") and first_emb.model_name:
+                    model_name = str(first_emb.model_name)
             # Handle single embedding
             elif not isinstance(self.embedding, list):
                 if hasattr(self.embedding, "deployment") and self.embedding.deployment:
-                    return str(self.embedding.deployment)
-                if hasattr(self.embedding, "model") and self.embedding.model:
-                    return str(self.embedding.model)
-                if hasattr(self.embedding, "model_id") and self.embedding.model_id:
-                    return str(self.embedding.model_id)
-                if hasattr(self.embedding, "model_name") and self.embedding.model_name:
-                    return str(self.embedding.model_name)
+                    model_name = str(self.embedding.deployment)
+                elif hasattr(self.embedding, "model") and self.embedding.model:
+                    model_name = str(self.embedding.model)
+                elif hasattr(self.embedding, "model_id") and self.embedding.model_id:
+                    model_name = str(self.embedding.model_id)
+                elif hasattr(self.embedding, "model_name") and self.embedding.model_name:
+                    model_name = str(self.embedding.model_name)
+
+        if model_name:
+            if provider_name and ":" not in model_name:
+                return f"{provider_name}:{model_name}"
+            return model_name
 
         msg = (
             "Could not determine embedding model name. "
@@ -910,7 +934,9 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                     f"chunks={len(payload['chunks'])} final={final}"
                 )
                 response = client.post(url, json=payload, headers=headers)
-                logger.debug(f"[OpenRAG ingest POST resp] batch={batch_number} status={response.status_code}")
+                logger.debug(
+                    f"[OpenRAG ingest POST resp] batch={batch_number} status={response.status_code}"
+                )
                 if response.status_code >= 400:
                     msg = (
                         "OpenRAG ingest callback failed "
@@ -1140,6 +1166,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         pwd = (self._openrag_input_to_str(self.password) or "").strip()
         if pwd == "OPENSEARCH_PASSWORD" or not pwd:
             from config.settings import get_opensearch_password
+
             pwd = get_opensearch_password() or ""
         if not user or not pwd:
             msg = "Auth Mode is 'basic' but username/password are missing."
@@ -1425,7 +1452,6 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         logger.debug(f"Is IBM/watsonx embedding: {is_ibm}")
 
         if is_ibm:
-
             # Hand the full batch to the SDK and let it batch/throttle/retry.
             # Retry attempts and base backoff are tunable via the SDK's own
             # WATSONX_MAX_RETRIES / WATSONX_DELAY_TIME environment variables.
@@ -1701,7 +1727,6 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                 context_clauses.append({"terms": {field: values}})
         return context_clauses
 
-
     def _parse_filter_expression(self) -> dict | None:
         """Parse and validate optional filter_expression JSON.
 
@@ -1756,8 +1781,9 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             return None
         return float(score_threshold)
 
-    def _detect_available_models(self, client: OpenSearch, filter_clauses: list[dict] | None = None) -> list[str]:
-
+    def _detect_available_models(
+        self, client: OpenSearch, filter_clauses: list[dict] | None = None
+    ) -> list[str]:
         """Detect which embedding models have documents in the index.
 
         Uses aggregation to find all unique embedding_model values, optionally
@@ -2388,7 +2414,6 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         ]
 
     def search_documents(self) -> list[Data]:
-
         """Search documents and return results as a list of Data objects.
 
         This is the main interface method that performs the multi-model search using the

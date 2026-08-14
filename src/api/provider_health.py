@@ -25,7 +25,7 @@ async def check_provider_health(
     Check if the configured provider is healthy and properly validated.
 
     Query parameters:
-        provider (optional): Provider to check ('openai', 'ollama', 'watsonx', 'anthropic').
+        provider (optional): Provider to check ('openai', 'ollama', 'watsonx', 'anthropic', 'azure_ai_foundry').
                            If not provided, checks the currently configured provider.
         test_completion (optional): If true, performs full validation with completion/embedding tests.
 
@@ -48,7 +48,13 @@ async def check_provider_health(
             provider = current_config.agent.llm_provider
 
         # Validate provider name
-        valid_providers = ["openai", "ollama", "watsonx", "anthropic"]
+        valid_providers = [
+            "openai",
+            "ollama",
+            "watsonx",
+            "anthropic",
+            "azure_ai_foundry",
+        ]
         if provider not in valid_providers:
             return JSONResponse(
                 {
@@ -67,6 +73,7 @@ async def check_provider_health(
                 api_key = getattr(provider_config, "api_key", None)
                 endpoint = getattr(provider_config, "endpoint", None)
                 project_id = getattr(provider_config, "project_id", None)
+                api_version = getattr(provider_config, "api_version", None)
 
                 # Check if this provider is used for LLM or embedding
                 llm_model = (
@@ -99,11 +106,13 @@ async def check_provider_health(
             api_key = getattr(llm_provider_config, "api_key", None)
             endpoint = getattr(llm_provider_config, "endpoint", None)
             project_id = getattr(llm_provider_config, "project_id", None)
+            api_version = getattr(llm_provider_config, "api_version", None)
             llm_model = current_config.agent.llm_model
 
             embedding_api_key = getattr(embedding_provider_config, "api_key", None)
             embedding_endpoint = getattr(embedding_provider_config, "endpoint", None)
             embedding_project_id = getattr(embedding_provider_config, "project_id", None)
+            embedding_api_version = getattr(embedding_provider_config, "api_version", None)
             embedding_model = current_config.knowledge.embedding_model
 
             # Short-circuit identical concurrent polls from the provider-health
@@ -157,6 +166,7 @@ async def check_provider_health(
                 endpoint=endpoint,
                 project_id=project_id,
                 test_completion=test_completion,
+                api_version=api_version,
             )
 
             return JSONResponse(
@@ -167,7 +177,9 @@ async def check_provider_health(
                     "details": {
                         "llm_model": llm_model,
                         "embedding_model": embedding_model,
-                        "endpoint": endpoint if provider in ["ollama", "watsonx"] else None,
+                        "endpoint": endpoint
+                        if provider in ["ollama", "watsonx", "azure_ai_foundry"]
+                        else None,
                     },
                 },
                 status_code=200,
@@ -188,6 +200,7 @@ async def check_provider_health(
                     endpoint=endpoint,
                     project_id=project_id,
                     test_completion=test_completion,
+                    api_version=api_version,
                 )
             except httpx.TimeoutException as e:
                 # Timeout means provider is busy, not misconfigured
@@ -222,6 +235,7 @@ async def check_provider_health(
                     endpoint=embedding_endpoint,
                     project_id=embedding_project_id,
                     test_completion=test_completion,
+                    api_version=embedding_api_version,
                 )
             except httpx.TimeoutException as e:
                 # Timeout means provider is busy, not misconfigured

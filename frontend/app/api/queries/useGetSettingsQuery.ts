@@ -51,6 +51,14 @@ export interface ProviderSettings {
     endpoint?: string;
     configured?: boolean;
   };
+  azure_ai_foundry?: {
+    has_api_key?: boolean;
+    endpoint?: string;
+    api_version?: string;
+    configured?: boolean;
+    llm_deployment_name?: string;
+    embedding_deployment_name?: string;
+  };
   local?: {
     configured?: boolean;
   };
@@ -96,6 +104,7 @@ export interface Settings {
   local_vlm_models?: string[];
   show_shared_upload_toggle?: boolean;
   show_workspace_oauth_overrides?: boolean;
+  show_azure_ai_providers?: boolean;
   segment_write_key?: string;
   environment?: string;
   langflow_port?: string | number | null;

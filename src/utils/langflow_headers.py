@@ -21,6 +21,8 @@ def map_provider(provider: str | None) -> str:
         return "Ollama"
     if provider_lower == "watsonx":
         return "IBM WatsonX"
+    if provider_lower == "azure_ai_foundry":
+        return "Azure AI Foundry"
     return provider
 
 

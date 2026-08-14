@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   useGetAnthropicModelsQuery,
+  useGetAzureAIFoundryModelsQuery,
   useGetIBMModelsQuery,
   useGetOllamaModelsQuery,
   useGetOpenAIModelsQuery,
@@ -127,6 +128,15 @@ export function IngestSettingsSection() {
           !!settings?.providers?.watsonx?.project_id,
       },
     );
+  const { data: azureModels, isLoading: azureLoading } =
+    useGetAzureAIFoundryModelsQuery(
+      { endpoint: settings?.providers?.azure_ai_foundry?.endpoint, apiKey: "" },
+      {
+        enabled:
+          settings?.providers?.azure_ai_foundry?.configured === true &&
+          !!settings?.providers?.azure_ai_foundry?.endpoint,
+      },
+    );
 
   const groupedEmbeddingModels = useMemo(
     () =>
@@ -152,6 +162,13 @@ export function IngestSettingsSection() {
           models: watsonxModels?.embedding_models || [],
           configured: settings.providers?.watsonx?.configured === true,
         },
+        {
+          group: "Azure AI Foundry",
+          provider: "azure_ai_foundry",
+          icon: getModelLogo("", "azure_ai_foundry"),
+          models: azureModels?.embedding_models || [],
+          configured: settings.providers?.azure_ai_foundry?.configured === true,
+        },
       ]
         .filter((p) => p.configured)
         .map((p) => ({
@@ -163,14 +180,16 @@ export function IngestSettingsSection() {
       openaiModels?.embedding_models,
       ollamaModels?.embedding_models,
       watsonxModels?.embedding_models,
+      azureModels?.embedding_models,
       settings.providers?.openai?.configured,
       settings.providers?.ollama?.configured,
       settings.providers?.watsonx?.configured,
+      settings.providers?.azure_ai_foundry?.configured,
     ],
   );
 
   const isLoadingAnyEmbeddingModels =
-    openaiLoading || ollamaLoading || watsonxLoading;
+    openaiLoading || ollamaLoading || watsonxLoading || azureLoading;
 
   const groupedVlmModels = useMemo(() => {
     const list: any[] = [];
@@ -652,6 +671,7 @@ export function IngestSettingsSection() {
                     : "No embedding models detected. Configure a provider first."
                 }
                 value={settings.knowledge?.embedding_model || ""}
+                selectedProvider={settings.knowledge?.embedding_provider}
                 onValueChange={handleEmbeddingModelChange}
               />
             </LabelWrapper>
@@ -859,6 +879,7 @@ export function IngestSettingsSection() {
                               : "No models detected. Configure OpenAI, Anthropic, Ollama, or IBM watsonx.ai first."
                           }
                           value={vlmModel}
+                          selectedProvider={vlmProvider}
                           onValueChange={handleVlmModelChange}
                           hasError={!!validationError}
                           disabled={!pictureDescriptions}

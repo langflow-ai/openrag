@@ -21,6 +21,7 @@ from api.settings.helpers import (
 from config import settings
 from config.settings import clients, get_openrag_config
 from services.docling_service import get_docling_preset_configs
+from services.flows_service import LANGFLOW_MODEL_VALUE_PROVIDERS
 from utils.langflow_headers import map_provider
 from utils.logging_config import get_logger
 
@@ -175,6 +176,71 @@ async def _update_langflow_global_variables(config, flows_service=None):
             await _upsert_langflow_global_variable("OLLAMA_BASE_URL", endpoint)
             logger.info("Set OLLAMA_BASE_URL global variable in Langflow")
 
+        # Azure AI Foundry global variables — names match Langflow's native
+        # "Azure AI Foundry" provider metadata (AZURE_AI_FOUNDRY_API_KEY /
+        # AZURE_AI_FOUNDRY_ENDPOINT), not LiteLLM's azure_ai/ env var
+        # convention used elsewhere for OpenRAG's own direct LiteLLM calls.
+        if config.providers.azure_ai_foundry.api_key:
+            await clients._create_langflow_global_variable(
+                "AZURE_AI_FOUNDRY_API_KEY", config.providers.azure_ai_foundry.api_key, modify=True
+            )
+            logger.info("Set AZURE_AI_FOUNDRY_API_KEY global variable in Langflow")
+
+        if config.providers.azure_ai_foundry.endpoint:
+            await clients._create_langflow_global_variable(
+                "AZURE_AI_FOUNDRY_ENDPOINT",
+                config.providers.azure_ai_foundry.endpoint,
+                modify=True,
+            )
+            logger.info("Set AZURE_AI_FOUNDRY_ENDPOINT global variable in Langflow")
+
+        # Consumed by the Dockerfile.langflow patch on
+        # instantiation.py's get_llm()/_compose_embedding_kwargs() Azure AI
+        # Foundry branches — Langflow's own lfx package never threads
+        # api-version through for this provider otherwise (see
+        # _build_azure_ai_foundry_url in provider_validation.py for the
+        # equivalent fix on OpenRAG's own direct calls). Always synced (not
+        # gated on the user having set one) — the API Version field is
+        # optional in Settings, and Azure's model inference API rejects
+        # requests with no api-version at all, so Langflow needs the same
+        # default OpenRAG's own calls already fall back to.
+        if config.providers.azure_ai_foundry.endpoint:
+            from api.provider_validation import AZURE_AI_FOUNDRY_DEFAULT_API_VERSION
+
+            await clients._create_langflow_global_variable(
+                "AZURE_AI_FOUNDRY_API_VERSION",
+                config.providers.azure_ai_foundry.api_version
+                or AZURE_AI_FOUNDRY_DEFAULT_API_VERSION,
+                modify=True,
+            )
+            logger.info("Set AZURE_AI_FOUNDRY_API_VERSION global variable in Langflow")
+
+        if config.providers.azure_ai_foundry.llm_deployment_name or (
+            config.agent.llm_provider == "azure_ai_foundry" and config.agent.llm_model
+        ):
+            llm_dep = (
+                config.providers.azure_ai_foundry.llm_deployment_name or config.agent.llm_model
+            )
+            await clients._create_langflow_global_variable(
+                "AZURE_AI_FOUNDRY_LLM_DEPLOYMENT_NAME", llm_dep, modify=True
+            )
+            logger.info("Set AZURE_AI_FOUNDRY_LLM_DEPLOYMENT_NAME global variable in Langflow")
+
+        if config.providers.azure_ai_foundry.embedding_deployment_name or (
+            config.knowledge.embedding_provider == "azure_ai_foundry"
+            and config.knowledge.embedding_model
+        ):
+            embed_dep = (
+                config.providers.azure_ai_foundry.embedding_deployment_name
+                or config.knowledge.embedding_model
+            )
+            await clients._create_langflow_global_variable(
+                "AZURE_AI_FOUNDRY_EMBEDDING_DEPLOYMENT_NAME", embed_dep, modify=True
+            )
+            logger.info(
+                "Set AZURE_AI_FOUNDRY_EMBEDDING_DEPLOYMENT_NAME global variable in Langflow"
+            )
+
         if config.knowledge.embedding_model:
             await _upsert_langflow_global_variable(
                 "SELECTED_EMBEDDING_MODEL", config.knowledge.embedding_model
@@ -290,14 +356,20 @@ async def _update_langflow_model_values(
                 effective_llm_model = llm_model  # do not fall back; force caller to specify
             else:
                 effective_llm_model = llm_model or config.agent.llm_model
-            result = await flows_service.change_langflow_model_value(
-                effective_llm_provider, llm_model=effective_llm_model, force_llm_update=True
-            )
+            if effective_llm_provider not in LANGFLOW_MODEL_VALUE_PROVIDERS:
+                logger.debug(
+                    f"Skipping Langflow flow sync for LLM provider {effective_llm_provider} "
+                    "(not routable through Langflow's unified flow components)"
+                )
+            else:
+                result = await flows_service.change_langflow_model_value(
+                    effective_llm_provider, llm_model=effective_llm_model, force_llm_update=True
+                )
 
-            logger.info(
-                f"Successfully updated Langflow flows for LLM provider {effective_llm_provider}",
-                result=result,
-            )
+                logger.info(
+                    f"Successfully updated Langflow flows for LLM provider {effective_llm_provider}",
+                    result=result,
+                )
 
         if embedding_model or embedding_provider:
             effective_embedding_provider = (
@@ -312,16 +384,24 @@ async def _update_langflow_model_values(
                 )
             else:
                 effective_embedding_model = embedding_model or config.knowledge.embedding_model
-            result = await flows_service.change_langflow_model_value(
-                effective_embedding_provider,
-                embedding_model=effective_embedding_model,
-                force_embedding_update=True,
-            )
+            if effective_embedding_provider not in LANGFLOW_MODEL_VALUE_PROVIDERS:
+                logger.debug(
+                    f"Skipping Langflow flow sync for embedding provider "
+                    f"{effective_embedding_provider} "
+                    "(not routable through Langflow's unified flow components)"
+                )
+            else:
+                result = await flows_service.change_langflow_model_value(
+                    effective_embedding_provider,
+                    embedding_model=effective_embedding_model,
+                    force_embedding_update=True,
+                )
 
-            logger.info(
-                f"Successfully updated Langflow flows for embedding provider {effective_embedding_provider}",
-                result=result,
-            )
+                logger.info(
+                    f"Successfully updated Langflow flows for embedding provider "
+                    f"{effective_embedding_provider}",
+                    result=result,
+                )
 
         if not (embedding_model or embedding_provider or llm_model or llm_provider):
             # 1. Update ALL configured LLM providers.
@@ -332,6 +412,9 @@ async def _update_langflow_model_values(
 
             current_llm_provider = config.agent.llm_provider.lower()
             for provider in llm_providers:
+                if provider not in LANGFLOW_MODEL_VALUE_PROVIDERS:
+                    logger.debug(f"Skipping Langflow flow sync for provider {provider}")
+                    continue
                 # Use configured model for current provider, or None (first available) for others
                 provider_llm_model = (
                     config.agent.llm_model if provider == current_llm_provider else None
@@ -346,6 +429,9 @@ async def _update_langflow_model_values(
 
             current_embedding_provider = config.knowledge.embedding_provider.lower()
             for provider in embedding_providers:
+                if provider not in LANGFLOW_MODEL_VALUE_PROVIDERS:
+                    logger.debug(f"Skipping Langflow flow sync for provider {provider}")
+                    continue
                 # Use configured model for current provider, or None (first available) for others
                 embedding_model = (
                     config.knowledge.embedding_model

@@ -25,6 +25,12 @@ logger = get_logger(__name__)
 
 _UNSET = object()
 
+# Providers Langflow's unified Language Model / Embedding Model components can
+# route to (see change_langflow_model_value).
+LANGFLOW_MODEL_VALUE_PROVIDERS = frozenset(
+    {"watsonx", "ollama", "openai", "anthropic", "azure_ai_foundry"}
+)
+
 
 class FlowsService:
     def __init__(self) -> None:
@@ -644,6 +650,8 @@ class FlowsService:
             return "Ollama"
         if provider == "anthropic":
             return "Anthropic"
+        if provider == "azure_ai_foundry":
+            return "Azure AI Foundry"
         return "OpenAI"
 
     async def _update_flow_field(
@@ -1007,15 +1015,15 @@ class FlowsService:
         Change dropdown values for provider-specific components across flows
 
         Args:
-            provider: The provider ("watsonx", "ollama", "openai", "anthropic")
+            provider: The provider ("watsonx", "ollama", "openai", "anthropic", "azure_ai_foundry")
             embedding_model: The embedding model name to set
             llm_model: The LLM model name to set
             force_embedding_update: If True, update embeddings even if model is None
             force_llm_update: If True, update LLM even if model is None
             flow_configs: Optional list of flow configs to update
         """
-        if provider not in ["watsonx", "ollama", "openai", "anthropic"]:
-            raise ValueError("provider must be 'watsonx', 'ollama', 'openai', or 'anthropic'")
+        if provider not in LANGFLOW_MODEL_VALUE_PROVIDERS:
+            raise ValueError(f"provider must be one of {sorted(LANGFLOW_MODEL_VALUE_PROVIDERS)}")
 
         try:
             # Use provided flow_configs or default to all flows
@@ -1129,7 +1137,8 @@ class FlowsService:
         ):
             if is_new_flow:
                 if embedding_model:
-                    await self._enable_model_in_langflow(provider_name, embedding_model)
+                    if await self._enable_model_in_langflow(provider_name, embedding_model):
+                        updates_made.append(f"enabled embedding model: {embedding_model}")
                 logger.info(
                     f"Flow {flow_name} has {len(embedding_nodes)} embedding nodes (< 3). "
                     f"Flow is updated to generic embedding component; enabled model in Langflow, skipping legacy component patching."
@@ -1230,7 +1239,8 @@ class FlowsService:
         if llm_model or force_llm_update:
             if is_new_flow:
                 if llm_model:
-                    await self._enable_model_in_langflow(provider_name, llm_model)
+                    if await self._enable_model_in_langflow(provider_name, llm_model):
+                        updates_made.append(f"enabled llm model: {llm_model}")
                 logger.info(
                     f"Flow {flow_name} has {len(embedding_nodes)} embedding nodes (< 3). "
                     f"Flow is updated to generic components; enabled model in Langflow, skipping legacy LLM component patching."
@@ -1269,6 +1279,14 @@ class FlowsService:
             }
 
         logger.info(f"Updated {', '.join(updates_made)} in {flow_name} flow")
+
+        if not node_tasks:
+            return {
+                "flow": flow_name,
+                "success": True,
+                "message": f"Successfully updated {', '.join(updates_made)}",
+                "flow_id": flow_id,
+            }
 
         await self._unlock_flow(flow_id)
 
@@ -1394,6 +1412,7 @@ class FlowsService:
                 "openai": "OPENAI_API_KEY",
                 "watsonx": "WATSONX_APIKEY",
                 "anthropic": "ANTHROPIC_API_KEY",
+                "azure_ai_foundry": "AZURE_AI_FOUNDRY_API_KEY",
             },
             "api_base": {
                 "ollama": "OLLAMA_BASE_URL",
@@ -1452,7 +1471,7 @@ class FlowsService:
                     logger.info(
                         f"Model {model_value} for provider {provider_name} is already enabled. Skipping."
                     )
-                    return False
+                    return True
 
             enable_payload = [{"provider": provider_name, "model_id": model_value, "enabled": True}]
 
