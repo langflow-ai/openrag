@@ -180,6 +180,49 @@ async def test_azure_ai_foundry_litellm_model_name_routing():
         == "azure_ai/deepseek-r1"
     )
 
+    # Case 3: the OpenAI-compatible /openai/v1 endpoint must NOT use azure_ai/
+    # — LiteLLM's azure_ai handler builds
+    # ".../openai/v1/openai/deployments/<model>/embeddings", which 404s
+    # ("Resource not found"). The plain openai provider + api_base hits
+    # ".../openai/v1/embeddings", the route this form actually serves.
+    cfg3 = providers_config(
+        AzureAIFoundryConfig(
+            endpoint="https://my-foundry.services.ai.azure.com/openai/v1",
+            embedding_deployment_name="text-embedding-3-small",
+        )
+    )
+    service._config_manager = FakeConfigManager(cfg3)
+    assert (
+        await service.get_litellm_model_name("text-embedding-3-small", "azure_ai_foundry")
+        == "openai/text-embedding-3-small"
+    )
+
+
+def test_is_azure_ai_foundry_openai_v1_endpoint():
+    from api.provider_validation import is_azure_ai_foundry_openai_v1_endpoint
+
+    assert is_azure_ai_foundry_openai_v1_endpoint(
+        "https://my-foundry.services.ai.azure.com/openai/v1"
+    )
+    assert is_azure_ai_foundry_openai_v1_endpoint(
+        "https://my-foundry.services.ai.azure.com/openai/v1/"
+    )
+    assert not is_azure_ai_foundry_openai_v1_endpoint("https://my-foundry.services.ai.azure.com")
+    assert not is_azure_ai_foundry_openai_v1_endpoint(
+        "https://my-foundry.services.ai.azure.com/api/projects/proj"
+    )
+    assert not is_azure_ai_foundry_openai_v1_endpoint("")
+
+
+def test_build_azure_ai_foundry_url_openai_v1_bare_root_for_api_base():
+    # target_subpath=None asks for the true bare root, distinct from "" (which
+    # means "list models"). Used for AZURE_AI_API_BASE / the LiteLLM api_base,
+    # where the caller appends its own /embeddings and a baked-in /models would
+    # produce ".../openai/v1/models/embeddings" and 404.
+    endpoint = "https://my-foundry.services.ai.azure.com/openai/v1"
+    url = _build_azure_ai_foundry_url(endpoint, target_subpath=None)
+    assert url == "https://my-foundry.services.ai.azure.com/openai/v1"
+
 
 @pytest.mark.asyncio
 async def test_azure_ai_foundry_completion_uses_max_completion_tokens(monkeypatch):

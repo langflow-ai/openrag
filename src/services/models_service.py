@@ -3,7 +3,11 @@ import re
 
 import httpx
 
-from api.provider_validation import _extract_error_details, format_provider_error_message
+from api.provider_validation import (
+    _extract_error_details,
+    format_provider_error_message,
+    is_azure_ai_foundry_openai_v1_endpoint,
+)
 from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL, OPENAI_EMBEDDING_MODEL_PREFIX
 from config.model_constants import (
     ANTHROPIC_DEFAULT_LANGUAGE_MODEL,
@@ -250,12 +254,27 @@ class ModelsService:
 
         if provider_lower == "azure_ai_foundry":
             endpoint = ""
-            if hasattr(self, "_config_manager") and self._config_manager:
+            if getattr(self, "_config_manager", None):
                 endpoint = (
                     self._config_manager.get_config().providers.azure_ai_foundry.endpoint or ""
                 )
+            else:
+                # _config_manager is only set by tests; fall back to the live
+                # config so the endpoint-form branches below actually apply.
+                from config.settings import get_openrag_config
+
+                endpoint = get_openrag_config().providers.azure_ai_foundry.endpoint or ""
             if ".openai.azure.com" in endpoint.lower():
                 return f"azure/{model_name}"
+            if is_azure_ai_foundry_openai_v1_endpoint(endpoint):
+                # OpenAI-compatible endpoint: LiteLLM's azure_ai provider would
+                # build ".../openai/v1/openai/deployments/<model>/embeddings"
+                # (404 "Resource not found") because it always inserts the Azure
+                # OpenAI deployment path. The plain openai provider, given
+                # api_base, hits ".../openai/v1/embeddings" — the route this form
+                # actually serves. Callers must supply api_base/api_key for the
+                # Foundry endpoint (see AppClients.patched_embedding_client).
+                return f"openai/{model_name}"
             return f"azure_ai/{model_name}"
 
         return f"{provider_lower}/{model_name}" if provider_lower != "openai" else model_name

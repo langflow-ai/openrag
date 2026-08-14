@@ -1331,9 +1331,30 @@ AZURE_AI_FOUNDRY_DEFAULT_API_VERSION = "2025-04-01"
 _AZURE_AI_FOUNDRY_OPENAI_V1_API_VERSIONS = frozenset({"v1", "preview"})
 
 
+def is_azure_ai_foundry_openai_v1_endpoint(endpoint: str) -> bool:
+    """True when `endpoint` targets Foundry's OpenAI-compatible ".../openai/v1"
+    form (as opposed to the generic model-inference / project forms).
+
+    That form speaks plain OpenAI wire format, so it must be reached through
+    LiteLLM's "openai/" provider with an explicit api_base rather than the
+    "azure_ai/" provider — see ModelsService.get_litellm_model_name.
+    """
+    if not endpoint:
+        return False
+
+    parsed = urlparse(endpoint.strip())
+    path = (
+        parsed.path
+        if parsed.scheme
+        else ("/" + "/".join(parsed.path.split("/")[1:]) if "/" in parsed.path else parsed.path)
+    )
+    segments = [s for s in path.rstrip("/").split("/") if s]
+    return [s.lower() for s in segments[-2:]] == ["openai", "v1"]
+
+
 # Azure AI Foundry validation functions
 def _build_azure_ai_foundry_url(
-    endpoint: str, target_subpath: str = "", api_version: str | None = None
+    endpoint: str, target_subpath: str | None = "", api_version: str | None = None
 ) -> str:
     """Build a valid Azure AI Foundry URL with target subpath and api-version parameter.
 
@@ -1378,15 +1399,23 @@ def _build_azure_ai_foundry_url(
 
     base_path = path.rstrip("/")
     base_segments = [s for s in base_path.split("/") if s]
-    is_openai_v1 = [s.lower() for s in base_segments[-2:]] == ["openai", "v1"]
+    is_openai_v1 = is_azure_ai_foundry_openai_v1_endpoint(clean_endpoint)
     query_params = parse_qs(parsed.query, keep_blank_values=True)
 
     if is_openai_v1:
         # /models is the only sub-route documented for this form outside of
-        # actual inference; treat a blank target_subpath (the credential
+        # actual inference; treat a blank ("") target_subpath (the credential
         # health-check probe) as "list models" rather than the bare /openai/v1
         # root, mirroring the generic form's "empty subpath -> /models" below.
-        end_segments = [s for s in target_subpath.split("/") if s] or ["models"]
+        # target_subpath=None is a distinct, explicit request for the true bare
+        # root with no appended segment at all — used when the caller (e.g. the
+        # LiteLLM AZURE_AI_API_BASE env var) will append its own subpath
+        # (/chat/completions, /embeddings, ...) downstream, so baking /models
+        # in here would double up as /models/embeddings and 404.
+        if target_subpath is None:
+            end_segments: list[str] = []
+        else:
+            end_segments = [s for s in target_subpath.split("/") if s] or ["models"]
         new_path = "/" + "/".join(base_segments + end_segments)
         existing_versions = [
             v

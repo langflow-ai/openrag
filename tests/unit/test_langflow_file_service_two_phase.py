@@ -252,6 +252,11 @@ async def test_langflow_preflight_detects_embedding_dimensions_with_probe(monkey
         assert provider == "provider"
         return "provider/provider/model"
 
+    # patched_embedding_client routes through LiteLLM (not the raw AsyncOpenAI
+    # client) so embeddings honor knowledge.embedding_provider — stub that
+    # adapter. _patched_async_client is still stubbed so the property's
+    # credential-loading side trip doesn't build a real client.
+    monkeypatch.setattr("config.settings._litellm_embedding_client", fake_client)
     monkeypatch.setattr("config.settings.clients._patched_async_client", fake_client)
     monkeypatch.setattr(
         "services.models_service.ModelsService.get_litellm_model_name",
