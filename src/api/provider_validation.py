@@ -1,5 +1,6 @@
 """Provider validation utilities for testing API keys and models during onboarding."""
 
+import asyncio
 import json
 import re
 
@@ -696,6 +697,77 @@ async def test_embedding(
         raise ValueError(f"Unknown provider: {provider}")
 
 
+async def _http_request_with_retry(
+    method: str,
+    url: str,
+    *,
+    max_retries: int = 2,
+    backoff_factor: float = 0.5,
+    retryable_status_codes: tuple[int, ...] = (429, 500, 502, 503, 504),
+    client: httpx.AsyncClient | None = None,
+    **kwargs,
+) -> httpx.Response:
+    """Execute an HTTP request with retries for transient network/timeout/server errors.
+
+    Retries up to `max_retries` times on httpx timeout/network errors or retryable status codes (429, 5xx).
+    Does NOT retry on 401, 403, 404 or other 4xx client errors.
+    """
+    last_exc: Exception | None = None
+    for attempt in range(max_retries + 1):
+        try:
+            if client is not None:
+                if method.upper() == "GET":
+                    response = await client.get(url, **kwargs)
+                elif method.upper() == "POST":
+                    response = await client.post(url, **kwargs)
+                else:
+                    response = await client.request(method, url, **kwargs)
+            else:
+                async with httpx.AsyncClient() as ac:
+                    if method.upper() == "GET":
+                        response = await ac.get(url, **kwargs)
+                    elif method.upper() == "POST":
+                        response = await ac.post(url, **kwargs)
+                    else:
+                        response = await ac.request(method, url, **kwargs)
+
+            if attempt < max_retries and response.status_code in retryable_status_codes:
+                logger.warning(
+                    "Transient HTTP %d from %s (attempt %d/%d), retrying in %.2fs...",
+                    response.status_code,
+                    url,
+                    attempt + 1,
+                    max_retries + 1,
+                    backoff_factor * (2**attempt),
+                )
+                await asyncio.sleep(backoff_factor * (2**attempt))
+                continue
+            return response
+        except (
+            httpx.TimeoutException,
+            httpx.NetworkError,
+            httpx.RemoteProtocolError,
+            httpx.ConnectError,
+        ) as exc:
+            last_exc = exc
+            if attempt < max_retries:
+                logger.warning(
+                    "Transient %s requesting %s (attempt %d/%d), retrying in %.2fs...",
+                    type(exc).__name__,
+                    url,
+                    attempt + 1,
+                    max_retries + 1,
+                    backoff_factor * (2**attempt),
+                )
+                await asyncio.sleep(backoff_factor * (2**attempt))
+            else:
+                raise last_exc
+
+    if last_exc:
+        raise last_exc
+    raise RuntimeError(f"HTTP request to {url} failed after retries")
+
+
 # OpenAI validation functions
 async def _test_openai_lightweight_health(api_key: str) -> None:
     """Test OpenAI API key validity with lightweight check.
@@ -709,22 +781,22 @@ async def _test_openai_lightweight_health(api_key: str) -> None:
             "Content-Type": "application/json",
         }
 
-        async with httpx.AsyncClient() as client:
-            # Use /v1/models endpoint which validates the key without consuming credits
-            response = await client.get(
-                "https://api.openai.com/v1/models",
-                headers=headers,
-                timeout=10.0,  # Short timeout for lightweight check
+        # Use /v1/models endpoint which validates the key without consuming credits
+        response = await _http_request_with_retry(
+            "GET",
+            "https://api.openai.com/v1/models",
+            headers=headers,
+            timeout=30.0,
+        )
+
+        if response.status_code != 200:
+            error_details = _extract_error_details(response)
+            logger.error(
+                f"OpenAI lightweight health check failed: {response.status_code} - {error_details}"
             )
+            raise Exception(error_details)
 
-            if response.status_code != 200:
-                error_details = _extract_error_details(response)
-                logger.error(
-                    f"OpenAI lightweight health check failed: {response.status_code} - {error_details}"
-                )
-                raise Exception(error_details)
-
-            logger.info("OpenAI lightweight health check passed")
+        logger.info("OpenAI lightweight health check passed")
 
     except httpx.TimeoutException:
         logger.error("OpenAI lightweight health check timed out")
@@ -764,37 +836,38 @@ async def _test_openai_completion_with_tools(api_key: str, llm_model: str) -> No
             ],
         }
 
-        async with httpx.AsyncClient() as client:
-            # Try with max_tokens first
-            payload = {**base_payload, "max_tokens": 50}
-            response = await client.post(
+        # Try with max_tokens first
+        payload = {**base_payload, "max_tokens": 50}
+        response = await _http_request_with_retry(
+            "POST",
+            "https://api.openai.com/v1/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=45.0,
+        )
+
+        # If max_tokens doesn't work, try with max_completion_tokens
+        if response.status_code != 200:
+            logger.warning(
+                "[API] max_tokens parameter failed, trying max_completion_tokens instead"
+            )
+            payload = {**base_payload, "max_completion_tokens": 50}
+            response = await _http_request_with_retry(
+                "POST",
                 "https://api.openai.com/v1/chat/completions",
                 headers=headers,
                 json=payload,
-                timeout=30.0,
+                timeout=45.0,
             )
 
-            # If max_tokens doesn't work, try with max_completion_tokens
-            if response.status_code != 200:
-                logger.warning(
-                    "[API] max_tokens parameter failed, trying max_completion_tokens instead"
-                )
-                payload = {**base_payload, "max_completion_tokens": 50}
-                response = await client.post(
-                    "https://api.openai.com/v1/chat/completions",
-                    headers=headers,
-                    json=payload,
-                    timeout=30.0,
-                )
+        if response.status_code != 200:
+            error_details = _extract_error_details(response)
+            logger.error(
+                f"OpenAI completion test failed: {response.status_code} - {error_details}"
+            )
+            raise Exception(error_details)
 
-            if response.status_code != 200:
-                error_details = _extract_error_details(response)
-                logger.error(
-                    f"OpenAI completion test failed: {response.status_code} - {error_details}"
-                )
-                raise Exception(error_details)
-
-            logger.info("OpenAI completion with tool calling test passed")
+        logger.info("OpenAI completion with tool calling test passed")
 
     except httpx.TimeoutException:
         logger.error("OpenAI completion test timed out")
@@ -817,26 +890,26 @@ async def _test_openai_embedding(api_key: str, embedding_model: str) -> None:
             "input": "test embedding",
         }
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                "https://api.openai.com/v1/embeddings",
-                headers=headers,
-                json=payload,
-                timeout=30.0,
+        response = await _http_request_with_retry(
+            "POST",
+            "https://api.openai.com/v1/embeddings",
+            headers=headers,
+            json=payload,
+            timeout=45.0,
+        )
+
+        if response.status_code != 200:
+            error_details = _extract_error_details(response)
+            logger.error(
+                f"OpenAI embedding test failed: {response.status_code} - {error_details}"
             )
+            raise Exception(error_details)
 
-            if response.status_code != 200:
-                error_details = _extract_error_details(response)
-                logger.error(
-                    f"OpenAI embedding test failed: {response.status_code} - {error_details}"
-                )
-                raise Exception(error_details)
+        data = response.json()
+        if not data.get("data") or len(data["data"]) == 0:
+            raise Exception("No embedding data returned")
 
-            data = response.json()
-            if not data.get("data") or len(data["data"]) == 0:
-                raise Exception("No embedding data returned")
-
-            logger.info("OpenAI embedding test passed")
+        logger.info("OpenAI embedding test passed")
 
     except httpx.TimeoutException:
         logger.error("OpenAI embedding test timed out")
@@ -1199,21 +1272,21 @@ async def _test_anthropic_lightweight_health(api_key: str) -> None:
             "Content-Type": "application/json",
         }
 
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                "https://api.anthropic.com/v1/models",
-                headers=headers,
-                timeout=10.0,  # Short timeout for lightweight check
+        response = await _http_request_with_retry(
+            "GET",
+            "https://api.anthropic.com/v1/models",
+            headers=headers,
+            timeout=30.0,
+        )
+
+        if response.status_code != 200:
+            error_details = _extract_error_details(response)
+            logger.error(
+                f"Anthropic lightweight health check failed: {response.status_code} - {error_details}"
             )
+            raise Exception(error_details)
 
-            if response.status_code != 200:
-                error_details = _extract_error_details(response)
-                logger.error(
-                    f"Anthropic lightweight health check failed: {response.status_code} - {error_details}"
-                )
-                raise Exception(error_details)
-
-            logger.info("Anthropic lightweight health check passed")
+        logger.info("Anthropic lightweight health check passed")
 
     except httpx.TimeoutException:
         logger.error("Anthropic lightweight health check timed out")
