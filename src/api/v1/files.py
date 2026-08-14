@@ -9,8 +9,7 @@ but overrides the user dependency to use API keys.
 from fastapi import Depends, Query
 from fastapi.responses import JSONResponse
 
-from api.v2 import files as files_v2
-from dependencies import get_file_service, get_file_service_v2, require_api_key_permission
+from dependencies import get_file_service, require_api_key_permission
 from session_manager import User
 from utils.logging_config import get_logger
 
