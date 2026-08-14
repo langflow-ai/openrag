@@ -25,6 +25,8 @@ export interface ComponentStatus {
   metadata?: Record<string, unknown>;
   /** Non-null when the last health-check failed; used to gate the Logs button. */
   last_error?: string | null;
+  /** ISO-8601 UTC of when this component was last checked (drives "Last Sync"). */
+  checked_at?: string | null;
 }
 
 export interface ConsoleStatusResponse {

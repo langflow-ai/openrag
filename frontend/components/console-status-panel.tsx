@@ -9,10 +9,16 @@ import {
   HelpCircle,
   RefreshCw,
   ScrollText,
-  Settings,
+  TrendingUp,
+  Wrench,
   XCircle,
 } from "lucide-react";
-import { useCallback, useState } from "react";
+import { type ReactNode, useCallback, useState } from "react";
+import {
+  type DiagnosisResponse,
+  useComponentDiagnoseQuery,
+  useComponentSyncMutation,
+} from "@/app/api/queries/useComponentActions";
 import {
   type LogEntry,
   useComponentLogsQuery,
@@ -112,6 +118,57 @@ function MetaRow({ label, value }: { label: string; value: string }) {
       </span>
     </div>
   );
+}
+
+// ─── action button ────────────────────────────────────────────────────────────
+
+/** Compact card action. Icon-only when `label` is omitted (uses `ariaLabel`). */
+function ActionButton({
+  icon,
+  label,
+  ariaLabel,
+  disabled,
+  onClick,
+}: {
+  icon: ReactNode;
+  label?: string;
+  ariaLabel?: string;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={ariaLabel ?? label}
+      title={ariaLabel ?? label}
+      className={cn(
+        "flex items-center gap-1.5 rounded text-xs font-medium",
+        label ? "px-2.5 py-1" : "p-1.5",
+        "bg-zinc-700/60 border border-zinc-600/60 text-zinc-200",
+        "hover:bg-zinc-600/60 hover:border-zinc-500/60 transition-colors",
+        "disabled:opacity-50 disabled:cursor-not-allowed",
+      )}
+    >
+      <span className="shrink-0">{icon}</span>
+      {label}
+    </button>
+  );
+}
+
+/** "just now" / "5 minutes ago" from an ISO-8601 timestamp. */
+function formatRelative(iso?: string | null): string {
+  if (!iso) return "—";
+  const secs = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
+  if (!Number.isFinite(secs) || secs < 0) return "just now";
+  if (secs < 45) return "just now";
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `${mins} minute${mins === 1 ? "" : "s"} ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs} hour${hrs === 1 ? "" : "s"} ago`;
+  const days = Math.round(hrs / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
 }
 
 // ─── log level helpers ────────────────────────────────────────────────────────
@@ -244,6 +301,82 @@ function ComponentLogsModal({
   );
 }
 
+// ─── diagnostics modal ────────────────────────────────────────────────────────
+
+interface ComponentDiagnoseModalProps {
+  component: string;
+  displayName: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+function ComponentDiagnoseModal({
+  component,
+  displayName,
+  open,
+  onOpenChange,
+}: ComponentDiagnoseModalProps) {
+  const { data, isLoading, isError, error } = useComponentDiagnoseQuery(
+    open ? component : null,
+  );
+  const d: DiagnosisResponse | undefined = data;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="bg-zinc-900 border-zinc-700 text-zinc-100 w-[520px] max-w-[95vw]">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
+            <Wrench size={14} className="text-zinc-400" />
+            {displayName} — Debug
+          </DialogTitle>
+        </DialogHeader>
+
+        {isLoading ? (
+          <div className="h-24 rounded bg-zinc-800/60 animate-pulse" />
+        ) : isError ? (
+          <p className="text-sm text-red-400">
+            {error instanceof Error ? error.message : "Failed to diagnose."}
+          </p>
+        ) : d ? (
+          <div className="space-y-3 text-sm">
+            <p className="text-zinc-100">{d.summary}</p>
+            {d.likely_cause && (
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                  Likely cause
+                </p>
+                <p className="text-zinc-300 mt-0.5">{d.likely_cause}</p>
+              </div>
+            )}
+            {d.remediation.length > 0 && (
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                  How to fix
+                </p>
+                <ul className="mt-1 space-y-1 list-disc list-inside text-zinc-300">
+                  {d.remediation.map((step) => (
+                    <li key={step}>{step}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {d.target && (
+              <p className="text-[11px] text-zinc-500">
+                Endpoint: <span className="font-mono">{d.target}</span>
+              </p>
+            )}
+            {d.last_error && (
+              <pre className="text-[11px] text-zinc-400 bg-zinc-800/60 rounded p-2 whitespace-pre-wrap break-all font-mono">
+                {d.last_error}
+              </pre>
+            )}
+          </div>
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── component placard ───────────────────────────────────────────────────────
 
 interface ComponentCardProps {
@@ -253,7 +386,14 @@ interface ComponentCardProps {
 function ComponentCard({ component }: ComponentCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [logsOpen, setLogsOpen] = useState(false);
-  const showLogsButton = component.name !== "providers";
+  const [debugOpen, setDebugOpen] = useState(false);
+
+  // The synthetic "providers" card is not a real component — no actions.
+  const isRealComponent = component.name !== "providers";
+
+  const syncMutation = useComponentSyncMutation();
+  const syncing =
+    syncMutation.isPending && syncMutation.variables === component.name;
 
   const {
     display_name,
@@ -263,6 +403,7 @@ function ComponentCard({ component }: ComponentCardProps) {
     message,
     build,
     metadata,
+    checked_at,
   } = component;
 
   const hasBuildDetails =
@@ -323,62 +464,91 @@ function ComponentCard({ component }: ComponentCardProps) {
       {/* Expanded details */}
       {expanded && (
         <div className="border-t border-zinc-700/50 px-3.5 py-2.5 space-y-1">
-          {hasBuildDetails ? (
+          {isRealComponent && (
             <>
-              {build?.git_sha && (
-                <MetaRow label="Git SHA" value={build.git_sha.slice(0, 12)} />
-              )}
-              {build?.build_time && (
-                <MetaRow label="Build Time" value={build.build_time} />
-              )}
-              {build?.image && <MetaRow label="Image" value={build.image} />}
-              {build?.image_digest && (
-                <MetaRow
-                  label="Digest"
-                  value={`${build.image_digest.slice(0, 20)}…`}
-                />
-              )}
+              <MetaRow label="Last Sync" value={formatRelative(checked_at)} />
+              <div className="flex items-center justify-between gap-2 py-1">
+                <span className="text-xs text-zinc-500 shrink-0">
+                  Response Time
+                </span>
+                <span className="flex items-center gap-1 text-xs text-zinc-300 tabular-nums">
+                  <TrendingUp size={12} className="text-emerald-400" />
+                  {latency_ms != null ? `${latency_ms}ms` : "—"}
+                </span>
+              </div>
             </>
-          ) : null}
+          )}
+          {build?.git_sha && (
+            <MetaRow label="Git SHA" value={build.git_sha.slice(0, 12)} />
+          )}
+          {build?.build_time && (
+            <MetaRow label="Build Time" value={build.build_time} />
+          )}
+          {build?.image && <MetaRow label="Image" value={build.image} />}
+          {build?.image_digest && (
+            <MetaRow
+              label="Digest"
+              value={`${build.image_digest.slice(0, 20)}…`}
+            />
+          )}
           {hasMetadata
             ? Object.entries(metadata).map(([k, v]) => (
                 <MetaRow key={k} label={k} value={String(v)} />
               ))
             : null}
-          {!hasBuildDetails && !hasMetadata && (
+          {!isRealComponent && !hasBuildDetails && !hasMetadata && (
             <p className="text-xs text-zinc-500 italic">
               No additional details available.
             </p>
           )}
 
-          {/* Logs button — not shown for the synthetic Model Providers card */}
-          {showLogsButton && (
-            <div className="pt-1.5">
-              <button
-                type="button"
-                onClick={() => setLogsOpen(true)}
-                className={cn(
-                  "flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium",
-                  "bg-zinc-700/60 border border-zinc-600/60 text-zinc-200",
-                  "hover:bg-zinc-600/60 hover:border-zinc-500/60 transition-colors",
-                )}
-              >
-                <ScrollText size={12} className="shrink-0" />
-                Logs
-              </button>
+          {/* Action row — not shown for the synthetic Model Providers card */}
+          {isRealComponent && (
+            <div className="flex items-center justify-between gap-2 pt-2">
+              <ActionButton
+                icon={<Wrench size={14} />}
+                ariaLabel="Debug this component"
+                onClick={() => setDebugOpen(true)}
+              />
+              <div className="flex items-center gap-1.5">
+                <ActionButton
+                  icon={<ScrollText size={13} />}
+                  label="Logs"
+                  onClick={() => setLogsOpen(true)}
+                />
+                <ActionButton
+                  icon={
+                    <RefreshCw
+                      size={13}
+                      className={cn(syncing && "animate-spin")}
+                    />
+                  }
+                  label="Sync"
+                  disabled={syncing}
+                  onClick={() => syncMutation.mutate(component.name)}
+                />
+              </div>
             </div>
           )}
         </div>
       )}
 
-      {/* Logs modal */}
-      {showLogsButton && (
-        <ComponentLogsModal
-          component={component.name}
-          displayName={display_name}
-          open={logsOpen}
-          onOpenChange={setLogsOpen}
-        />
+      {/* Modals */}
+      {isRealComponent && (
+        <>
+          <ComponentLogsModal
+            component={component.name}
+            displayName={display_name}
+            open={logsOpen}
+            onOpenChange={setLogsOpen}
+          />
+          <ComponentDiagnoseModal
+            component={component.name}
+            displayName={display_name}
+            open={debugOpen}
+            onOpenChange={setDebugOpen}
+          />
+        </>
       )}
     </div>
   );

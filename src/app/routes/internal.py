@@ -32,10 +32,12 @@ from api import (
 )
 from api import keys as api_keys
 from api.health import (
+    diagnose_console_component,
     get_console_component_logs,
     get_console_status,
     health_check,
     opensearch_health_ready,
+    sync_console_component,
 )
 from api.schemas.tasks import ErrorResponse, TaskRetryResponse
 from api.v2 import files as files_v2
@@ -403,6 +405,19 @@ def register_internal_routes(app: FastAPI):
     app.add_api_route(
         "/status/{component}/logs",
         get_console_component_logs,
+        methods=["GET"],
+        tags=["internal"],
+    )
+    # Per-component actions (#2183): sync re-checks, diagnose explains failures.
+    app.add_api_route(
+        "/status/{component}/sync",
+        sync_console_component,
+        methods=["POST"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/status/{component}/diagnose",
+        diagnose_console_component,
         methods=["GET"],
         tags=["internal"],
     )
