@@ -7,9 +7,68 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 
+def _adapt_model_for_agentd(model: str) -> str:
+    """Make a LiteLLM model name safe for agentd's OpenAI-SDK dispatch.
+
+    agentd resolves the provider off the model name and sends anything that
+    resolves to "openai" through the OpenAI SDK client verbatim — prefix
+    included — instead of through LiteLLM. Only Azure AI Foundry's openai/v1
+    endpoint produces an "openai/" prefix here (real OpenAI models resolve
+    bare), and Foundry rejects "openai/<deployment>" with DeploymentNotFound,
+    so the prefix has to come off before the request goes out. The endpoint
+    itself is already covered: clients.patched_llm_client points the SDK client
+    at Foundry for exactly this case.
+
+    A bare unknown name would make LiteLLM's get_llm_provider raise instead of
+    answering "openai", so register it first. Registration is idempotent.
+    """
+    prefix = "openai/"
+    if not model.startswith(prefix):
+        return model
+
+    import litellm
+
+    bare_model = model[len(prefix) :]
+    litellm.register_model({bare_model: {"litellm_provider": "openai", "mode": "chat"}})
+    return bare_model
+
+
 class ChatService:
-    def __init__(self, flows_service=None):
+    def __init__(self, flows_service=None, models_service=None):
         self.flows_service = flows_service
+        self.models_service = models_service
+
+    async def _resolve_llm_model(self) -> str:
+        """Resolve the configured LLM to a LiteLLM-routable model name.
+
+        agentd dispatches on the model name's provider prefix, so this is what
+        decides whether a chat request reaches Azure AI Foundry / WatsonX /
+        Ollama or falls through to api.openai.com. Never substitute a default
+        model here: a silent fallback sends the request (and the bill) to
+        whichever provider the bare name happens to resolve to.
+        """
+        from config.settings import get_openrag_config
+
+        config = get_openrag_config()
+        model = config.agent.llm_model
+        provider = config.agent.llm_provider
+
+        if not model:
+            raise ValueError(
+                "No LLM model is configured. Set the agent model in Settings "
+                "(or the LLM_MODEL / LLM_PROVIDER environment variables) before chatting."
+            )
+
+        if self.models_service is None:
+            logger.warning(
+                "ChatService has no models_service; using configured model name unresolved",
+                model=model,
+                provider=provider,
+            )
+            return model
+
+        resolved = await self.models_service.get_litellm_model_name(model, provider=provider)
+        return _adapt_model_for_agentd(resolved)
 
     async def chat(
         self,
@@ -30,11 +89,14 @@ class ChatService:
         if user_id and jwt_token:
             set_auth_context(user_id, jwt_token)
 
+        model = await self._resolve_llm_model()
+
         if stream:
             return async_chat_stream(
                 clients.patched_llm_client,
                 prompt,
                 conversation_user_id,
+                model,
                 previous_response_id=previous_response_id,
                 filter_id=filter_id,
             )
@@ -43,6 +105,7 @@ class ChatService:
                 clients.patched_llm_client,
                 prompt,
                 conversation_user_id,
+                model,
                 previous_response_id=previous_response_id,
                 filter_id=filter_id,
             )
@@ -377,6 +440,7 @@ class ChatService:
                 clients.patched_llm_client,
                 document_prompt,
                 conversation_user_id,
+                await self._resolve_llm_model(),
                 previous_response_id=previous_response_id,
             )
 

@@ -258,3 +258,103 @@ async def test_azure_ai_foundry_completion_uses_max_completion_tokens(monkeypatc
     payload = captured["json"]
     assert payload["max_completion_tokens"] == 10
     assert "max_tokens" not in payload
+
+
+def _chat_config(llm_provider: str, llm_model: str, endpoint: str = ""):
+    """Minimal config stand-in for ChatService._resolve_llm_model."""
+    from config.config_manager import AzureAIFoundryConfig
+
+    class Agent:
+        pass
+
+    class Providers:
+        pass
+
+    class Config:
+        pass
+
+    agent = Agent()
+    agent.llm_provider = llm_provider
+    agent.llm_model = llm_model
+
+    providers = Providers()
+    providers.azure_ai_foundry = AzureAIFoundryConfig(endpoint=endpoint)
+
+    config = Config()
+    config.agent = agent
+    config.providers = providers
+    return config
+
+
+@pytest.mark.asyncio
+async def test_chat_uses_configured_azure_model(monkeypatch):
+    """Chat must route to the configured provider, not a hardcoded OpenAI model.
+
+    A bare/unprefixed name is what makes agentd fall through to api.openai.com,
+    which is how an Azure-only install ends up billing OpenAI.
+    """
+    import config.settings as settings
+    from services.chat_service import ChatService
+    from services.models_service import ModelsService
+
+    endpoint = "https://my-foundry.services.ai.azure.com"
+    config = _chat_config("azure_ai_foundry", "Phi-4-mini-instruct", endpoint)
+    monkeypatch.setattr(settings, "get_openrag_config", lambda: config)
+
+    service = ChatService(models_service=ModelsService())
+    assert await service._resolve_llm_model() == "azure_ai/Phi-4-mini-instruct"
+
+
+@pytest.mark.asyncio
+async def test_chat_strips_openai_prefix_for_foundry_v1(monkeypatch):
+    """On the openai/v1 endpoint the wire name must be the bare deployment.
+
+    agentd hands "openai"-provider models to the OpenAI SDK client verbatim, and
+    Foundry rejects "openai/<deployment>" with DeploymentNotFound. The endpoint
+    is supplied by clients.patched_llm_client instead.
+    """
+    import litellm.utils as llm_utils
+
+    import config.settings as settings
+    from services.chat_service import ChatService
+    from services.models_service import ModelsService
+
+    endpoint = "https://my-foundry.services.ai.azure.com/openai/v1"
+    config = _chat_config("azure_ai_foundry", "Phi-4-mini-instruct", endpoint)
+    monkeypatch.setattr(settings, "get_openrag_config", lambda: config)
+
+    service = ChatService(models_service=ModelsService())
+    resolved = await service._resolve_llm_model()
+
+    assert resolved == "Phi-4-mini-instruct"
+    # Still routable: agentd resolves the provider off this name, and an
+    # unregistered bare name would raise instead of answering "openai".
+    assert llm_utils.get_llm_provider(resolved)[1] == "openai"
+
+
+@pytest.mark.asyncio
+async def test_chat_openai_provider_is_unchanged(monkeypatch):
+    import config.settings as settings
+    from services.chat_service import ChatService
+    from services.models_service import ModelsService
+
+    config = _chat_config("openai", "gpt-4.1-mini")
+    monkeypatch.setattr(settings, "get_openrag_config", lambda: config)
+
+    service = ChatService(models_service=ModelsService())
+    assert await service._resolve_llm_model() == "gpt-4.1-mini"
+
+
+@pytest.mark.asyncio
+async def test_chat_without_configured_model_fails_loudly(monkeypatch):
+    """No model configured must raise, not silently fall back to an OpenAI default."""
+    import config.settings as settings
+    from services.chat_service import ChatService
+    from services.models_service import ModelsService
+
+    config = _chat_config("azure_ai_foundry", "")
+    monkeypatch.setattr(settings, "get_openrag_config", lambda: config)
+
+    service = ChatService(models_service=ModelsService())
+    with pytest.raises(ValueError, match="No LLM model is configured"):
+        await service._resolve_llm_model()

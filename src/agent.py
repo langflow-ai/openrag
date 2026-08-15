@@ -404,7 +404,7 @@ async def async_chat(
     async_client,
     prompt: str,
     user_id: str,
-    model: str = "gpt-4.1-mini",
+    model: str,
     previous_response_id: str = None,
     filter_id: str = None,
 ):
@@ -472,7 +472,7 @@ async def async_chat_stream(
     async_client,
     prompt: str,
     user_id: str,
-    model: str = "gpt-4.1-mini",
+    model: str,
     previous_response_id: str = None,
     filter_id: str = None,
 ):

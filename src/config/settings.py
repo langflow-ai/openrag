@@ -529,20 +529,23 @@ async def get_langflow_api_key(force_regenerate: bool = False):
         return None
 
 
-def _embedding_call_overrides() -> dict:
-    """Per-call api_base/api_key for embedding providers LiteLLM can't route
-    from the model prefix alone.
+def _foundry_openai_v1_overrides(provider: str) -> dict:
+    """api_base/api_key for the one provider LiteLLM can't route from the model
+    prefix alone: Azure AI Foundry on its OpenAI-compatible endpoint.
 
-    Azure AI Foundry's OpenAI-compatible endpoint (".../openai/v1") is reached
-    via LiteLLM's plain "openai/" provider (see
-    ModelsService.get_litellm_model_name), which would otherwise default to
-    OPENAI_API_KEY against api.openai.com. Point it at the Foundry endpoint
-    with the Foundry key instead. Passed per call rather than via env vars so
-    the real OpenAI provider keeps working for everything else.
+    That endpoint form (".../openai/v1") is reached via LiteLLM's plain
+    "openai/" provider (see ModelsService.get_litellm_model_name), which would
+    otherwise default to OPENAI_API_KEY against api.openai.com. Point it at the
+    Foundry endpoint with the Foundry key instead. Returned per call site rather
+    than exported as env vars so the real OpenAI provider keeps working for
+    everything else.
+
+    Returns {} for every other provider and for the other Foundry endpoint
+    forms, which stay on the azure_ai/ provider and read AZURE_AI_API_BASE /
+    AZURE_AI_API_KEY from env.
     """
     try:
-        config = get_openrag_config()
-        if config.knowledge.embedding_provider != "azure_ai_foundry":
+        if provider != "azure_ai_foundry":
             return {}
 
         from api.provider_validation import (
@@ -550,11 +553,9 @@ def _embedding_call_overrides() -> dict:
             is_azure_ai_foundry_openai_v1_endpoint,
         )
 
-        foundry = config.providers.azure_ai_foundry
+        foundry = get_openrag_config().providers.azure_ai_foundry
         endpoint = foundry.endpoint or ""
         if not is_azure_ai_foundry_openai_v1_endpoint(endpoint):
-            # Other Foundry endpoint forms stay on the azure_ai/ provider,
-            # which reads AZURE_AI_API_BASE / AZURE_AI_API_KEY from env.
             return {}
 
         return {
@@ -565,6 +566,15 @@ def _embedding_call_overrides() -> dict:
             ),
             "api_key": foundry.api_key,
         }
+    except Exception as e:
+        logger.warning("Could not resolve Azure AI Foundry overrides", error=str(e))
+        return {}
+
+
+def _embedding_call_overrides() -> dict:
+    """Per-call api_base/api_key overrides for the embedding provider."""
+    try:
+        return _foundry_openai_v1_overrides(get_openrag_config().knowledge.embedding_provider)
     except Exception as e:
         logger.warning("Could not resolve embedding provider overrides", error=str(e))
         return {}
@@ -600,6 +610,10 @@ class AppClients:
         self.langflow_client = None
         self.langflow_http_client = None
         self._patched_async_client = None  # Private attribute - single client for all providers
+        # Chat client bound to an Azure AI Foundry openai/v1 endpoint, plus the
+        # (base_url, api_key) it was built for so credential changes rebuild it.
+        self._foundry_llm_client = None
+        self._foundry_llm_client_key = None
         self._client_init_lock = threading.Lock()  # Lock for thread-safe initialization
         self.docling_http_client = None
         self._docling_service = None
@@ -919,8 +933,49 @@ class AppClients:
 
     @property
     def patched_llm_client(self):
-        """Alias for patched_async_client - for backward compatibility with code expecting separate clients."""
-        return self.patched_async_client
+        """Client for agent/chat calls, honoring agent.llm_provider.
+
+        Usually this is patched_async_client: agentd routes off the model name's
+        provider prefix (watsonx/, azure_ai/, ollama/) through LiteLLM, which
+        reads the credentials patched_async_client exported to env.
+
+        The exception is Azure AI Foundry's OpenAI-compatible ".../openai/v1"
+        endpoint. Models on it resolve to a plain "openai/" prefix (see
+        ModelsService.get_litellm_model_name), and agentd sends "openai" through
+        the OpenAI SDK client itself rather than LiteLLM — so the request would
+        go to api.openai.com under OPENAI_API_KEY. Hand those calls a client
+        bound to the Foundry endpoint and key instead. That endpoint serves the
+        Responses API natively, so the agent loop works unchanged.
+        """
+        base_client = self.patched_async_client  # side effect: export provider env vars
+
+        try:
+            overrides = _foundry_openai_v1_overrides(get_openrag_config().agent.llm_provider)
+        except Exception as e:
+            logger.warning("Could not resolve LLM provider overrides", error=str(e))
+            overrides = {}
+
+        if not overrides:
+            return base_client
+
+        base_url = overrides["api_base"]
+        api_key = overrides["api_key"]
+        with self._client_init_lock:
+            # Rebuild when the endpoint or key changed so a settings update is
+            # picked up without a restart.
+            if self._foundry_llm_client_key != (base_url, api_key):
+                self._foundry_llm_client = patch_openai_with_mcp(
+                    AsyncOpenAI(
+                        api_key=api_key,
+                        base_url=base_url,
+                        http_client=httpx.AsyncClient(
+                            http2=False, timeout=httpx.Timeout(60.0, connect=10.0)
+                        ),
+                    )
+                )
+                self._foundry_llm_client_key = (base_url, api_key)
+                logger.info("Initialized Azure AI Foundry LLM client", base_url=base_url)
+            return self._foundry_llm_client
 
     @property
     def patched_embedding_client(self):
@@ -936,7 +991,7 @@ class AppClients:
         return _litellm_embedding_client
 
     async def refresh_patched_client(self):
-        """Reset patched client so next use picks up updated provider credentials."""
+        """Reset patched clients so next use picks up updated provider credentials."""
         if self._patched_async_client is not None:
             try:
                 await self._patched_async_client.close()
@@ -945,6 +1000,24 @@ class AppClients:
                 logger.warning("Failed to close patched client during refresh", error=str(e))
             finally:
                 self._patched_async_client = None
+
+        await self._close_foundry_llm_client("refresh")
+
+    async def _close_foundry_llm_client(self, reason: str):
+        """Close and forget the Foundry-bound chat client, if one was built."""
+        if self._foundry_llm_client is None:
+            self._foundry_llm_client_key = None
+            return
+        try:
+            await self._foundry_llm_client.close()
+            logger.info("Closed Azure AI Foundry LLM client", reason=reason)
+        except Exception as e:
+            logger.warning(
+                "Failed to close Azure AI Foundry LLM client", reason=reason, error=str(e)
+            )
+        finally:
+            self._foundry_llm_client = None
+            self._foundry_llm_client_key = None
 
     @property
     def docling_service(self):
@@ -975,6 +1048,8 @@ class AppClients:
                 logger.error("Failed to close AsyncOpenAI client", error=str(e))
             finally:
                 self._patched_async_client = None
+
+        await self._close_foundry_llm_client("shutdown")
 
         # Close Langflow HTTP client if it exists
         if self.langflow_http_client is not None:

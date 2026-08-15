@@ -70,36 +70,42 @@ async def chat_endpoint(
     set_search_limit(body.limit)
     set_score_threshold(body.scoreThreshold)
 
-    if body.stream:
-        return StreamingResponse(
-            await chat_service.chat(
+    try:
+        if body.stream:
+            return StreamingResponse(
+                await chat_service.chat(
+                    body.prompt,
+                    user.user_id,
+                    jwt_token,
+                    previous_response_id=body.previous_response_id,
+                    stream=True,
+                    filter_id=body.filter_id,
+                    storage_user_id=storage_user_id,
+                ),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Headers": "Cache-Control",
+                },
+            )
+        else:
+            result = await chat_service.chat(
                 body.prompt,
                 user.user_id,
                 jwt_token,
                 previous_response_id=body.previous_response_id,
-                stream=True,
+                stream=False,
                 filter_id=body.filter_id,
                 storage_user_id=storage_user_id,
-            ),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Headers": "Cache-Control",
-            },
-        )
-    else:
-        result = await chat_service.chat(
-            body.prompt,
-            user.user_id,
-            jwt_token,
-            previous_response_id=body.previous_response_id,
-            stream=False,
-            filter_id=body.filter_id,
-            storage_user_id=storage_user_id,
-        )
-        return JSONResponse(result)
+            )
+            return JSONResponse(result)
+    except ValueError as e:
+        # Misconfiguration (e.g. no LLM model selected) — a 400 with the reason
+        # is more useful than an opaque 500.
+        logger.warning("[CHAT] Rejected chat request", error=str(e))
+        return JSONResponse({"error": str(e)}, status_code=400)
 
 
 async def langflow_endpoint(
