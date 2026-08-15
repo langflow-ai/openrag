@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { INITIAL_ASSISTANT_MESSAGE } from "@/app/chat/_types/types";
 import { useOnboardingState } from "@/hooks/use-onboarding-state";
 
@@ -99,7 +100,26 @@ interface ChatProviderProps {
 }
 
 export function ChatProvider({ children }: ChatProviderProps) {
-  const [endpoint, setEndpoint] = useState<EndpointType>("langflow");
+  // Langflow stays the default until settings load. agent.disable_chat_with_langflow
+  // then switches new sessions to the langflowless /chat endpoint, so a deployment
+  // that runs without Langflow doesn't get a UI that posts to it. Any explicit
+  // choice — the endpoint toggle, or loading a conversation that belongs to one
+  // endpoint — wins over the setting for the rest of the session.
+  const [endpoint, setEndpointState] = useState<EndpointType>("langflow");
+  const endpointChosen = useRef(false);
+  const { data: settings } = useGetSettingsQuery();
+  const disableChatWithLangflow = settings?.agent?.disable_chat_with_langflow;
+
+  const setEndpoint = useCallback((next: EndpointType) => {
+    endpointChosen.current = true;
+    setEndpointState(next);
+  }, []);
+
+  useEffect(() => {
+    if (endpointChosen.current || disableChatWithLangflow === undefined) return;
+    setEndpointState(disableChatWithLangflow ? "chat" : "langflow");
+  }, [disableChatWithLangflow]);
+
   const [currentConversationId, setCurrentConversationId] = useState<
     string | null
   >(null);
@@ -248,7 +268,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
       // Clear conversation docs to prevent duplicates when switching conversations
       setConversationDocs([]);
     },
-    [conversationData?.response_id],
+    [conversationData?.response_id, setEndpoint],
   );
 
   const startNewConversation = useCallback(async () => {
@@ -459,6 +479,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
       isOnboardingComplete,
       setOnboardingComplete,
       loading,
+      setEndpoint,
     ],
   );
 
