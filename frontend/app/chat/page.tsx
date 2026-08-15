@@ -304,9 +304,15 @@ function ChatPage() {
     const hasMessageCountChanged =
       conversationData?.messages?.length !== messages.length;
 
+    // A request in flight means the local list already holds the question the
+    // user just typed, which the server copy does not have yet — syncing from
+    // the server here would wipe it off the screen. `isChatStreaming` only
+    // tracks the streaming hook, so the non-streaming path needs `loading`.
+    const requestInFlight = isChatStreaming || loading;
+
     if (
       conversationData?.messages &&
-      (isNewConversation || (!isChatStreaming && hasMessageCountChanged)) &&
+      (isNewConversation || (!requestInFlight && hasMessageCountChanged)) &&
       !isUserInteracting &&
       !isForkingInProgress
     ) {
@@ -499,6 +505,7 @@ function ChatPage() {
     isForkingInProgress,
     setPreviousResponseIds,
     isChatStreaming,
+    loading,
     messages.length,
   ]);
 
