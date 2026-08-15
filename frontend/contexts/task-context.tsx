@@ -279,10 +279,14 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       // 1. Task is in progress (always process to keep files list updated)
       // 2. Status has changed
       // 3. New task appeared (not on initial load)
+      // 4. Task is terminal but still has failed files — rebuild the overlay even
+      //    on initial load so failed rows (and their retry/delete actions) survive
+      //    a page refresh instead of silently disappearing.
       const shouldProcessFiles =
         isTaskInProgress ||
         (previousTask && previousTask.status !== currentTask.status) ||
-        (!previousTask && !isInitialLoad);
+        (!previousTask && !isInitialLoad) ||
+        hasFailedFileEntries(currentTask);
 
       // Only show toasts if we have previous data and status has changed
       const shouldShowToast =

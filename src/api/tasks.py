@@ -86,6 +86,30 @@ async def retry_task(
     return JSONResponse(result, status_code=202)
 
 
+class DismissFilesBody(BaseModel):
+    file_paths: list[str] = Field(
+        ...,
+        description="Task file paths of terminal FAILED files to remove from the task.",
+    )
+
+
+async def dismiss_files(
+    task_id: str,
+    body: DismissFilesBody,
+    task_service=Depends(get_task_service),
+    user: User = Depends(get_current_user),
+):
+    """Remove terminal FAILED file entries from a task so they leave the list."""
+    result = await task_service.dismiss_files(user.user_id, task_id, file_paths=body.file_paths)
+    if result is None:
+        return JSONResponse({"error": "Task not found"}, status_code=404)
+
+    if result.get("status") == "no_op":
+        return JSONResponse(result, status_code=400)
+
+    return JSONResponse(result, status_code=200)
+
+
 async def cancel_task(
     task_id: str,
     task_service=Depends(get_task_service),

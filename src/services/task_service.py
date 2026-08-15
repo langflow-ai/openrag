@@ -929,6 +929,77 @@ class TaskService:
             "status": "accepted",
         }
 
+    async def dismiss_files(
+        self,
+        user_id: str,
+        task_id: str,
+        *,
+        file_paths: list[str],
+    ) -> dict | None:
+        """Remove terminal FAILED file entries from a task so they leave the UI.
+
+        Only files in a FAILED state can be dismissed; a still-running file must be
+        cancelled first. Paths missing from the task or not in a failed state are
+        reported in *skipped*. When the last file is removed, the whole task record
+        is dropped from the store. This mutates only the in-memory task store — it
+        does not delete indexed OpenSearch chunks (the caller handles that).
+        """
+        resolved = self._resolve_upload_task_store(user_id, task_id)
+        if resolved is None:
+            return None
+
+        store_user_id, upload_task = resolved
+
+        dismissed: list[str] = []
+        skipped: list[dict] = []
+
+        async with self._get_task_lock(task_id):
+            for path in file_paths:
+                file_task = upload_task.file_tasks.get(path)
+                if file_task is None:
+                    skipped.append({"file_path": path, "reason": "file_not_in_task"})
+                    continue
+                if file_task.status != TaskStatus.FAILED:
+                    skipped.append(
+                        {
+                            "file_path": path,
+                            "filename": file_task.filename,
+                            "reason": "not_failed",
+                        }
+                    )
+                    continue
+
+                del upload_task.file_tasks[path]
+                upload_task.total_files = max(0, upload_task.total_files - 1)
+                if upload_task.failed_files > 0:
+                    upload_task.failed_files -= 1
+                if upload_task.processed_files > 0:
+                    upload_task.processed_files -= 1
+                dismissed.append(path)
+
+            if dismissed:
+                upload_task.updated_at = time.time()
+
+            # Drop the task entirely once nothing is left to show.
+            if not upload_task.file_tasks:
+                self.task_store.get(store_user_id, {}).pop(task_id, None)
+
+        if not dismissed:
+            return {
+                "task_id": task_id,
+                "dismissed": 0,
+                "skipped": skipped,
+                "status": "no_op",
+                "message": "No dismissible failed files",
+            }
+
+        return {
+            "task_id": task_id,
+            "dismissed": len(dismissed),
+            "skipped": skipped,
+            "status": "accepted",
+        }
+
     def _serialize_file_task(self, file_task: FileTask) -> dict:
         """Serialize a FileTask to the standard dict shape."""
         return {
