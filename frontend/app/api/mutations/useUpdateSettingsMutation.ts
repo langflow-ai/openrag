@@ -11,6 +11,7 @@ export interface UpdateSettingsRequest {
   llm_model?: string;
   llm_provider?: string;
   disable_chat_with_langflow?: boolean;
+  chat_streaming?: boolean;
   system_prompt?: string;
 
   // Knowledge settings

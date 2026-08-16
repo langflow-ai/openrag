@@ -194,6 +194,10 @@ export function AgentSettingsSection() {
     updateSettingsMutation.mutate({ disable_chat_with_langflow: checked });
   };
 
+  const handleChatStreamingChange = (checked: boolean) => {
+    updateSettingsMutation.mutate({ chat_streaming: checked });
+  };
+
   const handleEditInLangflow = (closeDialog: () => void) => {
     window.open(
       resolveLangflowEditUrl({
@@ -327,6 +331,26 @@ export function AgentSettingsSection() {
               id="disable-chat-with-langflow"
               checked={settings.agent?.disable_chat_with_langflow ?? false}
               onCheckedChange={handleDisableChatWithLangflowChange}
+              disabled={updateSettingsMutation.isPending}
+            />
+          </div>
+          <div className="flex items-center justify-between py-3 border-b border-border">
+            <div className="flex-1">
+              <Label
+                htmlFor="chat-streaming"
+                className="text-base font-medium cursor-pointer pb-3"
+              >
+                Stream Responses
+              </Label>
+              <div className="text-sm text-muted-foreground">
+                Show answers token by token as they are generated. Turn off if
+                the model streams unreliably.
+              </div>
+            </div>
+            <Switch
+              id="chat-streaming"
+              checked={settings.agent?.chat_streaming ?? true}
+              onCheckedChange={handleChatStreamingChange}
               disabled={updateSettingsMutation.isPending}
             />
           </div>

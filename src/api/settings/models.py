@@ -25,6 +25,7 @@ class SettingsUpdateBody(BaseModel):
     picture_descriptions: bool | None = None
     disable_ingest_with_langflow: bool | None = None
     disable_chat_with_langflow: bool | None = None
+    chat_streaming: bool | None = None
     embedding_model: str | None = Field(None, min_length=1)
     embedding_provider: str | None = Field(
         None, pattern="^(openai|watsonx|ollama|azure_ai_foundry)$"
@@ -162,6 +163,7 @@ class AgentConfig(BaseModel):
     llm_model: str | None
     llm_provider: str | None
     disable_chat_with_langflow: bool | None
+    chat_streaming: bool | None
     system_prompt: str | None
 
 

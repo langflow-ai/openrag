@@ -239,6 +239,7 @@ async def get_settings(
                 llm_model=agent_config.llm_model,
                 llm_provider=agent_config.llm_provider,
                 disable_chat_with_langflow=agent_config.disable_chat_with_langflow,
+                chat_streaming=agent_config.chat_streaming,
                 system_prompt=agent_config.system_prompt,
             ),
             localhost_url=LOCALHOST_URL,
@@ -538,6 +539,11 @@ async def update_settings(
             current_config.agent.disable_chat_with_langflow = body.disable_chat_with_langflow
             config_updated = True
             logger.info(f"Disable Langflow chat changed to {body.disable_chat_with_langflow}")
+
+        if body.chat_streaming is not None:
+            current_config.agent.chat_streaming = body.chat_streaming
+            config_updated = True
+            logger.info(f"Chat streaming changed to {body.chat_streaming}")
 
         if body.chunk_size is not None:
             effective_overlap = (

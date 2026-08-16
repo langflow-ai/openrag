@@ -68,6 +68,7 @@ def test_disable_chat_round_trips_through_settings_models():
         llm_model="Phi-4-mini-instruct",
         llm_provider="azure_ai_foundry",
         disable_chat_with_langflow=True,
+        chat_streaming=True,
         system_prompt="",
     )
     assert response_section.disable_chat_with_langflow is True

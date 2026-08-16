@@ -59,7 +59,15 @@ function ChatPage() {
   ]);
   const [input, setInput] = useState("");
   const { setChatError } = useChat();
-  const [asyncMode, setAsyncMode] = useState(true);
+  // Streaming stays on until settings load, then follows agent.chat_streaming.
+  // Deployments that hide the toggles rely on this to pick the mode; an explicit
+  // click still wins for the rest of the session.
+  const [asyncMode, setAsyncModeState] = useState(true);
+  const asyncModeChosen = useRef(false);
+  const setAsyncMode = (next: boolean) => {
+    asyncModeChosen.current = true;
+    setAsyncModeState(next);
+  };
   const [expandedFunctionCalls, setExpandedFunctionCalls] = useState<
     Set<string>
   >(new Set());
@@ -100,6 +108,12 @@ function ChatPage() {
 
   // Get settings for model info used in analytics
   const { data: settings } = useGetSettingsQuery();
+
+  const configuredStreaming = settings?.agent?.chat_streaming;
+  useEffect(() => {
+    if (asyncModeChosen.current || configuredStreaming === undefined) return;
+    setAsyncModeState(configuredStreaming);
+  }, [configuredStreaming]);
 
   // Use the chat streaming hook
   const apiEndpoint = endpoint === "chat" ? "/api/chat" : "/api/langflow";
