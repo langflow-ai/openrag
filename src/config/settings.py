@@ -12,6 +12,7 @@ from opensearchpy._async.http_aiohttp import AIOHttpConnection
 
 from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL
 from config.paths import get_flows_path
+from utils.agentd_compat import apply_agentd_openai_compat
 from utils.container_utils import determine_docling_host, get_container_host
 from utils.embedding_fields import build_knn_vector_field
 from utils.env_utils import get_env_float, get_env_int, get_env_set
@@ -24,6 +25,9 @@ load_dotenv(override=False)
 load_dotenv("../", override=False)
 
 logger = get_logger(__name__)
+
+# Must run before any streamed tool call reaches agentd's event synthesis.
+apply_agentd_openai_compat()
 
 # Environment variables
 OPENSEARCH_HOST = os.getenv("OPENSEARCH_HOST", "localhost")

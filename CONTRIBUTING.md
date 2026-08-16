@@ -2,7 +2,7 @@
 
 ![Contributions Welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg)
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)
-![Python](https://img.shields.io/badge/python-3.13+-blue.svg)
+![Python](https://img.shields.io/badge/python-3.12+-blue.svg)
 ![Node.js](https://img.shields.io/badge/node.js-18+-green.svg)
 
 **Thank you for your interest in contributing to OpenRAG!** 🎉
@@ -52,7 +52,7 @@ OpenRAG is now running locally on the following ports:
 | Tool | Version | Installation |
 |------|---------|--------------|
 | Docker or Podman | Latest | [Docker](https://docs.docker.com/get-docker/) or [Podman](https://podman.io/getting-started/installation) |
-| Python | 3.13+ | With [uv](https://github.com/astral-sh/uv) package manager |
+| Python | 3.12+ | With [uv](https://github.com/astral-sh/uv) package manager |
 | Node.js | 18+ | With npm |
 | Make | Any | Usually pre-installed on macOS/Linux |
 
