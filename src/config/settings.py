@@ -112,9 +112,7 @@ OPENRAG_BACKEND_PORT = get_env_int("OPENRAG_BACKEND_PORT", 8000)
 # CORS – comma-separated list of allowed origins (e.g. "https://app.example.com,https://admin.example.com").
 # Leave empty or unset to forbid all cross-origin requests.
 _raw_cors_origins = os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000")
-CORS_ALLOWED_ORIGINS: list[str] = [
-    o.strip() for o in _raw_cors_origins.split(",") if o.strip()
-]
+CORS_ALLOWED_ORIGINS: list[str] = [o.strip() for o in _raw_cors_origins.split(",") if o.strip()]
 OPENRAG_BACKEND_INTERNAL_URL = os.getenv(
     "OPENRAG_BACKEND_INTERNAL_URL",
     f"http://openrag-backend:{OPENRAG_BACKEND_PORT}",
