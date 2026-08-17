@@ -72,6 +72,12 @@ export function useComponentSyncMutation() {
           };
         },
       );
+      queryClient.invalidateQueries({
+        queryKey: ["component-diagnose", result.component],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["component-logs", result.component],
+      });
     },
   });
 }
