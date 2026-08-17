@@ -23,6 +23,9 @@ from api.v1 import (
 from api.v1 import (
     settings as v1_settings,
 )
+from api.v1 import (
+    status as v1_status,
+)
 
 
 def register_public_v1_routes(app: FastAPI):
@@ -45,6 +48,33 @@ def register_public_v1_routes(app: FastAPI):
 
     # Search endpoint
     app.add_api_route("/v1/search", v1_search.search_endpoint, methods=["POST"], tags=["public"])
+
+    # Status endpoints
+    app.add_api_route("/v1/status", v1_status.get_status_endpoint, methods=["GET"], tags=["public"])
+    app.add_api_route(
+        "/v1/status/refresh",
+        v1_status.refresh_status_endpoint,
+        methods=["POST"],
+        tags=["public"],
+    )
+    app.add_api_route(
+        "/v1/status/components/{component_id}/sync",
+        v1_status.sync_component_endpoint,
+        methods=["POST"],
+        tags=["public"],
+    )
+    app.add_api_route(
+        "/v1/status/components/{component_id}/logs",
+        v1_status.get_component_logs_endpoint,
+        methods=["GET"],
+        tags=["public"],
+    )
+    app.add_api_route(
+        "/v1/status/diagnostics",
+        v1_status.get_diagnostics_endpoint,
+        methods=["GET"],
+        tags=["public"],
+    )
 
     # Documents endpoints
     app.add_api_route(

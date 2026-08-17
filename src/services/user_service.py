@@ -72,6 +72,18 @@ async def ensure_user_row(
             await _assign_default_role_if_missing(session, role_repo, audit_repo, existing.id)
         return existing
 
+    if provider == "api_key":
+        # API keys are credentials for an existing OpenRAG user, not a
+        # distinct identity provider. The stored key user_id is the owner id
+        # from key creation time; fall back to email for keys created before
+        # every auth path consistently carried the SQL user id.
+        owner = await user_repo.get_by_id(subject)
+        if owner is None and user.email:
+            owner = await user_repo.get_by_email(user.email)
+        if owner is not None:
+            await user_repo.update_last_login(owner.id)
+            return owner
+
     # Possible legacy row (oauth_provider='legacy', oauth_subject==user_id)
     legacy = await user_repo.get_by_oauth("legacy", subject)
     if legacy is None and user.email:

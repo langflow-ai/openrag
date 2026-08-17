@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 
@@ -119,6 +120,41 @@ async def test_existing_user_without_roles_is_repaired_on_signin(session, monkey
     role_repo = RoleRepo(session)
     roles = {r.name for r in await role_repo.list_user_roles(repaired.id)}
     assert roles == {"user"}
+
+
+@pytest.mark.asyncio
+async def test_api_key_user_reuses_existing_owner_row_by_email(session):
+    """API-key auth carries a synthetic provider but belongs to an
+    existing user. It must not try to insert a duplicate user with the
+    same email_lookup_hash.
+    """
+    owner = await ensure_user_row(
+        session,
+        _user(
+            uid="owner-subject",
+            email="owner@example.com",
+            name="Owner",
+            provider="google",
+        ),
+    )
+    await session.commit()
+
+    api_key_user = await ensure_user_row(
+        session,
+        _user(
+            uid="owner-subject",
+            email="owner@example.com",
+            name="Owner",
+            provider="api_key",
+        ),
+    )
+    await session.commit()
+
+    assert api_key_user.id == owner.id
+    assert api_key_user.oauth_provider == "google"
+
+    user_count = await session.scalar(select(func.count()).select_from(db.models.User))
+    assert user_count == 1
 
 
 @pytest.mark.asyncio
