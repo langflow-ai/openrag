@@ -12,6 +12,22 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+# ---------------------------------------------------------------------------
+# TEMPORARY DEMO OVERRIDE — REMOVE BEFORE MERGE.
+#
+# Pins knowledge.disable_ingest_with_langflow to True in load_config(),
+# whatever the persisted config or environment says. Needed because a
+# config.yaml already sitting on a deployed volume carries `edited: true`,
+# which makes _load_env_overrides bail out before reading anything — so
+# DISABLE_INGEST_WITH_LANGFLOW=true in the pod cannot reach the value and
+# ingestion keeps taking the Langflow branch.
+#
+# To revert: set this to False (or delete it and the block in load_config that
+# reads it, plus the two monkeypatch lines in
+# tests/unit/config/test_disable_ingest_setting.py that turn it off).
+# ---------------------------------------------------------------------------
+_FORCE_LANGFLOWLESS_INGEST = True
+
 
 # ---------------------------------------------------------------------------
 # SonarQube pythonsecurity:S2083 ("Change this code to not construct the path
@@ -379,6 +395,16 @@ class ConfigManager:
 
         # Create config object
         self._config = OpenRAGConfig.from_dict(config_data)
+
+        # TEMPORARY DEMO OVERRIDE — see _FORCE_LANGFLOWLESS_INGEST above.
+        if _FORCE_LANGFLOWLESS_INGEST and not self._config.knowledge.disable_ingest_with_langflow:
+            logger.warning(
+                "TEMPORARY OVERRIDE: forcing knowledge.disable_ingest_with_langflow=True "
+                "(hardcoded in ConfigManager.load_config — remove before merge)",
+                persisted_value=False,
+                edited=self._config.edited,
+            )
+            self._config.knowledge.disable_ingest_with_langflow = True
 
         if needs_encryption_upgrade:
             logger.info("Upgrading unencrypted secrets in config.yaml to AES-256-GCM")
