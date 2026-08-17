@@ -1,5 +1,9 @@
+const SERVER_KEY = Symbol.for("openrag.metricsServer");
+
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  if ((globalThis as Record<symbol, boolean>)[SERVER_KEY]) return;
+  (globalThis as Record<symbol, boolean>)[SERVER_KEY] = true;
 
   const { createServer } = await import("node:http");
   const { metricsRegistry } = await import("./lib/metrics");
