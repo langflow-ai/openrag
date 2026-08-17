@@ -126,17 +126,6 @@ export interface GetAllFilesResponse {
   page_size: number;
 }
 
-/** Options for GET /v1/files/getAll. */
-export interface GetAllFilesOptions {
-  limit?: number;
-  sort_by?: string;
-  sort_order?: "asc" | "desc";
-  connector_type?: string;
-  mimetype?: string;
-  owner?: string;
-  search?: string;
-}
-
 /** Response from GET /v2/files (cursor-based composite-aggregation pagination) */
 export interface ListFilesResponse {
   files: FileRecord[];

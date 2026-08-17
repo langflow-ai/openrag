@@ -192,10 +192,8 @@ COMPONENT_CUSTOMIZATIONS: dict[tuple[str, str], dict[str, str]] = {
     ("/v1/files/getAll", "GET"): {
         "name": "openrag_get_all_files",
         "description": (
-            "Return up to `limit` ingested files from the knowledge base using "
-            "simple offset pagination (no cursor required). Supports filtering by "
-            "connector_type, mimetype, and owner, plus filename search. "
-            "Default limit is 100; maximum is 500."
+            "Return all ingested files from the knowledge base. "
+            "No parameters — use GET /v2/files for filtering, sorting, or pagination."
         ),
     },
     # files endpoints (v2 — composite-agg cursor pagination)

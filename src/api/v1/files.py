@@ -1,12 +1,12 @@
 """
 Public API v1 Files endpoints.
 
-Provides offset-paginated file listing over the ingested knowledge base
+Provides a simple file listing over the ingested knowledge base
 (GET /v1/files/getAll). Uses API-key authentication and calls FileService
-(v1, offset pagination) directly. .
+(v1, offset pagination) directly.
 """
 
-from fastapi import Depends, Query
+from fastapi import Depends
 from fastapi.responses import JSONResponse
 
 from dependencies import get_file_service, require_api_key_permission
@@ -17,18 +17,11 @@ logger = get_logger(__name__)
 
 
 async def get_all_files(
-    limit: int = Query(100, ge=1, le=500, description="Maximum number of files to return"),
-    sort_by: str = Query("filename", description="Sort field"),
-    sort_order: str = Query("asc", pattern="^(asc|desc)$", description="Sort order"),
-    connector_type: str | None = Query(None, description="Filter by connector type"),
-    mimetype: str | None = Query(None, description="Filter by MIME type"),
-    owner: str | None = Query(None, description="Filter by owner"),
-    search: str | None = Query(None, description="Search filename"),
     file_service=Depends(get_file_service),
     user: User = Depends(require_api_key_permission("knowledge:read:own")),
 ):
     """
-    Return up to `limit` ingested files using offset-based pagination (page 1).
+    Return all ingested files.
 
     GET /v1/files/getAll
     """
@@ -37,13 +30,7 @@ async def get_all_files(
             user_id=user.user_id,
             jwt_token=user.jwt_token,
             page=1,
-            page_size=limit,
-            sort_by=sort_by,
-            sort_order=sort_order,
-            connector_type=connector_type,
-            mimetype=mimetype,
-            owner=owner,
-            search=search,
+            page_size=500,
         )
         return JSONResponse(result)
     except Exception as e:

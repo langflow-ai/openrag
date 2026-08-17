@@ -7,7 +7,6 @@ import type {
   DeleteDocumentOptions,
   DeleteDocumentResponse,
   FileRecord,
-  GetAllFilesOptions,
   GetAllFilesResponse,
   IngestResponse,
   IngestTaskStatus,
@@ -183,27 +182,14 @@ export class DocumentsClient {
   }
 
   /**
-   * Return up to `limit` ingested files using simple offset pagination (v1).
+   * Return all ingested files (v1).
    *
-   * No cursor required or returned. Use this for a straightforward "get all files"
-   * call without managing pagination state.
+   * No parameters — just returns everything in the knowledge base.
    *
-   * @param options - Filtering, sorting, and limit options.
    * @returns GetAllFilesResponse with files list and total count.
    */
-  async getAllFiles(options: GetAllFilesOptions = {}): Promise<GetAllFilesResponse> {
-    const params = new URLSearchParams();
-    if (options.limit !== undefined) params.set("limit", String(options.limit));
-    if (options.sort_by !== undefined) params.set("sort_by", options.sort_by);
-    if (options.sort_order !== undefined) params.set("sort_order", options.sort_order);
-    if (options.connector_type !== undefined) params.set("connector_type", options.connector_type);
-    if (options.mimetype !== undefined) params.set("mimetype", options.mimetype);
-    if (options.owner !== undefined) params.set("owner", options.owner);
-    if (options.search !== undefined) params.set("search", options.search);
-
-    const qs = params.toString();
-    const path = qs ? `/api/v1/files/getAll?${qs}` : "/api/v1/files/getAll";
-    const response = await this.client._request("GET", path);
+  async getAllFiles(): Promise<GetAllFilesResponse> {
+    const response = await this.client._request("GET", "/api/v1/files/getAll");
     const data = await response.json();
 
     return {

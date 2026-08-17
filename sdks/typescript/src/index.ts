@@ -68,7 +68,6 @@ export {
   PrincipalLabel,
   FileRecord,
   GetAllFilesResponse,
-  GetAllFilesOptions,
   ListFilesResponse,
   ListFilesOptions,
   // Conversation types

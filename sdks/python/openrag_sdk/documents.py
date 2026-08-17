@@ -249,54 +249,18 @@ class DocumentsClient:
             after_key=data.get("after_key"),
         )
 
-    async def get_all_files(
-        self,
-        *,
-        limit: int = 100,
-        sort_by: str = "filename",
-        sort_order: str = "asc",
-        connector_type: str | None = None,
-        mimetype: str | None = None,
-        owner: str | None = None,
-        search: str | None = None,
-    ) -> GetAllFilesResponse:
+    async def get_all_files(self) -> GetAllFilesResponse:
         """
-        Return up to ``limit`` ingested files using simple offset pagination (v1).
+        Return all ingested files (v1).
 
-        No cursor is required or returned. Use this for a straightforward
-        "get all files" call without managing pagination state.
-
-        Args:
-            limit: Maximum number of files to return (1–500, default 100).
-            sort_by: Field to sort by. One of: filename, file_size, mimetype,
-                indexed_time, connector_type, chunk_count, owner.
-            sort_order: "asc" or "desc".
-            connector_type: Filter to files from a specific connector type.
-            mimetype: Filter to files with a specific MIME type.
-            owner: Filter to files owned by a specific user ID.
-            search: Substring/prefix match against filename.
+        No parameters — just returns everything in the knowledge base.
 
         Returns:
             GetAllFilesResponse with files list, total count, page, and page_size.
         """
-        params: dict[str, str | int] = {
-            "limit": limit,
-            "sort_by": sort_by,
-            "sort_order": sort_order,
-        }
-        if connector_type is not None:
-            params["connector_type"] = connector_type
-        if mimetype is not None:
-            params["mimetype"] = mimetype
-        if owner is not None:
-            params["owner"] = owner
-        if search is not None:
-            params["search"] = search
-
         response = await self._client._request(
             "GET",
             "/api/v1/files/getAll",
-            params=params,
         )
         data = response.json()
         return GetAllFilesResponse(
