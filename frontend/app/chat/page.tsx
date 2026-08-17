@@ -324,8 +324,19 @@ function ChatPage() {
     // tracks the streaming hook, so the non-streaming path needs `loading`.
     const requestInFlight = isChatStreaming || loading;
 
+    // /chat/history serves messages from the backend's in-memory cache and
+    // falls back to metadata-only rows (messages: []) for anything it no longer
+    // holds — after a restart, for instance. Re-syncing the conversation
+    // already on screen from an empty copy would erase the exchange the user is
+    // looking at, so treat "no messages" as "nothing to sync" unless we are
+    // switching to a different conversation.
+    const serverMessages = conversationData?.messages ?? [];
+    const wouldEraseVisibleMessages =
+      !isNewConversation && serverMessages.length === 0 && messages.length > 0;
+
     if (
       conversationData?.messages &&
+      !wouldEraseVisibleMessages &&
       (isNewConversation || (!requestInFlight && hasMessageCountChanged)) &&
       !isUserInteracting &&
       !isForkingInProgress
