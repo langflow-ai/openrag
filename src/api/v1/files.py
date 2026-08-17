@@ -1,9 +1,10 @@
 """
 Public API v1 Files endpoints.
 
-Provides file listing and search over the ingested knowledge base.
-Uses API key authentication — delegates to the api/v2/files.py handlers
-but overrides the user dependency to use API keys.
+Provides offset-paginated file listing over the ingested knowledge base
+(GET /v1/files/getAll). Uses API-key authentication and calls the shared
+FileServiceV2 directly. Cursor-paginated variants live in api/v2/files.py
+(list_files_public / search_files_public, served at /v2/files).
 """
 
 from fastapi import Depends, Query

@@ -241,6 +241,15 @@ const results = await client.search.query("quarterly report", { filterId });
 const response = await client.chat.create({ message: "Summarise Q3", filterId });
 ```
 
+For a one-shot listing without managing a cursor, `client.documents.getAllFiles()`
+returns up to `limit` files using simple offset pagination:
+
+```typescript
+// Grab up to 200 files in a single call (no cursor to track)
+const page = await client.documents.getAllFiles({ limit: 200, connector_type: "sharepoint" });
+for (const f of page.files) console.log(f.filename);
+```
+
 ## Settings
 
 ```typescript
