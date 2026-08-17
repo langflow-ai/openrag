@@ -268,21 +268,13 @@ def create_mcp_server(app: FastAPI) -> FastMCP:
             pattern=r"^/v1/",
             mcp_type=MCPType.TOOL,
         ),
-<<<<<<< HEAD
-        # expose /v2/files and /v2/files/search as tools
-=======
         # Expose v2 file listing/search endpoints as MCP tools.
->>>>>>> e1e7eccf (Updated v1 and v2 endpoints respectively to required states)
         RouteMap(
             methods=["GET"],
             pattern=r"^/v2/files",
             mcp_type=MCPType.TOOL,
         ),
-<<<<<<< HEAD
-        # exclude everything else
-=======
         # Exclude everything else
->>>>>>> e1e7eccf (Updated v1 and v2 endpoints respectively to required states)
         RouteMap(
             pattern=r".*",
             mcp_type=MCPType.EXCLUDE,
