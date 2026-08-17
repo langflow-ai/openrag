@@ -102,9 +102,7 @@ def _query_params(fn) -> dict:
     injected service, so it should stay identical too.
     """
     return {
-        name: p.annotation
-        for name, p in inspect.signature(fn).parameters.items()
-        if name != "user"
+        name: p.annotation for name, p in inspect.signature(fn).parameters.items() if name != "user"
     }
 
 
