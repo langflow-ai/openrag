@@ -22,7 +22,13 @@ logger = get_logger(__name__)
 # DISABLE_INGEST_WITH_LANGFLOW=true in the pod cannot reach the value and
 # ingestion keeps taking the Langflow branch.
 #
-# To revert: set this to False (or delete it and the block in load_config that
+# It lives in OpenRAGConfig.from_dict because that is the one choke point every
+# storage mode goes through: `files` builds it in ConfigManager.load_config, and
+# `db`/`hybrid` build it straight from DB rows in WorkspaceConfigService, which
+# never calls load_config at all (so neither env vars nor an override placed
+# there can reach a SaaS deployment).
+#
+# To revert: set this to False (or delete it and the block in from_dict that
 # reads it, plus the two monkeypatch lines in
 # tests/unit/config/test_disable_ingest_setting.py that turn it off).
 # ---------------------------------------------------------------------------
@@ -260,6 +266,21 @@ class OpenRAGConfig:
                 new_data["api_key"] = decrypt_secret(new_data["api_key"])
             return new_data
 
+        knowledge = KnowledgeConfig(**data.get("knowledge", {}))
+
+        # TEMPORARY DEMO OVERRIDE — see _FORCE_LANGFLOWLESS_INGEST above.
+        # Applied here rather than in load_config() because db/hybrid storage
+        # modes build the config straight from DB rows via this classmethod and
+        # never touch ConfigManager.load_config().
+        if _FORCE_LANGFLOWLESS_INGEST and not knowledge.disable_ingest_with_langflow:
+            logger.warning(
+                "TEMPORARY OVERRIDE: forcing knowledge.disable_ingest_with_langflow=True "
+                "(hardcoded in OpenRAGConfig.from_dict — remove before merge)",
+                stored_value=False,
+                edited=data.get("edited", False),
+            )
+            knowledge.disable_ingest_with_langflow = True
+
         return cls(
             providers=ProvidersConfig(
                 openai=OpenAIConfig(**_decrypt_provider(providers_data.get("openai", {}))),
@@ -270,7 +291,7 @@ class OpenRAGConfig:
                     **_decrypt_provider(providers_data.get("azure_ai_foundry", {}))
                 ),
             ),
-            knowledge=KnowledgeConfig(**data.get("knowledge", {})),
+            knowledge=knowledge,
             agent=AgentConfig(**data.get("agent", {})),
             onboarding=OnboardingState(**data.get("onboarding", {})),
             edited=data.get("edited", False),
@@ -393,18 +414,8 @@ class ConfigManager:
         # Override with environment variables (highest priority, but respect edited flags)
         self._load_env_overrides(config_data, temp_config)
 
-        # Create config object
+        # Create config object (the temporary override is applied inside from_dict)
         self._config = OpenRAGConfig.from_dict(config_data)
-
-        # TEMPORARY DEMO OVERRIDE — see _FORCE_LANGFLOWLESS_INGEST above.
-        if _FORCE_LANGFLOWLESS_INGEST and not self._config.knowledge.disable_ingest_with_langflow:
-            logger.warning(
-                "TEMPORARY OVERRIDE: forcing knowledge.disable_ingest_with_langflow=True "
-                "(hardcoded in ConfigManager.load_config — remove before merge)",
-                persisted_value=False,
-                edited=self._config.edited,
-            )
-            self._config.knowledge.disable_ingest_with_langflow = True
 
         if needs_encryption_upgrade:
             logger.info("Upgrading unencrypted secrets in config.yaml to AES-256-GCM")
