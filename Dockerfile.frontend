@@ -29,6 +29,7 @@ COPY frontend/package*.json ./
 COPY frontend/ ./
 
 RUN npm run build \
+    && npx tsc metrics-server.ts --outDir . --module commonjs --target es2020 --esModuleInterop \
     && npm prune --omit=dev
 
 # -----------------------------------------------------------------------------
@@ -52,8 +53,13 @@ COPY --from=builder --chown=1001:0 /opt/app-root/src/next.config.* ./
 COPY --from=builder --chown=1001:0 /opt/app-root/src/postcss.config.* ./
 COPY --from=builder --chown=1001:0 /opt/app-root/src/tailwind.config.* ./
 COPY --from=builder --chown=1001:0 /opt/app-root/src/biome.json* ./
+COPY --from=builder --chown=1001:0 /opt/app-root/src/metrics-server.js ./
+COPY --from=builder --chown=1001:0 /opt/app-root/src/lib ./lib
+COPY --from=builder --chown=1001:0 /opt/app-root/src/start-services.sh ./
 
-EXPOSE 3000
+RUN chmod +x start-services.sh
+
+EXPOSE 3000 9090
 USER 1001
 
-CMD ["npm", "start"]
+CMD ["./start-services.sh"]

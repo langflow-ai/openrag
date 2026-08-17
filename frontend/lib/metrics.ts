@@ -1,6 +1,7 @@
 import {
   Counter,
   collectDefaultMetrics,
+  Gauge,
   Histogram,
   Registry,
 } from "prom-client";
@@ -15,7 +16,9 @@ collectDefaultMetrics({
   gcDurationBuckets: [0.001, 0.01, 0.1, 1, 2, 5],
 });
 
-// Custom HTTP metrics
+// ===== HTTP Request Metrics =====
+
+// Request duration histogram (RED: Duration)
 export const httpRequestDuration = new Histogram({
   name: "http_request_duration_seconds",
   help: "Duration of HTTP requests in seconds",
@@ -24,6 +27,7 @@ export const httpRequestDuration = new Histogram({
   registers: [register],
 });
 
+// Total requests counter (RED: Rate)
 export const httpRequestTotal = new Counter({
   name: "http_requests_total",
   help: "Total number of HTTP requests",
@@ -31,7 +35,41 @@ export const httpRequestTotal = new Counter({
   registers: [register],
 });
 
-// Backend proxy metrics
+// In-flight requests gauge (concurrency monitoring)
+export const httpRequestsInFlight = new Gauge({
+  name: "http_requests_in_flight",
+  help: "Current number of HTTP requests being processed",
+  labelNames: ["method", "route"],
+  registers: [register],
+});
+
+// Request errors counter (RED: Errors)
+export const httpRequestErrors = new Counter({
+  name: "http_request_errors_total",
+  help: "Total HTTP request errors by type",
+  labelNames: ["method", "route", "error_type"],
+  registers: [register],
+});
+
+// Request size histogram (optional, for payload analysis)
+export const httpRequestSize = new Histogram({
+  name: "http_request_size_bytes",
+  help: "Size of HTTP request bodies in bytes",
+  labelNames: ["method", "route"],
+  buckets: [100, 1000, 10000, 100000, 1000000, 10000000],
+  registers: [register],
+});
+
+// Response size histogram (optional, for payload analysis)
+export const httpResponseSize = new Histogram({
+  name: "http_response_size_bytes",
+  help: "Size of HTTP response bodies in bytes",
+  labelNames: ["method", "route", "status_code"],
+  buckets: [100, 1000, 10000, 100000, 1000000, 10000000],
+  registers: [register],
+});
+
+// ===== Backend Proxy Metrics =====
 export const backendProxyDuration = new Histogram({
   name: "backend_proxy_duration_seconds",
   help: "Duration of backend proxy requests in seconds",

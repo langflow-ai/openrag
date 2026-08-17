@@ -13,6 +13,10 @@ spec:
       targetPort: http
       protocol: TCP
       name: http
+    - port: 9090
+      targetPort: metrics
+      protocol: TCP
+      name: metrics
   selector:
     {{- include "openrag.frontend.selectorLabels" . | nindent 4 }}
 {{- end }}

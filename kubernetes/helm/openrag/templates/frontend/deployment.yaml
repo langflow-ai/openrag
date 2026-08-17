@@ -19,8 +19,8 @@ spec:
         {{- include "openrag.frontend.selectorLabels" . | nindent 8 }}
       annotations:
         prometheus.io/scrape: "true"
-        prometheus.io/port: "3000"
-        prometheus.io/path: "/api/metrics"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
     spec:
       serviceAccountName: {{ include "openrag.serviceAccountName" . }}
       {{- with .Values.podSecurityContext }}
@@ -42,6 +42,9 @@ spec:
           ports:
             - name: http
               containerPort: 3000
+              protocol: TCP
+            - name: metrics
+              containerPort: 9090
               protocol: TCP
           env:
             # Backend connection (uses internal service name)
