@@ -260,7 +260,7 @@ function ComponentLogsModal({
             entries.map((entry, idx) => (
               <div
                 // biome-ignore lint/suspicious/noArrayIndexKey: log entries have no stable id
-                key={`${entry.timestamp}-${idx}`}
+                key={`${entry.timestamp}-${entry.message}`}
                 className="rounded bg-zinc-800/50 border border-zinc-700/40 px-2.5 py-1.5"
               >
                 <div className="flex items-center gap-2 flex-wrap">
