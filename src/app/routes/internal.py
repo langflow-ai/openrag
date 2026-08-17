@@ -132,10 +132,8 @@ def register_internal_routes(app: FastAPI):
     app.add_api_route("/files", files.list_files, methods=["GET"], tags=["internal"])
     app.add_api_route("/files/search", files.search_files, methods=["GET"], tags=["internal"])
 
-   # File listing/search endpoints (v2 — composite-agg, cursor pagination); internal v2 uses /files/v2 , public uses v2/files 
-    app.add_api_route(
-        "/files/v2/search", files_v2.search_files, methods=["GET"], tags=["internal"]
-    )
+    # File listing/search endpoints (v2 — composite-agg, cursor pagination); internal v2 uses /files/v2 , public uses v2/files
+    app.add_api_route("/files/v2/search", files_v2.search_files, methods=["GET"], tags=["internal"])
     app.add_api_route("/files/v2", files_v2.list_files, methods=["GET"], tags=["internal"])
 
     # Knowledge Filter endpoints
