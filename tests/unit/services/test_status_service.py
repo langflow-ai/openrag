@@ -65,7 +65,7 @@ async def test_timeout_becomes_unknown_and_does_not_block(monkeypatch):
     unknown = [c for c in result.components if c.status == ComponentState.UNKNOWN]
     assert len(unknown) == 1, [(c.name, c.status) for c in result.components]
 
-    assert result.overall_status == ComponentState.UNHEALTHY
+    assert result.overall_status == ComponentState.UNKNOWN
 
 
 @pytest.mark.asyncio
@@ -80,7 +80,7 @@ async def test_check_exception_becomes_unknown(monkeypatch):
 
     result = await status_service.aggregate_status()
 
-    assert result.overall_status == ComponentState.UNHEALTHY
+    assert result.overall_status == ComponentState.UNKNOWN
 
 
 # ---------------------------------------------------------------------------

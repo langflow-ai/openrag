@@ -31,6 +31,8 @@ class ComponentStatus(BaseModel):
     # Added by #2178 — None when healthy, last exception detail when not.
     # The frontend uses this as the signal to show the Logs button.
     last_error: str | None = None
+    # Added by #2183 — when this component was last checked (ISO-8601 UTC).
+    checked_at: str | None = None
 
 
 class LogEntry(BaseModel):
@@ -50,3 +52,24 @@ class StatusResponse(BaseModel):
     overall_status: ComponentState
     checked_at: str  # ISO 8601 UTC
     components: list[ComponentStatus] = Field(default_factory=list)
+
+
+class ComponentActionResponse(BaseModel):
+    """Result of a per-component action (sync/restart), carrying fresh status."""
+
+    component: str
+    ok: bool
+    message: str
+    status: ComponentStatus
+
+
+class DiagnosisResponse(BaseModel):
+    """Guidance for the "Debug" button: what's wrong and how to fix it."""
+
+    component: str
+    state: ComponentState
+    summary: str
+    likely_cause: str | None = None
+    remediation: list[str] = Field(default_factory=list)
+    last_error: str | None = None
+    target: str | None = None
