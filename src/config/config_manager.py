@@ -184,7 +184,7 @@ class KnowledgeConfig:
     ocr: bool = False
     picture_descriptions: bool = False
     index_name: str = "documents"  # OpenSearch index name
-    disable_ingest_with_langflow: bool = False
+    disable_ingest_with_langflow: bool = True
 
 
 @dataclass
@@ -197,7 +197,7 @@ class AgentConfig:
     # True the chat UI defaults to the langflowless /chat endpoint, which runs
     # the agent in-process against agent.llm_provider instead of delegating to
     # a Langflow flow.
-    disable_chat_with_langflow: bool = False
+    disable_chat_with_langflow: bool = True
     # Whether the chat UI streams responses token by token. Deployments that
     # hide the chat controls need this settable, since a provider that streams
     # badly can only be worked around by turning streaming off.

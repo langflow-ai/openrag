@@ -9,13 +9,13 @@ from config.config_manager import ConfigManager
 
 
 def test_disable_ingest_default(monkeypatch):
-    """Verify that disable_ingest_with_langflow defaults to False when no env var is present."""
+    """Verify that disable_ingest_with_langflow defaults to True when no env var is present."""
     monkeypatch.delenv("DISABLE_INGEST_WITH_LANGFLOW", raising=False)
     with tempfile.TemporaryDirectory() as tmp:
         cfg_file = Path(tmp) / "config.yaml"
         cm = ConfigManager(config_file=str(cfg_file))
         config = cm.load_config()
-        assert config.knowledge.disable_ingest_with_langflow is False
+        assert config.knowledge.disable_ingest_with_langflow is True
 
 
 def test_disable_ingest_env_override(monkeypatch):

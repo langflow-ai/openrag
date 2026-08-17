@@ -12,13 +12,13 @@ from config.config_manager import ConfigManager
 
 
 def test_disable_chat_default(monkeypatch):
-    """Defaults to False so Langflow stays the out-of-box chat path."""
+    """Defaults to True so chat runs in OpenRAG rather than through Langflow."""
     monkeypatch.delenv("DISABLE_CHAT_WITH_LANGFLOW", raising=False)
     with tempfile.TemporaryDirectory() as tmp:
         cfg_file = Path(tmp) / "config.yaml"
         cm = ConfigManager(config_file=str(cfg_file))
         config = cm.load_config()
-        assert config.agent.disable_chat_with_langflow is False
+        assert config.agent.disable_chat_with_langflow is True
 
 
 def test_disable_chat_env_override(monkeypatch):

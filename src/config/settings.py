@@ -261,7 +261,7 @@ else:
     logger.info("Auto-detected Docling host: %s (URL: %s)", DOCLING_HOST_IP, DOCLING_SERVE_URL)
 
 # Ingestion configuration
-DISABLE_INGEST_WITH_LANGFLOW = os.getenv("DISABLE_INGEST_WITH_LANGFLOW", "false").lower() in (
+DISABLE_INGEST_WITH_LANGFLOW = os.getenv("DISABLE_INGEST_WITH_LANGFLOW", "true").lower() in (
     "true",
     "1",
     "yes",
