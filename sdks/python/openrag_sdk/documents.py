@@ -267,5 +267,5 @@ class DocumentsClient:
             files=[FileRecord(**f) for f in data.get("files", [])],
             total=data.get("total", 0),
             page=data.get("page", 1),
-            page_size=data.get("page_size", limit),
+            page_size=data.get("page_size", 500),
         )
