@@ -69,14 +69,14 @@ def diagnose_component(
 
     if detail and any(h in detail.lower() for h in _CONNECTION_HINTS):
         if target:
-            return resp( 
-                f"{display} is unreachable — the backend couldn't connect to it.", 
+            return resp(
+                f"{display} is unreachable — the backend couldn't connect to it.",
                 f"The service isn't accepting connections at {target}. It may be stopped or still starting.",
                 [
                     f"Confirm the service is running at {target}.",
                     'Click "Sync" once it\'s back to re-check.',
                     'Check "Logs" for the underlying error.',
-                ]
+                ],
             )
         return resp(
             f"{display} is unreachable — the backend couldn't connect to it.",
