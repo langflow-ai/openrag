@@ -117,6 +117,8 @@ async def search_files(
             {"error": "Failed to search files"},
             status_code=500,
         )
+
+
 async def list_files_public(
     page: int = Query(
         1, ge=1, description="Page number (for display only; navigation uses after_key cursor)"
