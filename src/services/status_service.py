@@ -68,22 +68,22 @@ async def _run_check(fn: Callable[[], Awaitable[ComponentStatus]]) -> ComponentS
     return result
 
 
+SEVERITY_ORDER = [
+    ComponentState.HEALTHY,
+    ComponentState.DEGRADED,
+    ComponentState.UNKNOWN,
+    ComponentState.UNHEALTHY,
+]
+
+
 def _worst_status(results: list[ComponentStatus]) -> ComponentState:
     """This calculates the final status (the worst one)"""
-    severity = {
-        ComponentState.HEALTHY: 0,
-        ComponentState.DEGRADED: 1,
-        ComponentState.UNKNOWN: 2,
-        ComponentState.UNHEALTHY: 2,
-    }
-
-    severity_in_order = [ComponentState.HEALTHY, ComponentState.DEGRADED, ComponentState.UNHEALTHY]
-
-    return severity_in_order[max((severity[r.status] for r in results), default=0)]
+    severity = {state: i for i, state in enumerate(SEVERITY_ORDER)}
+    return SEVERITY_ORDER[max((severity[r.status] for r in results), default=0)]
 
 
 async def aggregate_status() -> StatusResponse:
-    """TODO: add docstrings here"""
+    """Runs all component health checks concurrently and return the aggregate status"""
     results = await asyncio.gather(*(_run_check(fn) for fn in CHECK_SPECS))
 
     return StatusResponse(
