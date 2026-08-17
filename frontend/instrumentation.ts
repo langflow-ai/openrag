@@ -28,6 +28,11 @@ export async function register() {
     }
   });
 
+  server.on("error", (err) => {
+    console.error(`Metrics server failed to start on port ${port}:`, err);
+    (globalThis as Record<symbol, boolean>)[SERVER_KEY] = false;
+  });
+
   server.listen(port, () => {
     console.log(`Metrics server listening on port ${port}`);
   });
