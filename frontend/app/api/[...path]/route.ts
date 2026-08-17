@@ -3,6 +3,7 @@ import {
   backendProxyDuration,
   backendProxyErrors,
   backendProxyTotal,
+  normalizePath,
 } from "@/lib/metrics";
 
 function getRequestId(request: NextRequest): string {
@@ -125,11 +126,12 @@ async function proxyRequest(request: NextRequest, params: { path: string[] }) {
     const durationMs = Math.round(performance.now() - start);
     const durationSeconds = durationMs / 1000;
 
-    // Record metrics
+    const normalizedPath = normalizePath(`/${path}`);
+
     backendProxyDuration.observe(
       {
         method: request.method,
-        path: `/${path}`,
+        path: normalizedPath,
         status_code: response.status.toString(),
       },
       durationSeconds,
@@ -137,7 +139,7 @@ async function proxyRequest(request: NextRequest, params: { path: string[] }) {
 
     backendProxyTotal.inc({
       method: request.method,
-      path: `/${path}`,
+      path: normalizedPath,
       status_code: response.status.toString(),
     });
 
@@ -188,17 +190,18 @@ async function proxyRequest(request: NextRequest, params: { path: string[] }) {
     const durationMs = Math.round(performance.now() - start);
     const durationSeconds = durationMs / 1000;
 
-    // Record error metrics
+    const normalizedPath = normalizePath(`/${path}`);
+
     backendProxyErrors.inc({
       method: request.method,
-      path: `/${path}`,
+      path: normalizedPath,
       error_type: error instanceof Error ? error.name : "unknown",
     });
 
     backendProxyDuration.observe(
       {
         method: request.method,
-        path: `/${path}`,
+        path: normalizedPath,
         status_code: "500",
       },
       durationSeconds,
@@ -206,7 +209,7 @@ async function proxyRequest(request: NextRequest, params: { path: string[] }) {
 
     backendProxyTotal.inc({
       method: request.method,
-      path: `/${path}`,
+      path: normalizedPath,
       status_code: "500",
     });
 
