@@ -55,6 +55,10 @@ func NewEnvVarManager() *EnvVarManager {
 			"LANGFLOW_KEY_RETRIES":           "15",
 			"LANGFLOW_KEY_RETRY_DELAY":       "2",
 
+			// Prometheus metrics
+			"LANGFLOW_PROMETHEUS_ENABLED": "true",
+			"LANGFLOW_PROMETHEUS_PORT":    "9090",
+
 			// Flow context defaults
 			"JWT":                       "None",
 			"OWNER":                     "None",
@@ -159,8 +163,20 @@ func NewEnvVarManager() *EnvVarManager {
 // 1. Highest priority: CR spec env vars
 // 2. Medium priority: Operator env vars with OPTLF_ prefix
 // 3. Lowest priority: Hardcoded defaults
-func (m *EnvVarManager) GetLangflowEnvVars(ctx context.Context, c client.Client, namespace string, crEnvVars []corev1.EnvVar) (map[string]string, error) {
-	return m.mergeEnvVars(ctx, c, namespace, m.DefaultLangflowEnvVars, LANGFLOW_ENV_PREFIX, crEnvVars)
+// If metricsEnabled is true, Prometheus env vars are included; otherwise they are removed.
+func (m *EnvVarManager) GetLangflowEnvVars(ctx context.Context, c client.Client, namespace string, crEnvVars []corev1.EnvVar, metricsEnabled bool) (map[string]string, error) {
+	result, err := m.mergeEnvVars(ctx, c, namespace, m.DefaultLangflowEnvVars, LANGFLOW_ENV_PREFIX, crEnvVars)
+	if err != nil {
+		return nil, err
+	}
+
+	// Conditionally add or remove Prometheus metrics env vars
+	if !metricsEnabled {
+		delete(result, "LANGFLOW_PROMETHEUS_ENABLED")
+		delete(result, "LANGFLOW_PROMETHEUS_PORT")
+	}
+
+	return result, nil
 }
 
 // GetBackendEnvVars returns merged Backend env vars with three-level priority:

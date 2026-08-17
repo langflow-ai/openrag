@@ -29,7 +29,7 @@ func Example_envVarPriority() {
 
 	// Get merged env vars with all three levels applied
 	// Use nil client since we're only testing direct values (no secrets to resolve)
-	mergedEnvVars, _ := manager.GetLangflowEnvVars(context.Background(), nil, "default", crEnvVars)
+	mergedEnvVars, _ := manager.GetLangflowEnvVars(context.Background(), nil, "default", crEnvVars, true)
 
 	// Check the results
 	fmt.Printf("LANGFLOW_AUTO_LOGIN: %s (from defaults)\n", mergedEnvVars["LANGFLOW_AUTO_LOGIN"])
@@ -74,7 +74,7 @@ func Example_componentSpecificPrefixes() {
 
 	// Each component gets its own prefix
 	// Use nil client since we're only testing direct values (no secrets to resolve)
-	lfVars, _ := manager.GetLangflowEnvVars(context.Background(), nil, "default", nil)
+	lfVars, _ := manager.GetLangflowEnvVars(context.Background(), nil, "default", nil, true)
 	beVars, _ := manager.GetBackendEnvVars(context.Background(), nil, "default", nil)
 	feVars, _ := manager.GetFrontendEnvVars(context.Background(), nil, "default", nil)
 

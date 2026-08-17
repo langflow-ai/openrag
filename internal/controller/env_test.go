@@ -37,7 +37,7 @@ func TestEnvVarManager_ThreeLevelPriority(t *testing.T) {
 	}
 
 	// No secrets to resolve, so ctx and client can be nil
-	result, err := manager.GetLangflowEnvVars(context.Background(), nil, "test-ns", crEnvVars)
+	result, err := manager.GetLangflowEnvVars(context.Background(), nil, "test-ns", crEnvVars, true)
 	require.NoError(t, err)
 
 	// Verify priority:
@@ -69,7 +69,7 @@ func TestEnvVarManager_OperatorEnvPrefixFiltering(t *testing.T) {
 	}()
 
 	// Test Langflow - should only pick up OPTLF_
-	lfResult, err := manager.GetLangflowEnvVars(context.Background(), nil, "test-ns", nil)
+	lfResult, err := manager.GetLangflowEnvVars(context.Background(), nil, "test-ns", nil, true)
 	require.NoError(t, err)
 	assert.Equal(t, "langflow_value", lfResult["TEST_VAR"], "Langflow should use OPTLF_ prefixed var")
 
@@ -105,7 +105,7 @@ func TestEnvVarManager_CREnvVarOverride(t *testing.T) {
 		{Name: "LOG_LEVEL", Value: "DEBUG"},
 	}
 
-	result, err := manager.GetLangflowEnvVars(context.Background(), nil, "test-ns", crEnvVars)
+	result, err := manager.GetLangflowEnvVars(context.Background(), nil, "test-ns", crEnvVars, true)
 	require.NoError(t, err)
 
 	assert.Equal(t, "postgresql://cr.db", result["DATABASE_URL"], "CR should override operator env")
@@ -133,7 +133,7 @@ func TestEnvVarManager_CREmptyValueOverridesDefault(t *testing.T) {
 		{Name: "SEGMENT_WRITES", Value: ""}, // overrides default
 	}
 
-	result, err := manager.GetLangflowEnvVars(context.Background(), nil, "test-ns", crEnvVars)
+	result, err := manager.GetLangflowEnvVars(context.Background(), nil, "test-ns", crEnvVars, true)
 	require.NoError(t, err)
 
 	assert.Equal(t, "", result["LANGFLOW_KEY"], "CR empty string must override operator env value")
@@ -172,11 +172,11 @@ func TestEnvVarManager_EmptyCREnvVars(t *testing.T) {
 		},
 	}
 
-	result, err := manager.GetLangflowEnvVars(context.Background(), nil, "test-ns", nil)
+	result, err := manager.GetLangflowEnvVars(context.Background(), nil, "test-ns", nil, true)
 	require.NoError(t, err)
 	assert.Equal(t, "default1", result["VAR1"], "Should use defaults when no CR env vars")
 
-	result, err = manager.GetLangflowEnvVars(context.Background(), nil, "test-ns", []corev1.EnvVar{})
+	result, err = manager.GetLangflowEnvVars(context.Background(), nil, "test-ns", []corev1.EnvVar{}, true)
 	require.NoError(t, err)
 	assert.Equal(t, "default1", result["VAR1"], "Should use defaults when empty CR env vars")
 }
@@ -217,7 +217,7 @@ func TestEnvVarManager_CREnvVarWithValueFrom(t *testing.T) {
 		},
 	}
 
-	result, err := manager.GetLangflowEnvVars(context.Background(), fakeClient, "test-ns", crEnvVars)
+	result, err := manager.GetLangflowEnvVars(context.Background(), fakeClient, "test-ns", crEnvVars, true)
 	require.NoError(t, err)
 	// Should resolve secret and use the resolved value (NEW behavior)
 	assert.Equal(t, "resolved_secret_value", result["SECRET_KEY"], "Should resolve secret from valueFrom")
@@ -284,7 +284,7 @@ func TestEnvVarManager_RealWorldScenario(t *testing.T) {
 		{Name: "LANGFLOW_LOG_LEVEL", Value: "ERROR"},
 	}
 
-	result, err := manager.GetLangflowEnvVars(context.Background(), nil, "test-ns", crEnvVars)
+	result, err := manager.GetLangflowEnvVars(context.Background(), nil, "test-ns", crEnvVars, true)
 	require.NoError(t, err)
 
 	// Verify the three-level priority worked correctly
@@ -438,7 +438,7 @@ func TestEnvVarManager_EnsureRequiredEnvVars_Integration(t *testing.T) {
 	manager := NewEnvVarManager()
 
 	// Get the default Langflow env vars
-	envVars, err := manager.GetLangflowEnvVars(context.Background(), nil, "test-ns", nil)
+	envVars, err := manager.GetLangflowEnvVars(context.Background(), nil, "test-ns", nil, true)
 	require.NoError(t, err)
 
 	// Verify LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT exists
@@ -482,11 +482,46 @@ func TestEnvVarManager_EnsureRequiredEnvVars_CustomList(t *testing.T) {
 		},
 	}
 
-	envVars, err := manager.GetLangflowEnvVars(context.Background(), nil, "test-ns", nil)
+	envVars, err := manager.GetLangflowEnvVars(context.Background(), nil, "test-ns", nil, true)
 	require.NoError(t, err)
 	manager.EnsureRequiredEnvVars(envVars)
 
 	// Verify custom variables are handled
 	assert.Equal(t, "value1", envVars["CUSTOM_VAR1"], "CUSTOM_VAR1 should preserve existing value")
 	assert.Equal(t, "None", envVars["CUSTOM_VAR2"], "CUSTOM_VAR2 should be added with 'None'")
+}
+
+func TestEnvVarManager_PrometheusMetricsEnabled(t *testing.T) {
+	manager := NewEnvVarManager()
+
+	t.Run("metrics enabled includes Prometheus env vars", func(t *testing.T) {
+		envVars, err := manager.GetLangflowEnvVars(context.Background(), nil, "test-ns", nil, true)
+		require.NoError(t, err)
+
+		assert.Equal(t, "true", envVars["LANGFLOW_PROMETHEUS_ENABLED"], "LANGFLOW_PROMETHEUS_ENABLED should be true")
+		assert.Equal(t, "9090", envVars["LANGFLOW_PROMETHEUS_PORT"], "LANGFLOW_PROMETHEUS_PORT should be 9090")
+	})
+
+	t.Run("metrics disabled removes Prometheus env vars", func(t *testing.T) {
+		envVars, err := manager.GetLangflowEnvVars(context.Background(), nil, "test-ns", nil, false)
+		require.NoError(t, err)
+
+		_, hasEnabled := envVars["LANGFLOW_PROMETHEUS_ENABLED"]
+		_, hasPort := envVars["LANGFLOW_PROMETHEUS_PORT"]
+
+		assert.False(t, hasEnabled, "LANGFLOW_PROMETHEUS_ENABLED should not be present when metrics disabled")
+		assert.False(t, hasPort, "LANGFLOW_PROMETHEUS_PORT should not be present when metrics disabled")
+	})
+
+	t.Run("CR can override Prometheus env vars when metrics enabled", func(t *testing.T) {
+		crEnvVars := []corev1.EnvVar{
+			{Name: "LANGFLOW_PROMETHEUS_PORT", Value: "8080"},
+		}
+
+		envVars, err := manager.GetLangflowEnvVars(context.Background(), nil, "test-ns", crEnvVars, true)
+		require.NoError(t, err)
+
+		assert.Equal(t, "true", envVars["LANGFLOW_PROMETHEUS_ENABLED"], "LANGFLOW_PROMETHEUS_ENABLED should be true")
+		assert.Equal(t, "8080", envVars["LANGFLOW_PROMETHEUS_PORT"], "LANGFLOW_PROMETHEUS_PORT should be overridden to 8080")
+	})
 }
