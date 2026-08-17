@@ -33,7 +33,6 @@ from api import (
 from api import keys as api_keys
 from api.health import health_check, opensearch_health_ready
 from api.schemas.tasks import ErrorResponse, TaskRetryResponse
-from api.v2 import files as files_v2
 from connectors.registry import get_connector_classes
 
 
@@ -128,13 +127,9 @@ def register_internal_routes(app: FastAPI):
     # Search endpoint
     app.add_api_route("/search", search.search, methods=["POST"], tags=["internal"])
 
-    # File listing/search endpoints (v1 — terms-agg, in-memory sort)
+    # File listing/search endpoints 
     app.add_api_route("/files", files.list_files, methods=["GET"], tags=["internal"])
     app.add_api_route("/files/search", files.search_files, methods=["GET"], tags=["internal"])
-
-    # File listing/search endpoints (v2 — composite-agg, cursor pagination); internal v2 uses /files/v2 , public uses v2/files
-    app.add_api_route("/files/v2/search", files_v2.search_files, methods=["GET"], tags=["internal"])
-    app.add_api_route("/files/v2", files_v2.list_files, methods=["GET"], tags=["internal"])
 
     # Knowledge Filter endpoints
     app.add_api_route(

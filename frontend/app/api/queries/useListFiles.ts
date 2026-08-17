@@ -47,7 +47,7 @@ export const useListFiles = (
     if (params.afterKey)
       searchParams.set("after_key", JSON.stringify(params.afterKey));
 
-    const url = `/api/files/v2?${searchParams.toString()}`; //internal v2 (cookie auth)
+    const url = `/api/files?${searchParams.toString()}`; //internal (cookie auth)
 
     const response = await fetch(url);
 

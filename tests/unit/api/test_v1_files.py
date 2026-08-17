@@ -3,9 +3,9 @@ Unit tests for the public (API-key) file listing/search handlers.
 
 The public files surface is served by two handler sets, all gated by
 require_api_key_permission("knowledge:read:own"):
-- api.v1.files.get_all_files           → GET /v1/files/getAll  (offset pagination)
-- api.v2.files.list_files_public       → GET /v2/files         (cursor pagination)
-- api.v2.files.search_files_public     → GET /v2/files/search  (cursor pagination)
+- api.v1.files.get_all_files    → GET /v1/files/getAll  (offset pagination)
+- api.v2.files.list_files       → GET /v2/files         (cursor pagination)
+- api.v2.files.search_files     → GET /v2/files/search  (cursor pagination)
 
 Tests cover:
 - All public handlers authenticate with require_api_key_permission, NOT
@@ -22,17 +22,15 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi import params as fastapi_params
 
-from api.v1.files import get_all_files
-from api.v2.files import (
+from api.files import (
     list_files as internal_list_files,
 )
-from api.v2.files import (
-    list_files_public,
-    search_files_public,
-)
-from api.v2.files import (
+from api.files import (
     search_files as internal_search_files,
 )
+from api.v1.files import get_all_files
+from api.v2.files import list_files as list_files_public
+from api.v2.files import search_files as search_files_public
 from session_manager import User
 
 # ---------------------------------------------------------------------------
