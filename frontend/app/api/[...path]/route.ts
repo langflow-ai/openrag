@@ -117,7 +117,10 @@ async function proxyRequest(request: NextRequest, params: { path: string[] }) {
       method: request.method,
       path: `/${path}`,
     });
-    const response = await fetch(backendUrl, { ...backendFetchInit(), ...init });
+    const response = await fetch(backendUrl, {
+      ...backendFetchInit(),
+      ...init,
+    });
     const durationMs = Math.round(performance.now() - start);
     const durationSeconds = durationMs / 1000;
 
