@@ -314,12 +314,10 @@
     display: grid !important;
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     gap: 1px !important;
-    /* background-color: hsl(var(--border)) !important; */
     margin-left: 0 !important;
     margin-right: 0 !important;
     margin-bottom: 0 !important;
     margin-top: 1rem !important;
-    /* padding-top: 0 !important; */
   }
 
   /*
