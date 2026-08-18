@@ -2,11 +2,13 @@ import pytest
 
 from services.local_source_service import (
     collect_ingest_files,
+    delete_local_source,
     find_local_source,
     get_local_source_archive_stats,
     is_source_archiving_enabled,
     local_source_url,
     resolve_ingestion_path,
+    source_id_from_local_source_url,
     stage_local_source,
 )
 
@@ -75,6 +77,43 @@ def test_public_url_can_make_download_link_absolute(documents_path, monkeypatch)
     monkeypatch.setenv("OPENRAG_PUBLIC_URL", "https://rag.example.com/")
 
     assert local_source_url(SOURCE_ID) == (f"https://rag.example.com/api/source-files/{SOURCE_ID}")
+
+
+@pytest.mark.parametrize(
+    "source_url",
+    [
+        f"/api/source-files/{SOURCE_ID}",
+        f"https://rag.example.com/api/source-files/{SOURCE_ID}",
+        f"https://rag.example.com/openrag/api/source-files/{SOURCE_ID}",
+    ],
+)
+def test_source_id_is_extracted_only_from_local_source_urls(source_url):
+    assert source_id_from_local_source_url(source_url) == SOURCE_ID
+
+
+@pytest.mark.parametrize(
+    "source_url",
+    [
+        None,
+        "https://openarchiver.example.com/api/documents/123",
+        f"s3://bucket/api/source-files/{SOURCE_ID}",
+        f"/api/source-files/{SOURCE_ID}/extra",
+        "/api/source-files/not-a-source-id",
+    ],
+)
+def test_remote_or_invalid_source_url_is_not_treated_as_local(source_url):
+    assert source_id_from_local_source_url(source_url) is None
+
+
+@pytest.mark.asyncio
+async def test_delete_local_source_removes_only_validated_archive(documents_path):
+    archived = documents_path / ".openrag-indexed" / SOURCE_ID / "report.pdf"
+    archived.parent.mkdir(parents=True)
+    archived.write_bytes(b"pdf")
+
+    assert await delete_local_source(SOURCE_ID) is True
+    assert not archived.parent.exists()
+    assert await delete_local_source("../outside") is False
 
 
 def test_archive_stats_expose_ingestion_and_archive_paths(documents_path):

@@ -10,7 +10,7 @@ import shutil
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 from config.paths import get_documents_path
 
@@ -89,6 +89,26 @@ def get_local_source_archive_stats(
 def document_id_from_source_id(source_id: str) -> str | None:
     match = SOURCE_ID_PATTERN.fullmatch(source_id)
     return match.group("document_id") if match else None
+
+
+def source_id_from_local_source_url(source_url: str | None) -> str | None:
+    """Extract a backend-managed source ID from its relative or public URL."""
+    if not source_url:
+        return None
+
+    parsed = urlsplit(source_url)
+    if parsed.scheme and parsed.scheme.lower() not in {"http", "https"}:
+        return None
+    if parsed.query or parsed.fragment:
+        return None
+
+    marker = "/api/source-files/"
+    _prefix, separator, encoded_source_id = parsed.path.rpartition(marker)
+    if not separator or not encoded_source_id or "/" in encoded_source_id:
+        return None
+
+    source_id = unquote(encoded_source_id)
+    return source_id if SOURCE_ID_PATTERN.fullmatch(source_id) else None
 
 
 def local_source_url(source_id: str) -> str:
@@ -267,3 +287,25 @@ def find_local_source(source_id: str) -> Path | None:
         if _is_relative_to(resolved, archive_root):
             return resolved
     return None
+
+
+def _delete_local_source_directory(source_id: str) -> bool:
+    if not SOURCE_ID_PATTERN.fullmatch(source_id):
+        return False
+
+    archive_root = get_indexed_documents_path().resolve()
+    source_directory = archive_root / source_id
+    if source_directory.is_symlink() or not source_directory.is_dir():
+        return False
+
+    resolved_directory = source_directory.resolve()
+    if resolved_directory.parent != archive_root:
+        return False
+
+    shutil.rmtree(resolved_directory)
+    return True
+
+
+async def delete_local_source(source_id: str) -> bool:
+    """Delete one validated backend-managed source archive directory."""
+    return await asyncio.to_thread(_delete_local_source_directory, source_id)

@@ -4,16 +4,19 @@ from api.documents import delete_documents_by_filename_core
 
 
 class FakeOpenSearchClient:
-    def __init__(self, owned_hits=None, visible_hits=None):
+    def __init__(self, owned_hits=None, visible_hits=None, remaining_source_hits=None):
         self.owned_hits = owned_hits or []
         self.visible_hits = visible_hits or []
+        self.remaining_source_hits = remaining_source_hits or []
         self.search_calls = []
         self.delete_calls = []
 
     async def search(self, *, index, body, scroll=None):
         self.search_calls.append({"index": index, "body": body, "scroll": scroll})
         query = body["query"]
-        if "bool" in query:
+        if "wildcard" in query:
+            hits = self.remaining_source_hits
+        elif "bool" in query:
             hits = self.owned_hits
         else:
             hits = self.visible_hits
@@ -240,3 +243,113 @@ async def test_delete_documents_by_filename_returns_404_when_missing(monkeypatch
     assert payload["success"] is False
     assert payload["deleted_chunks"] == 0
     assert opensearch_client.delete_calls == []
+
+
+@pytest.mark.asyncio
+async def test_delete_documents_by_filename_removes_unreferenced_local_source(
+    monkeypatch, tmp_path
+):
+    document_id = "abcdefghijklmnopqrstuvwx"
+    source_id = f"{document_id}.{'a' * 32}"
+    archived = tmp_path / ".openrag-indexed" / source_id / "report.pdf"
+    archived.parent.mkdir(parents=True)
+    archived.write_bytes(b"pdf")
+
+    monkeypatch.setenv("OPENRAG_DOCUMENTS_PATH", str(tmp_path))
+    monkeypatch.delenv("OPENRAG_INDEXED_DOCUMENTS_PATH", raising=False)
+    monkeypatch.setattr("config.settings.get_index_name", lambda: "documents")
+    opensearch_client = FakeOpenSearchClient(
+        owned_hits=[
+            {
+                "_id": "chunk-1",
+                "_source": {
+                    "document_id": document_id,
+                    "source_url": f"/api/source-files/{source_id}",
+                },
+            }
+        ]
+    )
+    backend_opensearch_client = FakeOpenSearchClient()
+    monkeypatch.setattr("config.settings.clients.opensearch", backend_opensearch_client)
+
+    payload, status_code = await delete_documents_by_filename_core(
+        filename="report.pdf",
+        session_manager=FakeSessionManager(opensearch_client),
+        user_id="user-1",
+        jwt_token="jwt-token",
+    )
+
+    assert status_code == 200
+    assert payload["deleted_chunks"] == 1
+    assert not archived.parent.exists()
+    assert backend_opensearch_client.search_calls[-1]["body"]["query"] == {
+        "wildcard": {
+            "source_url": {"value": f"*/api/source-files/{source_id}"},
+        }
+    }
+
+
+@pytest.mark.asyncio
+async def test_delete_documents_by_filename_keeps_still_referenced_local_source(
+    monkeypatch, tmp_path
+):
+    document_id = "abcdefghijklmnopqrstuvwx"
+    source_id = f"{document_id}.{'b' * 32}"
+    archived = tmp_path / ".openrag-indexed" / source_id / "report.pdf"
+    archived.parent.mkdir(parents=True)
+    archived.write_bytes(b"pdf")
+
+    monkeypatch.setenv("OPENRAG_DOCUMENTS_PATH", str(tmp_path))
+    monkeypatch.delenv("OPENRAG_INDEXED_DOCUMENTS_PATH", raising=False)
+    monkeypatch.setattr("config.settings.get_index_name", lambda: "documents")
+    opensearch_client = FakeOpenSearchClient(
+        owned_hits=[
+            {
+                "_id": "chunk-1",
+                "_source": {
+                    "document_id": document_id,
+                    "source_url": f"/api/source-files/{source_id}",
+                },
+            }
+        ]
+    )
+    backend_opensearch_client = FakeOpenSearchClient(remaining_source_hits=[{"_id": "other-chunk"}])
+    monkeypatch.setattr("config.settings.clients.opensearch", backend_opensearch_client)
+
+    payload, status_code = await delete_documents_by_filename_core(
+        filename="report.pdf",
+        session_manager=FakeSessionManager(opensearch_client),
+        user_id="user-1",
+        jwt_token="jwt-token",
+    )
+
+    assert status_code == 200
+    assert archived.exists()
+
+
+@pytest.mark.asyncio
+async def test_delete_documents_by_filename_never_deletes_remote_source(monkeypatch):
+    monkeypatch.setattr("config.settings.get_index_name", lambda: "documents")
+    opensearch_client = FakeOpenSearchClient(
+        owned_hits=[
+            {
+                "_id": "chunk-1",
+                "_source": {
+                    "document_id": "abcdefghijklmnopqrstuvwx",
+                    "source_url": "https://openarchiver.example.com/documents/123",
+                },
+            }
+        ]
+    )
+    backend_opensearch_client = FakeOpenSearchClient()
+    monkeypatch.setattr("config.settings.clients.opensearch", backend_opensearch_client)
+
+    payload, status_code = await delete_documents_by_filename_core(
+        filename="report.pdf",
+        session_manager=FakeSessionManager(opensearch_client),
+        user_id="user-1",
+        jwt_token="jwt-token",
+    )
+
+    assert status_code == 200
+    assert backend_opensearch_client.search_calls == []
