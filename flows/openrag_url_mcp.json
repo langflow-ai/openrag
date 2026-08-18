@@ -6002,7 +6002,7 @@
             "pinned": false,
             "template": {
               "_frontend_node_flow_id": {
-                "value": "eb7978db-b8f6-445a-97bc-0d414ede449b"
+                "value": "72c3d17c-2dac-4a73-b48a-6518473d7830"
               },
               "_frontend_node_folder_id": {
                 "value": "e861a230-a49b-41ef-82de-5f825ea9ab51"
@@ -6776,7 +6776,7 @@
   },
   "description": "This flow is to ingest the URL to open search.",
   "endpoint_name": null,
-  "id": "eb7978db-b8f6-445a-97bc-0d414ede449b",
+  "id": "72c3d17c-2dac-4a73-b48a-6518473d7830",
   "is_component": false,
   "last_tested_version": "0.11.2",
   "locked": true,

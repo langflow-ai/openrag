@@ -1000,7 +1000,7 @@
             "template": {
               "_frontend_node_flow_id": {
                 "input_types": [],
-                "value": "df29471c-fa04-4ab9-aadc-3aa0dbf5a3a3"
+                "value": "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
               },
               "_frontend_node_folder_id": {
                 "input_types": [],
@@ -1638,7 +1638,7 @@
             "pinned": false,
             "template": {
               "_frontend_node_flow_id": {
-                "value": "df29471c-fa04-4ab9-aadc-3aa0dbf5a3a3"
+                "value": "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
               },
               "_frontend_node_folder_id": {
                 "value": "e861a230-a49b-41ef-82de-5f825ea9ab51"
@@ -2741,7 +2741,7 @@
             "pinned": false,
             "template": {
               "_frontend_node_flow_id": {
-                "value": "df29471c-fa04-4ab9-aadc-3aa0dbf5a3a3"
+                "value": "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
               },
               "_frontend_node_folder_id": {
                 "value": "e861a230-a49b-41ef-82de-5f825ea9ab51"
@@ -3937,7 +3937,7 @@
   },
   "description": "OpenRAG OpenSearch Agent",
   "endpoint_name": null,
-  "id": "df29471c-fa04-4ab9-aadc-3aa0dbf5a3a3",
+  "id": "1098eea1-6649-4e1d-aed1-b77249fb8dd0",
   "is_component": false,
   "last_tested_version": "0.11.2",
   "locked": true,

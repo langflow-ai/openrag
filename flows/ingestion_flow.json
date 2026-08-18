@@ -4335,7 +4335,7 @@
             "pinned": false,
             "template": {
               "_frontend_node_flow_id": {
-                "value": "d5b1cd29-ca5c-4a31-aa1e-48f1bbb8e67e"
+                "value": "5488df7c-b93f-4f87-a446-b67028bc0813"
               },
               "_frontend_node_folder_id": {
                 "value": "e861a230-a49b-41ef-82de-5f825ea9ab51"
@@ -5109,7 +5109,7 @@
   },
   "description": "Load your data for chat context with Retrieval Augmented Generation.",
   "endpoint_name": null,
-  "id": "d5b1cd29-ca5c-4a31-aa1e-48f1bbb8e67e",
+  "id": "5488df7c-b93f-4f87-a446-b67028bc0813",
   "is_component": false,
   "last_tested_version": "0.11.2",
   "locked": false,

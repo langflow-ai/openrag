@@ -2859,7 +2859,7 @@
   },
   "description": "OpenRAG OpenSearch Nudges generator, based on the OpenSearch documents and the chat history.",
   "endpoint_name": null,
-  "id": "96c79249-85e6-4bdf-8f40-14256170ccf3",
+  "id": "ebc01d31-1976-46ce-a385-b0240327226c",
   "is_component": false,
   "last_tested_version": "0.11.2",
   "locked": false,
