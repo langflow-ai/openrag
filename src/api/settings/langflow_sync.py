@@ -33,6 +33,7 @@ LANGFLOW_CREDENTIAL_GLOBAL_VARIABLES = frozenset(
     {
         "JWT",
         "OPENAI_API_KEY",
+        "OPENRAG_LLM_TOKEN",
         "OPENSEARCH_PASSWORD",
     }
 )
@@ -107,13 +108,28 @@ def _required_generic_global_values(config) -> dict[str, str]:
     }
 
 
+# Credential names that must exist so load_from_db fields resolve.
+# Langflow treats an empty Credential value as missing
+# (`"{name} variable not found."`). Keep a non-empty placeholder; runtime
+# headers overwrite it with the hop token on each Langflow run.
+LANGFLOW_RUNTIME_CREDENTIAL_PLACEHOLDERS = frozenset(
+    {
+        "OPENRAG_LLM_TOKEN",
+    }
+)
+LANGFLOW_RUNTIME_CREDENTIAL_PLACEHOLDER_VALUE = "None"
+
+
 async def ensure_required_langflow_global_variables(config=None):
-    """Ensure load_from_db plain-string globals are Generic for backwards compatibility."""
+    """Ensure load_from_db globals exist. Credential placeholders stay non-empty so Langflow can resolve them."""
     config = config or get_openrag_config()
     required_values = _required_generic_global_values(config)
 
     for name in sorted(LANGFLOW_GENERIC_GLOBAL_VARIABLES):
         await _upsert_langflow_global_variable(name, _string_value(required_values.get(name, "")))
+
+    for name in sorted(LANGFLOW_RUNTIME_CREDENTIAL_PLACEHOLDERS):
+        await _upsert_langflow_global_variable(name, LANGFLOW_RUNTIME_CREDENTIAL_PLACEHOLDER_VALUE)
 
 
 async def _update_langflow_global_variables(config, flows_service=None):
@@ -138,6 +154,14 @@ async def _update_langflow_global_variables(config, flows_service=None):
             )
             logger.info(f"Set SELECTED_LANGUAGE_MODEL global variable to {config.agent.llm_model}")
         await _upsert_langflow_global_variable("SELECTED_LANGUAGE_MODEL_PROVIDER", "OpenAI")
+
+        for name in sorted(LANGFLOW_RUNTIME_CREDENTIAL_PLACEHOLDERS):
+            await _upsert_langflow_global_variable(
+                name, LANGFLOW_RUNTIME_CREDENTIAL_PLACEHOLDER_VALUE
+            )
+            logger.info(
+                f"Kept {name} Langflow credential as a placeholder; runtime headers supply the hop token"
+            )
 
     except Exception as e:
         logger.error(f"Failed to update Langflow global variables: {str(e)}")

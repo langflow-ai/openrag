@@ -50,12 +50,15 @@ async def test_add_provider_credentials_injects_hop_token_not_jwt_or_provider_ke
     await add_provider_credentials_to_headers(
         headers, config, jwt_token="Bearer user-jwt-token", user_id="alice"
     )
-    hop = headers["X-LANGFLOW-GLOBAL-VAR-OPENAI_API_KEY"]
+    hop = headers["X-LANGFLOW-GLOBAL-VAR-OPENRAG_LLM_TOKEN"]
     assert hop != "user-jwt-token"
     user = LangflowLlmTokenService().validate_token(hop)
     assert user.user_id == "alice"
     assert user.provider == "langflow_llm"
     assert headers["X-LANGFLOW-GLOBAL-VAR-OPENRAG_LLM_BASE_URL"] == "http://openrag-backend:8000/v1"
+    # Chat (`/v1/chat/completions`) and embeddings (`/v1/embeddings`) share these.
+    assert headers["X-LANGFLOW-GLOBAL-VAR-OPENAI_API_KEY"] == hop
+    assert "X-LANGFLOW-GLOBAL-VAR-OPENRAG_LLM_TOKEN" in headers
     assert "sk-real-openai" not in headers.values()
     assert "sk-ant-real" not in headers.values()
     assert "wx-real" not in headers.values()
@@ -79,7 +82,8 @@ async def test_hop_token_is_minted_when_caller_only_has_ibm_basic():
         await add_provider_credentials_to_headers(
             headers, SimpleNamespace(), jwt_token="Basic dXNlcjpwYXNz", user_id="ibm-user"
         )
-    hop = headers["X-LANGFLOW-GLOBAL-VAR-OPENAI_API_KEY"]
+    hop = headers["X-LANGFLOW-GLOBAL-VAR-OPENRAG_LLM_TOKEN"]
     user = LangflowLlmTokenService().validate_token(hop)
     assert user.user_id == "ibm-user"
     assert not hop.startswith("Basic ")
+    assert headers["X-LANGFLOW-GLOBAL-VAR-OPENAI_API_KEY"] == hop

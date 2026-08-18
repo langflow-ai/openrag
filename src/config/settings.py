@@ -679,6 +679,7 @@ def get_langflow_llm_proxy_ttl_seconds() -> int:
         LANGFLOW_INGEST_CALLBACK_TTL_SECONDS,
     )
 
+
 OPENSEARCH_JWT_TTL_BUFFER_SECONDS = 300
 
 
@@ -1646,7 +1647,10 @@ class AppClients:
                 return
 
             current_value = target_variable.get("value")
-            if current_value == value:
+            # Langflow redacts Credential values on GET (null) and treats an
+            # empty stored value as "{name} variable not found." Always write
+            # when the visible value is missing so placeholders can heal.
+            if current_value not in (None, "") and current_value == value:
                 logger.debug(
                     "Langflow global variable already up to date, skipping update",
                     variable_name=name,

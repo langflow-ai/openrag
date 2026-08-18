@@ -1395,8 +1395,8 @@ class FlowsService:
         # Point every model component at the OpenRAG OpenAI-compatible proxy.
         # Real provider secrets never leave OpenRAG; Langflow sends the caller JWT.
         proxy_fields = {
-            "api_key": "OPENAI_API_KEY",
-            "openai_api_key": "OPENAI_API_KEY",
+            "api_key": "OPENRAG_LLM_TOKEN",
+            "openai_api_key": "OPENRAG_LLM_TOKEN",
             "api_base": "OPENRAG_LLM_BASE_URL",
             "openai_api_base": "OPENRAG_LLM_BASE_URL",
         }

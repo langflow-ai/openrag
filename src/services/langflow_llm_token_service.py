@@ -2,7 +2,7 @@
 
 Same family as ingest tokens: minted per Langflow run, scoped to the LLM
 proxy, and useless on the rest of `/v1`. Langflow's OpenAI client sends the
-token as `Authorization: Bearer` (`OPENAI_API_KEY`). SDK and MCP callers keep
+token as `Authorization: Bearer` (`OPENRAG_LLM_TOKEN`). SDK and MCP callers keep
 using the user JWT or an `orag_` key.
 """
 

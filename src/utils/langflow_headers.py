@@ -77,9 +77,11 @@ async def add_provider_credentials_to_headers(
     """Add Langflow global variables for the OpenRAG LLM proxy and infra URLs.
 
     Provider API keys are NOT forwarded. Langflow's Language/Embedding Model
-    components speak OpenAI-compatible HTTP to OpenRAG (`OPENRAG_LLM_BASE_URL`)
-    and authenticate with a short-lived hop token as `OPENAI_API_KEY` — same
+    components (and the OpenRAG LLM/Embeddings custom components)
+    speak OpenAI-compatible HTTP to OpenRAG (`OPENRAG_LLM_BASE_URL`) and
+    authenticate with a short-lived hop token as `OPENRAG_LLM_TOKEN` — same
     pattern as `OPENRAG_INGEST_TOKEN`, scoped to the LLM proxy only.
+    Chat and embeddings share that base URL and hop token.
 
     NOTE: `headers` may hold a JWT after this call. Never log it directly —
     use utils.logging_config.sanitize_headers() if a header dict must be logged.
@@ -90,9 +92,10 @@ async def add_provider_credentials_to_headers(
     headers["X-LANGFLOW-GLOBAL-VAR-OPENRAG_LLM_BASE_URL"] = get_langflow_llm_base_url()
 
     subject = (user_id or "").strip() or "anonymous"
-    headers["X-LANGFLOW-GLOBAL-VAR-OPENAI_API_KEY"] = LangflowLlmTokenService().create_token(
-        user_id=subject
-    )
+    hop_token = LangflowLlmTokenService().create_token(user_id=subject)
+    headers["X-LANGFLOW-GLOBAL-VAR-OPENRAG_LLM_TOKEN"] = hop_token
+    # Stock Language/Embedding Model nodes still bind api_key to OPENAI_API_KEY.
+    headers["X-LANGFLOW-GLOBAL-VAR-OPENAI_API_KEY"] = hop_token
 
     # Inject OpenSearch and Docling URLs and index name so Langflow flows always use the correct endpoints
     from config.settings import (
