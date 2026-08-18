@@ -50,6 +50,7 @@ from .models import (
     DeleteKnowledgeFilterResponse,
     DoneEvent,
     FileRecord,
+    GetAllFilesResponse,
     GetKnowledgeFilterResponse,
     IngestResponse,
     KnowledgeFilter,
@@ -87,6 +88,7 @@ __all__ = [
     "ServerError",
     # File models
     "FileRecord",
+    "GetAllFilesResponse",
     "ListFilesResponse",
     "PrincipalLabel",
     # Models

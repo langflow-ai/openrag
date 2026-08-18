@@ -188,18 +188,18 @@ COMPONENT_CUSTOMIZATIONS: dict[tuple[str, str], dict[str, str]] = {
         "name": "openrag_delete_knowledge_filter",
         "description": "Delete a knowledge filter by ID.",
     },
-    # files endpoints
-    ("/v1/files", "GET"): {
-        "name": "openrag_list_files",
-        "description": "List all ingested files",
+    # files endpoints (v1 — offset pagination)
+    ("/v1/files/get_all", "GET"): {
+        "name": "openrag_get_all_files",
+        "description": (
+            "Return all ingested files from the knowledge base. "
+            "No parameters — use GET /v2/files for filtering, sorting, or pagination."
+        ),
     },
-    ("/v1/files/search", "GET"): {
-        "name": "openrag_search_files",
-        "description": "Search files by query parameters.",
-    },
+    # files endpoints (v2 — composite-agg cursor pagination)
     ("/v2/files", "GET"): {
         "name": "openrag_list_files_v2",
-        "description": "lists all ingested files.",
+        "description": "List all ingested files with cursor-based composite-aggregation pagination.",
     },
     ("/v2/files/search", "GET"): {
         "name": "openrag_search_files_v2",
@@ -266,13 +266,13 @@ def create_mcp_server(app: FastAPI) -> FastMCP:
             pattern=r"^/v1/",
             mcp_type=MCPType.TOOL,
         ),
-        # expose /v2/files and /v2/files/search as tools
+        # Expose v2 file listing/search endpoints as MCP tools.
         RouteMap(
             methods=["GET"],
             pattern=r"^/v2/files",
             mcp_type=MCPType.TOOL,
         ),
-        # exclude everything else
+        # Exclude everything else
         RouteMap(
             pattern=r".*",
             mcp_type=MCPType.EXCLUDE,
