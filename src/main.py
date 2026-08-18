@@ -29,7 +29,7 @@ import atexit
 import httpx  # noqa: F401
 
 from app.factory import create_app
-from config.settings import ACCESS_LOG_ENABLED, OPENRAG_BACKEND_PORT
+from config.settings import ACCESS_LOG_ENABLED, OPENRAG_BACKEND_PORT, OPENRAG_TLS_CERT_PATH, OPENRAG_TLS_KEY_PATH
 from services.default_docs_service import (
     _get_remote_docs_signature,
     _should_use_url_default_docs_ingest,
@@ -106,4 +106,6 @@ if __name__ == "__main__":
         reload=False,
         access_log=ACCESS_LOG_ENABLED,
         log_config=None,
+        ssl_certfile=OPENRAG_TLS_CERT_PATH or None,
+        ssl_keyfile=OPENRAG_TLS_KEY_PATH or None,
     )
