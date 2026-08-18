@@ -134,9 +134,9 @@ def register_public_v1_routes(app: FastAPI):
         tags=["public"],
     )
 
-    # Files getall endpoint
+    # Files get_all endpoint
     app.add_api_route(
-        "/v1/files/getall",
+        "/v1/files/get_all",
         v1_files.get_all_files,
         methods=["GET"],
         tags=["public"],
