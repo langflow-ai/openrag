@@ -10,7 +10,9 @@ FROM registry.access.redhat.com/ubi10/python-314-minimal AS base
 
 # Install system dependencies using microdnf (UBI minimal package manager)
 USER 0
-RUN microdnf install -y \
+
+RUN microdnf update -y \
+    && microdnf install -y \
     ca-certificates \
     curl \
     openssl \
@@ -67,7 +69,9 @@ FROM registry.access.redhat.com/ubi10/python-314-minimal AS runtime
 
 # Install runtime dependencies
 USER 0
-RUN microdnf install -y \
+
+RUN microdnf update -y \
+    && microdnf install -y \
     ca-certificates \
     openssl \
     shadow-utils \
