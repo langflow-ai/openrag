@@ -548,7 +548,11 @@ class LangflowFileService:
 
         # Add provider credentials as global variables for ingestion
         await add_provider_credentials_to_headers(
-            headers, config, flows_service=self.flows_service, jwt_token=jwt_token
+            headers,
+            config,
+            flows_service=self.flows_service,
+            jwt_token=jwt_token,
+            user_id=owner,
         )
         if self.ingest_token_service is None:
             await self._ensure_langflow_ingest_index(embedding_model)
@@ -719,7 +723,11 @@ class LangflowFileService:
         if tweaks:
             payload["tweaks"] = tweaks
         await add_provider_credentials_to_headers(
-            headers, config, flows_service=self.flows_service, jwt_token=jwt_token
+            headers,
+            config,
+            flows_service=self.flows_service,
+            jwt_token=jwt_token,
+            user_id=owner,
         )
         if self.ingest_token_service is None:
             await self._ensure_langflow_ingest_index(embedding_model)

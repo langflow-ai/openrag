@@ -40,7 +40,10 @@ import { DEFAULT_KNOWLEDGE_SETTINGS } from "@/lib/constants";
 import { resolveLangflowEditUrl } from "@/lib/url-utils";
 import { cn } from "@/lib/utils";
 import { useUpdateSettingsMutation } from "../../api/mutations/useUpdateSettingsMutation";
-import { ModelSelector } from "../../onboarding/_components/model-selector";
+import {
+  type GroupedModelOption,
+  ModelSelector,
+} from "../../onboarding/_components/model-selector";
 import { groupedCatalogOptions } from "../_helpers/catalog-models";
 import { getModelLogo } from "../_helpers/model-helpers";
 import { LangflowIcon } from "./langflow-icon";
@@ -114,6 +117,7 @@ export function IngestSettingsSection() {
       groupedCatalogOptions(catalog, configuredProviders, "embedding").map(
         (group) => ({
           group: group.group,
+          provider: group.key,
           icon: getModelLogo("", group.key),
           options: group.options,
         }),
@@ -124,12 +128,13 @@ export function IngestSettingsSection() {
   const isLoadingAnyEmbeddingModels = catalogLoading;
 
   const groupedVlmModels = useMemo(() => {
-    const list = groupedCatalogOptions(
+    const list: GroupedModelOption[] = groupedCatalogOptions(
       catalog,
       configuredProviders,
       "vision",
     ).map((group) => ({
       group: group.group,
+      provider: group.key,
       icon: getModelLogo("", group.key),
       options: group.options,
     }));
@@ -137,6 +142,7 @@ export function IngestSettingsSection() {
     if (settings.local_vlm_models && settings.local_vlm_models.length > 0) {
       list.unshift({
         group: "Local Models",
+        provider: "local",
         icon: getModelLogo("", "local"),
         options: settings.local_vlm_models.map((m: string) => ({
           value: m,

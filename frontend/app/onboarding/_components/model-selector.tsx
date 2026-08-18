@@ -28,6 +28,8 @@ export type ModelOption = {
 
 export type GroupedModelOption = {
   group: string;
+  /** Provider key for custom entries typed under this group. */
+  provider?: string;
   options: ModelOption[];
   icon?: React.ReactNode;
 };
@@ -154,34 +156,76 @@ export function ModelSelector({
             <CommandEmpty>{noOptionsPlaceholder}</CommandEmpty>
             {groupedOptions ? (
               <>
-                {groupedOptions.map((group) => (
-                  <CommandGroup
-                    key={group.group}
-                    heading={
-                      <div className="flex items-center gap-2">
-                        {group.icon && (
-                          <div className="w-4 h-4">{group.icon}</div>
-                        )}
-                        <span>{group.group}</span>
-                      </div>
-                    }
-                  >
-                    {group.options.length === 0 ? (
-                      <CommandItem
-                        disabled
-                        className="text-muted-foreground ml-6"
-                      >
-                        No models available
-                      </CommandItem>
-                    ) : (
-                      group.options.map((option) => (
+                {groupedOptions.map((group) => {
+                  const groupProvider =
+                    group.provider ?? group.options[0]?.provider;
+                  const showCustom =
+                    allowCustomEntry &&
+                    !!searchValue &&
+                    !group.options.some(
+                      (option) => option.value === searchValue,
+                    );
+                  return (
+                    <CommandGroup
+                      key={group.group}
+                      data-testid={
+                        groupProvider
+                          ? `model-group-${groupProvider}`
+                          : undefined
+                      }
+                      heading={
+                        <div className="flex items-center gap-2">
+                          {group.icon && (
+                            <div className="w-4 h-4">{group.icon}</div>
+                          )}
+                          <span>{group.group}</span>
+                        </div>
+                      }
+                    >
+                      {group.options.length === 0 && !showCustom ? (
                         <CommandItem
-                          key={option.value}
-                          value={option.value}
-                          data-testid={`model-option-${option.value}`}
-                          onSelect={(currentValue) => {
-                            if (currentValue !== value) {
-                              onValueChange(currentValue, option.provider);
+                          disabled
+                          className="text-muted-foreground ml-6"
+                        >
+                          No models available. Search to enter a custom model.
+                        </CommandItem>
+                      ) : (
+                        group.options.map((option) => (
+                          <CommandItem
+                            key={option.value}
+                            value={option.value}
+                            data-testid={`model-option-${option.value}`}
+                            onSelect={(currentValue) => {
+                              if (currentValue !== value) {
+                                onValueChange(
+                                  currentValue,
+                                  option.provider ?? groupProvider,
+                                );
+                              }
+                              setOpen(false);
+                            }}
+                          >
+                            <CheckIcon
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                value === option.value
+                                  ? "opacity-100"
+                                  : "opacity-0",
+                              )}
+                            />
+                            <div className="flex items-center gap-2">
+                              {option.label}
+                            </div>
+                          </CommandItem>
+                        ))
+                      )}
+                      {showCustom && (
+                        <CommandItem
+                          value={`${group.group}-${searchValue}`}
+                          data-testid={`model-custom-option-${searchValue}`}
+                          onSelect={() => {
+                            if (searchValue !== value) {
+                              onValueChange(searchValue, groupProvider);
                             }
                             setOpen(false);
                           }}
@@ -189,54 +233,22 @@ export function ModelSelector({
                           <CheckIcon
                             className={cn(
                               "mr-2 h-4 w-4",
-                              value === option.value
+                              value === searchValue
                                 ? "opacity-100"
                                 : "opacity-0",
                             )}
                           />
                           <div className="flex items-center gap-2">
-                            {option.label}
+                            {searchValue}
+                            <span className="text-xs text-foreground p-1 rounded-md bg-muted">
+                              Custom
+                            </span>
                           </div>
                         </CommandItem>
-                      ))
-                    )}
-                  </CommandGroup>
-                ))}
-                {allowCustomEntry &&
-                  searchValue &&
-                  !allOptions.find(
-                    (option) => option.value === searchValue,
-                  ) && (
-                    <CommandGroup>
-                      <CommandItem
-                        value={searchValue}
-                        data-testid={`model-custom-option-${searchValue}`}
-                        onSelect={(currentValue) => {
-                          if (currentValue !== value) {
-                            const soleProvider =
-                              groupedOptions.length === 1
-                                ? groupedOptions[0].options[0]?.provider
-                                : undefined;
-                            onValueChange(currentValue, soleProvider);
-                          }
-                          setOpen(false);
-                        }}
-                      >
-                        <CheckIcon
-                          className={cn(
-                            "mr-2 h-4 w-4",
-                            value === searchValue ? "opacity-100" : "opacity-0",
-                          )}
-                        />
-                        <div className="flex items-center gap-2">
-                          {searchValue}
-                          <span className="text-xs text-foreground p-1 rounded-md bg-muted">
-                            Custom
-                          </span>
-                        </div>
-                      </CommandItem>
+                      )}
                     </CommandGroup>
-                  )}
+                  );
+                })}
               </>
             ) : (
               <CommandGroup>

@@ -65,6 +65,7 @@ export function AgentSettingsSection() {
         "language",
       ).map((group) => ({
         group: group.group,
+        provider: group.key,
         icon: getModelLogo("", group.key),
         options: group.options,
       })),

@@ -667,6 +667,18 @@ LANGFLOW_INGEST_CALLBACK_TTL_SECONDS = get_env_int(
 )
 LANGFLOW_INGEST_CALLBACK_BATCH_SIZE = get_env_int("LANGFLOW_INGEST_CALLBACK_BATCH_SIZE", 100)
 
+
+def get_langflow_llm_proxy_ttl_seconds() -> int:
+    """TTL for the Langflow → OpenRAG LLM hop token.
+
+    Defaults to the ingest-callback TTL so one Langflow ingest run can call
+    embeddings for the whole document. Override with LANGFLOW_LLM_PROXY_TTL_SECONDS.
+    """
+    return get_env_int(
+        "LANGFLOW_LLM_PROXY_TTL_SECONDS",
+        LANGFLOW_INGEST_CALLBACK_TTL_SECONDS,
+    )
+
 OPENSEARCH_JWT_TTL_BUFFER_SECONDS = 300
 
 

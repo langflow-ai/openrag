@@ -67,44 +67,32 @@ def build_ibm_opensearch_vars(
     return result
 
 
-def proxy_bearer_token(jwt_token: str | None) -> str:
-    """Token Langflow's OpenAI client should send as `Authorization: Bearer`.
-
-    Strips a duplicate `Bearer ` prefix. Basic OpenSearch credentials cannot be
-    used as an OpenAI api_key, so those are dropped.
-    """
-    if not jwt_token:
-        return ""
-    token = str(jwt_token).strip()
-    if token.lower().startswith("basic "):
-        return ""
-    if token.lower().startswith("bearer "):
-        return token[7:].strip()
-    return token
-
-
 async def add_provider_credentials_to_headers(
     headers: dict[str, str],
     config,
     flows_service=None,
     jwt_token: str = None,
+    user_id: str | None = None,
 ) -> None:
     """Add Langflow global variables for the OpenRAG LLM proxy and infra URLs.
 
     Provider API keys are NOT forwarded. Langflow's Language/Embedding Model
     components speak OpenAI-compatible HTTP to OpenRAG (`OPENRAG_LLM_BASE_URL`)
-    and authenticate with the caller's JWT as `OPENAI_API_KEY`.
+    and authenticate with a short-lived hop token as `OPENAI_API_KEY` — same
+    pattern as `OPENRAG_INGEST_TOKEN`, scoped to the LLM proxy only.
 
     NOTE: `headers` may hold a JWT after this call. Never log it directly —
     use utils.logging_config.sanitize_headers() if a header dict must be logged.
     """
     from config.settings import get_langflow_llm_base_url
+    from services.langflow_llm_token_service import LangflowLlmTokenService
 
     headers["X-LANGFLOW-GLOBAL-VAR-OPENRAG_LLM_BASE_URL"] = get_langflow_llm_base_url()
 
-    proxy_token = proxy_bearer_token(jwt_token)
-    if proxy_token:
-        headers["X-LANGFLOW-GLOBAL-VAR-OPENAI_API_KEY"] = proxy_token
+    subject = (user_id or "").strip() or "anonymous"
+    headers["X-LANGFLOW-GLOBAL-VAR-OPENAI_API_KEY"] = LangflowLlmTokenService().create_token(
+        user_id=subject
+    )
 
     # Inject OpenSearch and Docling URLs and index name so Langflow flows always use the correct endpoints
     from config.settings import (

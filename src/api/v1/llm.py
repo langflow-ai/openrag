@@ -1,7 +1,7 @@
 """OpenAI-compatible LLM proxy for Langflow and other OpenAI clients.
 
-Auth is the existing /v1 identity path (forwarded JWT or `orag_` API key).
-Provider secrets stay in OpenRAG; the caller sends only that bearer token.
+Auth is a short-lived Langflow hop token (same family as ingest tokens),
+the user JWT, or an `orag_` API key. Provider secrets stay in OpenRAG.
 """
 
 from typing import Any
@@ -9,7 +9,7 @@ from typing import Any
 from fastapi import Depends, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from dependencies import require_api_key_any_permission, require_api_key_permission
+from dependencies import require_llm_proxy_any_permission, require_llm_proxy_permission
 from services.llm_gateway import LlmGatewayError, chat_completions, embeddings
 from services.model_catalog import CatalogUnavailableError, catalog, openai_models_list
 from session_manager import User
@@ -17,8 +17,9 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-_catalog_read = require_api_key_any_permission(("providers:read", "chat:use", "knowledge:upload"))
-_embeddings_use = require_api_key_any_permission(("chat:use", "knowledge:upload"))
+_catalog_read = require_llm_proxy_any_permission(("providers:read", "chat:use", "knowledge:upload"))
+_embeddings_use = require_llm_proxy_any_permission(("chat:use", "knowledge:upload"))
+_chat_use = require_llm_proxy_permission("chat:use")
 
 
 def _openai_error(message: str, status_code: int, error_type: str = "invalid_request_error"):
@@ -65,7 +66,7 @@ async def _read_json_body(request: Request) -> dict[str, Any] | JSONResponse:
 
 async def chat_completions_endpoint(
     request: Request,
-    user: User = Depends(require_api_key_permission("chat:use")),
+    user: User = Depends(_chat_use),
 ):
     """OpenAI-compatible chat completions. POST /v1/chat/completions"""
     body = await _read_json_body(request)

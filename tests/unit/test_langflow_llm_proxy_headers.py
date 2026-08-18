@@ -1,27 +1,21 @@
-"""Langflow talks to the OpenRAG LLM proxy with the caller JWT, not provider keys."""
+"""Langflow talks to the OpenRAG LLM proxy with a hop token, not provider keys."""
 
 from types import SimpleNamespace
 
 import pytest
 
+from services.langflow_llm_token_service import LangflowLlmTokenService
 from utils.langflow_headers import (
     add_provider_credentials_to_headers,
     build_model_provider_headers,
-    proxy_bearer_token,
 )
-
-
-def test_proxy_bearer_token_strips_bearer_and_drops_basic():
-    assert proxy_bearer_token("Bearer abc.def") == "abc.def"
-    assert proxy_bearer_token("abc.def") == "abc.def"
-    assert proxy_bearer_token("Basic dXNlcjpwYXNz") == ""
-    assert proxy_bearer_token("") == ""
-    assert proxy_bearer_token(None) == ""
 
 
 def test_build_model_provider_headers_forces_openai_client():
     config = SimpleNamespace(
-        knowledge=SimpleNamespace(embedding_model="text-embedding-3-small", embedding_provider="watsonx"),
+        knowledge=SimpleNamespace(
+            embedding_model="text-embedding-3-small", embedding_provider="watsonx"
+        ),
         agent=SimpleNamespace(llm_model="claude-sonnet-4-5", llm_provider="anthropic"),
     )
     headers = build_model_provider_headers(config)
@@ -32,7 +26,9 @@ def test_build_model_provider_headers_forces_openai_client():
 
 
 @pytest.mark.asyncio
-async def test_add_provider_credentials_injects_jwt_not_provider_keys(monkeypatch):
+async def test_add_provider_credentials_injects_hop_token_not_jwt_or_provider_keys(
+    monkeypatch,
+):
     monkeypatch.setattr(
         "config.settings.get_langflow_llm_base_url",
         lambda: "http://openrag-backend:8000/v1",
@@ -52,12 +48,38 @@ async def test_add_provider_credentials_injects_jwt_not_provider_keys(monkeypatc
     )
     headers = {}
     await add_provider_credentials_to_headers(
-        headers, config, jwt_token="Bearer user-jwt-token"
+        headers, config, jwt_token="Bearer user-jwt-token", user_id="alice"
     )
-    assert headers["X-LANGFLOW-GLOBAL-VAR-OPENAI_API_KEY"] == "user-jwt-token"
+    hop = headers["X-LANGFLOW-GLOBAL-VAR-OPENAI_API_KEY"]
+    assert hop != "user-jwt-token"
+    user = LangflowLlmTokenService().validate_token(hop)
+    assert user.user_id == "alice"
+    assert user.provider == "langflow_llm"
     assert headers["X-LANGFLOW-GLOBAL-VAR-OPENRAG_LLM_BASE_URL"] == "http://openrag-backend:8000/v1"
     assert "sk-real-openai" not in headers.values()
     assert "sk-ant-real" not in headers.values()
     assert "wx-real" not in headers.values()
     assert "X-LANGFLOW-GLOBAL-VAR-ANTHROPIC_API_KEY" not in headers
     assert "X-LANGFLOW-GLOBAL-VAR-WATSONX_APIKEY" not in headers
+
+
+@pytest.mark.asyncio
+async def test_hop_token_is_minted_when_caller_only_has_ibm_basic():
+    """Basic OpenSearch creds cannot be an OpenAI api_key; mint a hop token instead."""
+    from unittest.mock import patch
+
+    with (
+        patch("config.settings.get_langflow_llm_base_url", lambda: "http://openrag-backend:8000/v1"),
+        patch("config.settings.get_langflow_opensearch_url", lambda: ""),
+        patch("config.settings.get_langflow_docling_url", lambda: ""),
+        patch("config.settings.get_index_name", lambda: ""),
+        patch("config.settings.IBM_AUTH_ENABLED", False),
+    ):
+        headers = {}
+        await add_provider_credentials_to_headers(
+            headers, SimpleNamespace(), jwt_token="Basic dXNlcjpwYXNz", user_id="ibm-user"
+        )
+    hop = headers["X-LANGFLOW-GLOBAL-VAR-OPENAI_API_KEY"]
+    user = LangflowLlmTokenService().validate_token(hop)
+    assert user.user_id == "ibm-user"
+    assert not hop.startswith("Basic ")

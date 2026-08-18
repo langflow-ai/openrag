@@ -1,13 +1,37 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { groupedCatalogOptions } from "./catalog-models";
+import {
+  groupedCatalogOptions,
+  mergeLiveCatalogOptions,
+  onboardingCatalogConfigured,
+  onboardingCredentialFields,
+} from "./catalog-models";
 
 const catalog = {
   providers: [
     {
       key: "openai",
       name: "OpenAI",
-      credential_fields: [],
+      credential_fields: [
+        {
+          key: "api_base",
+          label: "API Base",
+          required: false,
+          field_type: "text",
+        },
+        {
+          key: "organization",
+          label: "OpenAI Organization ID",
+          required: false,
+          field_type: "text",
+        },
+        {
+          key: "api_key",
+          label: "OpenAI API Key",
+          required: true,
+          field_type: "password",
+        },
+      ],
       model_placeholder: "gpt-4o",
       models: [
         { model: "gpt-4o", mode: "chat", capabilities: ["vision"] },
@@ -20,7 +44,14 @@ const catalog = {
     {
       key: "anthropic",
       name: "Anthropic",
-      credential_fields: [],
+      credential_fields: [
+        {
+          key: "api_key",
+          label: "API Key",
+          required: false,
+          field_type: "password",
+        },
+      ],
       model_placeholder: "claude-sonnet-4-5",
       models: [
         {
@@ -82,6 +113,20 @@ describe("groupedCatalogOptions", () => {
     assert.equal(groups[0].options[0].value, "text-embedding-3-small");
   });
 
+  it("keeps empty groups when includeEmpty is set", () => {
+    const groups = groupedCatalogOptions(
+      catalog,
+      { openai: true, anthropic: true },
+      "embedding",
+      { includeEmpty: true },
+    );
+    assert.deepEqual(
+      groups.map((g) => g.key),
+      ["openai", "anthropic"],
+    );
+    assert.equal(groups[1].options.length, 0);
+  });
+
   it("filters vision-capable chat models for the VLM picker", () => {
     const groups = groupedCatalogOptions(catalog, { openai: true }, "vision");
     assert.deepEqual(
@@ -94,6 +139,64 @@ describe("groupedCatalogOptions", () => {
     assert.deepEqual(
       groupedCatalogOptions(undefined, { openai: true }, "language"),
       [],
+    );
+  });
+});
+
+describe("onboardingCatalogConfigured", () => {
+  it("hides Anthropic on the embedding step and Ollama in cloud", () => {
+    assert.deepEqual(onboardingCatalogConfigured(true, true), {
+      openai: true,
+      anthropic: false,
+      watsonx: true,
+      ollama: false,
+    });
+  });
+});
+
+describe("onboardingCredentialFields", () => {
+  it("keeps only persistable keys and marks them required", () => {
+    const fields = onboardingCredentialFields(catalog, "openai");
+    assert.deepEqual(
+      fields.map((field) => field.key),
+      ["api_key"],
+    );
+    assert.equal(fields[0].required, true);
+  });
+
+  it("overrides LiteLLM optional flags for keys OpenRAG needs", () => {
+    const fields = onboardingCredentialFields(catalog, "anthropic");
+    assert.equal(fields[0].key, "api_key");
+    assert.equal(fields[0].required, true);
+  });
+
+  it("falls back when the catalogue has no usable fields", () => {
+    const fields = onboardingCredentialFields(catalog, "ollama");
+    assert.deepEqual(
+      fields.map((field) => field.key),
+      ["api_base"],
+    );
+  });
+});
+
+describe("mergeLiveCatalogOptions", () => {
+  it("appends live rows the catalogue does not already list", () => {
+    const groups = groupedCatalogOptions(
+      catalog,
+      { openai: true },
+      "embedding",
+    );
+    const merged = mergeLiveCatalogOptions(groups, "openai", [
+      {
+        value: "text-embedding-3-small",
+        label: "text-embedding-3-small",
+        provider: "openai",
+      },
+      { value: "nomic-embed", label: "nomic-embed", provider: "openai" },
+    ]);
+    assert.deepEqual(
+      merged[0].options.map((option) => option.value),
+      ["text-embedding-3-small", "nomic-embed"],
     );
   });
 });

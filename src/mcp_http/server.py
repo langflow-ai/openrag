@@ -175,7 +175,8 @@ COMPONENT_CUSTOMIZATIONS: dict[tuple[str, str], dict[str, str]] = {
         "name": "openrag_chat_completions",
         "description": (
             "OpenAI-compatible chat completions. OpenRAG routes to the configured "
-            "provider via LiteLLM; send the user JWT (or orag_ API key) as Bearer."
+            "provider via LiteLLM. Send a Langflow hop token, user JWT, or orag_ "
+            "API key as Bearer."
         ),
     },
     ("/v1/embeddings", "POST"): {
