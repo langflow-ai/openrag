@@ -25,9 +25,9 @@ logger = get_logger(__name__)
 
 
 class LangflowFileService:
-    INGEST_OPENSEARCH_COMPONENT_ID = "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4"
+    INGEST_OPENSEARCH_COMPONENT_ID = "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-WaE28"
     URL_INGEST_OPENSEARCH_COMPONENT_ID = (
-        "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-PMGGV"
+        "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-dihKf"
     )
 
     def __init__(

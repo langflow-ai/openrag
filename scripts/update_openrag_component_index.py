@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 from pathlib import Path
@@ -10,8 +11,18 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 INDEX_PATH = ROOT / "flows" / "component_index.json"
 COMPONENTS_DIR = ROOT / "flows" / "components"
+INGEST_FLOW_PATH = ROOT / "flows" / "ingestion_flow.json"
 # Langflow uses this string as the sidebar category label.
 BUNDLE_NAME = "OpenRAG"
+OPENSEARCH_CLASS = "OpenSearchVectorStoreComponentMultimodalMultiEmbedding"
+OPENSEARCH_DISPLAY_NAME = "OpenSearch (Multi-Model Multi-Embedding)"
+# Langflow 1.11 ships a migration-table entry that rewrites the bare class name
+# ``OpenSearchVectorStoreComponentMultimodalMultiEmbedding`` to
+# ``ext:elastic:...@official`` on every flow load. Keying the index (and the flow
+# nodes) by our own canonical extension id keeps the node out of that rewrite;
+# ``ext:`` keys also alias back to the bare class name, so both forms resolve.
+OPENSEARCH_EXT_ID = f"ext:openrag:{OPENSEARCH_CLASS}@extra"
+OPENSEARCH_MODULE = "_lfx_ext.extra.openrag.opensearch_multimodal"
 
 
 def _code_hash(source: str) -> str:
@@ -341,6 +352,36 @@ def llm_component() -> dict:
     )
 
 
+def opensearch_component() -> dict:
+    """Clone the shipped ingest-flow node and overlay canonical source + metadata.
+
+    The OpenSearch template is too large to reconstruct by hand. Cloning keeps
+    field_order, outputs, and OpenRAG ingest bindings in sync with the flow.
+    Icon stays OpenSearch (not the OpenRAG bundle icon used by the proxy nodes).
+    """
+    source = (COMPONENTS_DIR / "opensearch_multimodal.py").read_text(encoding="utf-8")
+    flow = json.loads(INGEST_FLOW_PATH.read_text(encoding="utf-8"))
+    node = next(
+        (
+            item["data"]["node"]
+            for item in flow.get("data", {}).get("nodes", [])
+            if item.get("data", {}).get("node", {}).get("display_name") == OPENSEARCH_DISPLAY_NAME
+        ),
+        None,
+    )
+    if node is None:
+        raise SystemExit(
+            f"[error] {INGEST_FLOW_PATH} has no node with display_name={OPENSEARCH_DISPLAY_NAME!r}"
+        )
+    component = copy.deepcopy(node)
+    component.setdefault("template", {}).setdefault("code", {})["value"] = source
+    component["edited"] = False
+    metadata = component.setdefault("metadata", {})
+    metadata["code_hash"] = _code_hash(source)
+    metadata["module"] = OPENSEARCH_MODULE
+    return component
+
+
 def embedding_component() -> dict:
     source = (COMPONENTS_DIR / "openai_compatible_embedding.py").read_text(encoding="utf-8")
     return _component(
@@ -388,21 +429,41 @@ def embedding_component() -> dict:
 
 
 def _compute_sha256(index: dict) -> str:
+    """Reproduce Langflow's integrity digest for the component index.
+
+    Langflow hashes ``orjson.dumps(index_without_sha, option=OPT_SORT_KEYS)``.
+    The stdlib fallback must therefore emit UTF-8 directly: ``json.dumps``
+    defaults to ``ensure_ascii=True``, which escapes every non-ASCII character
+    and yields a different digest, so Langflow discards the index as
+    "SHA256 mismatch (file may be corrupted or tampered)" and silently falls
+    back to a dynamic scan that does not know about the OpenRAG bundle.
+    """
     payload_obj = {key: value for key, value in index.items() if key != "sha256"}
     try:
         import orjson
 
         payload = orjson.dumps(payload_obj, option=orjson.OPT_SORT_KEYS)
     except ImportError:
-        payload = json.dumps(payload_obj, sort_keys=True, separators=(",", ":")).encode()
+        payload = json.dumps(
+            payload_obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        ).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
 
 
 def main() -> None:
     index = json.loads(INDEX_PATH.read_text(encoding="utf-8"))
+    existing: dict[str, dict] = {}
+    for name, bundle in index["entries"]:
+        if name in {BUNDLE_NAME, "openrag"}:
+            existing.update(bundle)
+    # Drop the pre-``ext:`` key so regenerating never leaves both forms behind.
+    existing.pop(OPENSEARCH_CLASS, None)
+
     openrag = {
+        **existing,
         "OpenAICompatibleEmbeddingComponent": embedding_component(),
         "OpenAICompatibleLLMComponent": llm_component(),
+        OPENSEARCH_EXT_ID: opensearch_component(),
     }
 
     entries = [

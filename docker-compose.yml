@@ -164,6 +164,9 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       - LANGFLOW_ALLOW_CUSTOM_COMPONENTS=${LANGFLOW_ALLOW_CUSTOM_COMPONENTS:-false}
+      # Prefer the bind-mounted index so `scripts/update_openrag_component_index.py`
+      # takes effect on `docker compose restart langflow` without an image rebuild.
+      - LANGFLOW_COMPONENTS_INDEX_PATH=/app/flows/component_index.json
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
       - LANGFUSE_HOST=${LANGFUSE_HOST:-}
