@@ -233,8 +233,12 @@ class FileServiceV2:
         search: str | None = None,
         data_sources: list[str] | None = None,
     ) -> dict[str, Any]:
-        def _effective_values(values: list[str] | None) -> list[str]:
-            return [value for value in (values or []) if value != "*"]
+        def _effective_values(values: str | list[str] | None) -> list[str]:
+            if values is None:
+                return []
+            if isinstance(values, str):
+                values = [values]
+            return [value for value in values if value != "*"]
 
         must = []
         filter_clauses = []
