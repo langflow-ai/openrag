@@ -16,8 +16,9 @@ import { cn } from "@/lib/utils";
 const TABS = [
   { value: "connectors", label: "Connectors" },
   { value: "providers", label: "Providers", perm: "providers:write" },
-  // Agent + ingest settings write workspace config (admin-only).
+  // Agent, ingest, and archiving settings write workspace config (admin-only).
   { value: "langflow", label: "Langflow", perm: "config:write" },
+  { value: "archiving", label: "Archiving", perm: "config:write" },
   { value: "api-keys", label: "API Keys", apiKeysTab: true },
   {
     value: "connector-access",

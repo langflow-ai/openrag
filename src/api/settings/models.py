@@ -22,6 +22,7 @@ class SettingsUpdateBody(BaseModel):
     ocr: bool | None = None
     picture_descriptions: bool | None = None
     disable_ingest_with_langflow: bool | None = None
+    archive_sources_enabled: bool | None = None
     vlm_enabled: bool | None = None
     vlm_provider: str | None = Field(None, pattern="^(openai|watsonx|anthropic|local|ollama)$")
     vlm_model: str | None = Field(None, min_length=1)
@@ -65,6 +66,7 @@ class OnboardingBody(BaseModel):
 
 class CitationDisplayData(BaseModel):
     file_path: str | None = None
+    source_url: str | None = None
     page: int | str | None = None
     score: float | str | None = None
     text: str | None = None
@@ -203,6 +205,18 @@ class AgentConfig(BaseModel):
     default_system_prompt: str | None = None
 
 
+class ArchivingConfig(BaseModel):
+    available: bool
+    enabled: bool
+    ingestion_path: str | None = None
+    ingestion_host_path: str | None = None
+    path: str | None = None
+    host_path: str | None = None
+    used_bytes: int | None = None
+    filesystem_total_bytes: int | None = None
+    filesystem_free_bytes: int | None = None
+
+
 class IngestionDefaultsConfig(BaseModel):
     chunkSize: int | None
     chunkOverlap: int | None
@@ -221,6 +235,8 @@ class SettingsResponse(BaseModel):
     providers: ProvidersConfig | None = None
     knowledge: KnowledgeConfig
     agent: AgentConfig
+    # Filesystem paths and storage details are admin-only.
+    archiving: ArchivingConfig | None = None
     localhost_url: str
     langflow_edit_url: str | None = None
     langflow_ingest_edit_url: str | None = None

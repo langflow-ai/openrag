@@ -153,6 +153,20 @@ result = await client.documents.ingest(file_path="./report.pdf")
 print(f"Status: {result.status}")
 print(f"Successful files: {result.successful_files}")
 
+# Keep a link to the authoritative file for search/chat citations
+linked_result = await client.documents.ingest(
+    file_path="./report.pdf",
+    source_url="https://files.example.com/reports/report.pdf",
+    archive_source=False,
+)
+
+# Or retain the uploaded bytes in OpenRAG's authenticated local archive
+# (available only on deployments without user authentication)
+archived_result = await client.documents.ingest(
+    file_path="./report.pdf",
+    archive_source=True,
+)
+
 # Ingest without waiting (returns immediately with task_id)
 result = await client.documents.ingest(file_path="./report.pdf", wait=False)
 print(f"Task ID: {result.task_id}")

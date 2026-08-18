@@ -33,7 +33,11 @@ async def delete_documents_by_filename_core(
 ):
     """Shared delete-by-filename logic for v1 and non-v1 endpoints."""
     from config.settings import get_index_name
-    from utils.opensearch_delete import collect_visible_document_ids, delete_document_ids
+    from services.local_source_service import (
+        delete_local_source,
+        source_id_from_local_source_url,
+    )
+    from utils.opensearch_delete import collect_visible_document_hits, delete_document_ids
     from utils.opensearch_queries import (
         build_anonymous_filename_query,
         build_filename_query,
@@ -63,25 +67,28 @@ async def delete_documents_by_filename_core(
         if can_delete_own and can_delete_anonymous:
             if write_client is None:
                 raise RuntimeError("Backend OpenSearch client is unavailable")
-            document_ids = await collect_visible_document_ids(
+            document_hits = await collect_visible_document_hits(
                 write_client,
                 index=index_name,
                 query=build_replace_filename_query(normalized_filename, user_id),
+                source=["document_id", "source_url"],
             )
         elif can_delete_anonymous:
             if write_client is None:
                 raise RuntimeError("Backend OpenSearch client is unavailable")
-            document_ids = await collect_visible_document_ids(
+            document_hits = await collect_visible_document_hits(
                 write_client,
                 index=index_name,
                 query=build_anonymous_filename_query(normalized_filename),
+                source=["document_id", "source_url"],
             )
         elif can_delete_own:
             opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
-            document_ids = await collect_visible_document_ids(
+            document_hits = await collect_visible_document_hits(
                 opensearch_client,
                 index=index_name,
                 query=build_owned_filename_query(normalized_filename, user_id),
+                source=["document_id", "source_url"],
             )
         else:
             return (
@@ -95,7 +102,7 @@ async def delete_documents_by_filename_core(
                 403,
             )
 
-        if not document_ids:
+        if not document_hits:
             if can_delete_anonymous:
                 return (
                     {
@@ -138,6 +145,15 @@ async def delete_documents_by_filename_core(
                 404,
             )
 
+        document_ids = [hit["_id"] for hit in document_hits]
+        local_source_ids = {
+            source_id
+            for hit in document_hits
+            if (source := hit.get("_source", {}))
+            if (source_id := source_id_from_local_source_url(source.get("source_url")))
+            if source.get("document_id") == source_id.rsplit(".", 1)[0]
+        }
+
         if write_client is None:
             raise RuntimeError("Backend OpenSearch client is unavailable")
         deleted_count = await delete_document_ids(
@@ -160,6 +176,47 @@ async def delete_documents_by_filename_core(
                     "error": "No matching document chunks were deleted. The file may be missing or not deletable in the current user context.",
                 },
                 404,
+            )
+
+        # Source lifecycle contract:
+        # - Want/why: deleting knowledge must not leave its retained original behind.
+        # - How: remove only validated local archives after refreshed chunk deletion
+        #   and only when the source has no remaining index reference.
+        # - Compatibility/KISS: remote connector URLs are ignored; no new database or
+        #   background cleanup process is introduced.
+        deleted_sources = 0
+        for source_id in local_source_ids:
+            try:
+                remaining = await write_client.search(
+                    index=index_name,
+                    body={
+                        "size": 1,
+                        "_source": False,
+                        "query": {
+                            "wildcard": {
+                                "source_url": {
+                                    "value": f"*/api/source-files/{source_id}",
+                                }
+                            }
+                        },
+                    },
+                )
+                if remaining.get("hits", {}).get("hits", []):
+                    continue
+                if await delete_local_source(source_id):
+                    deleted_sources += 1
+            except Exception as cleanup_error:
+                logger.error(
+                    "Failed to delete unreferenced local source",
+                    source_id=source_id,
+                    error=str(cleanup_error),
+                )
+
+        if deleted_sources:
+            logger.info(
+                "Deleted unreferenced local sources",
+                filename=normalized_filename,
+                deleted_sources=deleted_sources,
             )
 
         return (

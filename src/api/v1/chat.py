@@ -53,6 +53,7 @@ def _extract_sources(item: dict) -> list[dict]:
                     "score": result.get("score", 0),
                     "page": result.get("page"),
                     "mimetype": result.get("mimetype"),
+                    "source_url": result.get("source_url"),
                 }
             )
     return sources

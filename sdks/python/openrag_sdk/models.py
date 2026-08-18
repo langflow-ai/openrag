@@ -14,6 +14,7 @@ class Source(BaseModel):
     score: float
     page: int | None = None
     mimetype: str | None = None
+    source_url: str | None = None
 
 
 class ChatResponse(BaseModel):
@@ -60,6 +61,7 @@ class SearchResult(BaseModel):
     score: float
     page: int | None = None
     mimetype: str | None = None
+    source_url: str | None = None
 
 
 class SearchResponse(BaseModel):
@@ -155,11 +157,19 @@ class KnowledgeSettings(BaseModel):
     picture_descriptions: bool | None = None
 
 
+class ArchivingSettings(BaseModel):
+    """Source archiving configuration settings."""
+
+    available: bool = False
+    enabled: bool = False
+
+
 class SettingsResponse(BaseModel):
     """Response from settings endpoint."""
 
     agent: AgentSettings = Field(default_factory=AgentSettings)
     knowledge: KnowledgeSettings = Field(default_factory=KnowledgeSettings)
+    archiving: ArchivingSettings = Field(default_factory=ArchivingSettings)
 
 
 # Request models
@@ -184,6 +194,7 @@ class SettingsUpdateOptions(BaseModel):
     table_structure: bool | None = None
     ocr: bool | None = None
     picture_descriptions: bool | None = None
+    archive_sources_enabled: bool | None = None
 
 
 class SettingsUpdateResponse(BaseModel):

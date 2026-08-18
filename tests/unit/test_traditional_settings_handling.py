@@ -31,6 +31,7 @@ async def test_traditional_processor_settings_propagation():
         replace_duplicates=False,
         session_manager=mock_session_manager,
         settings=settings,
+        source_urls={"/tmp/test.txt": "https://files.example.com/test.txt"},
     )
 
     processor.check_filename_exists = AsyncMock(return_value=False)
@@ -55,6 +56,7 @@ async def test_traditional_processor_settings_propagation():
     assert kwargs["acl"] is not None
     assert kwargs["acl"].allowed_users == ["user-1"]
     assert kwargs["acl"].allowed_groups == ["group-1"]
+    assert kwargs["source_url"] == "https://files.example.com/test.txt"
 
 
 @pytest.mark.asyncio

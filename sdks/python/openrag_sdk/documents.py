@@ -30,6 +30,8 @@ class DocumentsClient:
         *,
         file: BinaryIO | None = None,
         filename: str | None = None,
+        source_url: str | None = None,
+        archive_source: bool | None = None,
         wait: bool = True,
         poll_interval: float = 1.0,
         timeout: float = 300.0,
@@ -41,6 +43,10 @@ class DocumentsClient:
             file_path: Path to the file to ingest.
             file: File-like object to ingest (alternative to file_path).
             filename: Filename to use when providing file object.
+            source_url: Optional absolute HTTP(S) URL for the authoritative file.
+            archive_source: Override source retention for this upload. When omitted,
+                the workspace Archiving setting applies. Use False with source_url
+                for an authoritative remote source.
             wait: If True, poll until ingestion completes. If False, return immediately.
             poll_interval: Seconds between status checks when waiting.
             timeout: Maximum seconds to wait for completion.
@@ -53,6 +59,12 @@ class DocumentsClient:
             ValueError: If neither file_path nor file is provided.
             TimeoutError: If ingestion doesn't complete within timeout.
         """
+        request_data = {}
+        if source_url:
+            request_data["source_url"] = source_url
+        if archive_source is not None:
+            request_data["archive_source"] = str(archive_source).lower()
+
         if file_path is not None:
             path = Path(file_path)
             with open(path, "rb") as f:
@@ -61,6 +73,7 @@ class DocumentsClient:
                     "POST",
                     "/api/v1/documents/ingest",
                     files=files,
+                    data=request_data,
                 )
         elif file is not None:
             if filename is None:
@@ -70,6 +83,7 @@ class DocumentsClient:
                 "POST",
                 "/api/v1/documents/ingest",
                 files=files,
+                data=request_data,
             )
         else:
             raise ValueError("Either file_path or file must be provided")

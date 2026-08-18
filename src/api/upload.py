@@ -25,7 +25,9 @@ logger = get_logger(__name__)
 
 
 class UploadPathBody(BaseModel):
-    path: str
+    path: str | None = None
+    replace_duplicates: bool = False
+    archive_sources: bool | None = None
 
 
 class UploadBucketBody(BaseModel):
@@ -74,18 +76,35 @@ async def upload_path(
     session_manager: Annotated[Any, Depends(get_session_manager)],
     user: Annotated[User, Depends(require_permission("knowledge:upload"))],
 ):
-    """Upload all files from a directory path"""
-    if not body.path or not os.path.isdir(body.path):
-        return JSONResponse({"error": "Invalid path"}, status_code=400)
+    """Ingest a local file or directory path without deleting source files."""
+    from config.settings import is_no_auth_mode
 
-    file_paths = [os.path.join(root, fn) for root, _, files in os.walk(body.path) for fn in files]
+    if not is_no_auth_mode():
+        return JSONResponse(
+            {
+                "error": (
+                    "Local path ingestion is disabled in multi-user mode; "
+                    "use the multipart document ingestion API"
+                )
+            },
+            status_code=403,
+        )
+
+    from services.local_source_service import collect_ingest_files, resolve_ingestion_path
+
+    resolved_path = resolve_ingestion_path(body.path)
+    if resolved_path is None or not resolved_path.exists():
+        return JSONResponse(
+            {"error": "path must be inside OPENRAG_DOCUMENTS_PATH"},
+            status_code=400,
+        )
+
+    file_paths = collect_ingest_files(resolved_path)
 
     if not file_paths:
         return JSONResponse({"error": "No files found in directory"}, status_code=400)
 
     jwt_token = user.jwt_token
-
-    from config.settings import is_no_auth_mode
 
     is_no_auth = is_no_auth_mode()
     owner_user_id = user.user_id if (user and not is_no_auth) else None
@@ -96,16 +115,30 @@ async def upload_path(
 
     await _ensure_index_exists(jwt_token)
 
+    from services.local_source_service import is_source_archiving_enabled
+
+    archive_sources = (
+        body.archive_sources if body.archive_sources is not None else is_source_archiving_enabled()
+    )
+
     task_id = await task_service.create_upload_task(
         owner_user_id,
         file_paths,
         jwt_token=jwt_token,
         owner_name=owner_name,
         owner_email=owner_email,
+        replace_duplicates=body.replace_duplicates,
+        archive_sources=archive_sources,
+        cleanup_files=False,
     )
 
     return JSONResponse(
-        {"task_id": task_id, "total_files": len(file_paths), "status": "accepted"},
+        {
+            "task_id": task_id,
+            "total_files": len(file_paths),
+            "status": "accepted",
+            "archive_sources": archive_sources,
+        },
         status_code=201,
     )
 
@@ -172,9 +205,18 @@ async def upload_options(
 ):
     """Return availability of upload features"""
     aws_enabled = bool(os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY"))
-    from config.settings import UPLOAD_BATCH_SIZE
+    from config.paths import get_documents_path
+    from config.settings import UPLOAD_BATCH_SIZE, is_no_auth_mode
 
-    return JSONResponse({"aws": aws_enabled, "upload_batch_size": UPLOAD_BATCH_SIZE})
+    local_path_ingestion_enabled = is_no_auth_mode()
+    response = {
+        "aws": aws_enabled,
+        "upload_batch_size": UPLOAD_BATCH_SIZE,
+        "local_path_ingestion_enabled": local_path_ingestion_enabled,
+    }
+    if local_path_ingestion_enabled:
+        response["documents_path"] = str(os.path.abspath(get_documents_path()))
+    return JSONResponse(response)
 
 
 async def upload_bucket(

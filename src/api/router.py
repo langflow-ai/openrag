@@ -4,6 +4,7 @@ import json
 import mimetypes
 import os
 import tempfile
+from urllib.parse import urlsplit
 
 from fastapi import Depends, File, Form, UploadFile
 from fastapi.responses import JSONResponse
@@ -23,6 +24,56 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 
+def _normalize_source_urls(
+    upload_files: list[UploadFile], source_urls: list[str] | None
+) -> list[str | None]:
+    """Validate optional, per-file source URLs supplied with an upload.
+
+    ``source_url`` is user-controlled metadata that is later rendered as a link
+    in search and chat results. Restrict API-uploaded values to absolute HTTP(S)
+    URLs and reject embedded credentials so the frontend never receives an
+    executable or credential-bearing URI.
+    """
+    if not source_urls:
+        return [None] * len(upload_files)
+
+    if len(source_urls) != len(upload_files):
+        raise ValueError("source_url must be omitted or provided once for each uploaded file")
+
+    normalized: list[str | None] = []
+    for value in source_urls:
+        url = value.strip()
+        if not url:
+            normalized.append(None)
+            continue
+        if len(url) > 2048:
+            raise ValueError("source_url must not exceed 2048 characters")
+        if any(ord(character) < 32 or ord(character) == 127 for character in url):
+            raise ValueError("source_url must not contain control characters")
+
+        parsed = urlsplit(url)
+        if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
+            raise ValueError("source_url must be an absolute HTTP or HTTPS URL")
+        if parsed.username is not None or parsed.password is not None:
+            raise ValueError("source_url must not contain embedded credentials")
+        normalized.append(url)
+
+    return normalized
+
+
+def _resolve_archive_source(value: str | None) -> bool:
+    from services.local_source_service import is_source_archiving_enabled
+
+    if not isinstance(value, str):
+        return is_source_archiving_enabled()
+    normalized = value.strip().lower()
+    if normalized in {"true", "1", "yes"}:
+        return True
+    if normalized in {"false", "0", "no"}:
+        return False
+    raise ValueError("archive_source must be true or false")
+
+
 async def upload_ingest_router(
     file: list[UploadFile] = File(...),
     session_id: str | None = Form(None),
@@ -31,6 +82,8 @@ async def upload_ingest_router(
     replace_duplicates: str = Form("true"),
     create_filter: str = Form("false"),
     preview: str = Form("false"),
+    source_url: list[str] | None = Form(None),
+    archive_source: str | None = Form(None),
     document_service=Depends(get_document_service),
     langflow_file_service=Depends(get_langflow_file_service),
     session_manager=Depends(get_session_manager),
@@ -54,6 +107,30 @@ async def upload_ingest_router(
         preview_mode=preview_mode,
     )
 
+    # Direct Python callers see FastAPI's Form sentinel rather than parsed
+    # request data. Treat it as absent, matching the handling required by the
+    # public v1 wrapper for its other Form-defaulted parameters.
+    source_urls = source_url if isinstance(source_url, list) else None
+    from config.settings import is_no_auth_mode
+
+    if not is_no_auth_mode():
+        if isinstance(archive_source, str) and archive_source.strip().lower() not in {
+            "",
+            "false",
+            "0",
+            "no",
+        }:
+            return JSONResponse(
+                {"error": "Local source archiving is disabled in multi-user mode"},
+                status_code=400,
+            )
+        archive_sources = False
+    else:
+        try:
+            archive_sources = _resolve_archive_source(archive_source)
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+
     if disable_ingest_with_langflow:
         logger.debug("Routing to traditional OpenRAG upload via task service")
         return await _traditional_upload_ingest_task(
@@ -61,6 +138,8 @@ async def upload_ingest_router(
             replace_duplicates=replace_duplicates.lower() == "true",
             create_filter=create_filter.lower() == "true",
             preview_mode=preview_mode,
+            source_urls=source_urls,
+            archive_sources=archive_sources,
             session_manager=session_manager,
             task_service=task_service,
             user=user,
@@ -76,6 +155,8 @@ async def upload_ingest_router(
         replace_duplicates=replace_duplicates.lower() == "true",
         create_filter=create_filter.lower() == "true",
         preview_mode=preview_mode,
+        source_urls=source_urls,
+        archive_sources=archive_sources,
         langflow_file_service=langflow_file_service,
         session_manager=session_manager,
         task_service=task_service,
@@ -92,11 +173,18 @@ async def _traditional_upload_ingest_task(
     task_service,
     user: User,
     settings_json: str | None = None,
+    source_urls: list[str] | None = None,
+    archive_sources: bool = False,
 ):
     """Task-based traditional upload and ingest for single/multiple files"""
     try:
         if not upload_files:
             return JSONResponse({"error": "Missing files"}, status_code=400)
+
+        try:
+            normalized_source_urls = _normalize_source_urls(upload_files, source_urls)
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
 
         settings = None
         if settings_json:
@@ -137,6 +225,11 @@ async def _traditional_upload_ingest_task(
             file_path_to_original_filename = dict(
                 zip(temp_file_paths, original_filenames, strict=True)
             )
+            source_urls_by_path = {
+                path: url
+                for path, url in zip(temp_file_paths, normalized_source_urls, strict=True)
+                if url is not None
+            }
 
             # Ensure the search index exists before creating the upload task
             from api.documents import _ensure_index_exists
@@ -153,6 +246,8 @@ async def _traditional_upload_ingest_task(
                 replace_duplicates=replace_duplicates,
                 settings=settings,
                 preview_mode=preview_mode,
+                source_urls=source_urls_by_path,
+                archive_sources=archive_sources,
             )
 
             return JSONResponse(
@@ -197,11 +292,18 @@ async def _langflow_upload_ingest_task(
     session_manager,
     task_service,
     user: User,
+    source_urls: list[str] | None = None,
+    archive_sources: bool = False,
 ):
     """Task-based langflow upload and ingest for single/multiple files"""
     try:
         if not upload_files:
             return JSONResponse({"error": "Missing files"}, status_code=400)
+
+        try:
+            normalized_source_urls = _normalize_source_urls(upload_files, source_urls)
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
 
         settings = None
         tweaks = None
@@ -250,6 +352,11 @@ async def _langflow_upload_ingest_task(
             file_path_to_original_filename = dict(
                 zip(temp_file_paths, original_filenames, strict=True)
             )
+            source_urls_by_path = {
+                path: url
+                for path, url in zip(temp_file_paths, normalized_source_urls, strict=True)
+                if url is not None
+            }
 
             task_id = await task_service.create_langflow_upload_task(
                 user_id=user_id,
@@ -265,6 +372,8 @@ async def _langflow_upload_ingest_task(
                 settings=settings,
                 replace_duplicates=replace_duplicates,
                 preview_mode=preview_mode,
+                source_urls=source_urls_by_path,
+                archive_sources=archive_sources,
             )
 
             return JSONResponse(
