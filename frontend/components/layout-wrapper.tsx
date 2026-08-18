@@ -187,9 +187,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         </div>
       </div>
 
-      {(isAuthenticated || isNoAuthMode) && runMode === "oss" && (
-        <FlowsUpdateDialog />
-      )}
+      {(isAuthenticated || isNoAuthMode) && <FlowsUpdateDialog />}
     </div>
   );
 }

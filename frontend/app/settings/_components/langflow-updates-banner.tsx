@@ -12,9 +12,8 @@ import { cn } from "@/lib/utils";
 export function LangflowUpdatesBanner() {
   const { brand } = useBrand();
   const isIbm = brand === "ibm";
-  const { runMode } = useAuth();
   const { can } = usePermissions();
-  const canEdit = can("flows:edit") && runMode === "oss";
+  const canEdit = can("config:write");
   const { data: updates, isLoading } = useGetFlowsUpdatesQuery({
     enabled: canEdit,
   });

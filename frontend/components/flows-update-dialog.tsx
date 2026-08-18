@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, AlertTriangle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useDismissFlowsUpdateMutation } from "@/app/api/mutations/useDismissFlowsUpdateMutation";
@@ -17,7 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { usePermissions } from "@/hooks/use-permissions";
+import { useAuth } from "@/contexts/auth-context";
 import { formatFlowName } from "@/lib/utils";
 
 interface FlowsUpdateDialogProps {
@@ -29,10 +29,15 @@ export function FlowsUpdateDialog({
   overrideOpen,
   onOpenChange,
 }: FlowsUpdateDialogProps = {}) {
-  const { can } = usePermissions();
-  const canEdit = can("flows:edit");
+  const { roles, isNoAuthMode, rbacEnforced, can } = useAuth();
+  const isAdmin =
+    isNoAuthMode ||
+    !rbacEnforced ||
+    roles.includes("admin") ||
+    can("config:write");
+
   const { data: updates, isLoading } = useGetFlowsUpdatesQuery({
-    enabled: canEdit,
+    enabled: true,
   });
   const updateMutation = useUpdateFlowsMutation();
   const dismissMutation = useDismissFlowsUpdateMutation();
@@ -115,11 +120,39 @@ export function FlowsUpdateDialog({
     }
   };
 
-  if (
-    !can("flows:edit") ||
-    (overrideOpen === undefined && undismissedUpdates.length === 0)
-  )
+  if (overrideOpen === undefined && undismissedUpdates.length === 0)
     return null;
+
+  if (!isAdmin) {
+    return (
+      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <DialogContent className="sm:max-w-[540px]">
+          <DialogHeader>
+            <DialogTitle>Langflow Update Available</DialogTitle>
+            <DialogDescription>
+              Action required by a system administrator
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <Alert>
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Updates Available</AlertTitle>
+              <AlertDescription className="text-muted-foreground leading-relaxed">
+                There are updates available for Langflow flows and an admin
+                needs to go over them. Meanwhile, the functionality of OpenRAG
+                may be disturbed.
+              </AlertDescription>
+            </Alert>
+          </div>
+
+          <DialogFooter>
+            <Button onClick={handleDismiss}>Understand</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <>
