@@ -34,6 +34,42 @@ OPENSEARCH_URL = f"https://{OPENSEARCH_HOST}:{OPENSEARCH_PORT}"
 _os_pool_maxsize = get_env_int("OPENSEARCH_POOL_MAXSIZE")
 OPENSEARCH_POOL_MAXSIZE: int = max(10 if _os_pool_maxsize is None else _os_pool_maxsize, 1)
 
+# Path to a PEM CA bundle for verifying the OpenSearch TLS certificate.
+# Set via OPENSEARCH_CA_CERTS env var (file path, not the cert content itself).
+# The operator mounts the opensearch-ca secret and sets this path automatically
+# when OpenSearchSpec.caSecret is configured.
+OPENSEARCH_VERIFY_CERTS = os.getenv("OPENSEARCH_VERIFY_CERTS", "false").lower() in ("true", "1", "yes")
+OPENSEARCH_CA_CERTS = os.getenv("OPENSEARCH_CA_CERTS")  # e.g. /app/certs/opensearch-ca/ca.crt
+
+# Validate TLS configuration at import time so misconfigurations surface on startup.
+if OPENSEARCH_CA_CERTS and not os.path.isfile(OPENSEARCH_CA_CERTS):
+    raise RuntimeError(
+        f"OPENSEARCH_CA_CERTS path does not exist: {OPENSEARCH_CA_CERTS!r}"
+    )
+if OPENSEARCH_VERIFY_CERTS and not OPENSEARCH_CA_CERTS:
+    logger.warning(
+        "OPENSEARCH_VERIFY_CERTS=true but OPENSEARCH_CA_CERTS is not set; "
+        "TLS verification will use the system CA bundle, which will likely "
+        "reject a self-signed OpenSearch certificate."
+    )
+
+# --- Backend TLS (serve HTTPS) --------------------------------------------
+# When both are set, uvicorn is started with SSL enabled.  If absent the
+# backend continues to serve plain HTTP (no regression for existing deploys).
+OPENRAG_TLS_CERT_PATH = os.getenv("OPENRAG_TLS_CERT_PATH")  # e.g. /app/certs/tls.crt
+OPENRAG_TLS_KEY_PATH = os.getenv("OPENRAG_TLS_KEY_PATH")   # e.g. /app/certs/tls.key
+
+if bool(OPENRAG_TLS_CERT_PATH) != bool(OPENRAG_TLS_KEY_PATH):
+    raise RuntimeError(
+        "OPENRAG_TLS_CERT_PATH and OPENRAG_TLS_KEY_PATH must be set together or not at all."
+    )
+for _tls_path, _tls_var in (
+    (OPENRAG_TLS_CERT_PATH, "OPENRAG_TLS_CERT_PATH"),
+    (OPENRAG_TLS_KEY_PATH, "OPENRAG_TLS_KEY_PATH"),
+):
+    if _tls_path and not os.path.isfile(_tls_path):
+        raise RuntimeError(f"{_tls_var} path does not exist: {_tls_path!r}")
+
 # Optional: Langflow-specific OpenSearch endpoint
 LANGFLOW_OPENSEARCH_HOST = os.getenv("LANGFLOW_OPENSEARCH_HOST")
 LANGFLOW_OPENSEARCH_PORT = get_env_int("LANGFLOW_OPENSEARCH_PORT")
@@ -96,6 +132,19 @@ def get_opensearch_password() -> str | None:
 OPENRAG_FQDN = os.getenv("OPENRAG_FQDN")
 LANGFLOW_PORT = get_env_int("LANGFLOW_PORT", 7860)
 LANGFLOW_URL = os.getenv("LANGFLOW_URL", f"http://localhost:{LANGFLOW_PORT}")
+# TLS verification for outbound calls FROM the backend TO Langflow.
+# Same pattern as OPENSEARCH_CA_CERTS / OPENSEARCH_VERIFY_CERTS.
+LANGFLOW_VERIFY_CERTS = os.getenv("LANGFLOW_VERIFY_CERTS", "false").lower() in ("true", "1", "yes")
+LANGFLOW_CA_CERTS = os.getenv("LANGFLOW_CA_CERTS")  # e.g. /app/certs/langflow-ca/ca.crt
+
+if LANGFLOW_CA_CERTS and not os.path.isfile(LANGFLOW_CA_CERTS):
+    raise RuntimeError(f"LANGFLOW_CA_CERTS path does not exist: {LANGFLOW_CA_CERTS!r}")
+if LANGFLOW_VERIFY_CERTS and not LANGFLOW_CA_CERTS:
+    logger.warning(
+        "LANGFLOW_VERIFY_CERTS=true but LANGFLOW_CA_CERTS is not set; "
+        "TLS verification will use the system CA bundle."
+    )
+
 # Optional: public URL for browser links (e.g., http://localhost:7860)
 LANGFLOW_PUBLIC_URL = os.getenv("LANGFLOW_PUBLIC_URL")
 LANGFLOW_CHAT_FLOW_ID = os.getenv("LANGFLOW_CHAT_FLOW_ID") or "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
@@ -848,7 +897,8 @@ async def get_langflow_api_key(force_regenerate: bool = False):
         max_attempts = get_env_int("LANGFLOW_KEY_RETRIES", 15)
         delay_seconds = get_env_float("LANGFLOW_KEY_RETRY_DELAY", 2.0)
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        _lf_verify: bool | str = LANGFLOW_CA_CERTS if LANGFLOW_CA_CERTS else LANGFLOW_VERIFY_CERTS
+        async with httpx.AsyncClient(timeout=10.0, verify=_lf_verify) as client:
             for attempt in range(1, max_attempts + 1):
                 try:
                     access_token = None
@@ -999,21 +1049,12 @@ class AppClients:
             )
             self.opensearch = self.create_opensearch_client_from_jwt(service_token)
         else:
-            os_auth = (get_opensearch_username(), get_opensearch_password())
             logger.info(
                 "Initializing global OpenSearch writer client: oss mode, "
                 "using OpenSearch basic auth"
             )
-            self.opensearch = AsyncOpenSearch(
-                hosts=[{"host": OPENSEARCH_HOST, "port": OPENSEARCH_PORT}],
-                connection_class=AIOHttpConnection,
-                scheme="https",
-                use_ssl=True,
-                verify_certs=False,
-                ssl_assert_fingerprint=None,
-                http_auth=os_auth,
-                http_compress=True,
-                pool_maxsize=OPENSEARCH_POOL_MAXSIZE,
+            self.opensearch = self.create_basic_opensearch_client(
+                get_opensearch_username(), get_opensearch_password()
             )
 
         # Initialize patched OpenAI client if API key is available
@@ -1050,8 +1091,10 @@ class AppClients:
         # Initialize Langflow HTTP client with extended timeouts for large documents
         # Must be created before wait_for_langflow / get_langflow_api_key
         # Use explicit timeout configuration to handle large PDF ingestion (300+ pages)
+        _lf_verify: bool | str = LANGFLOW_CA_CERTS if LANGFLOW_CA_CERTS else LANGFLOW_VERIFY_CERTS
         self.langflow_http_client = httpx.AsyncClient(
             base_url=LANGFLOW_URL,
+            verify=_lf_verify,
             timeout=httpx.Timeout(
                 timeout=LANGFLOW_TIMEOUT,  # Total timeout
                 connect=LANGFLOW_CONNECT_TIMEOUT,  # Connection timeout
@@ -1683,8 +1726,8 @@ class AppClients:
             connection_class=AIOHttpConnection,
             scheme="https",
             use_ssl=True,
-            verify_certs=False,
-            ssl_assert_fingerprint=None,
+            verify_certs=OPENSEARCH_VERIFY_CERTS,
+            ca_certs=OPENSEARCH_CA_CERTS,
             headers=headers,
             http_compress=True,
             timeout=30,  # 30 second timeout
@@ -1700,8 +1743,8 @@ class AppClients:
             connection_class=AIOHttpConnection,
             scheme="https",
             use_ssl=True,
-            verify_certs=False,
-            ssl_assert_fingerprint=None,
+            verify_certs=OPENSEARCH_VERIFY_CERTS,
+            ca_certs=OPENSEARCH_CA_CERTS,
             http_auth=(username, password),
             http_compress=True,
             timeout=30,
