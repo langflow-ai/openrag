@@ -92,8 +92,10 @@ def _get_cors_middleware(app):
 
 @pytest.mark.asyncio
 async def test_factory_adds_cors_middleware_when_origins_set():
-    with patch("app.factory.CORS_ALLOWED_ORIGINS", ["https://app.example.com"]), \
-         patch("app.factory.initialize_services", new_callable=AsyncMock):
+    with (
+        patch("app.factory.CORS_ALLOWED_ORIGINS", ["https://app.example.com"]),
+        patch("app.factory.initialize_services", new_callable=AsyncMock),
+    ):
         from app.factory import create_app
 
         app = await create_app()
@@ -104,8 +106,10 @@ async def test_factory_adds_cors_middleware_when_origins_set():
 
 @pytest.mark.asyncio
 async def test_factory_skips_cors_middleware_when_origins_empty():
-    with patch("app.factory.CORS_ALLOWED_ORIGINS", []), \
-         patch("app.factory.initialize_services", new_callable=AsyncMock):
+    with (
+        patch("app.factory.CORS_ALLOWED_ORIGINS", []),
+        patch("app.factory.initialize_services", new_callable=AsyncMock),
+    ):
         from app.factory import create_app
 
         app = await create_app()
