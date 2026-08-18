@@ -28,6 +28,7 @@ export type ModelOption = {
   default?: boolean;
   provider?: string;
   model?: CatalogModel;
+  icon?: React.ReactNode;
 };
 
 export type GroupedModelOption = {
@@ -91,7 +92,9 @@ export function ModelSelector({
   const selectedOptionGroup = groupedOptions?.find((group) =>
     group.options.some((opt) => opt.value === value),
   );
-  const selectedIcon = selectedOptionGroup?.icon || icon;
+  const selectedOption = allOptions.find((option) => option.value === value);
+  const selectedIcon =
+    selectedOption?.icon || selectedOptionGroup?.icon || icon;
 
   const visibleGroups = useMemo(() => {
     if (!groupedOptions) return undefined;
@@ -246,6 +249,9 @@ export function ModelSelector({
                               )}
                             />
                             <div className="flex items-center gap-2">
+                              {option.icon && (
+                                <span className="h-4 w-4">{option.icon}</span>
+                              )}
                               {option.label}
                             </div>
                             {option.model && (
@@ -318,6 +324,9 @@ export function ModelSelector({
                       )}
                     />
                     <div className="flex items-center gap-2">
+                      {option.icon && (
+                        <span className="h-4 w-4">{option.icon}</span>
+                      )}
                       {option.label}
                     </div>
                   </CommandItem>

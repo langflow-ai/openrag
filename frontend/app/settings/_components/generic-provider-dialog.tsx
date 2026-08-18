@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ModelSelector } from "../../onboarding/_components/model-selector";
+import { getModelLogo } from "../_helpers/model-helpers";
 
 const SECRET_TYPES = new Set(["password", "textarea", "upload"]);
 
@@ -109,6 +110,7 @@ export function GenericProviderDialog({
       value: entry.key,
       label: entry.name,
       provider: entry.key,
+      icon: getModelLogo("", entry.key),
     })) ?? [];
 
   return (

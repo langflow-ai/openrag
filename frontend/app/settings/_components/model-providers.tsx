@@ -14,6 +14,7 @@ import { useIsCloudBrand } from "@/contexts/brand-context";
 import {
   ALL_PROVIDERS,
   CLOUD_EXCLUDED_PROVIDERS,
+  getModelLogo,
   type ModelProvider,
 } from "../_helpers/model-helpers";
 import AnthropicSettingsDialog from "./anthropic-settings-dialog";
@@ -178,6 +179,9 @@ export const ModelProviders = () => {
               className="flex min-h-40 flex-col justify-between border p-4"
             >
               <div>
+                <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-md bg-white">
+                  {getModelLogo("", provider)}
+                </div>
                 <p className="font-medium">{provider}</p>
                 <p className="text-mmd text-muted-foreground">Configured</p>
               </div>
