@@ -255,6 +255,11 @@ class DocumentsClient:
 
         No parameters — just returns everything in the knowledge base.
 
+        Note:
+            Returns at most 500 files. If your knowledge base contains more
+            than 500 files, use ``list_files()`` with cursor pagination
+            (``after_key``) to page through the full set.
+
         Returns:
             GetAllFilesResponse with files list, total count, page, and page_size.
         """
