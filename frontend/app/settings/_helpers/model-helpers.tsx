@@ -42,7 +42,7 @@ export interface ModelOption {
 }
 
 // Helper function to get model logo based on provider or model name
-export function getModelLogo(modelValue: string, provider?: ModelProvider) {
+export function getModelLogo(modelValue: string, provider?: string) {
   // First check by provider
   if (provider === "openai") {
     return <OpenAILogo className="w-4 h-4" />;

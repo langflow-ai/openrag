@@ -16,8 +16,6 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-_KNOWN_PREFIXES = ("openai", "anthropic", "ollama", "watsonx")
-
 _LITELLM_FORWARDED_PARAMS = (
     "tools",
     "tool_choice",
@@ -60,7 +58,7 @@ def split_model_id(model: str) -> tuple[str | None, str]:
         return None, raw
     prefix, rest = raw.split("/", 1)
     prefix_lower = prefix.lower()
-    if prefix_lower in _KNOWN_PREFIXES or is_known_provider(prefix_lower):
+    if is_known_provider(prefix_lower):
         return prefix_lower, rest
     return None, raw
 
@@ -80,7 +78,7 @@ def default_model(kind: Literal["chat", "embedding"], config=None) -> str:
 
 
 def provider_credentials(provider: str, config=None) -> dict[str, Any]:
-    """LiteLLM kwargs for a configured OpenRAG provider. Never logs secrets."""
+    """LiteLLM kwargs for any configured OpenRAG provider. Never logs secrets."""
     cfg = config or _get_config()
     key = (provider or "").strip().lower()
     try:
@@ -88,43 +86,44 @@ def provider_credentials(provider: str, config=None) -> dict[str, Any]:
     except Exception as exc:
         raise LlmGatewayError("LLM providers are not configured", 400) from exc
 
-    if key == "openai":
-        api_key = getattr(prov.openai, "api_key", None)
-        if not api_key:
-            raise LlmGatewayError("OpenAI API key is not configured", 400)
-        return {"api_key": api_key}
-    if key == "anthropic":
-        api_key = getattr(prov.anthropic, "api_key", None)
-        if not api_key:
-            raise LlmGatewayError("Anthropic API key is not configured", 400)
-        return {"api_key": api_key}
-    if key == "ollama":
-        endpoint = getattr(prov.ollama, "resolved_endpoint", None) or getattr(
-            prov.ollama, "endpoint", None
-        )
-        if not endpoint:
-            raise LlmGatewayError("Ollama endpoint is not configured", 400)
+    if hasattr(prov, "credential_values"):
+        credentials = prov.credential_values(key)
+    else:
+        provider_config = getattr(prov, key, None)
+        if provider_config is None:
+            credentials = {}
+        elif key == "watsonx":
+            credentials = {
+                name: value
+                for name, value in {
+                    "api_key": getattr(provider_config, "api_key", None),
+                    "api_base": getattr(provider_config, "endpoint", None),
+                    "project_id": getattr(provider_config, "project_id", None),
+                }.items()
+                if value
+            }
+        elif key == "ollama":
+            endpoint = getattr(provider_config, "resolved_endpoint", None) or getattr(
+                provider_config, "endpoint", None
+            )
+            credentials = {"api_base": endpoint} if endpoint else {}
+        else:
+            api_key = getattr(provider_config, "api_key", None)
+            credentials = {"api_key": api_key} if api_key else {}
+    if key == "ollama" and credentials.get("api_base"):
         from utils.container_utils import transform_localhost_url
 
-        return {"api_base": transform_localhost_url(str(endpoint))}
-    if key in {"watsonx", "watsonx_text"}:
-        watsonx = prov.watsonx
-        api_key = getattr(watsonx, "api_key", None)
-        endpoint = getattr(watsonx, "endpoint", None)
-        project_id = getattr(watsonx, "project_id", None)
-        if not api_key:
-            raise LlmGatewayError("WatsonX API key is not configured", 400)
-        if not endpoint:
-            raise LlmGatewayError("WatsonX endpoint is not configured", 400)
-        if not project_id:
-            raise LlmGatewayError("WatsonX project ID is not configured", 400)
-        return {"api_key": api_key, "api_base": endpoint, "project_id": project_id}
-
-    raise LlmGatewayError(
-        f"Provider {key!r} is not configured in OpenRAG. "
-        "Configure it in Settings or pick a model from a configured provider.",
-        400,
-    )
+        credentials["api_base"] = transform_localhost_url(str(credentials["api_base"]))
+    custom = getattr(prov, "custom", {})
+    custom_config = custom.get(key) if isinstance(custom, dict) else None
+    configured = bool(getattr(custom_config, "configured", False))
+    if not credentials and not configured:
+        raise LlmGatewayError(
+            f"Provider {key!r} is not configured in OpenRAG. "
+            "Configure it in Settings or pick a model from a configured provider.",
+            400,
+        )
+    return credentials
 
 
 def resolve_call(
@@ -183,12 +182,12 @@ def _chunk_payload(chunk: Any) -> str:
     return json.dumps({"data": str(chunk)})
 
 
-async def chat_completions(body: Mapping[str, Any], *, config=None) -> dict[str, Any] | AsyncIterator[str]:
+async def chat_completions(
+    body: Mapping[str, Any], *, config=None
+) -> dict[str, Any] | AsyncIterator[str]:
     """OpenAI `POST /v1/chat/completions`. Streams SSE lines when `stream` is true."""
     cfg = config or _get_config()
-    litellm_model, provider, credentials = resolve_call(
-        body.get("model"), kind="chat", config=cfg
-    )
+    litellm_model, provider, credentials = resolve_call(body.get("model"), kind="chat", config=cfg)
     kwargs = {key: body[key] for key in _LITELLM_FORWARDED_PARAMS if key in body}
     stream = bool(body.get("stream"))
     try:

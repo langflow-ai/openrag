@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from api.provider_validation import sanitize_provider_error_content, validate_provider_setup
 from config.settings import get_openrag_config
 from dependencies import require_permission
+from services.model_catalog import is_known_provider
 from session_manager import User
 from utils import provider_health_cache
 from utils.logging_config import get_logger
@@ -48,12 +49,11 @@ async def check_provider_health(
             provider = current_config.agent.llm_provider
 
         # Validate provider name
-        valid_providers = ["openai", "ollama", "watsonx", "anthropic"]
-        if provider not in valid_providers:
+        if not is_known_provider(provider):
             return JSONResponse(
                 {
                     "status": "error",
-                    "message": f"Invalid provider: {provider}. Must be one of: {', '.join(valid_providers)}",
+                    "message": f"Unknown LiteLLM provider: {provider}",
                     "provider": provider,
                 },
                 status_code=400,
@@ -67,6 +67,7 @@ async def check_provider_health(
                 api_key = getattr(provider_config, "api_key", None)
                 endpoint = getattr(provider_config, "endpoint", None)
                 project_id = getattr(provider_config, "project_id", None)
+                credentials = current_config.providers.credential_values(provider)
 
                 # Check if this provider is used for LLM or embedding
                 llm_model = (
@@ -105,6 +106,8 @@ async def check_provider_health(
             embedding_endpoint = getattr(embedding_provider_config, "endpoint", None)
             embedding_project_id = getattr(embedding_provider_config, "project_id", None)
             embedding_model = current_config.knowledge.embedding_model
+            credentials = current_config.providers.credential_values(provider)
+            embedding_credentials = current_config.providers.credential_values(embedding_provider)
 
             # Short-circuit identical concurrent polls from the provider-health
             # banner so we don't fan out N watsonx round-trips per poll cycle.
@@ -114,6 +117,7 @@ async def check_provider_health(
                 provider=provider,
                 embedding_provider=embedding_provider,
                 test_completion=test_completion,
+                credentials=credentials,
                 llm_model=llm_model,
                 embedding_model=embedding_model,
                 endpoint=endpoint,
@@ -188,6 +192,7 @@ async def check_provider_health(
                     endpoint=endpoint,
                     project_id=project_id,
                     test_completion=test_completion,
+                    credentials=credentials,
                 )
             except httpx.TimeoutException as e:
                 # Timeout means provider is busy, not misconfigured
@@ -222,6 +227,7 @@ async def check_provider_health(
                     endpoint=embedding_endpoint,
                     project_id=embedding_project_id,
                     test_completion=test_completion,
+                    credentials=embedding_credentials,
                 )
             except httpx.TimeoutException as e:
                 # Timeout means provider is busy, not misconfigured

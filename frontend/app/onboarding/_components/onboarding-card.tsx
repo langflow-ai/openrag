@@ -17,10 +17,7 @@ import {
   useOnboardingMutation,
 } from "@/app/api/mutations/useOnboardingMutation";
 import { useOnboardingRollbackMutation } from "@/app/api/mutations/useOnboardingRollbackMutation";
-import {
-  type ModelsResponse,
-  useGetModelCatalogQuery,
-} from "@/app/api/queries/useGetModelsQuery";
+import { useGetModelCatalogQuery } from "@/app/api/queries/useGetModelsQuery";
 import {
   type ProviderSettings,
   useGetSettingsQuery,
@@ -29,9 +26,7 @@ import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import type { ProviderHealthResponse } from "@/app/api/queries/useProviderHealthQuery";
 import {
   groupedCatalogOptions,
-  mergeLiveCatalogOptions,
   onboardingCatalogConfigured,
-  type SettingsCatalogProvider,
 } from "@/app/settings/_helpers/catalog-models";
 import {
   CLOUD_EXCLUDED_PROVIDERS,
@@ -55,6 +50,7 @@ import {
 } from "@/lib/analytics";
 import { formatProviderErrorMessage } from "@/lib/chat-stream-errors";
 import { AnimatedProviderSteps } from "./animated-provider-steps";
+import { ModelFeatures } from "./model-features";
 import { ModelSelector } from "./model-selector";
 import {
   type CredentialStatus,
@@ -80,15 +76,6 @@ const EMBEDDING_STEP_LIST = [
   "Ingesting sample data",
 ];
 
-function isCatalogProvider(value: string): value is SettingsCatalogProvider {
-  return (
-    value === "openai" ||
-    value === "anthropic" ||
-    value === "ollama" ||
-    value === "watsonx"
-  );
-}
-
 const OnboardingCard = ({
   onComplete,
   isEmbedding = false,
@@ -99,7 +86,6 @@ const OnboardingCard = ({
 
   const [modelProvider, setModelProvider] = useState<string>("");
   const [credentialsReady, setCredentialsReady] = useState(false);
-  const [liveModels, setLiveModels] = useState<ModelsResponse | undefined>();
   const autoSelectedRef = useRef(false);
 
   const isLoadingModels = useIsFetching({ queryKey: ["models"] }) > 0;
@@ -114,23 +100,10 @@ const OnboardingCard = ({
   } = useGetModelCatalogQuery();
 
   const groupedModels = useMemo(() => {
-    const groups = mergeLiveCatalogOptions(
-      groupedCatalogOptions(
-        catalog,
-        onboardingCatalogConfigured(isEmbedding, isCloudBrand),
-        isEmbedding ? "embedding" : "language",
-        { includeEmpty: true },
-      ),
-      modelProvider,
-      (isEmbedding
-        ? liveModels?.embedding_models
-        : liveModels?.language_models
-      )?.map((option) => ({
-        value: option.value,
-        label: option.label,
-        provider: modelProvider,
-        default: option.default,
-      })) ?? [],
+    const groups = groupedCatalogOptions(
+      catalog,
+      onboardingCatalogConfigured(isEmbedding, isCloudBrand),
+      isEmbedding ? "embedding" : "language",
     );
     return groups.map((group) => ({
       group: group.group,
@@ -138,7 +111,7 @@ const OnboardingCard = ({
       icon: getModelLogo("", group.key),
       options: group.options,
     }));
-  }, [catalog, isCloudBrand, isEmbedding, liveModels, modelProvider]);
+  }, [catalog, isCloudBrand, isEmbedding]);
 
   const totalSteps = isEmbedding
     ? EMBEDDING_STEP_LIST.length
@@ -179,7 +152,6 @@ const OnboardingCard = ({
       setModelProvider((prevProvider) => {
         const nextProvider = provider || prevProvider;
         if (nextProvider !== prevProvider) {
-          setLiveModels(undefined);
           setCredentialsReady(false);
         }
         return nextProvider;
@@ -248,24 +220,6 @@ const OnboardingCard = ({
     isCloudBrand,
     isEmbedding,
   ]);
-
-  const isProviderAlreadyConfigured = (provider: string): boolean => {
-    if (!isEmbedding || !currentSettings?.providers) return false;
-
-    if (provider === "openai") {
-      return currentSettings.providers.openai?.configured === true;
-    } else if (provider === "anthropic") {
-      return currentSettings.providers.anthropic?.configured === true;
-    } else if (provider === "watsonx") {
-      return currentSettings.providers.watsonx?.configured === true;
-    } else if (provider === "ollama") {
-      return currentSettings.providers.ollama?.configured === true;
-    }
-    return false;
-  };
-
-  const providerAlreadyConfigured =
-    isEmbedding && isProviderAlreadyConfigured(modelProvider);
 
   const [onboardingTaskId, setOnboardingTaskId] = useState<string | null>(null);
 
@@ -507,6 +461,9 @@ const OnboardingCard = ({
       onboardingData.llm_provider = currentProvider;
       onboardingData.llm_model = settings.llm_model;
     }
+    if (settings.provider_credentials) {
+      onboardingData.provider_credentials = settings.provider_credentials;
+    }
 
     if (currentProvider === "openai" && settings.openai_api_key) {
       onboardingData.openai_api_key = settings.openai_api_key;
@@ -546,6 +503,12 @@ const OnboardingCard = ({
   const selectedModel = isEmbedding
     ? settings.embedding_model || ""
     : settings.llm_model || "";
+  const selectedGroup = groupedModels.find((group) =>
+    group.options.some((option) => option.value === selectedModel),
+  );
+  const selectedCatalogModel = selectedGroup?.options.find(
+    (option) => option.value === selectedModel,
+  )?.model;
 
   const isComplete =
     !!selectedModel && credentialsReady && (isEmbedding || isDoclingHealthy);
@@ -553,13 +516,6 @@ const OnboardingCard = ({
   const handleStatusChange = useCallback((status: CredentialStatus) => {
     setCredentialsReady(status.ready);
   }, []);
-
-  const handleLiveModelsChange = useCallback(
-    (data: ModelsResponse | undefined) => {
-      setLiveModels(data);
-    },
-    [],
-  );
 
   return (
     <AnimatePresence mode="wait">
@@ -623,43 +579,34 @@ const OnboardingCard = ({
                 />
               </LabelWrapper>
 
+              {selectedCatalogModel && selectedGroup && (
+                <ModelFeatures
+                  model={selectedCatalogModel}
+                  providerName={selectedGroup.group}
+                />
+              )}
+
               {catalogError && (
                 <p className="text-mmd text-destructive">
                   {catalogError.message}
                 </p>
               )}
 
-              {isCatalogProvider(modelProvider) && (
+              {modelProvider && (
                 <OnboardingCredentialFields
                   key={modelProvider}
                   provider={modelProvider}
                   catalog={catalog}
-                  isEmbedding={isEmbedding}
-                  hasEnvApiKey={
-                    modelProvider === "openai"
-                      ? currentSettings?.providers?.openai?.has_api_key === true
-                      : modelProvider === "anthropic"
-                        ? currentSettings?.providers?.anthropic?.has_api_key ===
-                          true
-                        : modelProvider === "watsonx"
-                          ? currentSettings?.providers?.watsonx?.has_api_key ===
-                            true
-                          : false
+                  savedValues={
+                    currentSettings?.providers?.custom?.[modelProvider]
+                      ?.credential_values
                   }
-                  alreadyConfigured={providerAlreadyConfigured}
-                  existingEndpoint={
-                    modelProvider === "watsonx"
-                      ? currentSettings?.providers?.watsonx?.endpoint
-                      : modelProvider === "ollama"
-                        ? currentSettings?.providers?.ollama?.endpoint
-                        : undefined
-                  }
-                  existingProjectId={
-                    currentSettings?.providers?.watsonx?.project_id
+                  savedSecretFields={
+                    currentSettings?.providers?.custom?.[modelProvider]
+                      ?.secret_fields
                   }
                   setSettings={setSettings}
                   onStatusChange={handleStatusChange}
-                  onLiveModelsChange={handleLiveModelsChange}
                 />
               )}
 

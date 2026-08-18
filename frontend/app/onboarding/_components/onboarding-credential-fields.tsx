@@ -1,21 +1,12 @@
 "use client";
 
-import { type Dispatch, type SetStateAction, useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { OnboardingVariables } from "@/app/api/mutations/useOnboardingMutation";
+import type { ModelCatalogResponse } from "@/app/api/queries/useGetModelsQuery";
 import {
-  type ModelCatalogResponse,
-  type ModelsResponse,
-  useGetAnthropicModelsQuery,
-  useGetIBMModelsQuery,
-  useGetOllamaModelsQuery,
-  useGetOpenAIModelsQuery,
-} from "@/app/api/queries/useGetModelsQuery";
-import {
-  type CatalogCredentialField,
   onboardingCredentialFields,
   type SettingsCatalogProvider,
 } from "@/app/settings/_helpers/catalog-models";
-import { LabelInput } from "@/components/label-input";
 import { LabelWrapper } from "@/components/label-wrapper";
 import { Input } from "@/components/ui/input";
 import {
@@ -25,87 +16,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { useDebouncedValue } from "@/lib/debounce";
-import { useUpdateSettings } from "../_hooks/useUpdateSettings";
-import { ModelSelector } from "./model-selector";
+import { Textarea } from "@/components/ui/textarea";
 
-const WATSONX_ENDPOINTS = [
-  "https://us-south.ml.cloud.ibm.com",
-  "https://eu-de.ml.cloud.ibm.com",
-  "https://eu-gb.ml.cloud.ibm.com",
-  "https://au-syd.ml.cloud.ibm.com",
-  "https://jp-tok.ml.cloud.ibm.com",
-  "https://ca-tor.ml.cloud.ibm.com",
-];
-
-const ENV_SWITCH_LABEL: Record<
-  Exclude<SettingsCatalogProvider, "ollama">,
-  { label: string; missing: string }
-> = {
-  openai: {
-    label: "Use environment OpenAI API key",
-    missing: "OpenAI API key not detected in the environment.",
-  },
-  anthropic: {
-    label: "Use environment Anthropic API key",
-    missing: "Anthropic API key not detected in the environment.",
-  },
-  watsonx: {
-    label: "Use environment watsonx API key",
-    missing: "watsonx API key not detected in the environment.",
-  },
-};
-
-function testIdFor(key: string): string {
-  if (key === "api_key") return "api-key";
-  if (key === "api_base") return "api-endpoint";
-  if (key === "project_id") return "project-id";
-  return key;
-}
-
-function stringOptions(field: CatalogCredentialField): string[] | undefined {
-  if (!Array.isArray(field.options)) return undefined;
-  const options = field.options.filter(
-    (entry): entry is string => typeof entry === "string",
-  );
-  return options.length > 0 ? options : undefined;
-}
-
-function initialValues(
-  provider: SettingsCatalogProvider,
-  fields: CatalogCredentialField[],
-  alreadyConfigured: boolean,
-  existingEndpoint?: string,
-  existingProjectId?: string,
-): Record<string, string> {
-  const values: Record<string, string> = {};
-  for (const field of fields) {
-    if (alreadyConfigured) {
-      values[field.key] = "";
-      continue;
-    }
-    if (field.key === "api_base" && existingEndpoint) {
-      values[field.key] = existingEndpoint;
-    } else if (field.key === "project_id" && existingProjectId) {
-      values[field.key] = existingProjectId;
-    } else if (typeof field.default_value === "string" && field.default_value) {
-      values[field.key] = field.default_value;
-    } else if (field.key === "api_base" && provider === "ollama") {
-      values[field.key] = "http://localhost:11434";
-    } else if (field.key === "api_base" && provider === "watsonx") {
-      values[field.key] = WATSONX_ENDPOINTS[0];
-    } else {
-      values[field.key] = "";
-    }
-  }
-  return values;
-}
+const SECRET_TYPES = new Set(["password", "textarea", "upload"]);
 
 export interface CredentialStatus {
   ready: boolean;
@@ -113,337 +26,110 @@ export interface CredentialStatus {
   hasError: boolean;
 }
 
-interface OnboardingCredentialFieldsProps {
+interface Props {
   provider: SettingsCatalogProvider;
   catalog: ModelCatalogResponse | undefined;
-  isEmbedding: boolean;
-  hasEnvApiKey: boolean;
-  alreadyConfigured: boolean;
-  existingEndpoint?: string;
-  existingProjectId?: string;
-  setSettings: Dispatch<SetStateAction<OnboardingVariables>>;
+  savedValues?: Record<string, string>;
+  savedSecretFields?: string[];
+  setSettings: React.Dispatch<React.SetStateAction<OnboardingVariables>>;
   onStatusChange: (status: CredentialStatus) => void;
-  onLiveModelsChange: (data: ModelsResponse | undefined) => void;
+}
+
+function optionValues(options: unknown): string[] {
+  if (!Array.isArray(options)) return [];
+  return options.flatMap((option) => {
+    if (typeof option === "string") return [option];
+    if (
+      option &&
+      typeof option === "object" &&
+      "value" in option &&
+      typeof option.value === "string"
+    ) {
+      return [option.value];
+    }
+    return [];
+  });
 }
 
 export function OnboardingCredentialFields({
   provider,
   catalog,
-  isEmbedding,
-  hasEnvApiKey,
-  alreadyConfigured,
-  existingEndpoint,
-  existingProjectId,
+  savedValues,
+  savedSecretFields = [],
   setSettings,
   onStatusChange,
-  onLiveModelsChange,
-}: OnboardingCredentialFieldsProps) {
-  const fields = onboardingCredentialFields(catalog, provider);
-  const hasApiKeyField = fields.some((field) => field.key === "api_key");
-
-  const [getFromEnv, setGetFromEnv] = useState(
-    hasApiKeyField && hasEnvApiKey && !alreadyConfigured,
+}: Props) {
+  const fields = useMemo(
+    () => onboardingCredentialFields(catalog, provider),
+    [catalog, provider],
   );
-  const [prevHasEnvApiKey, setPrevHasEnvApiKey] = useState(hasEnvApiKey);
-  if (hasEnvApiKey !== prevHasEnvApiKey) {
-    setPrevHasEnvApiKey(hasEnvApiKey);
-    if (hasApiKeyField && hasEnvApiKey && !alreadyConfigured) {
-      setGetFromEnv(true);
-    }
-  }
-
-  const [values, setValues] = useState<Record<string, string>>(() =>
-    initialValues(
-      provider,
-      fields,
-      alreadyConfigured,
-      existingEndpoint,
-      existingProjectId,
-    ),
-  );
-  const [fieldsKey, setFieldsKey] = useState(
-    fields.map((f) => f.key).join(","),
-  );
-  const nextFieldsKey = fields.map((f) => f.key).join(",");
-  if (nextFieldsKey !== fieldsKey) {
-    setFieldsKey(nextFieldsKey);
-    setValues(
-      initialValues(
-        provider,
-        fields,
-        alreadyConfigured,
-        existingEndpoint,
-        existingProjectId,
-      ),
-    );
-  }
-
-  const apiKey = values.api_key ?? "";
-  const endpoint = values.api_base ?? "";
-  const projectId = values.project_id ?? "";
-  const debouncedApiKey = useDebouncedValue(apiKey, 500);
-  const debouncedEndpoint = useDebouncedValue(endpoint, 500);
-  const debouncedProjectId = useDebouncedValue(projectId, 500);
-
-  const openaiModels = useGetOpenAIModelsQuery(
-    getFromEnv
-      ? { useEnvKey: true }
-      : debouncedApiKey
-        ? { apiKey: debouncedApiKey, useEnvKey: false }
-        : undefined,
-    {
-      enabled:
-        provider === "openai" &&
-        (getFromEnv || alreadyConfigured || debouncedApiKey !== ""),
-    },
-  );
-  const anthropicModels = useGetAnthropicModelsQuery(
-    getFromEnv
-      ? { useEnvKey: true }
-      : debouncedApiKey
-        ? { apiKey: debouncedApiKey, useEnvKey: false }
-        : undefined,
-    {
-      enabled:
-        provider === "anthropic" &&
-        (getFromEnv || alreadyConfigured || debouncedApiKey !== ""),
-    },
-  );
-  const ibmModels = useGetIBMModelsQuery(
-    {
-      endpoint: getFromEnv
-        ? existingEndpoint || debouncedEndpoint || undefined
-        : debouncedEndpoint || undefined,
-      apiKey: getFromEnv ? undefined : debouncedApiKey || undefined,
-      projectId: getFromEnv
-        ? existingProjectId || debouncedProjectId || undefined
-        : debouncedProjectId || undefined,
-      useEnvKey: getFromEnv,
-    },
-    {
-      enabled:
-        provider === "watsonx" &&
-        (getFromEnv
-          ? !!(existingEndpoint || debouncedEndpoint) &&
-            !!(existingProjectId || debouncedProjectId)
-          : (!!debouncedEndpoint &&
-              !!debouncedApiKey &&
-              !!debouncedProjectId) ||
-            alreadyConfigured),
-    },
-  );
-  const ollamaModels = useGetOllamaModelsQuery(
-    debouncedEndpoint ? { endpoint: debouncedEndpoint } : undefined,
-    {
-      enabled:
-        provider === "ollama" && (!!debouncedEndpoint || alreadyConfigured),
-    },
-  );
-
-  const active =
-    provider === "openai"
-      ? openaiModels
-      : provider === "anthropic"
-        ? anthropicModels
-        : provider === "watsonx"
-          ? ibmModels
-          : ollamaModels;
-
-  const isValidating = active.isLoading || active.isFetching;
-  const showModelsError = !!active.error && !isValidating;
-  const hasNoOllamaModels =
-    provider === "ollama" &&
-    !!ollamaModels.data &&
-    !ollamaModels.data.language_models?.length &&
-    !ollamaModels.data.embedding_models?.length;
-
-  useEffect(() => {
-    onLiveModelsChange(active.data);
-  }, [active.data, onLiveModelsChange]);
-
-  useEffect(() => {
-    const keyReady =
-      !hasApiKeyField || getFromEnv || alreadyConfigured || apiKey.length > 0;
-    const endpointReady =
-      provider !== "ollama" && provider !== "watsonx"
-        ? true
-        : alreadyConfigured || getFromEnv || endpoint.length > 0;
-    const projectReady =
-      provider !== "watsonx" ||
-      alreadyConfigured ||
-      getFromEnv ||
-      projectId.length > 0;
-    const filled = keyReady && endpointReady && projectReady;
-    onStatusChange({
-      ready: filled && (alreadyConfigured || !showModelsError),
-      isValidating,
-      hasError: showModelsError,
-    });
-  }, [
-    alreadyConfigured,
-    apiKey,
-    endpoint,
-    getFromEnv,
-    hasApiKeyField,
-    isValidating,
-    onStatusChange,
-    projectId,
-    provider,
-    showModelsError,
-  ]);
-
-  useUpdateSettings(
-    provider,
-    {
-      apiKey: getFromEnv || alreadyConfigured ? undefined : apiKey,
-      clearApiKey: getFromEnv,
-      endpoint:
-        getFromEnv && provider === "watsonx"
-          ? existingEndpoint || endpoint
-          : endpoint,
-      projectId:
-        getFromEnv && provider === "watsonx"
-          ? existingProjectId || projectId
-          : projectId,
-    },
-    setSettings,
-    isEmbedding,
-  );
-
-  const setField = (key: string, value: string) => {
-    setValues((prev) => ({ ...prev, [key]: value }));
-  };
-
-  const handleGetFromEnvChange = (fromEnv: boolean) => {
-    setGetFromEnv(fromEnv);
-    if (fromEnv) {
-      setField("api_key", "");
-      if (provider === "watsonx") {
-        setField("api_base", existingEndpoint || WATSONX_ENDPOINTS[0]);
-        setField("project_id", existingProjectId || "");
+  const [values, setValues] = useState<Record<string, string>>(() => {
+    const initial = { ...(savedValues ?? {}) };
+    for (const field of fields) {
+      if (
+        initial[field.key] === undefined &&
+        typeof field.default_value === "string"
+      ) {
+        initial[field.key] = field.default_value;
       }
     }
-  };
+    return initial;
+  });
+  const savedSecrets = useMemo(
+    () => new Set(savedSecretFields),
+    [savedSecretFields],
+  );
 
-  const envCopy =
-    provider === "ollama" ? undefined : ENV_SWITCH_LABEL[provider];
-  const locked = alreadyConfigured || getFromEnv;
+  useEffect(() => {
+    setSettings((previous) => ({
+      ...previous,
+      provider_credentials: {
+        ...(previous.provider_credentials ?? {}),
+        [provider]: Object.fromEntries(
+          Object.entries(values).filter(([, value]) => value.trim()),
+        ),
+      },
+    }));
+  }, [provider, setSettings, values]);
+
+  useEffect(() => {
+    const ready = fields
+      .filter((field) => field.required)
+      .every(
+        (field) =>
+          Boolean(values[field.key]?.trim()) || savedSecrets.has(field.key),
+      );
+    onStatusChange({ ready, isValidating: false, hasError: false });
+  }, [fields, onStatusChange, savedSecrets, values]);
 
   return (
-    <div className="space-y-5">
-      {hasApiKeyField && !alreadyConfigured && envCopy && (
-        <LabelWrapper
-          label={envCopy.label}
-          id="get-api-key"
-          description="Reuse the key from your environment config. Turn off to enter a different key."
-          flex
-        >
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div>
-                <Switch
-                  checked={getFromEnv}
-                  data-testid="get-from-env-switch"
-                  onCheckedChange={handleGetFromEnvChange}
-                  disabled={!hasEnvApiKey}
-                />
-              </div>
-            </TooltipTrigger>
-            {!hasEnvApiKey && (
-              <TooltipContent>{envCopy.missing}</TooltipContent>
-            )}
-          </Tooltip>
-        </LabelWrapper>
-      )}
-
+    <div className="grid gap-4 sm:grid-cols-2">
       {fields.map((field) => {
-        if (field.key === "api_key" && getFromEnv && !alreadyConfigured) {
-          return null;
-        }
-        const id = testIdFor(field.key);
+        const id = `credential-${field.key}`;
+        const options = optionValues(field.options);
         const value = values[field.key] ?? "";
-        const fieldLocked =
-          field.key === "api_key"
-            ? alreadyConfigured
-            : locked && field.key !== "api_key";
-        const showKeyError = field.key === "api_key" && showModelsError;
-        const helper = field.tooltip ?? "";
-        const selectOptions =
-          field.key === "api_base" && provider === "watsonx"
-            ? WATSONX_ENDPOINTS
-            : stringOptions(field);
+        const setValue = (next: string) =>
+          setValues((previous) => ({ ...previous, [field.key]: next }));
+        const helper = field.tooltip || undefined;
+        const reusingSecret = savedSecrets.has(field.key) && !value;
 
-        if (field.key === "api_base" && provider === "watsonx") {
-          return (
-            <LabelWrapper
-              key={field.key}
-              label={field.label}
-              helperText={helper || "Base URL of the API"}
-              id={id}
-              required={field.required && !alreadyConfigured}
-            >
-              <div className="space-y-1">
-                <ModelSelector
-                  options={
-                    alreadyConfigured
-                      ? []
-                      : WATSONX_ENDPOINTS.map((url, index) => ({
-                          value: url,
-                          label: url,
-                          default: index === 0,
-                        }))
-                  }
-                  value={value}
-                  custom
-                  data-testid={id}
-                  onValueChange={
-                    fieldLocked ? () => {} : (next) => setField(field.key, next)
-                  }
-                  disabled={fieldLocked}
-                  searchPlaceholder="Search endpoint..."
-                  noOptionsPlaceholder={
-                    alreadyConfigured
-                      ? "https://•••••••••••••••••••••••••••••••••••••••••"
-                      : "No endpoints available"
-                  }
-                  placeholder="Select endpoint..."
-                />
-                {alreadyConfigured && (
-                  <p className="text-mmd text-muted-foreground">
-                    Reusing endpoint from model provider selection.
-                  </p>
-                )}
-                {getFromEnv && !alreadyConfigured && (
-                  <p className="text-mmd text-muted-foreground">
-                    Reusing endpoint from environment config.
-                  </p>
-                )}
-              </div>
-            </LabelWrapper>
-          );
-        }
-
-        if (selectOptions && field.field_type === "select") {
+        if (field.field_type === "select" && options.length > 0) {
           return (
             <LabelWrapper
               key={field.key}
               id={id}
               label={field.label}
-              helperText={helper || undefined}
-              required={field.required && !alreadyConfigured}
+              helperText={helper}
+              required={field.required}
             >
-              <Select
-                value={value}
-                onValueChange={(next) => setField(field.key, next)}
-                disabled={fieldLocked}
-              >
+              <Select value={value} onValueChange={setValue}>
                 <SelectTrigger id={id} data-testid={id}>
                   <SelectValue
                     placeholder={field.placeholder ?? `Choose ${field.label}`}
                   />
                 </SelectTrigger>
                 <SelectContent>
-                  {selectOptions.map((option) => (
+                  {options.map((option) => (
                     <SelectItem key={option} value={option}>
                       {option}
                     </SelectItem>
@@ -454,123 +140,67 @@ export function OnboardingCredentialFields({
           );
         }
 
-        if (field.field_type === "password" || field.key === "api_key") {
+        if (field.field_type === "textarea" || field.field_type === "upload") {
           return (
-            <div key={field.key} className="space-y-1">
-              <LabelInput
-                label={field.label}
-                helperText={helper || "API key"}
-                className={showKeyError ? "!border-destructive" : ""}
-                id={id}
-                type="password"
-                required={field.required && !alreadyConfigured}
-                placeholder={
-                  alreadyConfigured
-                    ? "•••••••••••••••••••••••••••••••••••••••••"
-                    : (field.placeholder ?? undefined)
-                }
-                value={value}
-                onChange={(event) => setField(field.key, event.target.value)}
-                disabled={false}
-              />
-              {alreadyConfigured && (
-                <p className="text-mmd text-muted-foreground">
-                  Existing key detected. You can reuse it or enter a new one.
-                </p>
-              )}
-              {field.key === "api_key" && isValidating && (
-                <p className="text-mmd text-muted-foreground">
-                  Validating API key...
-                </p>
-              )}
-              {showKeyError && (
-                <p className="text-mmd text-destructive">
-                  {active.error?.message}
-                </p>
-              )}
-            </div>
+            <LabelWrapper
+              key={field.key}
+              id={id}
+              label={field.label}
+              helperText={helper}
+              required={field.required}
+            >
+              <div className="space-y-1">
+                <Textarea
+                  id={id}
+                  data-testid={id}
+                  value={value}
+                  placeholder={
+                    reusingSecret
+                      ? "Configured secret (leave blank to reuse)"
+                      : (field.placeholder ?? undefined)
+                  }
+                  onChange={(event) => setValue(event.target.value)}
+                />
+                {reusingSecret && (
+                  <p className="text-mmd text-muted-foreground">
+                    Leave blank to reuse the configured secret.
+                  </p>
+                )}
+              </div>
+            </LabelWrapper>
           );
         }
 
         return (
-          <div key={field.key} className="space-y-1">
-            {helper ? (
-              <LabelInput
-                label={field.label}
-                helperText={helper}
+          <LabelWrapper
+            key={field.key}
+            id={id}
+            label={field.label}
+            helperText={helper}
+            required={field.required}
+          >
+            <div className="space-y-1">
+              <Input
                 id={id}
-                required={field.required && !alreadyConfigured}
+                data-testid={id}
+                type={SECRET_TYPES.has(field.field_type) ? "password" : "text"}
+                value={value}
                 placeholder={
-                  alreadyConfigured
-                    ? "••••••••••••••••••••••••"
+                  reusingSecret
+                    ? "Configured secret (leave blank to reuse)"
                     : (field.placeholder ?? undefined)
                 }
-                value={value}
-                onChange={(event) => setField(field.key, event.target.value)}
-                disabled={fieldLocked}
+                onChange={(event) => setValue(event.target.value)}
               />
-            ) : (
-              <LabelWrapper
-                label={field.label}
-                id={id}
-                required={field.required && !alreadyConfigured}
-              >
-                <Input
-                  id={id}
-                  data-testid={id}
-                  value={value}
-                  placeholder={field.placeholder ?? undefined}
-                  onChange={(event) => setField(field.key, event.target.value)}
-                  disabled={fieldLocked}
-                />
-              </LabelWrapper>
-            )}
-            {alreadyConfigured && (
-              <p className="text-mmd text-muted-foreground">
-                Reusing this value from model provider selection.
-              </p>
-            )}
-            {getFromEnv && !alreadyConfigured && field.key !== "api_key" && (
-              <p className="text-mmd text-muted-foreground">
-                Reusing this value from environment config.
-              </p>
-            )}
-            {field.key === "api_base" &&
-              provider === "ollama" &&
-              isValidating && (
+              {reusingSecret && (
                 <p className="text-mmd text-muted-foreground">
-                  Connecting to Ollama server...
+                  Leave blank to reuse the configured secret.
                 </p>
               )}
-            {field.key === "api_base" &&
-              provider === "ollama" &&
-              showModelsError && (
-                <p className="text-mmd text-accent-amber-foreground">
-                  {active.error?.message}
-                </p>
-              )}
-            {field.key === "api_base" &&
-              provider === "ollama" &&
-              hasNoOllamaModels && (
-                <p className="text-mmd text-accent-amber-foreground">
-                  No models found. Install embedding and agent models on your
-                  Ollama server.
-                </p>
-              )}
-          </div>
+            </div>
+          </LabelWrapper>
         );
       })}
-
-      {getFromEnv && isValidating && provider !== "ollama" && (
-        <p className="text-mmd text-muted-foreground">
-          Validating configuration...
-        </p>
-      )}
-      {getFromEnv && showModelsError && (
-        <p className="text-mmd text-accent-amber-foreground">
-          {active.error?.message}
-        </p>
-      )}
     </div>
   );
 }

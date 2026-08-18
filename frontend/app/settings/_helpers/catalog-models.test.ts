@@ -91,15 +91,15 @@ describe("groupedCatalogOptions", () => {
     assert.equal(groups[0].options[0].provider, "openai");
   });
 
-  it("does not surface LiteLLM providers OpenRAG cannot credential", () => {
+  it("supports arbitrary configured LiteLLM providers", () => {
     const groups = groupedCatalogOptions(
       catalog,
-      { openai: true, anthropic: true },
+      { openai: true, anthropic: true, gemini: true },
       "language",
     );
     assert.deepEqual(
       groups.map((g) => g.key),
-      ["openai", "anthropic"],
+      ["openai", "anthropic", "gemini"],
     );
   });
 
@@ -144,37 +144,32 @@ describe("groupedCatalogOptions", () => {
 });
 
 describe("onboardingCatalogConfigured", () => {
-  it("hides Anthropic on the embedding step and Ollama in cloud", () => {
-    assert.deepEqual(onboardingCatalogConfigured(true, true), {
-      openai: true,
-      anthropic: false,
-      watsonx: true,
-      ollama: false,
-    });
+  it("does not filter the full onboarding catalogue", () => {
+    assert.equal(onboardingCatalogConfigured(true, true), undefined);
   });
 });
 
 describe("onboardingCredentialFields", () => {
-  it("keeps only persistable keys and marks them required", () => {
+  it("returns the complete provider field schema", () => {
     const fields = onboardingCredentialFields(catalog, "openai");
     assert.deepEqual(
       fields.map((field) => field.key),
-      ["api_key"],
+      ["api_base", "organization", "api_key"],
     );
-    assert.equal(fields[0].required, true);
+    assert.equal(fields[2].required, true);
   });
 
-  it("overrides LiteLLM optional flags for keys OpenRAG needs", () => {
+  it("preserves LiteLLM required flags", () => {
     const fields = onboardingCredentialFields(catalog, "anthropic");
     assert.equal(fields[0].key, "api_key");
-    assert.equal(fields[0].required, true);
+    assert.equal(fields[0].required, false);
   });
 
-  it("falls back when the catalogue has no usable fields", () => {
+  it("falls back to generic key and base fields for an unknown provider", () => {
     const fields = onboardingCredentialFields(catalog, "ollama");
     assert.deepEqual(
       fields.map((field) => field.key),
-      ["api_base"],
+      ["api_key", "api_base"],
     );
   });
 });

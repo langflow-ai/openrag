@@ -8,6 +8,7 @@ import IBMLogo from "@/components/icons/ibm-logo";
 import OllamaLogo from "@/components/icons/ollama-logo";
 import OpenAILogo from "@/components/icons/openai-logo";
 import { useProviderHealth } from "@/components/provider-health-banner";
+import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import {
@@ -16,6 +17,7 @@ import {
   type ModelProvider,
 } from "../_helpers/model-helpers";
 import AnthropicSettingsDialog from "./anthropic-settings-dialog";
+import { GenericProviderDialog } from "./generic-provider-dialog";
 import ModelProviderCard from "./model-provider-card";
 import OllamaSettingsDialog from "./ollama-settings-dialog";
 import OpenAISettingsDialog from "./openai-settings-dialog";
@@ -34,6 +36,8 @@ export const ModelProviders = () => {
   const { health } = useProviderHealth();
 
   const [dialogOpen, setDialogOpen] = useState<ModelProvider | undefined>();
+  const [genericDialogOpen, setGenericDialogOpen] = useState(false);
+  const [genericProvider, setGenericProvider] = useState<string>();
 
   const allProviderKeys = useMemo(() => {
     return isCloudBrand
@@ -131,6 +135,19 @@ export const ModelProviders = () => {
 
   return (
     <>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-mmd text-muted-foreground">
+          Configure any provider supported by LiteLLM.
+        </p>
+        <Button
+          onClick={() => {
+            setGenericProvider(undefined);
+            setGenericDialogOpen(true);
+          }}
+        >
+          Configure provider
+        </Button>
+      </div>
       <div className="grid gap-6 xs:grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
         {allProviderKeys.map((providerKey) => {
           const isLlmProvider = providerKey === currentLlmProvider;
@@ -149,7 +166,38 @@ export const ModelProviders = () => {
             />
           );
         })}
+        {Object.entries(settings.providers?.custom ?? {})
+          .filter(
+            ([provider, value]) =>
+              value.configured &&
+              !["openai", "anthropic", "ollama", "watsonx"].includes(provider),
+          )
+          .map(([provider]) => (
+            <div
+              key={provider}
+              className="flex min-h-40 flex-col justify-between border p-4"
+            >
+              <div>
+                <p className="font-medium">{provider}</p>
+                <p className="text-mmd text-muted-foreground">Configured</p>
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setGenericProvider(provider);
+                  setGenericDialogOpen(true);
+                }}
+              >
+                Edit setup
+              </Button>
+            </div>
+          ))}
       </div>
+      <GenericProviderDialog
+        open={genericDialogOpen}
+        onOpenChange={setGenericDialogOpen}
+        initialProvider={genericProvider}
+      />
       <AnthropicSettingsDialog
         open={dialogOpen === "anthropic"}
         setOpen={handleCloseDialog}

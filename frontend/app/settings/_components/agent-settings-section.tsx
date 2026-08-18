@@ -25,6 +25,7 @@ import { DEFAULT_AGENT_SETTINGS, UI_CONSTANTS } from "@/lib/constants";
 import { resolveLangflowEditUrl } from "@/lib/url-utils";
 import { cn } from "@/lib/utils";
 import { useUpdateSettingsMutation } from "../../api/mutations/useUpdateSettingsMutation";
+import { ModelFeatures } from "../../onboarding/_components/model-features";
 import { ModelSelector } from "../../onboarding/_components/model-selector";
 import { groupedCatalogOptions } from "../_helpers/catalog-models";
 import { getModelLogo } from "../_helpers/model-helpers";
@@ -52,30 +53,32 @@ export function AgentSettingsSection() {
     enabled: isAuthenticated || isNoAuthMode,
   });
 
+  const configuredProviders = useMemo(
+    () => ({
+      openai: settings.providers?.openai?.configured === true,
+      anthropic: settings.providers?.anthropic?.configured === true,
+      ollama: settings.providers?.ollama?.configured === true,
+      watsonx: settings.providers?.watsonx?.configured === true,
+      ...Object.fromEntries(
+        Object.entries(settings.providers?.custom ?? {}).map(
+          ([provider, value]) => [provider, value.configured === true],
+        ),
+      ),
+    }),
+    [settings.providers],
+  );
+
   const groupedLlmModels = useMemo(
     () =>
-      groupedCatalogOptions(
-        catalog,
-        {
-          openai: settings.providers?.openai?.configured === true,
-          anthropic: settings.providers?.anthropic?.configured === true,
-          ollama: settings.providers?.ollama?.configured === true,
-          watsonx: settings.providers?.watsonx?.configured === true,
-        },
-        "language",
-      ).map((group) => ({
-        group: group.group,
-        provider: group.key,
-        icon: getModelLogo("", group.key),
-        options: group.options,
-      })),
-    [
-      catalog,
-      settings.providers?.openai?.configured,
-      settings.providers?.anthropic?.configured,
-      settings.providers?.ollama?.configured,
-      settings.providers?.watsonx?.configured,
-    ],
+      groupedCatalogOptions(catalog, configuredProviders, "language").map(
+        (group) => ({
+          group: group.group,
+          provider: group.key,
+          icon: getModelLogo("", group.key),
+          options: group.options,
+        }),
+      ),
+    [catalog, configuredProviders],
   );
 
   const isLoadingAnyLlmModels = catalogLoading;
@@ -92,6 +95,12 @@ export function AgentSettingsSection() {
   const allLlmOptions = useMemo(
     () => groupedLlmModels.flatMap((g) => g.options),
     [groupedLlmModels],
+  );
+  const selectedLlm = allLlmOptions.find(
+    (option) => option.value === settings.agent?.llm_model,
+  );
+  const selectedLlmGroup = groupedLlmModels.find((group) =>
+    group.options.some((option) => option.value === settings.agent?.llm_model),
   );
 
   const handleModelChange = useCallback(
@@ -292,6 +301,14 @@ export function AgentSettingsSection() {
                 defaultOpen={openLlmSelector}
               />
             </LabelWrapper>
+            {selectedLlm?.model && selectedLlmGroup && (
+              <div className="mt-3">
+                <ModelFeatures
+                  model={selectedLlm.model}
+                  providerName={selectedLlmGroup.group}
+                />
+              </div>
+            )}
           </div>
           <div className="space-y-2">
             <LabelWrapper label="Agent Instructions" id="system-prompt">

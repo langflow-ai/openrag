@@ -1,10 +1,17 @@
 """LLM gateway: route OpenAI-shaped requests through LiteLLM using OpenRAG config."""
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
 
 import pytest
 
+from config.config_manager import (
+    AnthropicConfig,
+    GenericProviderConfig,
+    OllamaConfig,
+    OpenAIConfig,
+    ProvidersConfig,
+    WatsonXConfig,
+)
 from services.llm_gateway import (
     LlmGatewayError,
     chat_completions,
@@ -19,7 +26,9 @@ def _config(**overrides):
     providers = SimpleNamespace(
         openai=SimpleNamespace(api_key="sk-openai", configured=True),
         anthropic=SimpleNamespace(api_key="sk-ant", configured=True),
-        ollama=SimpleNamespace(endpoint="http://localhost:11434", resolved_endpoint="", configured=True),
+        ollama=SimpleNamespace(
+            endpoint="http://localhost:11434", resolved_endpoint="", configured=True
+        ),
         watsonx=SimpleNamespace(
             api_key="wx-key",
             endpoint="https://us-south.ml.cloud.ibm.com",
@@ -82,6 +91,30 @@ def test_provider_credentials_rejects_missing_openai_key():
     with pytest.raises(LlmGatewayError) as exc:
         provider_credentials("openai", cfg)
     assert "not configured" in exc.value.message
+
+
+def test_provider_credentials_supports_arbitrary_litellm_provider():
+    providers = ProvidersConfig(
+        openai=OpenAIConfig(),
+        anthropic=AnthropicConfig(),
+        watsonx=WatsonXConfig(),
+        ollama=OllamaConfig(),
+        custom={
+            "gemini": GenericProviderConfig(
+                credentials={
+                    "api_key": "gemini-secret",
+                    "vertex_project": "project-1",
+                },
+                configured=True,
+            )
+        },
+    )
+    cfg = SimpleNamespace(providers=providers)
+
+    assert provider_credentials("gemini", cfg) == {
+        "api_key": "gemini-secret",
+        "vertex_project": "project-1",
+    }
 
 
 @pytest.mark.asyncio

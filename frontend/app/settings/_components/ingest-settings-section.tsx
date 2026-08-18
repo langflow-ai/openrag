@@ -40,6 +40,7 @@ import { DEFAULT_KNOWLEDGE_SETTINGS } from "@/lib/constants";
 import { resolveLangflowEditUrl } from "@/lib/url-utils";
 import { cn } from "@/lib/utils";
 import { useUpdateSettingsMutation } from "../../api/mutations/useUpdateSettingsMutation";
+import { ModelFeatures } from "../../onboarding/_components/model-features";
 import {
   type GroupedModelOption,
   ModelSelector,
@@ -103,13 +104,13 @@ export function IngestSettingsSection() {
       anthropic: settings.providers?.anthropic?.configured === true,
       ollama: settings.providers?.ollama?.configured === true,
       watsonx: settings.providers?.watsonx?.configured === true,
+      ...Object.fromEntries(
+        Object.entries(settings.providers?.custom ?? {}).map(
+          ([provider, value]) => [provider, value.configured === true],
+        ),
+      ),
     }),
-    [
-      settings.providers?.openai?.configured,
-      settings.providers?.anthropic?.configured,
-      settings.providers?.ollama?.configured,
-      settings.providers?.watsonx?.configured,
-    ],
+    [settings.providers],
   );
 
   const groupedEmbeddingModels = useMemo(
@@ -174,6 +175,14 @@ export function IngestSettingsSection() {
   const allEmbeddingOptions = useMemo(
     () => groupedEmbeddingModels.flatMap((g) => g.options),
     [groupedEmbeddingModels],
+  );
+  const selectedEmbedding = allEmbeddingOptions.find(
+    (option) => option.value === settings.knowledge?.embedding_model,
+  );
+  const selectedEmbeddingGroup = groupedEmbeddingModels.find((group) =>
+    group.options.some(
+      (option) => option.value === settings.knowledge?.embedding_model,
+    ),
   );
 
   const handleEmbeddingModelChange = useCallback(
@@ -308,14 +317,6 @@ export function IngestSettingsSection() {
               : settings.providers.openai?.configured === true;
 
   const providerWarning = pictureDescriptions && providerConfigured === false;
-  const providerLabel =
-    vlmProvider === "watsonx"
-      ? "IBM watsonx.ai"
-      : vlmProvider === "anthropic"
-        ? "Anthropic"
-        : vlmProvider === "ollama"
-          ? "Ollama"
-          : "OpenAI";
 
   const handleChunkSizeChange = (value: string) => {
     setChunkSize(Math.max(0, Number.parseInt(value, 10) || 0));
@@ -553,6 +554,14 @@ export function IngestSettingsSection() {
                 onValueChange={handleEmbeddingModelChange}
               />
             </LabelWrapper>
+            {selectedEmbedding?.model && selectedEmbeddingGroup && (
+              <div className="mt-3">
+                <ModelFeatures
+                  model={selectedEmbedding.model}
+                  providerName={selectedEmbeddingGroup.group}
+                />
+              </div>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">

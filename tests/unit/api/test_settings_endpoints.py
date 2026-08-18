@@ -9,7 +9,12 @@ import pytest
 from fastapi import HTTPException
 
 from api.settings import DoclingPresetBody, update_docling_preset
-from api.settings.models import AssistantMessage, OnboardingFunctionCall
+from api.settings.models import (
+    AssistantMessage,
+    OnboardingBody,
+    OnboardingFunctionCall,
+    SettingsUpdateBody,
+)
 from session_manager import User
 
 
@@ -93,3 +98,27 @@ def test_assistant_message_citation_serialization():
     assert result.metadata == {"custom_key": "val"}
     assert result.data is not None
     assert result.data.text == "Extracted chunk text"
+
+
+def test_settings_models_accept_arbitrary_provider_credentials():
+    credentials = {
+        "gemini": {
+            "api_key": "secret",
+            "vertex_project": "project-1",
+            "vertex_location": "us-central1",
+        }
+    }
+
+    settings = SettingsUpdateBody(
+        llm_provider="gemini",
+        llm_model="gemini-2.5-pro",
+        provider_credentials=credentials,
+    )
+    onboarding = OnboardingBody(
+        llm_provider="gemini",
+        llm_model="gemini-2.5-pro",
+        provider_credentials=credentials,
+    )
+
+    assert settings.provider_credentials == credentials
+    assert onboarding.provider_credentials == credentials
