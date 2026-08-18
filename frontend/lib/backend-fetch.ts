@@ -36,7 +36,7 @@ function buildAgentInit(): Record<string, unknown> | undefined {
     // production dependency on Node 20.  If neither is available we log a hint
     // and fall back to the default dispatcher (no custom CA).
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    let AgentClass: (typeof import("undici"))["Agent"] | undefined;
+    let AgentClass: typeof import("undici")["Agent"] | undefined;
     for (const id of ["node:undici", "undici"]) {
       try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
