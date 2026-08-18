@@ -1,15 +1,11 @@
 name: Publish Docker Images to GHCR
 
-# What: publish every OpenRAG image for AMD64 and ARM64 after main CI succeeds.
-# Why: production runs on ARM64 while developers and CI also need AMD64 images.
-# How: reuse the existing manual publisher and add a gated workflow_run trigger.
-# Compatibility: manual dispatch remains available as a recovery path.
-# KISS: one publisher, one immutable commit-SHA tag, and no GitHub/PyPI release.
+# What: publish every OpenRAG image for AMD64 and ARM64 on demand.
+# Why: production runs on ARM64 while developers also need AMD64 images.
+# How: use the existing workflow_dispatch publisher with GHCR and Buildx.
+# Compatibility: callers can still override the tag and target platforms.
+# KISS: one manual publisher and no GitHub/PyPI release.
 on:
-  workflow_run:
-    workflows: ["CI Tests"]
-    types: [completed]
-    branches: [main]
   workflow_dispatch:
     inputs:
       tag:
@@ -25,22 +21,15 @@ permissions:
   packages: write
 
 concurrency:
-  group: publish-ghcr-${{ github.event.workflow_run.head_sha || github.sha }}
+  group: publish-ghcr-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   build-and-publish:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -63,16 +52,11 @@ jobs:
       - name: Determine build parameters
         id: vars
         run: |
-          if [ "${{ github.event_name }}" = "workflow_run" ]; then
-            RAW_TAG="${{ github.event.workflow_run.head_sha }}"
-            PLATFORMS="linux/amd64,linux/arm64"
-          else
-            RAW_TAG="${{ github.event.inputs.tag }}"
-            if [ -z "$RAW_TAG" ]; then
-              RAW_TAG="${{ github.sha }}"
-            fi
-            PLATFORMS="${{ github.event.inputs.platforms }}"
+          RAW_TAG="${{ github.event.inputs.tag }}"
+          if [ -z "$RAW_TAG" ]; then
+            RAW_TAG="${{ github.sha }}"
           fi
+          PLATFORMS="${{ github.event.inputs.platforms }}"
 
           SANITIZED_TAG=$(echo "$RAW_TAG" | sed 's/[^A-Za-z0-9_.-]/-/g')
           SANITIZED_TAG=$(echo "$SANITIZED_TAG" | sed 's/^[^A-Za-z0-9]*//')
