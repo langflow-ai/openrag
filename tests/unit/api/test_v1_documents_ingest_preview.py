@@ -25,6 +25,7 @@ async def test_v1_ingest_forwards_preview_as_string():
             tweaks=None,
             replace_duplicates="true",
             create_filter="false",
+            source_url=["https://files.example.com/report.pdf"],
             document_service=MagicMock(),
             langflow_file_service=MagicMock(),
             session_manager=MagicMock(),
@@ -36,3 +37,7 @@ async def test_v1_ingest_forwards_preview_as_string():
     # Must be a real string so upload_ingest_router's preview.lower() works.
     assert isinstance(call_kwargs["preview"], str)
     assert call_kwargs["preview"] == "false"
+    assert call_kwargs["source_url"] == ["https://files.example.com/report.pdf"]
+    # Public API uploads do not silently consume local archive storage. Remote
+    # With no per-request override, the workspace Archiving setting applies.
+    assert call_kwargs["archive_source"] is None

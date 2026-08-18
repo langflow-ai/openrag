@@ -24,6 +24,7 @@ async def test_langflow_processor_threads_document_id_for_index_proof(tmp_path):
         session_manager=session_manager,
         owner_user_id="user-1",
         jwt_token="Bearer user-token",
+        source_urls={str(tmp_path / "report.pdf"): "https://files.example.com/report.pdf"},
     )
     processor.check_filename_exists = AsyncMock(side_effect=[False, True])
 
@@ -41,3 +42,4 @@ async def test_langflow_processor_threads_document_id_for_index_proof(tmp_path):
     assert file_task.document_id == expected_id
     call_kwargs = langflow_file_service.upload_and_ingest_file.await_args.kwargs
     assert call_kwargs["document_id"] == expected_id
+    assert call_kwargs["source_url"] == "https://files.example.com/report.pdf"

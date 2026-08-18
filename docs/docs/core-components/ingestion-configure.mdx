@@ -142,6 +142,40 @@ The default path for local uploads is `~/.openrag/documents`.
 This is mounted to the `/app/openrag-documents/` directory inside the OpenRAG container.
 Files added to the host or container directory are visible in both locations.
 
+On self-hosted deployments running without user authentication, select
+**Add Knowledge > Ingestion folder** to ingest a file or directory already
+present in this location. Trusted API-key clients that write to the same shared
+volume can call `POST /api/v1/documents/ingest-path`; the requested path is
+restricted to `OPENRAG_DOCUMENTS_PATH`.
+
+Local path ingestion is disabled in multi-user mode, including through
+`/api/v1/documents/ingest-path`. This prevents one user from naming a
+server-local file that belongs to another user. Use the authenticated multipart
+`POST /api/v1/documents/ingest` endpoint instead.
+
+## Retain downloadable original files
+
+Open **Settings > Archiving** and enable **Keep original source files** to
+retain each successfully indexed local upload. OpenRAG moves the original into
+the displayed archive directory, excludes that directory from later folder
+ingestion, and stores an authenticated download URL in each indexed chunk's
+`source_url`. Sources that already came from the ingestion folder are restored
+there if processing fails.
+
+The same setting applies to browser uploads from **Add Knowledge**. The
+Archiving page shows the ingestion path, archive path, retained size, filesystem
+capacity, and free space.
+
+Local archiving is available only on deployments running without user
+authentication. In multi-user mode, **Settings > Archiving** reports that local
+storage is unavailable and OpenRAG never retains uploaded bytes as a local
+original. Authenticated multipart uploads remain available with or without a
+`source_url`.
+
+For an authoritative file hosted elsewhere, API clients can instead submit an
+absolute HTTP(S) `source_url` with `archive_source=false`. OpenRAG keeps the
+remote URL in search and chat citations without copying the remote file.
+
 To change this location, modify either of the following, and then [restart the OpenRAG services](/manage-services):
 
 * The **Documents Paths** setting in the [**Reconfigure** terminal option](/install-uvx#setup)

@@ -15,11 +15,13 @@ class TestSettings:
 
     @pytest.mark.asyncio
     async def test_get_settings(self, client):
-        """Settings response must include agent and knowledge sections."""
+        """Settings response must include agent, knowledge, and archiving sections."""
         settings = await client.settings.get()
 
         assert settings.agent is not None
         assert settings.knowledge is not None
+        assert isinstance(settings.archiving.available, bool)
+        assert isinstance(settings.archiving.enabled, bool)
 
         knowledge = settings.knowledge
         assert knowledge.chunk_overlap is None or isinstance(knowledge.chunk_overlap, int)

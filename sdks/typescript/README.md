@@ -177,6 +177,20 @@ const result = await client.documents.ingest({
 console.log(`Status: ${result.status}`);
 console.log(`Successful files: ${result.successful_files}`);
 
+// Keep a link to the authoritative file for search/chat citations
+const linkedResult = await client.documents.ingest({
+  filePath: "./report.pdf",
+  sourceUrl: "https://files.example.com/reports/report.pdf",
+  archiveSource: false,
+});
+
+// Or retain the uploaded bytes in OpenRAG's authenticated local archive
+// (available only on deployments without user authentication)
+const archivedResult = await client.documents.ingest({
+  filePath: "./report.pdf",
+  archiveSource: true,
+});
+
 // Ingest without waiting (returns immediately with task_id)
 const result = await client.documents.ingest({
   filePath: "./report.pdf",

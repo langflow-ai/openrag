@@ -22,6 +22,10 @@ export interface IngestOptions {
   file?: File | Blob;
   /** Filename when providing file/blob. */
   filename?: string;
+  /** Absolute HTTP(S) URL for the authoritative source file. */
+  sourceUrl?: string;
+  /** Override local retention. When omitted, the workspace setting applies. */
+  archiveSource?: boolean;
   /** If true, poll until ingestion completes. Default: true. */
   wait?: boolean;
   /** Seconds between status checks when waiting. Default: 1. */
@@ -66,6 +70,13 @@ export class DocumentsClient {
       formData.append("file", options.file, options.filename);
     } else {
       throw new Error("Either filePath or file must be provided");
+    }
+
+    if (options.sourceUrl) {
+      formData.append("source_url", options.sourceUrl);
+    }
+    if (options.archiveSource !== undefined) {
+      formData.append("archive_source", String(options.archiveSource));
     }
 
     const response = await this.client._request(

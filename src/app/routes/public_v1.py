@@ -53,6 +53,12 @@ def register_public_v1_routes(app: FastAPI):
         methods=["POST"],
         tags=["public"],
     )
+    app.add_api_route(
+        "/v1/documents/ingest-path",
+        v1_documents.ingest_path_endpoint,
+        methods=["POST"],
+        tags=["public"],
+    )
     # Literal sub-paths must be registered before the parameterised /{task_id}
     # so Starlette does not absorb "enhanced" as a task_id value.
     app.add_api_route(

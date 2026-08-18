@@ -22,6 +22,7 @@ export interface UpdateSettingsRequest {
   disable_ingest_with_langflow?: boolean;
   embedding_model?: string;
   embedding_provider?: string;
+  archive_sources_enabled?: boolean;
 
   // Docling VLM pipeline settings
   vlm_enabled?: boolean;

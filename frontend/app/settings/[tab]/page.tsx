@@ -8,6 +8,7 @@ import {
 } from "@/lib/brand";
 import { fetchFromBackend } from "@/lib/fetch-server";
 import { AgentSettingsSection } from "../_components/agent-settings-section";
+import { ArchivingSettingsSection } from "../_components/archiving-settings-section";
 import { ApiKeysSection } from "../_components/api-keys-section";
 import { ConnectorAccessSection } from "../_components/connector-access-section";
 import { ConnectorsTab } from "../_components/connectors-tab";
@@ -20,6 +21,7 @@ const VALID_TABS = [
   "connectors",
   "providers",
   "langflow",
+  "archiving",
   "api-keys",
   "connector-access",
   "ingest-preview",
@@ -105,7 +107,7 @@ export default async function SettingsTabPage({
     redirect("/settings/connectors");
   }
   if (
-    tab === "langflow" &&
+    (tab === "langflow" || tab === "archiving") &&
     !canShowRbacGatedSettingsTab("config:write", tabAccess)
   ) {
     redirect("/settings/connectors");
@@ -151,6 +153,7 @@ export default async function SettingsTabPage({
           <IngestSettingsSection />
         </div>
       )}
+      {tab === "archiving" && <ArchivingSettingsSection />}
       {tab === "api-keys" && <ApiKeysSection />}
       {tab === "connector-access" && <ConnectorAccessSection />}
       {tab === "ingest-preview" && <IngestPreviewSettingsSection />}

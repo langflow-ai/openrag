@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from api.settings import SettingsUpdateBody
-from config.settings import get_openrag_config
+from config.settings import get_openrag_config, is_no_auth_mode
 from dependencies import (
     get_models_service,
     get_rbac_service,
@@ -39,9 +39,15 @@ class KnowledgeSettings(BaseModel):
     picture_descriptions: bool | None = None
 
 
+class ArchivingSettings(BaseModel):
+    available: bool
+    enabled: bool
+
+
 class SettingsResponse(BaseModel):
     agent: AgentSettings
     knowledge: KnowledgeSettings
+    archiving: ArchivingSettings
 
 
 async def get_settings_endpoint(
@@ -50,6 +56,7 @@ async def get_settings_endpoint(
     """Get current OpenRAG configuration (read-only). GET /v1/settings"""
     try:
         config = get_openrag_config()
+        local_archiving_available = is_no_auth_mode()
         return SettingsResponse(
             agent=AgentSettings(
                 llm_provider=config.agent.llm_provider,
@@ -64,6 +71,10 @@ async def get_settings_endpoint(
                 table_structure=config.knowledge.table_structure,
                 ocr=config.knowledge.ocr,
                 picture_descriptions=config.knowledge.picture_descriptions,
+            ),
+            archiving=ArchivingSettings(
+                available=local_archiving_available,
+                enabled=(config.archiving.enabled if local_archiving_available else False),
             ),
         )
     except Exception as e:

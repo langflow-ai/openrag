@@ -229,6 +229,7 @@ def test_parse_knowledge_chunks_artifact_list():
                     "page": 1,
                     "mimetype": "application/pdf",
                     "chunk_id": "chunk-123",
+                    "source_url": "https://files.example.com/doc1.pdf",
                 }
             }
         ]
@@ -247,6 +248,7 @@ def test_parse_knowledge_chunks_artifact_list():
         "parser": None,
         "chunk_size": None,
         "chunk_overlap": None,
+        "source_url": "https://files.example.com/doc1.pdf",
     }
 
 
