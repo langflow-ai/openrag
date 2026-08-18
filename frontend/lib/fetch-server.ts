@@ -1,15 +1,11 @@
 import { cookies, headers } from "next/headers";
+import { backendFetchInit, getBackendBaseUrl } from "@/lib/backend-fetch";
 
 export async function fetchFromBackend(
   path: string,
   init?: RequestInit,
 ): Promise<Response> {
-  const backendHost = process.env.OPENRAG_BACKEND_HOST || "localhost";
-  const backendSSL = process.env.OPENRAG_BACKEND_SSL === "true";
-  const backendPort = process.env.OPENRAG_BACKEND_PORT || "8000";
-  const baseUrl = backendSSL
-    ? `https://${backendHost}:${backendPort}`
-    : `http://${backendHost}:${backendPort}`;
+  const baseUrl = getBackendBaseUrl();
 
   const cookieStore = await cookies();
   const incoming = await headers();
@@ -37,6 +33,7 @@ export async function fetchFromBackend(
   if (credentialsValue) forwarded[ibmCredentialsHeader] = credentialsValue;
 
   return fetch(`${baseUrl}/${path}`, {
+    ...backendFetchInit(),
     ...init,
     headers: {
       ...forwarded,

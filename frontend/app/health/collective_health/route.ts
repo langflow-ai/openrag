@@ -33,12 +33,17 @@ async function checkPodLiveness(url: string, timeout = 3000): Promise<boolean> {
 }
 
 export async function GET() {
-  // Backend configuration
-  const backendHost = process.env.OPENRAG_BACKEND_HOST || "openrag-backend";
-  const backendPort = process.env.OPENRAG_BACKEND_PORT || "8000";
-  const backendScheme = process.env.OPENRAG_BACKEND_SCHEME || "http";
+  // Backend configuration — OPENRAG_BACKEND_URL wins; legacy host+port+scheme vars are the fallback.
   const backendHealthPath =
     process.env.OPENRAG_BACKEND_HEALTH_PATH || "/health";
+  const backendBase =
+    process.env.OPENRAG_BACKEND_URL?.replace(/\/$/, "") ??
+    (() => {
+      const host = process.env.OPENRAG_BACKEND_HOST || "openrag-backend";
+      const port = process.env.OPENRAG_BACKEND_PORT || "8000";
+      const scheme = process.env.OPENRAG_BACKEND_SCHEME || "http";
+      return `${scheme}://${host}:${port}`;
+    })();
 
   // Langflow configuration
   const langflowHost = process.env.LANGFLOW_HOST || "openrag-langflow";
@@ -47,7 +52,7 @@ export async function GET() {
   const langflowHealthPath = process.env.LANGFLOW_HEALTH_PATH || "/health";
 
   // Build health check URLs
-  const backendUrl = `${backendScheme}://${backendHost}:${backendPort}${backendHealthPath}`;
+  const backendUrl = `${backendBase}${backendHealthPath}`;
   const langflowUrl = `${langflowScheme}://${langflowHost}:${langflowPort}${langflowHealthPath}`;
 
   // Check liveness of backend and langflow pods in parallel
