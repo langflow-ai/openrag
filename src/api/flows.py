@@ -100,4 +100,3 @@ async def dismiss_flows_update_endpoint(
     except Exception as e:
         logger.error("Error dismissing flow updates", error=str(e))
         return JSONResponse({"success": False, "error": "Internal server error"}, status_code=500)
-
