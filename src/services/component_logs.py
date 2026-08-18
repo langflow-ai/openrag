@@ -73,16 +73,25 @@ def _redact(text: str | None) -> str | None:
     return _BEARER_RE.sub("Bearer ***", text)
 
 
+def _redact_value(v: object) -> object:
+    """Recursively redact sensitive values in nested dicts/lists."""
+    if isinstance(v, dict):
+        return _redact_dict(v)
+    if isinstance(v, (list, tuple)):
+        return type(v)(_redact_value(item) for item in v)
+    if isinstance(v, str):
+        return _BEARER_RE.sub("Bearer ***", v)
+    return v
+
+
 def _redact_dict(event_dict: dict) -> dict:
-    """Return a shallow copy of *event_dict* with sensitive values masked."""
+    """Return a copy of *event_dict* with sensitive values masked, recursively."""
     out = {}
     for k, v in event_dict.items():
         if _SENSITIVE_RE.search(str(k)):
             out[k] = "***"
-        elif isinstance(v, str):
-            out[k] = _BEARER_RE.sub("Bearer ***", v)
         else:
-            out[k] = v
+            out[k] = _redact_value(v)
     return out
 
 

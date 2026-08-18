@@ -426,7 +426,6 @@ def register_internal_routes(app: FastAPI):
             methods=["GET"],
             tags=["internal"],
         )
-        app.add_api_route("/status", get_console_status, methods=["GET"], tags=["internal"])
 
     # Models endpoints
     app.add_api_route(

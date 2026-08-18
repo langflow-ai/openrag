@@ -54,7 +54,7 @@ function ConsoleStatusPortal({
 export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { tasks, isMenuOpen } = useTask();
+  const { tasks, isMenuOpen, closeMenu } = useTask();
   const isCloudBrand = useIsCloudBrand();
   const { isPanelOpen, panelMode, closePanelOnly } = useKnowledgeFilter();
   const failedTasks = tasks.filter(isFailureLikeTask);
@@ -70,6 +70,12 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
       closeStatus();
     }
   }, [isMenuOpen, closePanelOnly, closeStatus]);
+  // Close the knowledge filter panel and the status panel when the task menu opens
+  useEffect(() => {
+    if (isStatusOpen) {
+      closeMenu();
+    }
+  }, [isStatusOpen, closeMenu]);
 
   const { isLoading, isAuthenticated, isNoAuthMode, isIbmAuthMode, runMode } =
     useAuth();

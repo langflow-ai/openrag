@@ -346,7 +346,7 @@ export function TaskNotificationMenu() {
         <div className="flex-1 overflow-y-auto">
           {/* System Status events — a container / service is degraded or down.
               Clicking an event opens the Console Status panel. */}
-          {hasProblem && (
+          {problems.length > 0 && (
             <div className="flex flex-col gap-2 p-4">
               <h4 className="text-sm font-medium text-muted-foreground">
                 System Status
@@ -569,7 +569,7 @@ export function TaskNotificationMenu() {
           {/* Empty State */}
           {activeTasks.length === 0 &&
             terminalTasks.length === 0 &&
-            !hasProblem && (
+            problems.length === 0 && (
               <div className="p-8 text-center">
                 <Bell className="h-12 w-12 text-muted-foreground/50 mx-auto mb-4" />
                 <h4 className="text-sm font-medium text-muted-foreground mb-2">

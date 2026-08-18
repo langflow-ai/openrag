@@ -14,6 +14,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { type ReactNode, useCallback, useState } from "react";
+import { toast } from "sonner";
 import {
   type DiagnosisResponse,
   useComponentDiagnoseQuery,
@@ -525,7 +526,15 @@ function ComponentCard({ component }: ComponentCardProps) {
                   }
                   label="Sync"
                   disabled={syncing}
-                  onClick={() => syncMutation.mutate(component.name)}
+                  onClick={() =>
+                    syncMutation.mutate(component.name, {
+                      onError: (err) => {
+                        toast.error(
+                          `Sync failed: ${err instanceof Error ? err.message : "unknown error"}`,
+                        );
+                      },
+                    })
+                  }
                 />
               </div>
             </div>
@@ -672,7 +681,7 @@ export function ConsoleStatusPanel({ onClose }: ConsoleStatusPanelProps) {
      */
     <div
       className={cn(
-        "fixed right-6 top-[64px] z-[9999]",
+        "fixed right-6 top-[64px] z-40",
         "w-[440px] max-h-[calc(100vh-8rem)] flex flex-col",
         "bg-zinc-900 border border-zinc-700/70 rounded-2xl shadow-2xl overflow-hidden",
       )}
@@ -736,7 +745,7 @@ export function ConsoleStatusPanel({ onClose }: ConsoleStatusPanelProps) {
           </div>
         ) : components.length === 0 ? (
           <p className="text-xs text-zinc-500 text-center py-6">
-            No components returned by /v1/status
+            No components returned by status API.
           </p>
         ) : (
           <div className="space-y-2">
