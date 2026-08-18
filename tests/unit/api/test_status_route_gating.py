@@ -31,6 +31,20 @@ def _route_paths(app: FastAPI) -> set[str]:
     return {route.path for route in app.routes if hasattr(route, "path")}
 
 
+def _matching_routes(app: FastAPI, path: str, method: str) -> list:
+    """Return every registered route matching *path* and *method* (no dedup).
+
+    Unlike _route_paths (a set), this preserves duplicate registrations so
+    tests can assert exactly one route exists for a given path/method.
+    """
+    return [
+        route
+        for route in app.routes
+        if getattr(route, "path", None) == path
+        and method.upper() in getattr(route, "methods", set())
+    ]
+
+
 def _make_app_public(monkeypatch, *, oss: bool) -> FastAPI:
     monkeypatch.setattr(public_v1_routes, "is_run_mode_oss", lambda: oss)
     app = FastAPI()

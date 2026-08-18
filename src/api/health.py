@@ -83,9 +83,7 @@ async def diagnose_console_component(
     _require_known_component(component)
     status = await check_one(component)
     if status is None:
-        return HTTPException(
-            status_code=503, detail=f"No health check registered for '{component}'"
-        )
+        raise HTTPException(status_code=503, detail=f"No health check registered for '{component}'")
 
     return diagnose_component(status, get_entries(component, tail=50))
 

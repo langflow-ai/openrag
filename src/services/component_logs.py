@@ -86,7 +86,7 @@ def _redact_value(v: object) -> object:
 
 def _redact_dict(event_dict: dict) -> dict:
     """Return a copy of *event_dict* with sensitive values masked, recursively."""
-    out = {}
+    out: dict[str, object] = {}
     for k, v in event_dict.items():
         if _SENSITIVE_RE.search(str(k)):
             out[k] = "***"
