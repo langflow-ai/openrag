@@ -3,7 +3,11 @@ import re
 
 import httpx
 
-from api.provider_validation import _extract_error_details, format_provider_error_message
+from api.provider_validation import (
+    _extract_error_details,
+    _http_request_with_retry,
+    format_provider_error_message,
+)
 from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL, OPENAI_EMBEDDING_MODEL_PREFIX
 from config.model_constants import (
     ANTHROPIC_DEFAULT_LANGUAGE_MODEL,
@@ -289,12 +293,13 @@ class ModelsService:
                 "Content-Type": "application/json",
             }
 
-            async with httpx.AsyncClient() as client:
-                # Lightweight validation: just check if API key is valid
-                # This doesn't consume credits, only validates the key
-                response = await client.get(
-                    "https://api.openai.com/v1/models", headers=headers, timeout=10.0
-                )
+            # Lightweight validation: check if API key is valid with retry logic
+            response = await _http_request_with_retry(
+                "GET",
+                "https://api.openai.com/v1/models",
+                headers=headers,
+                timeout=30.0,
+            )
 
             if response.status_code == 200:
                 data = response.json()
@@ -382,12 +387,12 @@ class ModelsService:
             }
 
             # Validate API key and return all models from Anthropic's chat-oriented list API
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    "https://api.anthropic.com/v1/models",
-                    headers=headers,
-                    timeout=10.0,
-                )
+            response = await _http_request_with_retry(
+                "GET",
+                "https://api.anthropic.com/v1/models",
+                headers=headers,
+                timeout=30.0,
+            )
 
             if response.status_code == 200:
                 data = response.json()

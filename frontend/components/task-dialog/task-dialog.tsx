@@ -128,7 +128,7 @@ function TaskDialogContent({
 
       <DialogFooter
         className={cn(
-          "w-full shrink-0 flex-row items-stretch sm:space-x-0",
+          "w-full shrink-0 flex-row items-stretch",
           isCloudBrand
             ? "gap-0 border-t bg-layer-contextual p-0"
             : cn(

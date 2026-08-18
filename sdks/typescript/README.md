@@ -241,6 +241,19 @@ const results = await client.search.query("quarterly report", { filterId });
 const response = await client.chat.create({ message: "Summarise Q3", filterId });
 ```
 
+For a one-shot listing without managing a cursor, `client.documents.getAllFiles()`
+returns all files in a single call — no parameters needed.
+
+> **Note:** `getAllFiles()` returns at most **500 files**. If your knowledge
+> base contains more than 500 files, use `listFiles()` with cursor pagination
+> (`after_key`) to page through the full set.
+
+```typescript
+// Get all files in a single call (no cursor to track)
+const page = await client.documents.getAllFiles();
+for (const f of page.files) console.log(f.filename);
+```
+
 ## Settings
 
 ```typescript

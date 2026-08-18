@@ -3,7 +3,7 @@
 # -----------------------------------------------------------------------------
 # Stage: deps
 # -----------------------------------------------------------------------------
-FROM registry.access.redhat.com/ubi10/nodejs-22-minimal AS deps
+FROM registry.access.redhat.com/ubi10/nodejs-24-minimal AS deps
 
 WORKDIR /opt/app-root/src
 USER 0
@@ -18,7 +18,7 @@ RUN npm ci --prefer-offline --no-audit
 # -----------------------------------------------------------------------------
 # Stage: builder
 # -----------------------------------------------------------------------------
-FROM registry.access.redhat.com/ubi10/nodejs-22-minimal AS builder
+FROM registry.access.redhat.com/ubi10/nodejs-24-minimal AS builder
 
 WORKDIR /opt/app-root/src
 USER 0
@@ -34,7 +34,7 @@ RUN npm run build \
 # -----------------------------------------------------------------------------
 # Stage: runtime
 # -----------------------------------------------------------------------------
-FROM registry.access.redhat.com/ubi10/nodejs-22-minimal AS runtime
+FROM registry.access.redhat.com/ubi10/nodejs-24-minimal AS runtime
 
 WORKDIR /opt/app-root/src
 USER 0
