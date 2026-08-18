@@ -50,8 +50,8 @@ const ModelProviderDialogFooter = ({
   if (showRemoveConfirm) {
     const hasAffected = !!affectedModels && affectedModels.length > 0;
     return (
-      <DialogFooter className="mt-4 flex flex-col gap-3 rounded-lg border border-red-500/10 bg-red-500/5 px-4 py-3 animate-in fade-in-0 slide-in-from-bottom-2 duration-150 sm:flex-row sm:items-start">
-        <div className="border-l-2 border-destructive pl-3 mr-auto text-sm text-red-100">
+      <DialogFooter className="mt-4 flex flex-col items-stretch gap-3 rounded-lg border border-red-500/10 bg-red-500/5 px-4 py-3 animate-in fade-in-0 slide-in-from-bottom-2 duration-150 sm:flex-row sm:items-center">
+        <div className="min-w-0 flex-1 border-l-2 border-destructive pl-3 text-sm text-red-100">
           {hasAffected ? (
             <div className="flex flex-col gap-1">
               <span>
@@ -76,7 +76,7 @@ const ModelProviderDialogFooter = ({
             "Remove configuration?"
           )}
         </div>
-        <div className="flex items-center gap-2 sm:self-center">
+        <div className="flex shrink-0 items-center justify-end gap-2">
           <Button variant="ghost" type="button" onClick={onCancelRemove}>
             Cancel
           </Button>
