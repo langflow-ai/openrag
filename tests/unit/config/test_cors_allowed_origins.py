@@ -112,13 +112,11 @@ async def test_factory_skips_cors_middleware_when_origins_empty():
         assert _get_cors_middleware(app) is None
 
 
-@pytest.mark.asyncio
-async def test_factory_never_uses_wildcard_origin():
-    with patch("app.factory.CORS_ALLOWED_ORIGINS", ["https://app.example.com"]), \
-         patch("app.factory.initialize_services", new_callable=AsyncMock):
-        from app.factory import create_app
+def test_wildcard_origin_rejected():
+    origins = _run_settings({"CORS_ALLOWED_ORIGINS": "*"})
+    assert origins == []
 
-        app = await create_app()
-        mw = _get_cors_middleware(app)
-        assert mw is not None
-        assert "*" not in mw.kwargs["allow_origins"]
+
+def test_wildcard_stripped_from_mixed_origins():
+    origins = _run_settings({"CORS_ALLOWED_ORIGINS": "https://a.com,*,https://b.com"})
+    assert origins == ["https://a.com", "https://b.com"]
