@@ -559,6 +559,7 @@ export function IngestSettingsSection() {
                 <ModelFeatures
                   model={selectedEmbedding.model}
                   providerName={selectedEmbeddingGroup.group}
+                  provider={selectedEmbeddingGroup.provider}
                 />
               </div>
             )}

@@ -13,6 +13,7 @@ import {
   Mic,
   Wrench,
 } from "lucide-react";
+import Image from "next/image";
 import type { CatalogModel } from "@/app/settings/_helpers/catalog-models";
 import {
   ALL_CAPABILITIES,
@@ -23,6 +24,10 @@ import {
   PRIMARY_CAPABILITIES,
   supports,
 } from "@/app/settings/_helpers/model-info";
+import {
+  providerLogo,
+  providerMonogram,
+} from "@/app/settings/_helpers/provider-logos";
 import { cn } from "@/lib/utils";
 
 const ICONS: Record<ModelCapability, LucideIcon> = {
@@ -75,12 +80,39 @@ function Fact({ label, value }: { label: string; value: string }) {
   );
 }
 
+function ProviderMark({ provider, name }: { provider?: string; name: string }) {
+  const src = provider ? providerLogo(provider) : null;
+  return (
+    <span
+      aria-hidden="true"
+      data-provider={provider}
+      className="grid h-16 w-16 shrink-0 place-items-center border border-border bg-white"
+    >
+      {src ? (
+        <Image
+          src={src}
+          alt=""
+          width={44}
+          height={44}
+          className="object-contain"
+        />
+      ) : (
+        <span className="font-mono text-lg font-semibold tracking-wide text-muted-foreground">
+          {providerMonogram(provider || name)}
+        </span>
+      )}
+    </span>
+  );
+}
+
 export function ModelFeatures({
   model,
   providerName,
+  provider,
 }: {
   model: CatalogModel;
   providerName: string;
+  provider?: string;
 }) {
   const facts = [
     ["Provider", providerName],
@@ -108,6 +140,15 @@ export function ModelFeatures({
 
   return (
     <div className="space-y-3 border border-border p-3">
+      <div className="flex items-center gap-3">
+        <ProviderMark provider={provider} name={providerName} />
+        <div className="min-w-0">
+          <p className="truncate font-medium leading-tight">{model.model}</p>
+          <p className="truncate text-mmd text-muted-foreground">
+            {providerName}
+          </p>
+        </div>
+      </div>
       <div className="grid grid-cols-2 gap-px bg-border">
         {facts.map(([label, value]) => (
           <Fact key={label} label={label} value={value} />

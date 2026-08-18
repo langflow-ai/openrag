@@ -211,6 +211,17 @@ const OnboardingCard = ({
         return;
       }
     }
+    const openaiGroup = groupedModels.find(
+      (entry) => entry.provider === "openai",
+    );
+    const openaiDefault =
+      openaiGroup?.options.find((option) => option.default) ??
+      openaiGroup?.options[0];
+    if (openaiDefault) {
+      autoSelectedRef.current = true;
+      handleModelChange(openaiDefault.value, "openai");
+      return;
+    }
     autoSelectedRef.current = true;
   }, [
     catalogLoading,
@@ -583,6 +594,7 @@ const OnboardingCard = ({
                 <ModelFeatures
                   model={selectedCatalogModel}
                   providerName={selectedGroup.group}
+                  provider={selectedGroup.provider}
                 />
               )}
 

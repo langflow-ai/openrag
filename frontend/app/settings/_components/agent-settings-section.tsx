@@ -306,6 +306,7 @@ export function AgentSettingsSection() {
                 <ModelFeatures
                   model={selectedLlm.model}
                   providerName={selectedLlmGroup.group}
+                  provider={selectedLlmGroup.provider}
                 />
               </div>
             )}
