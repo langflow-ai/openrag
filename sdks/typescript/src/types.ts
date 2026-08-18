@@ -118,7 +118,7 @@ export interface FileRecord {
   allowed_principal_labels: PrincipalLabel[];
 }
 
-/** Response from GET /v1/files/getAll (original v1 offset pagination) */
+/** Response from GET /v1/files/getall (original v1 offset pagination) */
 export interface GetAllFilesResponse {
   files: FileRecord[];
   total: number;

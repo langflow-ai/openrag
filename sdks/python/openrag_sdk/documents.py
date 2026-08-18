@@ -260,7 +260,7 @@ class DocumentsClient:
         """
         response = await self._client._request(
             "GET",
-            "/api/v1/files/getAll",
+            "/api/v1/files/getall",
         )
         data = response.json()
         return GetAllFilesResponse(

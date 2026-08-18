@@ -3,7 +3,7 @@ Unit tests for the public (API-key) file listing/search handlers.
 
 The public files surface is served by two handler sets, all gated by
 require_api_key_permission("knowledge:read:own"):
-- api.v1.files.get_all_files    → GET /v1/files/getAll  (offset pagination)
+- api.v1.files.get_all_files    → GET /v1/files/getall  (offset pagination)
 - api.v2.files.list_files       → GET /v2/files         (cursor pagination)
 - api.v2.files.search_files     → GET /v2/files/search  (cursor pagination)
 

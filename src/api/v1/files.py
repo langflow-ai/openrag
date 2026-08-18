@@ -2,7 +2,7 @@
 Public API v1 Files endpoints.
 
 Provides a simple file listing over the ingested knowledge base
-(GET /v1/files/getAll). Uses API-key authentication and calls FileService
+(GET /v1/files/getall). Uses API-key authentication and calls FileService
 (v1, offset pagination) directly.
 """
 
@@ -23,7 +23,7 @@ async def get_all_files(
     """
     Return all ingested files.
 
-    GET /v1/files/getAll
+    GET /v1/files/getall
     """
     try:
         result = await file_service.list_files(

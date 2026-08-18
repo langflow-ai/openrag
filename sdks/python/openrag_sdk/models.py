@@ -319,7 +319,7 @@ class FileRecord(BaseModel):
 
 
 class GetAllFilesResponse(BaseModel):
-    """Response from GET /v1/files/getAll — offset pagination, no cursor."""
+    """Response from GET /v1/files/getall — offset pagination, no cursor."""
 
     files: list[FileRecord]
     total: int

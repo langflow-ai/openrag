@@ -66,6 +66,7 @@ __all__ = [
     "get_api_key_service",
     "get_api_key_user_async",
     "get_auth_service",
+    "get_file_service",
     "get_file_service_v2",
     "get_chat_service",
     "get_connector_service",

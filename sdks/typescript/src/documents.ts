@@ -189,7 +189,7 @@ export class DocumentsClient {
    * @returns GetAllFilesResponse with files list and total count.
    */
   async getAllFiles(): Promise<GetAllFilesResponse> {
-    const response = await this.client._request("GET", "/api/v1/files/getAll");
+    const response = await this.client._request("GET", "/api/v1/files/getall");
     const data = await response.json();
 
     return {

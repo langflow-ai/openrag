@@ -189,7 +189,7 @@ COMPONENT_CUSTOMIZATIONS: dict[tuple[str, str], dict[str, str]] = {
         "description": "Delete a knowledge filter by ID.",
     },
     # files endpoints (v1 — offset pagination)
-    ("/v1/files/getAll", "GET"): {
+    ("/v1/files/getall", "GET"): {
         "name": "openrag_get_all_files",
         "description": (
             "Return all ingested files from the knowledge base. "
