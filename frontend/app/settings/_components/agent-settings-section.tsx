@@ -4,12 +4,7 @@ import { ArrowUpRight, Loader2 } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import {
-  useGetAnthropicModelsQuery,
-  useGetIBMModelsQuery,
-  useGetOllamaModelsQuery,
-  useGetOpenAIModelsQuery,
-} from "@/app/api/queries/useGetModelsQuery";
+import { useGetModelCatalogQuery } from "@/app/api/queries/useGetModelsQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { LabelWrapper } from "@/components/label-wrapper";
@@ -31,6 +26,7 @@ import { resolveLangflowEditUrl } from "@/lib/url-utils";
 import { cn } from "@/lib/utils";
 import { useUpdateSettingsMutation } from "../../api/mutations/useUpdateSettingsMutation";
 import { ModelSelector } from "../../onboarding/_components/model-selector";
+import { groupedCatalogOptions } from "../_helpers/catalog-models";
 import { getModelLogo } from "../_helpers/model-helpers";
 import { LangflowIcon } from "./langflow-icon";
 
@@ -52,83 +48,28 @@ export function AgentSettingsSection() {
     enabled: isAuthenticated || isNoAuthMode,
   });
 
-  const { data: openaiModels, isLoading: openaiLoading } =
-    useGetOpenAIModelsQuery(
-      { apiKey: "" },
-      { enabled: settings?.providers?.openai?.configured === true },
-    );
-  const { data: anthropicModels, isLoading: anthropicLoading } =
-    useGetAnthropicModelsQuery(
-      { apiKey: "" },
-      { enabled: settings?.providers?.anthropic?.configured === true },
-    );
-  const { data: ollamaModels, isLoading: ollamaLoading } =
-    useGetOllamaModelsQuery(
-      { endpoint: settings?.providers?.ollama?.endpoint },
-      {
-        enabled:
-          settings?.providers?.ollama?.configured === true &&
-          !!settings?.providers?.ollama?.endpoint,
-      },
-    );
-  const { data: watsonxModels, isLoading: watsonxLoading } =
-    useGetIBMModelsQuery(
-      {
-        endpoint: settings?.providers?.watsonx?.endpoint,
-        apiKey: "",
-        projectId: settings?.providers?.watsonx?.project_id,
-      },
-      {
-        enabled:
-          settings?.providers?.watsonx?.configured === true &&
-          !!settings?.providers?.watsonx?.endpoint &&
-          !!settings?.providers?.watsonx?.project_id,
-      },
-    );
+  const { data: catalog, isLoading: catalogLoading } = useGetModelCatalogQuery({
+    enabled: isAuthenticated || isNoAuthMode,
+  });
 
   const groupedLlmModels = useMemo(
     () =>
-      [
+      groupedCatalogOptions(
+        catalog,
         {
-          group: "OpenAI",
-          provider: "openai",
-          icon: getModelLogo("", "openai"),
-          models: openaiModels?.language_models || [],
-          configured: settings.providers?.openai?.configured === true,
+          openai: settings.providers?.openai?.configured === true,
+          anthropic: settings.providers?.anthropic?.configured === true,
+          ollama: settings.providers?.ollama?.configured === true,
+          watsonx: settings.providers?.watsonx?.configured === true,
         },
-        {
-          group: "Anthropic",
-          provider: "anthropic",
-          icon: getModelLogo("", "anthropic"),
-          models: anthropicModels?.language_models || [],
-          configured: settings.providers?.anthropic?.configured === true,
-        },
-        {
-          group: "Ollama",
-          provider: "ollama",
-          icon: getModelLogo("", "ollama"),
-          models: ollamaModels?.language_models || [],
-          configured: settings.providers?.ollama?.configured === true,
-        },
-        {
-          group: "IBM watsonx.ai",
-          provider: "watsonx",
-          icon: getModelLogo("", "watsonx"),
-          models: watsonxModels?.language_models || [],
-          configured: settings.providers?.watsonx?.configured === true,
-        },
-      ]
-        .filter((p) => p.configured)
-        .map((p) => ({
-          group: p.group,
-          icon: p.icon,
-          options: p.models.map((m) => ({ ...m, provider: p.provider })),
-        })),
+        "language",
+      ).map((group) => ({
+        group: group.group,
+        icon: getModelLogo("", group.key),
+        options: group.options,
+      })),
     [
-      openaiModels?.language_models,
-      anthropicModels?.language_models,
-      ollamaModels?.language_models,
-      watsonxModels?.language_models,
+      catalog,
       settings.providers?.openai?.configured,
       settings.providers?.anthropic?.configured,
       settings.providers?.ollama?.configured,
@@ -136,8 +77,7 @@ export function AgentSettingsSection() {
     ],
   );
 
-  const isLoadingAnyLlmModels =
-    openaiLoading || anthropicLoading || ollamaLoading || watsonxLoading;
+  const isLoadingAnyLlmModels = catalogLoading;
 
   const updateSettingsMutation = useUpdateSettingsMutation({
     onSuccess: () => {
@@ -340,6 +280,7 @@ export function AgentSettingsSection() {
             >
               <ModelSelector
                 groupedOptions={groupedLlmModels}
+                custom
                 noOptionsPlaceholder={
                   isLoadingAnyLlmModels
                     ? "Loading models..."

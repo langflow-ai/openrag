@@ -185,13 +185,14 @@ async def test_update_langflow_global_variables_marks_non_secret_provider_fields
 
     await langflow_sync._update_langflow_global_variables(config, flows_service=flows_service)
 
-    assert ("WATSONX_APIKEY", "watson-key", True, "Credential") in calls
-    assert ("OPENAI_API_KEY", "openai-key", True, "Credential") in calls
-    assert ("ANTHROPIC_API_KEY", "anthropic-key", True, "Credential") in calls
-    assert ("WATSONX_PROJECT_ID", "watson-project", True, "Generic") in calls
-    assert ("WATSONX_URL", "https://watson.example", True, "Generic") in calls
-    assert ("OLLAMA_BASE_URL", "http://ollama.local", True, "Generic") in calls
+    names = {name for name, *_ in calls}
+    assert "OPENAI_API_KEY" not in names
+    assert "ANTHROPIC_API_KEY" not in names
+    assert "WATSONX_APIKEY" not in names
     assert ("SELECTED_EMBEDDING_MODEL", "embedding-model", True, "Generic") in calls
+    assert ("SELECTED_EMBEDDING_MODEL_PROVIDER", "OpenAI", True, "Generic") in calls
+    assert ("SELECTED_LANGUAGE_MODEL_PROVIDER", "OpenAI", True, "Generic") in calls
+    assert any(name == "OPENRAG_LLM_BASE_URL" for name, *_ in calls)
 
 
 @pytest.mark.asyncio

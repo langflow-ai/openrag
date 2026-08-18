@@ -2,8 +2,6 @@
 
 from urllib.parse import quote
 
-from utils.container_utils import transform_localhost_url
-
 
 def map_provider(provider: str | None) -> str:
     """Map provider values to the formatted names expected by Langflow.
@@ -69,55 +67,48 @@ def build_ibm_opensearch_vars(
     return result
 
 
+def proxy_bearer_token(jwt_token: str | None) -> str:
+    """Token Langflow's OpenAI client should send as `Authorization: Bearer`.
+
+    Strips a duplicate `Bearer ` prefix. Basic OpenSearch credentials cannot be
+    used as an OpenAI api_key, so those are dropped.
+    """
+    if not jwt_token:
+        return ""
+    token = str(jwt_token).strip()
+    if token.lower().startswith("basic "):
+        return ""
+    if token.lower().startswith("bearer "):
+        return token[7:].strip()
+    return token
+
+
 async def add_provider_credentials_to_headers(
     headers: dict[str, str],
     config,
     flows_service=None,
     jwt_token: str = None,
 ) -> None:
-    """Add provider credentials to headers as Langflow global variables.
+    """Add Langflow global variables for the OpenRAG LLM proxy and infra URLs.
 
-    Args:
-        headers: Dictionary of headers to add credentials to
-        config: OpenRAGConfig object containing provider configurations
-        flows_service: Optional FlowsService instance to resolve Ollama URLs.
-        jwt_token: Optional credential string (``'Basic <b64>'`` or ``'Bearer <jwt>'``).
-                   When IBM_AUTH_ENABLED, injected as Langflow global variables. Basic
-                   credentials additionally provide OPENSEARCH_USERNAME and OPENSEARCH_PASSWORD.
+    Provider API keys are NOT forwarded. Langflow's Language/Embedding Model
+    components speak OpenAI-compatible HTTP to OpenRAG (`OPENRAG_LLM_BASE_URL`)
+    and authenticate with the caller's JWT as `OPENAI_API_KEY`.
 
-    NOTE: `headers` ends up holding raw API keys/JWTs after this call. Never log
-    it directly (e.g. logger.info(..., headers=headers) / extra_headers=...) —
+    NOTE: `headers` may hold a JWT after this call. Never log it directly —
     use utils.logging_config.sanitize_headers() if a header dict must be logged.
     """
-    # Add OpenAI credentials
-    if config.providers.openai.api_key:
-        headers["X-LANGFLOW-GLOBAL-VAR-OPENAI_API_KEY"] = str(config.providers.openai.api_key)
+    from config.settings import get_langflow_llm_base_url
 
-    # Add Anthropic credentials
-    if config.providers.anthropic.api_key:
-        headers["X-LANGFLOW-GLOBAL-VAR-ANTHROPIC_API_KEY"] = str(config.providers.anthropic.api_key)
+    headers["X-LANGFLOW-GLOBAL-VAR-OPENRAG_LLM_BASE_URL"] = get_langflow_llm_base_url()
 
-    # Add WatsonX credentials
-    if config.providers.watsonx.api_key:
-        headers["X-LANGFLOW-GLOBAL-VAR-WATSONX_APIKEY"] = str(config.providers.watsonx.api_key)
-
-    if config.providers.watsonx.project_id:
-        headers["X-LANGFLOW-GLOBAL-VAR-WATSONX_PROJECT_ID"] = str(
-            config.providers.watsonx.project_id
-        )
-
-    # Add Ollama endpoint (with localhost transformation)
-    if config.providers.ollama.endpoint:
-        if flows_service:
-            ollama_endpoint = await flows_service.resolve_ollama_url(
-                config.providers.ollama.endpoint
-            )
-        else:
-            ollama_endpoint = transform_localhost_url(config.providers.ollama.endpoint)
-        headers["X-LANGFLOW-GLOBAL-VAR-OLLAMA_BASE_URL"] = str(ollama_endpoint)
+    proxy_token = proxy_bearer_token(jwt_token)
+    if proxy_token:
+        headers["X-LANGFLOW-GLOBAL-VAR-OPENAI_API_KEY"] = proxy_token
 
     # Inject OpenSearch and Docling URLs and index name so Langflow flows always use the correct endpoints
     from config.settings import (
+        IBM_AUTH_ENABLED,
         get_index_name,
         get_langflow_docling_url,
         get_langflow_opensearch_url,
@@ -135,26 +126,26 @@ async def add_provider_credentials_to_headers(
     if index_name:
         headers["X-LANGFLOW-GLOBAL-VAR-OPENSEARCH_INDEX_NAME"] = index_name
 
-    # IBM mode: inject OpenSearch Basic credentials as separate global vars
-    from config.settings import IBM_AUTH_ENABLED
-
     if IBM_AUTH_ENABLED and jwt_token:
         headers.update(build_ibm_opensearch_vars(jwt_token, prefix="X-LANGFLOW-GLOBAL-VAR-"))
 
 
 def build_model_provider_headers(config, embedding_model: str | None = None) -> dict[str, str]:
-    """Build Langflow global variable headers for selected embedding and language models/providers."""
+    """Build Langflow global variable headers for selected models.
+
+    Provider is always OpenAI so Langflow uses its OpenAI-compatible client
+    against the OpenRAG LLM proxy. The real provider lives in OpenRAG config
+    and is applied by the gateway when it routes the model name.
+    """
     emb_model = embedding_model or getattr(
         getattr(config, "knowledge", None), "embedding_model", None
     )
-    emb_provider = getattr(getattr(config, "knowledge", None), "embedding_provider", None)
     agent = getattr(config, "agent", None)
     llm_model = getattr(agent, "llm_model", None)
-    llm_provider = getattr(agent, "llm_provider", None)
 
     return {
         "X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL": str(emb_model or ""),
-        "X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL_PROVIDER": map_provider(emb_provider),
+        "X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL_PROVIDER": "OpenAI",
         "X-LANGFLOW-GLOBAL-VAR-SELECTED_LANGUAGE_MODEL": str(llm_model or ""),
-        "X-LANGFLOW-GLOBAL-VAR-SELECTED_LANGUAGE_MODEL_PROVIDER": map_provider(llm_provider),
+        "X-LANGFLOW-GLOBAL-VAR-SELECTED_LANGUAGE_MODEL_PROVIDER": "OpenAI",
     }

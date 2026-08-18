@@ -113,6 +113,19 @@ OPENRAG_BACKEND_INTERNAL_URL = os.getenv(
     f"http://openrag-backend:{OPENRAG_BACKEND_PORT}",
 ).rstrip("/")
 
+
+def get_langflow_llm_base_url() -> str:
+    """OpenAI-compatible base URL Langflow should call (must end with /v1).
+
+    Override with OPENRAG_LLM_PROXY_URL when Langflow cannot reach
+    OPENRAG_BACKEND_INTERNAL_URL (rare; same cases as a custom ingest router).
+    """
+    override = os.getenv("OPENRAG_LLM_PROXY_URL")
+    if override:
+        return override.rstrip("/")
+    return f"{OPENRAG_BACKEND_INTERNAL_URL}/v1"
+
+
 # --- Backend ingestion-callback proxy router ------------------------------
 # A standalone, minimal uvicorn app (spun up in the same process as the main
 # backend, on its own port) that proxies ONLY the Langflow ingest callback

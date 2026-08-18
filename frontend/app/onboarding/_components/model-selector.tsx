@@ -78,6 +78,7 @@ export function ModelSelector({
   // Flatten grouped options or use regular options
   const allOptions =
     groupedOptions?.flatMap((group) => group.options) || options || [];
+  const allowCustomEntry = !!custom;
 
   // Find the group icon for the selected value
   const selectedOptionGroup = groupedOptions?.find((group) =>
@@ -103,7 +104,7 @@ export function ModelSelector({
         <Button
           variant={variant}
           role="combobox"
-          disabled={disabled || allOptions.length === 0}
+          disabled={disabled || (allOptions.length === 0 && !allowCustomEntry)}
           aria-expanded={open}
           aria-controls={listboxId}
           className={cn(
@@ -126,7 +127,7 @@ export function ModelSelector({
                   </Badge>
                 )}
             </div>
-          ) : allOptions.length === 0 ? (
+          ) : allOptions.length === 0 && !allowCustomEntry ? (
             noOptionsPlaceholder
           ) : (
             placeholder
@@ -152,34 +153,71 @@ export function ModelSelector({
           >
             <CommandEmpty>{noOptionsPlaceholder}</CommandEmpty>
             {groupedOptions ? (
-              groupedOptions.map((group) => (
-                <CommandGroup
-                  key={group.group}
-                  heading={
-                    <div className="flex items-center gap-2">
-                      {group.icon && (
-                        <div className="w-4 h-4">{group.icon}</div>
-                      )}
-                      <span>{group.group}</span>
-                    </div>
-                  }
-                >
-                  {group.options.length === 0 ? (
-                    <CommandItem
-                      disabled
-                      className="text-muted-foreground ml-6"
-                    >
-                      No models available
-                    </CommandItem>
-                  ) : (
-                    group.options.map((option) => (
+              <>
+                {groupedOptions.map((group) => (
+                  <CommandGroup
+                    key={group.group}
+                    heading={
+                      <div className="flex items-center gap-2">
+                        {group.icon && (
+                          <div className="w-4 h-4">{group.icon}</div>
+                        )}
+                        <span>{group.group}</span>
+                      </div>
+                    }
+                  >
+                    {group.options.length === 0 ? (
                       <CommandItem
-                        key={option.value}
-                        value={option.value}
-                        data-testid={`model-option-${option.value}`}
+                        disabled
+                        className="text-muted-foreground ml-6"
+                      >
+                        No models available
+                      </CommandItem>
+                    ) : (
+                      group.options.map((option) => (
+                        <CommandItem
+                          key={option.value}
+                          value={option.value}
+                          data-testid={`model-option-${option.value}`}
+                          onSelect={(currentValue) => {
+                            if (currentValue !== value) {
+                              onValueChange(currentValue, option.provider);
+                            }
+                            setOpen(false);
+                          }}
+                        >
+                          <CheckIcon
+                            className={cn(
+                              "mr-2 h-4 w-4",
+                              value === option.value
+                                ? "opacity-100"
+                                : "opacity-0",
+                            )}
+                          />
+                          <div className="flex items-center gap-2">
+                            {option.label}
+                          </div>
+                        </CommandItem>
+                      ))
+                    )}
+                  </CommandGroup>
+                ))}
+                {allowCustomEntry &&
+                  searchValue &&
+                  !allOptions.find(
+                    (option) => option.value === searchValue,
+                  ) && (
+                    <CommandGroup>
+                      <CommandItem
+                        value={searchValue}
+                        data-testid={`model-custom-option-${searchValue}`}
                         onSelect={(currentValue) => {
                           if (currentValue !== value) {
-                            onValueChange(currentValue, option.provider);
+                            const soleProvider =
+                              groupedOptions.length === 1
+                                ? groupedOptions[0].options[0]?.provider
+                                : undefined;
+                            onValueChange(currentValue, soleProvider);
                           }
                           setOpen(false);
                         }}
@@ -187,19 +225,19 @@ export function ModelSelector({
                         <CheckIcon
                           className={cn(
                             "mr-2 h-4 w-4",
-                            value === option.value
-                              ? "opacity-100"
-                              : "opacity-0",
+                            value === searchValue ? "opacity-100" : "opacity-0",
                           )}
                         />
                         <div className="flex items-center gap-2">
-                          {option.label}
+                          {searchValue}
+                          <span className="text-xs text-foreground p-1 rounded-md bg-muted">
+                            Custom
+                          </span>
                         </div>
                       </CommandItem>
-                    ))
+                    </CommandGroup>
                   )}
-                </CommandGroup>
-              ))
+              </>
             ) : (
               <CommandGroup>
                 {allOptions.map((option) => (

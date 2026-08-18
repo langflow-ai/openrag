@@ -1386,38 +1386,18 @@ class FlowsService:
 
             updated = True
 
-        # Update provider-specific fields using Langflow global variable names.
-        # "api_base" is the Ollama URL field on the Embedding Model component;
-        # "ollama_base_url" is the equivalent field on the Language Model / Agent component.
-        field_mappings = {
-            "api_key": {
-                "openai": "OPENAI_API_KEY",
-                "watsonx": "WATSONX_APIKEY",
-                "anthropic": "ANTHROPIC_API_KEY",
-            },
-            "api_base": {
-                "ollama": "OLLAMA_BASE_URL",
-            },
-            "ollama_base_url": {
-                "ollama": "OLLAMA_BASE_URL",
-            },
-            "base_url_ibm_watsonx": {
-                "watsonx": "WATSONX_URL",
-            },
-            "project_id": {
-                "watsonx": "WATSONX_PROJECT_ID",
-            },
+        # Point every model component at the OpenRAG OpenAI-compatible proxy.
+        # Real provider secrets never leave OpenRAG; Langflow sends the caller JWT.
+        proxy_fields = {
+            "api_key": "OPENAI_API_KEY",
+            "openai_api_key": "OPENAI_API_KEY",
+            "api_base": "OPENRAG_LLM_BASE_URL",
+            "openai_api_base": "OPENRAG_LLM_BASE_URL",
         }
-
-        for field, mapping in field_mappings.items():
+        for field, global_name in proxy_fields.items():
             if field in template:
-                target_value = mapping.get(provider)
-                if target_value:
-                    template[field]["value"] = target_value
-                    template[field]["load_from_db"] = True
-                else:
-                    template[field]["value"] = ""
-                    template[field]["load_from_db"] = False
+                template[field]["value"] = global_name
+                template[field]["load_from_db"] = True
                 updated = True
 
         return updated
