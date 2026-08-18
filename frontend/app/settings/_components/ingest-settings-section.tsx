@@ -45,7 +45,10 @@ import {
   type GroupedModelOption,
   ModelSelector,
 } from "../../onboarding/_components/model-selector";
-import { groupedCatalogOptions } from "../_helpers/catalog-models";
+import {
+  findGroupedSelection,
+  groupedCatalogOptions,
+} from "../_helpers/catalog-models";
 import { getModelLogo } from "../_helpers/model-helpers";
 import { LangflowIcon } from "./langflow-icon";
 
@@ -176,14 +179,13 @@ export function IngestSettingsSection() {
     () => groupedEmbeddingModels.flatMap((g) => g.options),
     [groupedEmbeddingModels],
   );
-  const selectedEmbedding = allEmbeddingOptions.find(
-    (option) => option.value === settings.knowledge?.embedding_model,
+  const selectedEmbeddingMatch = findGroupedSelection(
+    groupedEmbeddingModels,
+    settings.knowledge?.embedding_model,
+    settings.knowledge?.embedding_provider,
   );
-  const selectedEmbeddingGroup = groupedEmbeddingModels.find((group) =>
-    group.options.some(
-      (option) => option.value === settings.knowledge?.embedding_model,
-    ),
-  );
+  const selectedEmbedding = selectedEmbeddingMatch?.option;
+  const selectedEmbeddingGroup = selectedEmbeddingMatch?.group;
 
   const handleEmbeddingModelChange = useCallback(
     (newModel: string, provider?: string) => {
@@ -551,13 +553,18 @@ export function IngestSettingsSection() {
                     : "No embedding models detected. Configure a provider first."
                 }
                 value={settings.knowledge?.embedding_model || ""}
+                selectedProvider={settings.knowledge?.embedding_provider}
                 onValueChange={handleEmbeddingModelChange}
               />
             </LabelWrapper>
-            {selectedEmbedding?.model && selectedEmbeddingGroup && (
+            {settings.knowledge?.embedding_model && selectedEmbeddingGroup && (
               <div className="mt-3">
                 <ModelFeatures
-                  model={selectedEmbedding.model}
+                  model={
+                    selectedEmbedding?.model ?? {
+                      model: settings.knowledge.embedding_model,
+                    }
+                  }
                   providerName={selectedEmbeddingGroup.group}
                   provider={selectedEmbeddingGroup.provider}
                 />
@@ -768,6 +775,7 @@ export function IngestSettingsSection() {
                               : "No models detected. Configure OpenAI, Anthropic, Ollama, or IBM watsonx.ai first."
                           }
                           value={vlmModel}
+                          selectedProvider={vlmProvider}
                           onValueChange={handleVlmModelChange}
                           hasError={!!validationError}
                           disabled={!pictureDescriptions}

@@ -107,7 +107,9 @@ export async function completeOnboarding(
     const catalogModel =
       ONBOARDING_MODELS[provider]?.[isEmbedding ? "embedding" : "llm"];
     if (catalogModel) {
-      const option = page.getByTestId(`model-option-${catalogModel}`);
+      const option = page
+        .getByTestId(`model-group-${provider}`)
+        .getByTestId(`model-option-${catalogModel}`);
       await expect(option).toBeVisible({ timeout: 15000 });
       await option.click();
     } else {

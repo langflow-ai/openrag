@@ -43,6 +43,8 @@ export interface ModelSelectorProps extends ButtonProps {
   options?: ModelOption[];
   groupedOptions?: GroupedModelOption[];
   value: string;
+  /** Disambiguates the same model id hosted by more than one vendor. */
+  selectedProvider?: string;
   icon?: React.ReactNode;
   placeholder?: string;
   searchPlaceholder?: string;
@@ -53,10 +55,34 @@ export interface ModelSelectorProps extends ButtonProps {
   defaultOpen?: boolean;
 }
 
+function optionProvider(
+  option: ModelOption,
+  group?: GroupedModelOption,
+): string | undefined {
+  return option.provider ?? group?.provider;
+}
+
+function isSelectedRow(
+  option: ModelOption,
+  value: string,
+  selectedProvider?: string,
+  group?: GroupedModelOption,
+): boolean {
+  if (option.value !== value) {
+    return false;
+  }
+  if (!selectedProvider) {
+    return true;
+  }
+  const provider = optionProvider(option, group);
+  return !provider || provider === selectedProvider;
+}
+
 export function ModelSelector({
   options,
   groupedOptions,
   value = "",
+  selectedProvider,
   onValueChange,
   icon,
   placeholder = "Select model...",
@@ -88,11 +114,14 @@ export function ModelSelector({
     groupedOptions?.flatMap((group) => group.options) || options || [];
   const allowCustomEntry = !!custom;
 
-  // Find the group icon for the selected value
   const selectedOptionGroup = groupedOptions?.find((group) =>
-    group.options.some((opt) => opt.value === value),
+    selectedProvider
+      ? group.provider === selectedProvider
+      : group.options.some((opt) => opt.value === value),
   );
-  const selectedOption = allOptions.find((option) => option.value === value);
+  const selectedOption = allOptions.find((option) =>
+    isSelectedRow(option, value, selectedProvider, selectedOptionGroup),
+  );
   const selectedIcon =
     selectedOption?.icon || selectedOptionGroup?.icon || icon;
 
@@ -154,8 +183,7 @@ export function ModelSelector({
           {value ? (
             <div className="flex items-center gap-2">
               {selectedIcon && <div className="w-4 h-4">{selectedIcon}</div>}
-              {allOptions.find((framework) => framework.value === value)
-                ?.label || value}
+              {selectedOption?.label || value}
               {custom &&
                 value &&
                 !allOptions.find((framework) => framework.value === value) && (
@@ -225,40 +253,51 @@ export function ModelSelector({
                           No models available. Search to enter a custom model.
                         </CommandItem>
                       ) : (
-                        group.options.map((option) => (
-                          <CommandItem
-                            key={option.value}
-                            value={option.value}
-                            data-testid={`model-option-${option.value}`}
-                            onSelect={(currentValue) => {
-                              if (currentValue !== value) {
-                                onValueChange(
-                                  currentValue,
-                                  option.provider ?? groupProvider,
-                                );
-                              }
-                              setOpen(false);
-                            }}
-                          >
-                            <CheckIcon
-                              className={cn(
-                                "mr-2 h-4 w-4",
-                                value === option.value
-                                  ? "opacity-100"
-                                  : "opacity-0",
+                        group.options.map((option) => {
+                          const itemProvider = option.provider ?? groupProvider;
+                          const itemKey = itemProvider
+                            ? `${itemProvider}:${option.value}`
+                            : option.value;
+                          return (
+                            <CommandItem
+                              key={itemKey}
+                              value={itemKey}
+                              data-testid={`model-option-${option.value}`}
+                              onSelect={() => {
+                                if (
+                                  option.value !== value ||
+                                  itemProvider !== selectedProvider
+                                ) {
+                                  onValueChange(option.value, itemProvider);
+                                }
+                                setOpen(false);
+                              }}
+                            >
+                              <CheckIcon
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  isSelectedRow(
+                                    option,
+                                    value,
+                                    selectedProvider,
+                                    group,
+                                  )
+                                    ? "opacity-100"
+                                    : "opacity-0",
+                                )}
+                              />
+                              <div className="flex items-center gap-2">
+                                {option.icon && (
+                                  <span className="h-4 w-4">{option.icon}</span>
+                                )}
+                                {option.label}
+                              </div>
+                              {option.model && (
+                                <CapabilityStrip model={option.model} />
                               )}
-                            />
-                            <div className="flex items-center gap-2">
-                              {option.icon && (
-                                <span className="h-4 w-4">{option.icon}</span>
-                              )}
-                              {option.label}
-                            </div>
-                            {option.model && (
-                              <CapabilityStrip model={option.model} />
-                            )}
-                          </CommandItem>
-                        ))
+                            </CommandItem>
+                          );
+                        })
                       )}
                       {!deferredSearch &&
                         (groupedOptions.find(
@@ -277,7 +316,10 @@ export function ModelSelector({
                           value={`${group.group}-${searchValue}`}
                           data-testid={`model-custom-option-${searchValue}`}
                           onSelect={() => {
-                            if (searchValue !== value) {
+                            if (
+                              searchValue !== value ||
+                              groupProvider !== selectedProvider
+                            ) {
                               onValueChange(searchValue, groupProvider);
                             }
                             setOpen(false);
@@ -286,7 +328,9 @@ export function ModelSelector({
                           <CheckIcon
                             className={cn(
                               "mr-2 h-4 w-4",
-                              value === searchValue
+                              value === searchValue &&
+                                (!selectedProvider ||
+                                  selectedProvider === groupProvider)
                                 ? "opacity-100"
                                 : "opacity-0",
                             )}
@@ -310,9 +354,12 @@ export function ModelSelector({
                     key={option.value}
                     value={option.value}
                     data-testid={`model-option-${option.value}`}
-                    onSelect={(currentValue) => {
-                      if (currentValue !== value) {
-                        onValueChange(currentValue, option.provider);
+                    onSelect={() => {
+                      if (
+                        option.value !== value ||
+                        option.provider !== selectedProvider
+                      ) {
+                        onValueChange(option.value, option.provider);
                       }
                       setOpen(false);
                     }}
@@ -320,7 +367,9 @@ export function ModelSelector({
                     <CheckIcon
                       className={cn(
                         "mr-2 h-4 w-4",
-                        value === option.value ? "opacity-100" : "opacity-0",
+                        isSelectedRow(option, value, selectedProvider)
+                          ? "opacity-100"
+                          : "opacity-0",
                       )}
                     />
                     <div className="flex items-center gap-2">

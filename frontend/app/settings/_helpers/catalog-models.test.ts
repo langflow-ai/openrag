@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  findGroupedSelection,
   groupedCatalogOptions,
   mergeLiveCatalogOptions,
   onboardingCatalogConfigured,
   onboardingCredentialFields,
+  providerCredentialsSatisfied,
+  savedSecretFieldsForProvider,
 } from "./catalog-models";
 
 const catalog = {
@@ -34,8 +37,14 @@ const catalog = {
       ],
       model_placeholder: "gpt-4o",
       models: [
+        { model: "container", mode: "chat" },
+        { model: "ft:gpt-3.5-turbo", mode: "chat" },
         { model: "gpt-4o", mode: "chat", capabilities: ["vision"] },
-        { model: "gpt-4o-mini", mode: "chat" },
+        {
+          model: "gpt-4o-mini",
+          mode: "chat",
+          capabilities: ["function_calling"],
+        },
       ],
       embedding_models: [
         { model: "text-embedding-3-small", mode: "embedding" },
@@ -86,7 +95,7 @@ describe("groupedCatalogOptions", () => {
     );
     assert.deepEqual(
       groups[0].options.map((o) => o.value),
-      ["gpt-4o", "gpt-4o-mini"],
+      ["gpt-4o-mini", "gpt-4o", "container", "ft:gpt-3.5-turbo"],
     );
     assert.equal(groups[0].options[0].provider, "openai");
   });
@@ -133,6 +142,11 @@ describe("groupedCatalogOptions", () => {
       groups[0].options.map((o) => o.value),
       ["gpt-4o"],
     );
+  });
+
+  it("does not auto-offer LiteLLM template rows ahead of a real chat model", () => {
+    const groups = groupedCatalogOptions(catalog, { openai: true }, "language");
+    assert.equal(groups[0].options[0].value, "gpt-4o-mini");
   });
 
   it("returns nothing when the catalogue has not loaded", () => {
@@ -192,6 +206,77 @@ describe("mergeLiveCatalogOptions", () => {
     assert.deepEqual(
       merged[0].options.map((option) => option.value),
       ["text-embedding-3-small", "nomic-embed"],
+    );
+  });
+});
+
+describe("findGroupedSelection", () => {
+  it("disambiguates the same model id across providers", () => {
+    const overlap = {
+      providers: [
+        {
+          key: "openai",
+          name: "OpenAI",
+          models: [{ model: "gpt-4o", mode: "chat" }],
+        },
+        {
+          key: "azure",
+          name: "Azure",
+          models: [{ model: "gpt-4o", mode: "chat" }],
+        },
+      ],
+    };
+    const groups = groupedCatalogOptions(
+      overlap,
+      { openai: true, azure: true },
+      "language",
+    );
+    const openai = findGroupedSelection(groups, "gpt-4o", "openai");
+    const azure = findGroupedSelection(groups, "gpt-4o", "azure");
+    assert.equal(openai?.group.key, "openai");
+    assert.equal(azure?.group.key, "azure");
+    assert.equal(openai?.option?.provider, "openai");
+    assert.equal(azure?.option?.provider, "azure");
+  });
+
+  it("still resolves by model name when no provider is given", () => {
+    const groups = groupedCatalogOptions(
+      catalog,
+      { openai: true, anthropic: true },
+      "language",
+    );
+    const selected = findGroupedSelection(groups, "claude-sonnet-4-5");
+    assert.equal(selected?.group.key, "anthropic");
+  });
+});
+
+describe("providerCredentialsSatisfied", () => {
+  it("reuses a legacy OpenAI key without another paste", () => {
+    assert.equal(
+      savedSecretFieldsForProvider(
+        { openai: { has_api_key: true } },
+        "openai",
+      ).includes("api_key"),
+      true,
+    );
+    assert.equal(
+      providerCredentialsSatisfied(
+        { openai: { has_api_key: true, configured: true } },
+        "openai",
+        catalog,
+      ),
+      true,
+    );
+  });
+
+  it("still requires a key when nothing is saved", () => {
+    assert.equal(
+      providerCredentialsSatisfied(
+        { openai: { has_api_key: false } },
+        "openai",
+        catalog,
+      ),
+      false,
     );
   });
 });

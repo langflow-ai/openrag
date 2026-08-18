@@ -27,7 +27,10 @@ import { cn } from "@/lib/utils";
 import { useUpdateSettingsMutation } from "../../api/mutations/useUpdateSettingsMutation";
 import { ModelFeatures } from "../../onboarding/_components/model-features";
 import { ModelSelector } from "../../onboarding/_components/model-selector";
-import { groupedCatalogOptions } from "../_helpers/catalog-models";
+import {
+  findGroupedSelection,
+  groupedCatalogOptions,
+} from "../_helpers/catalog-models";
 import { getModelLogo } from "../_helpers/model-helpers";
 import { LangflowIcon } from "./langflow-icon";
 
@@ -96,12 +99,13 @@ export function AgentSettingsSection() {
     () => groupedLlmModels.flatMap((g) => g.options),
     [groupedLlmModels],
   );
-  const selectedLlm = allLlmOptions.find(
-    (option) => option.value === settings.agent?.llm_model,
+  const selectedLlmMatch = findGroupedSelection(
+    groupedLlmModels,
+    settings.agent?.llm_model,
+    settings.agent?.llm_provider,
   );
-  const selectedLlmGroup = groupedLlmModels.find((group) =>
-    group.options.some((option) => option.value === settings.agent?.llm_model),
-  );
+  const selectedLlm = selectedLlmMatch?.option;
+  const selectedLlmGroup = selectedLlmMatch?.group;
 
   const handleModelChange = useCallback(
     (newModel: string, provider?: string) => {
@@ -297,14 +301,17 @@ export function AgentSettingsSection() {
                     : "No language models detected. Configure a provider first."
                 }
                 value={settings.agent?.llm_model || ""}
+                selectedProvider={settings.agent?.llm_provider}
                 onValueChange={handleModelChange}
                 defaultOpen={openLlmSelector}
               />
             </LabelWrapper>
-            {selectedLlm?.model && selectedLlmGroup && (
+            {settings.agent?.llm_model && selectedLlmGroup && (
               <div className="mt-3">
                 <ModelFeatures
-                  model={selectedLlm.model}
+                  model={
+                    selectedLlm?.model ?? { model: settings.agent.llm_model }
+                  }
                   providerName={selectedLlmGroup.group}
                   provider={selectedLlmGroup.provider}
                 />

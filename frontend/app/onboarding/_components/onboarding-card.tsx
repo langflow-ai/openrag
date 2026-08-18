@@ -25,8 +25,12 @@ import {
 import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import type { ProviderHealthResponse } from "@/app/api/queries/useProviderHealthQuery";
 import {
+  findGroupedSelection,
   groupedCatalogOptions,
   onboardingCatalogConfigured,
+  providerCredentialsSatisfied,
+  savedCredentialValuesForProvider,
+  savedSecretFieldsForProvider,
 } from "@/app/settings/_helpers/catalog-models";
 import {
   CLOUD_EXCLUDED_PROVIDERS,
@@ -191,8 +195,31 @@ const OnboardingCard = ({
       ? fullOrder.filter((p) => !CLOUD_EXCLUDED_PROVIDERS.includes(p))
       : fullOrder;
 
+    const configuredProvider = (provider: string) =>
+      providerCredentialsSatisfied(
+        currentSettings.providers,
+        provider,
+        catalog,
+      );
+
+    if (isEmbedding) {
+      const llmProvider = currentSettings.agent?.llm_provider;
+      if (llmProvider && configuredProvider(llmProvider)) {
+        const group = groupedModels.find(
+          (entry) => entry.provider === llmProvider,
+        );
+        const first = group?.options[0];
+        if (first) {
+          autoSelectedRef.current = true;
+          handleModelChange(first.value, first.provider ?? llmProvider);
+          return;
+        }
+      }
+    }
+
     for (const provider of providerOrder) {
-      const hasEnv =
+      const hasSaved =
+        configuredProvider(provider) ||
         (provider === "anthropic" &&
           currentSettings.providers.anthropic?.has_api_key) ||
         (provider === "openai" &&
@@ -200,7 +227,7 @@ const OnboardingCard = ({
         (provider === "watsonx" &&
           currentSettings.providers.watsonx?.has_api_key) ||
         (provider === "ollama" && currentSettings.providers.ollama?.endpoint);
-      if (!hasEnv) {
+      if (!hasSaved) {
         continue;
       }
       const group = groupedModels.find((entry) => entry.provider === provider);
@@ -224,7 +251,9 @@ const OnboardingCard = ({
     }
     autoSelectedRef.current = true;
   }, [
+    catalog,
     catalogLoading,
+    currentSettings?.agent?.llm_provider,
     currentSettings?.providers,
     groupedModels,
     handleModelChange,
@@ -447,6 +476,26 @@ const OnboardingCard = ({
     onboardingTaskId,
   ]);
 
+  const savedSecretFields = savedSecretFieldsForProvider(
+    currentSettings?.providers,
+    modelProvider,
+  );
+  const savedCredentialValues = savedCredentialValuesForProvider(
+    currentSettings?.providers,
+    modelProvider,
+  );
+  const alreadyConfigured = providerCredentialsSatisfied(
+    currentSettings?.providers,
+    modelProvider,
+    catalog,
+  );
+
+  useEffect(() => {
+    if (modelProvider && alreadyConfigured) {
+      setCredentialsReady(true);
+    }
+  }, [alreadyConfigured, modelProvider]);
+
   const handleComplete = () => {
     const currentProvider = isEmbedding
       ? settings.embedding_provider
@@ -472,7 +521,7 @@ const OnboardingCard = ({
       onboardingData.llm_provider = currentProvider;
       onboardingData.llm_model = settings.llm_model;
     }
-    if (settings.provider_credentials) {
+    if (settings.provider_credentials && !alreadyConfigured) {
       onboardingData.provider_credentials = settings.provider_credentials;
     }
 
@@ -514,12 +563,13 @@ const OnboardingCard = ({
   const selectedModel = isEmbedding
     ? settings.embedding_model || ""
     : settings.llm_model || "";
-  const selectedGroup = groupedModels.find((group) =>
-    group.options.some((option) => option.value === selectedModel),
+  const selected = findGroupedSelection(
+    groupedModels,
+    selectedModel,
+    modelProvider,
   );
-  const selectedCatalogModel = selectedGroup?.options.find(
-    (option) => option.value === selectedModel,
-  )?.model;
+  const selectedGroup = selected?.group;
+  const selectedCatalogModel = selected?.option?.model;
 
   const isComplete =
     !!selectedModel && credentialsReady && (isEmbedding || isDoclingHealthy);
@@ -578,6 +628,7 @@ const OnboardingCard = ({
                       : "language-model-selector"
                   }
                   value={selectedModel}
+                  selectedProvider={modelProvider}
                   onValueChange={handleModelChange}
                   disabled={catalogLoading}
                   hasError={!!error}
@@ -590,9 +641,9 @@ const OnboardingCard = ({
                 />
               </LabelWrapper>
 
-              {selectedCatalogModel && selectedGroup && (
+              {selectedModel && selectedGroup && (
                 <ModelFeatures
-                  model={selectedCatalogModel}
+                  model={selectedCatalogModel ?? { model: selectedModel }}
                   providerName={selectedGroup.group}
                   provider={selectedGroup.provider}
                 />
@@ -604,19 +655,20 @@ const OnboardingCard = ({
                 </p>
               )}
 
-              {modelProvider && (
+              {modelProvider && alreadyConfigured && (
+                <p className="text-mmd text-muted-foreground">
+                  Using the saved {selectedGroup?.group ?? modelProvider}{" "}
+                  credentials.
+                </p>
+              )}
+
+              {modelProvider && !alreadyConfigured && (
                 <OnboardingCredentialFields
                   key={modelProvider}
                   provider={modelProvider}
                   catalog={catalog}
-                  savedValues={
-                    currentSettings?.providers?.custom?.[modelProvider]
-                      ?.credential_values
-                  }
-                  savedSecretFields={
-                    currentSettings?.providers?.custom?.[modelProvider]
-                      ?.secret_fields
-                  }
+                  savedValues={savedCredentialValues}
+                  savedSecretFields={savedSecretFields}
                   setSettings={setSettings}
                   onStatusChange={handleStatusChange}
                 />

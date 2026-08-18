@@ -122,3 +122,17 @@ def test_settings_models_accept_arbitrary_provider_credentials():
 
     assert settings.provider_credentials == credentials
     assert onboarding.provider_credentials == credentials
+
+
+def test_custom_provider_payload_keeps_legacy_openai_secret():
+    from api.settings.endpoints import _custom_providers_for_settings
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.providers.openai.api_key = "sk-test"
+    config.providers.openai.configured = True
+    config.providers.set_credentials("openai", {"organization": "org-1"})
+
+    payload = _custom_providers_for_settings(config)
+    assert payload["openai"].secret_fields == ["api_key"]
+    assert payload["openai"].credential_values["organization"] == "org-1"

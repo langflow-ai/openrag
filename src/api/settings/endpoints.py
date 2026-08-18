@@ -109,6 +109,80 @@ from utils.version_utils import OPENRAG_VERSION
 logger = get_logger(__name__)
 
 
+def _custom_providers_for_settings(openrag_config) -> dict[str, GenericProviderConfig]:
+    """Public provider payloads: never drop a legacy secret when custom slots exist."""
+
+    def payload(
+        provider: str,
+        *,
+        configured: bool,
+        credential_values: dict[str, str] | None = None,
+        secret_fields: list[str] | None = None,
+        stored=None,
+    ) -> GenericProviderConfig:
+        values = dict(credential_values or {})
+        secrets = list(secret_fields or [])
+        if stored is not None:
+            secret_keys = secret_field_keys(provider)
+            values.update(
+                {
+                    key: value
+                    for key, value in stored.credentials.items()
+                    if key not in secret_keys
+                }
+            )
+            secrets.extend(key for key in secret_keys if stored.credentials.get(key))
+            configured = configured or stored.configured
+        return GenericProviderConfig(
+            configured=configured,
+            credential_values={key: value for key, value in values.items() if value},
+            secret_fields=list(dict.fromkeys(secrets)),
+        )
+
+    providers = {
+        "openai": payload(
+            "openai",
+            configured=openrag_config.providers.openai.configured,
+            secret_fields=["api_key"] if openrag_config.providers.openai.api_key else [],
+        ),
+        "anthropic": payload(
+            "anthropic",
+            configured=openrag_config.providers.anthropic.configured,
+            secret_fields=["api_key"] if openrag_config.providers.anthropic.api_key else [],
+        ),
+        "watsonx": payload(
+            "watsonx",
+            configured=openrag_config.providers.watsonx.configured,
+            credential_values={
+                key: value
+                for key, value in {
+                    "api_base": openrag_config.providers.watsonx.endpoint,
+                    "project_id": openrag_config.providers.watsonx.project_id,
+                }.items()
+                if value
+            },
+            secret_fields=["api_key"] if openrag_config.providers.watsonx.api_key else [],
+        ),
+        "ollama": payload(
+            "ollama",
+            configured=openrag_config.providers.ollama.configured,
+            credential_values={"api_base": openrag_config.providers.ollama.endpoint}
+            if openrag_config.providers.ollama.endpoint
+            else {},
+        ),
+    }
+    for provider, stored in openrag_config.providers.custom.items():
+        previous = providers.get(provider)
+        providers[provider] = payload(
+            provider,
+            configured=previous.configured if previous else stored.configured,
+            credential_values=previous.credential_values if previous else {},
+            secret_fields=previous.secret_fields if previous else [],
+            stored=stored,
+        )
+    return providers
+
+
 def _detect_local_vlm_models() -> list[str]:
     from pathlib import Path
 
@@ -251,56 +325,7 @@ async def get_settings(
                     endpoint=openrag_config.providers.ollama.endpoint or None,
                     configured=openrag_config.providers.ollama.configured,
                 ),
-                custom={
-                    "openai": GenericProviderConfig(
-                        configured=openrag_config.providers.openai.configured,
-                        secret_fields=(
-                            ["api_key"] if openrag_config.providers.openai.api_key else []
-                        ),
-                    ),
-                    "anthropic": GenericProviderConfig(
-                        configured=openrag_config.providers.anthropic.configured,
-                        secret_fields=(
-                            ["api_key"] if openrag_config.providers.anthropic.api_key else []
-                        ),
-                    ),
-                    "watsonx": GenericProviderConfig(
-                        configured=openrag_config.providers.watsonx.configured,
-                        credential_values={
-                            key: value
-                            for key, value in {
-                                "api_base": openrag_config.providers.watsonx.endpoint,
-                                "project_id": openrag_config.providers.watsonx.project_id,
-                            }.items()
-                            if value
-                        },
-                        secret_fields=(
-                            ["api_key"] if openrag_config.providers.watsonx.api_key else []
-                        ),
-                    ),
-                    "ollama": GenericProviderConfig(
-                        configured=openrag_config.providers.ollama.configured,
-                        credential_values={"api_base": openrag_config.providers.ollama.endpoint}
-                        if openrag_config.providers.ollama.endpoint
-                        else {},
-                    ),
-                    **{
-                        provider: GenericProviderConfig(
-                            configured=value.configured,
-                            credential_values={
-                                key: credential
-                                for key, credential in value.credentials.items()
-                                if key not in secret_field_keys(provider)
-                            },
-                            secret_fields=[
-                                key
-                                for key in secret_field_keys(provider)
-                                if value.credentials.get(key)
-                            ],
-                        )
-                        for provider, value in openrag_config.providers.custom.items()
-                    },
-                },
+                custom=_custom_providers_for_settings(openrag_config),
             )
             if show_providers
             else None,
