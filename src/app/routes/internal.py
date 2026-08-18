@@ -40,7 +40,6 @@ from api.health import (
     sync_console_component,
 )
 from api.schemas.tasks import ErrorResponse, TaskRetryResponse
-from api.v2 import files as files_v2
 from connectors.registry import get_connector_classes
 from utils.run_mode_utils import is_run_mode_oss
 
@@ -136,13 +135,9 @@ def register_internal_routes(app: FastAPI):
     # Search endpoint
     app.add_api_route("/search", search.search, methods=["POST"], tags=["internal"])
 
-    # File listing/search endpoints (v1 — terms-agg, in-memory sort)
+    # File listing/search endpoints
     app.add_api_route("/files", files.list_files, methods=["GET"], tags=["internal"])
     app.add_api_route("/files/search", files.search_files, methods=["GET"], tags=["internal"])
-
-    # File listing/search endpoints (v2 — composite-agg, cursor pagination)
-    app.add_api_route("/v2/files/search", files_v2.search_files, methods=["GET"], tags=["internal"])
-    app.add_api_route("/v2/files", files_v2.list_files, methods=["GET"], tags=["internal"])
 
     # Knowledge Filter endpoints
     app.add_api_route(

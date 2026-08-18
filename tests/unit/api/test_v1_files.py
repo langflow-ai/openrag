@@ -1,13 +1,19 @@
 """
-Unit tests for the GET /v1/files and GET /v1/files/search route handlers.
+Unit tests for the public (API-key) file listing/search handlers.
+
+The public files surface is served by two handler sets, all gated by
+require_api_key_permission("knowledge:read:own"):
+- api.v1.files.get_all_files    → GET /v1/files/get_all  (offset pagination)
+- api.v2.files.list_files       → GET /v2/files         (cursor pagination)
+- api.v2.files.search_files     → GET /v2/files/search  (cursor pagination)
 
 Tests cover:
-- Route delegates to the v2 handler with all params forwarded correctly
-- Auth dependency is require_api_key_permission("knowledge:read:own"),
-  NOT get_current_user
-- 401 returned on OpenSearch auth errors
-- 400 returned on malformed after_key cursor
-- 500 returned on unexpected errors
+- All public handlers authenticate with require_api_key_permission, NOT
+  get_current_user
+- The v2 public handlers forward every param to FileServiceV2 and delegate to
+  the internal handlers
+- The public wrappers do not drift from the internal handler signatures
+- 401 on OpenSearch auth errors, 400 on malformed after_key, 500 on unexpected
 """
 
 import inspect
@@ -16,7 +22,15 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi import params as fastapi_params
 
-from api.v1.files import list_files, search_files
+from api.files import (
+    list_files as internal_list_files,
+)
+from api.files import (
+    search_files as internal_search_files,
+)
+from api.v1.files import get_all_files
+from api.v2.files import list_files as list_files_public
+from api.v2.files import search_files as search_files_public
 from session_manager import User
 
 # ---------------------------------------------------------------------------
@@ -54,23 +68,50 @@ def _extract_permission(dep) -> str:
 
 
 class TestAuthDependency:
-    def test_list_files_uses_require_api_key_permission(self):
-        """list_files must be gated by require_api_key_permission, not get_current_user."""
-        dep = _get_user_dependency(list_files)
+    @pytest.mark.parametrize(
+        "handler",
+        [get_all_files, list_files_public, search_files_public],
+        ids=["get_all_files", "list_files_public", "search_files_public"],
+    )
+    def test_public_handler_uses_require_api_key_permission(self, handler):
+        """Every public handler must be gated by require_api_key_permission."""
+        dep = _get_user_dependency(handler)
         perm = _extract_permission(dep)
         assert perm == "knowledge:read:own", f"Expected 'knowledge:read:own', got '{perm}'"
 
-    def test_search_files_uses_require_api_key_permission(self):
-        """search_files must be gated by require_api_key_permission, not get_current_user."""
-        dep = _get_user_dependency(search_files)
-        perm = _extract_permission(dep)
-        assert perm == "knowledge:read:own", f"Expected 'knowledge:read:own', got '{perm}'"
+    def test_all_public_handlers_use_same_permission(self):
+        """All public handlers must require the same permission — no divergence."""
+        perms = {
+            _extract_permission(_get_user_dependency(h))
+            for h in (get_all_files, list_files_public, search_files_public)
+        }
+        assert perms == {"knowledge:read:own"}
 
-    def test_list_files_and_search_files_use_same_permission(self):
-        """Both handlers must require the same permission — no accidental divergence."""
-        list_perm = _extract_permission(_get_user_dependency(list_files))
-        search_perm = _extract_permission(_get_user_dependency(search_files))
-        assert list_perm == search_perm
+
+# ---------------------------------------------------------------------------
+# Signature drift guard
+# ---------------------------------------------------------------------------
+
+
+def _query_params(fn) -> dict:
+    """Parameter name -> annotation for every param except the auth `user`.
+
+    `file_service` is kept: internal and public handlers share the same
+    injected service, so it should stay identical too.
+    """
+    return {
+        name: p.annotation for name, p in inspect.signature(fn).parameters.items() if name != "user"
+    }
+
+
+class TestSignatureParity:
+    """The public wrappers re-declare the query signature; guard against drift."""
+
+    def test_list_files_public_matches_internal(self):
+        assert _query_params(list_files_public) == _query_params(internal_list_files)
+
+    def test_search_files_public_matches_internal(self):
+        assert _query_params(search_files_public) == _query_params(internal_search_files)
 
 
 def _make_user() -> User:
@@ -117,18 +158,18 @@ _SAMPLE_RESPONSE = {
 
 
 # ---------------------------------------------------------------------------
-# list_files
+# list_files_public  (GET /v2/files)
 # ---------------------------------------------------------------------------
 
 
-class TestListFiles:
+class TestListFilesPublic:
     @pytest.mark.asyncio
     async def test_returns_file_list_on_success(self):
         """Handler returns the service response as JSONResponse."""
         file_service = _make_file_service(_SAMPLE_RESPONSE)
         user = _make_user()
 
-        response = await list_files(
+        response = await list_files_public(
             page=1,
             page_size=25,
             sort_by="filename",
@@ -167,7 +208,7 @@ class TestListFiles:
         file_service = _make_file_service(_SAMPLE_RESPONSE)
         user = _make_user()
 
-        await list_files(
+        await list_files_public(
             page=2,
             page_size=50,
             sort_by="indexed_time",
@@ -202,7 +243,7 @@ class TestListFiles:
         file_service.list_files = AsyncMock(side_effect=AuthenticationException(401, "auth failed"))
         user = _make_user()
 
-        response = await list_files(
+        response = await list_files_public(
             page=1,
             page_size=25,
             sort_by="filename",
@@ -225,7 +266,7 @@ class TestListFiles:
         file_service.list_files = AsyncMock(side_effect=RuntimeError("boom"))
         user = _make_user()
 
-        response = await list_files(
+        response = await list_files_public(
             page=1,
             page_size=25,
             sort_by="filename",
@@ -250,7 +291,7 @@ class TestListFiles:
         user = _make_user()
 
         with pytest.raises(HTTPException) as exc_info:
-            await list_files(
+            await list_files_public(
                 page=1,
                 page_size=25,
                 sort_by="filename",
@@ -277,7 +318,7 @@ class TestListFiles:
         user = _make_user()
 
         with pytest.raises(HTTPException) as exc_info:
-            await list_files(
+            await list_files_public(
                 page=1,
                 page_size=25,
                 sort_by="filename",
@@ -295,18 +336,18 @@ class TestListFiles:
 
 
 # ---------------------------------------------------------------------------
-# search_files
+# search_files_public  (GET /v2/files/search)
 # ---------------------------------------------------------------------------
 
 
-class TestSearchFiles:
+class TestSearchFilesPublic:
     @pytest.mark.asyncio
     async def test_returns_search_results_on_success(self):
-        """search_files delegates to v2.search_files and returns its result."""
+        """search_files_public delegates to v2.search_files and returns its result."""
         file_service = _make_file_service(_SAMPLE_RESPONSE)
         user = _make_user()
 
-        response = await search_files(
+        response = await search_files_public(
             q="report",
             page=1,
             page_size=25,
@@ -330,7 +371,7 @@ class TestSearchFiles:
         file_service = _make_file_service(_SAMPLE_RESPONSE)
         user = _make_user()
 
-        await search_files(
+        await search_files_public(
             q="annual report",
             page=2,
             page_size=10,

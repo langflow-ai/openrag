@@ -7,6 +7,7 @@ import type {
   DeleteDocumentOptions,
   DeleteDocumentResponse,
   FileRecord,
+  GetAllFilesResponse,
   IngestResponse,
   IngestTaskStatus,
   ListFilesOptions,
@@ -148,10 +149,10 @@ export class DocumentsClient {
   }
 
   /**
-   * List ingested files in the knowledge base.
+   * List ingested files with cursor-based composite-aggregation pagination (v2).
    *
-   * @param options - Filtering, sorting, and pagination options.
-   * @returns ListFilesResponse with files list, total count, and next after_key.
+   * @param options - Filtering, sorting, and cursor pagination options.
+   * @returns ListFilesResponse with files list, approximate total, and next after_key cursor.
    */
   async listFiles(options: ListFilesOptions = {}): Promise<ListFilesResponse> {
     const params = new URLSearchParams();
@@ -166,7 +167,7 @@ export class DocumentsClient {
     if (options.after_key !== undefined) params.set("after_key", options.after_key);
 
     const qs = params.toString();
-    const path = qs ? `/api/v1/files?${qs}` : "/api/v1/files";
+    const path = qs ? `/api/v2/files?${qs}` : "/api/v2/files";
     const response = await this.client._request("GET", path);
     const data = await response.json();
 
@@ -177,6 +178,25 @@ export class DocumentsClient {
       page: data.page ?? 1,
       page_size: data.page_size ?? 25,
       after_key: data.after_key ?? null,
+    };
+  }
+
+  /**
+   * Return all ingested files (v1).
+   *
+   * No parameters — just returns everything in the knowledge base.
+   *
+   * @returns GetAllFilesResponse with files list and total count.
+   */
+  async getAllFiles(): Promise<GetAllFilesResponse> {
+    const response = await this.client._request("GET", "/api/v1/files/get_all");
+    const data = await response.json();
+
+    return {
+      files: (data.files ?? []) as FileRecord[],
+      total: data.total ?? 0,
+      page: data.page ?? 1,
+      page_size: data.page_size ?? 100,
     };
   }
 

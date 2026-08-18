@@ -18,7 +18,7 @@ pytestmark = pytest.mark.skipif(
 
 
 class TestListFiles:
-    """Verify GET /v1/files via the Python SDK."""
+    """Verify GET /v2/files (cursor pagination) via the Python SDK."""
 
     @pytest.mark.asyncio
     async def test_list_files_returns_valid_response_shape(self, client, test_file: Path):
