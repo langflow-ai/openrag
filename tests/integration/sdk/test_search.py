@@ -138,9 +138,7 @@ class TestSearchFilenameFilter:
             assert alpha.name in filenames, (
                 f"Expected alpha in filename-filtered search, got {filenames}"
             )
-            assert beta.name not in filenames, (
-                f"Filename filter leaked: beta in {filenames}"
-            )
+            assert beta.name not in filenames, f"Filename filter leaked: beta in {filenames}"
             assert all(r.filename == alpha.name for r in results.results)
         finally:
             await client.documents.delete(alpha.name)
