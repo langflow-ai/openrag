@@ -106,6 +106,12 @@ class TestInternalStatusRouteOss:
         app = _make_app_internal(monkeypatch, oss=True)
         assert "/status" in _route_paths(app)
 
+    def test_status_registered_exactly_once(self, monkeypatch):
+        """Guards against a duplicate GET /status registration silently
+        passing the set-based `_route_paths` check above."""
+        app = _make_app_internal(monkeypatch, oss=True)
+        assert len(_matching_routes(app, "/status", "GET")) == 1
+
 
 class TestInternalStatusRouteSaas:
     def test_status_absent(self, monkeypatch):
