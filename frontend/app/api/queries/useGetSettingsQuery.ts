@@ -81,6 +81,17 @@ export interface Settings {
   providers?: ProviderSettings;
   knowledge?: KnowledgeSettings;
   agent?: AgentSettings;
+  archiving?: {
+    available: boolean;
+    enabled: boolean;
+    ingestion_path?: string | null;
+    ingestion_host_path?: string | null;
+    path?: string | null;
+    host_path?: string | null;
+    used_bytes?: number | null;
+    filesystem_total_bytes?: number | null;
+    filesystem_free_bytes?: number | null;
+  };
   langflow_edit_url?: string;
   langflow_ingest_edit_url?: string;
   ingestion_defaults?: {
@@ -101,8 +112,9 @@ export interface Settings {
   langflow_port?: string | number | null;
 }
 
-async function getSettings(): Promise<Settings> {
-  const response = await fetch("/api/settings");
+async function getSettings(includeArchivingStats = false): Promise<Settings> {
+  const query = includeArchivingStats ? "?include_archiving_stats=true" : "";
+  const response = await fetch(`/api/settings${query}`);
   if (response.ok) {
     return await response.json();
   } else {
@@ -118,7 +130,22 @@ export const useGetSettingsQuery = (
   return useQuery(
     {
       queryKey: ["settings"],
-      queryFn: getSettings,
+      queryFn: () => getSettings(false),
+      ...options,
+    },
+    queryClient,
+  );
+};
+
+export const useGetArchivingSettingsQuery = (
+  options?: Omit<UseQueryOptions<Settings>, "queryKey" | "queryFn">,
+) => {
+  const queryClient = useQueryClient();
+
+  return useQuery(
+    {
+      queryKey: ["settings", "archiving"],
+      queryFn: () => getSettings(true),
       ...options,
     },
     queryClient,

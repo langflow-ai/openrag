@@ -101,6 +101,7 @@ async def test_traditional_upload_ingest_task(monkeypatch):
         replace_duplicates=True,
         create_filter=False,
         preview_mode=False,
+        archive_sources=True,
         session_manager=mock_session_manager,
         task_service=mock_task_service,
         user=mock_user,
@@ -119,6 +120,7 @@ async def test_traditional_upload_ingest_task(monkeypatch):
 
     # Extract file_paths, assert extension is preserved, and clean them up
     call_kwargs = mock_task_service.create_upload_task.call_args[1]
+    assert call_kwargs["archive_sources"] is True
     file_paths = call_kwargs.get("file_paths")
     assert file_paths is not None
     assert len(file_paths) == 1
@@ -164,6 +166,7 @@ async def test_langflow_upload_ingest_task(monkeypatch):
         replace_duplicates=True,
         create_filter=False,
         preview_mode=False,
+        archive_sources=True,
         langflow_file_service=mock_langflow_file_service,
         session_manager=mock_session_manager,
         task_service=mock_task_service,
@@ -182,6 +185,7 @@ async def test_langflow_upload_ingest_task(monkeypatch):
 
     # Extract file_paths, assert extension is preserved, and clean them up
     call_kwargs = mock_task_service.create_langflow_upload_task.call_args[1]
+    assert call_kwargs["archive_sources"] is True
     file_paths = call_kwargs.get("file_paths")
     assert file_paths is not None
     assert len(file_paths) == 1

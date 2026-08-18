@@ -203,20 +203,21 @@ def parse_knowledge_chunks(results: Any) -> list[dict]:
 
         if isinstance(data, dict) and ("text" in data or "filename" in data or "chunk_id" in data):
             chunk_id = data.get("chunk_id") or data.get("id") or ""
-            parsed_chunks.append(
-                {
-                    "filename": data.get("filename", ""),
-                    "text": strip_untrusted_fence(data.get("text", "")),
-                    "score": data.get("score", 0),
-                    "page": data.get("page"),
-                    "mimetype": data.get("mimetype"),
-                    "chunk_id": chunk_id,
-                    "id": chunk_id,
-                    "embedding_model": data.get("embedding_model"),
-                    "parser": data.get("parser"),
-                    "chunk_size": data.get("chunk_size"),
-                    "chunk_overlap": data.get("chunk_overlap"),
-                }
-            )
+            parsed_chunk = {
+                "filename": data.get("filename", ""),
+                "text": strip_untrusted_fence(data.get("text", "")),
+                "score": data.get("score", 0),
+                "page": data.get("page"),
+                "mimetype": data.get("mimetype"),
+                "chunk_id": chunk_id,
+                "id": chunk_id,
+                "embedding_model": data.get("embedding_model"),
+                "parser": data.get("parser"),
+                "chunk_size": data.get("chunk_size"),
+                "chunk_overlap": data.get("chunk_overlap"),
+            }
+            if "source_url" in data:
+                parsed_chunk["source_url"] = data.get("source_url")
+            parsed_chunks.append(parsed_chunk)
 
     return parsed_chunks

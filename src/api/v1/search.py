@@ -89,6 +89,7 @@ async def search_endpoint(
                 "score": item.get("score"),
                 "page": item.get("page"),
                 "mimetype": item.get("mimetype"),
+                "source_url": item.get("source_url"),
             }
             for item in result.get("results", [])
         ]

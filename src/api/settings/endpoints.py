@@ -36,6 +36,7 @@ from api.settings.langflow_sync import (
 from api.settings.models import (
     AgentConfig,
     AnthropicProviderConfig,
+    ArchivingConfig,
     DoclingPresetBody,
     DoclingPresetResponse,
     IngestionDefaultsConfig,
@@ -137,6 +138,7 @@ def _detect_local_vlm_models() -> list[str]:
 
 async def get_settings(
     request: Request,
+    include_archiving_stats: bool = False,
     session_manager=Depends(get_session_manager),
     user: User = Depends(get_current_user),
     rbac=Depends(get_rbac_service),
@@ -148,12 +150,32 @@ async def get_settings(
         # Provider configuration is admin-only. Non-admins still get the rest of
         # settings (the UI needs them) but the providers section is redacted.
         show_providers = True
+        show_archiving = True
         if is_rbac_enforced():
             uid = user.db_user_id or user.user_id
             show_providers = await rbac.has_permission(uid, "providers:read")
+            show_archiving = await rbac.has_permission(uid, "config:write")
 
         knowledge_config = openrag_config.knowledge
         agent_config = openrag_config.agent
+        archiving_config = None
+        if show_archiving:
+            from config.settings import is_no_auth_mode
+
+            local_archiving_available = is_no_auth_mode()
+            archive_stats = {}
+            if local_archiving_available:
+                from services.local_source_service import get_local_source_archive_stats
+
+                archive_stats = await asyncio.to_thread(
+                    get_local_source_archive_stats,
+                    include_used_bytes=include_archiving_stats,
+                )
+            archiving_config = ArchivingConfig(
+                available=local_archiving_available,
+                enabled=(openrag_config.archiving.enabled if local_archiving_available else False),
+                **archive_stats,
+            )
 
         # Only expose edit URLs when a public URL is configured
         langflow_edit_url = None
@@ -272,6 +294,7 @@ async def get_settings(
                 vlm_timeout=knowledge_config.vlm_timeout,
                 vlm_watsonx_api_version=knowledge_config.vlm_watsonx_api_version,
             ),
+            archiving=archiving_config,
             agent=AgentConfig(
                 llm_model=agent_config.llm_model,
                 llm_provider=agent_config.llm_provider,
@@ -572,6 +595,18 @@ async def update_settings(
             logger.info(
                 f"Disable Langflow ingestion changed to {body.disable_ingest_with_langflow}"
             )
+
+        if body.archive_sources_enabled is not None:
+            from config.settings import is_no_auth_mode
+
+            if body.archive_sources_enabled and not is_no_auth_mode():
+                raise HTTPException(
+                    status_code=422,
+                    detail="Local source archiving is disabled in multi-user mode",
+                )
+            working_config.archiving.enabled = body.archive_sources_enabled
+            config_updated = True
+            logger.info("Source archiving setting updated", enabled=body.archive_sources_enabled)
 
         if body.chunk_size is not None:
             effective_overlap = (

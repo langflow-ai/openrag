@@ -276,6 +276,9 @@ class TaskService:
         replace_duplicates: bool = False,
         settings: dict | None = None,
         preview_mode: bool = False,
+        source_urls: dict[str, str] | None = None,
+        archive_sources: bool = False,
+        cleanup_files: bool = True,
     ) -> str:
         """Create a new upload task for bulk file processing"""
         # Use default DocumentFileProcessor with user context
@@ -292,13 +295,15 @@ class TaskService:
             replace_duplicates=replace_duplicates,
             session_manager=self.session_manager,
             settings=settings,
+            source_urls=source_urls,
+            archive_sources=archive_sources,
         )
         return await self.create_custom_task(
             user_id,
             file_paths,
             processor,
             original_filenames=original_filenames,
-            temp_file_paths=file_paths,
+            temp_file_paths=file_paths if cleanup_files else None,
             preview_mode=preview_mode,
         )
 
@@ -320,6 +325,8 @@ class TaskService:
         existing_task_id: str = None,
         temp_file_paths: list | None = None,
         preview_mode: bool = False,
+        source_urls: dict[str, str] | None = None,
+        archive_sources: bool = False,
     ) -> str:
         """Create a new upload task for Langflow file processing with upload and ingest"""
         # Use LangflowFileProcessor with user context
@@ -339,6 +346,8 @@ class TaskService:
             connector_type=connector_type,
             docling_polling_service=self.docling_polling_service,
             preview_mode=preview_mode,
+            source_urls=source_urls,
+            archive_sources=archive_sources,
         )
         return await self.create_custom_task(
             user_id,

@@ -28,6 +28,7 @@ from api.settings.langflow_sync import reapply_all_settings
 from api.settings.models import (
     AgentConfig,
     AnthropicProviderConfig,
+    ArchivingConfig,
     AssistantMessage,
     DoclingPresetBody,
     DoclingPresetResponse,
@@ -76,6 +77,7 @@ __all__ = [
     "ProvidersConfig",
     "KnowledgeConfig",
     "AgentConfig",
+    "ArchivingConfig",
     "IngestionDefaultsConfig",
     "SettingsResponse",
     "OnboardingResponse",

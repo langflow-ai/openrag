@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from api.documents import delete_documents_by_filename_core
 from api.router import upload_ingest_router
+from api.upload import UploadPathBody, upload_path
 from api.v1._filter_resolution import resolve_filter_id
 from dependencies import (
     get_document_service,
@@ -38,6 +39,12 @@ class DeleteDocV1Body(BaseModel):
     filter_id: str | None = None
 
 
+class IngestPathV1Body(BaseModel):
+    path: str | None = None
+    replace_duplicates: bool = False
+    archive_source: bool | None = None
+
+
 async def ingest_endpoint(
     file: list[UploadFile] = File(...),
     session_id: str | None = Form(None),
@@ -45,6 +52,8 @@ async def ingest_endpoint(
     tweaks: str | None = Form(None),
     replace_duplicates: str = Form("true"),
     create_filter: str = Form("false"),
+    source_url: list[str] | None = Form(None),
+    archive_source: str | None = Form(None),
     document_service=Depends(get_document_service),
     langflow_file_service=Depends(get_langflow_file_service),
     session_manager=Depends(get_session_manager),
@@ -73,10 +82,31 @@ async def ingest_endpoint(
         # it. Pass an explicit value so the Form("false") default sentinel is not
         # forwarded when this function is called directly (not via form parsing).
         preview="false",
+        source_url=source_url if isinstance(source_url, list) else None,
+        archive_source=archive_source if isinstance(archive_source, str) else None,
         document_service=document_service,
         langflow_file_service=langflow_file_service,
         session_manager=session_manager,
         task_service=task_service,
+        user=user,
+    )
+
+
+async def ingest_path_endpoint(
+    body: IngestPathV1Body,
+    task_service=Depends(get_task_service),
+    session_manager=Depends(get_session_manager),
+    user: User = Depends(require_api_key_permission("knowledge:upload")),
+):
+    """Ingest a file or directory already present in the shared documents volume."""
+    return await upload_path(
+        UploadPathBody(
+            path=body.path,
+            replace_duplicates=body.replace_duplicates,
+            archive_sources=body.archive_source,
+        ),
+        task_service=task_service,
+        session_manager=session_manager,
         user=user,
     )
 

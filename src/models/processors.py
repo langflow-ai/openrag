@@ -440,6 +440,7 @@ class TaskProcessor:
         ocr: bool | None = None,
         picture_descriptions: bool | None = None,
         shared: bool = False,
+        source_url: str | None = None,
     ):
         """
         Standard processing pipeline for non-Langflow processors:
@@ -643,6 +644,7 @@ class TaskProcessor:
             owner_email=owner_email,
             file_size=file_size,
             connector_type=connector_type,
+            source_url=source_url,
             allowed_users=allowed_users,
             allowed_groups=allowed_groups,
             allowed_principals=allowed_principals,
@@ -713,6 +715,8 @@ class DocumentFileProcessor(TaskProcessor):
         replace_duplicates: bool = False,
         session_manager=None,
         settings: dict | None = None,
+        source_urls: dict[str, str] | None = None,
+        archive_sources: bool = False,
     ):
         super().__init__(
             document_service,
@@ -731,6 +735,8 @@ class DocumentFileProcessor(TaskProcessor):
             document_service.session_manager if document_service else None
         )
         self.settings = settings
+        self.source_urls = source_urls or {}
+        self.archive_sources = archive_sources
         if self.session_manager is None:
             raise ValueError("session_manager is required for DocumentFileProcessor")
 
@@ -739,6 +745,8 @@ class DocumentFileProcessor(TaskProcessor):
         file_task.status = TaskStatus.RUNNING
         file_task.updated_at = time.time()
 
+        staged_source = None
+        archive_committed = False
         try:
             # Use the ORIGINAL filename stored in file_task (not the transformed temp path)
             # This ensures we check/store the original filename with spaces, etc.
@@ -768,9 +776,18 @@ class DocumentFileProcessor(TaskProcessor):
             # the file_task for preview-mode index proof lookups.
             file_task.document_id = file_hash
 
+            source_url = self.source_urls.get(str(item))
+            processing_path = item
+            if self.archive_sources:
+                from services.local_source_service import local_source_url, stage_local_source
+
+                staged_source = await stage_local_source(item, file_hash, original_filename)
+                processing_path = str(staged_source.archived_path)
+                source_url = source_url or local_source_url(staged_source.source_id)
+
             # Get file size
             try:
-                file_size = os.path.getsize(item)
+                file_size = os.path.getsize(processing_path)
             except Exception:
                 file_size = 0
 
@@ -811,7 +828,7 @@ class DocumentFileProcessor(TaskProcessor):
 
             # Use consolidated standard processing
             result = await self.process_document_standard(
-                file_path=item,
+                file_path=processing_path,
                 file_hash=file_hash,
                 owner_user_id=self.owner_user_id,
                 original_filename=original_filename,
@@ -822,6 +839,7 @@ class DocumentFileProcessor(TaskProcessor):
                 connector_type=self.connector_type,
                 is_sample_data=self.is_sample_data,
                 acl=acl,
+                source_url=source_url,
                 **standard_kwargs,
             )
 
@@ -831,6 +849,12 @@ class DocumentFileProcessor(TaskProcessor):
                 file_task.updated_at = time.time()
                 upload_task.failed_files += 1
             else:
+                # ``unchanged`` means the content hash was already present and
+                # no chunk was rewritten with this new source URL. Do not keep
+                # an unreachable archive entry in that case.
+                if staged_source is not None and result.get("status") == "indexed":
+                    staged_source.commit()
+                    archive_committed = True
                 file_task.status = TaskStatus.COMPLETED
                 file_task.result = result
                 file_task.updated_at = time.time()
@@ -842,6 +866,9 @@ class DocumentFileProcessor(TaskProcessor):
             file_task.updated_at = time.time()
             upload_task.failed_files += 1
             raise
+        finally:
+            if staged_source is not None and not archive_committed:
+                await staged_source.rollback()
 
 
 class ConnectorFileProcessor(TaskProcessor):
@@ -1466,6 +1493,8 @@ class LangflowFileProcessor(TaskProcessor):
         connector_type: str = "local",
         docling_polling_service=None,
         preview_mode: bool = False,
+        source_urls: dict[str, str] | None = None,
+        archive_sources: bool = False,
     ):
         super().__init__()
         self.langflow_file_service = langflow_file_service
@@ -1481,6 +1510,8 @@ class LangflowFileProcessor(TaskProcessor):
         self.connector_type = connector_type
         self.docling_polling_service = docling_polling_service
         self.preview_mode = preview_mode
+        self.source_urls = source_urls or {}
+        self.archive_sources = archive_sources
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Process a file path using LangflowFileService upload_and_ingest_file"""
@@ -1488,6 +1519,8 @@ class LangflowFileProcessor(TaskProcessor):
         file_task.status = TaskStatus.RUNNING
         file_task.updated_at = time.time()
 
+        staged_source = None
+        archive_committed = False
         try:
             # Use the ORIGINAL filename stored in file_task (not the transformed temp path)
             # This ensures we check/store the original filename with spaces, etc.
@@ -1537,6 +1570,13 @@ class LangflowFileProcessor(TaskProcessor):
             file_hash = hash_id(item)
             file_task.document_id = file_hash
 
+            source_url = self.source_urls.get(str(item))
+            if self.archive_sources:
+                from services.local_source_service import local_source_url, stage_local_source
+
+                staged_source = await stage_local_source(item, file_hash, original_filename)
+                source_url = source_url or local_source_url(staged_source.source_id)
+
             # Build settings with fresh OCR/pictureDescriptions from live
             # config so retries pick up configuration changes.
             config = get_openrag_config()
@@ -1561,6 +1601,7 @@ class LangflowFileProcessor(TaskProcessor):
                 docling_polling_service=self.docling_polling_service,
                 file_task=file_task,
                 document_id=file_hash,
+                source_url=source_url,
                 original_filename=original_filename,
                 original_mimetype=original_mimetype,
                 preview_mode=self.preview_mode,
@@ -1593,6 +1634,9 @@ class LangflowFileProcessor(TaskProcessor):
                 upload_task.failed_files += 1
             else:
                 # Update task with success
+                if staged_source is not None:
+                    staged_source.commit()
+                    archive_committed = True
                 file_task.status = TaskStatus.COMPLETED
                 file_task.result = result
                 file_task.updated_at = time.time()
@@ -1605,3 +1649,6 @@ class LangflowFileProcessor(TaskProcessor):
             file_task.updated_at = time.time()
             upload_task.failed_files += 1
             raise
+        finally:
+            if staged_source is not None and not archive_committed:
+                await staged_source.rollback()

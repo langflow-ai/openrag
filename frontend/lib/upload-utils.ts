@@ -85,12 +85,16 @@ export async function uploadFiles(
   files: File[],
   replace = false,
   preview = false,
+  archiveSource?: boolean,
 ): Promise<{ taskId: string; fileCount: number; previewMode: boolean }> {
   const formData = new FormData();
   for (const file of files) {
     formData.append("file", file);
   }
   formData.append("replace_duplicates", replace.toString());
+  if (archiveSource !== undefined) {
+    formData.append("archive_source", archiveSource.toString());
+  }
   if (preview) {
     formData.append("preview", "true");
   }
@@ -139,11 +143,15 @@ export async function uploadFile(
   createFilter = false,
   callbacks?: UploadFileCallbacks,
   preview = false,
+  archiveSource?: boolean,
 ): Promise<UploadFileResult> {
   try {
     const formData = new FormData();
     formData.append("file", file);
     formData.append("replace_duplicates", replace.toString());
+    if (archiveSource !== undefined) {
+      formData.append("archive_source", archiveSource.toString());
+    }
     if (createFilter) {
       formData.append("create_filter", "true");
     }
