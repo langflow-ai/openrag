@@ -124,6 +124,7 @@ services:
       - PLATFORM_AUTH_DEV_MODE=${PLATFORM_AUTH_DEV_MODE:-false}
       - DOCLING_SERVE_URL=${DOCLING_SERVE_URL:-http://host.docker.internal:5001}
       - DOCLING_SERVE_VERIFY_SSL=${DOCLING_SERVE_VERIFY_SSL:-true}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
     volumes:
       - ${OPENRAG_DOCUMENTS_PATH:-./openrag-documents}:/app/openrag-documents:U,z
       - ${OPENRAG_KEYS_PATH:-./keys}:/app/keys:U,z
