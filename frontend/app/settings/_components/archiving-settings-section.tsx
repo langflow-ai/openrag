@@ -66,10 +66,10 @@ export function ArchivingSettingsSection() {
                 </Label>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Successfully indexed files are moved to the archive. Sources
-                  that already came from the ingestion folder are restored
-                  there if processing fails. When disabled, folder sources stay
-                  in place, browser uploads are not copied, and citations have
-                  no local download link.
+                  that already came from the ingestion folder are restored there
+                  if processing fails. When disabled, folder sources stay in
+                  place, browser uploads are not copied, and citations have no
+                  local download link.
                 </p>
               </div>
               <Switch
@@ -135,8 +135,8 @@ export function ArchivingSettingsSection() {
 
         <div className="rounded-lg bg-muted/30 p-4 text-sm text-muted-foreground">
           API clients can keep a remote source instead: send an HTTP(S){" "}
-          <code>source_url</code> with <code>archive_source=false</code>. OpenRAG
-          stores the URL in citations without copying the remote file.
+          <code>source_url</code> with <code>archive_source=false</code>.
+          OpenRAG stores the URL in citations without copying the remote file.
         </div>
 
         {archive?.available !== false && (
