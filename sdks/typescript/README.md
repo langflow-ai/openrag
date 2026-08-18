@@ -242,11 +242,11 @@ const response = await client.chat.create({ message: "Summarise Q3", filterId })
 ```
 
 For a one-shot listing without managing a cursor, `client.documents.getAllFiles()`
-returns up to `limit` files using simple offset pagination:
+returns all files in a single call — no parameters needed:
 
 ```typescript
-// Grab up to 200 files in a single call (no cursor to track)
-const page = await client.documents.getAllFiles({ limit: 200, connector_type: "sharepoint" });
+// Get all files in a single call (no cursor to track)
+const page = await client.documents.getAllFiles();
 for (const f of page.files) console.log(f.filename);
 ```
 

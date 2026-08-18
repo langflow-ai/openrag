@@ -216,11 +216,11 @@ response = await client.chat.create(message="Summarise Q3", filter_id=filter_id)
 ```
 
 For a one-shot listing without managing a cursor, `client.documents.get_all_files()`
-returns up to `limit` files using simple offset pagination:
+returns all files in a single call — no parameters needed:
 
 ```python
-# Grab up to 200 files in a single call (no cursor to track)
-page = await client.documents.get_all_files(limit=200, connector_type="sharepoint")
+# Get all files in a single call (no cursor to track)
+page = await client.documents.get_all_files()
 for f in page.files:
     print(f.filename)
 ```
