@@ -13,6 +13,20 @@ from dependencies import get_current_user, get_session_manager
 from services.local_source_service import document_id_from_source_id, find_local_source
 from session_manager import User
 
+PREVIEWABLE_MEDIA_TYPES = {
+    "application/json",
+    "application/pdf",
+    "image/avif",
+    "image/bmp",
+    "image/gif",
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "text/csv",
+    "text/markdown",
+    "text/plain",
+}
+
 
 def _total_hits(response: dict[str, Any]) -> int:
     """Return the total hit count from an OpenSearch response."""
@@ -26,8 +40,9 @@ async def download_local_source(
     source_id: str,
     session_manager: Annotated[Any, Depends(get_session_manager)],
     user: Annotated[User, Depends(get_current_user)],
+    preview: bool = False,
 ):
-    """Download a retained original only when the caller can read its chunks."""
+    """Serve a retained original only when the caller can read its chunks."""
     document_id = document_id_from_source_id(source_id)
     if document_id is None:
         raise HTTPException(status_code=404, detail="Source file not found")
@@ -62,10 +77,13 @@ async def download_local_source(
         raise HTTPException(status_code=404, detail="Source file not found")
 
     media_type = mimetypes.guess_type(source.name)[0] or "application/octet-stream"
+    if preview and media_type not in PREVIEWABLE_MEDIA_TYPES:
+        raise HTTPException(status_code=415, detail="Source preview is not supported")
+
     return FileResponse(
         source,
         media_type=media_type,
         filename=source.name,
-        content_disposition_type="attachment",
+        content_disposition_type="inline" if preview else "attachment",
         headers={"Cache-Control": "private, no-store"},
     )

@@ -1,11 +1,12 @@
 "use client";
 
-import { ArrowLeft, Download, Loader2, Search } from "lucide-react";
+import { ArrowLeft, Download, Eye, Loader2, Search } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
 import { useFileScopedChunksQuery } from "@/app/api/queries/useFileScopedChunksQuery";
 import { FileChunksPanel } from "@/components/file-chunks-panel";
 import { ProtectedRoute } from "@/components/protected-route";
+import { SourcePreviewDialog } from "@/components/source-preview-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -13,12 +14,13 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { formatFileSize, getFileTypeLabel } from "@/lib/file-format";
-import { getDownloadSourceUrl } from "@/lib/source-url";
+import { getDownloadSourceUrl, getSourcePreviewKind } from "@/lib/source-url";
 
 function ChunksPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const filename = searchParams.get("filename");
+  const [previewOpen, setPreviewOpen] = useState(false);
   const { file: fileData } = useFileScopedChunksQuery(filename);
 
   if (!filename) {
@@ -38,6 +40,7 @@ function ChunksPageContent() {
   const chunks = fileData?.chunks ?? [];
   const chunkCount = chunks.length;
   const downloadSourceUrl = getDownloadSourceUrl(fileData?.source_url);
+  const previewKind = getSourcePreviewKind(filename, fileData?.mimetype);
   const averageChunkLength =
     chunkCount === 0
       ? 0
@@ -113,17 +116,38 @@ function ChunksPageContent() {
                 </div>
               </dl>
               {downloadSourceUrl && (
-                <Button asChild variant="outline" size="sm" className="mt-2">
-                  <a
-                    href={downloadSourceUrl}
-                    download={filename}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Download original
-                  </a>
-                </Button>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {previewKind && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPreviewOpen(true)}
+                    >
+                      <Eye className="h-4 w-4 mr-2" />
+                      Preview
+                    </Button>
+                  )}
+                  <Button asChild variant="outline" size="sm">
+                    <a
+                      href={downloadSourceUrl}
+                      download={filename}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Download original
+                    </a>
+                  </Button>
+                </div>
+              )}
+              {downloadSourceUrl && previewKind && (
+                <SourcePreviewDialog
+                  filename={filename}
+                  kind={previewKind}
+                  open={previewOpen}
+                  onOpenChange={setPreviewOpen}
+                  sourceUrl={downloadSourceUrl}
+                />
               )}
             </div>
             {hasAccessControl && (

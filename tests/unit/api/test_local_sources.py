@@ -64,3 +64,57 @@ async def test_download_hides_source_not_visible_to_user(tmp_path, monkeypatch, 
         await download_local_source(SOURCE_ID, session_manager=session_manager, user=user)
 
     assert exc_info.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_preview_returns_supported_source_inline(tmp_path, monkeypatch, user):
+    """Serve supported source formats inline for the preview dialog."""
+    monkeypatch.setenv("OPENRAG_DOCUMENTS_PATH", str(tmp_path))
+    monkeypatch.delenv("OPENRAG_INDEXED_DOCUMENTS_PATH", raising=False)
+    source = tmp_path / "inbox" / "report.pdf"
+    source.parent.mkdir()
+    source.write_bytes(b"%PDF-preview")
+    staged = await stage_local_source(source, DOCUMENT_ID, source.name)
+    staged.commit()
+
+    client = AsyncMock()
+    client.search.return_value = {"hits": {"total": {"value": 1}}}
+    session_manager = MagicMock()
+    session_manager.get_user_opensearch_client.return_value = client
+
+    response = await download_local_source(
+        staged.source_id,
+        session_manager=session_manager,
+        user=user,
+        preview=True,
+    )
+
+    assert response.media_type == "application/pdf"
+    assert response.headers["content-disposition"].startswith("inline;")
+
+
+@pytest.mark.asyncio
+async def test_preview_rejects_active_content(tmp_path, monkeypatch, user):
+    """Reject active source formats from inline preview rendering."""
+    monkeypatch.setenv("OPENRAG_DOCUMENTS_PATH", str(tmp_path))
+    monkeypatch.delenv("OPENRAG_INDEXED_DOCUMENTS_PATH", raising=False)
+    source = tmp_path / "inbox" / "page.html"
+    source.parent.mkdir()
+    source.write_text("<script>alert('unsafe')</script>")
+    staged = await stage_local_source(source, DOCUMENT_ID, source.name)
+    staged.commit()
+
+    client = AsyncMock()
+    client.search.return_value = {"hits": {"total": {"value": 1}}}
+    session_manager = MagicMock()
+    session_manager.get_user_opensearch_client.return_value = client
+
+    with pytest.raises(HTTPException) as exc_info:
+        await download_local_source(
+            staged.source_id,
+            session_manager=session_manager,
+            user=user,
+            preview=True,
+        )
+
+    assert exc_info.value.status_code == 415

@@ -4,6 +4,7 @@ import {
   AlertCircle,
   Download,
   EllipsisVertical,
+  Eye,
   RefreshCw,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -32,9 +33,10 @@ import { useTask } from "@/contexts/task-context";
 import { usePermissions } from "@/hooks/use-permissions";
 import { trackButton } from "@/lib/analytics";
 import { formatFilesToDelete } from "@/lib/format-files-to-delete";
-import { getDownloadSourceUrl } from "@/lib/source-url";
+import { getDownloadSourceUrl, getSourcePreviewKind } from "@/lib/source-url";
 import { DeleteConfirmationDialog } from "./delete-confirmation-dialog";
 import { RequirePermission } from "./require-permission";
+import { SourcePreviewDialog } from "./source-preview-dialog";
 import { SyncConfirmDialog } from "./sync-confirm-dialog";
 import { Button } from "./ui/button";
 
@@ -62,12 +64,14 @@ export const KnowledgeActionsDropdown = ({
   const syncConnectorMutation = useSyncConnector();
   const syncPreviewMutation = useSyncConnectorPreview();
   const [syncDialogOpen, setSyncDialogOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [syncPreview, setSyncPreview] = useState<SyncPreviewResponse | null>(
     null,
   );
   const { data: connectors = [] } = useGetConnectorsQuery();
   const router = useRouter();
   const downloadSourceUrl = getDownloadSourceUrl(sourceUrl);
+  const previewKind = getSourcePreviewKind(filename);
 
   // Check if this file is from a cloud connector (can be synced)
   const isCloudFile = connectorType && CLOUD_CONNECTOR_TYPES.has(connectorType);
@@ -164,6 +168,15 @@ export const KnowledgeActionsDropdown = ({
           >
             View chunks
           </DropdownMenuItem>
+          {downloadSourceUrl && previewKind && (
+            <DropdownMenuItem
+              className="text-primary focus:text-primary cursor-pointer"
+              onClick={() => setPreviewOpen(true)}
+            >
+              <Eye className="h-4 w-4 mr-2" />
+              Preview source
+            </DropdownMenuItem>
+          )}
           {downloadSourceUrl && (
             <DropdownMenuItem asChild>
               <a
@@ -260,6 +273,16 @@ export const KnowledgeActionsDropdown = ({
           </RequirePermission>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      {downloadSourceUrl && previewKind && (
+        <SourcePreviewDialog
+          filename={filename}
+          kind={previewKind}
+          open={previewOpen}
+          onOpenChange={setPreviewOpen}
+          sourceUrl={downloadSourceUrl}
+        />
+      )}
 
       <DeleteConfirmationDialog
         open={showDeleteDialog}
