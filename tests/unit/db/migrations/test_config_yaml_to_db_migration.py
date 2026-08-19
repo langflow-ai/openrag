@@ -68,18 +68,20 @@ async def test_migration_writes_all_sections_from_existing_yaml(
         "knowledge": {"embedding_model": "text-embedding-3-small", "chunk_size": 1024},
         "agent": {"llm_model": "gpt-4o", "system_prompt": "be helpful"},
         "onboarding": {"current_step": "complete"},
+        "archiving": {"enabled": True},
         "edited": True,
     }
     tmp_yaml.write_text(yaml.safe_dump(yaml_payload))
 
     written = await migrate_config_yaml_to_db(session)
     await session.commit()
-    assert written == 5  # providers, knowledge, agent, onboarding, meta
+    assert written == 6  # providers, knowledge, agent, onboarding, archiving, meta
 
     repo = WorkspaceConfigRepo(session)
     assert (await repo.get_section("agent"))["llm_model"] == "gpt-4o"
     assert (await repo.get_section("knowledge"))["embedding_model"] == "text-embedding-3-small"
     assert (await repo.get_section("onboarding"))["current_step"] == "complete"
+    assert (await repo.get_section("archiving"))["enabled"] is True
     assert (await repo.get_section("meta")) == {"edited": True}
 
 
@@ -90,7 +92,7 @@ async def test_migration_fresh_install_writes_empty_sections(tmp_yaml, session):
     # Don't create yaml file; ConfigManager.load_config returns defaults
     written = await migrate_config_yaml_to_db(session)
     await session.commit()
-    assert written == 5
+    assert written == 6
 
     repo = WorkspaceConfigRepo(session)
     meta = await repo.get_section("meta")

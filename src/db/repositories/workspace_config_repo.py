@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db.models import WorkspaceConfig
 
 # Section names recognized by the migration / service.
-SECTIONS = ("providers", "knowledge", "agent", "onboarding", "meta")
+SECTIONS = ("providers", "knowledge", "agent", "onboarding", "archiving", "meta")
 
 
 class WorkspaceConfigRepo:

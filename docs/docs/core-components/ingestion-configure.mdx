@@ -166,7 +166,8 @@ Open **Settings > Archiving** and enable **Keep original source files** to
 retain each successfully indexed local upload. OpenRAG moves the original into
 the displayed archive directory, excludes that directory from later folder
 ingestion, and stores an authenticated download URL in each indexed chunk's
-`source_url`. Sources that already came from the ingestion folder are restored
+`source_url`. The workspace setting is persisted across backend restarts and
+redeployments. Sources that already came from the ingestion folder are restored
 there if processing fails.
 
 The same setting applies to browser uploads from **Add Knowledge**. The

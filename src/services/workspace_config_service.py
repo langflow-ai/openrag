@@ -30,6 +30,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from config.config_manager import ConfigManager, OpenRAGConfig
+from config.settings import get_archive_sources_default
 from config.storage_mode import (
     db_writes_enabled,
     file_writes_enabled,
@@ -122,6 +123,10 @@ class WorkspaceConfigService:
             "knowledge": rows.get("knowledge", {}),
             "agent": rows.get("agent", {}),
             "onboarding": rows.get("onboarding", {}),
+            "archiving": rows.get(
+                "archiving",
+                {"enabled": get_archive_sources_default() or False},
+            ),
             "edited": (rows.get("meta") or {}).get("edited", False),
         }
         config = OpenRAGConfig.from_dict(merged)
@@ -401,6 +406,7 @@ class WorkspaceConfigService:
             "knowledge": config_dict.get("knowledge", {}),
             "agent": config_dict.get("agent", {}),
             "onboarding": config_dict.get("onboarding", {}),
+            "archiving": config_dict.get("archiving", {}),
             "meta": {"edited": bool(config_dict.get("edited", False))},
         }
 

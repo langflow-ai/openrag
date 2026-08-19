@@ -1,10 +1,8 @@
 """WorkspaceConfigService — yaml/DB dual-write contract."""
 
-import os
 import sys
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 import pytest_asyncio
@@ -90,6 +88,46 @@ async def test_save_config_writes_to_yaml_and_db(
 
 
 @pytest.mark.asyncio
+async def test_archiving_setting_survives_db_reload(
+    tmp_config_manager, session_factory
+):
+    """Persist the original-source setting across backend restarts in DB mode."""
+    svc = WorkspaceConfigService(
+        config_manager=tmp_config_manager, session_factory=session_factory
+    )
+    config = await svc.load_config()
+    config.archiving.enabled = True
+
+    assert await svc.save_config(config) is True
+
+    restarted_manager = ConfigManager(config_file=str(tmp_config_manager.config_file))
+    restarted_service = WorkspaceConfigService(
+        config_manager=restarted_manager, session_factory=session_factory
+    )
+
+    reloaded = await restarted_service.load_config()
+    assert reloaded.archiving.enabled is True
+
+
+@pytest.mark.asyncio
+async def test_archiving_uses_deployment_default_when_db_section_is_missing(
+    monkeypatch, tmp_config_manager, session_factory
+):
+    """Seed older DB-backed installs from the configured archiving default."""
+    monkeypatch.setenv("OPENRAG_ARCHIVE_SOURCES_DEFAULT", "true")
+    async with session_factory() as session:
+        await WorkspaceConfigRepo(session).upsert("meta", {"edited": True})
+        await session.commit()
+
+    svc = WorkspaceConfigService(
+        config_manager=tmp_config_manager, session_factory=session_factory
+    )
+
+    config = await svc.load_config()
+    assert config.archiving.enabled is True
+
+
+@pytest.mark.asyncio
 async def test_is_onboarded_reads_from_db_first(
     tmp_config_manager, session_factory
 ):
@@ -137,7 +175,7 @@ async def test_yaml_write_hooks_mirror_to_db(
 ):
     """Legacy callers that hit config_manager.save_config_file directly
     should auto-mirror to the DB via the installed monkey-patch."""
-    svc = WorkspaceConfigService(
+    _svc = WorkspaceConfigService(
         config_manager=tmp_config_manager, session_factory=session_factory
     )
     # Direct legacy-style call (no service, no await)
