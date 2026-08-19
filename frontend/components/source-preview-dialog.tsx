@@ -70,7 +70,7 @@ export function SourcePreviewDialog({
           ) : (
             <iframe
               key={previewKey}
-              sandbox=""
+              sandbox="allow-downloads"
               referrerPolicy="no-referrer"
               src={previewUrl}
               title={`Preview of ${filename}`}
