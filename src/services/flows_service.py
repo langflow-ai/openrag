@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import os
 from datetime import UTC, datetime
@@ -863,6 +864,61 @@ class FlowsService:
 
         return normalized
 
+    @staticmethod
+    def _flow_structure_signature(payload: dict[str, Any] | None) -> str | None:
+        """Fingerprint the parts of a flow that change when the *shipped* flow changes.
+
+        Covers the component set, each component's code, and the wiring. It
+        deliberately ignores node positions and template values: OpenRAG
+        rewrites values in the Langflow copy every time settings are applied
+        (models, chunk size, credentials, tweaks), so comparing the whole
+        payload would report an update forever.
+
+        Returns None when the payload has no usable node list, which callers
+        treat as "cannot tell" and fall back to the timestamp comparison.
+        """
+        if not isinstance(payload, dict):
+            return None
+        data = payload.get("data") if isinstance(payload.get("data"), dict) else payload
+        if not isinstance(data, dict):
+            return None
+        nodes = data.get("nodes")
+        edges = data.get("edges")
+        if not isinstance(nodes, list) or not isinstance(edges, list):
+            return None
+
+        node_parts = []
+        for node in nodes:
+            node_data = node.get("data") if isinstance(node, dict) else None
+            if not isinstance(node_data, dict):
+                continue
+            inner = node_data.get("node") if isinstance(node_data.get("node"), dict) else {}
+            metadata = inner.get("metadata") if isinstance(inner.get("metadata"), dict) else {}
+            node_parts.append(
+                f"{node_data.get('id')}|{node_data.get('type')}|{metadata.get('code_hash', '')}"
+            )
+
+        edge_parts = [
+            f"{edge.get('source')}|{edge.get('target')}|"
+            f"{edge.get('sourceHandle')}|{edge.get('targetHandle')}"
+            for edge in edges
+            if isinstance(edge, dict)
+        ]
+
+        digest = hashlib.sha256()
+        digest.update("\n".join(sorted(node_parts)).encode())
+        digest.update(b"\x00")
+        digest.update("\n".join(sorted(edge_parts)).encode())
+        return digest.hexdigest()
+
+    def _disk_flow_payload(self, flow_path: str) -> dict[str, Any] | None:
+        try:
+            with open(flow_path) as handle:
+                return json.load(handle)
+        except (OSError, json.JSONDecodeError) as e:
+            logger.warning(f"Could not read flow file {flow_path} for update check: {e}")
+            return None
+
     async def _check_flow_update(
         self, flow_type: str, flow_id: str, flow_data: dict[str, Any] | None = None
     ) -> dict[str, Any] | None:
@@ -900,14 +956,35 @@ class FlowsService:
             except ValueError:
                 pass
 
-        if local_mtime > langflow_mtime + 1.0:
-            is_locked = flow_data.get("locked", False)
-            return {
-                "flow_type": flow_type,
-                "flow_id": flow_id,
-                "is_custom": not is_locked,
-            }
-        return None
+        if local_mtime <= langflow_mtime + 1.0:
+            return None
+
+        # The mtime is only a cheap pre-filter. It says nothing about content:
+        # git checkout / pull / stash, a branch switch, a fresh clone, and any
+        # container rebuild that re-COPYs flows/ all restamp these files
+        # without changing a byte, which made the "Update required from
+        # Langflow" prompt reappear more or less permanently. Confirm the
+        # shipped definition actually differs before asking the user to act.
+        disk_signature = self._flow_structure_signature(self._disk_flow_payload(flow_path))
+        langflow_signature = self._flow_structure_signature(flow_data)
+        if (
+            disk_signature is not None
+            and langflow_signature is not None
+            and disk_signature == langflow_signature
+        ):
+            logger.debug(
+                "Flow file is newer than Langflow's copy but structurally identical; "
+                "not reporting an update",
+                extra={"flow_type": flow_type, "flow_id": flow_id},
+            )
+            return None
+
+        is_locked = flow_data.get("locked", False)
+        return {
+            "flow_type": flow_type,
+            "flow_id": flow_id,
+            "is_custom": not is_locked,
+        }
 
     async def ensure_flows_exist(self) -> set[str]:
         """
