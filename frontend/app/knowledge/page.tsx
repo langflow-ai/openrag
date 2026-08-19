@@ -807,6 +807,7 @@ function SearchPage() {
         return (
           <KnowledgeActionsDropdown
             filename={data?.filename || ""}
+            sourceUrl={data?.source_url}
             connectorType={data?.connector_type}
           />
         );

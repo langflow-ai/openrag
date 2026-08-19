@@ -1,6 +1,11 @@
 "use client";
 
-import { AlertCircle, EllipsisVertical, RefreshCw } from "lucide-react";
+import {
+  AlertCircle,
+  Download,
+  EllipsisVertical,
+  RefreshCw,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -34,6 +39,7 @@ import { Button } from "./ui/button";
 
 interface KnowledgeActionsDropdownProps {
   filename: string;
+  sourceUrl?: string;
   connectorType?: string;
 }
 
@@ -44,8 +50,27 @@ const CLOUD_CONNECTOR_TYPES = new Set([
   "sharepoint",
 ]);
 
+function getDownloadSourceUrl(sourceUrl?: string): string | undefined {
+  const url = sourceUrl?.trim();
+  if (!url) return undefined;
+
+  try {
+    const parsed = new URL(url, "http://openrag.local");
+    if (!["http:", "https:"].includes(parsed.protocol)) return undefined;
+    if (parsed.username || parsed.password) return undefined;
+
+    const isManagedLocalSource =
+      parsed.pathname.startsWith("/api/source-files/");
+    if (url.startsWith("/") && !isManagedLocalSource) return undefined;
+    return url;
+  } catch {
+    return undefined;
+  }
+}
+
 export const KnowledgeActionsDropdown = ({
   filename,
+  sourceUrl,
   connectorType,
 }: KnowledgeActionsDropdownProps) => {
   const { refreshTasks } = useTask();
@@ -59,6 +84,7 @@ export const KnowledgeActionsDropdown = ({
   );
   const { data: connectors = [] } = useGetConnectorsQuery();
   const router = useRouter();
+  const downloadSourceUrl = getDownloadSourceUrl(sourceUrl);
 
   // Check if this file is from a cloud connector (can be synced)
   const isCloudFile = connectorType && CLOUD_CONNECTOR_TYPES.has(connectorType);
@@ -131,7 +157,11 @@ export const KnowledgeActionsDropdown = ({
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" className="hover:bg-transparent">
+          <Button
+            variant="ghost"
+            className="hover:bg-transparent"
+            aria-label={`Actions for ${filename}`}
+          >
             <EllipsisVertical className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
@@ -151,6 +181,27 @@ export const KnowledgeActionsDropdown = ({
           >
             View chunks
           </DropdownMenuItem>
+          {downloadSourceUrl && (
+            <DropdownMenuItem asChild>
+              <a
+                href={downloadSourceUrl}
+                download={filename}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary focus:text-primary cursor-pointer"
+                onClick={() =>
+                  trackButton({
+                    CTA: "Download Source",
+                    elementId: "download-source-button",
+                    namespace: "knowledge",
+                  })
+                }
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Download source
+              </a>
+            </DropdownMenuItem>
+          )}
           {isCloudFile && (
             <TooltipProvider>
               <Tooltip delayDuration={0}>
