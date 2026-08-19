@@ -121,3 +121,27 @@ def test_every_validation_call_forwards_credentials():
     assert calls, "expected check_provider_health to call validate_provider_setup"
     missing = [index for index, kwargs in enumerate(calls) if "credentials" not in kwargs]
     assert not missing, f"validate_provider_setup call(s) {missing} drop credentials"
+
+
+def test_health_endpoint_accepts_an_explicit_validation_model():
+    """Generic providers are validated by a real LiteLLM call, which needs a model.
+
+    A provider that is not the selected LLM/embedding provider has no model in
+    config, and providers whose model names are per-account deployments (Azure,
+    Bedrock, SageMaker) cannot be validated against catalogue names at all —
+    that is what surfaces as "AzureException APIError - Resource not found".
+    """
+    params = inspect.signature(provider_health.check_provider_health).parameters
+
+    assert "model" in params
+    assert "embedding_model_override" in params
+    assert params["model"].default is None
+    assert params["embedding_model_override"].default is None
+
+
+def test_explicit_model_replaces_the_configured_one():
+    """The override must clear the other slot, or a chat model gets embedded."""
+    source = inspect.getsource(provider_health.check_provider_health)
+
+    assert "llm_model = model or None" in source
+    assert "embedding_model = embedding_model_override or None" in source

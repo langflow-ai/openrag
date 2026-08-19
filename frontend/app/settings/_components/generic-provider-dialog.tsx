@@ -51,6 +51,7 @@ export function GenericProviderDialog({
   const { data: settings } = useGetSettingsQuery();
   const [provider, setProvider] = useState(initialProvider ?? "");
   const [values, setValues] = useState<Record<string, string>>({});
+  const [testModel, setTestModel] = useState("");
 
   const providerEntry = catalog?.providers.find(
     (entry) => entry.key === provider,
@@ -66,7 +67,23 @@ export function GenericProviderDialog({
     if (!open) return;
     setProvider(initialProvider ?? "");
     setValues({});
+    setValidationError(null);
   }, [initialProvider, open]);
+
+  useEffect(() => {
+    if (!providerEntry) {
+      setTestModel("");
+      return;
+    }
+    // Prefer a real catalogue model; fall back to the provider's placeholder
+    // (e.g. "your-deployment-name" for Azure) so the field shows the shape
+    // the provider expects rather than an empty box.
+    setTestModel(
+      providerEntry.models?.[0]?.model ??
+        providerEntry.embedding_models?.[0]?.model ??
+        "",
+    );
+  }, [providerEntry]);
 
   useEffect(() => {
     if (!providerEntry) return;
@@ -84,10 +101,44 @@ export function GenericProviderDialog({
     });
   }, [providerEntry, saved?.credential_values]);
 
+  // Credentials are saved first, then verified with a real call through
+  // LiteLLM. Saving alone proves nothing — a wrong Azure api_base or a
+  // deployment name that does not exist only fails later, mid-chat or
+  // mid-ingest, as "AzureException APIError - Resource not found".
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const [isValidating, setIsValidating] = useState(false);
+
+  const validateProvider = async () => {
+    setIsValidating(true);
+    setValidationError(null);
+    try {
+      const url = new URL("/api/provider/health", window.location.origin);
+      url.searchParams.set("provider", provider);
+      if (testModel.trim()) url.searchParams.set("model", testModel.trim());
+
+      const response = await fetch(url.toString());
+      if (response.ok) {
+        toast.success(`${providerEntry?.name ?? provider} configured`);
+        onOpenChange(false);
+        return;
+      }
+      const body = await response.json().catch(() => ({}));
+      setValidationError(
+        body.message ||
+          "The provider was saved but could not be verified. Check the credentials and model name.",
+      );
+    } catch (error) {
+      setValidationError(
+        error instanceof Error ? error.message : "Validation request failed",
+      );
+    } finally {
+      setIsValidating(false);
+    }
+  };
+
   const mutation = useUpdateSettingsMutation({
     onSuccess: () => {
-      toast.success(`${providerEntry?.name ?? provider} configured`);
-      onOpenChange(false);
+      void validateProvider();
     },
     onError: (error) => {
       toast.error("Failed to configure provider", {
@@ -213,6 +264,39 @@ export function GenericProviderDialog({
           </div>
         )}
 
+        {provider && (
+          <LabelWrapper
+            id="provider-test-model"
+            label="Model to verify with"
+            helperText={
+              providerEntry?.model_placeholder
+                ? `Used once to confirm the credentials work. e.g. ${providerEntry.model_placeholder}`
+                : "Used once to confirm the credentials work. For providers with per-account deployments (Azure, Bedrock, SageMaker) enter your own deployment name."
+            }
+          >
+            <Input
+              id="provider-test-model"
+              value={testModel}
+              placeholder={providerEntry?.model_placeholder ?? "model name"}
+              onChange={(event) => setTestModel(event.target.value)}
+            />
+          </LabelWrapper>
+        )}
+
+        {validationError && (
+          <div
+            data-testid="provider-validation-error"
+            className="border border-destructive/40 bg-destructive/10 p-3 text-mmd"
+          >
+            <p className="font-medium">
+              Saved, but the provider did not respond
+            </p>
+            <p className="mt-1 break-words text-muted-foreground">
+              {validationError}
+            </p>
+          </div>
+        )}
+
         <DialogFooter>
           {saved?.configured &&
             !["openai", "anthropic", "ollama", "watsonx"].includes(
@@ -228,8 +312,8 @@ export function GenericProviderDialog({
               </Button>
             )}
           <Button
-            disabled={!ready}
-            loading={mutation.isPending}
+            disabled={!ready || isValidating}
+            loading={mutation.isPending || isValidating}
             onClick={() =>
               mutation.mutate({
                 provider_credentials: {
@@ -240,7 +324,7 @@ export function GenericProviderDialog({
               })
             }
           >
-            Save
+            {isValidating ? "Verifying..." : "Save"}
           </Button>
         </DialogFooter>
       </DialogContent>

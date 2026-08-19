@@ -20,6 +20,8 @@ logger = get_logger(__name__)
 async def check_provider_health(
     provider: str | None = None,
     test_completion: bool = False,
+    model: str | None = None,
+    embedding_model_override: str | None = None,
     user: User = Depends(require_permission("providers:read")),
 ):
     """
@@ -29,6 +31,13 @@ async def check_provider_health(
         provider (optional): Provider to check ('openai', 'ollama', 'watsonx', 'anthropic').
                            If not provided, checks the currently configured provider.
         test_completion (optional): If true, performs full validation with completion/embedding tests.
+        model (optional): Validate against this chat model instead of the configured one.
+                          Generic LiteLLM providers are validated by issuing a real call, which
+                          needs a model name; a provider that is not the selected LLM/embedding
+                          provider has none, and one whose model names are deployment-specific
+                          (Azure, Bedrock, SageMaker) cannot be validated against the catalogue's
+                          generic names. Only meaningful together with ``provider``.
+        embedding_model_override (optional): Same, for validating an embedding model instead.
 
     Returns:
         200: Provider is healthy and validated
@@ -80,6 +89,14 @@ async def check_provider_health(
                     if provider == current_config.knowledge.embedding_provider
                     else None
                 )
+
+                # An explicit model wins over whatever the provider happens to be
+                # selected for. Setting one clears the other so the validator
+                # tests exactly what the caller asked for rather than falling
+                # back to an embedding call for a chat model (or vice versa).
+                if model or embedding_model_override:
+                    llm_model = model or None
+                    embedding_model = embedding_model_override or None
             except ValueError:
                 # Provider not found in configuration
                 return JSONResponse(
