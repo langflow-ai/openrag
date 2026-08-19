@@ -19,7 +19,7 @@ import { Switch } from "@/components/ui/switch";
 import { formatFileSize } from "@/lib/file-format";
 
 export function ArchivingSettingsSection() {
-  const { data: settings, isLoading } = useGetArchivingSettingsQuery();
+  const { data: settings, isError, isLoading } = useGetArchivingSettingsQuery();
   const serverEnabled = settings?.archiving?.enabled ?? false;
   const [draftEnabled, setDraftEnabled] = useState<boolean | null>(null);
   const enabled = draftEnabled ?? serverEnabled;
@@ -75,7 +75,9 @@ export function ArchivingSettingsSection() {
               <Switch
                 id="archive-sources-enabled"
                 checked={enabled}
-                disabled={isLoading || updateSettings.isPending}
+                disabled={
+                  isLoading || isError || !settings || updateSettings.isPending
+                }
                 onCheckedChange={setDraftEnabled}
               />
             </div>
@@ -142,7 +144,9 @@ export function ArchivingSettingsSection() {
         {archive?.available !== false && (
           <div className="flex justify-end">
             <Button
-              disabled={!isDirty || updateSettings.isPending}
+              disabled={
+                !settings || isError || !isDirty || updateSettings.isPending
+              }
               onClick={() =>
                 updateSettings.mutate({ archive_sources_enabled: enabled })
               }
