@@ -175,6 +175,7 @@
       },
       {
         "animated": false,
+        "className": "",
         "data": {
           "sourceHandle": {
             "dataType": "OpenAICompatibleEmbedding",
@@ -202,33 +203,7 @@
       },
       {
         "animated": false,
-        "data": {
-          "sourceHandle": {
-            "dataType": "OpenSearchVectorStoreComponentMultimodalMultiEmbedding",
-            "id": "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-3x7Ll",
-            "name": "component_as_tool",
-            "output_types": [
-              "Tool"
-            ]
-          },
-          "targetHandle": {
-            "fieldName": "tools",
-            "id": "Agent-Nfw7u",
-            "inputTypes": [
-              "Tool"
-            ],
-            "type": "other"
-          }
-        },
-        "id": "xy-edge__OpenSearchVectorStoreComponentMultimodalMultiEmbedding-3x7Ll{œdataTypeœ:œOpenSearchVectorStoreComponentMultimodalMultiEmbeddingœ,œidœ:œOpenSearchVectorStoreComponentMultimodalMultiEmbedding-3x7Llœ,œnameœ:œcomponent_as_toolœ,œoutput_typesœ:[œToolœ]}-Agent-Nfw7u{œfieldNameœ:œtoolsœ,œidœ:œAgent-Nfw7uœ,œinputTypesœ:[œToolœ],œtypeœ:œotherœ}",
-        "selected": false,
-        "source": "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-3x7Ll",
-        "sourceHandle": "{œdataTypeœ:œOpenSearchVectorStoreComponentMultimodalMultiEmbeddingœ,œidœ:œOpenSearchVectorStoreComponentMultimodalMultiEmbedding-3x7Llœ,œnameœ:œcomponent_as_toolœ,œoutput_typesœ:[œToolœ]}",
-        "target": "Agent-Nfw7u",
-        "targetHandle": "{œfieldNameœ:œtoolsœ,œidœ:œAgent-Nfw7uœ,œinputTypesœ:[œToolœ],œtypeœ:œotherœ}"
-      },
-      {
-        "animated": false,
+        "className": "",
         "data": {
           "sourceHandle": {
             "dataType": "OpenAICompatibleLLM",
@@ -253,6 +228,33 @@
         "sourceHandle": "{œdataTypeœ:œOpenAICompatibleLLMœ,œidœ:œOpenAICompatibleLLM-u2sHyœ,œnameœ:œmodel_outputœ,œoutput_typesœ:[œLanguageModelœ]}",
         "target": "Agent-Nfw7u",
         "targetHandle": "{œfieldNameœ:œmodelœ,œidœ:œAgent-Nfw7uœ,œinputTypesœ:[œLanguageModelœ],œtypeœ:œmodelœ}"
+      },
+      {
+        "animated": false,
+        "data": {
+          "sourceHandle": {
+            "dataType": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra",
+            "id": "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-3x7Ll",
+            "name": "component_as_tool",
+            "output_types": [
+              "Tool"
+            ]
+          },
+          "targetHandle": {
+            "fieldName": "tools",
+            "id": "Agent-Nfw7u",
+            "inputTypes": [
+              "Tool"
+            ],
+            "type": "other"
+          }
+        },
+        "id": "xy-edge__OpenSearchVectorStoreComponentMultimodalMultiEmbedding-3x7Ll{œdataTypeœ:œext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extraœ,œidœ:œOpenSearchVectorStoreComponentMultimodalMultiEmbedding-3x7Llœ,œnameœ:œcomponent_as_toolœ,œoutput_typesœ:[œToolœ]}-Agent-Nfw7u{œfieldNameœ:œtoolsœ,œidœ:œAgent-Nfw7uœ,œinputTypesœ:[œToolœ],œtypeœ:œotherœ}",
+        "selected": false,
+        "source": "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-3x7Ll",
+        "sourceHandle": "{œdataTypeœ:œext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extraœ,œidœ:œOpenSearchVectorStoreComponentMultimodalMultiEmbedding-3x7Llœ,œnameœ:œcomponent_as_toolœ,œoutput_typesœ:[œToolœ]}",
+        "target": "Agent-Nfw7u",
+        "targetHandle": "{œfieldNameœ:œtoolsœ,œidœ:œAgent-Nfw7uœ,œinputTypesœ:[œToolœ],œtypeœ:œotherœ}"
       }
     ],
     "nodes": [
@@ -1004,7 +1006,7 @@
               },
               "_frontend_node_folder_id": {
                 "input_types": [],
-                "value": "e861a230-a49b-41ef-82de-5f825ea9ab51"
+                "value": "501d7212-c442-4593-a43a-e987cc095eb4"
               },
               "_type": "Component",
               "add_calculator_tool": {
@@ -1057,7 +1059,7 @@
                 "api_editable": false,
                 "display_name": "API Key",
                 "dynamic": false,
-                "info": "Falls back to ANTHROPIC_API_KEY environment variable",
+                "info": "Overrides global provider settings. Leave blank to use your pre-configured API Key.",
                 "input_types": [],
                 "load_from_db": true,
                 "name": "api_key",
@@ -1230,7 +1232,7 @@
                 "type": "str",
                 "value": ""
               },
-              "is_refresh": false,
+              "is_refresh": true,
               "max_iterations": {
                 "_input_type": "IntInput",
                 "advanced": true,
@@ -1598,7 +1600,7 @@
             ],
             "frozen": false,
             "icon": "calculator",
-            "last_updated": "2026-08-18T22:54:21.753Z",
+            "last_updated": "2026-08-19T00:19:17.062Z",
             "legacy": false,
             "metadata": {
               "code_hash": "d0b2936e74fa",
@@ -1641,7 +1643,7 @@
                 "value": "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
               },
               "_frontend_node_folder_id": {
-                "value": "e861a230-a49b-41ef-82de-5f825ea9ab51"
+                "value": "501d7212-c442-4593-a43a-e987cc095eb4"
               },
               "_type": "Component",
               "code": {
@@ -2151,7 +2153,7 @@
             ],
             "frozen": false,
             "icon": "Mcp",
-            "last_updated": "2026-08-18T22:52:55.012Z",
+            "last_updated": "2026-08-19T00:20:16.835Z",
             "legacy": false,
             "metadata": {
               "code_hash": "ab868d34a552",
@@ -2183,7 +2185,7 @@
             "outputs": [
               {
                 "allows_loop": false,
-                "cache": false,
+                "cache": true,
                 "display_name": "Toolset",
                 "group_outputs": false,
                 "hidden": null,
@@ -2293,34 +2295,6 @@
                 "type": "str",
                 "value": ""
               },
-              "tool_execution_timeout": {
-                "_input_type": "FloatInput",
-                "advanced": true,
-                "api_editable": false,
-                "display_name": "Tool Execution Timeout (seconds)",
-                "dynamic": false,
-                "info": "Maximum time to wait for tool execution before timing out. Supports decimal values for sub-second timeouts (e.g., 0.01 for 10ms). Set to 0 to use the system-configured MCP timeout.",
-                "list": false,
-                "list_add_label": "Add More",
-                "name": "tool_execution_timeout",
-                "override_skip": false,
-                "placeholder": "",
-                "range_spec": {
-                  "max": 3600,
-                  "min": 0,
-                  "step": 0.01,
-                  "step_type": "float"
-                },
-                "real_time_refresh": true,
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "track_in_telemetry": true,
-                "type": "float",
-                "value": 0
-              },
               "tool_placeholder": {
                 "_input_type": "MessageTextInput",
                 "advanced": false,
@@ -2427,7 +2401,7 @@
           "x": 986.3661480999083,
           "y": 1421.9794379164362
         },
-        "selected": false,
+        "selected": true,
         "type": "genericNode"
       },
       {
@@ -2685,7 +2659,7 @@
             ],
             "frozen": false,
             "icon": "OpenSearch",
-            "last_updated": "2026-08-18T22:54:23.905Z",
+            "last_updated": "2026-08-19T00:19:31.484Z",
             "legacy": false,
             "metadata": {
               "code_hash": "6c375fdaa9e7",
@@ -2744,7 +2718,7 @@
                 "value": "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
               },
               "_frontend_node_folder_id": {
-                "value": "e861a230-a49b-41ef-82de-5f825ea9ab51"
+                "value": "501d7212-c442-4593-a43a-e987cc095eb4"
               },
               "_type": "Component",
               "auth_mode": {
@@ -3573,18 +3547,18 @@
             "tool_mode": true
           },
           "selected_output": "search_results",
-          "showNode": false,
+          "showNode": true,
           "type": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra"
         },
         "dragging": false,
         "id": "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-3x7Ll",
         "measured": {
-          "height": 116,
-          "width": 192
+          "height": 999,
+          "width": 320
         },
         "position": {
-          "x": 992.2505850020484,
-          "y": 1795.9862366510433
+          "x": 1325.2370822527334,
+          "y": 1777.486986803783
         },
         "selected": false,
         "type": "genericNode"
@@ -3930,9 +3904,9 @@
       }
     ],
     "viewport": {
-      "x": -45.272132070040016,
-      "y": -449.3462498284804,
-      "zoom": 0.415125666831326
+      "x": 85.27421535718327,
+      "y": -530.1035147143316,
+      "zoom": 0.48650621372806035
     }
   },
   "description": "OpenRAG OpenSearch Agent",
