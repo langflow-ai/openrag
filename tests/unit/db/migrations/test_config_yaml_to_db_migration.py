@@ -86,17 +86,32 @@ async def test_migration_writes_all_sections_from_existing_yaml(
 
 
 @pytest.mark.asyncio
-async def test_migration_fresh_install_writes_empty_sections(tmp_yaml, session):
-    """No yaml file present — migration still runs, writes empty/default
-    sections, edited=False."""
+async def test_migration_fresh_install_writes_default_sections(tmp_yaml, session):
+    """No yaml file present — migration writes effective defaults."""
     # Don't create yaml file; ConfigManager.load_config returns defaults
     written = await migrate_config_yaml_to_db(session)
     await session.commit()
     assert written == 6
 
     repo = WorkspaceConfigRepo(session)
+    assert await repo.get_section("archiving") == {"enabled": False}
     meta = await repo.get_section("meta")
     assert meta == {"edited": False}
+
+
+@pytest.mark.asyncio
+async def test_migration_preserves_archiving_deployment_default(
+    monkeypatch, tmp_yaml, session
+):
+    """Persist the effective deployment default for an older YAML config."""
+    monkeypatch.setenv("OPENRAG_ARCHIVE_SOURCES_DEFAULT", "true")
+    tmp_yaml.write_text("edited: true\nknowledge: {}\n")
+
+    written = await migrate_config_yaml_to_db(session)
+    await session.commit()
+
+    assert written == 6
+    assert await WorkspaceConfigRepo(session).get_section("archiving") == {"enabled": True}
 
 
 @pytest.mark.asyncio

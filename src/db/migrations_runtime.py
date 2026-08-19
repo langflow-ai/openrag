@@ -183,7 +183,7 @@ async def migrate_config_yaml_to_db(session: AsyncSession) -> int:
         "knowledge": config_dict.get("knowledge", {}),
         "agent": config_dict.get("agent", {}),
         "onboarding": config_dict.get("onboarding", {}),
-        "archiving": config_dict.get("archiving", {}),
+        "archiving": config_dict.get("archiving") or {"enabled": config.archiving.enabled},
         "meta": {"edited": bool(config_dict.get("edited", False))},
     }
 

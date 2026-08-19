@@ -42,5 +42,8 @@ async def download_local_source(
         media_type=source.media_type,
         filename=source.path.name,
         content_disposition_type="inline" if preview else "attachment",
-        headers={"Cache-Control": "private, no-store"},
+        headers={
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
     )

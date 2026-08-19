@@ -45,6 +45,7 @@ async def test_download_returns_visible_archived_source(tmp_path, monkeypatch, u
     assert response.path == staged.archived_path.resolve()
     assert response.media_type == "message/rfc822"
     assert response.headers["cache-control"] == "private, no-store"
+    assert response.headers["x-content-type-options"] == "nosniff"
     query = client.search.await_args.kwargs["body"]["query"]
     assert query["bool"]["filter"][1]["wildcard"]["source_url"]["value"] == (
         f"*/api/source-files/{staged.source_id}"
@@ -91,6 +92,7 @@ async def test_preview_returns_supported_source_inline(tmp_path, monkeypatch, us
 
     assert response.media_type == "application/pdf"
     assert response.headers["content-disposition"].startswith("inline;")
+    assert response.headers["x-content-type-options"] == "nosniff"
 
 
 @pytest.mark.asyncio

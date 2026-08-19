@@ -123,10 +123,8 @@ class WorkspaceConfigService:
             "knowledge": rows.get("knowledge", {}),
             "agent": rows.get("agent", {}),
             "onboarding": rows.get("onboarding", {}),
-            "archiving": rows.get(
-                "archiving",
-                {"enabled": get_archive_sources_default() or False},
-            ),
+            "archiving": rows.get("archiving")
+            or {"enabled": get_archive_sources_default() or False},
             "edited": (rows.get("meta") or {}).get("edited", False),
         }
         config = OpenRAGConfig.from_dict(merged)

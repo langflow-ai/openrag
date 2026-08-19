@@ -128,6 +128,26 @@ async def test_archiving_uses_deployment_default_when_db_section_is_missing(
 
 
 @pytest.mark.asyncio
+async def test_archiving_uses_deployment_default_when_db_section_is_empty(
+    monkeypatch, tmp_config_manager, session_factory
+):
+    """Treat an empty migrated archiving section like a missing section."""
+    monkeypatch.setenv("OPENRAG_ARCHIVE_SOURCES_DEFAULT", "true")
+    async with session_factory() as session:
+        repo = WorkspaceConfigRepo(session)
+        await repo.upsert("archiving", {})
+        await repo.upsert("meta", {"edited": True})
+        await session.commit()
+
+    svc = WorkspaceConfigService(
+        config_manager=tmp_config_manager, session_factory=session_factory
+    )
+
+    config = await svc.load_config()
+    assert config.archiving.enabled is True
+
+
+@pytest.mark.asyncio
 async def test_is_onboarded_reads_from_db_first(
     tmp_config_manager, session_factory
 ):
