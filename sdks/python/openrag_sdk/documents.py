@@ -8,6 +8,7 @@ from .exceptions import NotFoundError
 from .models import (
     DeleteDocumentResponse,
     FileRecord,
+    GetAllFilesResponse,
     IngestResponse,
     IngestTaskStatus,
     ListFilesResponse,
@@ -197,7 +198,7 @@ class DocumentsClient:
         after_key: str | None = None,
     ) -> ListFilesResponse:
         """
-        List ingested files in the knowledge base.
+        List ingested files with cursor-based composite-aggregation pagination (v2).
 
         Args:
             page: Page number (display only; use after_key for cursor navigation).
@@ -213,7 +214,8 @@ class DocumentsClient:
                 after_key field. Pass to fetch the next page.
 
         Returns:
-            ListFilesResponse with files list, total count, and next after_key.
+            ListFilesResponse with files list, approximate total, and next
+            after_key cursor.
         """
         params: dict[str, str | int] = {
             "page": page,
@@ -234,7 +236,7 @@ class DocumentsClient:
 
         response = await self._client._request(
             "GET",
-            "/api/v1/files",
+            "/api/v2/files",
             params=params,
         )
         data = response.json()
@@ -245,4 +247,30 @@ class DocumentsClient:
             page=data.get("page", page),
             page_size=data.get("page_size", page_size),
             after_key=data.get("after_key"),
+        )
+
+    async def get_all_files(self) -> GetAllFilesResponse:
+        """
+        Return all ingested files (v1).
+
+        No parameters — just returns everything in the knowledge base.
+
+        Note:
+            Returns at most 500 files. If your knowledge base contains more
+            than 500 files, use ``list_files()`` with cursor pagination
+            (``after_key``) to page through the full set.
+
+        Returns:
+            GetAllFilesResponse with files list, total count, page, and page_size.
+        """
+        response = await self._client._request(
+            "GET",
+            "/api/v1/files/get_all",
+        )
+        data = response.json()
+        return GetAllFilesResponse(
+            files=[FileRecord(**f) for f in data.get("files", [])],
+            total=data.get("total", 0),
+            page=data.get("page", 1),
+            page_size=data.get("page_size", 500),
         )

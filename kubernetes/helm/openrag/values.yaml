@@ -243,6 +243,9 @@ backend:
     repository: langflowai/openrag-backend
     tag: ""                               # Uses global.imageTag if empty
 
+  cors:
+    allowedOrigins: ""                    # Comma-separated origins; empty = CORS disabled
+
   oauthBrokerUrl: ""                      # Public return URL for OAuth redirects
 
   # Single pod for vertical scaling

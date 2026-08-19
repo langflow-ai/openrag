@@ -2,16 +2,32 @@
 
 import { Bell } from "lucide-react";
 import { BrandSwitcher } from "@/components/brand-switcher";
+import { ConsoleStatusButton } from "@/components/console-status-panel";
 import { DevRoleToggle } from "@/components/dev-role-toggle";
 import Logo from "@/components/icons/openrag-logo";
 import { UserNav } from "@/components/user-nav";
+import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
+import { useConsoleStatus } from "@/contexts/console-status-context";
 import { useTask } from "@/contexts/task-context";
 import { cn } from "@/lib/utils";
+import { useProviderHealth } from "./provider-health-banner";
 
 export function Header() {
   const isCloudBrand = useIsCloudBrand();
   const { tasks, toggleMenu } = useTask();
+  const { runMode } = useAuth();
+
+  const {
+    hasProblem,
+    toggle,
+    isOpen,
+    overallStatus: consoleOverallStatus,
+  } = useConsoleStatus();
+  const { isUnhealthy: isProviderUnhealthy } = useProviderHealth();
+  const overallStatus = isProviderUnhealthy
+    ? "unhealthy"
+    : consoleOverallStatus;
 
   // Calculate active tasks for the bell icon
   const activeTasks = tasks.filter(
@@ -20,6 +36,9 @@ export function Header() {
       task.status === "running" ||
       task.status === "processing",
   );
+
+  // The bell dot lights for in-flight tasks OR a degraded/down component.
+  const showNotificationDot = activeTasks.length > 0 || hasProblem;
 
   return (
     <header className={cn(`flex w-full h-full items-center justify-between`)}>
@@ -58,7 +77,19 @@ export function Header() {
             </>
           )}
 
-          {/* Task Notification Bell */}
+          {/* Console Status button — OSS only */}
+          {runMode === "oss" && (
+            <>
+              <ConsoleStatusButton
+                onClick={toggle}
+                isOpen={isOpen}
+                overallStatus={overallStatus}
+              />
+              <div className="w-px h-6 bg-border mx-3" />
+            </>
+          )}
+
+          {/* Task + System Notification Bell */}
           <button
             type="button"
             onClick={toggleMenu}
@@ -71,7 +102,7 @@ export function Header() {
                 isCloudBrand ? "text-foreground" : "text-muted-foreground"
               }
             />
-            {activeTasks.length > 0 && <div className="header-notifications" />}
+            {showNotificationDot && <div className="header-notifications" />}
           </button>
 
           {/* Separator */}

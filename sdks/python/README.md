@@ -215,6 +215,20 @@ results = await client.search.query("quarterly report", filter_id=filter_id)
 response = await client.chat.create(message="Summarise Q3", filter_id=filter_id)
 ```
 
+For a one-shot listing without managing a cursor, `client.documents.get_all_files()`
+returns all files in a single call — no parameters needed.
+
+> **Note:** `get_all_files()` returns at most **500 files**. If your knowledge
+> base contains more than 500 files, use `list_files()` with cursor pagination
+> (`after_key`) to page through the full set.
+
+```python
+# Get all files in a single call (no cursor to track)
+page = await client.documents.get_all_files()
+for f in page.files:
+    print(f.filename)
+```
+
 ## Settings
 
 ```python

@@ -80,7 +80,7 @@ const DialogFooter = ({
   <div
     data-slot="dialog-footer"
     className={cn(
-      "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2",
+      "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end",
       className,
     )}
     {...props}
@@ -114,7 +114,7 @@ function DialogDescription({
     <DialogPrimitive.Description
       ref={ref}
       data-slot="dialog-description"
-      className={cn("text-sm text-muted-foreground", className)}
+      className={cn("text-sm text-muted-foreground ", className)}
       {...props}
     />
   );

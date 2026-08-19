@@ -23,6 +23,7 @@ from services.dls_principal_service import DLSPrincipalService
 from services.docling_polling_service import DoclingPollingService
 from services.document_index_writer import DocumentIndexWriter
 from services.document_service import DocumentService
+from services.file_service import FileService
 from services.file_service_v2 import FileServiceV2
 from services.flows_service import FlowsService
 from services.group_acl_service import GroupACLService
@@ -216,6 +217,7 @@ async def initialize_services():
     conversation_persistence._session_factory = _lazy_session_factory
 
     file_service_v2 = FileServiceV2(session_manager=session_manager)
+    file_service = FileService(session_manager=session_manager)
 
     return {
         "document_service": document_service,
@@ -242,4 +244,5 @@ async def initialize_services():
         "rbac_service": rbac_service,
         "workspace_config_service": workspace_config_service,
         "file_service_v2": file_service_v2,
+        "file_service": file_service,
     }
