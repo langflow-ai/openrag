@@ -108,6 +108,13 @@ LANGFLOW_URL_INGEST_FLOW_ID = (
 DEFAULT_CHUNK_SIZE = 1000
 DEFAULT_CHUNK_OVERLAP = 200
 OPENRAG_BACKEND_PORT = get_env_int("OPENRAG_BACKEND_PORT", 8000)
+
+# CORS – comma-separated list of allowed origins (e.g. "https://app.example.com,https://admin.example.com").
+# Unset → defaults to http://localhost:3000.  Set to "" to disable CORS entirely.
+_raw_cors_origins = os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000")
+CORS_ALLOWED_ORIGINS: list[str] = [
+    o.strip() for o in _raw_cors_origins.split(",") if o.strip() and o.strip() != "*"
+]
 OPENRAG_BACKEND_INTERNAL_URL = os.getenv(
     "OPENRAG_BACKEND_INTERNAL_URL",
     f"http://openrag-backend:{OPENRAG_BACKEND_PORT}",
