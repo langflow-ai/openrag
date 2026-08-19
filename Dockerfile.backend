@@ -20,6 +20,7 @@ RUN microdnf update -y \
     tar \
     gzip \
     && microdnf clean all \
+    && rm -rf /var/cache/yum \
     && curl -LsSf https://astral.sh/uv/install.sh | sh \
     && python -m ensurepip --upgrade \
     && python -m pip install --no-cache-dir --upgrade "pip>=26.1" "setuptools>=78.1.1"
@@ -40,7 +41,8 @@ RUN microdnf install -y \
     gcc-c++ \
     make \
     python3.14-devel \
-    && microdnf clean all
+    && microdnf clean all \
+    && rm -rf /var/cache/yum
 
 WORKDIR /app
 
@@ -78,6 +80,7 @@ RUN microdnf update -y \
     shadow-utils \
     util-linux \
     && microdnf clean all \
+    && rm -rf /var/cache/yum \
     && python -m ensurepip --upgrade \
     && python -m pip install --no-cache-dir --upgrade "pip>=26.1" "setuptools>=78.1.1"
 

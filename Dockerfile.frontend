@@ -9,7 +9,7 @@ WORKDIR /opt/app-root/src
 USER 0
 
 
-RUN microdnf update -y && microdnf clean all
+RUN microdnf update -y && microdnf clean all && rm -rf /var/cache/yum
 
 COPY frontend/package.json frontend/package-lock.json ./
 # Copy local stub packages referenced via file: in package.json (e.g. sharp stub
@@ -43,7 +43,7 @@ WORKDIR /opt/app-root/src
 USER 0
 
 
-RUN microdnf update -y && microdnf clean all
+RUN microdnf update -y && microdnf clean all && rm -rf /var/cache/yum
 
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1
