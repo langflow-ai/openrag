@@ -10,6 +10,7 @@ from session_manager import User
 
 
 def _config():
+    """Build a minimal configuration with local archiving enabled."""
     return SimpleNamespace(
         agent=SimpleNamespace(
             llm_provider=None,
@@ -33,6 +34,7 @@ def _config():
 async def test_v1_settings_marks_local_archiving_unavailable_in_multi_user_mode(
     monkeypatch,
 ):
+    """Report local archiving as unavailable in multi-user mode."""
     monkeypatch.setattr("api.v1.settings.get_openrag_config", _config)
     monkeypatch.setattr("api.v1.settings.is_no_auth_mode", lambda: False)
     user = User(
@@ -50,6 +52,7 @@ async def test_v1_settings_marks_local_archiving_unavailable_in_multi_user_mode(
 
 @pytest.mark.asyncio
 async def test_v1_settings_exposes_archiving_in_no_auth_mode(monkeypatch):
+    """Expose the configured local archiving state in no-auth mode."""
     monkeypatch.setattr("api.v1.settings.get_openrag_config", _config)
     monkeypatch.setattr("api.v1.settings.is_no_auth_mode", lambda: True)
     user = User(
@@ -69,6 +72,7 @@ async def test_v1_settings_exposes_archiving_in_no_auth_mode(monkeypatch):
 async def test_settings_rejects_enabling_local_archiving_in_multi_user_mode(
     monkeypatch,
 ):
+    """Reject attempts to enable local archiving in multi-user mode."""
     config = SimpleNamespace(
         edited=True,
         archiving=SimpleNamespace(enabled=False),

@@ -18,6 +18,8 @@ SOURCE_ID_PATTERN = re.compile(r"^(?P<document_id>[A-Za-z0-9_-]{16,128})\.(?P<no
 
 
 class LocalSourceArchiveStats(TypedDict):
+    """Paths and filesystem usage reported for the local source archive."""
+
     ingestion_path: str
     ingestion_host_path: str | None
     path: str

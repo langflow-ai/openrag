@@ -5,6 +5,7 @@ from api.documents import delete_documents_by_filename_core
 
 class FakeOpenSearchClient:
     def __init__(self, owned_hits=None, visible_hits=None, remaining_source_hits=None):
+        """Initialize deterministic search results and recorded calls."""
         self.owned_hits = owned_hits or []
         self.visible_hits = visible_hits or []
         self.remaining_source_hits = remaining_source_hits or []
@@ -249,6 +250,7 @@ async def test_delete_documents_by_filename_returns_404_when_missing(monkeypatch
 async def test_delete_documents_by_filename_removes_unreferenced_local_source(
     monkeypatch, tmp_path
 ):
+    """Remove a local source archive after its final chunk is deleted."""
     document_id = "abcdefghijklmnopqrstuvwx"
     source_id = f"{document_id}.{'a' * 32}"
     archived = tmp_path / ".openrag-indexed" / source_id / "report.pdf"
@@ -293,6 +295,7 @@ async def test_delete_documents_by_filename_removes_unreferenced_local_source(
 async def test_delete_documents_by_filename_keeps_still_referenced_local_source(
     monkeypatch, tmp_path
 ):
+    """Keep a local source archive while another chunk still references it."""
     document_id = "abcdefghijklmnopqrstuvwx"
     source_id = f"{document_id}.{'b' * 32}"
     archived = tmp_path / ".openrag-indexed" / source_id / "report.pdf"
@@ -329,6 +332,7 @@ async def test_delete_documents_by_filename_keeps_still_referenced_local_source(
 
 @pytest.mark.asyncio
 async def test_delete_documents_by_filename_never_deletes_remote_source(monkeypatch):
+    """Never treat a remote source URL as a backend-managed archive."""
     monkeypatch.setattr("config.settings.get_index_name", lambda: "documents")
     opensearch_client = FakeOpenSearchClient(
         owned_hits=[

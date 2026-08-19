@@ -10,6 +10,7 @@ from session_manager import User
 
 @pytest.mark.asyncio
 async def test_upload_path_archives_sources_without_temporary_cleanup(tmp_path, monkeypatch):
+    """Archive path-ingested sources without treating them as temporary files."""
     monkeypatch.setattr("config.settings.is_no_auth_mode", lambda: True)
     monkeypatch.setenv("OPENRAG_DOCUMENTS_PATH", str(tmp_path))
     monkeypatch.delenv("OPENRAG_INDEXED_DOCUMENTS_PATH", raising=False)
@@ -49,6 +50,7 @@ async def test_upload_path_archives_sources_without_temporary_cleanup(tmp_path, 
 
 @pytest.mark.asyncio
 async def test_v1_ingest_path_accepts_only_shared_documents(tmp_path, monkeypatch):
+    """Confine public path ingestion to the shared documents directory."""
     monkeypatch.setattr("config.settings.is_no_auth_mode", lambda: True)
     documents = tmp_path / "documents"
     source = documents / "inbox" / "message.eml"
@@ -93,6 +95,7 @@ async def test_v1_ingest_path_accepts_only_shared_documents(tmp_path, monkeypatc
 
 @pytest.mark.asyncio
 async def test_internal_upload_path_is_also_confined_to_shared_documents(tmp_path, monkeypatch):
+    """Confine internal path ingestion to the shared documents directory."""
     monkeypatch.setattr("config.settings.is_no_auth_mode", lambda: True)
     documents = tmp_path / "documents"
     documents.mkdir()
@@ -121,6 +124,7 @@ async def test_internal_upload_path_is_also_confined_to_shared_documents(tmp_pat
 
 @pytest.mark.asyncio
 async def test_local_path_ingestion_is_disabled_in_multi_user_mode(tmp_path, monkeypatch):
+    """Disable every local path ingestion surface in multi-user mode."""
     documents = tmp_path / "documents"
     source = documents / "message.eml"
     documents.mkdir()

@@ -40,6 +40,8 @@ class KnowledgeSettings(BaseModel):
 
 
 class ArchivingSettings(BaseModel):
+    """Local source archiving settings exposed by the public API."""
+
     available: bool
     enabled: bool
 

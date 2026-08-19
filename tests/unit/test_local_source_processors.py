@@ -10,6 +10,7 @@ from utils.hash_utils import hash_id
 
 @pytest.fixture
 def archive_environment(tmp_path, monkeypatch):
+    """Configure isolated local source paths for processor tests."""
     monkeypatch.setenv("OPENRAG_DOCUMENTS_PATH", str(tmp_path))
     monkeypatch.delenv("OPENRAG_INDEXED_DOCUMENTS_PATH", raising=False)
     monkeypatch.delenv("OPENRAG_PUBLIC_URL", raising=False)
@@ -17,6 +18,7 @@ def archive_environment(tmp_path, monkeypatch):
 
 
 def _document_processor() -> DocumentFileProcessor:
+    """Build a document processor configured to archive original sources."""
     processor = DocumentFileProcessor(
         document_service=MagicMock(),
         models_service=MagicMock(),
@@ -29,6 +31,7 @@ def _document_processor() -> DocumentFileProcessor:
 
 @pytest.mark.asyncio
 async def test_traditional_processor_archives_successful_original(archive_environment):
+    """Commit an original source after successful traditional ingestion."""
     source = archive_environment / "inbox" / "report.txt"
     source.parent.mkdir()
     source.write_text("evidence")
@@ -52,6 +55,7 @@ async def test_traditional_processor_archives_successful_original(archive_enviro
 
 @pytest.mark.asyncio
 async def test_traditional_processor_rolls_source_back_on_failure(archive_environment):
+    """Restore the original source after failed traditional ingestion."""
     source = archive_environment / "inbox" / "report.txt"
     source.parent.mkdir()
     source.write_text("evidence")
@@ -75,6 +79,7 @@ async def test_traditional_processor_rolls_source_back_on_failure(archive_enviro
 async def test_traditional_processor_preserves_remote_source_without_local_archive(
     archive_environment,
 ):
+    """Preserve remote source metadata when local archiving is disabled."""
     source = archive_environment / "inbox" / "report.txt"
     source.parent.mkdir()
     source.write_text("evidence")
@@ -103,6 +108,7 @@ async def test_traditional_processor_preserves_remote_source_without_local_archi
 async def test_traditional_processor_does_not_orphan_archive_when_hash_is_unchanged(
     archive_environment,
 ):
+    """Roll back staging when duplicate content does not require indexing."""
     source = archive_environment / "inbox" / "report.txt"
     source.parent.mkdir()
     source.write_text("evidence")
@@ -121,6 +127,7 @@ async def test_traditional_processor_does_not_orphan_archive_when_hash_is_unchan
 
 @pytest.mark.asyncio
 async def test_langflow_processor_archives_manual_upload(archive_environment):
+    """Commit the original source after successful Langflow ingestion."""
     source = archive_environment / "inbox" / "message.eml"
     source.parent.mkdir()
     source.write_bytes(b"From: sender@example.com\n\nHello")

@@ -13,6 +13,7 @@ SOURCE_ID = f"{DOCUMENT_ID}.{'a' * 32}"
 
 @pytest.fixture
 def user():
+    """Return an authenticated user for source download tests."""
     return User(
         user_id="user-1",
         email="user@example.com",
@@ -23,6 +24,7 @@ def user():
 
 @pytest.mark.asyncio
 async def test_download_returns_visible_archived_source(tmp_path, monkeypatch, user):
+    """Return an archived source when one of its chunks is visible."""
     monkeypatch.setenv("OPENRAG_DOCUMENTS_PATH", str(tmp_path))
     monkeypatch.delenv("OPENRAG_INDEXED_DOCUMENTS_PATH", raising=False)
     source = tmp_path / "inbox" / "message.eml"
@@ -51,6 +53,7 @@ async def test_download_returns_visible_archived_source(tmp_path, monkeypatch, u
 
 @pytest.mark.asyncio
 async def test_download_hides_source_not_visible_to_user(tmp_path, monkeypatch, user):
+    """Hide an archived source when none of its chunks are visible."""
     monkeypatch.setenv("OPENRAG_DOCUMENTS_PATH", str(tmp_path))
     client = AsyncMock()
     client.search.return_value = {"hits": {"total": {"value": 0}}}

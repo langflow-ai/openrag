@@ -112,6 +112,7 @@ export interface Settings {
   langflow_port?: string | number | null;
 }
 
+/** Fetch application settings, optionally including archive storage statistics. */
 async function getSettings(includeArchivingStats = false): Promise<Settings> {
   const query = includeArchivingStats ? "?include_archiving_stats=true" : "";
   const response = await fetch(`/api/settings${query}`);

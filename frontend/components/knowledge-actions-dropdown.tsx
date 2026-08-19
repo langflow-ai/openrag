@@ -50,6 +50,7 @@ const CLOUD_CONNECTOR_TYPES = new Set([
   "sharepoint",
 ]);
 
+/** Return a safe downloadable source URL when the source is supported. */
 function getDownloadSourceUrl(sourceUrl?: string): string | undefined {
   const url = sourceUrl?.trim();
   if (!url) return undefined;
@@ -60,8 +61,10 @@ function getDownloadSourceUrl(sourceUrl?: string): string | undefined {
     if (parsed.username || parsed.password) return undefined;
 
     const isManagedLocalSource =
+      url.startsWith("/api/source-files/") &&
       parsed.pathname.startsWith("/api/source-files/");
-    if (url.startsWith("/") && !isManagedLocalSource) return undefined;
+    const isAbsoluteHttpUrl = /^https?:\/\//i.test(url);
+    if (!isAbsoluteHttpUrl && !isManagedLocalSource) return undefined;
     return url;
   } catch {
     return undefined;

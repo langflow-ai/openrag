@@ -134,6 +134,7 @@ async def test_multi_user_upload_remains_available_without_local_archiving(
     disable_langflow_ingest,
     task_method,
 ):
+    """Keep file uploads available while disabling local archive storage."""
     mock_file = MagicMock(spec=UploadFile)
     mock_file.filename = "sample.pdf"
     mock_file.content_type = "application/pdf"
@@ -181,6 +182,7 @@ async def test_multi_user_upload_remains_available_without_local_archiving(
 
 @pytest.mark.asyncio
 async def test_multi_user_upload_rejects_local_archive_request():
+    """Reject an explicit local archive request in multi-user mode."""
     mock_file = MagicMock(spec=UploadFile)
     mock_file.filename = "sample.pdf"
     mock_task_service = MagicMock()
@@ -213,6 +215,7 @@ async def test_multi_user_upload_rejects_local_archive_request():
 
 
 def test_source_urls_must_be_http_and_match_uploaded_files():
+    """Validate source URL count, protocol, credentials, and characters."""
     files = [MagicMock(spec=UploadFile), MagicMock(spec=UploadFile)]
 
     with pytest.raises(ValueError, match="once for each"):
@@ -231,6 +234,7 @@ def test_source_urls_must_be_http_and_match_uploaded_files():
 def test_manual_upload_uses_global_archiving_setting_when_form_field_is_absent(
     monkeypatch,
 ):
+    """Use the global archive setting when an upload has no override."""
     monkeypatch.setattr(
         "services.local_source_service.is_source_archiving_enabled",
         lambda: True,

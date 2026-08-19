@@ -13,6 +13,7 @@ SOURCE_URL = "https://files.example.com/report.pdf"
 
 
 def test_chat_source_extraction_preserves_source_url():
+    """Preserve source URLs while extracting chat citations."""
     sources = _extract_sources(
         {
             "results": [
@@ -42,6 +43,7 @@ def test_chat_source_extraction_preserves_source_url():
 
 @pytest.mark.asyncio
 async def test_search_endpoint_preserves_source_url():
+    """Preserve source URLs in public search responses."""
     search_service = MagicMock()
     search_service.search = AsyncMock(
         return_value={

@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { formatFileSize } from "@/lib/file-format";
 
+/** Render controls and storage details for local source archiving. */
 export function ArchivingSettingsSection() {
   const { data: settings, isError, isLoading } = useGetArchivingSettingsQuery();
   const serverEnabled = settings?.archiving?.enabled ?? false;
@@ -163,6 +164,7 @@ export function ArchivingSettingsSection() {
   );
 }
 
+/** Render one archive storage metric. */
 function ArchiveMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border p-4">

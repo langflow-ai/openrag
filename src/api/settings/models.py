@@ -206,6 +206,8 @@ class AgentConfig(BaseModel):
 
 
 class ArchivingConfig(BaseModel):
+    """Local source archiving state, paths, and storage statistics."""
+
     available: bool
     enabled: bool
     ingestion_path: str | None = None

@@ -40,6 +40,8 @@ class DeleteDocV1Body(BaseModel):
 
 
 class IngestPathV1Body(BaseModel):
+    """Request body for ingesting content from the shared documents path."""
+
     path: str | None = None
     replace_duplicates: bool = False
     archive_source: bool | None = None
