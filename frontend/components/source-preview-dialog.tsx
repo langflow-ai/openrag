@@ -20,6 +20,7 @@ import { Button } from "./ui/button";
 interface SourcePreviewDialogProps {
   filename: string;
   kind: SourcePreviewKind;
+  mimetype?: string;
   onOpenChange: (open: boolean) => void;
   open: boolean;
   referencePage?: number;
@@ -30,13 +31,22 @@ interface SourcePreviewDialogProps {
 export function SourcePreviewDialog({
   filename,
   kind,
+  mimetype,
   onOpenChange,
   open,
   referencePage,
   sourceUrl,
 }: SourcePreviewDialogProps) {
   const [previewKey, setPreviewKey] = useState(0);
-  const previewUrl = getPreviewSourceUrl(sourceUrl);
+  const normalizedMimetype = mimetype?.split(";", 1)[0].trim().toLowerCase();
+  const pdfReferencePage =
+    (normalizedMimetype === "application/pdf" ||
+      filename.toLowerCase().endsWith(".pdf")) &&
+    referencePage &&
+    referencePage > 0
+      ? referencePage
+      : undefined;
+  const previewUrl = getPreviewSourceUrl(sourceUrl, pdfReferencePage);
   const downloadUrl = getDownloadSourceUrl(sourceUrl);
 
   if (!previewUrl || !downloadUrl) return null;
@@ -70,14 +80,14 @@ export function SourcePreviewDialog({
         </div>
 
         <DialogFooter>
-          {kind === "document" && referencePage && referencePage > 0 && (
+          {kind === "document" && pdfReferencePage && (
             <Button
               type="button"
               variant="outline"
               onClick={() => setPreviewKey((key) => key + 1)}
             >
               <Search className="mr-2 h-4 w-4" />
-              Find reference (page {referencePage})
+              Find reference (page {pdfReferencePage})
             </Button>
           )}
           <Button asChild variant="outline">

@@ -48,6 +48,7 @@ export interface ToolCallResult {
     parser?: string;
     chunk_size?: number | string;
     chunk_overlap?: number | string;
+    mimetype?: string;
     metadata?: {
       embedding_model?: string;
       parser?: string;
@@ -71,6 +72,7 @@ export interface ToolCallResult {
   parser?: string;
   chunk_size?: number | string;
   chunk_overlap?: number | string;
+  mimetype?: string;
   metadata?: {
     embedding_model?: string;
     parser?: string;

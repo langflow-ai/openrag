@@ -79,13 +79,23 @@ export function getSourcePreviewKind(
   return undefined;
 }
 
-/** Return an inline URL for a safe, backend-managed source preview. */
-export function getPreviewSourceUrl(sourceUrl?: string): string | undefined {
+/** Return an inline URL for a safe source preview, optionally targeting a PDF page. */
+export function getPreviewSourceUrl(
+  sourceUrl?: string,
+  referencePage?: number,
+): string | undefined {
   const url = getDownloadSourceUrl(sourceUrl);
   if (!url) return undefined;
-  if (!url.startsWith("/api/source-files/")) return url;
 
-  const parsed = new URL(url, "http://openrag.local");
-  parsed.searchParams.set("preview", "true");
-  return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  let previewUrl = url;
+  if (url.startsWith("/api/source-files/")) {
+    const parsed = new URL(url, "http://openrag.local");
+    parsed.searchParams.set("preview", "true");
+    previewUrl = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  }
+
+  if (referencePage && Number.isFinite(referencePage) && referencePage > 0) {
+    return `${previewUrl.split("#", 1)[0]}#page=${Math.floor(referencePage)}`;
+  }
+  return previewUrl;
 }

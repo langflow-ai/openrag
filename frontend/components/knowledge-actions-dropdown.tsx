@@ -41,6 +41,7 @@ import { Button } from "./ui/button";
 
 interface KnowledgeActionsDropdownProps {
   filename: string;
+  mimetype?: string;
   onPreviewSource: () => void;
   sourceUrl?: string;
   connectorType?: string;
@@ -55,6 +56,7 @@ const CLOUD_CONNECTOR_TYPES = new Set([
 
 export const KnowledgeActionsDropdown = ({
   filename,
+  mimetype,
   onPreviewSource,
   sourceUrl,
   connectorType,
@@ -71,7 +73,7 @@ export const KnowledgeActionsDropdown = ({
   const { data: connectors = [] } = useGetConnectorsQuery();
   const router = useRouter();
   const downloadSourceUrl = getDownloadSourceUrl(sourceUrl);
-  const previewKind = getSourcePreviewKind(filename);
+  const previewKind = getSourcePreviewKind(filename, mimetype);
 
   // Check if this file is from a cloud connector (can be synced)
   const isCloudFile = connectorType && CLOUD_CONNECTOR_TYPES.has(connectorType);

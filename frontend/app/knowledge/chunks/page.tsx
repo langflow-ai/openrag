@@ -144,6 +144,7 @@ function ChunksPageContent() {
                 <SourcePreviewDialog
                   filename={filename}
                   kind={previewKind}
+                  mimetype={fileData?.mimetype}
                   open={previewOpen}
                   onOpenChange={setPreviewOpen}
                   sourceUrl={downloadSourceUrl}

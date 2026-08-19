@@ -42,6 +42,7 @@ const EMPTY_FUNCTION_CALLS: FunctionCall[] = [];
 interface ChatSourcePreview {
   filename: string;
   kind: SourcePreviewKind;
+  mimetype?: string;
   referencePage?: number;
   sourceUrl: string;
 }
@@ -193,8 +194,15 @@ export function AssistantMessage({
   const activeSourceUrl = getDownloadSourceUrl(
     activeCitedSource?.item.source_url ?? undefined,
   );
+  const activeMimetypeValue =
+    activeCitedSource?.item.mimetype ??
+    activeCitedSource?.item.data?.mimetype ??
+    activeCitedSource?.item.metadata?.mimetype ??
+    activeCitedSource?.item.data?.metadata?.mimetype;
+  const activeMimetype =
+    typeof activeMimetypeValue === "string" ? activeMimetypeValue : undefined;
   const activePreviewKind = activeFilename
-    ? getSourcePreviewKind(activeFilename)
+    ? getSourcePreviewKind(activeFilename, activeMimetype)
     : undefined;
   return (
     <motion.div
@@ -353,26 +361,24 @@ export function AssistantMessage({
                       activeCitedSource.item.metadata?.page ??
                       activeCitedSource.item.data?.metadata?.page;
                     const parsedPage = Number(rawPage);
-                    const targetedSourceUrl =
-                      activeFilename.toLowerCase().endsWith(".pdf") &&
-                      Number.isFinite(parsedPage) &&
-                      parsedPage > 0
-                        ? `${activeSourceUrl.split("#", 1)[0]}#page=${Math.floor(parsedPage)}`
-                        : activeSourceUrl;
-
+                    const isPdfSource =
+                      activeMimetype?.split(";", 1)[0].trim().toLowerCase() ===
+                        "application/pdf" ||
+                      activeFilename.toLowerCase().endsWith(".pdf");
                     closeChunkPopover();
                     setTimeout(
                       () =>
                         setSourcePreview({
                           filename: activeFilename,
                           kind: activePreviewKind,
+                          mimetype: activeMimetype,
                           referencePage:
-                            activeFilename.toLowerCase().endsWith(".pdf") &&
+                            isPdfSource &&
                             Number.isFinite(parsedPage) &&
                             parsedPage > 0
                               ? Math.floor(parsedPage)
                               : undefined,
-                          sourceUrl: targetedSourceUrl,
+                          sourceUrl: activeSourceUrl,
                         }),
                       0,
                     );
@@ -388,6 +394,7 @@ export function AssistantMessage({
         <SourcePreviewDialog
           filename={sourcePreview.filename}
           kind={sourcePreview.kind}
+          mimetype={sourcePreview.mimetype}
           open
           onOpenChange={(open) => {
             if (!open) setSourcePreview(null);

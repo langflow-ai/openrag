@@ -827,6 +827,7 @@ function SearchPage() {
         return (
           <KnowledgeActionsDropdown
             filename={data?.filename || ""}
+            mimetype={data?.mimetype}
             onPreviewSource={() => setPreviewFile(data ?? null)}
             sourceUrl={data?.source_url}
             connectorType={data?.connector_type}
@@ -1223,6 +1224,7 @@ function SearchPage() {
         <SourcePreviewDialog
           filename={previewFile.filename}
           kind={previewKind}
+          mimetype={previewFile.mimetype}
           open
           onOpenChange={(open) => {
             if (!open) setPreviewFile(null);

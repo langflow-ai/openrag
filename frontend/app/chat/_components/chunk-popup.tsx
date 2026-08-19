@@ -26,6 +26,7 @@ const getMetadataValue = (
     | "parser"
     | "chunk_size"
     | "chunk_overlap"
+    | "mimetype"
     | "page"
     | "score",
 ): unknown =>
@@ -113,7 +114,11 @@ export function ChunkPopup({
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   const sourceUrl = getDownloadSourceUrl(item.source_url ?? undefined);
-  const previewKind = getSourcePreviewKind(filename);
+  const mimetype = getMetadataValue(item, "mimetype");
+  const previewKind = getSourcePreviewKind(
+    filename,
+    typeof mimetype === "string" ? mimetype : undefined,
+  );
   const canPreview = Boolean(
     showViewDocument && previewKind && sourceUrl && onPreviewDocument,
   );
