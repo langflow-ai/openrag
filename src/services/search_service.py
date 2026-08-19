@@ -1,5 +1,6 @@
 import asyncio
 import copy
+import json
 import os
 import re
 from collections import Counter
@@ -204,6 +205,94 @@ def _apply_exact_match_file_filter(
     return chunks, aggregations
 
 
+class SearchAuthenticationError(Exception):
+    """Raised when a search operation is attempted without an authenticated user."""
+
+
+class RawSearchQueryError(ValueError):
+    """Base class for raw_search query safety-validation failures.
+
+    Subclasses exist so callers (the API layer) can build the client-facing
+    error message from the exception's *type* via a fixed lookup table,
+    rather than reading the exception's message text - CodeQL's
+    py/stack-trace-exposure check flags any value read from a caught
+    exception that reaches an HTTP response, even a deliberately safe one,
+    since it can't distinguish "developer-authored validation string" from
+    "leaked internal detail." Type-based dispatch has no such data flow.
+    """
+
+
+class RawSearchScriptedQueryError(RawSearchQueryError):
+    """Raised when a raw_search query body contains a scripted (Painless) clause."""
+
+
+class RawSearchQuerySizeError(RawSearchQueryError):
+    """Raised when a raw_search query body's 'size' exceeds the allowed maximum."""
+
+
+class RawSearchQueryDepthError(RawSearchQueryError):
+    """Raised when a raw_search query body is nested too deeply."""
+
+
+# Any API-key holder with search:use can run arbitrary DSL through /v1/search/raw
+# against the caller's ACL-scoped client. Document-level ACLs still apply, but
+# scripted clauses (Painless) and unbounded result/bucket sizes are not
+# blocked by ACLs. This is a scoped mitigation (script rejection + size caps
+# + depth cap), not an exhaustive OpenSearch DSL allowlist.
+_RAW_QUERY_BANNED_KEY_SUBSTRINGS = ("script",)
+RAW_QUERY_MAX_SIZE = 1000
+_RAW_QUERY_MAX_DEPTH = 20
+_RAW_QUERY_TIMEOUT = "30s"
+
+
+def _validate_raw_query_safety(node: Any, *, depth: int = 0) -> None:
+    """Reject scripted clauses and oversized/deeply nested raw DSL query bodies."""
+    if depth > _RAW_QUERY_MAX_DEPTH:
+        msg = "Query is nested too deeply"
+        raise RawSearchQueryDepthError(msg)
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if isinstance(key, str) and any(
+                s in key.lower() for s in _RAW_QUERY_BANNED_KEY_SUBSTRINGS
+            ):
+                msg = f"Scripted query clauses are not allowed (found '{key}')"
+                raise RawSearchScriptedQueryError(msg)
+            if key == "size" and isinstance(value, int) and value > RAW_QUERY_MAX_SIZE:
+                msg = f"'size' must not exceed {RAW_QUERY_MAX_SIZE}"
+                raise RawSearchQuerySizeError(msg)
+            _validate_raw_query_safety(value, depth=depth + 1)
+    elif isinstance(node, list):
+        for item in node:
+            _validate_raw_query_safety(item, depth=depth + 1)
+
+
+def _build_filter_clauses(filters: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """Map frontend filter dimensions (data_sources, owners, ...) to OpenSearch term/terms clauses."""
+    if not filters:
+        return []
+
+    field_mapping = {
+        "data_sources": "filename",
+        "document_types": "mimetype",
+        "owners": "owner",
+        "connector_types": "connector_type",
+    }
+
+    filter_clauses: list[dict[str, Any]] = []
+    for filter_key, values in filters.items():
+        if values is None or not isinstance(values, list):
+            continue
+        field_name = field_mapping.get(filter_key, filter_key)
+        if len(values) == 0:
+            # Empty array means "match nothing" - use impossible filter
+            filter_clauses.append({"term": {field_name: "__IMPOSSIBLE_VALUE__"}})
+        elif len(values) == 1:
+            filter_clauses.append({"term": {field_name: values[0]}})
+        else:
+            filter_clauses.append({"terms": {field_name: values}})
+    return filter_clauses
+
+
 def register_search_service(service: "SearchService") -> None:
     """
     Explicitly register the active search service for the @tool wrapper.
@@ -214,7 +303,9 @@ def register_search_service(service: "SearchService") -> None:
 
 
 @tool
-async def search_tool(query: str, embedding_model: str = None) -> dict[str, Any]:
+async def search_tool(
+    query: str, embedding_model: str = None, fuzziness: str = None
+) -> dict[str, Any]:
     """
     Use this tool to search for documents relevant to the query.
 
@@ -223,6 +314,9 @@ async def search_tool(query: str, embedding_model: str = None) -> dict[str, Any]
         embedding_model (str): Optional override for embedding model.
                               If not provided, uses the current embedding
                               model from configuration.
+        fuzziness (str): Optional OpenSearch fuzziness for the keyword-match
+                        clause. See the openrag_search MCP tool description
+                        for accepted values. Defaults to "AUTO:7,10".
 
     Returns:
         dict (str, Any): {"results": [chunks]} on success
@@ -230,7 +324,9 @@ async def search_tool(query: str, embedding_model: str = None) -> dict[str, Any]
     if not _global_search_service:
         logger.error("SearchService tool called before initialization")
         return {"results": [], "error": "Search service not available"}
-    return await _global_search_service.search_tool(query, embedding_model=embedding_model)
+    return await _global_search_service.search_tool(
+        query, embedding_model=embedding_model, fuzziness=fuzziness
+    )
 
 
 class SearchService:
@@ -252,7 +348,9 @@ class SearchService:
         except Exception as e:
             logger.warning("[SEARCH] Could not configure Ollama endpoint from config", error=str(e))
 
-    async def search_tool(self, query: str, embedding_model: str = None) -> dict[str, Any]:
+    async def search_tool(
+        self, query: str, embedding_model: str = None, fuzziness: str = None
+    ) -> dict[str, Any]:
         """
         Use this tool to search for documents relevant to the query.
 
@@ -261,11 +359,17 @@ class SearchService:
             embedding_model (str): Optional override for embedding model.
                                   If not provided, uses the current embedding
                                   model from configuration.
+            fuzziness (str): Optional OpenSearch fuzziness for the keyword-match
+                            clause. See the openrag_search MCP tool description
+                            for accepted values. Defaults to "AUTO:7,10".
 
         Returns:
             dict (str, Any): {"results": [chunks]} on success
         """
+        from auth_context import get_fuzziness
         from utils.embedding_fields import get_embedding_field_name
+
+        fuzziness = fuzziness or get_fuzziness()
 
         # Strategy: Use provided model, or default to the configured embedding
         # model. This assumes documents are embedded with that model by default.
@@ -310,30 +414,7 @@ class SearchService:
 
         if not is_wildcard_match_all:
             # Build filter clauses first so we can use them in model detection
-            filter_clauses: list[dict[str, Any]] = []
-            if filters:
-                # Map frontend filter names to backend field names
-                field_mapping = {
-                    "data_sources": "filename",
-                    "document_types": "mimetype",
-                    "owners": "owner",
-                    "connector_types": "connector_type",
-                }
-
-                for filter_key, values in filters.items():
-                    if values is not None and isinstance(values, list):
-                        # Map frontend key to backend field name
-                        field_name = field_mapping.get(filter_key, filter_key)
-
-                        if len(values) == 0:
-                            # Empty array means "match nothing" - use impossible filter
-                            filter_clauses.append({"term": {field_name: "__IMPOSSIBLE_VALUE__"}})
-                        elif len(values) == 1:
-                            # Single value filter
-                            filter_clauses.append({"term": {field_name: values[0]}})
-                        else:
-                            # Multiple values filter
-                            filter_clauses.append({"terms": {field_name: values}})
+            filter_clauses: list[dict[str, Any]] = _build_filter_clauses(filters)
 
             try:
                 # Build aggregation query with filters applied
@@ -458,30 +539,7 @@ class SearchService:
             )
         else:
             # Wildcard query - no embedding needed
-            filter_clauses = []
-            if filters:
-                # Map frontend filter names to backend field names
-                field_mapping = {
-                    "data_sources": "filename",
-                    "document_types": "mimetype",
-                    "owners": "owner",
-                    "connector_types": "connector_type",
-                }
-
-                for filter_key, values in filters.items():
-                    if values is not None and isinstance(values, list):
-                        # Map frontend key to backend field name
-                        field_name = field_mapping.get(filter_key, filter_key)
-
-                        if len(values) == 0:
-                            # Empty array means "match nothing" - use impossible filter
-                            filter_clauses.append({"term": {field_name: "__IMPOSSIBLE_VALUE__"}})
-                        elif len(values) == 1:
-                            # Single value filter
-                            filter_clauses.append({"term": {field_name: values[0]}})
-                        else:
-                            # Multiple values filter
-                            filter_clauses.append({"terms": {field_name: values}})
+            filter_clauses = _build_filter_clauses(filters)
 
         # Build query body
         if is_wildcard_match_all:
@@ -563,7 +621,7 @@ class SearchService:
                             "fields": ["text^2", "filename^1.5"],
                             "type": "best_fields",
                             "operator": "or",
-                            "fuzziness": "AUTO:4,7",
+                            "fuzziness": fuzziness,
                             "boost": 0.3 if knn_queries else 1.0,
                         }
                     },
@@ -795,12 +853,16 @@ class SearchService:
         limit: int = 10,
         score_threshold: float = 0,
         embedding_model: str = None,
+        fuzziness: str = None,
     ) -> dict[str, Any]:
         """Public search method for API endpoints
 
         Args:
             embedding_model: Embedding model to use for search (defaults to the
                 currently configured embedding model)
+            fuzziness: OpenSearch fuzziness for the keyword-match clause.
+                See `search_tool`'s module-level docstring for accepted
+                values. Defaults to "AUTO:7,10" if not provided.
         """
         # Set auth context if provided (for direct API calls)
         from config.settings import is_no_auth_mode
@@ -816,9 +878,110 @@ class SearchService:
 
             set_search_filters(filters)
 
-        from auth_context import set_score_threshold, set_search_limit
+        from auth_context import (
+            DEFAULT_FUZZINESS,
+            set_fuzziness,
+            set_score_threshold,
+            set_search_limit,
+        )
 
         set_search_limit(limit)
         set_score_threshold(score_threshold)
+        # Always reset (never conditionally skip): _current_fuzziness is a
+        # per-context var, so an omitted `fuzziness` on this call must not
+        # inherit a custom value a prior request on the same context set.
+        fuzziness = fuzziness or DEFAULT_FUZZINESS
+        set_fuzziness(fuzziness)
 
-        return await self.search_tool(query, embedding_model=embedding_model)
+        return await self.search_tool(query, embedding_model=embedding_model, fuzziness=fuzziness)
+
+    async def raw_search(
+        self,
+        query: dict[str, Any] | str,
+        user_id: str = None,
+        jwt_token: str = None,
+        filters: dict[str, Any] = None,
+        limit: int = 10,
+        score_threshold: float = 0,
+    ) -> dict[str, Any]:
+        """Execute a raw OpenSearch DSL query for API/SDK callers.
+
+        Unlike `search`/`search_tool` (OpenRAG's hybrid semantic+keyword search),
+        this passes `query` straight through as OpenSearch Query DSL - bool
+        queries, aggregations, sort, etc. Mirrors the `raw_search` output of the
+        Langflow "OpenSearch (Multi-Model Multi-Embedding)" component
+        (flows/components/opensearch_multimodal.py), but runs through the
+        caller's DLS-scoped OpenSearch client so document-level ACLs still
+        apply, and strips embedding vectors / fences chunk text before
+        returning results.
+        """
+        if not user_id:
+            logger.warning("[RAW_SEARCH] user_id missing, rejecting request")
+            raise SearchAuthenticationError("Authentication required")
+
+        if isinstance(query, dict):
+            query_body = copy.deepcopy(query)
+        elif isinstance(query, str):
+            stripped = query.strip()
+            if not stripped:
+                return {"hits": {"total": {"value": 0}, "hits": []}}
+            try:
+                parsed = json.loads(stripped)
+            except json.JSONDecodeError:
+                parsed = None
+            if isinstance(parsed, dict):
+                query_body = parsed
+            else:
+                # Not a DSL object (plain text, or a JSON scalar/array): fall
+                # back to a keyword match over the original stripped text.
+                query_body = {
+                    "query": {
+                        "multi_match": {
+                            "query": stripped,
+                            "fields": ["text^2", "filename^1.5"],
+                            "type": "best_fields",
+                            "fuzziness": "AUTO",
+                        }
+                    }
+                }
+        else:
+            msg = f"Unsupported raw_search query type: {type(query)!r}"
+            raise TypeError(msg)
+
+        filter_clauses = _build_filter_clauses(filters)
+        if filter_clauses:
+            original_query = query_body.get("query", {"match_all": {}})
+            query_body["query"] = {"bool": {"must": [original_query], "filter": filter_clauses}}
+
+        if "size" not in query_body and limit is not None:
+            query_body["size"] = limit
+        if "min_score" not in query_body and score_threshold:
+            query_body["min_score"] = score_threshold
+
+        _validate_raw_query_safety(query_body)
+
+        opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
+
+        from utils.opensearch_utils import (
+            DISK_SPACE_ERROR_MESSAGE,
+            OpenSearchDiskSpaceError,
+            is_disk_space_error,
+            sanitize_raw_search_response,
+        )
+
+        index_name = get_index_name()
+        try:
+            logger.info(f"[RAW_SEARCH] Sending raw DSL query to index '{index_name}'")
+            response = await opensearch_client.search(
+                index=index_name,
+                body=query_body,
+                params={"terminate_after": 0, "timeout": _RAW_QUERY_TIMEOUT},
+            )
+        except Exception as e:
+            if is_disk_space_error(e):
+                logger.error("Raw search blocked by disk space constraint", error=str(e))
+                raise OpenSearchDiskSpaceError(DISK_SPACE_ERROR_MESSAGE) from e
+            logger.error("Raw OpenSearch query failed", error=str(e), search_body=query_body)
+            raise
+
+        return sanitize_raw_search_response(response)

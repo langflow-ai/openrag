@@ -45,8 +45,15 @@ def register_public_v1_routes(app: FastAPI):
         tags=["public"],
     )
 
-    # Search endpoint
+    # Search endpoints
     app.add_api_route("/v1/search", v1_search.search_endpoint, methods=["POST"], tags=["public"])
+    app.add_api_route(
+        "/v1/search/raw",
+        v1_search.raw_search_endpoint,
+        methods=["POST"],
+        tags=["public"],
+        response_model=v1_search.RawSearchV1Response,
+    )
 
     # Documents endpoints
     app.add_api_route(

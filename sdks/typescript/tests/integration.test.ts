@@ -656,7 +656,11 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
           expect(r.filename).toBe(filterDocName);
         }
       } finally {
-        await client.documents.delete(filterDocName);
+        try {
+          await client.documents.delete(filterDocName);
+        } finally {
+          fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
       }
     }, 120_000);
 
@@ -683,6 +687,139 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
             typeof r.mimetype === "string"
         ).toBe(true);
       }
+    });
+
+    it("should accept a custom fuzziness value without error", async () => {
+      const results = await client.search.query("orange kangaroos jumping", {
+        fuzziness: "AUTO:4,7",
+      });
+      expect(results.results).toBeDefined();
+      expect(Array.isArray(results.results)).toBe(true);
+    });
+
+    it("should accept fuzziness '0' (exact keyword matching only) without error", async () => {
+      const results = await client.search.query("orange kangaroos jumping", {
+        fuzziness: "0",
+      });
+      expect(results.results).toBeDefined();
+      expect(Array.isArray(results.results)).toBe(true);
+    });
+  });
+
+  describe("Raw Search", () => {
+    let rawSearchTmpDir: string;
+    const rawSearchDocName = `raw_search_doc_${Date.now()}.md`;
+
+    beforeAll(async () => {
+      rawSearchTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "sdk-raw-search-"));
+      const rawSearchDocPath = path.join(rawSearchTmpDir, rawSearchDocName);
+      fs.writeFileSync(
+        rawSearchDocPath,
+        "# Raw Search Test Document\n\norange kangaroos jumping\n"
+      );
+      await client.documents.ingest({ filePath: rawSearchDocPath });
+    });
+
+    afterAll(async () => {
+      await client.documents.delete(rawSearchDocName);
+      fs.rmSync(rawSearchTmpDir, { recursive: true, force: true });
+    });
+
+    it("should run a raw OpenSearch DSL query dict and return hits with a _source", async () => {
+      const results = await client.search.rawQuery({
+        query: { match: { text: "orange kangaroos jumping" } },
+      });
+
+      expect(Array.isArray(results.hits.hits)).toBe(true);
+      expect(results.hits.hits.length).toBeGreaterThan(0);
+      expect(results.hits.hits[0]!._source).toBeDefined();
+    });
+
+    it("should fall back to a keyword match for a plain-text query string", async () => {
+      const results = await client.search.rawQuery("orange kangaroos jumping");
+
+      expect(Array.isArray(results.hits.hits)).toBe(true);
+      expect(results.hits.hits.length).toBeGreaterThan(0);
+    });
+
+    it("should never leak an embedding vector field in _source", async () => {
+      const results = await client.search.rawQuery({
+        query: { match: { text: "orange kangaroos jumping" } },
+      });
+
+      for (const hit of results.hits.hits) {
+        for (const value of Object.values(hit._source)) {
+          if (Array.isArray(value) && value.length > 100) {
+            expect.fail("Embedding-like vector field leaked into raw_search results");
+          }
+        }
+      }
+    });
+
+    it("should fence chunk text with untrusted-content markers", async () => {
+      const results = await client.search.rawQuery({
+        query: { match: { text: "orange kangaroos jumping" } },
+      });
+
+      expect(results.hits.hits.length).toBeGreaterThan(0);
+      for (const hit of results.hits.hits) {
+        const text = hit._source["text"];
+        if (typeof text === "string") {
+          expect(text).toContain("<<<UNTRUSTED_DOC_CHUNK>>>");
+          expect(text).toContain("<<<END_UNTRUSTED_DOC_CHUNK>>>");
+        }
+      }
+    });
+
+    it("should respect limit when the DSL query doesn't set its own size", async () => {
+      const results = await client.search.rawQuery(
+        { query: { match_all: {} } },
+        { limit: 1 }
+      );
+      expect(results.hits.hits.length).toBeLessThanOrEqual(1);
+    });
+
+    it("should let an explicit DSL 'size' override limit", async () => {
+      const results = await client.search.rawQuery(
+        { query: { match_all: {} }, size: 2 },
+        { limit: 50 }
+      );
+      expect(results.hits.hits.length).toBeLessThanOrEqual(2);
+    });
+
+    it("should filter by a raw filters dict (data_sources)", async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "sdk-raw-search-filter-"));
+      const filterDocName = `raw_search_filter_doc_${Date.now()}.md`;
+      const filterDocPath = path.join(tmpDir, filterDocName);
+      fs.writeFileSync(filterDocPath, "# Raw Search Filter Doc\n\nTeal iguanas gliding.\n");
+      await client.documents.ingest({ filePath: filterDocPath });
+
+      try {
+        const results = await client.search.rawQuery(
+          { query: { match_all: {} } },
+          { filters: { data_sources: [filterDocName] } }
+        );
+        expect(results.hits.hits.length).toBeGreaterThan(0);
+        for (const hit of results.hits.hits) {
+          expect(hit._source["filename"]).toBe(filterDocName);
+        }
+      } finally {
+        try {
+          await client.documents.delete(filterDocName);
+        } finally {
+          fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+      }
+    }, 120_000);
+
+    it("should reject a whitespace-only string query", async () => {
+      await expect(client.search.rawQuery("   ")).rejects.toThrow(ValidationError);
+    });
+
+    it("should raise a ValidationError for a malformed DSL clause", async () => {
+      await expect(
+        client.search.rawQuery({ query: { not_a_real_query_type: {} } })
+      ).rejects.toThrow(ValidationError);
     });
   });
 

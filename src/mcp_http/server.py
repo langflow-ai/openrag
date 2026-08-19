@@ -97,7 +97,24 @@ COMPONENT_CUSTOMIZATIONS: dict[tuple[str, str], dict[str, str]] = {
             "Optionally pass `filter_id` to scope results to a knowledge "
             "filter's data_sources, or inline `filters` (data_sources, "
             "document_types, owners, connector_types) for a per-call scope. "
-            "If both are provided, inline filters override per-field."
+            "If both are provided, inline filters override per-field. "
+            "Optionally pass `fuzziness` to control keyword-match typo "
+            'tolerance: "AUTO:7,10" (default), "AUTO:4,7" (more typo-forgiving), '
+            '"AUTO", "0" (exact match, use for IDs/SKUs/error codes), "1", or "2".'
+        ),
+    },
+    ("/v1/search/raw", "POST"): {
+        "name": "openrag_raw_search",
+        "description": (
+            "Run a raw OpenSearch Query DSL query against the OpenRAG knowledge "
+            "base for advanced use cases (bool queries, aggregations, sort, "
+            "field projections) that openrag_search's structured semantic "
+            "search can't express. `query` accepts a DSL object or a plain-text "
+            "string (falls back to a keyword match). Still enforces the "
+            "caller's document-level ACLs and strips embedding vectors from "
+            "results. Optionally pass `filter_id` or inline `filters` "
+            "(data_sources, document_types, owners, connector_types) to scope "
+            "results, same as openrag_search."
         ),
     },
     # Documents endpoints
