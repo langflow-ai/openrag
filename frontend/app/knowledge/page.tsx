@@ -37,6 +37,7 @@ import { KnowledgePaginationFooter } from "@/components/knowledge-pagination-foo
 import { KnowledgeSearchBar } from "@/components/knowledge-search-bar";
 import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
 import { RequirePermission } from "@/components/require-permission";
+import { SourcePreviewDialog } from "@/components/source-preview-dialog";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
   Tooltip,
@@ -51,6 +52,7 @@ import {
   buildKnowledgeTableRows,
   getKnowledgeFileIdentity,
 } from "@/lib/knowledge-table-state";
+import { getDownloadSourceUrl, getSourcePreviewKind } from "@/lib/source-url";
 import { parseTimestampMs } from "@/lib/time-utils";
 import { cn } from "@/lib/utils";
 import {
@@ -172,6 +174,7 @@ function SearchPage() {
     setSelectedSources,
   } = useKnowledgeFilter();
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
+  const [previewFile, setPreviewFile] = useState<File | null>(null);
 
   const [sortBy, setSortBy] = useState<string>("filename");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
@@ -807,6 +810,7 @@ function SearchPage() {
         return (
           <KnowledgeActionsDropdown
             filename={data?.filename || ""}
+            onPreviewSource={() => setPreviewFile(data ?? null)}
             sourceUrl={data?.source_url}
             connectorType={data?.connector_type}
           />
@@ -924,6 +928,11 @@ function SearchPage() {
       setShowBulkDeleteDialog(false);
     }
   };
+
+  const previewSourceUrl = getDownloadSourceUrl(previewFile?.source_url);
+  const previewKind = previewFile
+    ? getSourcePreviewKind(previewFile.filename, previewFile.mimetype)
+    : undefined;
 
   return (
     <>
@@ -1192,6 +1201,18 @@ function SearchPage() {
         orphansAvailableByType={syncPreview?.orphans_available_by_type}
         syncedCountByType={syncPreview?.synced_count_by_type}
       />
+
+      {previewFile && previewSourceUrl && previewKind && (
+        <SourcePreviewDialog
+          filename={previewFile.filename}
+          kind={previewKind}
+          open
+          onOpenChange={(open) => {
+            if (!open) setPreviewFile(null);
+          }}
+          sourceUrl={previewSourceUrl}
+        />
+      )}
     </>
   );
 }

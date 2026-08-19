@@ -36,12 +36,12 @@ import { formatFilesToDelete } from "@/lib/format-files-to-delete";
 import { getDownloadSourceUrl, getSourcePreviewKind } from "@/lib/source-url";
 import { DeleteConfirmationDialog } from "./delete-confirmation-dialog";
 import { RequirePermission } from "./require-permission";
-import { SourcePreviewDialog } from "./source-preview-dialog";
 import { SyncConfirmDialog } from "./sync-confirm-dialog";
 import { Button } from "./ui/button";
 
 interface KnowledgeActionsDropdownProps {
   filename: string;
+  onPreviewSource: () => void;
   sourceUrl?: string;
   connectorType?: string;
 }
@@ -55,6 +55,7 @@ const CLOUD_CONNECTOR_TYPES = new Set([
 
 export const KnowledgeActionsDropdown = ({
   filename,
+  onPreviewSource,
   sourceUrl,
   connectorType,
 }: KnowledgeActionsDropdownProps) => {
@@ -64,7 +65,6 @@ export const KnowledgeActionsDropdown = ({
   const syncConnectorMutation = useSyncConnector();
   const syncPreviewMutation = useSyncConnectorPreview();
   const [syncDialogOpen, setSyncDialogOpen] = useState(false);
-  const [previewOpen, setPreviewOpen] = useState(false);
   const [syncPreview, setSyncPreview] = useState<SyncPreviewResponse | null>(
     null,
   );
@@ -171,9 +171,8 @@ export const KnowledgeActionsDropdown = ({
           {downloadSourceUrl && previewKind && (
             <DropdownMenuItem
               className="text-primary focus:text-primary cursor-pointer"
-              onSelect={(event) => {
-                event.preventDefault();
-                setPreviewOpen(true);
+              onSelect={() => {
+                setTimeout(onPreviewSource, 0);
               }}
             >
               <Eye className="h-4 w-4 mr-2" />
@@ -276,16 +275,6 @@ export const KnowledgeActionsDropdown = ({
           </RequirePermission>
         </DropdownMenuContent>
       </DropdownMenu>
-
-      {downloadSourceUrl && previewKind && (
-        <SourcePreviewDialog
-          filename={filename}
-          kind={previewKind}
-          open={previewOpen}
-          onOpenChange={setPreviewOpen}
-          sourceUrl={downloadSourceUrl}
-        />
-      )}
 
       <DeleteConfirmationDialog
         open={showDeleteDialog}
