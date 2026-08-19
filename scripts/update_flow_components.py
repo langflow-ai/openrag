@@ -35,7 +35,9 @@ def load_code(source_path: Path) -> str:
         raise SystemExit(f"[error] code file not found: {source_path}") from exc
 
 
-def should_update_component(node: dict, *, display_name: str | None, metadata_module: str | None) -> bool:
+def should_update_component(
+    node: dict, *, display_name: str | None, metadata_module: str | None
+) -> bool:
     node_data = node.get("data", {})
     component = node_data.get("node", {})
 
@@ -72,7 +74,9 @@ def update_flow(
     expected_hash = _code_hash(code)
 
     for node in data.get("data", {}).get("nodes", []):
-        if not should_update_component(node, display_name=display_name, metadata_module=metadata_module):
+        if not should_update_component(
+            node, display_name=display_name, metadata_module=metadata_module
+        ):
             continue
 
         component = node["data"]["node"]
@@ -107,9 +111,21 @@ def iter_flow_files(flows_dir: Path) -> Iterable[Path]:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Update embedded component code in Langflow JSON files.")
-    parser.add_argument("--code-file", required=True, type=Path, help="Path to the Python file containing the component code.")
-    parser.add_argument("--flows-dir", type=Path, default=Path("flows"), help="Directory containing Langflow JSON files.")
+    parser = argparse.ArgumentParser(
+        description="Update embedded component code in Langflow JSON files."
+    )
+    parser.add_argument(
+        "--code-file",
+        required=True,
+        type=Path,
+        help="Path to the Python file containing the component code.",
+    )
+    parser.add_argument(
+        "--flows-dir",
+        type=Path,
+        default=Path("flows"),
+        help="Directory containing Langflow JSON files.",
+    )
     parser.add_argument(
         "--display-name",
         help="Component display_name to match (e.g. 'OpenSearch (Multi-Model Multi-Embedding)').",
@@ -119,7 +135,11 @@ def parse_args() -> argparse.Namespace:
         "--set-module",
         help="Write this value to matching nodes' metadata.module (does not filter).",
     )
-    parser.add_argument("--dry-run", action="store_true", help="Report which files would change without modifying them.")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Report which files would change without modifying them.",
+    )
 
     args = parser.parse_args()
 

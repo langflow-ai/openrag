@@ -61,9 +61,7 @@ def test_credentials_change_the_cache_key():
     unset = provider_health_cache.cache_key(**base)
     first = provider_health_cache.cache_key(**base, credentials={"api_key": "sk-one"})
     second = provider_health_cache.cache_key(**base, credentials={"api_key": "sk-two"})
-    embedding = provider_health_cache.cache_key(
-        **base, embedding_credentials={"api_key": "sk-one"}
-    )
+    embedding = provider_health_cache.cache_key(**base, embedding_credentials={"api_key": "sk-one"})
 
     assert first != second
     assert first != unset

@@ -125,11 +125,7 @@ def _custom_providers_for_settings(openrag_config) -> dict[str, GenericProviderC
         if stored is not None:
             secret_keys = secret_field_keys(provider)
             values.update(
-                {
-                    key: value
-                    for key, value in stored.credentials.items()
-                    if key not in secret_keys
-                }
+                {key: value for key, value in stored.credentials.items() if key not in secret_keys}
             )
             secrets.extend(key for key in secret_keys if stored.credentials.get(key))
             configured = configured or stored.configured
