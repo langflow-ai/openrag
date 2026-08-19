@@ -104,6 +104,7 @@ endef
 .PHONY: help check_tools help_docker help_dev help_test help_local help_utils help_operator \
        dev dev-cpu dev-local dev-local-cpu dev-local-build-lf dev-local-build-lf-cpu stop clean build logs \
        azurite-up azurite-down \
+       instana-agent-up instana-agent-down \
        shell-backend shell-frontend install \
        test test-unit test-integration test-ci test-ci-local test-ci-suite test-sdk test-os-jwt lint \
        ci-build-images ci-save-images \
@@ -360,6 +361,8 @@ help_local: ## Show local development commands
 	@echo "  $(PURPLE)make docling-stop$(NC)    - Stop docling-serve"
 	@echo "  $(PURPLE)make azurite-up$(NC)      - Start Azurite (local Azure Blob emulator) for connector testing"
 	@echo "  $(PURPLE)make azurite-down$(NC)    - Stop Azurite emulator"
+	@echo "  $(PURPLE)make instana-agent-up$(NC)   - Start the local Instana host agent (forwards to dev-dalhdev.instana.io)"
+	@echo "  $(PURPLE)make instana-agent-down$(NC) - Stop the local Instana host agent"
 	@echo ''
 	@echo "$(PURPLE)Installation:$(NC)"
 	@echo "  $(PURPLE)make install$(NC)         - Install all dependencies"
@@ -868,6 +871,17 @@ azurite-down: ## Stop Azurite emulator
 	@echo "$(YELLOW)Stopping Azurite...$(NC)"
 	$(COMPOSE_CMD) --profile azurite stop azurite
 	@echo "$(PURPLE)Azurite stopped.$(NC)"
+
+instana-agent-up: ## Start the local Instana host agent (forwards to dev-dalhdev.instana.io)
+	@echo "$(YELLOW)Starting Instana host agent...$(NC)"
+	@if [ -z "$$INSTANA_AGENT_KEY" ]; then echo "$(RED)INSTANA_AGENT_KEY not set in $(ENV_FILE)$(NC)"; exit 1; fi
+	$(COMPOSE_CMD) --profile instana up -d instana-agent
+	@echo "$(PURPLE)Instana agent started (listening on 127.0.0.1:42699).$(NC)"
+
+instana-agent-down: ## Stop the local Instana host agent
+	@echo "$(YELLOW)Stopping Instana agent...$(NC)"
+	$(COMPOSE_CMD) --profile instana stop instana-agent
+	@echo "$(PURPLE)Instana agent stopped.$(NC)"
 
 ######################
 # INSTALLATION

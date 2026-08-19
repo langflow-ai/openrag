@@ -20,6 +20,15 @@ the app, run uvicorn. The re-exports below preserve the
 
 import bootstrap  # noqa: F401  — must be first; loads .env + structured logging
 
+import os
+
+# Must run before config.settings (and everything it pulls in — httpx,
+# opensearch-py, sqlalchemy) is imported, so Instana can patch those libraries.
+# Exception to "config/settings.py is the only place that reads os.environ":
+# config.settings can't be imported yet at this point in the file.
+if os.getenv("INSTANA_ENABLED", "false").lower() in ("true", "1", "yes"):
+    import instana  # noqa: F401  — must precede httpx/opensearch-py/sqlalchemy imports below
+
 import asyncio
 import atexit
 

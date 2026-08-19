@@ -244,6 +244,33 @@ services:
     volumes:
       - azurite-data:/data
 
+  # Instana host agent: forwards traces/metrics to the dev-dalhdev.instana.io
+  # SaaS tenant. Opt-in only — gated behind the "instana" compose profile.
+  # Start it with `make instana-agent-up`. Uses host networking so the agent
+  # publishes 42699 directly on localhost, matching the dev-local topology
+  # (backend runs on the host via `make backend`, not in Docker).
+  # NOTE: flags below are a starting point — re-verify against the exact
+  # Docker install command from the tenant's own "Add a Host Agent" wizard
+  # (Infrastructure > Add a Host) before relying on this, since IBM adjusts
+  # recommended flags between agent releases.
+  instana-agent:
+    image: icr.io/instana/agent:latest
+    container_name: instana-agent
+    profiles: ["instana"]
+    network_mode: host
+    pid: host
+    privileged: true
+    environment:
+      - INSTANA_AGENT_ENDPOINT=${INSTANA_AGENT_ENDPOINT:-ingress-red-saas.instana.io}
+      - INSTANA_AGENT_ENDPOINT_PORT=${INSTANA_AGENT_ENDPOINT_PORT:-443}
+      - INSTANA_AGENT_KEY=${INSTANA_AGENT_KEY}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /dev:/dev
+      - /sys:/sys
+      - /var/log:/var/log
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+
 volumes:
   opensearch-data:
   azurite-data:
