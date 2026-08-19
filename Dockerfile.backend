@@ -11,6 +11,7 @@ FROM registry.access.redhat.com/ubi10/python-314-minimal AS base
 # Install system dependencies using microdnf (UBI minimal package manager)
 USER 0
 
+
 RUN microdnf update -y \
     && microdnf install -y \
     ca-certificates \
