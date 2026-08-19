@@ -151,7 +151,12 @@ async def ensure_required_langflow_global_variables(config=None):
         target_val = _string_value(required_values.get(name)) if is_generic else curr_val
 
         if curr_type != target_type:
-            logger.info("Migrating Langflow global variable type", variable_name=name, old_type=curr_type, new_type=target_type)
+            logger.info(
+                "Migrating Langflow global variable type",
+                variable_name=name,
+                old_type=curr_type,
+                new_type=target_type,
+            )
             del_resp = await clients.langflow_request("DELETE", f"/api/v1/variables/{var_id}")
             if del_resp.status_code in (200, 204):
                 recreate_payload = {
@@ -170,7 +175,9 @@ async def ensure_required_langflow_global_variables(config=None):
                 "default_fields": [],
                 "type": target_type,
             }
-            await clients.langflow_request("PATCH", f"/api/v1/variables/{var_id}", json=patch_payload)
+            await clients.langflow_request(
+                "PATCH", f"/api/v1/variables/{var_id}", json=patch_payload
+            )
 
     # Create missing generic variables
     for name in sorted(LANGFLOW_GENERIC_GLOBAL_VARIABLES):
