@@ -17,9 +17,15 @@ const MarkdownRenderer = dynamic(
 
 // Import the shared filename derivation helper
 import { deriveDisplayFilename } from "@/components/markdown-citations";
+import { SourcePreviewDialog } from "@/components/source-preview-dialog";
 import { Popover } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
 import { trackButton } from "@/lib/analytics";
+import {
+  getDownloadSourceUrl,
+  getSourcePreviewKind,
+  type SourcePreviewKind,
+} from "@/lib/source-url";
 import { cn } from "@/lib/utils";
 import type {
   FunctionCall,
@@ -32,6 +38,12 @@ import MessageActions from "./message-actions";
 import { TokenUsage } from "./token-usage";
 
 const EMPTY_FUNCTION_CALLS: FunctionCall[] = [];
+
+interface ChatSourcePreview {
+  filename: string;
+  kind: SourcePreviewKind;
+  sourceUrl: string;
+}
 
 const hasNestedResults = (
   value: unknown,
@@ -93,6 +105,9 @@ export function AssistantMessage({
   unstyledMessageContent = false,
 }: AssistantMessageProps) {
   const [activeChunkIndex, setActiveChunkIndex] = useState<number | null>(null);
+  const [sourcePreview, setSourcePreview] = useState<ChatSourcePreview | null>(
+    null,
+  );
   const citationCardRefs = useRef<Map<number, HTMLElement> | null>(null);
   if (citationCardRefs.current === null) {
     citationCardRefs.current = new Map();
@@ -167,6 +182,19 @@ export function AssistantMessage({
   const activeCitedSource = citedSources.find(
     (s) => s.index === activeChunkIndex,
   );
+  const activeFilename = activeCitedSource
+    ? deriveDisplayFilename(
+        activeCitedSource.item.data?.file_path,
+        activeCitedSource.item.filename,
+        "Document",
+      )
+    : undefined;
+  const activeSourceUrl = getDownloadSourceUrl(
+    activeCitedSource?.item.source_url ?? undefined,
+  );
+  const activePreviewKind = activeFilename
+    ? getSourcePreviewKind(activeFilename)
+    : undefined;
   return (
     <motion.div
       initial={animate ? { opacity: 0, y: -20 } : { opacity: 1, y: 0 }}
@@ -303,11 +331,7 @@ export function AssistantMessage({
           <ChunkPopup
             onClose={closeChunkPopover}
             chunkNumber={activeCitedSource.index}
-            filename={deriveDisplayFilename(
-              activeCitedSource.item.data?.file_path,
-              activeCitedSource.item.filename,
-              "Document",
-            )}
+            filename={activeFilename ?? "Document"}
             score={
               activeCitedSource.item.score !== undefined
                 ? activeCitedSource.item.score
@@ -319,10 +343,51 @@ export function AssistantMessage({
               ""
             }
             item={activeCitedSource.item}
+            onPreviewDocument={
+              activeFilename && activeSourceUrl && activePreviewKind
+                ? () => {
+                    const rawPage =
+                      activeCitedSource.item.page ??
+                      activeCitedSource.item.data?.page ??
+                      activeCitedSource.item.metadata?.page ??
+                      activeCitedSource.item.data?.metadata?.page;
+                    const parsedPage = Number(rawPage);
+                    const targetedSourceUrl =
+                      activeFilename.toLowerCase().endsWith(".pdf") &&
+                      Number.isFinite(parsedPage) &&
+                      parsedPage > 0
+                        ? `${activeSourceUrl.split("#", 1)[0]}#page=${Math.floor(parsedPage)}`
+                        : activeSourceUrl;
+
+                    closeChunkPopover();
+                    setTimeout(
+                      () =>
+                        setSourcePreview({
+                          filename: activeFilename,
+                          kind: activePreviewKind,
+                          sourceUrl: targetedSourceUrl,
+                        }),
+                      0,
+                    );
+                  }
+                : undefined
+            }
             showViewDocument={showViewDocument}
           />
         )}
       </Popover>
+
+      {sourcePreview && (
+        <SourcePreviewDialog
+          filename={sourcePreview.filename}
+          kind={sourcePreview.kind}
+          open
+          onOpenChange={(open) => {
+            if (!open) setSourcePreview(null);
+          }}
+          sourceUrl={sourcePreview.sourceUrl}
+        />
+      )}
     </motion.div>
   );
 }
