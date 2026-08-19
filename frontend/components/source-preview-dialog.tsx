@@ -57,7 +57,6 @@ export function SourcePreviewDialog({
             <iframe
               src={previewUrl}
               title={`Preview of ${filename}`}
-              sandbox=""
               className="h-full w-full bg-white"
             />
           )}
