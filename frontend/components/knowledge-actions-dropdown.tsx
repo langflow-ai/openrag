@@ -171,8 +171,9 @@ export const KnowledgeActionsDropdown = ({
           {downloadSourceUrl && previewKind && (
             <DropdownMenuItem
               className="text-primary focus:text-primary cursor-pointer"
-              onSelect={() => {
-                setTimeout(() => setPreviewOpen(true), 0);
+              onSelect={(event) => {
+                event.preventDefault();
+                setPreviewOpen(true);
               }}
             >
               <Eye className="h-4 w-4 mr-2" />
