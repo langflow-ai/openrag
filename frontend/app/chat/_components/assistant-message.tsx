@@ -42,6 +42,7 @@ const EMPTY_FUNCTION_CALLS: FunctionCall[] = [];
 interface ChatSourcePreview {
   filename: string;
   kind: SourcePreviewKind;
+  referencePage?: number;
   sourceUrl: string;
 }
 
@@ -365,6 +366,12 @@ export function AssistantMessage({
                         setSourcePreview({
                           filename: activeFilename,
                           kind: activePreviewKind,
+                          referencePage:
+                            activeFilename.toLowerCase().endsWith(".pdf") &&
+                            Number.isFinite(parsedPage) &&
+                            parsedPage > 0
+                              ? Math.floor(parsedPage)
+                              : undefined,
                           sourceUrl: targetedSourceUrl,
                         }),
                       0,
@@ -385,6 +392,7 @@ export function AssistantMessage({
           onOpenChange={(open) => {
             if (!open) setSourcePreview(null);
           }}
+          referencePage={sourcePreview.referencePage}
           sourceUrl={sourcePreview.sourceUrl}
         />
       )}

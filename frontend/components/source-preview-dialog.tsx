@@ -1,6 +1,7 @@
 "use client";
 
-import { Download } from "lucide-react";
+import { Download, Search } from "lucide-react";
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -21,6 +22,7 @@ interface SourcePreviewDialogProps {
   kind: SourcePreviewKind;
   onOpenChange: (open: boolean) => void;
   open: boolean;
+  referencePage?: number;
   sourceUrl: string;
 }
 
@@ -30,8 +32,10 @@ export function SourcePreviewDialog({
   kind,
   onOpenChange,
   open,
+  referencePage,
   sourceUrl,
 }: SourcePreviewDialogProps) {
+  const [previewKey, setPreviewKey] = useState(0);
   const previewUrl = getPreviewSourceUrl(sourceUrl);
   const downloadUrl = getDownloadSourceUrl(sourceUrl);
 
@@ -55,6 +59,7 @@ export function SourcePreviewDialog({
             />
           ) : (
             <iframe
+              key={previewKey}
               src={previewUrl}
               title={`Preview of ${filename}`}
               className="h-full w-full bg-white"
@@ -63,6 +68,16 @@ export function SourcePreviewDialog({
         </div>
 
         <DialogFooter>
+          {kind === "document" && referencePage && referencePage > 0 && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setPreviewKey((key) => key + 1)}
+            >
+              <Search className="mr-2 h-4 w-4" />
+              Find reference (page {referencePage})
+            </Button>
+          )}
           <Button asChild variant="outline">
             <a
               href={downloadUrl}
