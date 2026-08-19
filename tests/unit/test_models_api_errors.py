@@ -147,7 +147,5 @@ async def test_get_model_catalog_returns_litellm_providers():
     openai = next(p for p in payload["providers"] if p["key"] == "openai")
     assert openai["models"]
     assert openai["embedding_models"]
-    cache_control = response.headers.get("cache-control") or response.headers.get(
-        "Cache-Control"
-    )
+    cache_control = response.headers.get("cache-control") or response.headers.get("Cache-Control")
     assert cache_control == "private, max-age=3600"

@@ -108,18 +108,20 @@ def test_component_index_registers_openrag_proxy_components():
     assert opensearch["edited"] is False
     assert opensearch["template"]["code"]["value"] == source
     assert opensearch["metadata"]["module"] == OPENSEARCH_MODULE
-    assert opensearch["metadata"]["code_hash"] == hashlib.sha256(source.encode("utf-8")).hexdigest()[
-        :12
-    ]
+    assert (
+        opensearch["metadata"]["code_hash"]
+        == hashlib.sha256(source.encode("utf-8")).hexdigest()[:12]
+    )
 
 
 def test_docker_compose_seeds_openrag_llm_token_placeholder():
     compose = Path("docker-compose.yml").read_text(encoding="utf-8")
     assert "LANGFLOW_COMPONENTS_INDEX_PATH=/app/flows/component_index.json" in compose
     assert "OPENRAG_LLM_TOKEN=None" in compose
-    assert "OPENRAG_LLM_TOKEN" in compose.split(
-        "LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT=", 1
-    )[1].split("\n", 1)[0]
+    assert (
+        "OPENRAG_LLM_TOKEN"
+        in compose.split("LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT=", 1)[1].split("\n", 1)[0]
+    )
     helm = Path("kubernetes/helm/openrag/templates/langflow/langflow-dotenv.yaml").read_text(
         encoding="utf-8"
     )
@@ -137,9 +139,9 @@ def test_component_index_sha256_matches_langflow_integrity_check():
     """
     raw = json.loads(Path("flows/component_index.json").read_text(encoding="utf-8"))
     stored = raw.pop("sha256")
-    payload = json.dumps(
-        raw, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-    ).encode("utf-8")
+    payload = json.dumps(raw, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
+        "utf-8"
+    )
     assert stored == hashlib.sha256(payload).hexdigest()
 
 

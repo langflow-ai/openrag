@@ -466,9 +466,7 @@ def main() -> None:
         OPENSEARCH_EXT_ID: opensearch_component(),
     }
 
-    entries = [
-        entry for entry in index["entries"] if entry[0] not in {"openrag", BUNDLE_NAME}
-    ]
+    entries = [entry for entry in index["entries"] if entry[0] not in {"openrag", BUNDLE_NAME}]
     entries.append([BUNDLE_NAME, openrag])
     entries.sort(key=lambda item: item[0].lower())
     index["entries"] = entries

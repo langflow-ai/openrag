@@ -72,7 +72,9 @@ async def test_hop_token_is_minted_when_caller_only_has_ibm_basic():
     from unittest.mock import patch
 
     with (
-        patch("config.settings.get_langflow_llm_base_url", lambda: "http://openrag-backend:8000/v1"),
+        patch(
+            "config.settings.get_langflow_llm_base_url", lambda: "http://openrag-backend:8000/v1"
+        ),
         patch("config.settings.get_langflow_opensearch_url", lambda: ""),
         patch("config.settings.get_langflow_docling_url", lambda: ""),
         patch("config.settings.get_index_name", lambda: ""),
