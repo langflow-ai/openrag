@@ -126,6 +126,7 @@ async def check_provider_health(
                 embedding_api_key=embedding_api_key,
                 embedding_endpoint=embedding_endpoint,
                 embedding_project_id=embedding_project_id,
+                embedding_credentials=embedding_credentials,
             )
             cached_payload = provider_health_cache.get(health_cache_key)
             if cached_payload is not None:
@@ -153,6 +154,10 @@ async def check_provider_health(
         # Validate provider setup
         if check_provider:
             # Validate specific provider
+            # Generic LiteLLM providers keep their secrets in ``credentials``
+            # rather than the dedicated api_key/endpoint/project_id fields, so
+            # this must be forwarded or validating one from the providers page
+            # runs with no credentials at all.
             await validate_provider_setup(
                 provider=provider,
                 api_key=api_key,
@@ -161,6 +166,7 @@ async def check_provider_health(
                 endpoint=endpoint,
                 project_id=project_id,
                 test_completion=test_completion,
+                credentials=credentials,
             )
 
             return JSONResponse(
