@@ -279,6 +279,7 @@ class TaskService:
         source_urls: dict[str, str] | None = None,
         archive_sources: bool = False,
         cleanup_files: bool = True,
+        delete_source_after_success: bool = False,
     ) -> str:
         """Create a new upload task for bulk file processing"""
         # Use default DocumentFileProcessor with user context
@@ -297,6 +298,7 @@ class TaskService:
             settings=settings,
             source_urls=source_urls,
             archive_sources=archive_sources,
+            delete_source_after_success=delete_source_after_success,
         )
         return await self.create_custom_task(
             user_id,

@@ -76,7 +76,7 @@ async def upload_path(
     session_manager: Annotated[Any, Depends(get_session_manager)],
     user: Annotated[User, Depends(require_permission("knowledge:upload"))],
 ):
-    """Ingest a local file or directory path without deleting source files."""
+    """Ingest local paths and consume each source after successful indexing."""
     from config.settings import is_no_auth_mode
 
     if not is_no_auth_mode():
@@ -130,6 +130,7 @@ async def upload_path(
         replace_duplicates=body.replace_duplicates,
         archive_sources=archive_sources,
         cleanup_files=False,
+        delete_source_after_success=True,
     )
 
     return JSONResponse(

@@ -717,6 +717,7 @@ class DocumentFileProcessor(TaskProcessor):
         settings: dict | None = None,
         source_urls: dict[str, str] | None = None,
         archive_sources: bool = False,
+        delete_source_after_success: bool = False,
     ):
         super().__init__(
             document_service,
@@ -737,6 +738,7 @@ class DocumentFileProcessor(TaskProcessor):
         self.settings = settings
         self.source_urls = source_urls or {}
         self.archive_sources = archive_sources
+        self.delete_source_after_success = delete_source_after_success
         if self.session_manager is None:
             raise ValueError("session_manager is required for DocumentFileProcessor")
 
@@ -759,15 +761,19 @@ class DocumentFileProcessor(TaskProcessor):
                 self.owner_user_id, self.jwt_token
             )
 
-            duplicate_action = await self.resolve_duplicate_filename(
-                original_filename,
-                opensearch_client,
-                replace=self.replace_duplicates,
-                owner_user_id=self.owner_user_id,
-            )
-            if duplicate_action == "skip":
-                self.mark_duplicate_skipped(upload_task, file_task)
-                return
+            # Path ingestion identifies known content by its hash inside
+            # process_document_standard. A matching filename alone must not
+            # discard a different document from the shared ingestion folder.
+            if not self.delete_source_after_success:
+                duplicate_action = await self.resolve_duplicate_filename(
+                    original_filename,
+                    opensearch_client,
+                    replace=self.replace_duplicates,
+                    owner_user_id=self.owner_user_id,
+                )
+                if duplicate_action == "skip":
+                    self.mark_duplicate_skipped(upload_task, file_task)
+                    return
 
             # Compute hash
             file_hash = hash_id(item)
@@ -849,12 +855,41 @@ class DocumentFileProcessor(TaskProcessor):
                 file_task.updated_at = time.time()
                 upload_task.failed_files += 1
             else:
+                result_status = result.get("status")
                 # ``unchanged`` means the content hash was already present and
-                # no chunk was rewritten with this new source URL. Do not keep
-                # an unreachable archive entry in that case.
-                if staged_source is not None and result.get("status") == "indexed":
-                    staged_source.commit()
-                    archive_committed = True
+                # no chunk was rewritten with this new source URL. Path ingest
+                # consumes that redundant input; other callers retain it.
+                if result_status == "indexed":
+                    if staged_source is not None:
+                        staged_source.commit()
+                        archive_committed = True
+                    elif self.delete_source_after_success:
+                        from services.local_source_service import delete_ingested_source
+
+                        deleted = delete_ingested_source(item)
+                        if not deleted and os.path.exists(item):
+                            logger.warning(
+                                "Failed to remove successfully ingested local source",
+                                file_path=item,
+                            )
+                elif result_status == "unchanged" and self.delete_source_after_success:
+                    if staged_source is not None:
+                        if await staged_source.discard():
+                            staged_source = None
+                        else:
+                            logger.warning(
+                                "Failed to discard unchanged staged source",
+                                file_path=item,
+                            )
+                    else:
+                        from services.local_source_service import delete_ingested_source
+
+                        deleted = delete_ingested_source(item)
+                        if not deleted and os.path.exists(item):
+                            logger.warning(
+                                "Failed to remove unchanged local source",
+                                file_path=item,
+                            )
                 file_task.status = TaskStatus.COMPLETED
                 file_task.result = result
                 file_task.updated_at = time.time()

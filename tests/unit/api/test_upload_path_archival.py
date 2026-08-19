@@ -45,6 +45,7 @@ async def test_upload_path_archives_sources_without_temporary_cleanup(tmp_path, 
     assert kwargs["replace_duplicates"] is True
     assert kwargs["archive_sources"] is True
     assert kwargs["cleanup_files"] is False
+    assert kwargs["delete_source_after_success"] is True
     ensure_index.assert_awaited_once_with("Bearer token")
 
 

@@ -6,6 +6,7 @@ from services.local_source_service import (
     LocalSourceNotFoundError,
     LocalSourcePreviewUnsupportedError,
     collect_ingest_files,
+    delete_ingested_source,
     delete_local_source,
     find_local_source,
     get_local_source_archive_stats,
@@ -157,6 +158,25 @@ def test_collection_excludes_archive_and_symlinks(documents_path):
     assert collect_ingest_files(source) == [str(source.resolve())]
     assert collect_ingest_files(inbox / ".upload.part") == []
     assert collect_ingest_files(archived) == []
+
+
+def test_delete_ingested_source_is_confined_to_ingestion_root(documents_path):
+    """Delete an ingested source without touching archives or outside files."""
+    source = documents_path / "inbox" / "document.txt"
+    source.parent.mkdir()
+    source.write_text("indexed")
+    archived = documents_path / ".openrag-indexed" / SOURCE_ID / "document.txt"
+    archived.parent.mkdir(parents=True)
+    archived.write_text("retained")
+    outside = documents_path.parent / "outside.txt"
+    outside.write_text("outside")
+
+    assert delete_ingested_source(source) is True
+    assert not source.exists()
+    assert delete_ingested_source(archived) is False
+    assert delete_ingested_source(outside) is False
+    assert archived.read_text() == "retained"
+    assert outside.read_text() == "outside"
 
 
 def test_public_url_can_make_download_link_absolute(documents_path, monkeypatch):

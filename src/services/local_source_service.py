@@ -238,6 +238,29 @@ def collect_ingest_files(directory: str | os.PathLike[str]) -> list[str]:
     return sorted(files)
 
 
+def delete_ingested_source(file_path: str | os.PathLike[str]) -> bool:
+    """Delete a regular source file contained by the configured ingestion root."""
+    from config.settings import get_documents_path
+
+    source = Path(file_path)
+    if source.is_symlink() or not source.is_file():
+        return False
+
+    resolved_source = source.resolve()
+    ingestion_root = Path(get_documents_path()).expanduser().resolve()
+    archive_root = get_indexed_documents_path()
+    if not _is_relative_to(resolved_source, ingestion_root) or _is_relative_to(
+        resolved_source, archive_root
+    ):
+        return False
+
+    try:
+        source.unlink()
+    except OSError:
+        return False
+    return True
+
+
 def _unique_archive_path(directory: Path, filename: str) -> Path:
     """Return a collision-free archive path for the supplied filename."""
     safe_name = Path(filename).name or "document"
@@ -295,6 +318,12 @@ class StagedLocalSource:
             self.archived_path.parent.rmdir()
         except OSError:
             pass
+
+    async def discard(self) -> bool:
+        """Delete an uncommitted staged source that is no longer needed."""
+        if self.committed:
+            return False
+        return await asyncio.to_thread(_delete_local_source_directory, self.source_id)
 
 
 async def stage_local_source(

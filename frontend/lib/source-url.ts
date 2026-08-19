@@ -19,6 +19,20 @@ export function getDownloadSourceUrl(sourceUrl?: string): string | undefined {
   }
 }
 
+/** Return whether a source URL resolves to a backend-managed archived file. */
+export function isArchivedSourceUrl(sourceUrl?: string): boolean {
+  const url = getDownloadSourceUrl(sourceUrl);
+  if (!url) return false;
+
+  const parsed = new URL(url, "http://openrag.local");
+  const marker = "/api/source-files/";
+  const markerIndex = parsed.pathname.lastIndexOf(marker);
+  if (markerIndex < 0) return false;
+
+  const sourceId = parsed.pathname.slice(markerIndex + marker.length);
+  return /^[A-Za-z0-9_-]{16,128}\.[a-f0-9]{32}$/.test(sourceId);
+}
+
 export type SourcePreviewKind = "image" | "document";
 
 const IMAGE_MIME_TYPES = new Set([

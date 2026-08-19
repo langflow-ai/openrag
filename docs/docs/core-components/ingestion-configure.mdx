@@ -148,6 +148,13 @@ present in this location. Trusted API-key clients that write to the same shared
 volume can call `POST /api/v1/documents/ingest-path`; the requested path is
 restricted to `OPENRAG_DOCUMENTS_PATH`.
 
+After a file from the ingestion folder is indexed successfully, or its SHA-256
+content identifier is already present, OpenRAG removes it from that folder. A
+matching filename alone is not considered a duplicate. When source archiving is
+enabled, a newly indexed file is moved instead to
+`OPENRAG_INDEXED_DOCUMENTS_PATH` and remains available for preview and download.
+Failed files remain in the ingestion folder so they can be inspected or retried.
+
 Local path ingestion is disabled in multi-user mode, including through
 `/api/v1/documents/ingest-path`. This prevents one user from naming a
 server-local file that belongs to another user. Use the authenticated multipart

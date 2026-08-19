@@ -105,6 +105,89 @@ async def test_traditional_processor_preserves_remote_source_without_local_archi
 
 
 @pytest.mark.asyncio
+async def test_path_processor_deletes_source_only_after_successful_index(archive_environment):
+    """Consume a path-ingested source only after it was indexed successfully."""
+    successful_source = archive_environment / "inbox" / "indexed.txt"
+    failed_source = archive_environment / "inbox" / "failed.txt"
+    successful_source.parent.mkdir()
+    successful_source.write_text("indexed")
+    failed_source.write_text("failed")
+
+    processor = DocumentFileProcessor(
+        document_service=MagicMock(),
+        models_service=MagicMock(),
+        session_manager=MagicMock(),
+        delete_source_after_success=True,
+    )
+    processor.resolve_duplicate_filename = AsyncMock(return_value="proceed")
+    processor.process_document_standard = AsyncMock(return_value={"status": "indexed"})
+
+    await processor.process_item(
+        UploadTask(task_id="task-success", total_files=1),
+        str(successful_source),
+        FileTask(file_path=str(successful_source), filename=successful_source.name),
+    )
+
+    processor.process_document_standard = AsyncMock(
+        return_value={"status": "error", "error": "index failed"}
+    )
+    await processor.process_item(
+        UploadTask(task_id="task-failure", total_files=1),
+        str(failed_source),
+        FileTask(file_path=str(failed_source), filename=failed_source.name),
+    )
+
+    assert not successful_source.exists()
+    assert failed_source.read_text() == "failed"
+
+
+@pytest.mark.asyncio
+async def test_path_processor_uses_content_hash_instead_of_filename(archive_environment):
+    """Ingest a same-name file and consume content reported as unchanged."""
+    same_name_source = archive_environment / "inbox" / "same-name.txt"
+    unchanged_source = archive_environment / "inbox" / "unchanged.txt"
+    same_name_source.parent.mkdir()
+    same_name_source.write_text("new content with an existing filename")
+    unchanged_source.write_text("unchanged")
+
+    processor = DocumentFileProcessor(
+        document_service=MagicMock(),
+        models_service=MagicMock(),
+        session_manager=MagicMock(),
+        delete_source_after_success=True,
+    )
+    processor.resolve_duplicate_filename = AsyncMock(return_value="skip")
+    processor.process_document_standard = AsyncMock(return_value={"status": "indexed"})
+    same_name_task = FileTask(file_path=str(same_name_source), filename=same_name_source.name)
+
+    await processor.process_item(
+        UploadTask(task_id="task-same-name", total_files=1),
+        str(same_name_source),
+        same_name_task,
+    )
+
+    assert same_name_task.status == TaskStatus.COMPLETED
+    assert not same_name_source.exists()
+    processor.resolve_duplicate_filename.assert_not_awaited()
+    indexed_kwargs = processor.process_document_standard.await_args.kwargs
+    assert indexed_kwargs["file_hash"] == same_name_task.document_id
+
+    processor.archive_sources = True
+    processor.process_document_standard = AsyncMock(return_value={"status": "unchanged"})
+    unchanged_task = FileTask(file_path=str(unchanged_source), filename=unchanged_source.name)
+
+    await processor.process_item(
+        UploadTask(task_id="task-unchanged", total_files=1),
+        str(unchanged_source),
+        unchanged_task,
+    )
+
+    assert unchanged_task.status == TaskStatus.COMPLETED
+    assert not unchanged_source.exists()
+    assert not list(get_indexed_documents_path().rglob("*"))
+
+
+@pytest.mark.asyncio
 async def test_traditional_processor_does_not_orphan_archive_when_hash_is_unchanged(
     archive_environment,
 ):

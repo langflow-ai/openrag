@@ -52,7 +52,11 @@ import {
   buildKnowledgeTableRows,
   getKnowledgeFileIdentity,
 } from "@/lib/knowledge-table-state";
-import { getDownloadSourceUrl, getSourcePreviewKind } from "@/lib/source-url";
+import {
+  getDownloadSourceUrl,
+  getSourcePreviewKind,
+  isArchivedSourceUrl,
+} from "@/lib/source-url";
 import { parseTimestampMs } from "@/lib/time-utils";
 import { cn } from "@/lib/utils";
 import {
@@ -664,6 +668,19 @@ function SearchPage() {
       ...(isCloudBrand ? { flex: 1, minWidth: 110 } : {}),
       cellClass: isCloudBrand ? "text-muted-foreground" : undefined,
       sortable: true,
+    },
+    {
+      colId: "archived",
+      headerName: "Archived",
+      ...(isCloudBrand ? { flex: 0.9, minWidth: 110 } : { width: 110 }),
+      sortable: false,
+      valueGetter: (params: ValueGetterParams<File>) =>
+        isArchivedSourceUrl(params.data?.source_url),
+      cellRenderer: ({ value }: CustomCellRendererProps<File>) => (
+        <span className="text-sm text-muted-foreground">
+          {value ? "Yes" : "No"}
+        </span>
+      ),
     },
     {
       field: "owner",
