@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLink, X } from "lucide-react";
+import { ExternalLink, Eye, X } from "lucide-react";
 import { useRef } from "react";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import type { ToolCallResult } from "@/app/chat/_types/types";
@@ -14,6 +14,7 @@ interface ChunkPopupProps {
   score: number | string;
   sourceText: string;
   item: ToolCallResult;
+  onPreviewDocument?: () => void;
   showViewDocument?: boolean;
 }
 
@@ -104,6 +105,7 @@ export function ChunkPopup({
   score,
   sourceText,
   item,
+  onPreviewDocument,
   showViewDocument = true,
 }: ChunkPopupProps) {
   const { data: settings } = useGetSettingsQuery();
@@ -197,17 +199,24 @@ export function ChunkPopup({
               {hasUrl && (
                 <button
                   type="button"
-                  onClick={() =>
-                    window.open(
-                      item.source_url!,
-                      "_blank",
-                      "noopener,noreferrer",
-                    )
+                  onClick={
+                    onPreviewDocument
+                      ? onPreviewDocument
+                      : () =>
+                          window.open(
+                            item.source_url!,
+                            "_blank",
+                            "noopener,noreferrer",
+                          )
                   }
                   className="text-accent-purple-foreground hover:text-primary-hover text-[10px] font-bold flex items-center gap-1 hover:underline transition-all cursor-pointer"
                 >
-                  <ExternalLink className="w-3 h-3" />
-                  View document
+                  {onPreviewDocument ? (
+                    <Eye className="w-3 h-3" />
+                  ) : (
+                    <ExternalLink className="w-3 h-3" />
+                  )}
+                  {onPreviewDocument ? "Preview document" : "View document"}
                 </button>
               )}
             </div>
