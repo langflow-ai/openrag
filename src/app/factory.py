@@ -5,13 +5,14 @@ into a ready-to-serve FastAPI app.
 """
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.container import initialize_services
 from app.lifespan import run_shutdown, run_startup
 from app.middleware import RequestLoggingMiddleware
 from app.routes import register_all_routes
-from config.settings import FASTAPI_DEBUG
+from config.settings import CORS_ALLOWED_ORIGINS, FASTAPI_DEBUG
 from utils.logging_config import get_logger
 from utils.version_utils import OPENRAG_VERSION
 
@@ -25,6 +26,15 @@ async def create_app():
     app = FastAPI(title="OpenRAG API", version=OPENRAG_VERSION, debug=FASTAPI_DEBUG)
     app.state.services = services
     app.state.background_tasks = set()
+
+    if CORS_ALLOWED_ORIGINS:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=CORS_ALLOWED_ORIGINS,
+            allow_credentials=False,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
 
     # Wire up ASGI request logging middleware (pure ASGI, not BaseHTTPMiddleware)
     app.add_middleware(RequestLoggingMiddleware)
