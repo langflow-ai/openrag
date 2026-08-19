@@ -1,11 +1,17 @@
 "use client";
 
 import { ExternalLink, Eye, X } from "lucide-react";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import type { ToolCallResult } from "@/app/chat/_types/types";
 import { PopoverContent } from "@/components/ui/popover";
 import { DEFAULT_KNOWLEDGE_SETTINGS } from "@/lib/constants";
+import {
+  getDownloadSourceUrl,
+  getPreviewSourceUrl,
+  getSourcePreviewKind,
+} from "@/lib/source-url";
+import { cn } from "@/lib/utils";
 
 interface ChunkPopupProps {
   onClose: () => void;
@@ -14,7 +20,6 @@ interface ChunkPopupProps {
   score: number | string;
   sourceText: string;
   item: ToolCallResult;
-  onPreviewDocument?: () => void;
   showViewDocument?: boolean;
 }
 
@@ -105,16 +110,27 @@ export function ChunkPopup({
   score,
   sourceText,
   item,
-  onPreviewDocument,
   showViewDocument = true,
 }: ChunkPopupProps) {
   const { data: settings } = useGetSettingsQuery();
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const [showPreview, setShowPreview] = useState(false);
 
-  const hasUrl = showViewDocument && !!item.source_url;
+  const sourceUrl = getDownloadSourceUrl(item.source_url ?? undefined);
+  const previewKind = getSourcePreviewKind(filename);
+  const previewUrl = getPreviewSourceUrl(sourceUrl);
+  const canPreview = Boolean(
+    showViewDocument && previewKind && previewUrl && sourceUrl,
+  );
+  const hasUrl = showViewDocument && Boolean(sourceUrl);
   const parser = formatParser(item, filename);
   const scoreLabel = formatScore(item, score);
   const pageLabel = formatPage(item);
+  const page = toNumber(getMetadataValue(item, "page"));
+  const displayedPreviewUrl =
+    previewUrl && filename.toLowerCase().endsWith(".pdf") && page && page > 0
+      ? `${previewUrl.split("#", 1)[0]}#page=${Math.floor(page)}`
+      : previewUrl;
   const splitConfig = formatSplitConfig(
     item,
     settings?.knowledge?.chunk_size ?? DEFAULT_KNOWLEDGE_SETTINGS.chunk_size,
@@ -133,7 +149,12 @@ export function ChunkPopup({
         event.preventDefault();
         closeButtonRef.current?.focus();
       }}
-      className="z-50 bg-background-dark border border-border rounded-xl shadow-2xl flex w-[min(calc(100vw-24px),32rem)] flex-col max-h-[min(72vh,34rem)] overflow-hidden text-foreground backdrop-blur-xl p-0"
+      className={cn(
+        "z-50 bg-background-dark border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden text-foreground backdrop-blur-xl p-0",
+        showPreview
+          ? "w-[min(calc(100vw-24px),52rem)] max-h-[min(88vh,48rem)]"
+          : "w-[min(calc(100vw-24px),32rem)] max-h-[min(72vh,34rem)]",
+      )}
     >
       {/* Header */}
       <div className="flex items-center justify-between p-4 pb-3">
@@ -191,6 +212,29 @@ export function ChunkPopup({
       {/* Body Content */}
       <div className="p-4 flex-1 overflow-y-auto min-h-0">
         <div className="space-y-2">
+          {showPreview && displayedPreviewUrl && previewKind && (
+            <div className="space-y-2 pb-3">
+              <span className="text-muted-foreground text-[10px] font-extrabold uppercase tracking-wider block">
+                Original document
+              </span>
+              <div className="flex h-72 items-center justify-center overflow-hidden rounded-lg border border-border bg-white">
+                {previewKind === "image" ? (
+                  // biome-ignore lint/performance/noImgElement: authenticated source URLs are not supported by next/image.
+                  <img
+                    src={displayedPreviewUrl}
+                    alt={`Preview of ${filename}`}
+                    className="max-h-full max-w-full object-contain"
+                  />
+                ) : (
+                  <iframe
+                    src={displayedPreviewUrl}
+                    title={`Preview of ${filename}`}
+                    className="h-full w-full bg-white"
+                  />
+                )}
+              </div>
+            </div>
+          )}
           <div className="flex justify-between items-center">
             <span className="text-muted-foreground text-[10px] font-extrabold uppercase tracking-wider block">
               Source text
@@ -199,24 +243,25 @@ export function ChunkPopup({
               {hasUrl && (
                 <button
                   type="button"
-                  onClick={
-                    onPreviewDocument
-                      ? onPreviewDocument
-                      : () =>
-                          window.open(
-                            item.source_url!,
-                            "_blank",
-                            "noopener,noreferrer",
-                          )
-                  }
+                  onClick={() => {
+                    if (canPreview) {
+                      setShowPreview((visible) => !visible);
+                      return;
+                    }
+                    window.open(sourceUrl, "_blank", "noopener,noreferrer");
+                  }}
                   className="text-accent-purple-foreground hover:text-primary-hover text-[10px] font-bold flex items-center gap-1 hover:underline transition-all cursor-pointer"
                 >
-                  {onPreviewDocument ? (
+                  {canPreview ? (
                     <Eye className="w-3 h-3" />
                   ) : (
                     <ExternalLink className="w-3 h-3" />
                   )}
-                  {onPreviewDocument ? "Preview document" : "View document"}
+                  {canPreview
+                    ? showPreview
+                      ? "Hide preview"
+                      : "Preview document"
+                    : "View document"}
                 </button>
               )}
             </div>
