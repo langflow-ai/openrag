@@ -1,6 +1,10 @@
+from unittest.mock import AsyncMock
+
 import pytest
 
 from services.local_source_service import (
+    LocalSourceNotFoundError,
+    LocalSourcePreviewUnsupportedError,
     collect_ingest_files,
     delete_local_source,
     find_local_source,
@@ -8,6 +12,7 @@ from services.local_source_service import (
     is_source_archiving_enabled,
     local_source_url,
     resolve_ingestion_path,
+    resolve_local_source_download,
     source_id_from_local_source_url,
     stage_local_source,
 )
@@ -42,6 +47,83 @@ async def test_committed_source_is_moved_and_resolvable(documents_path):
     assert staged.source_id.startswith(f"{DOCUMENT_ID}.")
     assert find_local_source(staged.source_id) == staged.archived_path.resolve()
     assert local_source_url(staged.source_id) == f"/api/source-files/{staged.source_id}"
+
+
+@pytest.mark.asyncio
+async def test_resolve_download_authorizes_and_returns_archived_source(documents_path):
+    """Resolve a retained source only after a visible chunk authorizes it."""
+    source = documents_path / "inbox" / "report.pdf"
+    source.parent.mkdir()
+    source.write_bytes(b"%PDF-preview")
+    staged = await stage_local_source(source, DOCUMENT_ID, source.name)
+    staged.commit()
+    client = AsyncMock()
+    client.search.return_value = {"hits": {"total": {"value": 1}}}
+
+    resolved = await resolve_local_source_download(
+        staged.source_id,
+        opensearch_client=client,
+        index="test-index",
+        preview=True,
+    )
+
+    assert resolved.path == staged.archived_path.resolve()
+    assert resolved.media_type == "application/pdf"
+    assert client.search.await_args.kwargs["index"] == "test-index"
+    query = client.search.await_args.kwargs["body"]["query"]
+    assert query["bool"]["filter"][1]["wildcard"]["source_url"]["value"] == (
+        f"*/api/source-files/{staged.source_id}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_resolve_download_hides_invalid_invisible_or_missing_sources(documents_path):
+    """Treat invalid, invisible, and locally absent retained sources as missing."""
+    client = AsyncMock()
+
+    with pytest.raises(LocalSourceNotFoundError):
+        await resolve_local_source_download(
+            "invalid",
+            opensearch_client=client,
+            index="test-index",
+        )
+    client.search.assert_not_awaited()
+
+    client.search.return_value = {"hits": {"total": {"value": 0}}}
+    with pytest.raises(LocalSourceNotFoundError):
+        await resolve_local_source_download(
+            SOURCE_ID,
+            opensearch_client=client,
+            index="test-index",
+        )
+
+    client.search.return_value = {"hits": {"total": {"value": 1}}}
+    with pytest.raises(LocalSourceNotFoundError):
+        await resolve_local_source_download(
+            SOURCE_ID,
+            opensearch_client=client,
+            index="test-index",
+        )
+
+
+@pytest.mark.asyncio
+async def test_resolve_preview_rejects_unsupported_media_type(documents_path):
+    """Reject active content before returning a source for inline preview."""
+    source = documents_path / "inbox" / "page.html"
+    source.parent.mkdir()
+    source.write_text("<script>alert('unsafe')</script>")
+    staged = await stage_local_source(source, DOCUMENT_ID, source.name)
+    staged.commit()
+    client = AsyncMock()
+    client.search.return_value = {"hits": {"total": {"value": 1}}}
+
+    with pytest.raises(LocalSourcePreviewUnsupportedError):
+        await resolve_local_source_download(
+            staged.source_id,
+            opensearch_client=client,
+            index="test-index",
+            preview=True,
+        )
 
 
 @pytest.mark.asyncio

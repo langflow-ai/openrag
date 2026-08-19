@@ -4,17 +4,31 @@ from __future__ import annotations
 
 import asyncio
 import errno
+import mimetypes
 import os
 import re
 import shutil
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TypedDict
+from typing import Any, TypedDict
 from urllib.parse import quote, unquote, urlsplit
 
 DOCUMENT_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{16,128}$")
 SOURCE_ID_PATTERN = re.compile(r"^(?P<document_id>[A-Za-z0-9_-]{16,128})\.(?P<nonce>[a-f0-9]{32})$")
+PREVIEWABLE_MEDIA_TYPES = {
+    "application/json",
+    "application/pdf",
+    "image/avif",
+    "image/bmp",
+    "image/gif",
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "text/csv",
+    "text/markdown",
+    "text/plain",
+}
 
 
 class LocalSourceArchiveStats(TypedDict):
@@ -27,6 +41,22 @@ class LocalSourceArchiveStats(TypedDict):
     used_bytes: int | None
     filesystem_total_bytes: int
     filesystem_free_bytes: int
+
+
+class LocalSourceNotFoundError(Exception):
+    """Raised when a retained source is invalid, invisible, or absent."""
+
+
+class LocalSourcePreviewUnsupportedError(Exception):
+    """Raised when a retained source cannot be rendered safely inline."""
+
+
+@dataclass(frozen=True)
+class ResolvedLocalSource:
+    """A retained source authorized and resolved for download or preview."""
+
+    path: Path
+    media_type: str
 
 
 def get_indexed_documents_path() -> Path:
@@ -310,6 +340,61 @@ def find_local_source(source_id: str) -> Path | None:
         if _is_relative_to(resolved, archive_root):
             return resolved
     return None
+
+
+def _total_hits(response: dict[str, Any]) -> int:
+    """Return the total hit count from an OpenSearch response."""
+    total = response.get("hits", {}).get("total", 0)
+    if isinstance(total, dict):
+        total = total.get("value", 0)
+    return int(total) if isinstance(total, int) else 0
+
+
+async def resolve_local_source_download(
+    source_id: str,
+    *,
+    opensearch_client: Any,
+    index: str,
+    preview: bool = False,
+) -> ResolvedLocalSource:
+    """Authorize and resolve a retained source for download or preview."""
+    document_id = document_id_from_source_id(source_id)
+    if document_id is None:
+        raise LocalSourceNotFoundError
+
+    result = await opensearch_client.search(
+        index=index,
+        body={
+            "size": 0,
+            "track_total_hits": 1,
+            "query": {
+                "bool": {
+                    "filter": [
+                        {"term": {"document_id": document_id}},
+                        {
+                            "wildcard": {
+                                "source_url": {
+                                    "value": f"*/api/source-files/{source_id}",
+                                }
+                            }
+                        },
+                    ]
+                }
+            },
+        },
+    )
+    if _total_hits(result) == 0:
+        raise LocalSourceNotFoundError
+
+    source = find_local_source(source_id)
+    if source is None:
+        raise LocalSourceNotFoundError
+
+    media_type = mimetypes.guess_type(source.name)[0] or "application/octet-stream"
+    if preview and media_type not in PREVIEWABLE_MEDIA_TYPES:
+        raise LocalSourcePreviewUnsupportedError
+
+    return ResolvedLocalSource(path=source, media_type=media_type)
 
 
 def _delete_local_source_directory(source_id: str) -> bool:
