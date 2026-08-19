@@ -166,6 +166,18 @@ The same setting applies to browser uploads from **Add Knowledge**. The
 Archiving page shows the ingestion path, archive path, retained size, filesystem
 capacity, and free space.
 
+When a knowledge item has a valid `source_url`, you can download its original
+from the three-dot menu in the knowledge list, from the **Original document**
+section on its chunks page, or from a citation's chunk details in chat. A
+preview action is also available for PDF, JSON, CSV, Markdown, plain-text, and
+common image files (AVIF, BMP, GIF, JPEG, PNG, and WebP). The preview opens in a
+dialog, so you can inspect the source without leaving the current page.
+
+For a PDF citation that includes page metadata, the preview opens on the cited
+page. **Find reference** returns the preview to that page; it does not highlight
+the cited text inside the native PDF viewer. The chunk text remains available
+in the citation details for comparison.
+
 Local archiving is available only on deployments running without user
 authentication. In multi-user mode, **Settings > Archiving** reports that local
 storage is unavailable and OpenRAG never retains uploaded bytes as a local
