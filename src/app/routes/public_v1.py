@@ -23,6 +23,8 @@ from api.v1 import (
 from api.v1 import (
     settings as v1_settings,
 )
+from api.v1 import status as v1_status
+from utils.run_mode_utils import is_run_mode_oss
 
 
 def register_public_v1_routes(app: FastAPI):
@@ -139,6 +141,24 @@ def register_public_v1_routes(app: FastAPI):
         methods=["DELETE"],
         tags=["public"],
     )
+
+    # Status endpoints (OSS-only) — component logs route must be registered before
+    # the bare /v1/status route so Starlette matches the literal "/logs" suffix
+    # rather than treating it as a {component} path parameter.
+    if is_run_mode_oss():
+        app.add_api_route(
+            "/v1/status/{component}/logs",
+            v1_status.get_component_logs_endpoint,
+            methods=["GET"],
+            tags=["public"],
+        )
+
+        app.add_api_route(
+            "/v1/status",
+            v1_status.get_status_endpoint,
+            methods=["GET"],
+            tags=["public"],
+        )
 
     # Files get_all endpoint
     app.add_api_route(
