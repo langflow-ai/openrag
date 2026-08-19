@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Loader2, Search } from "lucide-react";
+import { ArrowLeft, Download, Loader2, Search } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { useFileScopedChunksQuery } from "@/app/api/queries/useFileScopedChunksQuery";
@@ -13,6 +13,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { formatFileSize, getFileTypeLabel } from "@/lib/file-format";
+import { getDownloadSourceUrl } from "@/lib/source-url";
 
 function ChunksPageContent() {
   const router = useRouter();
@@ -36,6 +37,7 @@ function ChunksPageContent() {
 
   const chunks = fileData?.chunks ?? [];
   const chunkCount = chunks.length;
+  const downloadSourceUrl = getDownloadSourceUrl(fileData?.source_url);
   const averageChunkLength =
     chunkCount === 0
       ? 0
@@ -110,6 +112,19 @@ function ChunksPageContent() {
                   </dd>
                 </div>
               </dl>
+              {downloadSourceUrl && (
+                <Button asChild variant="outline" size="sm" className="mt-2">
+                  <a
+                    href={downloadSourceUrl}
+                    download={filename}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Download original
+                  </a>
+                </Button>
+              )}
             </div>
             {hasAccessControl && (
               <div className="mb-4">
