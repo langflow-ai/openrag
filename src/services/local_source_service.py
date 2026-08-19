@@ -13,9 +13,6 @@ from pathlib import Path
 from typing import TypedDict
 from urllib.parse import quote, unquote, urlsplit
 
-from config.paths import get_documents_path
-
-ARCHIVE_DIRNAME = ".openrag-indexed"
 DOCUMENT_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{16,128}$")
 SOURCE_ID_PATTERN = re.compile(r"^(?P<document_id>[A-Za-z0-9_-]{16,128})\.(?P<nonce>[a-f0-9]{32})$")
 
@@ -32,10 +29,9 @@ class LocalSourceArchiveStats(TypedDict):
 
 def get_indexed_documents_path() -> Path:
     """Return the persistent directory used for successfully indexed originals."""
-    configured = os.getenv("OPENRAG_INDEXED_DOCUMENTS_PATH")
-    if configured:
-        return Path(configured).expanduser().resolve()
-    return (Path(get_documents_path()).expanduser().resolve() / ARCHIVE_DIRNAME).resolve()
+    from config.settings import get_indexed_documents_path as get_configured_archive_path
+
+    return Path(get_configured_archive_path()).expanduser().resolve()
 
 
 def is_source_archiving_enabled() -> bool:
@@ -59,10 +55,16 @@ def get_local_source_archive_stats(*, include_used_bytes: bool = True) -> LocalS
     callers used by general application settings can opt out. The Archiving UI
     explicitly requests the complete measurement.
     """
+    from config.settings import (
+        get_documents_host_path,
+        get_documents_path,
+        get_indexed_documents_host_path,
+    )
+
     ingestion_root = Path(get_documents_path()).expanduser().resolve()
     archive_root = get_indexed_documents_path()
-    ingestion_host_path = os.getenv("OPENRAG_DOCUMENTS_HOST_PATH") or None
-    archive_host_path = os.getenv("OPENRAG_INDEXED_DOCUMENTS_HOST_PATH") or None
+    ingestion_host_path = get_documents_host_path()
+    archive_host_path = get_indexed_documents_host_path()
     if archive_host_path is None and ingestion_host_path:
         try:
             archive_relative_path = archive_root.relative_to(ingestion_root)
@@ -122,10 +124,12 @@ def source_id_from_local_source_url(source_url: str | None) -> str | None:
 
 def local_source_url(source_id: str) -> str:
     """Build the browser-facing download URL stored with indexed chunks."""
+    from config.settings import get_openrag_public_url
+
     if not SOURCE_ID_PATTERN.fullmatch(source_id):
         raise ValueError("Invalid source ID")
     path = f"/api/source-files/{quote(source_id, safe='')}"
-    public_url = os.getenv("OPENRAG_PUBLIC_URL", "").strip().rstrip("/")
+    public_url = get_openrag_public_url()
     if public_url:
         parsed = urlsplit(public_url)
         if (
@@ -155,6 +159,8 @@ def resolve_ingestion_path(requested_path: str | None = None) -> Path | None:
     documents volume, but must never be able to traverse into arbitrary server
     paths. Relative paths are interpreted from ``OPENRAG_DOCUMENTS_PATH``.
     """
+    from config.settings import get_documents_path
+
     ingestion_root = Path(get_documents_path()).expanduser().resolve()
     candidate = Path(requested_path or ".").expanduser()
     if not candidate.is_absolute():

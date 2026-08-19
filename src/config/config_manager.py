@@ -404,13 +404,11 @@ class ConfigManager:
         # This variable is deliberately a *default*, not a permanent override.
         # Apply it when upgrading an existing edited config that predates the
         # archiving section, but preserve any choice already saved by the UI.
-        if (
-            "enabled" not in config_data["archiving"]
-            and os.getenv("OPENRAG_ARCHIVE_SOURCES_DEFAULT") is not None
-        ):
-            config_data["archiving"]["enabled"] = os.getenv(
-                "OPENRAG_ARCHIVE_SOURCES_DEFAULT", "false"
-            ).lower() in ("true", "1", "yes")
+        from config.settings import get_archive_sources_default
+
+        archive_sources_default = get_archive_sources_default()
+        if "enabled" not in config_data["archiving"] and archive_sources_default is not None:
+            config_data["archiving"]["enabled"] = archive_sources_default
 
         # Skip all environment overrides if config has been manually edited
         if temp_config and temp_config.edited:

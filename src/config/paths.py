@@ -1,8 +1,7 @@
 """Centralized path helpers for OpenRAG.
 
-This module is the single source of truth for the OPENRAG_*_PATH environment variables.
-Variables are read directly via ``os.getenv`` here to avoid circular imports
-(settings → config_manager → paths → settings).
+Archive-related paths are exposed by ``config.settings``. The documents helper
+below remains as a compatibility wrapper for callers not yet migrated.
 """
 
 import os
@@ -17,7 +16,9 @@ def get_documents_path() -> str:
     Environment variable: OPENRAG_DOCUMENTS_PATH
     Default: ``openrag-documents``  (relative to the working directory)
     """
-    return os.getenv("OPENRAG_DOCUMENTS_PATH") or "openrag-documents"
+    from config.settings import get_documents_path as get_configured_documents_path
+
+    return get_configured_documents_path()
 
 
 # ---------------------------------------------------------------------------

@@ -27,6 +27,43 @@ load_dotenv("../", override=False)
 
 logger = get_logger(__name__)
 
+
+# Local source storage
+def get_documents_path() -> str:
+    """Return the local source ingestion path."""
+    return os.getenv("OPENRAG_DOCUMENTS_PATH") or "openrag-documents"
+
+
+def get_indexed_documents_path() -> str:
+    """Return the persistent archive path for successfully indexed sources."""
+    return os.getenv("OPENRAG_INDEXED_DOCUMENTS_PATH") or os.path.join(
+        get_documents_path(), ".openrag-indexed"
+    )
+
+
+def get_documents_host_path() -> str | None:
+    """Return the host-visible ingestion path, when configured."""
+    return os.getenv("OPENRAG_DOCUMENTS_HOST_PATH") or None
+
+
+def get_indexed_documents_host_path() -> str | None:
+    """Return the host-visible archive path, when configured."""
+    return os.getenv("OPENRAG_INDEXED_DOCUMENTS_HOST_PATH") or None
+
+
+def get_openrag_public_url() -> str:
+    """Return the normalized public base URL used for local source links."""
+    return os.getenv("OPENRAG_PUBLIC_URL", "").strip().rstrip("/")
+
+
+def get_archive_sources_default() -> bool | None:
+    """Return the optional environment default for source archiving."""
+    value = os.getenv("OPENRAG_ARCHIVE_SOURCES_DEFAULT")
+    if value is None:
+        return None
+    return value.lower() in ("true", "1", "yes")
+
+
 # Environment variables
 OPENSEARCH_HOST = os.getenv("OPENSEARCH_HOST", "localhost")
 OPENSEARCH_PORT = get_env_int("OPENSEARCH_PORT", 9200)
