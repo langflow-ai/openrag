@@ -88,7 +88,7 @@ async def test_update_langflow_global_variable_recreates_when_type_changes():
                 "json": {
                     "name": "OPENSEARCH_INDEX_NAME",
                     "value": "documents-v2",
-                    "default_fields": ["OpenRAG", "Index"],
+                    "default_fields": [],
                     "type": "Generic",
                 }
             },
@@ -133,12 +133,83 @@ async def test_update_langflow_global_variable_patches_when_type_matches():
                     "id": "var-1",
                     "name": "OPENAI_API_KEY",
                     "value": "new-secret",
-                    "default_fields": ["OpenAI", "OpenAI API Key"],
+                    "default_fields": [],
                     "type": "Credential",
                 }
             },
         ),
     ]
+
+
+@pytest.mark.asyncio
+async def test_ensure_required_langflow_global_variables_removes_apply_to_fields(monkeypatch):
+    langflow_calls = []
+
+    async def mock_langflow_request(method, endpoint, **kwargs):
+        langflow_calls.append((method, endpoint, kwargs))
+        if method == "GET":
+            return _Response(
+                json_data=[
+                    {
+                        "id": "var-1",
+                        "name": "OPENAI_API_KEY",
+                        "value": "secret",
+                        "type": "Credential",
+                        "default_fields": ["OpenAI", "api_key"],
+                    },
+                    {
+                        "id": "var-2",
+                        "name": "DOCLING_SERVE_URL",
+                        "value": langflow_sync.settings.get_langflow_docling_url(),
+                        "type": "Generic",
+                        "default_fields": [],
+                    },
+                ]
+            )
+        return _Response(status_code=200)
+
+    monkeypatch.setattr(
+        langflow_sync.clients,
+        "langflow_request",
+        mock_langflow_request,
+        raising=True,
+    )
+
+    create_calls = []
+
+    async def create_variable(name, value, modify=False, variable_type="Credential"):
+        create_calls.append((name, value, modify, variable_type))
+
+    monkeypatch.setattr(
+        langflow_sync.clients,
+        "_create_langflow_global_variable",
+        create_variable,
+        raising=True,
+    )
+
+    config = SimpleNamespace(
+        providers=SimpleNamespace(),
+        knowledge=SimpleNamespace(),
+    )
+
+    await langflow_sync.ensure_required_langflow_global_variables(config)
+
+    # Verify PATCH call was made to remove default_fields from var-1
+    patch_calls = [c for c in langflow_calls if c[0] == "PATCH"]
+    assert len(patch_calls) == 1
+    assert patch_calls[0] == (
+        "PATCH",
+        "/api/v1/variables/var-1",
+        {
+            "json": {
+                "id": "var-1",
+                "name": "OPENAI_API_KEY",
+                "value": "secret",
+                "default_fields": [],
+                "type": "Credential",
+            }
+        },
+    )
 
 
 @pytest.mark.asyncio

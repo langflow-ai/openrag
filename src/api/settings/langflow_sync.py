@@ -122,12 +122,61 @@ def _required_generic_global_values(config) -> dict[str, str]:
 
 
 async def ensure_required_langflow_global_variables(config=None):
-    """Ensure load_from_db plain-string globals are Generic for backwards compatibility."""
+    """Ensure plain-string globals are Generic and remove any Apply To (default_fields) fields."""
     config = config or get_openrag_config()
     required_values = _required_generic_global_values(config)
 
+    existing_by_name = {}
+    try:
+        response = await clients.langflow_request("GET", "/api/v1/variables/")
+        if response.status_code == 200:
+            existing_variables = response.json()
+            existing_by_name = {v.get("name"): v for v in existing_variables if v.get("name")}
+    except Exception as e:
+        logger.warning("Could not fetch Langflow variables at startup", error=str(e))
+
+    # Update or fix existing variables in a single operation per variable
+    for name, var in existing_by_name.items():
+        var_id = var.get("id")
+        if not var_id:
+            continue
+
+        is_generic = name in LANGFLOW_GENERIC_GLOBAL_VARIABLES
+        target_type = "Generic" if is_generic else var.get("type", "Credential")
+
+        curr_type = var.get("type")
+        curr_val = var.get("value", "")
+        has_default_fields = bool(var.get("default_fields"))
+
+        target_val = _string_value(required_values.get(name)) if is_generic else curr_val
+
+        if curr_type != target_type:
+            logger.info("Migrating Langflow global variable type", variable_name=name, old_type=curr_type, new_type=target_type)
+            del_resp = await clients.langflow_request("DELETE", f"/api/v1/variables/{var_id}")
+            if del_resp.status_code in (200, 204):
+                recreate_payload = {
+                    "name": name,
+                    "value": target_val,
+                    "default_fields": [],
+                    "type": target_type,
+                }
+                await clients.langflow_request("POST", "/api/v1/variables/", json=recreate_payload)
+        elif has_default_fields or (is_generic and curr_val != target_val):
+            logger.info("Updating Langflow global variable", variable_name=name, variable_id=var_id)
+            patch_payload = {
+                "id": var_id,
+                "name": name,
+                "value": target_val,
+                "default_fields": [],
+                "type": target_type,
+            }
+            await clients.langflow_request("PATCH", f"/api/v1/variables/{var_id}", json=patch_payload)
+
+    # Create missing generic variables
     for name in sorted(LANGFLOW_GENERIC_GLOBAL_VARIABLES):
-        await _upsert_langflow_global_variable(name, _string_value(required_values.get(name, "")))
+        if name not in existing_by_name:
+            target_val = _string_value(required_values.get(name, ""))
+            await _upsert_langflow_global_variable(name, target_val)
 
 
 async def _update_langflow_global_variables(config, flows_service=None):
