@@ -1,10 +1,10 @@
 name: Publish OpenRAG source ref for ARM64
 
-# What: build the backend and frontend images from an explicit OpenRAG ref.
+# What: build the backend, frontend, and Langflow images from an explicit OpenRAG ref.
 # Why: test a contribution on the ARM64 cluster without adding build commits to its PR branch.
 # How: checkout the requested ref from the fork, build natively on ARM64, and publish SHA-tagged images.
-# Compatibility: image names and immutable tags match the existing Pommerieux GitOps convention.
-# KISS: one manual workflow, two affected images, one architecture, and no moving tag.
+# Compatibility: all images governed by the GitOps global tag are published under the same immutable SHA.
+# KISS: one manual workflow, three runtime images, one architecture, and no moving tag.
 on:
   workflow_dispatch:
     inputs:
@@ -35,6 +35,8 @@ jobs:
             dockerfile: Dockerfile.backend
           - name: frontend
             dockerfile: Dockerfile.frontend
+          - name: langflow
+            dockerfile: Dockerfile.langflow
 
     steps:
       - name: Checkout requested source
