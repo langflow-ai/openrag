@@ -62,6 +62,7 @@ def _normalize_source_urls(
 
 
 def _resolve_archive_source(value: str | None) -> bool:
+    """Resolve an archive form value or fall back to the workspace setting."""
     from services.local_source_service import is_source_archiving_enabled
 
     if not isinstance(value, str):

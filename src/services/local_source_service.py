@@ -42,6 +42,7 @@ def is_source_archiving_enabled() -> bool:
 
 
 def _nearest_existing_parent(path: Path) -> Path:
+    """Return the nearest existing ancestor of a path, including itself."""
     candidate = path
     while not candidate.exists() and candidate != candidate.parent:
         candidate = candidate.parent
@@ -98,6 +99,7 @@ def get_local_source_archive_stats(*, include_used_bytes: bool = True) -> LocalS
 
 
 def document_id_from_source_id(source_id: str) -> str | None:
+    """Extract the document ID from a valid backend-managed source ID."""
     match = SOURCE_ID_PATTERN.fullmatch(source_id)
     return match.group("document_id") if match else None
 
@@ -145,6 +147,7 @@ def local_source_url(source_id: str) -> str:
 
 
 def _is_relative_to(path: Path, parent: Path) -> bool:
+    """Return whether a path is contained by the given parent path."""
     try:
         path.relative_to(parent)
         return True
@@ -204,6 +207,7 @@ def collect_ingest_files(directory: str | os.PathLike[str]) -> list[str]:
 
 
 def _unique_archive_path(directory: Path, filename: str) -> Path:
+    """Return a collision-free archive path for the supplied filename."""
     safe_name = Path(filename).name or "document"
     destination = directory / safe_name
     if not destination.exists():
@@ -218,6 +222,7 @@ def _unique_archive_path(directory: Path, filename: str) -> Path:
 
 
 def _move_file(source: Path, destination: Path) -> None:
+    """Move a file, falling back to a cross-filesystem-safe operation."""
     destination.parent.mkdir(parents=True, exist_ok=True)
     try:
         os.replace(source, destination)
@@ -237,6 +242,7 @@ class StagedLocalSource:
     committed: bool = False
 
     def commit(self) -> None:
+        """Mark the staged source as successfully indexed."""
         self.committed = True
 
     async def rollback(self) -> None:
@@ -305,6 +311,7 @@ def find_local_source(source_id: str) -> Path | None:
 
 
 def _delete_local_source_directory(source_id: str) -> bool:
+    """Delete a validated source archive directory without path traversal."""
     if not SOURCE_ID_PATTERN.fullmatch(source_id):
         return False
 

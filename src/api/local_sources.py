@@ -15,6 +15,7 @@ from session_manager import User
 
 
 def _total_hits(response: dict[str, Any]) -> int:
+    """Return the total hit count from an OpenSearch response."""
     total = response.get("hits", {}).get("total", 0)
     if isinstance(total, dict):
         total = total.get("value", 0)
