@@ -53,7 +53,7 @@ COPY --from=builder --chown=1001:0 /opt/app-root/src/postcss.config.* ./
 COPY --from=builder --chown=1001:0 /opt/app-root/src/tailwind.config.* ./
 COPY --from=builder --chown=1001:0 /opt/app-root/src/biome.json* ./
 
-EXPOSE 3000
+EXPOSE 3000 9090
 USER 1001
 
 CMD ["npm", "start"]
