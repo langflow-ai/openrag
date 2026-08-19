@@ -214,6 +214,8 @@ stringData:
     {{- end }}
 
     # Langflow auth (OpenRag uses this to determine how to authenticate with Langflow)
+    CORS_ALLOWED_ORIGINS={{ .Values.backend.cors.allowedOrigins | quote }}
+
     LANGFLOW_AUTO_LOGIN={{ ternary "true" "false" .Values.langflow.auth.autoLogin }}
 
     # OpenRag / OAuth return URL (Included in OAuth State)
