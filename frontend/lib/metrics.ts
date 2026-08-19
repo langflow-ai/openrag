@@ -91,11 +91,26 @@ export function normalizePath(raw: string): string {
     .join("/");
 }
 
-// Route label for inbound HTTP metrics. Next.js serves one build artifact per
-// chunk/page under `/_next/static` and `/_next/data`, so those paths are
-// collapsed to a single wildcard instead of exploding the label cardinality.
+const KNOWN_PREFIXES = new Set([
+  "api",
+  "auth",
+  "chat",
+  "connectors",
+  "health",
+  "knowledge",
+  "login",
+  "mcp",
+  "settings",
+  "unauthorized",
+  "upload",
+]);
+
 export function normalizeRoute(raw: string): string {
-  if (raw.startsWith("/_next/static/")) return "/_next/static/*";
-  if (raw.startsWith("/_next/data/")) return "/_next/data/*";
+  if (raw === "/") return "/";
+  if (raw.startsWith("/_next/")) return "/_next/*";
+
+  const firstSeg = raw.split("/", 2)[1];
+  if (!firstSeg || !KNOWN_PREFIXES.has(firstSeg)) return "unmatched";
+
   return normalizePath(raw);
 }
