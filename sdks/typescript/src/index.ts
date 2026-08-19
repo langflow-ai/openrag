@@ -67,6 +67,7 @@ export {
   DeleteDocumentResponse,
   PrincipalLabel,
   FileRecord,
+  GetAllFilesResponse,
   ListFilesResponse,
   ListFilesOptions,
   // Conversation types

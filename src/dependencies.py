@@ -66,6 +66,7 @@ __all__ = [
     "get_api_key_service",
     "get_api_key_user_async",
     "get_auth_service",
+    "get_file_service",
     "get_file_service_v2",
     "get_chat_service",
     "get_connector_service",
@@ -175,6 +176,10 @@ def get_models_service(services: dict = Depends(get_services)):
 
 def get_api_key_service(services: dict = Depends(get_services)):
     return services["api_key_service"]
+
+
+def get_file_service(services: dict = Depends(get_services)):
+    return services["file_service"]
 
 
 def get_file_service_v2(services: dict = Depends(get_services)):
