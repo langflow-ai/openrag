@@ -166,9 +166,13 @@ async def ensure_required_langflow_global_variables(config=None):
                         "default_fields": [],
                         "type": target_type,
                     }
-                    await clients.langflow_request("POST", "/api/v1/variables/", json=recreate_payload)
+                    await clients.langflow_request(
+                        "POST", "/api/v1/variables/", json=recreate_payload
+                    )
             elif has_default_fields or (is_generic and curr_val != target_val):
-                logger.info("Updating Langflow global variable", variable_name=name, variable_id=var_id)
+                logger.info(
+                    "Updating Langflow global variable", variable_name=name, variable_id=var_id
+                )
                 patch_payload = {
                     "id": var_id,
                     "name": name,
@@ -194,6 +198,7 @@ async def ensure_required_langflow_global_variables(config=None):
 
 async def _update_langflow_global_variables(config, flows_service=None):
     """Update Langflow global variables for all configured providers"""
+
     async def _safe_upsert(name: str, value: str):
         try:
             await _upsert_langflow_global_variable(name, value)
