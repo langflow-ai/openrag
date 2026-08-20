@@ -137,132 +137,119 @@ async def ensure_required_langflow_global_variables(config=None):
 
     # Update or fix existing variables in a single operation per variable
     for name, var in existing_by_name.items():
-        var_id = var.get("id")
-        if not var_id:
-            continue
+        try:
+            var_id = var.get("id")
+            if not var_id:
+                continue
 
-        is_generic = name in LANGFLOW_GENERIC_GLOBAL_VARIABLES
-        target_type = "Generic" if is_generic else var.get("type", "Credential")
+            is_generic = name in LANGFLOW_GENERIC_GLOBAL_VARIABLES
+            target_type = "Generic" if is_generic else var.get("type", "Credential")
 
-        curr_type = var.get("type")
-        curr_val = var.get("value", "")
-        has_default_fields = bool(var.get("default_fields"))
+            curr_type = var.get("type")
+            curr_val = var.get("value", "")
+            has_default_fields = bool(var.get("default_fields"))
 
-        target_val = _string_value(required_values.get(name)) if is_generic else curr_val
+            target_val = _string_value(required_values.get(name)) if is_generic else curr_val
 
-        if curr_type != target_type:
-            logger.info(
-                "Migrating Langflow global variable type",
-                variable_name=name,
-                old_type=curr_type,
-                new_type=target_type,
-            )
-            del_resp = await clients.langflow_request("DELETE", f"/api/v1/variables/{var_id}")
-            if del_resp.status_code in (200, 204):
-                recreate_payload = {
+            if curr_type != target_type:
+                logger.info(
+                    "Migrating Langflow global variable type",
+                    variable_name=name,
+                    old_type=curr_type,
+                    new_type=target_type,
+                )
+                del_resp = await clients.langflow_request("DELETE", f"/api/v1/variables/{var_id}")
+                if del_resp.status_code in (200, 204):
+                    recreate_payload = {
+                        "name": name,
+                        "value": target_val,
+                        "default_fields": [],
+                        "type": target_type,
+                    }
+                    await clients.langflow_request("POST", "/api/v1/variables/", json=recreate_payload)
+            elif has_default_fields or (is_generic and curr_val != target_val):
+                logger.info("Updating Langflow global variable", variable_name=name, variable_id=var_id)
+                patch_payload = {
+                    "id": var_id,
                     "name": name,
                     "value": target_val,
                     "default_fields": [],
                     "type": target_type,
                 }
-                await clients.langflow_request("POST", "/api/v1/variables/", json=recreate_payload)
-        elif has_default_fields or (is_generic and curr_val != target_val):
-            logger.info("Updating Langflow global variable", variable_name=name, variable_id=var_id)
-            patch_payload = {
-                "id": var_id,
-                "name": name,
-                "value": target_val,
-                "default_fields": [],
-                "type": target_type,
-            }
-            await clients.langflow_request(
-                "PATCH", f"/api/v1/variables/{var_id}", json=patch_payload
-            )
+                await clients.langflow_request(
+                    "PATCH", f"/api/v1/variables/{var_id}", json=patch_payload
+                )
+        except Exception as e:
+            logger.warning(f"Failed to update Langflow global variable '{name}': {e}")
 
     # Create missing generic variables
     for name in sorted(LANGFLOW_GENERIC_GLOBAL_VARIABLES):
         if name not in existing_by_name:
-            target_val = _string_value(required_values.get(name, ""))
-            await _upsert_langflow_global_variable(name, target_val)
+            try:
+                target_val = _string_value(required_values.get(name, ""))
+                await _upsert_langflow_global_variable(name, target_val)
+            except Exception as e:
+                logger.warning(f"Failed to create Langflow global variable '{name}': {e}")
 
 
 async def _update_langflow_global_variables(config, flows_service=None):
     """Update Langflow global variables for all configured providers"""
-    try:
-        # WatsonX global variables
+    async def _safe_upsert(name: str, value: str):
+        try:
+            await _upsert_langflow_global_variable(name, value)
+            logger.info(f"Set {name} global variable in Langflow")
+        except Exception as e:
+            logger.warning(f"Failed to set {name} global variable in Langflow: {e}")
+
+    providers = getattr(config, "providers", None)
+
+    # WatsonX global variables
+    if getattr(providers, "watsonx", None):
         if config.providers.watsonx.api_key:
-            await _upsert_langflow_global_variable(
-                "WATSONX_APIKEY", config.providers.watsonx.api_key
-            )
-            logger.info("Set WATSONX_APIKEY global variable in Langflow")
+            await _safe_upsert("WATSONX_APIKEY", config.providers.watsonx.api_key)
 
         if config.providers.watsonx.project_id:
-            await _upsert_langflow_global_variable(
-                "WATSONX_PROJECT_ID", config.providers.watsonx.project_id
-            )
-            logger.info("Set WATSONX_PROJECT_ID global variable in Langflow")
+            await _safe_upsert("WATSONX_PROJECT_ID", config.providers.watsonx.project_id)
 
         if config.providers.watsonx.endpoint:
-            await _upsert_langflow_global_variable("WATSONX_URL", config.providers.watsonx.endpoint)
-            logger.info("Set WATSONX_URL global variable in Langflow")
+            await _safe_upsert("WATSONX_URL", config.providers.watsonx.endpoint)
 
-        # OpenAI global variables
-        if config.providers.openai.api_key:
-            await _upsert_langflow_global_variable(
-                "OPENAI_API_KEY", config.providers.openai.api_key
-            )
-            logger.info("Set OPENAI_API_KEY global variable in Langflow")
+    # OpenAI global variables
+    if getattr(providers, "openai", None) and config.providers.openai.api_key:
+        await _safe_upsert("OPENAI_API_KEY", config.providers.openai.api_key)
 
-        # Anthropic global variables
-        if config.providers.anthropic.api_key:
-            await _upsert_langflow_global_variable(
-                "ANTHROPIC_API_KEY", config.providers.anthropic.api_key
-            )
-            logger.info("Set ANTHROPIC_API_KEY global variable in Langflow")
+    # Anthropic global variables
+    if getattr(providers, "anthropic", None) and config.providers.anthropic.api_key:
+        await _safe_upsert("ANTHROPIC_API_KEY", config.providers.anthropic.api_key)
 
-        # Ollama global variables
-        if config.providers.ollama.endpoint:
+    # Ollama global variables
+    if getattr(providers, "ollama", None) and config.providers.ollama.endpoint:
+        try:
             if not flows_service:
                 flows_service = _get_flows_service()
 
             endpoint = await flows_service.resolve_ollama_url(
                 config.providers.ollama.endpoint, force_refresh=True
             )
-            await _upsert_langflow_global_variable("OLLAMA_BASE_URL", endpoint)
-            logger.info("Set OLLAMA_BASE_URL global variable in Langflow")
+            await _safe_upsert("OLLAMA_BASE_URL", endpoint)
+        except Exception as e:
+            logger.warning(f"Failed to resolve OLLAMA_BASE_URL: {e}")
 
-        if config.knowledge.embedding_model:
-            await _upsert_langflow_global_variable(
-                "SELECTED_EMBEDDING_MODEL", config.knowledge.embedding_model
-            )
-            logger.info(
-                f"Set SELECTED_EMBEDDING_MODEL global variable to {config.knowledge.embedding_model}"
-            )
-        if config.knowledge.embedding_provider:
-            mapped_provider = map_provider(config.knowledge.embedding_provider)
-            await _upsert_langflow_global_variable(
-                "SELECTED_EMBEDDING_MODEL_PROVIDER", mapped_provider
-            )
-            logger.info(
-                f"Set SELECTED_EMBEDDING_MODEL_PROVIDER global variable to {mapped_provider}"
-            )
-        if config.agent.llm_model:
-            await _upsert_langflow_global_variable(
-                "SELECTED_LANGUAGE_MODEL", config.agent.llm_model
-            )
-            logger.info(f"Set SELECTED_LANGUAGE_MODEL global variable to {config.agent.llm_model}")
-        if config.agent.llm_provider:
-            mapped_llm_provider = map_provider(config.agent.llm_provider)
-            await _upsert_langflow_global_variable(
-                "SELECTED_LANGUAGE_MODEL_PROVIDER", mapped_llm_provider
-            )
-            logger.info(
-                f"Set SELECTED_LANGUAGE_MODEL_PROVIDER global variable to {mapped_llm_provider}"
-            )
+    knowledge = getattr(config, "knowledge", None)
+    if getattr(knowledge, "embedding_model", None):
+        await _safe_upsert("SELECTED_EMBEDDING_MODEL", config.knowledge.embedding_model)
 
-    except Exception as e:
-        logger.error(f"Failed to update Langflow global variables: {str(e)}")
-        raise
+    if getattr(knowledge, "embedding_provider", None):
+        mapped_provider = map_provider(config.knowledge.embedding_provider)
+        await _safe_upsert("SELECTED_EMBEDDING_MODEL_PROVIDER", mapped_provider)
+
+    agent = getattr(config, "agent", None)
+    if getattr(agent, "llm_model", None):
+        await _safe_upsert("SELECTED_LANGUAGE_MODEL", config.agent.llm_model)
+
+    if getattr(agent, "llm_provider", None):
+        mapped_llm_provider = map_provider(config.agent.llm_provider)
+        await _safe_upsert("SELECTED_LANGUAGE_MODEL_PROVIDER", mapped_llm_provider)
 
 
 async def _run_async_post_save_langflow_updates(
