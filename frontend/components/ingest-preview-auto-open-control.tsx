@@ -25,13 +25,13 @@ export function IngestPreviewAutoOpenControl({
     <Tabs
       value={value}
       onValueChange={(next) => onChange(next as IngestPreviewAutoOpen)}
-      className={className}
+      className={cn("min-w-0 w-full sm:w-auto", className)}
     >
       <TabsList
         variant="default"
         aria-label={ariaLabel}
         className={cn(
-          "grid !h-9 w-[220px] shrink-0 grid-cols-2 items-stretch gap-0 !p-0",
+          "grid !h-9 w-full min-w-0 max-w-[220px] sm:w-[220px] sm:shrink-0 grid-cols-2 items-stretch gap-0 !p-0",
           "border border-border !bg-transparent",
           isCloudBrand
             ? "rounded-none overflow-hidden"
