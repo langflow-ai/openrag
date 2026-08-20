@@ -1,9 +1,11 @@
 """Tests for the search endpoint."""
 
 import os
+import uuid
 from pathlib import Path
 
 import pytest
+from openrag_sdk import SearchFilters
 from openrag_sdk.exceptions import ValidationError
 
 pytestmark = pytest.mark.skipif(
@@ -105,3 +107,39 @@ class TestSearchExtended:
         """A whitespace-only query must raise ValidationError, not be treated as valid."""
         with pytest.raises(ValidationError):
             await client.search.query("   ")
+
+
+class TestSearchFilenameFilter:
+    """Verify inline `filters.data_sources` scopes search to exact filenames."""
+
+    @pytest.mark.asyncio
+    async def test_search_filters_by_filename(self, client, tmp_path):
+        """Search with SearchFilters(data_sources=[filename]) returns only that file.
+
+        Ingests two distinguishable documents, then uses a wildcard query so the
+        assertion does not depend on semantic ranking.
+        """
+        token = uuid.uuid4().hex[:8]
+        alpha = tmp_path / f"alpha_{token}.md"
+        beta = tmp_path / f"beta_{token}.md"
+        alpha.write_text("# Alpha\n\nUnique content about purple elephants.\n")
+        beta.write_text("# Beta\n\nUnique content about yellow tigers.\n")
+
+        try:
+            await client.documents.ingest(file_path=str(alpha))
+            await client.documents.ingest(file_path=str(beta))
+
+            results = await client.search.query(
+                "*",
+                filters=SearchFilters(data_sources=[alpha.name]),
+            )
+            assert results.results is not None
+            filenames = [r.filename for r in results.results]
+            assert alpha.name in filenames, (
+                f"Expected alpha in filename-filtered search, got {filenames}"
+            )
+            assert beta.name not in filenames, f"Filename filter leaked: beta in {filenames}"
+            assert all(r.filename == alpha.name for r in results.results)
+        finally:
+            await client.documents.delete(alpha.name)
+            await client.documents.delete(beta.name)
