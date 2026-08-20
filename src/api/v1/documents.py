@@ -5,7 +5,7 @@ Provides document ingestion and management.
 Uses API key authentication.
 """
 
-from fastapi import Depends, File, Form, Query, Request, UploadFile
+from fastapi import Depends, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -131,15 +131,6 @@ async def all_tasks_enhanced_endpoint(
     """
     tasks = task_service.get_all_tasks2(user.user_id)
     return JSONResponse({"tasks": tasks})
-
-
-async def task_queue_summary_endpoint(
-    task_id: list[str] | None = Query(None),
-    task_service=Depends(get_task_service),
-    user: User = Depends(require_api_key_permission("knowledge:read:own")),
-):
-    """Get lightweight active queue counters. GET /v1/tasks/queue-summary"""
-    return JSONResponse(task_service.get_queue_summary(user.user_id, set(task_id or [])))
 
 
 async def task_status_endpoint(

@@ -1,4 +1,4 @@
-from fastapi import Body, Depends, Query
+from fastapi import Body, Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -49,15 +49,6 @@ async def all_tasks_enhanced(
     """Get all tasks with structured failure metadata on failed files."""
     tasks = task_service.get_all_tasks2(user.user_id)
     return JSONResponse({"tasks": tasks})
-
-
-async def task_queue_summary(
-    task_id: list[str] | None = Query(None),
-    task_service=Depends(get_task_service),
-    user: User = Depends(get_current_user),
-):
-    """Get lightweight active queue counters."""
-    return JSONResponse(task_service.get_queue_summary(user.user_id, set(task_id or [])))
 
 
 class RetryTaskBody(BaseModel):
