@@ -7,13 +7,13 @@ export type IngestPreviewAutoOpen = "every" | "never";
 export interface IngestPreviewSettings {
   /** When the review opens automatically after a Knowledge ingest starts. */
   autoOpen: IngestPreviewAutoOpen;
-  /** Show the per-chunk breakdown (the chunk cards). */
+  /**
+   * Always-on preview chrome. Kept on the settings object for IngestReview,
+   * but no longer user-configurable — persisted false values are ignored.
+   */
   showChunkBoundaries: boolean;
-  /** Show the reading/chunking/embedding/stored pipeline steps. */
   showIndexingPipeline: boolean;
-  /** Show each chunk's extracted text (vs. metadata only). */
   showChunkContents: boolean;
-  /** Toast when ingestion finishes while the review is open. */
   completionNotification: boolean;
 }
 
@@ -26,6 +26,14 @@ export const DEFAULT_INGEST_PREVIEW_SETTINGS: IngestPreviewSettings = {
 };
 
 const SETTINGS_KEY = "openrag.ingest-preview.settings";
+
+/** Former Settings toggles. Still present in some localStorage blobs. */
+const LEGACY_PREVIEW_FLAG_KEYS = [
+  "showChunkBoundaries",
+  "showIndexingPipeline",
+  "showChunkContents",
+  "completionNotification",
+] as const;
 
 export const INGEST_PREVIEW_AUTO_OPEN_OPTIONS: ReadonlyArray<{
   value: IngestPreviewAutoOpen;
@@ -52,6 +60,15 @@ function normalizeAutoOpen(value: unknown): IngestPreviewAutoOpen | null {
   return null;
 }
 
+function writeIngestPreviewSettings(settings: IngestPreviewSettings): void {
+  if (typeof window === "undefined") return;
+  // Only autoOpen is user-configurable; drop removed toggle keys on write.
+  window.localStorage.setItem(
+    SETTINGS_KEY,
+    JSON.stringify({ autoOpen: settings.autoOpen }),
+  );
+}
+
 /** Read persisted settings, falling back to defaults for any missing/invalid field. */
 export function readIngestPreviewSettings(): IngestPreviewSettings {
   if (typeof window === "undefined") {
@@ -68,36 +85,27 @@ export function readIngestPreviewSettings(): IngestPreviewSettings {
     ) {
       return DEFAULT_INGEST_PREVIEW_SETTINGS;
     }
-    const settings = parsed as Partial<IngestPreviewSettings>;
-    return {
+    const stored = parsed as Record<string, unknown>;
+    const settings: IngestPreviewSettings = {
       autoOpen:
-        normalizeAutoOpen(settings.autoOpen) ??
+        normalizeAutoOpen(stored.autoOpen) ??
         DEFAULT_INGEST_PREVIEW_SETTINGS.autoOpen,
-      showChunkBoundaries:
-        typeof settings.showChunkBoundaries === "boolean"
-          ? settings.showChunkBoundaries
-          : DEFAULT_INGEST_PREVIEW_SETTINGS.showChunkBoundaries,
+      // Toggles were removed from Settings; ignore any persisted false values
+      // so users cannot get stuck with hidden preview chrome.
+      showChunkBoundaries: DEFAULT_INGEST_PREVIEW_SETTINGS.showChunkBoundaries,
       showIndexingPipeline:
-        typeof settings.showIndexingPipeline === "boolean"
-          ? settings.showIndexingPipeline
-          : DEFAULT_INGEST_PREVIEW_SETTINGS.showIndexingPipeline,
-      showChunkContents:
-        typeof settings.showChunkContents === "boolean"
-          ? settings.showChunkContents
-          : DEFAULT_INGEST_PREVIEW_SETTINGS.showChunkContents,
+        DEFAULT_INGEST_PREVIEW_SETTINGS.showIndexingPipeline,
+      showChunkContents: DEFAULT_INGEST_PREVIEW_SETTINGS.showChunkContents,
       completionNotification:
-        typeof settings.completionNotification === "boolean"
-          ? settings.completionNotification
-          : DEFAULT_INGEST_PREVIEW_SETTINGS.completionNotification,
+        DEFAULT_INGEST_PREVIEW_SETTINGS.completionNotification,
     };
+    if (LEGACY_PREVIEW_FLAG_KEYS.some((key) => key in stored)) {
+      writeIngestPreviewSettings(settings);
+    }
+    return settings;
   } catch {
     return DEFAULT_INGEST_PREVIEW_SETTINGS;
   }
-}
-
-function writeIngestPreviewSettings(settings: IngestPreviewSettings): void {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
 }
 
 /**
@@ -121,7 +129,7 @@ export function useIngestPreviewSettings() {
     setSettings(readIngestPreviewSettings());
   }, []);
 
-  const updateSettings = (patch: Partial<IngestPreviewSettings>) => {
+  const updateSettings = (patch: Pick<IngestPreviewSettings, "autoOpen">) => {
     setSettings((prev) => {
       const next = { ...prev, ...patch };
       writeIngestPreviewSettings(next);
