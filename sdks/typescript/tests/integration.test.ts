@@ -641,22 +641,33 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
       expect(results.results.length).toBeLessThanOrEqual(5);
     });
 
-    it("should filter by a raw filters dict (data_sources)", async () => {
+    it("should filter search by filename via data_sources", async () => {
+      // Ingest two distinguishable docs, then wildcard-search scoped to one
+      // filename so the assertion does not depend on semantic ranking.
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "sdk-search-filter-"));
-      const filterDocName = `search_filter_doc_${Date.now()}.md`;
-      const filterDocPath = path.join(tmpDir, filterDocName);
-      fs.writeFileSync(filterDocPath, "# Search Filter Doc\n\nMagenta wombats hopping.\n");
-      await client.documents.ingest({ filePath: filterDocPath });
+      const token = Date.now();
+      const alphaName = `alpha_${token}.md`;
+      const betaName = `beta_${token}.md`;
+      const alphaPath = path.join(tmpDir, alphaName);
+      const betaPath = path.join(tmpDir, betaName);
+      fs.writeFileSync(alphaPath, "# Alpha\n\nUnique content about purple elephants.\n");
+      fs.writeFileSync(betaPath, "# Beta\n\nUnique content about yellow tigers.\n");
+      await client.documents.ingest({ filePath: alphaPath });
+      await client.documents.ingest({ filePath: betaPath });
 
       try {
-        const results = await client.search.query("wombats", {
-          filters: { data_sources: [filterDocName] },
+        const results = await client.search.query("*", {
+          filters: { data_sources: [alphaName] },
         });
+        const filenames = results.results.map((r) => r.filename);
+        expect(filenames).toContain(alphaName);
+        expect(filenames).not.toContain(betaName);
         for (const r of results.results) {
-          expect(r.filename).toBe(filterDocName);
+          expect(r.filename).toBe(alphaName);
         }
       } finally {
-        await client.documents.delete(filterDocName);
+        await client.documents.delete(alphaName);
+        await client.documents.delete(betaName);
       }
     }, 120_000);
 
