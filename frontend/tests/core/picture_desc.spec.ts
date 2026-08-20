@@ -31,6 +31,7 @@ test("Picture Description Configuration @33219221", async ({
   logger.info("\n⚙️  Configuring OpenAI models...");
   await settings.clickTab("Agent");
   await settings.selectModel("Language model", OPENAI_CONFIG.language);
+  await settings.clickTab("Ingestion");
   await settings.selectModel("Embedding model", OPENAI_CONFIG.embedding);
   logger.info(`  ✓ Language model: ${OPENAI_CONFIG.language}`);
   logger.info(`  ✓ Embedding model: ${OPENAI_CONFIG.embedding}`);

@@ -114,14 +114,24 @@ export class Settings {
 
   /**
    * Get locator for model dropdown by section name
-   * @param section - The section name (e.g., "Chat Model", "Embedding Model")
+   * @param section - The section name (e.g., "Language model", "Embedding model")
    * @returns Locator for the dropdown
    */
   private getModelDropdown(section: string) {
+    // Target the field label so we don't match helper copy such as
+    // "The embedding model saves as soon as you pick one".
     return this.page
-      .getByText(new RegExp(escapeRegExp(section), "i"))
+      .locator("label")
+      .filter({ hasText: new RegExp(`^${escapeRegExp(section)}`, "i") })
       .locator("..")
       .getByRole("combobox");
+  }
+
+  /**
+   * Language model lives on Agent; embedding model lives on Ingestion.
+   */
+  private tabForModelSection(section: string): SettingsTab {
+    return /embedding/i.test(section) ? "Ingestion" : "Agent";
   }
 
   /**
@@ -251,8 +261,12 @@ export class Settings {
     }
   }
 
+  /**
+   * Select a language or embedding model. Opens Agent for language models
+   * and Ingestion for embedding models.
+   */
   async selectModel(section: string, model: string) {
-    await this.open();
+    await this.clickTab(this.tabForModelSection(section));
     const dropdown = this.getModelDropdown(section);
     await dropdown.scrollIntoViewIfNeeded();
     const currentText = (await dropdown.textContent())?.toLowerCase() || "";

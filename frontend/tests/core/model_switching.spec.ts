@@ -47,8 +47,9 @@ test("Model switching transitions (Language + Embedding) - OpenAI @33219223, @33
     }
   }
 
-  // Test Embedding model transitions
+  // Test Embedding model transitions (embedding selector is on Ingestion)
   logger.info(`\n🔄 Testing Embedding model transitions...`);
+  await settings.clickTab("Ingestion");
   const embeddingFailures: string[] = [];
 
   for (let i = 0; i < embeddingSequence.length - 1; i++) {
