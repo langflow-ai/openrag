@@ -68,9 +68,9 @@ def test_signature_ignores_positions_and_template_values():
     in_langflow = _flow(value="500")
     in_langflow["data"]["nodes"][0]["position"] = {"x": 999, "y": 999}
 
-    assert FlowsService._flow_structure_signature(
-        disk
-    ) == FlowsService._flow_structure_signature(in_langflow)
+    assert FlowsService._flow_structure_signature(disk) == FlowsService._flow_structure_signature(
+        in_langflow
+    )
 
 
 def test_signature_changes_when_component_code_changes():
