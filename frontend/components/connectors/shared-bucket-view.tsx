@@ -323,7 +323,7 @@ export function SharedBucketView({
       <div className="max-w-3xl mx-auto space-y-4">
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
-            Select buckets to ingest.
+            Select containers to ingest.
           </p>
           <div className="flex items-center gap-2">
             {selectedBuckets.size > 0 && (
@@ -355,7 +355,7 @@ export function SharedBucketView({
                 size={14}
                 className={isLoading ? "animate-spin" : ""}
               />
-              Refresh Buckets
+              Refresh Containers
             </Button>
           </div>
         </div>
@@ -485,7 +485,7 @@ export function SharedBucketView({
                 ? "Checking…"
                 : selectedBuckets.size > 0
                   ? `Ingest ${selectedBuckets.size} Bucket${selectedBuckets.size !== 1 ? "s" : ""}`
-                  : "Select Buckets to Ingest"}
+                  : "Select Containers to Ingest"}
           </Button>
         </div>
       </div>
