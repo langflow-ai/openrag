@@ -100,7 +100,11 @@ export function readIngestPreviewSettings(): IngestPreviewSettings {
         DEFAULT_INGEST_PREVIEW_SETTINGS.completionNotification,
     };
     if (LEGACY_PREVIEW_FLAG_KEYS.some((key) => key in stored)) {
-      writeIngestPreviewSettings(settings);
+      try {
+        writeIngestPreviewSettings(settings);
+      } catch {
+        // Quota / private-mode write failures must not discard normalized settings.
+      }
     }
     return settings;
   } catch {
