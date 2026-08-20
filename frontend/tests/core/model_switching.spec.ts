@@ -12,7 +12,7 @@ test("Model switching transitions (Language + Embedding) - OpenAI @33219223, @33
   await navigateToHome(page);
 
   logger.info("\n🧪 Testing Model Switching with OpenAI");
-  await settings.clickTab("Langflow");
+  await settings.clickTab("Agent");
 
   // OpenAI model sequences for testing transitions
   const languageSequence = ["gpt-4o", "gpt-4o-mini", "gpt-4o"]; // Circular: A→B→A
@@ -47,8 +47,9 @@ test("Model switching transitions (Language + Embedding) - OpenAI @33219223, @33
     }
   }
 
-  // Test Embedding model transitions
+  // Test Embedding model transitions (embedding selector is on Ingestion)
   logger.info(`\n🔄 Testing Embedding model transitions...`);
+  await settings.clickTab("Ingestion");
   const embeddingFailures: string[] = [];
 
   for (let i = 0; i < embeddingSequence.length - 1; i++) {

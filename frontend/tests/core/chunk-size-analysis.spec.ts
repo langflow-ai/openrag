@@ -43,7 +43,7 @@ test.describe("Chunk Size Impact Analysis @33219206 , @34581149 , @3481151", () 
       test.setTimeout(300000); // 5 minutes timeout
 
       // Configure chunk settings
-      await settings.clickTab("Langflow");
+      await settings.clickTab("Ingestion");
       await settings.updateChunkSettings(
         scenario.size.toString(),
         TEST_CONFIG.chunkSettings.defaultOverlap,
@@ -125,7 +125,7 @@ test.describe("Large Chunk Size - Wrong Section Retrieval Test", () => {
   }) => {
     test.setTimeout(300000);
 
-    await settings.clickTab("Langflow");
+    await settings.clickTab("Ingestion");
     await settings.updateChunkSettings(
       "1000",
       TEST_CONFIG.chunkSettings.defaultOverlap,

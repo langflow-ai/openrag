@@ -32,8 +32,9 @@ test("@smoke URL connector ingestion reliability - OpenAI @33219228", async ({
 
   // Step 2: Set models for OpenAI
   logger.info(`  ⚙️  Setting models for OpenAI...`);
-  await settings.clickTab("Langflow");
+  await settings.clickTab("Agent");
   await settings.selectModel("Language model", OPENAI_CONFIG.language);
+  await settings.clickTab("Ingestion");
   await settings.selectModel("Embedding model", OPENAI_CONFIG.embedding);
   logger.info(`  ✓ Language model set to: ${OPENAI_CONFIG.language}`);
   logger.info(`  ✓ Embedding model set to: ${OPENAI_CONFIG.embedding}`);
@@ -84,8 +85,9 @@ test("URL connector ingestion - Invalid URL handling @34581217", async ({
   logger.info(`\n🧪 Testing Invalid URL Ingestion`);
 
   // Set models
-  await settings.clickTab("Langflow");
+  await settings.clickTab("Agent");
   await settings.selectModel("Language model", OPENAI_CONFIG.language);
+  await settings.clickTab("Ingestion");
   await settings.selectModel("Embedding model", OPENAI_CONFIG.embedding);
 
   // Attempt to ingest invalid URL
@@ -138,8 +140,9 @@ test("URL connector ingestion - Authentication-blocked URL handling @34581218", 
   logger.info(`\n🧪 Testing Authentication-Blocked URL Ingestion`);
 
   // Set models
-  await settings.clickTab("Langflow");
+  await settings.clickTab("Agent");
   await settings.selectModel("Language model", OPENAI_CONFIG.language);
+  await settings.clickTab("Ingestion");
   await settings.selectModel("Embedding model", OPENAI_CONFIG.embedding);
 
   // Attempt to ingest authentication-blocked URL
@@ -203,8 +206,9 @@ test("URL ingestion persists after conversation deletion @34581222", async ({
 
   // Step 2: Set models for OpenAI
   logger.info(`  ⚙️  Setting models for OpenAI...`);
-  await settings.clickTab("Langflow");
+  await settings.clickTab("Agent");
   await settings.selectModel("Language model", OPENAI_CONFIG.language);
+  await settings.clickTab("Ingestion");
   await settings.selectModel("Embedding model", OPENAI_CONFIG.embedding);
   logger.info(`  ✓ Language model set to: ${OPENAI_CONFIG.language}`);
   logger.info(`  ✓ Embedding model set to: ${OPENAI_CONFIG.embedding}`);
