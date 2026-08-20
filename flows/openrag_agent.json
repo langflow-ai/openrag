@@ -231,6 +231,7 @@
       },
       {
         "animated": false,
+        "className": "",
         "data": {
           "sourceHandle": {
             "dataType": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra",
@@ -1600,7 +1601,7 @@
             ],
             "frozen": false,
             "icon": "calculator",
-            "last_updated": "2026-08-19T00:19:17.062Z",
+            "last_updated": "2026-08-20T18:09:22.934Z",
             "legacy": false,
             "metadata": {
               "code_hash": "d0b2936e74fa",
@@ -1621,7 +1622,7 @@
               {
                 "allows_loop": false,
                 "cache": true,
-                "display_name": "Toolset",
+                "display_name": "JSON",
                 "group_outputs": false,
                 "hidden": null,
                 "loop_types": null,
@@ -1643,7 +1644,7 @@
                 "value": "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
               },
               "_frontend_node_folder_id": {
-                "value": "501d7212-c442-4593-a43a-e987cc095eb4"
+                "value": "503f5216-7f2c-4998-9010-b1a0eafbd500"
               },
               "_type": "Component",
               "code": {
@@ -2150,7 +2151,7 @@
             ],
             "frozen": false,
             "icon": "Mcp",
-            "last_updated": "2026-08-05T16:17:33.205Z",
+            "last_updated": "2026-08-20T18:11:46.489Z",
             "legacy": false,
             "metadata": {
               "code_hash": "ccd98ac0a0fb",
@@ -2201,7 +2202,7 @@
                 "value": "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
               },
               "_frontend_node_folder_id": {
-                "value": "203c7c12-9e1d-4561-bb14-16102afec154"
+                "value": "503f5216-7f2c-4998-9010-b1a0eafbd500"
               },
               "_type": "Component",
               "code": {
@@ -2224,7 +2225,7 @@
               },
               "headers": {
                 "_input_type": "TableInput",
-                "advanced": true,
+                "advanced": false,
                 "display_name": "Headers",
                 "dynamic": false,
                 "info": "HTTP headers to include with MCP server requests. Useful for authentication (e.g., Authorization header). These headers override any headers configured in the MCP server settings.",
@@ -2276,10 +2277,10 @@
                   },
                   {
                     "__load_from_db_fields": {
-                      "value": true
+                      "value": false
                     },
                     "key": "X-Langflow-Global-Var-OPENAI_API_KEY",
-                    "value": "OPENAI_API_KEY"
+                    "value": ""
                   },
                   {
                     "__load_from_db_fields": {
@@ -2364,6 +2365,20 @@
                     },
                     "key": "X-Langflow-Global-Var-SELECTED_EMBEDDING_MODEL_PROVIDER",
                     "value": "SELECTED_EMBEDDING_MODEL_PROVIDER"
+                  },
+                  {
+                    "__load_from_db_fields": {
+                      "value": true
+                    },
+                    "key": "X-Langflow-Global-Var-OPENRAG_LLM_BASE_URL",
+                    "value": "OPENRAG_LLM_BASE_URL"
+                  },
+                  {
+                    "__load_from_db_fields": {
+                      "value": true
+                    },
+                    "key": "X-Langflow-Global-Var-OPENRAG_LLM_TOKEN",
+                    "value": "OPENRAG_LLM_TOKEN"
                   }
                 ]
               },
@@ -2503,33 +2518,6 @@
                     "tags": [
                       "opensearch_url_ingestion_flow"
                     ]
-                  },
-                  {
-                    "approval_actions": [],
-                    "args": {
-                      "session_id": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ],
-                        "default": null,
-                        "description": "Optional session identifier used to persist conversation history across tool calls. Omit to start a new session.",
-                        "title": "Session Id"
-                      }
-                    },
-                    "description": "Unlock the Power of AI in Your Business Conversations.",
-                    "display_description": "Unlock the Power of AI in Your Business Conversations.",
-                    "display_name": "new_flow",
-                    "name": "new_flow",
-                    "readonly": false,
-                    "status": true,
-                    "tags": [
-                      "new_flow"
-                    ]
                   }
                 ]
               },
@@ -2576,16 +2564,20 @@
             },
             "tool_mode": true
           },
-          "showNode": true,
+          "showNode": false,
           "type": "MCPTools"
         },
         "dragging": false,
         "id": "MCPTools-uu7m3",
-        "position": {
-          "x": 1499.1989099237799,
-          "y": 1358.0838292705346
+        "measured": {
+          "height": 52,
+          "width": 192
         },
-        "selected": false,
+        "position": {
+          "x": 1349.4716085842726,
+          "y": 1384.8440085751042
+        },
+        "selected": true,
         "type": "genericNode"
       },
       {
@@ -2843,7 +2835,7 @@
             ],
             "frozen": false,
             "icon": "OpenSearch",
-            "last_updated": "2026-08-19T00:19:31.484Z",
+            "last_updated": "2026-08-20T18:09:22.941Z",
             "legacy": false,
             "metadata": {
               "code_hash": "6c375fdaa9e7",
@@ -2902,7 +2894,7 @@
                 "value": "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
               },
               "_frontend_node_folder_id": {
-                "value": "501d7212-c442-4593-a43a-e987cc095eb4"
+                "value": "503f5216-7f2c-4998-9010-b1a0eafbd500"
               },
               "_type": "Component",
               "auth_mode": {
@@ -4088,9 +4080,9 @@
       }
     ],
     "viewport": {
-      "x": 85.27421535718327,
-      "y": -530.1035147143316,
-      "zoom": 0.48650621372806035
+      "x": -215.08916846415786,
+      "y": -488.01500238347467,
+      "zoom": 0.5214244492327448
     }
   },
   "description": "OpenRAG OpenSearch Agent",
