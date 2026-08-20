@@ -18,8 +18,8 @@ import ModelProviders from "../_components/model-providers";
 const VALID_TABS = [
   "connectors",
   "providers",
-  "langflow",
   "ingestion",
+  "agent",
   "api-keys",
   "connector-access",
 ] as const;
@@ -108,7 +108,7 @@ export default async function SettingsTabPage({
     redirect("/settings/connectors");
   }
   if (
-    (tab === "langflow" || tab === "ingestion") &&
+    (tab === "agent" || tab === "ingestion") &&
     !canShowRbacGatedSettingsTab("config:write", tabAccess)
   ) {
     redirect("/settings/connectors");
@@ -147,13 +147,13 @@ export default async function SettingsTabPage({
     <HydrationBoundary state={dehydrate(queryClient)}>
       {tab === "connectors" && <ConnectorsTab />}
       {tab === "providers" && <ModelProviders />}
-      {tab === "langflow" && (
+      {tab === "ingestion" && <IngestionTab />}
+      {tab === "agent" && (
         <div className="space-y-6">
           <LangflowUpdatesBanner />
           <AgentSettingsSection />
         </div>
       )}
-      {tab === "ingestion" && <IngestionTab />}
       {tab === "api-keys" && <ApiKeysSection />}
       {tab === "connector-access" && <ConnectorAccessSection />}
     </HydrationBoundary>

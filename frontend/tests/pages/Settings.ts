@@ -9,8 +9,8 @@ function escapeRegExp(str: string): string {
 export type SettingsTab =
   | "Connectors"
   | "Providers"
-  | "Langflow"
   | "Ingestion"
+  | "Agent"
   | "Connectors Permission";
 
 export class Settings {
@@ -167,7 +167,7 @@ export class Settings {
 
   /**
    * Click a Settings page tab
-   * @param tabName - The tab to click: 'Connectors' | 'Providers' | 'Langflow' | 'Ingestion' | 'Connectors Permission'
+   * @param tabName - The tab to click: 'Connectors' | 'Providers' | 'Ingestion' | 'Agent' | 'Connectors Permission'
    */
   async clickTab(tabName: SettingsTab) {
     logger.info(`Clicking Settings tab: ${tabName}`);

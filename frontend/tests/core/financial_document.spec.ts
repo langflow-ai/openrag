@@ -30,7 +30,7 @@ test.describe("Financial Document - OpenAI @33219232", () => {
 
     // Configure models
     await settings.open();
-    await settings.clickTab("Langflow");
+    await settings.clickTab("Agent");
     await settings.selectModel("Language model", OPENAI_CONFIG.language);
     await settings.selectModel("Embedding model", OPENAI_CONFIG.embedding);
     logger.info(`  ✓ Language model set to: ${OPENAI_CONFIG.language}`);
