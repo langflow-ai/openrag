@@ -137,13 +137,13 @@ async def test_get_ibm_models_returns_project_configuration_error():
 
 
 @pytest.mark.asyncio
-async def test_get_model_catalog_returns_litellm_providers():
+async def test_get_model_catalog_returns_only_supported_providers():
     response = await models_api.get_model_catalog(user=SimpleNamespace())
     assert isinstance(response, JSONResponse)
     assert response.status_code == 200
     payload = json.loads(response.body)
     keys = {provider["key"] for provider in payload["providers"]}
-    assert {"openai", "anthropic", "ollama", "watsonx"} <= keys
+    assert keys == {"openai", "anthropic", "ollama", "watsonx"}
     openai = next(p for p in payload["providers"] if p["key"] == "openai")
     assert openai["models"]
     assert openai["embedding_models"]

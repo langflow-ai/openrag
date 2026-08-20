@@ -1,0 +1,154 @@
+import type { Dispatch, SetStateAction } from "react";
+import { useState } from "react";
+import AnthropicLogo from "@/components/icons/anthropic-logo";
+import { LabelInput } from "@/components/label-input";
+import { LabelWrapper } from "@/components/label-wrapper";
+import { Switch } from "@/components/ui/switch";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { useDebouncedValue } from "@/lib/debounce";
+import type { OnboardingVariables } from "../../api/mutations/useOnboardingMutation";
+import { useGetAnthropicModelsQuery } from "../../api/queries/useGetModelsQuery";
+import { useModelSelection } from "../_hooks/useModelSelection";
+import { useUpdateSettings } from "../_hooks/useUpdateSettings";
+import { AdvancedOnboarding } from "./advanced";
+
+export function AnthropicOnboarding({
+  setSettings,
+  isEmbedding = false,
+  hasEnvApiKey = false,
+}: {
+  setSettings: Dispatch<SetStateAction<OnboardingVariables>>;
+  isEmbedding?: boolean;
+  hasEnvApiKey?: boolean;
+}) {
+  const [apiKey, setApiKey] = useState("");
+  const [getFromEnv, setGetFromEnv] = useState(hasEnvApiKey);
+  const [prevHasEnvApiKey, setPrevHasEnvApiKey] = useState(hasEnvApiKey);
+  const envKeyChanged = hasEnvApiKey !== prevHasEnvApiKey;
+  if (envKeyChanged) {
+    setPrevHasEnvApiKey(hasEnvApiKey);
+    setGetFromEnv(hasEnvApiKey);
+    if (hasEnvApiKey) {
+      setApiKey("");
+    }
+  }
+  const debouncedApiKey = useDebouncedValue(apiKey, 500);
+
+  const {
+    data: modelsData,
+    isLoading: isLoadingModels,
+    isFetching: isFetchingModels,
+    error: modelsError,
+  } = useGetAnthropicModelsQuery(
+    getFromEnv
+      ? { useEnvKey: true }
+      : debouncedApiKey
+        ? { apiKey: debouncedApiKey, useEnvKey: false }
+        : undefined,
+    { enabled: debouncedApiKey !== "" || getFromEnv },
+  );
+
+  const showModelsError =
+    !!modelsError && !isLoadingModels && !isFetchingModels;
+
+  const {
+    languageModel,
+    embeddingModel,
+    setLanguageModel,
+    setEmbeddingModel,
+    languageModels,
+    embeddingModels,
+  } = useModelSelection(modelsData, isEmbedding);
+  if (envKeyChanged) {
+    setLanguageModel?.("");
+    setEmbeddingModel?.("");
+  }
+
+  const handleGetFromEnvChange = (fromEnv: boolean) => {
+    setGetFromEnv(fromEnv);
+    if (fromEnv) {
+      setApiKey("");
+    }
+    setEmbeddingModel?.("");
+    setLanguageModel?.("");
+  };
+
+  useUpdateSettings(
+    "anthropic",
+    {
+      apiKey: getFromEnv ? undefined : apiKey,
+      clearApiKey: getFromEnv,
+      languageModel,
+      embeddingModel,
+    },
+    setSettings,
+    isEmbedding,
+  );
+
+  return (
+    <>
+      <div className="space-y-5">
+        <LabelWrapper
+          label="Use environment Anthropic API key"
+          id="get-api-key"
+          description="Reuse the key from your environment config. Turn off to enter a different key."
+          flex
+        >
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div>
+                <Switch
+                  checked={getFromEnv}
+                  data-testid="get-from-env-switch"
+                  onCheckedChange={handleGetFromEnvChange}
+                  disabled={!hasEnvApiKey}
+                />
+              </div>
+            </TooltipTrigger>
+            {!hasEnvApiKey && (
+              <TooltipContent>
+                Anthropic API key not detected in the environment.
+              </TooltipContent>
+            )}
+          </Tooltip>
+        </LabelWrapper>
+        {!getFromEnv && (
+          <div className="space-y-1">
+            <LabelInput
+              label="Anthropic API key"
+              helperText="The API key for your Anthropic account."
+              className={showModelsError ? "!border-destructive" : ""}
+              id="api-key"
+              type="password"
+              required
+              placeholder="sk-..."
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+            />
+            {(isLoadingModels || isFetchingModels) && (
+              <p className="text-mmd text-muted-foreground">
+                Validating API key...
+              </p>
+            )}
+            {showModelsError && (
+              <p className="text-mmd text-destructive">{modelsError.message}</p>
+            )}
+          </div>
+        )}
+      </div>
+      <AdvancedOnboarding
+        icon={<AnthropicLogo className="w-4 h-4 text-[#D97757" />}
+        languageModels={languageModels}
+        embeddingModels={embeddingModels}
+        languageModel={languageModel}
+        embeddingModel={embeddingModel}
+        setLanguageModel={setLanguageModel}
+        setEmbeddingModel={setEmbeddingModel}
+      />
+    </>
+  );
+}

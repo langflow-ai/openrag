@@ -3,9 +3,9 @@
 Two things come out of LiteLLM's own bundled data, so the list never has to be
 hand-maintained the way the four-provider live fetches used to be:
 
-- **models** from `litellm.model_cost` — every model LiteLLM knows, tagged with
-  the provider it belongs to. Chat/completion/responses modes feed the agent
-  picker; embedding mode feeds the ingest picker.
+- **models** from `litellm.model_cost` — models for OpenRAG's supported
+  providers, tagged with the provider they belong to. Chat/completion/responses
+  modes feed the agent picker; embedding mode feeds the ingest picker.
 - **credential fields** from `litellm/proxy/public_endpoints/provider_create_fields.json`
   — the per-provider form spec. Unknown providers fall back to an API key and
   a base URL.
@@ -16,9 +16,9 @@ JSON is ~100KB, so paying for it once per process beats a re-read per request.
 `function_calling` and `vision` are published as capability flags so the UI can
 filter (agent vs VLM) without a second live provider call.
 
-Nothing here is an allow-list. A provider LiteLLM has no field spec for still
-gets GENERIC_CREDENTIAL_FIELDS, and a model that is not in the catalogue can
-still be typed in by hand.
+The public catalogue is intentionally limited to the providers OpenRAG exposes
+in its settings UI. Generic credential helpers remain available for future
+providers, and a model that is not in the catalogue can still be typed by hand.
 """
 
 from __future__ import annotations
@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 
 TEXT_GENERATION_MODES = frozenset({"chat", "completion", "responses"})
 EMBEDDING_MODE = "embedding"
+SUPPORTED_PROVIDER_KEYS = frozenset({"openai", "anthropic", "watsonx", "ollama"})
 
 CAPABILITY_FLAGS: dict[str, str] = {
     "supports_function_calling": "function_calling",
@@ -198,7 +199,7 @@ def _catalog() -> dict[str, Any]:
             continue
         provider = info.get("litellm_provider")
         mode = info.get("mode")
-        if not provider:
+        if provider not in SUPPORTED_PROVIDER_KEYS:
             continue
         if mode in TEXT_GENERATION_MODES:
             bucket = chat_by_provider
@@ -212,7 +213,7 @@ def _catalog() -> dict[str, Any]:
         bucket.setdefault(provider, []).append(_model_entry(name, info))
 
     providers = []
-    for key in sorted(set(chat_by_provider) | set(embed_by_provider) | set(specs)):
+    for key in sorted(SUPPORTED_PROVIDER_KEYS):
         providers.append(
             {
                 "key": key,
@@ -251,7 +252,7 @@ def _catalog_for(today: datetime.date) -> dict[str, Any]:
 
 
 def catalog(today: datetime.date | None = None) -> dict[str, Any]:
-    """The full picker payload: every provider, each with chat/embedding models."""
+    """Picker payload for OpenRAG's supported providers and their models."""
     return _catalog_for(today or datetime.date.today())
 
 

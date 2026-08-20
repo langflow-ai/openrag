@@ -1,16 +1,13 @@
 "use client";
 
-import { Search } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { useGetModelCatalogQuery } from "@/app/api/queries/useGetModelsQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import AnthropicLogo from "@/components/icons/anthropic-logo";
 import IBMLogo from "@/components/icons/ibm-logo";
 import OllamaLogo from "@/components/icons/ollama-logo";
 import OpenAILogo from "@/components/icons/openai-logo";
 import { useProviderHealth } from "@/components/provider-health-banner";
-import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import {
@@ -19,16 +16,10 @@ import {
   type ModelProvider,
 } from "../_helpers/model-helpers";
 import AnthropicSettingsDialog from "./anthropic-settings-dialog";
-import CatalogProviderCard from "./catalog-provider-card";
-import { GenericProviderDialog } from "./generic-provider-dialog";
 import ModelProviderCard from "./model-provider-card";
 import OllamaSettingsDialog from "./ollama-settings-dialog";
 import OpenAISettingsDialog from "./openai-settings-dialog";
 import WatsonxSettingsDialog from "./watsonx-settings-dialog";
-
-// Providers with a bespoke settings dialog; they never appear in the
-// catalogue section below.
-const BUILT_IN_PROVIDERS = ["openai", "anthropic", "ollama", "watsonx"];
 
 export const ModelProviders = () => {
   const { isAuthenticated, isNoAuthMode } = useAuth();
@@ -42,25 +33,13 @@ export const ModelProviders = () => {
 
   const { health } = useProviderHealth();
 
-  const { data: catalog } = useGetModelCatalogQuery({
-    enabled: isAuthenticated || isNoAuthMode,
-  });
-
   const [dialogOpen, setDialogOpen] = useState<ModelProvider | undefined>();
-  const [genericDialogOpen, setGenericDialogOpen] = useState(false);
-  const [genericProvider, setGenericProvider] = useState<string>();
-  const [search, setSearch] = useState("");
 
   const allProviderKeys = useMemo(() => {
     return isCloudBrand
       ? ALL_PROVIDERS.filter((p) => !CLOUD_EXCLUDED_PROVIDERS.includes(p))
       : ALL_PROVIDERS;
   }, [isCloudBrand]);
-
-  const openGenericDialog = (providerKey: string) => {
-    setGenericProvider(providerKey);
-    setGenericDialogOpen(true);
-  };
 
   // Handle URL search param to open dialogs
   useEffect(() => {
@@ -150,71 +129,10 @@ export const ModelProviders = () => {
   const currentEmbeddingProvider =
     (settings.knowledge?.embedding_provider as ModelProvider) || "openai";
 
-  // Custom (LiteLLM) providers the user has already set up. They keep their
-  // place directly after the built-in cards, as before.
-  const configuredCustomProviders = useMemo(
-    () =>
-      Object.entries(settings.providers?.custom ?? {})
-        .filter(
-          ([provider, value]) =>
-            value.configured && !BUILT_IN_PROVIDERS.includes(provider),
-        )
-        .map(([provider]) => provider),
-    [settings.providers?.custom],
-  );
-
-  // Everything else the installed LiteLLM version supports, listed below the
-  // configured ones so the whole catalogue is browsable without a dropdown.
-  const remainingProviders = useMemo(() => {
-    const alreadyShown = new Set<string>([
-      ...allProviderKeys,
-      ...configuredCustomProviders,
-    ]);
-    return (catalog?.providers ?? []).filter(
-      (entry) => !alreadyShown.has(entry.key),
-    );
-  }, [catalog?.providers, allProviderKeys, configuredCustomProviders]);
-
-  const query = search.trim().toLowerCase();
-  const matches = (key: string, name: string) =>
-    query === "" ||
-    key.toLowerCase().includes(query) ||
-    name.toLowerCase().includes(query);
-
-  const visibleProviderKeys = allProviderKeys.filter((key) =>
-    matches(key, modelProvidersMap[key].name),
-  );
-  const visibleCustomProviders = configuredCustomProviders.filter((provider) =>
-    matches(provider, provider),
-  );
-  const visibleRemainingProviders = remainingProviders.filter((entry) =>
-    matches(entry.key, entry.name),
-  );
-  const hasResults =
-    visibleProviderKeys.length > 0 ||
-    visibleCustomProviders.length > 0 ||
-    visibleRemainingProviders.length > 0;
-
   return (
     <>
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <p className="text-mmd text-muted-foreground">
-          Configure any provider supported by LiteLLM.
-        </p>
-        <div className="relative w-full sm:w-72">
-          <Search className="-translate-y-1/2 pointer-events-none absolute top-1/2 left-3 h-4 w-4 text-muted-foreground" />
-          <Input
-            aria-label="Search providers"
-            className="pl-9"
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search providers..."
-            type="search"
-            value={search}
-          />
-        </div>
-      </div>
       <div className="grid gap-6 xs:grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
-        {visibleProviderKeys.map((providerKey) => {
+        {allProviderKeys.map((providerKey) => {
           const isLlmProvider = providerKey === currentLlmProvider;
           const isEmbeddingProvider = providerKey === currentEmbeddingProvider;
           const isProviderUnhealthy =
@@ -231,50 +149,7 @@ export const ModelProviders = () => {
             />
           );
         })}
-        {visibleCustomProviders.map((provider) => (
-          <CatalogProviderCard
-            key={provider}
-            providerKey={provider}
-            name={provider}
-            isConfigured
-            onConfigure={openGenericDialog}
-          />
-        ))}
       </div>
-
-      {visibleRemainingProviders.length > 0 && (
-        <>
-          <div className="mt-10 mb-6">
-            <h3 className="font-medium">All providers</h3>
-            <p className="text-mmd text-muted-foreground">
-              Every provider supported by the installed LiteLLM version.
-            </p>
-          </div>
-          <div className="grid gap-6 xs:grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
-            {visibleRemainingProviders.map((entry) => (
-              <CatalogProviderCard
-                key={entry.key}
-                providerKey={entry.key}
-                name={entry.name}
-                isConfigured={false}
-                onConfigure={openGenericDialog}
-              />
-            ))}
-          </div>
-        </>
-      )}
-
-      {!hasResults && (
-        <p className="text-mmd text-muted-foreground">
-          No providers match "{search}".
-        </p>
-      )}
-
-      <GenericProviderDialog
-        open={genericDialogOpen}
-        onOpenChange={setGenericDialogOpen}
-        initialProvider={genericProvider}
-      />
       <AnthropicSettingsDialog
         open={dialogOpen === "anthropic"}
         setOpen={handleCloseDialog}

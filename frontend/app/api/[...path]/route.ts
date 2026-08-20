@@ -1,4 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  backendProxyDuration,
+  backendProxyErrors,
+  backendProxyTotal,
+  normalizePath,
+} from "@/lib/metrics";
 
 function getRequestId(request: NextRequest): string {
   return request.headers.get("x-request-id") || crypto.randomUUID();
@@ -118,6 +124,25 @@ async function proxyRequest(request: NextRequest, params: { path: string[] }) {
     });
     const response = await fetch(backendUrl, init);
     const durationMs = Math.round(performance.now() - start);
+    const durationSeconds = durationMs / 1000;
+
+    const normalizedPath = normalizePath(`/${path}`);
+
+    backendProxyDuration.observe(
+      {
+        method: request.method,
+        path: normalizedPath,
+        status_code: response.status.toString(),
+      },
+      durationSeconds,
+    );
+
+    backendProxyTotal.inc({
+      method: request.method,
+      path: normalizedPath,
+      status_code: response.status.toString(),
+    });
+
     // biome-ignore lint/suspicious/noConsole: Server-side proxy timing is needed for CI diagnostics.
     console.info("[API Proxy] Request", {
       request_id: requestId,
@@ -163,6 +188,31 @@ async function proxyRequest(request: NextRequest, params: { path: string[] }) {
     }
   } catch (error) {
     const durationMs = Math.round(performance.now() - start);
+    const durationSeconds = durationMs / 1000;
+
+    const normalizedPath = normalizePath(`/${path}`);
+
+    backendProxyErrors.inc({
+      method: request.method,
+      path: normalizedPath,
+      error_type: error instanceof Error ? error.name : "unknown",
+    });
+
+    backendProxyDuration.observe(
+      {
+        method: request.method,
+        path: normalizedPath,
+        status_code: "500",
+      },
+      durationSeconds,
+    );
+
+    backendProxyTotal.inc({
+      method: request.method,
+      path: normalizedPath,
+      status_code: "500",
+    });
+
     console.error("[API Proxy] Request failed", {
       request_id: requestId,
       method: request.method,

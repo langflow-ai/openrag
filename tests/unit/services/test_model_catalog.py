@@ -12,10 +12,11 @@ from __future__ import annotations
 from services import model_catalog
 
 
-def test_catalog_groups_every_provider_with_its_models_and_form() -> None:
+def test_catalog_only_groups_supported_providers_with_their_models_and_forms() -> None:
     providers = {entry["key"]: entry for entry in model_catalog.catalog()["providers"]}
 
-    for key in ("openai", "anthropic", "ollama", "watsonx"):
+    assert set(providers) == model_catalog.SUPPORTED_PROVIDER_KEYS
+    for key in model_catalog.SUPPORTED_PROVIDER_KEYS:
         assert key in providers, key
         assert providers[key]["credential_fields"], key
 
@@ -50,11 +51,9 @@ def test_catalog_embedding_models_are_only_embedding_mode() -> None:
 
 def test_model_ids_are_stored_without_their_provider_prefix() -> None:
     providers = {entry["key"]: entry for entry in model_catalog.catalog()["providers"]}
-    gemini = providers.get("gemini") or providers.get("gemini_openai")
-    if gemini is None:
-        return
-    for entry in gemini["models"]:
-        assert not entry["model"].startswith("gemini/")
+    for provider, entry in providers.items():
+        for model in entry["models"] + entry["embedding_models"]:
+            assert not model["model"].startswith(f"{provider}/")
 
 
 def test_openai_form_is_the_plain_one_not_the_compatible_variant() -> None:

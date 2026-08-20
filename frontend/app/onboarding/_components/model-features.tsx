@@ -13,7 +13,6 @@ import {
   Mic,
   Wrench,
 } from "lucide-react";
-import Image from "next/image";
 import type { CatalogModel } from "@/app/settings/_helpers/catalog-models";
 import {
   ALL_CAPABILITIES,
@@ -24,10 +23,10 @@ import {
   PRIMARY_CAPABILITIES,
   supports,
 } from "@/app/settings/_helpers/model-info";
-import {
-  providerLogo,
-  providerMonogram,
-} from "@/app/settings/_helpers/provider-logos";
+import AnthropicLogo from "@/components/icons/anthropic-logo";
+import IBMLogo from "@/components/icons/ibm-logo";
+import OllamaLogo from "@/components/icons/ollama-logo";
+import OpenAILogo from "@/components/icons/openai-logo";
 import { cn } from "@/lib/utils";
 
 const ICONS: Record<ModelCapability, LucideIcon> = {
@@ -80,25 +79,29 @@ function Fact({ label, value }: { label: string; value: string }) {
   );
 }
 
+const PROVIDER_LOGOS: Record<
+  string,
+  React.ComponentType<{ className?: string }>
+> = {
+  openai: OpenAILogo,
+  anthropic: AnthropicLogo,
+  watsonx: IBMLogo,
+  ollama: OllamaLogo,
+};
+
 function ProviderMark({ provider, name }: { provider?: string; name: string }) {
-  const src = provider ? providerLogo(provider) : null;
+  const Logo = provider ? PROVIDER_LOGOS[provider] : undefined;
   return (
     <span
       aria-hidden="true"
       data-provider={provider}
       className="grid h-16 w-16 shrink-0 place-items-center border border-border bg-white"
     >
-      {src ? (
-        <Image
-          src={src}
-          alt=""
-          width={44}
-          height={44}
-          className="object-contain"
-        />
+      {Logo ? (
+        <Logo className="h-10 w-10" />
       ) : (
         <span className="font-mono text-lg font-semibold tracking-wide text-muted-foreground">
-          {providerMonogram(provider || name)}
+          {(provider || name).slice(0, 2).toUpperCase()}
         </span>
       )}
     </span>
