@@ -238,9 +238,7 @@ async def _update_langflow_global_variables(config, flows_service=None):
             if not flows_service:
                 flows_service = _get_flows_service()
 
-            endpoint = await flows_service.resolve_ollama_url(
-                ollama.endpoint, force_refresh=True
-            )
+            endpoint = await flows_service.resolve_ollama_url(ollama.endpoint, force_refresh=True)
             await _safe_upsert("OLLAMA_BASE_URL", endpoint)
         except Exception as e:
             logger.warning(f"Failed to resolve OLLAMA_BASE_URL: {e}")
