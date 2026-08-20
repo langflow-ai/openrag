@@ -125,6 +125,20 @@ services:
       - DOCLING_SERVE_URL=${DOCLING_SERVE_URL:-http://host.docker.internal:5001}
       - DOCLING_SERVE_VERIFY_SSL=${DOCLING_SERVE_VERIFY_SSL:-true}
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS-http://localhost:3000}
+      # Instana APM (opt-in, default off — see the INSTANA_* block in .env.example).
+      # The agent runs on the HOST (`make instana-agent-up`, host networking), so a
+      # containerized backend reaches it via the host.docker.internal alias mapped
+      # in extra_hosts below — not via 127.0.0.1, which is the container loopback.
+      - INSTANA_ENABLED=${INSTANA_ENABLED:-false}
+      - INSTANA_AGENT_HOST=${INSTANA_AGENT_HOST:-host.docker.internal}
+      - INSTANA_AGENT_PORT=${INSTANA_AGENT_PORT:-42699}
+      # Listed bare rather than as `VAR=${VAR}` on purpose: the tracer tests these
+      # for *presence*, not truthiness, so forwarding an empty string would set a
+      # blank service name and log an "Unknown INSTANA_LOG_LEVEL" warning on every
+      # boot. The bare form is omitted from the container entirely when unset.
+      - INSTANA_SERVICE_NAME
+      - INSTANA_LOG_LEVEL
+      - INSTANA_ZONE
     volumes:
       - ${OPENRAG_DOCUMENTS_PATH:-./openrag-documents}:/app/openrag-documents:U,z
       - ${OPENRAG_KEYS_PATH:-./keys}:/app/keys:U,z
@@ -244,8 +258,17 @@ services:
     volumes:
       - azurite-data:/data
 
-  # Instana host agent: forwards traces/metrics to the dev-dalhdev.instana.io
-  # SaaS tenant. Opt-in only — gated behind the "instana" compose profile.
+  # Instana host agent: forwards traces/metrics to the Instana SaaS ingress
+  # named by INSTANA_AGENT_ENDPOINT. The default below is one regional ingress;
+  # get the right one for your tenant from Infrastructure > Add a Host, which
+  # also issues the INSTANA_AGENT_KEY the agent needs.
+  # Opt-in only — gated behind the "instana" compose profile.
+  #
+  # WARNING: local development only. This container runs privileged, in the host
+  # PID namespace, with a read-write Docker socket — any one of those is
+  # root-equivalent on the host. The agent needs them for host/infrastructure
+  # metrics, but do not run this on a shared or production host.
+  #
   # Start it with `make instana-agent-up`. Uses host networking so the agent
   # publishes 42699 directly on localhost, matching the dev-local topology
   # (backend runs on the host via `make backend`, not in Docker).
@@ -254,7 +277,11 @@ services:
   # (Infrastructure > Add a Host) before relying on this, since IBM adjusts
   # recommended flags between agent releases.
   instana-agent:
-    image: icr.io/instana/agent:latest
+    # Pinned rather than :latest — this container runs privileged, with host PID
+    # and a Docker socket mount, so an upstream retag would silently change what
+    # runs as root on a developer machine. Override with INSTANA_AGENT_IMAGE_TAG
+    # to test a newer agent; bump the default here once it is verified.
+    image: icr.io/instana/agent:${INSTANA_AGENT_IMAGE_TAG:-1.323.1}
     container_name: instana-agent
     profiles: ["instana"]
     network_mode: host
@@ -265,10 +292,16 @@ services:
       - INSTANA_AGENT_ENDPOINT_PORT=${INSTANA_AGENT_ENDPOINT_PORT:-443}
       - INSTANA_AGENT_KEY=${INSTANA_AGENT_KEY}
     volumes:
+      # docker.sock stays read-write: talking to the Docker API means writing to
+      # the socket, so :ro here would break container discovery. The rest are
+      # :ro because the agent only reads them. Note this narrows scope rather
+      # than enforcing a boundary — `privileged: true` above lets the container
+      # remount them writable. If a future agent release needs write access,
+      # these flags are the first thing to revert.
       - /var/run/docker.sock:/var/run/docker.sock
-      - /dev:/dev
-      - /sys:/sys
-      - /var/log:/var/log
+      - /dev:/dev:ro
+      - /sys:/sys:ro
+      - /var/log:/var/log:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
 
 volumes:
