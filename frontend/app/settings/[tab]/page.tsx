@@ -11,8 +11,7 @@ import { AgentSettingsSection } from "../_components/agent-settings-section";
 import { ApiKeysSection } from "../_components/api-keys-section";
 import { ConnectorAccessSection } from "../_components/connector-access-section";
 import { ConnectorsTab } from "../_components/connectors-tab";
-import { IngestPreviewSettingsSection } from "../_components/ingest-preview-settings-section";
-import { IngestSettingsSection } from "../_components/ingest-settings-section";
+import { IngestionTab } from "../_components/ingestion-tab";
 import { LangflowUpdatesBanner } from "../_components/langflow-updates-banner";
 import ModelProviders from "../_components/model-providers";
 
@@ -20,12 +19,16 @@ const VALID_TABS = [
   "connectors",
   "providers",
   "langflow",
+  "ingestion",
   "api-keys",
   "connector-access",
-  "ingest-preview",
 ] as const;
 
 type Tab = (typeof VALID_TABS)[number];
+
+function isValidTab(tab: string): tab is Tab {
+  return (VALID_TABS as readonly string[]).includes(tab);
+}
 
 async function getTabAuthContext() {
   const [authRes, meRes] = await Promise.allSettled([
@@ -67,7 +70,7 @@ export default async function SettingsTabPage({
 }) {
   const { tab } = await params;
 
-  if (!VALID_TABS.includes(tab as Tab)) {
+  if (!isValidTab(tab)) {
     redirect("/settings/connectors");
   }
 
@@ -105,7 +108,7 @@ export default async function SettingsTabPage({
     redirect("/settings/connectors");
   }
   if (
-    tab === "langflow" &&
+    (tab === "langflow" || tab === "ingestion") &&
     !canShowRbacGatedSettingsTab("config:write", tabAccess)
   ) {
     redirect("/settings/connectors");
@@ -148,12 +151,11 @@ export default async function SettingsTabPage({
         <div className="space-y-6">
           <LangflowUpdatesBanner />
           <AgentSettingsSection />
-          <IngestSettingsSection />
         </div>
       )}
+      {tab === "ingestion" && <IngestionTab />}
       {tab === "api-keys" && <ApiKeysSection />}
       {tab === "connector-access" && <ConnectorAccessSection />}
-      {tab === "ingest-preview" && <IngestPreviewSettingsSection />}
     </HydrationBoundary>
   );
 }

@@ -51,7 +51,7 @@ test("Picture Description Configuration @33219221", async ({
 
   // Enable picture descriptions
   logger.info("\n📸 Enabling picture descriptions...");
-  await settings.clickTab("Langflow");
+  await settings.clickTab("Ingestion");
   await settings.setPictureDescriptions(true);
 
   // Ingest first PDF with picture descriptions enabled
@@ -75,7 +75,7 @@ test("Picture Description Configuration @33219221", async ({
 
   // Disable picture descriptions
   logger.info("\n📸 Disabling picture descriptions...");
-  await settings.clickTab("Langflow");
+  await settings.clickTab("Ingestion");
   await settings.setPictureDescriptions(false);
 
   // Ingest second PDF with picture descriptions disabled

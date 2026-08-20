@@ -10,6 +10,7 @@ export type SettingsTab =
   | "Connectors"
   | "Providers"
   | "Langflow"
+  | "Ingestion"
   | "Connectors Permission";
 
 export class Settings {
@@ -166,7 +167,7 @@ export class Settings {
 
   /**
    * Click a Settings page tab
-   * @param tabName - The tab to click: 'Connectors' | 'Providers' | 'Langflow' | 'Connectors Permission'
+   * @param tabName - The tab to click: 'Connectors' | 'Providers' | 'Langflow' | 'Ingestion' | 'Connectors Permission'
    */
   async clickTab(tabName: SettingsTab) {
     logger.info(`Clicking Settings tab: ${tabName}`);
@@ -203,7 +204,7 @@ export class Settings {
   }
 
   async setPictureDescriptions(enabled: boolean) {
-    await this.open();
+    await this.clickTab("Ingestion");
     const toggle = this.pictureDescriptionsToggle();
     await toggle.scrollIntoViewIfNeeded();
     const state = await toggle.getAttribute("data-state");
@@ -215,7 +216,7 @@ export class Settings {
   }
 
   async setTableStructure(enabled: boolean) {
-    await this.open();
+    await this.clickTab("Ingestion");
     const toggle = this.tableStructureToggle();
     await toggle.scrollIntoViewIfNeeded();
     const state = await toggle.getAttribute("data-state");
@@ -227,7 +228,7 @@ export class Settings {
   }
 
   async setOCR(enabled: boolean) {
-    await this.open();
+    await this.clickTab("Ingestion");
     const toggle = this.ocrToggle();
     await toggle.scrollIntoViewIfNeeded();
     const state = await toggle.getAttribute("data-state");
@@ -239,7 +240,7 @@ export class Settings {
   }
 
   async setDisableLangflowIngestion(enabled: boolean) {
-    await this.clickTab("Langflow");
+    await this.clickTab("Ingestion");
     const toggle = this.disableLangflowIngestionToggle();
     await toggle.scrollIntoViewIfNeeded();
     const state = await toggle.getAttribute("data-state");
@@ -285,7 +286,7 @@ export class Settings {
    * @param chunkOverlap - Chunk overlap value (e.g., "50")
    */
   async updateChunkSettings(chunkSize: string, chunkOverlap: string) {
-    await this.open();
+    await this.clickTab("Ingestion");
 
     // Find and update chunk size input
     const chunkSizeInp = this.chunkSizeInput();

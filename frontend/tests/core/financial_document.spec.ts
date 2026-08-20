@@ -43,7 +43,7 @@ test.describe("Financial Document - OpenAI @33219232", () => {
     await knowledge.deleteDocument(testDocument);
 
     await settings.open();
-    await settings.clickTab("Langflow");
+    await settings.clickTab("Ingestion");
     await settings.setTableStructure(true);
 
     await knowledge.open();
