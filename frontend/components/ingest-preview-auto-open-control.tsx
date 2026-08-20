@@ -31,8 +31,11 @@ export function IngestPreviewAutoOpenControl({
         variant="default"
         aria-label={ariaLabel}
         className={cn(
-          "h-auto shrink-0 border border-border p-0.5",
-          isCloudBrand ? "!rounded-none overflow-hidden" : "rounded-md",
+          "grid !h-9 w-[220px] shrink-0 grid-cols-2 items-stretch gap-0 !p-0",
+          "border border-border !bg-transparent",
+          isCloudBrand
+            ? "rounded-none overflow-hidden"
+            : "rounded-md overflow-hidden",
         )}
       >
         {INGEST_PREVIEW_AUTO_OPEN_OPTIONS.map((option) => (
@@ -40,9 +43,15 @@ export function IngestPreviewAutoOpenControl({
             key={option.value}
             value={option.value}
             className={cn(
-              "px-3 py-1.5 text-xs sm:text-sm",
-              isCloudBrand &&
-                "!rounded-none dark:hover:!bg-[#F4F4F4] dark:hover:!text-neutral-900 dark:data-[state=active]:!bg-[#F4F4F4] dark:data-[state=active]:!text-neutral-900",
+              "!flex !h-full !min-h-0 items-center justify-center",
+              "!rounded-none !border-0 !px-3 !py-0 !leading-none text-sm font-medium",
+              "!shadow-none text-muted-foreground hover:text-foreground",
+              "hover:!bg-transparent data-[state=active]:!shadow-none",
+              "data-[state=active]:!bg-muted data-[state=active]:!text-foreground",
+              "dark:hover:!bg-transparent dark:hover:!text-foreground",
+              "dark:data-[state=active]:!bg-white/10 dark:data-[state=active]:!text-foreground",
+              "dark:focus-visible:!bg-white/10 dark:focus-visible:!text-foreground",
+              option.value === "every" && "!border-r !border-border",
             )}
           >
             {option.label}
