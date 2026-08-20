@@ -8,6 +8,9 @@ FROM registry.access.redhat.com/ubi10/nodejs-24-minimal AS deps
 WORKDIR /opt/app-root/src
 USER 0
 
+
+RUN microdnf update -y && microdnf clean all && rm -rf /var/cache/yum
+
 COPY frontend/package.json frontend/package-lock.json ./
 # Copy local stub packages referenced via file: in package.json (e.g. sharp stub
 # that keeps LGPL libvips binaries out of the tree). npm ci needs these present.
@@ -39,6 +42,8 @@ FROM registry.access.redhat.com/ubi10/nodejs-24-minimal AS runtime
 WORKDIR /opt/app-root/src
 USER 0
 
+
+RUN microdnf update -y && microdnf clean all && rm -rf /var/cache/yum
 
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1
