@@ -176,10 +176,11 @@ async def ensure_required_langflow_global_variables(config=None):
                 patch_payload = {
                     "id": var_id,
                     "name": name,
-                    "value": target_val,
                     "default_fields": [],
                     "type": target_type,
                 }
+                if is_generic:
+                    patch_payload["value"] = target_val
                 await clients.langflow_request(
                     "PATCH", f"/api/v1/variables/{var_id}", json=patch_payload
                 )
@@ -209,32 +210,36 @@ async def _update_langflow_global_variables(config, flows_service=None):
     providers = getattr(config, "providers", None)
 
     # WatsonX global variables
-    if getattr(providers, "watsonx", None):
-        if config.providers.watsonx.api_key:
-            await _safe_upsert("WATSONX_APIKEY", config.providers.watsonx.api_key)
+    watsonx = getattr(providers, "watsonx", None)
+    if watsonx:
+        if getattr(watsonx, "api_key", None):
+            await _safe_upsert("WATSONX_APIKEY", watsonx.api_key)
 
-        if config.providers.watsonx.project_id:
-            await _safe_upsert("WATSONX_PROJECT_ID", config.providers.watsonx.project_id)
+        if getattr(watsonx, "project_id", None):
+            await _safe_upsert("WATSONX_PROJECT_ID", watsonx.project_id)
 
-        if config.providers.watsonx.endpoint:
-            await _safe_upsert("WATSONX_URL", config.providers.watsonx.endpoint)
+        if getattr(watsonx, "endpoint", None):
+            await _safe_upsert("WATSONX_URL", watsonx.endpoint)
 
     # OpenAI global variables
-    if getattr(providers, "openai", None) and config.providers.openai.api_key:
-        await _safe_upsert("OPENAI_API_KEY", config.providers.openai.api_key)
+    openai = getattr(providers, "openai", None)
+    if openai and getattr(openai, "api_key", None):
+        await _safe_upsert("OPENAI_API_KEY", openai.api_key)
 
     # Anthropic global variables
-    if getattr(providers, "anthropic", None) and config.providers.anthropic.api_key:
-        await _safe_upsert("ANTHROPIC_API_KEY", config.providers.anthropic.api_key)
+    anthropic = getattr(providers, "anthropic", None)
+    if anthropic and getattr(anthropic, "api_key", None):
+        await _safe_upsert("ANTHROPIC_API_KEY", anthropic.api_key)
 
     # Ollama global variables
-    if getattr(providers, "ollama", None) and config.providers.ollama.endpoint:
+    ollama = getattr(providers, "ollama", None)
+    if ollama and getattr(ollama, "endpoint", None):
         try:
             if not flows_service:
                 flows_service = _get_flows_service()
 
             endpoint = await flows_service.resolve_ollama_url(
-                config.providers.ollama.endpoint, force_refresh=True
+                ollama.endpoint, force_refresh=True
             )
             await _safe_upsert("OLLAMA_BASE_URL", endpoint)
         except Exception as e:

@@ -204,7 +204,6 @@ async def test_ensure_required_langflow_global_variables_removes_apply_to_fields
             "json": {
                 "id": "var-1",
                 "name": "OPENAI_API_KEY",
-                "value": "secret",
                 "default_fields": [],
                 "type": "Credential",
             }
@@ -297,3 +296,38 @@ async def test_ensure_required_langflow_global_variables_creates_all_generics(mo
     assert all(variable_type == "Generic" for *_, variable_type in calls)
     assert ("OPENSEARCH_INDEX_NAME", "documents-v2", True, "Generic") in calls
     assert ("SELECTED_EMBEDDING_MODEL", "text-embedding-3-large", True, "Generic") in calls
+
+
+@pytest.mark.asyncio
+async def test_update_langflow_global_variables_continues_when_one_fails(monkeypatch):
+    calls = []
+
+    async def create_variable(name, value, modify=False, variable_type="Credential"):
+        if name == "WATSONX_APIKEY":
+            raise RuntimeError("Simulated network failure on WATSONX_APIKEY")
+        calls.append((name, value, modify, variable_type))
+
+    monkeypatch.setattr(
+        langflow_sync.clients,
+        "_create_langflow_global_variable",
+        create_variable,
+        raising=True,
+    )
+
+    config = SimpleNamespace(
+        providers=SimpleNamespace(
+            watsonx=SimpleNamespace(api_key="watson-key", project_id="watson-project"),
+            openai=SimpleNamespace(api_key="openai-key"),
+        ),
+        knowledge=SimpleNamespace(embedding_model="embedding-model", embedding_provider=None),
+        agent=SimpleNamespace(llm_model=None, llm_provider=None),
+    )
+
+    # Calling sync should NOT raise RuntimeError; it should continue updating OPENAI_API_KEY, etc.
+    await langflow_sync._update_langflow_global_variables(config)
+
+    names = {name for name, *_ in calls}
+    assert "WATSONX_APIKEY" not in names
+    assert "WATSONX_PROJECT_ID" in names
+    assert "OPENAI_API_KEY" in names
+    assert "SELECTED_EMBEDDING_MODEL" in names
