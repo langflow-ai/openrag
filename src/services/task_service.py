@@ -1354,6 +1354,50 @@ class TaskService:
         tasks.sort(key=lambda x: x["created_at"], reverse=True)
         return tasks
 
+    def get_queue_summary(
+        self, user_id: str, selected_task_ids: set[str] | None = None
+    ) -> dict[str, int]:
+        """Return lightweight active queue counters without serializing task history."""
+        selected = selected_task_ids or set()
+        tasks_by_id: dict[str, UploadTask] = {}
+        for store_user_id in (user_id, AnonymousUser().user_id):
+            for task_id, upload_task in self.task_store.get(store_user_id, {}).items():
+                tasks_by_id.setdefault(task_id, upload_task)
+
+        active_tasks = 0
+        pending_files = 0
+        running_files = 0
+        selected_active_tasks = 0
+        selected_pending_files = 0
+        selected_running_files = 0
+        for task_id, upload_task in tasks_by_id.items():
+            if upload_task.status not in {TaskStatus.PENDING, TaskStatus.RUNNING}:
+                continue
+            active_tasks += 1
+            is_selected = task_id in selected
+            if is_selected:
+                selected_active_tasks += 1
+            for file_task in upload_task.file_tasks.values():
+                if file_task.status == TaskStatus.PENDING:
+                    pending_files += 1
+                    if is_selected:
+                        selected_pending_files += 1
+                elif file_task.status == TaskStatus.RUNNING:
+                    running_files += 1
+                    if is_selected:
+                        selected_running_files += 1
+
+        return {
+            "active_tasks": active_tasks,
+            "pending_files": pending_files,
+            "running_files": running_files,
+            "processing_capacity": self._worker_count,
+            "selected_submitted_tasks": len(selected),
+            "selected_active_tasks": selected_active_tasks,
+            "selected_pending_files": selected_pending_files,
+            "selected_running_files": selected_running_files,
+        }
+
     def get_all_tasks(self, user_id: str) -> list:
         """Get all tasks for a user
 
