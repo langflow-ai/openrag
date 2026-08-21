@@ -63,6 +63,7 @@ export function IngestSettingsSection() {
   const { isAuthenticated, isNoAuthMode, isIbmAuthMode, runMode } = useAuth();
 
   const [isRestoringFlow, setIsRestoringFlow] = useState<boolean>(false);
+  const [userEdited, setUserEdited] = useState(false);
 
   const [chunkSize, setChunkSize] = useState<number>(1024);
   const [chunkOverlap, setChunkOverlap] = useState<number>(50);
@@ -366,6 +367,7 @@ export function IngestSettingsSection() {
   ]);
 
   const handleVlmModelChange = (value: string, provider?: string) => {
+    setUserEdited(true);
     setVlmModel(value);
     if (provider) setVlmProvider(provider);
     setValidationError(null);
@@ -398,7 +400,7 @@ export function IngestSettingsSection() {
       (k?.disable_ingest_with_langflow ?? disableIngestWithLangflow) ||
     vlmDirty;
 
-  useRegisterDirty("ingest-settings", knowledgeIngestDirty);
+  useRegisterDirty("ingest-settings", userEdited && knowledgeIngestDirty);
 
   const providerConfigured =
     settings.providers === undefined || settings.providers === null
@@ -424,11 +426,13 @@ export function IngestSettingsSection() {
           : "OpenAI";
 
   const handleChunkSizeChange = (value: string) => {
+    setUserEdited(true);
     setChunkSize(Math.max(0, Number.parseInt(value, 10) || 0));
     setChunkValidationError(null);
   };
 
   const handleChunkOverlapChange = (value: string) => {
+    setUserEdited(true);
     setChunkOverlap(Math.max(0, Number.parseInt(value, 10) || 0));
     setChunkValidationError(null);
   };
@@ -508,6 +512,7 @@ export function IngestSettingsSection() {
         onSuccess: () => {
           setChunkValidationError(null);
           setValidationError(null);
+          setUserEdited(false);
         },
       },
     );
@@ -561,6 +566,7 @@ export function IngestSettingsSection() {
         setPictureDescriptions(DEFAULT_KNOWLEDGE_SETTINGS.picture_descriptions);
         setDisableIngestWithLangflow(false);
         setChunkValidationError(null);
+        setUserEdited(false);
         toast.success("Default ingest flow settings restored successfully");
         closeDialog();
       })
@@ -773,7 +779,10 @@ export function IngestSettingsSection() {
               <Switch
                 id="disable-ingest-with-langflow"
                 checked={disableIngestWithLangflow}
-                onCheckedChange={setDisableIngestWithLangflow}
+                onCheckedChange={(v) => {
+                  setUserEdited(true);
+                  setDisableIngestWithLangflow(v);
+                }}
               />
             </div>
             <div className="flex items-center justify-between py-3 border-b border-border">
@@ -791,7 +800,10 @@ export function IngestSettingsSection() {
               <Switch
                 id="table-structure"
                 checked={tableStructure}
-                onCheckedChange={setTableStructure}
+                onCheckedChange={(v) => {
+                  setUserEdited(true);
+                  setTableStructure(v);
+                }}
               />
             </div>
             <div className="flex items-center justify-between py-3 border-b border-border">
@@ -806,7 +818,14 @@ export function IngestSettingsSection() {
                   Extracts text from images/PDFs. Ingest is slower when enabled.
                 </div>
               </div>
-              <Switch id="ocr" checked={ocr} onCheckedChange={setOcr} />
+              <Switch
+                id="ocr"
+                checked={ocr}
+                onCheckedChange={(v) => {
+                  setUserEdited(true);
+                  setOcr(v);
+                }}
+              />
             </div>
             <div className="flex items-center justify-between py-3">
               <div className="flex-1">
@@ -823,7 +842,10 @@ export function IngestSettingsSection() {
               <Switch
                 id="picture-descriptions"
                 checked={pictureDescriptions}
-                onCheckedChange={setPictureDescriptions}
+                onCheckedChange={(v) => {
+                  setUserEdited(true);
+                  setPictureDescriptions(v);
+                }}
               />
             </div>
             {showVlmSettings && (
@@ -887,9 +909,10 @@ export function IngestSettingsSection() {
                             type="text"
                             placeholder={DEFAULT_WATSONX_API_VERSION}
                             value={vlmWatsonxApiVersion}
-                            onChange={(e) =>
-                              setVlmWatsonxApiVersion(e.target.value)
-                            }
+                            onChange={(e) => {
+                              setUserEdited(true);
+                              setVlmWatsonxApiVersion(e.target.value);
+                            }}
                             disabled={!pictureDescriptions}
                           />
                         </LabelWrapper>
@@ -906,7 +929,10 @@ export function IngestSettingsSection() {
                           id="vlm-prompt"
                           rows={3}
                           value={vlmPrompt}
-                          onChange={(e) => setVlmPrompt(e.target.value)}
+                          onChange={(e) => {
+                            setUserEdited(true);
+                            setVlmPrompt(e.target.value);
+                          }}
                           disabled={!pictureDescriptions}
                         />
                       </LabelWrapper>
@@ -920,7 +946,10 @@ export function IngestSettingsSection() {
                       >
                         <Select
                           value={vlmResponseFormat}
-                          onValueChange={setVlmResponseFormat}
+                          onValueChange={(v) => {
+                            setUserEdited(true);
+                            setVlmResponseFormat(v);
+                          }}
                           disabled={!pictureDescriptions}
                         >
                           <SelectTrigger
@@ -948,9 +977,10 @@ export function IngestSettingsSection() {
                         id="vlm-max-tokens"
                         label="Max tokens per page"
                         value={vlmMaxTokens}
-                        onChange={(value) =>
-                          setVlmMaxTokens(Math.max(1, value))
-                        }
+                        onChange={(value) => {
+                          setUserEdited(true);
+                          setVlmMaxTokens(Math.max(1, value));
+                        }}
                         unit="tokens"
                         min={1}
                         disabled={!pictureDescriptions}
@@ -959,9 +989,10 @@ export function IngestSettingsSection() {
                         id="vlm-concurrency"
                         label="Concurrency"
                         value={vlmConcurrency}
-                        onChange={(value) =>
-                          setVlmConcurrency(Math.max(1, value))
-                        }
+                        onChange={(value) => {
+                          setUserEdited(true);
+                          setVlmConcurrency(Math.max(1, value));
+                        }}
                         unit="requests"
                         min={1}
                         disabled={!pictureDescriptions}
@@ -970,7 +1001,10 @@ export function IngestSettingsSection() {
                         id="vlm-timeout"
                         label="API timeout"
                         value={vlmTimeout}
-                        onChange={(value) => setVlmTimeout(Math.max(1, value))}
+                        onChange={(value) => {
+                          setUserEdited(true);
+                          setVlmTimeout(Math.max(1, value));
+                        }}
                         unit="seconds"
                         min={1}
                         disabled={!pictureDescriptions}

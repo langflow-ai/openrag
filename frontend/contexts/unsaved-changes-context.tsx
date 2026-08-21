@@ -124,17 +124,18 @@ export function useRegisterDirty(key: string, isDirty: boolean) {
     );
   }
 
-  const keyRef = useRef(key);
-  keyRef.current = key;
+  const registerRef = useRef(ctx.register);
+  registerRef.current = ctx.register;
+  const unregisterRef = useRef(ctx.unregister);
+  unregisterRef.current = ctx.unregister;
 
   useEffect(() => {
-    ctx.register(keyRef.current, isDirty);
-  }, [ctx, isDirty]);
+    registerRef.current(key, isDirty);
+  }, [key, isDirty]);
 
   useEffect(() => {
-    const k = keyRef.current;
-    return () => ctx.unregister(k);
-  }, [ctx]);
+    return () => unregisterRef.current(key);
+  }, [key]);
 }
 
 export function useUnsavedChangesGuard() {
