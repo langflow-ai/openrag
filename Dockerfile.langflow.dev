@@ -66,7 +66,7 @@ ENV LANGFLOW_ALLOW_CUSTOM_COMPONENTS=false
 
 # CWE-426 fix: explicitly set PATH so system-owned directories are always resolved
 # first. App venv and ubi python dirs are appended last so they cannot shadow system binaries.
-ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/app-root/bin:/opt/app-root/src/bin:/opt/app-root/src/.local/bin:/app/.venv/bin
+ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/app/.venv/bin:/opt/app-root/bin:/opt/app-root/src/bin:/opt/app-root/src/.local/bin
 
 # Start the backend server
 CMD ["uv", "run", "langflow", "run", "--host", "0.0.0.0", "--port", "7860"]
