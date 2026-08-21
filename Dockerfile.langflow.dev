@@ -25,8 +25,10 @@ RUN apt-get update && apt-get install -y \
     rustc cargo pkg-config libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv for faster Python package management
-RUN pip install uv
+# Install uv for faster Python package management.
+# Upgrade pip first to patch CVE-2026-8643 (fixed in 26.1.2) in the base image.
+RUN pip install --no-cache-dir --upgrade "pip>=26.1.2" \
+    && pip install --no-cache-dir uv
 
 # Clone the repository and checkout the specified branch
 RUN echo "Cloning ${GIT_REPO} branch ${GIT_BRANCH}..." && \
