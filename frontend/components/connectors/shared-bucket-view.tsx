@@ -48,6 +48,10 @@ export interface SharedBucketViewProps {
   showShared?: boolean;
   /** Buckets to pre-select once `buckets` has loaded, e.g. from saved connector defaults. */
   initialSelectedBuckets?: string[];
+  /** Singular label for the resource type, e.g. "bucket" or "container". Defaults to "container". */
+  resourceLabel?: string;
+  /** Plural label for the resource type, e.g. "buckets" or "containers". Defaults to "containers". */
+  resourceLabelPlural?: string;
 }
 
 export function SharedBucketView({
@@ -58,12 +62,15 @@ export function SharedBucketView({
   onRefetch,
   invalidateQueryKey,
   syncMutation,
+  resourceLabel = "container",
+  resourceLabelPlural = "containers",
   addTask,
   onBack,
   onDone,
   showShared = false,
   initialSelectedBuckets,
 }: SharedBucketViewProps) {
+  const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
   const queryClient = useQueryClient();
   const { isAuthenticated, isNoAuthMode } = useAuth();
   const { data: apiSettings } = useGetSettingsQuery({
@@ -323,7 +330,7 @@ export function SharedBucketView({
       <div className="max-w-3xl mx-auto space-y-4">
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
-            Select containers to ingest.
+            Select {resourceLabelPlural} to ingest.
           </p>
           <div className="flex items-center gap-2">
             {selectedBuckets.size > 0 && (
@@ -355,7 +362,7 @@ export function SharedBucketView({
                 size={14}
                 className={isLoading ? "animate-spin" : ""}
               />
-              Refresh Containers
+              Refresh {capitalize(resourceLabelPlural)}
             </Button>
           </div>
         </div>
@@ -371,7 +378,7 @@ export function SharedBucketView({
           </div>
         ) : !buckets?.length ? (
           <div className="rounded-lg border p-6 text-center text-muted-foreground text-sm">
-            No buckets found. Check your credentials and endpoint.
+            No {resourceLabelPlural} found. Check your credentials and endpoint.
           </div>
         ) : (
           <div className="rounded-lg border divide-y">
@@ -484,8 +491,8 @@ export function SharedBucketView({
               : isCheckingDuplicates
                 ? "Checking…"
                 : selectedBuckets.size > 0
-                  ? `Ingest ${selectedBuckets.size} Bucket${selectedBuckets.size !== 1 ? "s" : ""}`
-                  : "Select Containers to Ingest"}
+                  ? `Ingest ${selectedBuckets.size} ${selectedBuckets.size === 1 ? capitalize(resourceLabel) : capitalize(resourceLabelPlural)}`
+                  : `Select ${capitalize(resourceLabelPlural)} to Ingest`}
           </Button>
         </div>
       </div>
