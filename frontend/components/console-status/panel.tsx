@@ -108,10 +108,8 @@ export function ConsoleStatusPanel({
     : backendComponents;
 
   const counts = countByState(components);
-  const isRefreshing = isFetching || (!!providerHealth && isProviderFetching);
-  const lastUpdatedAt = providerHealth
-    ? Math.max(dataUpdatedAt, providerUpdatedAt)
-    : dataUpdatedAt;
+  const isRefreshing = isFetching || isProviderFetching;
+  const lastUpdatedAt = Math.max(dataUpdatedAt, providerUpdatedAt);
   const lastUpdated = lastUpdatedAt
     ? new Date(lastUpdatedAt).toLocaleTimeString()
     : null;
@@ -255,7 +253,7 @@ export function ConsoleStatusPanel({
               type="button"
               onClick={() => {
                 void refetch();
-                if (providerHealth) void refetchProviderHealth();
+                void refetchProviderHealth();
               }}
               disabled={isRefreshing}
               className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-200 transition-colors disabled:opacity-50"
