@@ -287,9 +287,7 @@ async def _update_langflow_global_variables(config, flows_service=None):
         await _safe_upsert("SELECTED_LANGUAGE_MODEL_PROVIDER", mapped_llm_provider)
 
     if errors:
-        raise RuntimeError(
-            f"Failed to update Langflow global variable(s): {', '.join(errors)}"
-        )
+        raise RuntimeError(f"Failed to update Langflow global variable(s): {', '.join(errors)}")
 
 
 async def _run_async_post_save_langflow_updates(

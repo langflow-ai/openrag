@@ -455,4 +455,3 @@ async def test_ensure_required_langflow_global_variables_handles_failed_delete_p
     assert "DELETE" in methods
     assert "POST" in methods
     assert "PATCH" in methods
-
