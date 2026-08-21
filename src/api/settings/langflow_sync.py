@@ -132,8 +132,15 @@ async def ensure_required_langflow_global_variables(config=None):
         if response.status_code == 200:
             existing_variables = response.json()
             existing_by_name = {v.get("name"): v for v in existing_variables if v.get("name")}
+        else:
+            logger.warning(
+                "Could not fetch Langflow variables at startup",
+                status_code=response.status_code,
+            )
+            return
     except Exception as e:
         logger.warning("Could not fetch Langflow variables at startup", error=str(e))
+        return
 
     # Update or fix existing variables in a single operation per variable
     for name, var in existing_by_name.items():
@@ -159,15 +166,22 @@ async def ensure_required_langflow_global_variables(config=None):
                     new_type=target_type,
                 )
                 del_resp = await clients.langflow_request("DELETE", f"/api/v1/variables/{var_id}")
-                if del_resp.status_code in (200, 204):
-                    recreate_payload = {
-                        "name": name,
-                        "value": target_val,
-                        "default_fields": [],
-                        "type": target_type,
-                    }
-                    await clients.langflow_request(
-                        "POST", "/api/v1/variables/", json=recreate_payload
+                if not (200 <= del_resp.status_code < 300):
+                    raise RuntimeError(
+                        f"Failed to delete Langflow global variable {name!r}: status_code={del_resp.status_code}"
+                    )
+                recreate_payload = {
+                    "name": name,
+                    "value": target_val,
+                    "default_fields": [],
+                    "type": target_type,
+                }
+                recreate_resp = await clients.langflow_request(
+                    "POST", "/api/v1/variables/", json=recreate_payload
+                )
+                if not (200 <= recreate_resp.status_code < 300):
+                    raise RuntimeError(
+                        f"Failed to recreate Langflow global variable {name!r}: status_code={recreate_resp.status_code}"
                     )
             elif has_default_fields or (is_generic and curr_val != target_val):
                 logger.info(
@@ -181,11 +195,17 @@ async def ensure_required_langflow_global_variables(config=None):
                 }
                 if is_generic:
                     patch_payload["value"] = target_val
-                await clients.langflow_request(
+                patch_resp = await clients.langflow_request(
                     "PATCH", f"/api/v1/variables/{var_id}", json=patch_payload
                 )
+                if not (200 <= patch_resp.status_code < 300):
+                    raise RuntimeError(
+                        f"Failed to patch Langflow global variable {name!r}: status_code={patch_resp.status_code}"
+                    )
         except Exception as e:
-            logger.warning(f"Failed to update Langflow global variable '{name}': {e}")
+            logger.warning(
+                "Failed to update Langflow global variable", variable_name=name, error=str(e)
+            )
 
     # Create missing generic variables
     for name in sorted(LANGFLOW_GENERIC_GLOBAL_VARIABLES):
@@ -194,18 +214,24 @@ async def ensure_required_langflow_global_variables(config=None):
                 target_val = _string_value(required_values.get(name, ""))
                 await _upsert_langflow_global_variable(name, target_val)
             except Exception as e:
-                logger.warning(f"Failed to create Langflow global variable '{name}': {e}")
+                logger.warning(
+                    "Failed to create Langflow global variable", variable_name=name, error=str(e)
+                )
 
 
 async def _update_langflow_global_variables(config, flows_service=None):
     """Update Langflow global variables for all configured providers"""
+    errors: list[str] = []
 
     async def _safe_upsert(name: str, value: str):
         try:
             await _upsert_langflow_global_variable(name, value)
-            logger.info(f"Set {name} global variable in Langflow")
+            logger.info("Set global variable in Langflow", variable_name=name)
         except Exception as e:
-            logger.warning(f"Failed to set {name} global variable in Langflow: {e}")
+            logger.warning(
+                "Failed to set global variable in Langflow", variable_name=name, error=str(e)
+            )
+            errors.append(f"{name}: {e}")
 
     providers = getattr(config, "providers", None)
 
@@ -241,7 +267,8 @@ async def _update_langflow_global_variables(config, flows_service=None):
             endpoint = await flows_service.resolve_ollama_url(ollama.endpoint, force_refresh=True)
             await _safe_upsert("OLLAMA_BASE_URL", endpoint)
         except Exception as e:
-            logger.warning(f"Failed to resolve OLLAMA_BASE_URL: {e}")
+            logger.warning("Failed to resolve OLLAMA_BASE_URL", error=str(e))
+            errors.append(f"OLLAMA_BASE_URL resolution: {e}")
 
     knowledge = getattr(config, "knowledge", None)
     if getattr(knowledge, "embedding_model", None):
@@ -258,6 +285,11 @@ async def _update_langflow_global_variables(config, flows_service=None):
     if getattr(agent, "llm_provider", None):
         mapped_llm_provider = map_provider(config.agent.llm_provider)
         await _safe_upsert("SELECTED_LANGUAGE_MODEL_PROVIDER", mapped_llm_provider)
+
+    if errors:
+        raise RuntimeError(
+            f"Failed to update Langflow global variable(s): {', '.join(errors)}"
+        )
 
 
 async def _run_async_post_save_langflow_updates(
