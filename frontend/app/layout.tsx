@@ -12,6 +12,7 @@ import { ChatProvider } from "@/contexts/chat-context";
 import { ConsoleStatusProvider } from "@/contexts/console-status-context";
 import { KnowledgeFilterProvider } from "@/contexts/knowledge-filter-context";
 import { TaskProvider } from "@/contexts/task-context";
+import { UnsavedChangesProvider } from "@/contexts/unsaved-changes-context";
 import Providers from "./providers";
 
 const inter = Inter({
@@ -64,7 +65,9 @@ export default function RootLayout({
                     <KnowledgeFilterProvider>
                       <ConsoleStatusProvider>
                         <ChatProvider>
-                          <LayoutWrapper>{children}</LayoutWrapper>
+                          <UnsavedChangesProvider>
+                            <LayoutWrapper>{children}</LayoutWrapper>
+                          </UnsavedChangesProvider>
                         </ChatProvider>
                       </ConsoleStatusProvider>
                     </KnowledgeFilterProvider>

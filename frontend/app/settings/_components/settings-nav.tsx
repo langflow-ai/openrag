@@ -1,12 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { type MouseEvent } from "react";
+import { usePathname } from "next/navigation";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/settings-tabs";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
-import { useUnsavedChangesGuard } from "@/contexts/unsaved-changes-context";
 import { useSettingsTabAccess } from "@/hooks/use-permissions";
 import {
   canAccessConnectorAccessTab,
@@ -29,11 +27,9 @@ const TABS = [
 
 export function SettingsNav() {
   const pathname = usePathname();
-  const router = useRouter();
   const { isAuthenticated, isNoAuthMode, isIbmAuthMode } = useAuth();
   const isCloudBrand = useIsCloudBrand();
   const tabAccess = useSettingsTabAccess();
-  const { guardNavigation } = useUnsavedChangesGuard();
 
   const currentTab = pathname.split("/").pop() ?? "connectors";
 
@@ -46,13 +42,6 @@ export function SettingsNav() {
       return (isAuthenticated || isNoAuthMode) && !isIbmAuthMode;
     return true;
   });
-
-  const handleTabClick = (e: MouseEvent, href: string) => {
-    e.preventDefault();
-    if (guardNavigation(href)) {
-      router.push(href);
-    }
-  };
 
   return (
     <Tabs value={currentTab}>
@@ -67,12 +56,7 @@ export function SettingsNav() {
             asChild
             className={cn(!isCloudBrand && "p-3 rounded-full")}
           >
-            <Link
-              href={`/settings/${tab.value}`}
-              onClick={(e) => handleTabClick(e, `/settings/${tab.value}`)}
-            >
-              {tab.label}
-            </Link>
+            <Link href={`/settings/${tab.value}`}>{tab.label}</Link>
           </TabsTrigger>
         ))}
       </TabsList>

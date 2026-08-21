@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
+import { useUnsavedChangesGuard } from "@/contexts/unsaved-changes-context";
 import { cn } from "@/lib/utils";
 import ThemeButtons from "./theme-switcher-buttons";
 
@@ -26,7 +27,17 @@ export function UserNav() {
     logout,
     version,
   } = useAuth();
+  const { guardNavigation } = useUnsavedChangesGuard();
   const { theme, setTheme } = useTheme();
+
+  const performLogout = async () => {
+    if (isCloudBrand) {
+      await fetch("/api/auth/logout", { method: "POST" });
+      window.location.href = "/logout";
+      return;
+    }
+    await logout();
+  };
 
   if (isLoading) {
     return <div className="h-8 w-8 rounded-full bg-muted animate-pulse" />;
@@ -131,13 +142,10 @@ export function UserNav() {
         <DropdownMenuSeparator className="m-0" />
         <button
           type="button"
-          onClick={async () => {
-            if (isCloudBrand) {
-              fetch("/api/auth/logout", { method: "POST" });
-              window.location.href = "/logout";
-              return;
+          onClick={() => {
+            if (guardNavigation("/logout", performLogout)) {
+              void performLogout();
             }
-            await logout();
           }}
           className="flex items-center hover:bg-muted w-full h-9 px-3"
         >
