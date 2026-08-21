@@ -23,9 +23,9 @@ RUN microdnf update -y \
     && rm -rf /var/cache/yum \
     && curl -LsSf https://astral.sh/uv/install.sh | sh \
     && python -m ensurepip --upgrade \
-    && python -m pip install --no-cache-dir --upgrade "pip>=26.1" "setuptools>=78.1.1"
+    && python -m pip install --no-cache-dir --upgrade "pip>=26.1.2" "setuptools>=78.1.1"
 
-ENV PATH="/root/.local/bin:$PATH" \
+ENV PATH="$PATH:/root/.local/bin" \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1
 
@@ -82,7 +82,7 @@ RUN microdnf update -y \
     && microdnf clean all \
     && rm -rf /var/cache/yum \
     && python -m ensurepip --upgrade \
-    && python -m pip install --no-cache-dir --upgrade "pip>=26.1" "setuptools>=78.1.1"
+    && python -m pip install --no-cache-dir --upgrade "pip>=26.1.2" "setuptools>=78.1.1"
 
 # Create a non-root user/group.
 # UID/GID 1000 is the conventional first non-root account and
@@ -99,7 +99,9 @@ COPY --chown=appuser:appuser cloud_securityconfig/ ./cloud_securityconfig/
 COPY --chown=appuser:appuser scripts/backend-entrypoint.sh /entrypoint.sh
 
 ENV VIRTUAL_ENV=/app/.venv
-ENV PATH="/app/.venv/bin:$PATH"
+# CWE-426 fix: explicitly set PATH so system-owned directories are always resolved
+# first. App venv dirs are appended last so they cannot shadow system binaries.
+ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/app/.venv/bin:/opt/app-root/bin:/opt/app-root/src/bin:/opt/app-root/src/.local/bin
 
 # Pre-create every directory the app writes to at runtime so they are owned
 # by appuser in the image layer. When Docker/Podman mounts a host volume over
@@ -121,4 +123,4 @@ EXPOSE 8000
 EXPOSE 8100
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["python", "src/main.py"]
+CMD ["/app/.venv/bin/python", "src/main.py"]
