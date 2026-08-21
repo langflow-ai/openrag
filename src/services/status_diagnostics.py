@@ -5,6 +5,7 @@ what's likely wrong and concrete steps to fix it.
 """
 
 from api.schemas.status import ComponentState, ComponentStatus, DiagnosisResponse
+from services.component_logs import LogEntry as ComponentLogEntry
 
 _DISPLAY = {
     "openrag": "OpenRAG Backend",
@@ -28,10 +29,7 @@ def _target(component: str) -> str | None:
 
 def diagnose_component(
     status: ComponentStatus,
-    # Raw dicts from component_logs.get_entries() — typed as dict to avoid
-    # importing services.component_logs.LogEntry (a TypedDict) which shares
-    # its name with api.schemas.status.LogEntry (a Pydantic model).
-    entries: list[dict] | None = None,
+    entries: list[ComponentLogEntry] | None = None,
 ) -> DiagnosisResponse:
     component = status.name
     display = _DISPLAY.get(component, status.display_name or component)
