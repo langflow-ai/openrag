@@ -1,12 +1,9 @@
 "use client";
 
 import {
-  AlertTriangle,
-  CheckCircle2,
   ChevronDown,
   ChevronUp,
   EvCharger,
-  HelpCircle,
   RefreshCw,
   ScrollText,
   TrendingUp,
@@ -39,53 +36,20 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { formatRelative, statusTokens } from "@/lib/status-utils";
 import { cn } from "@/lib/utils";
 
 // ─── status helpers ──────────────────────────────────────────────────────────
 
-function statusColor(status: ComponentState) {
-  switch (status) {
-    case "healthy":
-      return "text-emerald-400";
-    case "degraded":
-      return "text-amber-400";
-    case "unhealthy":
-      return "text-red-400";
-    default:
-      return "text-zinc-400";
-  }
-}
-
-function statusBadgeCls(status: ComponentState) {
-  switch (status) {
-    case "healthy":
-      return "bg-emerald-500/15 text-emerald-400 border-emerald-500/30";
-    case "degraded":
-      return "bg-amber-500/15 text-amber-400 border-amber-500/30";
-    case "unhealthy":
-      return "bg-red-500/15 text-red-400 border-red-500/30";
-    default:
-      return "bg-zinc-500/15 text-zinc-400 border-zinc-500/30";
-  }
-}
-
-function StatusIcon({
+export function StatusIcon({
   status,
   size = 16,
 }: {
   status: ComponentState;
   size?: number;
 }) {
-  switch (status) {
-    case "healthy":
-      return <CheckCircle2 size={size} className="text-emerald-400 shrink-0" />;
-    case "degraded":
-      return <AlertTriangle size={size} className="text-amber-400 shrink-0" />;
-    case "unhealthy":
-      return <XCircle size={size} className="text-red-400 shrink-0" />;
-    default:
-      return <HelpCircle size={size} className="text-zinc-400 shrink-0" />;
-  }
+  const { Icon, text } = statusTokens(status);
+  return <Icon size={size} className={cn(text, "shrink-0")} />;
 }
 
 // ─── summary placard ─────────────────────────────────────────────────────────
@@ -97,13 +61,13 @@ interface SummaryCardProps {
 }
 
 function SummaryCard({ label, count, state }: SummaryCardProps) {
-  const colorClass = statusColor(state);
+  const { text } = statusTokens(state);
   return (
     <div className="flex-1 rounded-lg bg-zinc-800/60 border border-zinc-700/50 px-3 py-2.5">
       <p className="text-[11px] font-medium text-zinc-400 uppercase tracking-wide">
         {label}
       </p>
-      <p className={cn("text-2xl font-semibold mt-0.5", colorClass)}>{count}</p>
+      <p className={cn("text-2xl font-semibold mt-0.5", text)}>{count}</p>
     </div>
   );
 }
@@ -158,18 +122,22 @@ function ActionButton({
   );
 }
 
-/** "just now" / "5 minutes ago" from an ISO-8601 timestamp. */
-function formatRelative(iso?: string | null): string {
-  if (!iso) return "—";
-  const secs = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
-  if (!Number.isFinite(secs) || secs < 0) return "just now";
-  if (secs < 45) return "just now";
-  const mins = Math.round(secs / 60);
-  if (mins < 60) return `${mins} minute${mins === 1 ? "" : "s"} ago`;
-  const hrs = Math.round(mins / 60);
-  if (hrs < 24) return `${hrs} hour${hrs === 1 ? "" : "s"} ago`;
-  const days = Math.round(hrs / 24);
-  return `${days} day${days === 1 ? "" : "s"} ago`;
+// ─── reusable skeleton list list ───────────────────────────────────────────────
+
+function SkeletonList({
+  count,
+  className,
+}: {
+  count: number;
+  className: string;
+}) {
+  return (
+    <div className="space-y-2">
+      {Array.from({ length: count }, (_, i) => (
+        <div key={i} className={cn("animate-pulse", className)} />
+      ))}
+    </div>
+  );
 }
 
 // ─── log level helpers ────────────────────────────────────────────────────────
@@ -213,7 +181,7 @@ function ComponentLogsModal({
       <DialogContent
         className={cn(
           "bg-zinc-900 border-zinc-700 text-zinc-100",
-          "w-[560px] max-w-[95vw] max-h-[70vh] flex flex-col gap-0 p-0",
+          "w-[560px] max-w-[95vw] max-h-[82vh] flex flex-col gap-0 p-0",
         )}
       >
         {/* Modal header */}
@@ -238,17 +206,9 @@ function ComponentLogsModal({
         </DialogHeader>
 
         {/* Log list */}
-        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1.5 min-h-0">
+        <div className="flex-1 overflow-y-auto scrollbar-hide px-4 py-3 space-y-1.5 min-h-0">
           {isLoading ? (
-            <div className="space-y-1.5">
-              {[...Array(5)].map((_, i) => (
-                <div
-                  // biome-ignore lint/suspicious/noArrayIndexKey: skeleton placeholders
-                  key={i}
-                  className="h-8 rounded bg-zinc-800/60 animate-pulse"
-                />
-              ))}
-            </div>
+            <SkeletonList count={5} className="h-8 rounded bg-zinc-800/60" />
           ) : isError ? (
             <p className="text-sm text-red-400">
               {error instanceof Error ? error.message : "Failed to load logs."}
@@ -258,7 +218,7 @@ function ComponentLogsModal({
               No log entries recorded yet.
             </p>
           ) : (
-            entries.map((entry, idx) => (
+            entries.map((entry) => (
               <div
                 // biome-ignore lint/suspicious/noArrayIndexKey: log entries have no stable id
                 key={`${entry.timestamp}-${entry.message}`}
@@ -380,6 +340,99 @@ function ComponentDiagnoseModal({
 
 // ─── component placard ───────────────────────────────────────────────────────
 
+interface ComponentCardDetailsProps {
+  component: ComponentStatus;
+  isRealComponent: boolean;
+  syncing: boolean;
+  onLogsOpen: () => void;
+  onDebugOpen: () => void;
+  onSync: () => void;
+}
+
+function ComponentCardDetails({
+  component,
+  isRealComponent,
+  syncing,
+  onLogsOpen,
+  onDebugOpen,
+  onSync,
+}: ComponentCardDetailsProps) {
+  const { latency_ms, build, metadata, checked_at } = component;
+
+  const hasBuildDetails =
+    build &&
+    (build.git_sha || build.build_time || build.image || build.image_digest);
+  const hasMetadata = metadata && Object.keys(metadata).length > 0;
+
+  return (
+    <div className="border-t border-zinc-700/50 px-3.5 py-2.5 space-y-1">
+      {isRealComponent && (
+        <>
+          <MetaRow label="Last Sync" value={formatRelative(checked_at)} />
+          <div className="flex items-center justify-between gap-2 py-1">
+            <span className="text-xs text-zinc-500 shrink-0">
+              Response Time
+            </span>
+            <span className="flex items-center gap-1 text-xs text-zinc-300 tabular-nums">
+              <TrendingUp size={12} className="text-emerald-400" />
+              {latency_ms != null ? `${latency_ms}ms` : "—"}
+            </span>
+          </div>
+        </>
+      )}
+      {build?.git_sha && (
+        <MetaRow label="Git SHA" value={build.git_sha.slice(0, 12)} />
+      )}
+      {build?.build_time && (
+        <MetaRow label="Build Time" value={build.build_time} />
+      )}
+      {build?.image && <MetaRow label="Image" value={build.image} />}
+      {build?.image_digest && (
+        <MetaRow label="Digest" value={`${build.image_digest.slice(0, 20)}…`} />
+      )}
+      {hasMetadata
+        ? Object.entries(metadata).map(([k, v]) => (
+            <MetaRow key={k} label={k} value={String(v)} />
+          ))
+        : null}
+      {!isRealComponent && !hasBuildDetails && !hasMetadata && (
+        <p className="text-xs text-zinc-500 italic">
+          No additional details available.
+        </p>
+      )}
+
+      {/* Action row — not shown for the synthetic Model Providers card */}
+      {isRealComponent && (
+        <div className="flex items-center justify-between gap-2 pt-2">
+          <ActionButton
+            icon={<Wrench size={14} />}
+            ariaLabel="Debug this component"
+            onClick={onDebugOpen}
+          />
+          <div className="flex items-center gap-1.5">
+            <ActionButton
+              icon={<ScrollText size={13} />}
+              label="Logs"
+              onClick={onLogsOpen}
+            />
+            <ActionButton
+              icon={
+                <RefreshCw
+                  size={13}
+                  className={cn(syncing && "animate-spin")}
+                />
+              }
+              label="Sync"
+              disabled={syncing}
+              onClick={onSync}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface ComponentCardProps {
   component: ComponentStatus;
 }
@@ -396,21 +449,17 @@ function ComponentCard({ component }: ComponentCardProps) {
   const syncing =
     syncMutation.isPending && syncMutation.variables === component.name;
 
-  const {
-    display_name,
-    status,
-    version,
-    latency_ms,
-    message,
-    build,
-    metadata,
-    checked_at,
-  } = component;
+  const handleSync = useCallback(() => {
+    syncMutation.mutate(component.name, {
+      onError: (err) => {
+        toast.error(
+          `Sync failed: ${err instanceof Error ? err.message : "unknown error"}`,
+        );
+      },
+    });
+  }, [syncMutation, component.name]);
 
-  const hasBuildDetails =
-    build &&
-    (build.git_sha || build.build_time || build.image || build.image_digest);
-  const hasMetadata = metadata && Object.keys(metadata).length > 0;
+  const { display_name, status, version, latency_ms, message } = component;
 
   return (
     <div
@@ -436,7 +485,7 @@ function ComponentCard({ component }: ComponentCardProps) {
             <span
               className={cn(
                 "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border capitalize",
-                statusBadgeCls(status),
+                statusTokens(status).badge,
               )}
             >
               {status}
@@ -464,82 +513,14 @@ function ComponentCard({ component }: ComponentCardProps) {
 
       {/* Expanded details */}
       {expanded && (
-        <div className="border-t border-zinc-700/50 px-3.5 py-2.5 space-y-1">
-          {isRealComponent && (
-            <>
-              <MetaRow label="Last Sync" value={formatRelative(checked_at)} />
-              <div className="flex items-center justify-between gap-2 py-1">
-                <span className="text-xs text-zinc-500 shrink-0">
-                  Response Time
-                </span>
-                <span className="flex items-center gap-1 text-xs text-zinc-300 tabular-nums">
-                  <TrendingUp size={12} className="text-emerald-400" />
-                  {latency_ms != null ? `${latency_ms}ms` : "—"}
-                </span>
-              </div>
-            </>
-          )}
-          {build?.git_sha && (
-            <MetaRow label="Git SHA" value={build.git_sha.slice(0, 12)} />
-          )}
-          {build?.build_time && (
-            <MetaRow label="Build Time" value={build.build_time} />
-          )}
-          {build?.image && <MetaRow label="Image" value={build.image} />}
-          {build?.image_digest && (
-            <MetaRow
-              label="Digest"
-              value={`${build.image_digest.slice(0, 20)}…`}
-            />
-          )}
-          {hasMetadata
-            ? Object.entries(metadata).map(([k, v]) => (
-                <MetaRow key={k} label={k} value={String(v)} />
-              ))
-            : null}
-          {!isRealComponent && !hasBuildDetails && !hasMetadata && (
-            <p className="text-xs text-zinc-500 italic">
-              No additional details available.
-            </p>
-          )}
-
-          {/* Action row — not shown for the synthetic Model Providers card */}
-          {isRealComponent && (
-            <div className="flex items-center justify-between gap-2 pt-2">
-              <ActionButton
-                icon={<Wrench size={14} />}
-                ariaLabel="Debug this component"
-                onClick={() => setDebugOpen(true)}
-              />
-              <div className="flex items-center gap-1.5">
-                <ActionButton
-                  icon={<ScrollText size={13} />}
-                  label="Logs"
-                  onClick={() => setLogsOpen(true)}
-                />
-                <ActionButton
-                  icon={
-                    <RefreshCw
-                      size={13}
-                      className={cn(syncing && "animate-spin")}
-                    />
-                  }
-                  label="Sync"
-                  disabled={syncing}
-                  onClick={() =>
-                    syncMutation.mutate(component.name, {
-                      onError: (err) => {
-                        toast.error(
-                          `Sync failed: ${err instanceof Error ? err.message : "unknown error"}`,
-                        );
-                      },
-                    })
-                  }
-                />
-              </div>
-            </div>
-          )}
-        </div>
+        <ComponentCardDetails
+          component={component}
+          isRealComponent={isRealComponent}
+          syncing={syncing}
+          onLogsOpen={() => setLogsOpen(true)}
+          onDebugOpen={() => setDebugOpen(true)}
+          onSync={handleSync}
+        />
       )}
 
       {/* Modals */}
@@ -734,15 +715,10 @@ export function ConsoleStatusPanel({ onClose }: ConsoleStatusPanelProps) {
 
         {/* Component placards */}
         {isLoading ? (
-          <div className="space-y-2">
-            {[...Array(4)].map((_, i) => (
-              <div
-                // biome-ignore lint/suspicious/noArrayIndexKey: skeleton placeholders have no identity
-                key={i}
-                className="h-14 rounded-xl bg-zinc-800/50 border border-zinc-700/50 animate-pulse"
-              />
-            ))}
-          </div>
+          <SkeletonList
+            count={4}
+            className="h-14 rounded-xl bg-zinc-800/50 border border-zinc-700/50"
+          />
         ) : components.length === 0 ? (
           <p className="text-xs text-zinc-500 text-center py-6">
             No components returned by status API.
@@ -811,10 +787,7 @@ export function ConsoleStatusButton({
           <span
             className={cn(
               "relative inline-flex h-2 w-2 rounded-full",
-              overallStatus === "healthy" && "bg-emerald-400",
-              overallStatus === "degraded" && "bg-amber-400",
-              overallStatus === "unhealthy" && "bg-red-400",
-              overallStatus === "unknown" && "bg-zinc-400",
+              statusTokens(overallStatus).dot,
             )}
           />
         </span>

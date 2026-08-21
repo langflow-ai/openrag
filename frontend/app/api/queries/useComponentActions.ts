@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { getApiError } from "@/lib/status-utils";
 import type {
   ComponentState,
   ComponentStatus,
@@ -51,9 +52,7 @@ export function useComponentSyncMutation() {
       );
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(
-          typeof body?.detail === "string" ? body.detail : `HTTP ${res.status}`,
-        );
+        throw new Error(getApiError(body, res.status));
       }
       return body as ComponentActionResponse;
     },

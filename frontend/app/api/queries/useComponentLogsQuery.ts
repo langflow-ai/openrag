@@ -1,8 +1,5 @@
-import {
-  type UseQueryOptions,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { type UseQueryOptions, useQuery } from "@tanstack/react-query";
+import { getApiError } from "@/lib/status-utils";
 
 export interface LogEntry {
   timestamp: string; // ISO-8601 UTC
@@ -26,11 +23,7 @@ async function fetchComponentLogs(
   );
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    const detail =
-      typeof body?.detail === "string"
-        ? body.detail
-        : `HTTP ${response.status}`;
-    throw new Error(detail);
+    throw new Error(getApiError(body, response.status));
   }
   return response.json() as Promise<ComponentLogsResponse>;
 }
@@ -43,18 +36,13 @@ export const useComponentLogsQuery = (
     "queryKey" | "queryFn"
   >,
 ) => {
-  const queryClient = useQueryClient();
-
-  return useQuery(
-    {
-      queryKey: ["component-logs", component, tail],
-      queryFn: () => fetchComponentLogs(component as string, tail),
-      enabled: !!component,
-      retry: 1,
-      staleTime: 5000,
-      refetchOnWindowFocus: false,
-      ...options,
-    },
-    queryClient,
-  );
+  return useQuery({
+    queryKey: ["component-logs", component, tail],
+    queryFn: () => fetchComponentLogs(component as string, tail),
+    enabled: !!component,
+    retry: 1,
+    staleTime: 5000,
+    refetchOnWindowFocus: false,
+    ...options,
+  });
 };

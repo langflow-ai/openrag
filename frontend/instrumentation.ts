@@ -1,3 +1,9 @@
+// Instrumentation runs in the Node.js runtime only. Exporting `runtime`
+// tells the Next.js bundler not to analyse this file for Edge compatibility,
+// which suppresses the false-positive "node:http not supported in Edge
+// Runtime" warning that the dynamic import guard on line 9 already prevents.
+export const runtime = "nodejs";
+
 const SERVER_KEY = Symbol.for("openrag.metricsServer");
 const START_TIME = Symbol("openrag.requestStart");
 
