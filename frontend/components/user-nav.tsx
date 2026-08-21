@@ -32,7 +32,11 @@ export function UserNav() {
 
   const performLogout = async () => {
     if (isCloudBrand) {
-      await fetch("/api/auth/logout", { method: "POST" });
+      try {
+        await fetch("/api/auth/logout", { method: "POST" });
+      } catch {
+        // Best-effort server cleanup; redirect regardless.
+      }
       window.location.href = "/logout";
       return;
     }
