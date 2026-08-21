@@ -247,4 +247,23 @@ stringData:
     SERVICE_NAME={{ .Values.backend.serviceName | quote }}
     {{- end }}
     SESSION_SECRET={{ $sessionSecret | quote }}
+
+    # Instana APM
+    # INSTANA_AGENT_HOST is deliberately absent: it is the pod's own node IP,
+    # which this file cannot know at render time. The backend Deployment injects
+    # it through the Downward API instead. bootstrap.py loads .env with
+    # override=False, so that container env var wins over anything here.
+    INSTANA_ENABLED={{ ternary "true" "false" .Values.backend.instana.enabled }}
+    {{- if .Values.backend.instana.enabled }}
+    INSTANA_AGENT_PORT={{ .Values.backend.instana.agentPort }}
+    {{- if .Values.backend.instana.serviceName }}
+    INSTANA_SERVICE_NAME={{ .Values.backend.instana.serviceName | quote }}
+    {{- end }}
+    {{- if .Values.backend.instana.logLevel }}
+    INSTANA_LOG_LEVEL={{ .Values.backend.instana.logLevel | quote }}
+    {{- end }}
+    {{- if .Values.backend.instana.zone }}
+    INSTANA_ZONE={{ .Values.backend.instana.zone | quote }}
+    {{- end }}
+    {{- end }}
 {{- end }}

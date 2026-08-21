@@ -218,7 +218,43 @@ When the operator environment contains `OPTLF_LANGFLOW_WORKERS=8`, the prefix `O
 
 ### ValueFrom Support
 
-CR env vars using `valueFrom` (e.g., secrets, configmaps) are NOT evaluated at this stage. They are passed directly to the pod spec and resolved by Kubernetes at runtime. Only env vars with direct `value` fields are merged into the `.env` file.
+CR env vars using `valueFrom` are resolved by the operator **during reconcile** and merged into the `.env` file like any other value — they are not passed through to the pod spec:
+
+| `valueFrom` source | Behaviour |
+|---|---|
+| `secretKeyRef` | Read from the cluster and written into `.env`. Missing keys error unless `optional: true`. |
+| `configMapKeyRef` | Same. |
+| `fieldRef` | **Rejected** with an error — there is no pod yet at reconcile time. |
+| `resourceFieldRef` | **Rejected**, same reason. |
+
+Resolving secrets into the file rather than the container's `Env` is deliberate: it keeps credentials from showing up when someone runs `env` inside the pod.
+
+### Downward API Exception: Instana
+
+The backend container's `Env` is empty by design. One variable breaks that rule.
+
+Instana's Kubernetes topology is one agent per node behind a hostPort, so the tracer's agent address is the pod's **own node IP** — exactly the kind of value `fieldRef` exists for, and exactly what the table above cannot express. `InstanaAgentHostEnvVar` therefore injects `INSTANA_AGENT_HOST` onto the container via `fieldRef: status.hostIP`. This is safe to layer on top of `.env` because the backend's `bootstrap.py` calls `load_dotenv(override=False)`, so a real container env var wins over the file. A node IP is not a credential, so the rationale above is unaffected.
+
+Enable it through the CR:
+
+```yaml
+spec:
+  backend:
+    env:
+      - name: INSTANA_ENABLED
+        value: "true"
+      # Optional. Omit rather than setting empty — the tracer tests these for
+      # presence, not truthiness, so "" means a blank service name and an
+      # "Unknown INSTANA_LOG_LEVEL" warning on every boot.
+      - name: INSTANA_SERVICE_NAME
+        value: "OpenRAG Backend"
+      - name: INSTANA_ZONE
+        value: "openrag-cpd"
+```
+
+`INSTANA_AGENT_HOST` is injected automatically and should be left unset. Setting it explicitly suppresses the injection and pins the tracer to that address instead — use that only for a non-DaemonSet agent reached through a Service.
+
+The operator never deploys an agent. Install one separately with IBM's `instana-agent` chart or operator: it needs a privileged, host-PID DaemonSet, which is a cluster-admin concern.
 
 ## Testing
 
@@ -230,9 +266,16 @@ See `env_test.go` for comprehensive test coverage of:
 - ValueFrom handling
 - Real-world scenarios
 
+See `instana_test.go` for the Downward API exception:
+- Default-off, and the truthiness values that enable it
+- `status.hostIP` injection, and explicit-host suppression
+- Operator-prefix precedence and `valueFrom` fallback
+- The guard against giving presence-sensitive vars empty defaults
+
 Run tests:
 ```bash
 go test -v ./internal/controller -run TestEnvVarManager
+go test -v ./internal/controller -run Instana
 ```
 
 ## Best Practices

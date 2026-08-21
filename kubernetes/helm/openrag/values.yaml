@@ -381,6 +381,28 @@ backend:
     enabled: false
     port: 8100
 
+  # Instana APM (opt-in, default off).
+  #
+  # Requires an Instana agent already running in the cluster — install it
+  # separately with IBM's own instana-agent chart or operator. This chart never
+  # deploys an agent: the agent needs a privileged, host-PID DaemonSet, which is
+  # a cluster-admin concern, not an application one.
+  instana:
+    enabled: false
+    # Agent address. Leave empty to use the pod's own node IP via the Downward
+    # API, which is what the standard agent DaemonSet (hostPort 42699) expects.
+    # Set explicitly only when routing to a fixed address instead, e.g. a
+    # Service in front of a non-DaemonSet agent.
+    agentHost: ""
+    agentPort: 42699
+    # All optional. Left empty they are omitted from the rendered .env entirely
+    # rather than written as an empty value: the tracer tests these for
+    # presence, not truthiness, so an empty string would set a blank service
+    # name and log an "Unknown INSTANA_LOG_LEVEL" warning on every boot.
+    serviceName: ""                       # Shown in Analyze Traces / Applications
+    logLevel: ""                          # Tracer's own verbosity: debug|info|warn|error
+    zone: ""                              # Custom zone in the Infrastructure view
+
 # ============================================================================
 # OpenRAG Frontend Configuration
 # ============================================================================

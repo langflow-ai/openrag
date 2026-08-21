@@ -804,6 +804,17 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, target
 	// The .env file is mounted and sourced by the application
 	var envVars []corev1.EnvVar // Empty - all vars are in .env file
 
+	// Sole exception: the Instana agent address is the pod's own node IP, which
+	// a .env file rendered at reconcile time cannot carry. See
+	// InstanaAgentHostEnvVar. Nil unless Instana is enabled, and it carries a
+	// node IP rather than a credential, so the "keep secrets out of `env`"
+	// rationale above is unaffected.
+	if r.EnvVarManager != nil {
+		if instanaHost := r.EnvVarManager.InstanaAgentHostEnvVar(spec.Env); instanaHost != nil {
+			envVars = append(envVars, *instanaHost)
+		}
+	}
+
 	baseLabels := componentLabels(o.Name, "be")
 	deploymentLabels := mergeDeploymentLabels(baseLabels, spec.Labels)
 	deploymentAnnotations := mergeDeploymentAnnotations(spec.Annotations)
