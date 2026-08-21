@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { type MouseEvent } from "react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/settings-tabs";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
+import { useUnsavedChangesGuard } from "@/contexts/unsaved-changes-context";
 import { useSettingsTabAccess } from "@/hooks/use-permissions";
 import {
   canAccessConnectorAccessTab,
@@ -15,10 +17,7 @@ import { cn } from "@/lib/utils";
 const TABS = [
   { value: "connectors", label: "Connectors" },
   { value: "providers", label: "Providers", perm: "providers:write" },
-  // Knowledge ingest settings write workspace config (admin-only).
-  // Preview controls on this tab stay gated by isIngestPreviewEnabled.
   { value: "ingestion", label: "Ingestion", perm: "config:write" },
-  // Agent settings write workspace config (admin-only).
   { value: "agent", label: "Agent", perm: "config:write" },
   { value: "api-keys", label: "API Keys", apiKeysTab: true },
   {
@@ -30,9 +29,11 @@ const TABS = [
 
 export function SettingsNav() {
   const pathname = usePathname();
+  const router = useRouter();
   const { isAuthenticated, isNoAuthMode, isIbmAuthMode } = useAuth();
   const isCloudBrand = useIsCloudBrand();
   const tabAccess = useSettingsTabAccess();
+  const { guardNavigation } = useUnsavedChangesGuard();
 
   const currentTab = pathname.split("/").pop() ?? "connectors";
 
@@ -45,6 +46,13 @@ export function SettingsNav() {
       return (isAuthenticated || isNoAuthMode) && !isIbmAuthMode;
     return true;
   });
+
+  const handleTabClick = (e: MouseEvent, href: string) => {
+    e.preventDefault();
+    if (guardNavigation(href)) {
+      router.push(href);
+    }
+  };
 
   return (
     <Tabs value={currentTab}>
@@ -59,7 +67,12 @@ export function SettingsNav() {
             asChild
             className={cn(!isCloudBrand && "p-3 rounded-full")}
           >
-            <Link href={`/settings/${tab.value}`}>{tab.label}</Link>
+            <Link
+              href={`/settings/${tab.value}`}
+              onClick={(e) => handleTabClick(e, `/settings/${tab.value}`)}
+            >
+              {tab.label}
+            </Link>
           </TabsTrigger>
         ))}
       </TabsList>

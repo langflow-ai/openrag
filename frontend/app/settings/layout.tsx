@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { UnsavedChangesProvider } from "@/contexts/unsaved-changes-context";
 import { SettingsShell } from "./_components/settings-shell";
 
 export default function SettingsLayout({
@@ -8,7 +9,9 @@ export default function SettingsLayout({
 }) {
   return (
     <Suspense>
-      <SettingsShell>{children}</SettingsShell>
+      <UnsavedChangesProvider>
+        <SettingsShell>{children}</SettingsShell>
+      </UnsavedChangesProvider>
     </Suspense>
   );
 }

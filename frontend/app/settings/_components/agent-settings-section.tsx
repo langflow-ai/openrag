@@ -25,6 +25,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
+import { useRegisterDirty } from "@/contexts/unsaved-changes-context";
 import { trackButton } from "@/lib/analytics";
 import { DEFAULT_AGENT_SETTINGS, UI_CONSTANTS } from "@/lib/constants";
 import { resolveLangflowEditUrl } from "@/lib/url-utils";
@@ -180,6 +181,9 @@ export function AgentSettingsSection() {
       handleModelChange(fallback.value, fallback.provider);
     }
   }, [settings.agent?.llm_model, allLlmOptions, handleModelChange]);
+
+  const agentDirty = systemPrompt !== (settings.agent?.system_prompt ?? "");
+  useRegisterDirty("agent-settings", agentDirty);
 
   useEffect(() => {
     if (settings.agent?.system_prompt) {
