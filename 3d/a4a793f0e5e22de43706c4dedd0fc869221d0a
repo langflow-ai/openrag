@@ -1,0 +1,2 @@
+{"id":"7cd2d7e5-d36f-4bfc-bdc9-0febc88c21ca","fileUri":"file:///Users/visveshjegadheesh/openrag/src/config/config_manager.py","repoName":"langflow-ai/openrag","branchName":"fix/cve-mcp-1.28.1","toolName":"search_and_replace","startLine":201,"endLine":201,"taskId":null,"createdAt":1787342129194}
+{"id":"0bd84e85-c7d1-4773-91c0-cd421a56e5fa","fileUri":"file:///Users/visveshjegadheesh/openrag/pyproject.toml","repoName":"langflow-ai/openrag","branchName":"fix/cve-mcp-1.28.1","toolName":"apply_diff","startLine":59,"endLine":59,"taskId":null,"createdAt":1787342129194}
