@@ -15,6 +15,7 @@ import { statusTokens } from "@/lib/status-utils";
 import { cn } from "@/lib/utils";
 import { ComponentCard } from "./component-card";
 import { providerHealthToComponent } from "./provider-health";
+import { refreshConsoleStatusQueries } from "./refresh";
 
 /** Gap between the bottom of banners+header and the floating panel. */
 const PANEL_GAP_PX = 10;
@@ -98,6 +99,7 @@ export function ConsoleStatusPanel({
     refetch: refetchProviderHealth,
     isFetching: isProviderFetching,
     dataUpdatedAt: providerUpdatedAt,
+    isEnabled: isProviderQueryEnabled,
   } = useProviderHealthQuery();
 
   const backendComponents = Array.isArray(data?.components)
@@ -252,8 +254,11 @@ export function ConsoleStatusPanel({
             <button
               type="button"
               onClick={() => {
-                void refetch();
-                void refetchProviderHealth();
+                refreshConsoleStatusQueries(
+                  refetch,
+                  refetchProviderHealth,
+                  isProviderQueryEnabled,
+                );
               }}
               disabled={isRefreshing}
               className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-200 transition-colors disabled:opacity-50"
