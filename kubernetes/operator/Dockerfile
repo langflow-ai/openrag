@@ -20,6 +20,9 @@ RUN microdnf install -y ca-certificates && \
     microdnf clean all && \
     rm -rf /var/cache/yum
 
+# CWE-426 fix: explicitly set PATH so system-owned directories are always resolved first.
+ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
 WORKDIR /
 COPY --from=builder /workspace/manager .
 

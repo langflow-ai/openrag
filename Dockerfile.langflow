@@ -40,6 +40,10 @@ ENV LANGFLOW_COMPONENTS_PATH=/app/custom_components
 ENV LANGFLOW_COMPONENTS_INDEX_PATH=/app/component_index.json
 ENV LANGFLOW_ALLOW_CUSTOM_COMPONENTS=false
 
+# CWE-426 fix: explicitly set PATH so system-owned directories are always resolved
+# first. App venv and ubi python dirs are appended last so they cannot shadow system binaries.
+ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/app/.venv/bin:/opt/app-root/bin:/opt/app-root/src/bin:/opt/app-root/src/.local/bin
+
 EXPOSE 7860
 
 ENTRYPOINT ["langflow-entrypoint"]
