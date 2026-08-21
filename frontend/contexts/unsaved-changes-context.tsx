@@ -4,8 +4,8 @@ import { useRouter } from "next/navigation";
 import {
   createContext,
   type ReactNode,
+  use,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -217,7 +217,7 @@ export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
 }
 
 export function useRegisterDirty(key: string, isDirty: boolean) {
-  const ctx = useContext(UnsavedChangesContext);
+  const ctx = use(UnsavedChangesContext);
   if (!ctx) {
     throw new Error(
       "useRegisterDirty must be used within UnsavedChangesProvider",
@@ -236,7 +236,7 @@ export function useRegisterDirty(key: string, isDirty: boolean) {
 }
 
 export function useUnsavedChangesGuard() {
-  const ctx = useContext(UnsavedChangesContext);
+  const ctx = use(UnsavedChangesContext);
   if (!ctx) {
     throw new Error(
       "useUnsavedChangesGuard must be used within UnsavedChangesProvider",
