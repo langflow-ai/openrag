@@ -15,8 +15,10 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o ma
 
 FROM registry.access.redhat.com/ubi10/ubi-minimal:latest
 
-# Install necessary CA certificates for HTTPS connections
-RUN microdnf install -y ca-certificates && \
+# Refresh base packages to pick up security fixes (e.g. RHSA-2026:42739 / acl)
+# and install CA certificates for HTTPS connections.
+RUN microdnf update -y && \
+    microdnf install -y ca-certificates && \
     microdnf clean all && \
     rm -rf /var/cache/yum
 
