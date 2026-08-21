@@ -9,7 +9,8 @@ function escapeRegExp(str: string): string {
 export type SettingsTab =
   | "Connectors"
   | "Providers"
-  | "Langflow"
+  | "Ingestion"
+  | "Agent"
   | "Connectors Permission";
 
 export class Settings {
@@ -113,14 +114,24 @@ export class Settings {
 
   /**
    * Get locator for model dropdown by section name
-   * @param section - The section name (e.g., "Chat Model", "Embedding Model")
+   * @param section - The section name (e.g., "Language model", "Embedding model")
    * @returns Locator for the dropdown
    */
   private getModelDropdown(section: string) {
+    // Target the field label so we don't match helper copy such as
+    // "The embedding model saves as soon as you pick one".
     return this.page
-      .getByText(new RegExp(escapeRegExp(section), "i"))
+      .locator("label")
+      .filter({ hasText: new RegExp(`^${escapeRegExp(section)}`, "i") })
       .locator("..")
       .getByRole("combobox");
+  }
+
+  /**
+   * Language model lives on Agent; embedding model lives on Ingestion.
+   */
+  private tabForModelSection(section: string): SettingsTab {
+    return /embedding/i.test(section) ? "Ingestion" : "Agent";
   }
 
   /**
@@ -166,7 +177,7 @@ export class Settings {
 
   /**
    * Click a Settings page tab
-   * @param tabName - The tab to click: 'Connectors' | 'Providers' | 'Langflow' | 'Connectors Permission'
+   * @param tabName - The tab to click: 'Connectors' | 'Providers' | 'Ingestion' | 'Agent' | 'Connectors Permission'
    */
   async clickTab(tabName: SettingsTab) {
     logger.info(`Clicking Settings tab: ${tabName}`);
@@ -203,7 +214,7 @@ export class Settings {
   }
 
   async setPictureDescriptions(enabled: boolean) {
-    await this.open();
+    await this.clickTab("Ingestion");
     const toggle = this.pictureDescriptionsToggle();
     await toggle.scrollIntoViewIfNeeded();
     const state = await toggle.getAttribute("data-state");
@@ -215,7 +226,7 @@ export class Settings {
   }
 
   async setTableStructure(enabled: boolean) {
-    await this.open();
+    await this.clickTab("Ingestion");
     const toggle = this.tableStructureToggle();
     await toggle.scrollIntoViewIfNeeded();
     const state = await toggle.getAttribute("data-state");
@@ -227,7 +238,7 @@ export class Settings {
   }
 
   async setOCR(enabled: boolean) {
-    await this.open();
+    await this.clickTab("Ingestion");
     const toggle = this.ocrToggle();
     await toggle.scrollIntoViewIfNeeded();
     const state = await toggle.getAttribute("data-state");
@@ -239,7 +250,7 @@ export class Settings {
   }
 
   async setDisableLangflowIngestion(enabled: boolean) {
-    await this.clickTab("Langflow");
+    await this.clickTab("Ingestion");
     const toggle = this.disableLangflowIngestionToggle();
     await toggle.scrollIntoViewIfNeeded();
     const state = await toggle.getAttribute("data-state");
@@ -250,8 +261,12 @@ export class Settings {
     }
   }
 
+  /**
+   * Select a language or embedding model. Opens Agent for language models
+   * and Ingestion for embedding models.
+   */
   async selectModel(section: string, model: string) {
-    await this.open();
+    await this.clickTab(this.tabForModelSection(section));
     const dropdown = this.getModelDropdown(section);
     await dropdown.scrollIntoViewIfNeeded();
     const currentText = (await dropdown.textContent())?.toLowerCase() || "";
@@ -285,7 +300,7 @@ export class Settings {
    * @param chunkOverlap - Chunk overlap value (e.g., "50")
    */
   async updateChunkSettings(chunkSize: string, chunkOverlap: string) {
-    await this.open();
+    await this.clickTab("Ingestion");
 
     // Find and update chunk size input
     const chunkSizeInp = this.chunkSizeInput();

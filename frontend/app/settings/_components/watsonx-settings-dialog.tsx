@@ -105,7 +105,7 @@ const WatsonxSettingsDialog = ({
         action: {
           label: "Settings",
           onClick: () => {
-            router.push("/settings/langflow?focusLlmModel=true");
+            router.push("/settings/agent?focusLlmModel=true");
           },
         },
       });
