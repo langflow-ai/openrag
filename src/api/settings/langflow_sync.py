@@ -21,7 +21,6 @@ from api.settings.helpers import (
 from config import settings
 from config.settings import clients, get_openrag_config
 from services.docling_service import get_docling_preset_configs
-from utils.langflow_headers import map_provider
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -32,11 +31,10 @@ _background_tasks: set[asyncio.Task] = set()
 
 LANGFLOW_CREDENTIAL_GLOBAL_VARIABLES = frozenset(
     {
-        "ANTHROPIC_API_KEY",
         "JWT",
         "OPENAI_API_KEY",
+        "OPENRAG_LLM_TOKEN",
         "OPENSEARCH_PASSWORD",
-        "WATSONX_APIKEY",
     }
 )
 
@@ -47,20 +45,18 @@ LANGFLOW_GENERIC_GLOBAL_VARIABLES = frozenset(
         "DOCLING_TASK_ID",
         "FILESIZE",
         "MIMETYPE",
-        "OLLAMA_BASE_URL",
         "OPENRAG-QUERY-FILTER",
         "OPENRAG_INGEST_BATCH_SIZE",
         "OPENRAG_INGEST_RUN_ID",
         "OPENRAG_INGEST_TOKEN",
         "OPENRAG_INGEST_URL",
+        "OPENRAG_LLM_BASE_URL",
         "OPENSEARCH_INDEX_NAME",
         "OPENSEARCH_URL",
         "SELECTED_EMBEDDING_MODEL",
         "SELECTED_EMBEDDING_MODEL_PROVIDER",
         "SELECTED_LANGUAGE_MODEL",
         "SELECTED_LANGUAGE_MODEL_PROVIDER",
-        "WATSONX_PROJECT_ID",
-        "WATSONX_URL",
     }
 )
 
@@ -86,10 +82,7 @@ def _string_value(value) -> str:
 
 def _required_generic_global_values(config) -> dict[str, str]:
     knowledge = getattr(config, "knowledge", None)
-    providers = getattr(config, "providers", None)
     agent = getattr(config, "agent", None)
-    watsonx = getattr(providers, "watsonx", None)
-    ollama = getattr(providers, "ollama", None)
 
     return {
         "DOCLING_SERVE_URL": settings.get_langflow_docling_url(),
@@ -97,83 +90,55 @@ def _required_generic_global_values(config) -> dict[str, str]:
         "DOCLING_TASK_ID": "None",
         "FILESIZE": "0",
         "MIMETYPE": "None",
-        "OLLAMA_BASE_URL": _string_value(getattr(ollama, "endpoint", None)),
         "OPENRAG-QUERY-FILTER": "{}",
         "OPENRAG_INGEST_BATCH_SIZE": "100",
         "OPENRAG_INGEST_RUN_ID": "OPENRAG_INGEST_RUN_ID",
         "OPENRAG_INGEST_TOKEN": "OPENRAG_INGEST_TOKEN",
         "OPENRAG_INGEST_URL": "OPENRAG_INGEST_URL",
+        "OPENRAG_LLM_BASE_URL": settings.get_langflow_llm_base_url(),
         "OPENSEARCH_INDEX_NAME": _string_value(getattr(knowledge, "index_name", None))
         or "documents",
         "OPENSEARCH_URL": settings.get_langflow_opensearch_url(),
         "SELECTED_EMBEDDING_MODEL": _string_value(getattr(knowledge, "embedding_model", None))
         or "text-embedding-3-small",
-        "SELECTED_EMBEDDING_MODEL_PROVIDER": map_provider(
-            getattr(knowledge, "embedding_provider", None) or "openai"
-        ),
+        "SELECTED_EMBEDDING_MODEL_PROVIDER": "OpenAI",
         "SELECTED_LANGUAGE_MODEL": _string_value(getattr(agent, "llm_model", None))
         or "gpt-4o-mini",
-        "SELECTED_LANGUAGE_MODEL_PROVIDER": map_provider(
-            getattr(agent, "llm_provider", None) or "openai"
-        ),
-        "WATSONX_PROJECT_ID": _string_value(getattr(watsonx, "project_id", None)),
-        "WATSONX_URL": _string_value(getattr(watsonx, "endpoint", None)),
+        "SELECTED_LANGUAGE_MODEL_PROVIDER": "OpenAI",
     }
 
 
+# Credential names that must exist so load_from_db fields resolve.
+# Langflow treats an empty Credential value as missing
+# (`"{name} variable not found."`). Keep a non-empty placeholder; runtime
+# headers overwrite it with the hop token on each Langflow run.
+LANGFLOW_RUNTIME_CREDENTIAL_PLACEHOLDERS = frozenset(
+    {
+        "OPENRAG_LLM_TOKEN",
+    }
+)
+LANGFLOW_RUNTIME_CREDENTIAL_PLACEHOLDER_VALUE = "None"
+
+
 async def ensure_required_langflow_global_variables(config=None):
-    """Ensure load_from_db plain-string globals are Generic for backwards compatibility."""
+    """Ensure load_from_db globals exist. Credential placeholders stay non-empty so Langflow can resolve them."""
     config = config or get_openrag_config()
     required_values = _required_generic_global_values(config)
 
     for name in sorted(LANGFLOW_GENERIC_GLOBAL_VARIABLES):
         await _upsert_langflow_global_variable(name, _string_value(required_values.get(name, "")))
 
+    for name in sorted(LANGFLOW_RUNTIME_CREDENTIAL_PLACEHOLDERS):
+        await _upsert_langflow_global_variable(name, LANGFLOW_RUNTIME_CREDENTIAL_PLACEHOLDER_VALUE)
+
 
 async def _update_langflow_global_variables(config, flows_service=None):
-    """Update Langflow global variables for all configured providers"""
+    """Push model selection and the LLM proxy URL into Langflow. No provider secrets."""
     try:
-        # WatsonX global variables
-        if config.providers.watsonx.api_key:
-            await _upsert_langflow_global_variable(
-                "WATSONX_APIKEY", config.providers.watsonx.api_key
-            )
-            logger.info("Set WATSONX_APIKEY global variable in Langflow")
-
-        if config.providers.watsonx.project_id:
-            await _upsert_langflow_global_variable(
-                "WATSONX_PROJECT_ID", config.providers.watsonx.project_id
-            )
-            logger.info("Set WATSONX_PROJECT_ID global variable in Langflow")
-
-        if config.providers.watsonx.endpoint:
-            await _upsert_langflow_global_variable("WATSONX_URL", config.providers.watsonx.endpoint)
-            logger.info("Set WATSONX_URL global variable in Langflow")
-
-        # OpenAI global variables
-        if config.providers.openai.api_key:
-            await _upsert_langflow_global_variable(
-                "OPENAI_API_KEY", config.providers.openai.api_key
-            )
-            logger.info("Set OPENAI_API_KEY global variable in Langflow")
-
-        # Anthropic global variables
-        if config.providers.anthropic.api_key:
-            await _upsert_langflow_global_variable(
-                "ANTHROPIC_API_KEY", config.providers.anthropic.api_key
-            )
-            logger.info("Set ANTHROPIC_API_KEY global variable in Langflow")
-
-        # Ollama global variables
-        if config.providers.ollama.endpoint:
-            if not flows_service:
-                flows_service = _get_flows_service()
-
-            endpoint = await flows_service.resolve_ollama_url(
-                config.providers.ollama.endpoint, force_refresh=True
-            )
-            await _upsert_langflow_global_variable("OLLAMA_BASE_URL", endpoint)
-            logger.info("Set OLLAMA_BASE_URL global variable in Langflow")
+        await _upsert_langflow_global_variable(
+            "OPENRAG_LLM_BASE_URL", settings.get_langflow_llm_base_url()
+        )
+        logger.info("Set OPENRAG_LLM_BASE_URL global variable in Langflow")
 
         if config.knowledge.embedding_model:
             await _upsert_langflow_global_variable(
@@ -182,26 +147,20 @@ async def _update_langflow_global_variables(config, flows_service=None):
             logger.info(
                 f"Set SELECTED_EMBEDDING_MODEL global variable to {config.knowledge.embedding_model}"
             )
-        if config.knowledge.embedding_provider:
-            mapped_provider = map_provider(config.knowledge.embedding_provider)
-            await _upsert_langflow_global_variable(
-                "SELECTED_EMBEDDING_MODEL_PROVIDER", mapped_provider
-            )
-            logger.info(
-                f"Set SELECTED_EMBEDDING_MODEL_PROVIDER global variable to {mapped_provider}"
-            )
+        await _upsert_langflow_global_variable("SELECTED_EMBEDDING_MODEL_PROVIDER", "OpenAI")
         if config.agent.llm_model:
             await _upsert_langflow_global_variable(
                 "SELECTED_LANGUAGE_MODEL", config.agent.llm_model
             )
             logger.info(f"Set SELECTED_LANGUAGE_MODEL global variable to {config.agent.llm_model}")
-        if config.agent.llm_provider:
-            mapped_llm_provider = map_provider(config.agent.llm_provider)
+        await _upsert_langflow_global_variable("SELECTED_LANGUAGE_MODEL_PROVIDER", "OpenAI")
+
+        for name in sorted(LANGFLOW_RUNTIME_CREDENTIAL_PLACEHOLDERS):
             await _upsert_langflow_global_variable(
-                "SELECTED_LANGUAGE_MODEL_PROVIDER", mapped_llm_provider
+                name, LANGFLOW_RUNTIME_CREDENTIAL_PLACEHOLDER_VALUE
             )
             logger.info(
-                f"Set SELECTED_LANGUAGE_MODEL_PROVIDER global variable to {mapped_llm_provider}"
+                f"Kept {name} Langflow credential as a placeholder; runtime headers supply the hop token"
             )
 
     except Exception as e:

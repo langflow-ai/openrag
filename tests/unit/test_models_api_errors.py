@@ -134,3 +134,18 @@ async def test_get_ibm_models_returns_project_configuration_error():
     assert response.status_code == 400
     payload = json.loads(response.body)
     assert payload["error"] == msg
+
+
+@pytest.mark.asyncio
+async def test_get_model_catalog_returns_litellm_providers():
+    response = await models_api.get_model_catalog(user=SimpleNamespace())
+    assert isinstance(response, JSONResponse)
+    assert response.status_code == 200
+    payload = json.loads(response.body)
+    keys = {provider["key"] for provider in payload["providers"]}
+    assert {"openai", "anthropic", "ollama", "watsonx"} <= keys
+    openai = next(p for p in payload["providers"] if p["key"] == "openai")
+    assert openai["models"]
+    assert openai["embedding_models"]
+    cache_control = response.headers.get("cache-control") or response.headers.get("Cache-Control")
+    assert cache_control == "private, max-age=3600"

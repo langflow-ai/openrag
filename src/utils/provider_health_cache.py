@@ -13,6 +13,8 @@ real outages and on-demand checks are never masked.
 
 import asyncio
 import hashlib
+import json
+from collections.abc import Mapping
 
 from cachetools import TTLCache
 
@@ -31,6 +33,20 @@ def _fingerprint(value: str | None) -> str:
     return hashlib.blake2b((value or "").encode(), digest_size=8).hexdigest()  # nosec B324  # lgtm[py/weak-cryptographic-algorithm] — non-cryptographic cache key, not a security hash
 
 
+def _fingerprint_mapping(values: Mapping[str, str] | None) -> str:
+    """Fingerprint a provider's LiteLLM credential kwargs.
+
+    Generic providers carry their secrets here rather than in the dedicated
+    ``api_key``/``endpoint``/``project_id`` fields, so the key must cover them
+    too — otherwise rotating a custom provider's credentials would keep
+    serving the pre-rotation health verdict for the whole TTL. Sorted so dict
+    ordering never changes the key.
+    """
+    if not values:
+        return _fingerprint(None)
+    return _fingerprint(json.dumps(dict(sorted(values.items())), separators=(",", ":")))
+
+
 def cache_key(
     provider: str | None,
     embedding_provider: str | None,
@@ -43,11 +59,14 @@ def cache_key(
     embedding_api_key: str | None = None,
     embedding_endpoint: str | None = None,
     embedding_project_id: str | None = None,
+    credentials: Mapping[str, str] | None = None,
+    embedding_credentials: Mapping[str, str] | None = None,
 ) -> str:
     """Build the cache key for a polled health-check call.
 
-    The API keys are hashed (never stored in plaintext); rotating a key busts
-    the cache automatically because the fingerprint changes.
+    The API keys and credential kwargs are hashed (never stored in plaintext);
+    rotating a key busts the cache automatically because the fingerprint
+    changes.
     """
     parts = [
         provider or "",
@@ -61,6 +80,8 @@ def cache_key(
         embedding_endpoint or "",
         embedding_project_id or "",
         _fingerprint(embedding_api_key),
+        _fingerprint_mapping(credentials),
+        _fingerprint_mapping(embedding_credentials),
     ]
     return hashlib.blake2b("|".join(parts).encode()).hexdigest()  # nosec B324  # lgtm[py/weak-cryptographic-algorithm] — non-cryptographic cache key, not a security hash
 

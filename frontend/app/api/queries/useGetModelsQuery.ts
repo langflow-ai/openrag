@@ -281,3 +281,72 @@ export const useGetCurrentProviderModelsQuery = (
       return openaiModels;
   }
 };
+
+/** One LiteLLM catalogue row. Mirrors `src/services/model_catalog.py`. */
+export interface CatalogModel {
+  model: string;
+  mode: string | null;
+  max_input_tokens?: number;
+  max_output_tokens?: number;
+  input_cost_per_token?: number;
+  output_cost_per_token?: number;
+  cache_read_input_token_cost?: number;
+  capabilities?: string[];
+  deprecation_date?: string;
+}
+
+export interface CatalogCredentialField {
+  key: string;
+  label: string;
+  placeholder?: string | null;
+  tooltip?: string | null;
+  required: boolean;
+  field_type: string;
+  options?: unknown;
+  default_value?: unknown;
+}
+
+export interface CatalogProvider {
+  key: string;
+  name: string;
+  credential_fields: CatalogCredentialField[];
+  model_placeholder: string | null;
+  models: CatalogModel[];
+  embedding_models: CatalogModel[];
+}
+
+export interface ModelCatalogResponse {
+  providers: CatalogProvider[];
+}
+
+/**
+ * LiteLLM's bundled model list, grouped by provider. Static for the tab's
+ * lifetime — same as openrag-next's `/agent/model-catalog` fetch.
+ */
+export const useGetModelCatalogQuery = (
+  options?: Omit<UseQueryOptions<ModelCatalogResponse>, "queryKey" | "queryFn">,
+) => {
+  const queryClient = useQueryClient();
+
+  return useQuery(
+    {
+      queryKey: ["models", "catalog"] as const,
+      queryFn: async (): Promise<ModelCatalogResponse> => {
+        const response = await fetch("/api/models/catalog");
+        if (response.ok) {
+          return (await response.json()) as ModelCatalogResponse;
+        }
+        return throwModelsFetchError(
+          response,
+          "Failed to fetch the model catalogue",
+        );
+      },
+      staleTime: Number.POSITIVE_INFINITY,
+      gcTime: Number.POSITIVE_INFINITY,
+      refetchOnWindowFocus: false,
+      retry: false,
+      ...options,
+    },
+    queryClient,
+  );
+};

@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import os
 from datetime import UTC, datetime
@@ -863,6 +864,61 @@ class FlowsService:
 
         return normalized
 
+    @staticmethod
+    def _flow_structure_signature(payload: dict[str, Any] | None) -> str | None:
+        """Fingerprint the parts of a flow that change when the *shipped* flow changes.
+
+        Covers the component set, each component's code, and the wiring. It
+        deliberately ignores node positions and template values: OpenRAG
+        rewrites values in the Langflow copy every time settings are applied
+        (models, chunk size, credentials, tweaks), so comparing the whole
+        payload would report an update forever.
+
+        Returns None when the payload has no usable node list, which callers
+        treat as "cannot tell" and fall back to the timestamp comparison.
+        """
+        if not isinstance(payload, dict):
+            return None
+        data = payload.get("data") if isinstance(payload.get("data"), dict) else payload
+        if not isinstance(data, dict):
+            return None
+        nodes = data.get("nodes")
+        edges = data.get("edges")
+        if not isinstance(nodes, list) or not isinstance(edges, list):
+            return None
+
+        node_parts = []
+        for node in nodes:
+            node_data = node.get("data") if isinstance(node, dict) else None
+            if not isinstance(node_data, dict):
+                continue
+            inner = node_data.get("node") if isinstance(node_data.get("node"), dict) else {}
+            metadata = inner.get("metadata") if isinstance(inner.get("metadata"), dict) else {}
+            node_parts.append(
+                f"{node_data.get('id')}|{node_data.get('type')}|{metadata.get('code_hash', '')}"
+            )
+
+        edge_parts = [
+            f"{edge.get('source')}|{edge.get('target')}|"
+            f"{edge.get('sourceHandle')}|{edge.get('targetHandle')}"
+            for edge in edges
+            if isinstance(edge, dict)
+        ]
+
+        digest = hashlib.sha256()
+        digest.update("\n".join(sorted(node_parts)).encode())
+        digest.update(b"\x00")
+        digest.update("\n".join(sorted(edge_parts)).encode())
+        return digest.hexdigest()
+
+    def _disk_flow_payload(self, flow_path: str) -> dict[str, Any] | None:
+        try:
+            with open(flow_path) as handle:
+                return json.load(handle)
+        except (OSError, json.JSONDecodeError) as e:
+            logger.warning(f"Could not read flow file {flow_path} for update check: {e}")
+            return None
+
     async def _check_flow_update(
         self, flow_type: str, flow_id: str, flow_data: dict[str, Any] | None = None
     ) -> dict[str, Any] | None:
@@ -900,14 +956,35 @@ class FlowsService:
             except ValueError:
                 pass
 
-        if local_mtime > langflow_mtime + 1.0:
-            is_locked = flow_data.get("locked", False)
-            return {
-                "flow_type": flow_type,
-                "flow_id": flow_id,
-                "is_custom": not is_locked,
-            }
-        return None
+        if local_mtime <= langflow_mtime + 1.0:
+            return None
+
+        # The mtime is only a cheap pre-filter. It says nothing about content:
+        # git checkout / pull / stash, a branch switch, a fresh clone, and any
+        # container rebuild that re-COPYs flows/ all restamp these files
+        # without changing a byte, which made the "Update required from
+        # Langflow" prompt reappear more or less permanently. Confirm the
+        # shipped definition actually differs before asking the user to act.
+        disk_signature = self._flow_structure_signature(self._disk_flow_payload(flow_path))
+        langflow_signature = self._flow_structure_signature(flow_data)
+        if (
+            disk_signature is not None
+            and langflow_signature is not None
+            and disk_signature == langflow_signature
+        ):
+            logger.debug(
+                "Flow file is newer than Langflow's copy but structurally identical; "
+                "not reporting an update",
+                extra={"flow_type": flow_type, "flow_id": flow_id},
+            )
+            return None
+
+        is_locked = flow_data.get("locked", False)
+        return {
+            "flow_type": flow_type,
+            "flow_id": flow_id,
+            "is_custom": not is_locked,
+        }
 
     async def ensure_flows_exist(self) -> set[str]:
         """
@@ -1007,15 +1084,21 @@ class FlowsService:
         Change dropdown values for provider-specific components across flows
 
         Args:
-            provider: The provider ("watsonx", "ollama", "openai", "anthropic")
+            provider: Any LiteLLM provider. Non-legacy providers use Langflow's
+                OpenAI-compatible component, which points at the OpenRAG proxy.
             embedding_model: The embedding model name to set
             llm_model: The LLM model name to set
             force_embedding_update: If True, update embeddings even if model is None
             force_llm_update: If True, update LLM even if model is None
             flow_configs: Optional list of flow configs to update
         """
-        if provider not in ["watsonx", "ollama", "openai", "anthropic"]:
-            raise ValueError("provider must be 'watsonx', 'ollama', 'openai', or 'anthropic'")
+        from services.model_catalog import is_known_provider
+
+        if not is_known_provider(provider):
+            raise ValueError(f"Unknown LiteLLM provider: {provider}")
+        flow_provider = (
+            provider if provider in {"watsonx", "ollama", "openai", "anthropic"} else "openai"
+        )
 
         try:
             # Use provided flow_configs or default to all flows
@@ -1032,7 +1115,7 @@ class FlowsService:
                 tasks.append(
                     self._update_provider_components(
                         config,
-                        provider,
+                        flow_provider,
                         embedding_model=embedding_model,
                         llm_model=llm_model,
                         force_embedding_update=force_embedding_update,
@@ -1386,38 +1469,18 @@ class FlowsService:
 
             updated = True
 
-        # Update provider-specific fields using Langflow global variable names.
-        # "api_base" is the Ollama URL field on the Embedding Model component;
-        # "ollama_base_url" is the equivalent field on the Language Model / Agent component.
-        field_mappings = {
-            "api_key": {
-                "openai": "OPENAI_API_KEY",
-                "watsonx": "WATSONX_APIKEY",
-                "anthropic": "ANTHROPIC_API_KEY",
-            },
-            "api_base": {
-                "ollama": "OLLAMA_BASE_URL",
-            },
-            "ollama_base_url": {
-                "ollama": "OLLAMA_BASE_URL",
-            },
-            "base_url_ibm_watsonx": {
-                "watsonx": "WATSONX_URL",
-            },
-            "project_id": {
-                "watsonx": "WATSONX_PROJECT_ID",
-            },
+        # Point every model component at the OpenRAG OpenAI-compatible proxy.
+        # Real provider secrets never leave OpenRAG; Langflow sends the caller JWT.
+        proxy_fields = {
+            "api_key": "OPENRAG_LLM_TOKEN",
+            "openai_api_key": "OPENRAG_LLM_TOKEN",
+            "api_base": "OPENRAG_LLM_BASE_URL",
+            "openai_api_base": "OPENRAG_LLM_BASE_URL",
         }
-
-        for field, mapping in field_mappings.items():
+        for field, global_name in proxy_fields.items():
             if field in template:
-                target_value = mapping.get(provider)
-                if target_value:
-                    template[field]["value"] = target_value
-                    template[field]["load_from_db"] = True
-                else:
-                    template[field]["value"] = ""
-                    template[field]["load_from_db"] = False
+                template[field]["value"] = global_name
+                template[field]["load_from_db"] = True
                 updated = True
 
         return updated

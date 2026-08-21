@@ -1,7 +1,8 @@
-import AnthropicLogo from "@/components/icons/anthropic-logo";
+import Image from "next/image";
 import IBMLogo from "@/components/icons/ibm-logo";
 import OllamaLogo from "@/components/icons/ollama-logo";
 import OpenAILogo from "@/components/icons/openai-logo";
+import { providerLogo, providerMonogram } from "./provider-logos";
 
 export type ModelProvider =
   | "openai"
@@ -42,17 +43,38 @@ export interface ModelOption {
 }
 
 // Helper function to get model logo based on provider or model name
-export function getModelLogo(modelValue: string, provider?: ModelProvider) {
+export function getModelLogo(modelValue: string, provider?: string) {
+  if (provider && provider !== "local") {
+    const logo = providerLogo(provider);
+    if (logo) {
+      return (
+        <span
+          aria-hidden="true"
+          data-provider={provider}
+          className="grid h-4 w-4 shrink-0 place-items-center border border-border bg-white"
+        >
+          <Image
+            src={logo}
+            alt=""
+            width={11}
+            height={11}
+            className="object-contain"
+          />
+        </span>
+      );
+    }
+    return (
+      <span
+        aria-hidden="true"
+        className="flex h-4 w-4 items-center justify-center rounded-sm bg-muted text-[8px] font-semibold text-muted-foreground"
+      >
+        {providerMonogram(provider)}
+      </span>
+    );
+  }
+
   // First check by provider
-  if (provider === "openai") {
-    return <OpenAILogo className="w-4 h-4" />;
-  } else if (provider === "anthropic") {
-    return <AnthropicLogo className="w-4 h-4" />;
-  } else if (provider === "ollama") {
-    return <OllamaLogo className="w-4 h-4" />;
-  } else if (provider === "watsonx") {
-    return <IBMLogo className="w-4 h-4" />;
-  } else if (provider === "local") {
+  if (provider === "local") {
     return (
       <svg
         xmlns="http://www.w3.org/2000/svg"

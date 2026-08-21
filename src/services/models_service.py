@@ -19,8 +19,6 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-KNOWN_PREFIXES = ["openai", "ollama", "watsonx", "anthropic"]
-
 # OpenAI /v1/models is a flat inventory. These IDs are real products but not
 # usable as OpenRAG agent LLMs (wrong modality / API surface).
 _OPENAI_NON_CHAT_PREFIXES = (
@@ -187,6 +185,28 @@ class ModelsService:
                     except Exception as e:
                         logger.debug(f"Could not fetch WatsonX models for registry: {str(e)}")
 
+                from services.model_catalog import catalog
+
+                catalog_by_provider = {entry["key"]: entry for entry in catalog()["providers"]}
+                for provider, provider_config in config.providers.custom.items():
+                    if not provider_config.configured:
+                        continue
+                    entry = catalog_by_provider.get(provider)
+                    if entry is None:
+                        continue
+                    self.add_models(
+                        {
+                            "language_models": [
+                                {"value": model["model"]} for model in entry["models"]
+                            ],
+                            "embedding_models": [
+                                {"value": model["model"]} for model in entry["embedding_models"]
+                            ],
+                        },
+                        provider,
+                        new_registry,
+                    )
+
                 ModelsService._model_provider_registry = new_registry
                 logger.info(
                     f"Model registry updated: {len(ModelsService._model_provider_registry)} models registered"
@@ -213,9 +233,13 @@ class ModelsService:
         if not model_name:
             return ""
 
-        # Skip formatting if already has a known provider prefix
-        if any(model_name.startswith(p + "/") for p in KNOWN_PREFIXES):
-            return model_name
+        # Skip formatting if already has a known LiteLLM provider prefix.
+        if "/" in model_name:
+            from services.model_catalog import is_known_provider
+
+            prefix = model_name.split("/", 1)[0].lower()
+            if is_known_provider(prefix):
+                return model_name
 
         # Check if provider is explicitly given and not "openai"
         provider_lower = provider.lower() if provider else None

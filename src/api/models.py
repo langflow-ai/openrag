@@ -215,3 +215,16 @@ async def get_ibm_models(
     except Exception as e:
         logger.error(f"Failed to get IBM models: {str(e)}")
         return _models_error_response(e)
+
+
+async def get_model_catalog(
+    user: User = Depends(require_permission("providers:read")),
+):
+    """LiteLLM catalogue for the settings model dropdown. GET /models/catalog"""
+    from services.model_catalog import CatalogUnavailableError, catalog
+
+    try:
+        return JSONResponse(catalog(), headers={"Cache-Control": "private, max-age=3600"})
+    except CatalogUnavailableError as e:
+        logger.error("Model catalogue unavailable", error=str(e))
+        return JSONResponse({"error": str(e)}, status_code=503)

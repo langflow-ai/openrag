@@ -4,20 +4,28 @@ Utility to sync embedded component code inside Langflow JSON files.
 
 Given a Python source file (e.g. the OpenSearch component implementation) and
 a target selector, this script updates every flow definition in ``./flows`` so
-that the component's ``template.code.value`` matches the supplied file.
+that the component's ``template.code.value`` matches the supplied file. It
+also refreshes ``metadata.code_hash`` (sha256 prefix, 12 chars) and can set
+``metadata.module``.
 
 Example:
     python scripts/update_flow_components.py \\
-        --code-file flows/components/opensearch_multimodel.py \\
-        --display-name \"OpenSearch (Multi-Model)\"
+        --code-file flows/components/opensearch_multimodal.py \\
+        --display-name "OpenSearch (Multi-Model Multi-Embedding)" \\
+        --set-module custom_components.OpenRAG.opensearch_multimodal.OpenSearchVectorStoreComponentMultimodalMultiEmbedding
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
+
+
+def _code_hash(source: str) -> str:
+    return hashlib.sha256(source.encode("utf-8")).hexdigest()[:12]
 
 
 def load_code(source_path: Path) -> str:
@@ -27,7 +35,9 @@ def load_code(source_path: Path) -> str:
         raise SystemExit(f"[error] code file not found: {source_path}") from exc
 
 
-def should_update_component(node: dict, *, display_name: str | None, metadata_module: str | None) -> bool:
+def should_update_component(
+    node: dict, *, display_name: str | None, metadata_module: str | None
+) -> bool:
     node_data = node.get("data", {})
     component = node_data.get("node", {})
 
@@ -45,7 +55,15 @@ def should_update_component(node: dict, *, display_name: str | None, metadata_mo
     return isinstance(code_entry, dict) and "value" in code_entry
 
 
-def update_flow(flow_path: Path, code: str, *, display_name: str | None, metadata_module: str | None, dry_run: bool) -> bool:
+def update_flow(
+    flow_path: Path,
+    code: str,
+    *,
+    display_name: str | None,
+    metadata_module: str | None,
+    set_module: str | None,
+    dry_run: bool,
+) -> bool:
     with flow_path.open(encoding="utf-8") as fh:
         try:
             data = json.load(fh)
@@ -53,18 +71,29 @@ def update_flow(flow_path: Path, code: str, *, display_name: str | None, metadat
             raise SystemExit(f"[error] failed to parse {flow_path}: {exc}") from exc
 
     changed = False
+    expected_hash = _code_hash(code)
 
     for node in data.get("data", {}).get("nodes", []):
-        if not should_update_component(node, display_name=display_name, metadata_module=metadata_module):
+        if not should_update_component(
+            node, display_name=display_name, metadata_module=metadata_module
+        ):
             continue
 
-        template = node["data"]["node"]["template"]
+        component = node["data"]["node"]
+        template = component["template"]
+        metadata = component.setdefault("metadata", {})
         if template["code"]["value"] != code:
-            if dry_run:
-                changed = True
-            else:
+            if not dry_run:
                 template["code"]["value"] = code
-                changed = True
+            changed = True
+        if metadata.get("code_hash") != expected_hash:
+            if not dry_run:
+                metadata["code_hash"] = expected_hash
+            changed = True
+        if set_module and metadata.get("module") != set_module:
+            if not dry_run:
+                metadata["module"] = set_module
+            changed = True
 
     if changed and not dry_run:
         flow_path.write_text(
@@ -77,17 +106,40 @@ def update_flow(flow_path: Path, code: str, *, display_name: str | None, metadat
 
 def iter_flow_files(flows_dir: Path) -> Iterable[Path]:
     for path in sorted(flows_dir.glob("*.json")):
-        if path.is_file():
+        if path.is_file() and path.name != "component_index.json":
             yield path
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Update embedded component code in Langflow JSON files.")
-    parser.add_argument("--code-file", required=True, type=Path, help="Path to the Python file containing the component code.")
-    parser.add_argument("--flows-dir", type=Path, default=Path("flows"), help="Directory containing Langflow JSON files.")
-    parser.add_argument("--display-name", help="Component display_name to match (e.g. 'OpenSearch (Multi-Model)').")
+    parser = argparse.ArgumentParser(
+        description="Update embedded component code in Langflow JSON files."
+    )
+    parser.add_argument(
+        "--code-file",
+        required=True,
+        type=Path,
+        help="Path to the Python file containing the component code.",
+    )
+    parser.add_argument(
+        "--flows-dir",
+        type=Path,
+        default=Path("flows"),
+        help="Directory containing Langflow JSON files.",
+    )
+    parser.add_argument(
+        "--display-name",
+        help="Component display_name to match (e.g. 'OpenSearch (Multi-Model Multi-Embedding)').",
+    )
     parser.add_argument("--metadata-module", help="Component metadata.module value to match.")
-    parser.add_argument("--dry-run", action="store_true", help="Report which files would change without modifying them.")
+    parser.add_argument(
+        "--set-module",
+        help="Write this value to matching nodes' metadata.module (does not filter).",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Report which files would change without modifying them.",
+    )
 
     args = parser.parse_args()
 
@@ -113,6 +165,7 @@ def main() -> None:
             code,
             display_name=args.display_name,
             metadata_module=args.metadata_module,
+            set_module=args.set_module,
             dry_run=args.dry_run,
         )
         if changed:

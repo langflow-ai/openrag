@@ -4,6 +4,13 @@ import path from "path";
 export type LLMProvider = "openai" | "anthropic" | "watsonx" | "ollama";
 export type EmbeddingProvider = "openai" | "watsonx" | "ollama";
 
+const ONBOARDING_MODELS: Record<string, { llm: string; embedding?: string }> = {
+  openai: { llm: "gpt-4o-mini", embedding: "text-embedding-3-small" },
+  anthropic: { llm: "claude-sonnet-4-5" },
+  watsonx: { llm: "ibm/granite-3-8b-instruct" },
+  ollama: { llm: "llama3" },
+};
+
 export async function completeOnboarding(
   page: Page,
   {
@@ -62,7 +69,9 @@ export async function completeOnboarding(
   }
 
   const isCompleted = await completedLocator.isVisible();
-  const isFirstStep = await page.getByTestId("openai-llm-tab").isVisible();
+  const isFirstStep = await page
+    .getByTestId("language-model-selector")
+    .isVisible();
 
   if (isCompleted && !reset) {
     return;
@@ -87,13 +96,38 @@ export async function completeOnboarding(
   }
 
   const setupProvider = async (provider: string, isEmbedding: boolean) => {
-    const tabId = `${provider}-${isEmbedding ? "embedding" : "llm"}-tab`;
-    await page.getByTestId(tabId).click();
+    const modelSelectorId = isEmbedding
+      ? "embedding-model-selector"
+      : "language-model-selector";
+    const selector = page.getByTestId(modelSelectorId);
+
+    await expect(selector).toBeEnabled({ timeout: 30000 });
+    await selector.click();
+
+    const catalogModel =
+      ONBOARDING_MODELS[provider]?.[isEmbedding ? "embedding" : "llm"];
+    if (catalogModel) {
+      const option = page
+        .getByTestId(`model-group-${provider}`)
+        .getByTestId(`model-option-${catalogModel}`);
+      await expect(option).toBeVisible({ timeout: 15000 });
+      await option.click();
+    } else {
+      const customName =
+        provider === "ollama"
+          ? "nomic-embed-text"
+          : "ibm/slate-125m-english-rtrvr";
+      const search = page.getByPlaceholder("Search model...");
+      await search.fill(customName);
+      await page
+        .getByTestId(`model-custom-option-${customName}`)
+        .last()
+        .click();
+    }
 
     if (provider !== "ollama") {
       const getFromEnvSwitch = page.getByTestId("get-from-env-switch");
 
-      // Check if switch is visible and toggle off to enter explicit key if needed
       if (await getFromEnvSwitch.isVisible()) {
         if (await getFromEnvSwitch.isChecked()) {
           await getFromEnvSwitch.click();
@@ -102,8 +136,6 @@ export async function completeOnboarding(
       }
 
       const apiKeyField = page.getByTestId("api-key");
-      // For embedding, the key might be automatically populated if it's the same provider
-      // but let's ensure it's filled.
       if ((await apiKeyField.isVisible()) && (await apiKeyField.isEnabled())) {
         const apiKey = process.env[`${provider.toUpperCase()}_API_KEY`];
         await apiKeyField.fill(apiKey!);
@@ -121,31 +153,9 @@ export async function completeOnboarding(
       }
     }
 
-    // Model selection
-    // Some providers might have models loaded immediately, some might take time
-    const advancedBtn = page.getByTestId("advanced-settings-button");
-    if (await advancedBtn.isVisible()) {
-      await advancedBtn.click();
-    }
-
-    const modelSelectorId = isEmbedding
-      ? "embedding-model-selector"
-      : "language-model-selector";
-    const selector = page.getByTestId(modelSelectorId);
-
-    // Wait for the selector to be enabled (models loaded)
-    await expect(selector).toBeEnabled({ timeout: 30000 });
-    await selector.click();
-
-    // Select the first available model
-    await expect(page.getByTestId(/^model-option-/).first()).toBeVisible();
-    await page
-      .getByTestId(/^model-option-/)
-      .first()
-      .click();
-
-    // Complete this step
-    await page.getByTestId("onboarding-complete-button").click();
+    const completeButton = page.getByTestId("onboarding-complete-button");
+    await expect(completeButton).toBeEnabled({ timeout: 30000 });
+    await completeButton.click();
 
     const doneLocator = page.getByText("Done");
     const errorLocator = page.getByTestId("onboarding-error");

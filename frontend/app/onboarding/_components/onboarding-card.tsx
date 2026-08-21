@@ -3,13 +3,21 @@
 import { useIsFetching, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 import {
   type OnboardingVariables,
   useOnboardingMutation,
 } from "@/app/api/mutations/useOnboardingMutation";
 import { useOnboardingRollbackMutation } from "@/app/api/mutations/useOnboardingRollbackMutation";
+import { useGetModelCatalogQuery } from "@/app/api/queries/useGetModelsQuery";
 import {
   type ProviderSettings,
   useGetSettingsQuery,
@@ -17,17 +25,22 @@ import {
 import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import type { ProviderHealthResponse } from "@/app/api/queries/useProviderHealthQuery";
 import {
+  findGroupedSelection,
+  groupedCatalogOptions,
+  onboardingCatalogConfigured,
+  providerCredentialsSatisfied,
+  savedCredentialValuesForProvider,
+  savedSecretFieldsForProvider,
+} from "@/app/settings/_helpers/catalog-models";
+import {
   CLOUD_EXCLUDED_PROVIDERS,
   EMBEDDING_PROVIDER_ORDER,
+  getModelLogo,
   LLM_PROVIDER_ORDER,
 } from "@/app/settings/_helpers/model-helpers";
 import { useDoclingHealth } from "@/components/docling-health-banner";
-import AnthropicLogo from "@/components/icons/anthropic-logo";
-import IBMLogo from "@/components/icons/ibm-logo";
-import OllamaLogo from "@/components/icons/ollama-logo";
-import OpenAILogo from "@/components/icons/openai-logo";
+import { LabelWrapper } from "@/components/label-wrapper";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Tooltip,
   TooltipContent,
@@ -40,13 +53,13 @@ import {
   trackProcessSuccess,
 } from "@/lib/analytics";
 import { formatProviderErrorMessage } from "@/lib/chat-stream-errors";
-import { cn } from "@/lib/utils";
 import { AnimatedProviderSteps } from "./animated-provider-steps";
-import { AnthropicOnboarding } from "./anthropic-onboarding";
-import { IBMOnboarding } from "./ibm-onboarding";
-import { OllamaOnboarding } from "./ollama-onboarding";
-import { OpenAIOnboarding } from "./openai-onboarding";
-import { TabTrigger } from "./tab-trigger";
+import { ModelFeatures } from "./model-features";
+import { ModelSelector } from "./model-selector";
+import {
+  type CredentialStatus,
+  OnboardingCredentialFields,
+} from "./onboarding-credential-fields";
 
 interface OnboardingCardProps {
   onComplete: () => void;
@@ -75,103 +88,43 @@ const OnboardingCard = ({
   const { isHealthy: isDoclingHealthy } = useDoclingHealth();
   const isCloudBrand = useIsCloudBrand();
 
-  const [modelProvider, setModelProvider] = useState<string>(
-    isEmbedding ? "openai" : "anthropic",
-  );
+  const [modelProvider, setModelProvider] = useState<string>("");
+  const [credentialsReady, setCredentialsReady] = useState(false);
+  const autoSelectedRef = useRef(false);
 
-  // Read model-fetch loading from React Query instead of syncing it up from children.
   const isLoadingModels = useIsFetching({ queryKey: ["models"] }) > 0;
 
   const queryClient = useQueryClient();
 
-  // Fetch current settings to check if providers are already configured
   const { data: currentSettings } = useGetSettingsQuery();
+  const {
+    data: catalog,
+    isLoading: catalogLoading,
+    error: catalogError,
+  } = useGetModelCatalogQuery();
 
-  // Auto-select the first provider that has an API key set in env vars
-  const [prevProviders, setPrevProviders] = useState<
-    ProviderSettings | undefined | null
-  >(null);
-  if (currentSettings?.providers !== prevProviders) {
-    setPrevProviders(currentSettings?.providers);
-    if (currentSettings?.providers) {
-      const fullOrder = isEmbedding
-        ? EMBEDDING_PROVIDER_ORDER
-        : LLM_PROVIDER_ORDER;
-      const providerOrder = isCloudBrand
-        ? fullOrder.filter((p) => !CLOUD_EXCLUDED_PROVIDERS.includes(p))
-        : fullOrder;
-
-      for (const provider of providerOrder) {
-        if (
-          provider === "anthropic" &&
-          currentSettings.providers.anthropic?.has_api_key
-        ) {
-          setModelProvider("anthropic");
-          break;
-        } else if (
-          provider === "openai" &&
-          currentSettings.providers.openai?.has_api_key
-        ) {
-          setModelProvider("openai");
-          break;
-        } else if (
-          provider === "watsonx" &&
-          currentSettings.providers.watsonx?.has_api_key
-        ) {
-          setModelProvider("watsonx");
-          break;
-        } else if (
-          provider === "ollama" &&
-          currentSettings.providers.ollama?.endpoint
-        ) {
-          setModelProvider("ollama");
-          break;
-        }
-      }
-    }
-  }
-
-  const handleSetModelProvider = (provider: string) => {
-    setModelProvider(provider);
-    setSettings({
-      [isEmbedding ? "embedding_provider" : "llm_provider"]: provider,
-      embedding_model: "",
-      llm_model: "",
-    });
-    setError(null);
-  };
-
-  // Check if the selected provider is already configured
-  const isProviderAlreadyConfigured = (provider: string): boolean => {
-    if (!isEmbedding || !currentSettings?.providers) return false;
-
-    // Check if provider has been explicitly configured (not just from env vars)
-    if (provider === "openai") {
-      return currentSettings.providers.openai?.configured === true;
-    } else if (provider === "anthropic") {
-      return currentSettings.providers.anthropic?.configured === true;
-    } else if (provider === "watsonx") {
-      return currentSettings.providers.watsonx?.configured === true;
-    } else if (provider === "ollama") {
-      return currentSettings.providers.ollama?.configured === true;
-    }
-    return false;
-  };
-
-  const showProviderConfiguredMessage =
-    isProviderAlreadyConfigured(modelProvider);
-  const providerAlreadyConfigured =
-    isEmbedding && showProviderConfiguredMessage;
+  const groupedModels = useMemo(() => {
+    const groups = groupedCatalogOptions(
+      catalog,
+      onboardingCatalogConfigured(isEmbedding, isCloudBrand),
+      isEmbedding ? "embedding" : "language",
+    );
+    return groups.map((group) => ({
+      group: group.group,
+      provider: group.key,
+      icon: getModelLogo("", group.key),
+      options: group.options,
+    }));
+  }, [catalog, isCloudBrand, isEmbedding]);
 
   const totalSteps = isEmbedding
     ? EMBEDDING_STEP_LIST.length
     : STEP_LIST.length;
 
   const [settings, setSettings] = useState<OnboardingVariables>({
-    [isEmbedding ? "embedding_provider" : "llm_provider"]: modelProvider,
+    [isEmbedding ? "embedding_provider" : "llm_provider"]: "",
     embedding_model: "",
     llm_model: "",
-    // Provider-specific fields will be set by provider components
     openai_api_key: "",
     anthropic_api_key: "",
     watsonx_api_key: "",
@@ -190,12 +143,128 @@ const OnboardingCard = ({
 
   const [error, setError] = useState<string | null>(null);
 
+  const [prevProviders, setPrevProviders] = useState<
+    ProviderSettings | undefined | null
+  >(null);
+  if (currentSettings?.providers !== prevProviders) {
+    setPrevProviders(currentSettings?.providers);
+    autoSelectedRef.current = false;
+  }
+
+  const handleModelChange = useCallback(
+    (value: string, provider?: string) => {
+      setModelProvider((prevProvider) => {
+        const nextProvider = provider || prevProvider;
+        if (nextProvider !== prevProvider) {
+          setCredentialsReady(false);
+        }
+        return nextProvider;
+      });
+      setSettings((prev) => {
+        const nextProvider =
+          provider ||
+          (isEmbedding ? prev.embedding_provider : prev.llm_provider) ||
+          "";
+        return {
+          ...prev,
+          ...(isEmbedding
+            ? { embedding_provider: nextProvider, embedding_model: value }
+            : { llm_provider: nextProvider, llm_model: value }),
+        };
+      });
+      setError(null);
+    },
+    [isEmbedding],
+  );
+
+  useEffect(() => {
+    if (autoSelectedRef.current) {
+      return;
+    }
+    if (
+      !currentSettings?.providers ||
+      catalogLoading ||
+      groupedModels.length === 0
+    ) {
+      return;
+    }
+    const fullOrder = isEmbedding
+      ? EMBEDDING_PROVIDER_ORDER
+      : LLM_PROVIDER_ORDER;
+    const providerOrder = isCloudBrand
+      ? fullOrder.filter((p) => !CLOUD_EXCLUDED_PROVIDERS.includes(p))
+      : fullOrder;
+
+    const configuredProvider = (provider: string) =>
+      providerCredentialsSatisfied(
+        currentSettings.providers,
+        provider,
+        catalog,
+      );
+
+    if (isEmbedding) {
+      const llmProvider = currentSettings.agent?.llm_provider;
+      if (llmProvider && configuredProvider(llmProvider)) {
+        const group = groupedModels.find(
+          (entry) => entry.provider === llmProvider,
+        );
+        const first = group?.options[0];
+        if (first) {
+          autoSelectedRef.current = true;
+          handleModelChange(first.value, first.provider ?? llmProvider);
+          return;
+        }
+      }
+    }
+
+    for (const provider of providerOrder) {
+      const hasSaved =
+        configuredProvider(provider) ||
+        (provider === "anthropic" &&
+          currentSettings.providers.anthropic?.has_api_key) ||
+        (provider === "openai" &&
+          currentSettings.providers.openai?.has_api_key) ||
+        (provider === "watsonx" &&
+          currentSettings.providers.watsonx?.has_api_key) ||
+        (provider === "ollama" && currentSettings.providers.ollama?.endpoint);
+      if (!hasSaved) {
+        continue;
+      }
+      const group = groupedModels.find((entry) => entry.provider === provider);
+      const first = group?.options[0];
+      if (first) {
+        autoSelectedRef.current = true;
+        handleModelChange(first.value, first.provider ?? provider);
+        return;
+      }
+    }
+    const openaiGroup = groupedModels.find(
+      (entry) => entry.provider === "openai",
+    );
+    const openaiDefault =
+      openaiGroup?.options.find((option) => option.default) ??
+      openaiGroup?.options[0];
+    if (openaiDefault) {
+      autoSelectedRef.current = true;
+      handleModelChange(openaiDefault.value, "openai");
+      return;
+    }
+    autoSelectedRef.current = true;
+  }, [
+    catalog,
+    catalogLoading,
+    currentSettings?.agent?.llm_provider,
+    currentSettings?.providers,
+    groupedModels,
+    handleModelChange,
+    isCloudBrand,
+    isEmbedding,
+  ]);
+
   const [onboardingTaskId, setOnboardingTaskId] = useState<string | null>(null);
 
-  // Track which tasks we've already handled to prevent infinite loops
   const handledFailedTasksRef = useRef<Set<string>>(new Set());
 
-  // Delay calling onComplete so the "Done" step is briefly visible.
   const [pendingComplete, setPendingComplete] = useState(false);
   const onCompleteEvent = useEffectEvent(onComplete);
   useEffect(() => {
@@ -209,38 +278,30 @@ const OnboardingCard = ({
     return () => clearTimeout(timeoutId);
   }, [pendingComplete]);
 
-  // Query tasks to track completion
   const { data: tasks } = useGetTasksQuery({
-    enabled: currentStep !== null && !isCompleted, // Only poll when onboarding has started and stop once step is complete
-    refetchInterval: currentStep !== null ? 1000 : false, // Poll every 1 second during onboarding
+    enabled: currentStep !== null && !isCompleted,
+    refetchInterval: currentStep !== null ? 1000 : false,
   });
 
-  // Rollback mutation
   const rollbackMutation = useOnboardingRollbackMutation({
     onSuccess: () => {
-      // Reset to provider selection step
-      // Error message is already set before calling mutate
       setCurrentStep(null);
     },
     onError: (error) => {
       console.error("Failed to rollback onboarding", error);
-      // Preserve existing error message if set, otherwise show rollback error
       setError(
         (prevError) => prevError || `Failed to rollback: ${error.message}`,
       );
-      // Still reset to provider selection even if rollback fails
       setCurrentStep(null);
     },
   });
 
-  // Mutations
   const onboardingMutation = useOnboardingMutation({
     onSuccess: (data) => {
       if (data.task_id) {
         setOnboardingTaskId(data.task_id);
       }
 
-      // Update provider health cache to healthy since backend just validated
       const provider =
         (isEmbedding ? settings.embedding_provider : settings.llm_provider) ||
         modelProvider;
@@ -284,7 +345,6 @@ const OnboardingCard = ({
     },
   });
 
-  // Monitor tasks and call onComplete when all tasks are done
   useEffect(() => {
     if (currentStep === null || !tasks || !isEmbedding) {
       return;
@@ -298,7 +358,6 @@ const OnboardingCard = ({
       ? tasks.filter((task) => task.task_id === onboardingTaskId)
       : [];
 
-    // Check if there are any active tasks (pending, running, or processing)
     const activeTasks = relevantTasks.find(
       (task) =>
         task.status === "pending" ||
@@ -306,26 +365,21 @@ const OnboardingCard = ({
         task.status === "processing",
     );
 
-    // Check if any task failed at the top level
     const failedTask = relevantTasks.find(
       (task) => task.status === "failed" || task.status === "error",
     );
 
-    // Check if any completed task has at least one failed file
     const completedTaskWithFailedFile = relevantTasks.find((task) => {
-      // Must have files object
       if (!task.files || typeof task.files !== "object") {
         return false;
       }
 
       const fileEntries = Object.values(task.files);
 
-      // Must have at least one file
       if (fileEntries.length === 0) {
         return false;
       }
 
-      // Check if any file has failed status
       const hasFailedFile = fileEntries.some(
         (file) => file.status === "failed" || file.status === "error",
       );
@@ -335,8 +389,6 @@ const OnboardingCard = ({
 
     const taskWithFailure = failedTask || completedTaskWithFailedFile;
 
-    // If any file failed, show error and jump back one step (like onboardingMutation.onError)
-    // Only handle if we haven't already handled this task
     if (
       taskWithFailure &&
       !rollbackMutation.isPending &&
@@ -345,10 +397,8 @@ const OnboardingCard = ({
     ) {
       console.error("Task failed, jumping back one step", taskWithFailure);
 
-      // Mark this task as handled to prevent infinite loops
       handledFailedTasksRef.current.add(taskWithFailure.task_id);
 
-      // Prefer sanitized user_facing_message from enhanced tasks, then raw error.
       const errorMessages: string[] = [];
       if (taskWithFailure.files) {
         Object.values(taskWithFailure.files).forEach((file) => {
@@ -395,7 +445,6 @@ const OnboardingCard = ({
     const hasIngestionDisabledOrDone =
       !onboardingTaskId && currentStep === totalSteps - 1;
 
-    // If at least one processed file, no failures, and we've started onboarding, complete it
     if (
       (hasSuccessfulTasks || hasIngestionDisabledOrDone) &&
       !isCompleted &&
@@ -413,7 +462,6 @@ const OnboardingCard = ({
         successful_files: completedTask?.successful_files,
       });
 
-      // Set to final step to show "Done", then delay onComplete via pendingComplete.
       setCurrentStep(totalSteps);
       setPendingComplete(true);
     }
@@ -427,6 +475,26 @@ const OnboardingCard = ({
     onboardingMutation.isSuccess,
     onboardingTaskId,
   ]);
+
+  const savedSecretFields = savedSecretFieldsForProvider(
+    currentSettings?.providers,
+    modelProvider,
+  );
+  const savedCredentialValues = savedCredentialValuesForProvider(
+    currentSettings?.providers,
+    modelProvider,
+  );
+  const alreadyConfigured = providerCredentialsSatisfied(
+    currentSettings?.providers,
+    modelProvider,
+    catalog,
+  );
+
+  useEffect(() => {
+    if (modelProvider && alreadyConfigured) {
+      setCredentialsReady(true);
+    }
+  }, [alreadyConfigured, modelProvider]);
 
   const handleComplete = () => {
     const currentProvider = isEmbedding
@@ -442,13 +510,10 @@ const OnboardingCard = ({
       return;
     }
 
-    // Clear any previous error
     setError(null);
 
-    // Prepare onboarding data with provider-specific fields
     const onboardingData: OnboardingVariables = {};
 
-    // Set the provider field
     if (isEmbedding) {
       onboardingData.embedding_provider = currentProvider;
       onboardingData.embedding_model = settings.embedding_model;
@@ -456,8 +521,10 @@ const OnboardingCard = ({
       onboardingData.llm_provider = currentProvider;
       onboardingData.llm_model = settings.llm_model;
     }
+    if (settings.provider_credentials && !alreadyConfigured) {
+      onboardingData.provider_credentials = settings.provider_credentials;
+    }
 
-    // Add provider-specific credentials based on the selected provider
     if (currentProvider === "openai" && settings.openai_api_key) {
       onboardingData.openai_api_key = settings.openai_api_key;
     } else if (currentProvider === "anthropic" && settings.anthropic_api_key) {
@@ -488,15 +555,28 @@ const OnboardingCard = ({
         : { llm_provider: currentProvider, llm_model: settings.llm_model },
     });
 
-    // Record the start time when user clicks Complete
     setProcessingStartTime(Date.now());
     onboardingMutation.mutate(onboardingData);
     setCurrentStep(0);
   };
 
+  const selectedModel = isEmbedding
+    ? settings.embedding_model || ""
+    : settings.llm_model || "";
+  const selected = findGroupedSelection(
+    groupedModels,
+    selectedModel,
+    modelProvider,
+  );
+  const selectedGroup = selected?.group;
+  const selectedCatalogModel = selected?.option?.model;
+
   const isComplete =
-    (isEmbedding && !!settings.embedding_model) ||
-    (!isEmbedding && !!settings.llm_model && isDoclingHealthy);
+    !!selectedModel && credentialsReady && (isEmbedding || isDoclingHealthy);
+
+  const handleStatusChange = useCallback((status: CredentialStatus) => {
+    setCredentialsReady(status.ready);
+  }, []);
 
   return (
     <AnimatePresence mode="wait">
@@ -529,203 +609,70 @@ const OnboardingCard = ({
               )}
             </AnimatePresence>
             <div className={`w-full flex flex-col gap-6`}>
-              <Tabs
-                value={modelProvider}
-                onValueChange={handleSetModelProvider}
+              <LabelWrapper
+                label={isEmbedding ? "Embedding model" : "Language model"}
+                helperText={
+                  isEmbedding
+                    ? "Model used for knowledge ingest and retrieval"
+                    : "Model used for chat"
+                }
+                id={isEmbedding ? "embedding-model" : "language-model"}
+                required
               >
-                <TabsList className="mb-4">
-                  {!isEmbedding && (
-                    <TabsTrigger
-                      value="anthropic"
-                      data-testid={`anthropic-llm-tab`}
-                      className={cn(
-                        error &&
-                          modelProvider === "anthropic" &&
-                          "data-[state=active]:border-destructive",
-                      )}
-                    >
-                      <TabTrigger
-                        selected={modelProvider === "anthropic"}
-                        isLoading={isLoadingModels}
-                      >
-                        <div
-                          className={cn(
-                            "flex items-center justify-center gap-2 w-8 h-8 rounded-none border",
-                            modelProvider === "anthropic"
-                              ? "bg-[#D97757]"
-                              : "bg-muted",
-                          )}
-                        >
-                          <AnthropicLogo
-                            className={cn(
-                              "w-4 h-4 shrink-0",
-                              modelProvider === "anthropic"
-                                ? "text-black"
-                                : "text-muted-foreground",
-                            )}
-                          />
-                        </div>
-                        Anthropic
-                      </TabTrigger>
-                    </TabsTrigger>
-                  )}
-                  <TabsTrigger
-                    value="openai"
-                    className={cn(
-                      error &&
-                        modelProvider === "openai" &&
-                        "data-[state=active]:border-destructive",
-                    )}
-                    data-testid={`openai-${isEmbedding ? "embedding" : "llm"}-tab`}
-                  >
-                    <TabTrigger
-                      selected={modelProvider === "openai"}
-                      isLoading={isLoadingModels}
-                    >
-                      <div
-                        className={cn(
-                          "flex items-center justify-center gap-2 w-8 h-8 rounded-none border",
-                          modelProvider === "openai" ? "bg-white" : "bg-muted",
-                        )}
-                      >
-                        <OpenAILogo
-                          className={cn(
-                            "w-4 h-4 shrink-0",
-                            modelProvider === "openai"
-                              ? "text-black"
-                              : "text-muted-foreground",
-                          )}
-                        />
-                      </div>
-                      OpenAI
-                    </TabTrigger>
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="watsonx"
-                    data-testid={`watsonx-${isEmbedding ? "embedding" : "llm"}-tab`}
-                    className={cn(
-                      error &&
-                        modelProvider === "watsonx" &&
-                        "data-[state=active]:border-destructive",
-                    )}
-                  >
-                    <TabTrigger
-                      selected={modelProvider === "watsonx"}
-                      isLoading={isLoadingModels}
-                    >
-                      <div
-                        className={cn(
-                          "flex items-center justify-center gap-2 w-8 h-8 rounded-none border",
-                          modelProvider === "watsonx"
-                            ? "bg-[#1063FE]"
-                            : "bg-muted",
-                        )}
-                      >
-                        <IBMLogo
-                          className={cn(
-                            "w-4 h-4 shrink-0",
-                            modelProvider === "watsonx"
-                              ? "text-white"
-                              : "text-muted-foreground",
-                          )}
-                        />
-                      </div>
-                      IBM watsonx.ai
-                    </TabTrigger>
-                  </TabsTrigger>
-                  {!isCloudBrand && (
-                    <TabsTrigger
-                      value="ollama"
-                      data-testid={`ollama-${isEmbedding ? "embedding" : "llm"}-tab`}
-                      className={cn(
-                        error &&
-                          modelProvider === "ollama" &&
-                          "data-[state=active]:border-destructive",
-                      )}
-                    >
-                      <TabTrigger
-                        selected={modelProvider === "ollama"}
-                        isLoading={isLoadingModels}
-                      >
-                        <div
-                          className={cn(
-                            "flex items-center justify-center gap-2 w-8 h-8 rounded-none border",
-                            modelProvider === "ollama"
-                              ? "bg-white"
-                              : "bg-muted",
-                          )}
-                        >
-                          <OllamaLogo
-                            className={cn(
-                              "w-4 h-4 shrink-0",
-                              modelProvider === "ollama"
-                                ? "text-black"
-                                : "text-muted-foreground",
-                            )}
-                          />
-                        </div>
-                        Ollama
-                      </TabTrigger>
-                    </TabsTrigger>
-                  )}
-                </TabsList>
-                {!isEmbedding && (
-                  <TabsContent value="anthropic">
-                    <AnthropicOnboarding
-                      setSettings={setSettings}
-                      isEmbedding={isEmbedding}
-                      hasEnvApiKey={
-                        currentSettings?.providers?.anthropic?.has_api_key ===
-                        true
-                      }
-                    />
-                  </TabsContent>
-                )}
-                <TabsContent value="openai">
-                  <OpenAIOnboarding
-                    setSettings={setSettings}
-                    isEmbedding={isEmbedding}
-                    hasEnvApiKey={
-                      currentSettings?.providers?.openai?.has_api_key === true
-                    }
-                    alreadyConfigured={
-                      providerAlreadyConfigured && modelProvider === "openai"
-                    }
-                  />
-                </TabsContent>
-                <TabsContent value="watsonx">
-                  <IBMOnboarding
-                    setSettings={setSettings}
-                    isEmbedding={isEmbedding}
-                    alreadyConfigured={
-                      providerAlreadyConfigured && modelProvider === "watsonx"
-                    }
-                    existingEndpoint={
-                      currentSettings?.providers?.watsonx?.endpoint
-                    }
-                    existingProjectId={
-                      currentSettings?.providers?.watsonx?.project_id
-                    }
-                    hasEnvApiKey={
-                      currentSettings?.providers?.watsonx?.has_api_key === true
-                    }
-                  />
-                </TabsContent>
-                {!isCloudBrand && (
-                  <TabsContent value="ollama">
-                    <OllamaOnboarding
-                      setSettings={setSettings}
-                      isEmbedding={isEmbedding}
-                      alreadyConfigured={
-                        providerAlreadyConfigured && modelProvider === "ollama"
-                      }
-                      existingEndpoint={
-                        currentSettings?.providers?.ollama?.endpoint
-                      }
-                    />
-                  </TabsContent>
-                )}
-              </Tabs>
+                <ModelSelector
+                  groupedOptions={groupedModels}
+                  custom
+                  data-testid={
+                    isEmbedding
+                      ? "embedding-model-selector"
+                      : "language-model-selector"
+                  }
+                  value={selectedModel}
+                  selectedProvider={modelProvider}
+                  onValueChange={handleModelChange}
+                  disabled={catalogLoading}
+                  hasError={!!error}
+                  placeholder={
+                    catalogLoading ? "Loading models..." : "Select model..."
+                  }
+                  noOptionsPlaceholder={
+                    catalogLoading ? "Loading models..." : "No models available"
+                  }
+                />
+              </LabelWrapper>
+
+              {selectedModel && selectedGroup && (
+                <ModelFeatures
+                  model={selectedCatalogModel ?? { model: selectedModel }}
+                  providerName={selectedGroup.group}
+                  provider={selectedGroup.provider}
+                />
+              )}
+
+              {catalogError && (
+                <p className="text-mmd text-destructive">
+                  {catalogError.message}
+                </p>
+              )}
+
+              {modelProvider && alreadyConfigured && (
+                <p className="text-mmd text-muted-foreground">
+                  Using the saved {selectedGroup?.group ?? modelProvider}{" "}
+                  credentials.
+                </p>
+              )}
+
+              {modelProvider && !alreadyConfigured && (
+                <OnboardingCredentialFields
+                  key={modelProvider}
+                  provider={modelProvider}
+                  catalog={catalog}
+                  savedValues={savedCredentialValues}
+                  savedSecretFields={savedSecretFields}
+                  setSettings={setSettings}
+                  onStatusChange={handleStatusChange}
+                />
+              )}
 
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -743,11 +690,9 @@ const OnboardingCard = ({
                 </TooltipTrigger>
                 {!isComplete && (
                   <TooltipContent>
-                    {isLoadingModels
+                    {catalogLoading || isLoadingModels
                       ? "Loading models..."
-                      : settings.llm_model &&
-                          settings.embedding_model &&
-                          !isDoclingHealthy
+                      : selectedModel && !isEmbedding && !isDoclingHealthy
                         ? "docling-serve must be running to continue"
                         : "Please fill in all required fields"}
                   </TooltipContent>

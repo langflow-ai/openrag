@@ -27,7 +27,19 @@ _EMBEDDING_PROVIDER_NAMES = ("openai", "watsonx", "ollama")
 def _configured_provider_names(config, provider_names) -> list:
     """Return the provider names from `provider_names` marked configured in the OpenRAG config."""
     providers = config.providers
-    return [name for name in provider_names if getattr(providers, name).configured]
+    configured = [name for name in provider_names if getattr(providers, name).configured]
+    from services.model_catalog import catalog
+
+    entries = {entry["key"]: entry for entry in catalog()["providers"]}
+    embedding = tuple(provider_names) == _EMBEDDING_PROVIDER_NAMES
+    for provider, value in providers.custom.items():
+        entry = entries.get(provider)
+        supports_kind = bool(
+            entry and (entry["embedding_models"] if embedding else entry["models"])
+        )
+        if value.configured and supports_kind and provider not in configured:
+            configured.append(provider)
+    return configured
 
 
 def _first_configured_llm_provider(config, excluding: str) -> str:
@@ -35,6 +47,9 @@ def _first_configured_llm_provider(config, excluding: str) -> str:
     for p in _LLM_PROVIDER_NAMES:
         if p != excluding and getattr(config.providers, p).configured:
             return p
+    for provider, value in config.providers.custom.items():
+        if provider != excluding and value.configured:
+            return provider
     return "openai"
 
 
@@ -43,6 +58,9 @@ def _first_configured_embedding_provider(config, excluding: str) -> str:
     for p in _EMBEDDING_PROVIDER_NAMES:
         if p != excluding and getattr(config.providers, p).configured:
             return p
+    for provider, value in config.providers.custom.items():
+        if provider != excluding and value.configured:
+            return provider
     return ""
 
 

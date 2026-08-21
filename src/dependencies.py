@@ -82,6 +82,10 @@ __all__ = [
     "get_knowledge_filter_service",
     "get_langflow_file_service",
     "get_langflow_ingest_token_service",
+    "get_langflow_llm_token_service",
+    "get_llm_proxy_user",
+    "require_llm_proxy_any_permission",
+    "require_llm_proxy_permission",
     "get_models_service",
     "get_monitor_service",
     "get_optional_user",
@@ -170,12 +174,36 @@ def get_langflow_ingest_token_service(services: dict = Depends(get_services)):
     return services["langflow_ingest_token_service"]
 
 
+def get_langflow_llm_token_service(services: dict = Depends(get_services)):
+    return services["langflow_llm_token_service"]
+
+
 def get_models_service(services: dict = Depends(get_services)):
     return services["models_service"]
 
 
 def get_api_key_service(services: dict = Depends(get_services)):
     return services["api_key_service"]
+
+
+async def get_llm_proxy_user(
+    request: Request,
+    token_service=Depends(get_langflow_llm_token_service),
+    api_key_service=Depends(get_api_key_service),
+    session_manager=Depends(get_session_manager),
+) -> User:
+    """Langflow hop token, then the normal /v1 JWT or orag_ key."""
+    raw = request.headers.get("authorization") or ""
+    token = raw[7:].strip() if raw.lower().startswith("bearer ") else raw.strip()
+    if token and not token.startswith("orag_"):
+        try:
+            user = token_service.validate_token(token)
+        except ValueError:
+            user = None
+        else:
+            request.state.user = user
+            return user
+    return await resolve_api_key_user(request, api_key_service, session_manager)
 
 
 def get_file_service(services: dict = Depends(get_services)):
@@ -290,6 +318,39 @@ def require_all_permissions(required_perms: Sequence[str]):
         rbac=Depends(get_rbac_service),
     ) -> User:
         return await enforce_all_permissions(request, user, rbac, required)
+
+    return _dep
+
+
+def require_llm_proxy_permission(perm: str):
+    """LLM proxy auth: Langflow hop token, or /v1 identity plus `perm`."""
+
+    async def _dep(
+        request: Request,
+        user: User = Depends(get_llm_proxy_user),
+        rbac=Depends(get_rbac_service),
+    ) -> User:
+        if user.provider == "langflow_llm":
+            return user
+        return await enforce_api_key_permission(request, user, rbac, perm)
+
+    return _dep
+
+
+def require_llm_proxy_any_permission(required_perms: Sequence[str]):
+    """LLM proxy auth: hop token, or /v1 identity plus any of `required_perms`."""
+    required = tuple(required_perms)
+    if not required:
+        raise ValueError("require_llm_proxy_any_permission requires at least one permission")
+
+    async def _dep(
+        request: Request,
+        user: User = Depends(get_llm_proxy_user),
+        rbac=Depends(get_rbac_service),
+    ) -> User:
+        if user.provider == "langflow_llm":
+            return user
+        return await enforce_api_key_any_permission(request, user, rbac, required)
 
     return _dep
 

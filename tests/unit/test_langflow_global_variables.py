@@ -185,17 +185,20 @@ async def test_update_langflow_global_variables_marks_non_secret_provider_fields
 
     await langflow_sync._update_langflow_global_variables(config, flows_service=flows_service)
 
-    assert ("WATSONX_APIKEY", "watson-key", True, "Credential") in calls
-    assert ("OPENAI_API_KEY", "openai-key", True, "Credential") in calls
-    assert ("ANTHROPIC_API_KEY", "anthropic-key", True, "Credential") in calls
-    assert ("WATSONX_PROJECT_ID", "watson-project", True, "Generic") in calls
-    assert ("WATSONX_URL", "https://watson.example", True, "Generic") in calls
-    assert ("OLLAMA_BASE_URL", "http://ollama.local", True, "Generic") in calls
+    names = {name for name, *_ in calls}
+    assert ("OPENRAG_LLM_TOKEN", "None", True, "Credential") in calls
+    assert "ANTHROPIC_API_KEY" not in names
+    assert "WATSONX_APIKEY" not in names
     assert ("SELECTED_EMBEDDING_MODEL", "embedding-model", True, "Generic") in calls
+    assert ("SELECTED_EMBEDDING_MODEL_PROVIDER", "OpenAI", True, "Generic") in calls
+    assert ("SELECTED_LANGUAGE_MODEL_PROVIDER", "OpenAI", True, "Generic") in calls
+    assert any(name == "OPENRAG_LLM_BASE_URL" for name, *_ in calls)
 
 
 @pytest.mark.asyncio
-async def test_ensure_required_langflow_global_variables_creates_all_generics(monkeypatch):
+async def test_ensure_required_langflow_global_variables_creates_generics_and_credential_placeholders(
+    monkeypatch,
+):
     calls = []
 
     async def create_variable(name, value, modify=False, variable_type="Credential"):
@@ -223,6 +226,57 @@ async def test_ensure_required_langflow_global_variables_creates_all_generics(mo
 
     names = {name for name, *_ in calls}
     assert langflow_sync.LANGFLOW_GENERIC_GLOBAL_VARIABLES <= names
-    assert all(variable_type == "Generic" for *_, variable_type in calls)
+    assert langflow_sync.LANGFLOW_RUNTIME_CREDENTIAL_PLACEHOLDERS <= names
+    generic_calls = [c for c in calls if c[3] == "Generic"]
+    credential_calls = [c for c in calls if c[3] == "Credential"]
+    assert generic_calls
+    assert all(variable_type == "Generic" for *_, variable_type in generic_calls)
     assert ("OPENSEARCH_INDEX_NAME", "documents-v2", True, "Generic") in calls
     assert ("SELECTED_EMBEDDING_MODEL", "text-embedding-3-large", True, "Generic") in calls
+    assert ("OPENRAG_LLM_TOKEN", "None", True, "Credential") in credential_calls
+
+
+@pytest.mark.asyncio
+async def test_update_langflow_global_variable_overwrites_redacted_credential():
+    """Langflow GET hides Credential values as null; still PATCH a placeholder."""
+    client = AppClients()
+    calls = []
+
+    async def langflow_request(method, endpoint, **kwargs):
+        calls.append((method, endpoint, kwargs))
+        if method == "GET":
+            return _Response(
+                json_data=[
+                    {
+                        "id": "var-token",
+                        "name": "OPENRAG_LLM_TOKEN",
+                        "value": None,
+                        "type": "Credential",
+                        "default_fields": [],
+                    }
+                ]
+            )
+        return _Response(status_code=200)
+
+    client.langflow_request = langflow_request
+
+    await client._update_langflow_global_variable(
+        "OPENRAG_LLM_TOKEN", "None", variable_type="Credential"
+    )
+
+    assert calls == [
+        ("GET", "/api/v1/variables/", {}),
+        (
+            "PATCH",
+            "/api/v1/variables/var-token",
+            {
+                "json": {
+                    "id": "var-token",
+                    "name": "OPENRAG_LLM_TOKEN",
+                    "value": "None",
+                    "default_fields": [],
+                    "type": "Credential",
+                }
+            },
+        ),
+    ]
