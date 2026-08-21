@@ -22,11 +22,11 @@ def _reset_buffer():
     """Clear all buffer state before every test so tests are independent."""
     cl._buffers.clear()
     cl._locks.clear()
-    cl._last_ok.clear()
+    cl._last_state.clear()
     yield
     cl._buffers.clear()
     cl._locks.clear()
-    cl._last_ok.clear()
+    cl._last_state.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -97,7 +97,7 @@ def test_separate_components_have_independent_buffers():
 
 
 def test_failure_always_records():
-    cl.record_check_result("langflow", False, "down", detail="err")
+    cl.record_check_result("langflow", "unhealthy", "down", detail="err")
     entries = cl.get_entries("langflow", 10)
     assert len(entries) == 1
     assert entries[0]["level"] == "error"
@@ -105,21 +105,25 @@ def test_failure_always_records():
 
 def test_repeated_failures_all_recorded():
     for _ in range(3):
-        cl.record_check_result("langflow", False, "still down")
+        cl.record_check_result("langflow", "unhealthy", "still down")
     assert len(cl.get_entries("langflow", 10)) == 3
 
 
-def test_healthy_after_healthy_records_nothing():
-    """Steady-state healthy should not write anything."""
-    cl.record_check_result("langflow", True, "ok")
-    cl.record_check_result("langflow", True, "ok")
-    assert cl.get_entries("langflow", 10) == []
+def test_healthy_after_healthy_does_not_flood():
+    """First healthy writes once; repeats stay silent."""
+    cl.record_check_result("langflow", "healthy", "ok")
+    cl.record_check_result("langflow", "healthy", "ok")
+    cl.record_check_result("langflow", "healthy", "ok")
+    entries = cl.get_entries("langflow", 10)
+    assert len(entries) == 1
+    assert entries[0]["level"] == "info"
+    assert entries[0]["message"] == "ok"
 
 
 def test_recovery_transition_writes_one_info_entry():
     """False→True transition: exactly one info 'recovered' entry."""
-    cl.record_check_result("opensearch", False, "cluster red")
-    cl.record_check_result("opensearch", True, "cluster green")
+    cl.record_check_result("opensearch", "unhealthy", "cluster red")
+    cl.record_check_result("opensearch", "healthy", "cluster green")
     entries = cl.get_entries("opensearch", 10)
     assert len(entries) == 2  # 1 error + 1 info
     assert entries[0]["level"] == "error"
@@ -127,30 +131,60 @@ def test_recovery_transition_writes_one_info_entry():
     assert "recovered" in entries[1]["message"]
 
 
-def test_no_recovery_entry_when_first_call_is_healthy():
-    """The very first call with ok=True (no prior failure) records nothing."""
-    cl.record_check_result("docling", True, "reachable")
-    assert cl.get_entries("docling", 10) == []
+def test_first_healthy_records_info_not_recovery():
+    """The very first call with ok=True seeds Logs with the current status."""
+    cl.record_check_result("docling", "healthy", "reachable")
+    entries = cl.get_entries("docling", 10)
+    assert len(entries) == 1
+    assert entries[0]["level"] == "info"
+    assert entries[0]["message"] == "reachable"
+    assert "recovered" not in entries[0]["message"]
 
 
 def test_healthy_after_recovery_records_nothing_more():
     """After a recovery entry, subsequent healthy calls are still silent."""
-    cl.record_check_result("langflow", False, "down")
-    cl.record_check_result("langflow", True, "up")  # recovery → 1 info
-    cl.record_check_result("langflow", True, "up")  # steady healthy → nothing
-    cl.record_check_result("langflow", True, "up")
+    cl.record_check_result("langflow", "unhealthy", "down")
+    cl.record_check_result("langflow", "healthy", "up")  # recovery → 1 info
+    cl.record_check_result("langflow", "healthy", "up")  # steady healthy → nothing
+    cl.record_check_result("langflow", "healthy", "up")
     assert len(cl.get_entries("langflow", 10)) == 2  # still just error + recovery
 
 
 def test_second_failure_after_recovery_is_recorded():
     """Failure → recovery → failure again: second failure should be recorded."""
-    cl.record_check_result("opensearch", False, "down1")  # error
-    cl.record_check_result("opensearch", True, "up")  # info recovery
-    cl.record_check_result("opensearch", False, "down2")  # error again
+    cl.record_check_result("opensearch", "unhealthy", "down1")  # error
+    cl.record_check_result("opensearch", "healthy", "up")  # info recovery
+    cl.record_check_result("opensearch", "unhealthy", "down2")  # error again
     entries = cl.get_entries("opensearch", 10)
     assert len(entries) == 3
     levels = [e["level"] for e in entries]
     assert levels == ["error", "info", "error"]
+
+
+def test_degraded_records_warning_once():
+    """Yellow / degraded logs as warning, not info, and does not flood."""
+    cl.record_check_result("opensearch", "degraded", "Cluster Health is yellow")
+    cl.record_check_result("opensearch", "degraded", "Cluster Health is yellow")
+    cl.record_check_result("opensearch", "degraded", "Cluster Health is yellow")
+    entries = cl.get_entries("opensearch", 10)
+    assert len(entries) == 1
+    assert entries[0]["level"] == "warning"
+    assert entries[0]["message"] == "Cluster Health is yellow"
+
+
+def test_healthy_to_degraded_records_warning():
+    cl.record_check_result("opensearch", "healthy", "Cluster Health is green")
+    cl.record_check_result("opensearch", "degraded", "Cluster Health is yellow")
+    entries = cl.get_entries("opensearch", 10)
+    assert [e["level"] for e in entries] == ["info", "warning"]
+
+
+def test_degraded_to_healthy_records_recovery():
+    cl.record_check_result("opensearch", "degraded", "Cluster Health is yellow")
+    cl.record_check_result("opensearch", "healthy", "Cluster Health is green")
+    entries = cl.get_entries("opensearch", 10)
+    assert [e["level"] for e in entries] == ["warning", "info"]
+    assert "recovered" in entries[1]["message"]
 
 
 # ---------------------------------------------------------------------------

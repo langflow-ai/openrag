@@ -3,8 +3,8 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { createPortal } from "react-dom";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
+import { ConsoleStatusPanel } from "@/components/console-status";
 import {
   DoclingHealthBanner,
   useDoclingHealth,
@@ -22,60 +22,26 @@ import { useChat } from "@/contexts/chat-context";
 import { useConsoleStatus } from "@/contexts/console-status-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
-import { usePortal } from "@/hooks/use-portal";
 import { ANIMATION_DURATION, HEADER_HEIGHT } from "@/lib/constants";
 import { isFailureLikeTask } from "@/lib/task-utils";
 import { cn } from "@/lib/utils";
 import { AnimatedConditional } from "./animated-conditional";
 import { ChatRenderer } from "./chat-renderer";
-import { ConsoleStatusPanel } from "./console-status-panel";
 import { FlowsUpdateDialog } from "./flows-update-dialog";
 import { Header } from "./header";
 import FailedTasksInfo from "./tasks_details";
 
-/** Renders the Console Status button + panel directly into document.body via a
- *  portal so that CSS transforms on ancestor elements (framer-motion sidebar
- *  slide animation) cannot break `position: fixed` viewport anchoring. */
-function ConsoleStatusPortal({
-  isOpen,
-  onClose,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-}) {
-  const host = usePortal("console-status-portal");
-  if (!host) return null;
-  return createPortal(
-    isOpen ? <ConsoleStatusPanel onClose={onClose} /> : null,
-    host,
-  );
-}
-
 export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { tasks, isMenuOpen, closeMenu } = useTask();
+  const { tasks, isMenuOpen } = useTask();
   const isCloudBrand = useIsCloudBrand();
-  const { isPanelOpen, panelMode, closePanelOnly } = useKnowledgeFilter();
+  const { isPanelOpen, panelMode } = useKnowledgeFilter();
   const failedTasks = tasks.filter(isFailureLikeTask);
 
   const { isOpen: isStatusOpen, close: closeStatus } = useConsoleStatus();
 
   const isOnKnowledgePage = pathname.startsWith("/knowledge");
-
-  // Close status panel when task menu opens, and vice-versa
-  useEffect(() => {
-    if (isMenuOpen) {
-      closePanelOnly();
-      closeStatus();
-    }
-  }, [isMenuOpen, closePanelOnly, closeStatus]);
-  // Close the knowledge filter panel and the status panel when the task menu opens
-  useEffect(() => {
-    if (isStatusOpen) {
-      closeMenu();
-    }
-  }, [isStatusOpen, closeMenu]);
 
   const { isLoading, isAuthenticated, isNoAuthMode, isIbmAuthMode, runMode } =
     useAuth();
@@ -139,37 +105,41 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         isCloudBrand ? "bg-background" : "bg-muted dark:bg-black",
       )}
     >
-      {/* Banner — full width */}
-      <div className="w-full z-10 bg-background">
-        <AnimatedConditional
-          vertical
-          isOpen={isDoclingUnhealthy}
-          className="w-full"
-        >
-          <DoclingHealthBanner />
-        </AnimatedConditional>
-        {settings?.edited && isOnboardingComplete && (
+      {/* Banners + header — measured by Console Status so overlay/panel
+          sit below this block when health banners push the header down. */}
+      <div id="app-top-chrome" className="shrink-0">
+        {/* Banner — full width */}
+        <div className="w-full z-10 bg-background">
           <AnimatedConditional
             vertical
-            isOpen={isProviderUnhealthy}
+            isOpen={isDoclingUnhealthy}
             className="w-full"
           >
-            <ProviderHealthBanner />
+            <DoclingHealthBanner />
           </AnimatedConditional>
-        )}
-      </div>
-
-      {/* Header — full width, slides down when onboarding completes */}
-      <AnimatedConditional
-        vertical
-        isOpen={isOnboardingComplete}
-        delay={ANIMATION_DURATION / 2}
-        className="bg-background border-b shrink-0"
-      >
-        <div style={{ height: HEADER_HEIGHT }}>
-          <Header />
+          {settings?.edited && isOnboardingComplete && (
+            <AnimatedConditional
+              vertical
+              isOpen={isProviderUnhealthy}
+              className="w-full"
+            >
+              <ProviderHealthBanner />
+            </AnimatedConditional>
+          )}
         </div>
-      </AnimatedConditional>
+
+        {/* Header — full width, slides down when onboarding completes */}
+        <AnimatedConditional
+          vertical
+          isOpen={isOnboardingComplete}
+          delay={ANIMATION_DURATION / 2}
+          className="bg-background border-b shrink-0"
+        >
+          <div style={{ height: HEADER_HEIGHT }}>
+            <Header />
+          </div>
+        </AnimatedConditional>
+      </div>
 
       {/* Body row: nav + main content + right panel */}
       <div className="flex-1 min-h-0 flex flex-row overflow-hidden">
@@ -217,14 +187,10 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </div>
-
-      {/* Console Status — portalled into document.body so fixed positioning
-          is always relative to the viewport, not to any transformed ancestor.
-          OSS-only: not rendered in saas or on_prem deployments. */}
       {isOnboardingComplete &&
         (isAuthenticated || isNoAuthMode) &&
         runMode === "oss" && (
-          <ConsoleStatusPortal isOpen={isStatusOpen} onClose={closeStatus} />
+          <ConsoleStatusPanel isOpen={isStatusOpen} onClose={closeStatus} />
         )}
       {(isAuthenticated || isNoAuthMode) && runMode === "oss" && (
         <FlowsUpdateDialog />

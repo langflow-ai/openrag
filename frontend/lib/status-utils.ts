@@ -71,7 +71,7 @@ function parseDate(value: string): Date {
   return new Date(value);
 }
 
-/** "just now" / "5m ago" / "2h ago" / "3d ago" from any timestamp format.
+/** "just now" / "45s ago" / "5m ago" / "2h ago" / "3d ago" from any timestamp.
  *  Accepts ISO-8601 strings, Unix epoch integers, or Unix float seconds.
  *  Returns "—" for null/undefined and "Unknown time" for unparseable input. */
 export function formatRelative(value?: string | null): string {
@@ -81,9 +81,11 @@ export function formatRelative(value?: string | null): string {
 
   const diffMs = Date.now() - date.getTime();
   const secs = Math.round(diffMs / 1000);
-  if (secs < 0) return "just now";
   if (secs < 45) return "just now";
+
   const mins = Math.floor(diffMs / 60_000);
+  // 45–59s (and round-to-60s while still under 1 minute) would otherwise be "0m ago".
+  if (mins < 1) return `${secs}s ago`;
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.floor(diffMs / 3_600_000);
   if (hrs < 24) return `${hrs}h ago`;

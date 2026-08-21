@@ -86,12 +86,16 @@ export function useComponentSyncMutation() {
 export const useComponentDiagnoseQuery = (component: string | null) =>
   useQuery({
     queryKey: ["component-diagnose", component],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await fetch(
         `/api/status/${encodeURIComponent(component as string)}/diagnose`,
+        { signal },
       );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res.json() as Promise<DiagnosisResponse>;
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(getApiError(body, res.status));
+      }
+      return body as DiagnosisResponse;
     },
     enabled: !!component,
     staleTime: 5000,

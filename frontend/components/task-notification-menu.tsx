@@ -2,7 +2,7 @@
 
 import { Bell, CheckCircle, Clock, Loader2, XCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { StatusIcon } from "@/components/console-status-panel";
+import { StatusIcon } from "@/components/console-status";
 import { IncidentReporterIcon } from "@/components/icons/incident-reporter-icon";
 import { TaskCollapsibleSection } from "@/components/task-collapsible-section";
 import { TaskErrorContent } from "@/components/task-error-content";
@@ -224,7 +224,7 @@ export function TaskNotificationMenu() {
     closeMenu,
     openTaskDialog,
   } = useTask();
-  const { problems, hasProblem, open: openConsoleStatus } = useConsoleStatus();
+  const { problems, open: openConsoleStatus } = useConsoleStatus();
   const [isPastOpen, setIsPastOpen] = useState(true);
   const lastHandledSelectionTriggerRef = useRef(0);
 
@@ -325,10 +325,7 @@ export function TaskNotificationMenu() {
                     key={component.name}
                     type="button"
                     data-testid="system-status-event"
-                    onClick={() => {
-                      openConsoleStatus();
-                      closeMenu();
-                    }}
+                    onClick={() => openConsoleStatus()}
                     className="w-full rounded-lg border border-muted p-3 text-left transition-colors hover:bg-muted/60"
                   >
                     <div className="flex items-center gap-2">

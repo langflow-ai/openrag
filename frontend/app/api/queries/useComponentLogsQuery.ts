@@ -17,9 +17,11 @@ export interface ComponentLogsResponse {
 async function fetchComponentLogs(
   component: string,
   tail = 100,
+  signal?: AbortSignal,
 ): Promise<ComponentLogsResponse> {
   const response = await fetch(
     `/api/status/${encodeURIComponent(component)}/logs?tail=${tail}`,
+    { signal },
   );
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
@@ -38,7 +40,8 @@ export const useComponentLogsQuery = (
 ) => {
   return useQuery({
     queryKey: ["component-logs", component, tail],
-    queryFn: () => fetchComponentLogs(component as string, tail),
+    queryFn: ({ signal }) =>
+      fetchComponentLogs(component as string, tail, signal),
     enabled: !!component,
     retry: 1,
     staleTime: 5000,
