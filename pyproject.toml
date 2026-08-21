@@ -58,7 +58,7 @@ dependencies = [
     "openai==2.24.0",
     "tenacity>=9.1.4",
     "pygments>=2.20.0",
-    "pyasn1>=0.6.3",
+    "pyasn1>=0.6.4",
     "protobuf>=7.35.0,<8",
     "requests>=2.33.0",
     "urllib3>=2.7.0",
