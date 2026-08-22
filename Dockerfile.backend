@@ -23,7 +23,7 @@ RUN microdnf update -y \
     && rm -rf /var/cache/yum \
     && curl -LsSf https://astral.sh/uv/install.sh | sh \
     && python -m ensurepip --upgrade \
-    && python -m pip install --no-cache-dir --upgrade "pip>=26.1" "setuptools>=78.1.1"
+    && python -m pip install --no-cache-dir --upgrade "pip>=26.1.2" "setuptools>=78.1.1"
 
 ENV PATH="$PATH:/root/.local/bin" \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
@@ -82,7 +82,7 @@ RUN microdnf update -y \
     && microdnf clean all \
     && rm -rf /var/cache/yum \
     && python -m ensurepip --upgrade \
-    && python -m pip install --no-cache-dir --upgrade "pip>=26.1" "setuptools>=78.1.1"
+    && python -m pip install --no-cache-dir --upgrade "pip>=26.1.2" "setuptools>=78.1.1"
 
 # Create a non-root user/group.
 # UID/GID 1000 is the conventional first non-root account and
