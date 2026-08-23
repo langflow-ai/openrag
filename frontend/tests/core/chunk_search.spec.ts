@@ -45,7 +45,7 @@ test("Chunk Search & Ranking - OpenAI @33219236", async ({
 
   // Step 2: Set embedding model for OpenAI
   logger.info(`  ⚙️  Setting embedding model for OpenAI...`);
-  await settings.clickTab("Langflow");
+  await settings.clickTab("Ingestion");
   await settings.selectModel("Embedding model", OPENAI_CONFIG.embedding);
   logger.info(`  ✓ Embedding model set to: ${OPENAI_CONFIG.embedding}`);
 
