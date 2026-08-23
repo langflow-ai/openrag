@@ -78,6 +78,7 @@ make test-sdk
 | 42 | Unicode and emoji in query | Returns list, no error |
 | 43 | Result fields (`limit=5`) | At most 5 results; `text` is a non-empty string; `page`/`mimetype` are `None` or correctly typed |
 | 44 | Whitespace-only query (`"   "`) | Raises `ValidationError` |
+| 44a | Search with `SearchFilters(data_sources=[filename])` | Wildcard query returns only chunks from that file; a second ingested file is excluded |
 
 ---
 
@@ -141,4 +142,4 @@ make test-sdk
 
 ---
 
-**Total: 69 tests across 9 domains.**
+**Total: 70 tests across 9 domains.**

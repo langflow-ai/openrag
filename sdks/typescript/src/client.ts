@@ -42,7 +42,10 @@ class SettingsClient {
     return {
       agent: data.agent || {},
       knowledge: data.knowledge || {},
-      archiving: data.archiving ?? { available: false, enabled: false },
+      archiving: {
+        available: data.archiving?.available ?? false,
+        enabled: data.archiving?.enabled ?? false,
+      },
     };
   }
 

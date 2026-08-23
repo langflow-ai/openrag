@@ -34,8 +34,9 @@ test.describe("Update model providers to watsonx.ai and openai @33219219, @33219
     await settings.clickTab("Providers");
     await settings.configureWatsonxai();
     await settings.removeModelProviderSetup("OpenAI");
-    await settings.clickTab("Langflow");
+    await settings.clickTab("Agent");
     await settings.selectModel("Language model", "ibm/granite-4-h-small");
+    await settings.clickTab("Ingestion");
     await settings.selectModel(
       "Embedding model",
       "ibm/slate-125m-english-rtrvr-v2",
@@ -65,8 +66,9 @@ test.describe("Update model providers to watsonx.ai and openai @33219219, @33219
     await settings.clickTab("Providers");
     await settings.configureOpenAPI();
     await settings.removeModelProviderSetup("IBM watsonx.ai");
-    await settings.clickTab("Langflow");
+    await settings.clickTab("Agent");
     await settings.selectModel("Language model", "gpt-4o-mini");
+    await settings.clickTab("Ingestion");
     await settings.selectModel("Embedding model", "text-embedding-3-small");
     await knowledge.deleteDocument(testDocumentName);
     await knowledge.ingestFile(testDocumentPath);

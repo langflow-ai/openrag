@@ -29,8 +29,9 @@ test("Picture Description Configuration @33219221", async ({
 
   // Set OpenAI models before starting
   logger.info("\n⚙️  Configuring OpenAI models...");
-  await settings.clickTab("Langflow");
+  await settings.clickTab("Agent");
   await settings.selectModel("Language model", OPENAI_CONFIG.language);
+  await settings.clickTab("Ingestion");
   await settings.selectModel("Embedding model", OPENAI_CONFIG.embedding);
   logger.info(`  ✓ Language model: ${OPENAI_CONFIG.language}`);
   logger.info(`  ✓ Embedding model: ${OPENAI_CONFIG.embedding}`);
@@ -51,7 +52,7 @@ test("Picture Description Configuration @33219221", async ({
 
   // Enable picture descriptions
   logger.info("\n📸 Enabling picture descriptions...");
-  await settings.clickTab("Langflow");
+  await settings.clickTab("Ingestion");
   await settings.setPictureDescriptions(true);
 
   // Ingest first PDF with picture descriptions enabled
@@ -75,7 +76,7 @@ test("Picture Description Configuration @33219221", async ({
 
   // Disable picture descriptions
   logger.info("\n📸 Disabling picture descriptions...");
-  await settings.clickTab("Langflow");
+  await settings.clickTab("Ingestion");
   await settings.setPictureDescriptions(false);
 
   // Ingest second PDF with picture descriptions disabled

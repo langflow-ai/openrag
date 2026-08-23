@@ -206,7 +206,8 @@ async def upload_options(
 ):
     """Return availability of upload features"""
     aws_enabled = bool(os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY"))
-    from config.settings import UPLOAD_BATCH_SIZE, get_documents_path, is_no_auth_mode
+    from config.paths import get_documents_path
+    from config.settings import UPLOAD_BATCH_SIZE, is_no_auth_mode
 
     local_path_ingestion_enabled = is_no_auth_mode()
     response = {

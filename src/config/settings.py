@@ -145,6 +145,13 @@ LANGFLOW_URL_INGEST_FLOW_ID = (
 DEFAULT_CHUNK_SIZE = 1000
 DEFAULT_CHUNK_OVERLAP = 200
 OPENRAG_BACKEND_PORT = get_env_int("OPENRAG_BACKEND_PORT", 8000)
+
+# CORS – comma-separated list of allowed origins (e.g. "https://app.example.com,https://admin.example.com").
+# Unset → defaults to http://localhost:3000.  Set to "" to disable CORS entirely.
+_raw_cors_origins = os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000")
+CORS_ALLOWED_ORIGINS: list[str] = [
+    o.strip() for o in _raw_cors_origins.split(",") if o.strip() and o.strip() != "*"
+]
 OPENRAG_BACKEND_INTERNAL_URL = os.getenv(
     "OPENRAG_BACKEND_INTERNAL_URL",
     f"http://openrag-backend:{OPENRAG_BACKEND_PORT}",
@@ -1580,28 +1587,26 @@ class AppClients:
         name: str,
         value: str,
         variable_type: str = "Credential",
+        target_variable: dict | None = None,
     ):
         """Update an existing global variable in Langflow via API"""
         try:
-            # First, get all variables to find the one with the matching name
-            get_response = await self.langflow_request("GET", "/api/v1/variables/")
+            if not target_variable:
+                get_response = await self.langflow_request("GET", "/api/v1/variables/")
 
-            if get_response.status_code != 200:
-                logger.error(
-                    "Failed to retrieve variables for update",
-                    variable_name=name,
-                    status_code=get_response.status_code,
-                )
-                return
+                if get_response.status_code != 200:
+                    logger.error(
+                        "Failed to retrieve variables for update",
+                        variable_name=name,
+                        status_code=get_response.status_code,
+                    )
+                    return
 
-            variables = get_response.json()
-            target_variable = None
-
-            # Find the variable with matching name
-            for variable in variables:
-                if variable.get("name") == name:
-                    target_variable = variable
-                    break
+                variables = get_response.json()
+                for variable in variables:
+                    if variable.get("name") == name:
+                        target_variable = variable
+                        break
 
             if not target_variable:
                 logger.error("Variable not found for update", variable_name=name)
@@ -1632,7 +1637,7 @@ class AppClients:
                 recreate_payload = {
                     "name": name,
                     "value": value,
-                    "default_fields": target_variable.get("default_fields", []),
+                    "default_fields": [],
                     "type": variable_type,
                 }
                 recreate_response = await self.langflow_request(
@@ -1658,7 +1663,8 @@ class AppClients:
                 return
 
             current_value = target_variable.get("value")
-            if current_value == value:
+            current_default_fields = target_variable.get("default_fields", [])
+            if current_value == value and not current_default_fields:
                 logger.debug(
                     "Langflow global variable already up to date, skipping update",
                     variable_name=name,
@@ -1671,7 +1677,7 @@ class AppClients:
                 "id": variable_id,
                 "name": name,
                 "value": value,
-                "default_fields": target_variable.get("default_fields", []),
+                "default_fields": [],
                 "type": variable_type,
             }
 
