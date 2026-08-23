@@ -66,6 +66,10 @@ async def test_two_phase_success_invokes_langflow_with_task_id(
         jwt_token="Bearer jwt-token",
     )
 
+    # Preview is opt-in at the router and requires the preview feature flag.
+    # A normal ingestion must submit ``False`` so it does not fetch or retain
+    # parse-preview state; this assertion guards that source-conservation
+    # boundary rather than merely mirroring the current call signature.
     mock_docling_service.upload_to_docling_direct_async.assert_awaited_once_with(
         "test.pdf",
         b"PDFDATA",
