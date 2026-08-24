@@ -226,38 +226,39 @@ async def ensure_required_langflow_global_variables(config=None):
 
 async def _update_langflow_global_variables(config, flows_service=None):
     """Push model selection and the LLM proxy URL into Langflow. No provider secrets."""
-    try:
-        await _upsert_langflow_global_variable(
-            "OPENRAG_LLM_BASE_URL", settings.get_langflow_llm_base_url()
-        )
-        logger.info("Set OPENRAG_LLM_BASE_URL global variable in Langflow")
+    errors: list[str] = []
 
-        if config.knowledge.embedding_model:
-            await _upsert_langflow_global_variable(
-                "SELECTED_EMBEDDING_MODEL", config.knowledge.embedding_model
+    async def _safe_upsert(name: str, value: str):
+        try:
+            await _upsert_langflow_global_variable(name, value)
+            logger.info("Set global variable in Langflow", variable_name=name)
+        except Exception as e:
+            logger.warning(
+                "Failed to set global variable in Langflow", variable_name=name, error=str(e)
             )
-            logger.info(
-                f"Set SELECTED_EMBEDDING_MODEL global variable to {config.knowledge.embedding_model}"
-            )
-        await _upsert_langflow_global_variable("SELECTED_EMBEDDING_MODEL_PROVIDER", "OpenAI")
-        if config.agent.llm_model:
-            await _upsert_langflow_global_variable(
-                "SELECTED_LANGUAGE_MODEL", config.agent.llm_model
-            )
-            logger.info(f"Set SELECTED_LANGUAGE_MODEL global variable to {config.agent.llm_model}")
-        await _upsert_langflow_global_variable("SELECTED_LANGUAGE_MODEL_PROVIDER", "OpenAI")
+            errors.append(f"{name}: {e}")
 
-        for name in sorted(LANGFLOW_RUNTIME_CREDENTIAL_PLACEHOLDERS):
-            await _upsert_langflow_global_variable(
-                name, LANGFLOW_RUNTIME_CREDENTIAL_PLACEHOLDER_VALUE
-            )
-            logger.info(
-                f"Kept {name} Langflow credential as a placeholder; runtime headers supply the hop token"
-            )
+    await _safe_upsert("OPENRAG_LLM_BASE_URL", settings.get_langflow_llm_base_url())
 
-    except Exception as e:
-        logger.error(f"Failed to update Langflow global variables: {str(e)}")
-        raise
+    # Every model runs through the OpenAI-compatible LLM proxy, so the provider
+    # is always "OpenAI" here and no provider secret is pushed to Langflow.
+    knowledge = getattr(config, "knowledge", None)
+    if getattr(knowledge, "embedding_model", None):
+        await _safe_upsert("SELECTED_EMBEDDING_MODEL", config.knowledge.embedding_model)
+    await _safe_upsert("SELECTED_EMBEDDING_MODEL_PROVIDER", "OpenAI")
+
+    agent = getattr(config, "agent", None)
+    if getattr(agent, "llm_model", None):
+        await _safe_upsert("SELECTED_LANGUAGE_MODEL", config.agent.llm_model)
+    await _safe_upsert("SELECTED_LANGUAGE_MODEL_PROVIDER", "OpenAI")
+
+    # Runtime headers overwrite these with the hop token on each Langflow run;
+    # they only need to exist and stay non-empty so load_from_db can resolve them.
+    for name in sorted(LANGFLOW_RUNTIME_CREDENTIAL_PLACEHOLDERS):
+        await _safe_upsert(name, LANGFLOW_RUNTIME_CREDENTIAL_PLACEHOLDER_VALUE)
+
+    if errors:
+        raise RuntimeError(f"Failed to update Langflow global variable(s): {', '.join(errors)}")
 
 
 async def _run_async_post_save_langflow_updates(

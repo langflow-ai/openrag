@@ -468,3 +468,40 @@ async def test_ensure_required_langflow_global_variables_handles_failed_delete_p
     assert "DELETE" in methods
     assert "POST" in methods
     assert "PATCH" in methods
+
+
+@pytest.mark.asyncio
+async def test_update_langflow_global_variables_continues_when_one_fails(monkeypatch):
+    """One failing upsert must not abort the rest; errors are aggregated (PR #2267)."""
+    calls = []
+    attempted_names = []
+
+    async def create_variable(name, value, modify=False, variable_type="Credential"):
+        attempted_names.append(name)
+        if name == "OPENRAG_LLM_BASE_URL":
+            raise RuntimeError("Simulated network failure on OPENRAG_LLM_BASE_URL")
+        calls.append((name, value, modify, variable_type))
+
+    monkeypatch.setattr(
+        langflow_sync.clients,
+        "_create_langflow_global_variable",
+        create_variable,
+        raising=True,
+    )
+
+    config = SimpleNamespace(
+        knowledge=SimpleNamespace(embedding_model="embedding-model"),
+        agent=SimpleNamespace(llm_model="llm-model"),
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        await langflow_sync._update_langflow_global_variables(config)
+
+    assert "OPENRAG_LLM_BASE_URL" in str(exc_info.value)
+    assert "OPENRAG_LLM_BASE_URL" in attempted_names
+
+    names = {name for name, *_ in calls}
+    assert "OPENRAG_LLM_BASE_URL" not in names
+    assert "SELECTED_EMBEDDING_MODEL" in names
+    assert "SELECTED_LANGUAGE_MODEL" in names
+    assert langflow_sync.LANGFLOW_RUNTIME_CREDENTIAL_PLACEHOLDERS <= names
