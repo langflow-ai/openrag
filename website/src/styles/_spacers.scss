@@ -1,0 +1,83 @@
+@use "sass:math";
+
+// Spacers
+
+$spacer-size: 1rem; // 16px
+
+$spacer-sizes: (
+  // 0rem, 0px (no spacer)
+  0: 0,
+  // 0.5rem, 8px
+  1: math.div($spacer-size, 2),
+  // 1rem, 16px
+  2: $spacer-size,
+  // 1.5rem, 24px
+  3: $spacer-size * 1.5,
+  // 2rem, 32px
+  4: $spacer-size * 2,
+  // 3rem, 48px
+  5: $spacer-size * 3,
+  // 4rem, 64px
+  6: $spacer-size * 4,
+  // 5rem, 80px
+  7: $spacer-size * 5,
+  // 6rem, 96px
+  8: $spacer-size * 6,
+  // 7.5rem, 120px
+  9: $spacer-size * 7.5,
+  // 11rem, 176px
+  10: $spacer-size * 11
+);
+
+.spacer {
+  @each $spacer, $size in $spacer-sizes {
+    &--#{$spacer} {
+      margin: $size !important;
+    }
+    &--bottom-#{$spacer} {
+      margin-bottom: $size !important;
+    }
+    &--left-#{$spacer} {
+      margin-left: $size !important;
+    }
+    &--right-#{$spacer} {
+      margin-right: $size !important;
+    }
+    &--top-#{$spacer} {
+      margin-top: $size !important;
+    }
+  }
+}
+
+.inner-spacer {
+  @each $spacer, $size in $spacer-sizes {
+    &--#{$spacer} {
+      padding: $size !important;
+    }
+    &--bottom-#{$spacer} {
+      padding-bottom: $size !important;
+    }
+    &--left-#{$spacer} {
+      padding-left: $size !important;
+    }
+    &--right-#{$spacer} {
+      padding-right: $size !important;
+    }
+    &--top-#{$spacer} {
+      padding-top: $size !important;
+    }
+  }
+}
+
+:root {
+  --announcement-height: 0px;
+
+  @each $spacer, $size in $spacer-sizes {
+    --spacer-#{$spacer}: #{$size};
+  }
+}
+
+.container {
+  padding-left: var(--spacer-3, 24px);
+  padding-right: var(--spacer-3, 24px);
+}

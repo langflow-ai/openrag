@@ -70,10 +70,12 @@ jobs:
             e2e:
               - '**'
               - '!docs/**'
+              - '!website/**'
               - '!**/*.md'
             integration:
               - '**'
               - '!docs/**'
+              - '!website/**'
               - '!**/*.md'
               - '!frontend/**'
 
