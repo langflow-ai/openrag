@@ -349,13 +349,20 @@ const instanaAgentHostVar = "INSTANA_AGENT_HOST"
 // The backend's bootstrap loads .env with override=False, so a real container
 // env var wins over the file — which is what makes this layering work.
 //
+// backendEnv must be the *resolved* backend environment — the map GetBackendEnvVars
+// returns, in which secretKeyRef/configMapKeyRef entries have already been read
+// from the cluster. That is what the backend will actually see in its .env, so
+// deciding from anything else lets the two disagree: a Secret-backed
+// INSTANA_ENABLED=true would boot the tracer with no agent host, and a
+// Secret-backed explicit host would be silently overridden by the fieldRef below.
+//
 // Returns nil when Instana is disabled, or when an explicit host was configured
 // through any of the three levels, in which case that value stands.
-func (m *EnvVarManager) InstanaAgentHostEnvVar(crEnvVars []corev1.EnvVar) *corev1.EnvVar {
-	if !isTruthyEnvValue(m.lookupBackendEnvValue(crEnvVars, "INSTANA_ENABLED")) {
+func (m *EnvVarManager) InstanaAgentHostEnvVar(backendEnv map[string]string) *corev1.EnvVar {
+	if !isTruthyEnvValue(backendEnv["INSTANA_ENABLED"]) {
 		return nil
 	}
-	if m.lookupBackendEnvValue(crEnvVars, instanaAgentHostVar) != "" {
+	if backendEnv[instanaAgentHostVar] != "" {
 		return nil
 	}
 	return &corev1.EnvVar{
@@ -364,23 +371,6 @@ func (m *EnvVarManager) InstanaAgentHostEnvVar(crEnvVars []corev1.EnvVar) *corev
 			FieldRef: &corev1.ObjectFieldSelector{FieldPath: "status.hostIP"},
 		},
 	}
-}
-
-// lookupBackendEnvValue resolves one backend variable using the same three-level
-// precedence as mergeEnvVars, but for literal values only. Entries using
-// valueFrom are ignored: they are resolved against the cluster during reconcile,
-// which needs a context and a client this helper deliberately does not take.
-func (m *EnvVarManager) lookupBackendEnvValue(crEnvVars []corev1.EnvVar, key string) string {
-	value := m.DefaultOpenRagBEEnvVars[key]
-	if v, ok := os.LookupEnv(OPENRAGBE_ENV_PREFIX + key); ok {
-		value = v
-	}
-	for _, envVar := range crEnvVars {
-		if envVar.Name == key && envVar.ValueFrom == nil {
-			value = envVar.Value
-		}
-	}
-	return value
 }
 
 // isTruthyEnvValue mirrors the backend's own gate in src/main.py, so the

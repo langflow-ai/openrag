@@ -125,8 +125,9 @@ func (r *OpenRAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if err := r.reconcileServiceAccounts(ctx, instance, targetNS); err != nil {
 		return r.updateStatusError(ctx, instance, "service accounts", err)
 	}
-	// Reconcile .env secrets and get their hashes to trigger pod restarts when secrets change
-	backendEnvHash, langflowEnvHash, err := r.reconcileEnvSecrets(ctx, instance, targetNS)
+	// Reconcile .env secrets. Their hashes trigger pod restarts when a secret
+	// changes; the resolved backend env feeds the Instana decision below.
+	envSecrets, err := r.reconcileEnvSecrets(ctx, instance, targetNS)
 	if err != nil {
 		return r.updateStatusError(ctx, instance, "env secrets", err)
 	}
@@ -136,7 +137,8 @@ func (r *OpenRAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if err := r.reconcileServices(ctx, instance, targetNS); err != nil {
 		return r.updateStatusError(ctx, instance, "services", err)
 	}
-	if err := r.reconcileDeployments(ctx, instance, targetNS, backendEnvHash, langflowEnvHash); err != nil {
+	instanaHostEnv := r.EnvVarManager.InstanaAgentHostEnvVar(envSecrets.backendEnv)
+	if err := r.reconcileDeployments(ctx, instance, targetNS, envSecrets.backendHash, envSecrets.langflowHash, instanaHostEnv); err != nil {
 		return r.updateStatusError(ctx, instance, "deployments", err)
 	}
 	if err := r.reconcileDoclingComponents(ctx, instance, targetNS); err != nil {
@@ -232,26 +234,36 @@ func parseEnvValue(envContent, key string) string {
 	return ""
 }
 
+// envSecretsResult is what reconcileEnvSecrets computed that later reconcile
+// steps still need.
+type envSecretsResult struct {
+	// backendHash and langflowHash are SHA256 hashes of the rendered .env
+	// content, stamped onto the pods so a changed secret triggers a restart.
+	backendHash  string
+	langflowHash string
+	// backendEnv is the fully resolved backend environment — the map the .env
+	// file was rendered from, with secretKeyRef and configMapKeyRef entries
+	// already read from the cluster. It is the only view in which a value's
+	// origin no longer matters, so anything deciding from a backend variable
+	// (see InstanaAgentHostEnvVar) must read it here rather than from spec.env.
+	backendEnv map[string]string
+}
+
 // reconcileEnvSecrets creates / updates the backend and Langflow .env Secrets
 // from CR fields and fixed runtime defaults.
 // All sensitive values (whether user-provided or generated) are consolidated into .env files.
-// Returns SHA256 hashes of the backend and langflow .env content to use as pod annotations.
-func (r *OpenRAGReconciler) reconcileEnvSecrets(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) (backendHash, langflowHash string, err error) {
+func (r *OpenRAGReconciler) reconcileEnvSecrets(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) (envSecretsResult, error) {
 	// Build backend .env content with all secrets consolidated
-	backendEnvContent, err := r.buildBackendEnv(ctx, o, targetNS)
+	backendEnvContent, backendEnv, err := r.buildBackendEnv(ctx, o, targetNS)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to build backend env: %w", err)
+		return envSecretsResult{}, fmt.Errorf("failed to build backend env: %w", err)
 	}
 
 	// Build langflow .env content with all secrets consolidated
 	langflowEnvContent, err := r.buildLangflowEnv(ctx, o, targetNS)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to build langflow env: %w", err)
+		return envSecretsResult{}, fmt.Errorf("failed to build langflow env: %w", err)
 	}
-
-	// Calculate SHA256 hashes of .env content for pod restart triggering
-	backendHash = calculateHash(backendEnvContent)
-	langflowHash = calculateHash(langflowEnvContent)
 
 	type envDef struct {
 		name    string
@@ -282,35 +294,43 @@ func (r *OpenRAGReconciler) reconcileEnvSecrets(ctx context.Context, o *openragv
 			StringData: map[string]string{".env": d.content},
 		}
 		if err := r.setOwnerOrLabel(o, secret, targetNS); err != nil {
-			return "", "", err
+			return envSecretsResult{}, err
 		}
 		if err := r.createOrUpdate(ctx, secret); err != nil {
-			return "", "", err
+			return envSecretsResult{}, err
 		}
 	}
-	return backendHash, langflowHash, nil
+	// Hash the .env content for pod restart triggering
+	return envSecretsResult{
+		backendHash:  calculateHash(backendEnvContent),
+		langflowHash: calculateHash(langflowEnvContent),
+		backendEnv:   backendEnv,
+	}, nil
 }
 
-func (r *OpenRAGReconciler) buildBackendEnv(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) (string, error) {
+// buildBackendEnv renders the backend .env content and returns it alongside the
+// resolved env map it was rendered from, so callers can read a final value
+// (secretKeyRef and configMapKeyRef already resolved) without re-resolving.
+func (r *OpenRAGReconciler) buildBackendEnv(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) (string, map[string]string, error) {
 	// Start with defaults, operator env, and CR env (three-level priority)
 	// This now resolves ALL env vars (including secrets/configmaps) for inclusion in .env file
 	envVars, err := r.EnvVarManager.GetBackendEnvVars(ctx, r.Client, targetNS, o.Spec.Backend.Env)
 	if err != nil {
-		return "", fmt.Errorf("failed to merge backend env vars: %w", err)
+		return "", nil, fmt.Errorf("failed to merge backend env vars: %w", err)
 	}
 
 	// Get or generate encryption key (AES-256)
 	// Priority: 1) User-provided secret in CR, 2) Existing value in .env, 3) Generate new
 	encryptionKey, err := r.getOrGenerateSecret(ctx, o, targetNS, o.Spec.Backend.EncryptionKeySecret, "OPENRAG_ENCRYPTION_KEY", instanceResourceName(o, "be-env"), GenerateAESKeyString32)
 	if err != nil {
-		return "", fmt.Errorf("failed to get encryption key: %w", err)
+		return "", nil, fmt.Errorf("failed to get encryption key: %w", err)
 	}
 	envVars["OPENRAG_ENCRYPTION_KEY"] = encryptionKey
 
 	// Get or generate JWT signing key (base64 secret)
 	jwtSigningKey, err := r.getOrGenerateSecret(ctx, o, targetNS, o.Spec.Backend.JWTSigningKeySecret, "JWT_SIGNING_KEY", instanceResourceName(o, "be-env"), generateBase64SecretKey)
 	if err != nil {
-		return "", fmt.Errorf("failed to get JWT signing key: %w", err)
+		return "", nil, fmt.Errorf("failed to get JWT signing key: %w", err)
 	}
 	envVars["JWT_SIGNING_KEY"] = jwtSigningKey
 
@@ -349,7 +369,7 @@ func (r *OpenRAGReconciler) buildBackendEnv(ctx context.Context, o *openragv1alp
 			}
 			username, err := r.readSecretValue(ctx, targetNS, usernameSecret)
 			if err != nil {
-				return "", fmt.Errorf("failed to read OpenSearch username: %w", err)
+				return "", nil, fmt.Errorf("failed to read OpenSearch username: %w", err)
 			}
 			if username != "" {
 				envVars["OPENSEARCH_USERNAME"] = username
@@ -362,7 +382,7 @@ func (r *OpenRAGReconciler) buildBackendEnv(ctx context.Context, o *openragv1alp
 			}
 			password, err := r.readSecretValue(ctx, targetNS, passwordSecret)
 			if err != nil {
-				return "", fmt.Errorf("failed to read OpenSearch password: %w", err)
+				return "", nil, fmt.Errorf("failed to read OpenSearch password: %w", err)
 			}
 			if password != "" {
 				envVars["OPENSEARCH_PASSWORD"] = password
@@ -386,7 +406,7 @@ func (r *OpenRAGReconciler) buildBackendEnv(ctx context.Context, o *openragv1alp
 		if wx.APIKeySecret != nil {
 			apiKey, err := r.readSecretValue(ctx, targetNS, wx.APIKeySecret)
 			if err != nil {
-				return "", fmt.Errorf("failed to read WatsonX API key: %w", err)
+				return "", nil, fmt.Errorf("failed to read WatsonX API key: %w", err)
 			}
 			if apiKey != "" {
 				envVars["WATSONX_API_KEY"] = apiKey
@@ -430,7 +450,7 @@ func (r *OpenRAGReconciler) buildBackendEnv(ctx context.Context, o *openragv1alp
 			if oa.Google.ClientSecret != nil {
 				clientSecret, err := r.readSecretValue(ctx, targetNS, oa.Google.ClientSecret)
 				if err != nil {
-					return "", fmt.Errorf("failed to read Google OAuth client secret: %w", err)
+					return "", nil, fmt.Errorf("failed to read Google OAuth client secret: %w", err)
 				}
 				if clientSecret != "" {
 					envVars["GOOGLE_OAUTH_CLIENT_SECRET"] = clientSecret
@@ -446,7 +466,7 @@ func (r *OpenRAGReconciler) buildBackendEnv(ctx context.Context, o *openragv1alp
 			if oa.Microsoft.ClientSecret != nil {
 				clientSecret, err := r.readSecretValue(ctx, targetNS, oa.Microsoft.ClientSecret)
 				if err != nil {
-					return "", fmt.Errorf("failed to read Microsoft OAuth client secret: %w", err)
+					return "", nil, fmt.Errorf("failed to read Microsoft OAuth client secret: %w", err)
 				}
 				if clientSecret != "" {
 					envVars["MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET"] = clientSecret
@@ -481,7 +501,7 @@ func (r *OpenRAGReconciler) buildBackendEnv(ctx context.Context, o *openragv1alp
 	}
 
 	// Convert map to .env file format
-	return r.EnvVarManager.BuildEnvFileContent(envVars), nil
+	return r.EnvVarManager.BuildEnvFileContent(envVars), envVars, nil
 }
 
 func (r *OpenRAGReconciler) buildLangflowEnv(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) (string, error) {
@@ -695,10 +715,10 @@ func (r *OpenRAGReconciler) reconcileServices(ctx context.Context, o *openragv1a
 	return nil
 }
 
-func (r *OpenRAGReconciler) reconcileDeployments(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string, backendEnvHash, langflowEnvHash string) error {
+func (r *OpenRAGReconciler) reconcileDeployments(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string, backendEnvHash, langflowEnvHash string, instanaHostEnv *corev1.EnvVar) error {
 	deploys := []client.Object{
 		r.frontendDeployment(o, targetNS),
-		r.backendDeployment(o, targetNS, backendEnvHash),
+		r.backendDeployment(o, targetNS, backendEnvHash, instanaHostEnv),
 		r.langflowDeployment(o, targetNS, langflowEnvHash),
 	}
 	for _, d := range deploys {
@@ -764,7 +784,10 @@ func (r *OpenRAGReconciler) frontendDeployment(o *openragv1alpha1.OpenRAG, targe
 	}
 }
 
-func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, targetNS string, envHash string) *appsv1.Deployment {
+// backendDeployment builds the backend Deployment. instanaHostEnv is the single
+// container-level env var the reconciler may inject (nil when Instana is off or
+// an explicit agent host was configured) — see InstanaAgentHostEnvVar.
+func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, targetNS string, envHash string, instanaHostEnv *corev1.EnvVar) *appsv1.Deployment {
 	spec := o.Spec.Backend
 	replicas := replicasOrDefault(spec.Replicas)
 
@@ -809,10 +832,8 @@ func (r *OpenRAGReconciler) backendDeployment(o *openragv1alpha1.OpenRAG, target
 	// InstanaAgentHostEnvVar. Nil unless Instana is enabled, and it carries a
 	// node IP rather than a credential, so the "keep secrets out of `env`"
 	// rationale above is unaffected.
-	if r.EnvVarManager != nil {
-		if instanaHost := r.EnvVarManager.InstanaAgentHostEnvVar(spec.Env); instanaHost != nil {
-			envVars = append(envVars, *instanaHost)
-		}
+	if instanaHostEnv != nil {
+		envVars = append(envVars, *instanaHostEnv)
 	}
 
 	baseLabels := componentLabels(o.Name, "be")
