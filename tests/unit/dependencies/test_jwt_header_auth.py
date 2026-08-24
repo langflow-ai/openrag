@@ -480,3 +480,56 @@ async def test_x_username_headers_never_become_credentials(monkeypatch, _patch_a
     assert user.user_id == "alice"
     assert user.jwt_token == "Bearer tok"  # not a Basic token minted from X-*
     assert user.opensearch_credentials is None
+
+
+def test_extract_user_identity_display_name_precedence():
+    """Verify display name resolution order: display_name -> name -> displayName -> username."""
+    # 1. name claim (standard OIDC display name)
+    uid, email, name = deps._extract_user_identity_from_claims({
+        "sub": "sub123",
+        "username": "vaisakh-ramakrishnan1",
+        "name": "Vaisakh Ramakrishnan",
+    })
+    assert uid == "vaisakh-ramakrishnan1"
+    assert name == "Vaisakh Ramakrishnan"
+
+    # 2. displayName claim (IAM / AD display name)
+    uid, email, name = deps._extract_user_identity_from_claims({
+        "sub": "sub123",
+        "username": "vaisakh-ramakrishnan1",
+        "displayName": "Vaisakh Ramakrishnan",
+    })
+    assert name == "Vaisakh Ramakrishnan"
+
+    # 3. display_name claim
+    uid, email, name = deps._extract_user_identity_from_claims({
+        "sub": "sub123",
+        "username": "vaisakh-ramakrishnan1",
+        "display_name": "Vaisakh Ramakrishnan",
+    })
+    assert name == "Vaisakh Ramakrishnan"
+
+    # 4. Fallback to username when no display name claim exists
+    uid, email, name = deps._extract_user_identity_from_claims({
+        "sub": "sub123",
+        "username": "vaisakh-ramakrishnan1",
+    })
+    assert name == "vaisakh-ramakrishnan1"
+
+
+@pytest.mark.asyncio
+async def test_jwt_user_receives_display_name(monkeypatch, _patch_attach):
+    """Verify that a user authenticated via JWT receives Display Name in user.name."""
+    _patch_verify(monkeypatch, {
+        "sub": "1000330999",
+        "username": "vaisakh-ramakrishnan1",
+        "name": "Vaisakh Ramakrishnan",
+        "openrag_roles": ["admin"],
+    })
+    req = _FakeRequest({"X-OpenRAG-JWT": "Bearer tok"})
+
+    user = await get_api_key_user_async(req, api_key_service=None, session_manager=None)
+
+    assert user.user_id == "vaisakh-ramakrishnan1"
+    assert user.name == "Vaisakh Ramakrishnan"
+

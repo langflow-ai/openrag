@@ -3,7 +3,7 @@
 import base64
 import dataclasses
 import hashlib
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import HTTPException, Request
 
@@ -140,6 +140,37 @@ def _stage_jwt_roles(request: Request, claims: dict, user_id: str | None) -> Non
     request.state.jwt_roles = jwt_roles
 
 
+def _extract_user_identity_from_claims(claims: dict | None) -> tuple[str, str, str]:
+    """Extract (user_id, email, name/display_name) from JWT claims.
+
+    CPD / OIDC / IAM claim precedence:
+    - Display Name: `display_name` -> `name` -> `displayName` -> fallback to username
+    - User ID / Username: `username` -> `preferred_username` -> `sub`
+    - Email: `email` -> `username` -> `preferred_username` -> `sub`
+    """
+    if not isinstance(claims, dict):
+        return "", "", ""
+
+    logger.debug("[AUTH] Decoded JWT claims for identity extraction", claims=claims)
+
+    def _as_str(val: Any) -> str:
+        if val is None:
+            return ""
+        return str(val).strip()
+
+    sub = _as_str(claims.get("sub"))
+    username = _as_str(claims.get("username")) or _as_str(claims.get("preferred_username")) or sub
+    user_id = username
+    email = _as_str(claims.get("email")) or username
+    display_name = (
+        _as_str(claims.get("display_name"))
+        or _as_str(claims.get("name"))
+        or _as_str(claims.get("displayName"))
+    )
+    name = display_name or username
+    return user_id, email, name
+
+
 async def _resolve_lakehouse_credentials(
     request: Request, user_id: str | None
 ) -> tuple[str | None, str | None]:
@@ -257,9 +288,7 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
                     "IBM JWT is missing required 'sub' claim; treating as unauthenticated"
                 )
             else:
-                user_id = claims.get("username", sub)
-                email = claims.get("username", sub)
-                name = claims.get("display_name", claims.get("username", sub))
+                user_id, email, name = _extract_user_identity_from_claims(claims)
                 # RBAC off -> jwt_roles stays None (legacy default-role path,
                 # existing DB roles untouched). RBAC on -> extract + 401 if none.
                 _stage_jwt_roles(request, claims, user_id)
@@ -505,10 +534,11 @@ async def resolve_api_key_user(request: Request, api_key_service, session_manage
         claims = resolve_jwt_claims(token)
         sub = claims.get("sub") if claims else None
         if sub:
+            user_id, email, name = _extract_user_identity_from_claims(claims)
             user = User(
-                user_id=claims.get("username", sub),
-                email=claims.get("username", sub),
-                name=claims.get("display_name", claims.get("username", sub)),
+                user_id=user_id,
+                email=email,
+                name=name,
                 picture=None,
                 # Same provider as the cookie path so the forwarded user
                 # resolves to the SAME users row (oauth_provider, oauth_subject).

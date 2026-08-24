@@ -65,6 +65,9 @@ async def ensure_user_row(
 
     existing = await user_repo.get_by_oauth(provider, subject)
     if existing:
+        if user.name and user.name != existing.display_name:
+            existing.display_name = user.name
+            session.add(existing)
         await user_repo.update_last_login(existing.id)
         if jwt_roles is not None:
             await _sync_jwt_roles(role_repo, audit_repo, existing.id, jwt_roles)
