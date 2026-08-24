@@ -15,6 +15,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 import services.component_logs as cl  # noqa: E402
+from api.schemas.status import ComponentState  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -97,7 +98,7 @@ def test_separate_components_have_independent_buffers():
 
 
 def test_failure_always_records():
-    cl.record_check_result("langflow", "unhealthy", "down", detail="err")
+    cl.record_check_result("langflow", ComponentState.UNHEALTHY, "down", detail="err")
     entries = cl.get_entries("langflow", 10)
     assert len(entries) == 1
     assert entries[0]["level"] == "error"
@@ -105,15 +106,15 @@ def test_failure_always_records():
 
 def test_repeated_failures_all_recorded():
     for _ in range(3):
-        cl.record_check_result("langflow", "unhealthy", "still down")
+        cl.record_check_result("langflow", ComponentState.UNHEALTHY, "still down")
     assert len(cl.get_entries("langflow", 10)) == 3
 
 
 def test_healthy_after_healthy_does_not_flood():
     """First healthy writes once; repeats stay silent."""
-    cl.record_check_result("langflow", "healthy", "ok")
-    cl.record_check_result("langflow", "healthy", "ok")
-    cl.record_check_result("langflow", "healthy", "ok")
+    cl.record_check_result("langflow", ComponentState.HEALTHY, "ok")
+    cl.record_check_result("langflow", ComponentState.HEALTHY, "ok")
+    cl.record_check_result("langflow", ComponentState.HEALTHY, "ok")
     entries = cl.get_entries("langflow", 10)
     assert len(entries) == 1
     assert entries[0]["level"] == "info"
@@ -122,8 +123,8 @@ def test_healthy_after_healthy_does_not_flood():
 
 def test_recovery_transition_writes_one_info_entry():
     """False→True transition: exactly one info 'recovered' entry."""
-    cl.record_check_result("opensearch", "unhealthy", "cluster red")
-    cl.record_check_result("opensearch", "healthy", "cluster green")
+    cl.record_check_result("opensearch", ComponentState.UNHEALTHY, "cluster red")
+    cl.record_check_result("opensearch", ComponentState.HEALTHY, "cluster green")
     entries = cl.get_entries("opensearch", 10)
     assert len(entries) == 2  # 1 error + 1 info
     assert entries[0]["level"] == "error"
@@ -133,7 +134,7 @@ def test_recovery_transition_writes_one_info_entry():
 
 def test_first_healthy_records_info_not_recovery():
     """The very first call with ok=True seeds Logs with the current status."""
-    cl.record_check_result("docling", "healthy", "reachable")
+    cl.record_check_result("docling", ComponentState.HEALTHY, "reachable")
     entries = cl.get_entries("docling", 10)
     assert len(entries) == 1
     assert entries[0]["level"] == "info"
@@ -143,18 +144,18 @@ def test_first_healthy_records_info_not_recovery():
 
 def test_healthy_after_recovery_records_nothing_more():
     """After a recovery entry, subsequent healthy calls are still silent."""
-    cl.record_check_result("langflow", "unhealthy", "down")
-    cl.record_check_result("langflow", "healthy", "up")  # recovery → 1 info
-    cl.record_check_result("langflow", "healthy", "up")  # steady healthy → nothing
-    cl.record_check_result("langflow", "healthy", "up")
+    cl.record_check_result("langflow", ComponentState.UNHEALTHY, "down")
+    cl.record_check_result("langflow", ComponentState.HEALTHY, "up")  # recovery → 1 info
+    cl.record_check_result("langflow", ComponentState.HEALTHY, "up")  # steady healthy → nothing
+    cl.record_check_result("langflow", ComponentState.HEALTHY, "up")
     assert len(cl.get_entries("langflow", 10)) == 2  # still just error + recovery
 
 
 def test_second_failure_after_recovery_is_recorded():
     """Failure → recovery → failure again: second failure should be recorded."""
-    cl.record_check_result("opensearch", "unhealthy", "down1")  # error
-    cl.record_check_result("opensearch", "healthy", "up")  # info recovery
-    cl.record_check_result("opensearch", "unhealthy", "down2")  # error again
+    cl.record_check_result("opensearch", ComponentState.UNHEALTHY, "down1")  # error
+    cl.record_check_result("opensearch", ComponentState.HEALTHY, "up")  # info recovery
+    cl.record_check_result("opensearch", ComponentState.UNHEALTHY, "down2")  # error again
     entries = cl.get_entries("opensearch", 10)
     assert len(entries) == 3
     levels = [e["level"] for e in entries]
@@ -163,9 +164,9 @@ def test_second_failure_after_recovery_is_recorded():
 
 def test_degraded_records_warning_once():
     """Yellow / degraded logs as warning, not info, and does not flood."""
-    cl.record_check_result("opensearch", "degraded", "Cluster Health is yellow")
-    cl.record_check_result("opensearch", "degraded", "Cluster Health is yellow")
-    cl.record_check_result("opensearch", "degraded", "Cluster Health is yellow")
+    cl.record_check_result("opensearch", ComponentState.DEGRADED, "Cluster Health is yellow")
+    cl.record_check_result("opensearch", ComponentState.DEGRADED, "Cluster Health is yellow")
+    cl.record_check_result("opensearch", ComponentState.DEGRADED, "Cluster Health is yellow")
     entries = cl.get_entries("opensearch", 10)
     assert len(entries) == 1
     assert entries[0]["level"] == "warning"
@@ -173,15 +174,15 @@ def test_degraded_records_warning_once():
 
 
 def test_healthy_to_degraded_records_warning():
-    cl.record_check_result("opensearch", "healthy", "Cluster Health is green")
-    cl.record_check_result("opensearch", "degraded", "Cluster Health is yellow")
+    cl.record_check_result("opensearch", ComponentState.HEALTHY, "Cluster Health is green")
+    cl.record_check_result("opensearch", ComponentState.DEGRADED, "Cluster Health is yellow")
     entries = cl.get_entries("opensearch", 10)
     assert [e["level"] for e in entries] == ["info", "warning"]
 
 
 def test_degraded_to_healthy_records_recovery():
-    cl.record_check_result("opensearch", "degraded", "Cluster Health is yellow")
-    cl.record_check_result("opensearch", "healthy", "Cluster Health is green")
+    cl.record_check_result("opensearch", ComponentState.DEGRADED, "Cluster Health is yellow")
+    cl.record_check_result("opensearch", ComponentState.HEALTHY, "Cluster Health is green")
     entries = cl.get_entries("opensearch", 10)
     assert [e["level"] for e in entries] == ["warning", "info"]
     assert "recovered" in entries[1]["message"]

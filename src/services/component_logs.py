@@ -10,6 +10,8 @@ from collections import deque
 from datetime import UTC, datetime
 from typing import TypedDict
 
+from api.schemas.status import ComponentState
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -119,7 +121,7 @@ def record(component: str, level: str, message: str, detail: str | None = None) 
 
 def record_check_result(
     component: str,
-    state: str,
+    state: ComponentState,
     message: str,
     detail: str | None = None,
 ) -> None:
@@ -131,7 +133,6 @@ def record_check_result(
     - first healthy sighting: records one info so Logs is not blank.
     - steady healthy / steady degraded: records nothing.
     """
-    state = str(state)
     with _state_lock:
         prev = _last_state.get(component)
         _last_state[component] = state
