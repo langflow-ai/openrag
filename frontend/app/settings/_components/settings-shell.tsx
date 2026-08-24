@@ -3,6 +3,7 @@
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { cn } from "@/lib/utils";
 import { SettingsNav } from "./settings-nav";
+import { UnsavedChangesDialog } from "./unsaved-changes-dialog";
 
 export function SettingsShell({ children }: { children: React.ReactNode }) {
   const isCloudBrand = useIsCloudBrand();
@@ -23,6 +24,7 @@ export function SettingsShell({ children }: { children: React.ReactNode }) {
       </h2>
       <SettingsNav />
       {children}
+      <UnsavedChangesDialog />
     </div>
   );
 }
