@@ -117,8 +117,6 @@ class FileService:
             filter_clauses.append({"term": {"owner": owner}})
 
         if search:
-            # Combine wildcard (partial) and prefix for flexible matching.
-            # case_insensitive=True so "jason" matches "JASON_RESUME.pdf".
             must.append(
                 {
                     "bool": {

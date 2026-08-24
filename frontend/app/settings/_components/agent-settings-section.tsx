@@ -20,6 +20,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
+import { useRegisterDirty } from "@/contexts/unsaved-changes-context";
 import { trackButton } from "@/lib/analytics";
 import { DEFAULT_AGENT_SETTINGS, UI_CONSTANTS } from "@/lib/constants";
 import { resolveLangflowEditUrl } from "@/lib/url-utils";
@@ -47,6 +48,7 @@ export function AgentSettingsSection() {
   const [isRestoringFlow, setIsRestoringFlow] = useState<boolean>(false);
   const [openLlmSelector, setOpenLlmSelector] = useState(false);
   const [systemPrompt, setSystemPrompt] = useState<string>("");
+  const [userEdited, setUserEdited] = useState(false);
 
   const { data: settings = {} } = useGetSettingsQuery({
     enabled: isAuthenticated || isNoAuthMode,
@@ -135,6 +137,9 @@ export function AgentSettingsSection() {
     }
   }, [settings.agent?.llm_model, allLlmOptions, handleModelChange]);
 
+  const agentDirty = systemPrompt !== (settings.agent?.system_prompt ?? "");
+  useRegisterDirty("agent-settings", userEdited && agentDirty);
+
   useEffect(() => {
     if (settings.agent?.system_prompt) {
       setSystemPrompt(settings.agent.system_prompt);
@@ -161,7 +166,10 @@ export function AgentSettingsSection() {
       elementId: "save-agent-instructions-button",
       namespace: "settings",
     });
-    updateSettingsMutation.mutate({ system_prompt: systemPrompt });
+    updateSettingsMutation.mutate(
+      { system_prompt: systemPrompt },
+      { onSuccess: () => setUserEdited(false) },
+    );
   };
 
   const handleEditInLangflow = (closeDialog: () => void) => {
@@ -207,6 +215,7 @@ export function AgentSettingsSection() {
       )
       .then(() => {
         setSystemPrompt(DEFAULT_AGENT_SETTINGS.system_prompt);
+        setUserEdited(false);
         toast.success("Default agent flow settings restored successfully");
         closeDialog();
       })
@@ -324,7 +333,10 @@ export function AgentSettingsSection() {
                 id="system-prompt"
                 placeholder="Enter your agent instructions here..."
                 value={systemPrompt}
-                onChange={(e) => setSystemPrompt(e.target.value)}
+                onChange={(e) => {
+                  setUserEdited(true);
+                  setSystemPrompt(e.target.value);
+                }}
                 rows={6}
                 className={`resize-none ${
                   systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS
@@ -346,9 +358,10 @@ export function AgentSettingsSection() {
           <div className="flex justify-end pt-2 gap-2">
             {settings.agent?.default_system_prompt && (
               <Button
-                onClick={() =>
-                  setSystemPrompt(settings.agent?.default_system_prompt || "")
-                }
+                onClick={() => {
+                  setUserEdited(true);
+                  setSystemPrompt(settings.agent?.default_system_prompt || "");
+                }}
                 variant="outline"
                 size="sm"
                 disabled={systemPrompt === settings.agent.default_system_prompt}

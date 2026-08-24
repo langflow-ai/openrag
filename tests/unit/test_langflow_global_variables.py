@@ -88,7 +88,7 @@ async def test_update_langflow_global_variable_recreates_when_type_changes():
                 "json": {
                     "name": "OPENSEARCH_INDEX_NAME",
                     "value": "documents-v2",
-                    "default_fields": ["OpenRAG", "Index"],
+                    "default_fields": [],
                     "type": "Generic",
                 }
             },
@@ -133,12 +133,82 @@ async def test_update_langflow_global_variable_patches_when_type_matches():
                     "id": "var-1",
                     "name": "OPENAI_API_KEY",
                     "value": "new-secret",
-                    "default_fields": ["OpenAI", "OpenAI API Key"],
+                    "default_fields": [],
                     "type": "Credential",
                 }
             },
         ),
     ]
+
+
+@pytest.mark.asyncio
+async def test_ensure_required_langflow_global_variables_removes_apply_to_fields(monkeypatch):
+    langflow_calls = []
+
+    async def mock_langflow_request(method, endpoint, **kwargs):
+        langflow_calls.append((method, endpoint, kwargs))
+        if method == "GET":
+            return _Response(
+                json_data=[
+                    {
+                        "id": "var-1",
+                        "name": "OPENAI_API_KEY",
+                        "value": "secret",
+                        "type": "Credential",
+                        "default_fields": ["OpenAI", "api_key"],
+                    },
+                    {
+                        "id": "var-2",
+                        "name": "DOCLING_SERVE_URL",
+                        "value": langflow_sync.settings.get_langflow_docling_url(),
+                        "type": "Generic",
+                        "default_fields": [],
+                    },
+                ]
+            )
+        return _Response(status_code=200)
+
+    monkeypatch.setattr(
+        langflow_sync.clients,
+        "langflow_request",
+        mock_langflow_request,
+        raising=True,
+    )
+
+    create_calls = []
+
+    async def create_variable(name, value, modify=False, variable_type="Credential"):
+        create_calls.append((name, value, modify, variable_type))
+
+    monkeypatch.setattr(
+        langflow_sync.clients,
+        "_create_langflow_global_variable",
+        create_variable,
+        raising=True,
+    )
+
+    config = SimpleNamespace(
+        providers=SimpleNamespace(),
+        knowledge=SimpleNamespace(),
+    )
+
+    await langflow_sync.ensure_required_langflow_global_variables(config)
+
+    # Verify PATCH call was made to remove default_fields from var-1
+    patch_calls = [c for c in langflow_calls if c[0] == "PATCH"]
+    assert len(patch_calls) == 1
+    assert patch_calls[0] == (
+        "PATCH",
+        "/api/v1/variables/var-1",
+        {
+            "json": {
+                "id": "var-1",
+                "name": "OPENAI_API_KEY",
+                "default_fields": [],
+                "type": "Credential",
+            }
+        },
+    )
 
 
 @pytest.mark.asyncio
@@ -200,6 +270,18 @@ async def test_ensure_required_langflow_global_variables_creates_generics_and_cr
     monkeypatch,
 ):
     calls = []
+
+    async def mock_langflow_request(method, endpoint, **kwargs):
+        if method == "GET":
+            return _Response(status_code=200, json_data=[])
+        return _Response(status_code=200)
+
+    monkeypatch.setattr(
+        langflow_sync.clients,
+        "langflow_request",
+        mock_langflow_request,
+        raising=True,
+    )
 
     async def create_variable(name, value, modify=False, variable_type="Credential"):
         calls.append((name, value, modify, variable_type))
@@ -280,3 +362,109 @@ async def test_update_langflow_global_variable_overwrites_redacted_credential():
             },
         ),
     ]
+
+
+@pytest.mark.asyncio
+async def test_ensure_required_langflow_global_variables_get_500_sends_no_post_requests(
+    monkeypatch,
+):
+    langflow_calls = []
+
+    async def mock_langflow_request(method, endpoint, **kwargs):
+        langflow_calls.append((method, endpoint, kwargs))
+        if method == "GET":
+            return _Response(status_code=500, text="Internal Server Error")
+        return _Response(status_code=200)
+
+    monkeypatch.setattr(
+        langflow_sync.clients,
+        "langflow_request",
+        mock_langflow_request,
+        raising=True,
+    )
+
+    create_calls = []
+
+    async def create_variable(name, value, modify=False, variable_type="Credential"):
+        create_calls.append((name, value, modify, variable_type))
+
+    monkeypatch.setattr(
+        langflow_sync.clients,
+        "_create_langflow_global_variable",
+        create_variable,
+        raising=True,
+    )
+
+    config = SimpleNamespace(
+        providers=SimpleNamespace(),
+        knowledge=SimpleNamespace(),
+    )
+
+    await langflow_sync.ensure_required_langflow_global_variables(config)
+
+    assert len(create_calls) == 0
+    assert len(langflow_calls) == 1
+    assert langflow_calls[0][0] == "GET"
+
+
+@pytest.mark.asyncio
+async def test_ensure_required_langflow_global_variables_handles_failed_delete_post_patch(
+    monkeypatch,
+):
+    langflow_calls = []
+
+    async def mock_langflow_request(method, endpoint, **kwargs):
+        langflow_calls.append((method, endpoint, kwargs))
+        if method == "GET":
+            return _Response(
+                json_data=[
+                    {
+                        "id": "var-del-fail",
+                        "name": "OPENSEARCH_INDEX_NAME",
+                        "value": "documents",
+                        "type": "Credential",
+                    },
+                    {
+                        "id": "var-post-fail",
+                        "name": "WATSONX_URL",
+                        "value": "https://watson.example",
+                        "type": "Credential",
+                    },
+                    {
+                        "id": "var-patch-fail",
+                        "name": "OPENAI_API_KEY",
+                        "value": "secret",
+                        "type": "Credential",
+                        "default_fields": ["OpenAI", "api_key"],
+                    },
+                ]
+            )
+        if method == "DELETE" and "var-del-fail" in endpoint:
+            return _Response(status_code=500)
+        if method == "DELETE" and "var-post-fail" in endpoint:
+            return _Response(status_code=204)
+        if method == "POST" and endpoint == "/api/v1/variables/":
+            return _Response(status_code=500)
+        if method == "PATCH" and "var-patch-fail" in endpoint:
+            return _Response(status_code=500)
+        return _Response(status_code=200)
+
+    monkeypatch.setattr(
+        langflow_sync.clients,
+        "langflow_request",
+        mock_langflow_request,
+        raising=True,
+    )
+
+    config = SimpleNamespace(
+        providers=SimpleNamespace(),
+        knowledge=SimpleNamespace(),
+    )
+
+    # Should complete without raising exception even though individual DELETE, POST, PATCH failed
+    await langflow_sync.ensure_required_langflow_global_variables(config)
+
+    methods = [c[0] for c in langflow_calls]
+    assert "DELETE" in methods
+    assert "POST" in methods
+    assert "PATCH" in methods

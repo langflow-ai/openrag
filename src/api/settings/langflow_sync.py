@@ -121,12 +121,104 @@ LANGFLOW_RUNTIME_CREDENTIAL_PLACEHOLDER_VALUE = "None"
 
 
 async def ensure_required_langflow_global_variables(config=None):
-    """Ensure load_from_db globals exist. Credential placeholders stay non-empty so Langflow can resolve them."""
+    """Ensure plain-string globals are Generic and remove any Apply To (default_fields) fields.
+
+    Credential placeholders stay non-empty so Langflow can resolve load_from_db fields.
+    """
     config = config or get_openrag_config()
     required_values = _required_generic_global_values(config)
 
+    existing_by_name = {}
+    try:
+        response = await clients.langflow_request("GET", "/api/v1/variables/")
+        if response.status_code == 200:
+            existing_variables = response.json()
+            existing_by_name = {v.get("name"): v for v in existing_variables if v.get("name")}
+        else:
+            logger.warning(
+                "Could not fetch Langflow variables at startup",
+                status_code=response.status_code,
+            )
+            return
+    except Exception as e:
+        logger.warning("Could not fetch Langflow variables at startup", error=str(e))
+        return
+
+    # Update or fix existing variables in a single operation per variable
+    for name, var in existing_by_name.items():
+        try:
+            var_id = var.get("id")
+            if not var_id:
+                continue
+
+            is_generic = name in LANGFLOW_GENERIC_GLOBAL_VARIABLES
+            target_type = "Generic" if is_generic else var.get("type", "Credential")
+
+            curr_type = var.get("type")
+            curr_val = var.get("value", "")
+            has_default_fields = bool(var.get("default_fields"))
+
+            target_val = _string_value(required_values.get(name)) if is_generic else curr_val
+
+            if curr_type != target_type:
+                logger.info(
+                    "Migrating Langflow global variable type",
+                    variable_name=name,
+                    old_type=curr_type,
+                    new_type=target_type,
+                )
+                del_resp = await clients.langflow_request("DELETE", f"/api/v1/variables/{var_id}")
+                if not (200 <= del_resp.status_code < 300):
+                    raise RuntimeError(
+                        f"Failed to delete Langflow global variable {name!r}: status_code={del_resp.status_code}"
+                    )
+                recreate_payload = {
+                    "name": name,
+                    "value": target_val,
+                    "default_fields": [],
+                    "type": target_type,
+                }
+                recreate_resp = await clients.langflow_request(
+                    "POST", "/api/v1/variables/", json=recreate_payload
+                )
+                if not (200 <= recreate_resp.status_code < 300):
+                    raise RuntimeError(
+                        f"Failed to recreate Langflow global variable {name!r}: status_code={recreate_resp.status_code}"
+                    )
+            elif has_default_fields or (is_generic and curr_val != target_val):
+                logger.info(
+                    "Updating Langflow global variable", variable_name=name, variable_id=var_id
+                )
+                patch_payload = {
+                    "id": var_id,
+                    "name": name,
+                    "default_fields": [],
+                    "type": target_type,
+                }
+                if is_generic:
+                    patch_payload["value"] = target_val
+                patch_resp = await clients.langflow_request(
+                    "PATCH", f"/api/v1/variables/{var_id}", json=patch_payload
+                )
+                if not (200 <= patch_resp.status_code < 300):
+                    raise RuntimeError(
+                        f"Failed to patch Langflow global variable {name!r}: status_code={patch_resp.status_code}"
+                    )
+        except Exception as e:
+            logger.warning(
+                "Failed to update Langflow global variable", variable_name=name, error=str(e)
+            )
+
+    # Create missing generic variables
     for name in sorted(LANGFLOW_GENERIC_GLOBAL_VARIABLES):
-        await _upsert_langflow_global_variable(name, _string_value(required_values.get(name, "")))
+        if name not in existing_by_name:
+            try:
+                target_val = _string_value(required_values.get(name, ""))
+                await _upsert_langflow_global_variable(name, target_val)
+            except Exception as e:
+                logger.warning(
+                    "Failed to create Langflow global variable", variable_name=name, error=str(e)
+                )
 
     for name in sorted(LANGFLOW_RUNTIME_CREDENTIAL_PLACEHOLDERS):
         await _upsert_langflow_global_variable(name, LANGFLOW_RUNTIME_CREDENTIAL_PLACEHOLDER_VALUE)
