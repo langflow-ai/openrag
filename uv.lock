@@ -1926,7 +1926,6 @@ dependencies = [
     { name = "httpx" },
     { name = "ibm-cos-sdk" },
     { name = "idna" },
-    { name = "instana" },
     { name = "litellm" },
     { name = "mcp" },
     { name = "msal" },
@@ -1954,6 +1953,11 @@ dependencies = [
     { name = "urllib3" },
     { name = "uvicorn" },
     { name = "zxcvbn" },
+]
+
+[package.optional-dependencies]
+apm = [
+    { name = "instana" },
 ]
 
 [package.dev-dependencies]
@@ -1988,7 +1992,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "ibm-cos-sdk", specifier = ">=2.13.0" },
     { name = "idna", specifier = ">=3.18" },
-    { name = "instana", specifier = ">=3.17.0" },
+    { name = "instana", marker = "extra == 'apm'", specifier = ">=3.17.0,<4" },
     { name = "litellm", specifier = "==1.84.0" },
     { name = "mcp", specifier = ">=1.28.1" },
     { name = "msal", specifier = ">=1.29.0" },
@@ -2017,6 +2021,7 @@ requires-dist = [
     { name = "uvicorn", specifier = ">=0.35.0" },
     { name = "zxcvbn", specifier = ">=4.5.0" },
 ]
+provides-extras = ["apm"]
 
 [package.metadata.requires-dev]
 dev = [

@@ -210,7 +210,7 @@ The first group configures OpenRAG Backend, which sends traces to an Instana hos
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `INSTANA_ENABLED` | `false` | Whether to load the Instana Python tracer in OpenRAG Backend. Accepts `true`, `1`, or `yes` to enable. This variable is read once at process start, so the backend must be restarted for a change to take effect. |
+| `INSTANA_ENABLED` | `false` | Whether to load the Instana Python tracer in OpenRAG Backend. Accepts `true`, `1`, or `yes` to enable. This variable is read once at process start, so the backend must be restarted for a change to take effect. The tracer is an optional dependency: the backend container image includes it, and a backend run from source needs `uv sync --extra apm`. If it isn't installed, the backend logs a warning and runs untraced. |
 | `INSTANA_AGENT_HOST` | `host.docker.internal` for containerized deployments; `localhost` for a backend that runs directly on the host | Address of the Instana host agent that the tracer sends spans to. In Kubernetes, leave this unset. The Helm chart and the operator inject the pod's own node IP, which is the address of the per-node agent DaemonSet. |
 | `INSTANA_AGENT_PORT` | `42699` | Port of the Instana host agent. |
 | `INSTANA_SERVICE_NAME` | Not set | Service name that OpenRAG Backend reports to Instana, shown in the **Applications** and **Analyze Traces** views. Leave this unset rather than setting it to an empty value, because the tracer checks it for presence rather than for a value, and an empty value registers a service with a blank name. |

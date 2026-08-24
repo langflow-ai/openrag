@@ -44,6 +44,20 @@ The command that the wizard shows you contains both values as `INSTANA_AGENT_KEY
 The ingress endpoint is region-specific, such as `ingress-coral-saas.instana.io`.
 Use the value from your own wizard rather than the OpenRAG default, or the agent connects to the wrong region and reports no data.
 
+### Install the tracer {#install-the-tracer}
+
+The Instana Python tracer is an optional dependency, declared as the `apm` extra, so that deployments that never enable APM don't install it.
+
+The OpenRAG Backend container image includes the extra already, so [self-managed](/docker) and Kubernetes deployments need nothing extra.
+
+If you run the backend directly from source, such as `make backend` for [contributors](/support/contribute), install the extra once:
+
+```bash
+uv sync --extra apm
+```
+
+If `INSTANA_ENABLED` is set and the package isn't installed, the backend logs a warning at startup and runs without tracing rather than failing to start.
+
 ## Enable tracing in a self-managed deployment {#enable-tracing}
 
 1. Add the Instana variables to your `.env` file:

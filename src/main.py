@@ -27,7 +27,17 @@ import os
 # Exception to "config/settings.py is the only place that reads os.environ":
 # config.settings can't be imported yet at this point in the file.
 if os.getenv("INSTANA_ENABLED", "false").lower() in ("true", "1", "yes"):
-    import instana  # noqa: F401  — must precede httpx/opensearch-py/sqlalchemy imports below
+    try:
+        import instana  # noqa: F401  — must precede httpx/opensearch-py/sqlalchemy imports below
+    except ImportError:
+        # `instana` ships as the optional `apm` extra, so a deployment can ask
+        # for tracing without having the package. Warn and continue unpatched
+        # rather than failing startup over an observability add-on.
+        bootstrap.logger.warning(
+            "INSTANA_ENABLED is set but the 'instana' package is not installed; "
+            "APM tracing is disabled. Install the optional extra with "
+            "`uv sync --extra apm`."
+        )
 
 import asyncio
 import atexit
