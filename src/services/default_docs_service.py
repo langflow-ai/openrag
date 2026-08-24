@@ -161,7 +161,9 @@ async def ingest_default_documents_when_ready(
                 task_service,
                 file_paths,
                 existing_task_id=task_id,
-                connector_type="local",
+                # The callback context, rather than a node-id tweak, carries
+                # the sample-document classification to the backend writer.
+                connector_type="openrag_docs",
                 jwt_token=jwt_token,
             )
             task_id = new_task_id or task_id
@@ -204,18 +206,6 @@ async def _ingest_default_documents_langflow(
     if not effective_jwt and session_manager:
         effective_jwt = session_manager.get_effective_jwt_token(anonymous_user.user_id, None)
 
-    default_tweaks = {
-        "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4": {
-            "docs_metadata": [
-                {"key": "owner", "value": None},
-                {"key": "owner_name", "value": anonymous_user.name},
-                {"key": "owner_email", "value": anonymous_user.email},
-                {"key": "connector_type", "value": "openrag_docs"},
-                {"key": "is_sample_data", "value": "true"},
-            ]
-        }
-    }
-
     task_id = await task_service.create_langflow_upload_task(
         user_id=None,
         file_paths=file_paths,
@@ -225,7 +215,9 @@ async def _ingest_default_documents_langflow(
         owner_name=anonymous_user.name,
         owner_email=anonymous_user.email,
         session_id=None,
-        tweaks=default_tweaks,
+        # The signed backend callback supplies these authoritative metadata
+        # fields. Do not target a generated Langflow node id from a flow file.
+        tweaks=None,
         settings=None,
         replace_duplicates=True,
         connector_type=connector_type,
@@ -267,18 +259,6 @@ async def _ingest_default_documents_url_langflow(
     if not effective_jwt and session_manager:
         effective_jwt = session_manager.get_effective_jwt_token(anonymous_user.user_id, None)
 
-    default_tweaks = {
-        "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4": {
-            "docs_metadata": [
-                {"key": "owner", "value": None},
-                {"key": "owner_name", "value": anonymous_user.name},
-                {"key": "owner_email", "value": anonymous_user.email},
-                {"key": "connector_type", "value": "openrag_docs"},
-                {"key": "is_sample_data", "value": "true"},
-            ]
-        }
-    }
-
     task_id = await task_service.create_langflow_url_upload_task(
         owner_user_id=None,
         docs_url=docs_url,
@@ -289,7 +269,9 @@ async def _ingest_default_documents_url_langflow(
         owner_name=anonymous_user.name,
         owner_email=anonymous_user.email,
         connector_type="openrag_docs",
-        tweaks=default_tweaks,
+        # Metadata comes from the signed callback context, not a generated
+        # component id embedded in a particular exported flow.
+        tweaks=None,
     )
 
     logger.info(

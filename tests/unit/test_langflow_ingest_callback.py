@@ -368,6 +368,30 @@ async def test_langflow_file_service_marks_openrag_docs_callback_as_sample_data(
     assert decoded_context.is_sample_data is True
 
 
+@pytest.mark.asyncio
+async def test_default_documents_use_callback_sample_classification_without_node_tweak():
+    from services.default_docs_service import _ingest_default_documents_langflow
+
+    captured = {}
+
+    class TaskService:
+        async def create_langflow_upload_task(self, **kwargs):
+            captured.update(kwargs)
+            return "task-1"
+
+    result = await _ingest_default_documents_langflow(
+        langflow_file_service=SimpleNamespace(),
+        session_manager=None,
+        task_service=TaskService(),
+        file_paths=["/tmp/example.md"],
+        connector_type="openrag_docs",
+    )
+
+    assert result == "task-1"
+    assert captured["connector_type"] == "openrag_docs"
+    assert captured["tweaks"] is None
+
+
 @pytest.mark.parametrize("flow_path", ["flows/ingestion_flow.json", "flows/openrag_url_mcp.json"])
 def test_ingest_flows_resolve_callback_config_from_global_vars(flow_path):
     flow = json.loads(Path(flow_path).read_text(encoding="utf-8"))
