@@ -25,11 +25,6 @@ logger = get_logger(__name__)
 
 
 class LangflowFileService:
-    INGEST_OPENSEARCH_COMPONENT_ID = "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4"
-    URL_INGEST_OPENSEARCH_COMPONENT_ID = (
-        "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-PMGGV"
-    )
-
     def __init__(
         self,
         flows_service=None,
@@ -327,12 +322,31 @@ class LangflowFileService:
         ingest_token: str | None,
         ingest_run_id: str | None,
     ) -> None:
+        context = None
         if self.ingest_token_service is not None and ingest_token:
-            self.ingest_token_service.revoke_token(ingest_token)
+            # The signed context is the authority for an administrative cleanup;
+            # decode it before revocation makes the token unavailable.
+            try:
+                context, _ = self.ingest_token_service.validate_token(ingest_token)
+            except ValueError:
+                logger.warning(
+                    "[LF] Failed callback token could not be decoded for scoped cleanup",
+                    ingest_run_id=ingest_run_id,
+                )
+            finally:
+                self.ingest_token_service.revoke_token(ingest_token)
         if self.document_index_writer is None or not ingest_run_id:
             return
         try:
-            await self.document_index_writer.delete_ingest_run(ingest_run_id)
+            if context is None:
+                raise RuntimeError("Refusing unscoped cleanup of a failed Langflow ingest run")
+            await self.document_index_writer.delete_ingest_run(
+                ingest_run_id,
+                index_name=context.index_name,
+                document_id=context.document_id,
+                owner=context.owner,
+                shared=context.owner is None,
+            )
         except Exception as e:
             logger.warning(
                 "[LF] Failed to clean up partial backend ingest run",
