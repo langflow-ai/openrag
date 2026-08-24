@@ -83,7 +83,15 @@ KNOWN_FIELD_TYPES = frozenset({"text", "password", "select", "textarea", "upload
 
 
 class CatalogUnavailableError(RuntimeError):
-    """LiteLLM is not importable, so no catalogue can be built."""
+    """LiteLLM is not importable, so no catalogue can be built.
+
+    Its text names server-side deployment detail, so routes log it and return
+    ``CATALOG_UNAVAILABLE_MESSAGE`` to callers instead.
+    """
+
+
+# Client-facing stand-in for CatalogUnavailableError text.
+CATALOG_UNAVAILABLE_MESSAGE = "The model catalogue is temporarily unavailable."
 
 
 def _parse_deprecation(value: Any) -> datetime.date | None:

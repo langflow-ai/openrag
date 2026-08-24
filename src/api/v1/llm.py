@@ -11,7 +11,12 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from dependencies import require_llm_proxy_any_permission, require_llm_proxy_permission
 from services.llm_gateway import LlmGatewayError, chat_completions, embeddings
-from services.model_catalog import CatalogUnavailableError, catalog, openai_models_list
+from services.model_catalog import (
+    CATALOG_UNAVAILABLE_MESSAGE,
+    CatalogUnavailableError,
+    catalog,
+    openai_models_list,
+)
 from session_manager import User
 from utils.logging_config import get_logger
 
@@ -31,6 +36,8 @@ def _openai_error(message: str, status_code: int, error_type: str = "invalid_req
 
 def _gateway_error(exc: LlmGatewayError):
     error_type = "invalid_request_error" if exc.status_code < 500 else "api_error"
+    if exc.detail != exc.message:
+        logger.error("LLM gateway error", status_code=exc.status_code, error=exc.detail)
     return _openai_error(exc.message, exc.status_code, error_type)
 
 
@@ -41,7 +48,10 @@ async def list_openai_models_endpoint(
     try:
         return JSONResponse(openai_models_list())
     except CatalogUnavailableError as exc:
-        return _openai_error(str(exc), 503, "api_error")
+        # Log the cause, but never echo exception text back to the caller
+        # (CodeQL py/stack-trace-exposure).
+        logger.error("Model catalogue unavailable", error=str(exc))
+        return _openai_error(CATALOG_UNAVAILABLE_MESSAGE, 503, "api_error")
 
 
 async def model_catalog_endpoint(
@@ -51,7 +61,8 @@ async def model_catalog_endpoint(
     try:
         return JSONResponse(catalog(), headers={"Cache-Control": "private, max-age=3600"})
     except CatalogUnavailableError as exc:
-        return JSONResponse({"error": str(exc)}, status_code=503)
+        logger.error("Model catalogue unavailable", error=str(exc))
+        return JSONResponse({"error": CATALOG_UNAVAILABLE_MESSAGE}, status_code=503)
 
 
 async def _read_json_body(request: Request) -> dict[str, Any] | JSONResponse:

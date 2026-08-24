@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from api.v1 import llm as v1_llm
 from services.llm_gateway import LlmGatewayError
+from services.model_catalog import CATALOG_UNAVAILABLE_MESSAGE, CatalogUnavailableError
 from session_manager import User
 
 
@@ -121,3 +122,57 @@ async def test_embeddings_delegates_to_gateway(monkeypatch):
     response = await v1_llm.embeddings_endpoint(request, user=_user())
     data = json.loads(response.body)
     assert data["data"][0]["embedding"] == [0.2]
+
+
+@pytest.mark.asyncio
+async def test_list_openai_models_hides_catalog_exception_text(monkeypatch):
+    """CodeQL py/stack-trace-exposure: the exception text must not reach the caller."""
+    monkeypatch.setattr(
+        v1_llm,
+        "openai_models_list",
+        MagicMock(side_effect=CatalogUnavailableError("litellm is not installed on the server")),
+    )
+    response = await v1_llm.list_openai_models_endpoint(user=_user())
+    assert response.status_code == 503
+    data = json.loads(response.body)
+    assert data["error"]["message"] == CATALOG_UNAVAILABLE_MESSAGE
+    assert "litellm" not in response.body.decode()
+
+
+@pytest.mark.asyncio
+async def test_model_catalog_hides_catalog_exception_text(monkeypatch):
+    monkeypatch.setattr(
+        v1_llm,
+        "catalog",
+        MagicMock(side_effect=CatalogUnavailableError("litellm is not installed on the server")),
+    )
+    response = await v1_llm.model_catalog_endpoint(user=_user())
+    assert response.status_code == 503
+    data = json.loads(response.body)
+    assert data["error"] == CATALOG_UNAVAILABLE_MESSAGE
+    assert "litellm" not in response.body.decode()
+
+
+@pytest.mark.asyncio
+async def test_gateway_error_detail_is_not_returned_to_the_caller(monkeypatch):
+    """`detail` is log-only; only the sanitized `message` is serialized."""
+    monkeypatch.setattr(
+        v1_llm,
+        "chat_completions",
+        AsyncMock(
+            side_effect=LlmGatewayError(
+                "The model provider could not be reached. Please try again.",
+                502,
+                detail="RuntimeError: connect to 10.0.0.5 failed",
+            )
+        ),
+    )
+    request = MagicMock()
+    request.json = AsyncMock(return_value={"model": "gpt-4o-mini", "messages": []})
+    response = await v1_llm.chat_completions_endpoint(request, user=_user())
+
+    assert response.status_code == 502
+    body = response.body.decode()
+    assert "10.0.0.5" not in body
+    assert "RuntimeError" not in body
+    assert json.loads(body)["error"]["type"] == "api_error"

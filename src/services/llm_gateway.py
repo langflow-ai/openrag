@@ -37,12 +37,18 @@ _LITELLM_FORWARDED_PARAMS = (
 
 
 class LlmGatewayError(Exception):
-    """User-facing gateway failure. `status_code` is an HTTP status."""
+    """Gateway failure. `status_code` is an HTTP status.
 
-    def __init__(self, message: str, status_code: int = 400):
+    `message` is safe to return to the caller. `detail` carries the internal
+    text (upstream exception type and body) and is for logs only — returning it
+    is stack-trace exposure (CodeQL py/stack-trace-exposure).
+    """
+
+    def __init__(self, message: str, status_code: int = 400, detail: str | None = None):
         super().__init__(message)
         self.message = message
         self.status_code = status_code
+        self.detail = detail or message
 
 
 def _get_config():
@@ -147,6 +153,27 @@ def resolve_call(
     return litellm_model, provider, credentials
 
 
+_UPSTREAM_FAILURE_MESSAGE = "The model provider could not be reached. Please try again."
+_UPSTREAM_CREDENTIAL_MESSAGE = (
+    "The configured API key is invalid or has been revoked. Update it in Settings and retry."
+)
+
+
+def _upstream_client_message(detail: str) -> str:
+    """Safe client text for an upstream failure.
+
+    The upstream text is only *classified*, never forwarded: both return values
+    are fixed literals, so provider internals and traceback text cannot reach
+    the caller (CodeQL py/stack-trace-exposure). A credential failure still gets
+    its own actionable message so onboarding can tell the user to fix the key.
+    """
+    from api.provider_validation import is_provider_credential_error
+
+    if is_provider_credential_error(detail):
+        return _UPSTREAM_CREDENTIAL_MESSAGE
+    return _UPSTREAM_FAILURE_MESSAGE
+
+
 def _redact(message: str, credentials: Mapping[str, Any]) -> str:
     redacted = message
     for value in credentials.values():
@@ -203,9 +230,9 @@ async def chat_completions(
     except LlmGatewayError:
         raise
     except Exception as exc:
-        message = _redact(f"{type(exc).__name__}: {exc}", credentials)
-        logger.error("LLM chat completions failed", provider=provider, error=message)
-        raise LlmGatewayError(message, 502) from exc
+        detail = _redact(f"{type(exc).__name__}: {exc}", credentials)
+        logger.error("LLM chat completions failed", provider=provider, error=detail)
+        raise LlmGatewayError(_upstream_client_message(detail), 502, detail=detail) from exc
 
     if stream:
         return _stream_sse(result)
@@ -246,7 +273,7 @@ async def embeddings(body: Mapping[str, Any], *, config=None) -> dict[str, Any]:
     except LlmGatewayError:
         raise
     except Exception as exc:
-        message = _redact(f"{type(exc).__name__}: {exc}", credentials)
-        logger.error("LLM embeddings failed", provider=provider, error=message)
-        raise LlmGatewayError(message, 502) from exc
+        detail = _redact(f"{type(exc).__name__}: {exc}", credentials)
+        logger.error("LLM embeddings failed", provider=provider, error=detail)
+        raise LlmGatewayError(_upstream_client_message(detail), 502, detail=detail) from exc
     return _to_openai_dict(result)

@@ -198,8 +198,68 @@ async def test_chat_completions_redacts_api_key_on_failure(monkeypatch):
     with pytest.raises(LlmGatewayError) as exc:
         await chat_completions({"model": "gpt-4o-mini", "messages": []}, config=_config())
     assert exc.value.status_code == 502
+    # The key never appears anywhere, and the log-only detail keeps the marker.
     assert "sk-openai" not in exc.value.message
-    assert "[redacted]" in exc.value.message
+    assert "sk-openai" not in exc.value.detail
+    assert "[redacted]" in exc.value.detail
+
+
+@pytest.mark.asyncio
+async def test_chat_completions_keeps_upstream_internals_out_of_client_message(monkeypatch):
+    """CodeQL py/stack-trace-exposure: upstream exception text is log-only."""
+
+    async def boom(**kwargs):
+        raise RuntimeError("Traceback /srv/app/litellm/router.py line 42: connect to 10.0.0.5")
+
+    monkeypatch.setattr("litellm.acompletion", boom)
+    with pytest.raises(LlmGatewayError) as exc:
+        await chat_completions({"model": "gpt-4o-mini", "messages": []}, config=_config())
+
+    assert exc.value.status_code == 502
+    assert exc.value.message == "The model provider could not be reached. Please try again."
+    for leak in ("RuntimeError", "Traceback", "/srv/app", "10.0.0.5"):
+        assert leak not in exc.value.message
+    # Operators still get the full picture in logs.
+    assert "RuntimeError" in exc.value.detail
+    assert "10.0.0.5" in exc.value.detail
+
+
+@pytest.mark.asyncio
+async def test_chat_completions_keeps_credential_errors_actionable(monkeypatch):
+    """A bad key must stay diagnosable in onboarding, not collapse to the generic text."""
+
+    async def boom(**kwargs):
+        raise RuntimeError("Incorrect API key provided")
+
+    monkeypatch.setattr("litellm.acompletion", boom)
+    with pytest.raises(LlmGatewayError) as exc:
+        await chat_completions({"model": "gpt-4o-mini", "messages": []}, config=_config())
+
+    assert exc.value.status_code == 502
+    assert "api key" in exc.value.message.lower()
+    # Classified, not forwarded: the client message is a fixed literal.
+    assert "Incorrect API key provided" not in exc.value.message
+    assert "Incorrect API key provided" in exc.value.detail
+
+
+@pytest.mark.asyncio
+async def test_embeddings_keeps_upstream_internals_out_of_client_message(monkeypatch):
+    async def boom(**kwargs):
+        raise RuntimeError("Traceback /srv/app/litellm/router.py: connect to 10.0.0.5")
+
+    monkeypatch.setattr("litellm.aembedding", boom)
+    with pytest.raises(LlmGatewayError) as exc:
+        await embeddings({"model": "text-embedding-3-small", "input": ["hi"]}, config=_config())
+
+    assert exc.value.status_code == 502
+    assert exc.value.message == "The model provider could not be reached. Please try again."
+    assert "10.0.0.5" in exc.value.detail
+
+
+def test_gateway_error_detail_defaults_to_message():
+    """Authored 4xx messages are already safe, so detail mirrors them."""
+    exc = LlmGatewayError("model is required", 400)
+    assert exc.detail == exc.message
 
 
 @pytest.mark.asyncio
