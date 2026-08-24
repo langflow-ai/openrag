@@ -142,8 +142,8 @@ stringData:
     {{- if .Values.langflow.langfuse.publicKey }}
     LANGFUSE_PUBLIC_KEY={{ .Values.langflow.langfuse.publicKey | quote }}
     {{- end }}
-    {{- if .Values.langflow.langfuse.host }}
-    LANGFUSE_HOST={{ .Values.langflow.langfuse.host | quote }}
+    {{- if or .Values.langflow.langfuse.baseUrl .Values.langflow.langfuse.host }}
+    LANGFUSE_BASE_URL={{ .Values.langflow.langfuse.baseUrl | default .Values.langflow.langfuse.host | quote }}
     {{- end }}
 
     # Variables to expose to flows (NOTE: must use valid env var names; no hyphens)
