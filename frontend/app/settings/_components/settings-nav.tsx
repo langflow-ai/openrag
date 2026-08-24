@@ -15,10 +15,7 @@ import { cn } from "@/lib/utils";
 const TABS = [
   { value: "connectors", label: "Connectors" },
   { value: "providers", label: "Providers", perm: "providers:write" },
-  // Knowledge ingest settings write workspace config (admin-only).
-  // Preview controls on this tab stay gated by isIngestPreviewEnabled.
   { value: "ingestion", label: "Ingestion", perm: "config:write" },
-  // Agent settings write workspace config (admin-only).
   { value: "agent", label: "Agent", perm: "config:write" },
   { value: "api-keys", label: "API Keys", apiKeysTab: true },
   {
