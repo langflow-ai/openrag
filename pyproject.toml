@@ -68,8 +68,6 @@ dependencies = [
     "alembic>=1.13.0",
     "asyncpg>=0.30.0",
     "cachetools>=5.5.0",
-    "idna>=3.15",
-    "urllib3>=2.7.0",
 ]
 
 # Optional extras. Install with `uv sync --extra <name>`.
