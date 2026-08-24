@@ -4,7 +4,7 @@ import os
 import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Protocol
 
 import yaml
 
@@ -104,6 +104,17 @@ def _sanitize_for_log(value: object) -> str:
     return re.sub(r"[\r\n\t]", "_", str(value))
 
 
+class ProviderConfig(Protocol):
+    """Structural type shared by every provider config dataclass.
+
+    The concrete configs have no common base class, so a tuple mixing them
+    joins to ``object``; annotating against this protocol keeps ``configured``
+    visible to mypy without changing any dataclass field order.
+    """
+
+    configured: bool
+
+
 @dataclass
 class OpenAIConfig:
     """OpenAI provider configuration."""
@@ -159,16 +170,14 @@ class ProvidersConfig:
 
     def any_configured(self) -> bool:
         """Return True if at least one provider is marked as configured."""
-        return any(
-            p.configured
-            for p in (
-                self.openai,
-                self.anthropic,
-                self.watsonx,
-                self.ollama,
-                *self.custom.values(),
-            )
+        providers: tuple[ProviderConfig, ...] = (
+            self.openai,
+            self.anthropic,
+            self.watsonx,
+            self.ollama,
+            *self.custom.values(),
         )
+        return any(p.configured for p in providers)
 
     def get_provider_config(self, provider: str):
         """Get configuration for a specific provider."""
