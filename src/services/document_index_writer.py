@@ -156,15 +156,37 @@ class DocumentIndexWriter:
         scope_digest = hashlib.sha256(scope.encode("utf-8")).hexdigest()[:24]
         return f"{scope_digest}_{chunk_id}"
 
-    async def delete_ingest_run(self, ingest_run_id: str, *, index_name: str | None = None) -> int:
-        """Delete partially indexed chunks for a failed callback run."""
+    async def delete_ingest_run(
+        self,
+        ingest_run_id: str,
+        *,
+        index_name: str | None = None,
+        document_id: str | None = None,
+        owner: str | None = None,
+        shared: bool = False,
+    ) -> int:
+        """Delete failed callback chunks only within their signed owner scope."""
         if not ingest_run_id:
             return 0
+        if not document_id:
+            raise ValueError("Refusing unscoped failed-ingest cleanup without document_id")
+        if shared and owner is not None:
+            raise ValueError("A shared failed-ingest cleanup cannot specify an owner")
+        if not shared and owner is None:
+            raise ValueError("Refusing unscoped failed-ingest cleanup without an owner")
         from config.settings import get_index_name
 
         client = self._get_write_client()
         resolved_index = index_name or get_index_name()
-        body = {"query": {"term": {"ingest_run_id": ingest_run_id}}}
+        filters: list[dict[str, Any]] = [
+            {"term": {"ingest_run_id": ingest_run_id}},
+            {"term": {"document_id": document_id}},
+        ]
+        if shared:
+            filters.append({"bool": {"must_not": {"exists": {"field": "owner"}}}})
+        else:
+            filters.append({"term": {"owner": owner}})
+        body = {"query": {"bool": {"filter": filters}}}
         response = await client.delete_by_query(
             index=resolved_index,
             body=body,

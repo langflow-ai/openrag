@@ -37,6 +37,16 @@ class InMemoryOpenSearch:
         return [document for document in self.documents.values() if document.get("owner") == owner]
 
 
+class CleanupOpenSearch(InMemoryOpenSearch):
+    def __init__(self) -> None:
+        super().__init__()
+        self.cleanup_queries: list[dict[str, Any]] = []
+
+    async def delete_by_query(self, *, index: str, body: dict, **_kwargs) -> dict[str, int]:
+        self.cleanup_queries.append({"index": index, "body": body})
+        return {"deleted": 0}
+
+
 def make_context(owner: str | None) -> DocumentIndexContext:
     return DocumentIndexContext(
         document_id="same-content-hash",
@@ -90,3 +100,53 @@ async def test_reingesting_a_shared_chunk_updates_it_in_place():
 
     assert len(opensearch.documents) == 1
     assert next(iter(opensearch.documents.values()))["text"] == "new shared text"
+
+
+@pytest.mark.asyncio
+async def test_failed_ingest_cleanup_scopes_same_document_id_to_its_owner():
+    """Same bytes for A and B must never yield an unscoped admin delete."""
+    opensearch = CleanupOpenSearch()
+    writer = DocumentIndexWriter(opensearch_client=opensearch)
+
+    await writer.delete_ingest_run(
+        "run-a", index_name="documents", document_id="same-content", owner="user-a"
+    )
+    await writer.delete_ingest_run(
+        "run-b", index_name="documents", document_id="same-content", owner="user-b"
+    )
+
+    owner_a_filters = opensearch.cleanup_queries[0]["body"]["query"]["bool"]["filter"]
+    owner_b_filters = opensearch.cleanup_queries[1]["body"]["query"]["bool"]["filter"]
+    assert {"term": {"owner": "user-a"}} in owner_a_filters
+    assert {"term": {"owner": "user-b"}} in owner_b_filters
+    assert {"term": {"document_id": "same-content"}} in owner_a_filters
+    assert {"term": {"document_id": "same-content"}} in owner_b_filters
+
+
+@pytest.mark.asyncio
+async def test_failed_ingest_cleanup_scopes_shared_documents_to_ownerless_chunks():
+    opensearch = CleanupOpenSearch()
+    writer = DocumentIndexWriter(opensearch_client=opensearch)
+
+    await writer.delete_ingest_run(
+        "run-shared", index_name="documents", document_id="same-content", shared=True
+    )
+
+    filters = opensearch.cleanup_queries[0]["body"]["query"]["bool"]["filter"]
+    assert {"bool": {"must_not": {"exists": {"field": "owner"}}}} in filters
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"owner": "user-a"},
+        {"document_id": "same-content"},
+        {"document_id": "same-content", "owner": "user-a", "shared": True},
+    ],
+)
+async def test_failed_ingest_cleanup_refuses_unscoped_or_ambiguous_requests(kwargs):
+    writer = DocumentIndexWriter(opensearch_client=CleanupOpenSearch())
+
+    with pytest.raises(ValueError):
+        await writer.delete_ingest_run("run-1", **kwargs)

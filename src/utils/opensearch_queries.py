@@ -74,6 +74,34 @@ def build_anonymous_filename_query(filename: str) -> dict:
     }
 
 
+def build_owned_document_query(document_id: str, owner: str) -> dict:
+    """Target one owner's logical document.
+
+    A document id is commonly a content hash, so it is not an authorization
+    boundary. Administrative write clients must always include ownership.
+    """
+    return {
+        "bool": {
+            "filter": [
+                {"term": {"document_id": document_id}},
+                {"term": {"owner": owner}},
+            ]
+        }
+    }
+
+
+def build_anonymous_document_query(document_id: str) -> dict:
+    """Target only the ownerless/shared generation for a document id."""
+    return {
+        "bool": {
+            "filter": [
+                {"term": {"document_id": document_id}},
+                {"bool": {"must_not": {"exists": {"field": "owner"}}}},
+            ]
+        }
+    }
+
+
 def build_replace_filename_query(filename: str, owner: str) -> dict:
     """Build a delete-scope query for replace_duplicates that covers both private
     and shared (ownerless) chunks with this filename.

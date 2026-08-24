@@ -82,6 +82,8 @@ class TaskProcessor:
         *,
         wait_for_visibility: bool = False,
         field: str = "document_id",
+        owner_user_id: str | None = None,
+        shared: bool | None = None,
     ) -> bool:
         """
         Check if a document with the given hash already exists in OpenSearch.
@@ -114,16 +116,42 @@ class TaskProcessor:
         # explicitly `keyword` since index creation and never has this issue.
         query: dict[str, Any]
         if field == "connector_file_id":
-            query = {
+            field_query = {
                 "bool": {
                     "should": [
                         {"term": {field: file_hash}},
                         {"term": {f"{field}.keyword": file_hash}},
-                    ]
+                    ],
+                    "minimum_should_match": 1,
                 }
             }
         else:
-            query = {"term": {field: file_hash}}
+            field_query = {"term": {field: file_hash}}
+
+        # Calls that provide ``shared`` deliberately opt into an ownership
+        # boundary.  Preserve the historic unscoped behavior for legacy
+        # read-only callers that do not provide a scope at all.
+        if shared is None:
+            query = field_query
+        else:
+            from utils.opensearch_queries import (
+                build_anonymous_document_query,
+                build_owned_document_query,
+            )
+
+            if field == "document_id":
+                query = (
+                    build_anonymous_document_query(file_hash)
+                    if shared or owner_user_id is None
+                    else build_owned_document_query(file_hash, owner_user_id)
+                )
+            else:
+                owner_filter = (
+                    {"bool": {"must_not": {"exists": {"field": "owner"}}}}
+                    if shared or owner_user_id is None
+                    else {"term": {"owner": owner_user_id}}
+                )
+                query = {"bool": {"filter": [field_query, owner_filter]}}
 
         for attempt in range(max_retries):
             try:
@@ -476,7 +504,12 @@ class TaskProcessor:
         )
 
         # Check if already exists
-        if await self.check_document_exists(file_hash, opensearch_client):
+        if await self.check_document_exists(
+            file_hash,
+            opensearch_client,
+            owner_user_id=owner_user_id,
+            shared=shared,
+        ):
             return {"status": "unchanged", "id": file_hash}
 
         logger.info(
@@ -594,6 +627,10 @@ class TaskProcessor:
                 collect_visible_document_ids,
                 delete_document_ids,
             )
+            from utils.opensearch_queries import (
+                build_anonymous_document_query,
+                build_owned_document_query,
+            )
 
             write_client = clients.opensearch
             if write_client is None:
@@ -602,7 +639,11 @@ class TaskProcessor:
             stale_chunk_ids = await collect_visible_document_ids(
                 opensearch_client,
                 index=get_index_name(),
-                query={"term": {"document_id": file_hash}},
+                query=(
+                    build_anonymous_document_query(file_hash)
+                    if shared or owner_user_id is None
+                    else build_owned_document_query(file_hash, owner_user_id)
+                ),
             )
             await delete_document_ids(
                 write_client,
@@ -1171,7 +1212,12 @@ class ConnectorFileProcessor(TaskProcessor):
                 # Compute hash
                 file_hash = hash_id(tmp_path)
 
-                if not renamed and await self.check_document_exists(file_hash, opensearch_client):
+                if not renamed and await self.check_document_exists(
+                    file_hash,
+                    opensearch_client,
+                    owner_user_id=self.user_id,
+                    shared=self.shared,
+                ):
                     await self._reconcile_shared_owner(file_task.filename)
                     file_task.status = TaskStatus.COMPLETED
                     file_task.result = {"status": "unchanged", "id": file_hash}
@@ -1201,6 +1247,13 @@ class ConnectorFileProcessor(TaskProcessor):
                             index=get_index_name(),
                             query={
                                 "bool": {
+                                    "filter": [
+                                        (
+                                            {"bool": {"must_not": {"exists": {"field": "owner"}}}}
+                                            if self.shared
+                                            else {"term": {"owner": self.user_id}}
+                                        )
+                                    ],
                                     "should": [
                                         {"term": {"document_id": document.id}},
                                         {"term": {"connector_file_id": document.id}},
@@ -1208,7 +1261,8 @@ class ConnectorFileProcessor(TaskProcessor):
                                         # predate the explicit keyword mapping for
                                         # this field.
                                         {"term": {"connector_file_id.keyword": document.id}},
-                                    ]
+                                    ],
+                                    "minimum_should_match": 1,
                                 }
                             },
                         )
@@ -1314,6 +1368,8 @@ class ConnectorFileProcessor(TaskProcessor):
                         on_error="assume_exists",
                         wait_for_visibility=True,
                         field="connector_file_id",
+                        owner_user_id=self.user_id,
+                        shared=self.shared,
                     ):
                         result = {
                             "status": "error",

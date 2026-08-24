@@ -90,7 +90,13 @@ async def test_standard_processor_uses_shared_writer_for_embedding_mapping_and_w
     )
     monkeypatch.setattr(
         "models.processors.get_openrag_config",
-        lambda: SimpleNamespace(knowledge=SimpleNamespace(embedding_model="")),
+        lambda: SimpleNamespace(
+            knowledge=SimpleNamespace(
+                embedding_model="",
+                chunk_size=1000,
+                chunk_overlap=100,
+            )
+        ),
     )
     monkeypatch.setattr(
         "services.document_index_writer.ensure_embedding_field_exists",
@@ -120,15 +126,27 @@ async def test_standard_processor_uses_shared_writer_for_embedding_mapping_and_w
 
     assert result == {"status": "indexed", "id": "file-1"}
     assert mapping_clients == [admin_client]
+    owner_scoped_query = {
+        "bool": {
+            "filter": [
+                {"term": {"document_id": "file-1"}},
+                {"term": {"owner": "user-1"}},
+            ]
+        }
+    }
     assert user_client.search_calls[0] == {
         "index": "documents",
         "body": {
             "size": 1,
             "_source": False,
-            "query": {"term": {"document_id": "file-1"}},
+            "query": owner_scoped_query,
         },
     }
-    assert user_client.search_calls[1]["body"]["query"] == {"term": {"document_id": "file-1"}}
+    assert user_client.search_calls[1]["body"]["query"] == owner_scoped_query
+    assert all(
+        {"term": {"owner": "user-1"}} in call["body"]["query"]["bool"]["filter"]
+        for call in user_client.search_calls
+    )
     assert user_client.index_calls == []
     assert admin_client.bulk_calls
     bulk_body = admin_client.bulk_calls[0]["body"]

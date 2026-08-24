@@ -167,7 +167,14 @@ async def test_stale_chunks_cleared_before_reindex(monkeypatch):
     # 1) The enumerate-via-search runs first.
     assert ops[0] == "search", f"search must run before deletes. Saw: {ops}"
     search_kwargs = op_order[0][1]
-    assert search_kwargs["body"]["query"] == {"term": {"document_id": "abc123"}}
+    assert search_kwargs["body"]["query"] == {
+        "bool": {
+            "filter": [
+                {"term": {"document_id": "abc123"}},
+                {"term": {"owner": "alice"}},
+            ]
+        }
+    }
     assert search_kwargs["index"] == "test-index"
 
     # 2) All deletes complete BEFORE any index() — they must precede re-indexing.
@@ -314,7 +321,9 @@ async def test_connector_file_id_absent_when_not_provided(monkeypatch):
         Path(tmp_path).unlink(missing_ok=True)
 
     assert len(index_calls) == 1
-    assert index_calls[0]["chunks"][0].metadata == {}
+    # Parser and chunking metadata are normal provenance. This regression only
+    # guards against emitting an empty connector marker for local uploads.
+    assert "connector_file_id" not in index_calls[0]["chunks"][0].metadata
 
 
 def test_document_index_writer_outputs_connector_file_id_when_present():
