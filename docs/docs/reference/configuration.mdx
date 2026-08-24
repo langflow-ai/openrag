@@ -198,3 +198,36 @@ Configure general system components, session management, and logging.
 | `LOG_LEVEL` | `INFO` | Logging level. Can be one of `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`. `DEBUG` provides the most detailed logs but can impact performance. |
 | `SERVICE_NAME` | `openrag` | Service name used in log entries. |
 | `SESSION_SECRET` | Automatically generated | Secret key for session management. If not provided, a secure random key is generated automatically. |
+
+## Observability and APM settings {#observability-and-apm-settings}
+
+Instrument OpenRAG Backend with [IBM Instana](https://www.ibm.com/products/instana) for application performance monitoring and distributed tracing.
+Instrumentation is off by default.
+
+For a complete walkthrough, including how to obtain an agent key and how to configure Kubernetes deployments, see [Monitor OpenRAG with IBM Instana](/reference/observability).
+
+The first group configures OpenRAG Backend, which sends traces to an Instana host agent.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `INSTANA_ENABLED` | `false` | Whether to load the Instana Python tracer in OpenRAG Backend. Accepts `true`, `1`, or `yes` to enable. This variable is read once at process start, so the backend must be restarted for a change to take effect. |
+| `INSTANA_AGENT_HOST` | `host.docker.internal` for containerized deployments; `localhost` for a backend that runs directly on the host | Address of the Instana host agent that the tracer sends spans to. In Kubernetes, leave this unset. The Helm chart and the operator inject the pod's own node IP, which is the address of the per-node agent DaemonSet. |
+| `INSTANA_AGENT_PORT` | `42699` | Port of the Instana host agent. |
+| `INSTANA_SERVICE_NAME` | Not set | Service name that OpenRAG Backend reports to Instana, shown in the **Applications** and **Analyze Traces** views. Leave this unset rather than setting it to an empty value, because the tracer checks it for presence rather than for a value, and an empty value registers a service with a blank name. |
+| `INSTANA_ZONE` | Not set | Custom zone that the host and process are grouped under in the Instana **Infrastructure** view. Presence-sensitive in the same way as `INSTANA_SERVICE_NAME`. |
+| `INSTANA_LOG_LEVEL` | `info` | Verbosity of the tracer's own logging, as one of `debug`, `info`, `warn`, or `error`. This is unrelated to [`LOG_LEVEL`](#system-settings), which controls OpenRAG's application logs. Presence-sensitive in the same way as `INSTANA_SERVICE_NAME`: an empty value logs an `Unknown INSTANA_LOG_LEVEL` warning on every start. |
+
+The second group configures the optional local Instana host agent that `make instana-agent-up` starts.
+These variables don't affect the backend, and they aren't used by Kubernetes deployments, where the agent is installed separately as a DaemonSet.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `INSTANA_AGENT_KEY` | Not set | Agent key for your Instana tenant, from **Infrastructure > Add a Host** in the Instana UI. Required by `make instana-agent-up`, which fails if the key isn't set. |
+| `INSTANA_AGENT_ENDPOINT` | `ingress-coral-saas.instana.io` | Ingress endpoint that the host agent forwards data to. This value is region-specific, so use the endpoint that your tenant's **Add a Host** wizard shows rather than the default. |
+| `INSTANA_AGENT_ENDPOINT_PORT` | `443` | Port of the ingress endpoint. |
+| `INSTANA_AGENT_IMAGE_TAG` | `1.323.1` | Tag of the `icr.io/instana/agent` image that the local host agent runs. The tag is pinned rather than tracked on `latest` because the agent container runs privileged. For available tags, see [the agent's tag list](https://icr.io/v2/instana/agent/tags/list). |
+
+:::warning
+`make instana-agent-up` starts a privileged container in the host PID namespace with access to the Docker socket, which is effectively root access to the host.
+It's intended for local development machines only. Don't run it on a shared or production host.
+:::

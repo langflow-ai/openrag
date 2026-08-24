@@ -1,0 +1,175 @@
+---
+title: Monitor OpenRAG with IBM Instana
+slug: /reference/observability
+---
+
+OpenRAG Backend can be instrumented with [IBM Instana](https://www.ibm.com/products/instana) for application performance monitoring (APM) and distributed tracing.
+
+Instrumentation is off by default. When you set `INSTANA_ENABLED=true`, the backend loads Instana's Python tracer at startup, before the libraries the tracer instruments, and traces are collected automatically for:
+
+* Incoming API requests to the backend (FastAPI and Starlette).
+* Outgoing HTTP calls to Langflow, Docling, and model providers.
+* OpenSearch queries.
+* Database queries issued through SQLAlchemy, for both the default SQLite database and PostgreSQL.
+* Backend log records, which the tracer attaches to the trace that was active when they were emitted.
+
+Only OpenRAG Backend is instrumented. Langflow, the frontend, OpenSearch, and Docling Serve aren't traced by this feature. Instana's host agent reports infrastructure metrics for those containers separately.
+
+## How traces reach Instana {#how-traces-reach-instana}
+
+The tracer doesn't send data to your Instana tenant directly.
+It sends spans to an Instana _host agent_ on port `42699`, and the agent forwards them to your tenant's ingress endpoint:
+
+```text
+OpenRAG Backend ──▶ Instana host agent ──▶ ingress-REGION-saas.instana.io:443
+   (tracer)              (:42699)              (your Instana tenant)
+```
+
+Enabling APM therefore has two parts: configure the backend, and make sure an agent is reachable at `INSTANA_AGENT_HOST:INSTANA_AGENT_PORT`.
+The correct agent address depends on where the backend process runs:
+
+| Deployment | Where the agent runs | `INSTANA_AGENT_HOST` |
+|---|---|---|
+| [Self-managed containers](/docker) | On the Docker host, started by `make instana-agent-up` | `host.docker.internal`, the Docker Compose default |
+| Backend on the host, such as `make backend` for [contributors](/support/contribute) | On the same host | `127.0.0.1` |
+| Kubernetes | An `instana-agent` DaemonSet, one agent per node behind host port `42699` | The pod's own node IP, injected automatically |
+
+## Before you begin {#before-you-begin}
+
+You need an Instana tenant, an agent key, and the ingress endpoint for your tenant's region.
+
+To get the key and endpoint, open your Instana tenant and go to **Infrastructure > Add a Host**, then select the Docker installation method.
+The command that the wizard shows you contains both values as `INSTANA_AGENT_KEY` and `INSTANA_AGENT_ENDPOINT`.
+
+The ingress endpoint is region-specific, such as `ingress-coral-saas.instana.io`.
+Use the value from your own wizard rather than the OpenRAG default, or the agent connects to the wrong region and reports no data.
+
+## Enable tracing in a self-managed deployment {#enable-tracing}
+
+1. Add the Instana variables to your `.env` file:
+
+   ```bash
+   INSTANA_ENABLED=true
+   INSTANA_AGENT_KEY=YOUR_AGENT_KEY
+   INSTANA_AGENT_ENDPOINT=ingress-coral-saas.instana.io
+   INSTANA_AGENT_ENDPOINT_PORT=443
+   INSTANA_SERVICE_NAME="OpenRAG Backend"
+   INSTANA_ZONE="openrag-dev"
+   ```
+
+   `INSTANA_SERVICE_NAME` and `INSTANA_ZONE` are optional, but they make OpenRAG easier to find in the Instana UI.
+   For the complete list of variables, see [Observability and APM settings](/reference/configuration#observability-and-apm-settings).
+
+   :::warning
+   Don't set the optional variables to an empty value.
+   The tracer checks `INSTANA_SERVICE_NAME`, `INSTANA_ZONE`, and `INSTANA_LOG_LEVEL` for presence rather than for a value, so `INSTANA_SERVICE_NAME=` registers a service with a blank name, and `INSTANA_LOG_LEVEL=` logs an `Unknown INSTANA_LOG_LEVEL` warning on every start.
+   To leave a variable at its default, comment it out or remove it.
+   :::
+
+2. Start the Instana host agent:
+
+   ```bash
+   make instana-agent-up
+   ```
+
+   The target fails if `INSTANA_AGENT_KEY` isn't set. For what this agent does to your machine, see [Run the local host agent](#local-host-agent).
+
+   If your agent runs somewhere else already, skip this step and set `INSTANA_AGENT_HOST` to that agent's address instead.
+
+3. [Restart the OpenRAG services](/manage-services) so the backend picks up the new configuration.
+
+   `INSTANA_ENABLED` is read once, at process start. Changing it requires a restart of the backend, not just a page reload.
+
+4. Confirm that the backend loaded the tracer:
+
+   ```bash
+   docker compose logs openrag-backend | grep -i instana
+   ```
+
+5. In your Instana tenant, open **Applications** and look for your `INSTANA_SERVICE_NAME` value, or open **Analyze > Traces** and send a request through OpenRAG.
+
+   Traces can take a minute or two to appear after the agent first connects.
+
+To turn instrumentation off again, set `INSTANA_ENABLED=false` or remove it, restart the services, and run `make instana-agent-down`.
+
+## Run the local host agent {#local-host-agent}
+
+OpenRAG ships the host agent as an opt-in Docker Compose service under the `instana` profile, so it never starts as part of `make dev` or `docker compose up`.
+
+| Command | Description |
+|---|---|
+| `make instana-agent-up` | Starts the `instana-agent` container. Requires `INSTANA_AGENT_KEY`. The agent listens on `127.0.0.1:42699` and forwards to `INSTANA_AGENT_ENDPOINT`. |
+| `make instana-agent-down` | Stops the `instana-agent` container. |
+
+:::warning
+The host agent container runs as `privileged`, in the host PID namespace, with host networking and a read-write mount of the Docker socket.
+The agent needs this access to monitor host and container infrastructure, and the same access is effectively root on the machine that runs it.
+
+Use these targets on a local development machine only.
+Don't run them on a shared or production host. Deploy the agent there through whatever process your organization uses for host agents.
+:::
+
+:::info
+The agent service uses `network_mode: host`, which is supported on Linux Docker hosts, and on Docker Desktop only when host networking is enabled.
+On other platforms, the container can start without publishing port `42699` on the host, and the backend then reports no traces even though the agent appears to be running.
+On those platforms, install the agent natively with the wizard's non-Docker instructions, or point `INSTANA_AGENT_HOST` at an agent running elsewhere.
+:::
+
+The agent image is pinned in `docker-compose.yml` rather than tracked on `latest`, because a privileged container shouldn't change underneath you on a re-pull.
+To try a newer agent without editing Compose, set `INSTANA_AGENT_IMAGE_TAG` to a tag from [the agent's tag list](https://icr.io/v2/instana/agent/tags/list).
+
+## Enable tracing in Kubernetes {#kubernetes}
+
+The OpenRAG Helm chart configures the backend tracer under `backend.instana`:
+
+```yaml
+backend:
+  instana:
+    enabled: true
+    agentPort: 42699
+    serviceName: "OpenRAG Backend"
+    zone: "openrag-cpd"
+```
+
+Leave `agentHost` empty. The chart then injects the pod's own node IP through the Kubernetes Downward API, which is the address that the standard per-node agent DaemonSet expects.
+Set `agentHost` explicitly only if your agent isn't a DaemonSet and is reached at a fixed address, such as through a Service.
+
+The same presence rule applies as in `.env`: `serviceName`, `zone`, and `logLevel` are omitted from the rendered configuration when they're empty, so leave them empty rather than setting them to `""` deliberately.
+
+:::important
+The OpenRAG chart doesn't install an Instana agent.
+Install one separately with IBM's `instana-agent` Helm chart or operator.
+The agent is a privileged, host-PID DaemonSet, so installing it is a cluster administration task.
+:::
+
+### Enable tracing with the OpenRAG operator {#operator}
+
+For deployments managed by the [OpenRAG operator](https://github.com/langflow-ai/openrag/tree/main/kubernetes/operator), set the variables in the `OpenRAG` custom resource:
+
+```yaml
+apiVersion: openr.ag/v1alpha1
+kind: OpenRAG
+metadata:
+  name: my-openrag
+spec:
+  backend:
+    env:
+      - name: INSTANA_ENABLED
+        value: "true"
+      - name: INSTANA_SERVICE_NAME
+        value: "OpenRAG Backend"
+      - name: INSTANA_ZONE
+        value: "openrag-cpd"
+```
+
+Don't set `INSTANA_AGENT_HOST`. When `INSTANA_ENABLED` is truthy, the operator injects it from the pod's node IP, and setting it in the custom resource suppresses that injection.
+
+## Configure the tracer's own logging {#tracer-logging}
+
+`INSTANA_LOG_LEVEL` controls how much the tracer itself logs, as one of `debug`, `info`, `warn`, or `error`.
+It's unrelated to [`LOG_LEVEL`](/reference/configuration#system-settings), which controls OpenRAG's application logs.
+Set it to `debug` when you're diagnosing why traces don't reach Instana, and leave it unset otherwise.
+
+## Environment variable reference {#variables}
+
+For every variable in this feature, including defaults, see [Observability and APM settings](/reference/configuration#observability-and-apm-settings).
