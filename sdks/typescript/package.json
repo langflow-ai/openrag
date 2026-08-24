@@ -54,7 +54,7 @@
   },
   "overrides": {
     "picomatch": "^4.0.4",
-    "postcss": "8.5.26",
+    "postcss": "^8.5.26",
     "rollup": "^4.59.0"
   },
   "engines": {
