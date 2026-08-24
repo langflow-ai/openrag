@@ -874,7 +874,7 @@ azurite-down: ## Stop Azurite emulator
 
 instana-agent-up: ## Start the local Instana host agent (forwards to INSTANA_AGENT_ENDPOINT)
 	@echo "$(YELLOW)Starting Instana host agent...$(NC)"
-	@echo "$(RED)WARNING: local development only - runs privileged, in the host PID namespace, with Docker socket access. Do not run on a shared or production host.$(NC)"
+	@echo "$(RED)WARNING: Local development only on Linux. Runs privileged, in the host PID namespace, with Docker socket access and uses host networking. Do not run on a shared or production host.$(NC)"
 	@if [ -z "$$INSTANA_AGENT_KEY" ]; then echo "$(RED)INSTANA_AGENT_KEY not set in $(ENV_FILE)$(NC)"; exit 1; fi
 	$(COMPOSE_CMD) --profile instana up -d instana-agent
 	@echo "$(PURPLE)Instana agent started (listening on 127.0.0.1:42699).$(NC)"

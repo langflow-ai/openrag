@@ -11,6 +11,7 @@ Most of what used to live in this file moved into focused modules:
 - utils/opensearch_init.py             — OpenSearch index/security setup
 - utils/jwt_keygen.py                  — RSA keypair generation
 - utils/url_content_fetcher.py         — URL → text-file helper
+- observability/instana_boot.py        — Instana APM gate (run from bootstrap)
 - api/health.py                        — liveness + readiness probes
 
 This module is intentionally thin: import bootstrap, run Alembic, build
@@ -18,26 +19,10 @@ the app, run uvicorn. The re-exports below preserve the
 `from main import …` contract used by tests and api/settings.py.
 """
 
+# Importing bootstrap also boots the Instana tracer when INSTANA_ENABLED is
+# set — it has to patch httpx / sqlalchemy / starlette before the imports
+# below pull them in.
 import bootstrap  # noqa: F401  — must be first; loads .env + structured logging
-
-import os
-
-# Must run before config.settings (and everything it pulls in — httpx,
-# opensearch-py, sqlalchemy) is imported, so Instana can patch those libraries.
-# Exception to "config/settings.py is the only place that reads os.environ":
-# config.settings can't be imported yet at this point in the file.
-if os.getenv("INSTANA_ENABLED", "false").lower() in ("true", "1", "yes"):
-    try:
-        import instana  # noqa: F401  — must precede httpx/opensearch-py/sqlalchemy imports below
-    except ImportError:
-        # `instana` ships as the optional `apm` extra, so a deployment can ask
-        # for tracing without having the package. Warn and continue unpatched
-        # rather than failing startup over an observability add-on.
-        bootstrap.logger.warning(
-            "INSTANA_ENABLED is set but the 'instana' package is not installed; "
-            "APM tracing is disabled. Install the optional extra with "
-            "`uv sync --extra apm`."
-        )
 
 import asyncio
 import atexit

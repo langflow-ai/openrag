@@ -34,6 +34,44 @@ The correct agent address depends on where the backend process runs:
 | Backend on the host, such as `make backend` for [contributors](/support/contribute) | On the same host | `127.0.0.1` |
 | Kubernetes | An `instana-agent` DaemonSet, one agent per node behind host port `42699` | The pod's own node IP, injected automatically |
 
+## What gets exported {#what-gets-exported}
+
+Trace data leaves your deployment: the tracer sends it to the host agent, and the agent forwards it to your Instana tenant.
+Before you enable APM against a real corpus, it's worth knowing what a span carries.
+
+Spans **don't** carry request or response bodies.
+Chat prompts, retrieved chunk text, and uploaded document content are sent to the backend in request bodies, so they stay inside your deployment.
+
+Spans **do** carry:
+
+* The request path and method, such as `POST /v1/chat`, and the query string.
+* Outgoing request URLs for calls to Langflow, Docling, model providers, and OpenSearch.
+* SQL statement text for database queries. Statements are parameterized, so bound values aren't included, and database credentials are stripped from the connection URL.
+* Log messages at `WARNING` level and above. A warning or an error that interpolates a filename, a user query, or chunk text exports that text.
+
+The query string is the surface to pay attention to, because a few OpenRAG endpoints take free text there.
+`GET /v2/files/search?q=...` carries a user's search terms, and file listing takes `search` and `filename` parameters.
+
+### Redact query parameters {#redact-query-parameters}
+
+`INSTANA_SECRETS` controls which query parameters the tracer replaces with `<redacted>` before a span is sent. Its format is `<matcher>:<name>[,<name>]`, where the matcher is one of `equals`, `equals-ignore-case`, `contains`, `contains-ignore-case`, or `regex`.
+
+The default is `contains-ignore-case:key,pass,secret`, which covers credential-shaped parameter names such as `api_key` but leaves free-text parameters untouched.
+To keep that credential coverage and add OpenRAG's search parameters, use the `regex` matcher:
+
+```bash
+INSTANA_SECRETS=regex:.*key.*,.*pass.*,.*secret.*,.*token.*,^q$,^search$,^filename$
+```
+
+The matcher applies to the parameter *name*, not its value, and only one matcher is in effect at a time.
+
+:::warning
+Don't set `INSTANA_EXTRA_HTTP_HEADERS`.
+It tells the tracer to copy the named request headers onto spans, and OpenRAG's headers carry session cookies, API keys, and bearer tokens.
+:::
+
+If your deployment can't export this data at all, keep `INSTANA_ENABLED=false`. There is no partial mode in which the backend is traced but request metadata stays local.
+
 ## Before you begin {#before-you-begin}
 
 You need an Instana tenant, an agent key, and the ingress endpoint for your tenant's region.
