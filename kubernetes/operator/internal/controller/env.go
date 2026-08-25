@@ -91,12 +91,12 @@ func NewEnvVarManager() *EnvVarManager {
 			"OPENRAG_LLM_TOKEN":    "None",
 			"OPENRAG_LLM_BASE_URL": "None",
 			"ANTHROPIC_API_KEY":    "None",
-			"WATSONX_API_KEY":    "None",
-			"OLLAMA_BASE_URL":    "None",
-			"WATSONX_ENDPOINT":   "https://us-south.ml.cloud.ibm.com",
-			"WATSONX_PROJECT_ID": "None",
-			"LLM_MODEL":          "ibm/granite-3-2-8b-instruct",
-			"LLM_PROVIDER":       "watsonx",
+			"WATSONX_API_KEY":      "None",
+			"OLLAMA_BASE_URL":      "None",
+			"WATSONX_ENDPOINT":     "https://us-south.ml.cloud.ibm.com",
+			"WATSONX_PROJECT_ID":   "None",
+			"LLM_MODEL":            "ibm/granite-3-2-8b-instruct",
+			"LLM_PROVIDER":         "watsonx",
 		},
 		DefaultOpenRagBEEnvVars: map[string]string{
 			// Langflow connection
