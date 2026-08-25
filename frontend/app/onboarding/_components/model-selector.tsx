@@ -160,9 +160,18 @@ export function ModelSelector({
   // manual filtering above, so `CommandEmpty` cannot be trusted to appear.
   // Decide the empty state from the collections that actually render.
   const showCustomEntry = allowCustomEntry && !!customValue;
+  // Grouped custom rows live inside a group, so a search that filters every
+  // group away also takes the custom entry with it. Offer it on its own so a
+  // model that is not in the catalogue can still be typed.
+  const showUngroupedCustomEntry =
+    showCustomEntry && !!groupedOptions && (visibleGroups?.length ?? 0) === 0;
+  const showFlatCustomEntry =
+    showCustomEntry &&
+    !groupedOptions &&
+    !allOptions.some((option) => option.value === customValue);
   const hasVisibleRows = groupedOptions
-    ? (visibleGroups?.length ?? 0) > 0
-    : visibleOptions.length > 0;
+    ? (visibleGroups?.length ?? 0) > 0 || showUngroupedCustomEntry
+    : visibleOptions.length > 0 || showFlatCustomEntry;
 
   useEffect(() => {
     if (
@@ -228,7 +237,7 @@ export function ModelSelector({
             className="max-h-[300px] overflow-y-auto"
             onWheel={(e) => e.stopPropagation()}
           >
-            {!hasVisibleRows && !showCustomEntry && (
+            {!hasVisibleRows && (
               <div className="py-6 text-center text-sm">
                 {noOptionsPlaceholder}
               </div>
@@ -361,6 +370,33 @@ export function ModelSelector({
                     </CommandGroup>
                   );
                 })}
+                {showUngroupedCustomEntry && (
+                  <CommandGroup>
+                    <CommandItem
+                      value={customValue}
+                      data-testid={`model-custom-option-${customValue}`}
+                      onSelect={() => {
+                        if (customValue !== value) {
+                          onValueChange(customValue, selectedProvider);
+                        }
+                        setOpen(false);
+                      }}
+                    >
+                      <CheckIcon
+                        className={cn(
+                          "mr-2 h-4 w-4",
+                          value === customValue ? "opacity-100" : "opacity-0",
+                        )}
+                      />
+                      <div className="flex items-center gap-2">
+                        {customValue}
+                        <span className="text-xs text-foreground p-1 rounded-md bg-muted">
+                          Custom
+                        </span>
+                      </div>
+                    </CommandItem>
+                  </CommandGroup>
+                )}
               </>
             ) : (
               <CommandGroup>
@@ -395,34 +431,31 @@ export function ModelSelector({
                     </div>
                   </CommandItem>
                 ))}
-                {showCustomEntry &&
-                  !allOptions.find(
-                    (option) => option.value === customValue,
-                  ) && (
-                    <CommandItem
-                      value={customValue}
-                      data-testid={`model-custom-option-${customValue}`}
-                      onSelect={() => {
-                        if (customValue !== value) {
-                          onValueChange(customValue);
-                        }
-                        setOpen(false);
-                      }}
-                    >
-                      <CheckIcon
-                        className={cn(
-                          "mr-2 h-4 w-4",
-                          value === customValue ? "opacity-100" : "opacity-0",
-                        )}
-                      />
-                      <div className="flex items-center gap-2">
-                        {customValue}
-                        <span className="text-xs text-foreground p-1 rounded-md bg-muted">
-                          Custom
-                        </span>
-                      </div>
-                    </CommandItem>
-                  )}
+                {showFlatCustomEntry && (
+                  <CommandItem
+                    value={customValue}
+                    data-testid={`model-custom-option-${customValue}`}
+                    onSelect={() => {
+                      if (customValue !== value) {
+                        onValueChange(customValue);
+                      }
+                      setOpen(false);
+                    }}
+                  >
+                    <CheckIcon
+                      className={cn(
+                        "mr-2 h-4 w-4",
+                        value === customValue ? "opacity-100" : "opacity-0",
+                      )}
+                    />
+                    <div className="flex items-center gap-2">
+                      {customValue}
+                      <span className="text-xs text-foreground p-1 rounded-md bg-muted">
+                        Custom
+                      </span>
+                    </div>
+                  </CommandItem>
+                )}
               </CommandGroup>
             )}
           </CommandList>
