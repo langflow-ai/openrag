@@ -1,8 +1,5 @@
-import {
-  type UseQueryOptions,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { type UseQueryOptions, useQuery } from "@tanstack/react-query";
+import { getApiError } from "@/lib/status-utils";
 
 export type ComponentState = "healthy" | "degraded" | "unhealthy" | "unknown";
 
@@ -38,16 +35,8 @@ export interface ConsoleStatusResponse {
 async function fetchConsoleStatus(): Promise<ConsoleStatusResponse> {
   const response = await fetch("/api/status");
   if (!response.ok) {
-    // Surface the real error (401 auth, 500 server, etc.) so the query
-    // enters an error state instead of resolving to an empty components array.
     const body = await response.json().catch(() => ({}));
-    const detail =
-      typeof body?.detail === "string"
-        ? body.detail
-        : typeof body?.error === "string"
-          ? body.error
-          : `HTTP ${response.status}`;
-    throw new Error(detail);
+    throw new Error(getApiError(body, response.status));
   }
   return response.json() as Promise<ConsoleStatusResponse>;
 }
@@ -58,20 +47,15 @@ export const useConsoleStatusQuery = (
     "queryKey" | "queryFn"
   >,
 ) => {
-  const queryClient = useQueryClient();
-
-  return useQuery(
-    {
-      queryKey: ["console-status"],
-      queryFn: fetchConsoleStatus,
-      retry: 1,
-      refetchInterval: 30000,
-      // Re-check when the user returns to the tab so a status change that
-      // happened while away surfaces promptly (drives the header notification).
-      refetchOnWindowFocus: true,
-      staleTime: 15000,
-      ...options,
-    },
-    queryClient,
-  );
+  return useQuery({
+    queryKey: ["console-status"],
+    queryFn: fetchConsoleStatus,
+    retry: 1,
+    refetchInterval: 30000,
+    // Re-check when the user returns to the tab so a status change that
+    // happened while away surfaces promptly (drives the header notification).
+    refetchOnWindowFocus: true,
+    staleTime: 15000,
+    ...options,
+  });
 };
