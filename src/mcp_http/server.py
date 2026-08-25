@@ -191,7 +191,7 @@ COMPONENT_CUSTOMIZATIONS: dict[tuple[str, str], dict[str, str]] = {
         "description": (
             "List available language models and embedding models for a provider. "
             "Use this before updating settings to see which model values are valid. "
-            "Provider must be one of: openai, anthropic, ollama, watsonx."
+            "Provider must be a configured LiteLLM provider key (e.g. openai, anthropic, ollama, watsonx)."
         ),
     },
     # Knowledge filters endpoints

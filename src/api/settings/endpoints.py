@@ -458,7 +458,7 @@ async def update_settings(
                 # Validate LLM provider if being changed
                 if body.llm_provider is not None or body.llm_model is not None:
                     llm_provider = (
-                        body.llm_provider
+                        body.llm_provider.strip().lower()
                         if body.llm_provider is not None
                         else current_config.agent.llm_provider
                     )
@@ -509,7 +509,7 @@ async def update_settings(
                 # Validate embedding provider if being changed
                 if body.embedding_provider is not None or body.embedding_model is not None:
                     embedding_provider = (
-                        body.embedding_provider
+                        body.embedding_provider.strip().lower()
                         if body.embedding_provider is not None
                         else current_config.knowledge.embedding_provider
                     )

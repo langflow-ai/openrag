@@ -136,11 +136,13 @@ export function ModelSelector({
         .toLowerCase()
         .includes(deferredSearch);
       const options = deferredSearch
-        ? group.options.filter(
-            (option) =>
-              providerMatches ||
-              option.label.toLowerCase().includes(deferredSearch),
-          )
+        ? group.options
+            .filter(
+              (option) =>
+                providerMatches ||
+                option.label.toLowerCase().includes(deferredSearch),
+            )
+            .slice(0, MODELS_PER_PROVIDER)
         : group.options.slice(0, MODELS_PER_PROVIDER);
       if (deferredSearch && options.length === 0) return [];
       return [{ ...group, options }];

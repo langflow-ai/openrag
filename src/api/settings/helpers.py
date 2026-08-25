@@ -54,13 +54,18 @@ def _first_configured_llm_provider(config, excluding: str) -> str:
 
 
 def _first_configured_embedding_provider(config, excluding: str) -> str:
-    """Return the first configured embedding provider (openai/watsonx/ollama) that isn't `excluding`, or "" if none."""
+    """Return the first configured embedding provider that isn't `excluding`, or "" if none."""
     for p in _EMBEDDING_PROVIDER_NAMES:
         if p != excluding and getattr(config.providers, p).configured:
             return p
+    from services.model_catalog import catalog
+
+    entries = {entry["key"]: entry for entry in catalog()["providers"]}
     for provider, value in config.providers.custom.items():
         if provider != excluding and value.configured:
-            return provider
+            entry = entries.get(provider)
+            if entry and entry["embedding_models"]:
+                return provider
     return ""
 
 

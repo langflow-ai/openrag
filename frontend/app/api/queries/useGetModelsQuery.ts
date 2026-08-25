@@ -3,6 +3,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import type { CatalogModel } from "@/app/settings/_helpers/catalog-models";
 import { formatProviderErrorMessage } from "@/lib/chat-stream-errors";
 import { useGetSettingsQuery } from "./useGetSettingsQuery";
 
@@ -281,19 +282,6 @@ export const useGetCurrentProviderModelsQuery = (
       return openaiModels;
   }
 };
-
-/** One LiteLLM catalogue row. Mirrors `src/services/model_catalog.py`. */
-export interface CatalogModel {
-  model: string;
-  mode: string | null;
-  max_input_tokens?: number;
-  max_output_tokens?: number;
-  input_cost_per_token?: number;
-  output_cost_per_token?: number;
-  cache_read_input_token_cost?: number;
-  capabilities?: string[];
-  deprecation_date?: string;
-}
 
 export interface CatalogCredentialField {
   key: string;
