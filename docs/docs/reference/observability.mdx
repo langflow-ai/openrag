@@ -188,6 +188,8 @@ Set `agentHost` explicitly only if your agent isn't a DaemonSet and is reached a
 
 The same presence rule applies as in `.env`: `serviceName`, `zone`, and `logLevel` are omitted from the rendered configuration when they're empty, so leave them empty rather than setting them to `""` deliberately.
 
+`tracingDisable` and `stackTrace` don't follow that rule. Both ship with a real, non-empty chart default (`logging` and `error` — see [Performance guardrails](#performance-guardrails)), so leaving them out of your values override doesn't disable the guardrail; the chart's default still gets written. To get the tracer's own default instead, override them explicitly: `tracingDisable: ""` or `stackTrace: "all"`.
+
 :::important
 The OpenRAG chart doesn't install an Instana agent.
 Install one separately with IBM's `instana-agent` Helm chart or operator.
