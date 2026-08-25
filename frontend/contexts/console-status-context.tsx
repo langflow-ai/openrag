@@ -18,6 +18,8 @@ import {
   useConsoleStatusQuery,
 } from "@/app/api/queries/useConsoleStatusQuery";
 import { useAuth } from "@/contexts/auth-context";
+import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
+import { useTask } from "@/contexts/task-context";
 
 /** Collapses the four component states into the two things the UI reacts to:
  *  a warning (amber) or an outage (red). `ok` means nothing to show. */
@@ -82,15 +84,27 @@ export function ConsoleStatusProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const { runMode } = useAuth();
+  const { runMode, isAuthenticated, isNoAuthMode } = useAuth();
   const isOss = runMode === "oss";
+  // Same gate as the panel: OSS + a session that can call /api/status.
+  // run_mode is known on /login before a cookie exists; polling then would 401.
+  const canFetchStatus = isOss && (isAuthenticated || isNoAuthMode);
 
-  // Shares the ["console-status"] cache key with the panel/button — React Query
+  // Shares the ["console-status"] cache key with the panel — React Query
   // dedupes, so mounting this provider does not add a second poll.
-  // Disabled outside OSS so polling never fires in saas or on_prem.
-  const { data, isError } = useConsoleStatusQuery({ enabled: isOss });
+  const { data, isError } = useConsoleStatusQuery({ enabled: canFetchStatus });
+  const { closeMenu, isMenuOpen } = useTask();
 
   const [isOpen, setIsOpen] = useState(false);
+  const isOpenRef = useRef(false);
+  isOpenRef.current = isOpen;
+
+  // Toast "View" and task-failure auto-open set the menu from TaskProvider
+  // (a parent), so they cannot go through useOpenTaskMenu. Close whenever
+  // the menu is open so the non-modal overlay cannot cover the task panel.
+  useEffect(() => {
+    if (isMenuOpen) setIsOpen(false);
+  }, [isMenuOpen]);
 
   const overallStatus = (data as ConsoleStatusResponse | undefined)
     ?.overall_status;
@@ -105,9 +119,15 @@ export function ConsoleStatusProvider({
   const severity = severityOf(overallStatus);
   const hasProblem = severity !== "ok";
 
-  const open = useCallback(() => setIsOpen(true), []);
+  const open = useCallback(() => {
+    closeMenu();
+    setIsOpen(true);
+  }, [closeMenu]);
   const close = useCallback(() => setIsOpen(false), []);
-  const toggle = useCallback(() => setIsOpen((v) => !v), []);
+  const toggle = useCallback(() => {
+    if (!isOpenRef.current) closeMenu();
+    setIsOpen((v) => !v);
+  }, [closeMenu]);
 
   // Active push: one toast per healthy→bad / bad→worse transition. `prevRef`
   // starts undefined and is seeded on the first successful fetch so we never
@@ -137,17 +157,32 @@ export function ConsoleStatusProvider({
     }
   }, [overallStatus, problems, open]);
 
-  const value: ConsoleStatusContextType = {
-    overallStatus,
-    problems,
-    severity,
-    hasProblem,
-    isError,
-    isOpen,
-    open,
-    close,
-    toggle,
-  };
+  // Memoize the bag, not the status: overallStatus / problems / hasProblem stay
+  // in the dep list so a poll still re-renders the header and bell immediately.
+  const value = useMemo<ConsoleStatusContextType>(
+    () => ({
+      overallStatus,
+      problems,
+      severity,
+      hasProblem,
+      isError,
+      isOpen,
+      open,
+      close,
+      toggle,
+    }),
+    [
+      overallStatus,
+      problems,
+      severity,
+      hasProblem,
+      isError,
+      isOpen,
+      open,
+      close,
+      toggle,
+    ],
+  );
 
   return (
     <ConsoleStatusContext.Provider value={value}>
@@ -173,4 +208,29 @@ const NOOP_STATUS: Readonly<ConsoleStatusContextType> = Object.freeze({
 
 export function useConsoleStatus(): ConsoleStatusContextType {
   return use(ConsoleStatusContext) ?? NOOP_STATUS;
+}
+
+/** Open the task notification menu after closing Console Status and the
+ *  knowledge filter so only one overlay is visible. */
+export function useOpenTaskMenu() {
+  const { openMenu } = useTask();
+  const { close } = useConsoleStatus();
+  const { closePanelOnly } = useKnowledgeFilter();
+  return useCallback(() => {
+    close();
+    closePanelOnly();
+    openMenu();
+  }, [close, closePanelOnly, openMenu]);
+}
+
+export function useToggleTaskMenu() {
+  const { toggleMenu, isMenuOpen } = useTask();
+  const openTaskMenu = useOpenTaskMenu();
+  return useCallback(() => {
+    if (isMenuOpen) {
+      toggleMenu();
+    } else {
+      openTaskMenu();
+    }
+  }, [isMenuOpen, toggleMenu, openTaskMenu]);
 }

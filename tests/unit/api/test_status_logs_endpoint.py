@@ -34,11 +34,11 @@ def _user():
 def _reset_buffer():
     cl._buffers.clear()
     cl._locks.clear()
-    cl._last_ok.clear()
+    cl._last_state.clear()
     yield
     cl._buffers.clear()
     cl._locks.clear()
-    cl._last_ok.clear()
+    cl._last_state.clear()
 
 
 # ---------------------------------------------------------------------------

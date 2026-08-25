@@ -20,7 +20,7 @@ async def check_openrag_backend() -> ComponentStatus:
         message = "OpenRAG configuration is not loaded"
         record_check_result(
             "openrag",
-            False,
+            ComponentState.UNHEALTHY,
             message,
             detail=f"{type(e).__name__}: {e}",
         )
@@ -48,11 +48,11 @@ async def check_openrag_backend() -> ComponentStatus:
     if missing:
         status = ComponentState.DEGRADED
         message = "Backend serving but not fully initialized: " + ", ".join(missing)
-        record_check_result("openrag", False, message)
+        record_check_result("openrag", ComponentState.DEGRADED, message)
         last_error: str | None = message
     else:
         status, message = ComponentState.HEALTHY, "OpenRAG backend is ready"
-        record_check_result("openrag", True, message)
+        record_check_result("openrag", ComponentState.HEALTHY, message)
         last_error = None
 
     return ComponentStatus(
@@ -78,7 +78,7 @@ async def check_docling() -> ComponentStatus:
         docling_client = clients.docling_http_client
         if not docling_client:
             message = "Docling client is not initialized"
-            record_check_result("docling", False, message)
+            record_check_result("docling", ComponentState.UNKNOWN, message)
             return ComponentStatus(
                 name="docling",
                 display_name="Docling",
@@ -96,14 +96,14 @@ async def check_docling() -> ComponentStatus:
         if resp.status_code == 200:
             status, message = ComponentState.HEALTHY, "Docling Serve reachable"
             version = resp.json().get("docling-serve")
-            record_check_result("docling", True, message)
+            record_check_result("docling", ComponentState.HEALTHY, message)
             last_error = None
         else:
             message = f"Docling returned HTTP {resp.status_code}"
             status = ComponentState.UNHEALTHY
             record_check_result(
                 "docling",
-                False,
+                ComponentState.UNHEALTHY,
                 message,
                 detail=f"HTTP {resp.status_code} — target: {target_url}",
             )
@@ -114,7 +114,7 @@ async def check_docling() -> ComponentStatus:
         status = ComponentState.UNHEALTHY
         record_check_result(
             "docling",
-            False,
+            ComponentState.UNHEALTHY,
             message,
             detail=f"{type(e).__name__}: {e} — target: {target_url}",
         )
@@ -143,7 +143,7 @@ async def check_langflow() -> ComponentStatus:
         langflow_client = clients.langflow_http_client
         if not langflow_client:
             message = "Langflow client is not initialized"
-            record_check_result("langflow", False, message)
+            record_check_result("langflow", ComponentState.UNKNOWN, message)
             return ComponentStatus(
                 name="langflow",
                 display_name="Langflow",
@@ -161,14 +161,14 @@ async def check_langflow() -> ComponentStatus:
         if resp.status_code == 200:
             status, message = ComponentState.HEALTHY, "Langflow API reachable"
             version = resp.json().get("version")
-            record_check_result("langflow", True, message)
+            record_check_result("langflow", ComponentState.HEALTHY, message)
             last_error = None
         else:
             message = f"Langflow returned HTTP {resp.status_code}"
             status = ComponentState.UNHEALTHY
             record_check_result(
                 "langflow",
-                False,
+                ComponentState.UNHEALTHY,
                 message,
                 detail=f"HTTP {resp.status_code} — target: {target_url}",
             )
@@ -179,7 +179,7 @@ async def check_langflow() -> ComponentStatus:
         status = ComponentState.UNHEALTHY
         record_check_result(
             "langflow",
-            False,
+            ComponentState.UNHEALTHY,
             message,
             detail=f"{type(e).__name__}: {e} — target: {target_url}",
         )
@@ -208,7 +208,7 @@ async def check_opensearch() -> ComponentStatus:
         opensearch = clients.opensearch
         if opensearch is None:
             message = "OpenSearch client is not initialized"
-            record_check_result("opensearch", False, message)
+            record_check_result("opensearch", ComponentState.UNKNOWN, message)
             return ComponentStatus(
                 name="opensearch",
                 display_name="OpenSearch",
@@ -239,14 +239,14 @@ async def check_opensearch() -> ComponentStatus:
             "cluster_health": cluster_status,
             "distribution": distribution,
         }
-        ok = status in (ComponentState.HEALTHY, ComponentState.DEGRADED)
+        serving = status in (ComponentState.HEALTHY, ComponentState.DEGRADED)
         record_check_result(
             "opensearch",
-            ok,
+            status,
             message,
-            detail=None if ok else f"cluster_health={cluster_status}",
+            detail=None if serving else f"cluster_health={cluster_status}",
         )
-        last_error = None if ok else f"cluster_health={cluster_status}"
+        last_error = None if serving else f"cluster_health={cluster_status}"
 
     except Exception as e:
         logger.warning("OpenSearch status check failed", error=str(e))
@@ -255,7 +255,7 @@ async def check_opensearch() -> ComponentStatus:
         metadata = {}
         record_check_result(
             "opensearch",
-            False,
+            ComponentState.UNHEALTHY,
             message,
             detail=f"{type(e).__name__}: {e}",
         )

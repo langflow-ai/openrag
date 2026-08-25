@@ -124,7 +124,14 @@ export const useProviderHealthQuery = (
   const queryKey = ["provider", "health", testCompletion, hasChatError];
   const failureCountKey = queryKey.join("-");
 
-  return useQuery(
+  const isEnabled =
+    !!settings?.edited &&
+    isOnboardingComplete &&
+    !hasActiveIngestion &&
+    providerHealthAllowed &&
+    options?.enabled !== false;
+
+  const query = useQuery(
     {
       queryKey,
       queryFn: checkProviderHealth,
@@ -158,14 +165,11 @@ export const useProviderHealthQuery = (
       refetchOnWindowFocus: false,
       refetchOnMount: true,
       staleTime: 30000,
-      enabled:
-        !!settings?.edited &&
-        isOnboardingComplete &&
-        !hasActiveIngestion &&
-        providerHealthAllowed &&
-        options?.enabled !== false,
       ...options,
+      enabled: isEnabled,
     },
     queryClient,
   );
+
+  return { ...query, isEnabled };
 };
