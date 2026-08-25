@@ -169,6 +169,19 @@ async def ensure_required_langflow_global_variables(config=None):
                 target_val = curr_val
 
             if curr_type != target_type:
+                if not target_val:
+                    # The retained value (see sync_value above) is also empty: the
+                    # DELETE below would succeed but the recreate POST would send ""
+                    # and get rejected, dropping the variable entirely. Defer the
+                    # type migration until the variable actually has a value.
+                    logger.debug(
+                        "Deferring Langflow global variable type migration until configured",
+                        variable_name=name,
+                        old_type=curr_type,
+                        new_type=target_type,
+                    )
+                    continue
+
                 logger.info(
                     "Migrating Langflow global variable type",
                     variable_name=name,

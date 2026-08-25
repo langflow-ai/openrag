@@ -632,3 +632,55 @@ async def test_ensure_required_globals_type_migration_keeps_value_when_target_em
     # Recreated as Generic, but carrying the value Langflow already held.
     assert posts[0][2]["json"]["value"] == "https://us-south.ml.cloud.ibm.com"
     assert posts[0][2]["json"]["type"] == "Generic"
+
+
+@pytest.mark.asyncio
+async def test_ensure_required_globals_defers_type_migration_when_value_is_empty(monkeypatch):
+    """A Credential->Generic migration must not delete a variable it can't recreate.
+
+    Unlike the "keeps_value_when_target_empty" case above, here the *retained*
+    value is also empty (an unconfigured WATSONX_URL stored as Credential).
+    Deleting and then recreating with "" would 400, dropping the variable
+    entirely, so the migration must be deferred until it has a value.
+    """
+    langflow_calls = []
+
+    async def mock_langflow_request(method, endpoint, **kwargs):
+        langflow_calls.append((method, endpoint, kwargs))
+        if method == "GET":
+            return _Response(
+                json_data=[
+                    {
+                        "id": "var-1",
+                        "name": "WATSONX_URL",
+                        "value": "",
+                        "type": "Credential",
+                        "default_fields": [],
+                    }
+                ]
+            )
+        return _Response(status_code=200)
+
+    monkeypatch.setattr(
+        langflow_sync.clients, "langflow_request", mock_langflow_request, raising=True
+    )
+
+    async def create_variable(name, value, modify=False, variable_type="Credential"):
+        pass
+
+    monkeypatch.setattr(
+        langflow_sync.clients,
+        "_create_langflow_global_variable",
+        create_variable,
+        raising=True,
+    )
+
+    # watsonx is not configured -> WATSONX_URL resolves to "".
+    config = SimpleNamespace(providers=SimpleNamespace(), knowledge=SimpleNamespace())
+
+    await langflow_sync.ensure_required_langflow_global_variables(config)
+
+    methods = [c[0] for c in langflow_calls]
+    assert "DELETE" not in methods
+    assert "POST" not in methods
+    assert "PATCH" not in methods
