@@ -254,6 +254,8 @@ spec:
 
 `INSTANA_AGENT_HOST` is injected automatically and should be left unset. Setting it explicitly suppresses the injection and pins the tracer to that address instead — use that only for a non-DaemonSet agent reached through a Service.
 
+`INSTANA_TRACING_DISABLE=logging` and `INSTANA_STACK_TRACE=error` are defaulted for you, and unlike the presence-sensitive vars above they carry a real value rather than being omitted. They are performance guardrails against two costly tracer defaults: a span per in-trace `WARNING`/`ERROR` whose bookkeeping grows for the life of the process, and a full Python stack capture on every outbound HTTP, OpenSearch, and database call. Override them through `spec.env` like any other backend var — with `all` rather than `""` for the stack-trace level, which the tracer rejects. See [Performance guardrails](https://docs.openr.ag/reference/observability#performance-guardrails).
+
 Both decisions — whether to inject, and whether an explicit host already exists — are made from the **resolved** backend environment (the map `GetBackendEnvVars` returns), not from the raw `spec.env`. So `INSTANA_ENABLED` and `INSTANA_AGENT_HOST` behave the same whether they are literals, `secretKeyRef`, or `configMapKeyRef`: the operator sees exactly the value the backend will read out of its `.env`. Reading the raw `spec.env` instead would let the two disagree — a Secret-backed `INSTANA_ENABLED=true` would boot the tracer with no agent host, and a Secret-backed explicit host would be silently overridden by the injected node IP.
 
 The operator never deploys an agent. Install one separately with IBM's `instana-agent` chart or operator: it needs a privileged, host-PID DaemonSet, which is a cluster-admin concern.

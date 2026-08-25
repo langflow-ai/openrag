@@ -172,8 +172,20 @@ func NewEnvVarManager() *EnvVarManager {
 			// truthiness, and BuildEnvFileContent writes an empty default as
 			// `KEY=`. That would set a blank service name and log an "Unknown
 			// INSTANA_LOG_LEVEL" warning on every boot. Set them via spec.env.
-			"INSTANA_ENABLED":    "false",
-			"INSTANA_AGENT_PORT": "42699",
+			//
+			// INSTANA_TRACING_DISABLE / INSTANA_STACK_TRACE are performance
+			// guardrails, so unlike the vars above they carry a real default
+			// instead of being omitted. The tracer's own defaults are costly on
+			// a long-running backend: logging spans leak an event per in-trace
+			// WARNING/ERROR into a list shared by all spans (never freed, and
+			// re-walked by each new log span), and stack_trace=all captures a
+			// full Python traceback on every httpx / urllib3 / sqlalchemy exit
+			// span. See the INSTANA_* block in .env.example for the numbers.
+			// Override via spec.env to reproduce the upstream behaviour.
+			"INSTANA_ENABLED":         "false",
+			"INSTANA_AGENT_PORT":      "42699",
+			"INSTANA_TRACING_DISABLE": "logging",
+			"INSTANA_STACK_TRACE":     "error",
 		},
 		DefaultOpenRagFEEnvVars: map[string]string{
 			// Frontend environment variables will be added here

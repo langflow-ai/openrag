@@ -132,6 +132,21 @@ services:
       - INSTANA_ENABLED=${INSTANA_ENABLED:-false}
       - INSTANA_AGENT_HOST=${INSTANA_AGENT_HOST:-host.docker.internal}
       - INSTANA_AGENT_PORT=${INSTANA_AGENT_PORT:-42699}
+      # Performance guardrails — see the INSTANA_* block in .env.example for the
+      # measurements behind these two defaults. Forwarded with a default rather
+      # than bare so the safe value applies even when .env predates them:
+      # `logging` avoids an unbounded per-warning span/event leak in the tracer,
+      # `error` avoids a full stack capture on every httpx/urllib3/sqlalchemy
+      # exit span.
+      #
+      # The two substitution forms differ on purpose. `-` (unset only) lets an
+      # explicit empty value through, which is how you opt back into tracing
+      # logging spans. `:-` (unset or empty) is required for the stack-trace
+      # level because the tracer rejects an empty string, logging "Invalid
+      # stack-trace value" on every boot and silently reverting to `all` — the
+      # expensive setting this exists to avoid. Opt out with `all`, not ``.
+      - INSTANA_TRACING_DISABLE=${INSTANA_TRACING_DISABLE-logging}
+      - INSTANA_STACK_TRACE=${INSTANA_STACK_TRACE:-error}
       # Listed bare rather than as `VAR=${VAR}` on purpose: the tracer tests these
       # for *presence*, not truthiness, so forwarding an empty string would set a
       # blank service name and log an "Unknown INSTANA_LOG_LEVEL" warning on every

@@ -222,6 +222,36 @@ Don't set `INSTANA_AGENT_HOST`. When `INSTANA_ENABLED` is truthy, the operator i
 It's unrelated to [`LOG_LEVEL`](/reference/configuration#system-settings), which controls OpenRAG's application logs.
 Set it to `debug` when you're diagnosing why traces don't reach Instana, and leave it unset otherwise.
 
+## Performance guardrails {#performance-guardrails}
+
+Two of the tracer's own defaults are expensive in a long-running backend, so OpenRAG ships a different value for each. Both are set for you in `.env.example`, `docker-compose.yml`, the Helm chart, and the operator — you only need to change them to opt out.
+
+### Logging spans {#logging-spans}
+
+`INSTANA_TRACING_DISABLE=logging` stops the tracer from creating a span for every `WARNING` and `ERROR` that OpenRAG logs while handling a request.
+
+Left enabled, each of those spans records an event in a list that the tracer shares across all spans and never frees, and every later logging span walks the whole list before it's reported. The cost per logged warning therefore climbs for as long as the process runs, and the memory is never returned. Measured on the OpenRAG backend, a single warning logged inside a request trace costs about 1 ms with logging spans on and about 26 μs with them off.
+
+You lose no information by disabling them. OpenRAG's own structured logs, controlled by [`LOG_LEVEL`](/reference/configuration#system-settings), already record the same warnings and errors, with more context than the span carries.
+
+To trace logging spans anyway, set the variable to an empty value rather than removing it:
+
+```bash
+INSTANA_TRACING_DISABLE=
+```
+
+### Stack traces on exit spans {#exit-span-stack-traces}
+
+`INSTANA_STACK_TRACE=error` limits stack capture to spans that actually failed.
+
+An exit span is created for every call OpenRAG makes out of the process — every OpenSearch query, every request to Langflow, and every database query. At the tracer's own default of `all`, each one captures a full Python stack trace and reads the matching source lines from disk. OpenRAG's async request stack is deep enough that this costs 200 to 350 μs per exit span, and a single chat request makes tens of them.
+
+`error` keeps the stack trace where it's diagnostic and drops it from the successful path. To capture stacks on every exit span, set `all` — not an empty value, which the tracer rejects with a warning and then falls back to `all` anyway:
+
+```bash
+INSTANA_STACK_TRACE=all
+```
+
 ## Environment variable reference {#variables}
 
 For every variable in this feature, including defaults, see [Observability and APM settings](/reference/configuration#observability-and-apm-settings).

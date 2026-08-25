@@ -265,5 +265,11 @@ stringData:
     {{- if .Values.backend.instana.zone }}
     INSTANA_ZONE={{ .Values.backend.instana.zone | quote }}
     {{- end }}
+    {{- if .Values.backend.instana.tracingDisable }}
+    INSTANA_TRACING_DISABLE={{ .Values.backend.instana.tracingDisable | quote }}
+    {{- end }}
+    {{- if .Values.backend.instana.stackTrace }}
+    INSTANA_STACK_TRACE={{ .Values.backend.instana.stackTrace | quote }}
+    {{- end }}
     {{- end }}
 {{- end }}
