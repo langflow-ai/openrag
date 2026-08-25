@@ -83,3 +83,25 @@ def test_is_known_provider_accepts_litellm_handlers() -> None:
     assert model_catalog.is_known_provider("anthropic")
     assert not model_catalog.is_known_provider("not-a-real-provider")
     assert not model_catalog.is_known_provider("")
+
+
+def test_exported_model_ids_route_back_to_their_owner() -> None:
+    """A `/v1/models` id must resolve to the provider that owns it.
+
+    `_catalog()` strips provider prefixes for the picker; without re-attaching
+    them here an Anthropic id sent to `/v1/chat/completions` would fall through
+    to the default provider and be called with the wrong credentials.
+    """
+    from services.llm_gateway import split_model_id
+
+    payload = model_catalog.openai_models_list()
+    non_openai = [row for row in payload["data"] if row["owned_by"] != "openai"]
+    assert non_openai, "catalogue should expose more than OpenAI"
+
+    for row in non_openai:
+        provider, _name = split_model_id(row["id"])
+        assert provider == row["owned_by"], row
+
+    openai_rows = [row for row in payload["data"] if row["owned_by"] == "openai"]
+    assert openai_rows
+    assert all("/" not in row["id"] for row in openai_rows)

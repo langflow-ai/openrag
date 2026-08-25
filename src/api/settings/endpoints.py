@@ -109,6 +109,17 @@ from utils.version_utils import OPENRAG_VERSION
 logger = get_logger(__name__)
 
 
+def _provider_key(provider: str | None) -> str:
+    """Normalize a provider name the way credential storage does.
+
+    `set_credentials` and `credential_values` both key off `strip().lower()`,
+    and `llm_provider`/`embedding_provider` no longer have a fixed pattern, so a
+    request carrying "Gemini" must still find the credentials submitted under
+    "gemini".
+    """
+    return (provider or "").strip().lower()
+
+
 def _custom_providers_for_settings(openrag_config) -> dict[str, GenericProviderConfig]:
     """Public provider payloads: never drop a legacy secret when custom slots exist."""
 
@@ -464,8 +475,13 @@ async def update_settings(
                     api_key = getattr(llm_provider_config, "api_key", None)
                     endpoint = getattr(llm_provider_config, "endpoint", None)
                     project_id = getattr(llm_provider_config, "project_id", None)
-                    credentials = current_config.providers.credential_values(llm_provider)
-                    credentials.update((body.provider_credentials or {}).get(llm_provider, {}))
+                    llm_provider_key = _provider_key(llm_provider)
+                    submitted_credentials = {
+                        _provider_key(name): values
+                        for name, values in (body.provider_credentials or {}).items()
+                    }
+                    credentials = current_config.providers.credential_values(llm_provider_key)
+                    credentials.update(submitted_credentials.get(llm_provider_key, {}))
                     api_key = credentials.get("api_key", api_key)
                     endpoint = credentials.get("api_base", endpoint)
                     project_id = credentials.get("project_id", project_id)
@@ -512,10 +528,13 @@ async def update_settings(
                     api_key = getattr(embedding_provider_config, "api_key", None)
                     endpoint = getattr(embedding_provider_config, "endpoint", None)
                     project_id = getattr(embedding_provider_config, "project_id", None)
-                    credentials = current_config.providers.credential_values(embedding_provider)
-                    credentials.update(
-                        (body.provider_credentials or {}).get(embedding_provider, {})
-                    )
+                    embedding_provider_key = _provider_key(embedding_provider)
+                    submitted_credentials = {
+                        _provider_key(name): values
+                        for name, values in (body.provider_credentials or {}).items()
+                    }
+                    credentials = current_config.providers.credential_values(embedding_provider_key)
+                    credentials.update(submitted_credentials.get(embedding_provider_key, {}))
                     api_key = credentials.get("api_key", api_key)
                     endpoint = credentials.get("api_base", endpoint)
                     project_id = credentials.get("project_id", project_id)

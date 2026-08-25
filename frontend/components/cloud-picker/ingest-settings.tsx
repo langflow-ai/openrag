@@ -73,23 +73,19 @@ export const IngestSettings = ({
     enabled: isAuthenticated || isNoAuthMode,
   });
 
-  const catalogEmbeddingModels = useMemo(() => {
-    const isCatalogProvider =
-      currentProvider === "openai" ||
-      currentProvider === "anthropic" ||
-      currentProvider === "ollama" ||
-      currentProvider === "watsonx";
-    if (!isCatalogProvider) {
-      return [];
-    }
-    return (
+  // `groupedCatalogOptions` keys off the provider string, so a generic LiteLLM
+  // provider resolves here too; restricting this to the four legacy keys hid
+  // the catalogue models of every custom embedding provider. An unknown
+  // provider simply yields no group and falls through to `getFallbackModels`.
+  const catalogEmbeddingModels = useMemo(
+    () =>
       groupedCatalogOptions(
         catalog,
         { [currentProvider]: true },
         "embedding",
-      )[0]?.options ?? []
-    );
-  }, [catalog, currentProvider]);
+      )[0]?.options ?? [],
+    [catalog, currentProvider],
+  );
 
   const defaultEmbedding = catalogEmbeddingModels[0]?.value;
 

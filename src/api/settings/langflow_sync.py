@@ -220,8 +220,19 @@ async def ensure_required_langflow_global_variables(config=None):
                     "Failed to create Langflow global variable", variable_name=name, error=str(e)
                 )
 
+    # Non-fatal like every other Langflow call in this function: a transient
+    # failure here must not take down a startup path that never raised before.
     for name in sorted(LANGFLOW_RUNTIME_CREDENTIAL_PLACEHOLDERS):
-        await _upsert_langflow_global_variable(name, LANGFLOW_RUNTIME_CREDENTIAL_PLACEHOLDER_VALUE)
+        try:
+            await _upsert_langflow_global_variable(
+                name, LANGFLOW_RUNTIME_CREDENTIAL_PLACEHOLDER_VALUE
+            )
+        except Exception as e:
+            logger.warning(
+                "Failed to create Langflow credential placeholder",
+                variable_name=name,
+                error=str(e),
+            )
 
 
 async def _update_langflow_global_variables(config, flows_service=None):

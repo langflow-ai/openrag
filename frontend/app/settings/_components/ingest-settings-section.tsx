@@ -99,7 +99,14 @@ export function IngestSettingsSection() {
 
   const showVlmSettings = settings.show_vlm_settings ?? true;
 
-  const { data: catalog, isLoading: catalogLoading } = useGetModelCatalogQuery({
+  const {
+    data: catalog,
+    isLoading: catalogLoading,
+    // The catalogue query does not retry, so a failed fetch leaves the groups
+    // empty. Without this flag the selector would tell the user to configure a
+    // provider when the real problem is that the catalogue never loaded.
+    isError: catalogError,
+  } = useGetModelCatalogQuery({
     enabled: isAuthenticated || isNoAuthMode,
   });
 
@@ -310,18 +317,17 @@ export function IngestSettingsSection() {
 
   useRegisterDirty("ingest-settings", userEdited && knowledgeIngestDirty);
 
+  // Resolve through the same map that builds the groups: the catalogue now
+  // contributes custom LiteLLM providers, so a hard-coded chain would report
+  // OpenAI's state for any provider outside the four legacy keys.
   const providerConfigured =
     settings.providers === undefined || settings.providers === null
       ? undefined
-      : vlmProvider === "watsonx"
-        ? settings.providers.watsonx?.configured === true
-        : vlmProvider === "anthropic"
-          ? settings.providers.anthropic?.configured === true
-          : vlmProvider === "ollama"
-            ? settings.providers.ollama?.configured === true
-            : vlmProvider === "local"
-              ? true
-              : settings.providers.openai?.configured === true;
+      : vlmProvider === "local"
+        ? true
+        : configuredProviders[
+            vlmProvider as keyof typeof configuredProviders
+          ] === true;
 
   const providerWarning = pictureDescriptions && providerConfigured === false;
 
@@ -559,7 +565,9 @@ export function IngestSettingsSection() {
                 noOptionsPlaceholder={
                   isLoadingAnyEmbeddingModels
                     ? "Loading models..."
-                    : "No embedding models detected. Configure a provider first."
+                    : catalogError
+                      ? "Could not load the model catalogue. Retry later."
+                      : "No embedding models detected. Configure a provider first."
                 }
                 value={settings.knowledge?.embedding_model || ""}
                 selectedProvider={settings.knowledge?.embedding_provider}
@@ -572,6 +580,10 @@ export function IngestSettingsSection() {
                   model={
                     selectedEmbedding?.model ?? {
                       model: settings.knowledge.embedding_model,
+                      // Without an explicit mode the panel treats an
+                      // off-catalogue embedding model as a language model and
+                      // warns that it cannot run the agent tools.
+                      mode: "embedding",
                     }
                   }
                   providerName={selectedEmbeddingGroup.group}
@@ -797,7 +809,9 @@ export function IngestSettingsSection() {
                           noOptionsPlaceholder={
                             isLoadingAnyVlmModels
                               ? "Loading models..."
-                              : "No models detected. Configure OpenAI, Anthropic, Ollama, or IBM watsonx.ai first."
+                              : catalogError
+                                ? "Could not load the model catalogue. Retry later."
+                                : "No models detected. Configure OpenAI, Anthropic, Ollama, or IBM watsonx.ai first."
                           }
                           value={vlmModel}
                           selectedProvider={vlmProvider}

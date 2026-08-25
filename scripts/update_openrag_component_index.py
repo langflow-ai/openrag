@@ -10,7 +10,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 INDEX_PATH = ROOT / "flows" / "component_index.json"
-COMPONENTS_DIR = ROOT / "flows" / "components"
+# The component sources live in the Langflow inline bundle; the former
+# ``flows/components`` copies were removed when the bundle became canonical.
+COMPONENTS_DIR = ROOT / "custom_components" / "openrag"
 INGEST_FLOW_PATH = ROOT / "flows" / "ingestion_flow.json"
 # Langflow uses this string as the sidebar category label.
 BUNDLE_NAME = "OpenRAG"

@@ -25,11 +25,12 @@ from __future__ import annotations
 
 import datetime
 import json
-import logging
 from functools import lru_cache
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 TEXT_GENERATION_MODES = frozenset({"chat", "completion", "responses"})
 EMBEDDING_MODE = "embedding"
@@ -282,24 +283,28 @@ def is_known_provider(provider: str) -> bool:
         return False
 
 
+def public_model_id(provider: str, model: str) -> str:
+    """The routable id for `model` as served by `/v1/models`.
+
+    `_catalog()` strips the provider prefix so the picker can show bare names,
+    but an unprefixed id sent back to `/v1/chat/completions` is resolved against
+    the *default* provider — an Anthropic model would then be called with the
+    OpenAI credentials. Re-attach the prefix for every non-OpenAI provider so
+    the id round-trips through `resolve_call()`. OpenAI keeps bare names because
+    that is what OpenAI-compatible clients expect.
+    """
+    return model if provider == "openai" else f"{provider}/{model}"
+
+
 def openai_models_list(today: datetime.date | None = None) -> dict[str, Any]:
     """OpenAI-compatible `GET /v1/models` body from the catalogue."""
     data = []
     for provider in catalog(today)["providers"]:
         owner = provider["key"]
-        for entry in provider["models"]:
+        for entry in (*provider["models"], *provider["embedding_models"]):
             data.append(
                 {
-                    "id": entry["model"],
-                    "object": "model",
-                    "owned_by": owner,
-                    "created": 0,
-                }
-            )
-        for entry in provider["embedding_models"]:
-            data.append(
-                {
-                    "id": entry["model"],
+                    "id": public_model_id(owner, entry["model"]),
                     "object": "model",
                     "owned_by": owner,
                     "created": 0,

@@ -8,7 +8,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button, type ButtonProps } from "@/components/ui/button";
 import {
   Command,
-  CommandEmpty,
   CommandGroup,
   CommandInput,
   CommandItem,
@@ -106,7 +105,12 @@ export function ModelSelector({
   }
 
   const [searchValue, setSearchValue] = useState("");
-  const deferredSearch = useDeferredValue(searchValue.trim().toLowerCase());
+  // The option filter runs on the trimmed, lowercased search text, so the
+  // custom entry has to use the trimmed text too — otherwise typing trailing
+  // whitespace both defeats the duplicate check and stores a model id with
+  // whitespace in it.
+  const customValue = searchValue.trim();
+  const deferredSearch = useDeferredValue(customValue.toLowerCase());
   const listboxId = useId();
 
   // Flatten grouped options or use regular options
@@ -151,6 +155,14 @@ export function ModelSelector({
       .filter((option) => option.label.toLowerCase().includes(deferredSearch))
       .slice(0, 100);
   }, [deferredSearch, groupedOptions, options]);
+
+  // `shouldFilter={false}` means cmdk's own item count no longer reflects the
+  // manual filtering above, so `CommandEmpty` cannot be trusted to appear.
+  // Decide the empty state from the collections that actually render.
+  const showCustomEntry = allowCustomEntry && !!customValue;
+  const hasVisibleRows = groupedOptions
+    ? (visibleGroups?.length ?? 0) > 0
+    : visibleOptions.length > 0;
 
   useEffect(() => {
     if (
@@ -216,17 +228,20 @@ export function ModelSelector({
             className="max-h-[300px] overflow-y-auto"
             onWheel={(e) => e.stopPropagation()}
           >
-            <CommandEmpty>{noOptionsPlaceholder}</CommandEmpty>
+            {!hasVisibleRows && !showCustomEntry && (
+              <div className="py-6 text-center text-sm">
+                {noOptionsPlaceholder}
+              </div>
+            )}
             {groupedOptions ? (
               <>
                 {visibleGroups?.map((group) => {
                   const groupProvider =
                     group.provider ?? group.options[0]?.provider;
                   const showCustom =
-                    allowCustomEntry &&
-                    !!searchValue &&
+                    showCustomEntry &&
                     !group.options.some(
-                      (option) => option.value === searchValue,
+                      (option) => option.value === customValue,
                     );
                   return (
                     <CommandGroup
@@ -313,14 +328,14 @@ export function ModelSelector({
                         )}
                       {showCustom && (
                         <CommandItem
-                          value={`${group.group}-${searchValue}`}
-                          data-testid={`model-custom-option-${searchValue}`}
+                          value={`${group.group}-${customValue}`}
+                          data-testid={`model-custom-option-${customValue}`}
                           onSelect={() => {
                             if (
-                              searchValue !== value ||
+                              customValue !== value ||
                               groupProvider !== selectedProvider
                             ) {
-                              onValueChange(searchValue, groupProvider);
+                              onValueChange(customValue, groupProvider);
                             }
                             setOpen(false);
                           }}
@@ -328,7 +343,7 @@ export function ModelSelector({
                           <CheckIcon
                             className={cn(
                               "mr-2 h-4 w-4",
-                              value === searchValue &&
+                              value === customValue &&
                                 (!selectedProvider ||
                                   selectedProvider === groupProvider)
                                 ? "opacity-100"
@@ -336,7 +351,7 @@ export function ModelSelector({
                             )}
                           />
                           <div className="flex items-center gap-2">
-                            {searchValue}
+                            {customValue}
                             <span className="text-xs text-foreground p-1 rounded-md bg-muted">
                               Custom
                             </span>
@@ -380,17 +395,16 @@ export function ModelSelector({
                     </div>
                   </CommandItem>
                 ))}
-                {custom &&
-                  searchValue &&
+                {showCustomEntry &&
                   !allOptions.find(
-                    (option) => option.value === searchValue,
+                    (option) => option.value === customValue,
                   ) && (
                     <CommandItem
-                      value={searchValue}
-                      data-testid={`model-custom-option-${searchValue}`}
-                      onSelect={(currentValue) => {
-                        if (currentValue !== value) {
-                          onValueChange(currentValue);
+                      value={customValue}
+                      data-testid={`model-custom-option-${customValue}`}
+                      onSelect={() => {
+                        if (customValue !== value) {
+                          onValueChange(customValue);
                         }
                         setOpen(false);
                       }}
@@ -398,11 +412,11 @@ export function ModelSelector({
                       <CheckIcon
                         className={cn(
                           "mr-2 h-4 w-4",
-                          value === searchValue ? "opacity-100" : "opacity-0",
+                          value === customValue ? "opacity-100" : "opacity-0",
                         )}
                       />
                       <div className="flex items-center gap-2">
-                        {searchValue}
+                        {customValue}
                         <span className="text-xs text-foreground p-1 rounded-md bg-muted">
                           Custom
                         </span>

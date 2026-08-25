@@ -4,17 +4,20 @@ import hashlib
 import json
 from pathlib import Path
 
-COMPONENTS = Path("flows/components")
+# The Langflow bundle is the single home for these components: the former
+# ``flows/components`` copies were removed once the bundle became canonical.
 BUNDLE = Path("custom_components/openrag")
 # Langflow 1.11 rewrites the bare class name to ``ext:elastic:...@official``
 # via its extension migration table, so the OpenRAG copy must be referenced by
 # its own canonical extension id everywhere (index key and flow node types).
 OPENSEARCH_EXT_ID = "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra"
 OPENSEARCH_MODULE = "_lfx_ext.extra.openrag.opensearch_multimodal"
+# Langflow uses the bundle directory name as the sidebar category label.
+BUNDLE_NAME = "OpenRAG"
 
 
 def test_llm_component_binds_proxy_globals():
-    code = (COMPONENTS / "openai_compatible_llm.py").read_text(encoding="utf-8")
+    code = (BUNDLE / "openai_compatible_llm.py").read_text(encoding="utf-8")
     assert 'OPENRAG_LLM_BASE_URL_VAR = "OPENRAG_LLM_BASE_URL"' in code
     assert 'OPENRAG_LLM_TOKEN_VAR = "OPENRAG_LLM_TOKEN"' in code
     assert 'SELECTED_LANGUAGE_MODEL_VAR = "SELECTED_LANGUAGE_MODEL"' in code
@@ -27,8 +30,8 @@ def test_llm_component_binds_proxy_globals():
 
 def test_embedding_component_uses_the_same_proxy_globals():
     """Embeddings hit /v1/embeddings with the same hop token and /v1 base URL."""
-    llm = (COMPONENTS / "openai_compatible_llm.py").read_text(encoding="utf-8")
-    embedding = (COMPONENTS / "openai_compatible_embedding.py").read_text(encoding="utf-8")
+    llm = (BUNDLE / "openai_compatible_llm.py").read_text(encoding="utf-8")
+    embedding = (BUNDLE / "openai_compatible_embedding.py").read_text(encoding="utf-8")
 
     assert 'OPENRAG_LLM_BASE_URL_VAR = "OPENRAG_LLM_BASE_URL"' in embedding
     assert 'OPENRAG_LLM_TOKEN_VAR = "OPENRAG_LLM_TOKEN"' in embedding
@@ -66,52 +69,28 @@ def test_langflow_runtime_globals_cover_chat_and_embeddings():
     assert '"openai_api_base": "OPENRAG_LLM_BASE_URL"' in source
 
 
-def test_custom_components_stay_in_sync_with_flows_components():
+def test_langflow_image_ships_the_openrag_bundle_as_a_components_path():
+    """The OpenRAG components are delivered by scan, not by the component index.
+
+    ``flows/component_index.json`` is Langflow's stock index and carries no
+    OpenRAG bundle; the image instead copies ``custom_components/`` in and
+    points ``LANGFLOW_COMPONENTS_PATH`` at it, so Langflow discovers the bundle
+    when it scans. If that copy or that env var goes away, every flow node
+    typed ``ext:openrag:...`` stops resolving.
+    """
+    dockerfile = Path("Dockerfile.langflow").read_text(encoding="utf-8")
+    assert "COPY custom_components/ /app/custom_components/" in dockerfile
+    assert "ENV LANGFLOW_COMPONENTS_PATH=/app/custom_components" in dockerfile
+
     for name in (
         "openai_compatible_llm.py",
         "openai_compatible_embedding.py",
         "opensearch_multimodal.py",
     ):
-        canonical = (COMPONENTS / name).read_text(encoding="utf-8")
-        bundled = (BUNDLE / name).read_text(encoding="utf-8")
-        assert bundled == canonical
+        assert (BUNDLE / name).is_file(), name
 
-
-def test_component_index_registers_openrag_proxy_components():
     index = json.loads(Path("flows/component_index.json").read_text(encoding="utf-8"))
-    bundles = dict(index["entries"])
-    assert "OpenRAG" in bundles
-    assert "openrag" not in bundles
-    openrag = bundles["OpenRAG"]
-    llm = openrag["OpenAICompatibleLLMComponent"]
-    embedding = openrag["OpenAICompatibleEmbeddingComponent"]
-    assert "OpenSearchVectorStoreComponentMultimodalMultiEmbedding" not in openrag
-    opensearch = openrag[OPENSEARCH_EXT_ID]
-    source = (COMPONENTS / "opensearch_multimodal.py").read_text(encoding="utf-8")
-
-    assert llm["template"]["api_key"]["value"] == "OPENRAG_LLM_TOKEN"
-    assert llm["template"]["api_key"]["load_from_db"] is True
-    assert llm["template"]["api_base"]["value"] == "OPENRAG_LLM_BASE_URL"
-    assert llm["template"]["api_base"]["load_from_db"] is True
-    assert llm["template"]["model_name"]["value"] == "SELECTED_LANGUAGE_MODEL"
-
-    assert embedding["template"]["api_key"]["value"] == "OPENRAG_LLM_TOKEN"
-    assert embedding["template"]["api_key"]["load_from_db"] is True
-    assert embedding["template"]["api_base"]["value"] == "OPENRAG_LLM_BASE_URL"
-    assert llm["display_name"] == "OpenRAG LLM"
-    assert embedding["display_name"] == "OpenRAG Embeddings"
-    assert llm["icon"] == "OpenRAG"
-    assert embedding["icon"] == "OpenRAG"
-    assert llm["metadata"]["module"].startswith("custom_components.OpenRAG.")
-    assert opensearch["display_name"] == "OpenSearch (Multi-Model Multi-Embedding)"
-    assert opensearch["icon"] == "OpenSearch"
-    assert opensearch["edited"] is False
-    assert opensearch["template"]["code"]["value"] == source
-    assert opensearch["metadata"]["module"] == OPENSEARCH_MODULE
-    assert (
-        opensearch["metadata"]["code_hash"]
-        == hashlib.sha256(source.encode("utf-8")).hexdigest()[:12]
-    )
+    assert BUNDLE_NAME not in dict(index["entries"])
 
 
 def test_docker_compose_seeds_openrag_llm_token_placeholder():

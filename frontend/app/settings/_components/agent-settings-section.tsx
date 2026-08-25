@@ -54,7 +54,14 @@ export function AgentSettingsSection() {
     enabled: isAuthenticated || isNoAuthMode,
   });
 
-  const { data: catalog, isLoading: catalogLoading } = useGetModelCatalogQuery({
+  const {
+    data: catalog,
+    isLoading: catalogLoading,
+    // The catalogue query does not retry, so a failed fetch leaves the groups
+    // empty. Without this flag the selector would tell the user to configure a
+    // provider when the real problem is that the catalogue never loaded.
+    isError: catalogError,
+  } = useGetModelCatalogQuery({
     enabled: isAuthenticated || isNoAuthMode,
   });
 
@@ -307,7 +314,9 @@ export function AgentSettingsSection() {
                 noOptionsPlaceholder={
                   isLoadingAnyLlmModels
                     ? "Loading models..."
-                    : "No language models detected. Configure a provider first."
+                    : catalogError
+                      ? "Could not load the model catalogue. Retry later."
+                      : "No language models detected. Configure a provider first."
                 }
                 value={settings.agent?.llm_model || ""}
                 selectedProvider={settings.agent?.llm_provider}

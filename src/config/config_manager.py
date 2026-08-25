@@ -200,6 +200,12 @@ class ProvidersConfig:
             for name, value in credentials.items()
             if str(name).strip() and str(value).strip()
         }
+        if not clean:
+            # Every submitted value was blank. Creating the entry anyway would
+            # register a provider that reports `configured` with zero
+            # credentials, which then satisfies `any_configured()` and can be
+            # picked as a fallback provider and called with no key at all.
+            return
         previous = self.custom.get(key, GenericProviderConfig())
         previous.credentials.update(clean)
         previous.configured = True

@@ -59,9 +59,12 @@ async def test_add_provider_credentials_injects_hop_token_not_jwt_or_provider_ke
     # Chat (`/v1/chat/completions`) and embeddings (`/v1/embeddings`) share these.
     assert headers["X-LANGFLOW-GLOBAL-VAR-OPENAI_API_KEY"] == hop
     assert "X-LANGFLOW-GLOBAL-VAR-OPENRAG_LLM_TOKEN" in headers
-    assert "sk-real-openai" not in headers.values()
-    assert "sk-ant-real" not in headers.values()
-    assert "wx-real" not in headers.values()
+    # Match on the serialized headers: `in headers.values()` compares whole
+    # values, so a secret embedded in a larger value ("Bearer sk-real-openai")
+    # would slip past the very leak this test exists to catch.
+    serialized = "\n".join(f"{name}: {value}" for name, value in headers.items())
+    for secret in ("sk-real-openai", "sk-ant-real", "wx-real"):
+        assert secret not in serialized
     assert "X-LANGFLOW-GLOBAL-VAR-ANTHROPIC_API_KEY" not in headers
     assert "X-LANGFLOW-GLOBAL-VAR-WATSONX_APIKEY" not in headers
 
