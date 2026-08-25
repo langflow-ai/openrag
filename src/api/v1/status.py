@@ -1,8 +1,8 @@
 from fastapi import Depends, HTTPException, Query
 
-from api.schemas.status import LogEntry, LogsResponse, StatusResponse
+from api.schemas.status import LogsResponse, StatusResponse
+from api.status_utils import build_logs_response
 from dependencies import require_api_key_permission
-from services.component_logs import KNOWN_COMPONENTS, get_entries
 from services.status_service import aggregate_status
 from session_manager import User
 from utils.logging_config import get_logger
@@ -33,13 +33,4 @@ async def get_component_logs_endpoint(
     the endpoint path, auth requirements, and response shape are unstable
     across Langflow versions (0.9.6 vs 0.11.2rc0+).
     """
-    if component not in KNOWN_COMPONENTS:
-        valid = ", ".join(sorted(KNOWN_COMPONENTS))
-        raise HTTPException(
-            status_code=404,
-            detail=f"Unknown component '{component}'. Valid names: {valid}",
-        )
-
-    raw = get_entries(component, tail=tail)
-    entries = [LogEntry(**e) for e in raw]
-    return LogsResponse(component=component, entries=entries, count=len(entries))
+    return build_logs_response(component, tail)
