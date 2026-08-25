@@ -194,10 +194,25 @@ func TestInstanaPresenceSensitiveVarsAreNotDefaulted(t *testing.T) {
 	// BuildEnvFileContent writes an empty default as `KEY=`, which dotenv turns
 	// into an empty string. The tracer tests these for presence, not truthiness,
 	// so an empty default would set a blank service name and warn on every boot.
+	//
+	// INSTANA_TRACING_DISABLE, INSTANA_STACK_TRACE, and INSTANA_SECRETS are
+	// deliberately NOT in this list: the tracer treats an empty value for
+	// those as a parseable (if weaker) setting rather than "unset", so they
+	// carry a real default instead — see
+	// TestInstanaSecretsDefaultRedactsOpenRAGQueryParams below.
 	for _, k := range []string{"INSTANA_SERVICE_NAME", "INSTANA_LOG_LEVEL", "INSTANA_ZONE", "INSTANA_AGENT_HOST"} {
 		_, ok := m.DefaultOpenRagBEEnvVars[k]
 		assert.False(t, ok, "%s must not carry an empty default", k)
 	}
+}
+
+func TestInstanaSecretsDefaultRedactsOpenRAGQueryParams(t *testing.T) {
+	m := NewEnvVarManager()
+
+	assert.Equal(t,
+		"regex:.*key.*,.*pass.*,.*secret.*,.*token.*,^q$,^search$,^filename$",
+		m.DefaultOpenRagBEEnvVars["INSTANA_SECRETS"],
+		"must keep the tracer's own credential coverage and add OpenRAG's free-text search parameters")
 }
 
 func TestBackendDeploymentInjectsInstanaHost(t *testing.T) {

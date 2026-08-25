@@ -56,14 +56,14 @@ The query string is the surface to pay attention to, because a few OpenRAG endpo
 
 `INSTANA_SECRETS` controls which query parameters the tracer replaces with `<redacted>` before a span is sent. Its format is `<matcher>:<name>[,<name>]`, where the matcher is one of `equals`, `equals-ignore-case`, `contains`, `contains-ignore-case`, or `regex`.
 
-The default is `contains-ignore-case:key,pass,secret`, which covers credential-shaped parameter names such as `api_key` but leaves free-text parameters untouched.
-To keep that credential coverage and add OpenRAG's search parameters, use the `regex` matcher:
+The tracer's own default is `contains-ignore-case:key,pass,secret`, which covers credential-shaped parameter names such as `api_key` but leaves free-text parameters untouched — including the `q`, `search`, and `filename` parameters above. OpenRAG ships a wider value instead, so this redaction applies out of the box; it's set for you in `.env.example`, `docker-compose.yml`, the Helm chart, and the operator:
 
 ```bash
 INSTANA_SECRETS=regex:.*key.*,.*pass.*,.*secret.*,.*token.*,^q$,^search$,^filename$
 ```
 
 The matcher applies to the parameter *name*, not its value, and only one matcher is in effect at a time.
+To fall back to the tracer's own weaker default, set this to an empty value; the tracer logs a `Couldn't parse INSTANA_SECRETS` warning each time you do.
 
 :::warning
 Don't set `INSTANA_EXTRA_HTTP_HEADERS`.

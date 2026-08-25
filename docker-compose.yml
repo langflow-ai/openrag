@@ -147,6 +147,18 @@ services:
       # expensive setting this exists to avoid. Opt out with `all`, not ``.
       - INSTANA_TRACING_DISABLE=${INSTANA_TRACING_DISABLE-logging}
       - INSTANA_STACK_TRACE=${INSTANA_STACK_TRACE:-error}
+      # Redact free-text query parameters before spans leave the host — a
+      # privacy default, not a performance one. The tracer's own default
+      # (contains-ignore-case:key,pass,secret) only catches credential-shaped
+      # names, so without this OpenRAG's search text
+      # (GET /v2/files/search?q=..., and the `search`/`filename` params) is
+      # exported to Instana verbatim. Forwarded with `:-` (unset or empty),
+      # same reasoning as INSTANA_STACK_TRACE above: an empty value fails the
+      # tracer's own parser and falls back to the weak built-in default, so an
+      # explicit empty override must not silently defeat this. The literal `$`
+      # characters in the regex are escaped as `$$` for Compose's own
+      # interpolation syntax (see the $$OPENSEARCH_PASSWORD healthcheck above).
+      - INSTANA_SECRETS=${INSTANA_SECRETS:-regex:.*key.*,.*pass.*,.*secret.*,.*token.*,^q$$,^search$$,^filename$$}
       # Listed bare rather than as `VAR=${VAR}` on purpose: the tracer tests these
       # for *presence*, not truthiness, so forwarding an empty string would set a
       # blank service name and log an "Unknown INSTANA_LOG_LEVEL" warning on every

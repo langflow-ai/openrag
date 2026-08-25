@@ -271,5 +271,8 @@ stringData:
     {{- if .Values.backend.instana.stackTrace }}
     INSTANA_STACK_TRACE={{ .Values.backend.instana.stackTrace | quote }}
     {{- end }}
+    {{- if .Values.backend.instana.secrets }}
+    INSTANA_SECRETS={{ .Values.backend.instana.secrets | quote }}
+    {{- end }}
     {{- end }}
 {{- end }}

@@ -182,10 +182,20 @@ func NewEnvVarManager() *EnvVarManager {
 			// full Python traceback on every httpx / urllib3 / sqlalchemy exit
 			// span. See the INSTANA_* block in .env.example for the numbers.
 			// Override via spec.env to reproduce the upstream behaviour.
+			//
+			// INSTANA_SECRETS carries a real default for a different reason:
+			// privacy, not performance. The tracer's own default
+			// (contains-ignore-case:key,pass,secret) only redacts
+			// credential-shaped query-parameter names, so OpenRAG's free-text
+			// search parameters (`q`, `search`, `filename` on
+			// GET /v2/files/search and file listing) would otherwise be
+			// exported to the Instana tenant verbatim. Override via spec.env
+			// to reproduce that exposure.
 			"INSTANA_ENABLED":         "false",
 			"INSTANA_AGENT_PORT":      "42699",
 			"INSTANA_TRACING_DISABLE": "logging",
 			"INSTANA_STACK_TRACE":     "error",
+			"INSTANA_SECRETS":         "regex:.*key.*,.*pass.*,.*secret.*,.*token.*,^q$,^search$,^filename$",
 		},
 		DefaultOpenRagFEEnvVars: map[string]string{
 			// Frontend environment variables will be added here

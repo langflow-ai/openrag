@@ -402,10 +402,12 @@ backend:
     serviceName: ""                       # Shown in Analyze Traces / Applications
     logLevel: ""                          # Tracer's own verbosity: debug|info|warn|error
     zone: ""                              # Custom zone in the Infrastructure view
-    # Performance guardrails. Unlike the three above these default to a real
-    # value rather than empty, because the tracer's own defaults are costly on a
-    # long-running backend — see the INSTANA_* block in .env.example for the
-    # measurements. Set to "" to fall back to tracer defaults.
+    # Performance guardrails, plus one privacy default (secrets, below). Unlike
+    # the three vars above these default to a real value rather than empty,
+    # because the tracer's own defaults are either costly or, for secrets,
+    # under-redacting — see the INSTANA_* block in .env.example for the
+    # measurements. Set any of them to "" to fall back to the tracer's own
+    # default.
     #
     # tracingDisable: span categories/types not to trace. `logging` avoids an
     # unbounded event-list leak (and O(n^2) CPU) on every WARNING/ERROR logged
@@ -416,6 +418,12 @@ backend:
     # `all` means a full traceback on every httpx / urllib3 / sqlalchemy call.
     # Anything other than all|error|none logs a warning and falls back to `all`.
     stackTrace: "error"
+    # secrets: query-string parameter names the tracer redacts before a span
+    # leaves the host. Not a performance concern like the two above — this is
+    # privacy: the tracer's own default only catches credential-shaped names,
+    # so without it OpenRAG's search text (`q`, `search`, `filename` query
+    # parameters) is exported to your Instana tenant verbatim.
+    secrets: "regex:.*key.*,.*pass.*,.*secret.*,.*token.*,^q$,^search$,^filename$"
 
 # ============================================================================
 # OpenRAG Frontend Configuration
