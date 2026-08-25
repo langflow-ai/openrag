@@ -44,19 +44,27 @@ const ICONS: Record<ModelCapability, LucideIcon> = {
 
 export function CapabilityStrip({ model }: { model: CatalogModel }) {
   return (
-    <span className="ml-auto flex items-center gap-1">
+    // A visual summary inside a listbox option: the option is named after its
+    // model, and the full capability breakdown is announced by `ModelFeatures`
+    // once a model is selected. Announcing each icon here would only bury the
+    // model name in the option's label.
+    <span aria-hidden="true" className="ml-auto flex items-center gap-1">
       {PRIMARY_CAPABILITIES.map(({ key, label }) => {
         const Icon = ICONS[key];
         const enabled = supports(model, key);
         return (
-          <Icon
+          <span
             key={key}
-            aria-label={`${label}: ${enabled ? "supported" : "unsupported"}`}
-            className={cn(
-              "h-3.5 w-3.5",
-              enabled ? "text-primary" : "text-muted-foreground/35",
-            )}
-          />
+            title={`${label}: ${enabled ? "supported" : "unsupported"}`}
+            className="inline-flex"
+          >
+            <Icon
+              className={cn(
+                "h-3.5 w-3.5",
+                enabled ? "text-primary" : "text-muted-foreground/35",
+              )}
+            />
+          </span>
         );
       })}
       {formatContext(model.max_input_tokens) && (

@@ -288,6 +288,12 @@ export function ModelSelector({
                             <CommandItem
                               key={itemKey}
                               value={itemKey}
+                              // The capability icons and the context-length
+                              // badge below are descendants of this option, so
+                              // without an explicit label the accessible name
+                              // becomes "<model> Tools: supported ... 128K".
+                              // Name the option after the model it selects.
+                              aria-label={option.label}
                               data-testid={`model-option-${option.value}`}
                               onSelect={() => {
                                 if (
@@ -340,6 +346,7 @@ export function ModelSelector({
                       {showCustom && (
                         <CommandItem
                           value={`${group.group}-${customValue}`}
+                          aria-label={customValue}
                           data-testid={`model-custom-option-${customValue}`}
                           onSelect={() => {
                             if (
@@ -376,6 +383,7 @@ export function ModelSelector({
                   <CommandGroup>
                     <CommandItem
                       value={customValue}
+                      aria-label={customValue}
                       data-testid={`model-custom-option-${customValue}`}
                       onSelect={() => {
                         if (customValue !== value) {
@@ -406,6 +414,7 @@ export function ModelSelector({
                   <CommandItem
                     key={option.value}
                     value={option.value}
+                    aria-label={option.label}
                     data-testid={`model-option-${option.value}`}
                     onSelect={() => {
                       if (
@@ -436,6 +445,7 @@ export function ModelSelector({
                 {showFlatCustomEntry && (
                   <CommandItem
                     value={customValue}
+                    aria-label={customValue}
                     data-testid={`model-custom-option-${customValue}`}
                     onSelect={() => {
                       if (customValue !== value) {
