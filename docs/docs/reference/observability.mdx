@@ -11,7 +11,7 @@ Instrumentation is off by default. When you set `INSTANA_ENABLED=true`, the back
 * Outgoing HTTP calls to Langflow, Docling, and model providers.
 * OpenSearch queries.
 * Database queries issued through SQLAlchemy, for both the default SQLite database and PostgreSQL.
-* Backend log records, which the tracer attaches to the trace that was active when they were emitted.
+* Backend log records, when logging spans are enabled — off by default via `INSTANA_TRACING_DISABLE=logging` (see [Logging spans](#logging-spans)).
 
 Only OpenRAG Backend is instrumented. Langflow, the frontend, OpenSearch, and Docling Serve aren't traced by this feature. Instana's host agent reports infrastructure metrics for those containers separately.
 
@@ -47,7 +47,7 @@ Spans **do** carry:
 * The request path and method, such as `POST /v1/chat`, and the query string.
 * Outgoing request URLs for calls to Langflow, Docling, model providers, and OpenSearch.
 * SQL statement text for database queries. Statements are parameterized, so bound values aren't included, and database credentials are stripped from the connection URL.
-* Log messages at `WARNING` level and above. A warning or an error that interpolates a filename, a user query, or chunk text exports that text.
+* Log messages at `WARNING` level and above, when logging spans are enabled — off by default (see [Logging spans](#logging-spans)). A warning or an error that interpolates a filename, a user query, or chunk text exports that text.
 
 The query string is the surface to pay attention to, because a few OpenRAG endpoints take free text there.
 `GET /v2/files/search?q=...` carries a user's search terms, and file listing takes `search` and `filename` parameters.
