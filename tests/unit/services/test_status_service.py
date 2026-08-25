@@ -92,11 +92,11 @@ async def test_check_exception_becomes_unknown(monkeypatch):
 def _reset_log_buffer():
     _cl._buffers.clear()
     _cl._locks.clear()
-    _cl._last_ok.clear()
+    _cl._last_state.clear()
     yield
     _cl._buffers.clear()
     _cl._locks.clear()
-    _cl._last_ok.clear()
+    _cl._last_state.clear()
 
 
 @pytest.mark.asyncio
