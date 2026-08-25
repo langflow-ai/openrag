@@ -15,7 +15,7 @@ def _opensearch_nodes(flow: dict) -> list[dict]:
 
 
 def test_opensearch_component_returns_data_search_results():
-    code = Path("flows/components/opensearch_multimodal.py").read_text(encoding="utf-8")
+    code = Path("custom_components/openrag/opensearch_multimodal.py").read_text(encoding="utf-8")
 
     assert "from lfx.schema.data import Data" in code
     assert "def search_documents(self) -> list[Data]:" in code
@@ -79,7 +79,7 @@ def test_parser_components_are_not_forked_for_list_data():
 
 def test_opensearch_component_fences_retrieved_text_as_untrusted():
     """VULN-13906: retrieved chunk text must be fenced so the LLM treats it as data, not instructions."""
-    code = Path("flows/components/opensearch_multimodal.py").read_text(encoding="utf-8")
+    code = Path("custom_components/openrag/opensearch_multimodal.py").read_text(encoding="utf-8")
 
     assert 'UNTRUSTED_CHUNK_FENCE_START = "<<<UNTRUSTED_DOC_CHUNK>>>"' in code
     assert 'UNTRUSTED_CHUNK_FENCE_END = "<<<END_UNTRUSTED_DOC_CHUNK>>>"' in code
@@ -90,7 +90,7 @@ def test_opensearch_component_fences_retrieved_text_as_untrusted():
 
 def test_embedded_opensearch_nodes_fence_untrusted_text():
     """The fencing fix must be synced into every flow JSON embedding this component."""
-    py_code = Path("flows/components/opensearch_multimodal.py").read_text(encoding="utf-8")
+    py_code = Path("custom_components/openrag/opensearch_multimodal.py").read_text(encoding="utf-8")
 
     for flow_path in (
         "flows/ingestion_flow.json",
@@ -103,6 +103,42 @@ def test_embedded_opensearch_nodes_fence_untrusted_text():
             embedded_code = node["data"]["node"]["template"]["code"]["value"]
             assert embedded_code == py_code, (
                 f"{flow_path} node {node.get('id')} embedded code is out of sync with "
-                "flows/components/opensearch_multimodal.py — re-run "
+                "custom_components/openrag/opensearch_multimodal.py — re-run "
                 "scripts/update_flow_components.py"
             )
+
+
+def test_query_filter_text_input_feeds_opensearch_filter_expression():
+    """The OPENRAG-QUERY-FILTER global var must reach the retrieval component.
+
+    Regression guard: re-exporting a flow from the Langflow canvas silently drops
+    edges. When this one goes missing the retrieval tool runs unfiltered, so
+    knowledge-filter scoping leaks documents the caller excluded.
+    """
+    for flow_path in (
+        "flows/openrag_agent.json",
+        "flows/openrag_nudges.json",
+    ):
+        flow = _load_flow(flow_path)
+        query_filter_inputs = {
+            node["id"]
+            for node in flow["data"]["nodes"]
+            if node.get("data", {}).get("type") == "TextInput"
+            and node["data"]["node"]["template"].get("input_value", {}).get("value")
+            == "OPENRAG-QUERY-FILTER"
+        }
+        assert query_filter_inputs, f"{flow_path} lost its OPENRAG-QUERY-FILTER TextInput"
+
+        opensearch_node_ids = {node["id"] for node in _opensearch_nodes(flow)}
+        wired = {
+            edge["source"]
+            for edge in flow["data"]["edges"]
+            if edge.get("target") in opensearch_node_ids
+            and edge.get("data", {}).get("targetHandle", {}).get("fieldName") == "filter_expression"
+        }
+
+        assert query_filter_inputs <= wired, (
+            f"{flow_path}: OPENRAG-QUERY-FILTER TextInput is not connected to the "
+            "OpenSearch component's filter_expression input — retrieval would ignore "
+            "knowledge filters"
+        )

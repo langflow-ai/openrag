@@ -118,6 +118,34 @@
         "className": "",
         "data": {
           "sourceHandle": {
+            "dataType": "TextInput",
+            "id": "TextInput-i0a3P",
+            "name": "text",
+            "output_types": [
+              "Message"
+            ]
+          },
+          "targetHandle": {
+            "fieldName": "filter_expression",
+            "id": "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-3x7Ll",
+            "inputTypes": [
+              "Message"
+            ],
+            "type": "str"
+          }
+        },
+        "id": "xy-edge__TextInput-i0a3P{œdataTypeœ:œTextInputœ,œidœ:œTextInput-i0a3Pœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}-OpenSearchVectorStoreComponentMultimodalMultiEmbedding-3x7Ll{œfieldNameœ:œfilter_expressionœ,œidœ:œOpenSearchVectorStoreComponentMultimodalMultiEmbedding-3x7Llœ,œinputTypesœ:[œMessageœ],œtypeœ:œstrœ}",
+        "selected": false,
+        "source": "TextInput-i0a3P",
+        "sourceHandle": "{œdataTypeœ:œTextInputœ,œidœ:œTextInput-i0a3Pœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}",
+        "target": "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-3x7Ll",
+        "targetHandle": "{œfieldNameœ:œfilter_expressionœ,œidœ:œOpenSearchVectorStoreComponentMultimodalMultiEmbedding-3x7Llœ,œinputTypesœ:[œMessageœ],œtypeœ:œstrœ}"
+      },
+      {
+        "animated": false,
+        "className": "",
+        "data": {
+          "sourceHandle": {
             "dataType": "Agent",
             "id": "Agent-Nfw7u",
             "name": "response",
