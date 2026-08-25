@@ -337,6 +337,26 @@ async def _update_mcp_server_urls(config, session_manager=None, flows_service=No
         # Don't fail the entire settings update if MCP update fails
 
 
+async def _upsert_selected_model_variable(name: str, value: str | None) -> None:
+    """Push a SELECTED_*_MODEL global var, non-fatally.
+
+    Flows no longer carry per-provider embedding/LLM nodes for
+    `change_langflow_model_value` to patch — they use the single
+    OpenAI-compatible component that reads its model from this global variable.
+    That makes this the only channel by which a model change reaches a flow, so
+    it has to follow every model change, not just credential changes.
+    """
+    if not value:
+        return
+    try:
+        await _upsert_langflow_global_variable(name, value)
+        logger.info("Set global variable in Langflow", variable_name=name)
+    except Exception as e:
+        logger.warning(
+            "Failed to set global variable in Langflow", variable_name=name, error=str(e)
+        )
+
+
 async def _update_langflow_model_values(
     config,
     flows_service,
@@ -353,6 +373,7 @@ async def _update_langflow_model_values(
                 effective_llm_model = llm_model  # do not fall back; force caller to specify
             else:
                 effective_llm_model = llm_model or config.agent.llm_model
+            await _upsert_selected_model_variable("SELECTED_LANGUAGE_MODEL", effective_llm_model)
             result = await flows_service.change_langflow_model_value(
                 effective_llm_provider, llm_model=effective_llm_model, force_llm_update=True
             )
@@ -375,6 +396,9 @@ async def _update_langflow_model_values(
                 )
             else:
                 effective_embedding_model = embedding_model or config.knowledge.embedding_model
+            await _upsert_selected_model_variable(
+                "SELECTED_EMBEDDING_MODEL", effective_embedding_model
+            )
             result = await flows_service.change_langflow_model_value(
                 effective_embedding_provider,
                 embedding_model=effective_embedding_model,

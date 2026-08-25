@@ -505,3 +505,107 @@ async def test_update_langflow_global_variables_continues_when_one_fails(monkeyp
     assert "SELECTED_EMBEDDING_MODEL" in names
     assert "SELECTED_LANGUAGE_MODEL" in names
     assert langflow_sync.LANGFLOW_RUNTIME_CREDENTIAL_PLACEHOLDERS <= names
+
+
+@pytest.mark.asyncio
+async def test_model_change_pushes_selected_model_globals(monkeypatch):
+    """A model-only settings change must reach Langflow.
+
+    The flows use one OpenAI-compatible component per kind, so
+    `change_langflow_model_value` finds no per-provider node to patch and the
+    SELECTED_*_MODEL global variables are the only channel left. Those globals
+    used to be written solely when provider credentials changed, which left the
+    retrieval flow embedding with — and labelling chunks as — the previous
+    model until some unrelated credential edit happened to resync it.
+    """
+    upserts: list[tuple[str, str]] = []
+
+    async def fake_upsert(name, value, **kwargs):
+        upserts.append((name, value))
+
+    monkeypatch.setattr(langflow_sync, "_upsert_langflow_global_variable", fake_upsert)
+
+    class _FlowsService:
+        def __init__(self):
+            self.calls = []
+
+        async def change_langflow_model_value(self, provider, **kwargs):
+            self.calls.append((provider, kwargs))
+            return {"updated": []}
+
+    config = SimpleNamespace(
+        agent=SimpleNamespace(llm_model="gpt-4o-mini", llm_provider="openai"),
+        knowledge=SimpleNamespace(
+            embedding_model="ibm/slate-125m-english-rtrvr-v2",
+            embedding_provider="watsonx",
+        ),
+    )
+
+    await langflow_sync._update_langflow_model_values(
+        config,
+        _FlowsService(),
+        embedding_model="ibm/slate-125m-english-rtrvr-v2",
+        embedding_provider="watsonx",
+    )
+
+    assert ("SELECTED_EMBEDDING_MODEL", "ibm/slate-125m-english-rtrvr-v2") in upserts
+    assert not any(name == "SELECTED_LANGUAGE_MODEL" for name, _ in upserts)
+
+
+@pytest.mark.asyncio
+async def test_llm_model_change_pushes_selected_language_model(monkeypatch):
+    upserts: list[tuple[str, str]] = []
+
+    async def fake_upsert(name, value, **kwargs):
+        upserts.append((name, value))
+
+    monkeypatch.setattr(langflow_sync, "_upsert_langflow_global_variable", fake_upsert)
+
+    class _FlowsService:
+        async def change_langflow_model_value(self, provider, **kwargs):
+            return {"updated": []}
+
+    config = SimpleNamespace(
+        agent=SimpleNamespace(llm_model="ibm/granite-4-h-small", llm_provider="watsonx"),
+        knowledge=SimpleNamespace(embedding_model="", embedding_provider="watsonx"),
+    )
+
+    await langflow_sync._update_langflow_model_values(
+        config,
+        _FlowsService(),
+        llm_model="ibm/granite-4-h-small",
+        llm_provider="watsonx",
+    )
+
+    assert ("SELECTED_LANGUAGE_MODEL", "ibm/granite-4-h-small") in upserts
+
+
+@pytest.mark.asyncio
+async def test_selected_model_upsert_failure_is_not_fatal(monkeypatch):
+    async def boom(name, value, **kwargs):
+        raise RuntimeError("langflow down")
+
+    monkeypatch.setattr(langflow_sync, "_upsert_langflow_global_variable", boom)
+
+    calls = []
+
+    class _FlowsService:
+        async def change_langflow_model_value(self, provider, **kwargs):
+            calls.append(provider)
+            return {"updated": []}
+
+    config = SimpleNamespace(
+        agent=SimpleNamespace(llm_model="gpt-4o-mini", llm_provider="openai"),
+        knowledge=SimpleNamespace(
+            embedding_model="text-embedding-3-small", embedding_provider="openai"
+        ),
+    )
+
+    await langflow_sync._update_langflow_model_values(
+        config,
+        _FlowsService(),
+        embedding_model="text-embedding-3-small",
+        embedding_provider="openai",
+    )
+
+    assert calls == ["openai"]
