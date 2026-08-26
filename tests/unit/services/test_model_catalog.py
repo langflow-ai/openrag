@@ -138,9 +138,7 @@ def test_catalog_publishes_azure_ai_where_the_config_enables_it(monkeypatch) -> 
         assert azure["name"] == "Azure AI Foundry"
         assert azure["models"], mode
         assert azure["embedding_models"], mode
-        assert {"api_base", "api_key"} <= {
-            field["key"] for field in azure["credential_fields"]
-        }
+        assert {"api_base", "api_key"} <= {field["key"] for field in azure["credential_fields"]}
 
 
 def test_openai_models_list_drops_a_hidden_providers_models(monkeypatch) -> None:

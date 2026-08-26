@@ -235,9 +235,7 @@ def _catalog(providers: tuple[tuple[str, str], ...]) -> dict[str, Any]:
                 "key": key,
                 # The config file names the provider; LiteLLM's own label is
                 # the fallback for a row that left `display_name` out.
-                "name": display_name
-                or (specs.get(key) or {}).get("provider_display_name")
-                or key,
+                "name": display_name or (specs.get(key) or {}).get("provider_display_name") or key,
                 "credential_fields": credential_fields(key),
                 "model_placeholder": (specs.get(key) or {}).get("default_model_placeholder"),
                 "models": sorted(chat_by_provider.get(key, []), key=lambda entry: entry["model"]),

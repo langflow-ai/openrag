@@ -63,6 +63,51 @@ These variables are initially set during the [application onboarding process](/i
 | `WATSONX_ENDPOINT` | Not set | Custom provider endpoint for the IBM watsonx.ai model provider. |
 | `WATSONX_PROJECT_ID` | Not set | Project ID for the IBM watsonx.ai model provider. |
 
+### Provider visibility per run mode {#model-provider-visibility}
+
+Which providers appear in **Settings**, in onboarding, and in the model pickers
+is not hardcoded. `src/config/model_providers.yaml` lists each provider and
+whether it is shown in each run mode, and the backend filters that list by
+`OPENRAG_RUN_MODE` (`oss`, `on_prem`, or `saas`). The UI renders whatever the
+API returns, so there is no separate frontend list to keep in step.
+
+```yaml
+providers:
+  - name: ollama
+    display_name: Ollama
+    modes:
+      oss: true
+      on_prem: true
+      saas: false # local inference is not offered in SaaS
+```
+
+A mode key that is missing means the provider is hidden, so adding a run mode
+never exposes a provider by accident. A provider the file does not list is not
+offered in the UI at all, though a model id for it can still be typed by hand if
+the gateway already routes it.
+
+The shipped defaults are:
+
+| Provider | `oss` | `on_prem` | `saas` |
+|----------|-------|-----------|--------|
+| `openai` | Yes | Yes | Yes |
+| `ollama` | Yes | Yes | No |
+| `watsonx` | Yes | Yes | Yes |
+| `anthropic` | Yes | Yes | Yes |
+| `azure_ai` | No | Yes | Yes |
+
+To change what a deployment offers, edit the `modes` values and restart, or
+point `OPENRAG_MODEL_PROVIDERS_CONFIG` at your own YAML file.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OPENRAG_MODEL_PROVIDERS_CONFIG` | Not set | Path to a YAML file that replaces the shipped `model_providers.yaml`. If the file cannot be read, the shipped list is used. |
+
+Credentials for a provider without a purpose-built form — Azure AI Foundry
+today — are entered in **Settings** through a form built from the provider's own
+credential fields. Configuring one needs no code change beyond its row in this
+file.
+
 ## Document processing settings {#document-processing-settings}
 
 Controls some aspects of how OpenRAG [processes and ingests documents](/ingestion) into your knowledge base.
