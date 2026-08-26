@@ -18,6 +18,7 @@ import { KnowledgeDropdown } from "@/components/knowledge-dropdown";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Banner, BannerIcon, BannerTitle } from "@/components/ui/banner";
 import { Button } from "@/components/ui/button";
+import { useOpenTaskMenu } from "@/contexts/console-status-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
 import { trackButton } from "@/lib/analytics";
@@ -161,10 +162,10 @@ function SearchPage() {
     files: taskFiles,
     tasks,
     refreshTasks,
-    openMenu,
     setRecentTasksExpanded,
     selectTask,
   } = useTask();
+  const openTaskMenu = useOpenTaskMenu();
   const {
     parsedFilterData,
     queryOverride,
@@ -334,12 +335,12 @@ function SearchPage() {
       if (firstNewFailureTaskId) {
         selectTask(firstNewFailureTaskId);
       }
-      openMenu();
+      openTaskMenu();
       setRecentTasksExpanded(true);
     }
   }, [
     taskFiles,
-    openMenu,
+    openTaskMenu,
     setRecentTasksExpanded,
     selectTask,
     getFailedFileKey,
@@ -779,7 +780,7 @@ function SearchPage() {
               data-testid="failed-status-cell-trigger"
               onClick={() => {
                 selectTask(getTaskIdForRow(data));
-                openMenu();
+                openTaskMenu();
                 setRecentTasksExpanded(true);
               }}
             >

@@ -6,6 +6,7 @@ import { IngestPreviewAutoOpenControl } from "@/components/ingest-preview-auto-o
 import { IngestReviewDialog } from "@/components/ingest-review";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { useRegisterDirty } from "@/contexts/unsaved-changes-context";
 import {
   INGEST_PREVIEW_AUTO_OPEN_OPTIONS,
   type IngestPreviewSettings,
@@ -31,6 +32,8 @@ export function IngestPreviewSettingsSection() {
   }
 
   const isDirty = draft.autoOpen !== settings.autoOpen;
+  useRegisterDirty("ingest-preview", isDirty);
+
   const autoOpenDescription =
     INGEST_PREVIEW_AUTO_OPEN_OPTIONS.find(
       (option) => option.value === draft.autoOpen,
