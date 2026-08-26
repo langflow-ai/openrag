@@ -21,17 +21,23 @@ export function OpenAIOnboarding({
   isEmbedding = false,
   hasEnvApiKey = false,
   alreadyConfigured = false,
+  existingBaseUrl,
 }: {
   setSettings: Dispatch<SetStateAction<OnboardingVariables>>;
   isEmbedding?: boolean;
   hasEnvApiKey?: boolean;
   alreadyConfigured?: boolean;
+  existingBaseUrl?: string;
 }) {
   const [apiKey, setApiKey] = useState("");
   const [getFromEnv, setGetFromEnv] = useState(
     hasEnvApiKey && !alreadyConfigured,
   );
+  const [baseUrl, setBaseUrl] = useState(
+    alreadyConfigured ? "" : existingBaseUrl || "",
+  );
   const debouncedApiKey = useDebouncedValue(apiKey, 500);
+  const debouncedBaseUrl = useDebouncedValue(baseUrl, 500);
 
   const {
     data: modelsData,
@@ -40,9 +46,13 @@ export function OpenAIOnboarding({
     error: modelsError,
   } = useGetOpenAIModelsQuery(
     getFromEnv
-      ? { useEnvKey: true }
+      ? { useEnvKey: true, baseUrl: debouncedBaseUrl || undefined }
       : debouncedApiKey
-        ? { apiKey: debouncedApiKey, useEnvKey: false }
+        ? {
+            apiKey: debouncedApiKey,
+            useEnvKey: false,
+            baseUrl: debouncedBaseUrl || undefined,
+          }
         : undefined,
     {
       enabled: debouncedApiKey !== "" || getFromEnv || alreadyConfigured,
@@ -75,6 +85,7 @@ export function OpenAIOnboarding({
     {
       apiKey: getFromEnv || alreadyConfigured ? undefined : apiKey,
       clearApiKey: getFromEnv,
+      endpoint: alreadyConfigured ? existingBaseUrl : baseUrl,
       languageModel,
       embeddingModel,
     },
@@ -154,6 +165,9 @@ export function OpenAIOnboarding({
         embeddingModel={embeddingModel}
         setLanguageModel={setLanguageModel}
         setEmbeddingModel={setEmbeddingModel}
+        baseUrl={alreadyConfigured ? existingBaseUrl || "" : baseUrl}
+        onBaseUrlChange={setBaseUrl}
+        baseUrlDisabled={alreadyConfigured}
       />
     </>
   );
