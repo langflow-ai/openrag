@@ -56,24 +56,29 @@ const OpenAISettingsDialog = ({
       settings.providers?.watsonx?.configured === true ||
       settings.providers?.ollama?.configured === true);
 
+  const existingBaseUrl = settings.providers?.openai?.base_url || "";
+
   const methods = useForm<OpenAISettingsFormData>({
     mode: "onSubmit",
     defaultValues: {
       apiKey: "",
+      baseUrl: existingBaseUrl,
     },
   });
 
   useEffect(() => {
     // Reset form state on dialog open
-    if (open) methods.reset();
-  }, [open, methods.reset]);
+    if (open) methods.reset({ apiKey: "", baseUrl: existingBaseUrl });
+  }, [open, methods.reset, existingBaseUrl]);
 
   const { handleSubmit, watch } = methods;
   const apiKey = watch("apiKey");
+  const baseUrl = watch("baseUrl");
 
   const { refetch: validateCredentials } = useGetOpenAIModelsQuery(
     {
       apiKey: apiKey,
+      baseUrl: baseUrl || undefined,
     },
     {
       enabled: false,
@@ -125,8 +130,14 @@ const OpenAISettingsDialog = ({
     // Clear any previous validation errors
     setValidationError(null);
 
-    // Only validate if a new API key was entered
-    if (data.apiKey) {
+    // The backend has no "clear base_url" flag yet - a blank value here just
+    // means "leave the existing base_url alone", same as the API key field.
+    const newBaseUrl = (data.baseUrl || "").trim();
+    const baseUrlChanged = !!newBaseUrl && newBaseUrl !== existingBaseUrl;
+
+    // Validate if a new API key was entered, or the base URL changed (it
+    // changes where live requests go even if the key itself is unchanged).
+    if (data.apiKey || baseUrlChanged) {
       setIsValidating(true);
       const result = await validateCredentials();
       setIsValidating(false);
@@ -139,11 +150,16 @@ const OpenAISettingsDialog = ({
 
     const payload: {
       openai_api_key?: string;
+      openai_base_url?: string;
     } = {};
 
     // Only include api_key if a value was entered
     if (data.apiKey) {
       payload.openai_api_key = data.apiKey;
+    }
+
+    if (baseUrlChanged) {
+      payload.openai_base_url = newBaseUrl;
     }
 
     // Submit the update

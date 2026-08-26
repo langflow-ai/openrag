@@ -42,6 +42,7 @@ export interface UpdateSettingsRequest {
 
   // Provider-specific API keys
   openai_api_key?: string;
+  openai_base_url?: string;
   anthropic_api_key?: string;
   watsonx_api_key?: string;
   watsonx_endpoint?: string;
