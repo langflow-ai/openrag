@@ -23,6 +23,8 @@ export interface OpenAIModelsParams {
   apiKey?: string;
   /** When true, omit api_key so the backend uses configured/env credentials. */
   useEnvKey?: boolean;
+  /** Optional override to list models from a self-hosted OpenAI-compatible gateway. */
+  baseUrl?: string;
 }
 
 export interface AnthropicModelsParams {
@@ -62,14 +64,18 @@ export const useGetOpenAIModelsQuery = (
   const queryClient = useQueryClient();
   const useEnvKey = !!params?.useEnvKey;
   const apiKey = useEnvKey ? "" : params?.apiKey || "";
+  const baseUrl = params?.baseUrl || "";
 
   return useQuery(
     {
-      queryKey: ["models", "openai", useEnvKey, apiKey] as const,
+      queryKey: ["models", "openai", useEnvKey, apiKey, baseUrl] as const,
       queryFn: async (): Promise<ModelsResponse> => {
-        const body: { api_key?: string } = {};
+        const body: { api_key?: string; base_url?: string } = {};
         if (!useEnvKey && apiKey) {
           body.api_key = apiKey;
+        }
+        if (baseUrl) {
+          body.base_url = baseUrl;
         }
 
         const response = await fetch("/api/models/openai", {
@@ -227,7 +233,7 @@ export const useGetCurrentProviderModelsQuery = (
   const currentProvider = settings?.agent?.llm_provider;
 
   const openaiModels = useGetOpenAIModelsQuery(
-    { useEnvKey: true },
+    { useEnvKey: true, baseUrl: settings?.providers?.openai?.base_url },
     {
       enabled: currentProvider === "openai" && options?.enabled !== false,
       ...options,

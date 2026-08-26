@@ -53,3 +53,47 @@ async def test_get_openai_models_falls_back_to_real_openai_when_unset(mock_clien
 
     called_url = mock_client.get.call_args.args[0]
     assert called_url == "https://api.openai.com/v1/models"
+
+
+@pytest.mark.asyncio
+async def test_get_openai_models_relaxes_classification_for_custom_gateway(mock_client):
+    """A gateway serving non-OpenAI-named models must still populate both
+    pickers - without this, onboarding against a custom base_url gets stuck
+    on a permanently empty "Language model" dropdown (issue #2060)."""
+    mock_client.get.return_value = _resp(
+        200,
+        {
+            "data": [
+                {"id": "stub-chat-model"},
+                {"id": "stub-embed-model"},
+            ]
+        },
+    )
+    service = ModelsService()
+
+    result = await service.get_openai_models(
+        "sk-test", base_url=CUSTOM_BASE_URL, update_index=False
+    )
+
+    assert [m["value"] for m in result["language_models"]] == ["stub-chat-model"]
+    assert [m["value"] for m in result["embedding_models"]] == ["stub-embed-model"]
+
+
+@pytest.mark.asyncio
+async def test_get_openai_models_keeps_strict_classification_without_base_url(
+    mock_client,
+):
+    mock_client.get.return_value = _resp(
+        200,
+        {
+            "data": [
+                {"id": "stub-chat-model"},
+                {"id": "gpt-4o"},
+            ]
+        },
+    )
+    service = ModelsService()
+
+    result = await service.get_openai_models("sk-test", base_url=None, update_index=False)
+
+    assert [m["value"] for m in result["language_models"]] == ["gpt-4o"]

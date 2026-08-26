@@ -36,6 +36,7 @@ export interface KnowledgeSettings {
 export interface ProviderSettings {
   openai?: {
     has_api_key?: boolean;
+    base_url?: string;
     configured?: boolean;
   };
   anthropic?: {

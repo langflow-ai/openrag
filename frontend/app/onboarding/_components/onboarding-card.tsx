@@ -726,6 +726,9 @@ const OnboardingCard = ({
                           providerAlreadyConfigured &&
                           modelProvider === "openai"
                         }
+                        existingBaseUrl={
+                          currentSettings?.providers?.openai?.base_url
+                        }
                       />
                     ) : providerKey === "watsonx" ? (
                       <IBMOnboarding
