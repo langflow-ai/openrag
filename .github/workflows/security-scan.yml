@@ -4,6 +4,8 @@ on:
   schedule:
     # Run nightly at 02:00 UTC
     - cron: '0 2 * * *'
+  push:
+  pull_request:
   workflow_dispatch:
     inputs:
       fail_on_critical:
