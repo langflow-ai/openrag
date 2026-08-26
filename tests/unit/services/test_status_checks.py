@@ -194,6 +194,24 @@ async def test_opensearch_status_is_correct(monkeypatch, os_status, expected_sta
 
 
 @pytest.mark.asyncio
+async def test_opensearch_yellow_records_warning(monkeypatch):
+    monkeypatch.setattr(
+        clients,
+        "opensearch",
+        _mock_os({"status": "yellow", "cluster_name": "c"}),
+        raising=False,
+    )
+
+    await check_opensearch()
+    await check_opensearch()
+
+    entries = _cl.get_entries("opensearch", 10)
+    assert len(entries) == 1
+    assert entries[0]["level"] == "warning"
+    assert entries[0]["message"] == "Cluster Health is yellow"
+
+
+@pytest.mark.asyncio
 async def test_opensearch_unreachable_is_unhealthy(monkeypatch):
     monkeypatch.setattr(
         clients, "opensearch", _mock_os(raises=ConnectionError("down")), raising=False
@@ -208,18 +226,18 @@ async def test_opensearch_unreachable_is_unhealthy(monkeypatch):
 # Buffer recording assertions (added by #2178)
 # ---------------------------------------------------------------------------
 # Each block verifies that record_check_result() is called correctly by the
-# check functions: errors land in the buffer, healthy checks do not.
+# check functions: errors always land in the buffer; healthy checks write once.
 
 
 @pytest.fixture(autouse=True)
 def _reset_log_buffer():
     _cl._buffers.clear()
     _cl._locks.clear()
-    _cl._last_ok.clear()
+    _cl._last_state.clear()
     yield
     _cl._buffers.clear()
     _cl._locks.clear()
-    _cl._last_ok.clear()
+    _cl._last_state.clear()
 
 
 @pytest.mark.asyncio
@@ -251,7 +269,7 @@ async def test_openrag_degraded_records_to_buffer(monkeypatch):
     assert r.status == ComponentState.DEGRADED
     entries = _cl.get_entries("openrag", 10)
     assert len(entries) >= 1
-    assert entries[-1]["level"] == "error"
+    assert entries[-1]["level"] == "warning"
 
 
 @pytest.mark.asyncio
@@ -266,8 +284,9 @@ async def test_openrag_healthy_does_not_flood_buffer(monkeypatch):
     await check_openrag_backend()
     await check_openrag_backend()
 
-    # No error entries; buffer is empty (first-healthy → nothing written)
-    assert _cl.get_entries("openrag", 10) == []
+    entries = _cl.get_entries("openrag", 10)
+    assert len(entries) == 1
+    assert entries[0]["level"] == "info"
 
 
 @pytest.mark.asyncio
@@ -297,7 +316,9 @@ async def test_docling_healthy_does_not_flood_buffer(monkeypatch):
     await check_docling()
     await check_docling()
 
-    assert _cl.get_entries("docling", 10) == []
+    entries = _cl.get_entries("docling", 10)
+    assert len(entries) == 1
+    assert entries[0]["level"] == "info"
 
 
 @pytest.mark.asyncio

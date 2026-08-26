@@ -2,20 +2,24 @@
 
 import { Bell } from "lucide-react";
 import { BrandSwitcher } from "@/components/brand-switcher";
-import { ConsoleStatusButton } from "@/components/console-status-panel";
+import { ConsoleStatusButton } from "@/components/console-status";
 import { DevRoleToggle } from "@/components/dev-role-toggle";
 import Logo from "@/components/icons/openrag-logo";
 import { UserNav } from "@/components/user-nav";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
-import { useConsoleStatus } from "@/contexts/console-status-context";
+import {
+  useConsoleStatus,
+  useToggleTaskMenu,
+} from "@/contexts/console-status-context";
 import { useTask } from "@/contexts/task-context";
 import { cn } from "@/lib/utils";
 import { useProviderHealth } from "./provider-health-banner";
 
 export function Header() {
   const isCloudBrand = useIsCloudBrand();
-  const { tasks, toggleMenu } = useTask();
+  const { tasks } = useTask();
+  const toggleTaskMenu = useToggleTaskMenu();
   const { runMode } = useAuth();
 
   const {
@@ -92,7 +96,7 @@ export function Header() {
           {/* Task + System Notification Bell */}
           <button
             type="button"
-            onClick={toggleMenu}
+            onClick={toggleTaskMenu}
             data-testid="task-menu-toggle"
             className="relative h-8 w-8 hover:bg-muted rounded-lg flex items-center justify-center"
           >
