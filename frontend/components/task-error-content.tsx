@@ -83,46 +83,8 @@ export function TaskErrorContent({
 
   const ossIconColumn = showHeader && !isCloudBrand;
 
-  const accordionSummary = (
-    <div className="flex min-w-0 flex-1 items-center gap-1">
-      <span className="text-xs">
-        {ingestedSuccessCount} success
-        {warningCount > 0 ? ` · ${warningCount} warning` : ""}
-        {failedCount > 0 ? ` · ${failedCount} failed` : ""}
-      </span>
-      <ChevronDown className="size-4 shrink-0 transition-transform group-data-[state=open]:rotate-180" />
-    </div>
-  );
-
-  const openTaskDialogButton = (
-    <button
-      type="button"
-      aria-label="Open task details"
-      className="inline-flex shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
-      onClick={() => openTaskDialog(task.task_id)}
-    >
-      <IncidentReporterIcon className="size-4" />
-    </button>
-  );
-
-  const accordionHeader = (
-    <AccordionPrimitive.Header
-      className={cn(
-        "flex w-full min-w-0 items-center gap-2",
-        ossIconColumn && "gap-2.5",
-      )}
-    >
-      {ossIconColumn ? <div className="size-5 shrink-0" aria-hidden /> : null}
-      <AccordionPrimitive.Trigger
-        className={cn(
-          "group inline-flex min-w-0 flex-1 items-center justify-start gap-1 px-0 py-0 text-sm text-muted-foreground transition-colors hover:text-foreground",
-        )}
-      >
-        {accordionSummary}
-      </AccordionPrimitive.Trigger>
-      {openTaskDialogButton}
-    </AccordionPrimitive.Header>
-  );
+  const toggleAccordion = () =>
+    setAccordionValue((v) => (v === "failed-files" ? "" : "failed-files"));
 
   return (
     <div
@@ -130,13 +92,27 @@ export function TaskErrorContent({
         "w-full",
         showHeader &&
           cn(
-            "py-mmd px-4 transition-colors hover:bg-muted/60",
+            "py-mmd px-4 transition-colors hover:bg-muted/60 cursor-pointer",
             isCloudBrand
               ? "border-t border-muted"
               : "rounded-mmd border border-muted",
           ),
         !showHeader && "pt-2",
       )}
+      onClick={showHeader ? toggleAccordion : undefined}
+      role={showHeader ? "button" : undefined}
+      tabIndex={showHeader ? 0 : undefined}
+      onKeyDown={
+        showHeader
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                toggleAccordion();
+              }
+            }
+          : undefined
+      }
+      aria-expanded={showHeader ? isExpanded : undefined}
     >
       <div className="flex w-full min-w-0 flex-col gap-1">
         {showHeader && (
@@ -160,13 +136,41 @@ export function TaskErrorContent({
                 <p className="text-mmd truncate">
                   Task {task.task_id.slice(0, 8)}...
                 </p>
-                {!isExpanded && (
-                  <p className={statusPillClassName}>{statusLabel}</p>
-                )}
+                <div
+                  className="flex items-center gap-1.5 shrink-0"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {!isExpanded && (
+                    <p className={statusPillClassName}>{statusLabel}</p>
+                  )}
+                  <button
+                    type="button"
+                    aria-label="Open task details"
+                    className="inline-flex shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
+                    onClick={() => openTaskDialog(task.task_id)}
+                  >
+                    <IncidentReporterIcon className="size-4" />
+                  </button>
+                </div>
               </div>
-              <p className="min-h-4 text-xxs leading-4 text-muted-foreground whitespace-nowrap">
-                {formatTaskTimestamp(timestamp, mode, nowMs)}
-              </p>
+              <div className="flex items-center gap-1 text-xxs text-muted-foreground">
+                <span className="min-h-4 leading-4 whitespace-nowrap">
+                  {formatTaskTimestamp(timestamp, mode, nowMs)}
+                </span>
+                <span className="ml-auto flex items-center gap-1">
+                  <span>
+                    {ingestedSuccessCount} success
+                    {warningCount > 0 ? ` · ${warningCount} warning` : ""}
+                    {failedCount > 0 ? ` · ${failedCount} failed` : ""}
+                  </span>
+                  <ChevronDown
+                    className={cn(
+                      "size-3.5 shrink-0 transition-transform",
+                      isExpanded && "rotate-180",
+                    )}
+                  />
+                </span>
+              </div>
             </div>
           </div>
         )}
@@ -181,7 +185,31 @@ export function TaskErrorContent({
           }
         >
           <AccordionItem value="failed-files" className="border-0 rounded-none">
-            {accordionHeader}
+            {!showHeader && (
+              <AccordionPrimitive.Header className="flex w-full min-w-0 items-center gap-2">
+                {ossIconColumn ? (
+                  <div className="size-5 shrink-0" aria-hidden />
+                ) : null}
+                <AccordionPrimitive.Trigger className="group inline-flex min-w-0 flex-1 items-center justify-start gap-1 px-0 py-0 text-sm text-muted-foreground transition-colors hover:text-foreground">
+                  <div className="flex min-w-0 flex-1 items-center gap-1">
+                    <span className="text-xs">
+                      {ingestedSuccessCount} success
+                      {warningCount > 0 ? ` · ${warningCount} warning` : ""}
+                      {failedCount > 0 ? ` · ${failedCount} failed` : ""}
+                    </span>
+                    <ChevronDown className="size-4 shrink-0 transition-transform group-data-[state=open]:rotate-180" />
+                  </div>
+                </AccordionPrimitive.Trigger>
+                <button
+                  type="button"
+                  aria-label="Open task details"
+                  className="inline-flex shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
+                  onClick={() => openTaskDialog(task.task_id)}
+                >
+                  <IncidentReporterIcon className="size-4" />
+                </button>
+              </AccordionPrimitive.Header>
+            )}
             <AccordionContent className="w-full p-0 pt-2">
               <div className="flex w-full flex-col gap-2">
                 {issueEntries.map(([filePath, fileInfo], index) => {

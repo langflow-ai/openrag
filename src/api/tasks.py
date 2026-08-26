@@ -99,3 +99,24 @@ async def cancel_task(
 
     await TelemetryClient.send_event(Category.TASK_OPERATIONS, MessageId.ORB_TASK_CANCELLED)
     return JSONResponse({"status": "cancelled", "task_id": task_id})
+
+
+async def delete_task(
+    task_id: str,
+    task_service=Depends(get_task_service),
+    user: User = Depends(get_current_user),
+):
+    """Permanently delete a terminal (completed/failed) task from the task store."""
+    success = task_service.delete_task(user.user_id, task_id)
+    if not success:
+        return JSONResponse({"error": "Task not found or still in progress"}, status_code=404)
+    return JSONResponse({"status": "deleted", "task_id": task_id})
+
+
+async def delete_all_terminal_tasks(
+    task_service=Depends(get_task_service),
+    user: User = Depends(get_current_user),
+):
+    """Delete all completed/failed tasks for the authenticated user."""
+    count = task_service.delete_all_terminal_tasks(user.user_id)
+    return JSONResponse({"status": "deleted", "count": count})

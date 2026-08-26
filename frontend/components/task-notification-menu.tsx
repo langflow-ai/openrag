@@ -1,8 +1,19 @@
 "use client";
 
-import { Bell, CheckCircle, Clock, Loader2, XCircle } from "lucide-react";
+import {
+  Bell,
+  CheckCircle,
+  ChevronDown,
+  Clock,
+  Loader2,
+  X,
+  XCircle,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { StatusIcon } from "@/components/console-status";
+import {
+  useDeleteAllTerminalTasksMutation,
+  useDeleteTaskMutation,
+} from "@/app/api/mutations/useDeleteTaskMutation";
 import { IncidentReporterIcon } from "@/components/icons/incident-reporter-icon";
 import { TaskCollapsibleSection } from "@/components/task-collapsible-section";
 import { TaskErrorContent } from "@/components/task-error-content";
@@ -21,7 +32,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useIsCloudBrand } from "@/contexts/brand-context";
-import { useConsoleStatus } from "@/contexts/console-status-context";
 import { Task, useTask } from "@/contexts/task-context";
 import { formatRelative } from "@/lib/status-utils";
 import {
@@ -224,8 +234,12 @@ export function TaskNotificationMenu() {
     closeMenu,
     openTaskDialog,
   } = useTask();
-  const { problems, open: openConsoleStatus } = useConsoleStatus();
+  const deleteTaskMutation = useDeleteTaskMutation();
+  const deleteAllMutation = useDeleteAllTerminalTasksMutation();
   const [isPastOpen, setIsPastOpen] = useState(true);
+  const [expandedTaskIds, setExpandedTaskIds] = useState<Set<string>>(
+    new Set(),
+  );
   const lastHandledSelectionTriggerRef = useRef(0);
 
   // Reset section defaults whenever panel is opened.
@@ -305,46 +319,14 @@ export function TaskNotificationMenu() {
       <div className="flex flex-col h-full">
         <TaskPanelHeader
           activeCount={activeTasks.length}
+          terminalCount={terminalTasks.length}
           isFetching={isFetching}
           onClose={closeMenu}
+          onClearAll={() => deleteAllMutation.mutate()}
         />
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto">
-          {/* System Status events — a container / service is degraded or down.
-              Clicking an event opens the Console Status panel. */}
-          {problems.length > 0 && (
-            <div className="flex flex-col gap-2 p-4">
-              <h4 className="text-sm font-medium text-muted-foreground">
-                System Status
-              </h4>
-              {problems.map((component) => {
-                const isDown = component.status === "unhealthy";
-                return (
-                  <button
-                    key={component.name}
-                    type="button"
-                    data-testid="system-status-event"
-                    onClick={() => openConsoleStatus()}
-                    className="w-full rounded-lg border border-muted p-3 text-left transition-colors hover:bg-muted/60"
-                  >
-                    <div className="flex items-center gap-2">
-                      <StatusIcon status={component.status} size={16} />
-                      <span className="text-sm font-medium">
-                        {component.display_name}{" "}
-                        {isDown ? "is down" : `is ${component.status}`}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {component.message ||
-                        "Open Console Status for more details."}
-                    </p>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
           {/* Active Tasks */}
           {activeTasks.length > 0 && (
             <div className="flex flex-col gap-2 p-4">
@@ -451,94 +433,150 @@ export function TaskNotificationMenu() {
           )}
 
           {/* Past Tasks */}
-          <div>
-            <TaskCollapsibleSection
-              title="Past Tasks"
-              items={terminalTasks}
-              isOpen={isPastOpen}
-              onToggle={() => setIsPastOpen((prev) => !prev)}
-              emptyText="No past tasks."
-              containerClassName=""
-              contentClassName={cn(
-                "flex flex-col transition-all duration-200",
-                isCloudBrand
-                  ? "p-0 [&>*:last-child]:border-b [&>*:last-child]:border-muted"
-                  : "gap-2 p-4 pt-2",
-              )}
-              renderItem={(task) => {
-                const progress = formatTaskProgress(task);
-                const hasFailedFiles = hasIssueFileEntries(task);
-                const isTotalFailure = isCompletedTotalFailure(task);
-                const dur = formatDuration(task.duration_seconds);
-                const shouldExpandDetails = selectedTaskId === task.task_id;
+          {terminalTasks.length > 0 && (
+            <div>
+              <TaskCollapsibleSection
+                title="Past Tasks"
+                items={terminalTasks}
+                isOpen={isPastOpen}
+                onToggle={() => setIsPastOpen((prev) => !prev)}
+                emptyText="No past tasks."
+                containerClassName=""
+                contentClassName={cn(
+                  "flex flex-col transition-all duration-200",
+                  isCloudBrand
+                    ? "p-0 [&>*:last-child]:border-b [&>*:last-child]:border-muted"
+                    : "gap-2 p-4 pt-2",
+                )}
+                renderItem={(task) => {
+                  const progress = formatTaskProgress(task);
+                  const hasFailedFiles = hasIssueFileEntries(task);
+                  const isTotalFailure = isCompletedTotalFailure(task);
+                  const dur = formatDuration(task.duration_seconds);
+                  const shouldExpandDetails = selectedTaskId === task.task_id;
 
-                // Same full card as total failure; partial only differs inside (Complete pill / amber icon).
-                if (
-                  isTerminalFailedTask(task) ||
-                  isTotalFailure ||
-                  hasFailedFiles
-                ) {
+                  // Same full card as total failure; partial only differs inside (Complete pill / amber icon).
+                  if (
+                    isTerminalFailedTask(task) ||
+                    isTotalFailure ||
+                    hasFailedFiles
+                  ) {
+                    return (
+                      <div key={task.task_id} className="relative group/row">
+                        <TaskErrorContent
+                          key={
+                            shouldExpandDetails
+                              ? `${task.task_id}-${selectedTaskTrigger}`
+                              : task.task_id
+                          }
+                          task={task}
+                          mode="past"
+                          defaultExpanded={shouldExpandDetails}
+                        />
+                        <button
+                          type="button"
+                          aria-label="Delete task"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteTaskMutation.mutate(task.task_id);
+                          }}
+                          className="absolute top-2 right-2 flex h-5 w-5 items-center justify-center rounded text-muted-foreground opacity-0 group-hover/row:opacity-100 hover:bg-muted hover:text-foreground transition-opacity"
+                        >
+                          <X className="size-3" />
+                        </button>
+                      </div>
+                    );
+                  }
+
+                  const isExpanded = expandedTaskIds.has(task.task_id);
+                  const toggleExpand = () =>
+                    setExpandedTaskIds((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(task.task_id)) next.delete(task.task_id);
+                      else next.add(task.task_id);
+                      return next;
+                    });
+
                   return (
-                    <TaskErrorContent
-                      key={
-                        shouldExpandDetails
-                          ? `${task.task_id}-${selectedTaskTrigger}`
-                          : task.task_id
-                      }
-                      task={task}
-                      mode="past"
-                      defaultExpanded={shouldExpandDetails}
-                    />
-                  );
-                }
-
-                return (
-                  <div key={task.task_id} className={pastTaskRowClass}>
-                    <div className="flex items-start gap-3">
-                      {!isCloudBrand && getTaskIcon(task.status)}
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs font-medium truncate">
-                          Task {task.task_id.substring(0, 8)}...
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {formatRelative(task.updated_at)}
-                          {dur && <span className="ml-2">• {dur}</span>}
-                        </div>
-                        {task.status === "completed" && progress?.detailed && (
-                          <div className="text-xs text-muted-foreground">
-                            {progress.detailed.successful} success,{" "}
-                            {progress.detailed.failed} failed
-                            {(progress.detailed.running || 0) > 0 && (
-                              <span>, {progress.detailed.running} running</span>
+                    <div key={task.task_id} className="relative group/row">
+                      <button
+                        type="button"
+                        onClick={toggleExpand}
+                        className={cn(
+                          pastTaskRowClass,
+                          "text-left w-full pr-8",
+                        )}
+                      >
+                        <div className="flex items-start gap-3">
+                          {!isCloudBrand && getTaskIcon(task.status)}
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-medium truncate">
+                              Task {task.task_id.substring(0, 8)}...
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {formatRelative(task.updated_at)}
+                              {dur && <span className="ml-2">• {dur}</span>}
+                            </div>
+                            {isExpanded && progress?.detailed && (
+                              <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+                                <div>
+                                  {progress.detailed.successful} success,{" "}
+                                  {progress.detailed.failed} failed
+                                  {(progress.detailed.running || 0) > 0 && (
+                                    <span>
+                                      , {progress.detailed.running} running
+                                    </span>
+                                  )}
+                                </div>
+                                {task.status === "completed" &&
+                                  progress.detailed.total > 0 && (
+                                    <div>{progress.basic}</div>
+                                  )}
+                              </div>
                             )}
                           </div>
-                        )}
-                      </div>
-                      <div className="self-start pt-0.5">
-                        {getStatusBadge(task.status, isCloudBrand)}
-                      </div>
+                          <div className="self-start pt-0.5 flex items-center gap-2">
+                            {getStatusBadge(task.status, isCloudBrand)}
+                            <ChevronDown
+                              className={cn(
+                                "size-3.5 text-muted-foreground transition-transform",
+                                isExpanded && "rotate-180",
+                              )}
+                            />
+                          </div>
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Delete task"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteTaskMutation.mutate(task.task_id);
+                        }}
+                        className="absolute top-2 right-2 flex h-5 w-5 items-center justify-center rounded text-muted-foreground opacity-0 group-hover/row:opacity-100 hover:bg-muted hover:text-foreground transition-opacity"
+                      >
+                        <X className="size-3" />
+                      </button>
                     </div>
-                  </div>
-                );
-              }}
-            />
-          </div>
+                  );
+                }}
+              />
+            </div>
+          )}
 
           {/* Empty State */}
-          {activeTasks.length === 0 &&
-            terminalTasks.length === 0 &&
-            problems.length === 0 && (
-              <div className="p-8 text-center">
-                <Bell className="h-12 w-12 text-muted-foreground/50 mx-auto mb-4" />
-                <h4 className="text-sm font-medium text-muted-foreground mb-2">
-                  No tasks yet
-                </h4>
-                <p className="text-xs text-muted-foreground">
-                  Task notifications will appear here when you upload files or
-                  sync connectors.
-                </p>
-              </div>
-            )}
+          {activeTasks.length === 0 && terminalTasks.length === 0 && (
+            <div className="p-8 text-center">
+              <Bell className="h-12 w-12 text-muted-foreground/50 mx-auto mb-4" />
+              <h4 className="text-sm font-medium text-muted-foreground mb-2">
+                No tasks yet
+              </h4>
+              <p className="text-xs text-muted-foreground">
+                Task notifications will appear here when you upload files or
+                sync connectors.
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>

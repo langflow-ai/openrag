@@ -131,6 +131,18 @@ def register_internal_routes(app: FastAPI):
         methods=["POST"],
         tags=["internal"],
     )
+    app.add_api_route(
+        "/tasks/{task_id}",
+        tasks.delete_task,
+        methods=["DELETE"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/tasks",
+        tasks.delete_all_terminal_tasks,
+        methods=["DELETE"],
+        tags=["internal"],
+    )
 
     # Search endpoint
     app.add_api_route("/search", search.search, methods=["POST"], tags=["internal"])

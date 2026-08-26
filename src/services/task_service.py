@@ -1511,6 +1511,42 @@ class TaskService:
 
         return True
 
+    def delete_task(self, user_id: str, task_id: str) -> bool:
+        """Remove a terminal (completed/failed) task from memory.
+
+        Returns True if deleted, False if not found or still in progress.
+        """
+        resolved = self._resolve_upload_task_store(user_id, task_id)
+        if resolved is None:
+            return False
+        store_user_id, upload_task = resolved
+        if upload_task.status not in [TaskStatus.COMPLETED, TaskStatus.FAILED]:
+            return False
+        self._cleanup_upload_temp_files(upload_task, force=True)
+        del self.task_store[store_user_id][task_id]
+        self._task_locks.pop(task_id, None)
+        if not self.task_store[store_user_id]:
+            del self.task_store[store_user_id]
+        return True
+
+    def delete_all_terminal_tasks(self, user_id: str) -> int:
+        """Remove all completed/failed tasks for a user. Returns count deleted."""
+        if user_id not in self.task_store:
+            return 0
+        to_delete = [
+            tid
+            for tid, t in self.task_store[user_id].items()
+            if t.status in [TaskStatus.COMPLETED, TaskStatus.FAILED]
+        ]
+        for tid in to_delete:
+            task = self.task_store[user_id][tid]
+            self._cleanup_upload_temp_files(task, force=True)
+            del self.task_store[user_id][tid]
+            self._task_locks.pop(tid, None)
+        if not self.task_store.get(user_id):
+            self.task_store.pop(user_id, None)
+        return len(to_delete)
+
     def _file_task_for_temp_path(self, upload_task: UploadTask, temp_path: str) -> FileTask | None:
         """Resolve the FileTask for a staged upload temp path."""
         file_task = upload_task.file_tasks.get(temp_path)
