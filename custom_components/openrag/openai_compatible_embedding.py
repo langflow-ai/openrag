@@ -94,6 +94,15 @@ class OpenAICompatibleEmbeddingComponent(LCEmbeddingsModel):
 
         kwargs: dict[str, Any] = {
             "model": self.model_name,
+            # `OpenAIEmbeddings.deployment` defaults to the class-level default of
+            # `model` — the literal "text-embedding-ada-002" — for every instance,
+            # whatever model is actually configured. The OpenSearch component keys
+            # its embedding lookup on `deployment` as well as `model`, so leaving
+            # the default in place registers this object under ada-002 too, and a
+            # 768-dim vector then gets aimed at a 1536-dim ada-002 vector field.
+            # Only Azure reads this field, so pinning it to the real model is inert
+            # at request time and keeps the component's identity honest.
+            "deployment": self.model_name,
             "api_key": api_key,
             "base_url": api_base or None,
             # Skip tiktoken context checks so non-OpenAI model ids still work.

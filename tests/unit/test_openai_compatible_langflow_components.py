@@ -145,3 +145,46 @@ def test_openrag_bundle_directory_is_lowercase_snake_case():
     assert not Path("custom_components/OpenRAG").is_dir() or BUNDLE.samefile(
         Path("custom_components/OpenRAG")
     )
+
+
+def test_embedding_component_pins_deployment_to_the_configured_model():
+    """`OpenAIEmbeddings.deployment` must not keep LangChain's class default.
+
+    That default is the literal "text-embedding-ada-002" for every instance,
+    whatever model is configured. The OpenSearch component keys its embedding
+    lookup on `deployment` as well as `model`, so the default registers a
+    768-dim watsonx embedder under ada-002 and OpenSearch then rejects the
+    search with "Query vector has invalid dimension: 768. Dimension should be:
+    1536".
+    """
+    code = (BUNDLE / "openai_compatible_embedding.py").read_text(encoding="utf-8")
+    assert '"deployment": self.model_name' in code
+
+
+def test_flows_embed_the_current_proxy_component_sources():
+    """Flow JSONs carry their own copy of each component; keep them in step.
+
+    A fix applied only to `custom_components/` never reaches a running flow,
+    because Langflow executes the code embedded in the flow node.
+    """
+    for name, node_type in (
+        ("openai_compatible_embedding.py", "OpenAICompatibleEmbedding"),
+        ("openai_compatible_llm.py", "OpenAICompatibleLLM"),
+    ):
+        source = (BUNDLE / name).read_text(encoding="utf-8")
+        expected_hash = hashlib.sha256(source.encode("utf-8")).hexdigest()[:12]
+
+        for path in sorted(Path("flows").glob("*.json")):
+            if path.name == "component_index.json":
+                continue
+            flow = json.loads(path.read_text(encoding="utf-8"))
+            for node in flow.get("data", {}).get("nodes", []):
+                if node.get("data", {}).get("type") != node_type:
+                    continue
+                component = node["data"]["node"]
+                assert component["template"]["code"]["value"] == source, (
+                    f"{path.name}: embedded {name} is out of sync with the bundle"
+                )
+                assert component.get("metadata", {}).get("code_hash") == expected_hash, (
+                    f"{path.name}: {node_type} metadata.code_hash is stale"
+                )
