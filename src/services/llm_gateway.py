@@ -267,27 +267,78 @@ async def chat_completions(
         raise LlmGatewayError(_upstream_client_message(detail), 502, detail=detail) from exc
 
     if stream:
-        return _stream_sse(result)
+        return _stream_sse(result, provider, litellm_model)
     payload = _to_openai_dict(result)
     _log_completion_shape(payload, provider, litellm_model)
     return payload
 
 
-async def _stream_sse(stream: Any) -> AsyncIterator[str]:
+class _StreamTally:
+    """Running totals for one streamed completion. Metadata only, no content."""
+
+    def __init__(self) -> None:
+        self.chunks = 0
+        self.content_chars = 0
+        self.tool_calls = 0
+        self.finish_reason: str | None = None
+
+    def observe(self, payload: str) -> None:
+        try:
+            chunk = json.loads(payload)
+        except Exception:
+            return
+        self.chunks += 1
+        for choice in chunk.get("choices") or []:
+            if not isinstance(choice, dict):
+                continue
+            if choice.get("finish_reason"):
+                self.finish_reason = choice["finish_reason"]
+            delta = choice.get("delta") or {}
+            content = delta.get("content")
+            if isinstance(content, str):
+                self.content_chars += len(content)
+            self.tool_calls += len(delta.get("tool_calls") or [])
+
+
+async def _stream_sse(stream: Any, provider: str = "", model: str = "") -> AsyncIterator[str]:
+    tally = _StreamTally()
     try:
         if hasattr(stream, "__aiter__"):
             async for chunk in stream:
-                yield f"data: {_chunk_payload(chunk)}\n\n"
+                payload = _chunk_payload(chunk)
+                tally.observe(payload)
+                yield f"data: {payload}\n\n"
         else:
             for chunk in stream:
-                yield f"data: {_chunk_payload(chunk)}\n\n"
+                payload = _chunk_payload(chunk)
+                tally.observe(payload)
+                yield f"data: {payload}\n\n"
     finally:
         close = getattr(stream, "aclose", None) or getattr(stream, "close", None)
         if close is not None:
             result = close()
             if hasattr(result, "__await__"):
                 await result
+        _log_stream_shape(tally, provider, model)
     yield "data: [DONE]\n\n"
+
+
+def _log_stream_shape(tally: _StreamTally, provider: str, model: str) -> None:
+    """Same diagnostic as `_log_completion_shape`, for the streaming path."""
+    try:
+        empty = tally.content_chars == 0 and tally.tool_calls == 0
+        log = logger.warning if empty else logger.info
+        log(
+            "LLM chat stream produced no content and no tool calls" if empty else "LLM chat stream",
+            provider=provider,
+            model=model,
+            finish_reason=tally.finish_reason,
+            content_chars=tally.content_chars,
+            tool_calls=tally.tool_calls,
+            chunks=tally.chunks,
+        )
+    except Exception:  # diagnostics must never break a stream
+        logger.debug("Could not summarise stream shape", exc_info=True)
 
 
 async def embeddings(body: Mapping[str, Any], *, config=None) -> dict[str, Any]:

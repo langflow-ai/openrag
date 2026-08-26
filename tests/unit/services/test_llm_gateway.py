@@ -346,3 +346,67 @@ def test_log_completion_shape_survives_an_unexpected_payload():
     # Must never raise: diagnostics run on the response path.
     llm_gateway._log_completion_shape({"choices": "not-a-list"}, "openai", "gpt-4o-mini")
     llm_gateway._log_completion_shape({}, "openai", "gpt-4o-mini")
+
+
+@pytest.mark.asyncio
+async def test_stream_sse_still_forwards_every_chunk_and_terminates():
+    """Diagnostics must not disturb the stream itself."""
+    from services import llm_gateway
+
+    chunks = [
+        {"choices": [{"delta": {"content": "he"}}]},
+        {"choices": [{"delta": {"content": "llo"}, "finish_reason": "stop"}]},
+    ]
+
+    async def gen():
+        for chunk in chunks:
+            yield chunk
+
+    out = [line async for line in llm_gateway._stream_sse(gen(), "openai", "gpt-4o-mini")]
+
+    assert out[-1] == "data: [DONE]\n\n"
+    assert len(out) == len(chunks) + 1
+    assert '"content": "he"' in out[0] or '"content":"he"' in out[0]
+
+
+@pytest.mark.asyncio
+async def test_stream_sse_warns_when_a_stream_yields_nothing_usable(monkeypatch):
+    """The watsonx symptom: 200 OK, chunks arrive, but no content and no tool calls."""
+    from services import llm_gateway
+
+    recorder = _RecordingLogger()
+    monkeypatch.setattr(llm_gateway, "logger", recorder)
+
+    async def gen():
+        yield {"choices": [{"delta": {}, "finish_reason": "stop"}]}
+
+    [
+        line
+        async for line in llm_gateway._stream_sse(gen(), "watsonx", "watsonx/ibm/granite-4-h-small")
+    ]
+
+    levels = [call[0] for call in recorder.calls]
+    assert "warning" in levels
+    _level, event, fields = next(c for c in recorder.calls if c[0] == "warning")
+    assert "no content and no tool calls" in event
+    assert fields["provider"] == "watsonx"
+    assert fields["finish_reason"] == "stop"
+
+
+@pytest.mark.asyncio
+async def test_stream_sse_counts_tool_calls_as_usable_output(monkeypatch):
+    from services import llm_gateway
+
+    recorder = _RecordingLogger()
+    monkeypatch.setattr(llm_gateway, "logger", recorder)
+
+    async def gen():
+        yield {
+            "choices": [{"delta": {"tool_calls": [{"index": 0}]}, "finish_reason": "tool_calls"}]
+        }
+
+    [line async for line in llm_gateway._stream_sse(gen(), "openai", "gpt-4o-mini")]
+
+    level, event, fields = recorder.calls[0]
+    assert level == "info"
+    assert fields["tool_calls"] == 1
