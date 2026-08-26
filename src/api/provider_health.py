@@ -75,7 +75,11 @@ async def check_provider_health(
             try:
                 provider_config = current_config.providers.get_provider_config(provider)
                 api_key = getattr(provider_config, "api_key", None)
-                endpoint = getattr(provider_config, "endpoint", None)
+                # "endpoint" doubles as the validation target's base URL;
+                # openai's provider config exposes that as "base_url" instead.
+                endpoint = getattr(provider_config, "endpoint", None) or getattr(
+                    provider_config, "base_url", None
+                )
                 project_id = getattr(provider_config, "project_id", None)
                 credentials = current_config.providers.credential_values(provider)
 
@@ -116,12 +120,18 @@ async def check_provider_health(
             embedding_provider_config = current_config.get_embedding_provider_config()
 
             api_key = getattr(llm_provider_config, "api_key", None)
-            endpoint = getattr(llm_provider_config, "endpoint", None)
+            # "endpoint" doubles as the validation target's base URL; openai's
+            # provider config exposes that as "base_url" instead.
+            endpoint = getattr(llm_provider_config, "endpoint", None) or getattr(
+                llm_provider_config, "base_url", None
+            )
             project_id = getattr(llm_provider_config, "project_id", None)
             llm_model = current_config.agent.llm_model
 
             embedding_api_key = getattr(embedding_provider_config, "api_key", None)
-            embedding_endpoint = getattr(embedding_provider_config, "endpoint", None)
+            embedding_endpoint = getattr(embedding_provider_config, "endpoint", None) or getattr(
+                embedding_provider_config, "base_url", None
+            )
             embedding_project_id = getattr(embedding_provider_config, "project_id", None)
             embedding_model = current_config.knowledge.embedding_model
             credentials = current_config.providers.credential_values(provider)
