@@ -410,3 +410,66 @@ async def test_stream_sse_counts_tool_calls_as_usable_output(monkeypatch):
     level, event, fields = recorder.calls[0]
     assert level == "info"
     assert fields["tool_calls"] == 1
+
+
+@pytest.mark.asyncio
+async def test_chat_completions_lets_litellm_drop_provider_unsupported_params(monkeypatch):
+    """A multi-provider proxy must degrade, not 502, on provider param gaps.
+
+    OpenAI-compatible clients send OpenAI's full parameter set, but watsonx
+    rejects `parallel_tool_calls`, `max_completion_tokens` and `logit_bias`,
+    and LiteLLM raises UnsupportedParamsError rather than ignoring them.
+    """
+    captured = {}
+
+    async def fake_acompletion(**kwargs):
+        captured.update(kwargs)
+        return {"id": "1", "choices": [{"message": {"role": "assistant", "content": "hi"}}]}
+
+    monkeypatch.setattr("litellm.acompletion", fake_acompletion)
+
+    await chat_completions(
+        {
+            "model": "gpt-4o-mini",
+            "messages": [{"role": "user", "content": "hi"}],
+            "parallel_tool_calls": True,
+            "max_completion_tokens": 64,
+        },
+        config=_config(),
+    )
+
+    assert captured["drop_params"] is True
+    # The params are still forwarded — LiteLLM decides per provider what to keep.
+    assert captured["parallel_tool_calls"] is True
+    assert captured["max_completion_tokens"] == 64
+
+
+def test_watsonx_rejects_params_we_forward_unless_they_are_dropped():
+    """Pin the upstream behaviour this fix relies on.
+
+    If LiteLLM ever starts accepting these for watsonx, `drop_params` becomes
+    redundant rather than wrong — but while it rejects them, forwarding them
+    without the flag is a hard failure for every watsonx caller.
+    """
+    from litellm.exceptions import UnsupportedParamsError
+    from litellm.utils import get_optional_params
+
+    for param, value in (
+        ("parallel_tool_calls", True),
+        ("max_completion_tokens", 64),
+        ("logit_bias", {"1": 1}),
+    ):
+        with pytest.raises(UnsupportedParamsError):
+            get_optional_params(
+                model="ibm/granite-4-h-small",
+                custom_llm_provider="watsonx",
+                **{param: value},
+            )
+
+        dropped = get_optional_params(
+            model="ibm/granite-4-h-small",
+            custom_llm_provider="watsonx",
+            drop_params=True,
+            **{param: value},
+        )
+        assert param not in dropped

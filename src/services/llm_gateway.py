@@ -256,6 +256,13 @@ async def chat_completions(
             model=litellm_model,
             messages=list(body.get("messages") or []),
             stream=stream,
+            # OpenAI-compatible clients send OpenAI's full parameter set, but
+            # providers accept different subsets — watsonx rejects
+            # `parallel_tool_calls`, `max_completion_tokens` and `logit_bias`,
+            # and LiteLLM raises UnsupportedParamsError rather than ignoring
+            # them. A proxy that fans out to many providers must degrade to the
+            # provider's capabilities instead of failing the request.
+            drop_params=True,
             **credentials,
             **kwargs,
         )
