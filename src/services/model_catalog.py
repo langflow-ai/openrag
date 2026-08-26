@@ -193,11 +193,24 @@ def _model_entry(name: str, info: dict[str, Any]) -> dict[str, Any]:
     return entry
 
 
-@lru_cache(maxsize=8)
-def _catalog(providers: tuple[tuple[str, str], ...]) -> dict[str, Any]:
-    """Payload for `providers`, given as `(key, display_name)` pairs.
+ProviderSpec = tuple[str, str, tuple[str, ...], tuple[str, ...]]
 
-    The pairs are the cache key, so flipping a provider's visibility (or the
+
+def _declared_entries(names: tuple[str, ...], mode: str) -> list[dict[str, Any]]:
+    """Config-declared model ids as catalogue entries.
+
+    A self-hosted OpenAI-compatible gateway serves whatever its operator
+    deployed, so LiteLLM's bundled table knows none of its ids. Only the name
+    and the mode are known here — no pricing, no capability flags.
+    """
+    return [{"model": name, "mode": mode} for name in names]
+
+
+@lru_cache(maxsize=8)
+def _catalog(providers: tuple[ProviderSpec, ...]) -> dict[str, Any]:
+    """Payload for `providers`, given as `config.model_providers` entries.
+
+    The entries are the cache key, so flipping a provider's visibility (or the
     run mode, in a test) rebuilds instead of serving a stale list.
     """
     try:
@@ -206,7 +219,7 @@ def _catalog(providers: tuple[tuple[str, str], ...]) -> dict[str, Any]:
         raise CatalogUnavailableError("litellm is not installed on the server") from exc
 
     specs = _provider_field_specs()
-    keys = {key for key, _ in providers}
+    keys = {key for key, _, _, _ in providers}
     chat_by_provider: dict[str, list[dict[str, Any]]] = {}
     embed_by_provider: dict[str, list[dict[str, Any]]] = {}
 
@@ -229,7 +242,25 @@ def _catalog(providers: tuple[tuple[str, str], ...]) -> dict[str, Any]:
         bucket.setdefault(provider, []).append(_model_entry(name, info))
 
     entries = []
-    for key, display_name in providers:
+    for key, display_name, declared_chat, declared_embed in providers:
+        if not is_known_provider(key):
+            # The catalogue would still render, but `split_model_id` cannot
+            # recognise the prefix, so every id would be billed to the default
+            # provider. Name the row rather than fail the whole catalogue.
+            logger.warning(
+                "Model provider is not routable by LiteLLM; its models will not resolve",
+                provider=key,
+            )
+        chat = chat_by_provider.get(key, [])
+        embed = embed_by_provider.get(key, [])
+        known_chat = {entry["model"] for entry in chat}
+        known_embed = {entry["model"] for entry in embed}
+        chat = chat + _declared_entries(
+            tuple(name for name in declared_chat if name not in known_chat), "chat"
+        )
+        embed = embed + _declared_entries(
+            tuple(name for name in declared_embed if name not in known_embed), EMBEDDING_MODE
+        )
         entries.append(
             {
                 "key": key,
@@ -238,17 +269,15 @@ def _catalog(providers: tuple[tuple[str, str], ...]) -> dict[str, Any]:
                 "name": display_name or (specs.get(key) or {}).get("provider_display_name") or key,
                 "credential_fields": credential_fields(key),
                 "model_placeholder": (specs.get(key) or {}).get("default_model_placeholder"),
-                "models": sorted(chat_by_provider.get(key, []), key=lambda entry: entry["model"]),
-                "embedding_models": sorted(
-                    embed_by_provider.get(key, []), key=lambda entry: entry["model"]
-                ),
+                "models": sorted(chat, key=lambda entry: entry["model"]),
+                "embedding_models": sorted(embed, key=lambda entry: entry["model"]),
             }
         )
     return {"providers": entries}
 
 
 @lru_cache(maxsize=8)
-def _catalog_for(today: datetime.date, providers: tuple[tuple[str, str], ...]) -> dict[str, Any]:
+def _catalog_for(today: datetime.date, providers: tuple[ProviderSpec, ...]) -> dict[str, Any]:
     """`_catalog()` with models the provider has already retired removed."""
 
     def _keep(model: dict[str, Any]) -> bool:
@@ -271,7 +300,7 @@ def _catalog_for(today: datetime.date, providers: tuple[tuple[str, str], ...]) -
 
 def supported_provider_keys() -> frozenset[str]:
     """The providers this run mode publishes, per `config/model_providers.yaml`."""
-    return frozenset(key for key, _ in visible_provider_entries())
+    return frozenset(entry[0] for entry in visible_provider_entries())
 
 
 def catalog(today: datetime.date | None = None) -> dict[str, Any]:

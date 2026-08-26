@@ -108,6 +108,44 @@ today — are entered in **Settings** through a form built from the provider's o
 credential fields. Configuring one needs no code change beyond its row in this
 file.
 
+#### Add a custom OpenAI-compatible provider {#custom-openai-compatible-provider}
+
+To offer a self-hosted OpenAI-compatible endpoint — vLLM, LM Studio, or an
+internal gateway — add a row that declares the model ids it serves. The public
+vendors need no `models` list because LiteLLM already ships one, but a private
+gateway serves whatever its operator deployed, so those ids can only come from
+this file.
+
+```yaml
+  - name: openai_like
+    display_name: Internal LLM Gateway
+    modes:
+      oss: true
+      on_prem: true
+      saas: false
+    models:
+      - llama-3.3-70b-instruct
+      - qwen2.5-coder-32b
+    embedding_models:
+      - bge-m3
+```
+
+Restart, then open **Settings** and configure the new card with the gateway's
+**API base** (for example `https://gateway.internal/v1`) and API key. The
+declared models then appear in the agent and ingestion pickers, and are served
+from `/v1/models` as `openai_like/llama-3.3-70b-instruct`.
+
+Use one of LiteLLM's passthrough provider keys for `name` — `openai_like`,
+`hosted_vllm`, `lm_studio`, `llamafile`, or `custom_openai` — rather than
+inventing one. The key must be a provider LiteLLM can route, or the
+`provider/model` ids OpenRAG publishes resolve to the default provider and are
+called with the wrong credentials. A name that is not routable is logged as a
+warning when the catalogue is built.
+
+Declaring `models` on a public vendor row also works, and is how you surface a
+fine-tune or a private deployment that is not in LiteLLM's table. Ids that the
+table already lists are not duplicated.
+
 ## Document processing settings {#document-processing-settings}
 
 Controls some aspects of how OpenRAG [processes and ingests documents](/ingestion) into your knowledge base.

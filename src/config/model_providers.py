@@ -14,6 +14,11 @@ Two rules keep the file safe to extend:
 - a provider absent from the file is not offered anywhere, though a model id
   for it can still be typed by hand if the gateway already routes it.
 
+A row may also declare `models` / `embedding_models`. LiteLLM's bundled table
+covers the public vendors, but a self-hosted OpenAI-compatible gateway serves
+whatever its operator deployed, so those ids can only come from here. Declared
+ids are added to whatever the table already knows for that provider.
+
 ``OPENRAG_MODEL_PROVIDERS_CONFIG`` points at an alternate YAML file for a single
 deployment. If that file is missing or unreadable the shipped default is used;
 if the shipped default is unreadable too, ``_FALLBACK_PROVIDERS`` below keeps
@@ -46,21 +51,29 @@ _FALLBACK_PROVIDERS: tuple[dict[str, Any], ...] = (
         "name": "openai",
         "display_name": "OpenAI",
         "modes": {RUN_MODE_OSS: True, RUN_MODE_ON_PREM: True, RUN_MODE_SAAS: True},
+        "models": (),
+        "embedding_models": (),
     },
     {
         "name": "ollama",
         "display_name": "Ollama",
         "modes": {RUN_MODE_OSS: True, RUN_MODE_ON_PREM: True, RUN_MODE_SAAS: False},
+        "models": (),
+        "embedding_models": (),
     },
     {
         "name": "watsonx",
         "display_name": "IBM watsonx.ai",
         "modes": {RUN_MODE_OSS: True, RUN_MODE_ON_PREM: True, RUN_MODE_SAAS: True},
+        "models": (),
+        "embedding_models": (),
     },
     {
         "name": "anthropic",
         "display_name": "Anthropic",
         "modes": {RUN_MODE_OSS: True, RUN_MODE_ON_PREM: True, RUN_MODE_SAAS: True},
+        "models": (),
+        "embedding_models": (),
     },
 )
 
@@ -78,6 +91,18 @@ def _as_bool(value: Any) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in _TRUTHY
     return False
+
+
+def _model_ids(value: Any) -> tuple[str, ...]:
+    """A YAML `models:` list as clean, de-duplicated, order-preserving ids."""
+    if not isinstance(value, list):
+        return ()
+    ids = []
+    for item in value:
+        name = str(item).strip()
+        if name and name not in ids:
+            ids.append(name)
+    return tuple(ids)
 
 
 def _normalize(entry: Any, seen: set[str]) -> dict[str, Any] | None:
@@ -102,6 +127,9 @@ def _normalize(entry: Any, seen: set[str]) -> dict[str, Any] | None:
         "display_name": display_name,
         # Missing keys stay missing here; `is_visible` reads them as False.
         "modes": {str(mode).strip().lower(): _as_bool(value) for mode, value in raw_modes.items()},
+        # Optional: ids the catalogue cannot learn from LiteLLM's static table.
+        "models": _model_ids(entry.get("models")),
+        "embedding_models": _model_ids(entry.get("embedding_models")),
     }
 
 
@@ -181,12 +209,17 @@ def visible_providers(run_mode: str | None = None) -> tuple[dict[str, Any], ...]
     return tuple(entry for entry in configured_providers() if is_visible(entry, mode))
 
 
-def visible_provider_entries(run_mode: str | None = None) -> tuple[tuple[str, str], ...]:
-    """`(name, display_name)` pairs for the visible providers.
+def visible_provider_entries(
+    run_mode: str | None = None,
+) -> tuple[tuple[str, str, tuple[str, ...], tuple[str, ...]], ...]:
+    """`(name, display_name, models, embedding_models)` for the visible providers.
 
-    Hashable, so callers can key a cache on it.
+    Hashable all the way down, so callers can key a cache on it.
     """
-    return tuple((entry["name"], entry["display_name"]) for entry in visible_providers(run_mode))
+    return tuple(
+        (entry["name"], entry["display_name"], entry["models"], entry["embedding_models"])
+        for entry in visible_providers(run_mode)
+    )
 
 
 def visible_provider_keys(run_mode: str | None = None) -> frozenset[str]:

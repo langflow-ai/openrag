@@ -17,6 +17,11 @@
 #
 # Set OPENRAG_MODEL_PROVIDERS_CONFIG to another YAML file to override this list
 # for a single deployment; this file is the default.
+#
+# A row may also declare `models` / `embedding_models`. LiteLLM's bundled table
+# already knows the public vendors, so those rows need nothing. A self-hosted
+# OpenAI-compatible gateway serves whatever its operator deployed, and those ids
+# can only come from here — see the commented example at the end of this file.
 
 providers:
   - name: openai
@@ -53,3 +58,23 @@ providers:
       oss: false
       on_prem: true
       saas: true
+
+  # A self-hosted OpenAI-compatible endpoint (vLLM, LM Studio, an internal
+  # gateway). Use one of LiteLLM's passthrough provider keys — `openai_like`,
+  # `hosted_vllm`, `lm_studio`, `llamafile`, `custom_openai` — rather than
+  # inventing a name: the key has to be one LiteLLM can route, or the
+  # `provider/model` ids it publishes resolve to the default provider and get
+  # called with the wrong credentials. The endpoint and key are entered in
+  # Settings; only the model ids belong here.
+  #
+  # - name: openai_like
+  #   display_name: Internal LLM Gateway
+  #   modes:
+  #     oss: true
+  #     on_prem: true
+  #     saas: false
+  #   models:
+  #     - llama-3.3-70b-instruct
+  #     - qwen2.5-coder-32b
+  #   embedding_models:
+  #     - bge-m3

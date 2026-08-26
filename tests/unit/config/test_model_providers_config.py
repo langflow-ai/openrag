@@ -165,7 +165,7 @@ providers:
         ),
     )
     monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
-    assert model_providers.visible_provider_entries() == (("openai", "First"),)
+    assert model_providers.visible_provider_entries() == (("openai", "First", (), ()),)
 
 
 def test_a_non_boolean_mode_value_hides_rather_than_shows(monkeypatch, tmp_path):
@@ -194,7 +194,7 @@ def test_display_name_falls_back_to_the_provider_name(monkeypatch, tmp_path):
         _write(tmp_path, "providers:\n  - name: groq\n    modes:\n      oss: true\n"),
     )
     monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
-    assert model_providers.visible_provider_entries() == (("groq", "groq"),)
+    assert model_providers.visible_provider_entries() == (("groq", "groq", (), ()),)
 
 
 def test_an_unreadable_override_falls_back_to_the_shipped_file(monkeypatch, tmp_path):
@@ -217,3 +217,48 @@ def test_a_malformed_config_falls_back_rather_than_hiding_everything(monkeypatch
     )
     monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
     assert "openai" in model_providers.visible_provider_keys()
+
+
+def test_a_row_can_declare_the_models_its_gateway_serves(monkeypatch, tmp_path):
+    """A self-hosted OpenAI-compatible endpoint serves ids LiteLLM cannot know."""
+    monkeypatch.setenv(
+        model_providers.CONFIG_PATH_ENV,
+        _write(
+            tmp_path,
+            """
+providers:
+  - name: openai_like
+    display_name: Internal Gateway
+    modes:
+      oss: true
+    models:
+      - llama-3.3-70b
+      - "  qwen2.5-coder-32b  "
+      - llama-3.3-70b
+    embedding_models:
+      - bge-m3
+""",
+        ),
+    )
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+
+    assert model_providers.visible_provider_entries() == (
+        (
+            "openai_like",
+            "Internal Gateway",
+            ("llama-3.3-70b", "qwen2.5-coder-32b"),
+            ("bge-m3",),
+        ),
+    )
+
+
+def test_a_row_that_declares_no_models_reports_empty_tuples(monkeypatch, tmp_path):
+    monkeypatch.setenv(
+        model_providers.CONFIG_PATH_ENV,
+        _write(
+            tmp_path,
+            "providers:\n  - name: openai\n    modes:\n      oss: true\n    models: nope\n",
+        ),
+    )
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+    assert model_providers.visible_provider_entries() == (("openai", "openai", (), ()),)

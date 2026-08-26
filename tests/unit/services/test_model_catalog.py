@@ -187,3 +187,78 @@ def test_the_config_display_name_names_the_provider(monkeypatch, tmp_path) -> No
     providers = model_catalog.catalog()["providers"]
     assert [entry["key"] for entry in providers] == ["openai"]
     assert providers[0]["name"] == "House Gateway"
+
+
+def _write_providers(tmp_path, body: str) -> str:
+    path = tmp_path / "model_providers.yaml"
+    path.write_text(body, encoding="utf-8")
+    return str(path)
+
+
+def test_a_custom_gateway_can_declare_the_models_it_serves(monkeypatch, tmp_path) -> None:
+    """LiteLLM's table has no ids for a self-hosted OpenAI-compatible endpoint.
+
+    Without config-declared ids the provider would render a card and a working
+    credential form, then offer an empty model picker.
+    """
+    monkeypatch.setenv(
+        model_providers.CONFIG_PATH_ENV,
+        _write_providers(
+            tmp_path,
+            """
+providers:
+  - name: openai_like
+    display_name: Internal LLM Gateway
+    modes:
+      oss: true
+    models:
+      - llama-3.3-70b-instruct
+    embedding_models:
+      - bge-m3
+""",
+        ),
+    )
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+
+    providers = model_catalog.catalog()["providers"]
+    assert [entry["key"] for entry in providers] == ["openai_like"]
+    gateway = providers[0]
+    assert gateway["name"] == "Internal LLM Gateway"
+    assert [entry["model"] for entry in gateway["models"]] == ["llama-3.3-70b-instruct"]
+    assert [entry["model"] for entry in gateway["embedding_models"]] == ["bge-m3"]
+    # The endpoint has to be enterable, or the gateway is unreachable.
+    assert "api_base" in {field["key"] for field in gateway["credential_fields"]}
+
+
+def test_a_declared_gateway_model_routes_back_to_its_own_provider(monkeypatch, tmp_path) -> None:
+    from services.llm_gateway import split_model_id
+
+    monkeypatch.setenv(
+        model_providers.CONFIG_PATH_ENV,
+        _write_providers(
+            tmp_path,
+            "providers:\n  - name: openai_like\n    modes:\n      oss: true\n"
+            "    models:\n      - llama-3.3-70b-instruct\n",
+        ),
+    )
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+
+    ids = [row["id"] for row in model_catalog.openai_models_list()["data"]]
+    assert ids == ["openai_like/llama-3.3-70b-instruct"]
+    assert split_model_id(ids[0]) == ("openai_like", "llama-3.3-70b-instruct")
+
+
+def test_declared_ids_do_not_duplicate_what_litellm_already_lists(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv(
+        model_providers.CONFIG_PATH_ENV,
+        _write_providers(
+            tmp_path,
+            "providers:\n  - name: openai\n    modes:\n      oss: true\n"
+            "    models:\n      - gpt-4o\n      - house-tuned-gpt\n",
+        ),
+    )
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+
+    models = [entry["model"] for entry in model_catalog.catalog()["providers"][0]["models"]]
+    assert models.count("gpt-4o") == 1
+    assert "house-tuned-gpt" in models
