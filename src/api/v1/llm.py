@@ -65,6 +65,22 @@ async def model_catalog_endpoint(
         return JSONResponse({"error": CATALOG_UNAVAILABLE_MESSAGE}, status_code=503)
 
 
+async def model_providers_endpoint(
+    user: User = Depends(_catalog_read),
+):
+    """Providers this run mode exposes. GET /v1/model-providers
+
+    Same list the console reads from /models/providers, so an SDK client and the
+    UI never disagree about which providers a deployment offers.
+    """
+    from config.model_providers import provider_visibility_payload
+
+    return JSONResponse(
+        provider_visibility_payload(),
+        headers={"Cache-Control": "private, max-age=300"},
+    )
+
+
 async def _read_json_body(request: Request) -> dict[str, Any] | JSONResponse:
     try:
         body = await request.json()

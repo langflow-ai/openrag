@@ -1,0 +1,55 @@
+# Which model providers OpenRAG offers, per run mode.
+#
+# This file is the single source of truth for provider visibility in the
+# Settings provider cards, the Onboarding tabs, and the model catalogue that
+# feeds every agent/ingest picker. The backend filters on it; the UI renders
+# whatever the API returns, so there is no second denylist in the frontend.
+#
+# Keys under `modes` match OPENRAG_RUN_MODE: oss | on_prem | saas.
+#   true  -> the provider is shown in that mode
+#   false -> the provider is hidden
+# A missing mode key means hidden, so adding a new run mode can never expose a
+# provider by accident.
+#
+# A provider that is not listed here is not offered anywhere in the UI. A model
+# id for an unlisted provider can still be typed by hand and will be routed if
+# the gateway already supports it.
+#
+# Set OPENRAG_MODEL_PROVIDERS_CONFIG to another YAML file to override this list
+# for a single deployment; this file is the default.
+
+providers:
+  - name: openai
+    display_name: OpenAI
+    modes:
+      oss: true
+      on_prem: true
+      saas: true
+
+  - name: ollama
+    display_name: Ollama
+    modes:
+      oss: true
+      on_prem: true
+      saas: false # local inference is not offered in SaaS
+
+  - name: watsonx
+    display_name: IBM watsonx.ai
+    modes:
+      oss: true
+      on_prem: true
+      saas: true
+
+  - name: anthropic
+    display_name: Anthropic
+    modes:
+      oss: true
+      on_prem: true
+      saas: true
+
+  - name: azure_ai
+    display_name: Azure AI Foundry
+    modes:
+      oss: false
+      on_prem: true
+      saas: true

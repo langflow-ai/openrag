@@ -217,6 +217,23 @@ async def get_ibm_models(
         return _models_error_response(e)
 
 
+async def get_model_providers(
+    user: User = Depends(require_permission("providers:read")),
+):
+    """Providers this run mode exposes. GET /models/providers
+
+    The one list Settings cards, Onboarding tabs and the model pickers render.
+    Unlike /models/catalog it does not need LiteLLM, so the UI can still lay out
+    its provider surfaces when the catalogue is unavailable.
+    """
+    from config.model_providers import provider_visibility_payload
+
+    return JSONResponse(
+        provider_visibility_payload(),
+        headers={"Cache-Control": "private, max-age=300"},
+    )
+
+
 async def get_model_catalog(
     user: User = Depends(require_permission("providers:read")),
 ):

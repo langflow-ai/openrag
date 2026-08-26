@@ -16,9 +16,10 @@ JSON is ~100KB, so paying for it once per process beats a re-read per request.
 `function_calling` and `vision` are published as capability flags so the UI can
 filter (agent vs VLM) without a second live provider call.
 
-The public catalogue is intentionally limited to the providers OpenRAG exposes
-in its settings UI. Generic credential helpers remain available for future
-providers, and a model that is not in the catalogue can still be typed by hand.
+The public catalogue is limited to the providers this run mode exposes, per
+``config/model_providers.yaml`` (see ``config.model_providers``). Generic
+credential helpers remain available for every other provider, and a model that
+is not in the catalogue can still be typed by hand.
 """
 
 from __future__ import annotations
@@ -28,13 +29,13 @@ import json
 from functools import lru_cache
 from typing import Any
 
+from config.model_providers import visible_provider_entries
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
 TEXT_GENERATION_MODES = frozenset({"chat", "completion", "responses"})
 EMBEDDING_MODE = "embedding"
-SUPPORTED_PROVIDER_KEYS = frozenset({"openai", "anthropic", "watsonx", "ollama"})
 
 CAPABILITY_FLAGS: dict[str, str] = {
     "supports_function_calling": "function_calling",
@@ -192,14 +193,20 @@ def _model_entry(name: str, info: dict[str, Any]) -> dict[str, Any]:
     return entry
 
 
-@lru_cache(maxsize=1)
-def _catalog() -> dict[str, Any]:
+@lru_cache(maxsize=8)
+def _catalog(providers: tuple[tuple[str, str], ...]) -> dict[str, Any]:
+    """Payload for `providers`, given as `(key, display_name)` pairs.
+
+    The pairs are the cache key, so flipping a provider's visibility (or the
+    run mode, in a test) rebuilds instead of serving a stale list.
+    """
     try:
         import litellm
     except Exception as exc:
         raise CatalogUnavailableError("litellm is not installed on the server") from exc
 
     specs = _provider_field_specs()
+    keys = {key for key, _ in providers}
     chat_by_provider: dict[str, list[dict[str, Any]]] = {}
     embed_by_provider: dict[str, list[dict[str, Any]]] = {}
 
@@ -208,7 +215,7 @@ def _catalog() -> dict[str, Any]:
             continue
         provider = info.get("litellm_provider")
         mode = info.get("mode")
-        if provider not in SUPPORTED_PROVIDER_KEYS:
+        if provider not in keys:
             continue
         if mode in TEXT_GENERATION_MODES:
             bucket = chat_by_provider
@@ -221,12 +228,16 @@ def _catalog() -> dict[str, Any]:
             continue
         bucket.setdefault(provider, []).append(_model_entry(name, info))
 
-    providers = []
-    for key in sorted(SUPPORTED_PROVIDER_KEYS):
-        providers.append(
+    entries = []
+    for key, display_name in providers:
+        entries.append(
             {
                 "key": key,
-                "name": (specs.get(key) or {}).get("provider_display_name") or key,
+                # The config file names the provider; LiteLLM's own label is
+                # the fallback for a row that left `display_name` out.
+                "name": display_name
+                or (specs.get(key) or {}).get("provider_display_name")
+                or key,
                 "credential_fields": credential_fields(key),
                 "model_placeholder": (specs.get(key) or {}).get("default_model_placeholder"),
                 "models": sorted(chat_by_provider.get(key, []), key=lambda entry: entry["model"]),
@@ -235,20 +246,20 @@ def _catalog() -> dict[str, Any]:
                 ),
             }
         )
-    return {"providers": providers}
+    return {"providers": entries}
 
 
-@lru_cache(maxsize=2)
-def _catalog_for(today: datetime.date) -> dict[str, Any]:
+@lru_cache(maxsize=8)
+def _catalog_for(today: datetime.date, providers: tuple[tuple[str, str], ...]) -> dict[str, Any]:
     """`_catalog()` with models the provider has already retired removed."""
 
     def _keep(model: dict[str, Any]) -> bool:
         retires = _parse_deprecation(model.get("deprecation_date"))
         return retires is None or retires > today
 
-    providers = []
-    for provider in _catalog()["providers"]:
-        providers.append(
+    entries = []
+    for provider in _catalog(providers)["providers"]:
+        entries.append(
             {
                 **provider,
                 "models": [model for model in provider["models"] if _keep(model)],
@@ -257,12 +268,17 @@ def _catalog_for(today: datetime.date) -> dict[str, Any]:
                 ],
             }
         )
-    return {"providers": providers}
+    return {"providers": entries}
+
+
+def supported_provider_keys() -> frozenset[str]:
+    """The providers this run mode publishes, per `config/model_providers.yaml`."""
+    return frozenset(key for key, _ in visible_provider_entries())
 
 
 def catalog(today: datetime.date | None = None) -> dict[str, Any]:
-    """Picker payload for OpenRAG's supported providers and their models."""
-    return _catalog_for(today or datetime.date.today())
+    """Picker payload for the providers this run mode exposes, and their models."""
+    return _catalog_for(today or datetime.date.today(), visible_provider_entries())
 
 
 def is_known_provider(provider: str) -> bool:
