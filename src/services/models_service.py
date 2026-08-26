@@ -19,6 +19,24 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+
+def _watsonx_rate_limited(failures: list[tuple[str, int, str]]) -> bool:
+    """Whether a watsonx model-list failure was really throttling.
+
+    watsonx wraps a throttled project-membership lookup in a 403
+    ``user_authorization_failed`` whose message embeds the original
+    ``{"code":429,"error":"Too Many Requests"}``, so the status code alone does
+    not identify it.
+    """
+    for _kind, status, body in failures:
+        if status == 429:
+            return True
+        text = (body or "").lower()
+        if '"code":429' in text or "too many requests" in text:
+            return True
+    return False
+
+
 # OpenAI /v1/models is a flat inventory. These IDs are real products but not
 # usable as OpenRAG agent LLMs (wrong modality / API surface).
 _OPENAI_NON_CHAT_PREFIXES = (
@@ -639,6 +657,8 @@ class ModelsService:
 
             language_models = []
             embedding_models = []
+            # (kind, status, body) for each model-list call that did not return 200.
+            fetch_failures: list[tuple[str, int, str]] = []
 
             async with httpx.AsyncClient() as client:
                 # Fetch text chat models
@@ -674,6 +694,9 @@ class ModelsService:
                             }
                         )
                 else:
+                    fetch_failures.append(
+                        ("text chat", text_response.status_code, text_response.text)
+                    )
                     logger.warning(
                         f"Failed to retrieve text chat models. Status: {text_response.status_code}, "
                         f"Response: {text_response.text[:200]}"
@@ -711,6 +734,9 @@ class ModelsService:
                             }
                         )
                 else:
+                    fetch_failures.append(
+                        ("embedding", embed_response.status_code, embed_response.text)
+                    )
                     logger.warning(
                         f"Failed to retrieve embedding models. Status: {embed_response.status_code}, "
                         f"Response: {embed_response.text[:200]}"
@@ -724,14 +750,31 @@ class ModelsService:
                 logger.warning("No bearer token available - API key validation may have failed")
 
             if not language_models and not embedding_models:
-                # Provide more specific error message about missing models
-                error_msg = (
-                    "API key is valid, but no models are available. "
-                    "This usually means your Watson Machine Learning (WML) project is not properly configured. "
-                    "Please ensure: (1) Your watsonx.ai project is associated with a WML service instance, "
-                    "and (2) The project has access to foundation models. "
-                    "Visit your watsonx.ai project settings to configure the WML service association."
-                )
+                # An empty list means "misconfigured project" only when the calls
+                # actually succeeded. watsonx reports throttling as a 403 whose
+                # body carries the real {"code":429,"error":"Too Many Requests"},
+                # and blaming WML setup for that sends operators to the wrong page.
+                if _watsonx_rate_limited(fetch_failures):
+                    error_msg = (
+                        "watsonx.ai is rate limiting this account, so its model list "
+                        "could not be retrieved. Wait a few minutes and try again."
+                    )
+                elif fetch_failures:
+                    statuses = ", ".join(
+                        f"{kind} models: HTTP {status}" for kind, status, _ in fetch_failures
+                    )
+                    error_msg = (
+                        f"watsonx.ai did not return a model list ({statuses}). "
+                        "Check that the API key is authorized for the configured project."
+                    )
+                else:
+                    error_msg = (
+                        "API key is valid, but no models are available. "
+                        "This usually means your Watson Machine Learning (WML) project is not properly configured. "
+                        "Please ensure: (1) Your watsonx.ai project is associated with a WML service instance, "
+                        "and (2) The project has access to foundation models. "
+                        "Visit your watsonx.ai project settings to configure the WML service association."
+                    )
                 raise Exception(error_msg)
 
             result = {
