@@ -18,9 +18,7 @@ instana_secrets = pytest.importorskip("instana.util.secrets")
 
 # Mirrors the INSTANA_SECRETS default in .env.example / docker-compose.yml /
 # kubernetes/helm/openrag/values.yaml / kubernetes/operator's env.go.
-INSTANA_SECRETS_DEFAULT = (
-    "regex:.*key.*,.*pass.*,.*secret.*,.*token.*,q\\Z,search\\Z,filename\\Z"
-)
+INSTANA_SECRETS_DEFAULT = "regex:.*key.*,.*pass.*,.*secret.*,.*token.*,q\\Z,search\\Z,filename\\Z"
 
 
 def _kwlist():
@@ -57,9 +55,7 @@ def test_default_matches_the_makefile_include_export_round_trip():
         # an undefined one expands to "". A trailing lone `$` is literal.
         return re.sub(r"\$(.)", "", value)
 
-    old_style_default = (
-        "regex:.*key.*,.*pass.*,.*secret.*,.*token.*,^q$,^search$,^filename$"
-    )
+    old_style_default = "regex:.*key.*,.*pass.*,.*secret.*,.*token.*,^q$,^search$,^filename$"
     assert make_mangled(old_style_default) != old_style_default
 
     assert make_mangled(INSTANA_SECRETS_DEFAULT) == INSTANA_SECRETS_DEFAULT
