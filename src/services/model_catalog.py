@@ -287,7 +287,14 @@ def is_known_provider(provider: str) -> bool:
     try:
         import litellm
 
-        if key in {str(value) for value in litellm.provider_list}:
+        # `provider_list` holds LlmProviders enum members, and str() on one
+        # yields "LlmProviders.OPENAI" — never the routable "openai". Reading
+        # .value is what makes this branch match; without it the check fell
+        # through to the credential-form specs below, which do not cover every
+        # provider LiteLLM can route (zai, scaleway, chatgpt, ...). Those
+        # prefixes were then left unsplit and called with the default
+        # provider's credentials.
+        if key in {getattr(value, "value", str(value)) for value in litellm.provider_list}:
             return True
     except Exception:
         logger.debug("Could not read litellm.provider_list", exc_info=True)

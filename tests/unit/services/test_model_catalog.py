@@ -96,6 +96,29 @@ def test_is_known_provider_accepts_litellm_handlers() -> None:
     assert not model_catalog.is_known_provider("")
 
 
+def test_is_known_provider_covers_every_provider_litellm_can_route() -> None:
+    """`provider_list` is enum members, not strings.
+
+    Reading them with str() gives "LlmProviders.OPENAI", so the check silently
+    fell through to the credential-form specs — which omit ~26 routable
+    providers. Their `provider/model` ids were then left unsplit and billed to
+    whatever the default provider was.
+    """
+    import litellm
+
+    routable = {getattr(value, "value", str(value)) for value in litellm.provider_list}
+    assert routable, "litellm exposes no provider list"
+    missing = sorted(key for key in routable if not model_catalog.is_known_provider(key))
+    assert not missing, missing
+
+
+def test_a_routable_prefix_without_a_credential_form_still_splits() -> None:
+    from services.llm_gateway import split_model_id
+
+    assert split_model_id("zai/glm-4.6") == ("zai", "glm-4.6")
+    assert split_model_id("not-a-provider/x") == (None, "not-a-provider/x")
+
+
 def test_exported_model_ids_route_back_to_their_owner() -> None:
     """A `/v1/models` id must resolve to the provider that owns it.
 
