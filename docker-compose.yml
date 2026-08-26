@@ -155,10 +155,10 @@ services:
       # exported to Instana verbatim. Forwarded with `:-` (unset or empty),
       # same reasoning as INSTANA_STACK_TRACE above: an empty value fails the
       # tracer's own parser and falls back to the weak built-in default, so an
-      # explicit empty override must not silently defeat this. The literal `$`
-      # characters in the regex are escaped as `$$` for Compose's own
-      # interpolation syntax (see the $$OPENSEARCH_PASSWORD healthcheck above).
-      - INSTANA_SECRETS=${INSTANA_SECRETS:-regex:.*key.*,.*pass.*,.*secret.*,.*token.*,^q$$,^search$$,^filename$$}
+      # explicit empty override must not silently defeat this. Uses `\Z`
+      # rather than a `$`-anchor (see the NOTE in .env.example) so the value
+      # survives the Makefile's `include`/`export` of `.env` unmangled.
+      - INSTANA_SECRETS=${INSTANA_SECRETS:-regex:.*key.*,.*pass.*,.*secret.*,.*token.*,q\Z,search\Z,filename\Z}
       # Listed bare rather than as `VAR=${VAR}` on purpose: the tracer tests these
       # for *presence*, not truthiness, so forwarding an empty string would set a
       # blank service name and log an "Unknown INSTANA_LOG_LEVEL" warning on every

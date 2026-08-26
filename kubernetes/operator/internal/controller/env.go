@@ -195,7 +195,7 @@ func NewEnvVarManager() *EnvVarManager {
 			"INSTANA_AGENT_PORT":      "42699",
 			"INSTANA_TRACING_DISABLE": "logging",
 			"INSTANA_STACK_TRACE":     "error",
-			"INSTANA_SECRETS":         "regex:.*key.*,.*pass.*,.*secret.*,.*token.*,^q$,^search$,^filename$",
+			"INSTANA_SECRETS":         `regex:.*key.*,.*pass.*,.*secret.*,.*token.*,q\Z,search\Z,filename\Z`,
 		},
 		DefaultOpenRagFEEnvVars: map[string]string{
 			// Frontend environment variables will be added here

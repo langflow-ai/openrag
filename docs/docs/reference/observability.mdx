@@ -59,8 +59,14 @@ The query string is the surface to pay attention to, because a few OpenRAG endpo
 The tracer's own default is `contains-ignore-case:key,pass,secret`, which covers credential-shaped parameter names such as `api_key` but leaves free-text parameters untouched — including the `q`, `search`, and `filename` parameters above. OpenRAG ships a wider value instead, so this redaction applies out of the box; it's set for you in `.env.example`, `docker-compose.yml`, the Helm chart, and the operator:
 
 ```bash
-INSTANA_SECRETS=regex:.*key.*,.*pass.*,.*secret.*,.*token.*,^q$,^search$,^filename$
+INSTANA_SECRETS=regex:.*key.*,.*pass.*,.*secret.*,.*token.*,q\Z,search\Z,filename\Z
 ```
+
+`q`, `search`, and `filename` are anchored with `\Z` (end-of-string) rather
+than `$`: the tracer matches with Python's `re.match()`, which already
+anchors at the start of the string, and `.env` is parsed as GNU Make syntax
+when loaded via `make backend` / `make dev` — a literal `$` there is
+interpreted as a Make variable reference and silently corrupted.
 
 The matcher applies to the parameter *name*, not its value, and only one matcher is in effect at a time.
 To fall back to the tracer's own weaker default, set this to an empty value; the tracer logs a `Couldn't parse INSTANA_SECRETS` warning each time you do.

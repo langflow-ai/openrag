@@ -423,7 +423,7 @@ backend:
     # privacy: the tracer's own default only catches credential-shaped names,
     # so without it OpenRAG's search text (`q`, `search`, `filename` query
     # parameters) is exported to your Instana tenant verbatim.
-    secrets: "regex:.*key.*,.*pass.*,.*secret.*,.*token.*,^q$,^search$,^filename$"
+    secrets: "regex:.*key.*,.*pass.*,.*secret.*,.*token.*,q\\Z,search\\Z,filename\\Z"
 
 # ============================================================================
 # OpenRAG Frontend Configuration

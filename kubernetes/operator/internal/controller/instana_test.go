@@ -210,7 +210,7 @@ func TestInstanaSecretsDefaultRedactsOpenRAGQueryParams(t *testing.T) {
 	m := NewEnvVarManager()
 
 	assert.Equal(t,
-		"regex:.*key.*,.*pass.*,.*secret.*,.*token.*,^q$,^search$,^filename$",
+		`regex:.*key.*,.*pass.*,.*secret.*,.*token.*,q\Z,search\Z,filename\Z`,
 		m.DefaultOpenRagBEEnvVars["INSTANA_SECRETS"],
 		"must keep the tracer's own credential coverage and add OpenRAG's free-text search parameters")
 }
