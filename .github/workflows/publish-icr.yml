@@ -1,9 +1,6 @@
 name: Publish to ICR.io
 
 on:
-  push:
-    branches:
-      - '**'
   workflow_dispatch:
 
 jobs:
