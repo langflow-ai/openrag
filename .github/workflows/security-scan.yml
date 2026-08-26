@@ -1,0 +1,191 @@
+name: Nightly Security Scan
+
+on:
+  schedule:
+    # Run nightly at 02:00 UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      fail_on_critical:
+        description: 'Fail workflow if Critical vulnerabilities are found'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  scan-container-images:
+    name: Container Image Scan (${{ matrix.image.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - name: backend
+            file: ./Dockerfile.backend
+            context: .
+          - name: frontend
+            file: ./Dockerfile.frontend
+            context: .
+          - name: langflow
+            file: ./Dockerfile.langflow
+            context: .
+          - name: opensearch
+            file: ./Dockerfile
+            context: .
+          - name: operator
+            file: kubernetes/operator/Dockerfile
+            context: kubernetes/operator
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build local container image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.image.context }}
+          file: ${{ matrix.image.file }}
+          load: true
+          tags: openrag-${{ matrix.image.name }}:local
+          cache-from: type=gha,scope=security-${{ matrix.image.name }}
+          cache-to: type=gha,mode=max,scope=security-${{ matrix.image.name }}
+
+      - name: Run Trivy Vulnerability Scan (Image)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: openrag-${{ matrix.image.name }}:local
+          format: json
+          output: trivy-image-${{ matrix.image.name }}.json
+          exit-code: 0
+          ignore-unfixed: false
+          vuln-type: os,library
+          severity: CRITICAL,HIGH,MEDIUM,LOW
+
+      - name: Upload Trivy Image Scan Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-image-${{ matrix.image.name }}
+          path: trivy-image-${{ matrix.image.name }}.json
+          retention-days: 14
+
+  oss-scan:
+    name: OSS Dependency Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run pip-audit for Python Dependencies
+        run: |
+          mkdir -p reports
+          pip install pip-audit
+          pip-audit --format json -o reports/pip-audit-python.json || true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run npm audit for Frontend & Docs
+        run: |
+          mkdir -p reports
+          (cd frontend && npm audit --json > ../reports/npm-audit-frontend.json || true)
+          (cd docs && npm audit --json > ../reports/npm-audit-docs.json || true)
+          (cd sdks/typescript && npm audit --json > ../reports/npm-audit-sdk-ts.json || true)
+
+      - name: Run Trivy Filesystem Scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: json
+          output: reports/trivy-fs.json
+          exit-code: 0
+          severity: CRITICAL,HIGH,MEDIUM,LOW
+
+      - name: Upload OSS Audit Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: oss-scan-results
+          path: reports/*.json
+          retention-days: 14
+
+  static-scan:
+    name: Static Code Security (SAST)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run Bandit for Python SAST
+        run: |
+          mkdir -p sast-reports
+          pip install bandit
+          bandit -r src/ -f json -o sast-reports/bandit.json || true
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: kubernetes/operator/go.mod
+
+      - name: Install and Run Gosec for Go SAST
+        run: |
+          mkdir -p sast-reports
+          curl -sfL https://raw.githubusercontent.com/securego/gosec/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.22.1
+          (cd kubernetes/operator && $(go env GOPATH)/bin/gosec -fmt=json -out=../../sast-reports/gosec.json ./... || true)
+
+      - name: Upload SAST Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: static-scan-results
+          path: sast-reports/*.json
+          retention-days: 14
+
+  generate-report:
+    name: Consolidate Security Report
+    needs: [scan-container-images, oss-scan, static-scan]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Download all scan artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: security-reports
+          merge-multiple: true
+
+      - name: Generate Consolidated Security Markdown Report
+        run: |
+          python3 scripts/ci/generate_security_report.py security-reports/ -o security-reports/security-report.md
+
+      - name: Upload Consolidated Security Report Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-report-summary
+          path: |
+            security-reports/security-report.md
+            security-reports/*.json
+          retention-days: 30
