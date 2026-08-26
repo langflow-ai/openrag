@@ -3,13 +3,15 @@
 import { useIsFetching, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   type OnboardingVariables,
   useOnboardingMutation,
 } from "@/app/api/mutations/useOnboardingMutation";
 import { useOnboardingRollbackMutation } from "@/app/api/mutations/useOnboardingRollbackMutation";
+import { useGetModelProvidersQuery } from "@/app/api/queries/useGetModelProvidersQuery";
+import { useGetModelCatalogQuery } from "@/app/api/queries/useGetModelsQuery";
 import {
   type ProviderSettings,
   useGetSettingsQuery,
@@ -17,15 +19,12 @@ import {
 import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import type { ProviderHealthResponse } from "@/app/api/queries/useProviderHealthQuery";
 import {
-  CLOUD_EXCLUDED_PROVIDERS,
   EMBEDDING_PROVIDER_ORDER,
+  getProviderChrome,
   LLM_PROVIDER_ORDER,
+  orderProviders,
 } from "@/app/settings/_helpers/model-helpers";
 import { useDoclingHealth } from "@/components/docling-health-banner";
-import AnthropicLogo from "@/components/icons/anthropic-logo";
-import IBMLogo from "@/components/icons/ibm-logo";
-import OllamaLogo from "@/components/icons/ollama-logo";
-import OpenAILogo from "@/components/icons/openai-logo";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -33,7 +32,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useIsCloudBrand } from "@/contexts/brand-context";
 import {
   trackButton,
   trackProcessFailure,
@@ -43,6 +41,7 @@ import { formatProviderErrorMessage } from "@/lib/chat-stream-errors";
 import { cn } from "@/lib/utils";
 import { AnimatedProviderSteps } from "./animated-provider-steps";
 import { AnthropicOnboarding } from "./anthropic-onboarding";
+import { GenericOnboarding } from "./generic-onboarding";
 import { IBMOnboarding } from "./ibm-onboarding";
 import { OllamaOnboarding } from "./ollama-onboarding";
 import { OpenAIOnboarding } from "./openai-onboarding";
@@ -60,6 +59,10 @@ const STEP_LIST = [
   "Configuring Langflow",
 ];
 
+// Providers whose model inventory is read live from the running service, so an
+// empty catalogue list says nothing about what they can serve.
+const LIVE_MODEL_PROVIDERS = new Set(["ollama", "watsonx"]);
+
 const EMBEDDING_STEP_LIST = [
   "Setting up your model provider",
   "Defining schema",
@@ -73,11 +76,69 @@ const OnboardingCard = ({
   isCompleted = false,
 }: OnboardingCardProps) => {
   const { isHealthy: isDoclingHealthy } = useDoclingHealth();
-  const isCloudBrand = useIsCloudBrand();
+
+  // Which providers this deployment offers comes from the backend, filtered by
+  // OPENRAG_RUN_MODE (config/model_providers.yaml). Onboarding renders that
+  // list; it does not decide availability from the UI brand.
+  const { data: providerData } = useGetModelProvidersQuery();
+  const availableProviders = useMemo(
+    () => providerData?.providers ?? [],
+    [providerData],
+  );
+  const providerDisplayNames = useMemo(
+    () =>
+      Object.fromEntries(
+        availableProviders.map(({ name, display_name }) => [
+          name,
+          display_name,
+        ]),
+      ),
+    [availableProviders],
+  );
+  const providerKeys = useMemo(
+    () =>
+      orderProviders(
+        availableProviders.map((provider) => provider.name),
+        isEmbedding ? EMBEDDING_PROVIDER_ORDER : LLM_PROVIDER_ORDER,
+      ),
+    [availableProviders, isEmbedding],
+  );
+
+  const { data: catalog } = useGetModelCatalogQuery();
+
+  // The embedding step must not offer a provider that serves no embedding
+  // models — Anthropic being the standing example. The catalogue answers that
+  // for every provider except the two whose inventory comes from the running
+  // server rather than LiteLLM's bundled list.
+  const tabProviders = useMemo(() => {
+    if (!isEmbedding) {
+      return providerKeys;
+    }
+    return providerKeys.filter((providerKey) => {
+      if (LIVE_MODEL_PROVIDERS.has(providerKey)) {
+        return true;
+      }
+      const entry = catalog?.providers?.find(
+        (item) => item.key === providerKey,
+      );
+      // Catalogue not loaded yet: hide nothing rather than flicker tabs away.
+      return !entry || entry.embedding_models.length > 0;
+    });
+  }, [providerKeys, isEmbedding, catalog]);
 
   const [modelProvider, setModelProvider] = useState<string>(
     isEmbedding ? "openai" : "anthropic",
   );
+
+  // The default above may not be offered here (Anthropic disabled, or the
+  // embedding step). Fall back to the first provider this step does offer.
+  const [prevTabProviders, setPrevTabProviders] = useState<string[]>([]);
+  if (tabProviders !== prevTabProviders && tabProviders.length > 0) {
+    setPrevTabProviders(tabProviders);
+    if (!tabProviders.includes(modelProvider)) {
+      setModelProvider(tabProviders[0]);
+    }
+  }
 
   // Read model-fetch loading from React Query instead of syncing it up from children.
   const isLoadingModels = useIsFetching({ queryKey: ["models"] }) > 0;
@@ -94,14 +155,7 @@ const OnboardingCard = ({
   if (currentSettings?.providers !== prevProviders) {
     setPrevProviders(currentSettings?.providers);
     if (currentSettings?.providers) {
-      const fullOrder = isEmbedding
-        ? EMBEDDING_PROVIDER_ORDER
-        : LLM_PROVIDER_ORDER;
-      const providerOrder = isCloudBrand
-        ? fullOrder.filter((p) => !CLOUD_EXCLUDED_PROVIDERS.includes(p))
-        : fullOrder;
-
-      for (const provider of providerOrder) {
+      for (const provider of tabProviders) {
         if (
           provider === "anthropic" &&
           currentSettings.providers.anthropic?.has_api_key
@@ -125,6 +179,11 @@ const OnboardingCard = ({
           currentSettings.providers.ollama?.endpoint
         ) {
           setModelProvider("ollama");
+          break;
+        } else if (
+          currentSettings.providers.custom?.[provider]?.configured === true
+        ) {
+          setModelProvider(provider);
           break;
         }
       }
@@ -155,7 +214,7 @@ const OnboardingCard = ({
     } else if (provider === "ollama") {
       return currentSettings.providers.ollama?.configured === true;
     }
-    return false;
+    return currentSettings.providers.custom?.[provider]?.configured === true;
   };
 
   const showProviderConfiguredMessage =
@@ -476,6 +535,13 @@ const OnboardingCard = ({
       onboardingData.ollama_endpoint = settings.ollama_endpoint;
     }
 
+    // Providers configured through the generic form submit their credentials
+    // as-is; the backend stores whatever field keys the provider declares.
+    const generic = settings.provider_credentials?.[currentProvider];
+    if (generic && Object.keys(generic).length > 0) {
+      onboardingData.provider_credentials = { [currentProvider]: generic };
+    }
+
     trackButton({
       CTA: isEmbedding ? "Complete - Embedding Setup" : "Complete - LLM Setup",
       elementId: "onboarding-complete-button",
@@ -534,197 +600,117 @@ const OnboardingCard = ({
                 onValueChange={handleSetModelProvider}
               >
                 <TabsList className="mb-4">
-                  {!isEmbedding && (
-                    <TabsTrigger
-                      value="anthropic"
-                      data-testid={`anthropic-llm-tab`}
-                      className={cn(
-                        error &&
-                          modelProvider === "anthropic" &&
-                          "data-[state=active]:border-destructive",
-                      )}
-                    >
-                      <TabTrigger
-                        selected={modelProvider === "anthropic"}
-                        isLoading={isLoadingModels}
-                      >
-                        <div
-                          className={cn(
-                            "flex items-center justify-center gap-2 w-8 h-8 rounded-none border",
-                            modelProvider === "anthropic"
-                              ? "bg-[#D97757]"
-                              : "bg-muted",
-                          )}
-                        >
-                          <AnthropicLogo
-                            className={cn(
-                              "w-4 h-4 shrink-0",
-                              modelProvider === "anthropic"
-                                ? "text-black"
-                                : "text-muted-foreground",
-                            )}
-                          />
-                        </div>
-                        Anthropic
-                      </TabTrigger>
-                    </TabsTrigger>
-                  )}
-                  <TabsTrigger
-                    value="openai"
-                    className={cn(
-                      error &&
-                        modelProvider === "openai" &&
-                        "data-[state=active]:border-destructive",
-                    )}
-                    data-testid={`openai-${isEmbedding ? "embedding" : "llm"}-tab`}
-                  >
-                    <TabTrigger
-                      selected={modelProvider === "openai"}
-                      isLoading={isLoadingModels}
-                    >
-                      <div
+                  {tabProviders.map((providerKey) => {
+                    const chrome = getProviderChrome(
+                      providerKey,
+                      providerDisplayNames[providerKey],
+                    );
+                    const Logo = chrome.logo;
+                    const selected = modelProvider === providerKey;
+                    return (
+                      <TabsTrigger
+                        key={providerKey}
+                        value={providerKey}
+                        data-testid={`${providerKey}-${isEmbedding ? "embedding" : "llm"}-tab`}
                         className={cn(
-                          "flex items-center justify-center gap-2 w-8 h-8 rounded-none border",
-                          modelProvider === "openai" ? "bg-white" : "bg-muted",
+                          error &&
+                            selected &&
+                            "data-[state=active]:border-destructive",
                         )}
                       >
-                        <OpenAILogo
-                          className={cn(
-                            "w-4 h-4 shrink-0",
-                            modelProvider === "openai"
-                              ? "text-black"
-                              : "text-muted-foreground",
-                          )}
-                        />
-                      </div>
-                      OpenAI
-                    </TabTrigger>
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="watsonx"
-                    data-testid={`watsonx-${isEmbedding ? "embedding" : "llm"}-tab`}
-                    className={cn(
-                      error &&
-                        modelProvider === "watsonx" &&
-                        "data-[state=active]:border-destructive",
-                    )}
-                  >
-                    <TabTrigger
-                      selected={modelProvider === "watsonx"}
-                      isLoading={isLoadingModels}
-                    >
-                      <div
-                        className={cn(
-                          "flex items-center justify-center gap-2 w-8 h-8 rounded-none border",
-                          modelProvider === "watsonx"
-                            ? "bg-[#1063FE]"
-                            : "bg-muted",
-                        )}
-                      >
-                        <IBMLogo
-                          className={cn(
-                            "w-4 h-4 shrink-0",
-                            modelProvider === "watsonx"
-                              ? "text-white"
-                              : "text-muted-foreground",
-                          )}
-                        />
-                      </div>
-                      IBM watsonx.ai
-                    </TabTrigger>
-                  </TabsTrigger>
-                  {!isCloudBrand && (
-                    <TabsTrigger
-                      value="ollama"
-                      data-testid={`ollama-${isEmbedding ? "embedding" : "llm"}-tab`}
-                      className={cn(
-                        error &&
-                          modelProvider === "ollama" &&
-                          "data-[state=active]:border-destructive",
-                      )}
-                    >
-                      <TabTrigger
-                        selected={modelProvider === "ollama"}
-                        isLoading={isLoadingModels}
-                      >
-                        <div
-                          className={cn(
-                            "flex items-center justify-center gap-2 w-8 h-8 rounded-none border",
-                            modelProvider === "ollama"
-                              ? "bg-white"
-                              : "bg-muted",
-                          )}
+                        <TabTrigger
+                          selected={selected}
+                          isLoading={isLoadingModels}
                         >
-                          <OllamaLogo
+                          <div
                             className={cn(
-                              "w-4 h-4 shrink-0",
-                              modelProvider === "ollama"
-                                ? "text-black"
-                                : "text-muted-foreground",
+                              "flex items-center justify-center gap-2 w-8 h-8 rounded-none border",
+                              selected
+                                ? (chrome.tabLogoBgColor ?? chrome.logoBgColor)
+                                : "bg-muted",
                             )}
-                          />
-                        </div>
-                        Ollama
-                      </TabTrigger>
-                    </TabsTrigger>
-                  )}
+                          >
+                            <Logo
+                              className={cn(
+                                "w-4 h-4 shrink-0",
+                                selected
+                                  ? (chrome.tabLogoColor ?? chrome.logoColor)
+                                  : "text-muted-foreground",
+                              )}
+                            />
+                          </div>
+                          {chrome.name}
+                        </TabTrigger>
+                      </TabsTrigger>
+                    );
+                  })}
                 </TabsList>
-                {!isEmbedding && (
-                  <TabsContent value="anthropic">
-                    <AnthropicOnboarding
-                      setSettings={setSettings}
-                      isEmbedding={isEmbedding}
-                      hasEnvApiKey={
-                        currentSettings?.providers?.anthropic?.has_api_key ===
-                        true
-                      }
-                    />
+                {tabProviders.map((providerKey) => (
+                  <TabsContent key={providerKey} value={providerKey}>
+                    {providerKey === "anthropic" ? (
+                      <AnthropicOnboarding
+                        setSettings={setSettings}
+                        isEmbedding={isEmbedding}
+                        hasEnvApiKey={
+                          currentSettings?.providers?.anthropic?.has_api_key ===
+                          true
+                        }
+                      />
+                    ) : providerKey === "openai" ? (
+                      <OpenAIOnboarding
+                        setSettings={setSettings}
+                        isEmbedding={isEmbedding}
+                        hasEnvApiKey={
+                          currentSettings?.providers?.openai?.has_api_key ===
+                          true
+                        }
+                        alreadyConfigured={
+                          providerAlreadyConfigured &&
+                          modelProvider === "openai"
+                        }
+                      />
+                    ) : providerKey === "watsonx" ? (
+                      <IBMOnboarding
+                        setSettings={setSettings}
+                        isEmbedding={isEmbedding}
+                        alreadyConfigured={
+                          providerAlreadyConfigured &&
+                          modelProvider === "watsonx"
+                        }
+                        existingEndpoint={
+                          currentSettings?.providers?.watsonx?.endpoint
+                        }
+                        existingProjectId={
+                          currentSettings?.providers?.watsonx?.project_id
+                        }
+                        hasEnvApiKey={
+                          currentSettings?.providers?.watsonx?.has_api_key ===
+                          true
+                        }
+                      />
+                    ) : providerKey === "ollama" ? (
+                      <OllamaOnboarding
+                        setSettings={setSettings}
+                        isEmbedding={isEmbedding}
+                        alreadyConfigured={
+                          providerAlreadyConfigured &&
+                          modelProvider === "ollama"
+                        }
+                        existingEndpoint={
+                          currentSettings?.providers?.ollama?.endpoint
+                        }
+                      />
+                    ) : (
+                      <GenericOnboarding
+                        provider={providerKey}
+                        displayName={providerDisplayNames[providerKey]}
+                        setSettings={setSettings}
+                        isEmbedding={isEmbedding}
+                        providers={currentSettings?.providers}
+                      />
+                    )}
                   </TabsContent>
-                )}
-                <TabsContent value="openai">
-                  <OpenAIOnboarding
-                    setSettings={setSettings}
-                    isEmbedding={isEmbedding}
-                    hasEnvApiKey={
-                      currentSettings?.providers?.openai?.has_api_key === true
-                    }
-                    alreadyConfigured={
-                      providerAlreadyConfigured && modelProvider === "openai"
-                    }
-                  />
-                </TabsContent>
-                <TabsContent value="watsonx">
-                  <IBMOnboarding
-                    setSettings={setSettings}
-                    isEmbedding={isEmbedding}
-                    alreadyConfigured={
-                      providerAlreadyConfigured && modelProvider === "watsonx"
-                    }
-                    existingEndpoint={
-                      currentSettings?.providers?.watsonx?.endpoint
-                    }
-                    existingProjectId={
-                      currentSettings?.providers?.watsonx?.project_id
-                    }
-                    hasEnvApiKey={
-                      currentSettings?.providers?.watsonx?.has_api_key === true
-                    }
-                  />
-                </TabsContent>
-                {!isCloudBrand && (
-                  <TabsContent value="ollama">
-                    <OllamaOnboarding
-                      setSettings={setSettings}
-                      isEmbedding={isEmbedding}
-                      alreadyConfigured={
-                        providerAlreadyConfigured && modelProvider === "ollama"
-                      }
-                      existingEndpoint={
-                        currentSettings?.providers?.ollama?.endpoint
-                      }
-                    />
-                  </TabsContent>
-                )}
+                ))}
               </Tabs>
 
               <Tooltip>
