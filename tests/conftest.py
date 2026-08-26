@@ -14,25 +14,26 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-# Remember whether the tracer was asked for by the *shell* before .env can
-# answer the question for us — load_dotenv() below merges .env into os.environ,
-# after which the two sources are indistinguishable.
-_INSTANA_FROM_SHELL = os.environ.get("INSTANA_ENABLED")
-
 # Load environment variables
 load_dotenv()
 
-# Keep the Instana tracer out of the test process unless it was asked for
-# explicitly on the command line (`INSTANA_ENABLED=true uv run pytest`).
+# Keep the Instana tracer out of the test process unless a developer opted in
+# explicitly with OPENRAG_TEST_INSTANA=true. INSTANA_ENABLED alone can't be used
+# for this: `make test` / `make test-unit` export every key in .env (including
+# INSTANA_ENABLED, if a developer has it set there for local app development)
+# into the pytest process before it starts, making it indistinguishable from an
+# explicit shell override.
 #
 # `from main import ...` below pulls in `bootstrap`, which boots the tracer at
-# import time, so a developer with INSTANA_ENABLED=true in .env would otherwise
-# run the entire suite instrumented. That costs ~1.1s of extra import time per
-# process and monkey-patches logging, asyncio.create_task, httpx, urllib3 and
-# sqlalchemy underneath every test — and in instana 3.17.0 each WARNING/ERROR
-# logged inside a trace leaks an event into a process-global list that every
-# later log span re-walks. None of that belongs in a test run.
-if _INSTANA_FROM_SHELL is None:
+# import time, so leaving INSTANA_ENABLED alone here would run the entire suite
+# instrumented. That costs ~1.1s of extra import time per process and
+# monkey-patches logging, asyncio.create_task, httpx, urllib3 and sqlalchemy
+# underneath every test — and in instana 3.17.0 each WARNING/ERROR logged
+# inside a trace leaks an event into a process-global list that every later
+# log span re-walks. None of that belongs in a test run.
+from observability.instana_boot import is_instana_test_opt_in  # noqa: E402
+
+if not is_instana_test_opt_in():
     os.environ["INSTANA_ENABLED"] = "false"
 
 # Force no-auth mode for testing by setting OAuth credentials to empty strings

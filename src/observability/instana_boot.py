@@ -33,6 +33,25 @@ def is_instana_enabled(value: str | None = None) -> bool:
     return value.strip().lower() in _TRUTHY_VALUES
 
 
+TEST_OPT_IN_ENV_VAR = "OPENRAG_TEST_INSTANA"
+
+
+def is_instana_test_opt_in(value: str | None = None) -> bool:
+    """Whether a developer explicitly opted an instrumented *test* run in.
+
+    ``INSTANA_ENABLED`` alone can't be used for this: ``make test`` /
+    ``make test-unit`` export every key present in ``.env`` (including
+    ``INSTANA_ENABLED``, if a developer has it set there for local app
+    development) into the pytest process before it starts, making it
+    indistinguishable from an explicit shell override. This is a separate,
+    test-only switch that is never written to ``.env.example`` and never
+    exported by a normal Make flow.
+    """
+    if value is None:
+        value = os.environ.get(TEST_OPT_IN_ENV_VAR, "")
+    return is_instana_enabled(value)
+
+
 def boot_instana() -> bool:
     """Load the Instana tracer when enabled. Returns True when it was loaded.
 

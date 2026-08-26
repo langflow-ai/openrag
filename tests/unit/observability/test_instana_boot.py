@@ -10,7 +10,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from observability.instana_boot import INSTANA_ENABLED_ENV_VAR, boot_instana, is_instana_enabled
+from observability.instana_boot import (
+    INSTANA_ENABLED_ENV_VAR,
+    TEST_OPT_IN_ENV_VAR,
+    boot_instana,
+    is_instana_enabled,
+    is_instana_test_opt_in,
+)
 from utils import logging_config
 
 
@@ -86,3 +92,26 @@ def test_boot_warns_and_continues_when_the_package_is_missing(monkeypatch):
     assert boot_instana() is False
     assert len(warnings) == 1
     assert "uv sync --extra apm" in warnings[0]
+
+
+@pytest.mark.parametrize("value", ["true", "1", "yes", "TRUE", " true "])
+def test_test_opt_in_accepts_the_same_spellings_as_is_instana_enabled(value):
+    assert is_instana_test_opt_in(value) is True
+
+
+@pytest.mark.parametrize("value", ["false", "0", "no", ""])
+def test_test_opt_in_is_off_by_default(value):
+    assert is_instana_test_opt_in(value) is False
+
+
+def test_test_opt_in_ignores_an_env_derived_instana_enabled_value(monkeypatch):
+    """Regression for discussion_r3854845897: a value `make test` exported from
+    .env for INSTANA_ENABLED must not be mistaken for an explicit test opt-in."""
+    monkeypatch.setenv(INSTANA_ENABLED_ENV_VAR, "true")
+    monkeypatch.delenv(TEST_OPT_IN_ENV_VAR, raising=False)
+    assert is_instana_test_opt_in() is False
+
+
+def test_test_opt_in_reads_its_own_env_var(monkeypatch):
+    monkeypatch.setenv(TEST_OPT_IN_ENV_VAR, "true")
+    assert is_instana_test_opt_in() is True
