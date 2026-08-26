@@ -1,3 +1,5 @@
+import { LabelInput } from "@/components/label-input";
+import { LabelInput } from "@/components/label-input";
 import { LabelWrapper } from "@/components/label-wrapper";
 import { ModelSelector } from "@/components/models/model-selector";
 
@@ -10,6 +12,9 @@ export function AdvancedOnboarding({
   searchPlaceholder,
   setLanguageModel,
   setEmbeddingModel,
+  baseUrl,
+  onBaseUrlChange,
+  baseUrlDisabled,
 }: {
   icon?: React.ReactNode;
   languageModels?: { value: string; label: string }[];
@@ -19,6 +24,10 @@ export function AdvancedOnboarding({
   searchPlaceholder?: string;
   setLanguageModel?: (model: string) => void;
   setEmbeddingModel?: (model: string) => void;
+  /** Optional custom base URL input (currently OpenAI-only). */
+  baseUrl?: string;
+  onBaseUrlChange?: (value: string) => void;
+  baseUrlDisabled?: boolean;
 }) {
   const hasEmbeddingModels =
     embeddingModels !== undefined &&
@@ -28,9 +37,22 @@ export function AdvancedOnboarding({
     languageModels !== undefined &&
     languageModel !== undefined &&
     setLanguageModel !== undefined;
+  const hasBaseUrl = baseUrl !== undefined && onBaseUrlChange !== undefined;
 
   return (
     <div className="space-y-6">
+      {hasBaseUrl && (
+        <LabelInput
+          label="Base URL"
+          helperText="Optional: point to a self-hosted OpenAI-compatible gateway instead of api.openai.com"
+          id="base-url"
+          required={false}
+          placeholder="https://api.openai.com/v1"
+          value={baseUrl}
+          onChange={(e) => onBaseUrlChange?.(e.target.value)}
+          disabled={baseUrlDisabled}
+        />
+      )}
       {hasEmbeddingModels && (
         <LabelWrapper
           label="Embedding model"
