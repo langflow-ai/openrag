@@ -278,3 +278,71 @@ async def test_embeddings_calls_litellm(monkeypatch):
     assert result["data"][0]["embedding"] == [0.1]
     assert captured["api_key"] == "sk-openai"
     assert captured["input"] == ["hello"]
+
+
+class _RecordingLogger:
+    """structlog-style logger that records calls instead of emitting them."""
+
+    def __init__(self):
+        self.calls: list[tuple[str, str, dict]] = []
+
+    def _record(self, level):
+        def log(event, **kwargs):
+            self.calls.append((level, event, kwargs))
+
+        return log
+
+    def __getattr__(self, name):
+        return self._record(name)
+
+
+def test_log_completion_shape_flags_an_empty_completion(monkeypatch):
+    """An empty completion must be visible in logs, not silently returned.
+
+    Langflow's agent ends its loop on an empty completion and the user just
+    sees "The server didn't return a response", with nothing upstream to
+    explain it.
+    """
+    from services import llm_gateway
+
+    recorder = _RecordingLogger()
+    monkeypatch.setattr(llm_gateway, "logger", recorder)
+
+    payload = {"choices": [{"finish_reason": "stop", "message": {"content": "", "tool_calls": []}}]}
+    llm_gateway._log_completion_shape(payload, "watsonx", "watsonx/ibm/granite-4-h-small")
+
+    assert recorder.calls, "nothing was logged"
+    level, event, fields = recorder.calls[0]
+    assert level == "warning"
+    assert "no content and no tool calls" in event
+    assert fields["provider"] == "watsonx"
+    assert fields["tool_calls"] == 0
+    assert fields["content_chars"] == 0
+
+
+def test_log_completion_shape_reports_a_normal_completion(monkeypatch):
+    from services import llm_gateway
+
+    recorder = _RecordingLogger()
+    monkeypatch.setattr(llm_gateway, "logger", recorder)
+
+    payload = {
+        "choices": [
+            {"finish_reason": "stop", "message": {"content": "secret answer", "tool_calls": []}}
+        ]
+    }
+    llm_gateway._log_completion_shape(payload, "openai", "gpt-4o-mini")
+
+    level, _event, fields = recorder.calls[0]
+    assert level == "info"
+    assert fields["content_chars"] == len("secret answer")
+    # Metadata only — message content must never reach the logs.
+    assert "secret answer" not in str(recorder.calls)
+
+
+def test_log_completion_shape_survives_an_unexpected_payload():
+    from services import llm_gateway
+
+    # Must never raise: diagnostics run on the response path.
+    llm_gateway._log_completion_shape({"choices": "not-a-list"}, "openai", "gpt-4o-mini")
+    llm_gateway._log_completion_shape({}, "openai", "gpt-4o-mini")

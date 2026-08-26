@@ -209,6 +209,38 @@ def _chunk_payload(chunk: Any) -> str:
     return json.dumps({"data": str(chunk)})
 
 
+def _log_completion_shape(payload: dict[str, Any], provider: str, model: str) -> None:
+    """Record the shape of a non-streaming completion.
+
+    An empty completion is indistinguishable from a transport failure once it
+    reaches Langflow: the agent simply ends its loop and the user sees "The
+    server didn't return a response". Only metadata is logged — never message
+    content — so this stays safe to leave on.
+    """
+    try:
+        choices = payload.get("choices") or []
+        first = choices[0] if choices else {}
+        message = first.get("message") or {}
+        content = message.get("content") or ""
+        tool_calls = message.get("tool_calls") or []
+        finish_reason = first.get("finish_reason")
+        empty = not str(content).strip() and not tool_calls
+        log = logger.warning if empty else logger.info
+        log(
+            "LLM chat completion returned no content and no tool calls"
+            if empty
+            else "LLM chat completion",
+            provider=provider,
+            model=model,
+            finish_reason=finish_reason,
+            content_chars=len(str(content)),
+            tool_calls=len(tool_calls),
+            choices=len(choices),
+        )
+    except Exception:  # diagnostics must never break a response
+        logger.debug("Could not summarise completion shape", exc_info=True)
+
+
 async def chat_completions(
     body: Mapping[str, Any], *, config=None
 ) -> dict[str, Any] | AsyncIterator[str]:
@@ -236,7 +268,9 @@ async def chat_completions(
 
     if stream:
         return _stream_sse(result)
-    return _to_openai_dict(result)
+    payload = _to_openai_dict(result)
+    _log_completion_shape(payload, provider, litellm_model)
+    return payload
 
 
 async def _stream_sse(stream: Any) -> AsyncIterator[str]:
