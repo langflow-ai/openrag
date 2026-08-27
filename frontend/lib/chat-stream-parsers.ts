@@ -236,6 +236,36 @@ export function parseRealtimeChunk(
     return true;
   }
 
+  // Tool-call argument events feed the tool panel, never the answer text. They
+  // must be claimed here even when no matching call is tracked: parseOpenRAGChunk
+  // is the next parser in the chain and its generic string-`delta` branch would
+  // otherwise splice the raw arguments JSON into the visible message.
+  if (
+    type === "response.function_call_arguments.delta" ||
+    type === "response.function_call_arguments.done"
+  ) {
+    const itemId = c.item_id as string | undefined;
+    const target =
+      calls.find((fc) => fc.id === itemId) ??
+      [...calls].reverse().find((fc) => fc.status === "pending");
+
+    if (target) {
+      // `.done` carries the complete arguments, so it replaces rather than
+      // appends — a provider that sends both would double them otherwise.
+      target.argumentsString =
+        type === "response.function_call_arguments.done"
+          ? ((c.arguments as string) ?? target.argumentsString ?? "")
+          : (target.argumentsString ?? "") + ((c.delta as string) || "");
+
+      try {
+        target.arguments = JSON.parse(target.argumentsString || "{}");
+      } catch {
+        // Arguments still arriving; leave the parsed form alone.
+      }
+    }
+    return true;
+  }
+
   if (type === "response.output_text.delta") {
     content.value += (c.delta as string) || "";
     return true;

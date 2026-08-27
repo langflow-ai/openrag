@@ -9,17 +9,20 @@ from config.config_manager import ConfigManager
 
 
 def test_disable_ingest_default(monkeypatch):
-    """Verify that disable_ingest_with_langflow defaults to False when no env var is present."""
+    """Verify that disable_ingest_with_langflow defaults to True when no env var is present."""
     monkeypatch.delenv("DISABLE_INGEST_WITH_LANGFLOW", raising=False)
     with tempfile.TemporaryDirectory() as tmp:
         cfg_file = Path(tmp) / "config.yaml"
         cm = ConfigManager(config_file=str(cfg_file))
         config = cm.load_config()
-        assert config.knowledge.disable_ingest_with_langflow is False
+        assert config.knowledge.disable_ingest_with_langflow is True
 
 
 def test_disable_ingest_env_override(monkeypatch):
     """Verify that DISABLE_INGEST_WITH_LANGFLOW env var sets the default value of the setting."""
+    # Temporary demo override pins this True; turn it off so the real
+    # precedence is still under test. Remove with the override.
+    monkeypatch.setattr("config.config_manager._FORCE_LANGFLOWLESS_INGEST", False)
     monkeypatch.setenv("DISABLE_INGEST_WITH_LANGFLOW", "true")
     with tempfile.TemporaryDirectory() as tmp:
         cfg_file = Path(tmp) / "config.yaml"
@@ -44,6 +47,9 @@ def test_disable_ingest_env_override(monkeypatch):
 
 def test_disable_ingest_preserves_on_save(monkeypatch):
     """Verify that manual updates are persisted to yaml file and not overridden by env var on subsequent loads."""
+    # Temporary demo override pins this True; turn it off so the real
+    # precedence is still under test. Remove with the override.
+    monkeypatch.setattr("config.config_manager._FORCE_LANGFLOWLESS_INGEST", False)
     monkeypatch.setenv("DISABLE_INGEST_WITH_LANGFLOW", "false")
     with tempfile.TemporaryDirectory() as tmp:
         cfg_file = Path(tmp) / "config.yaml"

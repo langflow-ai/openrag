@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   useGetAnthropicModelsQuery,
+  useGetAzureAIFoundryModelsQuery,
   useGetIBMModelsQuery,
   useGetOllamaModelsQuery,
   useGetOpenAIModelsQuery,
@@ -22,6 +23,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
@@ -83,6 +86,15 @@ export function AgentSettingsSection() {
           !!settings?.providers?.watsonx?.project_id,
       },
     );
+  const { data: azureModels, isLoading: azureLoading } =
+    useGetAzureAIFoundryModelsQuery(
+      { endpoint: settings?.providers?.azure_ai_foundry?.endpoint, apiKey: "" },
+      {
+        enabled:
+          settings?.providers?.azure_ai_foundry?.configured === true &&
+          !!settings?.providers?.azure_ai_foundry?.endpoint,
+      },
+    );
 
   const groupedLlmModels = [
     {
@@ -113,6 +125,13 @@ export function AgentSettingsSection() {
       models: watsonxModels?.language_models || [],
       configured: settings.providers?.watsonx?.configured === true,
     },
+    {
+      group: "Azure AI Foundry",
+      provider: "azure_ai_foundry",
+      icon: getModelLogo("", "azure_ai_foundry"),
+      models: azureModels?.language_models || [],
+      configured: settings.providers?.azure_ai_foundry?.configured === true,
+    },
   ]
     .filter((p) => p.configured)
     .map((p) => ({
@@ -122,7 +141,11 @@ export function AgentSettingsSection() {
     }));
 
   const isLoadingAnyLlmModels =
-    openaiLoading || anthropicLoading || ollamaLoading || watsonxLoading;
+    openaiLoading ||
+    anthropicLoading ||
+    ollamaLoading ||
+    watsonxLoading ||
+    azureLoading;
 
   const updateSettingsMutation = useUpdateSettingsMutation({
     onSuccess: () => {
@@ -165,6 +188,14 @@ export function AgentSettingsSection() {
 
   const handleSystemPromptSave = () => {
     updateSettingsMutation.mutate({ system_prompt: systemPrompt });
+  };
+
+  const handleDisableChatWithLangflowChange = (checked: boolean) => {
+    updateSettingsMutation.mutate({ disable_chat_with_langflow: checked });
+  };
+
+  const handleChatStreamingChange = (checked: boolean) => {
+    updateSettingsMutation.mutate({ chat_streaming: checked });
   };
 
   const handleEditInLangflow = (closeDialog: () => void) => {
@@ -277,10 +308,51 @@ export function AgentSettingsSection() {
                     : "No language models detected. Configure a provider first."
                 }
                 value={settings.agent?.llm_model || ""}
+                selectedProvider={settings.agent?.llm_provider}
                 onValueChange={handleModelChange}
                 defaultOpen={openLlmSelector}
               />
             </LabelWrapper>
+          </div>
+          <div className="flex items-center justify-between py-3 border-b border-border">
+            <div className="flex-1">
+              <Label
+                htmlFor="disable-chat-with-langflow"
+                className="text-base font-medium cursor-pointer pb-3"
+              >
+                Disable Langflow Chat
+              </Label>
+              <div className="text-sm text-muted-foreground">
+                Run chat in OpenRAG against the language model above instead of
+                sending it to the Langflow flow.
+              </div>
+            </div>
+            <Switch
+              id="disable-chat-with-langflow"
+              checked={settings.agent?.disable_chat_with_langflow ?? false}
+              onCheckedChange={handleDisableChatWithLangflowChange}
+              disabled={updateSettingsMutation.isPending}
+            />
+          </div>
+          <div className="flex items-center justify-between py-3 border-b border-border">
+            <div className="flex-1">
+              <Label
+                htmlFor="chat-streaming"
+                className="text-base font-medium cursor-pointer pb-3"
+              >
+                Stream Responses
+              </Label>
+              <div className="text-sm text-muted-foreground">
+                Show answers token by token as they are generated. Turn off if
+                the model streams unreliably.
+              </div>
+            </div>
+            <Switch
+              id="chat-streaming"
+              checked={settings.agent?.chat_streaming ?? true}
+              onCheckedChange={handleChatStreamingChange}
+              disabled={updateSettingsMutation.isPending}
+            />
           </div>
           <div className="space-y-2">
             <LabelWrapper label="Agent Instructions" id="system-prompt">

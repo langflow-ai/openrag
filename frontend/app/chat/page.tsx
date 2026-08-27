@@ -59,7 +59,15 @@ function ChatPage() {
   ]);
   const [input, setInput] = useState("");
   const { setChatError } = useChat();
-  const [asyncMode, setAsyncMode] = useState(true);
+  // Streaming stays on until settings load, then follows agent.chat_streaming.
+  // Deployments that hide the toggles rely on this to pick the mode; an explicit
+  // click still wins for the rest of the session.
+  const [asyncMode, setAsyncModeState] = useState(true);
+  const asyncModeChosen = useRef(false);
+  const setAsyncMode = (next: boolean) => {
+    asyncModeChosen.current = true;
+    setAsyncModeState(next);
+  };
   const [expandedFunctionCalls, setExpandedFunctionCalls] = useState<
     Set<string>
   >(new Set());
@@ -100,6 +108,12 @@ function ChatPage() {
 
   // Get settings for model info used in analytics
   const { data: settings } = useGetSettingsQuery();
+
+  const configuredStreaming = settings?.agent?.chat_streaming;
+  useEffect(() => {
+    if (asyncModeChosen.current || configuredStreaming === undefined) return;
+    setAsyncModeState(configuredStreaming);
+  }, [configuredStreaming]);
 
   // Use the chat streaming hook
   const apiEndpoint = endpoint === "chat" ? "/api/chat" : "/api/langflow";
@@ -304,9 +318,26 @@ function ChatPage() {
     const hasMessageCountChanged =
       conversationData?.messages?.length !== messages.length;
 
+    // A request in flight means the local list already holds the question the
+    // user just typed, which the server copy does not have yet — syncing from
+    // the server here would wipe it off the screen. `isChatStreaming` only
+    // tracks the streaming hook, so the non-streaming path needs `loading`.
+    const requestInFlight = isChatStreaming || loading;
+
+    // /chat/history serves messages from the backend's in-memory cache and
+    // falls back to metadata-only rows (messages: []) for anything it no longer
+    // holds — after a restart, for instance. Re-syncing the conversation
+    // already on screen from an empty copy would erase the exchange the user is
+    // looking at, so treat "no messages" as "nothing to sync" unless we are
+    // switching to a different conversation.
+    const serverMessages = conversationData?.messages ?? [];
+    const wouldEraseVisibleMessages =
+      !isNewConversation && serverMessages.length === 0 && messages.length > 0;
+
     if (
       conversationData?.messages &&
-      (isNewConversation || (!isChatStreaming && hasMessageCountChanged)) &&
+      !wouldEraseVisibleMessages &&
+      (isNewConversation || (!requestInFlight && hasMessageCountChanged)) &&
       !isUserInteracting &&
       !isForkingInProgress
     ) {
@@ -499,6 +530,7 @@ function ChatPage() {
     isForkingInProgress,
     setPreviousResponseIds,
     isChatStreaming,
+    loading,
     messages.length,
   ]);
 

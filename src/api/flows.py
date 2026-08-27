@@ -1,16 +1,17 @@
 """Reset Flow API endpoints"""
+
 from typing import Literal
 
 from fastapi import Depends
 from fastapi.responses import JSONResponse
-from utils.logging_config import get_logger
 
-from dependencies import get_flows_service, get_current_user, require_permission
+from dependencies import get_current_user, get_flows_service, require_permission
 from session_manager import User
+from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-FlowType = Literal["nudges", "retrieval", "ingest"]
+FlowType = Literal["nudges", "retrieval", "ingest", "url_ingest"]
 
 
 async def reset_flow_endpoint(
@@ -18,32 +19,24 @@ async def reset_flow_endpoint(
     flows_service=Depends(get_flows_service),
     user: User = Depends(require_permission("flows:edit")),
 ):
-    """Reset a Langflow flow by type (nudges, retrieval, or ingest)"""
-    if flow_type not in ["nudges", "retrieval", "ingest"]:
+    """Reset a Langflow flow by type (nudges, retrieval, ingest, or url_ingest)"""
+    if flow_type not in ["nudges", "retrieval", "ingest", "url_ingest"]:
         return JSONResponse(
             {
                 "success": False,
-                "error": "Invalid flow type. Must be 'nudges', 'retrieval', or 'ingest'"
+                "error": "Invalid flow type. Must be 'nudges', 'retrieval', 'ingest', or 'url_ingest'",
             },
-            status_code=400
+            status_code=400,
         )
 
     try:
         result = await flows_service.reset_langflow_flow(flow_type)
 
         if result.get("success"):
-            logger.info(
-                "Flow reset successful",
-                flow_type=flow_type,
-                flow_id=result.get("flow_id")
-            )
+            logger.info("Flow reset successful", flow_type=flow_type, flow_id=result.get("flow_id"))
             return JSONResponse(result, status_code=200)
         else:
-            logger.error(
-                "Flow reset failed",
-                flow_type=flow_type,
-                error=result.get("error")
-            )
+            logger.error("Flow reset failed", flow_type=flow_type, error=result.get("error"))
             return JSONResponse(result, status_code=500)
 
     except ValueError as e:
@@ -52,6 +45,5 @@ async def reset_flow_endpoint(
     except Exception as e:
         logger.error("Unexpected error in flow reset", error=str(e))
         return JSONResponse(
-            {"success": False, "error": f"Internal server error: {str(e)}"},
-            status_code=500
+            {"success": False, "error": f"Internal server error: {str(e)}"}, status_code=500
         )

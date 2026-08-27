@@ -7,6 +7,8 @@ import {
 export interface AgentSettings {
   llm_model?: string;
   llm_provider?: string;
+  disable_chat_with_langflow?: boolean;
+  chat_streaming?: boolean;
   system_prompt?: string;
 }
 
@@ -39,6 +41,14 @@ export interface ProviderSettings {
   ollama?: {
     endpoint?: string;
     configured?: boolean;
+  };
+  azure_ai_foundry?: {
+    has_api_key?: boolean;
+    endpoint?: string;
+    api_version?: string;
+    configured?: boolean;
+    llm_deployment_name?: string;
+    embedding_deployment_name?: string;
   };
 }
 
@@ -77,6 +87,7 @@ export interface Settings {
   localhost_url?: string;
   ingest_via_chat?: boolean;
   show_provider_ingest_settings?: boolean;
+  show_azure_ai_providers?: boolean;
   segment_write_key?: string;
   environment?: string;
 }

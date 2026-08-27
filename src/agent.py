@@ -45,8 +45,18 @@ def get_conversation_thread(user_id: str, previous_response_id: str = None):
     return new_conversation
 
 
-async def store_conversation_thread(user_id: str, response_id: str, conversation_state: dict):
-    """Store conversation both in memory (with function calls) and persist metadata to disk (async, non-blocking)"""
+async def store_conversation_thread(
+    user_id: str,
+    response_id: str,
+    conversation_state: dict,
+    endpoint: str = "langflow",
+):
+    """Store conversation both in memory (with function calls) and persist metadata to disk (async, non-blocking)
+
+    ``endpoint`` records which chat path produced the conversation. History is
+    fetched per endpoint (/chat/history vs /langflow/history), so a langflowless
+    conversation stored as "langflow" is invisible in the Chat sidebar.
+    """
     # 1. Store full conversation in memory for function call preservation
     if user_id not in active_conversations:
         active_conversations[user_id] = {}
@@ -63,7 +73,7 @@ async def store_conversation_thread(user_id: str, response_id: str, conversation
     metadata_only = {
         "response_id": response_id,
         "title": title,
-        "endpoint": "langflow",
+        "endpoint": endpoint,
         "created_at": conversation_state.get("created_at"),
         "last_activity": conversation_state.get("last_activity"),
         "previous_response_id": conversation_state.get("previous_response_id"),
@@ -75,6 +85,23 @@ async def store_conversation_thread(user_id: str, response_id: str, conversation
     }
 
     await conversation_persistence.store_conversation_thread(user_id, response_id, metadata_only)
+
+
+async def claim_session_ownership(user_id: str, response_id: str) -> None:
+    """Record `user_id` as the owner of `response_id` (best-effort).
+
+    Every route that takes a session id gates on this via `_assert_owns`: an
+    unclaimed session reads as 404 session_not_found, which makes the
+    conversation impossible to delete or continue. Storing a conversation
+    without claiming it therefore strands it.
+    """
+    try:
+        from services.session_ownership_service import session_ownership_service
+
+        await session_ownership_service.claim_session(user_id, response_id)
+        logger.debug(f"Claimed session {response_id} for user {user_id}")
+    except Exception as e:
+        logger.warning(f"Failed to claim session ownership: {e}")
 
 
 # Legacy function for backward compatibility
@@ -404,7 +431,7 @@ async def async_chat(
     async_client,
     prompt: str,
     user_id: str,
-    model: str = "gpt-4.1-mini",
+    model: str,
     previous_response_id: str = None,
     filter_id: str = None,
 ):
@@ -450,7 +477,8 @@ async def async_chat(
     # Store the conversation thread with its response_id
     if response_id:
         conversation_state["last_activity"] = datetime.now()
-        await store_conversation_thread(user_id, response_id, conversation_state)
+        await store_conversation_thread(user_id, response_id, conversation_state, endpoint="chat")
+        await claim_session_ownership(user_id, response_id)
         logger.debug("Stored conversation thread", user_id=user_id, response_id=response_id)
 
         # Debug: Check what's in user_conversations now
@@ -472,7 +500,7 @@ async def async_chat_stream(
     async_client,
     prompt: str,
     user_id: str,
-    model: str = "gpt-4.1-mini",
+    model: str,
     previous_response_id: str = None,
     filter_id: str = None,
 ):
@@ -504,13 +532,29 @@ async def async_chat_stream(
             import json
 
             chunk_data = json.loads(chunk.decode("utf-8"))
-            if "delta" in chunk_data and "content" in chunk_data["delta"]:
-                full_response += chunk_data["delta"]["content"]
-            # Extract response_id from chunk
+            chunk_type = chunk_data.get("type")
+            delta = chunk_data.get("delta")
+
+            # Responses API sends answer text as a bare string on
+            # output_text.delta; older/chat-shaped streams nest it under
+            # delta.content. Only output_text carries the answer — the same
+            # field on function_call_arguments.delta holds tool arguments, which
+            # must not end up in the stored message.
+            if chunk_type == "response.output_text.delta":
+                if isinstance(delta, str):
+                    full_response += delta
+            elif isinstance(delta, dict) and "content" in delta:
+                full_response += delta["content"]
+
+            # Extract response_id from chunk. The Responses API nests it under
+            # `response` on response.created/completed rather than at the top
+            # level; without it the conversation is never persisted below.
             if "id" in chunk_data:
                 response_id = chunk_data["id"]
             elif "response_id" in chunk_data:
                 response_id = chunk_data["response_id"]
+            elif isinstance(chunk_data.get("response"), dict) and chunk_data["response"].get("id"):
+                response_id = chunk_data["response"]["id"]
             # Capture usage from response.completed event
             if chunk_data.get("type") == "response.completed":
                 response_obj = chunk_data.get("response", {})
@@ -534,9 +578,15 @@ async def async_chat_stream(
     # Store the conversation thread with its response_id
     if response_id:
         conversation_state["last_activity"] = datetime.now()
-        await store_conversation_thread(user_id, response_id, conversation_state)
+        await store_conversation_thread(user_id, response_id, conversation_state, endpoint="chat")
+        await claim_session_ownership(user_id, response_id)
         logger.debug(
             f"Stored conversation thread for user {user_id} with response_id: {response_id}"
+        )
+    else:
+        logger.warning(
+            "Streamed response carried no response_id; conversation not persisted",
+            user_id=user_id,
         )
 
 

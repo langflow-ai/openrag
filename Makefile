@@ -112,20 +112,23 @@ all: help
 check_tools: ## Verify required tools are installed with correct versions
 	@echo "$(YELLOW)Checking required tools...$(NC)"
 	@echo ""
-	@# Check Python
-	@command -v python3 >/dev/null 2>&1 || { echo "$(RED)✗ Python is not installed. Aborting.$(NC)"; exit 1; }
-	@PYTHON_VERSION=$$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")'); \
-	PYTHON_MAJOR=$$(echo $$PYTHON_VERSION | cut -d. -f1); \
-	PYTHON_MINOR=$$(echo $$PYTHON_VERSION | cut -d. -f2); \
-	if [ "$$PYTHON_MAJOR" -lt 3 ] || ([ "$$PYTHON_MAJOR" -eq 3 ] && [ "$$PYTHON_MINOR" -lt 13 ]); then \
-		echo "$(RED)✗ Python $$PYTHON_VERSION found, but 3.13+ required$(NC)"; exit 1; \
-	else \
-		echo "$(PURPLE)✓ Python $$PYTHON_VERSION$(NC)"; \
-	fi
 	@# Check uv
 	@command -v uv >/dev/null 2>&1 || { echo "$(RED)✗ uv is not installed. Install: curl -LsSf https://astral.sh/uv/install.sh | sh$(NC)"; exit 1; }
 	@UV_VERSION=$$(uv --version 2>/dev/null | head -1 | awk '{print $$2}' || echo "unknown"); \
 	echo "$(PURPLE)✓ uv $$UV_VERSION$(NC)"
+	@# Check Python
+	@PYTHON_BIN=$$(uv python find '>=3.12' 2>/dev/null || command -v python3 || true); \
+	if [ -z "$$PYTHON_BIN" ]; then \
+		echo "$(RED)✗ Python 3.12+ is not installed. Aborting.$(NC)"; exit 1; \
+	fi; \
+	PYTHON_VERSION=$$($$PYTHON_BIN -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")'); \
+	PYTHON_MAJOR=$$(echo $$PYTHON_VERSION | cut -d. -f1); \
+	PYTHON_MINOR=$$(echo $$PYTHON_VERSION | cut -d. -f2); \
+	if [ "$$PYTHON_MAJOR" -lt 3 ] || ([ "$$PYTHON_MAJOR" -eq 3 ] && [ "$$PYTHON_MINOR" -lt 12 ]); then \
+		echo "$(RED)✗ Python $$PYTHON_VERSION found, but 3.12+ required$(NC)"; exit 1; \
+	else \
+		echo "$(PURPLE)✓ Python $$PYTHON_VERSION ($$PYTHON_BIN)$(NC)"; \
+	fi
 	@# Check Node.js
 	@command -v node >/dev/null 2>&1 || { echo "$(RED)✗ Node.js is not installed. Aborting.$(NC)"; exit 1; }
 	@NODE_VERSION=$$(node --version | sed 's/v//'); \

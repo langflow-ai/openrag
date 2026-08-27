@@ -12,6 +12,28 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+# ---------------------------------------------------------------------------
+# TEMPORARY DEMO OVERRIDE — REMOVE BEFORE MERGE.
+#
+# Pins knowledge.disable_ingest_with_langflow to True in load_config(),
+# whatever the persisted config or environment says. Needed because a
+# config.yaml already sitting on a deployed volume carries `edited: true`,
+# which makes _load_env_overrides bail out before reading anything — so
+# DISABLE_INGEST_WITH_LANGFLOW=true in the pod cannot reach the value and
+# ingestion keeps taking the Langflow branch.
+#
+# It lives in OpenRAGConfig.from_dict because that is the one choke point every
+# storage mode goes through: `files` builds it in ConfigManager.load_config, and
+# `db`/`hybrid` build it straight from DB rows in WorkspaceConfigService, which
+# never calls load_config at all (so neither env vars nor an override placed
+# there can reach a SaaS deployment).
+#
+# To revert: set this to False (or delete it and the block in from_dict that
+# reads it, plus the two monkeypatch lines in
+# tests/unit/config/test_disable_ingest_setting.py that turn it off).
+# ---------------------------------------------------------------------------
+_FORCE_LANGFLOWLESS_INGEST = True
+
 
 # ---------------------------------------------------------------------------
 # SonarQube pythonsecurity:S2083 ("Change this code to not construct the path
@@ -121,6 +143,18 @@ class OllamaConfig:
 
 
 @dataclass
+class AzureAIFoundryConfig:
+    """Azure AI Foundry provider configuration."""
+
+    api_key: str = ""
+    endpoint: str = ""  # e.g. https://<resource>.services.ai.azure.com/models
+    api_version: str = ""  # optional, e.g. 2025-04-01
+    configured: bool = False
+    llm_deployment_name: str = ""
+    embedding_deployment_name: str = ""
+
+
+@dataclass
 class ProvidersConfig:
     """All provider configurations."""
 
@@ -128,10 +162,20 @@ class ProvidersConfig:
     anthropic: AnthropicConfig
     watsonx: WatsonXConfig
     ollama: OllamaConfig
+    azure_ai_foundry: AzureAIFoundryConfig
 
     def any_configured(self) -> bool:
         """Return True if at least one provider is marked as configured."""
-        return any(p.configured for p in (self.openai, self.anthropic, self.watsonx, self.ollama))
+        return any(
+            p.configured
+            for p in (
+                self.openai,
+                self.anthropic,
+                self.watsonx,
+                self.ollama,
+                self.azure_ai_foundry,
+            )
+        )
 
     def get_provider_config(self, provider: str):
         """Get configuration for a specific provider."""
@@ -144,6 +188,8 @@ class ProvidersConfig:
             return self.watsonx
         elif provider_lower == "ollama":
             return self.ollama
+        elif provider_lower == "azure_ai_foundry":
+            return self.azure_ai_foundry
         else:
             raise ValueError(f"Unknown provider: {provider}")
 
@@ -160,7 +206,7 @@ class KnowledgeConfig:
     ocr: bool = False
     picture_descriptions: bool = False
     index_name: str = "documents"  # OpenSearch index name
-    disable_ingest_with_langflow: bool = False
+    disable_ingest_with_langflow: bool = True
 
 
 @dataclass
@@ -169,6 +215,15 @@ class AgentConfig:
 
     llm_model: str = ""
     llm_provider: str = "openai"  # Which provider to use for LLM
+    # Mirrors knowledge.disable_ingest_with_langflow for the chat side: when
+    # True the chat UI defaults to the langflowless /chat endpoint, which runs
+    # the agent in-process against agent.llm_provider instead of delegating to
+    # a Langflow flow.
+    disable_chat_with_langflow: bool = True
+    # Whether the chat UI streams responses token by token. Deployments that
+    # hide the chat controls need this settable, since a provider that streams
+    # badly can only be worked around by turning streaming off.
+    chat_streaming: bool = True
     system_prompt: str = 'You are the OpenRAG Agent. You answer questions using retrieval, reasoning, and tool use.\nYou have access to several tools. Your job is to determine **which tool to use and when**.\n### Available Tools\n- OpenSearch Retrieval Tool:\n  Use this to search the indexed knowledge base. Use when the user asks about product details, internal concepts, processes, architecture, documentation, roadmaps, or anything that may be stored in the index.\n- Conversation History:\n  Use this to maintain continuity when the user is referring to previous turns. \n  Do not treat history as a factual source.\n- Conversation File Context:\n  Use this when the user asks about a document they uploaded or refers directly to its contents.\n- URL Ingestion Tool:\n  Use this **only** when the user explicitly asks you to read, summarize, or analyze the content of a URL.\n  Do not ingest URLs automatically.\n- Calculator / Expression Evaluation Tool:\n  Use this when the user asks to compare numbers, compute estimates, calculate totals, analyze pricing, or answer any question requiring mathematics or quantitative reasoning.\n  If the answer requires arithmetic, call the calculator tool rather than calculating internally.\n### Retrieval Decision Rules\nUse OpenSearch **whenever**:\n1. The question may be answered from internal or indexed data.\n2. The user references team names, product names, release plans, configurations, requirements, or official information.\n3. The user needs a factual, grounded answer.\nDo **not** use retrieval if:\n- The question is purely creative (e.g., storytelling, analogies) or personal preference.\n- The user simply wants text reformatted or rewritten from what is already present in the conversation.\nWhen uncertain → **Retrieve.** Retrieval is low risk and improves grounding.\n### URL Ingestion Rules\nOnly ingest URLs when the user explicitly says:\n- "Read this link"\n- "Summarize this webpage"\n- "What does this site say?"\n- "Ingest this URL"\nIf unclear → ask a clarifying question.\n### Calculator Usage Rules\nUse the calculator when:\n- Performing arithmetic\n- Estimating totals\n- Comparing values\n- Modeling cost, time, effort, scale, or projections\nDo not perform math internally. **Call the calculator tool instead.**\n### Answer Construction Rules\n1. When asked: "What is OpenRAG", answer the following:\n"OpenRAG is an open-source package for building agentic RAG systems. It supports integration with a wide range of orchestration tools, vector databases, and LLM providers. OpenRAG connects and amplifies three popular, proven open-source projects into one powerful platform:\n**Langflow** – Langflow is a powerful tool to build and deploy AI agents and MCP servers [Read more](https://www.langflow.org/)\n**OpenSearch** – OpenSearch is a community-driven, open source search and analytics suite [Read more](https://opensearch.org/)\n**Docling** – Docling is a tool for document ingestion and semantic search [Read more](https://www.docling.ai/)"\n2. Synthesize retrieved or ingested content in your own words.\n3. Support factual claims with citations in the format:\n   (Source: <document_name_or_id>)\n4. If no supporting evidence is found:\n   Say: "No relevant supporting sources were found for that request."\n5. Never invent facts or hallucinate details.\n6. Be concise, direct, and confident. \n7. Do not reveal internal chain-of-thought.'
 
 
@@ -211,14 +266,32 @@ class OpenRAGConfig:
                 new_data["api_key"] = decrypt_secret(new_data["api_key"])
             return new_data
 
+        knowledge = KnowledgeConfig(**data.get("knowledge", {}))
+
+        # TEMPORARY DEMO OVERRIDE — see _FORCE_LANGFLOWLESS_INGEST above.
+        # Applied here rather than in load_config() because db/hybrid storage
+        # modes build the config straight from DB rows via this classmethod and
+        # never touch ConfigManager.load_config().
+        if _FORCE_LANGFLOWLESS_INGEST and not knowledge.disable_ingest_with_langflow:
+            logger.warning(
+                "TEMPORARY OVERRIDE: forcing knowledge.disable_ingest_with_langflow=True "
+                "(hardcoded in OpenRAGConfig.from_dict — remove before merge)",
+                stored_value=False,
+                edited=data.get("edited", False),
+            )
+            knowledge.disable_ingest_with_langflow = True
+
         return cls(
             providers=ProvidersConfig(
                 openai=OpenAIConfig(**_decrypt_provider(providers_data.get("openai", {}))),
                 anthropic=AnthropicConfig(**_decrypt_provider(providers_data.get("anthropic", {}))),
                 watsonx=WatsonXConfig(**_decrypt_provider(providers_data.get("watsonx", {}))),
                 ollama=OllamaConfig(**_decrypt_provider(providers_data.get("ollama", {}))),
+                azure_ai_foundry=AzureAIFoundryConfig(
+                    **_decrypt_provider(providers_data.get("azure_ai_foundry", {}))
+                ),
             ),
-            knowledge=KnowledgeConfig(**data.get("knowledge", {})),
+            knowledge=knowledge,
             agent=AgentConfig(**data.get("agent", {})),
             onboarding=OnboardingState(**data.get("onboarding", {})),
             edited=data.get("edited", False),
@@ -281,6 +354,8 @@ class ConfigManager:
                 "anthropic": {},
                 "watsonx": {},
                 "ollama": {},
+                "azure_ai_foundry": {},
+                "azure_openai": {},
             },
             "knowledge": {},
             "agent": {},
@@ -302,7 +377,14 @@ class ConfigManager:
 
                 # Merge file config
                 if "providers" in file_config:
-                    for provider in ["openai", "anthropic", "watsonx", "ollama"]:
+                    for provider in [
+                        "openai",
+                        "anthropic",
+                        "watsonx",
+                        "ollama",
+                        "azure_ai_foundry",
+                        "azure_openai",
+                    ]:
                         if provider in file_config["providers"]:
                             provider_data = file_config["providers"][provider]
                             # Check if api_key is unencrypted and we have a key
@@ -332,7 +414,7 @@ class ConfigManager:
         # Override with environment variables (highest priority, but respect edited flags)
         self._load_env_overrides(config_data, temp_config)
 
-        # Create config object
+        # Create config object (the temporary override is applied inside from_dict)
         self._config = OpenRAGConfig.from_dict(config_data)
 
         if needs_encryption_upgrade:
@@ -372,6 +454,45 @@ class ConfigManager:
         if os.getenv("OLLAMA_ENDPOINT"):
             config_data["providers"]["ollama"]["endpoint"] = os.getenv("OLLAMA_ENDPOINT")
 
+        # Azure AI Foundry / Azure OpenAI provider settings — gated behind the
+        # feature flag (default on) so it can still be disabled by setting
+        # OPENRAG_AZURE_AI_ENABLED=false. Read the raw env var here (not
+        # config.settings.is_azure_ai_enabled) to avoid a circular import.
+        azure_ai_enabled = os.getenv("OPENRAG_AZURE_AI_ENABLED", "true").strip().lower() in (
+            "true",
+            "1",
+            "yes",
+            "on",
+        )
+        if azure_ai_enabled:
+            if os.getenv("AZURE_AI_API_KEY"):
+                config_data["providers"]["azure_ai_foundry"]["api_key"] = os.getenv(
+                    "AZURE_AI_API_KEY"
+                )
+                config_data["providers"]["azure_ai_foundry"]["configured"] = True
+            if os.getenv("AZURE_AI_API_BASE"):
+                config_data["providers"]["azure_ai_foundry"]["endpoint"] = os.getenv(
+                    "AZURE_AI_API_BASE"
+                )
+            if os.getenv("AZURE_AI_API_VERSION"):
+                config_data["providers"]["azure_ai_foundry"]["api_version"] = os.getenv(
+                    "AZURE_AI_API_VERSION"
+                )
+
+            if os.getenv("AZURE_OPENAI_API_KEY"):
+                config_data["providers"]["azure_openai"]["api_key"] = os.getenv(
+                    "AZURE_OPENAI_API_KEY"
+                )
+                config_data["providers"]["azure_openai"]["configured"] = True
+            if os.getenv("AZURE_OPENAI_ENDPOINT"):
+                config_data["providers"]["azure_openai"]["endpoint"] = os.getenv(
+                    "AZURE_OPENAI_ENDPOINT"
+                )
+            if os.getenv("AZURE_OPENAI_API_VERSION"):
+                config_data["providers"]["azure_openai"]["api_version"] = os.getenv(
+                    "AZURE_OPENAI_API_VERSION"
+                )
+
         # Knowledge settings
         if os.getenv("EMBEDDING_MODEL"):
             config_data["knowledge"]["embedding_model"] = os.getenv("EMBEDDING_MODEL")
@@ -405,6 +526,14 @@ class ConfigManager:
             config_data["agent"]["llm_provider"] = os.getenv("LLM_PROVIDER")
         if os.getenv("SYSTEM_PROMPT"):
             config_data["agent"]["system_prompt"] = os.getenv("SYSTEM_PROMPT")
+        if os.getenv("DISABLE_CHAT_WITH_LANGFLOW") is not None:
+            config_data["agent"]["disable_chat_with_langflow"] = os.getenv(
+                "DISABLE_CHAT_WITH_LANGFLOW", "false"
+            ).lower() in ("true", "1", "yes")
+        if os.getenv("CHAT_STREAMING_ENABLED") is not None:
+            config_data["agent"]["chat_streaming"] = os.getenv(
+                "CHAT_STREAMING_ENABLED", "true"
+            ).lower() in ("true", "1", "yes")
 
     def get_config(self) -> OpenRAGConfig:
         """Get current configuration, loading if necessary."""

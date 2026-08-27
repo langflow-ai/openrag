@@ -90,7 +90,7 @@ async def initialize_services():
         session_manager=session_manager,
     )
     flows_service = FlowsService()
-    chat_service = ChatService(flows_service=flows_service)
+    chat_service = ChatService(flows_service=flows_service, models_service=models_service)
     knowledge_filter_service = KnowledgeFilterService(session_manager)
     monitor_service = MonitorService(session_manager)
     langflow_file_service = LangflowFileService(

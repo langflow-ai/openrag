@@ -51,6 +51,7 @@ const providerTitleMap: Record<ModelProvider, string> = {
   anthropic: "Anthropic",
   ollama: "Ollama",
   watsonx: "IBM watsonx.ai",
+  azure_ai_foundry: "Azure AI Foundry",
 };
 
 export function ProviderHealthBanner({ className }: ProviderHealthBannerProps) {

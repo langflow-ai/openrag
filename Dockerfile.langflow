@@ -49,12 +49,17 @@ RUN microdnf install -y \
     expat \
     && microdnf clean all
 
+# The base image ships pip 24.2, which cannot evaluate newer dependency
+# metadata used by langchain-azure-ai's optional extras.
+RUN python -m pip install --no-cache-dir --upgrade "pip>=26.0.0,<27.0.0"
+
 # Install Langflow with targeted extras and CPU-only wheels for PyTorch/Docling
-RUN pip install --no-cache-dir \
+RUN python -m pip install --no-cache-dir \
     --extra-index-url https://download.pytorch.org/whl/cpu \
     torch \
     torchvision \
     "langflow-base[docling,openai,anthropic,google,ollama,opensearch,langfuse]==0.9.6" \
+    langchain-azure-ai \
     uv \
     && pip uninstall -y clickhouse-connect
 

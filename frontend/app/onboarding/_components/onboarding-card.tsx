@@ -20,6 +20,7 @@ import {
 } from "@/app/settings/_helpers/model-helpers";
 import { useDoclingHealth } from "@/components/docling-health-banner";
 import AnthropicLogo from "@/components/icons/anthropic-logo";
+import AzureAIFoundryLogo from "@/components/icons/azure-ai-foundry-logo";
 import IBMLogo from "@/components/icons/ibm-logo";
 import OllamaLogo from "@/components/icons/ollama-logo";
 import OpenAILogo from "@/components/icons/openai-logo";
@@ -39,6 +40,7 @@ import {
 import { cn } from "@/lib/utils";
 import { AnimatedProviderSteps } from "./animated-provider-steps";
 import { AnthropicOnboarding } from "./anthropic-onboarding";
+import { AzureAIFoundryOnboarding } from "./azure-ai-foundry-onboarding";
 import { IBMOnboarding } from "./ibm-onboarding";
 import { OllamaOnboarding } from "./ollama-onboarding";
 import { OpenAIOnboarding } from "./openai-onboarding";
@@ -84,6 +86,9 @@ const OnboardingCard = ({
   // Fetch current settings to check if providers are already configured
   const { data: currentSettings } = useGetSettingsQuery();
 
+  const showAzureAiProviders =
+    currentSettings?.show_azure_ai_providers === true;
+
   // Auto-select the first provider that has an API key set in env vars
   useEffect(() => {
     if (!currentSettings?.providers) return;
@@ -92,9 +97,11 @@ const OnboardingCard = ({
     const fullOrder = isEmbedding
       ? EMBEDDING_PROVIDER_ORDER
       : LLM_PROVIDER_ORDER;
-    const providerOrder = isCloudBrand
-      ? fullOrder.filter((p) => !CLOUD_EXCLUDED_PROVIDERS.includes(p))
-      : fullOrder;
+    const providerOrder = fullOrder.filter((p) => {
+      if (isCloudBrand && CLOUD_EXCLUDED_PROVIDERS.includes(p)) return false;
+      if (!showAzureAiProviders && p === "azure_ai_foundry") return false;
+      return true;
+    });
 
     // Find the first provider with an API key
     for (const provider of providerOrder) {
@@ -122,9 +129,15 @@ const OnboardingCard = ({
       ) {
         setModelProvider("ollama");
         return;
+      } else if (
+        provider === "azure_ai_foundry" &&
+        currentSettings.providers.azure_ai_foundry?.has_api_key
+      ) {
+        setModelProvider("azure_ai_foundry");
+        return;
       }
     }
-  }, [currentSettings, isEmbedding, isCloudBrand]);
+  }, [currentSettings, isEmbedding, isCloudBrand, showAzureAiProviders]);
 
   const handleSetModelProvider = (provider: string) => {
     setIsLoadingModels(false);
@@ -150,6 +163,8 @@ const OnboardingCard = ({
       return currentSettings.providers.watsonx?.configured === true;
     } else if (provider === "ollama") {
       return currentSettings.providers.ollama?.configured === true;
+    } else if (provider === "azure_ai_foundry") {
+      return currentSettings.providers.azure_ai_foundry?.configured === true;
     }
     return false;
   };
@@ -174,6 +189,9 @@ const OnboardingCard = ({
     watsonx_endpoint: "",
     watsonx_project_id: "",
     ollama_endpoint: "",
+    azure_ai_foundry_api_key: "",
+    azure_ai_foundry_endpoint: "",
+    azure_ai_foundry_api_version: "",
   });
 
   const [currentStep, setCurrentStep] = useState<number | null>(
@@ -466,6 +484,19 @@ const OnboardingCard = ({
       }
     } else if (currentProvider === "ollama" && settings.ollama_endpoint) {
       onboardingData.ollama_endpoint = settings.ollama_endpoint;
+    } else if (currentProvider === "azure_ai_foundry") {
+      if (settings.azure_ai_foundry_api_key) {
+        onboardingData.azure_ai_foundry_api_key =
+          settings.azure_ai_foundry_api_key;
+      }
+      if (settings.azure_ai_foundry_endpoint) {
+        onboardingData.azure_ai_foundry_endpoint =
+          settings.azure_ai_foundry_endpoint;
+      }
+      if (settings.azure_ai_foundry_api_version) {
+        onboardingData.azure_ai_foundry_api_version =
+          settings.azure_ai_foundry_api_version;
+      }
     }
 
     trackButton({
@@ -625,6 +656,41 @@ const OnboardingCard = ({
                       IBM watsonx.ai
                     </TabTrigger>
                   </TabsTrigger>
+                  {showAzureAiProviders && (
+                    <TabsTrigger
+                      value="azure_ai_foundry"
+                      data-testid={`azure-ai-foundry-${isEmbedding ? "embedding" : "llm"}-tab`}
+                      className={cn(
+                        error &&
+                          modelProvider === "azure_ai_foundry" &&
+                          "data-[state=active]:border-destructive",
+                      )}
+                    >
+                      <TabTrigger
+                        selected={modelProvider === "azure_ai_foundry"}
+                        isLoading={isLoadingModels}
+                      >
+                        <div
+                          className={cn(
+                            "flex items-center justify-center gap-2 w-8 h-8 rounded-none border",
+                            modelProvider === "azure_ai_foundry"
+                              ? "bg-[#0078D4]"
+                              : "bg-muted",
+                          )}
+                        >
+                          <AzureAIFoundryLogo
+                            className={cn(
+                              "w-4 h-4 shrink-0",
+                              modelProvider === "azure_ai_foundry"
+                                ? "text-white"
+                                : "text-muted-foreground",
+                            )}
+                          />
+                        </div>
+                        Azure AI Foundry
+                      </TabTrigger>
+                    </TabsTrigger>
+                  )}
                   {!isCloudBrand && (
                     <TabsTrigger
                       value="ollama"
@@ -717,6 +783,25 @@ const OnboardingCard = ({
                       }
                       existingEndpoint={
                         currentSettings?.providers?.ollama?.endpoint
+                      }
+                    />
+                  </TabsContent>
+                )}
+                {showAzureAiProviders && (
+                  <TabsContent value="azure_ai_foundry">
+                    <AzureAIFoundryOnboarding
+                      setSettings={setSettings}
+                      isEmbedding={isEmbedding}
+                      alreadyConfigured={
+                        providerAlreadyConfigured &&
+                        modelProvider === "azure_ai_foundry"
+                      }
+                      existingEndpoint={
+                        currentSettings?.providers?.azure_ai_foundry?.endpoint
+                      }
+                      existingApiVersion={
+                        currentSettings?.providers?.azure_ai_foundry
+                          ?.api_version
                       }
                     />
                   </TabsContent>

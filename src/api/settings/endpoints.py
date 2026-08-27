@@ -33,6 +33,7 @@ from api.settings.langflow_sync import (
 from api.settings.models import (
     AgentConfig,
     AnthropicProviderConfig,
+    AzureAIFoundryProviderConfig,
     DoclingPresetBody,
     DoclingPresetResponse,
     IngestionDefaultsConfig,
@@ -68,6 +69,7 @@ from config.settings import (
     clients,
     config_manager,
     get_openrag_config,
+    is_azure_ai_enabled,
 )
 from dependencies import (
     get_chat_service,
@@ -202,6 +204,25 @@ async def get_settings(
                     endpoint=openrag_config.providers.ollama.endpoint or None,
                     configured=openrag_config.providers.ollama.configured,
                 ),
+                # Redact Azure provider state entirely while the feature flag is
+                # off — the UI should never learn stored Azure creds/deployment
+                # names exist, let alone whether they're "configured".
+                azure_ai_foundry=(
+                    AzureAIFoundryProviderConfig(
+                        has_api_key=bool(openrag_config.providers.azure_ai_foundry.api_key),
+                        endpoint=openrag_config.providers.azure_ai_foundry.endpoint or None,
+                        api_version=openrag_config.providers.azure_ai_foundry.api_version or None,
+                        configured=openrag_config.providers.azure_ai_foundry.configured,
+                        llm_deployment_name=openrag_config.providers.azure_ai_foundry.llm_deployment_name
+                        or None,
+                        embedding_deployment_name=openrag_config.providers.azure_ai_foundry.embedding_deployment_name
+                        or None,
+                    )
+                    if is_azure_ai_enabled()
+                    else AzureAIFoundryProviderConfig(
+                        has_api_key=False, endpoint=None, api_version=None, configured=False
+                    )
+                ),
             ),
             knowledge=KnowledgeConfig(
                 embedding_model=knowledge_config.embedding_model,
@@ -217,6 +238,8 @@ async def get_settings(
             agent=AgentConfig(
                 llm_model=agent_config.llm_model,
                 llm_provider=agent_config.llm_provider,
+                disable_chat_with_langflow=agent_config.disable_chat_with_langflow,
+                chat_streaming=agent_config.chat_streaming,
                 system_prompt=agent_config.system_prompt,
             ),
             localhost_url=LOCALHOST_URL,
@@ -225,6 +248,7 @@ async def get_settings(
             ingestion_defaults=ingestion_defaults_obj,
             ingest_via_chat=OPENRAG_INGEST_VIA_CHAT,
             show_provider_ingest_settings=OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS,
+            show_azure_ai_providers=is_azure_ai_enabled(),
             segment_write_key=SEGMENT_WRITE_KEY or None,
             environment=ENVIRONMENT or None,
         )
@@ -265,9 +289,27 @@ async def update_settings(
             "watsonx_endpoint",
             "watsonx_project_id",
             "ollama_endpoint",
+            "azure_ai_foundry_api_key",
+            "azure_ai_foundry_endpoint",
+            "azure_ai_foundry_api_version",
         ]
 
         should_validate = any(getattr(body, field) is not None for field in provider_fields)
+
+        # Reject any attempt to select or configure Azure providers while the
+        # feature flag is off, before running provider validation network calls.
+        azure_touched = (
+            body.llm_provider == "azure_ai_foundry"
+            or body.embedding_provider == "azure_ai_foundry"
+            or body.azure_ai_foundry_api_key is not None
+            or body.azure_ai_foundry_endpoint is not None
+            or body.azure_ai_foundry_api_version is not None
+        )
+        if azure_touched and not is_azure_ai_enabled():
+            return JSONResponse(
+                {"error": "Azure AI providers are not enabled on this deployment."},
+                status_code=403,
+            )
 
         if should_validate:
             try:
@@ -293,6 +335,7 @@ async def update_settings(
                     api_key = getattr(llm_provider_config, "api_key", None)
                     endpoint = getattr(llm_provider_config, "endpoint", None)
                     project_id = getattr(llm_provider_config, "project_id", None)
+                    api_version = getattr(llm_provider_config, "api_version", None)
 
                     if (
                         getattr(body, f"{llm_provider}_api_key", None) is not None
@@ -303,6 +346,8 @@ async def update_settings(
                         endpoint = getattr(body, f"{llm_provider}_endpoint", None)
                     if getattr(body, f"{llm_provider}_project_id", None) is not None:
                         project_id = getattr(body, f"{llm_provider}_project_id", None)
+                    if getattr(body, f"{llm_provider}_api_version", None) is not None:
+                        api_version = getattr(body, f"{llm_provider}_api_version", None)
 
                     await validate_provider_setup(
                         provider=llm_provider,
@@ -310,6 +355,7 @@ async def update_settings(
                         llm_model=llm_model,
                         endpoint=endpoint,
                         project_id=project_id,
+                        api_version=api_version,
                     )
                     logger.info(f"LLM provider validation successful for {llm_provider}")
 
@@ -335,6 +381,7 @@ async def update_settings(
                     api_key = getattr(embedding_provider_config, "api_key", None)
                     endpoint = getattr(embedding_provider_config, "endpoint", None)
                     project_id = getattr(embedding_provider_config, "project_id", None)
+                    api_version = getattr(embedding_provider_config, "api_version", None)
 
                     if (
                         getattr(body, f"{embedding_provider}_api_key", None) is not None
@@ -345,6 +392,8 @@ async def update_settings(
                         endpoint = getattr(body, f"{embedding_provider}_endpoint", None)
                     if getattr(body, f"{embedding_provider}_project_id", None) is not None:
                         project_id = getattr(body, f"{embedding_provider}_project_id", None)
+                    if getattr(body, f"{embedding_provider}_api_version", None) is not None:
+                        api_version = getattr(body, f"{embedding_provider}_api_version", None)
 
                     await validate_provider_setup(
                         provider=embedding_provider,
@@ -352,6 +401,7 @@ async def update_settings(
                         embedding_model=embedding_model,
                         endpoint=endpoint,
                         project_id=project_id,
+                        api_version=api_version,
                     )
                     logger.info(
                         f"Embedding provider validation successful for {embedding_provider}"
@@ -374,6 +424,10 @@ async def update_settings(
                 Category.SETTINGS_OPERATIONS, MessageId.ORB_SETTINGS_LLM_MODEL
             )
             logger.info(f"LLM model changed from {old_model} to {body.llm_model}")
+            # Persist Azure deployment name independently so it survives provider switches
+            effective_llm_provider = body.llm_provider or current_config.agent.llm_provider
+            if effective_llm_provider == "azure_ai_foundry":
+                current_config.providers.azure_ai_foundry.llm_deployment_name = body.llm_model
 
         if body.llm_provider is not None:
             old_provider = current_config.agent.llm_provider
@@ -410,6 +464,14 @@ async def update_settings(
                 Category.SETTINGS_OPERATIONS, MessageId.ORB_SETTINGS_EMBED_MODEL
             )
             logger.info(f"Embedding model changed from {old_model} to {new_embedding_model}")
+            # Persist Azure deployment name independently so it survives provider switches
+            effective_embedding_provider = (
+                body.embedding_provider or current_config.knowledge.embedding_provider
+            )
+            if effective_embedding_provider == "azure_ai_foundry":
+                current_config.providers.azure_ai_foundry.embedding_deployment_name = (
+                    new_embedding_model
+                )
 
         if body.embedding_provider is not None:
             old_provider = current_config.knowledge.embedding_provider
@@ -472,6 +534,16 @@ async def update_settings(
             logger.info(
                 f"Disable Langflow ingestion changed to {body.disable_ingest_with_langflow}"
             )
+
+        if body.disable_chat_with_langflow is not None:
+            current_config.agent.disable_chat_with_langflow = body.disable_chat_with_langflow
+            config_updated = True
+            logger.info(f"Disable Langflow chat changed to {body.disable_chat_with_langflow}")
+
+        if body.chat_streaming is not None:
+            current_config.agent.chat_streaming = body.chat_streaming
+            config_updated = True
+            logger.info(f"Chat streaming changed to {body.chat_streaming}")
 
         if body.chunk_size is not None:
             effective_overlap = (
@@ -584,6 +656,29 @@ async def update_settings(
         if body.ollama_endpoint is not None:
             current_config.providers.ollama.endpoint = body.ollama_endpoint.strip()
             current_config.providers.ollama.configured = True
+            config_updated = True
+            provider_updated = True
+
+        if body.azure_ai_foundry_api_key is not None and body.azure_ai_foundry_api_key.strip():
+            current_config.providers.azure_ai_foundry.api_key = (
+                body.azure_ai_foundry_api_key.strip()
+            )
+            current_config.providers.azure_ai_foundry.configured = True
+            config_updated = True
+            provider_updated = True
+
+        if body.azure_ai_foundry_endpoint is not None:
+            current_config.providers.azure_ai_foundry.endpoint = (
+                body.azure_ai_foundry_endpoint.strip()
+            )
+            current_config.providers.azure_ai_foundry.configured = True
+            config_updated = True
+            provider_updated = True
+
+        if body.azure_ai_foundry_api_version is not None:
+            current_config.providers.azure_ai_foundry.api_version = (
+                body.azure_ai_foundry_api_version.strip()
+            )
             config_updated = True
             provider_updated = True
 
@@ -710,6 +805,44 @@ async def update_settings(
             config_updated = True
             provider_updated = True
 
+        if body.remove_azure_ai_foundry_config:
+            other_providers_configured = (
+                current_config.providers.openai.configured
+                or current_config.providers.anthropic.configured
+                or current_config.providers.watsonx.configured
+                or current_config.providers.ollama.configured
+            )
+            if not other_providers_configured:
+                return JSONResponse(
+                    {
+                        "error": "Cannot remove Azure AI Foundry configuration: configure another model provider first."
+                    },
+                    status_code=400,
+                )
+            if not body.force_remove:
+                affected = await _affected_embedding_models(
+                    "azure_ai_foundry", session_manager, user, models_service
+                )
+                if affected:
+                    return _embedding_conflict_response(
+                        "Azure AI Foundry", "azure_ai_foundry", affected
+                    )
+            current_config.providers.azure_ai_foundry.api_key = ""
+            current_config.providers.azure_ai_foundry.endpoint = ""
+            current_config.providers.azure_ai_foundry.configured = False
+            current_config.providers.azure_ai_foundry.llm_deployment_name = ""
+            current_config.providers.azure_ai_foundry.embedding_deployment_name = ""
+            if current_config.agent.llm_provider == "azure_ai_foundry":
+                fb = _first_configured_llm_provider(current_config, "azure_ai_foundry")
+                current_config.agent.llm_provider = fb
+                current_config.agent.llm_model = ""
+            if current_config.knowledge.embedding_provider == "azure_ai_foundry":
+                fb = _first_configured_embedding_provider(current_config, "azure_ai_foundry")
+                current_config.knowledge.embedding_provider = fb
+                current_config.knowledge.embedding_model = ""
+            config_updated = True
+            provider_updated = True
+
         if provider_updated:
             await TelemetryClient.send_event(
                 Category.SETTINGS_OPERATIONS, MessageId.ORB_SETTINGS_PROVIDER_CREDS
@@ -781,6 +914,19 @@ async def onboarding(
     try:
         await TelemetryClient.send_event(Category.ONBOARDING, MessageId.ORB_ONBOARD_START)
 
+        azure_touched = (
+            body.llm_provider == "azure_ai_foundry"
+            or body.embedding_provider == "azure_ai_foundry"
+            or body.azure_ai_foundry_api_key is not None
+            or body.azure_ai_foundry_endpoint is not None
+            or body.azure_ai_foundry_api_version is not None
+        )
+        if azure_touched and not is_azure_ai_enabled():
+            return JSONResponse(
+                {"error": "Azure AI providers are not enabled on this deployment."},
+                status_code=403,
+            )
+
         # Get current configuration
         current_config = get_openrag_config()
 
@@ -807,6 +953,10 @@ async def onboarding(
                 metadata={"llm_model": llm_model_selected},
             )
             logger.info(f"LLM model selected during onboarding: {llm_model_selected}")
+            # Persist Azure deployment name independently so it survives provider switches
+            effective_llm_provider = body.llm_provider or current_config.agent.llm_provider
+            if effective_llm_provider == "azure_ai_foundry":
+                current_config.providers.azure_ai_foundry.llm_deployment_name = llm_model_selected
 
         if body.llm_provider:
             llm_provider_selected = body.llm_provider.strip()
@@ -833,6 +983,14 @@ async def onboarding(
                 metadata={"embedding_model": embedding_model_selected},
             )
             logger.info(f"Embedding model selected during onboarding: {embedding_model_selected}")
+            # Persist Azure deployment name independently so it survives provider switches
+            effective_embedding_provider = (
+                body.embedding_provider or current_config.knowledge.embedding_provider
+            )
+            if effective_embedding_provider == "azure_ai_foundry":
+                current_config.providers.azure_ai_foundry.embedding_deployment_name = (
+                    embedding_model_selected
+                )
 
         if body.embedding_provider:
             embedding_provider_selected = body.embedding_provider.strip()
@@ -878,6 +1036,26 @@ async def onboarding(
             current_config.providers.ollama.configured = True
             config_updated = True
 
+        if body.azure_ai_foundry_api_key:
+            current_config.providers.azure_ai_foundry.api_key = (
+                body.azure_ai_foundry_api_key.strip()
+            )
+            current_config.providers.azure_ai_foundry.configured = True
+            config_updated = True
+
+        if body.azure_ai_foundry_endpoint:
+            current_config.providers.azure_ai_foundry.endpoint = (
+                body.azure_ai_foundry_endpoint.strip()
+            )
+            current_config.providers.azure_ai_foundry.configured = True
+            config_updated = True
+
+        if body.azure_ai_foundry_api_version:
+            current_config.providers.azure_ai_foundry.api_version = (
+                body.azure_ai_foundry_api_version.strip()
+            )
+            config_updated = True
+
         # Mark providers as configured if they were chosen during onboarding
         # Check LLM provider
         if body.llm_provider:
@@ -899,6 +1077,21 @@ async def onboarding(
             elif llm_provider == "ollama" and current_config.providers.ollama.endpoint:
                 current_config.providers.ollama.configured = True
                 logger.info("Marked Ollama as configured (chosen as LLM provider)")
+            elif (
+                llm_provider == "azure_ai_foundry"
+                and current_config.providers.azure_ai_foundry.api_key
+                and current_config.providers.azure_ai_foundry.endpoint
+            ):
+                current_config.providers.azure_ai_foundry.configured = True
+                logger.info("Marked Azure AI Foundry as configured (chosen as LLM provider)")
+            elif (
+                llm_provider == "azure_openai"
+                and current_config.providers.azure_openai.api_key
+                and current_config.providers.azure_openai.endpoint
+                and current_config.providers.azure_openai.api_version
+            ):
+                current_config.providers.azure_openai.configured = True
+                logger.info("Marked Azure OpenAI as configured (chosen as LLM provider)")
 
         # Check embedding provider
         if body.embedding_provider:
@@ -917,6 +1110,13 @@ async def onboarding(
             elif embedding_provider == "ollama" and current_config.providers.ollama.endpoint:
                 current_config.providers.ollama.configured = True
                 logger.info("Marked Ollama as configured (chosen as embedding provider)")
+            elif (
+                embedding_provider == "azure_ai_foundry"
+                and current_config.providers.azure_ai_foundry.api_key
+                and current_config.providers.azure_ai_foundry.endpoint
+            ):
+                current_config.providers.azure_ai_foundry.configured = True
+                logger.info("Marked Azure AI Foundry as configured (chosen as embedding provider)")
 
         should_ingest_sample_data = INGEST_SAMPLE_DATA
         if should_ingest_sample_data:
@@ -943,6 +1143,7 @@ async def onboarding(
                     llm_model=current_config.agent.llm_model,
                     endpoint=getattr(llm_provider_config, "endpoint", None),
                     project_id=getattr(llm_provider_config, "project_id", None),
+                    api_version=getattr(llm_provider_config, "api_version", None),
                     test_completion=True,  # Full validation with completion test - ensures provider health
                 )
                 logger.info(
@@ -963,6 +1164,7 @@ async def onboarding(
                     embedding_model=current_config.knowledge.embedding_model,
                     endpoint=getattr(embedding_provider_config, "endpoint", None),
                     project_id=getattr(embedding_provider_config, "project_id", None),
+                    api_version=getattr(embedding_provider_config, "api_version", None),
                     test_completion=True,  # Full validation with completion test - ensures provider health
                 )
                 logger.info(
@@ -998,6 +1200,9 @@ async def onboarding(
                     body.watsonx_endpoint,
                     body.watsonx_project_id,
                     body.ollama_endpoint,
+                    body.azure_ai_foundry_api_key,
+                    body.azure_ai_foundry_endpoint,
+                    body.azure_ai_foundry_api_version,
                 ]
             )
 

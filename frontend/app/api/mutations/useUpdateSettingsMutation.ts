@@ -10,6 +10,8 @@ export interface UpdateSettingsRequest {
   // Agent settings
   llm_model?: string;
   llm_provider?: string;
+  disable_chat_with_langflow?: boolean;
+  chat_streaming?: boolean;
   system_prompt?: string;
 
   // Knowledge settings
@@ -35,10 +37,13 @@ export interface UpdateSettingsRequest {
   watsonx_endpoint?: string;
   watsonx_project_id?: string;
   ollama_endpoint?: string;
+  azure_ai_foundry_api_key?: string;
+  azure_ai_foundry_endpoint?: string;
   remove_ollama_config?: boolean;
   remove_openai_config?: boolean;
   remove_anthropic_config?: boolean;
   remove_watsonx_config?: boolean;
+  remove_azure_ai_foundry_config?: boolean;
   // Bypass the "this provider's embedding models are still in use" guard.
   force_remove?: boolean;
 }

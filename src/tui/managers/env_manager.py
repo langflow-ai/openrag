@@ -85,7 +85,7 @@ class EnvConfig:
     langflow_enable_superuser_cli: str = "False"
 
     # Ingestion settings
-    disable_ingest_with_langflow: str = "False"
+    disable_ingest_with_langflow: str = "True"
     nudges_flow_id: str = "ebc01d31-1976-46ce-a385-b0240327226c"
     ingest_sample_data: str = "True"
 

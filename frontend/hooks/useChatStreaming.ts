@@ -15,6 +15,10 @@ import {
 import type { FilterInput } from "@/lib/filter-normalization";
 import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
 
+// How long the stream may go without producing output before it is treated as
+// dead. Applies to the wait for the first chunk and to every gap after it.
+const STREAM_STALL_TIMEOUT_MS = 60000;
+
 interface UseChatStreamingOptions {
   endpoint?: string;
   onComplete?: (message: Message, responseId: string | null) => void;
@@ -55,6 +59,7 @@ export function useChatStreaming({
     // Set up timeout to detect stuck/hanging requests
     let timeoutId: NodeJS.Timeout | null = null;
     let hasReceivedData = false;
+    let stalled = false;
 
     try {
       setIsLoading(true);
@@ -68,19 +73,21 @@ export function useChatStreaming({
       streamAbortRef.current = controller;
       const thisStreamId = ++streamIdRef.current;
 
-      // Set up timeout (60 seconds for initial response, then extended as data comes in)
-      const startTimeout = () => {
+      // Stall guard: armed before the request and re-armed on every chunk that
+      // carries actual output. An open stream that stops producing (a provider
+      // emitting only keepalives, for instance) would otherwise leave the UI
+      // "Thinking..." forever, since there is no error and no data to render.
+      // Aborting here surfaces a timeout through onError instead.
+      const armStallTimeout = () => {
         if (timeoutId) clearTimeout(timeoutId);
         timeoutId = setTimeout(() => {
-          if (!hasReceivedData) {
-            console.error("Chat request timed out - no response received");
-            controller.abort();
-            throw new Error("Request timed out. The server is not responding.");
-          }
-        }, 60000); // 60 second timeout
+          console.error("Chat request timed out - no data received");
+          stalled = true;
+          controller.abort();
+        }, STREAM_STALL_TIMEOUT_MS);
       };
 
-      startTimeout();
+      armStallTimeout();
 
       const requestBody: {
         prompt: string;
@@ -126,10 +133,8 @@ export function useChatStreaming({
         signal: controller.signal,
       });
 
-      // Clear timeout once we get initial response
-      if (timeoutId) clearTimeout(timeoutId);
-      hasReceivedData = true;
-
+      // Response headers alone are not data — leave the stall guard armed until
+      // the body actually produces something.
       if (!response.ok) {
         const errorText = await response.text().catch(() => "Unknown error");
         throw new Error(`Server error (${response.status}): ${errorText}`);
@@ -164,20 +169,24 @@ export function useChatStreaming({
             break;
           if (done) break;
 
-          // Reset timeout on each chunk received
-          hasReceivedData = true;
-          if (timeoutId) clearTimeout(timeoutId);
-
           buffer += decoder.decode(value, { stream: true });
 
           // Process complete lines (JSON objects)
           const lines = buffer.split("\n");
           buffer = lines.pop() || ""; // Keep incomplete line in buffer
+          let progressed = false;
 
           for (const line of lines) {
             if (line.trim()) {
               try {
                 const chunk = JSON.parse(line);
+
+                // Keepalives hold the connection open without producing output,
+                // so they must not count as progress — otherwise a provider that
+                // only sends them resets the stall guard forever.
+                if (chunk?.type !== "keepalive") {
+                  progressed = true;
+                }
 
                 if (chunk.id) {
                   newResponseId = chunk.id;
@@ -224,10 +233,22 @@ export function useChatStreaming({
               }
             }
           }
+
+          if (progressed) {
+            hasReceivedData = true;
+            armStallTimeout();
+          }
         }
       } finally {
         reader.releaseLock();
         if (timeoutId) clearTimeout(timeoutId);
+      }
+
+      // The stall guard aborts the reader, which breaks the loop rather than
+      // raising. Raise here so a stall that arrives mid-answer is reported too,
+      // instead of returning null and leaving the caller's spinner running.
+      if (stalled) {
+        throw new Error("Request timed out. The server stopped sending data.");
       }
 
       if (
@@ -268,19 +289,27 @@ export function useChatStreaming({
       // Clean up timeout
       if (timeoutId) clearTimeout(timeoutId);
 
+      // A stall aborts the same controller a user cancel does, so translate it
+      // first — otherwise it takes the silent cancel path below and the caller
+      // never learns the request died.
+      const streamError = stalled
+        ? new Error("Request timed out. The server stopped sending data.")
+        : (error as Error);
+
       // If stream was aborted by user, don't handle as error
       if (
+        !stalled &&
         streamAbortRef.current?.signal.aborted &&
-        !(error as Error).message?.includes("timed out")
+        !streamError.message?.includes("timed out")
       ) {
         return null;
       }
 
-      console.error("Chat stream error:", error);
+      console.error("Chat stream error:", streamError);
       setStreamingMessage(null);
 
       // Create user-friendly error message
-      const errorMessage = (error as Error).message;
+      const errorMessage = streamError.message;
       let errorContent = errorMessage; // Default to the actual error message
 
       // Only override with generic messages for specific infrastructure errors
@@ -298,7 +327,7 @@ export function useChatStreaming({
       }
       // For all other errors (including Langflow errors), use the actual error message
 
-      onError?.(error as Error);
+      onError?.(streamError);
 
       const errorMessageObj: Message = {
         role: "assistant",
