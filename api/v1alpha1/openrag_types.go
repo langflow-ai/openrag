@@ -439,6 +439,91 @@ type DoclingSpec struct {
 	VerifySsl *bool `json:"verifySsl,omitempty"`
 }
 
+// DoclingEngineKind selects the execution back-end for docling-serve.
+// +kubebuilder:validation:Enum=local;rq
+type DoclingEngineKind string
+
+const (
+	// DoclingEngineLocal runs document conversion inside the docling-serve pod (single-pod mode).
+	DoclingEngineLocal DoclingEngineKind = "local"
+	// DoclingEngineRQ delegates conversion jobs to an RQ worker pool via a Redis/Valkey queue.
+	DoclingEngineRQ DoclingEngineKind = "rq"
+)
+
+// DoclingRQEngineSpec configures the RQ (Redis Queue) engine used when EngineKind is "rq".
+// These settings are shared by both the docling-serve proxy and the docling-worker.
+type DoclingRQEngineSpec struct {
+	// RedisURL is the Redis/Valkey connection URL (e.g. redis://host:6379/).
+	// When omitted and an operator-managed Valkey instance is configured in
+	// DoclingComponentsSpec.Valkey, the URL is derived automatically.
+	// +optional
+	RedisURL string `json:"redisUrl,omitempty"`
+
+	// ResultsPrefix is the Redis key prefix used to store job results.
+	// +optional
+	// +kubebuilder:default="docling:results"
+	ResultsPrefix string `json:"resultsPrefix,omitempty"`
+
+	// SubChannel is the Redis pub/sub channel for job-completion notifications.
+	// +optional
+	// +kubebuilder:default="docling:updates"
+	SubChannel string `json:"subChannel,omitempty"`
+
+	// ResultsTTL is the number of seconds job results are retained in Redis.
+	// +optional
+	// +kubebuilder:default=14400
+	// +kubebuilder:validation:Minimum=1
+	ResultsTTL *int32 `json:"resultsTTL,omitempty"`
+}
+
+// DoclingLocalEngineSpec configures the local execution engine (single-pod mode).
+type DoclingLocalEngineSpec struct {
+	// NumWorkers sets the number of parallel workers inside the pod.
+	// +optional
+	// +kubebuilder:default=4
+	// +kubebuilder:validation:Minimum=1
+	NumWorkers *int32 `json:"numWorkers,omitempty"`
+}
+
+// DoclingServeEngineSpec selects and configures the docling-serve execution engine.
+type DoclingServeEngineSpec struct {
+	// Kind selects the execution back-end.
+	// "local" runs conversion in-pod; "rq" delegates to an RQ worker pool.
+	// When omitted the operator infers "rq" if a Worker or Valkey component is
+	// also present in DoclingComponentsSpec, otherwise defaults to "local".
+	// +optional
+	Kind DoclingEngineKind `json:"kind,omitempty"`
+
+	// RQ configures the RQ engine. Only used when Kind is "rq" (or inferred as such).
+	// +optional
+	RQ *DoclingRQEngineSpec `json:"rq,omitempty"`
+
+	// Local configures the local engine. Only used when Kind is "local".
+	// +optional
+	Local *DoclingLocalEngineSpec `json:"local,omitempty"`
+}
+
+// DoclingServePerformanceSpec tunes per-request parallelism inside docling-serve / rq-worker.
+type DoclingServePerformanceSpec struct {
+	// NumThreads sets the number of CPU threads used per conversion.
+	// +optional
+	// +kubebuilder:default=4
+	// +kubebuilder:validation:Minimum=1
+	NumThreads *int32 `json:"numThreads,omitempty"`
+
+	// PageBatchSize sets how many pages are processed per batch.
+	// +optional
+	// +kubebuilder:default=4
+	// +kubebuilder:validation:Minimum=1
+	PageBatchSize *int32 `json:"pageBatchSize,omitempty"`
+
+	// ElementsBatchSize sets how many layout elements are processed per batch.
+	// +optional
+	// +kubebuilder:default=16
+	// +kubebuilder:validation:Minimum=1
+	ElementsBatchSize *int32 `json:"elementsBatchSize,omitempty"`
+}
+
 // DoclingServeSpec configures the Docling serve component (API server).
 type DoclingServeSpec struct {
 	ComponentSpec `json:",inline"`
@@ -467,6 +552,31 @@ type DoclingServeSpec struct {
 	// Config contains docling-specific configuration options.
 	// +optional
 	Config *DoclingConfig `json:"config,omitempty"`
+
+	// Engine configures the docling-serve execution engine (local vs rq).
+	// When omitted the operator auto-selects "rq" if a Worker or Valkey component
+	// is also present in DoclingComponentsSpec, otherwise "local".
+	// +optional
+	Engine *DoclingServeEngineSpec `json:"engine,omitempty"`
+
+	// Performance tunes per-request parallelism inside docling-serve / rq-worker.
+	// +optional
+	Performance *DoclingServePerformanceSpec `json:"performance,omitempty"`
+
+	// EnableUI enables the docling-serve web UI playground.
+	// +optional
+	// +kubebuilder:default=true
+	EnableUI *bool `json:"enableUI,omitempty"`
+
+	// AllowCustomVlmConfig permits custom VLM configuration via the API.
+	// +optional
+	// +kubebuilder:default=true
+	AllowCustomVlmConfig *bool `json:"allowCustomVlmConfig,omitempty"`
+
+	// EnableRemoteServices allows docling-serve to call remote OCR/layout services.
+	// +optional
+	// +kubebuilder:default=true
+	EnableRemoteServices *bool `json:"enableRemoteServices,omitempty"`
 }
 
 // DoclingWorkerSpec configures the Docling worker component (document processing).
@@ -546,6 +656,17 @@ type ValkeySpec struct {
 	// +optional
 	// +kubebuilder:default="allkeys-lru"
 	MaxMemoryPolicy string `json:"maxMemoryPolicy,omitempty"`
+
+	// ProtectedMode controls the Valkey protected-mode setting.
+	// When true, Valkey rejects connections from non-loopback clients unless a
+	// password is configured. This is a useful guard for internet-exposed nodes
+	// but must be disabled for in-cluster use without authentication, otherwise
+	// pods connecting from other Deployments receive a connection-reset error.
+	// Defaults to false (disabled) — the correct value for Kubernetes workloads.
+	// Set to true only when Valkey is also configured with a password.
+	// +optional
+	// +kubebuilder:default=false
+	ProtectedMode *bool `json:"protectedMode,omitempty"`
 }
 
 // DoclingConfig contains docling-specific configuration options for document processing.

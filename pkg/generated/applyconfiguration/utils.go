@@ -42,12 +42,20 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.DoclingConfigApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("DoclingHPASpec"):
 		return &apiv1alpha1.DoclingHPASpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DoclingLocalEngineSpec"):
+		return &apiv1alpha1.DoclingLocalEngineSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("DoclingModelsConfig"):
 		return &apiv1alpha1.DoclingModelsConfigApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("DoclingOCRConfig"):
 		return &apiv1alpha1.DoclingOCRConfigApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("DoclingPerformanceConfig"):
 		return &apiv1alpha1.DoclingPerformanceConfigApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DoclingRQEngineSpec"):
+		return &apiv1alpha1.DoclingRQEngineSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DoclingServeEngineSpec"):
+		return &apiv1alpha1.DoclingServeEngineSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DoclingServePerformanceSpec"):
+		return &apiv1alpha1.DoclingServePerformanceSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("DoclingServeSpec"):
 		return &apiv1alpha1.DoclingServeSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("DoclingSpec"):

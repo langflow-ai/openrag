@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -2726,6 +2727,359 @@ func TestDeploymentRolledOut(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			assert.Equal(t, tc.want, deploymentRolledOut(tc.dep))
+		})
+	}
+}
+
+// --------------------------------------------------------------------------
+// docling-serve RQ proxy env var tests
+// --------------------------------------------------------------------------
+
+// envVarMap converts a container's Env slice into a name→value map for
+// convenient lookup in assertions. Values resolved via ValueFrom are stored
+// as "<secretRef:name/key>" or "<configMapRef:name/key>" strings so tests can
+// still assert on their presence and source.
+func envVarMap(envVars []corev1.EnvVar) map[string]string {
+	m := make(map[string]string, len(envVars))
+	for _, e := range envVars {
+		if e.ValueFrom != nil {
+			if e.ValueFrom.SecretKeyRef != nil {
+				m[e.Name] = fmt.Sprintf("<secretRef:%s/%s>", e.ValueFrom.SecretKeyRef.Name, e.ValueFrom.SecretKeyRef.Key)
+			} else {
+				m[e.Name] = "<valueFrom>"
+			}
+		} else {
+			m[e.Name] = e.Value
+		}
+	}
+	return m
+}
+
+func TestDoclingServeDeployment_RQEngineEnvVars(t *testing.T) {
+	s := newScheme(t)
+	r, _ := reconciler(s)
+
+	// Helper: build a CR with both serve + valkey (triggers RQ auto-inference)
+	crWithValkey := func() *openragv1alpha1.OpenRAG {
+		cr := minimalCR("x", "ns")
+		cr.Spec.DoclingComponents = &openragv1alpha1.DoclingComponentsSpec{
+			Enabled: true,
+			Serve:   &openragv1alpha1.DoclingServeSpec{ComponentSpec: openragv1alpha1.ComponentSpec{Image: "ds:latest"}},
+			Valkey: &openragv1alpha1.ValkeySpec{
+				ComponentSpec: openragv1alpha1.ComponentSpec{Image: "valkey:latest"},
+			},
+		}
+		return cr
+	}
+
+	t.Run("auto-infers rq when valkey present", func(t *testing.T) {
+		cr := crWithValkey()
+		dep := r.doclingServeDeployment(cr, "ns")
+		env := envVarMap(dep.Spec.Template.Spec.Containers[0].Env)
+
+		assert.Equal(t, "rq", env["DOCLING_SERVE_ENG_KIND"])
+		assert.Contains(t, env, "DOCLING_SERVE_ENG_RQ_REDIS_URL")
+		assert.Contains(t, env, "DOCLING_SERVE_ENG_RQ_RESULTS_PREFIX")
+		assert.Contains(t, env, "DOCLING_SERVE_ENG_RQ_SUB_CHANNEL")
+		assert.Contains(t, env, "DOCLING_SERVE_ENG_RQ_RESULTS_TTL")
+	})
+
+	t.Run("auto-infers rq when worker present", func(t *testing.T) {
+		cr := minimalCR("x", "ns")
+		cr.Spec.DoclingComponents = &openragv1alpha1.DoclingComponentsSpec{
+			Enabled: true,
+			Serve:   &openragv1alpha1.DoclingServeSpec{ComponentSpec: openragv1alpha1.ComponentSpec{Image: "ds:latest"}},
+			Worker:  &openragv1alpha1.DoclingWorkerSpec{ComponentSpec: openragv1alpha1.ComponentSpec{Image: "dw:latest"}},
+		}
+		dep := r.doclingServeDeployment(cr, "ns")
+		env := envVarMap(dep.Spec.Template.Spec.Containers[0].Env)
+		assert.Equal(t, "rq", env["DOCLING_SERVE_ENG_KIND"])
+	})
+
+	t.Run("defaults to local when only serve present", func(t *testing.T) {
+		cr := minimalCR("x", "ns")
+		cr.Spec.DoclingComponents = &openragv1alpha1.DoclingComponentsSpec{
+			Enabled: true,
+			Serve:   &openragv1alpha1.DoclingServeSpec{ComponentSpec: openragv1alpha1.ComponentSpec{Image: "ds:latest"}},
+		}
+		dep := r.doclingServeDeployment(cr, "ns")
+		env := envVarMap(dep.Spec.Template.Spec.Containers[0].Env)
+		assert.Equal(t, "local", env["DOCLING_SERVE_ENG_KIND"])
+		assert.NotContains(t, env, "DOCLING_SERVE_ENG_RQ_REDIS_URL")
+	})
+
+	t.Run("explicit engine kind overrides inference", func(t *testing.T) {
+		cr := crWithValkey()
+		kind := openragv1alpha1.DoclingEngineLocal
+		cr.Spec.DoclingComponents.Serve.Engine = &openragv1alpha1.DoclingServeEngineSpec{Kind: kind}
+		dep := r.doclingServeDeployment(cr, "ns")
+		env := envVarMap(dep.Spec.Template.Spec.Containers[0].Env)
+		assert.Equal(t, "local", env["DOCLING_SERVE_ENG_KIND"])
+	})
+
+	t.Run("redis url derived from operator-managed valkey (no password)", func(t *testing.T) {
+		cr := crWithValkey()
+		dep := r.doclingServeDeployment(cr, "ns")
+		env := envVarMap(dep.Spec.Template.Spec.Containers[0].Env)
+		// CR has no InstanceName → legacy name "openrag-valkey", FQDN form
+		assert.Equal(t, "redis://openrag-valkey.ns.svc.cluster.local:6379/0", env["DOCLING_SERVE_ENG_RQ_REDIS_URL"])
+	})
+
+	t.Run("redis url from valkey with inline password", func(t *testing.T) {
+		cr := crWithValkey()
+		cr.Spec.DoclingComponents.Valkey.Password = "s3cr3t"
+		dep := r.doclingServeDeployment(cr, "ns")
+		env := envVarMap(dep.Spec.Template.Spec.Containers[0].Env)
+		assert.Equal(t, "redis://:s3cr3t@openrag-valkey.ns.svc.cluster.local:6379/0", env["DOCLING_SERVE_ENG_RQ_REDIS_URL"])
+	})
+
+	t.Run("redis url from valkey with password secret uses env-var interpolation", func(t *testing.T) {
+		cr := crWithValkey()
+		cr.Spec.DoclingComponents.Valkey.PasswordSecret = &corev1.SecretKeySelector{
+			LocalObjectReference: corev1.LocalObjectReference{Name: "valkey-secret"},
+			Key:                  "VALKEY_PASSWORD",
+		}
+		dep := r.doclingServeDeployment(cr, "ns")
+		env := envVarMap(dep.Spec.Template.Spec.Containers[0].Env)
+		assert.Equal(t, "redis://:$(VALKEY_PASSWORD)@openrag-valkey.ns.svc.cluster.local:6379/0", env["DOCLING_SERVE_ENG_RQ_REDIS_URL"])
+		// The VALKEY_PASSWORD env var must be emitted before the URL that references it
+		names := make([]string, 0, len(dep.Spec.Template.Spec.Containers[0].Env))
+		for _, e := range dep.Spec.Template.Spec.Containers[0].Env {
+			names = append(names, e.Name)
+		}
+		passwordIdx, urlIdx := -1, -1
+		for i, n := range names {
+			switch n {
+			case "VALKEY_PASSWORD":
+				passwordIdx = i
+			case "DOCLING_SERVE_ENG_RQ_REDIS_URL":
+				urlIdx = i
+			}
+		}
+		require.NotEqual(t, -1, passwordIdx, "VALKEY_PASSWORD must be present")
+		require.NotEqual(t, -1, urlIdx, "DOCLING_SERVE_ENG_RQ_REDIS_URL must be present")
+		assert.Less(t, passwordIdx, urlIdx, "VALKEY_PASSWORD must appear before DOCLING_SERVE_ENG_RQ_REDIS_URL")
+	})
+
+	t.Run("custom rq settings from spec", func(t *testing.T) {
+		cr := crWithValkey()
+		ttl := int32(7200)
+		cr.Spec.DoclingComponents.Serve.Engine = &openragv1alpha1.DoclingServeEngineSpec{
+			Kind: openragv1alpha1.DoclingEngineRQ,
+			RQ: &openragv1alpha1.DoclingRQEngineSpec{
+				ResultsPrefix: "my:prefix",
+				SubChannel:    "my:channel",
+				ResultsTTL:    &ttl,
+			},
+		}
+		dep := r.doclingServeDeployment(cr, "ns")
+		env := envVarMap(dep.Spec.Template.Spec.Containers[0].Env)
+		assert.Equal(t, "my:prefix", env["DOCLING_SERVE_ENG_RQ_RESULTS_PREFIX"])
+		assert.Equal(t, "my:channel", env["DOCLING_SERVE_ENG_RQ_SUB_CHANNEL"])
+		assert.Equal(t, "7200", env["DOCLING_SERVE_ENG_RQ_RESULTS_TTL"])
+	})
+
+	t.Run("default rq settings when unset", func(t *testing.T) {
+		cr := crWithValkey()
+		dep := r.doclingServeDeployment(cr, "ns")
+		env := envVarMap(dep.Spec.Template.Spec.Containers[0].Env)
+		assert.Equal(t, "docling:results", env["DOCLING_SERVE_ENG_RQ_RESULTS_PREFIX"])
+		assert.Equal(t, "docling:updates", env["DOCLING_SERVE_ENG_RQ_SUB_CHANNEL"])
+		assert.Equal(t, "14400", env["DOCLING_SERVE_ENG_RQ_RESULTS_TTL"])
+	})
+
+	t.Run("performance env vars present with defaults", func(t *testing.T) {
+		cr := crWithValkey()
+		dep := r.doclingServeDeployment(cr, "ns")
+		env := envVarMap(dep.Spec.Template.Spec.Containers[0].Env)
+		assert.Equal(t, "4", env["DOCLING_NUM_THREADS"])
+		assert.Equal(t, "4", env["DOCLING_PERF_PAGE_BATCH_SIZE"])
+		assert.Equal(t, "16", env["DOCLING_PERF_ELEMENTS_BATCH_SIZE"])
+	})
+
+	t.Run("custom performance env vars", func(t *testing.T) {
+		cr := crWithValkey()
+		threads := int32(8)
+		pages := int32(2)
+		elems := int32(32)
+		cr.Spec.DoclingComponents.Serve.Performance = &openragv1alpha1.DoclingServePerformanceSpec{
+			NumThreads:        &threads,
+			PageBatchSize:     &pages,
+			ElementsBatchSize: &elems,
+		}
+		dep := r.doclingServeDeployment(cr, "ns")
+		env := envVarMap(dep.Spec.Template.Spec.Containers[0].Env)
+		assert.Equal(t, "8", env["DOCLING_NUM_THREADS"])
+		assert.Equal(t, "2", env["DOCLING_PERF_PAGE_BATCH_SIZE"])
+		assert.Equal(t, "32", env["DOCLING_PERF_ELEMENTS_BATCH_SIZE"])
+	})
+
+	t.Run("feature flags default to true", func(t *testing.T) {
+		cr := crWithValkey()
+		dep := r.doclingServeDeployment(cr, "ns")
+		env := envVarMap(dep.Spec.Template.Spec.Containers[0].Env)
+		assert.Equal(t, "true", env["DOCLING_SERVE_ENABLE_UI"])
+		assert.Equal(t, "true", env["DOCLING_SERVE_ALLOW_CUSTOM_VLM_CONFIG"])
+		assert.Equal(t, "true", env["DOCLING_SERVE_ENABLE_REMOTE_SERVICES"])
+	})
+
+	t.Run("feature flags overridable", func(t *testing.T) {
+		cr := crWithValkey()
+		f := false
+		cr.Spec.DoclingComponents.Serve.EnableUI = &f
+		cr.Spec.DoclingComponents.Serve.AllowCustomVlmConfig = &f
+		cr.Spec.DoclingComponents.Serve.EnableRemoteServices = &f
+		dep := r.doclingServeDeployment(cr, "ns")
+		env := envVarMap(dep.Spec.Template.Spec.Containers[0].Env)
+		assert.Equal(t, "false", env["DOCLING_SERVE_ENABLE_UI"])
+		assert.Equal(t, "false", env["DOCLING_SERVE_ALLOW_CUSTOM_VLM_CONFIG"])
+		assert.Equal(t, "false", env["DOCLING_SERVE_ENABLE_REMOTE_SERVICES"])
+	})
+}
+
+func TestDoclingWorkerDeployment_RQEnvVars(t *testing.T) {
+	s := newScheme(t)
+	r, _ := reconciler(s)
+
+	crWithValkey := func() *openragv1alpha1.OpenRAG {
+		cr := minimalCR("x", "ns")
+		cr.Spec.DoclingComponents = &openragv1alpha1.DoclingComponentsSpec{
+			Enabled: true,
+			Serve:   &openragv1alpha1.DoclingServeSpec{ComponentSpec: openragv1alpha1.ComponentSpec{Image: "ds:latest"}},
+			Worker:  &openragv1alpha1.DoclingWorkerSpec{ComponentSpec: openragv1alpha1.ComponentSpec{Image: "dw:latest"}},
+			Valkey: &openragv1alpha1.ValkeySpec{
+				ComponentSpec: openragv1alpha1.ComponentSpec{Image: "valkey:latest"},
+			},
+		}
+		return cr
+	}
+
+	t.Run("defaults command to docling-serve rq-worker when spec.Command is nil", func(t *testing.T) {
+		dep := r.doclingWorkerDeployment(crWithValkey(), "ns")
+		assert.Equal(t, []string{"docling-serve", "rq-worker"}, dep.Spec.Template.Spec.Containers[0].Command)
+	})
+
+	t.Run("explicit spec.Command overrides the default rq-worker command", func(t *testing.T) {
+		cr := crWithValkey()
+		cr.Spec.DoclingComponents.Worker.Command = []string{"/custom/entrypoint", "--flag"}
+		dep := r.doclingWorkerDeployment(cr, "ns")
+		assert.Equal(t, []string{"/custom/entrypoint", "--flag"}, dep.Spec.Template.Spec.Containers[0].Command)
+	})
+
+	t.Run("always sets DOCLING_SERVE_ENG_KIND=rq", func(t *testing.T) {
+		dep := r.doclingWorkerDeployment(crWithValkey(), "ns")
+		env := envVarMap(dep.Spec.Template.Spec.Containers[0].Env)
+		assert.Equal(t, "rq", env["DOCLING_SERVE_ENG_KIND"])
+	})
+
+	t.Run("emits DOCLING_SERVE_ENG_RQ_REDIS_URL alongside QUEUE_URL", func(t *testing.T) {
+		dep := r.doclingWorkerDeployment(crWithValkey(), "ns")
+		env := envVarMap(dep.Spec.Template.Spec.Containers[0].Env)
+		assert.Contains(t, env, "DOCLING_SERVE_ENG_RQ_REDIS_URL")
+		assert.Contains(t, env, "QUEUE_URL")
+		assert.Equal(t, env["DOCLING_SERVE_ENG_RQ_REDIS_URL"], env["QUEUE_URL"])
+	})
+
+	t.Run("emits rq results/channel/ttl defaults", func(t *testing.T) {
+		dep := r.doclingWorkerDeployment(crWithValkey(), "ns")
+		env := envVarMap(dep.Spec.Template.Spec.Containers[0].Env)
+		assert.Equal(t, "docling:results", env["DOCLING_SERVE_ENG_RQ_RESULTS_PREFIX"])
+		assert.Equal(t, "docling:updates", env["DOCLING_SERVE_ENG_RQ_SUB_CHANNEL"])
+		assert.Equal(t, "14400", env["DOCLING_SERVE_ENG_RQ_RESULTS_TTL"])
+	})
+
+	t.Run("inherits rq settings from serve Engine.RQ spec", func(t *testing.T) {
+		cr := crWithValkey()
+		ttl := int32(3600)
+		cr.Spec.DoclingComponents.Serve.Engine = &openragv1alpha1.DoclingServeEngineSpec{
+			Kind: openragv1alpha1.DoclingEngineRQ,
+			RQ: &openragv1alpha1.DoclingRQEngineSpec{
+				ResultsPrefix: "custom:prefix",
+				SubChannel:    "custom:channel",
+				ResultsTTL:    &ttl,
+			},
+		}
+		dep := r.doclingWorkerDeployment(cr, "ns")
+		env := envVarMap(dep.Spec.Template.Spec.Containers[0].Env)
+		assert.Equal(t, "custom:prefix", env["DOCLING_SERVE_ENG_RQ_RESULTS_PREFIX"])
+		assert.Equal(t, "custom:channel", env["DOCLING_SERVE_ENG_RQ_SUB_CHANNEL"])
+		assert.Equal(t, "3600", env["DOCLING_SERVE_ENG_RQ_RESULTS_TTL"])
+	})
+
+	t.Run("performance vars inherited from serve spec", func(t *testing.T) {
+		cr := crWithValkey()
+		threads := int32(6)
+		cr.Spec.DoclingComponents.Serve.Performance = &openragv1alpha1.DoclingServePerformanceSpec{
+			NumThreads: &threads,
+		}
+		dep := r.doclingWorkerDeployment(cr, "ns")
+		env := envVarMap(dep.Spec.Template.Spec.Containers[0].Env)
+		assert.Equal(t, "6", env["DOCLING_NUM_THREADS"])
+	})
+
+	t.Run("QueueURL fallback also sets DOCLING_SERVE_ENG_RQ_REDIS_URL", func(t *testing.T) {
+		cr := minimalCR("x", "ns")
+		cr.Spec.DoclingComponents = &openragv1alpha1.DoclingComponentsSpec{
+			Enabled: true,
+			Serve:   &openragv1alpha1.DoclingServeSpec{ComponentSpec: openragv1alpha1.ComponentSpec{Image: "ds:latest"}},
+			Worker: &openragv1alpha1.DoclingWorkerSpec{
+				ComponentSpec: openragv1alpha1.ComponentSpec{Image: "dw:latest"},
+				QueueURL:      "redis://external-redis:6379/0",
+			},
+		}
+		dep := r.doclingWorkerDeployment(cr, "ns")
+		env := envVarMap(dep.Spec.Template.Spec.Containers[0].Env)
+		assert.Equal(t, "redis://external-redis:6379/0", env["DOCLING_SERVE_ENG_RQ_REDIS_URL"])
+		assert.Equal(t, "redis://external-redis:6379/0", env["QUEUE_URL"])
+	})
+}
+
+func TestValkeyConfigMap_ProtectedMode(t *testing.T) {
+	s := newScheme(t)
+	r, _ := reconciler(s)
+
+	valkeySpec := func(pm *bool) *openragv1alpha1.ValkeySpec {
+		spec := &openragv1alpha1.ValkeySpec{
+			ComponentSpec: openragv1alpha1.ComponentSpec{Image: "valkey:7.2"},
+		}
+		spec.ProtectedMode = pm
+		return spec
+	}
+
+	cases := []struct {
+		name          string
+		protectedMode *bool
+		wantInConf    string
+	}{
+		{
+			name:          "default (nil) is off — safe for in-cluster use without password",
+			protectedMode: nil,
+			wantInConf:    "protected-mode no",
+		},
+		{
+			name:          "explicit false stays off",
+			protectedMode: func() *bool { v := false; return &v }(),
+			wantInConf:    "protected-mode no",
+		},
+		{
+			name:          "explicit true enables protection",
+			protectedMode: func() *bool { v := true; return &v }(),
+			wantInConf:    "protected-mode yes",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cr := minimalCR("x", "ns")
+			cr.Spec.DoclingComponents = &openragv1alpha1.DoclingComponentsSpec{
+				Enabled: true,
+				Valkey:  valkeySpec(tc.protectedMode),
+			}
+			conf := r.valkeyConfigMap(cr, "ns").Data["valkey.conf"]
+			assert.Contains(t, conf, tc.wantInConf)
+			// Ensure only one protected-mode line exists
+			assert.Equal(t, 1, strings.Count(conf, "protected-mode "),
+				"valkey.conf must have exactly one protected-mode directive")
 		})
 	}
 }

@@ -26,12 +26,17 @@ import (
 // with apply.
 type DoclingServeSpecApplyConfiguration struct {
 	ComponentSpecApplyConfiguration `json:",inline"`
-	Storage                         *PersistenceSpecApplyConfiguration `json:"storage,omitempty"`
-	Port                            *int32                             `json:"port,omitempty"`
-	LivenessProbe                   *v1.Probe                          `json:"livenessProbe,omitempty"`
-	ReadinessProbe                  *v1.Probe                          `json:"readinessProbe,omitempty"`
-	HPA                             *DoclingHPASpecApplyConfiguration  `json:"hpa,omitempty"`
-	Config                          *DoclingConfigApplyConfiguration   `json:"config,omitempty"`
+	Storage                         *PersistenceSpecApplyConfiguration             `json:"storage,omitempty"`
+	Port                            *int32                                         `json:"port,omitempty"`
+	LivenessProbe                   *v1.Probe                                      `json:"livenessProbe,omitempty"`
+	ReadinessProbe                  *v1.Probe                                      `json:"readinessProbe,omitempty"`
+	HPA                             *DoclingHPASpecApplyConfiguration              `json:"hpa,omitempty"`
+	Config                          *DoclingConfigApplyConfiguration               `json:"config,omitempty"`
+	Engine                          *DoclingServeEngineSpecApplyConfiguration      `json:"engine,omitempty"`
+	Performance                     *DoclingServePerformanceSpecApplyConfiguration `json:"performance,omitempty"`
+	EnableUI                        *bool                                          `json:"enableUI,omitempty"`
+	AllowCustomVlmConfig            *bool                                          `json:"allowCustomVlmConfig,omitempty"`
+	EnableRemoteServices            *bool                                          `json:"enableRemoteServices,omitempty"`
 }
 
 // DoclingServeSpecApplyConfiguration constructs a declarative configuration of the DoclingServeSpec type for use with
@@ -423,5 +428,45 @@ func (b *DoclingServeSpecApplyConfiguration) WithHPA(value *DoclingHPASpecApplyC
 // If called multiple times, the Config field is set to the value of the last call.
 func (b *DoclingServeSpecApplyConfiguration) WithConfig(value *DoclingConfigApplyConfiguration) *DoclingServeSpecApplyConfiguration {
 	b.Config = value
+	return b
+}
+
+// WithEngine sets the Engine field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Engine field is set to the value of the last call.
+func (b *DoclingServeSpecApplyConfiguration) WithEngine(value *DoclingServeEngineSpecApplyConfiguration) *DoclingServeSpecApplyConfiguration {
+	b.Engine = value
+	return b
+}
+
+// WithPerformance sets the Performance field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Performance field is set to the value of the last call.
+func (b *DoclingServeSpecApplyConfiguration) WithPerformance(value *DoclingServePerformanceSpecApplyConfiguration) *DoclingServeSpecApplyConfiguration {
+	b.Performance = value
+	return b
+}
+
+// WithEnableUI sets the EnableUI field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the EnableUI field is set to the value of the last call.
+func (b *DoclingServeSpecApplyConfiguration) WithEnableUI(value bool) *DoclingServeSpecApplyConfiguration {
+	b.EnableUI = &value
+	return b
+}
+
+// WithAllowCustomVlmConfig sets the AllowCustomVlmConfig field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the AllowCustomVlmConfig field is set to the value of the last call.
+func (b *DoclingServeSpecApplyConfiguration) WithAllowCustomVlmConfig(value bool) *DoclingServeSpecApplyConfiguration {
+	b.AllowCustomVlmConfig = &value
+	return b
+}
+
+// WithEnableRemoteServices sets the EnableRemoteServices field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the EnableRemoteServices field is set to the value of the last call.
+func (b *DoclingServeSpecApplyConfiguration) WithEnableRemoteServices(value bool) *DoclingServeSpecApplyConfiguration {
+	b.EnableRemoteServices = &value
 	return b
 }

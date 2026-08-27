@@ -6044,6 +6044,11 @@ spec:
                                 x-kubernetes-list-type: atomic
                             type: object
                         type: object
+                      allowCustomVlmConfig:
+                        default: true
+                        description: AllowCustomVlmConfig permits custom VLM configuration
+                          via the API.
+                        type: boolean
                       annotations:
                         additionalProperties:
                           type: string
@@ -6312,6 +6317,72 @@ spec:
                           If true (default), the operator creates a ServiceAccount with the name specified in ServiceAccountName.
                           If false, the operator assumes the ServiceAccount already exists and will only reference it.
                         type: boolean
+                      enableRemoteServices:
+                        default: true
+                        description: EnableRemoteServices allows docling-serve to
+                          call remote OCR/layout services.
+                        type: boolean
+                      enableUI:
+                        default: true
+                        description: EnableUI enables the docling-serve web UI playground.
+                        type: boolean
+                      engine:
+                        description: |-
+                          Engine configures the docling-serve execution engine (local vs rq).
+                          When omitted the operator auto-selects "rq" if a Worker or Valkey component
+                          is also present in DoclingComponentsSpec, otherwise "local".
+                        properties:
+                          kind:
+                            description: |-
+                              Kind selects the execution back-end.
+                              "local" runs conversion in-pod; "rq" delegates to an RQ worker pool.
+                              When omitted the operator infers "rq" if a Worker or Valkey component is
+                              also present in DoclingComponentsSpec, otherwise defaults to "local".
+                            enum:
+                            - local
+                            - rq
+                            type: string
+                          local:
+                            description: Local configures the local engine. Only used
+                              when Kind is "local".
+                            properties:
+                              numWorkers:
+                                default: 4
+                                description: NumWorkers sets the number of parallel
+                                  workers inside the pod.
+                                format: int32
+                                minimum: 1
+                                type: integer
+                            type: object
+                          rq:
+                            description: RQ configures the RQ engine. Only used when
+                              Kind is "rq" (or inferred as such).
+                            properties:
+                              redisUrl:
+                                description: |-
+                                  RedisURL is the Redis/Valkey connection URL (e.g. redis://host:6379/).
+                                  When omitted and an operator-managed Valkey instance is configured in
+                                  DoclingComponentsSpec.Valkey, the URL is derived automatically.
+                                type: string
+                              resultsPrefix:
+                                default: docling:results
+                                description: ResultsPrefix is the Redis key prefix
+                                  used to store job results.
+                                type: string
+                              resultsTTL:
+                                default: 14400
+                                description: ResultsTTL is the number of seconds job
+                                  results are retained in Redis.
+                                format: int32
+                                minimum: 1
+                                type: integer
+                              subChannel:
+                                default: docling:updates
+                                description: SubChannel is the Redis pub/sub channel
+                                  for job-completion notifications.
+                                type: string
+                            type: object
+                        type: object
                       env:
                         description: Additional environment variables injected into
                           the container.
@@ -8279,6 +8350,32 @@ spec:
                       nodeSelector:
                         additionalProperties:
                           type: string
+                        type: object
+                      performance:
+                        description: Performance tunes per-request parallelism inside
+                          docling-serve / rq-worker.
+                        properties:
+                          elementsBatchSize:
+                            default: 16
+                            description: ElementsBatchSize sets how many layout elements
+                              are processed per batch.
+                            format: int32
+                            minimum: 1
+                            type: integer
+                          numThreads:
+                            default: 4
+                            description: NumThreads sets the number of CPU threads
+                              used per conversion.
+                            format: int32
+                            minimum: 1
+                            type: integer
+                          pageBatchSize:
+                            default: 4
+                            description: PageBatchSize sets how many pages are processed
+                              per batch.
+                            format: int32
+                            minimum: 1
+                            type: integer
                         type: object
                       podAnnotations:
                         additionalProperties:
@@ -13627,6 +13724,17 @@ spec:
                         description: Port for the Valkey service.
                         format: int32
                         type: integer
+                      protectedMode:
+                        default: false
+                        description: |-
+                          ProtectedMode controls the Valkey protected-mode setting.
+                          When true, Valkey rejects connections from non-loopback clients unless a
+                          password is configured. This is a useful guard for internet-exposed nodes
+                          but must be disabled for in-cluster use without authentication, otherwise
+                          pods connecting from other Deployments receive a connection-reset error.
+                          Defaults to false (disabled) — the correct value for Kubernetes workloads.
+                          Set to true only when Valkey is also configured with a password.
+                        type: boolean
                       replicas:
                         default: 1
                         format: int32

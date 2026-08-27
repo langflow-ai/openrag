@@ -33,6 +33,7 @@ type ValkeySpecApplyConfiguration struct {
 	Database                        *int32                             `json:"database,omitempty"`
 	MaxMemory                       *string                            `json:"maxMemory,omitempty"`
 	MaxMemoryPolicy                 *string                            `json:"maxMemoryPolicy,omitempty"`
+	ProtectedMode                   *bool                              `json:"protectedMode,omitempty"`
 }
 
 // ValkeySpecApplyConfiguration constructs a declarative configuration of the ValkeySpec type for use with
@@ -432,5 +433,13 @@ func (b *ValkeySpecApplyConfiguration) WithMaxMemory(value string) *ValkeySpecAp
 // If called multiple times, the MaxMemoryPolicy field is set to the value of the last call.
 func (b *ValkeySpecApplyConfiguration) WithMaxMemoryPolicy(value string) *ValkeySpecApplyConfiguration {
 	b.MaxMemoryPolicy = &value
+	return b
+}
+
+// WithProtectedMode sets the ProtectedMode field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ProtectedMode field is set to the value of the last call.
+func (b *ValkeySpecApplyConfiguration) WithProtectedMode(value bool) *ValkeySpecApplyConfiguration {
+	b.ProtectedMode = &value
 	return b
 }

@@ -1597,6 +1597,123 @@ func buildDoclingConfigEnv(config *openragv1alpha1.DoclingConfig) []corev1.EnvVa
 	return envVars
 }
 
+// resolveDoclingEngineKind returns the effective engine kind for docling-serve.
+// Explicit spec.Engine.Kind takes precedence; when unset the operator infers
+// DoclingEngineRQ if a Worker or Valkey component is also present in the CR
+// (the proxy/worker split pattern), otherwise falls back to DoclingEngineLocal.
+func resolveDoclingEngineKind(o *openragv1alpha1.OpenRAG, spec *openragv1alpha1.DoclingServeSpec) openragv1alpha1.DoclingEngineKind {
+	if spec.Engine != nil && spec.Engine.Kind != "" {
+		return spec.Engine.Kind
+	}
+	dc := o.Spec.DoclingComponents
+	if dc.Worker != nil || dc.Valkey != nil {
+		return openragv1alpha1.DoclingEngineRQ
+	}
+	return openragv1alpha1.DoclingEngineLocal
+}
+
+// buildDoclingServeRQEnvVars builds the DOCLING_SERVE_ENG_RQ_* environment variables
+// for the docling-serve proxy container when running in RQ mode.
+// Redis URL priority: spec.Engine.RQ.RedisURL > operator-managed Valkey > none.
+func buildDoclingServeRQEnvVars(o *openragv1alpha1.OpenRAG, spec *openragv1alpha1.DoclingServeSpec) []corev1.EnvVar {
+	var envVars []corev1.EnvVar
+
+	// Determine the Redis URL.
+	// Priority: explicit spec.Engine.RQ.RedisURL > operator-managed Valkey (derived).
+	explicitRedisURL := spec.Engine != nil && spec.Engine.RQ != nil && spec.Engine.RQ.RedisURL != ""
+	if explicitRedisURL {
+		envVars = append(envVars, corev1.EnvVar{
+			Name:  "DOCLING_SERVE_ENG_RQ_REDIS_URL",
+			Value: spec.Engine.RQ.RedisURL,
+		})
+	} else if v := o.Spec.DoclingComponents.Valkey; v != nil {
+		port := int32(6379)
+		if v.Port > 0 {
+			port = v.Port
+		}
+		database := int32(0)
+		if v.Database > 0 {
+			database = v.Database
+		}
+		targetNS := targetNamespace(o)
+		svcName := getServiceName(o, "valkey")
+		switch {
+		case v.Password != "":
+			envVars = append(envVars, corev1.EnvVar{
+				Name:  "DOCLING_SERVE_ENG_RQ_REDIS_URL",
+				Value: fmt.Sprintf("redis://:%s@%s.%s.svc.cluster.local:%d/%d", v.Password, svcName, targetNS, port, database),
+			})
+		case v.PasswordSecret != nil:
+			// Inject the password via a secret reference so it is available as an
+			// env var, then reference it in the URL via $(VALKEY_PASSWORD).
+			envVars = append(envVars, corev1.EnvVar{
+				Name: "VALKEY_PASSWORD",
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: v.PasswordSecret,
+				},
+			})
+			envVars = append(envVars, corev1.EnvVar{
+				Name:  "DOCLING_SERVE_ENG_RQ_REDIS_URL",
+				Value: fmt.Sprintf("redis://:$(VALKEY_PASSWORD)@%s.%s.svc.cluster.local:%d/%d", svcName, targetNS, port, database),
+			})
+		default:
+			envVars = append(envVars, corev1.EnvVar{
+				Name:  "DOCLING_SERVE_ENG_RQ_REDIS_URL",
+				Value: fmt.Sprintf("redis://%s.%s.svc.cluster.local:%d/%d", svcName, targetNS, port, database),
+			})
+		}
+	}
+
+	// Results prefix
+	resultsPrefix := "docling:results"
+	if spec.Engine != nil && spec.Engine.RQ != nil && spec.Engine.RQ.ResultsPrefix != "" {
+		resultsPrefix = spec.Engine.RQ.ResultsPrefix
+	}
+	envVars = append(envVars, corev1.EnvVar{Name: "DOCLING_SERVE_ENG_RQ_RESULTS_PREFIX", Value: resultsPrefix})
+
+	// Sub channel
+	subChannel := "docling:updates"
+	if spec.Engine != nil && spec.Engine.RQ != nil && spec.Engine.RQ.SubChannel != "" {
+		subChannel = spec.Engine.RQ.SubChannel
+	}
+	envVars = append(envVars, corev1.EnvVar{Name: "DOCLING_SERVE_ENG_RQ_SUB_CHANNEL", Value: subChannel})
+
+	// Results TTL
+	resultsTTL := int32(14400)
+	if spec.Engine != nil && spec.Engine.RQ != nil && spec.Engine.RQ.ResultsTTL != nil {
+		resultsTTL = *spec.Engine.RQ.ResultsTTL
+	}
+	envVars = append(envVars, corev1.EnvVar{Name: "DOCLING_SERVE_ENG_RQ_RESULTS_TTL", Value: fmt.Sprintf("%d", resultsTTL)})
+
+	return envVars
+}
+
+// buildDoclingServePerformanceEnvVars maps DoclingServePerformanceSpec fields to the
+// DOCLING_NUM_THREADS / DOCLING_PERF_* environment variables consumed by both
+// the docling-serve proxy and the rq-worker.
+func buildDoclingServePerformanceEnvVars(perf *openragv1alpha1.DoclingServePerformanceSpec) []corev1.EnvVar {
+	numThreads := int32(4)
+	pageBatch := int32(4)
+	elementsBatch := int32(16)
+
+	if perf != nil {
+		if perf.NumThreads != nil {
+			numThreads = *perf.NumThreads
+		}
+		if perf.PageBatchSize != nil {
+			pageBatch = *perf.PageBatchSize
+		}
+		if perf.ElementsBatchSize != nil {
+			elementsBatch = *perf.ElementsBatchSize
+		}
+	}
+	return []corev1.EnvVar{
+		{Name: "DOCLING_NUM_THREADS", Value: fmt.Sprintf("%d", numThreads)},
+		{Name: "DOCLING_PERF_PAGE_BATCH_SIZE", Value: fmt.Sprintf("%d", pageBatch)},
+		{Name: "DOCLING_PERF_ELEMENTS_BATCH_SIZE", Value: fmt.Sprintf("%d", elementsBatch)},
+	}
+}
+
 func (r *OpenRAGReconciler) doclingServeDeployment(o *openragv1alpha1.OpenRAG, targetNS string) *appsv1.Deployment {
 	spec := o.Spec.DoclingComponents.Serve
 	replicas := replicasOrDefault(spec.Replicas)
@@ -1633,6 +1750,52 @@ func (r *OpenRAGReconciler) doclingServeDeployment(o *openragv1alpha1.OpenRAG, t
 		{Name: "DOCLING_PORT", Value: fmt.Sprintf("%d", port)},
 		{Name: "DOCLING_CACHE_DIR", Value: "/app/cache"},
 	}
+
+	// Resolve effective engine kind: explicit > inferred from worker/valkey presence
+	engineKind := resolveDoclingEngineKind(o, spec)
+
+	// Inject DOCLING_SERVE_ENG_KIND and related vars so the serve pod knows
+	// whether it is operating as an RQ proxy or in standalone (local) mode.
+	envVars = append(envVars, corev1.EnvVar{
+		Name:  "DOCLING_SERVE_ENG_KIND",
+		Value: string(engineKind),
+	})
+
+	// Feature-flag env vars (mirrors helm doclingServe.enableUI / allowCustomVlmConfig / enableRemoteServices)
+	enableUI := true
+	if spec.EnableUI != nil {
+		enableUI = *spec.EnableUI
+	}
+	envVars = append(envVars, corev1.EnvVar{Name: "DOCLING_SERVE_ENABLE_UI", Value: fmt.Sprintf("%t", enableUI)})
+
+	allowCustomVlm := true
+	if spec.AllowCustomVlmConfig != nil {
+		allowCustomVlm = *spec.AllowCustomVlmConfig
+	}
+	envVars = append(envVars, corev1.EnvVar{Name: "DOCLING_SERVE_ALLOW_CUSTOM_VLM_CONFIG", Value: fmt.Sprintf("%t", allowCustomVlm)})
+
+	enableRemote := true
+	if spec.EnableRemoteServices != nil {
+		enableRemote = *spec.EnableRemoteServices
+	}
+	envVars = append(envVars, corev1.EnvVar{Name: "DOCLING_SERVE_ENABLE_REMOTE_SERVICES", Value: fmt.Sprintf("%t", enableRemote)})
+
+	// Engine-specific env vars
+	switch engineKind {
+	case openragv1alpha1.DoclingEngineRQ:
+		envVars = append(envVars, buildDoclingServeRQEnvVars(o, spec)...)
+	case openragv1alpha1.DoclingEngineLocal:
+		if spec.Engine != nil && spec.Engine.Local != nil && spec.Engine.Local.NumWorkers != nil {
+			envVars = append(envVars, corev1.EnvVar{
+				Name:  "DOCLING_SERVE_ENG_LOC_NUM_WORKERS",
+				Value: fmt.Sprintf("%d", *spec.Engine.Local.NumWorkers),
+			})
+		}
+	}
+
+	// Performance tuning (mirrors helm doclingServe.performance)
+	envVars = append(envVars, buildDoclingServePerformanceEnvVars(spec.Performance)...)
+
 	// Add docling configuration environment variables
 	envVars = append(envVars, buildDoclingConfigEnv(spec.Config)...)
 	// Add user-specified environment variables
@@ -1731,13 +1894,36 @@ func (r *OpenRAGReconciler) doclingWorkerDeployment(o *openragv1alpha1.OpenRAG, 
 	// Build environment variables
 	envVars := []corev1.EnvVar{
 		{Name: "DOCLING_WORKSPACE_DIR", Value: "/app/workspace"},
+		// The rq-worker always runs in RQ mode (helm: DOCLING_SERVE_ENG_KIND=rq)
+		{Name: "DOCLING_SERVE_ENG_KIND", Value: "rq"},
 	}
 
+	// Feature flags shared with the serve proxy (mirrors helm rq-worker template)
+	serveSpec := o.Spec.DoclingComponents.Serve
+	allowCustomVlm := true
+	if serveSpec != nil && serveSpec.AllowCustomVlmConfig != nil {
+		allowCustomVlm = *serveSpec.AllowCustomVlmConfig
+	}
+	envVars = append(envVars, corev1.EnvVar{Name: "DOCLING_SERVE_ALLOW_CUSTOM_VLM_CONFIG", Value: fmt.Sprintf("%t", allowCustomVlm)})
+
+	enableRemote := true
+	if serveSpec != nil && serveSpec.EnableRemoteServices != nil {
+		enableRemote = *serveSpec.EnableRemoteServices
+	}
+	envVars = append(envVars, corev1.EnvVar{Name: "DOCLING_SERVE_ENABLE_REMOTE_SERVICES", Value: fmt.Sprintf("%t", enableRemote)})
+
+	// Performance tuning (mirrors helm rq-worker DOCLING_NUM_THREADS / DOCLING_PERF_* vars)
+	var servePerf *openragv1alpha1.DoclingServePerformanceSpec
+	if serveSpec != nil {
+		servePerf = serveSpec.Performance
+	}
+	envVars = append(envVars, buildDoclingServePerformanceEnvVars(servePerf)...)
+
 	// Add DOCLING_SERVE_URL if serve component is enabled
-	if o.Spec.DoclingComponents.Serve != nil {
+	if serveSpec != nil {
 		port := int32(5001)
-		if o.Spec.DoclingComponents.Serve.Port > 0 {
-			port = o.Spec.DoclingComponents.Serve.Port
+		if serveSpec.Port > 0 {
+			port = serveSpec.Port
 		}
 		envVars = append(envVars, corev1.EnvVar{
 			Name:  "DOCLING_SERVE_URL",
@@ -1745,9 +1931,10 @@ func (r *OpenRAGReconciler) doclingWorkerDeployment(o *openragv1alpha1.OpenRAG, 
 		})
 	}
 
-	// Add queue URL - Priority: Valkey > spec.QueueURL > spec.QueueURLSecret
+	// Add RQ Redis URL (DOCLING_SERVE_ENG_RQ_REDIS_URL) — mirrors helm rq-worker template.
+	// Priority: Valkey > spec.QueueURL > spec.QueueURLSecret.
+	// Also retain QUEUE_URL for backwards compatibility with pre-existing worker images.
 	if o.Spec.DoclingComponents.Valkey != nil {
-		// Use operator-managed Valkey
 		valkeySpec := o.Spec.DoclingComponents.Valkey
 		port := int32(6379)
 		if valkeySpec.Port > 0 {
@@ -1759,47 +1946,63 @@ func (r *OpenRAGReconciler) doclingWorkerDeployment(o *openragv1alpha1.OpenRAG, 
 		}
 
 		serviceName := getServiceName(o, "valkey")
-		// If password is provided directly (not via secret), include it in URL
 		if valkeySpec.Password != "" {
-			envVars = append(envVars, corev1.EnvVar{
-				Name:  "QUEUE_URL",
-				Value: fmt.Sprintf("redis://:%s@%s.%s.svc.cluster.local:%d/%d", valkeySpec.Password, serviceName, targetNS, port, database),
-			})
+			rqURL := fmt.Sprintf("redis://:%s@%s.%s.svc.cluster.local:%d/%d", valkeySpec.Password, serviceName, targetNS, port, database)
+			envVars = append(envVars,
+				corev1.EnvVar{Name: "DOCLING_SERVE_ENG_RQ_REDIS_URL", Value: rqURL},
+				corev1.EnvVar{Name: "QUEUE_URL", Value: rqURL},
+			)
 		} else if valkeySpec.PasswordSecret != nil {
-			// Use secret reference for password
 			envVars = append(envVars, corev1.EnvVar{
 				Name: "VALKEY_PASSWORD",
 				ValueFrom: &corev1.EnvVarSource{
 					SecretKeyRef: valkeySpec.PasswordSecret,
 				},
 			})
-			// Build URL with password placeholder - app must construct final URL
-			envVars = append(envVars, corev1.EnvVar{
-				Name:  "QUEUE_URL",
-				Value: fmt.Sprintf("redis://:$(VALKEY_PASSWORD)@%s.%s.svc.cluster.local:%d/%d", serviceName, targetNS, port, database),
-			})
+			rqURL := fmt.Sprintf("redis://:$(VALKEY_PASSWORD)@%s.%s.svc.cluster.local:%d/%d", serviceName, targetNS, port, database)
+			envVars = append(envVars,
+				corev1.EnvVar{Name: "DOCLING_SERVE_ENG_RQ_REDIS_URL", Value: rqURL},
+				corev1.EnvVar{Name: "QUEUE_URL", Value: rqURL},
+			)
 		} else {
-			// No password
-			envVars = append(envVars, corev1.EnvVar{
-				Name:  "QUEUE_URL",
-				Value: fmt.Sprintf("redis://%s.%s.svc.cluster.local:%d/%d", serviceName, targetNS, port, database),
-			})
+			rqURL := fmt.Sprintf("redis://%s.%s.svc.cluster.local:%d/%d", serviceName, targetNS, port, database)
+			envVars = append(envVars,
+				corev1.EnvVar{Name: "DOCLING_SERVE_ENG_RQ_REDIS_URL", Value: rqURL},
+				corev1.EnvVar{Name: "QUEUE_URL", Value: rqURL},
+			)
 		}
 	} else if spec.QueueURL != "" {
-		// Use user-provided queue URL
-		envVars = append(envVars, corev1.EnvVar{
-			Name:  "QUEUE_URL",
-			Value: spec.QueueURL,
-		})
+		envVars = append(envVars,
+			corev1.EnvVar{Name: "DOCLING_SERVE_ENG_RQ_REDIS_URL", Value: spec.QueueURL},
+			corev1.EnvVar{Name: "QUEUE_URL", Value: spec.QueueURL},
+		)
 	} else if spec.QueueURLSecret != nil {
-		// Use secret reference
-		envVars = append(envVars, corev1.EnvVar{
-			Name: "QUEUE_URL",
-			ValueFrom: &corev1.EnvVarSource{
-				SecretKeyRef: spec.QueueURLSecret,
-			},
-		})
+		envVars = append(envVars,
+			corev1.EnvVar{Name: "DOCLING_SERVE_ENG_RQ_REDIS_URL", ValueFrom: &corev1.EnvVarSource{SecretKeyRef: spec.QueueURLSecret}},
+			corev1.EnvVar{Name: "QUEUE_URL", ValueFrom: &corev1.EnvVarSource{SecretKeyRef: spec.QueueURLSecret}},
+		)
 	}
+
+	// RQ results prefix / sub-channel / TTL — same defaults as serve proxy
+	resultsPrefix := "docling:results"
+	subChannel := "docling:updates"
+	resultsTTL := int32(14400)
+	if serveSpec != nil && serveSpec.Engine != nil && serveSpec.Engine.RQ != nil {
+		if serveSpec.Engine.RQ.ResultsPrefix != "" {
+			resultsPrefix = serveSpec.Engine.RQ.ResultsPrefix
+		}
+		if serveSpec.Engine.RQ.SubChannel != "" {
+			subChannel = serveSpec.Engine.RQ.SubChannel
+		}
+		if serveSpec.Engine.RQ.ResultsTTL != nil {
+			resultsTTL = *serveSpec.Engine.RQ.ResultsTTL
+		}
+	}
+	envVars = append(envVars,
+		corev1.EnvVar{Name: "DOCLING_SERVE_ENG_RQ_RESULTS_PREFIX", Value: resultsPrefix},
+		corev1.EnvVar{Name: "DOCLING_SERVE_ENG_RQ_SUB_CHANNEL", Value: subChannel},
+		corev1.EnvVar{Name: "DOCLING_SERVE_ENG_RQ_RESULTS_TTL", Value: fmt.Sprintf("%d", resultsTTL)},
+	)
 
 	// Add concurrency setting
 	if spec.Concurrency != nil {
@@ -1845,7 +2048,7 @@ func (r *OpenRAGReconciler) doclingWorkerDeployment(o *openragv1alpha1.OpenRAG, 
 						Name:            "docling-worker",
 						Image:           spec.Image,
 						ImagePullPolicy: spec.ImagePullPolicy,
-						Command:         spec.Command,
+						Command:         commandOrDefault(spec.Command, []string{"docling-serve", "rq-worker"}),
 						Args:            spec.Args,
 						Env:             envVars,
 						Resources:       spec.Resources,
@@ -2292,10 +2495,15 @@ func (r *OpenRAGReconciler) valkeyConfigMap(o *openragv1alpha1.OpenRAG, targetNS
 		maxMemoryPolicy = spec.MaxMemoryPolicy
 	}
 
+	protectedMode := "no"
+	if spec.ProtectedMode != nil && *spec.ProtectedMode {
+		protectedMode = "yes"
+	}
+
 	config := fmt.Sprintf(`# Valkey configuration
 port %d
 bind 0.0.0.0
-protected-mode yes
+protected-mode %s
 maxmemory %s
 maxmemory-policy %s
 save 900 1
@@ -2304,7 +2512,7 @@ save 60 10000
 dir /data
 appendonly yes
 appendfilename "appendonly.aof"
-`, port, maxMemory, maxMemoryPolicy)
+`, port, protectedMode, maxMemory, maxMemoryPolicy)
 
 	baseLabels := componentLabels(o.Name, "valkey")
 	return &corev1.ConfigMap{
