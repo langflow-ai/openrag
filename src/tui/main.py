@@ -488,18 +488,6 @@ def copy_sample_documents(*, force: bool = False) -> None:
         logger.debug(f"Could not copy sample documents: {e}")
         # This is not a critical error - the app can work without sample documents
 
-    # Ensure OPENRAG_DOCUMENTS_PATH in .env points to the resolved documents directory.
-    # Docker Compose uses this for the volume mount; if unset it defaults to ./openrag-documents
-    # (CWD-relative), which may not contain the PDFs copied above.
-    try:
-        from dotenv import set_key
-        resolved_path = str(documents_dir.resolve())
-        current = env_manager.config.openrag_documents_path
-        if not current or current in ("$HOME/.openrag/documents", "./openrag-documents", "./documents"):
-            set_key(str(env_manager.env_file), "OPENRAG_DOCUMENTS_PATH", resolved_path)
-            logger.debug(f"Set OPENRAG_DOCUMENTS_PATH={resolved_path} in {env_manager.env_file}")
-    except Exception as e:
-        logger.debug(f"Could not update OPENRAG_DOCUMENTS_PATH in .env: {e}")
 
 
 def copy_sample_flows(*, force: bool = False) -> None:
