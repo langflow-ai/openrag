@@ -598,8 +598,7 @@ def migrate_legacy_data_directories():
         marker.touch()
         # Still need to update .env with centralized paths
         try:
-            from managers.env_manager import EnvManager
-
+            from .managers.env_manager import EnvManager
             env_manager = EnvManager()
             env_manager.load_existing_env()
             # Explicitly set centralized paths (overrides any old CWD-relative paths)
@@ -678,8 +677,7 @@ def migrate_legacy_data_directories():
 
     # Update .env file with centralized paths
     try:
-        from managers.env_manager import EnvManager
-
+        from .managers.env_manager import EnvManager
         env_manager = EnvManager()
         env_manager.load_existing_env()
         # Explicitly set centralized paths (overrides any old CWD-relative paths)
