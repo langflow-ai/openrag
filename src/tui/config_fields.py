@@ -149,8 +149,8 @@ CONFIG_SECTIONS: list[ConfigSection] = [
                 "langflow_superuser",
                 "LANGFLOW_SUPERUSER",
                 "Admin Username",
-                placeholder="admin",
-                default="admin",
+                placeholder="langflow",
+                default="langflow",
             ),
             ConfigField(
                 "langflow_data_path",
