@@ -5,6 +5,7 @@ import subprocess
 import sys
 from collections.abc import Iterable
 from pathlib import Path
+from typing import Literal
 
 from textual.app import App
 
@@ -20,7 +21,7 @@ from .widgets.diagnostics_notification import notify_with_diagnostics
 try:
     from importlib.resources import files
 except ImportError:
-    from importlib_resources import files
+    from importlib_resources import files  # type: ignore[no-redef]
 
 logger = get_logger(__name__)
 
@@ -372,7 +373,7 @@ class OpenRAGTUI(App):
         message: str,
         *,
         title: str = "",
-        severity: str = "information",
+        severity: Literal["information", "warning", "error"] = "information",
         timeout: float | None = None,
         markup: bool = True,
     ) -> None:
