@@ -3,10 +3,14 @@
 import os
 import subprocess
 import sys
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Optional
+
 from textual.app import App, ComposeResult
+
 from utils.logging_config import get_logger
+
 try:
     from importlib.resources import files
 except ImportError:
@@ -14,14 +18,14 @@ except ImportError:
 
 logger = get_logger(__name__)
 
-from .screens.welcome import WelcomeScreen
-from .screens.config import ConfigScreen
-from .screens.monitor import MonitorScreen
-from .screens.logs import LogsScreen
-from .screens.diagnostics import DiagnosticsScreen
-from .managers.env_manager import EnvManager
 from .managers.container_manager import ContainerManager
 from .managers.docling_manager import DoclingManager
+from .managers.env_manager import EnvManager
+from .screens.config import ConfigScreen
+from .screens.diagnostics import DiagnosticsScreen
+from .screens.logs import LogsScreen
+from .screens.monitor import MonitorScreen
+from .screens.welcome import WelcomeScreen
 from .utils.platform import PlatformDetector
 from .widgets.diagnostics_notification import notify_with_diagnostics
 
@@ -414,16 +418,20 @@ class OpenRAGTUI(App):
         # Check Podman macOS memory if applicable
         runtime_info = self.container_manager.get_runtime_info()
         if runtime_info.runtime_type.value == "podman":
-            is_sufficient, _, message = (
-                self.platform_detector.check_podman_macos_memory()
-            )
+            is_sufficient, _, message = self.platform_detector.check_podman_macos_memory()
             if not is_sufficient:
                 return False, f"Podman VM memory insufficient:\n{message}"
 
         return True, "Runtime requirements satisfied"
 
 
-def _copy_assets(resource_tree, destination: Path, allowed_suffixes: Optional[Iterable[str]] = None, *, force: bool = False) -> None:
+def _copy_assets(
+    resource_tree,
+    destination: Path,
+    allowed_suffixes: Iterable[str] | None = None,
+    *,
+    force: bool = False,
+) -> None:
     """Copy packaged assets into destination and optionally overwrite existing files.
 
     When ``force`` is True, files are refreshed if the packaged bytes differ.
@@ -437,7 +445,9 @@ def _copy_assets(resource_tree, destination: Path, allowed_suffixes: Optional[It
             _copy_assets(resource, target_path, allowed_suffixes, force=force)
             continue
 
-        if allowed_suffixes and not any(resource.name.endswith(suffix) for suffix in allowed_suffixes):
+        if allowed_suffixes and not any(
+            resource.name.endswith(suffix) for suffix in allowed_suffixes
+        ):
             continue
         resource_bytes = resource.read_bytes()
 
@@ -461,8 +471,9 @@ def copy_sample_documents(*, force: bool = False) -> None:
     Uses the first path from OPENRAG_DOCUMENTS_PATHS env var.
     Defaults to ~/.openrag/documents if not configured.
     """
-    from .managers.env_manager import EnvManager
     from pathlib import Path
+
+    from .managers.env_manager import EnvManager
 
     # Get the configured documents path from env
     env_manager = EnvManager()
@@ -471,7 +482,7 @@ def copy_sample_documents(*, force: bool = False) -> None:
     # Parse the first path from the documents paths config
     documents_path_str = env_manager.config.openrag_documents_paths
     if documents_path_str:
-        first_path = documents_path_str.split(',')[0].strip()
+        first_path = documents_path_str.split(",")[0].strip()
         # Expand $HOME and ~
         first_path = first_path.replace("$HOME", str(Path.home()))
         documents_dir = Path(first_path).expanduser()
@@ -487,7 +498,6 @@ def copy_sample_documents(*, force: bool = False) -> None:
     except Exception as e:
         logger.debug(f"Could not copy sample documents: {e}")
         # This is not a critical error - the app can work without sample documents
-
 
 
 def copy_sample_flows(*, force: bool = False) -> None:
@@ -538,7 +548,9 @@ def copy_compose_files(*, force: bool = False) -> None:
                     if destination.read_bytes() == resource_bytes:
                         continue
                 except Exception as read_error:
-                    logger.debug(f"Failed to read existing compose file {destination}: {read_error}")
+                    logger.debug(
+                        f"Failed to read existing compose file {destination}: {read_error}"
+                    )
 
             destination.write_bytes(resource_bytes)
             logger.info(f"Copied docker-compose template to {destination}")
@@ -587,6 +599,7 @@ def migrate_legacy_data_directories():
         # Still need to update .env with centralized paths
         try:
             from managers.env_manager import EnvManager
+
             env_manager = EnvManager()
             env_manager.load_existing_env()
             # Explicitly set centralized paths (overrides any old CWD-relative paths)
@@ -608,7 +621,7 @@ def migrate_legacy_data_directories():
     print("\n" + "=" * 60)
     print("  OpenRAG Data Migration Required")
     print("=" * 60)
-    print(f"\nStarting with this version, OpenRAG stores data in:")
+    print("\nStarting with this version, OpenRAG stores data in:")
     print(f"  {target_base}")
     print("\nThe following will be copied from your current directory:")
     for source, target, desc in sources_to_migrate:
@@ -666,6 +679,7 @@ def migrate_legacy_data_directories():
     # Update .env file with centralized paths
     try:
         from managers.env_manager import EnvManager
+
         env_manager = EnvManager()
         env_manager.load_existing_env()
         # Explicitly set centralized paths (overrides any old CWD-relative paths)
@@ -711,11 +725,7 @@ def _reclaim_host_ownership(directories: list[Path]) -> None:
     if not needs_reclaim:
         return
 
-    runtime = (
-        "docker" if _shutil.which("docker")
-        else "podman" if _shutil.which("podman")
-        else None
-    )
+    runtime = "docker" if _shutil.which("docker") else "podman" if _shutil.which("podman") else None
     if not runtime:
         logger.error("No container runtime found; cannot reclaim directory ownership")
         return
@@ -724,9 +734,16 @@ def _reclaim_host_ownership(directories: list[Path]) -> None:
         try:
             subprocess.run(
                 [
-                    runtime, "run", "--rm",
-                    "-v", f"{directory}:/mnt/target",
-                    "alpine", "chown", "-R", f"{host_uid}:{host_gid}", "/mnt/target",
+                    runtime,
+                    "run",
+                    "--rm",
+                    "-v",
+                    f"{directory}:/mnt/target",
+                    "alpine",
+                    "chown",
+                    "-R",
+                    f"{host_uid}:{host_gid}",
+                    "/mnt/target",
                 ],
                 check=True,
                 capture_output=True,
@@ -765,9 +782,11 @@ def generate_jwt_keys(keys_dir: Path):
             [
                 "openssl",
                 "rsa",
-                "-in", str(private_key_path),
+                "-in",
+                str(private_key_path),
                 "-pubout",
-                "-out", str(public_key_path),
+                "-out",
+                str(public_key_path),
             ],
             check=True,
             capture_output=True,
@@ -777,7 +796,9 @@ def generate_jwt_keys(keys_dir: Path):
 
         logger.info("Generated RSA keys for JWT signing")
     except FileNotFoundError:
-        logger.warning("openssl not found, skipping JWT key generation (will be generated in container)")
+        logger.warning(
+            "openssl not found, skipping JWT key generation (will be generated in container)"
+        )
     except subprocess.CalledProcessError as e:
         logger.error(f"Failed to generate RSA keys: {e}")
 
@@ -865,6 +886,7 @@ def _resolve_langflow_data_path(base_dir: Path) -> Path:
     default = base_dir / "data" / "langflow-data"
     try:
         from .managers.env_manager import EnvManager
+
         env_manager = EnvManager()
         env_manager.load_existing_env()
         raw = env_manager.config.langflow_data_path
@@ -913,7 +935,7 @@ def _run_tui_app():
         logger.error("Error running OpenRAG TUI", error=str(e))
     finally:
         # Ensure cleanup happens even on exceptions
-        if app and hasattr(app, 'docling_manager'):
+        if app and hasattr(app, "docling_manager"):
             app.docling_manager.cleanup()
         sys.exit(0)
 
@@ -935,6 +957,7 @@ def run_tui():
 
     # Check for native Windows before launching anything
     from .utils.platform import PlatformDetector
+
     platform_detector = PlatformDetector()
 
     if platform_detector.is_native_windows():
@@ -947,6 +970,7 @@ def run_tui():
 
     # Run startup prerequisites (install runtime, health checks, etc.)
     from .utils.startup_checks import run_startup_checks
+
     if not run_startup_checks():
         sys.exit(1)
 
@@ -954,6 +978,7 @@ def run_tui():
         _run_tui_app()
     else:
         from .cli import run_cli
+
         run_cli()
 
 
