@@ -51,6 +51,7 @@ def run_cli():
         pass  # Non-critical bootstrap errors
 
     env_manager = EnvManager()
+    env_manager.ensure_openrag_version()
     container_manager = ContainerManager()
     docling_manager = DoclingManager()
 
@@ -323,6 +324,7 @@ def _collect_config(
 def _validate_and_save(env_manager: EnvManager) -> bool:
     """Validate config and save .env file."""
     env_manager.setup_secure_defaults()
+    env_manager.ensure_openrag_version()
 
     if not env_manager.validate_config():
         console.print()
@@ -347,6 +349,7 @@ def _start_services_cli(
     env_manager = EnvManager()
     env_manager.load_existing_env()
     env_manager.setup_secure_defaults()
+    env_manager.ensure_openrag_version()
 
     if not env_manager.config.langflow_superuser_password:
         console.print("[red]✗ Error: Langflow password is required. Cannot start services.[/red]")
