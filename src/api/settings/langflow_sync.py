@@ -21,7 +21,6 @@ from api.settings.helpers import (
 from config import settings
 from config.settings import clients, get_openrag_config
 from services.docling_service import get_docling_preset_configs
-from utils.langflow_headers import map_provider
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -32,11 +31,10 @@ _background_tasks: set[asyncio.Task] = set()
 
 LANGFLOW_CREDENTIAL_GLOBAL_VARIABLES = frozenset(
     {
-        "ANTHROPIC_API_KEY",
         "JWT",
         "OPENAI_API_KEY",
+        "OPENRAG_LLM_TOKEN",
         "OPENSEARCH_PASSWORD",
-        "WATSONX_APIKEY",
     }
 )
 
@@ -47,20 +45,18 @@ LANGFLOW_GENERIC_GLOBAL_VARIABLES = frozenset(
         "DOCLING_TASK_ID",
         "FILESIZE",
         "MIMETYPE",
-        "OLLAMA_BASE_URL",
         "OPENRAG-QUERY-FILTER",
         "OPENRAG_INGEST_BATCH_SIZE",
         "OPENRAG_INGEST_RUN_ID",
         "OPENRAG_INGEST_TOKEN",
         "OPENRAG_INGEST_URL",
+        "OPENRAG_LLM_BASE_URL",
         "OPENSEARCH_INDEX_NAME",
         "OPENSEARCH_URL",
         "SELECTED_EMBEDDING_MODEL",
         "SELECTED_EMBEDDING_MODEL_PROVIDER",
         "SELECTED_LANGUAGE_MODEL",
         "SELECTED_LANGUAGE_MODEL_PROVIDER",
-        "WATSONX_PROJECT_ID",
-        "WATSONX_URL",
     }
 )
 
@@ -86,10 +82,7 @@ def _string_value(value) -> str:
 
 def _required_generic_global_values(config) -> dict[str, str]:
     knowledge = getattr(config, "knowledge", None)
-    providers = getattr(config, "providers", None)
     agent = getattr(config, "agent", None)
-    watsonx = getattr(providers, "watsonx", None)
-    ollama = getattr(providers, "ollama", None)
 
     return {
         "DOCLING_SERVE_URL": settings.get_langflow_docling_url(),
@@ -97,32 +90,41 @@ def _required_generic_global_values(config) -> dict[str, str]:
         "DOCLING_TASK_ID": "None",
         "FILESIZE": "0",
         "MIMETYPE": "None",
-        "OLLAMA_BASE_URL": _string_value(getattr(ollama, "endpoint", None)),
         "OPENRAG-QUERY-FILTER": "{}",
         "OPENRAG_INGEST_BATCH_SIZE": "100",
         "OPENRAG_INGEST_RUN_ID": "OPENRAG_INGEST_RUN_ID",
         "OPENRAG_INGEST_TOKEN": "OPENRAG_INGEST_TOKEN",
         "OPENRAG_INGEST_URL": "OPENRAG_INGEST_URL",
+        "OPENRAG_LLM_BASE_URL": settings.get_langflow_llm_base_url(),
         "OPENSEARCH_INDEX_NAME": _string_value(getattr(knowledge, "index_name", None))
         or "documents",
         "OPENSEARCH_URL": settings.get_langflow_opensearch_url(),
         "SELECTED_EMBEDDING_MODEL": _string_value(getattr(knowledge, "embedding_model", None))
         or "text-embedding-3-small",
-        "SELECTED_EMBEDDING_MODEL_PROVIDER": map_provider(
-            getattr(knowledge, "embedding_provider", None) or "openai"
-        ),
+        "SELECTED_EMBEDDING_MODEL_PROVIDER": "OpenAI",
         "SELECTED_LANGUAGE_MODEL": _string_value(getattr(agent, "llm_model", None))
         or "gpt-4o-mini",
-        "SELECTED_LANGUAGE_MODEL_PROVIDER": map_provider(
-            getattr(agent, "llm_provider", None) or "openai"
-        ),
-        "WATSONX_PROJECT_ID": _string_value(getattr(watsonx, "project_id", None)),
-        "WATSONX_URL": _string_value(getattr(watsonx, "endpoint", None)),
+        "SELECTED_LANGUAGE_MODEL_PROVIDER": "OpenAI",
     }
 
 
+# Credential names that must exist so load_from_db fields resolve.
+# Langflow treats an empty Credential value as missing
+# (`"{name} variable not found."`). Keep a non-empty placeholder; runtime
+# headers overwrite it with the hop token on each Langflow run.
+LANGFLOW_RUNTIME_CREDENTIAL_PLACEHOLDERS = frozenset(
+    {
+        "OPENRAG_LLM_TOKEN",
+    }
+)
+LANGFLOW_RUNTIME_CREDENTIAL_PLACEHOLDER_VALUE = "None"
+
+
 async def ensure_required_langflow_global_variables(config=None):
-    """Ensure plain-string globals are Generic and remove any Apply To (default_fields) fields."""
+    """Ensure plain-string globals are Generic and remove any Apply To (default_fields) fields.
+
+    Credential placeholders stay non-empty so Langflow can resolve load_from_db fields.
+    """
     config = config or get_openrag_config()
     required_values = _required_generic_global_values(config)
 
@@ -251,9 +253,23 @@ async def ensure_required_langflow_global_variables(config=None):
                     "Failed to create Langflow global variable", variable_name=name, error=str(e)
                 )
 
+    # Non-fatal like every other Langflow call in this function: a transient
+    # failure here must not take down a startup path that never raised before.
+    for name in sorted(LANGFLOW_RUNTIME_CREDENTIAL_PLACEHOLDERS):
+        try:
+            await _upsert_langflow_global_variable(
+                name, LANGFLOW_RUNTIME_CREDENTIAL_PLACEHOLDER_VALUE
+            )
+        except Exception as e:
+            logger.warning(
+                "Failed to create Langflow credential placeholder",
+                variable_name=name,
+                error=str(e),
+            )
+
 
 async def _update_langflow_global_variables(config, flows_service=None):
-    """Update Langflow global variables for all configured providers"""
+    """Push model selection and the LLM proxy URL into Langflow. No provider secrets."""
     errors: list[str] = []
 
     async def _safe_upsert(name: str, value: str):
@@ -266,58 +282,24 @@ async def _update_langflow_global_variables(config, flows_service=None):
             )
             errors.append(f"{name}: {e}")
 
-    providers = getattr(config, "providers", None)
+    await _safe_upsert("OPENRAG_LLM_BASE_URL", settings.get_langflow_llm_base_url())
 
-    # WatsonX global variables
-    watsonx = getattr(providers, "watsonx", None)
-    if watsonx:
-        if getattr(watsonx, "api_key", None):
-            await _safe_upsert("WATSONX_APIKEY", watsonx.api_key)
-
-        if getattr(watsonx, "project_id", None):
-            await _safe_upsert("WATSONX_PROJECT_ID", watsonx.project_id)
-
-        if getattr(watsonx, "endpoint", None):
-            await _safe_upsert("WATSONX_URL", watsonx.endpoint)
-
-    # OpenAI global variables
-    openai = getattr(providers, "openai", None)
-    if openai and getattr(openai, "api_key", None):
-        await _safe_upsert("OPENAI_API_KEY", openai.api_key)
-
-    # Anthropic global variables
-    anthropic = getattr(providers, "anthropic", None)
-    if anthropic and getattr(anthropic, "api_key", None):
-        await _safe_upsert("ANTHROPIC_API_KEY", anthropic.api_key)
-
-    # Ollama global variables
-    ollama = getattr(providers, "ollama", None)
-    if ollama and getattr(ollama, "endpoint", None):
-        try:
-            if not flows_service:
-                flows_service = _get_flows_service()
-
-            endpoint = await flows_service.resolve_ollama_url(ollama.endpoint, force_refresh=True)
-            await _safe_upsert("OLLAMA_BASE_URL", endpoint)
-        except Exception as e:
-            logger.warning("Failed to resolve OLLAMA_BASE_URL", error=str(e))
-            errors.append(f"OLLAMA_BASE_URL resolution: {e}")
-
+    # Every model runs through the OpenAI-compatible LLM proxy, so the provider
+    # is always "OpenAI" here and no provider secret is pushed to Langflow.
     knowledge = getattr(config, "knowledge", None)
     if getattr(knowledge, "embedding_model", None):
         await _safe_upsert("SELECTED_EMBEDDING_MODEL", config.knowledge.embedding_model)
-
-    if getattr(knowledge, "embedding_provider", None):
-        mapped_provider = map_provider(config.knowledge.embedding_provider)
-        await _safe_upsert("SELECTED_EMBEDDING_MODEL_PROVIDER", mapped_provider)
+    await _safe_upsert("SELECTED_EMBEDDING_MODEL_PROVIDER", "OpenAI")
 
     agent = getattr(config, "agent", None)
     if getattr(agent, "llm_model", None):
         await _safe_upsert("SELECTED_LANGUAGE_MODEL", config.agent.llm_model)
+    await _safe_upsert("SELECTED_LANGUAGE_MODEL_PROVIDER", "OpenAI")
 
-    if getattr(agent, "llm_provider", None):
-        mapped_llm_provider = map_provider(config.agent.llm_provider)
-        await _safe_upsert("SELECTED_LANGUAGE_MODEL_PROVIDER", mapped_llm_provider)
+    # Runtime headers overwrite these with the hop token on each Langflow run;
+    # they only need to exist and stay non-empty so load_from_db can resolve them.
+    for name in sorted(LANGFLOW_RUNTIME_CREDENTIAL_PLACEHOLDERS):
+        await _safe_upsert(name, LANGFLOW_RUNTIME_CREDENTIAL_PLACEHOLDER_VALUE)
 
     if errors:
         raise RuntimeError(f"Failed to update Langflow global variable(s): {', '.join(errors)}")
@@ -388,6 +370,26 @@ async def _update_mcp_server_urls(config, session_manager=None, flows_service=No
         # Don't fail the entire settings update if MCP update fails
 
 
+async def _upsert_selected_model_variable(name: str, value: str | None) -> None:
+    """Push a SELECTED_*_MODEL global var, non-fatally.
+
+    Flows no longer carry per-provider embedding/LLM nodes for
+    `change_langflow_model_value` to patch — they use the single
+    OpenAI-compatible component that reads its model from this global variable.
+    That makes this the only channel by which a model change reaches a flow, so
+    it has to follow every model change, not just credential changes.
+    """
+    if not value:
+        return
+    try:
+        await _upsert_langflow_global_variable(name, value)
+        logger.info("Set global variable in Langflow", variable_name=name)
+    except Exception as e:
+        logger.warning(
+            "Failed to set global variable in Langflow", variable_name=name, error=str(e)
+        )
+
+
 async def _update_langflow_model_values(
     config,
     flows_service,
@@ -404,6 +406,7 @@ async def _update_langflow_model_values(
                 effective_llm_model = llm_model  # do not fall back; force caller to specify
             else:
                 effective_llm_model = llm_model or config.agent.llm_model
+            await _upsert_selected_model_variable("SELECTED_LANGUAGE_MODEL", effective_llm_model)
             result = await flows_service.change_langflow_model_value(
                 effective_llm_provider, llm_model=effective_llm_model, force_llm_update=True
             )
@@ -426,6 +429,9 @@ async def _update_langflow_model_values(
                 )
             else:
                 effective_embedding_model = embedding_model or config.knowledge.embedding_model
+            await _upsert_selected_model_variable(
+                "SELECTED_EMBEDDING_MODEL", effective_embedding_model
+            )
             result = await flows_service.change_langflow_model_value(
                 effective_embedding_provider,
                 embedding_model=effective_embedding_model,

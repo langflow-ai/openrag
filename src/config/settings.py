@@ -120,6 +120,19 @@ OPENRAG_BACKEND_INTERNAL_URL = os.getenv(
     f"http://openrag-backend:{OPENRAG_BACKEND_PORT}",
 ).rstrip("/")
 
+
+def get_langflow_llm_base_url() -> str:
+    """OpenAI-compatible base URL Langflow should call (must end with /v1).
+
+    Override with OPENRAG_LLM_PROXY_URL when Langflow cannot reach
+    OPENRAG_BACKEND_INTERNAL_URL (rare; same cases as a custom ingest router).
+    """
+    override = os.getenv("OPENRAG_LLM_PROXY_URL")
+    if override:
+        return override.rstrip("/")
+    return f"{OPENRAG_BACKEND_INTERNAL_URL}/v1"
+
+
 # --- Backend ingestion-callback proxy router ------------------------------
 # A standalone, minimal uvicorn app (spun up in the same process as the main
 # backend, on its own port) that proxies ONLY the Langflow ingest callback
@@ -660,6 +673,19 @@ LANGFLOW_INGEST_CALLBACK_TTL_SECONDS = get_env_int(
     INGESTION_TIMEOUT + 300,
 )
 LANGFLOW_INGEST_CALLBACK_BATCH_SIZE = get_env_int("LANGFLOW_INGEST_CALLBACK_BATCH_SIZE", 100)
+
+
+def get_langflow_llm_proxy_ttl_seconds() -> int:
+    """TTL for the Langflow → OpenRAG LLM hop token.
+
+    Defaults to the ingest-callback TTL so one Langflow ingest run can call
+    embeddings for the whole document. Override with LANGFLOW_LLM_PROXY_TTL_SECONDS.
+    """
+    return get_env_int(
+        "LANGFLOW_LLM_PROXY_TTL_SECONDS",
+        LANGFLOW_INGEST_CALLBACK_TTL_SECONDS,
+    )
+
 
 OPENSEARCH_JWT_TTL_BUFFER_SECONDS = 300
 
@@ -1627,7 +1653,15 @@ class AppClients:
 
             current_value = target_variable.get("value")
             current_default_fields = target_variable.get("default_fields", [])
-            if current_value == value and not current_default_fields:
+            # Langflow redacts Credential values on GET (null) and treats an
+            # empty stored value as "{name} variable not found." Always write
+            # when the visible value is missing so placeholders can heal, and
+            # rewrite whenever stale Apply To (default_fields) entries linger.
+            if (
+                current_value not in (None, "")
+                and current_value == value
+                and not current_default_fields
+            ):
                 logger.debug(
                     "Langflow global variable already up to date, skipping update",
                     variable_name=name,

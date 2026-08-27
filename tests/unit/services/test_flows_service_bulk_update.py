@@ -15,6 +15,30 @@ from services.flows_service import FlowsService  # noqa: E402
 
 
 @pytest.mark.asyncio
+async def test_arbitrary_provider_uses_openai_compatible_langflow_component():
+    service = FlowsService()
+    update = AsyncMock(return_value={"flow": "retrieval", "success": True})
+
+    with patch.object(service, "_update_provider_components", update):
+        result = await service.change_langflow_model_value(
+            "gemini",
+            llm_model="gemini-2.5-pro",
+            force_llm_update=True,
+            flow_configs=[{"name": "retrieval", "flow_id": "flow-1"}],
+        )
+
+    assert result["success"] is True
+    update.assert_awaited_once_with(
+        {"name": "retrieval", "flow_id": "flow-1"},
+        "openai",
+        embedding_model=None,
+        llm_model="gemini-2.5-pro",
+        force_embedding_update=False,
+        force_llm_update=True,
+    )
+
+
+@pytest.mark.asyncio
 async def test_bulk_update_flows_creates_backup_flow_in_langflow():
     service = FlowsService()
 

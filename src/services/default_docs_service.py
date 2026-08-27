@@ -205,7 +205,7 @@ async def _ingest_default_documents_langflow(
         effective_jwt = session_manager.get_effective_jwt_token(anonymous_user.user_id, None)
 
     default_tweaks = {
-        "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4": {
+        "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-WaE28": {
             "docs_metadata": [
                 {"key": "owner", "value": None},
                 {"key": "owner_name", "value": anonymous_user.name},
@@ -268,7 +268,7 @@ async def _ingest_default_documents_url_langflow(
         effective_jwt = session_manager.get_effective_jwt_token(anonymous_user.user_id, None)
 
     default_tweaks = {
-        "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4": {
+        "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-dihKf": {
             "docs_metadata": [
                 {"key": "owner", "value": None},
                 {"key": "owner_name", "value": anonymous_user.name},

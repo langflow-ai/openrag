@@ -147,7 +147,11 @@ class ChatService:
 
         # Add provider credentials to headers
         await add_provider_credentials_to_headers(
-            extra_headers, config, flows_service=self.flows_service, jwt_token=jwt_token
+            extra_headers,
+            config,
+            flows_service=self.flows_service,
+            jwt_token=jwt_token,
+            user_id=user_id,
         )
         # Get context variables for filters, limit, and threshold
         from auth_context import (
@@ -278,7 +282,11 @@ class ChatService:
 
         # Add provider credentials to headers
         await add_provider_credentials_to_headers(
-            extra_headers, config, flows_service=self.flows_service, jwt_token=jwt_token
+            extra_headers,
+            config,
+            flows_service=self.flows_service,
+            jwt_token=jwt_token,
+            user_id=user_id,
         )
 
         # Build the complete filter expression like the chat service does
@@ -579,7 +587,11 @@ class ChatService:
 
             # Add provider credentials to headers
             await add_provider_credentials_to_headers(
-                extra_headers, config, flows_service=self.flows_service, jwt_token=jwt_token
+                extra_headers,
+                config,
+                flows_service=self.flows_service,
+                jwt_token=jwt_token,
+                user_id=user_id,
             )
 
             # Ensure the Langflow client exists; try lazy init if needed
