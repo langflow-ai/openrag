@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from rich.console import Console
 
@@ -101,10 +102,6 @@ def test_container_port_conflict_from_own_containers_is_not_a_failure():
 
 def test_start_services_cli_ensures_openrag_version(tmp_path, monkeypatch):
     """CLI _start_services_cli must call ensure_openrag_version to set OPENRAG_VERSION in .env."""
-    from unittest.mock import patch
-
-    from tui.managers.env_manager import EnvManager
-
     env_file = tmp_path / ".env"
     env_file.write_text("LANGFLOW_SUPERUSER_PASSWORD='secret'\n")
 
