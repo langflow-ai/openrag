@@ -611,154 +611,27 @@ async def test_selected_model_upsert_failure_is_not_fatal(monkeypatch):
     assert calls == ["openai"]
 
 
-@pytest.mark.asyncio
-async def test_ensure_required_globals_skips_creating_empty_valued_variables(monkeypatch):
-    """Unconfigured optional providers must not be POSTed to Langflow.
+# --- guards carried over from main (#2265) -------------------------------
+# Those tests exercised OLLAMA_BASE_URL / WATSONX_URL / WATSONX_PROJECT_ID.
+# This branch stops publishing vendor endpoints to Langflow entirely - the
+# /v1 proxy holds the credentials - so those names are no longer in
+# LANGFLOW_GENERIC_GLOBAL_VARIABLES and the originals would have passed
+# vacuously. They are retargeted at OPENRAG_LLM_BASE_URL, which is generic
+# and can still resolve to "" when the proxy URL is not derivable.
 
-    Langflow answers 400 "Variable value cannot be empty", which the create
-    helper reports as a generic "Failed to create Langflow global variable"
-    warning on every boot.
-    """
 
+def _patch_llm_base_url(monkeypatch, value: str) -> None:
+    monkeypatch.setattr(
+        langflow_sync.settings, "get_langflow_llm_base_url", lambda: value, raising=True
+    )
+
+
+def _stub_langflow(monkeypatch, existing=None, calls=None):
     async def mock_langflow_request(method, endpoint, **kwargs):
+        if calls is not None:
+            calls.append((method, endpoint, kwargs))
         if method == "GET":
-            return _Response(json_data=[])
-        return _Response(status_code=200)
-
-    monkeypatch.setattr(
-        langflow_sync.clients, "langflow_request", mock_langflow_request, raising=True
-    )
-
-    create_calls = []
-
-    async def create_variable(name, value, modify=False, variable_type="Credential"):
-        create_calls.append((name, value, modify, variable_type))
-
-    monkeypatch.setattr(
-        langflow_sync.clients,
-        "_create_langflow_global_variable",
-        create_variable,
-        raising=True,
-    )
-
-    # No ollama / watsonx configured -> OLLAMA_BASE_URL, WATSONX_PROJECT_ID and
-    # WATSONX_URL all resolve to "".
-    config = SimpleNamespace(providers=SimpleNamespace(), knowledge=SimpleNamespace())
-
-    await langflow_sync.ensure_required_langflow_global_variables(config)
-
-    created = {name for name, *_ in create_calls}
-    assert "OLLAMA_BASE_URL" not in created
-    assert "WATSONX_PROJECT_ID" not in created
-    assert "WATSONX_URL" not in created
-    # Variables that do have a value are still created.
-    assert "OPENSEARCH_INDEX_NAME" in created
-    assert all(value for _, value, *_ in create_calls)
-
-
-@pytest.mark.asyncio
-async def test_ensure_required_globals_creates_optional_provider_var_once_configured(monkeypatch):
-    async def mock_langflow_request(method, endpoint, **kwargs):
-        if method == "GET":
-            return _Response(json_data=[])
-        return _Response(status_code=200)
-
-    monkeypatch.setattr(
-        langflow_sync.clients, "langflow_request", mock_langflow_request, raising=True
-    )
-
-    create_calls = []
-
-    async def create_variable(name, value, modify=False, variable_type="Credential"):
-        create_calls.append((name, value, modify, variable_type))
-
-    monkeypatch.setattr(
-        langflow_sync.clients,
-        "_create_langflow_global_variable",
-        create_variable,
-        raising=True,
-    )
-
-    config = SimpleNamespace(
-        providers=SimpleNamespace(ollama=SimpleNamespace(endpoint="http://localhost:11434")),
-        knowledge=SimpleNamespace(),
-    )
-
-    await langflow_sync.ensure_required_langflow_global_variables(config)
-
-    assert ("OLLAMA_BASE_URL", "http://localhost:11434", True, "Generic") in create_calls
-
-
-@pytest.mark.asyncio
-async def test_ensure_required_globals_does_not_blank_existing_value(monkeypatch):
-    """An existing variable must not be PATCHed to "" when its provider is gone.
-
-    Langflow rejects the empty value, so the PATCH would fail and log a warning
-    every boot while leaving the stored value untouched anyway.
-    """
-    langflow_calls = []
-
-    async def mock_langflow_request(method, endpoint, **kwargs):
-        langflow_calls.append((method, endpoint, kwargs))
-        if method == "GET":
-            return _Response(
-                json_data=[
-                    {
-                        "id": "var-1",
-                        "name": "OLLAMA_BASE_URL",
-                        "value": "http://localhost:11434",
-                        "type": "Generic",
-                        "default_fields": [],
-                    }
-                ]
-            )
-        return _Response(status_code=200)
-
-    monkeypatch.setattr(
-        langflow_sync.clients, "langflow_request", mock_langflow_request, raising=True
-    )
-
-    async def create_variable(name, value, modify=False, variable_type="Credential"):
-        pass
-
-    monkeypatch.setattr(
-        langflow_sync.clients,
-        "_create_langflow_global_variable",
-        create_variable,
-        raising=True,
-    )
-
-    # ollama no longer configured -> target value is ""
-    config = SimpleNamespace(providers=SimpleNamespace(), knowledge=SimpleNamespace())
-
-    await langflow_sync.ensure_required_langflow_global_variables(config)
-
-    assert [c for c in langflow_calls if c[0] == "PATCH"] == []
-
-
-@pytest.mark.asyncio
-async def test_ensure_required_globals_type_migration_keeps_value_when_target_empty(monkeypatch):
-    """A Credential->Generic migration must not recreate the variable with "".
-
-    The DELETE has already landed by then, so a 400 on the recreate would drop
-    the variable entirely.
-    """
-    langflow_calls = []
-
-    async def mock_langflow_request(method, endpoint, **kwargs):
-        langflow_calls.append((method, endpoint, kwargs))
-        if method == "GET":
-            return _Response(
-                json_data=[
-                    {
-                        "id": "var-1",
-                        "name": "WATSONX_URL",
-                        "value": "https://us-south.ml.cloud.ibm.com",
-                        "type": "Credential",
-                        "default_fields": [],
-                    }
-                ]
-            )
+            return _Response(json_data=existing or [])
         if method == "DELETE":
             return _Response(status_code=204)
         return _Response(status_code=201)
@@ -767,74 +640,158 @@ async def test_ensure_required_globals_type_migration_keeps_value_when_target_em
         langflow_sync.clients, "langflow_request", mock_langflow_request, raising=True
     )
 
+
+@pytest.mark.asyncio
+async def test_ensure_required_globals_skips_creating_empty_valued_variables(monkeypatch):
+    """Langflow answers 400 "Variable value cannot be empty" for a blank value.
+
+    Creating one anyway logs a "Failed to create Langflow global variable"
+    warning on every boot.
+    """
+    _stub_langflow(monkeypatch)
+    _patch_llm_base_url(monkeypatch, "")
+
+    create_calls = []
+
+    async def create_variable(name, value, modify=False, variable_type="Credential"):
+        create_calls.append((name, value, modify, variable_type))
+
+    monkeypatch.setattr(
+        langflow_sync.clients, "_create_langflow_global_variable", create_variable, raising=True
+    )
+
+    config = SimpleNamespace(providers=SimpleNamespace(), knowledge=SimpleNamespace())
+    await langflow_sync.ensure_required_langflow_global_variables(config)
+
+    created = {name for name, *_ in create_calls}
+    assert "OPENRAG_LLM_BASE_URL" not in created
+    # Variables that do have a value are still created.
+    assert "OPENSEARCH_INDEX_NAME" in created
+    assert all(value for _, value, *_ in create_calls)
+
+
+@pytest.mark.asyncio
+async def test_ensure_required_globals_creates_the_variable_once_it_has_a_value(monkeypatch):
+    _stub_langflow(monkeypatch)
+    _patch_llm_base_url(monkeypatch, "http://openrag-backend:8000/v1")
+
+    create_calls = []
+
+    async def create_variable(name, value, modify=False, variable_type="Credential"):
+        create_calls.append((name, value, modify, variable_type))
+
+    monkeypatch.setattr(
+        langflow_sync.clients, "_create_langflow_global_variable", create_variable, raising=True
+    )
+
+    config = SimpleNamespace(providers=SimpleNamespace(), knowledge=SimpleNamespace())
+    await langflow_sync.ensure_required_langflow_global_variables(config)
+
+    assert (
+        "OPENRAG_LLM_BASE_URL",
+        "http://openrag-backend:8000/v1",
+        True,
+        "Generic",
+    ) in create_calls
+
+
+@pytest.mark.asyncio
+async def test_ensure_required_globals_does_not_blank_an_existing_value(monkeypatch):
+    """An empty target must never overwrite what Langflow already holds."""
+    calls = []
+    _stub_langflow(
+        monkeypatch,
+        existing=[
+            {
+                "id": "var-1",
+                "name": "OPENRAG_LLM_BASE_URL",
+                "value": "http://openrag-backend:8000/v1",
+                "type": "Generic",
+                "default_fields": [],
+            }
+        ],
+        calls=calls,
+    )
+    _patch_llm_base_url(monkeypatch, "")
+
     async def create_variable(name, value, modify=False, variable_type="Credential"):
         pass
 
     monkeypatch.setattr(
-        langflow_sync.clients,
-        "_create_langflow_global_variable",
-        create_variable,
-        raising=True,
+        langflow_sync.clients, "_create_langflow_global_variable", create_variable, raising=True
     )
 
     config = SimpleNamespace(providers=SimpleNamespace(), knowledge=SimpleNamespace())
-
     await langflow_sync.ensure_required_langflow_global_variables(config)
 
-    posts = [c for c in langflow_calls if c[0] == "POST"]
-    assert len(posts) == 1
-    # Recreated as Generic, but carrying the value Langflow already held.
-    assert posts[0][2]["json"]["value"] == "https://us-south.ml.cloud.ibm.com"
-    assert posts[0][2]["json"]["type"] == "Generic"
+    patched = [c for c in calls if c[0] == "PATCH" and "var-1" in c[1]]
+    assert patched == []
 
 
 @pytest.mark.asyncio
 async def test_ensure_required_globals_defers_type_migration_when_value_is_empty(monkeypatch):
-    """A Credential->Generic migration must not delete a variable it can't recreate.
-
-    Unlike the "keeps_value_when_target_empty" case above, here the *retained*
-    value is also empty (an unconfigured WATSONX_URL stored as Credential).
-    Deleting and then recreating with "" would 400, dropping the variable
-    entirely, so the migration must be deferred until it has a value.
-    """
-    langflow_calls = []
-
-    async def mock_langflow_request(method, endpoint, **kwargs):
-        langflow_calls.append((method, endpoint, kwargs))
-        if method == "GET":
-            return _Response(
-                json_data=[
-                    {
-                        "id": "var-1",
-                        "name": "WATSONX_URL",
-                        "value": "",
-                        "type": "Credential",
-                        "default_fields": [],
-                    }
-                ]
-            )
-        return _Response(status_code=200)
-
-    monkeypatch.setattr(
-        langflow_sync.clients, "langflow_request", mock_langflow_request, raising=True
+    """The DELETE lands before the recreate, so a refused POST would drop it."""
+    calls = []
+    _stub_langflow(
+        monkeypatch,
+        existing=[
+            {
+                "id": "var-1",
+                "name": "OPENRAG_LLM_BASE_URL",
+                "value": "",
+                "type": "Credential",
+                "default_fields": [],
+            }
+        ],
+        calls=calls,
     )
+    _patch_llm_base_url(monkeypatch, "")
 
     async def create_variable(name, value, modify=False, variable_type="Credential"):
         pass
 
     monkeypatch.setattr(
-        langflow_sync.clients,
-        "_create_langflow_global_variable",
-        create_variable,
-        raising=True,
+        langflow_sync.clients, "_create_langflow_global_variable", create_variable, raising=True
     )
 
-    # watsonx is not configured -> WATSONX_URL resolves to "".
     config = SimpleNamespace(providers=SimpleNamespace(), knowledge=SimpleNamespace())
-
     await langflow_sync.ensure_required_langflow_global_variables(config)
 
-    methods = [c[0] for c in langflow_calls]
-    assert "DELETE" not in methods
-    assert "POST" not in methods
-    assert "PATCH" not in methods
+    touched = [c for c in calls if "var-1" in c[1]]
+    assert touched == []
+
+
+@pytest.mark.asyncio
+async def test_ensure_required_globals_migration_keeps_the_value_when_target_empty(monkeypatch):
+    """A Credential->Generic migration must not recreate the variable with ""."""
+    calls = []
+    _stub_langflow(
+        monkeypatch,
+        existing=[
+            {
+                "id": "var-1",
+                "name": "OPENRAG_LLM_BASE_URL",
+                "value": "http://openrag-backend:8000/v1",
+                "type": "Credential",
+                "default_fields": [],
+            }
+        ],
+        calls=calls,
+    )
+    _patch_llm_base_url(monkeypatch, "")
+
+    async def create_variable(name, value, modify=False, variable_type="Credential"):
+        pass
+
+    monkeypatch.setattr(
+        langflow_sync.clients, "_create_langflow_global_variable", create_variable, raising=True
+    )
+
+    config = SimpleNamespace(providers=SimpleNamespace(), knowledge=SimpleNamespace())
+    await langflow_sync.ensure_required_langflow_global_variables(config)
+
+    posts = [c for c in calls if c[0] == "POST"]
+    assert len(posts) == 1
+    # Recreated as Generic, carrying the value Langflow already held.
+    assert posts[0][2]["json"]["value"] == "http://openrag-backend:8000/v1"
+    assert posts[0][2]["json"]["type"] == "Generic"
