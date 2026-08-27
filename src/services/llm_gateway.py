@@ -57,11 +57,43 @@ def _get_config():
     return get_openrag_config()
 
 
+#: Canonical separator between an OpenRAG provider tag and the model id.
+#: `/` cannot serve as one: watsonx hosts `openai/gpt-oss-120b`, whose own name
+#: begins with a provider key, so a `/`-split routes it to OpenAI and LiteLLM
+#: then rejects the bare `gpt-oss-120b`. No catalogue id has a provider-shaped
+#: prefix before a colon, so `provider:model` stays unambiguous even for ids
+#: that use colons themselves (`ollama:gpt-oss:120b-cloud`, `openai:ft:gpt-4`).
+PROVIDER_SEPARATOR = ":"
+
+
 def split_model_id(model: str) -> tuple[str | None, str]:
-    """Split `provider/name` when the prefix is a known LiteLLM provider."""
+    """Split an OpenRAG provider tag off a model id.
+
+    `provider:model` is the canonical form and is checked first. `provider/`
+    is still accepted so ids stored before the switch keep resolving, but only
+    when the remainder does not look like a provider-qualified name itself.
+    """
     raw = (model or "").strip()
+
+    prefix, sep, rest = raw.partition(PROVIDER_SEPARATOR)
+    if sep and rest:
+        prefix_lower = prefix.lower()
+        if is_known_provider(prefix_lower):
+            return prefix_lower, rest
+
     if "/" not in raw:
         return None, raw
+
+    # A slash is ambiguous: it separates a legacy tag from its model, but it is
+    # also part of vendor-qualified names. When the whole string names exactly
+    # one catalogue model, that provider owns it — `openai/gpt-oss-120b` is
+    # watsonx's model, not OpenAI's `gpt-oss-120b`.
+    from services.model_catalog import catalog_owner
+
+    owner = catalog_owner(raw)
+    if owner:
+        return owner, raw
+
     prefix, rest = raw.split("/", 1)
     prefix_lower = prefix.lower()
     if is_known_provider(prefix_lower):

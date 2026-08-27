@@ -473,3 +473,62 @@ def test_watsonx_rejects_params_we_forward_unless_they_are_dropped():
             **{param: value},
         )
         assert param not in dropped
+
+
+@pytest.mark.parametrize(
+    ("model_id", "expected"),
+    [
+        # Canonical tag. The name keeps its own slashes and colons.
+        ("watsonx:openai/gpt-oss-120b", ("watsonx", "openai/gpt-oss-120b")),
+        ("watsonx:ibm/granite-4-h-small", ("watsonx", "ibm/granite-4-h-small")),
+        ("ollama:gpt-oss:120b-cloud", ("ollama", "gpt-oss:120b-cloud")),
+        ("openai:ft:gpt-4-0613", ("openai", "ft:gpt-4-0613")),
+        # Legacy `provider/model` tags still resolve.
+        ("watsonx/ibm/granite-4-h-small", ("watsonx", "ibm/granite-4-h-small")),
+        ("anthropic/claude-sonnet-4-5", ("anthropic", "claude-sonnet-4-5")),
+        # Untagged ids are left to the configured default provider.
+        ("gpt-4o-mini", (None, "gpt-4o-mini")),
+        ("gpt-oss:120b-cloud", (None, "gpt-oss:120b-cloud")),
+        ("ft:gpt-4-0613", (None, "ft:gpt-4-0613")),
+    ],
+)
+def test_split_model_id_handles_tagged_and_untagged_ids(model_id, expected):
+    from services.llm_gateway import split_model_id
+
+    assert split_model_id(model_id) == expected
+
+
+def test_a_vendor_qualified_name_is_not_mistaken_for_a_provider_tag():
+    """watsonx serves `openai/gpt-oss-120b`; the `openai/` is part of the name.
+
+    Splitting on the slash routed it to OpenAI as a bare `gpt-oss-120b`, which
+    LiteLLM rejects with "LLM Provider NOT provided", surfacing to the user as
+    "The model provider could not be reached."
+    """
+    from services.llm_gateway import split_model_id
+
+    assert split_model_id("openai/gpt-oss-120b") == ("watsonx", "openai/gpt-oss-120b")
+
+
+def test_model_ids_served_by_v1_models_round_trip():
+    """Every id `/v1/models` publishes must resolve back to its owner."""
+    from services.llm_gateway import split_model_id
+    from services.model_catalog import openai_models_list
+
+    for row in openai_models_list()["data"]:
+        provider, _name = split_model_id(row["id"])
+        if row["owned_by"] == "openai":
+            continue
+        assert provider == row["owned_by"], row
+
+
+def test_no_catalogue_id_has_a_provider_shaped_prefix_before_a_colon():
+    """The property that makes `:` a safe separator.
+
+    If a future model id breaks this, `provider:model` becomes ambiguous the
+    same way `provider/model` already is.
+    """
+    from services.model_catalog import PROVIDER_SEPARATOR_SAFE_CHECK
+
+    ambiguous = PROVIDER_SEPARATOR_SAFE_CHECK()
+    assert ambiguous == [], f"colon-ambiguous catalogue ids: {ambiguous}"
