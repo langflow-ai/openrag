@@ -102,6 +102,7 @@ def test_container_port_conflict_from_own_containers_is_not_a_failure():
 def test_start_services_cli_ensures_openrag_version(tmp_path, monkeypatch):
     """CLI _start_services_cli must call ensure_openrag_version to set OPENRAG_VERSION in .env."""
     from unittest.mock import patch
+
     from tui.managers.env_manager import EnvManager
 
     env_file = tmp_path / ".env"
@@ -120,4 +121,3 @@ def test_start_services_cli_ensures_openrag_version(tmp_path, monkeypatch):
 
     assert env_file.exists()
     assert "OPENRAG_VERSION='9.9.9'" in env_file.read_text()
-
