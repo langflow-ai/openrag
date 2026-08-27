@@ -151,4 +151,3 @@ def test_start_services_cli_version_mismatch_warning(tmp_path, monkeypatch):
 
     assert fully_started is True
     assert "Version Mismatch Detected" in output
-

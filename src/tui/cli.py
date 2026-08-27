@@ -351,6 +351,7 @@ def _start_services_cli(
 
     # Check for version mismatch before starting services / writing version
     if hasattr(container_manager, "check_version_mismatch"):
+
         async def _check_version():
             return await container_manager.check_version_mismatch()
 
@@ -358,12 +359,18 @@ def _start_services_cli(
         if has_mismatch and container_version:
             console.print()
             console.print("[bold yellow]⚠ Version Mismatch Detected[/bold yellow]")
-            console.print(f"  Existing containers are running version [bold]{container_version}[/bold]")
+            console.print(
+                f"  Existing containers are running version [bold]{container_version}[/bold]"
+            )
             console.print(f"  Current version is [bold]{cli_version}[/bold]\n")
-            console.print(f"  Starting services will update containers to version [bold]{cli_version}[/bold].")
+            console.print(
+                f"  Starting services will update containers to version [bold]{cli_version}[/bold]."
+            )
             console.print("  This may cause compatibility issues with your flows.\n")
             console.print("  [yellow]⚠️  Please backup your flows before continuing.[/yellow]")
-            console.print("     Customizations to OpenRAG built-in flows are backed up in ~/.openrag/flows/backup/")
+            console.print(
+                "     Customizations to OpenRAG built-in flows are backed up in ~/.openrag/flows/backup/"
+            )
             console.print("     Other user created flows are not backed up automatically.\n")
             try:
                 proceed = input("Do you want to continue? [y/N]: ").strip().lower()
