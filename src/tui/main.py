@@ -5,11 +5,17 @@ import subprocess
 import sys
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Optional
 
-from textual.app import App, ComposeResult
+from textual.app import App
 
 from utils.logging_config import get_logger
+
+from .managers.container_manager import ContainerManager
+from .managers.docling_manager import DoclingManager
+from .managers.env_manager import EnvManager
+from .screens.welcome import WelcomeScreen
+from .utils.platform import PlatformDetector
+from .widgets.diagnostics_notification import notify_with_diagnostics
 
 try:
     from importlib.resources import files
@@ -17,17 +23,6 @@ except ImportError:
     from importlib_resources import files
 
 logger = get_logger(__name__)
-
-from .managers.container_manager import ContainerManager
-from .managers.docling_manager import DoclingManager
-from .managers.env_manager import EnvManager
-from .screens.config import ConfigScreen
-from .screens.diagnostics import DiagnosticsScreen
-from .screens.logs import LogsScreen
-from .screens.monitor import MonitorScreen
-from .screens.welcome import WelcomeScreen
-from .utils.platform import PlatformDetector
-from .widgets.diagnostics_notification import notify_with_diagnostics
 
 
 class OpenRAGTUI(App):
@@ -399,7 +394,7 @@ class OpenRAGTUI(App):
             )
 
         # Load existing config if available
-        config_exists = self.env_manager.load_existing_env()
+        self.env_manager.load_existing_env()
 
         # Start with welcome screen
         self.push_screen(WelcomeScreen())
