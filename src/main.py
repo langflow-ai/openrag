@@ -11,6 +11,7 @@ Most of what used to live in this file moved into focused modules:
 - utils/opensearch_init.py             — OpenSearch index/security setup
 - utils/jwt_keygen.py                  — RSA keypair generation
 - utils/url_content_fetcher.py         — URL → text-file helper
+- observability/instana_boot.py        — Instana APM gate (run from bootstrap)
 - api/health.py                        — liveness + readiness probes
 
 This module is intentionally thin: import bootstrap, run Alembic, build
@@ -18,6 +19,9 @@ the app, run uvicorn. The re-exports below preserve the
 `from main import …` contract used by tests and api/settings.py.
 """
 
+# Importing bootstrap also boots the Instana tracer when INSTANA_ENABLED is
+# set — it has to patch httpx / sqlalchemy / starlette before the imports
+# below pull them in.
 import bootstrap  # noqa: F401  — must be first; loads .env + structured logging
 
 import asyncio
