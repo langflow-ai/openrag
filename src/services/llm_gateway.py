@@ -8,6 +8,7 @@ routes by model prefix / configured provider. Callers never see upstream keys.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import AsyncIterator, Mapping
 from typing import Any, Literal
 
@@ -191,19 +192,176 @@ _UPSTREAM_CREDENTIAL_MESSAGE = (
 )
 
 
-def _upstream_client_message(detail: str) -> str:
-    """Safe client text for an upstream failure.
+#: Longest upstream explanation we will echo. Provider bodies can embed a whole
+#: model catalogue; past this the message stops being readable in a chat bubble.
+_MAX_UPSTREAM_MESSAGE_CHARS = 600
 
-    The upstream text is only *classified*, never forwarded: both return values
-    are fixed literals, so provider internals and traceback text cannot reach
-    the caller (CodeQL py/stack-trace-exposure). A credential failure still gets
-    its own actionable message so onboarding can tell the user to fix the key.
+#: Lines LiteLLM appends to its own exceptions that say nothing about the failure.
+_UPSTREAM_NOISE_MARKERS = (
+    "Give Feedback / Get Help",
+    "LiteLLM.Info:",
+    "For more information check:",
+    "For further information visit",
+    "During handling of the above exception",
+)
+
+#: Everything from here on is interpreter state, not provider explanation.
+_TRACEBACK_MARKERS = ("Traceback (most recent call last)", 'File "')
+
+_FILE_PATH_PATTERN = re.compile(r"(?:/[\w.\-]+)+\.py")
+#: Loopback and RFC1918 addresses — deployment topology, not provider explanation.
+_PRIVATE_HOST_PATTERN = re.compile(
+    r"\b(?:127(?:\.\d{1,3}){3}|10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}"
+    r"|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}|localhost)\b"
+)
+_ANSI_PATTERN = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _call_label(provider: str, model: str) -> str:
+    """`provider/model` for humans, without repeating a prefix LiteLLM already added."""
+    if model and provider and not model.startswith(f"{provider}/"):
+        return f"{provider}/{model}"
+    return model or provider or "provider"
+
+
+def _json_bodies(text: str):
+    """Yield every JSON object embedded in `text`, outermost first."""
+    decoder = json.JSONDecoder()
+    index = text.find("{")
+    while index != -1:
+        try:
+            body, end = decoder.raw_decode(text, index)
+        except ValueError:
+            index = text.find("{", index + 1)
+            continue
+        yield body
+        index = text.find("{", end)
+
+
+def _provider_message(body: Any) -> str | None:
+    """The provider's own explanation out of one parsed error body."""
+    if not isinstance(body, dict):
+        return None
+    error = body.get("error")
+    if isinstance(error, dict) and isinstance(error.get("message"), str):
+        return error["message"]
+    if isinstance(error, str) and error.strip():
+        return error
+    errors = body.get("errors")
+    if isinstance(errors, list):
+        parts = [
+            item["message"]
+            for item in errors
+            if isinstance(item, dict) and isinstance(item.get("message"), str)
+        ]
+        if parts:
+            return "; ".join(parts)
+    for key in ("message", "detail"):
+        value = body.get(key)
+        if isinstance(value, str) and value.strip():
+            return value
+    return None
+
+
+def _is_provider_attributable(exc: BaseException | None) -> bool:
+    """True when the failure came from the provider call, not from our own code.
+
+    Anything LiteLLM raises describes the upstream request — it tags its
+    exceptions with `llm_provider`, and its transport wrappers live under the
+    `litellm` package. A `RuntimeError` from OpenRAG code does not, and its text
+    is ours to keep in the logs.
     """
-    from api.provider_validation import is_provider_credential_error
+    if exc is None:
+        return False
+    if getattr(exc, "llm_provider", None):
+        return True
+    return type(exc).__module__.split(".")[0] == "litellm"
 
+
+def _sanitise_upstream_detail(detail: str) -> str:
+    """Strip interpreter state out of an upstream failure, keep the explanation.
+
+    Traceback frames, local file paths, private addresses and LiteLLM's own
+    footer chatter are removed; what is left is collapsed and capped so it fits
+    a chat bubble. Credentials are already redacted by `_redact` before this
+    runs.
+    """
+    text = _ANSI_PATTERN.sub("", detail or "")
+    for marker in _TRACEBACK_MARKERS:
+        cut = text.find(marker)
+        if cut != -1:
+            text = text[:cut]
+    text = "\n".join(
+        line
+        for line in text.splitlines()
+        if not any(marker in line for marker in _UPSTREAM_NOISE_MARKERS)
+    )
+    text = _FILE_PATH_PATTERN.sub("<path>", text)
+    text = _PRIVATE_HOST_PATTERN.sub("<host>", text)
+    text = " ".join(text.split())
+    if len(text) > _MAX_UPSTREAM_MESSAGE_CHARS:
+        text = text[: _MAX_UPSTREAM_MESSAGE_CHARS - 1].rstrip() + "\u2026"
+    return text
+
+
+def _provider_error_text(detail: str, exc: BaseException | None) -> str | None:
+    """The provider's own words for a failure, or None when we cannot attribute it.
+
+    Providers explain themselves precisely — "Model 'x' is not supported for
+    this environment", "api_key is invalid" — and collapsing that into a fixed
+    literal leaves an operator with nothing to act on. But only text we can tie
+    to the upstream call earns a trip to the client: a JSON error body the
+    provider sent, or a LiteLLM exception, which always describes the request it
+    made. Anything else stays in the logs.
+    """
+    for body in _json_bodies(detail or ""):
+        message = _provider_message(body)
+        if message:
+            return message
+    if _is_provider_attributable(exc):
+        return detail
+    return None
+
+
+#: Upstream statuses worth passing through: a client can act on these itself.
+#: Everything else becomes 502 — an upstream 401/403 must not read as an OpenRAG
+#: auth failure, and an upstream 400 must not read as a bad request to us.
+_PASSTHROUGH_UPSTREAM_STATUSES = frozenset({408, 429, 503, 504})
+
+
+def _upstream_status_code(exc: BaseException) -> int:
+    """HTTP status for a failed upstream call, from the provider's own where useful."""
+    status = getattr(exc, "status_code", None)
+    if isinstance(status, int) and status in _PASSTHROUGH_UPSTREAM_STATUSES:
+        return status
+    return 502
+
+
+def _upstream_client_message(
+    detail: str, provider: str = "", model: str = "", exc: BaseException | None = None
+) -> str:
+    """Client-facing text for an upstream failure, naming the provider and cause.
+
+    Nothing is forwarded raw. `_provider_error_text` decides whether the failure
+    is the provider's to explain, and `_sanitise_upstream_detail` removes
+    traceback frames, paths and private addresses from what it returns — so the
+    caller sees the provider's own wording and which provider/model produced it,
+    and an unattributable failure still collapses to a fixed literal. A
+    credential failure keeps its actionable message so onboarding can tell the
+    user to fix the key.
+    """
+    from api.provider_validation import is_generic_upstream_error, is_provider_credential_error
+
+    label = _call_label(provider, model)
     if is_provider_credential_error(detail):
-        return _UPSTREAM_CREDENTIAL_MESSAGE
-    return _UPSTREAM_FAILURE_MESSAGE
+        return f"{_UPSTREAM_CREDENTIAL_MESSAGE} ({label})"
+    upstream = _provider_error_text(detail, exc)
+    upstream = _sanitise_upstream_detail(upstream) if upstream else ""
+    if not upstream or is_generic_upstream_error(upstream):
+        return f"{_UPSTREAM_FAILURE_MESSAGE} ({label})"
+    # lgtm[py/stack-trace-exposure] — provider error text only; traceback frames,
+    # file paths and private hosts are removed by _sanitise_upstream_detail.
+    return f"{label}: {upstream}"
 
 
 def _redact(message: str, credentials: Mapping[str, Any]) -> str:
@@ -239,6 +397,79 @@ def _chunk_payload(chunk: Any) -> str:
     if isinstance(chunk, dict):
         return json.dumps(chunk)
     return json.dumps({"data": str(chunk)})
+
+
+#: A payload wrapped more times than this is not a serialisation slip.
+_MAX_ARGUMENT_UNWRAPS = 3
+
+
+def _normalise_tool_arguments(value: Any) -> tuple[Any, bool]:
+    """Return `(arguments, repaired)`, unwrapping arguments serialised twice.
+
+    OpenAI's contract is that `function.arguments` is a string holding a JSON
+    *object*. Some models serialise the object and then serialise that string
+    again, sending `'"{\\"query\\": \\"x\\"}"'` where `'{"query": "x"}'` was
+    meant (watsonx `ibm/granite-4-h-small` does this; its stablemates on the
+    same deployment do not). Clients parse `arguments` exactly once, so they get
+    a `str` where a mapping is required: langchain-core rejects the tool call,
+    the agent sees no callable tool, and the run ends with no content at all.
+    Unwrapping is keyed on the payload opening with a quote, which a real
+    arguments object never does, so this is a no-op for well-behaved providers.
+    """
+    if isinstance(value, (dict, list)):
+        return json.dumps(value), True
+    if not isinstance(value, str) or not value.lstrip().startswith('"'):
+        return value, False
+    candidate = value
+    for _ in range(_MAX_ARGUMENT_UNWRAPS):
+        try:
+            decoded = json.loads(candidate)
+        except ValueError:
+            return value, False
+        if not isinstance(decoded, str):
+            return value, False
+        candidate = decoded
+        try:
+            inner = json.loads(candidate)
+        except ValueError:
+            continue
+        if isinstance(inner, (dict, list)):
+            return candidate, True
+    return value, False
+
+
+def _repair_tool_calls(tool_calls: Any, provider: str, model: str) -> int:
+    """Normalise `arguments` on every tool call in place. Returns how many changed."""
+    repaired = 0
+    for call in tool_calls or []:
+        if not isinstance(call, dict):
+            continue
+        function = call.get("function")
+        if not isinstance(function, dict):
+            continue
+        arguments, changed = _normalise_tool_arguments(function.get("arguments"))
+        if changed:
+            function["arguments"] = arguments
+            repaired += 1
+    if repaired:
+        logger.warning(
+            "Repaired double-encoded tool call arguments",
+            provider=provider,
+            model=model,
+            tool_calls=repaired,
+        )
+    return repaired
+
+
+def _repair_completion_payload(payload: dict[str, Any], provider: str, model: str) -> int:
+    repaired = 0
+    for choice in payload.get("choices") or []:
+        if not isinstance(choice, dict):
+            continue
+        message = choice.get("message")
+        if isinstance(message, dict):
+            repaired += _repair_tool_calls(message.get("tool_calls"), provider, model)
+    return repaired
 
 
 def _log_completion_shape(payload: dict[str, Any], provider: str, model: str) -> None:
@@ -302,12 +533,19 @@ async def chat_completions(
         raise
     except Exception as exc:
         detail = _redact(f"{type(exc).__name__}: {exc}", credentials)
-        logger.error("LLM chat completions failed", provider=provider, error=detail)
-        raise LlmGatewayError(_upstream_client_message(detail), 502, detail=detail) from exc
+        logger.error(
+            "LLM chat completions failed", provider=provider, model=litellm_model, error=detail
+        )
+        raise LlmGatewayError(
+            _upstream_client_message(detail, provider, litellm_model, exc),
+            _upstream_status_code(exc),
+            detail=detail,
+        ) from exc
 
     if stream:
-        return _stream_sse(result, provider, litellm_model)
+        return _stream_sse(result, provider, litellm_model, credentials)
     payload = _to_openai_dict(result)
+    _repair_completion_payload(payload, provider, litellm_model)
     _log_completion_shape(payload, provider, litellm_model)
     return payload
 
@@ -319,7 +557,9 @@ class _StreamTally:
         self.chunks = 0
         self.content_chars = 0
         self.tool_calls = 0
+        self.repaired_tool_calls = 0
         self.finish_reason: str | None = None
+        self.error: str | None = None
 
     def observe(self, payload: str) -> None:
         try:
@@ -339,19 +579,243 @@ class _StreamTally:
             self.tool_calls += len(delta.get("tool_calls") or [])
 
 
-async def _stream_sse(stream: Any, provider: str = "", model: str = "") -> AsyncIterator[str]:
+class _ToolCallBuffer:
+    """Reassembles streamed tool calls so their `arguments` can be repaired.
+
+    A tool call arrives spread over many deltas: the opening one carries `id`
+    and `name`, the rest carry `arguments` fragments the client concatenates.
+    Whether those fragments concatenate into a usable object is only knowable
+    once they are all in hand — the first fragment of a double-encoded payload
+    (`'"{\\'`) is indistinguishable from a slow provider. So tool-call deltas are
+    held here, joined, normalised, and emitted as one complete tool-call delta
+    just before the finishing chunk. Content deltas are never buffered, so token
+    streaming is untouched.
+    """
+
+    def __init__(self) -> None:
+        self._calls: dict[tuple[int, int], dict[str, Any]] = {}
+        self._order: list[tuple[int, int]] = []
+
+    def __bool__(self) -> bool:
+        return bool(self._order)
+
+    def absorb(self, choice_index: int, tool_calls: Any) -> None:
+        for position, raw in enumerate(tool_calls or []):
+            if not isinstance(raw, dict):
+                continue
+            index = raw.get("index")
+            if not isinstance(index, int):
+                index = position
+            key = (choice_index, index)
+            call = self._calls.get(key)
+            if call is None:
+                call = {
+                    "index": index,
+                    "type": "function",
+                    "function": {"name": "", "arguments": ""},
+                }
+                self._calls[key] = call
+                self._order.append(key)
+            if raw.get("id"):
+                call["id"] = raw["id"]
+            if raw.get("type"):
+                call["type"] = raw["type"]
+            function = raw.get("function")
+            if not isinstance(function, dict):
+                continue
+            name = function.get("name")
+            # Providers split at different granularities: some send the whole
+            # name once, some fragment it. Appending handles fragments; skipping
+            # an exact repeat handles providers that resend the full name.
+            if isinstance(name, str) and name and name != call["function"]["name"]:
+                call["function"]["name"] += name
+            arguments = function.get("arguments")
+            if isinstance(arguments, str):
+                call["function"]["arguments"] += arguments
+
+    def drain(self, provider: str, model: str) -> tuple[dict[int, list[dict[str, Any]]], int]:
+        """Take everything buffered, grouped by choice index, arguments repaired."""
+        grouped: dict[int, list[dict[str, Any]]] = {}
+        repaired = 0
+        for choice_index, _ in self._order:
+            grouped.setdefault(choice_index, [])
+        for key in self._order:
+            grouped[key[0]].append(self._calls[key])
+        for calls in grouped.values():
+            calls.sort(key=lambda call: call.get("index", 0))
+            repaired += _repair_tool_calls(calls, provider, model)
+        self._calls.clear()
+        self._order.clear()
+        return grouped, repaired
+
+
+def _tool_call_chunks(
+    template: Mapping[str, Any], grouped: Mapping[int, list[dict[str, Any]]]
+) -> list[dict[str, Any]]:
+    """One chunk per choice carrying that choice's complete tool calls."""
+    return [
+        {
+            "id": template.get("id"),
+            "object": template.get("object") or "chat.completion.chunk",
+            "created": template.get("created"),
+            "model": template.get("model"),
+            "choices": [
+                {
+                    "index": choice_index,
+                    "delta": {"role": "assistant", "tool_calls": calls},
+                    "finish_reason": None,
+                }
+            ],
+        }
+        for choice_index, calls in grouped.items()
+        if calls
+    ]
+
+
+def _chunk_carries_nothing(chunk: Mapping[str, Any]) -> bool:
+    """True when a chunk has no payload left after its tool calls were held back."""
+    if chunk.get("usage"):
+        return False
+    choices = chunk.get("choices") or []
+    if not choices:
+        return False
+    for choice in choices:
+        if not isinstance(choice, dict):
+            return False
+        if choice.get("finish_reason"):
+            return False
+        delta = choice.get("delta")
+        if not isinstance(delta, dict):
+            return False
+        if any(value not in (None, "", [], {}) for value in delta.values()):
+            return False
+    return True
+
+
+def _empty_stream_message(provider: str, model: str, finish_reason: str | None) -> str:
+    """Client text for a completion that succeeded and said nothing."""
+    return (
+        f"{_call_label(provider, model)} accepted the request but returned no content and no "
+        f"tool calls (finish_reason: {finish_reason or 'none'}). Check that the model supports "
+        "the capabilities this request needs, or select a different model."
+    )
+
+
+def _error_frame(message: str, provider: str, model: str) -> str:
+    """SSE frame an OpenAI client turns back into a raised APIError."""
+    return (
+        "data: "
+        + json.dumps(
+            {
+                "error": {
+                    "message": message,
+                    "type": "api_error",
+                    "code": "upstream_error",
+                    "provider": provider,
+                    "model": model,
+                }
+            }
+        )
+        + "\n\n"
+    )
+
+
+async def _aiter_stream(stream: Any):
+    if hasattr(stream, "__aiter__"):
+        async for chunk in stream:
+            yield chunk
+    else:
+        for chunk in stream:
+            yield chunk
+
+
+async def _stream_sse(
+    stream: Any,
+    provider: str = "",
+    model: str = "",
+    credentials: Mapping[str, Any] | None = None,
+) -> AsyncIterator[str]:
     tally = _StreamTally()
+    buffer = _ToolCallBuffer()
+    template: dict[str, Any] = {}
     try:
-        if hasattr(stream, "__aiter__"):
-            async for chunk in stream:
-                payload = _chunk_payload(chunk)
+        async for chunk in _aiter_stream(stream):
+            payload = _chunk_payload(chunk)
+            try:
+                data = json.loads(payload)
+            except ValueError:
                 tally.observe(payload)
                 yield f"data: {payload}\n\n"
-        else:
-            for chunk in stream:
-                payload = _chunk_payload(chunk)
+                continue
+            if not isinstance(data, dict):
                 tally.observe(payload)
                 yield f"data: {payload}\n\n"
+                continue
+            template = data
+
+            held = False
+            finishing = False
+            for choice in data.get("choices") or []:
+                if not isinstance(choice, dict):
+                    continue
+                delta = choice.get("delta")
+                if isinstance(delta, dict) and delta.get("tool_calls"):
+                    index = choice.get("index")
+                    buffer.absorb(index if isinstance(index, int) else 0, delta["tool_calls"])
+                    delta["tool_calls"] = None
+                    held = True
+                if choice.get("finish_reason"):
+                    finishing = True
+
+            if finishing and buffer:
+                grouped, repaired = buffer.drain(provider, model)
+                tally.repaired_tool_calls += repaired
+                for flushed in _tool_call_chunks(template, grouped):
+                    out = json.dumps(flushed)
+                    tally.observe(out)
+                    yield f"data: {out}\n\n"
+
+            if held:
+                if _chunk_carries_nothing(data):
+                    continue
+                payload = json.dumps(data)
+            tally.observe(payload)
+            yield f"data: {payload}\n\n"
+
+        # A provider that ends without a finish_reason still owes us its calls.
+        if buffer:
+            grouped, repaired = buffer.drain(provider, model)
+            tally.repaired_tool_calls += repaired
+            for flushed in _tool_call_chunks(template, grouped):
+                out = json.dumps(flushed)
+                tally.observe(out)
+                yield f"data: {out}\n\n"
+
+        # A 200 that carries nothing is indistinguishable from a dead connection
+        # by the time it reaches the UI, which can only say "the server didn't
+        # return a response". Name the call and its finish_reason instead, so
+        # the next person has something to search for.
+        if tally.content_chars == 0 and tally.tool_calls == 0:
+            tally.error = "empty completion"
+            logger.warning(
+                "LLM chat stream produced no content and no tool calls",
+                provider=provider,
+                model=model,
+                finish_reason=tally.finish_reason,
+                chunks=tally.chunks,
+            )
+            yield _error_frame(
+                _empty_stream_message(provider, model, tally.finish_reason), provider, model
+            )
+    except Exception as exc:
+        # Mid-stream failures used to surface as a truncated stream, which the
+        # UI could only report as "the server didn't return a response". Emit an
+        # OpenAI error frame instead: the client raises it with the provider's
+        # own wording, so the cause reaches the chat and the logs alike.
+        detail = _redact(f"{type(exc).__name__}: {exc}", credentials or {})
+        tally.error = detail
+        logger.error("LLM chat stream failed", provider=provider, model=model, error=detail)
+        yield _error_frame(_upstream_client_message(detail, provider, model, exc), provider, model)
     finally:
         close = getattr(stream, "aclose", None) or getattr(stream, "close", None)
         if close is not None:
@@ -365,6 +829,8 @@ async def _stream_sse(stream: Any, provider: str = "", model: str = "") -> Async
 def _log_stream_shape(tally: _StreamTally, provider: str, model: str) -> None:
     """Same diagnostic as `_log_completion_shape`, for the streaming path."""
     try:
+        if tally.error:
+            return  # already logged with its cause by the stream's error handler
         empty = tally.content_chars == 0 and tally.tool_calls == 0
         log = logger.warning if empty else logger.info
         log(
@@ -374,6 +840,7 @@ def _log_stream_shape(tally: _StreamTally, provider: str, model: str) -> None:
             finish_reason=tally.finish_reason,
             content_chars=tally.content_chars,
             tool_calls=tally.tool_calls,
+            repaired_tool_calls=tally.repaired_tool_calls,
             chunks=tally.chunks,
         )
     except Exception:  # diagnostics must never break a stream
@@ -398,6 +865,10 @@ async def embeddings(body: Mapping[str, Any], *, config=None) -> dict[str, Any]:
         raise
     except Exception as exc:
         detail = _redact(f"{type(exc).__name__}: {exc}", credentials)
-        logger.error("LLM embeddings failed", provider=provider, error=detail)
-        raise LlmGatewayError(_upstream_client_message(detail), 502, detail=detail) from exc
+        logger.error("LLM embeddings failed", provider=provider, model=litellm_model, error=detail)
+        raise LlmGatewayError(
+            _upstream_client_message(detail, provider, litellm_model, exc),
+            _upstream_status_code(exc),
+            detail=detail,
+        ) from exc
     return _to_openai_dict(result)
