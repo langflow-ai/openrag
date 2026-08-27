@@ -112,6 +112,16 @@ export function ModelSelector({
   const customValue = searchValue.trim();
   const deferredSearch = useDeferredValue(customValue.toLowerCase());
   const listboxId = useId();
+  // Groups the user chose to expand past MODELS_PER_PROVIDER.
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const toggleGroup = (group: string) =>
+    setExpandedGroups((previous) => {
+      const next = new Set(previous);
+      if (!next.delete(group)) next.add(group);
+      return next;
+    });
 
   // Flatten grouped options or use regular options
   const allOptions =
@@ -135,20 +145,24 @@ export function ModelSelector({
       const providerMatches = group.group
         .toLowerCase()
         .includes(deferredSearch);
-      const options = deferredSearch
-        ? group.options
-            .filter(
-              (option) =>
-                providerMatches ||
-                option.label.toLowerCase().includes(deferredSearch),
-            )
-            .slice(0, MODELS_PER_PROVIDER)
-        : group.options.slice(0, MODELS_PER_PROVIDER);
-      if (deferredSearch && options.length === 0) return [];
-      return [{ ...group, options }];
+      const matches = deferredSearch
+        ? group.options.filter(
+            (option) =>
+              providerMatches ||
+              option.label.toLowerCase().includes(deferredSearch),
+          )
+        : group.options;
+      if (deferredSearch && matches.length === 0) return [];
+      // Collapsed groups show a preview; the trailing row expands them. The cap
+      // applies while searching too, so without that row a search would drop
+      // matches with nothing on screen to say so.
+      const options = expandedGroups.has(group.group)
+        ? matches
+        : matches.slice(0, MODELS_PER_PROVIDER);
+      return [{ ...group, options, matchCount: matches.length }];
     });
     return matched.slice(0, 40);
-  }, [deferredSearch, groupedOptions]);
+  }, [deferredSearch, groupedOptions, expandedGroups]);
   const visibleOptions = useMemo(() => {
     if (groupedOptions) return [];
     const source = options ?? [];
@@ -331,18 +345,27 @@ export function ModelSelector({
                           );
                         })
                       )}
-                      {!deferredSearch &&
-                        (groupedOptions.find(
-                          (entry) => entry.group === group.group,
-                        )?.options.length ?? 0) > MODELS_PER_PROVIDER && (
-                          <CommandItem disabled className="text-xs">
-                            Search to view{" "}
-                            {(groupedOptions.find(
-                              (entry) => entry.group === group.group,
-                            )?.options.length ?? 0) - MODELS_PER_PROVIDER}{" "}
-                            more models
-                          </CommandItem>
-                        )}
+                      {group.matchCount > MODELS_PER_PROVIDER && (
+                        <CommandItem
+                          value={`__toggle-${group.group}`}
+                          aria-label={
+                            group.options.length < group.matchCount
+                              ? `Show ${group.matchCount - group.options.length} more ${group.group} models`
+                              : `Show fewer ${group.group} models`
+                          }
+                          data-testid={
+                            groupProvider
+                              ? `model-group-toggle-${groupProvider}`
+                              : undefined
+                          }
+                          className="text-xs text-muted-foreground"
+                          onSelect={() => toggleGroup(group.group)}
+                        >
+                          {group.options.length < group.matchCount
+                            ? `Show ${group.matchCount - group.options.length} more`
+                            : "Show fewer"}
+                        </CommandItem>
+                      )}
                       {showCustom && (
                         <CommandItem
                           value={`${group.group}-${customValue}`}
