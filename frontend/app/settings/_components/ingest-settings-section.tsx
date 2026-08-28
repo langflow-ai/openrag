@@ -133,61 +133,70 @@ export function IngestSettingsSection() {
   );
 
   // watsonx and Ollama publish their inventory from the running server, not
-  // from LiteLLM's bundled table — watsonx has *no* embedding models in that
-  // table at all — so the live list is what makes their group exist here.
-  // useGetCurrentProviderModelsQuery keys off the *agent* provider, so the
-  // embedding step has to ask for itself.
-  const embeddingProvider = settings.knowledge?.embedding_provider;
-  const wantsLive =
-    (isAuthenticated || isNoAuthMode) &&
-    LIVE_INVENTORY_PROVIDERS.has(embeddingProvider ?? "");
+  // from LiteLLM's bundled table, which carries *no* embedding models for
+  // either of them — so the live list is the only thing that puts their group
+  // in this picker at all.
+  //
+  // Fetched whenever the provider is configured, never gated on it already
+  // being the selected embedding provider: the whole point of the group is to
+  // be there before you pick it. Gating on selection is why watsonx stayed
+  // missing after the first attempt at this.
+  const authed = isAuthenticated || isNoAuthMode;
+  const watsonx = settings.providers?.watsonx;
+  const ollama = settings.providers?.ollama;
 
   const ibmModels = useGetIBMModelsQuery(
     {
-      endpoint: settings.providers?.watsonx?.endpoint,
-      projectId: settings.providers?.watsonx?.project_id,
+      endpoint: watsonx?.endpoint,
+      projectId: watsonx?.project_id,
       useEnvKey: true,
     },
     {
       enabled:
-        wantsLive &&
-        embeddingProvider === "watsonx" &&
-        !!settings.providers?.watsonx?.endpoint &&
-        !!settings.providers?.watsonx?.project_id,
+        authed &&
+        configuredProviders.watsonx &&
+        !!watsonx?.endpoint &&
+        !!watsonx?.project_id,
     },
   );
   const ollamaModels = useGetOllamaModelsQuery(
-    { endpoint: settings.providers?.ollama?.endpoint },
-    {
-      enabled:
-        wantsLive &&
-        embeddingProvider === "ollama" &&
-        !!settings.providers?.ollama?.endpoint,
-    },
+    { endpoint: ollama?.endpoint },
+    { enabled: authed && configuredProviders.ollama && !!ollama?.endpoint },
   );
-  const liveModels =
-    embeddingProvider === "watsonx" ? ibmModels.data : ollamaModels.data;
-  const liveModelsLoading = ibmModels.isLoading || ollamaModels.isLoading;
 
   const groupedEmbeddingModels = useMemo(() => {
-    const live = (liveModels?.embedding_models ?? []).map((model) =>
-      liveModelOption(model.value, embeddingProvider ?? ""),
+    const named = (key: string) =>
+      catalog?.providers?.find((provider) => provider.key === key)?.name;
+    const liveFor = (key: string, models?: { value: string }[]) =>
+      (models ?? []).map((model) => liveModelOption(model.value, key));
+
+    let groups = groupedCatalogOptions(
+      catalog,
+      configuredProviders,
+      "embedding",
     );
-    return mergeLiveCatalogOptions(
-      groupedCatalogOptions(catalog, configuredProviders, "embedding"),
-      embeddingProvider,
-      live,
-      catalog?.providers?.find((provider) => provider.key === embeddingProvider)
-        ?.name,
-    ).map((group) => ({
+    const liveByProvider: Record<string, { value: string }[] | undefined> = {
+      watsonx: ibmModels.data?.embedding_models,
+      ollama: ollamaModels.data?.embedding_models,
+    };
+    for (const key of LIVE_INVENTORY_PROVIDERS) {
+      groups = mergeLiveCatalogOptions(
+        groups,
+        key,
+        liveFor(key, liveByProvider[key]),
+        named(key),
+      );
+    }
+    return groups.map((group) => ({
       group: group.group,
       provider: group.key,
       icon: getModelLogo("", group.key),
       options: group.options,
     }));
-  }, [catalog, configuredProviders, liveModels, embeddingProvider]);
+  }, [catalog, configuredProviders, ibmModels.data, ollamaModels.data]);
 
-  const isLoadingAnyEmbeddingModels = catalogLoading || liveModelsLoading;
+  const isLoadingAnyEmbeddingModels =
+    catalogLoading || ibmModels.isLoading || ollamaModels.isLoading;
 
   const groupedVlmModels = useMemo(() => {
     const list: GroupedModelOption[] = groupedCatalogOptions(

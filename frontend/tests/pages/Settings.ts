@@ -143,9 +143,7 @@ export class Settings {
    * @returns Locator for the search input
    */
   private getSearchModelInput() {
-    let search = this.page.locator(
-      'input[placeholder="Search model..."]:focus',
-    );
+    let search = this.page.locator('[data-testid="model-search-input"]:focus');
     return search;
   }
 
@@ -154,7 +152,7 @@ export class Settings {
    * @returns Locator for the search input
    */
   private getSearchModelInputFallback() {
-    return this.page.locator('input[placeholder="Search model..."]').first();
+    return this.page.locator('[data-testid="model-search-input"]').first();
   }
 
   /**
