@@ -21,29 +21,12 @@ logger = get_logger(__name__)
 
 # Provider names in priority order. LLM supports anthropic; embeddings do not.
 _LLM_PROVIDER_NAMES = ("openai", "anthropic", "watsonx", "ollama")
-# Embedding providers with a Langflow flow component - langflow_sync.py's
-# change_langflow_model_value() only recognizes these and raises ValueError
-# for anything else, so this list must stay exactly the providers that have
-# a Langflow embedding component.
-_EMBEDDING_PROVIDER_NAMES = ("openai", "watsonx", "ollama")
-# All embedding providers OpenRAG supports, including ones with no Langflow
-# component (bedrock is ingested/queried entirely via the native,
-# non-Langflow path - see services/search_service.py and
-# models/processors.py). Use this one for provider-agnostic logic like
-# fallback selection; use _EMBEDDING_PROVIDER_NAMES specifically where
-# Langflow flow syncing is involved.
-_ALL_EMBEDDING_PROVIDER_NAMES = (*_EMBEDDING_PROVIDER_NAMES, "bedrock")
-
-
-def _is_langflow_embedding_provider(provider: str) -> bool:
-    """Whether `provider` has a Langflow embedding component that can be synced.
-
-    Embedding providers outside `_EMBEDDING_PROVIDER_NAMES` (currently
-    bedrock) are served entirely by the native, non-Langflow path, and
-    `flows_service.change_langflow_model_value()` raises ValueError for
-    them. Callers must skip the Langflow flow sync for those providers.
-    """
-    return (provider or "").lower() in _EMBEDDING_PROVIDER_NAMES
+# Embedding providers OpenRAG supports. Bedrock has no dedicated Langflow
+# component, but change_langflow_model_value() proxies every provider
+# through the same OpenRAG-internal OpenAI-compatible endpoint (see
+# flows_service.py's `proxy_fields`), so it no longer needs special-casing
+# here - it's synced exactly like openai/watsonx/ollama.
+_EMBEDDING_PROVIDER_NAMES = ("openai", "watsonx", "ollama", "bedrock")
 
 
 def _configured_provider_names(config, provider_names) -> list:
@@ -93,7 +76,7 @@ def _first_configured_embedding_provider(config, excluding: str) -> str:
     from config.model_providers import visible_provider_keys
 
     visible = visible_provider_keys()
-    for p in _ALL_EMBEDDING_PROVIDER_NAMES:
+    for p in _EMBEDDING_PROVIDER_NAMES:
         if p != excluding and p in visible and getattr(config.providers, p).configured:
             return p
     from services.model_catalog import catalog

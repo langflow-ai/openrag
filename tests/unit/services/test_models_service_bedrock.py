@@ -30,6 +30,7 @@ def _config(*, bedrock_region: str = "") -> SimpleNamespace:
             ollama=SimpleNamespace(endpoint=""),
             watsonx=SimpleNamespace(api_key="", endpoint="", project_id=""),
             bedrock=SimpleNamespace(region=bedrock_region),
+            custom={},
         )
     )
 

@@ -649,7 +649,7 @@ async def validate_provider_setup(
             f"Starting validation for provider: {provider_lower} (test_completion={test_completion})"
         )
 
-        if provider_lower not in {"openai", "watsonx", "ollama", "anthropic"}:
+        if provider_lower not in {"openai", "watsonx", "ollama", "anthropic", "bedrock"}:
             await _test_litellm_provider(
                 provider=provider_lower,
                 credentials=supplied,
