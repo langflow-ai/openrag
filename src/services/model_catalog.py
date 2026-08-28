@@ -37,6 +37,10 @@ logger = get_logger(__name__)
 TEXT_GENERATION_MODES = frozenset({"chat", "completion", "responses"})
 EMBEDDING_MODE = "embedding"
 
+#: LiteLLM prices fine-tunes off a template row named for the base model. The
+#: row is not a callable id, so it never belongs in a picker.
+FINE_TUNE_TEMPLATE_PREFIX = "ft:"
+
 CAPABILITY_FLAGS: dict[str, str] = {
     "supports_function_calling": "function_calling",
     "supports_vision": "vision",
@@ -238,6 +242,13 @@ def _catalog(providers: tuple[ProviderSpec, ...]) -> dict[str, Any]:
             continue
         name = model_id[len(provider) + 1 :] if model_id.startswith(f"{provider}/") else model_id
         if not name or name == "sample_spec":
+            continue
+        if name.startswith(FINE_TUNE_TEMPLATE_PREFIX):
+            # `ft:gpt-4o-2024-08-06` is a pricing row for the *base* of a
+            # fine-tune, not an id anyone can call: a real one carries the org
+            # and job suffix (`ft:gpt-4o-2024-08-06:acme::abc123`). Listing the
+            # template invites picking a model that 404s. Owners of a fine-tune
+            # type their full id into the picker instead.
             continue
         bucket.setdefault(provider, []).append(_model_entry(name, info))
 
