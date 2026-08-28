@@ -85,7 +85,6 @@ providers:
     # The plain name covers the regional ids (`eu/`, `us/`, `global/`) too.
     exclude_models:
       - gpt-3.5-*
-      - gpt-5.6-luna
     # Azure lets you name a deployment anything, so LiteLLM's table cannot know
     # yours. Declare them here and they appear in the pickers for everyone;
     # otherwise each user has to type the name into the model box by hand.
