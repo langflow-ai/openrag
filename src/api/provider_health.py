@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from api.provider_validation import sanitize_provider_error_content, validate_provider_setup
 from config.settings import get_openrag_config
 from dependencies import require_permission
+from services import provider_error_log
 from services.model_catalog import is_known_provider
 from session_manager import User
 from utils import provider_health_cache
@@ -145,8 +146,17 @@ async def check_provider_health(
                 embedding_project_id=embedding_project_id,
                 embedding_credentials=embedding_credentials,
             )
+            # A cached *healthy* verdict must not outlive a real failure. The
+            # cache exists to coalesce identical probes, and a recorded failure
+            # means traffic is failing right now regardless of what the last
+            # probe concluded — so fall through and let the response below
+            # report it.
+            has_real_failure = bool(
+                provider_error_log.latest_failure(provider, "chat")
+                or provider_error_log.latest_failure(embedding_provider, "embedding")
+            )
             cached_payload = provider_health_cache.get(health_cache_key)
-            if cached_payload is not None:
+            if cached_payload is not None and not has_real_failure:
                 logger.debug("Returning cached provider-health response")
                 return JSONResponse(cached_payload, status_code=200)
 
@@ -160,7 +170,7 @@ async def check_provider_health(
                     break
                 # Woke up after an in-flight validation completed.
                 cached_payload = provider_health_cache.get(health_cache_key)
-                if cached_payload is not None:
+                if cached_payload is not None and not has_real_failure:
                     logger.debug("Returning cached provider-health response (waited for in-flight)")
                     return JSONResponse(cached_payload, status_code=200)
                 # Leader's validation failed; retry leader election rather than
@@ -267,6 +277,19 @@ async def check_provider_health(
                 logger.error(
                     f"Embedding provider ({embedding_provider}) validation failed: {embedding_error}"
                 )
+
+            # A real call beats a probe. The probe sends its own request, so it
+            # hits its own failure: OpenAI checks request shape before billing,
+            # which is how a probe can report "no credits remaining" while the
+            # agent's own call reports a 400 about its parameters. Both are
+            # true; the actionable one is the one the user's traffic produced.
+            # An entry only exists while calls are still failing — the gateway
+            # erases it on the next success.
+            llm_error = provider_error_log.latest_failure(provider, "chat") or llm_error
+            embedding_error = (
+                provider_error_log.latest_failure(embedding_provider, "embedding")
+                or embedding_error
+            )
 
             # Return combined status
             if llm_error or embedding_error:
