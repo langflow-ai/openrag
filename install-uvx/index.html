@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="en" dir="ltr" class="docs-wrapper plugin-docs plugin-id-default docs-version-current docs-doc-page docs-doc-id-get-started/install-uvx" data-has-hydrated="false">
+<head>
+<meta charset="UTF-8">
+<meta name="generator" content="Docusaurus v3.10.1">
+<title data-rh="true">Invoke OpenRAG with uvx | OpenRAG</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:url" content="https://www.openr.ag/install-uvx"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Invoke OpenRAG with uvx | OpenRAG"><meta data-rh="true" name="description" content="Use uvx to invoke OpenRAG outside of a Python project or without modifying your project&#x27;s dependencies."><meta data-rh="true" property="og:description" content="Use uvx to invoke OpenRAG outside of a Python project or without modifying your project&#x27;s dependencies."><link data-rh="true" rel="icon" href="/img/favicon.ico"><link data-rh="true" rel="canonical" href="https://www.openr.ag/install-uvx"><link data-rh="true" rel="alternate" href="https://www.openr.ag/install-uvx" hreflang="en"><link data-rh="true" rel="alternate" href="https://www.openr.ag/install-uvx" hreflang="x-default"><link data-rh="true" rel="preconnect" href="https://SMEA51Q5OL-dsn.algolia.net" crossorigin="anonymous"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Invoke OpenRAG with uvx","item":"https://www.openr.ag/install-uvx"}]}</script><link rel="search" type="application/opensearchdescription+xml" title="OpenRAG" href="/opensearch.xml">
+
+
+
+<script>function gtag(){dataLayer.push(arguments)}window.dataLayer=window.dataLayer||[],gtag("consent","default",{ad_storage:"denied",ad_user_data:"denied",ad_personalization:"denied",analytics_storage:"denied"})</script>
+<script>!function(){function e(){if(void 0!==window.truste&&window.truste.cma){var e=window.truste.cma.callApi("getConsent",window.location.href)||{},n=1===e[2],t=1===e[3];gtag("consent","update",{ad_storage:n?"granted":"denied",ad_user_data:n?"granted":"denied",ad_personalization:n?"granted":"denied",analytics_storage:t?"granted":"denied"})}}window.addEventListener&&(window.addEventListener("cm_data_subject_consent_changed",e),window.addEventListener("cm_consent_preferences_set",e)),"complete"===document.readyState?e():window.addEventListener("load",e)}()</script>
+<script>window._ibmAnalytics={settings:{name:"DataStax",tealiumProfileName:"ibm-subsidiary"},trustarc:{privacyPolicyLink:"https://ibm.com/privacy"}},window.digitalData={page:{pageInfo:{ibm:{siteId:"IBM_DataStax"}},category:{primaryCategory:"PC230"}}}</script>
+<script src="//1.www.s81c.com/common/stats/ibm-common.js" async="true"></script><link rel="stylesheet" href="/assets/css/styles.4eb4a30d.css">
+<script src="/assets/js/runtime~main.018000ac.js" defer="defer"></script>
+<script src="/assets/js/main.1e3d2112.js" defer="defer"></script>
+</head>
+<body>
+<svg style="display: none;"><defs>
+<symbol id="theme-svg-external-link" viewBox="0 0 24 24"><path fill="currentColor" d="M21 13v10h-21v-19h12v2h-10v15h17v-8h2zm3-12h-10.988l4.035 4-6.977 7.07 2.828 2.828 6.977-7.07 4.125 4.172v-11z"/></symbol>
+</defs></svg>
+<script>!function(){var t=function(){try{return new URLSearchParams(window.location.search).get("docusaurus-theme")}catch(t){}}()||function(){try{return window.localStorage.getItem("theme")}catch(t){}}();document.documentElement.setAttribute("data-theme",t||"light"),document.documentElement.setAttribute("data-theme-choice",t||"light")}(),function(){try{const c=new URLSearchParams(window.location.search).entries();for(var[t,e]of c)if(t.startsWith("docusaurus-data-")){var a=t.replace("docusaurus-data-","data-");document.documentElement.setAttribute(a,e)}}catch(t){}}()</script><div id="__docusaurus"><link rel="preload" as="image" href="/img/logo-openrag-docs-light.svg"><link rel="preload" as="image" href="/img/logo-openrag-docs-dark.svg"><div role="region" aria-label="Skip to main content"><a class="skipToContent_fXgn" href="#__docusaurus_skipToContent_fallback">Skip to main content</a></div><nav aria-label="Main" class="theme-layout-navbar navbar navbar--fixed-top"><div class="navbar__inner"><div class="theme-layout-navbar-left navbar__items"><button aria-label="Toggle navigation bar" aria-expanded="false" class="navbar__toggle clean-btn" type="button"><svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><path stroke="currentColor" stroke-linecap="round" stroke-miterlimit="10" stroke-width="2" d="M4 7h22M4 15h22M4 23h22"></path></svg></button><a class="navbar__brand" href="/docs/"><div class="navbar__logo"><img src="/img/logo-openrag-docs-light.svg" alt="OpenRAG Logo" class="themedComponent_mlkZ themedComponent--light_NVdE"><img src="/img/logo-openrag-docs-dark.svg" alt="OpenRAG Logo" class="themedComponent_mlkZ themedComponent--dark_xIcU"></div></a></div><div class="theme-layout-navbar-right navbar__items navbar__items--right"><a href="https://github.com/langflow-ai/openrag" target="_blank" class="navbar__item navbar__link header-github-link" aria-label="GitHub repository"></a><div class="toggle_vylO colorModeToggle_DEke"><button class="clean-btn toggleButton_gllP toggleButtonDisabled_aARS" type="button" disabled="" title="system mode" aria-label="Switch between dark and light mode (currently system mode)"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" class="toggleIcon_g3eP lightToggleIcon_pyhR"><path fill="currentColor" d="M12,9c1.65,0,3,1.35,3,3s-1.35,3-3,3s-3-1.35-3-3S10.35,9,12,9 M12,7c-2.76,0-5,2.24-5,5s2.24,5,5,5s5-2.24,5-5 S14.76,7,12,7L12,7z M2,13l2,0c0.55,0,1-0.45,1-1s-0.45-1-1-1l-2,0c-0.55,0-1,0.45-1,1S1.45,13,2,13z M20,13l2,0c0.55,0,1-0.45,1-1 s-0.45-1-1-1l-2,0c-0.55,0-1,0.45-1,1S19.45,13,20,13z M11,2v2c0,0.55,0.45,1,1,1s1-0.45,1-1V2c0-0.55-0.45-1-1-1S11,1.45,11,2z M11,20v2c0,0.55,0.45,1,1,1s1-0.45,1-1v-2c0-0.55-0.45-1-1-1C11.45,19,11,19.45,11,20z M5.99,4.58c-0.39-0.39-1.03-0.39-1.41,0 c-0.39,0.39-0.39,1.03,0,1.41l1.06,1.06c0.39,0.39,1.03,0.39,1.41,0s0.39-1.03,0-1.41L5.99,4.58z M18.36,16.95 c-0.39-0.39-1.03-0.39-1.41,0c-0.39,0.39-0.39,1.03,0,1.41l1.06,1.06c0.39,0.39,1.03,0.39,1.41,0c0.39-0.39,0.39-1.03,0-1.41 L18.36,16.95z M19.42,5.99c0.39-0.39,0.39-1.03,0-1.41c-0.39-0.39-1.03-0.39-1.41,0l-1.06,1.06c-0.39,0.39-0.39,1.03,0,1.41 s1.03,0.39,1.41,0L19.42,5.99z M7.05,18.36c0.39-0.39,0.39-1.03,0-1.41c-0.39-0.39-1.03-0.39-1.41,0l-1.06,1.06 c-0.39,0.39-0.39,1.03,0,1.41s1.03,0.39,1.41,0L7.05,18.36z"></path></svg><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" class="toggleIcon_g3eP darkToggleIcon_wfgR"><path fill="currentColor" d="M9.37,5.51C9.19,6.15,9.1,6.82,9.1,7.5c0,4.08,3.32,7.4,7.4,7.4c0.68,0,1.35-0.09,1.99-0.27C17.45,17.19,14.93,19,12,19 c-3.86,0-7-3.14-7-7C5,9.07,6.81,6.55,9.37,5.51z M12,3c-4.97,0-9,4.03-9,9s4.03,9,9,9s9-4.03,9-9c0-0.46-0.04-0.92-0.1-1.36 c-0.98,1.37-2.58,2.26-4.4,2.26c-2.98,0-5.4-2.42-5.4-5.4c0-1.81,0.89-3.42,2.26-4.4C12.92,3.04,12.46,3,12,3L12,3z"></path></svg><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" class="toggleIcon_g3eP systemToggleIcon_QzmC"><path fill="currentColor" d="m12 21c4.971 0 9-4.029 9-9s-4.029-9-9-9-9 4.029-9 9 4.029 9 9 9zm4.95-13.95c1.313 1.313 2.05 3.093 2.05 4.95s-0.738 3.637-2.05 4.95c-1.313 1.313-3.093 2.05-4.95 2.05v-14c1.857 0 3.637 0.737 4.95 2.05z"></path></svg></button></div><div class="navbarSearchContainer_Bca1"><button type="button" class="DocSearch DocSearch-Button" aria-label="Search (Meta+k)" aria-keyshortcuts="Meta+k"><span class="DocSearch-Button-Container"><svg width="20" height="20" class="DocSearch-Search-Icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8" stroke="currentColor" fill="none" stroke-width="1.4"></circle><path d="m21 21-4.3-4.3" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"></path></svg><span class="DocSearch-Button-Placeholder">Search</span></span><span class="DocSearch-Button-Keys"></span></button></div></div></div><div role="presentation" class="navbar-sidebar__backdrop"></div></nav><div id="__docusaurus_skipToContent_fallback" class="theme-layout-main main-wrapper mainWrapper_z2l0"><div class="docsWrapper_hBAB"><button aria-label="Scroll back to top" class="clean-btn theme-back-to-top-button backToTopButton_sjWU" type="button"></button><div class="docRoot_UBD9"><aside class="theme-doc-sidebar-container docSidebarContainer_YfHR"><div class="sidebarViewport_aRkj"><div class="sidebar_njMd"><nav aria-label="Docs sidebar" class="menu thin-scrollbar menu_SIkG"><ul class="theme-doc-sidebar-menu menu__list"><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/docs"><span title="About OpenRAG" class="linkLabel_WmDU">About OpenRAG</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/quickstart"><span title="Quickstart" class="linkLabel_WmDU">Quickstart</span></a></li><li class="theme-doc-sidebar-item-category theme-doc-sidebar-item-category-level-1 menu__list-item"><div class="menu__list-item-collapsible"><a class="categoryLink_byQd menu__link menu__link--sublist menu__link--sublist-caret menu__link--active" role="button" aria-expanded="true" href="/install-options"><span title="Installation" class="categoryLinkLabel_W154">Installation</span></a></div><ul class="menu__list"><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-2 menu__list-item"><a class="menu__link" tabindex="0" href="/install-options"><span title="Select an installation method" class="linkLabel_WmDU">Select an installation method</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-2 menu__list-item"><a class="menu__link" tabindex="0" href="/install-uv"><span title="Install OpenRAG with uv" class="linkLabel_WmDU">Install OpenRAG with uv</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-2 menu__list-item"><a class="menu__link menu__link--active" aria-current="page" tabindex="0" href="/install-uvx"><span title="Invoke OpenRAG with uvx" class="linkLabel_WmDU">Invoke OpenRAG with uvx</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-2 menu__list-item"><a class="menu__link" tabindex="0" href="/install-windows"><span title="Install OpenRAG on Windows" class="linkLabel_WmDU">Install OpenRAG on Windows</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-2 menu__list-item"><a class="menu__link" tabindex="0" href="/docker"><span title="Deploy self-managed services" class="linkLabel_WmDU">Deploy self-managed services</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-2 menu__list-item"><a class="menu__link" tabindex="0" href="/upgrade"><span title="Upgrade OpenRAG" class="linkLabel_WmDU">Upgrade OpenRAG</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-2 menu__list-item"><a class="menu__link" tabindex="0" href="/reinstall"><span title="Reinstall OpenRAG" class="linkLabel_WmDU">Reinstall OpenRAG</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-2 menu__list-item"><a class="menu__link" tabindex="0" href="/uninstall"><span title="Remove OpenRAG" class="linkLabel_WmDU">Remove OpenRAG</span></a></li></ul></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/tui"><span title="Use the OpenRAG terminal" class="linkLabel_WmDU">Use the OpenRAG terminal</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/manage-services"><span title="Manage services" class="linkLabel_WmDU">Manage services</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/agents"><span title="Flows" class="linkLabel_WmDU">Flows</span></a></li><li class="theme-doc-sidebar-item-category theme-doc-sidebar-item-category-level-1 menu__list-item menu__list-item--collapsed"><div class="menu__list-item-collapsible"><a class="categoryLink_byQd menu__link menu__link--sublist menu__link--sublist-caret" role="button" aria-expanded="false" href="/knowledge"><span title="Knowledge" class="categoryLinkLabel_W154">Knowledge</span></a></div></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/chat"><span title="Chat" class="linkLabel_WmDU">Chat</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/reference/configuration"><span title="Environment variables" class="linkLabel_WmDU">Environment variables</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/reference/observability"><span title="Monitor with IBM Instana" class="linkLabel_WmDU">Monitor with IBM Instana</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/reference/api-sdk-overview"><span title="SDK and MCP API references" class="linkLabel_WmDU">SDK and MCP API references</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/support/contribute"><span title="Contribute to OpenRAG" class="linkLabel_WmDU">Contribute to OpenRAG</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/support/troubleshoot"><span title="Troubleshoot OpenRAG" class="linkLabel_WmDU">Troubleshoot OpenRAG</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/support/ibm-elite-support"><span title="IBM Elite Support for OpenRAG" class="linkLabel_WmDU">IBM Elite Support for OpenRAG</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a href="https://github.com/langflow-ai/openrag/releases" target="_blank" rel="noopener noreferrer" class="menu__link menuExternalLink_NmtK"><span title="Changelog" class="linkLabel_WmDU">Changelog</span><svg width="13.5" height="13.5" aria-label="(opens in new tab)" class="iconExternalLink_nPIU"><use href="#theme-svg-external-link"></use></svg></a></li></ul></nav></div></div></aside><main class="docMainContainer_TBSr"><div class="container padding-top--md padding-bottom--lg"><div class="row"><div class="col docItemCol_VOVn"><div class="docItemContainer_Djhp"><article><nav class="theme-doc-breadcrumbs breadcrumbsContainer_Z_bl" aria-label="Breadcrumbs"><ul class="breadcrumbs"><li class="breadcrumbs__item"><span class="breadcrumbs__link">Installation</span></li><li class="breadcrumbs__item breadcrumbs__item--active"><span class="breadcrumbs__link">Invoke OpenRAG with uvx</span></li></ul></nav><div class="tocCollapsible_ETCw theme-doc-toc-mobile tocMobile_ITEo"><button type="button" class="clean-btn tocCollapsibleButton_TO0P">On this page</button></div><div class="theme-doc-markdown markdown"><header><h1>Invoke OpenRAG with uvx</h1></header><p>Use <a href="https://docs.astral.sh/uv/guides/tools/#running-tools" target="_blank" rel="noopener noreferrer" class=""><code>uvx</code></a> to invoke OpenRAG outside of a Python project or without modifying your project&#x27;s dependencies.</p>
+<p>This installation method is best for testing OpenRAG by running it outside of a Python project.
+For other installation methods, see <a class="" href="/install-options">Select an installation method</a>.</p>
+<p>When you install OpenRAG with <code>uvx</code>, you will use an <a class="" href="/tui">OpenRAG terminal session</a> to configure and manage your OpenRAG deployment.</p>
+<div class="theme-admonition theme-admonition-info admonition_xJq3 alert alert--info"><div class="admonitionHeading_Gvgb"><span class="admonitionIcon_Rf37"><svg viewBox="0 0 14 16"><path fill-rule="evenodd" d="M7 2.3c3.14 0 5.7 2.56 5.7 5.7s-2.56 5.7-5.7 5.7A5.71 5.71 0 0 1 1.3 8c0-3.14 2.56-5.7 5.7-5.7zM7 1C3.14 1 0 4.14 0 8s3.14 7 7 7 7-3.14 7-7-3.14-7-7-7zm1 3H6v5h2V4zm0 6H6v2h2v-2z"></path></svg></span>info</div><div class="admonitionContent_BuS1"><p><code>uvx openrag</code> installs the latest version of OpenRAG and dependencies, like Docker or Podman, if they aren&#x27;t already present in your environment.</p></div></div>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="prerequisites">Prerequisites<a href="#prerequisites" class="hash-link" aria-label="Direct link to Prerequisites" title="Direct link to Prerequisites" translate="no">​</a></h2>
+<ul>
+<li class="">For Microsoft Windows, you must use the Windows Subsystem for Linux (WSL).
+See <a class="" href="/install-windows">Install OpenRAG on Windows</a> before proceeding.</li>
+</ul>
+<ul>
+<li class="">Install <a href="https://www.python.org/downloads/release/python-3100/" target="_blank" rel="noopener noreferrer" class="">Python</a> version 3.13.</li>
+</ul>
+<ul>
+<li class="">Install <a href="https://docs.astral.sh/uv/getting-started/installation/" target="_blank" rel="noopener noreferrer" class="">uv</a>.</li>
+</ul>
+<ul>
+<li class="">
+<p>Gather the credentials and connection details for one or more supported model providers:</p>
+<ul>
+<li class=""><strong>OpenAI</strong>: Create an <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" class="">OpenAI API key</a>.</li>
+<li class=""><strong>Anthropic</strong>: Create an <a href="https://www.anthropic.com/docs/api/reference" target="_blank" rel="noopener noreferrer" class="">Anthropic API key</a>.
+Anthropic provides language models only; you must select an additional provider for embeddings.</li>
+<li class=""><strong>IBM watsonx.ai</strong>: Get your watsonx.ai API endpoint, IBM project ID, and IBM API key from your watsonx deployment.</li>
+<li class=""><strong>Ollama</strong>: Deploy an <a href="https://docs.ollama.com/" target="_blank" rel="noopener noreferrer" class="">Ollama instance and models</a> locally, in the cloud, or on a remote server. Then, get your Ollama server&#x27;s base URL and the names of the models that you want to use.</li>
+</ul>
+<p>OpenRAG requires at least one language model and one embedding model.
+If a provider offers both types of models, then you can use the same provider for both models.
+If a provider offers only one type, then you must configure two providers.</p>
+<p>Language models must support tool calling to be compatible with OpenRAG.</p>
+<p>For more information, see <a href="#application-onboarding" class="">Complete the application onboarding process</a>.</p>
+</li>
+</ul>
+<ul>
+<li class="">Optional: Install GPU support with an NVIDIA GPU, <a href="https://docs.nvidia.com/cuda/" target="_blank" rel="noopener noreferrer" class="">CUDA</a> support, and compatible NVIDIA drivers on the OpenRAG host machine.
+If you don&#x27;t have GPU capabilities, OpenRAG provides an alternate CPU-only deployment that is suitable for most use cases.
+The default CPU-only deployment doesn&#x27;t prevent you from using GPU acceleration in external services, such as Ollama servers.</li>
+</ul>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="install-and-run-openrag-with-uvx">Install and run OpenRAG with uvx<a href="#install-and-run-openrag-with-uvx" class="hash-link" aria-label="Direct link to Install and run OpenRAG with uvx" title="Direct link to Install and run OpenRAG with uvx" translate="no">​</a></h2>
+<ol>
+<li class="">
+<p>Create a directory for your OpenRAG configuration files and data, and then change to that directory:</p>
+<div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token function" style="color:#d73a49">mkdir</span><span class="token plain"> openrag-workspace</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain"></span><span class="token builtin class-name">cd</span><span class="token plain"> openrag-workspace</span><br></div></code></pre></div></div>
+</li>
+<li class="">
+<p>Optional: If you want to use a pre-populated <a class="" href="/reference/configuration">OpenRAG <code>.env</code> file</a>, create one at <code>~/.openrag/tui</code> before invoking OpenRAG.</p>
+</li>
+<li class="">
+<p>Invoke OpenRAG and install any missing dependencies:</p>
+<div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">uvx </span><span class="token parameter variable" style="color:#36acaa">--python</span><span class="token plain"> </span><span class="token number" style="color:#36acaa">3.13</span><span class="token plain"> openrag</span><br></div></code></pre></div></div>
+<p>You can invoke a specific version using any of the <a href="https://docs.astral.sh/uv/guides/tools/#requesting-specific-versions" target="_blank" rel="noopener noreferrer" class=""><code>uvx</code> version specifiers</a>, such as <code>uvx --from openrag==0.1.30 openrag</code>.</p>
+<div class="theme-admonition theme-admonition-tip admonition_xJq3 alert alert--success"><div class="admonitionHeading_Gvgb"><span class="admonitionIcon_Rf37"><svg viewBox="0 0 12 16"><path fill-rule="evenodd" d="M6.5 0C3.48 0 1 2.19 1 5c0 .92.55 2.25 1 3 1.34 2.25 1.78 2.78 2 4v1h5v-1c.22-1.22.66-1.75 2-4 .45-.75 1-2.08 1-3 0-2.81-2.48-5-5.5-5zm3.64 7.48c-.25.44-.47.8-.67 1.11-.86 1.41-1.25 2.06-1.45 3.23-.02.05-.02.11-.02.17H5c0-.06 0-.13-.02-.17-.2-1.17-.59-1.83-1.45-3.23-.2-.31-.42-.67-.67-1.11C2.44 6.78 2 5.65 2 5c0-2.2 2.02-4 4.5-4 1.22 0 2.36.42 3.22 1.19C10.55 2.94 11 3.94 11 5c0 .66-.44 1.78-.86 2.48zM4 14h5c-.23 1.14-1.3 2-2.5 2s-2.27-.86-2.5-2z"></path></svg></span>tip</div><div class="admonitionContent_BuS1"><p>For a GUI terminal experience, use the <code>--tui</code> flag when starting OpenRAG.</p></div></div>
+</li>
+<li class="">
+<p>If needed, respond to any prompts to install and configure dependencies like Docker or Podman.</p>
+</li>
+</ol>
+<p>The entire setup process can take a few minutes.
+Once the environment is ready, the OpenRAG terminal session starts.</p>
+<p>Invoking OpenRAG with <code>uvx openrag</code> creates a cached, ephemeral environment for the terminal session in your local <code>uv</code> cache.
+Your OpenRAG configuration files and data are stored in <code>~/.openrag</code>, which is separate from the <code>uv</code> cache.
+Clearing the <code>uv</code> cache doesn&#x27;t remove your entire OpenRAG installation; it only clears <code>uv</code> dependencies.
+After clearing the cache, you can re-invoke OpenRAG (<code>uvx openrag</code>) to restart the terminal session with your preserved configuration and data.</p>
+<p>If you encounter errors during installation, see <a class="" href="/support/troubleshoot">Troubleshoot OpenRAG</a>.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="setup">Configure OpenRAG in the terminal<a href="#setup" class="hash-link" aria-label="Direct link to Configure OpenRAG in the terminal" title="Direct link to Configure OpenRAG in the terminal" translate="no">​</a></h2>
+<p>When you install OpenRAG with <code>uvx</code>, you manage the OpenRAG services in an OpenRAG terminal session.
+The terminal session guides you through the initial configuration process before you start the OpenRAG services.</p>
+<p>Your configuration values are stored in an <a class="" href="/reference/configuration">OpenRAG <code>.env</code> file</a> that is created automatically at <code>~/.openrag/tui</code>.
+If OpenRAG detects an existing <code>.env</code> file in this directory, then OpenRAG can populate those values automatically during setup and onboarding.</p>
+<p>Container definitions are stored in the <code>docker-compose</code> files in the same directory as the OpenRAG <code>.env</code> file.</p>
+<p>The first time you install OpenRAG, the terminal session issues a series of prompts to guide you through the initial configuration.</p>
+<p>If OpenRAG detects an existing OpenRAG <code>.env</code> file, you might need to select the <strong>Reconfigure</strong> option in the terminal to access the configuration settings.</p>
+<ol>
+<li class="">
+<p>Enter an administrator password for the OpenSearch service.</p>
+<p>This password is required, and a secure password is automatically generated if you don&#x27;t provide one manually.</p>
+</li>
+<li class="">
+<p>Enter an administrator password for the Langflow service.</p>
+<p>This password is recommended but optional.
+If the Langflow password is empty, the Langflow server starts without authentication enabled. For more information, see <a class="" href="/reference/configuration#langflow-settings">Langflow settings</a>.</p>
+</li>
+<li class="">
+<p>At the <strong>AI providers</strong> prompt, you can either enter your model provider credentials now, or press <kbd>Enter</kbd> to configure these options later during application onboarding.</p>
+<p>There is no material difference between providing these values now or during the <a href="#application-onboarding" class="">application onboarding process</a>.
+If you provide a credential now, it can be populated automatically during the application onboarding process if you enable the <strong>Use environment API key</strong> option.</p>
+<p>OpenRAG&#x27;s core functionality requires access to language and embedding models.
+By default, OpenRAG uses OpenAI models.
+If you aren&#x27;t sure which models or providers to use, you must provide an OpenAI API key to use OpenRAG&#x27;s default model configuration.</p>
+</li>
+<li class="">
+<p>At the <strong>Langfuse tracing</strong> prompt, enter <kbd>Y</kbd> to enable the <a href="https://docs.langflow.org/integrations-langfuse" target="_blank" rel="noopener noreferrer" class="">Langflow integration with Langfuse</a>; otherwise, enter <kbd>N</kbd>.
+If you enter <kbd>Y</kbd>, provide the following Langfuse credentials:</p>
+<ul>
+<li class=""><strong>Langfuse Secret Key</strong>: A secret key for your Langfuse project.</li>
+<li class=""><strong>Langfuse Public Key</strong>: A public key for your Langfuse project.</li>
+<li class=""><strong>Langfuse Host</strong>: Required for self-hosted Langfuse deployments. Leave empty for Langfuse Cloud.</li>
+</ul>
+</li>
+<li class="">
+<p>At the <strong>Documents path</strong> prompt, accept the default <a class="" href="/ingestion-configure#set-the-local-documents-path">local documents path</a>, or provide a path to a directory where you want OpenRAG to look for documents to ingest into your <a class="" href="/knowledge">knowledge base</a>.</p>
+</li>
+<li class="">
+<p>At the <strong>Cloud connectors and advanced settings</strong> prompt, enter <kbd>Y</kbd> if you want to configure any of the following additional settings; otherwise, enter <kbd>N</kbd>.</p>
+<div class="theme-admonition theme-admonition-info admonition_xJq3 alert alert--info"><div class="admonitionHeading_Gvgb"><span class="admonitionIcon_Rf37"><svg viewBox="0 0 14 16"><path fill-rule="evenodd" d="M7 2.3c3.14 0 5.7 2.56 5.7 5.7s-2.56 5.7-5.7 5.7A5.71 5.71 0 0 1 1.3 8c0-3.14 2.56-5.7 5.7-5.7zM7 1C3.14 1 0 4.14 0 8s3.14 7 7 7 7-3.14 7-7-3.14-7-7-7zm1 3H6v5h2V4zm0 6H6v2h2v-2z"></path></svg></span>info</div><div class="admonitionContent_BuS1"><p>You must configure advanced settings if you want to enable either OAuth mode or cloud storage connectors during initial set up:</p><ul>
+<li class=""><strong>OAuth mode</strong>: Controls document ownership and access in your OpenRAG <a class="" href="/knowledge">OpenSearch knowledge base</a>.
+Without OAuth mode, there is no differentiation between users; all users that access your OpenRAG instance can access and manage all uploaded documents.</li>
+<li class=""><strong>Cloud storage connectors</strong>: Enables ingestion of documents from external storage services.</li>
+</ul><p>You can also <a class="" href="/knowledge-connectors">configure these connectors</a> later.</p></div></div>
+<ul>
+<li class="">
+<p><strong>OAuth mode and cloud storage connectors</strong>: To configure one or more of these connectors, do the following:</p>
+<ol>
+<li class="">
+<p>Register OpenRAG as an OAuth application in your cloud provider, and then obtain the app&#x27;s OAuth credentials, such as a client ID and secret key. To enable multiple connectors, you must register an app and generate credentials for each provider.</p>
+</li>
+<li class="">
+<p>In your OpenRAG terminal session, enter the relevant <a class="" href="/reference/configuration#oauth-and-cloud-storage-connector-settings">OAuth credentials</a> for the cloud connector prompts:</p>
+<ul>
+<li class="">
+<p><strong>Google</strong>: Enter your <strong>Google OAuth Client ID</strong> and <strong>Google OAuth Client Secret</strong>. You can generate these in the <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" class="">Google Cloud Console</a>. For more information, see the <a href="https://developers.google.com/identity/protocols/oauth2" target="_blank" rel="noopener noreferrer" class="">Google OAuth client documentation</a>.</p>
+<p>Providing these Google credentials enables OAuth mode <em>and</em> the Google Drive cloud storage connector.</p>
+<div class="theme-admonition theme-admonition-warning admonition_xJq3 alert alert--warning"><div class="admonitionHeading_Gvgb"><span class="admonitionIcon_Rf37"><svg viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8.893 1.5c-.183-.31-.52-.5-.887-.5s-.703.19-.886.5L.138 13.499a.98.98 0 0 0 0 1.001c.193.31.53.501.886.501h13.964c.367 0 .704-.19.877-.5a1.03 1.03 0 0 0 .01-1.002L8.893 1.5zm.133 11.497H6.987v-2.003h2.039v2.003zm0-3.004H6.987V5.987h2.039v4.006z"></path></svg></span>warning</div><div class="admonitionContent_BuS1"><p>Google is the only supported OAuth provider for OpenRAG.</p><p>You must enter Google credentials if you want to enable OAuth mode.</p><p>The Microsoft and Amazon credentials are used only to authorize the cloud storage connectors.
+OpenRAG doesn&#x27;t offer OAuth provider integrations for Microsoft or Amazon.</p></div></div>
+</li>
+<li class="">
+<p><strong>Microsoft</strong>: For the <strong>Microsoft OAuth Client ID</strong> and <strong>Microsoft OAuth Client Secret</strong>, enter <a href="https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/app-registration?view=odsp-graph-online" target="_blank" rel="noopener noreferrer" class="">Azure application registration credentials for SharePoint and OneDrive</a>. For more information, see the <a href="https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/graph-oauth" target="_blank" rel="noopener noreferrer" class="">Microsoft Graph OAuth client documentation</a>.</p>
+</li>
+<li class="">
+<p><strong>Amazon</strong>: Enter your <strong>AWS Access Key ID</strong> and <strong>AWS Secret Access Key</strong> with access to your S3 instance. For more information, see the AWS documentation on <a href="https://docs.aws.amazon.com/singlesignon/latest/userguide/manage-your-applications.html" target="_blank" rel="noopener noreferrer" class="">Configuring access to AWS applications</a>.</p>
+</li>
+</ul>
+<p>The credentials can be populated automatically if OpenRAG detects these credentials in an <a class="" href="/reference/configuration">OpenRAG <code>.env</code> file</a> at <code>~/.openrag/tui</code>.</p>
+</li>
+<li class="">
+<p>Register the redirect URIs shown in the terminal in your OAuth apps.</p>
+<p>The redirect URIs are used for the cloud storage connector webhooks. For Google, the redirect URIs are also used to redirect users back to OpenRAG after they sign in.</p>
+</li>
+</ol>
+</li>
+<li class="">
+<p><strong>Webhook Base URL</strong>: If you entered OAuth credentials, you can set the base address for your OAuth connector endpoints. If set, the OAuth connector webhook URLs are constructed as <code>WEBHOOK_BASE_URL/connectors/${provider}/webhook</code>. This option is required to enable automatic ingestion from cloud storage.</p>
+</li>
+<li class="">
+<p><strong>OpenSearch Data Path</strong>: Use the default path, or specify the path where you want OpenRAG to create your OpenSearch index.</p>
+</li>
+<li class="">
+<p><strong>Langflow Public URL</strong> : Sets the base address to access the Langflow web interface where users interact with the Langflow editor in a browser. You must set this value if you want to run Langflow on a non-default port (<code>7860</code>)</p>
+</li>
+</ul>
+</li>
+<li class="">
+<p>At the <code>Start services now?</code> prompt, press <kbd>Y</kbd> to start the OpenRAG services.</p>
+<p>This process can take some time while OpenRAG pulls and runs the container images.
+If all services start successfully, the terminal prints a confirmation message:</p>
+<div class="language-text codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-text codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">Services are running.</span><br></div></code></pre></div></div>
+<div class="theme-admonition theme-admonition-tip admonition_xJq3 alert alert--success"><div class="admonitionHeading_Gvgb"><span class="admonitionIcon_Rf37"><svg viewBox="0 0 12 16"><path fill-rule="evenodd" d="M6.5 0C3.48 0 1 2.19 1 5c0 .92.55 2.25 1 3 1.34 2.25 1.78 2.78 2 4v1h5v-1c.22-1.22.66-1.75 2-4 .45-.75 1-2.08 1-3 0-2.81-2.48-5-5.5-5zm3.64 7.48c-.25.44-.47.8-.67 1.11-.86 1.41-1.25 2.06-1.45 3.23-.02.05-.02.11-.02.17H5c0-.06 0-.13-.02-.17-.2-1.17-.59-1.83-1.45-3.23-.2-.31-.42-.67-.67-1.11C2.44 6.78 2 5.65 2 5c0-2.2 2.02-4 4.5-4 1.22 0 2.36.42 3.22 1.19C10.55 2.94 11 3.94 11 5c0 .66-.44 1.78-.86 2.48zM4 14h5c-.23 1.14-1.3 2-2.5 2s-2.27-.86-2.5-2z"></path></svg></span>OpenRAG .env file</div><div class="admonitionContent_BuS1"><p>Your configuration and credentials are stored in the <a class="" href="/reference/configuration">OpenRAG <code>.env</code> file</a> at <code>~/.openrag/tui</code>.
+If you modified any credentials that were pulled from an existing <code>.env</code> file, those values are updated in the <code>.env</code> file.</p></div></div>
+</li>
+<li class="">
+<p>If the OpenRAG app doesn&#x27;t launch automatically, select the <strong>Open OpenRAG in browser</strong> option to launch the OpenRAG app and start the <a href="#application-onboarding" class="">application onboarding process</a>.
+You can also manually navigate to <code>localhost:3000</code> in a browser.</p>
+<p>If you provided Google OAuth credentials, you must sign in with Google before you are redirected to your OpenRAG instance.</p>
+</li>
+</ol>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="application-onboarding">Complete the application onboarding process<a href="#application-onboarding" class="hash-link" aria-label="Direct link to Complete the application onboarding process" title="Direct link to Complete the application onboarding process" translate="no">​</a></h2>
+<p>The first time you start the OpenRAG application, you must complete the application onboarding process to select language and embedding models that are essential for OpenRAG features like the <a class="" href="/chat"><strong>Chat</strong></a>.</p>
+<p>To complete onboarding, you must configure at least one language model and one embedding model.</p>
+<p>You can use different providers for your language model and embedding model, such as Anthropic for the language model and OpenAI for the embedding model.
+Additionally, you can select multiple embedding models.</p>
+<div class="theme-tabs-container tabs-container tabList__CuJ"><ul role="tablist" aria-orientation="horizontal" class="tabs"><li role="tab" tabindex="0" aria-selected="true" class="tabs__item tabItem_LNqP tabs__item--active">Anthropic</li><li role="tab" tabindex="-1" aria-selected="false" class="tabs__item tabItem_LNqP">IBM watsonx.ai</li><li role="tab" tabindex="-1" aria-selected="false" class="tabs__item tabItem_LNqP">Ollama</li><li role="tab" tabindex="-1" aria-selected="false" class="tabs__item tabItem_LNqP">OpenAI (default)</li></ul><div class="margin-top--md"><div role="tabpanel" class="tabItem_Ymn6"><div class="theme-admonition theme-admonition-info admonition_xJq3 alert alert--info"><div class="admonitionHeading_Gvgb"><span class="admonitionIcon_Rf37"><svg viewBox="0 0 14 16"><path fill-rule="evenodd" d="M7 2.3c3.14 0 5.7 2.56 5.7 5.7s-2.56 5.7-5.7 5.7A5.71 5.71 0 0 1 1.3 8c0-3.14 2.56-5.7 5.7-5.7zM7 1C3.14 1 0 4.14 0 8s3.14 7 7 7 7-3.14 7-7-3.14-7-7-7zm1 3H6v5h2V4zm0 6H6v2h2v-2z"></path></svg></span>info</div><div class="admonitionContent_BuS1"><p>Anthropic doesn&#x27;t provide embedding models. If you select Anthropic for your language model, you must select a different provider for the embedding model.</p></div></div><ol>
+<li class="">
+<p>Enter your Anthropic API key, or enable <strong>Use environment API key</strong> to pull the key from your <a class="" href="/reference/configuration">OpenRAG <code>.env</code> file</a>.</p>
+</li>
+<li class="">
+<p>Under <strong>Advanced settings</strong>, select the language model that you want to use.</p>
+<p>Language models must support tool calling to be compatible with OpenRAG.
+Incompatible models aren&#x27;t listed.</p>
+</li>
+<li class="">
+<p>Click <strong>Complete</strong>.</p>
+</li>
+<li class="">
+<p>Select a provider for embeddings, provide the required information, and then select the embedding model you want to use.
+For information about another provider&#x27;s credentials and settings, see the instructions for that provider.</p>
+</li>
+<li class="">
+<p>Click <strong>Complete</strong>.</p>
+<p>After you configure the embedding model, OpenRAG uses your credentials and models to ingest some <a class="" href="/knowledge-browse#default-documents">initial documents</a>. This tests the connection, and it allows you to ask OpenRAG about itself in the <a class="" href="/chat"><strong>Chat</strong></a>.
+If there is a problem with the model configuration, an error occurs and you are redirected back to the application onboarding screen.
+Verify that the credential is valid and has access to the selected model, and then click <strong>Complete</strong> to retry ingestion.</p>
+</li>
+<li class="">
+<p>Continue through the overview slides for a brief introduction to OpenRAG, or click <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right" aria-hidden="true"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg> <strong>Skip overview</strong>.
+The overview demonstrates some basic functionality that is covered in the <a class="" href="/quickstart#chat-with-documents">quickstart</a> and in other parts of the OpenRAG documentation.</p>
+</li>
+</ol></div><div role="tabpanel" class="tabItem_Ymn6" hidden=""><div class="theme-admonition theme-admonition-info admonition_xJq3 alert alert--info"><div class="admonitionHeading_Gvgb"><span class="admonitionIcon_Rf37"><svg viewBox="0 0 14 16"><path fill-rule="evenodd" d="M7 2.3c3.14 0 5.7 2.56 5.7 5.7s-2.56 5.7-5.7 5.7A5.71 5.71 0 0 1 1.3 8c0-3.14 2.56-5.7 5.7-5.7zM7 1C3.14 1 0 4.14 0 8s3.14 7 7 7 7-3.14 7-7-3.14-7-7-7zm1 3H6v5h2V4zm0 6H6v2h2v-2z"></path></svg></span>info</div><div class="admonitionContent_BuS1"><p>OpenRAG isn&#x27;t guaranteed to be compatible with all models that are available through IBM watsonx.ai.</p>
+<p>Language models must support tool calling to be compatible with OpenRAG.
+Incompatible models aren&#x27;t listed in OpenRAG&#x27;s settings or onboarding.</p>
+<p>Additionally, models must be able to handle the agentic reasoning tasks required by OpenRAG.
+Models that are too small or not designed for agentic RAG tasks can return low quality, incorrect, or improperly formatted responses.
+For more information, see <a class="" href="/support/troubleshoot#chat-issues">Chat issues</a>.</p>
+<p>You can submit an <a href="https://github.com/langflow-ai/openrag/issues" target="_blank" rel="noopener noreferrer" class="">OpenRAG GitHub issue</a> to request support for specific models.</p></div></div><ol>
+<li class="">
+<p>For <strong>watsonx.ai API Endpoint</strong>, select the base URL for your watsonx.ai model deployment.</p>
+</li>
+<li class="">
+<p>Enter your watsonx.ai deployment&#x27;s project ID and API key.</p>
+<p>You can enable <strong>Use environment API key</strong> to pull the key from your <a class="" href="/reference/configuration">OpenRAG <code>.env</code> file</a>.</p>
+</li>
+<li class="">
+<p>Under <strong>Advanced settings</strong>, select the language model that you want to use.</p>
+<p>Language models must support tool calling to be compatible with OpenRAG.
+Incompatible models aren&#x27;t listed.</p>
+</li>
+<li class="">
+<p>Click <strong>Complete</strong>.</p>
+</li>
+<li class="">
+<p>Select a provider for embeddings, provide the required information, and then select the embedding model you want to use.
+For information about another provider&#x27;s credentials and settings, see the instructions for that provider.</p>
+</li>
+<li class="">
+<p>Click <strong>Complete</strong>.</p>
+<p>After you configure the embedding model, OpenRAG uses your credentials and models to ingest some <a class="" href="/knowledge-browse#default-documents">initial documents</a>. This tests the connection, and it allows you to ask OpenRAG about itself in the <a class="" href="/chat"><strong>Chat</strong></a>.
+If there is a problem with the model configuration, an error occurs and you are redirected back to the application onboarding screen.
+Verify that the credentials are valid and have access to the selected model, and then click <strong>Complete</strong> to retry ingestion.</p>
+</li>
+<li class="">
+<p>Continue through the overview slides for a brief introduction to OpenRAG, or click <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right" aria-hidden="true"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg> <strong>Skip overview</strong>.
+The overview demonstrates some basic functionality that is covered in the <a class="" href="/quickstart#chat-with-documents">quickstart</a> and in other parts of the OpenRAG documentation.</p>
+</li>
+</ol></div><div role="tabpanel" class="tabItem_Ymn6" hidden=""><p>Using Ollama as your language and embedding model provider offers greater flexibility and configuration options for hosting models.
+However, it requires additional setup because Ollama isn&#x27;t included with OpenRAG.
+You must deploy Ollama separately if you want to use Ollama as a model provider.</p><div class="theme-admonition theme-admonition-info admonition_xJq3 alert alert--info"><div class="admonitionHeading_Gvgb"><span class="admonitionIcon_Rf37"><svg viewBox="0 0 14 16"><path fill-rule="evenodd" d="M7 2.3c3.14 0 5.7 2.56 5.7 5.7s-2.56 5.7-5.7 5.7A5.71 5.71 0 0 1 1.3 8c0-3.14 2.56-5.7 5.7-5.7zM7 1C3.14 1 0 4.14 0 8s3.14 7 7 7 7-3.14 7-7-3.14-7-7-7zm1 3H6v5h2V4zm0 6H6v2h2v-2z"></path></svg></span>info</div><div class="admonitionContent_BuS1"><p>OpenRAG isn&#x27;t guaranteed to be compatible with all models that are available through Ollama.
+Some models might produce unexpected results, such as JSON-formatted output instead of natural language responses, and some models aren&#x27;t appropriate for the types of tasks that OpenRAG performs, such as those that generate media.</p>
+<ul>
+<li class="">
+<p><strong>Language models</strong>: Ollama-hosted language models must support tool calling to be compatible with OpenRAG.
+The OpenRAG team recommends <code>gpt-oss:20b</code> or <code>mistral-nemo:12b</code>.
+If you choose <code>gpt-oss:20b</code>, consider using Ollama Cloud or running Ollama on a remote machine because this model requires at least 16GB of RAM.</p>
+</li>
+<li class="">
+<p><strong>Embedding models</strong>: The OpenRAG team recommends <a href="https://ollama.com/library/nomic-embed-text" target="_blank" rel="noopener noreferrer" class=""><code>nomic-embed-text:latest</code></a>, <code>mxbai-embed-large:latest</code>, or <code>embeddinggemma:latest</code>.</p>
+</li>
+</ul>
+<p>You can experiment with other models, but if you encounter issues that you are unable to resolve through other RAG best practices (like context filters and prompt engineering), try switching to one of the recommended models.
+You can submit an <a href="https://github.com/langflow-ai/openrag/issues" target="_blank" rel="noopener noreferrer" class="">OpenRAG GitHub issue</a> to request support for specific models.</p></div></div><ol>
+<li class="">
+<p><a href="https://docs.ollama.com/" target="_blank" rel="noopener noreferrer" class="">Install Ollama locally or on a remote server</a>, or <a href="https://docs.ollama.com/cloud" target="_blank" rel="noopener noreferrer" class="">run models in Ollama Cloud</a>.</p>
+<p>If you are running a remote server, it must be accessible from your OpenRAG deployment.</p>
+</li>
+<li class="">
+<p>In the OpenRAG onboarding dialog, enter your Ollama server&#x27;s base URL:</p>
+<ul>
+<li class=""><strong>Local Ollama server</strong>: Enter your Ollama server&#x27;s base URL and port. The default Ollama server address is <code>http://localhost:11434</code>.</li>
+<li class=""><strong>Ollama Cloud</strong>: Because Ollama Cloud models run at the same address as a local Ollama server and automatically offload to Ollama&#x27;s cloud service, you can use the same base URL and port as you would for a local Ollama server. The default address is <code>http://localhost:11434</code>.</li>
+<li class=""><strong>Remote server</strong>: Enter your remote Ollama server&#x27;s base URL and port, such as <code>http://your-remote-server:11434</code>.</li>
+</ul>
+</li>
+<li class="">
+<p>Select a language model that your Ollama server is running.</p>
+<p>OpenRAG only lists language models that support tool calling.
+If your server isn&#x27;t running any compatible language models, you must either deploy a compatible language model on your Ollama server, or use another provider for the language model.</p>
+<p>Language model and embedding model selections are independent.
+You can use the same or different servers for each model.</p>
+<p>To use different providers for each model, you must configure both providers, and select the relevant model for each provider.</p>
+</li>
+<li class="">
+<p>Click <strong>Complete</strong>.</p>
+</li>
+<li class="">
+<p>Select a provider for embeddings, provide the required information, and then select the embedding model you want to use.
+For information about another provider&#x27;s credentials and settings, see the instructions for that provider.</p>
+</li>
+<li class="">
+<p>Click <strong>Complete</strong>.</p>
+<p>After you configure the embedding model, OpenRAG uses your credentials and models to ingest some <a class="" href="/knowledge-browse#default-documents">initial documents</a>. This tests the connection, and it allows you to ask OpenRAG about itself in the <a class="" href="/chat"><strong>Chat</strong></a>.
+If there is a problem with the model configuration, an error occurs and you are redirected back to the application onboarding screen.
+Verify that the server address is valid, and that the selected model is running on the server.
+Then, click <strong>Complete</strong> to retry ingestion.</p>
+</li>
+<li class="">
+<p>Continue through the overview slides for a brief introduction to OpenRAG, or click <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right" aria-hidden="true"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg> <strong>Skip overview</strong>.
+The overview demonstrates some basic functionality that is covered in the <a class="" href="/quickstart#chat-with-documents">quickstart</a> and in other parts of the OpenRAG documentation.</p>
+</li>
+</ol></div><div role="tabpanel" class="tabItem_Ymn6" hidden=""><ol>
+<li class="">
+<p>Enter your OpenAI API key, or enable <strong>Use environment API key</strong> to pull the key from your <a class="" href="/reference/configuration">OpenRAG <code>.env</code> file</a>.</p>
+</li>
+<li class="">
+<p>Under <strong>Advanced settings</strong>, select the language model that you want to use.</p>
+<p>Language models must support tool calling to be compatible with OpenRAG.
+Incompatible models aren&#x27;t listed.</p>
+</li>
+<li class="">
+<p>Click <strong>Complete</strong>.</p>
+</li>
+<li class="">
+<p>Select a provider for embeddings, provide the required information, and then select the embedding model you want to use.
+For information about another provider&#x27;s credentials and settings, see the instructions for that provider.</p>
+</li>
+<li class="">
+<p>Click <strong>Complete</strong>.</p>
+<p>After you configure the embedding model, OpenRAG uses your credentials and models to ingest some <a class="" href="/knowledge-browse#default-documents">initial documents</a>. This tests the connection, and it allows you to ask OpenRAG about itself in the <a class="" href="/chat"><strong>Chat</strong></a>.
+If there is a problem with the model configuration, an error occurs and you are redirected back to the application onboarding screen.
+Verify that the credential is valid and has access to the selected model, and then click <strong>Complete</strong> to retry ingestion.</p>
+</li>
+<li class="">
+<p>Continue through the overview slides for a brief introduction to OpenRAG, or click <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right" aria-hidden="true"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg> <strong>Skip overview</strong>.
+The overview demonstrates some basic functionality that is covered in the <a class="" href="/quickstart#chat-with-documents">quickstart</a> and in other parts of the OpenRAG documentation.</p>
+</li>
+</ol></div></div></div>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="next-steps">Next steps<a href="#next-steps" class="hash-link" aria-label="Direct link to Next steps" title="Direct link to Next steps" translate="no">​</a></h2>
+<ul>
+<li class="">Try some of OpenRAG&#x27;s core features in the <a class="" href="/quickstart#chat-with-documents">quickstart</a>.</li>
+<li class="">Learn how to <a class="" href="/manage-services">manage OpenRAG services</a>.</li>
+<li class=""><a class="" href="/ingestion">Upload documents</a>, and then use the <a class="" href="/chat"><strong>Chat</strong></a> to explore your data.</li>
+</ul></div><footer class="theme-doc-footer docusaurus-mt-lg"><div class="row margin-top--sm theme-doc-footer-edit-meta-row"><div class="col noPrint_WFHX"><a href="https://github.com/openrag/openrag/tree/main/docs/docs/get-started/install-uvx.mdx" target="_blank" rel="noopener noreferrer" class="theme-edit-this-page"><svg fill="currentColor" height="20" width="20" viewBox="0 0 40 40" class="iconEdit_Z9Sw" aria-hidden="true"><g><path d="m34.5 11.7l-3 3.1-6.3-6.3 3.1-3q0.5-0.5 1.2-0.5t1.1 0.5l3.9 3.9q0.5 0.4 0.5 1.1t-0.5 1.2z m-29.5 17.1l18.4-18.5 6.3 6.3-18.4 18.4h-6.3v-6.2z"></path></g></svg>Edit this page</a></div><div class="col lastUpdated_JAkA"></div></div></footer></article><nav class="docusaurus-mt-lg pagination-nav" aria-label="Docs pages"><a class="pagination-nav__link pagination-nav__link--prev" href="/install-uv"><div class="pagination-nav__sublabel">Previous</div><div class="pagination-nav__label">Install OpenRAG with uv</div></a><a class="pagination-nav__link pagination-nav__link--next" href="/install-windows"><div class="pagination-nav__sublabel">Next</div><div class="pagination-nav__label">Install OpenRAG on Windows</div></a></nav></div></div><div class="col col--3"><div class="tableOfContents_bqdL thin-scrollbar theme-doc-toc-desktop"><ul class="table-of-contents table-of-contents__left-border"><li><a href="#prerequisites" class="table-of-contents__link toc-highlight">Prerequisites</a></li><li><a href="#install-and-run-openrag-with-uvx" class="table-of-contents__link toc-highlight">Install and run OpenRAG with uvx</a></li><li><a href="#setup" class="table-of-contents__link toc-highlight">Configure OpenRAG in the terminal</a></li><li><a href="#application-onboarding" class="table-of-contents__link toc-highlight">Complete the application onboarding process</a></li><li><a href="#next-steps" class="table-of-contents__link toc-highlight">Next steps</a></li></ul></div></div></div></div></main></div></div></div><footer class="theme-layout-footer footer"><div class="container container-fluid"><div class="row footer__links"><div class="theme-layout-footer-column col footer__col"><div class="footer__title"></div><ul class="footer__items clean-list"><li class="footer__item"><div class="footer-links">
+                  <span>© 2026 OpenRAG</span>
+                  <span id="preferenceCenterContainer"> ·&nbsp; <a href="#" onclick='return"undefined"!=typeof window&&window.truste&&window.truste.eu&&window.truste.eu.clickListener&&window.truste.eu.clickListener(),!1' style="cursor: pointer;">Manage Privacy Choices</a></span>
+                  </div></li></ul></div></div></div></footer></div>
+</body>
+</html>

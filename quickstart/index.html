@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en" dir="ltr" class="docs-wrapper plugin-docs plugin-id-default docs-version-current docs-doc-page docs-doc-id-get-started/quickstart" data-has-hydrated="false">
+<head>
+<meta charset="UTF-8">
+<meta name="generator" content="Docusaurus v3.10.1">
+<title data-rh="true">Quickstart | OpenRAG</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:url" content="https://www.openr.ag/quickstart"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Quickstart | OpenRAG"><meta data-rh="true" name="description" content="Use this quickstart to install OpenRAG, and then try some of OpenRAG&#x27;s core features."><meta data-rh="true" property="og:description" content="Use this quickstart to install OpenRAG, and then try some of OpenRAG&#x27;s core features."><link data-rh="true" rel="icon" href="/img/favicon.ico"><link data-rh="true" rel="canonical" href="https://www.openr.ag/quickstart"><link data-rh="true" rel="alternate" href="https://www.openr.ag/quickstart" hreflang="en"><link data-rh="true" rel="alternate" href="https://www.openr.ag/quickstart" hreflang="x-default"><link data-rh="true" rel="preconnect" href="https://SMEA51Q5OL-dsn.algolia.net" crossorigin="anonymous"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Quickstart","item":"https://www.openr.ag/quickstart"}]}</script><link rel="search" type="application/opensearchdescription+xml" title="OpenRAG" href="/opensearch.xml">
+
+
+
+<script>function gtag(){dataLayer.push(arguments)}window.dataLayer=window.dataLayer||[],gtag("consent","default",{ad_storage:"denied",ad_user_data:"denied",ad_personalization:"denied",analytics_storage:"denied"})</script>
+<script>!function(){function e(){if(void 0!==window.truste&&window.truste.cma){var e=window.truste.cma.callApi("getConsent",window.location.href)||{},n=1===e[2],t=1===e[3];gtag("consent","update",{ad_storage:n?"granted":"denied",ad_user_data:n?"granted":"denied",ad_personalization:n?"granted":"denied",analytics_storage:t?"granted":"denied"})}}window.addEventListener&&(window.addEventListener("cm_data_subject_consent_changed",e),window.addEventListener("cm_consent_preferences_set",e)),"complete"===document.readyState?e():window.addEventListener("load",e)}()</script>
+<script>window._ibmAnalytics={settings:{name:"DataStax",tealiumProfileName:"ibm-subsidiary"},trustarc:{privacyPolicyLink:"https://ibm.com/privacy"}},window.digitalData={page:{pageInfo:{ibm:{siteId:"IBM_DataStax"}},category:{primaryCategory:"PC230"}}}</script>
+<script src="//1.www.s81c.com/common/stats/ibm-common.js" async="true"></script><link rel="stylesheet" href="/assets/css/styles.4eb4a30d.css">
+<script src="/assets/js/runtime~main.018000ac.js" defer="defer"></script>
+<script src="/assets/js/main.1e3d2112.js" defer="defer"></script>
+</head>
+<body>
+<svg style="display: none;"><defs>
+<symbol id="theme-svg-external-link" viewBox="0 0 24 24"><path fill="currentColor" d="M21 13v10h-21v-19h12v2h-10v15h17v-8h2zm3-12h-10.988l4.035 4-6.977 7.07 2.828 2.828 6.977-7.07 4.125 4.172v-11z"/></symbol>
+</defs></svg>
+<script>!function(){var t=function(){try{return new URLSearchParams(window.location.search).get("docusaurus-theme")}catch(t){}}()||function(){try{return window.localStorage.getItem("theme")}catch(t){}}();document.documentElement.setAttribute("data-theme",t||"light"),document.documentElement.setAttribute("data-theme-choice",t||"light")}(),function(){try{const c=new URLSearchParams(window.location.search).entries();for(var[t,e]of c)if(t.startsWith("docusaurus-data-")){var a=t.replace("docusaurus-data-","data-");document.documentElement.setAttribute(a,e)}}catch(t){}}()</script><div id="__docusaurus"><link rel="preload" as="image" href="/img/logo-openrag-docs-light.svg"><link rel="preload" as="image" href="/img/logo-openrag-docs-dark.svg"><div role="region" aria-label="Skip to main content"><a class="skipToContent_fXgn" href="#__docusaurus_skipToContent_fallback">Skip to main content</a></div><nav aria-label="Main" class="theme-layout-navbar navbar navbar--fixed-top"><div class="navbar__inner"><div class="theme-layout-navbar-left navbar__items"><button aria-label="Toggle navigation bar" aria-expanded="false" class="navbar__toggle clean-btn" type="button"><svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><path stroke="currentColor" stroke-linecap="round" stroke-miterlimit="10" stroke-width="2" d="M4 7h22M4 15h22M4 23h22"></path></svg></button><a class="navbar__brand" href="/docs/"><div class="navbar__logo"><img src="/img/logo-openrag-docs-light.svg" alt="OpenRAG Logo" class="themedComponent_mlkZ themedComponent--light_NVdE"><img src="/img/logo-openrag-docs-dark.svg" alt="OpenRAG Logo" class="themedComponent_mlkZ themedComponent--dark_xIcU"></div></a></div><div class="theme-layout-navbar-right navbar__items navbar__items--right"><a href="https://github.com/langflow-ai/openrag" target="_blank" class="navbar__item navbar__link header-github-link" aria-label="GitHub repository"></a><div class="toggle_vylO colorModeToggle_DEke"><button class="clean-btn toggleButton_gllP toggleButtonDisabled_aARS" type="button" disabled="" title="system mode" aria-label="Switch between dark and light mode (currently system mode)"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" class="toggleIcon_g3eP lightToggleIcon_pyhR"><path fill="currentColor" d="M12,9c1.65,0,3,1.35,3,3s-1.35,3-3,3s-3-1.35-3-3S10.35,9,12,9 M12,7c-2.76,0-5,2.24-5,5s2.24,5,5,5s5-2.24,5-5 S14.76,7,12,7L12,7z M2,13l2,0c0.55,0,1-0.45,1-1s-0.45-1-1-1l-2,0c-0.55,0-1,0.45-1,1S1.45,13,2,13z M20,13l2,0c0.55,0,1-0.45,1-1 s-0.45-1-1-1l-2,0c-0.55,0-1,0.45-1,1S19.45,13,20,13z M11,2v2c0,0.55,0.45,1,1,1s1-0.45,1-1V2c0-0.55-0.45-1-1-1S11,1.45,11,2z M11,20v2c0,0.55,0.45,1,1,1s1-0.45,1-1v-2c0-0.55-0.45-1-1-1C11.45,19,11,19.45,11,20z M5.99,4.58c-0.39-0.39-1.03-0.39-1.41,0 c-0.39,0.39-0.39,1.03,0,1.41l1.06,1.06c0.39,0.39,1.03,0.39,1.41,0s0.39-1.03,0-1.41L5.99,4.58z M18.36,16.95 c-0.39-0.39-1.03-0.39-1.41,0c-0.39,0.39-0.39,1.03,0,1.41l1.06,1.06c0.39,0.39,1.03,0.39,1.41,0c0.39-0.39,0.39-1.03,0-1.41 L18.36,16.95z M19.42,5.99c0.39-0.39,0.39-1.03,0-1.41c-0.39-0.39-1.03-0.39-1.41,0l-1.06,1.06c-0.39,0.39-0.39,1.03,0,1.41 s1.03,0.39,1.41,0L19.42,5.99z M7.05,18.36c0.39-0.39,0.39-1.03,0-1.41c-0.39-0.39-1.03-0.39-1.41,0l-1.06,1.06 c-0.39,0.39-0.39,1.03,0,1.41s1.03,0.39,1.41,0L7.05,18.36z"></path></svg><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" class="toggleIcon_g3eP darkToggleIcon_wfgR"><path fill="currentColor" d="M9.37,5.51C9.19,6.15,9.1,6.82,9.1,7.5c0,4.08,3.32,7.4,7.4,7.4c0.68,0,1.35-0.09,1.99-0.27C17.45,17.19,14.93,19,12,19 c-3.86,0-7-3.14-7-7C5,9.07,6.81,6.55,9.37,5.51z M12,3c-4.97,0-9,4.03-9,9s4.03,9,9,9s9-4.03,9-9c0-0.46-0.04-0.92-0.1-1.36 c-0.98,1.37-2.58,2.26-4.4,2.26c-2.98,0-5.4-2.42-5.4-5.4c0-1.81,0.89-3.42,2.26-4.4C12.92,3.04,12.46,3,12,3L12,3z"></path></svg><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" class="toggleIcon_g3eP systemToggleIcon_QzmC"><path fill="currentColor" d="m12 21c4.971 0 9-4.029 9-9s-4.029-9-9-9-9 4.029-9 9 4.029 9 9 9zm4.95-13.95c1.313 1.313 2.05 3.093 2.05 4.95s-0.738 3.637-2.05 4.95c-1.313 1.313-3.093 2.05-4.95 2.05v-14c1.857 0 3.637 0.737 4.95 2.05z"></path></svg></button></div><div class="navbarSearchContainer_Bca1"><button type="button" class="DocSearch DocSearch-Button" aria-label="Search (Meta+k)" aria-keyshortcuts="Meta+k"><span class="DocSearch-Button-Container"><svg width="20" height="20" class="DocSearch-Search-Icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8" stroke="currentColor" fill="none" stroke-width="1.4"></circle><path d="m21 21-4.3-4.3" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"></path></svg><span class="DocSearch-Button-Placeholder">Search</span></span><span class="DocSearch-Button-Keys"></span></button></div></div></div><div role="presentation" class="navbar-sidebar__backdrop"></div></nav><div id="__docusaurus_skipToContent_fallback" class="theme-layout-main main-wrapper mainWrapper_z2l0"><div class="docsWrapper_hBAB"><button aria-label="Scroll back to top" class="clean-btn theme-back-to-top-button backToTopButton_sjWU" type="button"></button><div class="docRoot_UBD9"><aside class="theme-doc-sidebar-container docSidebarContainer_YfHR"><div class="sidebarViewport_aRkj"><div class="sidebar_njMd"><nav aria-label="Docs sidebar" class="menu thin-scrollbar menu_SIkG"><ul class="theme-doc-sidebar-menu menu__list"><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/docs"><span title="About OpenRAG" class="linkLabel_WmDU">About OpenRAG</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link menu__link--active" aria-current="page" href="/quickstart"><span title="Quickstart" class="linkLabel_WmDU">Quickstart</span></a></li><li class="theme-doc-sidebar-item-category theme-doc-sidebar-item-category-level-1 menu__list-item menu__list-item--collapsed"><div class="menu__list-item-collapsible"><a class="categoryLink_byQd menu__link menu__link--sublist menu__link--sublist-caret" role="button" aria-expanded="false" href="/install-options"><span title="Installation" class="categoryLinkLabel_W154">Installation</span></a></div></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/tui"><span title="Use the OpenRAG terminal" class="linkLabel_WmDU">Use the OpenRAG terminal</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/manage-services"><span title="Manage services" class="linkLabel_WmDU">Manage services</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/agents"><span title="Flows" class="linkLabel_WmDU">Flows</span></a></li><li class="theme-doc-sidebar-item-category theme-doc-sidebar-item-category-level-1 menu__list-item menu__list-item--collapsed"><div class="menu__list-item-collapsible"><a class="categoryLink_byQd menu__link menu__link--sublist menu__link--sublist-caret" role="button" aria-expanded="false" href="/knowledge"><span title="Knowledge" class="categoryLinkLabel_W154">Knowledge</span></a></div></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/chat"><span title="Chat" class="linkLabel_WmDU">Chat</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/reference/configuration"><span title="Environment variables" class="linkLabel_WmDU">Environment variables</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/reference/observability"><span title="Monitor with IBM Instana" class="linkLabel_WmDU">Monitor with IBM Instana</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/reference/api-sdk-overview"><span title="SDK and MCP API references" class="linkLabel_WmDU">SDK and MCP API references</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/support/contribute"><span title="Contribute to OpenRAG" class="linkLabel_WmDU">Contribute to OpenRAG</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/support/troubleshoot"><span title="Troubleshoot OpenRAG" class="linkLabel_WmDU">Troubleshoot OpenRAG</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/support/ibm-elite-support"><span title="IBM Elite Support for OpenRAG" class="linkLabel_WmDU">IBM Elite Support for OpenRAG</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a href="https://github.com/langflow-ai/openrag/releases" target="_blank" rel="noopener noreferrer" class="menu__link menuExternalLink_NmtK"><span title="Changelog" class="linkLabel_WmDU">Changelog</span><svg width="13.5" height="13.5" aria-label="(opens in new tab)" class="iconExternalLink_nPIU"><use href="#theme-svg-external-link"></use></svg></a></li></ul></nav></div></div></aside><main class="docMainContainer_TBSr"><div class="container padding-top--md padding-bottom--lg"><div class="row"><div class="col docItemCol_VOVn"><div class="docItemContainer_Djhp"><article><nav class="theme-doc-breadcrumbs breadcrumbsContainer_Z_bl" aria-label="Breadcrumbs"><ul class="breadcrumbs"><li class="breadcrumbs__item breadcrumbs__item--active"><span class="breadcrumbs__link">Quickstart</span></li></ul></nav><div class="tocCollapsible_ETCw theme-doc-toc-mobile tocMobile_ITEo"><button type="button" class="clean-btn tocCollapsibleButton_TO0P">On this page</button></div><div class="theme-doc-markdown markdown"><header><h1>Quickstart</h1></header><p>Use this quickstart to install OpenRAG, and then try some of OpenRAG&#x27;s core features.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="prerequisites">Prerequisites<a href="#prerequisites" class="hash-link" aria-label="Direct link to Prerequisites" title="Direct link to Prerequisites" translate="no">​</a></h2>
+<ul>
+<li class="">Install <a href="https://www.python.org/downloads/release/python-3100/" target="_blank" rel="noopener noreferrer" class="">Python</a> version 3.13.</li>
+</ul>
+<ul>
+<li class="">Install <a href="https://docs.astral.sh/uv/getting-started/installation/" target="_blank" rel="noopener noreferrer" class="">uv</a>.</li>
+</ul>
+<ul>
+<li class="">Get an <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" class="">OpenAI API key</a>.
+This quickstart uses OpenAI for demonstration purposes.
+For other providers, see the other <a class="" href="/install-options">installation methods</a>.</li>
+</ul>
+<ul>
+<li class="">For Microsoft Windows, you must use the Windows Subsystem for Linux (WSL).
+See <a class="" href="/install-windows">Install OpenRAG on Windows</a> before proceeding.</li>
+</ul>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="install-openrag">Install OpenRAG<a href="#install-openrag" class="hash-link" aria-label="Direct link to Install OpenRAG" title="Direct link to Install OpenRAG" translate="no">​</a></h2>
+<p>This quickstart installs OpenRAG with <a href="https://docs.astral.sh/uv/guides/tools/#running-tools" target="_blank" rel="noopener noreferrer" class=""><code>uvx</code></a> which automatically installs OpenRAG&#x27;s dependencies as needed, including Docker or Podman.</p>
+<ol>
+<li class="">
+<p>Create a directory for your OpenRAG installation, and then change to that directory:</p>
+<div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token function" style="color:#d73a49">mkdir</span><span class="token plain"> openrag-workspace</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain"></span><span class="token builtin class-name">cd</span><span class="token plain"> openrag-workspace</span><br></div></code></pre></div></div>
+</li>
+<li class="">
+<p>Install OpenRAG and its dependencies with <code>uvx</code>.</p>
+<div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">uvx </span><span class="token parameter variable" style="color:#36acaa">--python</span><span class="token plain"> </span><span class="token number" style="color:#36acaa">3.13</span><span class="token plain"> openrag</span><br></div></code></pre></div></div>
+<p>You might be prompted to install certain dependencies if they aren&#x27;t already present in your environment.
+The entire process can take a few minutes.
+If you encounter errors during installation, see <a class="" href="/support/troubleshoot">Troubleshoot OpenRAG</a>.</p>
+</li>
+<li class="">
+<p>Once the environment is ready, the OpenRAG terminal session starts, and begins issuing prompts for OpenRAG configuration settings.</p>
+</li>
+<li class="">
+<p>For the OpenSearch and Langflow <strong>Admin password</strong> prompts, autogenerate or manually enter passwords.</p>
+</li>
+<li class="">
+<p>For this quickstart, skip or press <kbd>N</kbd> for all remaining configuration prompts to use the default values.</p>
+<p>Your OpenRAG configuration and passwords are stored in an <a class="" href="/reference/configuration">OpenRAG <code>.env</code> file</a> file that is created automatically at <code>~/.openrag/tui</code>.
+OpenRAG container definitions are stored in the <code>docker-compose</code> files in the same directory.</p>
+</li>
+<li class="">
+<p>At the <code>Start services now?</code> prompt, press <kbd>Y</kbd> to start the OpenRAG services.</p>
+<p>This process can take some time while OpenRAG pulls and runs the container images.
+If all services start successfully, the terminal prints a confirmation message:</p>
+<div class="language-text codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-text codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">Services are running.</span><br></div></code></pre></div></div>
+</li>
+<li class="">
+<p>If the OpenRAG app doesn&#x27;t launch automatically, select the <strong>Open OpenRAG in browser</strong> option to launch the OpenRAG app and start the application onboarding process.</p>
+</li>
+<li class="">
+<p>For this quickstart, select the <strong>OpenAI</strong> model provider, enter your OpenAI API key, and then click <strong>Complete</strong>. Use the default settings for all other model options.</p>
+</li>
+<li class="">
+<p>Click through the onboarding chat for a brief introduction to OpenRAG, or click <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right" aria-hidden="true"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg> <strong>Skip overview</strong>.
+You can complete this quickstart without going through the overview.
+The overview demonstrates some basic functionality that is covered in the next section and in other parts of the OpenRAG documentation.</p>
+</li>
+</ol>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="chat-with-documents">Load and chat with documents<a href="#chat-with-documents" class="hash-link" aria-label="Direct link to Load and chat with documents" title="Direct link to Load and chat with documents" translate="no">​</a></h2>
+<p>Use the <a class="" href="/chat">OpenRAG <strong>Chat</strong></a> to explore the documents in your OpenRAG database using natural language queries.
+Some documents are included by default to get you started, and you can load your own documents.</p>
+<ol>
+<li class="">
+<p>In OpenRAG, click <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-message-square" aria-hidden="true"><path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"></path></svg> <strong>Chat</strong>.</p>
+</li>
+<li class="">
+<p>For this quickstart, ask the agent what documents are available.
+For example: <code>What documents are available to you?</code></p>
+<p>The agent responds with a summary of OpenRAG&#x27;s default documents.</p>
+</li>
+<li class="">
+<p>To verify the agent&#x27;s response, click <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-library" aria-hidden="true"><path d="m16 6 4 14"></path><path d="M12 6v14"></path><path d="M8 8v12"></path><path d="M4 4v16"></path></svg> <strong>Knowledge</strong> to view the documents stored in the <a class="" href="/knowledge">OpenRAG OpenSearch knowledge base</a>.
+You can click a document to view the chunks of the document as they are stored in the knowledge base.</p>
+</li>
+<li class="">
+<p>Click <strong>Add Knowledge</strong> to add your own documents to your OpenRAG knowledge base.</p>
+<p>For this quickstart, use either the <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-file" aria-hidden="true"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"></path><path d="M14 2v5a1 1 0 0 0 1 1h5"></path></svg> <strong>File</strong> or <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-folder" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></svg> <strong>Folder</strong> upload options to load documents from your local machine.
+<strong>Folder</strong> uploads an entire directory.
+The default directory is <code>~/.openrag/documents</code>.</p>
+<p>For other ingestion options, see <a class="" href="/ingestion">Ingest knowledge</a>.</p>
+</li>
+<li class="">
+<p>Return to the <strong>Chat</strong> window, and then ask a question related to the documents that you just uploaded.</p>
+<p>If the agent&#x27;s response doesn&#x27;t seem to reference your documents correctly, see <a class="" href="/support/troubleshoot#chat-issues">Troubleshoot chat issues</a>.</p>
+</li>
+</ol>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="change-components">Change the language model and chat settings<a href="#change-components" class="hash-link" aria-label="Direct link to Change the language model and chat settings" title="Direct link to Change the language model and chat settings" translate="no">​</a></h2>
+<p>In OpenRAG, you can change some chat and ingestion settings directly on the <strong>Settings</strong> page.
+For full customization capabilities, you can edit the underlying <a class="" href="/agents">Langflow flows</a> in the OpenRAG&#x27;s embedded Langflow visual editor.</p>
+<p>For this quickstart, try changing the <strong>Language Model</strong> or <strong>Agent Instructions</strong>.
+Editing the flow in Langflow is optional.</p>
+<ol>
+<li class="">
+<p>In OpenRAG, click <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-settings2 lucide-settings-2" aria-hidden="true"><path d="M14 17H5"></path><path d="M19 7h-9"></path><circle cx="17" cy="17" r="3"></circle><circle cx="7" cy="7" r="3"></circle></svg> <strong>Settings</strong>, and then find the <strong>Agent</strong> section.</p>
+</li>
+<li class="">
+<p>To change the active language model or agent instructions, edit those fields directly on the <strong>Settings</strong> page.
+Language model changes are saved automatically.
+To apply new instructions, click <strong>Save Agent Instructions</strong>.</p>
+</li>
+<li class="">
+<p>To add a new language model, edit the model provider settings or configure an additional provider on the <strong>Settings</strong> page, and then select the new model in the <strong>Agent</strong> section.</p>
+<div class="theme-admonition theme-admonition-info admonition_xJq3 alert alert--info"><div class="admonitionHeading_Gvgb"><span class="admonitionIcon_Rf37"><svg viewBox="0 0 14 16"><path fill-rule="evenodd" d="M7 2.3c3.14 0 5.7 2.56 5.7 5.7s-2.56 5.7-5.7 5.7A5.71 5.71 0 0 1 1.3 8c0-3.14 2.56-5.7 5.7-5.7zM7 1C3.14 1 0 4.14 0 8s3.14 7 7 7 7-3.14 7-7-3.14-7-7-7zm1 3H6v5h2V4zm0 6H6v2h2v-2z"></path></svg></span>info</div><div class="admonitionContent_BuS1"><p>On the <strong>Settings</strong> page, you can add, edit, and remove model providers.</p><p>OpenRAG functionality requires at least one language model and one embedding model.
+If there are no models available, most OpenRAG functionality will fail until you reconfigure one model of each type.</p><p>If you remove providers or models that you previously used for chat or ingestion, you might experience errors or unexpected behaviors.
+For more information, see <a class="" href="/ingestion-configure#best-practices-for-multiple-embedding-models">Best practices for multiple embedding models</a>.</p></div></div>
+</li>
+<li class="">
+<p>To edit all flow settings and components with full customization capabilities, edit the flow in the Langflow visual editor:</p>
+<ol>
+<li class="">
+<p>Click <strong>Edit in Langflow</strong> to launch the Langflow visual editor in a new browser tab.</p>
+</li>
+<li class="">
+<p>If prompted to acknowledge that you are entering Langflow, click <strong>Proceed</strong>.</p>
+</li>
+<li class="">
+<p>If Langflow requests login information, enter the <code>LANGFLOW_SUPERUSER</code> and <code>LANGFLOW_SUPERUSER_PASSWORD</code> from your <a class="" href="/reference/configuration">OpenRAG <code>.env</code> file</a>.</p>
+</li>
+<li class="">
+<p>In the Langflow header, click <strong>Starter Project</strong> to go to the <a href="https://docs.langflow.org/concepts-flows#projects" target="_blank" rel="noopener noreferrer" class="">Langflow <strong>Projects</strong> page</a>, and then <a href="https://docs.langflow.org/concepts-flows#lock-a-flow" target="_blank" rel="noopener noreferrer" class="">unlock the flow</a>.</p>
+</li>
+<li class="">
+<p>On the <strong>Projects</strong> page, click the <strong>OpenRAG OpenSearch Agent</strong> flow to open the visual editor with the flow unlocked.</p>
+<p><img decoding="async" loading="lazy" alt="OpenRAG OpenSearch Agent flow" src="/assets/images/opensearch-agent-flow-f3b279e02425cd043002eb7749067108.png" width="4084" height="2176" class="img_ev3q"></p>
+</li>
+<li class="">
+<p>Modify the flow as desired, and then press <kbd>Command</kbd>+<kbd>S</kbd> (<kbd>Ctrl</kbd>+<kbd>S</kbd>) to save your changes.
+Then, you can close the Langflow browser tab, or leave it open if you want to continue experimenting with the flow editor.</p>
+</li>
+</ol>
+</li>
+<li class="">
+<p>After you modify any <strong>Agent</strong> flow settings, go to the OpenRAG <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-message-square" aria-hidden="true"><path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"></path></svg> <strong>Chat</strong>, and then click <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plus" aria-hidden="true"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg> <strong>Start new conversation</strong> in the <strong>Conversations</strong> list.
+This ensures that the chat doesn&#x27;t persist any context from the previous conversation with the original flow settings.</p>
+</li>
+</ol>
+<ol start="5">
+<li class="">
+<p>Ask the same question you asked in <a href="#chat-with-documents" class="">Load and chat with documents</a> to see how the response differs from the original settings.</p>
+</li>
+<li class="">
+<p>To undo your changes, go to <strong>Settings</strong>, and then click <strong>Restore flow</strong> to revert the flow to its original state when you first installed OpenRAG.</p>
+</li>
+</ol>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="next-steps">Next steps<a href="#next-steps" class="hash-link" aria-label="Direct link to Next steps" title="Direct link to Next steps" translate="no">​</a></h2>
+<ul>
+<li class="">
+<p><strong>Reinstall OpenRAG with your preferred settings</strong>: This quickstart used <code>uvx</code> and a minimal setup to demonstrate OpenRAG&#x27;s core functionality.
+It is recommended that you <a class="" href="/reinstall">reinstall OpenRAG</a> with your preferred configuration and <a class="" href="/install-options">installation method</a>.</p>
+</li>
+<li class="">
+<p><strong>Use the OpenRAG SDKs</strong>: To interact with OpenRAG programmatically, use the <a class="" href="/reference/api-sdk-overview">OpenRAG SDKs</a>.</p>
+</li>
+<li class="">
+<p><strong>Learn more about OpenRAG</strong>: Explore OpenRAG and the OpenRAG documentation to learn more about its features and functionality.</p>
+</li>
+<li class="">
+<p><strong>Learn more about Langflow</strong>: For a deep dive on the Langflow API and visual editor, see the <a href="https://docs.langflow.org/" target="_blank" rel="noopener noreferrer" class="">Langflow documentation</a>.</p>
+</li>
+</ul></div><footer class="theme-doc-footer docusaurus-mt-lg"><div class="row margin-top--sm theme-doc-footer-edit-meta-row"><div class="col noPrint_WFHX"><a href="https://github.com/openrag/openrag/tree/main/docs/docs/get-started/quickstart.mdx" target="_blank" rel="noopener noreferrer" class="theme-edit-this-page"><svg fill="currentColor" height="20" width="20" viewBox="0 0 40 40" class="iconEdit_Z9Sw" aria-hidden="true"><g><path d="m34.5 11.7l-3 3.1-6.3-6.3 3.1-3q0.5-0.5 1.2-0.5t1.1 0.5l3.9 3.9q0.5 0.4 0.5 1.1t-0.5 1.2z m-29.5 17.1l18.4-18.5 6.3 6.3-18.4 18.4h-6.3v-6.2z"></path></g></svg>Edit this page</a></div><div class="col lastUpdated_JAkA"></div></div></footer></article><nav class="docusaurus-mt-lg pagination-nav" aria-label="Docs pages"><a class="pagination-nav__link pagination-nav__link--prev" href="/docs"><div class="pagination-nav__sublabel">Previous</div><div class="pagination-nav__label">About OpenRAG</div></a><a class="pagination-nav__link pagination-nav__link--next" href="/install-options"><div class="pagination-nav__sublabel">Next</div><div class="pagination-nav__label">Select an installation method</div></a></nav></div></div><div class="col col--3"><div class="tableOfContents_bqdL thin-scrollbar theme-doc-toc-desktop"><ul class="table-of-contents table-of-contents__left-border"><li><a href="#prerequisites" class="table-of-contents__link toc-highlight">Prerequisites</a></li><li><a href="#install-openrag" class="table-of-contents__link toc-highlight">Install OpenRAG</a></li><li><a href="#chat-with-documents" class="table-of-contents__link toc-highlight">Load and chat with documents</a></li><li><a href="#change-components" class="table-of-contents__link toc-highlight">Change the language model and chat settings</a></li><li><a href="#next-steps" class="table-of-contents__link toc-highlight">Next steps</a></li></ul></div></div></div></div></main></div></div></div><footer class="theme-layout-footer footer"><div class="container container-fluid"><div class="row footer__links"><div class="theme-layout-footer-column col footer__col"><div class="footer__title"></div><ul class="footer__items clean-list"><li class="footer__item"><div class="footer-links">
+                  <span>© 2026 OpenRAG</span>
+                  <span id="preferenceCenterContainer"> ·&nbsp; <a href="#" onclick='return"undefined"!=typeof window&&window.truste&&window.truste.eu&&window.truste.eu.clickListener&&window.truste.eu.clickListener(),!1' style="cursor: pointer;">Manage Privacy Choices</a></span>
+                  </div></li></ul></div></div></div></footer></div>
+</body>
+</html>

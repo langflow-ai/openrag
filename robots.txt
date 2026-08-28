@@ -1,0 +1,8 @@
+# Robots.txt for OpenRAG Documentation
+
+# Allow all crawlers
+User-agent: *
+Allow: /
+
+# Sitemap location
+Sitemap: https://www.openr.ag/sitemap.xml
