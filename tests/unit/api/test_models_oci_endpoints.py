@@ -13,7 +13,8 @@ from types import SimpleNamespace
 import pytest
 
 from api.models import get_oci_models
-from api.v1.models import VALID_PROVIDERS, _fetch_models
+from api.v1.models import _fetch_models
+from services.model_catalog import is_known_provider
 from services.models_service import ModelsService
 
 
@@ -41,7 +42,7 @@ class TestGetOciModelsHandler:
 
 class TestFetchModelsOciDispatch:
     def test_oci_is_a_valid_provider(self):
-        assert "oci" in VALID_PROVIDERS
+        assert is_known_provider("oci")
 
     @pytest.mark.asyncio
     async def test_dispatches_to_get_oci_models_without_requiring_credentials(self):
