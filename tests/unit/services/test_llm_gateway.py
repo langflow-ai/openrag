@@ -1092,3 +1092,161 @@ class TestRealFailuresReachTheBanner:
         await llm_gateway.chat_completions({"model": "gpt-4o", "messages": []})
 
         assert provider_error_log.latest_failure("openai", "chat") is None
+
+
+class TestToolsBesideReasoningEffort:
+    """gpt-5.x refuses function tools next to its own default reasoning effort.
+
+    OpenRAG never sends `reasoning_effort` — OpenAI applies a non-none default
+    to reasoning models and then rejects the pair on /v1/chat/completions,
+    naming an explicit "none" as the fix. `drop_params` cannot help: the
+    parameter is supported, just not in that combination.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _clean(self):
+        from services import llm_gateway, provider_error_log
+
+        llm_gateway._TOOLS_NEED_REASONING_OFF.clear()
+        provider_error_log.clear()
+        yield
+        llm_gateway._TOOLS_NEED_REASONING_OFF.clear()
+        provider_error_log.clear()
+
+    @staticmethod
+    def _conflict() -> RuntimeError:
+        return RuntimeError(
+            "OpenAIException - Function tools with reasoning_effort are not supported "
+            "for gpt-5.6-luna in /v1/chat/completions. To use function tools, use "
+            "/v1/responses or set reasoning_effort to 'none'."
+        )
+
+    def _wire(self, monkeypatch, model="gpt-5.6-luna", supports_none=True):
+        from services import llm_gateway
+
+        monkeypatch.setattr(llm_gateway, "resolve_call", lambda *a, **k: (model, "openai", {}))
+        monkeypatch.setattr(
+            llm_gateway,
+            "_model_info",
+            lambda _m: {"supports_none_reasoning_effort": supports_none},
+        )
+
+    @pytest.mark.asyncio
+    async def test_the_call_is_retried_with_reasoning_off(self, monkeypatch):
+        from services import llm_gateway
+
+        self._wire(monkeypatch)
+        calls = []
+
+        async def _flaky(**kwargs):
+            calls.append(kwargs)
+            if len(calls) == 1:
+                raise self._conflict()
+            return {"choices": [{"message": {"content": "hi"}}]}
+
+        monkeypatch.setattr("litellm.acompletion", _flaky)
+
+        await llm_gateway.chat_completions(
+            {"model": "gpt-5.6-luna", "messages": [], "tools": [{"type": "function"}]}
+        )
+
+        assert len(calls) == 2
+        assert "reasoning_effort" not in calls[0]
+        assert calls[1]["reasoning_effort"] == "none"
+
+    @pytest.mark.asyncio
+    async def test_the_next_call_does_not_pay_for_the_lesson_again(self, monkeypatch):
+        from services import llm_gateway
+
+        self._wire(monkeypatch)
+        calls = []
+
+        async def _flaky(**kwargs):
+            calls.append(kwargs)
+            if len(calls) == 1:
+                raise self._conflict()
+            return {"choices": [{"message": {"content": "hi"}}]}
+
+        monkeypatch.setattr("litellm.acompletion", _flaky)
+        body = {"model": "gpt-5.6-luna", "messages": [], "tools": [{"type": "function"}]}
+
+        await llm_gateway.chat_completions(dict(body))
+        await llm_gateway.chat_completions(dict(body))
+
+        assert len(calls) == 3
+        assert calls[2]["reasoning_effort"] == "none"
+
+    @pytest.mark.asyncio
+    async def test_an_effort_the_caller_chose_is_never_overridden(self, monkeypatch):
+        """Silently disabling reasoning someone asked for is worse than the error."""
+        from services import llm_gateway
+
+        self._wire(monkeypatch)
+        monkeypatch.setattr(
+            llm_gateway,
+            "_LITELLM_FORWARDED_PARAMS",
+            (*llm_gateway._LITELLM_FORWARDED_PARAMS, "reasoning_effort"),
+        )
+        calls = []
+
+        async def _always_fails(**kwargs):
+            calls.append(kwargs)
+            raise self._conflict()
+
+        monkeypatch.setattr("litellm.acompletion", _always_fails)
+
+        with pytest.raises(llm_gateway.LlmGatewayError):
+            await llm_gateway.chat_completions(
+                {
+                    "model": "gpt-5.6-luna",
+                    "messages": [],
+                    "tools": [{"type": "function"}],
+                    "reasoning_effort": "high",
+                }
+            )
+
+        assert len(calls) == 1
+        assert calls[0]["reasoning_effort"] == "high"
+
+    @pytest.mark.asyncio
+    async def test_a_model_that_cannot_take_none_reports_the_error(self, monkeypatch):
+        """Nothing to retry with — only the Responses API can serve tools there."""
+        from services import llm_gateway
+
+        self._wire(monkeypatch, supports_none=False)
+        calls = []
+
+        async def _always_fails(**kwargs):
+            calls.append(kwargs)
+            raise self._conflict()
+
+        monkeypatch.setattr("litellm.acompletion", _always_fails)
+
+        with pytest.raises(llm_gateway.LlmGatewayError):
+            await llm_gateway.chat_completions(
+                {"model": "gpt-5.6-luna", "messages": [], "tools": [{"type": "function"}]}
+            )
+
+        # Raised on the first attempt: there is no second value to try.
+        assert len(calls) == 1
+        assert "reasoning_effort" not in calls[0]
+
+    @pytest.mark.asyncio
+    async def test_an_unrelated_failure_is_not_retried(self, monkeypatch):
+        from services import llm_gateway
+
+        self._wire(monkeypatch)
+        calls = []
+
+        async def _no_credits(**kwargs):
+            calls.append(kwargs)
+            raise RuntimeError("You have no credits remaining.")
+
+        monkeypatch.setattr("litellm.acompletion", _no_credits)
+
+        with pytest.raises(llm_gateway.LlmGatewayError):
+            await llm_gateway.chat_completions(
+                {"model": "gpt-5.6-luna", "messages": [], "tools": [{"type": "function"}]}
+            )
+
+        assert len(calls) == 1
