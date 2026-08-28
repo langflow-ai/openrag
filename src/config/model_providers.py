@@ -30,7 +30,7 @@ from __future__ import annotations
 import os
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import yaml
 
@@ -53,6 +53,7 @@ _FALLBACK_PROVIDERS: tuple[dict[str, Any], ...] = (
         "modes": {RUN_MODE_OSS: True, RUN_MODE_ON_PREM: True, RUN_MODE_SAAS: True},
         "models": (),
         "embedding_models": (),
+        "exclude_models": (),
     },
     {
         "name": "ollama",
@@ -60,6 +61,7 @@ _FALLBACK_PROVIDERS: tuple[dict[str, Any], ...] = (
         "modes": {RUN_MODE_OSS: True, RUN_MODE_ON_PREM: True, RUN_MODE_SAAS: False},
         "models": (),
         "embedding_models": (),
+        "exclude_models": (),
     },
     {
         "name": "watsonx",
@@ -67,6 +69,7 @@ _FALLBACK_PROVIDERS: tuple[dict[str, Any], ...] = (
         "modes": {RUN_MODE_OSS: True, RUN_MODE_ON_PREM: True, RUN_MODE_SAAS: True},
         "models": (),
         "embedding_models": (),
+        "exclude_models": (),
     },
     {
         "name": "anthropic",
@@ -74,6 +77,7 @@ _FALLBACK_PROVIDERS: tuple[dict[str, Any], ...] = (
         "modes": {RUN_MODE_OSS: True, RUN_MODE_ON_PREM: True, RUN_MODE_SAAS: True},
         "models": (),
         "embedding_models": (),
+        "exclude_models": (),
     },
 )
 
@@ -105,6 +109,18 @@ def _model_ids(value: Any) -> tuple[str, ...]:
     return tuple(ids)
 
 
+def _model_patterns(value: Any) -> tuple[str, ...]:
+    """A YAML `exclude_models:` list as lowercased fnmatch patterns."""
+    if not isinstance(value, list):
+        return ()
+    patterns = []
+    for item in value:
+        pattern = str(item).strip().lower()
+        if pattern and pattern not in patterns:
+            patterns.append(pattern)
+    return tuple(patterns)
+
+
 def _normalize(entry: Any, seen: set[str]) -> dict[str, Any] | None:
     """One YAML provider row as a validated dict, or None if unusable."""
     if not isinstance(entry, dict):
@@ -130,6 +146,8 @@ def _normalize(entry: Any, seen: set[str]) -> dict[str, Any] | None:
         # Optional: ids the catalogue cannot learn from LiteLLM's static table.
         "models": _model_ids(entry.get("models")),
         "embedding_models": _model_ids(entry.get("embedding_models")),
+        # Optional: ids to keep out of the pickers, `*`/`?` wildcards allowed.
+        "exclude_models": _model_patterns(entry.get("exclude_models")),
     }
 
 
@@ -209,15 +227,32 @@ def visible_providers(run_mode: str | None = None) -> tuple[dict[str, Any], ...]
     return tuple(entry for entry in configured_providers() if is_visible(entry, mode))
 
 
+class ProviderEntry(NamedTuple):
+    """One visible provider, in the form the catalogue consumes.
+
+    A NamedTuple rather than a dict: hashable all the way down, so callers can
+    key an lru_cache on a tuple of these and have a config change rebuild it.
+    """
+
+    name: str
+    display_name: str
+    models: tuple[str, ...]
+    embedding_models: tuple[str, ...]
+    exclude_models: tuple[str, ...]
+
+
 def visible_provider_entries(
     run_mode: str | None = None,
-) -> tuple[tuple[str, str, tuple[str, ...], tuple[str, ...]], ...]:
-    """`(name, display_name, models, embedding_models)` for the visible providers.
-
-    Hashable all the way down, so callers can key a cache on it.
-    """
+) -> tuple[ProviderEntry, ...]:
+    """The visible providers, as catalogue-ready entries."""
     return tuple(
-        (entry["name"], entry["display_name"], entry["models"], entry["embedding_models"])
+        ProviderEntry(
+            entry["name"],
+            entry["display_name"],
+            entry["models"],
+            entry["embedding_models"],
+            entry["exclude_models"],
+        )
         for entry in visible_providers(run_mode)
     )
 

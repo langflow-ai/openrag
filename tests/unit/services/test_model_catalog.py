@@ -281,3 +281,60 @@ def test_declared_ids_do_not_duplicate_what_litellm_already_lists(monkeypatch, t
     models = [entry["model"] for entry in model_catalog.catalog()["providers"][0]["models"]]
     assert models.count("gpt-4o") == 1
     assert "house-tuned-gpt" in models
+
+
+def test_a_configured_exclusion_keeps_models_out_of_the_catalogue(monkeypatch, tmp_path) -> None:
+    """`exclude_models` is how a deployment refuses a model outright.
+
+    Distinct from the two automatic paths: a retired model is dropped without
+    being named here, and one retiring soon is only hidden behind a toggle in
+    the picker.
+    """
+    monkeypatch.setenv(
+        model_providers.CONFIG_PATH_ENV,
+        _write_providers(
+            tmp_path,
+            "providers:\n  - name: openai\n    modes:\n      oss: true\n"
+            "    exclude_models:\n      - gpt-3.5-*\n      - gpt-4o\n",
+        ),
+    )
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+
+    models = {entry["model"] for entry in model_catalog.catalog()["providers"][0]["models"]}
+    assert not any(name.startswith("gpt-3.5") for name in models), sorted(models)[:5]
+    assert "gpt-4o" not in models
+    # Only what was named: a wildcard must not take the neighbours with it.
+    assert "gpt-4o-mini" in models
+    assert any(name.startswith("gpt-4.1") for name in models)
+
+
+def test_an_exclusion_also_overrides_a_declared_model(monkeypatch, tmp_path) -> None:
+    """Two rows that contradict each other resolve one way, predictably."""
+    monkeypatch.setenv(
+        model_providers.CONFIG_PATH_ENV,
+        _write_providers(
+            tmp_path,
+            "providers:\n  - name: openai\n    modes:\n      oss: true\n"
+            "    models:\n      - house-tuned-gpt\n"
+            "    exclude_models:\n      - house-tuned-*\n",
+        ),
+    )
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+
+    models = {entry["model"] for entry in model_catalog.catalog()["providers"][0]["models"]}
+    assert "house-tuned-gpt" not in models
+
+
+def test_an_excluded_model_is_gone_from_v1_models_too(monkeypatch, tmp_path) -> None:
+    """The picker and the OpenAI-compatible list must not disagree."""
+    monkeypatch.setenv(
+        model_providers.CONFIG_PATH_ENV,
+        _write_providers(
+            tmp_path,
+            "providers:\n  - name: openai\n    modes:\n      oss: true\n"
+            "    exclude_models:\n      - gpt-4o\n",
+        ),
+    )
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+
+    assert "gpt-4o" not in {row["id"] for row in model_catalog.openai_models_list()["data"]}

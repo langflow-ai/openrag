@@ -22,6 +22,14 @@
 # already knows the public vendors, so those rows need nothing. A self-hosted
 # OpenAI-compatible gateway serves whatever its operator deployed, and those ids
 # can only come from here — see the commented example at the end of this file.
+#
+# `exclude_models` keeps ids out of the pickers. `*` and `?` wildcards work, and
+# matching is against the id as the picker shows it (`gpt-3.5-turbo`, not
+# `openai/gpt-3.5-turbo`). Exclusion is applied last, so it also overrides a
+# `models` row on the same provider. Models the provider has already retired are
+# dropped without being listed here, and ones retiring within 90 days are hidden
+# behind a "Show N retiring" row in the picker — use this for the ones a
+# deployment does not want offered at all.
 
 providers:
   - name: openai
@@ -30,6 +38,10 @@ providers:
       oss: true
       on_prem: true
       saas: true
+    # Uncomment to keep a generation out of the pickers entirely:
+    # exclude_models:
+    #   - gpt-3.5-*
+    #   - gpt-4-0613
 
   - name: ollama
     display_name: Ollama
