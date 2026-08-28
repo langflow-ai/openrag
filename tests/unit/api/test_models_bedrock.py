@@ -11,7 +11,8 @@ from types import SimpleNamespace
 import pytest
 
 from api.models import BedrockBody, get_bedrock_models
-from api.v1.models import VALID_PROVIDERS, _fetch_models
+from api.v1.models import _fetch_models
+from services.model_catalog import is_known_provider
 from services.models_service import ModelsService
 
 
@@ -51,7 +52,7 @@ class TestApiModelsGetBedrockModels:
 
 class TestV1ModelsBedrockDispatch:
     def test_bedrock_is_a_valid_provider(self):
-        assert "bedrock" in VALID_PROVIDERS
+        assert is_known_provider("bedrock")
 
     @pytest.mark.asyncio
     async def test_fetch_models_dispatches_to_bedrock_without_requiring_credentials(self):

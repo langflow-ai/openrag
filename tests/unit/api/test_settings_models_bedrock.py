@@ -5,10 +5,8 @@ provider-name helpers (api.settings.models / api.settings.helpers).
 from types import SimpleNamespace
 
 import pytest
-from pydantic import ValidationError
 
 from api.settings.helpers import (
-    _ALL_EMBEDDING_PROVIDER_NAMES,
     _EMBEDDING_PROVIDER_NAMES,
     _first_configured_embedding_provider,
 )
@@ -33,32 +31,15 @@ class TestEmbeddingProviderRegexAcceptsBedrock:
         body = OnboardingBody(embedding_provider="bedrock")
         assert body.embedding_provider == "bedrock"
 
-    def test_settings_update_body_still_rejects_unknown_provider(self):
-        with pytest.raises(ValidationError):
-            SettingsUpdateBody(embedding_provider="not-a-real-provider")
-
-    def test_llm_provider_regex_unchanged_bedrock_still_rejected(self):
-        """Bedrock is embedding-only - it must NOT be accepted as an LLM
-        provider (no Bedrock LLM wiring exists in OpenRAG)."""
-        with pytest.raises(ValidationError):
-            SettingsUpdateBody(llm_provider="bedrock")
-
 
 class TestEmbeddingProviderNamesIncludesBedrock:
-    def test_bedrock_in_all_embedding_provider_names(self):
-        """_ALL_EMBEDDING_PROVIDER_NAMES is the provider-agnostic list used
-        for fallback selection - bedrock belongs here."""
-        assert "bedrock" in _ALL_EMBEDDING_PROVIDER_NAMES
-
-    def test_bedrock_not_in_langflow_syncable_embedding_provider_names(self):
-        """_EMBEDDING_PROVIDER_NAMES is consumed by langflow_sync.py to sync
-        Langflow flow components, which only recognizes
-        watsonx/ollama/openai/anthropic (see flows_service.change_langflow_
-        model_value). Bedrock has no Langflow component, so including it here
-        would make every settings reapply/reset call
-        change_langflow_model_value("bedrock", ...), which raises ValueError
-        and previously broke test_langflow_sync_bug_1587's regression test."""
-        assert "bedrock" not in _EMBEDDING_PROVIDER_NAMES
+    def test_bedrock_in_embedding_provider_names(self):
+        """_EMBEDDING_PROVIDER_NAMES is the single provider-agnostic list
+        used for both fallback selection and Langflow flow syncing -
+        change_langflow_model_value() proxies every provider through the
+        same OpenRAG-internal endpoint, so bedrock belongs here just like
+        openai/watsonx/ollama."""
+        assert "bedrock" in _EMBEDDING_PROVIDER_NAMES
 
     def test_first_configured_embedding_provider_finds_bedrock(self):
         config = SimpleNamespace(
@@ -67,6 +48,7 @@ class TestEmbeddingProviderNamesIncludesBedrock:
                 watsonx=SimpleNamespace(configured=False),
                 ollama=SimpleNamespace(configured=False),
                 bedrock=SimpleNamespace(configured=True),
+                custom={},
             )
         )
 
@@ -79,6 +61,7 @@ class TestEmbeddingProviderNamesIncludesBedrock:
                 watsonx=SimpleNamespace(configured=False),
                 ollama=SimpleNamespace(configured=False),
                 bedrock=SimpleNamespace(configured=True),
+                custom={},
             )
         )
 

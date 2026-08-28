@@ -639,7 +639,9 @@ def _extract_error_details(response: httpx.Response) -> str:
 #: Providers with a validation path of their own, so they are never handed to
 #: the generic LiteLLM probe. Everything else is validated by making a real call,
 #: which needs a model name.
-_NATIVELY_VALIDATED_PROVIDERS = frozenset({"openai", "azure", "watsonx", "ollama", "anthropic"})
+_NATIVELY_VALIDATED_PROVIDERS = frozenset(
+    {"openai", "azure", "watsonx", "ollama", "anthropic", "bedrock"}
+)
 
 
 def is_azure_ai_foundry_endpoint(api_base: str | None) -> bool:
