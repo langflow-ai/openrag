@@ -5,4 +5,4 @@ User-agent: *
 Allow: /
 
 # Sitemap location
-Sitemap: https://www.openr.ag/sitemap.xml
+Sitemap: https://docs.openr.ag/sitemap.xml

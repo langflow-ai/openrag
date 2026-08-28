@@ -37,7 +37,6 @@ opensearch-data/
 langflow-data/
 
 node_modules
-/pages-out/
 
 # AI Tools
 /.claude
