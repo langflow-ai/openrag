@@ -54,7 +54,7 @@ body:
     attributes:
       label: Documentation URL
       description: If applicable, provide a link to the specific documentation page.
-      placeholder: "https://www.openr.ag/..."
+      placeholder: "https://docs.openr.ag/..."
     validations:
       required: false
 
