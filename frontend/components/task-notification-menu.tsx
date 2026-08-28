@@ -1,14 +1,8 @@
 "use client";
 
-import {
-  AlertCircle,
-  Bell,
-  CheckCircle,
-  Clock,
-  Loader2,
-  XCircle,
-} from "lucide-react";
+import { Bell, CheckCircle, Clock, Loader2, XCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { StatusIcon } from "@/components/console-status";
 import { IncidentReporterIcon } from "@/components/icons/incident-reporter-icon";
 import { TaskCollapsibleSection } from "@/components/task-collapsible-section";
 import { TaskErrorContent } from "@/components/task-error-content";
@@ -27,7 +21,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useIsCloudBrand } from "@/contexts/brand-context";
+import { useConsoleStatus } from "@/contexts/console-status-context";
 import { Task, useTask } from "@/contexts/task-context";
+import { formatRelative } from "@/lib/status-utils";
 import {
   hasIssueFileEntries,
   isCompletedTotalFailure,
@@ -47,7 +43,7 @@ const getTaskIcon = (
         if (isTotalFailure) {
           return <XCircle className="size-4 text-destructive" />;
         }
-        return <AlertCircle className="h-4 w-4 text-brand-amber" />;
+        return <XCircle className="h-4 w-4 text-brand-amber" />;
       }
       return <CheckCircle className="h-4 w-4 text-green-500" />;
     case "failed":
@@ -106,34 +102,113 @@ const formatDuration = (seconds?: number) => {
   }
 };
 
-const formatRelativeTime = (dateString: string) => {
-  let date: Date;
+// ─── status badge ─────────────────────────────────────────────────────────────
 
-  if (/^\d+$/.test(dateString)) {
-    const timestamp = parseInt(dateString);
-    date = new Date(timestamp < 10000000000 ? timestamp * 1000 : timestamp);
-  } else if (/^\d+\.\d+$/.test(dateString)) {
-    const timestamp = parseFloat(dateString);
-    date = new Date(timestamp * 1000);
-  } else {
-    date = new Date(dateString);
+const getStatusBadge = (
+  status: Task["status"],
+  isCloudBrand: boolean,
+  hasFailedFiles = false,
+  isTotalFailure = false,
+) => {
+  const statusBadgeBase = "shrink-0 rounded-full px-2 py-1 text-xs font-normal";
+  switch (status) {
+    case "completed":
+      if (hasFailedFiles && isTotalFailure) {
+        return (
+          <Badge
+            variant="outline"
+            className={cn(
+              statusBadgeBase,
+              isCloudBrand
+                ? "border-0 bg-task-status-failed text-task-status-failed-foreground"
+                : "bg-red-500/10 text-red-500 border-red-500/20",
+            )}
+          >
+            FAILED
+          </Badge>
+        );
+      }
+      if (hasFailedFiles) {
+        return (
+          <Badge
+            variant="outline"
+            className={cn(
+              statusBadgeBase,
+              isCloudBrand
+                ? "border-0 bg-task-status-partial text-task-status-partial-foreground"
+                : "bg-brand-amber-10 text-brand-amber border-brand-amber-30",
+            )}
+          >
+            Complete
+          </Badge>
+        );
+      }
+      return (
+        <Badge
+          variant="outline"
+          className={cn(
+            statusBadgeBase,
+            isCloudBrand
+              ? "border-0 bg-task-status-complete text-task-status-complete-foreground"
+              : "border border-green-500/20 bg-green-500/10 text-green-500",
+          )}
+        >
+          Complete
+        </Badge>
+      );
+    case "failed":
+    case "error":
+      return (
+        <Badge
+          variant="outline"
+          className={cn(
+            statusBadgeBase,
+            isCloudBrand
+              ? "border-0 bg-task-status-failed text-task-status-failed-foreground"
+              : "bg-red-500/10 text-red-500 border-red-500/20",
+          )}
+        >
+          FAILED
+        </Badge>
+      );
+    case "pending":
+      return (
+        <Badge
+          variant="outline"
+          className={cn(
+            statusBadgeBase,
+            "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
+          )}
+        >
+          Pending
+        </Badge>
+      );
+    case "running":
+    case "processing":
+      return (
+        <Badge
+          variant="outline"
+          className={cn(
+            statusBadgeBase,
+            "bg-blue-500/10 text-blue-500 border-blue-500/20",
+          )}
+        >
+          Processing
+        </Badge>
+      );
+    default:
+      return (
+        <Badge
+          variant="outline"
+          className={cn(
+            statusBadgeBase,
+            "bg-gray-500/10 text-gray-500 border-gray-500/20",
+          )}
+        >
+          Unknown
+        </Badge>
+      );
   }
-
-  if (isNaN(date.getTime())) {
-    console.warn("Invalid date format:", dateString);
-    return "Unknown time";
-  }
-
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMinutes = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
-
-  if (diffMinutes < 1) return "Just now";
-  if (diffMinutes < 60) return `${diffMinutes}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  return `${diffDays}d ago`;
 };
 
 export function TaskNotificationMenu() {
@@ -149,6 +224,7 @@ export function TaskNotificationMenu() {
     closeMenu,
     openTaskDialog,
   } = useTask();
+  const { problems, open: openConsoleStatus } = useConsoleStatus();
   const [isPastOpen, setIsPastOpen] = useState(true);
   const lastHandledSelectionTriggerRef = useRef(0);
 
@@ -215,113 +291,6 @@ export function TaskNotificationMenu() {
     isCloudBrand ? "border-t border-muted" : "rounded-mmd border border-muted",
   );
 
-  const statusBadgeBase = "shrink-0 rounded-full px-2 py-1 text-xs font-normal";
-
-  const getStatusBadge = (
-    status: Task["status"],
-    hasFailedFiles = false,
-    isTotalFailure = false,
-  ) => {
-    switch (status) {
-      case "completed":
-        if (hasFailedFiles && isTotalFailure) {
-          return (
-            <Badge
-              variant="outline"
-              className={cn(
-                statusBadgeBase,
-                isCloudBrand
-                  ? "border-0 bg-task-status-failed text-task-status-failed-foreground"
-                  : "bg-red-500/10 text-red-500 border-red-500/20",
-              )}
-            >
-              FAILED
-            </Badge>
-          );
-        }
-        if (hasFailedFiles) {
-          return (
-            <Badge
-              variant="outline"
-              className={cn(
-                statusBadgeBase,
-                isCloudBrand
-                  ? "border-0 bg-task-status-partial text-task-status-partial-foreground"
-                  : "bg-brand-amber-10 text-brand-amber border-brand-amber-30",
-              )}
-            >
-              Complete
-            </Badge>
-          );
-        }
-        return (
-          <Badge
-            variant="outline"
-            className={cn(
-              statusBadgeBase,
-              isCloudBrand
-                ? "border-0 bg-task-status-complete text-task-status-complete-foreground"
-                : "border border-green-500/20 bg-green-500/10 text-green-500",
-            )}
-          >
-            Complete
-          </Badge>
-        );
-      case "failed":
-      case "error":
-        return (
-          <Badge
-            variant="outline"
-            className={cn(
-              statusBadgeBase,
-              isCloudBrand
-                ? "border-0 bg-task-status-failed text-task-status-failed-foreground"
-                : "bg-red-500/10 text-red-500 border-red-500/20",
-            )}
-          >
-            FAILED
-          </Badge>
-        );
-      case "pending":
-        return (
-          <Badge
-            variant="outline"
-            className={cn(
-              statusBadgeBase,
-              "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
-            )}
-          >
-            Pending
-          </Badge>
-        );
-      case "running":
-      case "processing":
-        return (
-          <Badge
-            variant="outline"
-            className={cn(
-              statusBadgeBase,
-              "bg-blue-500/10 text-blue-500 border-blue-500/20",
-            )}
-          >
-            Processing
-          </Badge>
-        );
-      default:
-        return (
-          <Badge
-            variant="outline"
-            className={cn(
-              statusBadgeBase,
-              "bg-gray-500/10 text-gray-500 border-gray-500/20",
-            )}
-          >
-            Unknown
-          </Badge>
-        );
-    }
-  };
-
   const cancelTaskButtonClass = cn(
     "h-10 w-full shrink-0 shadow-none",
     isCloudBrand
@@ -342,6 +311,40 @@ export function TaskNotificationMenu() {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto">
+          {/* System Status events — a container / service is degraded or down.
+              Clicking an event opens the Console Status panel. */}
+          {problems.length > 0 && (
+            <div className="flex flex-col gap-2 p-4">
+              <h4 className="text-sm font-medium text-muted-foreground">
+                System Status
+              </h4>
+              {problems.map((component) => {
+                const isDown = component.status === "unhealthy";
+                return (
+                  <button
+                    key={component.name}
+                    type="button"
+                    data-testid="system-status-event"
+                    onClick={() => openConsoleStatus()}
+                    className="w-full rounded-lg border border-muted p-3 text-left transition-colors hover:bg-muted/60"
+                  >
+                    <div className="flex items-center gap-2">
+                      <StatusIcon status={component.status} size={16} />
+                      <span className="text-sm font-medium">
+                        {component.display_name}{" "}
+                        {isDown ? "is down" : `is ${component.status}`}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {component.message ||
+                        "Open Console Status for more details."}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           {/* Active Tasks */}
           {activeTasks.length > 0 && (
             <div className="flex flex-col gap-2 p-4">
@@ -351,6 +354,7 @@ export function TaskNotificationMenu() {
               {activeTasks.map((task) => {
                 const progress = formatTaskProgress(task);
                 const hasFailedFiles = hasIssueFileEntries(task);
+                const dur = formatDuration(task.duration_seconds);
                 const showCancel =
                   task.status === "pending" ||
                   task.status === "running" ||
@@ -386,10 +390,10 @@ export function TaskNotificationMenu() {
                         </button>
                       </div>
                       <CardDescription className="text-xs">
-                        Started {formatRelativeTime(task.created_at)}
-                        {formatDuration(task.duration_seconds) && (
+                        Started {formatRelative(task.created_at)}
+                        {dur && (
                           <span className="ml-2 text-muted-foreground">
-                            • {formatDuration(task.duration_seconds)}
+                            • {dur}
                           </span>
                         )}
                       </CardDescription>
@@ -465,6 +469,7 @@ export function TaskNotificationMenu() {
                 const progress = formatTaskProgress(task);
                 const hasFailedFiles = hasIssueFileEntries(task);
                 const isTotalFailure = isCompletedTotalFailure(task);
+                const dur = formatDuration(task.duration_seconds);
                 const shouldExpandDetails = selectedTaskId === task.task_id;
 
                 // Same full card as total failure; partial only differs inside (Complete pill / amber icon).
@@ -496,12 +501,8 @@ export function TaskNotificationMenu() {
                           Task {task.task_id.substring(0, 8)}...
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          {formatRelativeTime(task.updated_at)}
-                          {formatDuration(task.duration_seconds) && (
-                            <span className="ml-2">
-                              • {formatDuration(task.duration_seconds)}
-                            </span>
-                          )}
+                          {formatRelative(task.updated_at)}
+                          {dur && <span className="ml-2">• {dur}</span>}
                         </div>
                         {task.status === "completed" && progress?.detailed && (
                           <div className="text-xs text-muted-foreground">
@@ -514,7 +515,7 @@ export function TaskNotificationMenu() {
                         )}
                       </div>
                       <div className="self-start pt-0.5">
-                        {getStatusBadge(task.status)}
+                        {getStatusBadge(task.status, isCloudBrand)}
                       </div>
                     </div>
                   </div>
@@ -524,18 +525,20 @@ export function TaskNotificationMenu() {
           </div>
 
           {/* Empty State */}
-          {activeTasks.length === 0 && terminalTasks.length === 0 && (
-            <div className="p-8 text-center">
-              <Bell className="h-12 w-12 text-muted-foreground/50 mx-auto mb-4" />
-              <h4 className="text-sm font-medium text-muted-foreground mb-2">
-                No tasks yet
-              </h4>
-              <p className="text-xs text-muted-foreground">
-                Task notifications will appear here when you upload files or
-                sync connectors.
-              </p>
-            </div>
-          )}
+          {activeTasks.length === 0 &&
+            terminalTasks.length === 0 &&
+            problems.length === 0 && (
+              <div className="p-8 text-center">
+                <Bell className="h-12 w-12 text-muted-foreground/50 mx-auto mb-4" />
+                <h4 className="text-sm font-medium text-muted-foreground mb-2">
+                  No tasks yet
+                </h4>
+                <p className="text-xs text-muted-foreground">
+                  Task notifications will appear here when you upload files or
+                  sync connectors.
+                </p>
+              </div>
+            )}
         </div>
       </div>
     </div>

@@ -9,8 +9,10 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/contexts/auth-context";
 import { BrandProvider } from "@/contexts/brand-context";
 import { ChatProvider } from "@/contexts/chat-context";
+import { ConsoleStatusProvider } from "@/contexts/console-status-context";
 import { KnowledgeFilterProvider } from "@/contexts/knowledge-filter-context";
 import { TaskProvider } from "@/contexts/task-context";
+import { UnsavedChangesProvider } from "@/contexts/unsaved-changes-context";
 import Providers from "./providers";
 
 const inter = Inter({
@@ -61,9 +63,13 @@ export default function RootLayout({
                 <BrandProvider>
                   <TaskProvider>
                     <KnowledgeFilterProvider>
-                      <ChatProvider>
-                        <LayoutWrapper>{children}</LayoutWrapper>
-                      </ChatProvider>
+                      <ConsoleStatusProvider>
+                        <ChatProvider>
+                          <UnsavedChangesProvider>
+                            <LayoutWrapper>{children}</LayoutWrapper>
+                          </UnsavedChangesProvider>
+                        </ChatProvider>
+                      </ConsoleStatusProvider>
                     </KnowledgeFilterProvider>
                   </TaskProvider>
                 </BrandProvider>

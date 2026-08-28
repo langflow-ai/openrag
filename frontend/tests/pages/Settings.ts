@@ -9,7 +9,8 @@ function escapeRegExp(str: string): string {
 export type SettingsTab =
   | "Connectors"
   | "Providers"
-  | "Langflow"
+  | "Ingestion"
+  | "Agent"
   | "Connectors Permission";
 
 export class Settings {
@@ -42,10 +43,14 @@ export class Settings {
     this.page.getByRole("button", { name: "Remove" });
   private readonly removeAnywayButton = () =>
     this.page.getByRole("button", { name: "Remove Anyway" });
-  private readonly watsonxConnectionErrorMessage = () =>
-    this.page.locator('[role="dialog"] .text-destructive').first();
-  private readonly openaiConnectionErrorMessage = () =>
-    this.page.locator('[role="dialog"] .text-destructive').first();
+  // The dialog's Remove button is also styled `.text-destructive`, so the old
+  // selector matched it and made `successToast.or(errorMsg)` ambiguous under
+  // Playwright strict mode. Target the error element itself.
+  private readonly providerConnectionErrorMessage = () =>
+    this.page
+      .locator('[role="dialog"]')
+      .getByTestId("provider-connection-error")
+      .first();
 
   /**
    * Get locator for configure button by provider name
@@ -113,14 +118,24 @@ export class Settings {
 
   /**
    * Get locator for model dropdown by section name
-   * @param section - The section name (e.g., "Chat Model", "Embedding Model")
+   * @param section - The section name (e.g., "Language model", "Embedding model")
    * @returns Locator for the dropdown
    */
   private getModelDropdown(section: string) {
+    // Target the field label so we don't match helper copy such as
+    // "The embedding model saves as soon as you pick one".
     return this.page
-      .getByText(new RegExp(escapeRegExp(section), "i"))
+      .locator("label")
+      .filter({ hasText: new RegExp(`^${escapeRegExp(section)}`, "i") })
       .locator("..")
       .getByRole("combobox");
+  }
+
+  /**
+   * Language model lives on Agent; embedding model lives on Ingestion.
+   */
+  private tabForModelSection(section: string): SettingsTab {
+    return /embedding/i.test(section) ? "Ingestion" : "Agent";
   }
 
   /**
@@ -166,7 +181,7 @@ export class Settings {
 
   /**
    * Click a Settings page tab
-   * @param tabName - The tab to click: 'Connectors' | 'Providers' | 'Langflow' | 'Connectors Permission'
+   * @param tabName - The tab to click: 'Connectors' | 'Providers' | 'Ingestion' | 'Agent' | 'Connectors Permission'
    */
   async clickTab(tabName: SettingsTab) {
     logger.info(`Clicking Settings tab: ${tabName}`);
@@ -203,7 +218,7 @@ export class Settings {
   }
 
   async setPictureDescriptions(enabled: boolean) {
-    await this.open();
+    await this.clickTab("Ingestion");
     const toggle = this.pictureDescriptionsToggle();
     await toggle.scrollIntoViewIfNeeded();
     const state = await toggle.getAttribute("data-state");
@@ -215,7 +230,7 @@ export class Settings {
   }
 
   async setTableStructure(enabled: boolean) {
-    await this.open();
+    await this.clickTab("Ingestion");
     const toggle = this.tableStructureToggle();
     await toggle.scrollIntoViewIfNeeded();
     const state = await toggle.getAttribute("data-state");
@@ -227,7 +242,7 @@ export class Settings {
   }
 
   async setOCR(enabled: boolean) {
-    await this.open();
+    await this.clickTab("Ingestion");
     const toggle = this.ocrToggle();
     await toggle.scrollIntoViewIfNeeded();
     const state = await toggle.getAttribute("data-state");
@@ -239,7 +254,7 @@ export class Settings {
   }
 
   async setDisableLangflowIngestion(enabled: boolean) {
-    await this.clickTab("Langflow");
+    await this.clickTab("Ingestion");
     const toggle = this.disableLangflowIngestionToggle();
     await toggle.scrollIntoViewIfNeeded();
     const state = await toggle.getAttribute("data-state");
@@ -250,8 +265,12 @@ export class Settings {
     }
   }
 
+  /**
+   * Select a language or embedding model. Opens Agent for language models
+   * and Ingestion for embedding models.
+   */
   async selectModel(section: string, model: string) {
-    await this.open();
+    await this.clickTab(this.tabForModelSection(section));
     const dropdown = this.getModelDropdown(section);
     await dropdown.scrollIntoViewIfNeeded();
     const currentText = (await dropdown.textContent())?.toLowerCase() || "";
@@ -285,7 +304,7 @@ export class Settings {
    * @param chunkOverlap - Chunk overlap value (e.g., "50")
    */
   async updateChunkSettings(chunkSize: string, chunkOverlap: string) {
-    await this.open();
+    await this.clickTab("Ingestion");
 
     // Find and update chunk size input
     const chunkSizeInp = this.chunkSizeInput();
@@ -349,16 +368,10 @@ export class Settings {
       await this.watsonxProjectIDInput().fill(projectId);
       await this.apiKeyInput().fill(apiKey);
       await this.saveModelProviderButton().click();
-      const successToast = this.getToastByText(
+      await this.awaitProviderConfigResult(
+        "Watsonx.ai",
         "IBM watsonx.ai successfully configured",
       );
-      const errorMsg = this.watsonxConnectionErrorMessage();
-      await expect(successToast.or(errorMsg)).toBeVisible({ timeout: 30000 });
-      if (await errorMsg.isVisible()) {
-        throw new Error(
-          `Watsonx.ai configuration failed: ${await errorMsg.textContent()}`,
-        );
-      }
       logger.info("Watsonx.ai configuration completed");
       await expect(editBtn).toBeEnabled();
     }
@@ -370,6 +383,38 @@ export class Settings {
     // Neither found
     else {
       throw new Error("Neither Configure nor Edit Setup button is visible");
+    }
+  }
+
+  /**
+   * Wait for a provider dialog to report success or a connection error.
+   *
+   * Racing two locators with `.or()` fails under strict mode as soon as either
+   * side matches more than one node, so poll the two outcomes explicitly.
+   */
+  private async awaitProviderConfigResult(
+    provider: string,
+    successText: string,
+  ) {
+    const successToast = this.getToastByText(successText);
+    const errorMsg = this.providerConnectionErrorMessage();
+
+    await expect
+      .poll(
+        async () => {
+          if (await errorMsg.isVisible().catch(() => false)) return "error";
+          if (await successToast.isVisible().catch(() => false))
+            return "success";
+          return "pending";
+        },
+        { timeout: 30000 },
+      )
+      .not.toBe("pending");
+
+    if (await errorMsg.isVisible().catch(() => false)) {
+      throw new Error(
+        `${provider} configuration failed: ${await errorMsg.textContent()}`,
+      );
     }
   }
 
@@ -437,16 +482,10 @@ export class Settings {
       const apiKey = config.openaiApiKey;
       await this.apiKeyInput().fill(apiKey);
       await this.saveModelProviderButton().click();
-      const successToast = this.getToastByText(
+      await this.awaitProviderConfigResult(
+        "OpenAI",
         "OpenAI successfully configured",
       );
-      const errorMsg = this.openaiConnectionErrorMessage();
-      await expect(successToast.or(errorMsg)).toBeVisible({ timeout: 30000 });
-      if (await errorMsg.isVisible()) {
-        throw new Error(
-          `OpenAI configuration failed: ${await errorMsg.textContent()}`,
-        );
-      }
       logger.info("OpenAI configuration completed");
       await expect(editBtn).toBeEnabled();
     }
@@ -490,7 +529,9 @@ export class Settings {
       logger.info(
         "Verify that watsonx.ai configuration failed due to invalid credentials",
       );
-      await expect(this.watsonxConnectionErrorMessage()).toBeVisible();
+      await expect(this.providerConnectionErrorMessage()).toBeVisible({
+        timeout: 30000,
+      });
     }
   }
 }

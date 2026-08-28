@@ -4,12 +4,7 @@ import { ArrowUpRight, Loader2 } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import {
-  useGetAnthropicModelsQuery,
-  useGetIBMModelsQuery,
-  useGetOllamaModelsQuery,
-  useGetOpenAIModelsQuery,
-} from "@/app/api/queries/useGetModelsQuery";
+import { useGetModelCatalogQuery } from "@/app/api/queries/useGetModelsQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { LabelWrapper } from "@/components/label-wrapper";
@@ -25,12 +20,18 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
+import { useRegisterDirty } from "@/contexts/unsaved-changes-context";
 import { trackButton } from "@/lib/analytics";
 import { DEFAULT_AGENT_SETTINGS, UI_CONSTANTS } from "@/lib/constants";
 import { resolveLangflowEditUrl } from "@/lib/url-utils";
 import { cn } from "@/lib/utils";
 import { useUpdateSettingsMutation } from "../../api/mutations/useUpdateSettingsMutation";
+import { ModelFeatures } from "../../onboarding/_components/model-features";
 import { ModelSelector } from "../../onboarding/_components/model-selector";
+import {
+  findGroupedSelection,
+  groupedCatalogOptions,
+} from "../_helpers/catalog-models";
 import { getModelLogo } from "../_helpers/model-helpers";
 import { LangflowIcon } from "./langflow-icon";
 
@@ -47,97 +48,52 @@ export function AgentSettingsSection() {
   const [isRestoringFlow, setIsRestoringFlow] = useState<boolean>(false);
   const [openLlmSelector, setOpenLlmSelector] = useState(false);
   const [systemPrompt, setSystemPrompt] = useState<string>("");
+  const [userEdited, setUserEdited] = useState(false);
 
   const { data: settings = {} } = useGetSettingsQuery({
     enabled: isAuthenticated || isNoAuthMode,
   });
 
-  const { data: openaiModels, isLoading: openaiLoading } =
-    useGetOpenAIModelsQuery(
-      { apiKey: "" },
-      { enabled: settings?.providers?.openai?.configured === true },
-    );
-  const { data: anthropicModels, isLoading: anthropicLoading } =
-    useGetAnthropicModelsQuery(
-      { apiKey: "" },
-      { enabled: settings?.providers?.anthropic?.configured === true },
-    );
-  const { data: ollamaModels, isLoading: ollamaLoading } =
-    useGetOllamaModelsQuery(
-      { endpoint: settings?.providers?.ollama?.endpoint },
-      {
-        enabled:
-          settings?.providers?.ollama?.configured === true &&
-          !!settings?.providers?.ollama?.endpoint,
-      },
-    );
-  const { data: watsonxModels, isLoading: watsonxLoading } =
-    useGetIBMModelsQuery(
-      {
-        endpoint: settings?.providers?.watsonx?.endpoint,
-        apiKey: "",
-        projectId: settings?.providers?.watsonx?.project_id,
-      },
-      {
-        enabled:
-          settings?.providers?.watsonx?.configured === true &&
-          !!settings?.providers?.watsonx?.endpoint &&
-          !!settings?.providers?.watsonx?.project_id,
-      },
-    );
+  const {
+    data: catalog,
+    isLoading: catalogLoading,
+    // The catalogue query does not retry, so a failed fetch leaves the groups
+    // empty. Without this flag the selector would tell the user to configure a
+    // provider when the real problem is that the catalogue never loaded.
+    isError: catalogError,
+  } = useGetModelCatalogQuery({
+    enabled: isAuthenticated || isNoAuthMode,
+  });
+
+  const configuredProviders = useMemo(
+    () => ({
+      openai: settings.providers?.openai?.configured === true,
+      anthropic: settings.providers?.anthropic?.configured === true,
+      ollama: settings.providers?.ollama?.configured === true,
+      watsonx: settings.providers?.watsonx?.configured === true,
+      ...Object.fromEntries(
+        Object.entries(settings.providers?.custom ?? {}).map(
+          ([provider, value]) => [provider, value.configured === true],
+        ),
+      ),
+    }),
+    [settings.providers],
+  );
 
   const groupedLlmModels = useMemo(
     () =>
-      [
-        {
-          group: "OpenAI",
-          provider: "openai",
-          icon: getModelLogo("", "openai"),
-          models: openaiModels?.language_models || [],
-          configured: settings.providers?.openai?.configured === true,
-        },
-        {
-          group: "Anthropic",
-          provider: "anthropic",
-          icon: getModelLogo("", "anthropic"),
-          models: anthropicModels?.language_models || [],
-          configured: settings.providers?.anthropic?.configured === true,
-        },
-        {
-          group: "Ollama",
-          provider: "ollama",
-          icon: getModelLogo("", "ollama"),
-          models: ollamaModels?.language_models || [],
-          configured: settings.providers?.ollama?.configured === true,
-        },
-        {
-          group: "IBM watsonx.ai",
-          provider: "watsonx",
-          icon: getModelLogo("", "watsonx"),
-          models: watsonxModels?.language_models || [],
-          configured: settings.providers?.watsonx?.configured === true,
-        },
-      ]
-        .filter((p) => p.configured)
-        .map((p) => ({
-          group: p.group,
-          icon: p.icon,
-          options: p.models.map((m) => ({ ...m, provider: p.provider })),
-        })),
-    [
-      openaiModels?.language_models,
-      anthropicModels?.language_models,
-      ollamaModels?.language_models,
-      watsonxModels?.language_models,
-      settings.providers?.openai?.configured,
-      settings.providers?.anthropic?.configured,
-      settings.providers?.ollama?.configured,
-      settings.providers?.watsonx?.configured,
-    ],
+      groupedCatalogOptions(catalog, configuredProviders, "language").map(
+        (group) => ({
+          group: group.group,
+          provider: group.key,
+          icon: getModelLogo("", group.key),
+          options: group.options,
+        }),
+      ),
+    [catalog, configuredProviders],
   );
 
-  const isLoadingAnyLlmModels =
-    openaiLoading || anthropicLoading || ollamaLoading || watsonxLoading;
+  const isLoadingAnyLlmModels = catalogLoading;
 
   const updateSettingsMutation = useUpdateSettingsMutation({
     onSuccess: () => {
@@ -152,6 +108,13 @@ export function AgentSettingsSection() {
     () => groupedLlmModels.flatMap((g) => g.options),
     [groupedLlmModels],
   );
+  const selectedLlmMatch = findGroupedSelection(
+    groupedLlmModels,
+    settings.agent?.llm_model,
+    settings.agent?.llm_provider,
+  );
+  const selectedLlm = selectedLlmMatch?.option;
+  const selectedLlmGroup = selectedLlmMatch?.group;
 
   const handleModelChange = useCallback(
     (newModel: string, provider?: string) => {
@@ -181,6 +144,9 @@ export function AgentSettingsSection() {
     }
   }, [settings.agent?.llm_model, allLlmOptions, handleModelChange]);
 
+  const agentDirty = systemPrompt !== (settings.agent?.system_prompt ?? "");
+  useRegisterDirty("agent-settings", userEdited && agentDirty);
+
   useEffect(() => {
     if (settings.agent?.system_prompt) {
       setSystemPrompt(settings.agent.system_prompt);
@@ -207,7 +173,10 @@ export function AgentSettingsSection() {
       elementId: "save-agent-instructions-button",
       namespace: "settings",
     });
-    updateSettingsMutation.mutate({ system_prompt: systemPrompt });
+    updateSettingsMutation.mutate(
+      { system_prompt: systemPrompt },
+      { onSuccess: () => setUserEdited(false) },
+    );
   };
 
   const handleEditInLangflow = (closeDialog: () => void) => {
@@ -253,6 +222,7 @@ export function AgentSettingsSection() {
       )
       .then(() => {
         setSystemPrompt(DEFAULT_AGENT_SETTINGS.system_prompt);
+        setUserEdited(false);
         toast.success("Default agent flow settings restored successfully");
         closeDialog();
       })
@@ -340,16 +310,31 @@ export function AgentSettingsSection() {
             >
               <ModelSelector
                 groupedOptions={groupedLlmModels}
+                custom
                 noOptionsPlaceholder={
                   isLoadingAnyLlmModels
                     ? "Loading models..."
-                    : "No language models detected. Configure a provider first."
+                    : catalogError
+                      ? "Could not load the model catalogue. Retry later."
+                      : "No language models detected. Configure a provider first."
                 }
                 value={settings.agent?.llm_model || ""}
+                selectedProvider={settings.agent?.llm_provider}
                 onValueChange={handleModelChange}
                 defaultOpen={openLlmSelector}
               />
             </LabelWrapper>
+            {settings.agent?.llm_model && selectedLlmGroup && (
+              <div className="mt-3">
+                <ModelFeatures
+                  model={
+                    selectedLlm?.model ?? { model: settings.agent.llm_model }
+                  }
+                  providerName={selectedLlmGroup.group}
+                  provider={selectedLlmGroup.provider}
+                />
+              </div>
+            )}
           </div>
           <div className="space-y-2">
             <LabelWrapper label="Agent Instructions" id="system-prompt">
@@ -357,7 +342,10 @@ export function AgentSettingsSection() {
                 id="system-prompt"
                 placeholder="Enter your agent instructions here..."
                 value={systemPrompt}
-                onChange={(e) => setSystemPrompt(e.target.value)}
+                onChange={(e) => {
+                  setUserEdited(true);
+                  setSystemPrompt(e.target.value);
+                }}
                 rows={6}
                 className={`resize-none ${
                   systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS
@@ -379,9 +367,10 @@ export function AgentSettingsSection() {
           <div className="flex justify-end pt-2 gap-2">
             {settings.agent?.default_system_prompt && (
               <Button
-                onClick={() =>
-                  setSystemPrompt(settings.agent?.default_system_prompt || "")
-                }
+                onClick={() => {
+                  setUserEdited(true);
+                  setSystemPrompt(settings.agent?.default_system_prompt || "");
+                }}
                 variant="outline"
                 size="sm"
                 disabled={systemPrompt === settings.agent.default_system_prompt}

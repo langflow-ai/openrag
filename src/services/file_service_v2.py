@@ -49,11 +49,12 @@ class FileServiceV2:
         page_size: int = 25,
         sort_by: str = "filename",
         sort_order: str = "asc",
-        connector_type: str | None = None,
-        mimetype: str | None = None,
-        owner: str | None = None,
+        connector_type: list[str] | None = None,
+        mimetype: list[str] | None = None,
+        owner: list[str] | None = None,
         search: str | None = None,
         after_key: dict | None = None,
+        data_sources: list[str] | None = None,
     ) -> dict[str, Any]:
         """
         List files with server-side pagination via composite aggregation.
@@ -69,7 +70,9 @@ class FileServiceV2:
         """
         opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
 
-        query = self._build_filter_query(user_id, connector_type, mimetype, owner, search)
+        query = self._build_filter_query(
+            user_id, connector_type, mimetype, owner, search, data_sources
+        )
         total, is_approximate = await self._get_file_count(opensearch_client, query)
 
         if sort_by == "chunk_count":
@@ -199,10 +202,11 @@ class FileServiceV2:
         query: str = "",
         page: int = 1,
         page_size: int = 25,
-        connector_type: str | None = None,
-        mimetype: str | None = None,
-        owner: str | None = None,
+        connector_type: list[str] | None = None,
+        mimetype: list[str] | None = None,
+        owner: list[str] | None = None,
         after_key: dict | None = None,
+        data_sources: list[str] | None = None,
     ) -> dict[str, Any]:
         """Search files by name with fuzzy/prefix matching."""
         return await self.list_files(
@@ -217,25 +221,63 @@ class FileServiceV2:
             owner=owner,
             search=query,
             after_key=after_key,
+            data_sources=data_sources,
         )
 
     def _build_filter_query(
         self,
         user_id: str,
-        connector_type: str | None = None,
-        mimetype: str | None = None,
-        owner: str | None = None,
+        connector_type: list[str] | None = None,
+        mimetype: list[str] | None = None,
+        owner: list[str] | None = None,
         search: str | None = None,
+        data_sources: list[str] | None = None,
     ) -> dict[str, Any]:
+        def _effective_values(values: str | list[str] | None) -> list[str]:
+            if values is None:
+                return []
+            if isinstance(values, str):
+                values = [values]
+            return [value for value in values if value != "*"]
+
         must = []
         filter_clauses = []
 
-        if connector_type:
-            filter_clauses.append({"term": {"connector_type": connector_type}})
-        if mimetype:
-            filter_clauses.append({"term": {"mimetype": mimetype}})
-        if owner:
-            filter_clauses.append({"term": {"owner": owner}})
+        effective_connector_types = _effective_values(connector_type)
+        if effective_connector_types:
+            clause = (
+                {"term": {"connector_type": effective_connector_types[0]}}
+                if len(effective_connector_types) == 1
+                else {"terms": {"connector_type": effective_connector_types}}
+            )
+            filter_clauses.append(clause)
+
+        effective_mimetypes = _effective_values(mimetype)
+        if effective_mimetypes:
+            clause = (
+                {"term": {"mimetype": effective_mimetypes[0]}}
+                if len(effective_mimetypes) == 1
+                else {"terms": {"mimetype": effective_mimetypes}}
+            )
+            filter_clauses.append(clause)
+
+        effective_owners = _effective_values(owner)
+        if effective_owners:
+            clause = (
+                {"term": {"owner": effective_owners[0]}}
+                if len(effective_owners) == 1
+                else {"terms": {"owner": effective_owners}}
+            )
+            filter_clauses.append(clause)
+
+        effective_sources = _effective_values(data_sources)
+        if effective_sources:
+            clause = (
+                {"term": {"filename": effective_sources[0]}}
+                if len(effective_sources) == 1
+                else {"terms": {"filename": effective_sources}}
+            )
+            filter_clauses.append(clause)
 
         if search:
             must.append(

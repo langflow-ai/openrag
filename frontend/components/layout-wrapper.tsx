@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
+import { ConsoleStatusPanel } from "@/components/console-status";
 import {
   DoclingHealthBanner,
   useDoclingHealth,
@@ -18,6 +19,7 @@ import { TaskNotificationMenu } from "@/components/task-notification-menu";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useChat } from "@/contexts/chat-context";
+import { useConsoleStatus } from "@/contexts/console-status-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
 import { ANIMATION_DURATION, HEADER_HEIGHT } from "@/lib/constants";
@@ -34,17 +36,12 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { tasks, isMenuOpen } = useTask();
   const isCloudBrand = useIsCloudBrand();
-  const { isPanelOpen, panelMode, closePanelOnly } = useKnowledgeFilter();
+  const { isPanelOpen, panelMode } = useKnowledgeFilter();
   const failedTasks = tasks.filter(isFailureLikeTask);
 
-  const isOnKnowledgePage = pathname.startsWith("/knowledge");
+  const { isOpen: isStatusOpen, close: closeStatus } = useConsoleStatus();
 
-  // Only one panel can be open at a time
-  useEffect(() => {
-    if (isMenuOpen) {
-      closePanelOnly();
-    }
-  }, [isMenuOpen, closePanelOnly]);
+  const isOnKnowledgePage = pathname.startsWith("/knowledge");
 
   const { isLoading, isAuthenticated, isNoAuthMode, isIbmAuthMode, runMode } =
     useAuth();
@@ -108,37 +105,41 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         isCloudBrand ? "bg-background" : "bg-muted dark:bg-black",
       )}
     >
-      {/* Banner — full width */}
-      <div className="w-full z-10 bg-background">
-        <AnimatedConditional
-          vertical
-          isOpen={isDoclingUnhealthy}
-          className="w-full"
-        >
-          <DoclingHealthBanner />
-        </AnimatedConditional>
-        {settings?.edited && isOnboardingComplete && (
+      {/* Banners + header — measured by Console Status so overlay/panel
+          sit below this block when health banners push the header down. */}
+      <div id="app-top-chrome" className="shrink-0">
+        {/* Banner — full width */}
+        <div className="w-full z-10 bg-background">
           <AnimatedConditional
             vertical
-            isOpen={isProviderUnhealthy}
+            isOpen={isDoclingUnhealthy}
             className="w-full"
           >
-            <ProviderHealthBanner />
+            <DoclingHealthBanner />
           </AnimatedConditional>
-        )}
-      </div>
-
-      {/* Header — full width, slides down when onboarding completes */}
-      <AnimatedConditional
-        vertical
-        isOpen={isOnboardingComplete}
-        delay={ANIMATION_DURATION / 2}
-        className="bg-background border-b shrink-0"
-      >
-        <div style={{ height: HEADER_HEIGHT }}>
-          <Header />
+          {settings?.edited && isOnboardingComplete && (
+            <AnimatedConditional
+              vertical
+              isOpen={isProviderUnhealthy}
+              className="w-full"
+            >
+              <ProviderHealthBanner />
+            </AnimatedConditional>
+          )}
         </div>
-      </AnimatedConditional>
+
+        {/* Header — full width, slides down when onboarding completes */}
+        <AnimatedConditional
+          vertical
+          isOpen={isOnboardingComplete}
+          delay={ANIMATION_DURATION / 2}
+          className="bg-background border-b shrink-0"
+        >
+          <div style={{ height: HEADER_HEIGHT }}>
+            <Header />
+          </div>
+        </AnimatedConditional>
+      </div>
 
       {/* Body row: nav + main content + right panel */}
       <div className="flex-1 min-h-0 flex flex-row overflow-hidden">
@@ -186,7 +187,11 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </div>
-
+      {isOnboardingComplete &&
+        (isAuthenticated || isNoAuthMode) &&
+        runMode === "oss" && (
+          <ConsoleStatusPanel isOpen={isStatusOpen} onClose={closeStatus} />
+        )}
       {(isAuthenticated || isNoAuthMode) && <FlowsUpdateDialog />}
     </div>
   );

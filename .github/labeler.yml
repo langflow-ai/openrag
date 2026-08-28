@@ -1,6 +1,8 @@
 frontend:
   - changed-files:
-      - any-glob-to-any-file: 'frontend/**'
+      - any-glob-to-any-file:
+          - 'frontend/**'
+          - 'website/**'
 
 backend:
   - changed-files:
@@ -23,4 +25,3 @@ docker:
       - any-glob-to-any-file:
           - 'Dockerfile*'
           - 'docker-compose*.yml'
-

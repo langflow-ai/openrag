@@ -18,6 +18,7 @@ import { KnowledgeDropdown } from "@/components/knowledge-dropdown";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Banner, BannerIcon, BannerTitle } from "@/components/ui/banner";
 import { Button } from "@/components/ui/button";
+import { useOpenTaskMenu } from "@/contexts/console-status-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
 import { trackButton } from "@/lib/analytics";
@@ -102,15 +103,6 @@ function pruneNonDeletableGridSelection(
   return pruned;
 }
 
-/** List-files uses term filters; "*" means "any" in the UI — do not send it literally. */
-function listFilesFilterParam(values?: string[]): string | undefined {
-  const raw = values?.[0]?.trim();
-  if (!raw || raw === "*") {
-    return undefined;
-  }
-  return raw;
-}
-
 // Function to get the appropriate icon for a connector type
 function getSourceIcon(connectorType?: string) {
   if (connectorType) {
@@ -141,6 +133,27 @@ const AG_FIELD_TO_SORT_BY: Record<string, string> = {
   status: "status",
 };
 
+function listFilesFilterValues(values?: string[]) {
+  const filtered = values?.filter((value) => value !== "*");
+  return filtered && filtered.length > 0 ? filtered : undefined;
+}
+
+function buildFilterPageResetKey(
+  parsedFilterData: ReturnType<typeof useKnowledgeFilter>["parsedFilterData"],
+) {
+  if (!parsedFilterData) {
+    return "";
+  }
+
+  return JSON.stringify({
+    query: parsedFilterData.query,
+    connector_types: parsedFilterData.filters.connector_types,
+    document_types: parsedFilterData.filters.document_types,
+    owners: parsedFilterData.filters.owners,
+    data_sources: parsedFilterData.filters.data_sources,
+  });
+}
+
 function SearchPage() {
   const isCloudBrand = useIsCloudBrand();
   const queryClient = useQueryClient();
@@ -149,10 +162,10 @@ function SearchPage() {
     files: taskFiles,
     tasks,
     refreshTasks,
-    openMenu,
     setRecentTasksExpanded,
     selectTask,
   } = useTask();
+  const openTaskMenu = useOpenTaskMenu();
   const {
     parsedFilterData,
     queryOverride,
@@ -322,12 +335,12 @@ function SearchPage() {
       if (firstNewFailureTaskId) {
         selectTask(firstNewFailureTaskId);
       }
-      openMenu();
+      openTaskMenu();
       setRecentTasksExpanded(true);
     }
   }, [
     taskFiles,
-    openMenu,
+    openTaskMenu,
     setRecentTasksExpanded,
     selectTask,
     getFailedFileKey,
@@ -341,6 +354,7 @@ function SearchPage() {
   const isWildcardQuery =
     (effectiveSearchText === "" || effectiveSearchText === "*") &&
     !hasActiveFilters;
+  const filterPageResetKey = buildFilterPageResetKey(parsedFilterData);
 
   const {
     data: listFilesData,
@@ -355,11 +369,16 @@ function SearchPage() {
       sortBy,
       sortOrder,
       afterKey: cursorCacheRef.current.get(currentPage) ?? null,
-      connectorType: listFilesFilterParam(
+      connectorType: listFilesFilterValues(
         parsedFilterData?.filters?.connector_types,
       ),
-      mimetype: listFilesFilterParam(parsedFilterData?.filters?.document_types),
-      owner: listFilesFilterParam(parsedFilterData?.filters?.owners),
+      mimetype: listFilesFilterValues(
+        parsedFilterData?.filters?.document_types,
+      ),
+      owner: listFilesFilterValues(parsedFilterData?.filters?.owners),
+      dataSources: listFilesFilterValues(
+        parsedFilterData?.filters?.data_sources,
+      ),
     },
     {
       refetchInterval: 5000,
@@ -493,7 +512,7 @@ function SearchPage() {
   useEffect(() => {
     cursorCacheRef.current = new Map();
     setCurrentPage(1);
-  }, [effectiveSearchText]);
+  }, [effectiveSearchText, filterPageResetKey]);
 
   // when the server responds with an after_key for page N, cache it as the cursor for page N+1
   useEffect(() => {
@@ -761,7 +780,7 @@ function SearchPage() {
               data-testid="failed-status-cell-trigger"
               onClick={() => {
                 selectTask(getTaskIdForRow(data));
-                openMenu();
+                openTaskMenu();
                 setRecentTasksExpanded(true);
               }}
             >

@@ -25,6 +25,14 @@ def load_env():
 
     configure_from_env()
 
+    # Instana patches httpx / urllib3 / sqlalchemy / starlette / logging at
+    # import time, so the tracer has to load before anything imports them.
+    # This is the earliest point where the flag is readable and a warning can
+    # be logged, and it covers every entry point that imports bootstrap.
+    from observability.instana_boot import boot_instana
+
+    boot_instana()
+
 
 # Execute immediately on import
 load_env()

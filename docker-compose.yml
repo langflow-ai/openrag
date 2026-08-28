@@ -124,6 +124,48 @@ services:
       - PLATFORM_AUTH_DEV_MODE=${PLATFORM_AUTH_DEV_MODE:-false}
       - DOCLING_SERVE_URL=${DOCLING_SERVE_URL:-http://host.docker.internal:5001}
       - DOCLING_SERVE_VERIFY_SSL=${DOCLING_SERVE_VERIFY_SSL:-true}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS-http://localhost:3000}
+      # Instana APM (opt-in, default off — see the INSTANA_* block in .env.example).
+      # The agent runs on the HOST (`make instana-agent-up`, host networking), so a
+      # containerized backend reaches it via the host.docker.internal alias mapped
+      # in extra_hosts below — not via 127.0.0.1, which is the container loopback.
+      - INSTANA_ENABLED=${INSTANA_ENABLED:-false}
+      - INSTANA_AGENT_HOST=${INSTANA_AGENT_HOST:-host.docker.internal}
+      - INSTANA_AGENT_PORT=${INSTANA_AGENT_PORT:-42699}
+      # Performance guardrails — see the INSTANA_* block in .env.example for the
+      # measurements behind these two defaults. Forwarded with a default rather
+      # than bare so the safe value applies even when .env predates them:
+      # `logging` avoids an unbounded per-warning span/event leak in the tracer,
+      # `error` avoids a full stack capture on every httpx/urllib3/sqlalchemy
+      # exit span.
+      #
+      # The two substitution forms differ on purpose. `-` (unset only) lets an
+      # explicit empty value through, which is how you opt back into tracing
+      # logging spans. `:-` (unset or empty) is required for the stack-trace
+      # level because the tracer rejects an empty string, logging "Invalid
+      # stack-trace value" on every boot and silently reverting to `all` — the
+      # expensive setting this exists to avoid. Opt out with `all`, not ``.
+      - INSTANA_TRACING_DISABLE=${INSTANA_TRACING_DISABLE-logging}
+      - INSTANA_STACK_TRACE=${INSTANA_STACK_TRACE:-error}
+      # Redact free-text query parameters before spans leave the host — a
+      # privacy default, not a performance one. The tracer's own default
+      # (contains-ignore-case:key,pass,secret) only catches credential-shaped
+      # names, so without this OpenRAG's search text
+      # (GET /v2/files/search?q=..., and the `search`/`filename` params) is
+      # exported to Instana verbatim. Forwarded with `:-` (unset or empty),
+      # same reasoning as INSTANA_STACK_TRACE above: an empty value fails the
+      # tracer's own parser and falls back to the weak built-in default, so an
+      # explicit empty override must not silently defeat this. Uses `\Z`
+      # rather than a `$`-anchor (see the NOTE in .env.example) so the value
+      # survives the Makefile's `include`/`export` of `.env` unmangled.
+      - INSTANA_SECRETS=${INSTANA_SECRETS:-regex:.*key.*,.*pass.*,.*secret.*,.*token.*,q\Z,search\Z,filename\Z}
+      # Listed bare rather than as `VAR=${VAR}` on purpose: the tracer tests these
+      # for *presence*, not truthiness, so forwarding an empty string would set a
+      # blank service name and log an "Unknown INSTANA_LOG_LEVEL" warning on every
+      # boot. The bare form is omitted from the container entirely when unset.
+      - INSTANA_SERVICE_NAME
+      - INSTANA_LOG_LEVEL
+      - INSTANA_ZONE
     volumes:
       - ${OPENRAG_DOCUMENTS_PATH:-./openrag-documents}:/app/openrag-documents:U,z
       - ${OPENRAG_KEYS_PATH:-./keys}:/app/keys:U,z
@@ -164,11 +206,19 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       - LANGFLOW_ALLOW_CUSTOM_COMPONENTS=${LANGFLOW_ALLOW_CUSTOM_COMPONENTS:-false}
+      # Prefer the bind-mounted index so `scripts/update_openrag_component_index.py`
+      # takes effect on `docker compose restart langflow` without an image rebuild.
+      - LANGFLOW_COMPONENTS_INDEX_PATH=/app/flows/component_index.json
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
       - LANGFUSE_HOST=${LANGFUSE_HOST:-}
       - LANGFLOW_DEACTIVATE_TRACING
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # Hop token is injected per Langflow run. Seed a non-empty placeholder
+      # so load_from_db can resolve OPENRAG_LLM_TOKEN; Langflow treats "" as
+      # missing. Do not pass a vendor key here.
+      - OPENAI_API_KEY=${LANGFLOW_OPENAI_API_KEY:-}
+      - OPENRAG_LLM_TOKEN=None
+      - OPENRAG_LLM_BASE_URL=${OPENRAG_LLM_BASE_URL:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - WATSONX_APIKEY=${WATSONX_API_KEY}
       - WATSONX_URL=${WATSONX_URL:-${WATSONX_ENDPOINT}}
@@ -208,7 +258,7 @@ services:
       - MIMETYPE=None
       - FILESIZE=0
       - SELECTED_EMBEDDING_MODEL=${SELECTED_EMBEDDING_MODEL:-text-embedding-3-small}
-      - LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT=JWT,OPENRAG-QUERY-FILTER,OPENSEARCH_PASSWORD,OPENSEARCH_URL,DOCLING_SERVE_URL,DOCLING_SERVE_VERIFY_SSL,DOCLING_TASK_ID,OWNER,OWNER_NAME,OWNER_EMAIL,CONNECTOR_TYPE,DOCUMENT_ID,SOURCE_URL,ALLOWED_USERS,ALLOWED_GROUPS,ALLOWED_PRINCIPALS,FILENAME,MIMETYPE,FILESIZE,SELECTED_EMBEDDING_MODEL,OPENAI_API_KEY,ANTHROPIC_API_KEY,WATSONX_APIKEY,WATSONX_URL,WATSONX_PROJECT_ID,OLLAMA_BASE_URL,OPENSEARCH_INDEX_NAME,OPENRAG_INGEST_URL,OPENRAG_INGEST_TOKEN,OPENRAG_INGEST_RUN_ID,OPENRAG_INGEST_BATCH_SIZE
+      - LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT=JWT,OPENRAG-QUERY-FILTER,OPENSEARCH_PASSWORD,OPENSEARCH_URL,DOCLING_SERVE_URL,DOCLING_SERVE_VERIFY_SSL,DOCLING_TASK_ID,OWNER,OWNER_NAME,OWNER_EMAIL,CONNECTOR_TYPE,DOCUMENT_ID,SOURCE_URL,ALLOWED_USERS,ALLOWED_GROUPS,ALLOWED_PRINCIPALS,FILENAME,MIMETYPE,FILESIZE,SELECTED_EMBEDDING_MODEL,OPENAI_API_KEY,OPENRAG_LLM_TOKEN,OPENRAG_LLM_BASE_URL,ANTHROPIC_API_KEY,WATSONX_APIKEY,WATSONX_URL,WATSONX_PROJECT_ID,OLLAMA_BASE_URL,OPENSEARCH_INDEX_NAME,OPENRAG_INGEST_URL,OPENRAG_INGEST_TOKEN,OPENRAG_INGEST_RUN_ID,OPENRAG_INGEST_BATCH_SIZE
       - LANGFLOW_LOG_LEVEL=DEBUG
       - LANGFLOW_WORKERS=${LANGFLOW_WORKERS:-1}
       - LANGFLOW_RATE_LIMIT_PER_MINUTE=${LANGFLOW_RATE_LIMIT_PER_MINUTE:-100}
@@ -242,6 +292,52 @@ services:
       - "10002:10002" # Table
     volumes:
       - azurite-data:/data
+
+  # Instana host agent: forwards traces/metrics to the Instana SaaS ingress
+  # named by INSTANA_AGENT_ENDPOINT. The default below is one regional ingress;
+  # get the right one for your tenant from Infrastructure > Add a Host, which
+  # also issues the INSTANA_AGENT_KEY the agent needs.
+  # Opt-in only — gated behind the "instana" compose profile.
+  #
+  # WARNING: local development only. This container runs privileged, in the host
+  # PID namespace, with a read-write Docker socket — any one of those is
+  # root-equivalent on the host. The agent needs them for host/infrastructure
+  # metrics, but do not run this on a shared or production host.
+  #
+  # Start it with `make instana-agent-up`. Uses host networking so the agent
+  # publishes 42699 directly on localhost, matching the dev-local topology
+  # (backend runs on the host via `make backend`, not in Docker).
+  # NOTE: flags below are a starting point — re-verify against the exact
+  # Docker install command from the tenant's own "Add a Host Agent" wizard
+  # (Infrastructure > Add a Host) before relying on this, since IBM adjusts
+  # recommended flags between agent releases.
+  instana-agent:
+    # Pinned rather than :latest — this container runs privileged, with host PID
+    # and a Docker socket mount, so an upstream retag would silently change what
+    # runs as root on a developer machine. Override with INSTANA_AGENT_IMAGE_TAG
+    # to test a newer agent; bump the default here once it is verified.
+    image: icr.io/instana/agent:${INSTANA_AGENT_IMAGE_TAG:-1.323.1}
+    container_name: instana-agent
+    profiles: ["instana"]
+    network_mode: host
+    pid: host
+    privileged: true
+    environment:
+      - INSTANA_AGENT_ENDPOINT=${INSTANA_AGENT_ENDPOINT:-ingress-coral-saas.instana.io}
+      - INSTANA_AGENT_ENDPOINT_PORT=${INSTANA_AGENT_ENDPOINT_PORT:-443}
+      - INSTANA_AGENT_KEY=${INSTANA_AGENT_KEY}
+    volumes:
+      # docker.sock stays read-write: talking to the Docker API means writing to
+      # the socket, so :ro here would break container discovery. The rest are
+      # :ro because the agent only reads them. Note this narrows scope rather
+      # than enforcing a boundary — `privileged: true` above lets the container
+      # remount them writable. If a future agent release needs write access,
+      # these flags are the first thing to revert.
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /dev:/dev:ro
+      - /sys:/sys:ro
+      - /var/log:/var/log:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
 
 volumes:
   opensearch-data:

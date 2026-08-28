@@ -108,10 +108,30 @@ LANGFLOW_URL_INGEST_FLOW_ID = (
 DEFAULT_CHUNK_SIZE = 1000
 DEFAULT_CHUNK_OVERLAP = 200
 OPENRAG_BACKEND_PORT = get_env_int("OPENRAG_BACKEND_PORT", 8000)
+
+# CORS – comma-separated list of allowed origins (e.g. "https://app.example.com,https://admin.example.com").
+# Unset → defaults to http://localhost:3000.  Set to "" to disable CORS entirely.
+_raw_cors_origins = os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000")
+CORS_ALLOWED_ORIGINS: list[str] = [
+    o.strip() for o in _raw_cors_origins.split(",") if o.strip() and o.strip() != "*"
+]
 OPENRAG_BACKEND_INTERNAL_URL = os.getenv(
     "OPENRAG_BACKEND_INTERNAL_URL",
     f"http://openrag-backend:{OPENRAG_BACKEND_PORT}",
 ).rstrip("/")
+
+
+def get_langflow_llm_base_url() -> str:
+    """OpenAI-compatible base URL Langflow should call (must end with /v1).
+
+    Override with OPENRAG_LLM_PROXY_URL when Langflow cannot reach
+    OPENRAG_BACKEND_INTERNAL_URL (rare; same cases as a custom ingest router).
+    """
+    override = os.getenv("OPENRAG_LLM_PROXY_URL")
+    if override:
+        return override.rstrip("/")
+    return f"{OPENRAG_BACKEND_INTERNAL_URL}/v1"
+
 
 # --- Backend ingestion-callback proxy router ------------------------------
 # A standalone, minimal uvicorn app (spun up in the same process as the main
@@ -653,6 +673,19 @@ LANGFLOW_INGEST_CALLBACK_TTL_SECONDS = get_env_int(
     INGESTION_TIMEOUT + 300,
 )
 LANGFLOW_INGEST_CALLBACK_BATCH_SIZE = get_env_int("LANGFLOW_INGEST_CALLBACK_BATCH_SIZE", 100)
+
+
+def get_langflow_llm_proxy_ttl_seconds() -> int:
+    """TTL for the Langflow → OpenRAG LLM hop token.
+
+    Defaults to the ingest-callback TTL so one Langflow ingest run can call
+    embeddings for the whole document. Override with LANGFLOW_LLM_PROXY_TTL_SECONDS.
+    """
+    return get_env_int(
+        "LANGFLOW_LLM_PROXY_TTL_SECONDS",
+        LANGFLOW_INGEST_CALLBACK_TTL_SECONDS,
+    )
+
 
 OPENSEARCH_JWT_TTL_BUFFER_SECONDS = 300
 
@@ -1543,28 +1576,26 @@ class AppClients:
         name: str,
         value: str,
         variable_type: str = "Credential",
+        target_variable: dict | None = None,
     ):
         """Update an existing global variable in Langflow via API"""
         try:
-            # First, get all variables to find the one with the matching name
-            get_response = await self.langflow_request("GET", "/api/v1/variables/")
+            if not target_variable:
+                get_response = await self.langflow_request("GET", "/api/v1/variables/")
 
-            if get_response.status_code != 200:
-                logger.error(
-                    "Failed to retrieve variables for update",
-                    variable_name=name,
-                    status_code=get_response.status_code,
-                )
-                return
+                if get_response.status_code != 200:
+                    logger.error(
+                        "Failed to retrieve variables for update",
+                        variable_name=name,
+                        status_code=get_response.status_code,
+                    )
+                    return
 
-            variables = get_response.json()
-            target_variable = None
-
-            # Find the variable with matching name
-            for variable in variables:
-                if variable.get("name") == name:
-                    target_variable = variable
-                    break
+                variables = get_response.json()
+                for variable in variables:
+                    if variable.get("name") == name:
+                        target_variable = variable
+                        break
 
             if not target_variable:
                 logger.error("Variable not found for update", variable_name=name)
@@ -1595,7 +1626,7 @@ class AppClients:
                 recreate_payload = {
                     "name": name,
                     "value": value,
-                    "default_fields": target_variable.get("default_fields", []),
+                    "default_fields": [],
                     "type": variable_type,
                 }
                 recreate_response = await self.langflow_request(
@@ -1621,7 +1652,16 @@ class AppClients:
                 return
 
             current_value = target_variable.get("value")
-            if current_value == value:
+            current_default_fields = target_variable.get("default_fields", [])
+            # Langflow redacts Credential values on GET (null) and treats an
+            # empty stored value as "{name} variable not found." Always write
+            # when the visible value is missing so placeholders can heal, and
+            # rewrite whenever stale Apply To (default_fields) entries linger.
+            if (
+                current_value not in (None, "")
+                and current_value == value
+                and not current_default_fields
+            ):
                 logger.debug(
                     "Langflow global variable already up to date, skipping update",
                     variable_name=name,
@@ -1634,7 +1674,7 @@ class AppClients:
                 "id": variable_id,
                 "name": name,
                 "value": value,
-                "default_fields": target_variable.get("default_fields", []),
+                "default_fields": [],
                 "type": variable_type,
             }
 

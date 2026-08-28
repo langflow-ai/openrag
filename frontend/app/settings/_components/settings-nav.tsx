@@ -1,7 +1,7 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
-import { useEffect } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/settings-tabs";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
@@ -10,34 +10,24 @@ import {
   canAccessConnectorAccessTab,
   canShowRbacGatedSettingsTab,
 } from "@/lib/brand";
-import { isIngestPreviewEnabled } from "@/lib/ingest-preview";
 import { cn } from "@/lib/utils";
 
 const TABS = [
   { value: "connectors", label: "Connectors" },
   { value: "providers", label: "Providers", perm: "providers:write" },
-  // Agent + ingest settings write workspace config (admin-only).
-  { value: "langflow", label: "Langflow", perm: "config:write" },
+  { value: "ingestion", label: "Ingestion", perm: "config:write" },
+  { value: "agent", label: "Agent", perm: "config:write" },
   { value: "api-keys", label: "API Keys", apiKeysTab: true },
   {
     value: "connector-access",
     label: "Connector Settings",
     perm: "connectors:manage:access",
   },
-  { value: "ingest-preview", label: "Ingest preview", ingestPreviewTab: true },
 ] as const;
 
 export function SettingsNav() {
   const pathname = usePathname();
-  const router = useRouter();
-  const {
-    isAuthenticated,
-    isNoAuthMode,
-    isIbmAuthMode,
-    isLoading,
-    permissionsResolved,
-    runMode,
-  } = useAuth();
+  const { isAuthenticated, isNoAuthMode, isIbmAuthMode } = useAuth();
   const isCloudBrand = useIsCloudBrand();
   const tabAccess = useSettingsTabAccess();
 
@@ -50,20 +40,8 @@ export function SettingsNav() {
     if ("perm" in tab) return canShowRbacGatedSettingsTab(tab.perm, tabAccess);
     if ("apiKeysTab" in tab)
       return (isAuthenticated || isNoAuthMode) && !isIbmAuthMode;
-    if ("ingestPreviewTab" in tab)
-      return isIngestPreviewEnabled(runMode, { isCloudBrand });
     return true;
   });
-
-  const _visibleTabKey = visibleTabs.map((tab) => tab.value).join("|");
-  const tabIsVisible = visibleTabs.some((tab) => tab.value === currentTab);
-  const fallbackTab = visibleTabs[0]?.value ?? "connectors";
-
-  useEffect(() => {
-    if (isLoading || !permissionsResolved) return;
-    if (tabIsVisible) return;
-    router.replace(`/settings/${fallbackTab}`);
-  }, [isLoading, permissionsResolved, tabIsVisible, fallbackTab, router]);
 
   return (
     <Tabs value={currentTab}>
@@ -75,10 +53,10 @@ export function SettingsNav() {
           <TabsTrigger
             key={tab.value}
             value={tab.value}
-            onClick={() => router.push(`/settings/${tab.value}`)}
+            asChild
             className={cn(!isCloudBrand && "p-3 rounded-full")}
           >
-            {tab.label}
+            <Link href={`/settings/${tab.value}`}>{tab.label}</Link>
           </TabsTrigger>
         ))}
       </TabsList>
