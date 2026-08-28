@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from api.provider_validation import sanitize_provider_error_content, validate_provider_setup
 from config.settings import get_openrag_config
 from dependencies import require_permission
+from services.model_catalog import is_known_provider
 from session_manager import User
 from utils import provider_health_cache
 from utils.logging_config import get_logger
@@ -19,6 +20,8 @@ logger = get_logger(__name__)
 async def check_provider_health(
     provider: str | None = None,
     test_completion: bool = False,
+    model: str | None = None,
+    embedding_model_override: str | None = None,
     user: User = Depends(require_permission("providers:read")),
 ):
     """
@@ -28,6 +31,13 @@ async def check_provider_health(
         provider (optional): Provider to check ('openai', 'ollama', 'watsonx', 'anthropic').
                            If not provided, checks the currently configured provider.
         test_completion (optional): If true, performs full validation with completion/embedding tests.
+        model (optional): Validate against this chat model instead of the configured one.
+                          Generic LiteLLM providers are validated by issuing a real call, which
+                          needs a model name; a provider that is not the selected LLM/embedding
+                          provider has none, and one whose model names are deployment-specific
+                          (Azure, Bedrock, SageMaker) cannot be validated against the catalogue's
+                          generic names. Only meaningful together with ``provider``.
+        embedding_model_override (optional): Same, for validating an embedding model instead.
 
     Returns:
         200: Provider is healthy and validated
@@ -48,12 +58,11 @@ async def check_provider_health(
             provider = current_config.agent.llm_provider
 
         # Validate provider name
-        valid_providers = ["openai", "ollama", "watsonx", "anthropic"]
-        if provider not in valid_providers:
+        if not is_known_provider(provider):
             return JSONResponse(
                 {
                     "status": "error",
-                    "message": f"Invalid provider: {provider}. Must be one of: {', '.join(valid_providers)}",
+                    "message": f"Unknown LiteLLM provider: {provider}",
                     "provider": provider,
                 },
                 status_code=400,
@@ -67,6 +76,7 @@ async def check_provider_health(
                 api_key = getattr(provider_config, "api_key", None)
                 endpoint = getattr(provider_config, "endpoint", None)
                 project_id = getattr(provider_config, "project_id", None)
+                credentials = current_config.providers.credential_values(provider)
 
                 # Check if this provider is used for LLM or embedding
                 llm_model = (
@@ -79,6 +89,14 @@ async def check_provider_health(
                     if provider == current_config.knowledge.embedding_provider
                     else None
                 )
+
+                # An explicit model wins over whatever the provider happens to be
+                # selected for. Setting one clears the other so the validator
+                # tests exactly what the caller asked for rather than falling
+                # back to an embedding call for a chat model (or vice versa).
+                if model or embedding_model_override:
+                    llm_model = model or None
+                    embedding_model = embedding_model_override or None
             except ValueError:
                 # Provider not found in configuration
                 return JSONResponse(
@@ -105,6 +123,8 @@ async def check_provider_health(
             embedding_endpoint = getattr(embedding_provider_config, "endpoint", None)
             embedding_project_id = getattr(embedding_provider_config, "project_id", None)
             embedding_model = current_config.knowledge.embedding_model
+            credentials = current_config.providers.credential_values(provider)
+            embedding_credentials = current_config.providers.credential_values(embedding_provider)
 
             # Short-circuit identical concurrent polls from the provider-health
             # banner so we don't fan out N watsonx round-trips per poll cycle.
@@ -114,6 +134,7 @@ async def check_provider_health(
                 provider=provider,
                 embedding_provider=embedding_provider,
                 test_completion=test_completion,
+                credentials=credentials,
                 llm_model=llm_model,
                 embedding_model=embedding_model,
                 endpoint=endpoint,
@@ -122,6 +143,7 @@ async def check_provider_health(
                 embedding_api_key=embedding_api_key,
                 embedding_endpoint=embedding_endpoint,
                 embedding_project_id=embedding_project_id,
+                embedding_credentials=embedding_credentials,
             )
             cached_payload = provider_health_cache.get(health_cache_key)
             if cached_payload is not None:
@@ -149,6 +171,10 @@ async def check_provider_health(
         # Validate provider setup
         if check_provider:
             # Validate specific provider
+            # Generic LiteLLM providers keep their secrets in ``credentials``
+            # rather than the dedicated api_key/endpoint/project_id fields, so
+            # this must be forwarded or validating one from the providers page
+            # runs with no credentials at all.
             await validate_provider_setup(
                 provider=provider,
                 api_key=api_key,
@@ -157,6 +183,7 @@ async def check_provider_health(
                 endpoint=endpoint,
                 project_id=project_id,
                 test_completion=test_completion,
+                credentials=credentials,
             )
 
             return JSONResponse(
@@ -188,6 +215,7 @@ async def check_provider_health(
                     endpoint=endpoint,
                     project_id=project_id,
                     test_completion=test_completion,
+                    credentials=credentials,
                 )
             except httpx.TimeoutException as e:
                 # Timeout means provider is busy, not misconfigured
@@ -222,6 +250,7 @@ async def check_provider_health(
                     endpoint=embedding_endpoint,
                     project_id=embedding_project_id,
                     test_completion=test_completion,
+                    credentials=embedding_credentials,
                 )
             except httpx.TimeoutException as e:
                 # Timeout means provider is busy, not misconfigured

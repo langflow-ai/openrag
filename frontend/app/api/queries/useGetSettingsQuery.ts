@@ -54,6 +54,14 @@ export interface ProviderSettings {
   local?: {
     configured?: boolean;
   };
+  custom?: Record<
+    string,
+    {
+      configured?: boolean;
+      credential_values?: Record<string, string>;
+      secret_fields?: string[];
+    }
+  >;
 }
 
 export interface OnboardingState {

@@ -1,0 +1,144 @@
+@use "sass:map";
+
+@import "../../../styles/variables";
+@import "bootstrap/scss/mixins";
+
+$breakpoints: map-keys($grid-breakpoints);
+$sizes: (
+  50: (
+    size: 0.875rem,
+    line: 1.43,
+  ),
+  100: (
+    size: 1rem,
+    line: 1.38,
+  ),
+  150: (
+    size: 1.125rem,
+    line: 1.33,
+  ),
+  200: (
+    size: 1.25rem,
+    line: 1.3,
+  ),
+  300: (
+    size: 1.5rem,
+    line: 1.25,
+  ),
+  400: (
+    size: 2rem,
+    line: 1.12,
+  ),
+  500: (
+    size: 3rem,
+    line: 1.08,
+  ),
+  600: (
+    size: 3.5rem,
+    line: 1.07,
+  ),
+  700: (
+    size: 4.5rem,
+    line: 1.25,
+  ),
+);
+
+$default-sm-sizes: (
+  100: (
+    size: map.get($sizes, 50, "size"),
+    line: map.get($sizes, 50, "line"),
+  ),
+  200: (
+    size: map.get($sizes, 100, "size"),
+    line: map.get($sizes, 100, "line"),
+  ),
+  300: (
+    size: map.get($sizes, 150, "size"),
+    line: map.get($sizes, 150, "line"),
+  ),
+  400: (
+    size: map.get($sizes, 200, "size"),
+    line: map.get($sizes, 200, "line"),
+  ),
+  500: (
+    size: map.get($sizes, 300, "size"),
+    line: map.get($sizes, 300, "line"),
+  ),
+  600: (
+    size: map.get($sizes, 400, "size"),
+    line: map.get($sizes, 400, "line"),
+  ),
+  700: (
+    size: map.get($sizes, 500, "size"),
+    line: map.get($sizes, 500, "line"),
+  ),
+);
+
+.display {
+  color: var(--primary-body);
+  display: block;
+  font-family: var(--font-heading);
+  margin-bottom: 0;
+  $display: &;
+
+  a {
+    &,
+    &:hover,
+    &:visited {
+      color: inherit;
+      text-decoration: underline;
+    }
+  }
+
+  // Weights
+
+  &--weight-300 {
+    font-weight: 300;
+  }
+
+  &--weight-400 {
+    font-weight: 400;
+  }
+
+  &--weight-500 {
+    font-weight: 500;
+  }
+
+  &--weight-600 {
+    font-weight: 600;
+  }
+
+  &--weight-700 {
+    font-weight: 700;
+  }
+
+  // Default Sizes
+  @each $size, $value in $sizes {
+    &#{$display}--size-#{$size} {
+      font-size: map.get($value, "size");
+      line-height: map.get($value, "line");
+    }
+  }
+
+  &--sm-size {
+    @include media-breakpoint-down(lg) {
+      @each $size, $value in $default-sm-sizes {
+        &#{$display}--size-#{$size} {
+          font-size: map.get($value, "size");
+          line-height: map.get($value, "line");
+        }
+      }
+    }
+  }
+
+  @each $breakpoint in $breakpoints {
+    @include media-breakpoint-up($breakpoint) {
+      @each $size, $value in $sizes {
+        &#{$display}--size--#{$breakpoint}-#{$size} {
+          font-size: map.get($value, "size") !important;
+          line-height: map.get($value, "line") !important;
+        }
+      }
+    }
+  }
+}
