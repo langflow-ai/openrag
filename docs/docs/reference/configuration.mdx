@@ -97,7 +97,9 @@ The shipped defaults are:
 | `azure_ai` | No | Yes | Yes |
 
 To change what a deployment offers, edit the `modes` values and restart, or
-point `OPENRAG_MODEL_PROVIDERS_CONFIG` at your own YAML file.
+point `OPENRAG_MODEL_PROVIDERS_CONFIG` at your own YAML file. The file is read
+once per process, so the restart is what applies the edit; reload the console
+afterwards to pick up the new list.
 
 | Variable | Default | Description |
 |----------|---------|-------------|

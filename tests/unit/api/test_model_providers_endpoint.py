@@ -91,3 +91,30 @@ async def test_an_override_file_drives_the_payload(monkeypatch, tmp_path):
 
     body = _body(await models_api.get_model_providers(user=_user()))
     assert body["providers"] == [{"name": "ollama", "display_name": "Ollama"}]
+
+
+@pytest.mark.asyncio
+async def test_the_provider_list_is_never_stored_by_the_browser():
+    """A cached copy outlives the restart that applies a config edit.
+
+    `config/model_providers.yaml` is read once per process, so changing it means
+    editing the file and restarting the backend. With a `max-age` on this
+    response the browser answers the next page load from its own cache, the
+    console redraws the previous provider cards and tabs, and the edit looks
+    like it did nothing — for as long as the max-age lasts.
+    """
+    for response in (
+        await models_api.get_model_providers(user=_user()),
+        await v1_llm.model_providers_endpoint(user=_user()),
+    ):
+        assert response.headers["cache-control"] == "no-store"
+
+
+@pytest.mark.asyncio
+async def test_the_catalogue_is_never_stored_by_the_browser():
+    """Same trap as the provider list, and the catalogue is what the pickers read."""
+    for response in (
+        await models_api.get_model_catalog(user=_user()),
+        await v1_llm.model_catalog_endpoint(user=_user()),
+    ):
+        assert response.headers["cache-control"] == "no-store"

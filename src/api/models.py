@@ -228,9 +228,15 @@ async def get_model_providers(
     """
     from config.model_providers import provider_visibility_payload
 
+    # `no-store`, not a max-age: the list is derived from
+    # `config/model_providers.yaml`, which an operator edits and then restarts
+    # the backend for. A cached response outlives that restart in the browser,
+    # so the console keeps drawing the old provider cards/tabs and the change
+    # looks like it did nothing. The payload is a few hundred bytes and React
+    # Query already holds it for the session, so the round trip costs nothing.
     return JSONResponse(
         provider_visibility_payload(),
-        headers={"Cache-Control": "private, max-age=300"},
+        headers={"Cache-Control": "no-store"},
     )
 
 
@@ -244,8 +250,12 @@ async def get_model_catalog(
         catalog,
     )
 
+    # `no-store` for the same reason as /models/providers: the catalogue is
+    # filtered by that config file, so a cached copy survives the restart that
+    # was supposed to apply the edit. LiteLLM's table is cached in-process, so
+    # rebuilding this response is cheap.
     try:
-        return JSONResponse(catalog(), headers={"Cache-Control": "private, max-age=3600"})
+        return JSONResponse(catalog(), headers={"Cache-Control": "no-store"})
     except CatalogUnavailableError as e:
         # Log the cause, but never echo exception text back to the caller
         # (CodeQL py/stack-trace-exposure).

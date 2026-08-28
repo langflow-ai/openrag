@@ -40,7 +40,10 @@ export const useGetModelProvidersQuery = (
         }
         return (await response.json()) as ModelProvidersResponse;
       },
-      // Run mode and the config file are fixed for the life of the process.
+      // Run mode and the config file are fixed for the life of the backend
+      // process, so this never goes stale within a session. Editing
+      // `config/model_providers.yaml` therefore takes a backend restart *and* a
+      // page reload; the endpoint sends `no-store` so the reload actually asks.
       staleTime: Number.POSITIVE_INFINITY,
       gcTime: Number.POSITIVE_INFINITY,
       refetchOnWindowFocus: false,
