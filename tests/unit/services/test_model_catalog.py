@@ -142,14 +142,13 @@ def test_exported_model_ids_route_back_to_their_owner() -> None:
 
 
 def test_catalog_hides_a_provider_the_run_mode_does_not_expose(monkeypatch) -> None:
-    """Ollama ships for on-prem only; every mode keeps OpenAI."""
-    for mode in ("oss", "saas"):
-        monkeypatch.setenv("OPENRAG_RUN_MODE", mode)
-        keys = {entry["key"] for entry in model_catalog.catalog()["providers"]}
-        assert "ollama" not in keys, mode
-        assert "openai" in keys, mode
+    """SaaS must not advertise Ollama; oss and on-prem must keep it."""
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
+    saas = {entry["key"] for entry in model_catalog.catalog()["providers"]}
+    assert "ollama" not in saas
+    assert "openai" in saas
 
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "on_prem")
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
     assert "ollama" in {entry["key"] for entry in model_catalog.catalog()["providers"]}
 
 
@@ -189,7 +188,7 @@ def test_openai_models_list_drops_a_hidden_providers_models(monkeypatch) -> None
     owners = {row["owned_by"] for row in model_catalog.openai_models_list()["data"]}
     assert "ollama" not in owners
 
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "on_prem")
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
     assert "ollama" in {row["owned_by"] for row in model_catalog.openai_models_list()["data"]}
 
 

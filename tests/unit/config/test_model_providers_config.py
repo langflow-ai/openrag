@@ -27,14 +27,13 @@ def _write(tmp_path, body: str) -> str:
     return str(path)
 
 
-def test_shipped_defaults_offer_ollama_on_prem_only(monkeypatch):
-    """Local inference ships for on-prem, and nowhere else."""
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "on_prem")
-    assert "ollama" in model_providers.visible_provider_keys()
-
-    for mode in ("oss", "saas"):
+def test_shipped_defaults_keep_ollama_out_of_saas_only(monkeypatch):
+    for mode in ("oss", "on_prem"):
         monkeypatch.setenv("OPENRAG_RUN_MODE", mode)
-        assert "ollama" not in model_providers.visible_provider_keys(), mode
+        assert "ollama" in model_providers.visible_provider_keys(), mode
+
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
+    assert "ollama" not in model_providers.visible_provider_keys()
 
 
 def test_shipped_defaults_expose_the_core_providers_everywhere(monkeypatch):

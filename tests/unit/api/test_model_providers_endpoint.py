@@ -61,11 +61,12 @@ async def test_saas_does_not_publish_ollama(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_on_prem_still_publishes_ollama(monkeypatch):
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "on_prem")
+@pytest.mark.parametrize("mode", ["oss", "on_prem"])
+async def test_oss_and_on_prem_still_publish_ollama(monkeypatch, mode):
+    monkeypatch.setenv("OPENRAG_RUN_MODE", mode)
     body = _body(await models_api.get_model_providers(user=_user()))
 
-    assert body["run_mode"] == "on_prem"
+    assert body["run_mode"] == mode
     assert "ollama" in {entry["name"] for entry in body["providers"]}
 
 
