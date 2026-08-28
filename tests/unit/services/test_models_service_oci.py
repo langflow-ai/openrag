@@ -45,6 +45,7 @@ def _config_with_oci(**oci_overrides) -> SimpleNamespace:
             ollama=SimpleNamespace(endpoint=""),
             watsonx=SimpleNamespace(api_key="", endpoint="", project_id=""),
             oci=SimpleNamespace(**oci_defaults),
+            custom={},
         )
     )
 

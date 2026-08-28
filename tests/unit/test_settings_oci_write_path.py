@@ -65,6 +65,12 @@ def _make_config(*, oci_configured: bool, embedding_provider: str = "openai"):
     # (see config.config_manager.ProvidersConfig.get_provider_config). The real
     # config object has this method; this fake needs it too for that branch to run.
     providers.get_provider_config = lambda provider: getattr(providers, provider)
+    # update_settings()'s validation branch also resolves generic LiteLLM
+    # credential kwargs via current_config.providers.credential_values(...)
+    # (see config.config_manager.ProvidersConfig.credential_values). OCI
+    # doesn't use this path (it has its own oci_* fields), so an empty dict
+    # is enough for this fake.
+    providers.credential_values = lambda _provider: {}
     return SimpleNamespace(
         edited=True,
         agent=SimpleNamespace(llm_provider="openai", llm_model="gpt-5.4-mini"),
