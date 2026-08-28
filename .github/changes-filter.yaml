@@ -7,6 +7,7 @@ python:
 
 frontend:
   - "frontend/**"
+  - "website/**"
 
 docs:
   - "docs/**"
@@ -46,4 +47,3 @@ sdks:
 
 scripts:
   - "scripts/**"
-

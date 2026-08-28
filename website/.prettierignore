@@ -1,0 +1,5 @@
+/.next/
+/build/
+/out/
+/node_modules/
+/next.config.js
