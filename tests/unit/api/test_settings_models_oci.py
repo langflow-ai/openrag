@@ -22,15 +22,6 @@ class TestEmbeddingProviderRegexAcceptsOci:
         body = OnboardingBody(embedding_provider="oci")
         assert body.embedding_provider == "oci"
 
-    def test_settings_update_body_rejects_bogus_provider(self):
-        with pytest.raises(ValidationError):
-            SettingsUpdateBody(embedding_provider="not-a-provider")
-
-    def test_llm_provider_regex_unchanged_rejects_oci(self):
-        """OCI is embedding-only; llm_provider must still reject it."""
-        with pytest.raises(ValidationError):
-            SettingsUpdateBody(llm_provider="oci")
-
 
 class TestOciRequestFields:
     def test_settings_update_body_accepts_oci_credential_fields(self):

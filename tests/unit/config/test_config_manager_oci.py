@@ -75,10 +75,14 @@ class TestProvidersConfigOci:
         providers = self._make_providers()
         assert providers.any_configured() is False
 
-    def test_unknown_provider_still_raises(self):
+    def test_unknown_provider_falls_back_to_generic_config(self):
+        """Unrecognized provider names resolve through the generic custom-
+        provider path (GenericProviderConfig), not a raise - this is what
+        lets any arbitrary LiteLLM provider be configured via
+        provider_credentials without a dedicated dataclass."""
         providers = self._make_providers()
-        with pytest.raises(ValueError):
-            providers.get_provider_config("not-a-real-provider")
+        config = providers.get_provider_config("not-a-real-provider")
+        assert config.configured is False
 
 
 class TestConfigManagerOciEnvOverrides:
