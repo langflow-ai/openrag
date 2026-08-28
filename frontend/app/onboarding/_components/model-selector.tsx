@@ -110,7 +110,7 @@ export function ModelSelector({
   onValueChange,
   icon,
   placeholder = "Select model...",
-  searchPlaceholder = "Search model...",
+  searchPlaceholder,
   noOptionsPlaceholder = "No models available",
   custom = false,
   hasError = false,
@@ -128,6 +128,14 @@ export function ModelSelector({
       setOpen(true);
     }
   }
+
+  // A selector that accepts a typed model has to say so: the box is the only
+  // way to reach a deployment name the catalogue cannot know. Selectors that
+  // only pick from a fixed list (the watsonx endpoint picker) keep the plain
+  // label, and any caller passing its own copy still wins.
+  const searchBoxPlaceholder =
+    searchPlaceholder ??
+    (custom ? "Search or type a model name" : "Search model...");
 
   const [searchValue, setSearchValue] = useState("");
   // The option filter runs on the trimmed, lowercased search text, so the
@@ -301,7 +309,10 @@ export function ModelSelector({
       >
         <Command shouldFilter={false}>
           <CommandInput
-            placeholder={searchPlaceholder}
+            // Located by test id, not by placeholder: the copy changes with
+            // `custom` and is the sort of thing that gets reworded.
+            data-testid="model-search-input"
+            placeholder={searchBoxPlaceholder}
             value={searchValue}
             onValueChange={setSearchValue}
           />
@@ -470,6 +481,11 @@ export function ModelSelector({
                             )}
                           />
                           <div className="flex items-center gap-2">
+                            {/* "Use" rather than the bare name: the row sits
+                                among search results, and without a verb it
+                                reads as one more model that already exists
+                                rather than the thing that adds yours. */}
+                            <span>Use</span>
                             {/* The provider tag is shown, never typed: the
                                 group the row sits under decides it, and it is
                                 what makes the id route back here. Without it
@@ -481,7 +497,7 @@ export function ModelSelector({
                                 {groupProvider}:
                               </span>
                             )}
-                            {customValue}
+                            <span>&ldquo;{customValue}&rdquo;</span>
                             <span className="text-xs text-foreground p-1 rounded-md bg-muted">
                               Custom
                             </span>
@@ -511,7 +527,7 @@ export function ModelSelector({
                         )}
                       />
                       <div className="flex items-center gap-2">
-                        {customValue}
+                        Use &ldquo;{customValue}&rdquo;
                         <span className="text-xs text-foreground p-1 rounded-md bg-muted">
                           Custom
                         </span>
@@ -573,7 +589,7 @@ export function ModelSelector({
                       )}
                     />
                     <div className="flex items-center gap-2">
-                      {customValue}
+                      Use &ldquo;{customValue}&rdquo;
                       <span className="text-xs text-foreground p-1 rounded-md bg-muted">
                         Custom
                       </span>
