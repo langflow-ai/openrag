@@ -121,7 +121,7 @@ const config = {
   // },
 
   // Set the production url of your site here
-  url: process.env.SITE_URL || 'https://docs.openr.ag',
+  url: 'https://docs.openr.ag',
   // Set the /<baseUrl>/ pathname under which your site is served
   // For GitHub pages deployment, it is often '/<projectName>/'
   baseUrl: process.env.BASE_URL ? process.env.BASE_URL : '/',
@@ -200,10 +200,6 @@ const config = {
       {
         redirects: [
           {
-            to: "/docs/",
-            from: ["/"],
-          },
-          {
             to: "/install-uvx",
             from: [
               "/install",
@@ -227,7 +223,7 @@ const config = {
           alt: 'OpenRAG Logo',
           src: "img/logo-openrag-docs-light.svg",
           srcDark: "img/logo-openrag-docs-dark.svg",
-          href: '/docs/',
+          href: '/',
         },
         items: [
           {

@@ -1,4 +1,4 @@
-name: Deploy site and docs to GitHub Pages
+name: Deploy to GitHub Pages
 
 on:
   push:
@@ -6,100 +6,37 @@ on:
       - main
     paths:
       - 'docs/**'
-      - 'website/**'
-      - 'scripts/merge-pages.mjs'
-      - '.github/workflows/deploy-gh-pages.yml'
-  pull_request:
-    paths:
-      - 'docs/**'
-      - 'website/**'
-      - 'scripts/merge-pages.mjs'
-      - '.github/workflows/deploy-gh-pages.yml'
   workflow_dispatch:
 
-concurrency:
-  group: pages-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  build:
-    name: Build site and docs
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: |
-            docs/package-lock.json
-            website/package-lock.json
-
-      - name: Install documentation dependencies
-        working-directory: docs
-        run: npm ci
-
-      - name: Install website dependencies
-        working-directory: website
-        run: npm ci
-
-      - name: Lint website
-        working-directory: website
-        run: npm run lint
-
-      - name: Build documentation
-        working-directory: docs
-        run: npm run build
-        env:
-          SITE_URL: ${{ vars.PAGES_SITE_URL || 'https://docs.openr.ag' }}
-
-      - name: Build website
-        working-directory: website
-        run: npm run build
-        env:
-          PAGES_BASE_PATH: /
-          SITE_URL: ${{ vars.PAGES_SITE_URL || 'https://docs.openr.ag' }}
-
-      - name: Merge Pages artifact
-        run: node scripts/merge-pages.mjs docs/build website/out pages-out
-
-      - name: Keep docs-only artifact until hostname cutover
-        if: vars.PAGES_CNAME == ''
-        run: |
-          rm -rf pages-out
-          cp -a docs/build pages-out
-
-      - name: Upload Pages artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: pages-${{ github.sha }}
-          path: pages-out
-          if-no-files-found: error
-          retention-days: 1
-
   deploy:
-    name: Deploy site and docs
-    if: github.event_name != 'pull_request'
-    needs: build
+    name: Deploy to GitHub Pages
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
     steps:
-      - name: Download Pages artifact
-        uses: actions/download-artifact@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          name: pages-${{ github.sha }}
-          path: pages-out
+          node-version: 20.20.0
+          cache: npm
+          cache-dependency-path: ./docs/package-lock.json
 
+      - name: Install dependencies
+        run: cd docs && npm install
+      - name: Build website
+        run: cd docs && npm run build
+        # env:
+        #   SEGMENT_PUBLIC_WRITE_KEY: ${{ vars.DOCS_PROD_SEGMENT_PUBLIC_WRITE_KEY }}
+
+      # Popular action to deploy to GitHub Pages:
+      # Docs: https://github.com/peaceiris/actions-gh-pages#%EF%B8%8F-docusaurus
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: pages-out
-          force_orphan: true
-          cname: ${{ vars.PAGES_CNAME || 'docs.openr.ag' }}
+          # Build output to publish to the `gh-pages` branch:
+          publish_dir: ./docs/build
+          # The following lines assign commit authorship to the official
+          # GH-Actions bot for deploys to `gh-pages` branch:
+          # https://github.com/actions/checkout/issues/13#issuecomment-724415212
+          # The GH actions bot is used by default if you didn't specify the two fields.
+          # You can swap them out with your own user credentials.
