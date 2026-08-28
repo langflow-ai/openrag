@@ -68,4 +68,16 @@ describe("getProviderChrome", () => {
     assert.equal(azure.name, "Azure AI Foundry");
     assert.notEqual(azure.logo, getProviderChrome("groq").logo);
   });
+
+  it("draws the Azure mark for Azure OpenAI too, under its own name", () => {
+    // Two Azure products, one brand: `azure` is Azure OpenAI Service and
+    // `azure_ai` is Foundry, so they share the mark and the label separates
+    // them. Missing this row left the card on the generic placeholder.
+    const openai = getProviderChrome("azure");
+    const foundry = getProviderChrome("azure_ai");
+
+    assert.equal(openai.name, "Azure OpenAI");
+    assert.equal(openai.logo, foundry.logo);
+    assert.notEqual(openai.logo, getProviderChrome("groq").logo);
+  });
 });

@@ -21,6 +21,7 @@ export const KNOWN_PROVIDERS = [
   "ollama",
   "watsonx",
   "azure_ai",
+  "azure",
   "local",
 ] as const;
 
@@ -123,6 +124,16 @@ const PROVIDER_CHROME: Record<string, ProviderChrome> = {
   },
   azure_ai: {
     name: "Azure AI Foundry",
+    logo: AzureLogo,
+    logoColor: "text-white",
+    logoBgColor: "bg-[#0078D4]",
+  },
+  // Azure OpenAI Service is a second Azure product, not a second brand: it
+  // takes the same mark, and the display name is what tells the two cards
+  // apart. Without a row here it fell through to the generic placeholder while
+  // the model rows below already drew the Azure logo for it.
+  azure: {
+    name: "Azure OpenAI",
     logo: AzureLogo,
     logoColor: "text-white",
     logoBgColor: "bg-[#0078D4]",
