@@ -142,18 +142,19 @@ def test_exported_model_ids_route_back_to_their_owner() -> None:
 
 
 def test_catalog_hides_a_provider_the_run_mode_does_not_expose(monkeypatch) -> None:
-    """SaaS must not advertise Ollama; oss and on-prem must keep it."""
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
-    saas = {entry["key"] for entry in model_catalog.catalog()["providers"]}
-    assert "ollama" not in saas
-    assert "openai" in saas
+    """Ollama ships for on-prem only; every mode keeps OpenAI."""
+    for mode in ("oss", "saas"):
+        monkeypatch.setenv("OPENRAG_RUN_MODE", mode)
+        keys = {entry["key"] for entry in model_catalog.catalog()["providers"]}
+        assert "ollama" not in keys, mode
+        assert "openai" in keys, mode
 
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "on_prem")
     assert "ollama" in {entry["key"] for entry in model_catalog.catalog()["providers"]}
 
 
 def test_catalog_publishes_azure_ai_where_the_config_enables_it(monkeypatch) -> None:
-    for mode in ("on_prem", "saas"):
+    for mode in ("oss", "on_prem", "saas"):
         monkeypatch.setenv("OPENRAG_RUN_MODE", mode)
         providers = {entry["key"]: entry for entry in model_catalog.catalog()["providers"]}
         assert "azure_ai" in providers, mode
@@ -164,12 +165,31 @@ def test_catalog_publishes_azure_ai_where_the_config_enables_it(monkeypatch) -> 
         assert {"api_base", "api_key"} <= {field["key"] for field in azure["credential_fields"]}
 
 
+def test_azure_openai_is_the_row_that_carries_the_gpt_41_family(monkeypatch) -> None:
+    """The two Azure rows are not interchangeable.
+
+    LiteLLM files Azure OpenAI Service under `azure` and the Foundry catalogue
+    under `azure_ai`, and only the former lists gpt-4.1. Offering just
+    `azure_ai` — as the config first did — leaves no way to pick gpt-4.1 from
+    the dropdown at all.
+    """
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+    providers = {entry["key"]: entry for entry in model_catalog.catalog()["providers"]}
+
+    assert providers["azure"]["name"] == "Azure OpenAI"
+    assert "gpt-4.1" in {entry["model"] for entry in providers["azure"]["models"]}
+    assert "gpt-4.1" not in {entry["model"] for entry in providers["azure_ai"]["models"]}
+    # The prefix is stripped for display but re-attached on the way out, or the
+    # id would be called with the default provider's credentials.
+    assert "azure:gpt-4.1" in {row["id"] for row in model_catalog.openai_models_list()["data"]}
+
+
 def test_openai_models_list_drops_a_hidden_providers_models(monkeypatch) -> None:
     monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
     owners = {row["owned_by"] for row in model_catalog.openai_models_list()["data"]}
     assert "ollama" not in owners
 
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "on_prem")
     assert "ollama" in {row["owned_by"] for row in model_catalog.openai_models_list()["data"]}
 
 

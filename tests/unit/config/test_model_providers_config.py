@@ -27,13 +27,14 @@ def _write(tmp_path, body: str) -> str:
     return str(path)
 
 
-def test_shipped_defaults_keep_ollama_out_of_saas_only(monkeypatch):
-    for mode in ("oss", "on_prem"):
-        monkeypatch.setenv("OPENRAG_RUN_MODE", mode)
-        assert "ollama" in model_providers.visible_provider_keys(), mode
+def test_shipped_defaults_offer_ollama_on_prem_only(monkeypatch):
+    """Local inference ships for on-prem, and nowhere else."""
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "on_prem")
+    assert "ollama" in model_providers.visible_provider_keys()
 
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
-    assert "ollama" not in model_providers.visible_provider_keys()
+    for mode in ("oss", "saas"):
+        monkeypatch.setenv("OPENRAG_RUN_MODE", mode)
+        assert "ollama" not in model_providers.visible_provider_keys(), mode
 
 
 def test_shipped_defaults_expose_the_core_providers_everywhere(monkeypatch):
@@ -42,13 +43,17 @@ def test_shipped_defaults_expose_the_core_providers_everywhere(monkeypatch):
         assert {"openai", "anthropic", "watsonx"} <= model_providers.visible_provider_keys(), mode
 
 
-def test_azure_ai_ships_for_on_prem_and_saas(monkeypatch):
-    for mode in ("on_prem", "saas"):
-        monkeypatch.setenv("OPENRAG_RUN_MODE", mode)
-        assert "azure_ai" in model_providers.visible_provider_keys(), mode
+def test_both_azure_providers_ship_in_every_mode(monkeypatch):
+    """LiteLLM keys Azure twice and the shipped config offers both.
 
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
-    assert "azure_ai" not in model_providers.visible_provider_keys()
+    `azure_ai` is the Foundry catalogue (Llama, Phi, Mistral, Cohere, and the
+    gpt-5.x entries Foundry serves); `azure` is Azure OpenAI Service, which is
+    the only one of the two carrying the gpt-4.1 family. Dropping either hides
+    models the other cannot supply.
+    """
+    for mode in ("oss", "on_prem", "saas"):
+        monkeypatch.setenv("OPENRAG_RUN_MODE", mode)
+        assert {"azure_ai", "azure"} <= model_providers.visible_provider_keys(), mode
 
 
 def test_payload_reports_the_run_mode_it_filtered_on(monkeypatch):

@@ -91,10 +91,17 @@ The shipped defaults are:
 | Provider | `oss` | `on_prem` | `saas` |
 |----------|-------|-----------|--------|
 | `openai` | Yes | Yes | Yes |
-| `ollama` | Yes | Yes | No |
+| `ollama` | No | Yes | No |
 | `watsonx` | Yes | Yes | Yes |
 | `anthropic` | Yes | Yes | Yes |
-| `azure_ai` | No | Yes | Yes |
+| `azure_ai` | Yes | Yes | Yes |
+| `azure` | Yes | Yes | Yes |
+
+LiteLLM keys Azure twice, and the two are not interchangeable: `azure_ai` is
+the Azure AI Foundry catalogue (Llama, Phi, Mistral, Cohere, and the gpt-5.x
+entries Foundry serves), while `azure` is Azure OpenAI Service — the only one
+of the two that carries the gpt-4.1 family. Offer both unless a deployment
+uses just one.
 
 To change what a deployment offers, edit the `modes` values and restart, or
 point `OPENRAG_MODEL_PROVIDERS_CONFIG` at your own YAML file. The file is read

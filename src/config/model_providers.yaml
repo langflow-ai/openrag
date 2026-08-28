@@ -34,7 +34,7 @@ providers:
   - name: ollama
     display_name: Ollama
     modes:
-      oss: true
+      oss: false
       on_prem: true
       saas: false # local inference is not offered in SaaS
 
@@ -55,7 +55,18 @@ providers:
   - name: azure_ai
     display_name: Azure AI Foundry
     modes:
-      oss: false
+      oss: true
+      on_prem: true
+      saas: true
+
+  # Azure OpenAI Service, which LiteLLM keys separately from Foundry above:
+  # `azure_ai` is the Foundry catalogue (Llama, Phi, Mistral, Cohere, and the
+  # gpt-5.x entries Foundry serves), `azure` is the OpenAI Service deployment
+  # where the gpt-4.1 family lives. Both can be offered at once.
+  - name: azure
+    display_name: Azure OpenAI
+    modes:
+      oss: true
       on_prem: true
       saas: true
 
