@@ -1,0 +1,40 @@
+@import "../../../../styles/variables";
+@import "bootstrap/scss/mixins";
+
+.community {
+  padding: var(--spacer-8) 0px var(--spacer-9);
+
+  @include media-breakpoint-down(md) {
+    padding-bottom: 43px;
+
+    h2 {
+      font-size: 1.125rem !important;
+      margin-bottom: 40px;
+    }
+  }
+
+  h2 {
+    text-align: center;
+    margin-bottom: 45px;
+
+    span {
+      font-weight: 800;
+
+      @include media-breakpoint-down(md) {
+        font-weight: 700;
+      }
+    }
+  }
+
+  &__logos {
+    display: flex;
+    justify-content: center;
+    gap: var(--spacer-6);
+    align-items: center;
+
+    @include media-breakpoint-down(md) {
+      flex-direction: column;
+      gap: var(--spacer-5);
+    }
+  }
+}

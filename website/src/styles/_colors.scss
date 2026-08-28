@@ -1,0 +1,50 @@
+// Colors
+
+$primary: (
+  black: #000000,
+  white: #ffffff,
+  body: #f5f4fa,
+  purple: #773eff,
+  ellipse: #17151c,
+  border: #27232f,
+);
+
+$_colors: (
+  yellow: (
+    500: #ffd765,
+  ),
+  gray: (
+    500: #b1b0b7,
+  ),
+  orange: (
+    500: #c74406,
+  ),
+  purple: (
+    500: #773eff,
+  ),
+  blue: (
+    200: #0099ff,
+  ),
+);
+:root {
+  // Creating the box shadows variants to be used eery
+  --box-shadow-100: 0px 4px 10px 0px rgba(0, 0, 0, 0.1);
+  --box-shadow-200: 0px 8px 24px 0px rgba(26, 26, 48, 0.1);
+
+  @each $color, $value in $primary {
+    --primary-#{"" + $color}: #{$value};
+    --primary-#{"" + $color}-rgb: #{red($value)}, #{green($value)},
+      #{blue($value)};
+  }
+  @each $colorname, $variants in $_colors {
+    @each $variant, $value in $variants {
+      $keyname: "--interface-" + $colorname + "-" + $variant;
+      $rgbkey: "--interface-" + $colorname + "-" + $variant + "-rgb";
+      #{$keyname}: #{$value};
+      #{$rgbkey}:
+        #{red($value)},
+        #{green($value)},
+        #{blue($value)};
+    }
+  }
+}
