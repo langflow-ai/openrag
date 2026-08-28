@@ -1,5 +1,6 @@
+import AiFoundryLogo from "@/components/icons/ai-foundry-logo";
 import AnthropicLogo from "@/components/icons/anthropic-logo";
-import AzureLogo from "@/components/icons/azure-logo";
+import AzureOpenAILogo from "@/components/icons/azure-openai-logo";
 import IBMLogo from "@/components/icons/ibm-logo";
 import OllamaLogo from "@/components/icons/ollama-logo";
 import OpenAILogo from "@/components/icons/openai-logo";
@@ -122,21 +123,20 @@ const PROVIDER_CHROME: Record<string, ProviderChrome> = {
     logoColor: "text-white",
     logoBgColor: "bg-[#1063FE]",
   },
+  // Microsoft draws the two Azure model services differently, and neither is
+  // the generic Azure logo. Both marks paint their own gradients, so logoColor
+  // does nothing for them and the tile stays white.
   azure_ai: {
     name: "Azure AI Foundry",
-    logo: AzureLogo,
-    logoColor: "text-white",
-    logoBgColor: "bg-[#0078D4]",
+    logo: AiFoundryLogo,
+    logoColor: "text-black",
+    logoBgColor: "bg-white",
   },
-  // Azure OpenAI Service is a second Azure product, not a second brand: it
-  // takes the same mark, and the display name is what tells the two cards
-  // apart. Without a row here it fell through to the generic placeholder while
-  // the model rows below already drew the Azure logo for it.
   azure: {
     name: "Azure OpenAI",
-    logo: AzureLogo,
-    logoColor: "text-white",
-    logoBgColor: "bg-[#0078D4]",
+    logo: AzureOpenAILogo,
+    logoColor: "text-black",
+    logoBgColor: "bg-white",
   },
   local: {
     name: "Local",
@@ -177,8 +177,10 @@ export function getModelLogo(modelValue: string, provider?: string) {
     return <OllamaLogo className="w-4 h-4" />;
   } else if (provider === "watsonx") {
     return <IBMLogo className="w-4 h-4" />;
-  } else if (provider === "azure_ai" || provider === "azure") {
-    return <AzureLogo className="w-4 h-4" />;
+  } else if (provider === "azure") {
+    return <AzureOpenAILogo className="w-4 h-4" />;
+  } else if (provider === "azure_ai") {
+    return <AiFoundryLogo className="w-4 h-4" />;
   } else if (provider === "local") {
     return (
       <svg
