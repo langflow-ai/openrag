@@ -234,6 +234,8 @@ class ProvidersConfig:
         if key == "openai":
             if self.openai.api_key:
                 custom.setdefault("api_key", self.openai.api_key)
+            if self.openai.base_url:
+                custom.setdefault("api_base", self.openai.base_url)
             return custom
         if key == "anthropic":
             if self.anthropic.api_key:
