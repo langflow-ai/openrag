@@ -338,3 +338,92 @@ def test_an_excluded_model_is_gone_from_v1_models_too(monkeypatch, tmp_path) -> 
     monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
 
     assert "gpt-4o" not in {row["id"] for row in model_catalog.openai_models_list()["data"]}
+
+
+def test_exclusions_reach_the_live_provider_lists_too(monkeypatch, tmp_path) -> None:
+    """Ollama, watsonx, OpenAI and Anthropic are also listed by asking the provider.
+
+    That path never touches the catalogue, so without filtering it an excluded
+    id vanishes from Settings and walks straight back in through onboarding.
+    """
+    monkeypatch.setenv(
+        model_providers.CONFIG_PATH_ENV,
+        _write_providers(
+            tmp_path,
+            "providers:\n  - name: openai\n    modes:\n      oss: true\n"
+            "    exclude_models:\n      - gpt-3.5-*\n",
+        ),
+    )
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+
+    payload = {
+        "language_models": [
+            {"value": "gpt-3.5-turbo", "label": "gpt-3.5-turbo"},
+            {"value": "gpt-4o", "label": "gpt-4o"},
+        ],
+        "embedding_models": [{"value": "text-embedding-3-small"}],
+    }
+    filtered = model_catalog.hide_excluded_live_models("openai", payload)
+
+    assert [entry["value"] for entry in filtered["language_models"]] == ["gpt-4o"]
+    assert [entry["value"] for entry in filtered["embedding_models"]] == ["text-embedding-3-small"]
+    # The caller's payload is not mutated; only the response is filtered.
+    assert len(payload["language_models"]) == 2
+
+
+def test_a_provider_with_no_exclusions_is_passed_through_untouched(monkeypatch) -> None:
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+    payload = {"language_models": [{"value": "llama3"}]}
+    assert model_catalog.hide_excluded_live_models("ollama", payload) is payload
+
+
+def test_a_live_payload_that_is_not_a_dict_survives(monkeypatch) -> None:
+    """The live endpoints can return an error body; filtering must not raise."""
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+    assert model_catalog.hide_excluded_live_models("openai", None) is None
+    assert model_catalog.hide_excluded_live_models("openai", []) == []
+
+
+def test_the_shipped_config_keeps_the_legacy_openai_generation_out(monkeypatch) -> None:
+    """The exclusions the shipped file actually carries."""
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+    models = {
+        entry["model"]
+        for provider in model_catalog.catalog()["providers"]
+        if provider["key"] == "openai"
+        for entry in provider["models"]
+    }
+
+    assert not any(name.startswith("gpt-3.5") for name in models)
+    assert "gpt-5.6-luna" not in models
+    # Everything else the generation filter must not have taken with it.
+    assert "gpt-4o" in models
+    assert any(name.startswith("gpt-5.6") for name in models)
+
+
+def test_a_plain_name_also_excludes_its_regional_listings(monkeypatch, tmp_path) -> None:
+    """Azure lists the same model per region; suppressing it means all of them."""
+    monkeypatch.setenv(
+        model_providers.CONFIG_PATH_ENV,
+        _write_providers(
+            tmp_path,
+            "providers:\n  - name: azure\n    modes:\n      oss: true\n"
+            "    exclude_models:\n      - gpt-5.6-luna\n",
+        ),
+    )
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+
+    models = {entry["model"] for entry in model_catalog.catalog()["providers"][0]["models"]}
+    assert not any(name.endswith("gpt-5.6-luna") for name in models), sorted(
+        name for name in models if "luna" in name
+    )
+    # A region's other models are untouched.
+    assert any(name.startswith("eu/") for name in models)
+
+
+def test_the_shipped_config_excludes_on_azure_as_well_as_openai(monkeypatch) -> None:
+    """The same model is served by two rows, so it takes two exclusions."""
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+    ids = {row["id"] for row in model_catalog.openai_models_list()["data"]}
+
+    assert not [model_id for model_id in ids if "gpt-3.5" in model_id or "luna" in model_id]
