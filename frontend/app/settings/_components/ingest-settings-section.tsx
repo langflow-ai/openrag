@@ -3,7 +3,11 @@
 import { ArrowUpRight, ChevronDown, Loader2, Minus, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { useGetModelCatalogQuery } from "@/app/api/queries/useGetModelsQuery";
+import {
+  useGetIBMModelsQuery,
+  useGetModelCatalogQuery,
+  useGetOllamaModelsQuery,
+} from "@/app/api/queries/useGetModelsQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { LabelWrapper } from "@/components/label-wrapper";
@@ -49,6 +53,9 @@ import {
 import {
   findGroupedSelection,
   groupedCatalogOptions,
+  LIVE_INVENTORY_PROVIDERS,
+  liveModelOption,
+  mergeLiveCatalogOptions,
 } from "../_helpers/catalog-models";
 import { getModelLogo } from "../_helpers/model-helpers";
 import { LangflowIcon } from "./langflow-icon";
@@ -125,20 +132,62 @@ export function IngestSettingsSection() {
     [settings.providers],
   );
 
-  const groupedEmbeddingModels = useMemo(
-    () =>
-      groupedCatalogOptions(catalog, configuredProviders, "embedding").map(
-        (group) => ({
-          group: group.group,
-          provider: group.key,
-          icon: getModelLogo("", group.key),
-          options: group.options,
-        }),
-      ),
-    [catalog, configuredProviders],
-  );
+  // watsonx and Ollama publish their inventory from the running server, not
+  // from LiteLLM's bundled table — watsonx has *no* embedding models in that
+  // table at all — so the live list is what makes their group exist here.
+  // useGetCurrentProviderModelsQuery keys off the *agent* provider, so the
+  // embedding step has to ask for itself.
+  const embeddingProvider = settings.knowledge?.embedding_provider;
+  const wantsLive =
+    (isAuthenticated || isNoAuthMode) &&
+    LIVE_INVENTORY_PROVIDERS.has(embeddingProvider ?? "");
 
-  const isLoadingAnyEmbeddingModels = catalogLoading;
+  const ibmModels = useGetIBMModelsQuery(
+    {
+      endpoint: settings.providers?.watsonx?.endpoint,
+      projectId: settings.providers?.watsonx?.project_id,
+      useEnvKey: true,
+    },
+    {
+      enabled:
+        wantsLive &&
+        embeddingProvider === "watsonx" &&
+        !!settings.providers?.watsonx?.endpoint &&
+        !!settings.providers?.watsonx?.project_id,
+    },
+  );
+  const ollamaModels = useGetOllamaModelsQuery(
+    { endpoint: settings.providers?.ollama?.endpoint },
+    {
+      enabled:
+        wantsLive &&
+        embeddingProvider === "ollama" &&
+        !!settings.providers?.ollama?.endpoint,
+    },
+  );
+  const liveModels =
+    embeddingProvider === "watsonx" ? ibmModels.data : ollamaModels.data;
+  const liveModelsLoading = ibmModels.isLoading || ollamaModels.isLoading;
+
+  const groupedEmbeddingModels = useMemo(() => {
+    const live = (liveModels?.embedding_models ?? []).map((model) =>
+      liveModelOption(model.value, embeddingProvider ?? ""),
+    );
+    return mergeLiveCatalogOptions(
+      groupedCatalogOptions(catalog, configuredProviders, "embedding"),
+      embeddingProvider,
+      live,
+      catalog?.providers?.find((provider) => provider.key === embeddingProvider)
+        ?.name,
+    ).map((group) => ({
+      group: group.group,
+      provider: group.key,
+      icon: getModelLogo("", group.key),
+      options: group.options,
+    }));
+  }, [catalog, configuredProviders, liveModels, embeddingProvider]);
+
+  const isLoadingAnyEmbeddingModels = catalogLoading || liveModelsLoading;
 
   const groupedVlmModels = useMemo(() => {
     const list: GroupedModelOption[] = groupedCatalogOptions(
