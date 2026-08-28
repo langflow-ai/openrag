@@ -29,7 +29,7 @@ Before starting installation, check for an existing OpenRAG installation:
 
 ## Requirements authoring phase
 First, create or update `requirements.md` using the official OpenRAG installation documentation:
-- Use `https://docs.openr.ag/install-options` as the source of truth
+- Use `https://www.openr.ag/install-options` as the source of truth
 - Do not hallucinate implementation details that are not supported by the documentation or the local environment
 - Prioritize the minimal installation path and the fewest necessary steps
 - Organize requirements into logical categories

@@ -642,7 +642,7 @@ INGEST_SAMPLE_DATA = os.getenv("INGEST_SAMPLE_DATA", "true").lower() in ("true",
 # - "files": ingest files from the openrag-documents directory
 
 DEFAULT_DOCS_INGEST_SOURCE = os.getenv("DEFAULT_DOCS_INGEST_SOURCE", "url").lower()
-DEFAULT_DOCS_URL = os.getenv("DEFAULT_DOCS_URL", "https://docs.openr.ag/")
+DEFAULT_DOCS_URL = os.getenv("DEFAULT_DOCS_URL", "https://www.openr.ag/docs/")
 # TODO: Enable this when the flow is updated to use the new variables
 
 DEFAULT_DOCS_CRAWL_DEPTH = get_env_int("DEFAULT_DOCS_CRAWL_DEPTH", 2)

@@ -55,14 +55,14 @@ jobs:
         working-directory: docs
         run: npm run build
         env:
-          SITE_URL: ${{ vars.PAGES_SITE_URL || 'https://docs.openr.ag' }}
+          SITE_URL: ${{ vars.PAGES_SITE_URL || 'https://www.openr.ag' }}
 
       - name: Build website
         working-directory: website
         run: npm run build
         env:
           PAGES_BASE_PATH: /
-          SITE_URL: ${{ vars.PAGES_SITE_URL || 'https://docs.openr.ag' }}
+          SITE_URL: ${{ vars.PAGES_SITE_URL || 'https://www.openr.ag' }}
 
       - name: Merge Pages artifact
         run: node scripts/merge-pages.mjs docs/build website/out pages-out
@@ -102,4 +102,4 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: pages-out
           force_orphan: true
-          cname: ${{ vars.PAGES_CNAME || 'docs.openr.ag' }}
+          cname: ${{ vars.PAGES_CNAME || 'www.openr.ag' }}

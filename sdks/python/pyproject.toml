@@ -40,7 +40,7 @@ dev = [
 
 [project.urls]
 Homepage = "https://github.com/langflow-ai/openrag"
-Documentation = "https://docs.openr.ag/sdk/python"
+Documentation = "https://www.openr.ag/reference/api-sdk-overview"
 Repository = "https://github.com/langflow-ai/openrag"
 Issues = "https://github.com/langflow-ai/openrag/issues"
 
@@ -62,4 +62,3 @@ select = ["E", "F", "I", "UP"]
 [tool.mypy]
 python_version = "3.10"
 strict = true
-

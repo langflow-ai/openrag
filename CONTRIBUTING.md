@@ -60,7 +60,7 @@ OpenRAG is a monorepo. Here's the shape of it and where to look depending on wha
 | **TypeScript SDK** | `sdks/typescript/` | `openrag-sdk` on npm — same API surface as the Python SDK, for JS/TS apps. See `sdks/typescript/README.md`. |
 | **MCP** | built into the backend, docs in `sdks/mcp/` | OpenRAG exposes a [Model Context Protocol](https://modelcontextprotocol.io/) server over streamable HTTP at `/mcp` (no separate process to run). Any MCP client (Cursor, Claude Desktop, etc.) can connect using an OpenRAG API key. The old standalone `openrag-mcp` PyPI package is deprecated — use the built-in endpoint instead. |
 | **Flows** | `flows/` | Langflow flow JSON definitions (ingestion, retrieval, agents) that ship with OpenRAG. |
-| **Docs** | `docs/` | The docs site source (published to [docs.openr.ag](https://docs.openr.ag)). |
+| **Docs** | `docs/` | The docs site source (published to [www.openr.ag/docs](https://www.openr.ag/docs/)). |
 | **Kubernetes operator** | `kubernetes/operator/` | Go operator for running OpenRAG on Kubernetes; see `kubernetes/operator/README.md`. |
 
 If you're a first-time contributor, the [Development Workflows](#development-workflows) section below is the fastest way to get all of these running locally.
@@ -168,7 +168,7 @@ You should see: `All required tools are installed.`
 
    If `LANGFLOW_SUPERUSER_PASSWORD` isn't set, then the Langflow instance starts without authentication enabled.
 
-   For more information, see the [OpenRAG environment variables reference](https://docs.openr.ag/reference/configuration).
+   For more information, see the [OpenRAG environment variables reference](https://www.openr.ag/reference/configuration).
 
 3. Start OpenRAG using one of the options described in the next section.
     ```bash
@@ -503,14 +503,14 @@ If you want to propose your changes to the OpenRAG maintainers, make sure your c
 1. **Fork and Branch**: Create a feature branch from `main`
 2. **Test**: Ensure tests pass with `make test` and `make lint`
 3. **Document**: Update relevant documentation.
-To build and test documentation changes, see [Contribute OpenRAG documentation](https://docs.openr.ag/support/contribute#contribute-documentation).
+To build and test documentation changes, see [Contribute OpenRAG documentation](https://www.openr.ag/support/contribute#contribute-documentation).
 4. **Commit**: Use clear, descriptive commit messages
 5. **PR Description**: Explain changes and include testing instructions
 
 > [!IMPORTANT]
 > All PRs must pass CI tests before merging.
 
-For more information and suggestions for successful contributions, see [Contribute to OpenRAG](https://docs.openr.ag/support/contribute#contribute-to-the-codebase).
+For more information and suggestions for successful contributions, see [Contribute to OpenRAG](https://www.openr.ag/support/contribute#contribute-to-the-codebase).
 
 
 Thank you for contributing to OpenRAG! 🚀

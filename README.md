@@ -18,7 +18,7 @@
 [![GitHub stars](https://img.shields.io/github/stars/langflow-ai/openrag?style=social)](https://github.com/langflow-ai/openrag/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/langflow-ai/openrag?style=social)](https://github.com/langflow-ai/openrag/network/members)
 
-[![Documentation](https://img.shields.io/badge/Documentation-773eff)](https://docs.openr.ag) [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/langflow-ai/openrag)
+[![Documentation](https://img.shields.io/badge/Documentation-773eff)](https://www.openr.ag/docs/) [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/langflow-ai/openrag)
 
 </div>
 
@@ -28,7 +28,7 @@ OpenRAG is a comprehensive Retrieval-Augmented Generation platform that enables 
 
 Users can upload, process, and query documents through a chat interface backed by large language models and semantic search capabilities. The system utilizes Langflow for document ingestion, retrieval workflows, and intelligent nudges, providing a seamless RAG experience.
 
-Check out the [documentation](https://docs.openr.ag/) or get started with the [quickstart](https://docs.openr.ag/quickstart).
+Check out the [documentation](https://www.openr.ag/docs/) or get started with the [quickstart](https://www.openr.ag/quickstart).
 
 Built with [FastAPI](https://fastapi.tiangolo.com/) and [Next.js](https://github.com/vercel/next.js). 
 Powered by [OpenSearch](https://github.com/opensearch-project/OpenSearch), [Langflow](https://github.com/langflow-ai/langflow), and [Docling](https://github.com/docling-project/docling).
@@ -60,9 +60,9 @@ OpenRAG follows a streamlined workflow to transform your documents into intellig
 
 To get started with OpenRAG, see the installation guides in the OpenRAG documentation:
 
-* [Quickstart](https://docs.openr.ag/quickstart)
-* [Install the OpenRAG Python package](https://docs.openr.ag/install-options)
-* [Deploy self-managed services with Docker or Podman](https://docs.openr.ag/docker)
+* [Quickstart](https://www.openr.ag/quickstart)
+* [Install the OpenRAG Python package](https://www.openr.ag/install-options)
+* [Deploy self-managed services with Docker or Podman](https://www.openr.ag/docker)
 
 ## ✨ Quick Start Workflow
 
@@ -155,10 +155,10 @@ The MCP server provides tools for RAG-enhanced chat, semantic search, document i
 
 ## 🛠️ Development
 
-For developers who want to [contribute to OpenRAG](https://docs.openr.ag/support/contribute) or set up a development environment, see [CONTRIBUTING.md](CONTRIBUTING.md).
+For developers who want to [contribute to OpenRAG](https://www.openr.ag/support/contribute) or set up a development environment, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## 🛟 Troubleshooting
 
-For assistance with OpenRAG, see [Troubleshoot OpenRAG](https://docs.openr.ag/support/troubleshoot) and visit the [Discussions page](https://github.com/langflow-ai/openrag/discussions).
+For assistance with OpenRAG, see [Troubleshoot OpenRAG](https://www.openr.ag/support/troubleshoot) and visit the [Discussions page](https://github.com/langflow-ai/openrag/discussions).
 
 To report a bug or submit a feature request, visit the [Issues page](https://github.com/langflow-ai/openrag/issues).

@@ -42,7 +42,7 @@
     "type": "git",
     "url": "https://github.com/langflow-ai/openrag"
   },
-  "homepage": "https://docs.openr.ag/sdk/typescript",
+  "homepage": "https://www.openr.ag/reference/api-sdk-overview",
   "bugs": {
     "url": "https://github.com/langflow-ai/openrag/issues"
   },
@@ -61,4 +61,3 @@
     "node": ">=18.0.0"
   }
 }
-

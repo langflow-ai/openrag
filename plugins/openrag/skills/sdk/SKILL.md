@@ -976,7 +976,7 @@ Before considering integration complete:
 - **TypeScript SDK:** https://libraries.io/npm/openrag-sdk
 - **MCP Server:** https://pypi.org/project/openrag-mcp/
 - **GitHub Repository:** https://github.com/langflow-ai/openrag/tree/main/sdks
-- **Official Documentation:** https://docs.openr.ag
+- **Official Documentation:** https://www.openr.ag/docs/
 
 ## Collaboration style
 

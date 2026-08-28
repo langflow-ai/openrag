@@ -59,6 +59,6 @@ There are no known vulnerabilities exclusive to the OpenRAG application at this 
 
 It is recommended that you set a Langflow password (`LANGFLOW_SUPERUSER_PASSWORD`) so the Langflow server starts with authentication enabled and the `langflow superuser` command disabled.
 
-You can set this password when you install OpenRAG, or you can [edit the OpenRAG `.env` file and redeploy the OpenRAG containers](https://docs.openr.ag/reference/configuration#set-environment-variables).
+You can set this password when you install OpenRAG, or you can [edit the OpenRAG `.env` file and redeploy the OpenRAG containers](https://www.openr.ag/reference/configuration#set-environment-variables).
 
-For more information, see [OpenRAG's Langflow settings reference](https://docs.openr.ag/reference/configuration#langflow-settings).
+For more information, see [OpenRAG's Langflow settings reference](https://www.openr.ag/reference/configuration#langflow-settings).

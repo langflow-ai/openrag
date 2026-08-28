@@ -33,7 +33,7 @@ Docusaurus project in `docs/`, merges both static exports, and publishes one
 GitHub Pages artifact. The landing site owns `/`; documentation
 keeps its existing routes, with its homepage at `/docs/`.
 
-The deployment defaults to `docs.openr.ag`. Set the repository variables
+The deployment defaults to `www.openr.ag`. Set the repository variables
 `PAGES_CNAME=www.openr.ag` and `PAGES_SITE_URL=https://www.openr.ag` for the
 final hostname cutover. Until `PAGES_CNAME` is explicitly set, CI validates the
 merged artifact but deploys the original docs-only build, keeping the live docs
