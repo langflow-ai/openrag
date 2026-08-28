@@ -147,15 +147,12 @@ def extract_relevant(doc_dict: dict) -> dict:
             for ann in picture.get("annotations", [])
             if ann.get("kind") == "description" and ann.get("text", "").strip()
         ]
-        if not descriptions:
-            continue
-
         chunks.append(
             {
                 "page": page_no,
                 "type": "picture",
                 "picture_index": p_idx,
-                "text": "\n".join(descriptions),
+                "text": "\n".join(descriptions) if descriptions else "<!-- image -->",
             }
         )
 

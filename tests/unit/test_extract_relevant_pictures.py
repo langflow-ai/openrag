@@ -45,8 +45,8 @@ def test_multiple_descriptions_joined():
     assert chunk["page"] == 3
 
 
-def test_classification_only_annotation_is_skipped():
-    """Non-description annotations (e.g. classification) carry no caption text."""
+def test_classification_only_annotation_yields_placeholder():
+    """Non-description annotations (e.g. classification) produce an image placeholder."""
     doc = {
         "origin": {},
         "pictures": [
@@ -62,10 +62,13 @@ def test_classification_only_annotation_is_skipped():
             }
         ],
     }
-    assert extract_relevant(doc)["chunks"] == []
+    chunks = extract_relevant(doc)["chunks"]
+    assert len(chunks) == 1
+    assert chunks[0]["text"] == "<!-- image -->"
+    assert chunks[0]["page"] == 1
 
 
-def test_empty_or_whitespace_description_skipped():
+def test_empty_or_whitespace_description_yields_placeholder():
     doc = {
         "origin": {},
         "pictures": [
@@ -73,7 +76,12 @@ def test_empty_or_whitespace_description_skipped():
             {"prov": [{"page_no": 2}], "annotations": []},
         ],
     }
-    assert extract_relevant(doc)["chunks"] == []
+    chunks = extract_relevant(doc)["chunks"]
+    assert len(chunks) == 2
+    assert chunks[0]["text"] == "<!-- image -->"
+    assert chunks[0]["page"] == 1
+    assert chunks[1]["text"] == "<!-- image -->"
+    assert chunks[1]["page"] == 2
 
 
 def test_missing_prov_defaults_to_page_one():
