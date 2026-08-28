@@ -17,7 +17,6 @@ from api.settings.helpers import (
     _LLM_PROVIDER_NAMES,
     _configured_provider_names,
     _get_flows_service,
-    _is_langflow_embedding_provider,
 )
 from config import settings
 from config.settings import clients, get_openrag_config
