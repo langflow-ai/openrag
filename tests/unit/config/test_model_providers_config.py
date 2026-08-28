@@ -169,7 +169,9 @@ providers:
         ),
     )
     monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
-    assert model_providers.visible_provider_entries() == (("openai", "First", (), ()),)
+    assert model_providers.visible_provider_entries() == (
+        model_providers.ProviderEntry("openai", "First", (), (), ()),
+    )
 
 
 def test_a_non_boolean_mode_value_hides_rather_than_shows(monkeypatch, tmp_path):
@@ -198,7 +200,9 @@ def test_display_name_falls_back_to_the_provider_name(monkeypatch, tmp_path):
         _write(tmp_path, "providers:\n  - name: groq\n    modes:\n      oss: true\n"),
     )
     monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
-    assert model_providers.visible_provider_entries() == (("groq", "groq", (), ()),)
+    assert model_providers.visible_provider_entries() == (
+        model_providers.ProviderEntry("groq", "groq", (), (), ()),
+    )
 
 
 def test_an_unreadable_override_falls_back_to_the_shipped_file(monkeypatch, tmp_path):
@@ -247,11 +251,12 @@ providers:
     monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
 
     assert model_providers.visible_provider_entries() == (
-        (
+        model_providers.ProviderEntry(
             "openai_like",
             "Internal Gateway",
             ("llama-3.3-70b", "qwen2.5-coder-32b"),
             ("bge-m3",),
+            (),
         ),
     )
 
@@ -265,4 +270,43 @@ def test_a_row_that_declares_no_models_reports_empty_tuples(monkeypatch, tmp_pat
         ),
     )
     monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
-    assert model_providers.visible_provider_entries() == (("openai", "openai", (), ()),)
+    assert model_providers.visible_provider_entries() == (
+        model_providers.ProviderEntry("openai", "openai", (), (), ()),
+    )
+
+
+def test_a_row_can_exclude_models_by_pattern(monkeypatch, tmp_path):
+    monkeypatch.setenv(
+        model_providers.CONFIG_PATH_ENV,
+        _write(
+            tmp_path,
+            """
+providers:
+  - name: openai
+    modes:
+      oss: true
+    exclude_models:
+      - GPT-3.5-*
+      - gpt-4-0613
+""",
+        ),
+    )
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+
+    entry = model_providers.visible_provider_entries()[0]
+    # Lowercased on the way in, so a pattern typed in any case still matches.
+    assert entry.exclude_models == ("gpt-3.5-*", "gpt-4-0613")
+
+
+def test_exclusions_default_to_none_and_ignore_a_non_list(monkeypatch, tmp_path):
+    monkeypatch.setenv(
+        model_providers.CONFIG_PATH_ENV,
+        _write(
+            tmp_path,
+            "providers:\n  - name: openai\n    modes:\n      oss: true\n"
+            "    exclude_models: gpt-3.5-turbo\n",
+        ),
+    )
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+
+    assert model_providers.visible_provider_entries()[0].exclude_models == ()

@@ -112,6 +112,32 @@ afterwards to pick up the new list.
 |----------|---------|-------------|
 | `OPENRAG_MODEL_PROVIDERS_CONFIG` | Not set | Path to a YAML file that replaces the shipped `model_providers.yaml`. If the file cannot be read, the shipped list is used. |
 
+#### Hide specific models {#exclude-models}
+
+A row can also keep ids out of the pickers. `*` and `?` wildcards work, and
+matching is against the id as the picker shows it — `gpt-3.5-turbo`, not
+`openai/gpt-3.5-turbo`.
+
+```yaml
+  - name: openai
+    display_name: OpenAI
+    modes:
+      oss: true
+    exclude_models:
+      - gpt-3.5-*      # a whole generation
+      - gpt-5.6-luna   # one model
+```
+
+Exclusion is applied last, so it also overrides a `models` entry on the same
+provider. Two other mechanisms already run without configuration, so reach for
+`exclude_models` only when neither covers you:
+
+| Situation | Handled by |
+|---|---|
+| The provider has already retired the model | Dropped from the catalogue automatically |
+| The provider has announced a retirement within 90 days | Hidden behind a **Show N retiring** row in the picker |
+| This deployment does not want the model offered at all | `exclude_models` |
+
 Credentials for a provider without a purpose-built form — Azure AI Foundry
 today — are entered in **Settings** through a form built from the provider's own
 credential fields. Configuring one needs no code change beyond its row in this
