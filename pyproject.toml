@@ -70,6 +70,18 @@ dependencies = [
     "cachetools>=5.5.0",
 ]
 
+# Optional extras. Install with `uv sync --extra <name>`.
+[project.optional-dependencies]
+# IBM Instana APM tracer. Optional because the feature is opt-in at runtime
+# (INSTANA_ENABLED, default false) and the tracer monkey-patches httpx,
+# opensearch-py, sqlalchemy, starlette, fastapi, and logging at import time —
+# not something to install on every OSS deployment that will never enable it.
+# The upper bound is deliberate for the same reason: a major release of a
+# library that rewrites the runtime behaviour of the whole HTTP/DB stack should
+# be adopted explicitly, not resolved into an install.
+# src/main.py imports it defensively, so its absence downgrades to a warning.
+apm = ["instana>=3.17.0,<4"]
+
 [dependency-groups]
 dev = [
     "pytest>=9.0.3",
