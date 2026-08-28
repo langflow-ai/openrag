@@ -1037,3 +1037,58 @@ async def test_stream_sse_reports_a_stream_that_never_yielded_a_chunk():
 
     error = json.loads(lines[-2][len("data: ") :])["error"]
     assert "no content and no tool calls" in error["message"]
+
+
+class TestRealFailuresReachTheBanner:
+    """What the caller is told and what the banner shows must be the same text.
+
+    The health probe issues its own request and so hits its own error. Recording
+    the gateway's actual failure is what lets the banner report the one the
+    user's traffic produced.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _clean(self):
+        from services import provider_error_log
+
+        provider_error_log.clear()
+        yield
+        provider_error_log.clear()
+
+    @pytest.mark.asyncio
+    async def test_a_failed_completion_is_recorded_verbatim(self, monkeypatch):
+        from services import llm_gateway, provider_error_log
+
+        monkeypatch.setattr(
+            llm_gateway, "resolve_call", lambda *a, **k: ("gpt-5.6-luna", "openai", {})
+        )
+
+        async def _boom(**_kwargs):
+            raise RuntimeError(
+                '{"error": {"message": "Function tools with reasoning_effort are not supported"}}'
+            )
+
+        monkeypatch.setattr("litellm.acompletion", _boom)
+
+        with pytest.raises(llm_gateway.LlmGatewayError) as raised:
+            await llm_gateway.chat_completions({"model": "gpt-5.6-luna", "messages": []})
+
+        recorded = provider_error_log.latest_failure("openai", "chat")
+        assert recorded == str(raised.value)
+        assert "reasoning_effort" in recorded
+
+    @pytest.mark.asyncio
+    async def test_a_later_success_clears_the_record(self, monkeypatch):
+        from services import llm_gateway, provider_error_log
+
+        provider_error_log.record_failure("openai", "chat", "stale failure")
+        monkeypatch.setattr(llm_gateway, "resolve_call", lambda *a, **k: ("gpt-4o", "openai", {}))
+
+        async def _ok(**_kwargs):
+            return {"choices": [{"message": {"content": "hi"}}]}
+
+        monkeypatch.setattr("litellm.acompletion", _ok)
+
+        await llm_gateway.chat_completions({"model": "gpt-4o", "messages": []})
+
+        assert provider_error_log.latest_failure("openai", "chat") is None

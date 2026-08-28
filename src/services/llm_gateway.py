@@ -12,6 +12,7 @@ import re
 from collections.abc import AsyncIterator, Mapping
 from typing import Any, Literal
 
+from services import provider_error_log
 from services.model_catalog import is_known_provider
 from utils.logging_config import get_logger
 
@@ -536,14 +537,22 @@ async def chat_completions(
         logger.error(
             "LLM chat completions failed", provider=provider, model=litellm_model, error=detail
         )
+        message = _upstream_client_message(detail, provider, litellm_model, exc)
+        # The health banner otherwise reports whatever its own probe hit, which
+        # is a different request and so often a different error. Hand it the
+        # text this caller is being shown.
+        provider_error_log.record_failure(provider, "chat", message)
         raise LlmGatewayError(
-            _upstream_client_message(detail, provider, litellm_model, exc),
+            message,
             _upstream_status_code(exc),
             detail=detail,
         ) from exc
 
     if stream:
+        # A stream can still fail mid-flight, so _stream_sse clears the record
+        # itself once the provider has actually delivered something.
         return _stream_sse(result, provider, litellm_model, credentials)
+    provider_error_log.record_success(provider, "chat")
     payload = _to_openai_dict(result)
     _repair_completion_payload(payload, provider, litellm_model)
     _log_completion_shape(payload, provider, litellm_model)
@@ -797,6 +806,9 @@ async def _stream_sse(
         # the next person has something to search for.
         if tally.content_chars == 0 and tally.tool_calls == 0:
             tally.error = "empty completion"
+            provider_error_log.record_failure(
+                provider, "chat", _empty_stream_message(provider, model, tally.finish_reason)
+            )
             logger.warning(
                 "LLM chat stream produced no content and no tool calls",
                 provider=provider,
@@ -807,6 +819,10 @@ async def _stream_sse(
             yield _error_frame(
                 _empty_stream_message(provider, model, tally.finish_reason), provider, model
             )
+        else:
+            # Content actually reached the client, so whatever the banner was
+            # holding against this provider is no longer true.
+            provider_error_log.record_success(provider, "chat")
     except Exception as exc:
         # Mid-stream failures used to surface as a truncated stream, which the
         # UI could only report as "the server didn't return a response". Emit an
@@ -815,7 +831,9 @@ async def _stream_sse(
         detail = _redact(f"{type(exc).__name__}: {exc}", credentials or {})
         tally.error = detail
         logger.error("LLM chat stream failed", provider=provider, model=model, error=detail)
-        yield _error_frame(_upstream_client_message(detail, provider, model, exc), provider, model)
+        message = _upstream_client_message(detail, provider, model, exc)
+        provider_error_log.record_failure(provider, "chat", message)
+        yield _error_frame(message, provider, model)
     finally:
         close = getattr(stream, "aclose", None) or getattr(stream, "close", None)
         if close is not None:
@@ -866,9 +884,12 @@ async def embeddings(body: Mapping[str, Any], *, config=None) -> dict[str, Any]:
     except Exception as exc:
         detail = _redact(f"{type(exc).__name__}: {exc}", credentials)
         logger.error("LLM embeddings failed", provider=provider, model=litellm_model, error=detail)
+        message = _upstream_client_message(detail, provider, litellm_model, exc)
+        provider_error_log.record_failure(provider, "embedding", message)
         raise LlmGatewayError(
-            _upstream_client_message(detail, provider, litellm_model, exc),
+            message,
             _upstream_status_code(exc),
             detail=detail,
         ) from exc
+    provider_error_log.record_success(provider, "embedding")
     return _to_openai_dict(result)
