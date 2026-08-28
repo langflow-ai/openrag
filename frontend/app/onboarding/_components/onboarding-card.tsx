@@ -574,7 +574,7 @@ const OnboardingCard = ({
           exit={{ opacity: 0, y: 24 }}
           transition={{ duration: 0.4, ease: "easeInOut" }}
         >
-          <div className={`w-full max-w-[600px] flex flex-col`}>
+          <div className={`w-full  flex flex-col`}>
             <AnimatePresence mode="wait">
               {error && (
                 <motion.div
@@ -599,7 +599,7 @@ const OnboardingCard = ({
                 value={modelProvider}
                 onValueChange={handleSetModelProvider}
               >
-                <TabsList className="mb-4">
+                <TabsList className="mb-1 pb-3 w-full justify-start gap-1 overflow-x-auto">
                   {tabProviders.map((providerKey) => {
                     const chrome = getProviderChrome(
                       providerKey,
@@ -616,6 +616,7 @@ const OnboardingCard = ({
                           error &&
                             selected &&
                             "data-[state=active]:border-destructive",
+                          "min-w-40",
                         )}
                       >
                         <TabTrigger
