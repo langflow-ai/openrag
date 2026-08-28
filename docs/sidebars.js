@@ -76,6 +76,11 @@ const sidebars = {
     "reference/configuration",
     {
       type: "doc",
+      id: "reference/observability",
+      label: "Monitor with IBM Instana",
+    },
+    {
+      type: "doc",
       id: "reference/api-sdk-overview",
       label: "SDK and MCP API references",
     },

@@ -159,6 +159,45 @@ func NewEnvVarManager() *EnvVarManager {
 			"AZURE_STORAGE_ACCOUNT_NAME":      "",
 			"AZURE_STORAGE_ACCOUNT_KEY":       "",
 			"AZURE_STORAGE_ENDPOINT":          "",
+
+			// Instana APM (opt-in, default off). Requires an Instana agent
+			// DaemonSet already running in the cluster; the operator never
+			// deploys one — that is the cluster admin's responsibility.
+			//
+			// INSTANA_AGENT_HOST is intentionally omitted: it is the pod's own
+			// node IP, which cannot be known when the .env file is rendered. It
+			// is injected through the Downward API instead — see
+			// InstanaAgentHostEnvVar.
+			//
+			// INSTANA_SERVICE_NAME / INSTANA_LOG_LEVEL / INSTANA_ZONE are also
+			// intentionally omitted: the tracer tests those for *presence*, not
+			// truthiness, and BuildEnvFileContent writes an empty default as
+			// `KEY=`. That would set a blank service name and log an "Unknown
+			// INSTANA_LOG_LEVEL" warning on every boot. Set them via spec.env.
+			//
+			// INSTANA_TRACING_DISABLE / INSTANA_STACK_TRACE are performance
+			// guardrails, so unlike the vars above they carry a real default
+			// instead of being omitted. The tracer's own defaults are costly on
+			// a long-running backend: logging spans leak an event per in-trace
+			// WARNING/ERROR into a list shared by all spans (never freed, and
+			// re-walked by each new log span), and stack_trace=all captures a
+			// full Python traceback on every httpx / urllib3 / sqlalchemy exit
+			// span. See the INSTANA_* block in .env.example for the numbers.
+			// Override via spec.env to reproduce the upstream behaviour.
+			//
+			// INSTANA_SECRETS carries a real default for a different reason:
+			// privacy, not performance. The tracer's own default
+			// (contains-ignore-case:key,pass,secret) only redacts
+			// credential-shaped query-parameter names, so OpenRAG's free-text
+			// search parameters (`q`, `search`, `filename` on
+			// GET /v2/files/search and file listing) would otherwise be
+			// exported to the Instana tenant verbatim. Override via spec.env
+			// to reproduce that exposure.
+			"INSTANA_ENABLED":         "false",
+			"INSTANA_AGENT_PORT":      "42699",
+			"INSTANA_TRACING_DISABLE": "logging",
+			"INSTANA_STACK_TRACE":     "error",
+			"INSTANA_SECRETS":         `regex:.*key.*,.*pass.*,.*secret.*,.*token.*,q\Z,search\Z,filename\Z`,
 		},
 		DefaultOpenRagFEEnvVars: map[string]string{
 			// Frontend environment variables will be added here
@@ -315,6 +354,58 @@ func resolveEnvVarValue(ctx context.Context, c client.Client, namespace string, 
 
 	// no supported valueFrom type found
 	return "", false, nil
+}
+
+// instanaAgentHostVar is the one backend variable that cannot live in the .env file.
+const instanaAgentHostVar = "INSTANA_AGENT_HOST"
+
+// InstanaAgentHostEnvVar returns the container-level env var that points the
+// Instana tracer at the agent serving the pod's own node, or nil when it should
+// not be injected.
+//
+// Every other backend variable is resolved into the mounted .env file (see
+// mergeEnvVars). Instana is the exception: its Kubernetes topology is one agent
+// per node behind a hostPort, so the agent address is the *node IP* — a value
+// that does not exist when the .env file is rendered at reconcile time. That is
+// also why spec.env rejects fieldRef (resolveEnvVarValue): there is no pod yet.
+// So this single variable is injected through the Downward API on the container.
+//
+// The backend's bootstrap loads .env with override=False, so a real container
+// env var wins over the file — which is what makes this layering work.
+//
+// backendEnv must be the *resolved* backend environment — the map GetBackendEnvVars
+// returns, in which secretKeyRef/configMapKeyRef entries have already been read
+// from the cluster. That is what the backend will actually see in its .env, so
+// deciding from anything else lets the two disagree: a Secret-backed
+// INSTANA_ENABLED=true would boot the tracer with no agent host, and a
+// Secret-backed explicit host would be silently overridden by the fieldRef below.
+//
+// Returns nil when Instana is disabled, or when an explicit host was configured
+// through any of the three levels, in which case that value stands.
+func (m *EnvVarManager) InstanaAgentHostEnvVar(backendEnv map[string]string) *corev1.EnvVar {
+	if !isTruthyEnvValue(backendEnv["INSTANA_ENABLED"]) {
+		return nil
+	}
+	if backendEnv[instanaAgentHostVar] != "" {
+		return nil
+	}
+	return &corev1.EnvVar{
+		Name: instanaAgentHostVar,
+		ValueFrom: &corev1.EnvVarSource{
+			FieldRef: &corev1.ObjectFieldSelector{FieldPath: "status.hostIP"},
+		},
+	}
+}
+
+// isTruthyEnvValue mirrors the backend's own gate in src/main.py, so the
+// operator and the application agree on what "enabled" means.
+func isTruthyEnvValue(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "true", "1", "yes":
+		return true
+	default:
+		return false
+	}
 }
 
 // BuildEnvFileContent converts a map of env vars to .env file format.

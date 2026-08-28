@@ -63,7 +63,7 @@ providers:
   # gateway). Use one of LiteLLM's passthrough provider keys — `openai_like`,
   # `hosted_vllm`, `lm_studio`, `llamafile`, `custom_openai` — rather than
   # inventing a name: the key has to be one LiteLLM can route, or the
-  # `provider/model` ids it publishes resolve to the default provider and get
+  # `provider:model` ids it publishes resolve to the default provider and get
   # called with the wrong credentials. The endpoint and key are entered in
   # Settings; only the model ids belong here.
   #

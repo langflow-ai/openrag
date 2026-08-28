@@ -1,5 +1,6 @@
 """LLM gateway: route OpenAI-shaped requests through LiteLLM using OpenRAG config."""
 
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -216,7 +217,12 @@ async def test_chat_completions_keeps_upstream_internals_out_of_client_message(m
         await chat_completions({"model": "gpt-4o-mini", "messages": []}, config=_config())
 
     assert exc.value.status_code == 502
-    assert exc.value.message == "The model provider could not be reached. Please try again."
+    # A RuntimeError from our own code is not the provider's to explain, so the
+    # message collapses to the fixed literal — only the failing call is named.
+    assert exc.value.message.startswith(
+        "The model provider could not be reached. Please try again."
+    )
+    assert "openai/gpt-4o-mini" in exc.value.message
     for leak in ("RuntimeError", "Traceback", "/srv/app", "10.0.0.5"):
         assert leak not in exc.value.message
     # Operators still get the full picture in logs.
@@ -252,7 +258,11 @@ async def test_embeddings_keeps_upstream_internals_out_of_client_message(monkeyp
         await embeddings({"model": "text-embedding-3-small", "input": ["hi"]}, config=_config())
 
     assert exc.value.status_code == 502
-    assert exc.value.message == "The model provider could not be reached. Please try again."
+    assert exc.value.message.startswith(
+        "The model provider could not be reached. Please try again."
+    )
+    for leak in ("RuntimeError", "Traceback", "/srv/app", "10.0.0.5"):
+        assert leak not in exc.value.message
     assert "10.0.0.5" in exc.value.detail
 
 
@@ -473,3 +483,557 @@ def test_watsonx_rejects_params_we_forward_unless_they_are_dropped():
             **{param: value},
         )
         assert param not in dropped
+
+
+@pytest.mark.parametrize(
+    ("model_id", "expected"),
+    [
+        # Canonical tag. The name keeps its own slashes and colons.
+        ("watsonx:openai/gpt-oss-120b", ("watsonx", "openai/gpt-oss-120b")),
+        ("watsonx:ibm/granite-4-h-small", ("watsonx", "ibm/granite-4-h-small")),
+        ("ollama:gpt-oss:120b-cloud", ("ollama", "gpt-oss:120b-cloud")),
+        ("openai:ft:gpt-4-0613", ("openai", "ft:gpt-4-0613")),
+        # Legacy `provider/model` tags still resolve.
+        ("watsonx/ibm/granite-4-h-small", ("watsonx", "ibm/granite-4-h-small")),
+        ("anthropic/claude-sonnet-4-5", ("anthropic", "claude-sonnet-4-5")),
+        # Untagged ids are left to the configured default provider.
+        ("gpt-4o-mini", (None, "gpt-4o-mini")),
+        ("gpt-oss:120b-cloud", (None, "gpt-oss:120b-cloud")),
+        ("ft:gpt-4-0613", (None, "ft:gpt-4-0613")),
+    ],
+)
+def test_split_model_id_handles_tagged_and_untagged_ids(model_id, expected):
+    from services.llm_gateway import split_model_id
+
+    assert split_model_id(model_id) == expected
+
+
+def test_a_vendor_qualified_name_is_not_mistaken_for_a_provider_tag():
+    """watsonx serves `openai/gpt-oss-120b`; the `openai/` is part of the name.
+
+    Splitting on the slash routed it to OpenAI as a bare `gpt-oss-120b`, which
+    LiteLLM rejects with "LLM Provider NOT provided", surfacing to the user as
+    "The model provider could not be reached."
+    """
+    from services.llm_gateway import split_model_id
+
+    assert split_model_id("openai/gpt-oss-120b") == ("watsonx", "openai/gpt-oss-120b")
+
+
+def test_model_ids_served_by_v1_models_round_trip():
+    """Every id `/v1/models` publishes must resolve back to its owner."""
+    from services.llm_gateway import split_model_id
+    from services.model_catalog import openai_models_list
+
+    for row in openai_models_list()["data"]:
+        provider, _name = split_model_id(row["id"])
+        if row["owned_by"] == "openai":
+            continue
+        assert provider == row["owned_by"], row
+
+
+def test_no_catalogue_id_has_a_provider_shaped_prefix_before_a_colon():
+    """The property that makes `:` a safe separator.
+
+    If a future model id breaks this, `provider:model` becomes ambiguous the
+    same way `provider/model` already is.
+    """
+    from services.model_catalog import PROVIDER_SEPARATOR_SAFE_CHECK
+
+    ambiguous = PROVIDER_SEPARATOR_SAFE_CHECK()
+    assert ambiguous == [], f"colon-ambiguous catalogue ids: {ambiguous}"
+
+
+# --------------------------------------------------------------------------
+# Tool-call arguments that arrive serialised twice
+# --------------------------------------------------------------------------
+
+#: What `watsonx/ibm/granite-4-h-small` actually sends: the arguments object,
+#: serialised, then serialised again. Captured from a live call.
+_DOUBLE_ENCODED_ARGUMENTS = '"{\\n  \\"query\\": \\"Earned Leaves\\"\\n}"'
+_WELL_FORMED_ARGUMENTS = '{"query": "Earned Leaves"}'
+
+
+def test_normalise_tool_arguments_unwraps_a_double_encoded_payload():
+    from services.llm_gateway import _normalise_tool_arguments
+
+    arguments, repaired = _normalise_tool_arguments(_DOUBLE_ENCODED_ARGUMENTS)
+
+    assert repaired is True
+    assert json.loads(arguments) == {"query": "Earned Leaves"}
+
+
+def test_normalise_tool_arguments_leaves_well_formed_payloads_untouched():
+    from services.llm_gateway import _normalise_tool_arguments
+
+    for payload in (_WELL_FORMED_ARGUMENTS, "{}", '   {"a": 1}', "not json", "", None):
+        assert _normalise_tool_arguments(payload) == (payload, False)
+
+
+def test_normalise_tool_arguments_serialises_a_mapping():
+    """Some providers send the object itself; OpenAI clients parse a string."""
+    from services.llm_gateway import _normalise_tool_arguments
+
+    arguments, repaired = _normalise_tool_arguments({"query": "x"})
+    assert repaired is True
+    assert json.loads(arguments) == {"query": "x"}
+
+
+def test_normalise_tool_arguments_refuses_a_quoted_scalar():
+    """`"hello"` is a string, not an arguments object — leave it for the client."""
+    from services.llm_gateway import _normalise_tool_arguments
+
+    assert _normalise_tool_arguments('"hello"') == ('"hello"', False)
+
+
+@pytest.mark.asyncio
+async def test_chat_completions_repairs_double_encoded_tool_arguments(monkeypatch):
+    """Non-streaming: the client must receive arguments it can parse into a mapping."""
+
+    async def fake(**kwargs):
+        return {
+            "choices": [
+                {
+                    "finish_reason": "tool_calls",
+                    "message": {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": "call_1",
+                                "type": "function",
+                                "function": {
+                                    "name": "search_documents",
+                                    "arguments": _DOUBLE_ENCODED_ARGUMENTS,
+                                },
+                            }
+                        ],
+                    },
+                }
+            ]
+        }
+
+    monkeypatch.setattr("litellm.acompletion", fake)
+    payload = await chat_completions(
+        {"model": "watsonx:ibm/granite-4-h-small", "messages": []}, config=_config()
+    )
+
+    arguments = payload["choices"][0]["message"]["tool_calls"][0]["function"]["arguments"]
+    assert json.loads(arguments) == {"query": "Earned Leaves"}
+
+
+def _tool_call_deltas(fragments, name="search_documents", call_id="call_1"):
+    """One chunk per fragment, the way a provider streams a tool call."""
+    chunks = [
+        {
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "role": "assistant",
+                        "content": "",
+                        "tool_calls": [
+                            {
+                                "id": call_id,
+                                "type": "function",
+                                "index": 0,
+                                "function": {"name": name, "arguments": ""},
+                            }
+                        ],
+                    },
+                    "finish_reason": None,
+                }
+            ]
+        }
+    ]
+    for fragment in fragments:
+        chunks.append(
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {
+                            "role": None,
+                            "content": "",
+                            "tool_calls": [
+                                {
+                                    "id": None,
+                                    "type": "function",
+                                    "index": 0,
+                                    "function": {"name": "", "arguments": fragment},
+                                }
+                            ],
+                        },
+                        "finish_reason": None,
+                    }
+                ]
+            }
+        )
+    chunks.append(
+        {"choices": [{"index": 0, "delta": {"content": None}, "finish_reason": "tool_calls"}]}
+    )
+    return chunks
+
+
+def _streamed_tool_calls(lines):
+    """Every tool call the gateway put on the wire, in order."""
+    calls = []
+    for line in lines:
+        if not line.startswith("data: ") or line.startswith("data: [DONE]"):
+            continue
+        for choice in json.loads(line[len("data: ") :]).get("choices") or []:
+            calls.extend((choice.get("delta") or {}).get("tool_calls") or [])
+    return calls
+
+
+@pytest.mark.asyncio
+async def test_stream_sse_reassembles_and_repairs_fragmented_tool_arguments():
+    """The granite-4 symptom: fragments only reveal the double encoding once joined."""
+    from services import llm_gateway
+
+    # Exactly how the model splits it on the wire.
+    fragments = [
+        '"{\\',
+        "n",
+        " ",
+        ' \\"',
+        "query",
+        '\\":',
+        ' \\"',
+        "Earned Leaves",
+        '\\"\\',
+        "n",
+        '}"',
+    ]
+
+    async def gen():
+        for chunk in _tool_call_deltas(fragments):
+            yield chunk
+
+    lines = [
+        line
+        async for line in llm_gateway._stream_sse(gen(), "watsonx", "watsonx/ibm/granite-4-h-small")
+    ]
+
+    calls = _streamed_tool_calls(lines)
+    assert len(calls) == 1, "fragments must be emitted as one complete tool call"
+    assert calls[0]["id"] == "call_1"
+    assert calls[0]["function"]["name"] == "search_documents"
+    assert json.loads(calls[0]["function"]["arguments"]) == {"query": "Earned Leaves"}
+    assert lines[-1] == "data: [DONE]\n\n"
+    # The finishing chunk still arrives, and after the tool call.
+    assert '"finish_reason": "tool_calls"' in lines[-2]
+
+
+@pytest.mark.asyncio
+async def test_stream_sse_leaves_a_well_formed_tool_call_intact():
+    """Reassembly must be lossless for providers that already behave."""
+    from services import llm_gateway
+
+    fragments = ['{"', "query", '": "', "Earned Leaves", '"}']
+
+    async def gen():
+        for chunk in _tool_call_deltas(fragments):
+            yield chunk
+
+    lines = [line async for line in llm_gateway._stream_sse(gen(), "openai", "gpt-4o-mini")]
+
+    calls = _streamed_tool_calls(lines)
+    assert len(calls) == 1
+    assert json.loads(calls[0]["function"]["arguments"]) == {"query": "Earned Leaves"}
+
+
+@pytest.mark.asyncio
+async def test_stream_sse_keeps_content_flowing_while_tool_calls_are_held():
+    """Buffering tool calls must not delay or drop streamed text."""
+    from services import llm_gateway
+
+    async def gen():
+        yield {"choices": [{"index": 0, "delta": {"content": "th"}}]}
+        yield {
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "content": "inking",
+                        "tool_calls": [
+                            {
+                                "id": "call_1",
+                                "index": 0,
+                                "type": "function",
+                                "function": {"name": "t", "arguments": "{}"},
+                            }
+                        ],
+                    },
+                }
+            ]
+        }
+        yield {"choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}
+
+    lines = [line async for line in llm_gateway._stream_sse(gen(), "openai", "gpt-4o-mini")]
+
+    text = "".join(
+        (choice.get("delta") or {}).get("content") or ""
+        for line in lines
+        if line.startswith("data: ") and not line.startswith("data: [DONE]")
+        for choice in json.loads(line[len("data: ") :]).get("choices") or []
+    )
+    assert text == "thinking"
+    assert len(_streamed_tool_calls(lines)) == 1
+
+
+@pytest.mark.asyncio
+async def test_stream_sse_flushes_tool_calls_when_the_provider_sends_no_finish_reason():
+    from services import llm_gateway
+
+    async def gen():
+        yield {
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "tool_calls": [
+                            {
+                                "id": "call_1",
+                                "index": 0,
+                                "type": "function",
+                                "function": {
+                                    "name": "search_documents",
+                                    "arguments": _DOUBLE_ENCODED_ARGUMENTS,
+                                },
+                            }
+                        ]
+                    },
+                }
+            ]
+        }
+
+    lines = [
+        line
+        async for line in llm_gateway._stream_sse(gen(), "watsonx", "watsonx/ibm/granite-4-h-small")
+    ]
+
+    calls = _streamed_tool_calls(lines)
+    assert len(calls) == 1
+    assert json.loads(calls[0]["function"]["arguments"]) == {"query": "Earned Leaves"}
+
+
+@pytest.mark.asyncio
+async def test_stream_sse_logs_the_repair(monkeypatch):
+    from services import llm_gateway
+
+    recorder = _RecordingLogger()
+    monkeypatch.setattr(llm_gateway, "logger", recorder)
+
+    async def gen():
+        for chunk in _tool_call_deltas(['"{\\', 'n \\"query\\": \\"x\\"\\', 'n}"']):
+            yield chunk
+
+    [
+        line
+        async for line in llm_gateway._stream_sse(gen(), "watsonx", "watsonx/ibm/granite-4-h-small")
+    ]
+
+    warnings = [call for call in recorder.calls if call[0] == "warning"]
+    assert any("Repaired double-encoded tool call arguments" in call[1] for call in warnings)
+    _level, _event, fields = next(call for call in warnings if "Repaired" in call[1])
+    assert fields["model"] == "watsonx/ibm/granite-4-h-small"
+    assert fields["tool_calls"] == 1
+
+
+# --------------------------------------------------------------------------
+# Surfacing the real upstream failure
+# --------------------------------------------------------------------------
+
+
+class _FakeLiteLLMError(Exception):
+    """Stands in for a LiteLLM exception: tagged with the provider it called."""
+
+    def __init__(self, message, status_code=400):
+        super().__init__(message)
+        self.llm_provider = "watsonx"
+        self.status_code = status_code
+
+
+@pytest.mark.asyncio
+async def test_chat_completions_surfaces_the_provider_error_body(monkeypatch):
+    """An operator must be able to read what the provider actually objected to."""
+
+    async def boom(**kwargs):
+        raise _FakeLiteLLMError(
+            'OpenAILikeError: {"errors":[{"code":"model_not_supported","message":'
+            "\"Model 'ibm/granite-3-3-8b-instruct' was not found. This model may be "
+            'unsupported, deprecated, or removed."}],"status_code":404}'
+        )
+
+    monkeypatch.setattr("litellm.acompletion", boom)
+    with pytest.raises(LlmGatewayError) as exc:
+        await chat_completions(
+            {"model": "watsonx:ibm/granite-3-3-8b-instruct", "messages": []}, config=_config()
+        )
+
+    assert "watsonx/ibm/granite-3-3-8b-instruct" in exc.value.message
+    assert "was not found" in exc.value.message
+    assert "OpenAILikeError" not in exc.value.message
+
+
+@pytest.mark.asyncio
+async def test_chat_completions_surfaces_a_litellm_exception_without_a_json_body(monkeypatch):
+    async def boom(**kwargs):
+        raise _FakeLiteLLMError("BadRequestError: tool_choice is not supported for this model")
+
+    monkeypatch.setattr("litellm.acompletion", boom)
+    with pytest.raises(LlmGatewayError) as exc:
+        await chat_completions({"model": "gpt-4o-mini", "messages": []}, config=_config())
+
+    assert "tool_choice is not supported" in exc.value.message
+
+
+@pytest.mark.asyncio
+async def test_chat_completions_passes_through_a_rate_limit_status(monkeypatch):
+    async def boom(**kwargs):
+        raise _FakeLiteLLMError("rate limit exceeded, retry in 30s", status_code=429)
+
+    monkeypatch.setattr("litellm.acompletion", boom)
+    with pytest.raises(LlmGatewayError) as exc:
+        await chat_completions({"model": "gpt-4o-mini", "messages": []}, config=_config())
+
+    assert exc.value.status_code == 429
+    assert "rate limit exceeded" in exc.value.message
+
+
+@pytest.mark.asyncio
+async def test_chat_completions_masks_an_upstream_4xx_as_a_gateway_failure(monkeypatch):
+    """An upstream 401 must not read to the client as an OpenRAG auth failure."""
+
+    async def boom(**kwargs):
+        raise _FakeLiteLLMError("model does not exist", status_code=404)
+
+    monkeypatch.setattr("litellm.acompletion", boom)
+    with pytest.raises(LlmGatewayError) as exc:
+        await chat_completions({"model": "gpt-4o-mini", "messages": []}, config=_config())
+
+    assert exc.value.status_code == 502
+
+
+def test_sanitise_upstream_detail_drops_interpreter_state():
+    from services.llm_gateway import _sanitise_upstream_detail
+
+    text = _sanitise_upstream_detail(
+        "ConnectError: connect to 10.0.0.5 failed\n"
+        'Traceback (most recent call last):\n  File "/srv/app/litellm/router.py", line 42'
+    )
+    for leak in ("Traceback", "/srv/app", "10.0.0.5"):
+        assert leak not in text
+    assert "connect to <host> failed" in text
+
+
+def test_sanitise_upstream_detail_caps_a_runaway_body():
+    from services import llm_gateway
+
+    text = llm_gateway._sanitise_upstream_detail("x" * 5000)
+    assert len(text) <= llm_gateway._MAX_UPSTREAM_MESSAGE_CHARS
+
+
+@pytest.mark.asyncio
+async def test_stream_sse_emits_an_error_frame_when_the_provider_fails_mid_stream():
+    """A truncated stream reads as "no response"; an error frame reads as the cause."""
+    from services import llm_gateway
+
+    async def gen():
+        yield {"choices": [{"index": 0, "delta": {"content": "par"}}]}
+        raise _FakeLiteLLMError('{"error":{"message":"context window exceeded"}}')
+
+    lines = [
+        line
+        async for line in llm_gateway._stream_sse(
+            gen(), "watsonx", "watsonx/ibm/granite-4-h-small", {"api_key": "wx-key"}
+        )
+    ]
+
+    assert lines[-1] == "data: [DONE]\n\n"
+    error = json.loads(lines[-2][len("data: ") :])["error"]
+    assert "context window exceeded" in error["message"]
+    assert error["provider"] == "watsonx"
+    assert error["model"] == "watsonx/ibm/granite-4-h-small"
+
+
+@pytest.mark.asyncio
+async def test_stream_sse_keeps_credentials_out_of_the_error_frame():
+    from services import llm_gateway
+
+    async def gen():
+        raise _FakeLiteLLMError("rejected token wx-super-secret-key")
+        yield  # pragma: no cover - generator marker
+
+    lines = [
+        line
+        async for line in llm_gateway._stream_sse(
+            gen(), "watsonx", "watsonx/ibm/granite-4-h-small", {"api_key": "wx-super-secret-key"}
+        )
+    ]
+
+    assert "wx-super-secret-key" not in "".join(lines)
+
+
+@pytest.mark.asyncio
+async def test_stream_sse_reports_an_empty_completion_instead_of_going_silent():
+    """A 200 that carries nothing must name itself, not read as a dead connection."""
+    from services import llm_gateway
+
+    async def gen():
+        yield {"choices": [{"index": 0, "delta": {"content": ""}, "finish_reason": "stop"}]}
+
+    lines = [
+        line
+        async for line in llm_gateway._stream_sse(gen(), "watsonx", "watsonx/ibm/granite-4-h-small")
+    ]
+
+    assert lines[-1] == "data: [DONE]\n\n"
+    error = json.loads(lines[-2][len("data: ") :])["error"]
+    assert "no content and no tool calls" in error["message"]
+    assert "finish_reason: stop" in error["message"]
+    assert "watsonx/ibm/granite-4-h-small" in error["message"]
+
+
+@pytest.mark.asyncio
+async def test_stream_sse_stays_quiet_when_the_completion_carried_content():
+    from services import llm_gateway
+
+    async def gen():
+        yield {"choices": [{"index": 0, "delta": {"content": "hi"}, "finish_reason": "stop"}]}
+
+    lines = [line async for line in llm_gateway._stream_sse(gen(), "openai", "gpt-4o-mini")]
+
+    assert not any('"error"' in line for line in lines)
+
+
+@pytest.mark.asyncio
+async def test_stream_sse_counts_a_repaired_tool_call_as_output():
+    """The repair must clear the empty-completion path, not trip it."""
+    from services import llm_gateway
+
+    async def gen():
+        for chunk in _tool_call_deltas(['"{\\', 'n \\"query\\": \\"x\\"\\', 'n}"']):
+            yield chunk
+
+    lines = [
+        line
+        async for line in llm_gateway._stream_sse(gen(), "watsonx", "watsonx/ibm/granite-4-h-small")
+    ]
+
+    assert not any('"error"' in line for line in lines)
+
+
+@pytest.mark.asyncio
+async def test_stream_sse_reports_a_stream_that_never_yielded_a_chunk():
+    from services import llm_gateway
+
+    async def gen():
+        return
+        yield  # pragma: no cover - generator marker
+
+    lines = [line async for line in llm_gateway._stream_sse(gen(), "openai", "gpt-4o-mini")]
+
+    error = json.loads(lines[-2][len("data: ") :])["error"]
+    assert "no content and no tool calls" in error["message"]

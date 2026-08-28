@@ -333,17 +333,71 @@ def is_known_provider(provider: str) -> bool:
         return False
 
 
+@lru_cache(maxsize=8)
+def _model_owners(providers: tuple[ProviderSpec, ...]) -> dict[str, tuple[str, ...]]:
+    """Map every catalogue model id to the providers that serve it.
+
+    Keyed by the same entries as `_catalog()`, so a run mode that hides a
+    provider also drops that provider's models from the ownership map.
+    """
+    owners: dict[str, set[str]] = {}
+    try:
+        entries = _catalog(providers)["providers"]
+    except Exception:
+        return {}
+    for provider in entries:
+        for entry in (*provider["models"], *provider["embedding_models"]):
+            owners.setdefault(entry["model"], set()).add(provider["key"])
+    return {model: tuple(sorted(keys)) for model, keys in owners.items()}
+
+
+def catalog_owner(model: str) -> str | None:
+    """The single provider that serves `model`, if exactly one does.
+
+    Used to disambiguate vendor-qualified names such as `openai/gpt-oss-120b`,
+    which watsonx serves and whose own prefix names a different provider.
+    """
+    name = (model or "").strip()
+    if not name:
+        return None
+    try:
+        owners = _model_owners(visible_provider_entries()).get(name)
+    except Exception:
+        return None
+    return owners[0] if owners and len(owners) == 1 else None
+
+
+def PROVIDER_SEPARATOR_SAFE_CHECK() -> list[str]:
+    """Catalogue ids whose text before the first colon names a provider.
+
+    Empty today, which is what lets `provider:model` be parsed unambiguously.
+    Exposed so a test can fail loudly if a future model id breaks the property.
+    """
+    ambiguous = []
+    for model in _model_owners(visible_provider_entries()):
+        head, sep, rest = model.partition(":")
+        if sep and rest and is_known_provider(head.lower()):
+            ambiguous.append(model)
+    return sorted(ambiguous)
+
+
 def public_model_id(provider: str, model: str) -> str:
     """The routable id for `model` as served by `/v1/models`.
 
     `_catalog()` strips the provider prefix so the picker can show bare names,
     but an unprefixed id sent back to `/v1/chat/completions` is resolved against
     the *default* provider — an Anthropic model would then be called with the
-    OpenAI credentials. Re-attach the prefix for every non-OpenAI provider so
+    OpenAI credentials. Re-attach the provider for every non-OpenAI provider so
     the id round-trips through `resolve_call()`. OpenAI keeps bare names because
     that is what OpenAI-compatible clients expect.
+
+    The tag uses `provider:model`, not `provider/model`: watsonx serves
+    `openai/gpt-oss-120b`, so a slash-joined id is indistinguishable from that
+    model's own name.
     """
-    return model if provider == "openai" else f"{provider}/{model}"
+    from services.llm_gateway import PROVIDER_SEPARATOR
+
+    return model if provider == "openai" else f"{provider}{PROVIDER_SEPARATOR}{model}"
 
 
 def openai_models_list(today: datetime.date | None = None) -> dict[str, Any]:

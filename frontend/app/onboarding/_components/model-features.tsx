@@ -106,7 +106,7 @@ function ProviderMark({ provider, name }: { provider?: string; name: string }) {
       className="grid h-16 w-16 shrink-0 place-items-center border border-border bg-white"
     >
       {Logo ? (
-        <Logo className="h-10 w-10" />
+        <Logo className="h-10 w-10 text-black" />
       ) : (
         <span className="font-mono text-lg font-semibold tracking-wide text-muted-foreground">
           {(provider || name).slice(0, 2).toUpperCase()}

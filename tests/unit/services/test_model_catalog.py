@@ -231,7 +231,7 @@ providers:
 
 
 def test_a_declared_gateway_model_routes_back_to_its_own_provider(monkeypatch, tmp_path) -> None:
-    from services.llm_gateway import split_model_id
+    from services.llm_gateway import PROVIDER_SEPARATOR, split_model_id
 
     monkeypatch.setenv(
         model_providers.CONFIG_PATH_ENV,
@@ -244,7 +244,7 @@ def test_a_declared_gateway_model_routes_back_to_its_own_provider(monkeypatch, t
     monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
 
     ids = [row["id"] for row in model_catalog.openai_models_list()["data"]]
-    assert ids == ["openai_like/llama-3.3-70b-instruct"]
+    assert ids == [f"openai_like{PROVIDER_SEPARATOR}llama-3.3-70b-instruct"]
     assert split_model_id(ids[0]) == ("openai_like", "llama-3.3-70b-instruct")
 
 

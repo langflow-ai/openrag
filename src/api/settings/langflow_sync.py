@@ -160,7 +160,30 @@ async def ensure_required_langflow_global_variables(config=None):
 
             target_val = _string_value(required_values.get(name)) if is_generic else curr_val
 
+            # Langflow rejects an empty value with 400 "Variable value cannot be
+            # empty". Optional providers (Ollama, watsonx) resolve to "" when
+            # unconfigured, so keep whatever Langflow already holds instead of
+            # pushing a value it will refuse. This matters most in the type
+            # migration below: the DELETE has already landed by then, so a
+            # refused recreate would drop the variable entirely.
+            sync_value = is_generic and bool(target_val)
+            if not sync_value:
+                target_val = curr_val
+
             if curr_type != target_type:
+                if not target_val:
+                    # The retained value (see sync_value above) is also empty: the
+                    # DELETE below would succeed but the recreate POST would send ""
+                    # and get rejected, dropping the variable entirely. Defer the
+                    # type migration until the variable actually has a value.
+                    logger.debug(
+                        "Deferring Langflow global variable type migration until configured",
+                        variable_name=name,
+                        old_type=curr_type,
+                        new_type=target_type,
+                    )
+                    continue
+
                 logger.info(
                     "Migrating Langflow global variable type",
                     variable_name=name,
@@ -185,7 +208,7 @@ async def ensure_required_langflow_global_variables(config=None):
                     raise RuntimeError(
                         f"Failed to recreate Langflow global variable {name!r}: status_code={recreate_resp.status_code}"
                     )
-            elif has_default_fields or (is_generic and curr_val != target_val):
+            elif has_default_fields or (sync_value and curr_val != target_val):
                 logger.info(
                     "Updating Langflow global variable", variable_name=name, variable_id=var_id
                 )
@@ -195,7 +218,7 @@ async def ensure_required_langflow_global_variables(config=None):
                     "default_fields": [],
                     "type": target_type,
                 }
-                if is_generic:
+                if sync_value:
                     patch_payload["value"] = target_val
                 patch_resp = await clients.langflow_request(
                     "PATCH", f"/api/v1/variables/{var_id}", json=patch_payload
@@ -214,6 +237,16 @@ async def ensure_required_langflow_global_variables(config=None):
         if name not in existing_by_name:
             try:
                 target_val = _string_value(required_values.get(name, ""))
+                if not target_val:
+                    # Langflow rejects an empty value with 400. Variables sourced
+                    # from an unconfigured optional provider (OLLAMA_BASE_URL,
+                    # WATSONX_PROJECT_ID, WATSONX_URL) have nothing to set yet;
+                    # they are created once that provider is configured.
+                    logger.debug(
+                        "Skipping Langflow global variable with no configured value",
+                        variable_name=name,
+                    )
+                    continue
                 await _upsert_langflow_global_variable(name, target_val)
             except Exception as e:
                 logger.warning(
