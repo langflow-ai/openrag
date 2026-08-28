@@ -229,10 +229,10 @@ async def enable_mcp_none_for_project(project_id: str | None, max_attempts: int 
     from config.settings import clients
 
     patch_resp = await clients.langflow_request(
-                "PATCH",
-                f"/api/v1/mcp/project/{project_id}",
-                json={"settings": [], "auth_settings": {"auth_type": "none"}},
-            )
+        "PATCH",
+        f"/api/v1/mcp/project/{project_id}",
+        json={"settings": [], "auth_settings": {"auth_type": "none"}},
+    )
     if patch_resp.status_code in (200, 201):
         logger.info(
             "Successfully configured unauthenticated MCP for project",
@@ -246,5 +246,3 @@ async def enable_mcp_none_for_project(project_id: str | None, max_attempts: int 
         error=patch_resp.text,
     )
     return False
-
-

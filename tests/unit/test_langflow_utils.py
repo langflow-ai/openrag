@@ -317,7 +317,9 @@ async def test_enable_mcp_none_for_project():
     mock_resp = MagicMock()
     mock_resp.status_code = 200
 
-    with patch("config.settings.clients.langflow_request", AsyncMock(return_value=mock_resp)) as mock_req:
+    with patch(
+        "config.settings.clients.langflow_request", AsyncMock(return_value=mock_resp)
+    ) as mock_req:
         res = await enable_mcp_none_for_project("proj-456")
         assert res is True
         mock_req.assert_called_once_with(
@@ -335,7 +337,9 @@ async def test_enable_mcp_none_for_project_failure():
     mock_resp.status_code = 500
     mock_resp.text = "Internal Server Error"
 
-    with patch("config.settings.clients.langflow_request", AsyncMock(return_value=mock_resp)) as mock_req:
+    with patch(
+        "config.settings.clients.langflow_request", AsyncMock(return_value=mock_resp)
+    ) as mock_req:
         res = await enable_mcp_none_for_project("proj-456")
         assert res is False
         mock_req.assert_called_once_with(
@@ -351,6 +355,3 @@ async def test_enable_mcp_none_for_project_empty():
 
     assert await enable_mcp_none_for_project(None) is False
     assert await enable_mcp_none_for_project("") is False
-
-
-

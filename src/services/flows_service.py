@@ -574,7 +574,9 @@ class FlowsService:
                 try:
                     res_json = response.json()
                     project_id = res_json.get("folder_id")
-                    if project_id and (flow_type == "url_ingest" or flow_id == LANGFLOW_URL_INGEST_FLOW_ID):
+                    if project_id and (
+                        flow_type == "url_ingest" or flow_id == LANGFLOW_URL_INGEST_FLOW_ID
+                    ):
                         await enable_mcp_none_for_project(project_id)
                 except Exception as err:
                     logger.warning(f"Failed to enable unauthenticated MCP for {flow_type}: {err}")
@@ -1026,7 +1028,9 @@ class FlowsService:
                 if project_id:
                     return await enable_mcp_none_for_project(project_id)
         except Exception as e:
-            logger.warning(f"Error enabling MCP auth_type='none' for URL ingest flow {flow_id}: {e}")
+            logger.warning(
+                f"Error enabling MCP auth_type='none' for URL ingest flow {flow_id}: {e}"
+            )
         return False
 
     async def change_langflow_model_value(
