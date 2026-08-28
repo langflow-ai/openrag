@@ -205,11 +205,17 @@ def _excluded(name: str, patterns: tuple[str, ...]) -> bool:
     `openai/gpt-3.5-turbo` — because that is the name an operator reads off the
     screen when deciding what to suppress. `*` and `?` work, so a whole
     generation goes in one line.
+
+    Also matched on the id's last path segment, so a regional deployment is
+    covered by the plain name: Azure lists `gpt-5.6-luna` as `eu/gpt-5.6-luna`
+    and `us/gpt-5.6-luna` too, and someone suppressing that model means all
+    three. Write `eu/*` to reach a region on its own.
     """
     if not patterns:
         return False
     lowered = name.lower()
-    return any(fnmatch(lowered, pattern) for pattern in patterns)
+    bare = lowered.rsplit("/", 1)[-1]
+    return any(fnmatch(lowered, pattern) or fnmatch(bare, pattern) for pattern in patterns)
 
 
 def _declared_entries(names: tuple[str, ...], mode: str) -> list[dict[str, Any]]:
@@ -324,6 +330,45 @@ def _catalog_for(today: datetime.date, providers: tuple[ProviderEntry, ...]) -> 
             }
         )
     return {"providers": entries}
+
+
+def exclusions_for(provider: str) -> tuple[str, ...]:
+    """The `exclude_models` patterns configured for `provider`."""
+    key = (provider or "").strip().lower()
+    for entry in visible_provider_entries():
+        if entry.name == key:
+            return entry.exclude_models
+    return ()
+
+
+#: Keys in a live `/models/{provider}` payload that hold model lists.
+LIVE_MODEL_LIST_KEYS = ("language_models", "embedding_models")
+
+
+def hide_excluded_live_models(provider: str, payload: Any) -> Any:
+    """Apply `exclude_models` to a live `/models/{provider}` response.
+
+    Ollama, watsonx, OpenAI and Anthropic are also listed by asking the running
+    provider, which never passes through the catalogue — so without this an
+    excluded id disappears from the settings picker and comes straight back in
+    through onboarding. The filter belongs here rather than in the frontend so
+    every consumer, SDK clients included, sees one list.
+    """
+    patterns = exclusions_for(provider)
+    if not patterns or not isinstance(payload, dict):
+        return payload
+    filtered = dict(payload)
+    for key in LIVE_MODEL_LIST_KEYS:
+        models = payload.get(key)
+        if not isinstance(models, list):
+            continue
+        filtered[key] = [
+            model
+            for model in models
+            if not _excluded(str((model or {}).get("value", "")), patterns)
+            if isinstance(model, dict)
+        ]
+    return filtered
 
 
 def supported_provider_keys() -> frozenset[str]:

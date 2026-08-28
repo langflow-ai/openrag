@@ -38,10 +38,9 @@ providers:
       oss: true
       on_prem: true
       saas: true
-    # Uncomment to keep a generation out of the pickers entirely:
-    # exclude_models:
-    #   - gpt-3.5-*
-    #   - gpt-4-0613
+    exclude_models:
+      - gpt-3.5-* # a whole generation, superseded and near retirement
+      - gpt-5.6-luna # refuses function tools on /v1/chat/completions
 
   - name: ollama
     display_name: Ollama
@@ -82,6 +81,18 @@ providers:
       oss: true
       on_prem: true
       saas: true
+    # Azure serves the same OpenAI models, so it needs the same exclusions.
+    # The plain name covers the regional ids (`eu/`, `us/`, `global/`) too.
+    exclude_models:
+      - gpt-3.5-*
+      - gpt-5.6-luna
+    # Azure lets you name a deployment anything, so LiteLLM's table cannot know
+    # yours. Declare them here and they appear in the pickers for everyone;
+    # otherwise each user has to type the name into the model box by hand.
+    # models:
+    #   - prod-gpt41-eastus
+    # embedding_models:
+    #   - prod-embed-3-large
 
   # A self-hosted OpenAI-compatible endpoint (vLLM, LM Studio, an internal
   # gateway). Use one of LiteLLM's passthrough provider keys — `openai_like`,

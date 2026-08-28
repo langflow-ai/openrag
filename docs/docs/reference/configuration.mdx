@@ -116,7 +116,12 @@ afterwards to pick up the new list.
 
 A row can also keep ids out of the pickers. `*` and `?` wildcards work, and
 matching is against the id as the picker shows it — `gpt-3.5-turbo`, not
-`openai/gpt-3.5-turbo`.
+`openai/gpt-3.5-turbo`. The id's last path segment is matched too, so a plain
+name also covers Azure's regional listings (`eu/gpt-5.6-luna`,
+`us/gpt-5.6-luna`); write `eu/*` to reach one region on its own.
+
+Exclusions are per provider row. Azure OpenAI serves the same models as
+OpenAI, so a model you want gone from both needs the pattern on both rows.
 
 ```yaml
   - name: openai
@@ -129,7 +134,10 @@ matching is against the id as the picker shows it — `gpt-3.5-turbo`, not
 ```
 
 Exclusion is applied last, so it also overrides a `models` entry on the same
-provider. Two other mechanisms already run without configuration, so reach for
+provider, and it covers the live `/models/{provider}` lists as well as the
+catalogue — otherwise an id hidden in Settings would reappear in onboarding.
+
+Two other mechanisms already run without configuration, so reach for
 `exclude_models` only when neither covers you:
 
 | Situation | Handled by |
