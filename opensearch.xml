@@ -4,8 +4,8 @@
   <ShortName>OpenRAG</ShortName>
   <Description>Search OpenRAG</Description>
   <InputEncoding>UTF-8</InputEncoding>
-  <Image width="16" height="16" type="image/x-icon">https://www.openr.ag/img/favicon.ico</Image>
-  <Url type="text/html" method="get" template="https://www.openr.ag/search?q={searchTerms}"/>
-  <Url type="application/opensearchdescription+xml" rel="self" template="https://www.openr.ag/opensearch.xml" />
-  <moz:SearchForm>https://www.openr.ag/</moz:SearchForm>
+  <Image width="16" height="16" type="image/x-icon">https://docs.openr.ag/img/favicon.ico</Image>
+  <Url type="text/html" method="get" template="https://docs.openr.ag/search?q={searchTerms}"/>
+  <Url type="application/opensearchdescription+xml" rel="self" template="https://docs.openr.ag/opensearch.xml" />
+  <moz:SearchForm>https://docs.openr.ag/</moz:SearchForm>
 </OpenSearchDescription>
