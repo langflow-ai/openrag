@@ -564,6 +564,11 @@ async def reapply_all_settings(session_manager=None):
         except Exception as e:
             logger.error(f"Failed to update Langflow chunk settings: {str(e)}")
 
+        try:
+            await flows_service.enable_mcp_none_for_url_ingest_flow()
+        except Exception as e:
+            logger.error(f"Failed to configure unauthenticated MCP for URL ingest flow: {str(e)}")
+
         logger.info("Successfully reapplied all settings to Langflow flows")
 
     except Exception as e:

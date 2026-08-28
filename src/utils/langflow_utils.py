@@ -220,3 +220,31 @@ def parse_knowledge_chunks(results: Any) -> list[dict]:
             )
 
     return parsed_chunks
+
+
+async def enable_mcp_none_for_project(project_id: str | None, max_attempts: int = 5) -> bool:
+    """Configure auth_type='none' for MCP on a Langflow project ID asynchronously."""
+    if not project_id:
+        return False
+    from config.settings import clients
+
+    patch_resp = await clients.langflow_request(
+                "PATCH",
+                f"/api/v1/mcp/project/{project_id}",
+                json={"settings": [], "auth_settings": {"auth_type": "none"}},
+            )
+    if patch_resp.status_code in (200, 201):
+        logger.info(
+            "Successfully configured unauthenticated MCP for project",
+            project_id=project_id,
+        )
+        return True
+    logger.warning(
+        "Failed to configure unauthenticated MCP for project",
+        project_id=project_id,
+        status_code=patch_resp.status_code,
+        error=patch_resp.text,
+    )
+    return False
+
+
