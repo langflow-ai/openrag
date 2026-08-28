@@ -155,13 +155,43 @@ COMPONENT_CUSTOMIZATIONS: dict[tuple[str, str], dict[str, str]] = {
             "system prompt, and document processing options."
         ),
     },
-    # Models endpoint
+    # Models / LLM proxy
+    ("/v1/models", "GET"): {
+        "name": "openrag_list_openai_models",
+        "description": (
+            "List every language and embedding model OpenRAG can serve, in OpenAI "
+            "`GET /v1/models` format. Use this from an OpenAI-compatible client "
+            "pointed at the LLM proxy."
+        ),
+    },
+    ("/v1/model-catalog", "GET"): {
+        "name": "openrag_model_catalog",
+        "description": (
+            "LiteLLM provider/model catalogue used by the settings picker: "
+            "grouped models, capability flags, and credential field specs."
+        ),
+    },
+    ("/v1/chat/completions", "POST"): {
+        "name": "openrag_chat_completions",
+        "description": (
+            "OpenAI-compatible chat completions. OpenRAG routes to the configured "
+            "provider via LiteLLM. Send a Langflow hop token, user JWT, or orag_ "
+            "API key as Bearer."
+        ),
+    },
+    ("/v1/embeddings", "POST"): {
+        "name": "openrag_embeddings",
+        "description": (
+            "OpenAI-compatible embeddings. OpenRAG routes to the configured "
+            "embedding provider via LiteLLM."
+        ),
+    },
     ("/v1/models/{provider}", "GET"): {
         "name": "openrag_list_models",
         "description": (
             "List available language models and embedding models for a provider. "
             "Use this before updating settings to see which model values are valid. "
-            "Provider must be one of: openai, anthropic, ollama, watsonx."
+            "Provider must be a configured LiteLLM provider key (e.g. openai, anthropic, ollama, watsonx)."
         ),
     },
     # Knowledge filters endpoints

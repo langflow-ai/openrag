@@ -10,6 +10,8 @@ from collections import deque
 from datetime import UTC, datetime
 from typing import TypedDict
 
+from api.schemas.status import ComponentState
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -45,8 +47,8 @@ class LogEntry(TypedDict):
 # deque per component name
 _buffers: dict[str, deque[LogEntry]] = {}
 _locks: dict[str, threading.Lock] = {}
-# last outcome per component: True = last check was healthy, False = unhealthy/unknown
-_last_ok: dict[str, bool] = {}
+# last check outcome per component ("healthy" | "degraded" | "unhealthy" | "unknown")
+_last_state: dict[str, str] = {}
 _state_lock = threading.Lock()
 
 
@@ -119,25 +121,32 @@ def record(component: str, level: str, message: str, detail: str | None = None) 
 
 def record_check_result(
     component: str,
-    ok: bool,
+    state: ComponentState,
     message: str,
     detail: str | None = None,
 ) -> None:
     """Write to the buffer with flood-prevention logic.
 
-    - Failure (ok=False): always records an error entry.
-    - Recovery (False→True transition): records one info "recovered" entry.
-    - Steady healthy (True→True): records nothing, keeping error history intact.
+    - unhealthy / unknown: always records an error entry.
+    - degraded: records a warning when entering that state (not every poll).
+    - healthy after a bad/degraded state: records one info "recovered" entry.
+    - first healthy sighting: records one info so Logs is not blank.
+    - steady healthy / steady degraded: records nothing.
     """
     with _state_lock:
-        was_ok = _last_ok.get(component, True)  # assume healthy on first call
-        _last_ok[component] = ok
+        prev = _last_state.get(component)
+        _last_state[component] = state
 
-    if not ok:
+    if state in ("unhealthy", "unknown"):
         record(component, "error", message, detail=detail)
-    elif not was_ok:
-        # Transition: unhealthy → healthy
-        record(component, "info", f"recovered: {message}")
+    elif state == "degraded":
+        if prev != "degraded":
+            record(component, "warning", message, detail=detail)
+    elif state == "healthy":
+        if prev in ("unhealthy", "unknown", "degraded"):
+            record(component, "info", f"recovered: {message}")
+        elif prev is None and component not in _buffers:
+            record(component, "info", message)
 
 
 def get_entries(component: str, tail: int = 100) -> list[LogEntry]:

@@ -3,6 +3,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import type { CatalogModel } from "@/app/settings/_helpers/catalog-models";
 import { formatProviderErrorMessage } from "@/lib/chat-stream-errors";
 import { useGetSettingsQuery } from "./useGetSettingsQuery";
 
@@ -280,4 +281,60 @@ export const useGetCurrentProviderModelsQuery = (
     default:
       return openaiModels;
   }
+};
+
+export interface CatalogCredentialField {
+  key: string;
+  label: string;
+  placeholder?: string | null;
+  tooltip?: string | null;
+  required: boolean;
+  field_type: string;
+  options?: unknown;
+  default_value?: unknown;
+}
+
+export interface CatalogProvider {
+  key: string;
+  name: string;
+  credential_fields: CatalogCredentialField[];
+  model_placeholder: string | null;
+  models: CatalogModel[];
+  embedding_models: CatalogModel[];
+}
+
+export interface ModelCatalogResponse {
+  providers: CatalogProvider[];
+}
+
+/**
+ * LiteLLM's bundled model list, grouped by provider. Static for the tab's
+ * lifetime — same as openrag-next's `/agent/model-catalog` fetch.
+ */
+export const useGetModelCatalogQuery = (
+  options?: Omit<UseQueryOptions<ModelCatalogResponse>, "queryKey" | "queryFn">,
+) => {
+  const queryClient = useQueryClient();
+
+  return useQuery(
+    {
+      queryKey: ["models", "catalog"] as const,
+      queryFn: async (): Promise<ModelCatalogResponse> => {
+        const response = await fetch("/api/models/catalog");
+        if (response.ok) {
+          return (await response.json()) as ModelCatalogResponse;
+        }
+        return throwModelsFetchError(
+          response,
+          "Failed to fetch the model catalogue",
+        );
+      },
+      staleTime: Number.POSITIVE_INFINITY,
+      gcTime: Number.POSITIVE_INFINITY,
+      refetchOnWindowFocus: false,
+      retry: false,
+      ...options,
+    },
+    queryClient,
+  );
 };

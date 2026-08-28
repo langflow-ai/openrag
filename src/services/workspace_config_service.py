@@ -395,6 +395,19 @@ class WorkspaceConfigService:
             if isinstance(prov_data, dict) and "api_key" in prov_data and prov_data["api_key"]:
                 prov_data["api_key"] = encrypt_secret(prov_data["api_key"])
             providers[prov_name] = prov_data
+        custom = providers.get("custom", {})
+        if isinstance(custom, dict):
+            from services.model_catalog import secret_field_keys
+
+            for provider, provider_data in custom.items():
+                if not isinstance(provider_data, dict):
+                    continue
+                credentials = provider_data.get("credentials", {})
+                if not isinstance(credentials, dict):
+                    continue
+                for key in secret_field_keys(provider):
+                    if credentials.get(key):
+                        credentials[key] = encrypt_secret(credentials[key])
 
         sections = {
             "providers": providers,

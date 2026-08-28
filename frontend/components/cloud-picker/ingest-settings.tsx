@@ -2,13 +2,10 @@
 
 import { ChevronRight } from "lucide-react";
 import { useMemo } from "react";
-import {
-  useGetIBMModelsQuery,
-  useGetOllamaModelsQuery,
-  useGetOpenAIModelsQuery,
-} from "@/app/api/queries/useGetModelsQuery";
+import { useGetModelCatalogQuery } from "@/app/api/queries/useGetModelsQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import type { ModelOption } from "@/app/onboarding/_components/model-selector";
+import { groupedCatalogOptions } from "@/app/settings/_helpers/catalog-models";
 import {
   getFallbackModels,
   type ModelProvider,
@@ -72,32 +69,25 @@ export const IngestSettings = ({
   const currentProvider = (apiSettings.knowledge?.embedding_provider ||
     "openai") as ModelProvider;
 
-  // Fetch available models based on provider
-  const { data: openaiModelsData } = useGetOpenAIModelsQuery(undefined, {
-    enabled: (isAuthenticated || isNoAuthMode) && currentProvider === "openai",
+  const { data: catalog } = useGetModelCatalogQuery({
+    enabled: isAuthenticated || isNoAuthMode,
   });
 
-  const { data: ollamaModelsData } = useGetOllamaModelsQuery(undefined, {
-    enabled: (isAuthenticated || isNoAuthMode) && currentProvider === "ollama",
-  });
+  // `groupedCatalogOptions` keys off the provider string, so a generic LiteLLM
+  // provider resolves here too; restricting this to the four legacy keys hid
+  // the catalogue models of every custom embedding provider. An unknown
+  // provider simply yields no group and falls through to `getFallbackModels`.
+  const catalogEmbeddingModels = useMemo(
+    () =>
+      groupedCatalogOptions(
+        catalog,
+        { [currentProvider]: true },
+        "embedding",
+      )[0]?.options ?? [],
+    [catalog, currentProvider],
+  );
 
-  const { data: ibmModelsData } = useGetIBMModelsQuery(undefined, {
-    enabled: (isAuthenticated || isNoAuthMode) && currentProvider === "watsonx",
-  });
-
-  // Select the appropriate models data based on provider
-  const modelsData =
-    currentProvider === "openai"
-      ? openaiModelsData
-      : currentProvider === "ollama"
-        ? ollamaModelsData
-        : currentProvider === "watsonx"
-          ? ibmModelsData
-          : openaiModelsData;
-
-  const defaultEmbedding = modelsData?.embedding_models?.find(
-    (m) => m.default,
-  )?.value;
+  const defaultEmbedding = catalogEmbeddingModels[0]?.value;
 
   const defaultSettings: IngestSettingsType = {
     ...knowledgeToIngestSettings(apiSettings.knowledge),
@@ -113,9 +103,10 @@ export const IngestSettings = ({
   const embeddingSelectOptions = useMemo(() => {
     const fallbackList = (getFallbackModels(currentProvider).embedding ??
       []) as ModelOption[];
-    const fromApi = modelsData?.embedding_models;
     let base: ModelOption[] =
-      fromApi && fromApi.length > 0 ? [...fromApi] : [...fallbackList];
+      catalogEmbeddingModels.length > 0
+        ? [...catalogEmbeddingModels]
+        : [...fallbackList];
     const v = currentSettings.embeddingModel?.trim();
     if (!v) {
       return base.length > 0
@@ -131,11 +122,7 @@ export const IngestSettings = ({
       base = [{ value: v, label: v }, ...base];
     }
     return base;
-  }, [
-    currentProvider,
-    modelsData?.embedding_models,
-    currentSettings.embeddingModel,
-  ]);
+  }, [currentProvider, catalogEmbeddingModels, currentSettings.embeddingModel]);
 
   const selectEmbeddingValue =
     embeddingSelectOptions.some(
