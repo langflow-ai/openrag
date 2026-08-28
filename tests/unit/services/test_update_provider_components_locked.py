@@ -13,10 +13,10 @@ current main:
 2. Even once reachable, the `is_new_flow` branch (current default flow
    layout - a single generic Embedding Model / Language Model component)
    only called `_enable_model_in_langflow` (registers the model name in
-   Langflow's catalog) and never `_update_component_fields` - so
-   provider-specific field wiring (api_key/api_base/etc, including this
-   PR's new openai -> OPENAI_API_BASE mapping) was never applied to the
-   node itself.
+   Langflow's catalog) and never `_update_component_fields` - so the
+   component's api_key/api_base fields (which now always point at the
+   OpenRAG LLM proxy, per the `proxy_fields` mapping) were never applied
+   to the node itself.
 
 These tests build a minimal "new flow" (one generic embedding node, one
 generic LLM node, one Agent node) and assert the PATCH actually fires and
@@ -112,7 +112,7 @@ async def test_new_flow_embedding_component_is_actually_patched(monkeypatch):
 async def test_new_flow_embedding_component_gets_api_base_mapped(monkeypatch):
     """Bug 2 regression: the is_new_flow branch must call
     _update_component_fields, not just _enable_model_in_langflow - proven
-    by the api_base field actually being wired to OPENAI_API_BASE."""
+    by the api_base field actually being wired to the OpenRAG LLM proxy."""
     flow_data = _flow_data_with_one_embedding_node()
     monkeypatch.setattr(
         "services.flows_service.clients.langflow_request",
@@ -128,5 +128,5 @@ async def test_new_flow_embedding_component_gets_api_base_mapped(monkeypatch):
 
     node = flow_data["data"]["nodes"][0]
     template = node["data"]["node"]["template"]
-    assert template["api_base"]["value"] == "OPENAI_API_BASE"
+    assert template["api_base"]["value"] == "OPENRAG_LLM_BASE_URL"
     assert template["api_base"]["load_from_db"] is True
