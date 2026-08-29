@@ -138,7 +138,9 @@ results = await client.search.query(
     "API documentation",
     filters=SearchFilters(
         data_sources=["api-docs.pdf"],
-        document_types=["application/pdf"]
+        document_types=["application/pdf"],
+        owners=["user@example.com"],
+        connector_types=["google_drive"],
     ),
     limit=5,
     score_threshold=0.5
