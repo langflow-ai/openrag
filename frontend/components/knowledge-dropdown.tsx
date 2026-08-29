@@ -643,7 +643,7 @@ export function KnowledgeDropdown() {
       if (filteredFiles.length === 0) {
         toast.error("No supported files found", {
           description:
-            "Please select a folder containing supported document files (PDF, DOCX, PPTX, XLSX, CSV, HTML, images, etc.).",
+            "Please select a folder containing supported document files (PDF, DOCX, TXT, MD, HTML, CSV, etc.).",
         });
         return;
       }
