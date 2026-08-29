@@ -294,6 +294,8 @@ Docker Desktop for Mac:
 
 Or Podman:
   brew install podman
+  brew tap slp/krunkit
+  brew install krunkit
   podman machine init --memory 8192
   podman machine start
 """
