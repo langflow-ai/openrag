@@ -196,9 +196,15 @@ async def test_connector_processor_deletes_chunks_when_source_returns_404(
     processor = _build_connector_processor(replace_duplicates=False)
 
     opensearch_client = AsyncMock()
-    # collect_visible_document_ids issues a scroll search; return one chunk _id
+    # First search recovers the indexed filename; the scroll search then
+    # enumerates chunk _ids for delete.
     opensearch_client.search = AsyncMock(
-        return_value={"hits": {"hits": [{"_id": "chunk-1"}]}, "_scroll_id": None}
+        return_value={
+            "hits": {
+                "hits": [{"_id": "chunk-1", "_source": {"filename": "Quarterly.pdf"}}]
+            },
+            "_scroll_id": None,
+        }
     )
     processor.document_service.session_manager.get_user_opensearch_client.return_value = (
         opensearch_client
@@ -215,13 +221,17 @@ async def test_connector_processor_deletes_chunks_when_source_returns_404(
     )
 
     file_task = _make_file_task()
+    file_task.filename = "file-id-1"
     upload_task = _make_upload_task()
 
     await processor.process_item(upload_task, "file-id-1", file_task)
 
-    assert file_task.status == TaskStatus.SKIPPED
+    assert file_task.status == TaskStatus.COMPLETED
+    assert file_task.filename == "Quarterly.pdf"
+    assert (file_task.result or {}).get("status") == "deleted"
     assert (file_task.result or {}).get("reason") == "deleted_at_source"
     assert (file_task.result or {}).get("deleted_chunks") == 1
+    assert "warning" not in (file_task.result or {})
     assert upload_task.successful_files == 1
     # Concrete chunk deletes go through the backend write client.
     backend_write_client.delete.assert_awaited_once()
@@ -473,9 +483,11 @@ async def test_langflow_connector_processor_deletes_chunks_when_source_returns_4
 
     await processor.process_item(upload_task, "file-id-1", file_task)
 
-    assert file_task.status == TaskStatus.SKIPPED
+    assert file_task.status == TaskStatus.COMPLETED
+    assert (file_task.result or {}).get("status") == "deleted"
     assert (file_task.result or {}).get("reason") == "deleted_at_source"
     assert (file_task.result or {}).get("deleted_chunks") == 1
+    assert "warning" not in (file_task.result or {})
     assert file_task.error is None
     assert upload_task.successful_files == 1
     assert upload_task.failed_files == 0

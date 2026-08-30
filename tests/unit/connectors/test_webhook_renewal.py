@@ -121,6 +121,24 @@ async def test_healthy_subscription_is_skipped(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_force_renews_healthy_subscription(tmp_path):
+    """Process start must re-establish watches even when stored expiry is far away.
+
+    Shutdown used to cancel Google/Graph channels while leaving webhook_expiration
+    intact; without force, that pair is skipped forever and auto-sync stays dead.
+    """
+    connection = _make_connection(webhook_expiration=_iso_in(48))
+    connector = _make_connector()
+    manager = _make_manager(tmp_path, [connection])
+    manager.get_connector = AsyncMock(return_value=connector)
+
+    stats = await manager.renew_expiring_subscriptions(THRESHOLD, force=True)
+
+    assert stats == {"checked": 1, "renewed": 1, "failed": 0, "skipped": 0}
+    connector.setup_subscription.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "expiration",
     [_iso_in(1), _iso_in(-1), None],

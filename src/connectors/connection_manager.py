@@ -725,12 +725,19 @@ class ConnectionManager:
         if changed:
             await self.save_connections()
 
-    async def renew_expiring_subscriptions(self, threshold_seconds: int) -> dict[str, int]:
+    async def renew_expiring_subscriptions(
+        self, threshold_seconds: int, *, force: bool = False
+    ) -> dict[str, int]:
         """Renew webhook subscriptions that are expired, near expiry, or missing.
 
         Connections with a webhook_url but no live subscription (failed initial
         setup) are healed here too. Failures are per-connection; one bad
         connection never blocks the rest. Returns counters for logging.
+
+        ``force=True`` ignores stored expiration and re-establishes every
+        watched connection. Use that on process start: a far-future
+        ``webhook_expiration`` does not mean the provider channel survived
+        the previous process.
         """
         stats = {"checked": 0, "renewed": 0, "failed": 0, "skipped": 0}
         now = datetime.now(UTC)
@@ -743,7 +750,7 @@ class ConnectionManager:
 
             channel_id = _stored_webhook_subscription_id(connection.config)
             has_subscription = bool(channel_id)
-            if has_subscription:
+            if has_subscription and not force:
                 expiration = _parse_webhook_expiration(connection.config.get("webhook_expiration"))
                 if expiration and (expiration - now).total_seconds() > threshold_seconds:
                     stats["skipped"] += 1

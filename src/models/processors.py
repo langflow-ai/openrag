@@ -379,6 +379,51 @@ class TaskProcessor:
             logger.error("Failed to delete existing document", filename=filename, error=str(e))
             raise
 
+    async def _lookup_indexed_connector_filename(
+        self,
+        file_id: str,
+        opensearch_client,
+        owner_user_id: str,
+        shared: bool = False,
+        connector_type: str | None = None,
+    ) -> str | None:
+        """Return the indexed filename for a connector file id, if any.
+
+        Webhook deletion events often have no remote name (the file is already
+        gone), so the task falls back to the raw Drive/Graph id. The index
+        still has the name until we delete the chunks.
+        """
+        from connectors.chunk_cleanup import build_connector_file_chunks_query
+
+        if not file_id:
+            return None
+        try:
+            response = await opensearch_client.search(
+                index=get_index_name(),
+                body={
+                    "size": 1,
+                    "_source": ["filename"],
+                    "query": build_connector_file_chunks_query(
+                        [file_id],
+                        connector_type=connector_type,
+                        owner_user_id=owner_user_id,
+                        shared=shared,
+                    ),
+                },
+            )
+        except Exception as e:
+            logger.debug(
+                "Could not look up indexed filename for deleted connector file",
+                file_id=file_id,
+                error=str(e),
+            )
+            return None
+        hits = response.get("hits", {}).get("hits", [])
+        if not hits:
+            return None
+        filename = (hits[0].get("_source") or {}).get("filename")
+        return filename if isinstance(filename, str) and filename.strip() else None
+
     async def _delete_connector_chunks(
         self,
         file_id: str,
@@ -1011,6 +1056,18 @@ class ConnectorFileProcessor(TaskProcessor):
                             self.user_id, self.jwt_token
                         )
                     )
+                    indexed_name = await self._lookup_indexed_connector_filename(
+                        file_id,
+                        opensearch_client,
+                        self.user_id,
+                        shared=self.shared,
+                        connector_type=connector_type,
+                    )
+                    if indexed_name and (
+                        not file_task.filename or file_task.filename == file_id
+                    ):
+                        file_task.filename = indexed_name
+
                     deleted_chunks = await self._delete_connector_chunks(
                         file_id,
                         opensearch_client,
@@ -1019,25 +1076,21 @@ class ConnectorFileProcessor(TaskProcessor):
                         connector_type=connector_type,
                     )
 
-                    logger.warning(
+                    logger.info(
                         "File no longer exists at source — removed from index",
                         file_id=file_id,
+                        filename=file_task.filename,
                         connection_id=self.connection_id,
                         deleted_chunks=deleted_chunks,
-                        error=str(e),
                     )
-                    file_task.status = TaskStatus.SKIPPED
+                    # Completed, not skipped: the UI treats skipped as a warning
+                    # (duplicate-filename skips). Source deletion is successful
+                    # cleanup — the file should not land in the Warning chip.
+                    file_task.status = TaskStatus.COMPLETED
                     file_task.result = {
-                        "status": "skipped",
+                        "status": "deleted",
                         "reason": "deleted_at_source",
                         "deleted_chunks": deleted_chunks,
-                        # Human-readable message so the tasks view shows this
-                        # successful cleanup instead of falling back to
-                        # "Unknown error" for a skip with no message.
-                        "warning": (
-                            f"File no longer exists at source; removed from index "
-                            f"({deleted_chunks} chunk(s) deleted)."
-                        ),
                     }
                     file_task.updated_at = time.time()
                     upload_task.successful_files += 1
@@ -1130,10 +1183,19 @@ class ConnectorFileProcessor(TaskProcessor):
                             delete_document_ids,
                         )
 
+                        write_client = clients.opensearch
+                        if write_client is None:
+                            raise RuntimeError("Backend OpenSearch write client is unavailable")
+
                         # Match both fields: bucket-connector chunks carry the
                         # raw connector id in connector_file_id (document_id is
                         # a hash), while pre-migration chunks only have it in
                         # document_id.
+                        # DLS-safe: enumerate with the user-scoped client, then
+                        # delete with the platform writer. The webhook-minted
+                        # openrag_user JWT can search but cannot
+                        # indices:data/write/delete — using it here 403'd and
+                        # left the old filename in the index after a rename.
                         chunk_ids = await collect_visible_document_ids(
                             opensearch_client,
                             index=get_index_name(),
@@ -1151,7 +1213,7 @@ class ConnectorFileProcessor(TaskProcessor):
                             },
                         )
                         deleted_count = await delete_document_ids(
-                            opensearch_client,
+                            write_client,
                             index=get_index_name(),
                             document_ids=chunk_ids,
                             refresh=True,
