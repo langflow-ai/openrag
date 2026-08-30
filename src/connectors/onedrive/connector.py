@@ -68,8 +68,8 @@ class OneDriveConnector(BaseConnector):
         self.client_id = None
         self.client_secret = None
         self.redirect_uri = config.get("redirect_uri", "http://localhost")
-        # Graph delta link for webhook change tracking (in-memory per instance)
-        self._delta_link: str | None = None
+        # Graph delta cursor; restored from connection config across restarts
+        self._delta_link: str | None = config.get("delta_link")
         self._base_url = config.get("base_url")  # Generic URL field for OneDrive/SharePoint domain
         logger.debug(f"OneDrive connector initialized with base_url from config: {self._base_url}")
 

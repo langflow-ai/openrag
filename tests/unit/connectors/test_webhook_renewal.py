@@ -438,3 +438,55 @@ async def test_google_drive_has_no_inplace_renewal(tmp_path):
     )
 
     assert await connector.renew_subscription("channel-1") is None
+
+
+@pytest.mark.asyncio
+async def test_persist_webhook_cursor_saves_drive_and_graph_cursors(tmp_path):
+    from connectors.connection_manager import ConnectionConfig, ConnectionManager
+
+    manager = ConnectionManager(connections_file=str(tmp_path / "connections.json"))
+    manager.save_connections = AsyncMock()
+    connection = ConnectionConfig(
+        connection_id="conn-1",
+        connector_type="google_drive",
+        name="drive",
+        config={"webhook_channel_id": "chan-1"},
+    )
+
+    class _Cfg:
+        changes_page_token = "token-2"
+
+    connector = MagicMock()
+    connector.cfg = _Cfg()
+    connector._delta_link = "https://graph.microsoft.com/v1.0/delta?token=next"
+
+    await manager.persist_webhook_cursor(connection, connector)
+
+    assert connection.config["changes_page_token"] == "token-2"
+    assert connection.config["delta_link"] == "https://graph.microsoft.com/v1.0/delta?token=next"
+    manager.save_connections.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_persist_webhook_cursor_skips_save_when_unchanged(tmp_path):
+    from connectors.connection_manager import ConnectionConfig, ConnectionManager
+
+    manager = ConnectionManager(connections_file=str(tmp_path / "connections.json"))
+    manager.save_connections = AsyncMock()
+    connection = ConnectionConfig(
+        connection_id="conn-1",
+        connector_type="google_drive",
+        name="drive",
+        config={"changes_page_token": "token-2"},
+    )
+
+    class _Cfg:
+        changes_page_token = "token-2"
+
+    connector = MagicMock()
+    connector.cfg = _Cfg()
+    connector._delta_link = None
+
+    await manager.persist_webhook_cursor(connection, connector)
+
+    manager.save_connections.assert_not_awaited()

@@ -26,16 +26,19 @@ if str(SRC) not in sys.path:
 
 
 class _FakeRequest:
-    def __init__(self, headers: dict[str, str]):
+    def __init__(self, headers: dict[str, str], body: bytes = b"{}"):
         self.method = "POST"
         self.headers = headers
         self.query_params: dict[str, str] = {}
+        self._body = body
 
     async def json(self):
-        return {}
+        if not self._body:
+            raise json.JSONDecodeError("Expecting value", "", 0)
+        return json.loads(self._body)
 
     async def body(self):
-        return b"{}"
+        return self._body
 
 
 class _FakeDriveConnector:
@@ -103,6 +106,58 @@ async def test_webhook_accepts_legacy_google_type(path_type):
     # The legacy path segment must be normalized before any connector lookup.
     assert body["connector_type"] == "google_drive"
     assert body["connection_id"] == "conn-1"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("body", [b"", b"not-json"])
+async def test_webhook_accepts_empty_or_invalid_json_body(body):
+    """Google Drive push notifications POST an empty JSON body (channel id is
+    only in X-Goog-* headers). Invalid/empty JSON must not 500 — that used to
+    drop every Drive change/delete notification."""
+    from api.connectors import connector_webhook
+
+    connection = MagicMock()
+    connection.connection_id = "conn-1"
+    connection.user_id = "user-1"
+    connection.is_active = True
+
+    service = _webhook_service("chan-1", connection)
+    session_manager = MagicMock()
+    session_manager.get_user = MagicMock(return_value=None)
+
+    request = _FakeRequest(
+        {"content-type": "application/json", "x-goog-channel-id": "chan-1"},
+        body=body,
+    )
+    response = await connector_webhook(
+        "google_drive",
+        request,
+        connector_service=service,
+        session_manager=session_manager,
+        session=MagicMock(),
+    )
+
+    assert response.status_code == 200
+    body_json = json.loads(response.body)
+    assert body_json["status"] == "processed"
+    assert body_json["connection_id"] == "conn-1"
+    service._get_connector.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_webhook_sync_jwt_mints_via_connector_service():
+    """Webhooks have no browser session; the helper must mint the same JWT
+    sync uses so the indexed-file scope guard is not an empty set."""
+    from api.connectors import _webhook_sync_jwt
+
+    class _Svc:
+        async def _get_effective_sync_jwt(self, user_id, jwt_token=None):
+            return f"minted-{user_id}"
+
+    connection = MagicMock()
+    connection.user_id = "user-1"
+    token = await _webhook_sync_jwt(_Svc(), MagicMock(), connection, None)
+    assert token == "minted-user-1"
 
 
 def _mock_indexed_files(monkeypatch, indexed_ids: list[str]):
@@ -382,6 +437,26 @@ async def test_graph_webhook_runs_delta_query(
     assert affected == ["file-recent", "file-gone"]
     assert connector._delta_link == "https://graph.microsoft.com/v1.0/delta?token=abc"
     assert fake_client.requested_urls[0].endswith("/delta")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("module_path,cls_name,connector_type", GRAPH_CONNECTORS)
+async def test_graph_connector_loads_delta_link_from_config(
+    tmp_path, module_path, cls_name, connector_type
+):
+    """A persisted delta_link must survive connector reconstruction (restart)
+    so the next webhook is incremental instead of a first-sweep that can miss
+    the change that triggered it."""
+    import importlib
+
+    cls = getattr(importlib.import_module(module_path), cls_name)
+    connector = cls(
+        {
+            "token_file": str(tmp_path / "token.json"),
+            "delta_link": "https://graph.microsoft.com/v1.0/delta?token=saved",
+        }
+    )
+    assert connector._delta_link == "https://graph.microsoft.com/v1.0/delta?token=saved"
 
 
 @pytest.mark.asyncio

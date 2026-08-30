@@ -1,4 +1,5 @@
 import copy
+import json
 from datetime import UTC, datetime
 from typing import Any
 
@@ -69,6 +70,53 @@ async def _allowed_connector_types_for_request(
         return connector_types
     access_map = await get_access_map(session)
     return [t for t in connector_types if access_map.get(t, True)]
+
+
+async def _parse_connector_webhook_payload(
+    request: Request,
+) -> tuple[dict[str, Any], dict[str, str]]:
+    """Read a connector webhook body without 500ing on Google Drive's empty POST.
+
+    Drive push notifications set ``Content-Type: application/json`` and send an
+    empty body — the channel id is only in ``X-Goog-*`` headers. ``request.json()``
+    raises ``JSONDecodeError`` on that payload, which used to abort the whole
+    handler before any sync ran.
+    """
+    headers = dict(request.headers)
+    if request.method != "POST":
+        return dict(request.query_params), headers
+
+    body = await request.body()
+    content_type = headers.get("content-type", "").lower()
+    if "application/json" in content_type:
+        if not body:
+            return {}, headers
+        try:
+            parsed = json.loads(body)
+        except json.JSONDecodeError:
+            return {"raw_body": body.decode("utf-8", errors="replace")}, headers
+        if isinstance(parsed, dict):
+            return parsed, headers
+        return {"_json": parsed}, headers
+
+    return {"raw_body": body.decode("utf-8", errors="replace") if body else ""}, headers
+
+
+async def _webhook_sync_jwt(connector_service, session_manager, connection, user) -> str | None:
+    """Mint the same OpenSearch JWT sync uses, even when no browser session is live.
+
+    Connector webhooks arrive from Google/Graph, not the logged-in user. Looking
+    up ``user.jwt_token`` then querying indexed files under DLS returned an empty
+    set whenever the user wasn't in the in-memory session, so every change was
+    dropped as out-of-scope.
+    """
+    jwt_token = user.jwt_token if user else None
+    get_jwt = getattr(type(connector_service), "_get_effective_sync_jwt", None)
+    if callable(get_jwt):
+        return await connector_service._get_effective_sync_jwt(connection.user_id, jwt_token)
+    if session_manager is None:
+        return jwt_token
+    return session_manager.get_effective_jwt_token(connection.user_id, jwt_token)
 
 
 def _connector_sync_should_replace(connector_type: str) -> bool:
@@ -1761,23 +1809,7 @@ async def connector_webhook(
         pass
 
     try:
-        # Get the raw payload and headers
-        payload = {}
-        headers = dict(request.headers)
-
-        if request.method == "POST":
-            content_type = headers.get("content-type", "").lower()
-            if "application/json" in content_type:
-                payload = await request.json()
-            else:
-                # Some webhooks send form data or plain text
-                body = await request.body()
-                payload = {"raw_body": body.decode("utf-8") if body else ""}
-        else:
-            # GET webhooks use query params
-            payload = dict(request.query_params)
-
-        # Add headers to payload for connector processing
+        payload, headers = await _parse_connector_webhook_payload(request)
         payload["_headers"] = headers
         payload["_method"] = request.method
 
@@ -1815,9 +1847,24 @@ async def connector_webhook(
 
             # Let the connector handle the webhook and return affected file IDs
             affected_files = await connector.handle_webhook(payload)
+            persist_cursor = getattr(
+                type(connector_service.connection_manager), "persist_webhook_cursor", None
+            )
+            if callable(persist_cursor):
+                try:
+                    await connector_service.connection_manager.persist_webhook_cursor(
+                        connection, connector
+                    )
+                except Exception:
+                    logger.exception(
+                        "Failed to persist webhook change cursor",
+                        connection_id=connection.connection_id,
+                    )
 
             user = session_manager.get_user(connection.user_id)
-            jwt_token = user.jwt_token if user else None
+            jwt_token = await _webhook_sync_jwt(
+                connector_service, session_manager, connection, user
+            )
 
             # Scope guard: a connection's picker selection is not persisted, so
             # the connector can't filter the change feed to it. Restrict webhook

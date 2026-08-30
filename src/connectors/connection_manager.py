@@ -701,7 +701,29 @@ class ConnectionManager:
         page_token = getattr(getattr(connector, "cfg", None), "changes_page_token", None)
         if page_token:
             cfg["changes_page_token"] = page_token
+        delta_link = getattr(connector, "_delta_link", None)
+        if delta_link:
+            cfg["delta_link"] = delta_link
         await self.save_connections()
+
+    async def persist_webhook_cursor(
+        self, connection_config: ConnectionConfig, connector: BaseConnector
+    ) -> None:
+        """Save Drive/Graph change cursors after a webhook so the next
+        notification (or a process restart) does not skip or re-scan changes.
+        """
+        cfg = connection_config.config
+        changed = False
+        page_token = getattr(getattr(connector, "cfg", None), "changes_page_token", None)
+        if page_token and cfg.get("changes_page_token") != page_token:
+            cfg["changes_page_token"] = page_token
+            changed = True
+        delta_link = getattr(connector, "_delta_link", None)
+        if delta_link and cfg.get("delta_link") != delta_link:
+            cfg["delta_link"] = delta_link
+            changed = True
+        if changed:
+            await self.save_connections()
 
     async def renew_expiring_subscriptions(self, threshold_seconds: int) -> dict[str, int]:
         """Renew webhook subscriptions that are expired, near expiry, or missing.

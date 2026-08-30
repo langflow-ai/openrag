@@ -69,8 +69,8 @@ class SharePointConnector(BaseConnector):
         self.client_id = None
         self.client_secret = None
         self.tenant_id = config.get("tenant_id", "common")
-        # Graph delta link for webhook change tracking (in-memory per instance)
-        self._delta_link: str | None = None
+        # Graph delta cursor; restored from connection config across restarts
+        self._delta_link: str | None = config.get("delta_link")
         # base_url is the generic field name, sharepoint_url is kept for backward compatibility
         self.sharepoint_url = config.get("base_url") or config.get("sharepoint_url")
         logger.debug(
