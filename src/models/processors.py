@@ -424,6 +424,39 @@ class TaskProcessor:
         filename = (hits[0].get("_source") or {}).get("filename")
         return filename if isinstance(filename, str) and filename.strip() else None
 
+    async def _connector_chunks_exist(
+        self,
+        file_id: str,
+        opensearch_client,
+        owner_user_id: str,
+        shared: bool = False,
+        connector_type: str | None = None,
+    ) -> bool:
+        """Return True when any indexed chunk remains for this connector file id.
+
+        Raises on search failure so callers can fail the task instead of
+        treating a lookup error as "already gone".
+        """
+        from connectors.chunk_cleanup import build_connector_file_chunks_query
+
+        if not file_id:
+            return False
+        response = await opensearch_client.search(
+            index=get_index_name(),
+            body={
+                "size": 1,
+                "_source": False,
+                "query": build_connector_file_chunks_query(
+                    [file_id],
+                    connector_type=connector_type,
+                    owner_user_id=owner_user_id,
+                    shared=shared,
+                ),
+            },
+        )
+        hits = response.get("hits", {}).get("hits", [])
+        return bool(hits)
+
     async def _delete_connector_chunks(
         self,
         file_id: str,
@@ -432,13 +465,14 @@ class TaskProcessor:
         keep_filenames: list[str] | None = None,
         shared: bool = False,
         connector_type: str | None = None,
-    ) -> int:
+    ) -> int | None:
         """Delete indexed chunks for a connector file by its STABLE id.
 
         Deletion semantics (dual-field id match, connector/owner/shared scoping,
-        rename ``keep_filenames``) live in ``connectors.chunk_cleanup``. This
-        wrapper is best-effort: logs and returns 0 on failure so a cleanup miss
-        never fails the task.
+        rename ``keep_filenames``) live in ``connectors.chunk_cleanup``.
+
+        Returns the number of chunks deleted, or ``None`` when cleanup failed
+        so callers do not treat an error as a successful zero-delete.
 
         ``connector_type`` scopes the match to one connector type — the same
         value the chunks were indexed under — so an id that collides with a
@@ -463,7 +497,7 @@ class TaskProcessor:
                 file_id=file_id,
                 error=str(e),
             )
-            return 0
+            return None
 
     async def process_document_standard(
         self,
@@ -1075,6 +1109,40 @@ class ConnectorFileProcessor(TaskProcessor):
                         shared=self.shared,
                         connector_type=connector_type,
                     )
+                    if deleted_chunks is None:
+                        file_task.status = TaskStatus.FAILED
+                        file_task.error = (
+                            "Failed to remove indexed chunks after the file was "
+                            "deleted at the source."
+                        )
+                        file_task.updated_at = time.time()
+                        upload_task.failed_files += 1
+                        return
+                    if deleted_chunks == 0:
+                        try:
+                            still_indexed = await self._connector_chunks_exist(
+                                file_id,
+                                opensearch_client,
+                                self.user_id,
+                                shared=self.shared,
+                                connector_type=connector_type,
+                            )
+                        except Exception as exist_err:
+                            logger.error(
+                                "Could not confirm indexed chunks were removed",
+                                file_id=file_id,
+                                error=str(exist_err),
+                            )
+                            still_indexed = True
+                        if still_indexed:
+                            file_task.status = TaskStatus.FAILED
+                            file_task.error = (
+                                "File no longer exists at source, but indexed "
+                                "chunks could not be removed."
+                            )
+                            file_task.updated_at = time.time()
+                            upload_task.failed_files += 1
+                            return
 
                     logger.info(
                         "File no longer exists at source — removed from index",
@@ -1138,17 +1206,23 @@ class ConnectorFileProcessor(TaskProcessor):
             # Match against file_task.filename — the cleaned name the file is
             # actually indexed under — so duplicate/rename detection lines up
             # with how chunks are keyed.
-            renamed = (
-                await self._delete_connector_chunks(
-                    document.id,
-                    opensearch_client,
-                    self.user_id,
-                    keep_filenames=get_filename_aliases(file_task.filename),
-                    shared=self.shared,
-                    connector_type=connector_type,
-                )
-                > 0
+            deleted_stale = await self._delete_connector_chunks(
+                document.id,
+                opensearch_client,
+                self.user_id,
+                keep_filenames=get_filename_aliases(file_task.filename),
+                shared=self.shared,
+                connector_type=connector_type,
             )
+            if deleted_stale is None:
+                file_task.status = TaskStatus.FAILED
+                file_task.error = (
+                    "Failed to clean up previous indexed chunks for this connector file."
+                )
+                file_task.updated_at = time.time()
+                upload_task.failed_files += 1
+                return
+            renamed = deleted_stale > 0
 
             # Create temporary file from document content
             suffix = os.path.splitext(file_task.filename)[1]
@@ -1164,6 +1238,17 @@ class ConnectorFileProcessor(TaskProcessor):
 
                 if not renamed and await self.check_document_exists(file_hash, opensearch_client):
                     await self._reconcile_shared_owner(file_task.filename)
+                    # Stale-chunk delete can return 0 on a real rename (DLS
+                    # hid the old-name hits, or connector_type is missing on
+                    # older chunks). Still rewrite filename/timestamps by
+                    # stable id so the UI does not keep the old name.
+                    await self.connector_service._update_connector_metadata(
+                        document,
+                        self.user_id,
+                        connector_type,
+                        self.jwt_token,
+                        indexed_filename=file_task.filename,
+                    )
                     file_task.status = TaskStatus.COMPLETED
                     file_task.result = {"status": "unchanged", "id": file_hash}
                     file_task.updated_at = time.time()

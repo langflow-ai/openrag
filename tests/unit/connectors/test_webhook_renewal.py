@@ -122,10 +122,11 @@ async def test_healthy_subscription_is_skipped(tmp_path):
 
 @pytest.mark.asyncio
 async def test_force_renews_healthy_subscription(tmp_path):
-    """Process start must re-establish watches even when stored expiry is far away.
+    """force=True recreates even when stored expiry is far away.
 
-    Shutdown used to cancel Google/Graph channels while leaving webhook_expiration
-    intact; without force, that pair is skipped forever and auto-sync stays dead.
+    Kept as an explicit operator/API path. Periodic renewal no longer
+    force-recreates on every process start (that stop+create cycle can
+    drop Drive watches when the tunnel is down).
     """
     connection = _make_connection(webhook_expiration=_iso_in(48))
     connector = _make_connector()
@@ -508,3 +509,28 @@ async def test_persist_webhook_cursor_skips_save_when_unchanged(tmp_path):
     await manager.persist_webhook_cursor(connection, connector)
 
     manager.save_connections.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_persist_webhook_cursor_clears_reset_delta_link(tmp_path):
+    """A Graph 410 reset sets _delta_link to None; persist must drop the stored
+    invalid cursor instead of leaving it in connections.json."""
+    from connectors.connection_manager import ConnectionConfig, ConnectionManager
+
+    manager = ConnectionManager(connections_file=str(tmp_path / "connections.json"))
+    manager.save_connections = AsyncMock()
+    connection = ConnectionConfig(
+        connection_id="conn-1",
+        connector_type="onedrive",
+        name="onedrive",
+        config={"delta_link": "https://graph.microsoft.com/v1.0/delta?token=stale"},
+    )
+
+    connector = MagicMock()
+    connector.cfg = None
+    connector._delta_link = None
+
+    await manager.persist_webhook_cursor(connection, connector)
+
+    assert "delta_link" not in connection.config
+    manager.save_connections.assert_awaited_once()

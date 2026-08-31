@@ -719,8 +719,14 @@ class ConnectionManager:
             cfg["changes_page_token"] = page_token
             changed = True
         delta_link = getattr(connector, "_delta_link", None)
-        if delta_link and cfg.get("delta_link") != delta_link:
-            cfg["delta_link"] = delta_link
+        if delta_link:
+            if cfg.get("delta_link") != delta_link:
+                cfg["delta_link"] = delta_link
+                changed = True
+        elif "delta_link" in cfg:
+            # Graph 410 reset: drop the invalid cursor so a restart does not
+            # keep sending it.
+            del cfg["delta_link"]
             changed = True
         if changed:
             await self.save_connections()
@@ -735,9 +741,9 @@ class ConnectionManager:
         connection never blocks the rest. Returns counters for logging.
 
         ``force=True`` ignores stored expiration and re-establishes every
-        watched connection. Use that on process start: a far-future
-        ``webhook_expiration`` does not mean the provider channel survived
-        the previous process.
+        watched connection. Do not use that on every process start: Drive
+        cannot extend a channel in place, so force is stop-then-create and
+        can leave auto-sync dead if recreation fails.
         """
         stats = {"checked": 0, "renewed": 0, "failed": 0, "skipped": 0}
         now = datetime.now(UTC)

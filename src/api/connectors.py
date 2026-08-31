@@ -119,6 +119,29 @@ async def _webhook_sync_jwt(connector_service, session_manager, connection, user
     return session_manager.get_effective_jwt_token(connection.user_id, jwt_token)
 
 
+def _webhook_cursor_snapshot(connector) -> tuple[Any, Any]:
+    cfg = getattr(connector, "cfg", None)
+    page_token = getattr(cfg, "changes_page_token", None) if cfg is not None else None
+    return page_token, getattr(connector, "_delta_link", None)
+
+
+def _restore_webhook_cursor(connector, snapshot: tuple[Any, Any]) -> None:
+    page_token, delta_link = snapshot
+    cfg = getattr(connector, "cfg", None)
+    if cfg is not None and hasattr(cfg, "changes_page_token"):
+        cfg.changes_page_token = page_token
+    if hasattr(connector, "_delta_link"):
+        connector._delta_link = delta_link
+
+
+async def _persist_webhook_cursor_after_processing(connector_service, connection, connector) -> None:
+    """Persist cursors via ConnectorService after scope lookup / sync succeed."""
+    persist_fn = getattr(type(connector_service), "persist_webhook_cursor", None)
+    if not callable(persist_fn):
+        return
+    await connector_service.persist_webhook_cursor(connection, connector)
+
+
 def _connector_sync_should_replace(connector_type: str) -> bool:
     """Return True when sync should replace existing indexed files for this
     connector type, so content changes propagate on re-sync.
@@ -1835,6 +1858,7 @@ async def connector_webhook(
             return JSONResponse({"status": "ignored_unknown_channel", "channel_id": channel_id})
 
         # Process webhook for the specific connection
+        cursor_snapshot: tuple[Any, Any] | None = None
         try:
             # Get the connector instance
             connector = await connector_service._get_connector(connection.connection_id)
@@ -1845,21 +1869,12 @@ async def connector_webhook(
                 )
                 return JSONResponse({"status": "error", "reason": "connector_not_found"})
 
-            # Let the connector handle the webhook and return affected file IDs
+            # Let the connector handle the webhook and return affected file IDs.
+            # Cursor persistence waits until scope lookup (and sync, when
+            # needed) succeed, so a failed queue leaves the cursor unadvanced
+            # and the next notification can reprocess the same changes.
+            cursor_snapshot = _webhook_cursor_snapshot(connector)
             affected_files = await connector.handle_webhook(payload)
-            persist_cursor = getattr(
-                type(connector_service.connection_manager), "persist_webhook_cursor", None
-            )
-            if callable(persist_cursor):
-                try:
-                    await connector_service.connection_manager.persist_webhook_cursor(
-                        connection, connector
-                    )
-                except Exception:
-                    logger.exception(
-                        "Failed to persist webhook change cursor",
-                        connection_id=connection.connection_id,
-                    )
 
             user = session_manager.get_user(connection.user_id)
             jwt_token = await _webhook_sync_jwt(
@@ -1936,6 +1951,10 @@ async def connector_webhook(
                     "reason": "no_specific_files",
                 }
 
+            await _persist_webhook_cursor_after_processing(
+                connector_service, connection, connector
+            )
+
             return JSONResponse(
                 {
                     "status": "processed",
@@ -1946,6 +1965,8 @@ async def connector_webhook(
             )
 
         except Exception as e:
+            if cursor_snapshot is not None:
+                _restore_webhook_cursor(connector, cursor_snapshot)
             logger.exception(
                 "[CONNECTOR] Failed to process webhook",
                 connection_id=connection.connection_id,

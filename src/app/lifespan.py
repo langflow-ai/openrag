@@ -71,12 +71,12 @@ async def _periodic_backup(services):
 async def _periodic_webhook_renewal(services):
     """Renew connector webhook subscriptions before they expire.
 
-    The first pass is forced: a stored expiration does not mean Google/Graph
-    is still watching. Backend restarts used to cancel provider channels on
-    shutdown and then skip renewal because expiry was still hours away, so
-    rename/change notifications went silent until the user reconnected.
+    Recreate only expired, near-expiry, or missing channels. Shutdown no
+    longer cancels Google/Graph watches, so a force-recreate on every
+    process start is unnecessary and harmful: Drive cannot PATCH a channel,
+    so force means stop-then-create. If stop succeeds and create fails
+    (or the tunnel is down), auto-sync stays dead until the user reconnects.
 
-    Later passes only recreate channels that are expired or near expiry.
     Provider subscriptions are short-lived (Google Drive ~24h, Microsoft
     Graph 3 days) and go silent without renewal.
     """
@@ -88,7 +88,6 @@ async def _periodic_webhook_renewal(services):
     # Connections are loaded in ConnectorService.initialize() before uvicorn
     # serves. A short settle lets OAuth clients come up; do not wait a full
     # minute — auto-sync should work as soon as the process is up.
-    first_pass = True
     await asyncio.sleep(2)
 
     while True:
@@ -97,9 +96,7 @@ async def _periodic_webhook_renewal(services):
             if connector_service:
                 stats = await connector_service.connection_manager.renew_expiring_subscriptions(
                     WEBHOOK_RENEWAL_THRESHOLD_SECONDS,
-                    force=first_pass,
                 )
-                first_pass = False
                 if stats["renewed"] or stats["failed"]:
                     logger.info("Webhook subscription renewal pass completed", **stats)
                 else:
