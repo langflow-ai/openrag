@@ -18,9 +18,7 @@ class _Response:
 
             req = httpx.Request("PATCH", "http://test")
             resp = httpx.Response(self.status_code, text=self.text, request=req)
-            raise httpx.HTTPStatusError(
-                f"Status {self.status_code}", request=req, response=resp
-            )
+            raise httpx.HTTPStatusError(f"Status {self.status_code}", request=req, response=resp)
 
 
 @pytest.mark.asyncio
