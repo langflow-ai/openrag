@@ -56,7 +56,6 @@ WORKDIR /app
 RUN uv sync --frozen --no-dev --no-editable --extra postgresql
 RUN uv pip uninstall litellm ragstack-ai-knowledge-store
 
-COPY flows/component_index.json /app/component_index.json
 COPY custom_components/ /app/custom_components/
 
 # Expose ports
@@ -67,7 +66,6 @@ ENV LANGFLOW_LOG_TRACE_LOCALS=false
 ENV LANGFLOW_LOG_FORMAT=key_value
 ENV LANGFLOW_BLOCK_CODE_INTERPRETER_COMPONENTS=true
 ENV LANGFLOW_COMPONENTS_PATH=/app/custom_components
-ENV LANGFLOW_COMPONENTS_INDEX_PATH=/app/component_index.json
 ENV LANGFLOW_ALLOW_CUSTOM_COMPONENTS=false
 ENV LANGFLOW_DANGEROUSLY_ALLOW_MULTI_WORKER_WITHOUT_SHARED_QUEUE=true
 ENV LANGFLOW_DISABLE_TRACK_APIKEY_USAGE=true
