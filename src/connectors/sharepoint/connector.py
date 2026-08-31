@@ -69,8 +69,8 @@ class SharePointConnector(BaseConnector):
         self.client_id = None
         self.client_secret = None
         self.tenant_id = config.get("tenant_id", "common")
-        # Graph delta link for webhook change tracking (in-memory per instance)
-        self._delta_link: str | None = None
+        # Graph delta cursor; restored from connection config across restarts
+        self._delta_link: str | None = config.get("delta_link")
         # base_url is the generic field name, sharepoint_url is kept for backward compatibility
         self.sharepoint_url = config.get("base_url") or config.get("sharepoint_url")
         logger.debug(
@@ -1091,13 +1091,26 @@ class SharePointConnector(BaseConnector):
             # the delta query enumerates the whole drive, so only keep recently
             # modified files instead of re-syncing everything.
             first_sweep = self._delta_link is None
-            url = self._delta_link or f"{self._graph_base_url}/{resource}/delta"
+            full_delta_url = f"{self._graph_base_url}/{resource}/delta"
+            url = self._delta_link or full_delta_url
             cutoff = datetime.now(UTC) - timedelta(minutes=10)
 
             affected_files: list[str] = []
             async with httpx.AsyncClient() as client:
                 while url:
                     response = await client.get(url, headers=headers, timeout=30)
+                    if response.status_code == 410 and not first_sweep:
+                        # Invalid/expired delta token: drop it and reconcile
+                        # from a full delta so persist_webhook_cursor can
+                        # remove the stored cursor instead of keeping it.
+                        logger.warning(
+                            "SharePoint Graph delta cursor rejected (410); "
+                            "resetting and reconciling from full delta"
+                        )
+                        self._delta_link = None
+                        first_sweep = True
+                        url = full_delta_url
+                        continue
                     response.raise_for_status()
                     data = response.json()
 

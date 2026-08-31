@@ -28,6 +28,21 @@ from .oauth import GoogleDriveOAuth
 logger = get_logger(__name__)
 
 
+def _http_error_is_not_found(err: Exception) -> bool:
+    """True when Google already dropped the watch (404 / notFound)."""
+    status = getattr(err, "status_code", None)
+    if status is None:
+        status = getattr(getattr(err, "resp", None), "status", None)
+    try:
+        status_int = int(status) if status is not None else None
+    except (TypeError, ValueError):
+        status_int = None
+    if status_int == 404:
+        return True
+    msg = str(err).lower()
+    return "notfound" in msg
+
+
 # -------------------------
 # Config model
 # -------------------------
@@ -1004,7 +1019,8 @@ class GoogleDriveConnector(BaseConnector):
         3) self.cfg.resource_id (as a last-resort override provided by caller/config)
 
         Returns:
-            bool: True if the stop call succeeded, otherwise False.
+            bool: True if the stop call succeeded or the channel is already
+            gone (404). False only when we cannot confirm it is stopped.
         """
         # 1) Ensure auth/service
         ok = await self.authenticate()
@@ -1050,25 +1066,29 @@ class GoogleDriveConnector(BaseConnector):
             self.service.channels().stop(
                 body={"id": subscription_id, "resourceId": resource_id}
             ).execute()
-
-            # 4) Clear local bookkeeping
-            if (
-                getattr(self, "_active_channel", None)
-                and self._active_channel.get("channel_id") == subscription_id
-            ):
-                self._active_channel = {}
-
-            if hasattr(self, "_subscriptions") and isinstance(self._subscriptions, dict):
-                self._subscriptions.pop(subscription_id, None)
-
-            return True
-
         except Exception as e:
-            try:
-                logger.error(f"cleanup_subscription failed for {subscription_id}: {e}")
-            except Exception:
-                pass
-            return False
+            if not _http_error_is_not_found(e):
+                try:
+                    logger.error(f"cleanup_subscription failed for {subscription_id}: {e}")
+                except Exception:
+                    pass
+                return False
+            logger.info(
+                "Google Drive webhook channel already gone; treating as cleaned up",
+                subscription_id=subscription_id,
+            )
+
+        # 4) Clear local bookkeeping
+        if (
+            getattr(self, "_active_channel", None)
+            and self._active_channel.get("channel_id") == subscription_id
+        ):
+            self._active_channel = {}
+
+        if hasattr(self, "_subscriptions") and isinstance(self._subscriptions, dict):
+            self._subscriptions.pop(subscription_id, None)
+
+        return True
 
     async def handle_webhook(self, payload: dict[str, Any]) -> list[str]:
         """
@@ -1387,6 +1407,7 @@ class GoogleDriveConnector(BaseConnector):
             return True
 
         except HttpError as e:
+            if _http_error_is_not_found(e):
+                return True
             logger.error("Failed to cleanup subscription", error=str(e))
-
             return False

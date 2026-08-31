@@ -46,6 +46,18 @@ class ConnectorService:
         """Get a connector by connection ID"""
         return await self.connection_manager.get_connector(connection_id)
 
+    async def persist_webhook_cursor(self, connection, connector) -> None:
+        """Persist Drive/Graph change cursors after webhook processing succeeds.
+
+        Looked up on ``type(self)`` by the webhook route so MagicMock services
+        in tests do not auto-invoke it. Raises on save failure so the route
+        can leave the in-memory cursor unadvanced.
+        """
+        persist = getattr(type(self.connection_manager), "persist_webhook_cursor", None)
+        if not callable(persist):
+            return
+        await self.connection_manager.persist_webhook_cursor(connection, connector)
+
     async def _get_effective_sync_jwt(
         self,
         user_id: str,

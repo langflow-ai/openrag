@@ -35,46 +35,6 @@ from utils.telemetry import Category, MessageId, TelemetryClient
 logger = get_logger(__name__)
 
 
-async def cleanup_subscriptions_proper(services):
-    """Cancel all active webhook subscriptions"""
-    logger.info("Cancelling active webhook subscriptions")
-
-    try:
-        connector_service = services["connector_service"]
-        await connector_service.connection_manager.load_connections()
-
-        all_connections = await connector_service.connection_manager.list_connections()
-        active_connections = [
-            c for c in all_connections if c.is_active and c.config.get("webhook_channel_id")
-        ]
-
-        for connection in active_connections:
-            try:
-                logger.info(
-                    "Cancelling subscription for connection",
-                    connection_id=connection.connection_id,
-                )
-                connector = await connector_service.get_connector(connection.connection_id)
-                if connector:
-                    subscription_id = connection.config.get("webhook_channel_id")
-                    await connector.cleanup_subscription(subscription_id)
-                    logger.info("Cancelled subscription", subscription_id=subscription_id)
-            except Exception as e:
-                logger.error(
-                    "Failed to cancel subscription",
-                    connection_id=connection.connection_id,
-                    error=str(e),
-                )
-
-        logger.info(
-            "Finished cancelling subscriptions",
-            subscription_count=len(active_connections),
-        )
-
-    except Exception as e:
-        logger.error("Failed to cleanup subscriptions", error=str(e))
-
-
 async def _periodic_backup(services):
     """Run flow backups every 5 minutes once onboarding is complete."""
     while True:
@@ -111,25 +71,31 @@ async def _periodic_backup(services):
 async def _periodic_webhook_renewal(services):
     """Renew connector webhook subscriptions before they expire.
 
-    Checks immediately at startup (subscriptions may have lapsed while the
-    app was down), then on a fixed interval. Provider subscriptions are
-    short-lived (Google Drive ~24h, Microsoft Graph 3 days) and go silent
-    without renewal.
+    Recreate only expired, near-expiry, or missing channels. Shutdown no
+    longer cancels Google/Graph watches, so a force-recreate on every
+    process start is unnecessary and harmful: Drive cannot PATCH a channel,
+    so force means stop-then-create. If stop succeeds and create fails
+    (or the tunnel is down), auto-sync stays dead until the user reconnects.
+
+    Provider subscriptions are short-lived (Google Drive ~24h, Microsoft
+    Graph 3 days) and go silent without renewal.
     """
     from config.settings import (
         WEBHOOK_RENEWAL_INTERVAL_SECONDS,
         WEBHOOK_RENEWAL_THRESHOLD_SECONDS,
     )
 
-    # Let startup_tasks finish loading connections before the first pass
-    await asyncio.sleep(60)
+    # Connections are loaded in ConnectorService.initialize() before uvicorn
+    # serves. A short settle lets OAuth clients come up; do not wait a full
+    # minute — auto-sync should work as soon as the process is up.
+    await asyncio.sleep(2)
 
     while True:
         try:
             connector_service = services.get("connector_service")
             if connector_service:
                 stats = await connector_service.connection_manager.renew_expiring_subscriptions(
-                    WEBHOOK_RENEWAL_THRESHOLD_SECONDS
+                    WEBHOOK_RENEWAL_THRESHOLD_SECONDS,
                 )
                 if stats["renewed"] or stats["failed"]:
                     logger.info("Webhook subscription renewal pass completed", **stats)
@@ -414,7 +380,10 @@ async def run_shutdown(app: FastAPI):
     except Exception as e:
         logger.error("Error during graceful OpenSearch shutdown", error=str(e))
 
-    await cleanup_subscriptions_proper(services)
+    # Leave Google/Graph webhook channels in place across process restarts.
+    # Cancelling them here made auto-sync dead until the next reconnect:
+    # stored webhook_expiration still looked healthy, so startup renewal
+    # skipped recreation while the provider had already stopped notifying.
     # Cleanup task service (cancels background tasks and process pool)
     await services["task_service"].shutdown()
     # Cleanup async clients (this will also close OpenSearch client if not already closed)

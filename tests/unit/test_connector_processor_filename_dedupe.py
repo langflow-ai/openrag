@@ -196,9 +196,13 @@ async def test_connector_processor_deletes_chunks_when_source_returns_404(
     processor = _build_connector_processor(replace_duplicates=False)
 
     opensearch_client = AsyncMock()
-    # collect_visible_document_ids issues a scroll search; return one chunk _id
+    # First search recovers the indexed filename; the scroll search then
+    # enumerates chunk _ids for delete.
     opensearch_client.search = AsyncMock(
-        return_value={"hits": {"hits": [{"_id": "chunk-1"}]}, "_scroll_id": None}
+        return_value={
+            "hits": {"hits": [{"_id": "chunk-1", "_source": {"filename": "Quarterly.pdf"}}]},
+            "_scroll_id": None,
+        }
     )
     processor.document_service.session_manager.get_user_opensearch_client.return_value = (
         opensearch_client
@@ -215,13 +219,17 @@ async def test_connector_processor_deletes_chunks_when_source_returns_404(
     )
 
     file_task = _make_file_task()
+    file_task.filename = "file-id-1"
     upload_task = _make_upload_task()
 
     await processor.process_item(upload_task, "file-id-1", file_task)
 
-    assert file_task.status == TaskStatus.SKIPPED
+    assert file_task.status == TaskStatus.COMPLETED
+    assert file_task.filename == "Quarterly.pdf"
+    assert (file_task.result or {}).get("status") == "deleted"
     assert (file_task.result or {}).get("reason") == "deleted_at_source"
     assert (file_task.result or {}).get("deleted_chunks") == 1
+    assert "warning" not in (file_task.result or {})
     assert upload_task.successful_files == 1
     # Concrete chunk deletes go through the backend write client.
     backend_write_client.delete.assert_awaited_once()
@@ -239,6 +247,117 @@ async def test_connector_processor_deletes_chunks_when_source_returns_404(
     # different connector's id can't take its chunks down with it.
     terms = [f["term"] for f in query["bool"]["filter"] if "term" in f]
     assert {"connector_type": "sharepoint"} in terms
+
+
+@pytest.mark.asyncio
+async def test_connector_processor_fails_when_deleted_chunk_cleanup_errors(
+    monkeypatch, backend_write_client
+):
+    """A delete-at-source must not complete when chunk cleanup fails (None)."""
+    monkeypatch.setattr("config.settings.DISABLE_INGEST_WITH_LANGFLOW", True)
+    processor = _build_connector_processor(replace_duplicates=False)
+
+    opensearch_client = AsyncMock()
+    opensearch_client.search = AsyncMock(
+        return_value={"hits": {"hits": [{"_id": "chunk-1"}]}, "_scroll_id": None}
+    )
+    processor.document_service.session_manager.get_user_opensearch_client.return_value = (
+        opensearch_client
+    )
+    processor._delete_connector_chunks = AsyncMock(return_value=None)
+
+    connector = MagicMock()
+    connector.get_file_content = AsyncMock(side_effect=FileNotFoundError("404 Not Found"))
+    processor.connector_service.get_connector = AsyncMock(return_value=connector)
+    connection = MagicMock()
+    connection.connector_type = "sharepoint"
+    processor.connector_service.connection_manager = MagicMock()
+    processor.connector_service.connection_manager.get_connection = AsyncMock(
+        return_value=connection
+    )
+
+    file_task = _make_file_task()
+    upload_task = _make_upload_task()
+
+    await processor.process_item(upload_task, "file-id-1", file_task)
+
+    assert file_task.status == TaskStatus.FAILED
+    assert upload_task.failed_files == 1
+    assert upload_task.successful_files == 0
+    backend_write_client.delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_connector_processor_fails_when_zero_delete_leaves_chunks(
+    monkeypatch, backend_write_client
+):
+    """Zero chunks deleted is success only when a follow-up lookup finds none."""
+    monkeypatch.setattr("config.settings.DISABLE_INGEST_WITH_LANGFLOW", True)
+    processor = _build_connector_processor(replace_duplicates=False)
+
+    opensearch_client = AsyncMock()
+    opensearch_client.search = AsyncMock(
+        return_value={
+            "hits": {"hits": [{"_id": "chunk-1", "_source": {"filename": "gone.pdf"}}]},
+            "_scroll_id": None,
+        }
+    )
+    processor.document_service.session_manager.get_user_opensearch_client.return_value = (
+        opensearch_client
+    )
+    processor._delete_connector_chunks = AsyncMock(return_value=0)
+
+    connector = MagicMock()
+    connector.get_file_content = AsyncMock(side_effect=FileNotFoundError("404 Not Found"))
+    processor.connector_service.get_connector = AsyncMock(return_value=connector)
+    connection = MagicMock()
+    connection.connector_type = "sharepoint"
+    processor.connector_service.connection_manager = MagicMock()
+    processor.connector_service.connection_manager.get_connection = AsyncMock(
+        return_value=connection
+    )
+
+    file_task = _make_file_task()
+    upload_task = _make_upload_task()
+
+    await processor.process_item(upload_task, "file-id-1", file_task)
+
+    assert file_task.status == TaskStatus.FAILED
+    assert upload_task.failed_files == 1
+
+
+@pytest.mark.asyncio
+async def test_connector_processor_completes_zero_delete_when_index_empty(
+    monkeypatch, backend_write_client
+):
+    monkeypatch.setattr("config.settings.DISABLE_INGEST_WITH_LANGFLOW", True)
+    processor = _build_connector_processor(replace_duplicates=False)
+
+    opensearch_client = AsyncMock()
+    opensearch_client.search = AsyncMock(return_value={"hits": {"hits": []}, "_scroll_id": None})
+    processor.document_service.session_manager.get_user_opensearch_client.return_value = (
+        opensearch_client
+    )
+    processor._delete_connector_chunks = AsyncMock(return_value=0)
+
+    connector = MagicMock()
+    connector.get_file_content = AsyncMock(side_effect=FileNotFoundError("404 Not Found"))
+    processor.connector_service.get_connector = AsyncMock(return_value=connector)
+    connection = MagicMock()
+    connection.connector_type = "sharepoint"
+    processor.connector_service.connection_manager = MagicMock()
+    processor.connector_service.connection_manager.get_connection = AsyncMock(
+        return_value=connection
+    )
+
+    file_task = _make_file_task()
+    upload_task = _make_upload_task()
+
+    await processor.process_item(upload_task, "file-id-1", file_task)
+
+    assert file_task.status == TaskStatus.COMPLETED
+    assert (file_task.result or {}).get("deleted_chunks") == 0
+    assert upload_task.successful_files == 1
 
 
 @pytest.mark.asyncio
@@ -473,9 +592,11 @@ async def test_langflow_connector_processor_deletes_chunks_when_source_returns_4
 
     await processor.process_item(upload_task, "file-id-1", file_task)
 
-    assert file_task.status == TaskStatus.SKIPPED
+    assert file_task.status == TaskStatus.COMPLETED
+    assert (file_task.result or {}).get("status") == "deleted"
     assert (file_task.result or {}).get("reason") == "deleted_at_source"
     assert (file_task.result or {}).get("deleted_chunks") == 1
+    assert "warning" not in (file_task.result or {})
     assert file_task.error is None
     assert upload_task.successful_files == 1
     assert upload_task.failed_files == 0
@@ -500,6 +621,7 @@ async def test_langflow_connector_processor_hash_unchanged_path_preserved(monkey
     assert file_task.status == TaskStatus.COMPLETED
     assert (file_task.result or {}).get("status") == "unchanged"
     processor.connector_service.langflow_service.upload_and_ingest_file.assert_not_called()
+    processor.connector_service._update_connector_metadata.assert_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -557,6 +679,35 @@ async def test_no_rename_unchanged_still_short_circuits(monkeypatch, backend_wri
     assert (file_task.result or {}).get("status") == "unchanged"
     mock_process.assert_not_called()
     backend_write_client.delete.assert_not_awaited()
+    processor.connector_service._update_connector_metadata.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_unchanged_hash_rewrites_filename_when_stale_delete_misses(
+    monkeypatch, backend_write_client
+):
+    """A Drive rename with unchanged bytes can miss stale-chunk delete (0 hits).
+    Still rewrite indexed filename via metadata update so the UI is not stuck
+    on the old name."""
+    monkeypatch.setattr("config.settings.DISABLE_INGEST_WITH_LANGFLOW", True)
+    processor = _build_connector_processor(replace_duplicates=True)
+    document = _make_document(filename="Renamed.pdf")
+    _wire_connector_processor(
+        processor, document, filename_exists=False, hash_exists=True, rename_stale_exists=False
+    )
+
+    file_task = _make_file_task()
+    upload_task = _make_upload_task()
+
+    with patch.object(processor, "process_document_standard", new=AsyncMock()) as mock_process:
+        await processor.process_item(upload_task, "file-id-1", file_task)
+
+    assert (file_task.result or {}).get("status") == "unchanged"
+    mock_process.assert_not_called()
+    meta = processor.connector_service._update_connector_metadata
+    meta.assert_awaited_once()
+    assert meta.await_args.args[0] is document
+    assert meta.await_args.kwargs.get("indexed_filename") == "Renamed.pdf"
 
 
 @pytest.mark.asyncio
