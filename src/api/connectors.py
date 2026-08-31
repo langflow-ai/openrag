@@ -134,7 +134,9 @@ def _restore_webhook_cursor(connector, snapshot: tuple[Any, Any]) -> None:
         connector._delta_link = delta_link
 
 
-async def _persist_webhook_cursor_after_processing(connector_service, connection, connector) -> None:
+async def _persist_webhook_cursor_after_processing(
+    connector_service, connection, connector
+) -> None:
     """Persist cursors via ConnectorService after scope lookup / sync succeed."""
     persist_fn = getattr(type(connector_service), "persist_webhook_cursor", None)
     if not callable(persist_fn):
@@ -1951,9 +1953,7 @@ async def connector_webhook(
                     "reason": "no_specific_files",
                 }
 
-            await _persist_webhook_cursor_after_processing(
-                connector_service, connection, connector
-            )
+            await _persist_webhook_cursor_after_processing(connector_service, connection, connector)
 
             return JSONResponse(
                 {

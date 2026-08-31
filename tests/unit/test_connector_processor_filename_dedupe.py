@@ -200,9 +200,7 @@ async def test_connector_processor_deletes_chunks_when_source_returns_404(
     # enumerates chunk _ids for delete.
     opensearch_client.search = AsyncMock(
         return_value={
-            "hits": {
-                "hits": [{"_id": "chunk-1", "_source": {"filename": "Quarterly.pdf"}}]
-            },
+            "hits": {"hits": [{"_id": "chunk-1", "_source": {"filename": "Quarterly.pdf"}}]},
             "_scroll_id": None,
         }
     )
@@ -336,9 +334,7 @@ async def test_connector_processor_completes_zero_delete_when_index_empty(
     processor = _build_connector_processor(replace_duplicates=False)
 
     opensearch_client = AsyncMock()
-    opensearch_client.search = AsyncMock(
-        return_value={"hits": {"hits": []}, "_scroll_id": None}
-    )
+    opensearch_client.search = AsyncMock(return_value={"hits": {"hits": []}, "_scroll_id": None})
     processor.document_service.session_manager.get_user_opensearch_client.return_value = (
         opensearch_client
     )

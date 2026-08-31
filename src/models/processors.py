@@ -1097,9 +1097,7 @@ class ConnectorFileProcessor(TaskProcessor):
                         shared=self.shared,
                         connector_type=connector_type,
                     )
-                    if indexed_name and (
-                        not file_task.filename or file_task.filename == file_id
-                    ):
+                    if indexed_name and (not file_task.filename or file_task.filename == file_id):
                         file_task.filename = indexed_name
 
                     deleted_chunks = await self._delete_connector_chunks(
