@@ -53,15 +53,33 @@ export class Settings {
       .first();
 
   /**
+   * Get locator for a provider's card.
+   *
+   * `hasText` matches substrings, so filtering on "OpenAI" also selected the
+   * "Azure OpenAI" tile once both providers shipped, and any button lookup
+   * inside it blew up under strict mode. Anchor on the card heading, which
+   * carries the provider name exactly.
+   * @param providerName - Name of the model provider
+   * @returns Locator for the provider card
+   */
+  private getProviderCard(providerName: string) {
+    return this.page.locator("div.rounded-xl, div.border-border.group").filter({
+      has: this.page.getByRole("heading", {
+        name: providerName,
+        exact: true,
+      }),
+    });
+  }
+
+  /**
    * Get locator for configure button by provider name
    * @param providerName - Name of the model provider
    * @returns Locator for the configure button
    */
   private getConfigureButton(providerName: string) {
-    return this.page
-      .locator("div.rounded-xl, div.border-border.group")
-      .filter({ hasText: providerName })
-      .getByRole("button", { name: "Configure" });
+    return this.getProviderCard(providerName).getByRole("button", {
+      name: "Configure",
+    });
   }
 
   /**
@@ -100,10 +118,9 @@ export class Settings {
    * @returns Locator for the edit setup button
    */
   private getEditSetupButton(providerName: string) {
-    return this.page
-      .locator("div.rounded-xl, div.border-border.group")
-      .filter({ hasText: providerName })
-      .getByRole("button", { name: "Edit Setup" });
+    return this.getProviderCard(providerName).getByRole("button", {
+      name: "Edit Setup",
+    });
   }
 
   /**
