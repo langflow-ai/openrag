@@ -66,9 +66,9 @@ providers:
   - name: azure_ai
     display_name: Azure AI Foundry
     modes:
-      oss: true
-      on_prem: true
-      saas: true
+      oss: false
+      on_prem: false
+      saas: false
   # enabled in OSS for tests only to be disbaled in OSS after tests are complete
 
   # Azure OpenAI Service, which LiteLLM keys separately from Foundry above:
