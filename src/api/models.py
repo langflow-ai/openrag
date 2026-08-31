@@ -11,6 +11,7 @@ from api.provider_validation import (
 )
 from config.settings import get_openrag_config
 from dependencies import get_models_service, require_permission
+from services.model_catalog import hide_excluded_live_models
 from session_manager import User
 from utils.logging_config import get_logger
 
@@ -97,7 +98,7 @@ async def get_openai_models(
             )
 
         models = await models_service.get_openai_models(api_key=api_key)
-        return JSONResponse(models)
+        return JSONResponse(hide_excluded_live_models("openai", models))
     except Exception as e:
         logger.error(f"Failed to get OpenAI models: {str(e)}")
         return _models_error_response(e)
@@ -127,7 +128,7 @@ async def get_anthropic_models(
             )
 
         models = await models_service.get_anthropic_models(api_key=api_key)
-        return JSONResponse(models)
+        return JSONResponse(hide_excluded_live_models("anthropic", models))
     except Exception as e:
         logger.error(f"Failed to get Anthropic models: {str(e)}")
         return _models_error_response(e)
@@ -154,7 +155,7 @@ async def get_ollama_models(
             )
 
         models = await models_service.get_ollama_models(endpoint=endpoint)
-        return JSONResponse(models)
+        return JSONResponse(hide_excluded_live_models("ollama", models))
     except Exception as e:
         logger.error(f"Failed to get Ollama models: {str(e)}")
         return _models_error_response(e)
@@ -211,7 +212,7 @@ async def get_ibm_models(
         models = await models_service.get_ibm_models(
             endpoint=endpoint, api_key=api_key, project_id=project_id
         )
-        return JSONResponse(models)
+        return JSONResponse(hide_excluded_live_models("watsonx", models))
     except Exception as e:
         logger.error(f"Failed to get IBM models: {str(e)}")
         return _models_error_response(e)

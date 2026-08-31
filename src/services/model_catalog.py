@@ -26,16 +26,21 @@ from __future__ import annotations
 
 import datetime
 import json
+from fnmatch import fnmatch
 from functools import lru_cache
 from typing import Any
 
-from config.model_providers import visible_provider_entries
+from config.model_providers import ProviderEntry, visible_provider_entries
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
 TEXT_GENERATION_MODES = frozenset({"chat", "completion", "responses"})
 EMBEDDING_MODE = "embedding"
+
+#: LiteLLM prices fine-tunes off a template row named for the base model. The
+#: row is not a callable id, so it never belongs in a picker.
+FINE_TUNE_TEMPLATE_PREFIX = "ft:"
 
 CAPABILITY_FLAGS: dict[str, str] = {
     "supports_function_calling": "function_calling",
@@ -193,7 +198,24 @@ def _model_entry(name: str, info: dict[str, Any]) -> dict[str, Any]:
     return entry
 
 
-ProviderSpec = tuple[str, str, tuple[str, ...], tuple[str, ...]]
+def _excluded(name: str, patterns: tuple[str, ...]) -> bool:
+    """Whether a model id is one the config file keeps out of the pickers.
+
+    Matched on the id as the picker shows it — `gpt-3.5-turbo`, not
+    `openai/gpt-3.5-turbo` — because that is the name an operator reads off the
+    screen when deciding what to suppress. `*` and `?` work, so a whole
+    generation goes in one line.
+
+    Also matched on the id's last path segment, so a regional deployment is
+    covered by the plain name: Azure lists `gpt-5.6-luna` as `eu/gpt-5.6-luna`
+    and `us/gpt-5.6-luna` too, and someone suppressing that model means all
+    three. Write `eu/*` to reach a region on its own.
+    """
+    if not patterns:
+        return False
+    lowered = name.lower()
+    bare = lowered.rsplit("/", 1)[-1]
+    return any(fnmatch(lowered, pattern) or fnmatch(bare, pattern) for pattern in patterns)
 
 
 def _declared_entries(names: tuple[str, ...], mode: str) -> list[dict[str, Any]]:
@@ -207,7 +229,7 @@ def _declared_entries(names: tuple[str, ...], mode: str) -> list[dict[str, Any]]
 
 
 @lru_cache(maxsize=8)
-def _catalog(providers: tuple[ProviderSpec, ...]) -> dict[str, Any]:
+def _catalog(providers: tuple[ProviderEntry, ...]) -> dict[str, Any]:
     """Payload for `providers`, given as `config.model_providers` entries.
 
     The entries are the cache key, so flipping a provider's visibility (or the
@@ -219,7 +241,7 @@ def _catalog(providers: tuple[ProviderSpec, ...]) -> dict[str, Any]:
         raise CatalogUnavailableError("litellm is not installed on the server") from exc
 
     specs = _provider_field_specs()
-    keys = {key for key, _, _, _ in providers}
+    keys = {entry.name for entry in providers}
     chat_by_provider: dict[str, list[dict[str, Any]]] = {}
     embed_by_provider: dict[str, list[dict[str, Any]]] = {}
 
@@ -239,10 +261,17 @@ def _catalog(providers: tuple[ProviderSpec, ...]) -> dict[str, Any]:
         name = model_id[len(provider) + 1 :] if model_id.startswith(f"{provider}/") else model_id
         if not name or name == "sample_spec":
             continue
+        if name.startswith(FINE_TUNE_TEMPLATE_PREFIX):
+            # `ft:gpt-4o-2024-08-06` is a pricing row for the *base* of a
+            # fine-tune, not an id anyone can call: a real one carries the org
+            # and job suffix (`ft:gpt-4o-2024-08-06:acme::abc123`). Listing the
+            # template invites picking a model that 404s. Owners of a fine-tune
+            # type their full id into the picker instead.
+            continue
         bucket.setdefault(provider, []).append(_model_entry(name, info))
 
     entries = []
-    for key, display_name, declared_chat, declared_embed in providers:
+    for key, display_name, declared_chat, declared_embed, excluded in providers:
         if not is_known_provider(key):
             # The catalogue would still render, but `split_model_id` cannot
             # recognise the prefix, so every id would be billed to the default
@@ -261,6 +290,11 @@ def _catalog(providers: tuple[ProviderSpec, ...]) -> dict[str, Any]:
         embed = embed + _declared_entries(
             tuple(name for name in declared_embed if name not in known_embed), EMBEDDING_MODE
         )
+        # Applied last, so `exclude_models` also wins over a `models:` row —
+        # a deployment that suppresses an id means it, wherever the id came
+        # from, and the alternative is two lines that quietly contradict.
+        chat = [entry for entry in chat if not _excluded(entry["model"], excluded)]
+        embed = [entry for entry in embed if not _excluded(entry["model"], excluded)]
         entries.append(
             {
                 "key": key,
@@ -277,7 +311,7 @@ def _catalog(providers: tuple[ProviderSpec, ...]) -> dict[str, Any]:
 
 
 @lru_cache(maxsize=8)
-def _catalog_for(today: datetime.date, providers: tuple[ProviderSpec, ...]) -> dict[str, Any]:
+def _catalog_for(today: datetime.date, providers: tuple[ProviderEntry, ...]) -> dict[str, Any]:
     """`_catalog()` with models the provider has already retired removed."""
 
     def _keep(model: dict[str, Any]) -> bool:
@@ -298,9 +332,48 @@ def _catalog_for(today: datetime.date, providers: tuple[ProviderSpec, ...]) -> d
     return {"providers": entries}
 
 
+def exclusions_for(provider: str) -> tuple[str, ...]:
+    """The `exclude_models` patterns configured for `provider`."""
+    key = (provider or "").strip().lower()
+    for entry in visible_provider_entries():
+        if entry.name == key:
+            return entry.exclude_models
+    return ()
+
+
+#: Keys in a live `/models/{provider}` payload that hold model lists.
+LIVE_MODEL_LIST_KEYS = ("language_models", "embedding_models")
+
+
+def hide_excluded_live_models(provider: str, payload: Any) -> Any:
+    """Apply `exclude_models` to a live `/models/{provider}` response.
+
+    Ollama, watsonx, OpenAI and Anthropic are also listed by asking the running
+    provider, which never passes through the catalogue — so without this an
+    excluded id disappears from the settings picker and comes straight back in
+    through onboarding. The filter belongs here rather than in the frontend so
+    every consumer, SDK clients included, sees one list.
+    """
+    patterns = exclusions_for(provider)
+    if not patterns or not isinstance(payload, dict):
+        return payload
+    filtered = dict(payload)
+    for key in LIVE_MODEL_LIST_KEYS:
+        models = payload.get(key)
+        if not isinstance(models, list):
+            continue
+        filtered[key] = [
+            model
+            for model in models
+            if not _excluded(str((model or {}).get("value", "")), patterns)
+            if isinstance(model, dict)
+        ]
+    return filtered
+
+
 def supported_provider_keys() -> frozenset[str]:
     """The providers this run mode publishes, per `config/model_providers.yaml`."""
-    return frozenset(entry[0] for entry in visible_provider_entries())
+    return frozenset(entry.name for entry in visible_provider_entries())
 
 
 def catalog(today: datetime.date | None = None) -> dict[str, Any]:
@@ -334,7 +407,7 @@ def is_known_provider(provider: str) -> bool:
 
 
 @lru_cache(maxsize=8)
-def _model_owners(providers: tuple[ProviderSpec, ...]) -> dict[str, tuple[str, ...]]:
+def _model_owners(providers: tuple[ProviderEntry, ...]) -> dict[str, tuple[str, ...]]:
     """Map every catalogue model id to the providers that serve it.
 
     Keyed by the same entries as `_catalog()`, so a run mode that hides a

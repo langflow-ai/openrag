@@ -61,6 +61,31 @@ function optionProvider(
   return option.provider ?? group?.provider;
 }
 
+/** How close a retirement has to be before the model drops out of the list. */
+const RETIRING_SOON_DAYS = 90;
+
+/**
+ * A model close enough to retirement to be worth hiding by default.
+ *
+ * Not simply "has a deprecation_date": providers use that field very
+ * differently. Anthropic stamps one on *every* model at launch, roughly a year
+ * out, so hiding on presence alone would leave 2 of its 17 models on screen.
+ * OpenAI leaves current models undated and sunsets a whole legacy generation
+ * on one shared date. A window reads correctly for both — it hides OpenAI's
+ * gpt-3.5 family and Anthropic's 4-5 generation, and nothing at all for
+ * providers that publish no dates.
+ *
+ * The backend already drops models whose date has passed, so anything here is
+ * still callable — hidden, never taken away.
+ */
+function isRetiringSoon(option: ModelOption): boolean {
+  const date = option.model?.deprecation_date;
+  if (!date) return false;
+  const retires = Date.parse(date);
+  if (Number.isNaN(retires)) return false;
+  return retires <= Date.now() + RETIRING_SOON_DAYS * 86_400_000;
+}
+
 function isSelectedRow(
   option: ModelOption,
   value: string,
@@ -85,7 +110,7 @@ export function ModelSelector({
   onValueChange,
   icon,
   placeholder = "Select model...",
-  searchPlaceholder = "Search model...",
+  searchPlaceholder,
   noOptionsPlaceholder = "No models available",
   custom = false,
   hasError = false,
@@ -104,6 +129,14 @@ export function ModelSelector({
     }
   }
 
+  // A selector that accepts a typed model has to say so: the box is the only
+  // way to reach a deployment name the catalogue cannot know. Selectors that
+  // only pick from a fixed list (the watsonx endpoint picker) keep the plain
+  // label, and any caller passing its own copy still wins.
+  const searchBoxPlaceholder =
+    searchPlaceholder ??
+    (custom ? "Search or type a model name" : "Search model...");
+
   const [searchValue, setSearchValue] = useState("");
   // The option filter runs on the trimmed, lowercased search text, so the
   // custom entry has to use the trimmed text too — otherwise typing trailing
@@ -118,6 +151,16 @@ export function ModelSelector({
   );
   const toggleGroup = (group: string) =>
     setExpandedGroups((previous) => {
+      const next = new Set(previous);
+      if (!next.delete(group)) next.add(group);
+      return next;
+    });
+  // Groups the user chose to see retiring models in.
+  const [deprecatedGroups, setDeprecatedGroups] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const toggleDeprecated = (group: string) =>
+    setDeprecatedGroups((previous) => {
       const next = new Set(previous);
       if (!next.delete(group)) next.add(group);
       return next;
@@ -145,24 +188,46 @@ export function ModelSelector({
       const providerMatches = group.group
         .toLowerCase()
         .includes(deferredSearch);
-      const matches = deferredSearch
+      const searched = deferredSearch
         ? group.options.filter(
             (option) =>
               providerMatches ||
               option.label.toLowerCase().includes(deferredSearch),
           )
         : group.options;
-      if (deferredSearch && matches.length === 0) return [];
+      // Retiring models are hidden until asked for, but never the one already
+      // selected — taking the current choice off the list would make the
+      // selector look broken to whoever set it.
+      const deprecatedCount = searched.filter(isRetiringSoon).length;
+      const matches = deprecatedGroups.has(group.group)
+        ? searched
+        : searched.filter(
+            (option) =>
+              !isRetiringSoon(option) ||
+              isSelectedRow(option, value, selectedProvider, group),
+          );
+      if (deferredSearch && matches.length === 0 && deprecatedCount === 0) {
+        return [];
+      }
       // Collapsed groups show a preview; the trailing row expands them. The cap
       // applies while searching too, so without that row a search would drop
       // matches with nothing on screen to say so.
       const options = expandedGroups.has(group.group)
         ? matches
         : matches.slice(0, MODELS_PER_PROVIDER);
-      return [{ ...group, options, matchCount: matches.length }];
+      return [
+        { ...group, options, matchCount: matches.length, deprecatedCount },
+      ];
     });
     return matched.slice(0, 40);
-  }, [deferredSearch, groupedOptions, expandedGroups]);
+  }, [
+    deferredSearch,
+    groupedOptions,
+    expandedGroups,
+    deprecatedGroups,
+    value,
+    selectedProvider,
+  ]);
   const visibleOptions = useMemo(() => {
     if (groupedOptions) return [];
     const source = options ?? [];
@@ -244,7 +309,10 @@ export function ModelSelector({
       >
         <Command shouldFilter={false}>
           <CommandInput
-            placeholder={searchPlaceholder}
+            // Located by test id, not by placeholder: the copy changes with
+            // `custom` and is the sort of thing that gets reworded.
+            data-testid="model-search-input"
+            placeholder={searchBoxPlaceholder}
             value={searchValue}
             onValueChange={setSearchValue}
           />
@@ -366,6 +434,27 @@ export function ModelSelector({
                             : "Show fewer"}
                         </CommandItem>
                       )}
+                      {group.deprecatedCount > 0 && (
+                        <CommandItem
+                          value={`__deprecated-${group.group}`}
+                          aria-label={
+                            deprecatedGroups.has(group.group)
+                              ? `Hide retiring ${group.group} models`
+                              : `Show ${group.deprecatedCount} retiring ${group.group} models`
+                          }
+                          data-testid={
+                            groupProvider
+                              ? `model-group-deprecated-${groupProvider}`
+                              : undefined
+                          }
+                          className="text-xs text-muted-foreground"
+                          onSelect={() => toggleDeprecated(group.group)}
+                        >
+                          {deprecatedGroups.has(group.group)
+                            ? "Hide retiring models"
+                            : `Show ${group.deprecatedCount} retiring`}
+                        </CommandItem>
+                      )}
                       {showCustom && (
                         <CommandItem
                           value={`${group.group}-${customValue}`}
@@ -392,7 +481,23 @@ export function ModelSelector({
                             )}
                           />
                           <div className="flex items-center gap-2">
-                            {customValue}
+                            {/* "Use" rather than the bare name: the row sits
+                                among search results, and without a verb it
+                                reads as one more model that already exists
+                                rather than the thing that adds yours. */}
+                            <span>Use</span>
+                            {/* The provider tag is shown, never typed: the
+                                group the row sits under decides it, and it is
+                                what makes the id route back here. Without it
+                                on screen there is nothing to tell you a name
+                                typed under Azure OpenAI is stored as
+                                `azure:<name>`. */}
+                            {groupProvider && (
+                              <span className="rounded-sm bg-muted px-1 font-mono text-xs text-muted-foreground">
+                                {groupProvider}:
+                              </span>
+                            )}
+                            <span>&ldquo;{customValue}&rdquo;</span>
                             <span className="text-xs text-foreground p-1 rounded-md bg-muted">
                               Custom
                             </span>
@@ -422,7 +527,7 @@ export function ModelSelector({
                         )}
                       />
                       <div className="flex items-center gap-2">
-                        {customValue}
+                        Use &ldquo;{customValue}&rdquo;
                         <span className="text-xs text-foreground p-1 rounded-md bg-muted">
                           Custom
                         </span>
@@ -484,7 +589,7 @@ export function ModelSelector({
                       )}
                     />
                     <div className="flex items-center gap-2">
-                      {customValue}
+                      Use &ldquo;{customValue}&rdquo;
                       <span className="text-xs text-foreground p-1 rounded-md bg-muted">
                         Custom
                       </span>

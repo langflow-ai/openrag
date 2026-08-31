@@ -22,6 +22,14 @@
 # already knows the public vendors, so those rows need nothing. A self-hosted
 # OpenAI-compatible gateway serves whatever its operator deployed, and those ids
 # can only come from here — see the commented example at the end of this file.
+#
+# `exclude_models` keeps ids out of the pickers. `*` and `?` wildcards work, and
+# matching is against the id as the picker shows it (`gpt-3.5-turbo`, not
+# `openai/gpt-3.5-turbo`). Exclusion is applied last, so it also overrides a
+# `models` row on the same provider. Models the provider has already retired are
+# dropped without being listed here, and ones retiring within 90 days are hidden
+# behind a "Show N retiring" row in the picker — use this for the ones a
+# deployment does not want offered at all.
 
 providers:
   - name: openai
@@ -30,6 +38,9 @@ providers:
       oss: true
       on_prem: true
       saas: true
+    exclude_models:
+      - gpt-3.5-* # a whole generation, superseded and near retirement
+      - gpt-5.6-luna # refuses function tools on /v1/chat/completions
 
   - name: ollama
     display_name: Ollama
@@ -70,6 +81,17 @@ providers:
       oss: true
       on_prem: true
       saas: true
+    # Azure serves the same OpenAI models, so it needs the same exclusions.
+    # The plain name covers the regional ids (`eu/`, `us/`, `global/`) too.
+    exclude_models:
+      - gpt-3.5-*
+    # Azure lets you name a deployment anything, so LiteLLM's table cannot know
+    # yours. Declare them here and they appear in the pickers for everyone;
+    # otherwise each user has to type the name into the model box by hand.
+    # models:
+    #   - prod-gpt41-eastus
+    # embedding_models:
+    #   - prod-embed-3-large
 
   # A self-hosted OpenAI-compatible endpoint (vLLM, LM Studio, an internal
   # gateway). Use one of LiteLLM's passthrough provider keys — `openai_like`,
