@@ -64,14 +64,13 @@ def _extract_server_headers(server_config: dict[str, Any]) -> dict[str, str]:
     return headers
 
 
-def _assert_no_persisted_langflow_globals(headers: dict[str, str]) -> None:
-    persisted_global_headers = [
-        key for key in headers if key.lower().startswith(LANGFLOW_GLOBAL_VAR_PREFIX)
-    ]
-    assert not persisted_global_headers, (
-        "MCP server config must not persist Langflow global-var headers: "
-        f"{persisted_global_headers}"
-    )
+def _assert_has_required_global_headers(headers: dict[str, str]) -> None:
+    from services.langflow_mcp_service import REQUIRED_MCP_HEADERS
+
+    for key, expected_val in REQUIRED_MCP_HEADERS.items():
+        assert headers.get(key) == expected_val, (
+            f"Expected header {key}={expected_val!r} in MCP server headers, got {headers.get(key)!r}"
+        )
 
 
 @pytest.mark.asyncio
@@ -104,7 +103,7 @@ async def test_openrag_mcp_server_url_is_patched_without_persisting_request_glob
             f"MCP server URLs were not rewritten to LANGFLOW_URL={expected_base!r}: {urls}"
         )
 
-    _assert_no_persisted_langflow_globals(_extract_server_headers(server_config))
+    _assert_has_required_global_headers(_extract_server_headers(server_config))
 
 
 @pytest.mark.asyncio

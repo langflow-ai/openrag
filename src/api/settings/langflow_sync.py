@@ -267,6 +267,14 @@ async def ensure_required_langflow_global_variables(config=None):
                 error=str(e),
             )
 
+    try:
+        await _update_mcp_server_urls(config)
+    except Exception as e:
+        logger.warning(
+            "Failed to update MCP servers after ensuring global variables",
+            error=str(e),
+        )
+
 
 async def _update_langflow_global_variables(config, flows_service=None):
     """Push model selection and the LLM proxy URL into Langflow. No provider secrets."""

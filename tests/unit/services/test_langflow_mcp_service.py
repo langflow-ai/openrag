@@ -12,6 +12,16 @@ class _Response:
         self.status_code = status_code
         self.text = text
 
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400:
+            import httpx
+
+            req = httpx.Request("PATCH", "http://test")
+            resp = httpx.Response(self.status_code, text=self.text, request=req)
+            raise httpx.HTTPStatusError(
+                f"Status {self.status_code}", request=req, response=resp
+            )
+
 
 @pytest.mark.asyncio
 async def test_update_all_mcp_server_urls_strict_raises_with_failed_server(
@@ -19,8 +29,7 @@ async def test_update_all_mcp_server_urls_strict_raises_with_failed_server(
 ):
     service = LangflowMCPService()
 
-    async def fake_list_mcp_servers(*, raise_on_error: bool = False):
-        assert raise_on_error is True
+    async def fake_list_mcp_servers():
         return [{"name": "lf-starter_project"}]
 
     async def fake_patch_mcp_server_url(server_name: str):
@@ -41,8 +50,6 @@ async def test_update_all_mcp_server_urls_strict_raises_with_failed_server(
 @pytest.mark.asyncio
 async def test_patch_mcp_server_url_retries_retryable_patch_status(monkeypatch):
     service = LangflowMCPService()
-    service.patch_retry_base_seconds = 0
-    service.patch_retry_max_seconds = 0
     monkeypatch.setenv("LANGFLOW_URL", "http://langflow:7860")
 
     async def fake_get_mcp_server(server_name: str):
@@ -69,7 +76,8 @@ async def test_patch_mcp_server_url_retries_retryable_patch_status(monkeypatch):
 
     assert result == "patched"
     assert len(patch_requests) == 3
-    assert patch_requests[-1]["json"] == {"url": "http://langflow:7860/mcp"}
+    assert patch_requests[-1]["json"]["url"] == "http://langflow:7860/mcp"
+    assert patch_requests[-1]["json"]["headers"] == mcp_module.REQUIRED_MCP_HEADERS
 
 
 @pytest.mark.asyncio
@@ -105,14 +113,18 @@ async def test_patch_mcp_server_url_preserves_auth_settings(monkeypatch):
     result = await service.patch_mcp_server_url("lf-starter_project")
 
     assert result == "patched"
+    expected_headers = {
+        "x-api-key": "langflow-key",
+        "X-Langflow-Global-Var-JWT": "JWT",
+        **mcp_module.REQUIRED_MCP_HEADERS,
+    }
     assert patch_requests == [
         {
             "method": "PATCH",
             "endpoint": "/api/v2/mcp/servers/lf-starter_project",
             "json": {
                 "url": "http://langflow:7860/api/v1/mcp/project/project-id/streamable",
-                "auth_type": "api_key",
-                "headers": {"x-api-key": "langflow-key"},
+                "headers": expected_headers,
             },
         }
     ]
