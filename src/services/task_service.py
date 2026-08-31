@@ -350,6 +350,37 @@ class TaskService:
             preview_mode=preview_mode,
         )
 
+    async def create_url_upload_task(
+        self,
+        owner_user_id: str,
+        docs_url: str,
+        crawl_depth: int,
+        jwt_token: str = None,
+        owner_name: str = None,
+        owner_email: str = None,
+        connector_type: str = "openrag_docs",
+        is_sample_data: bool = False,
+        existing_task_id: str = None,
+    ) -> str:
+        """Create a new upload task for traditional (non-Langflow) URL ingestion."""
+        from models.url import UrlProcessor
+
+        processor = UrlProcessor(
+            document_service=self.document_service,
+            models_service=self.models_service,
+            docs_url=docs_url,
+            crawl_depth=crawl_depth,
+            owner_user_id=owner_user_id,
+            jwt_token=jwt_token,
+            owner_name=owner_name,
+            owner_email=owner_email,
+            connector_type=connector_type,
+            is_sample_data=is_sample_data,
+        )
+        return await self.create_custom_task(
+            owner_user_id, [docs_url], processor, existing_task_id=existing_task_id
+        )
+
     async def create_langflow_url_upload_task(
         self,
         owner_user_id: str,
