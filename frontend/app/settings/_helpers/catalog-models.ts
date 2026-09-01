@@ -92,12 +92,46 @@ const PREFERRED_EMBEDDING_MODELS = [
   "text-embedding-3-large",
 ];
 
+/** A YYYY-MM-DD or YYYYMMDD snapshot stamp inside a model id. */
+const SNAPSHOT_DATE = /(20\d{2})-?(\d{2})-?(\d{2})(?!\d)/;
+
+/**
+ * How recent a model id looks, most-recent-first. Nothing in LiteLLM's data
+ * says when a model shipped — `deprecation_date` is the only date it carries,
+ * and it is not a stand-in: Anthropic retires on a rolling year so it tracks
+ * release almost exactly, but OpenAI sunsets a decade of models on one shared
+ * date, which would rank gpt-3.5-turbo above gpt-5. So recency is read off the
+ * id itself.
+ *
+ * Version before snapshot, deliberately. `gpt-5` and `gpt-5-2025-08-07` are
+ * the same model, and the bare alias is the one to offer — so an id with no
+ * stamp sorts *above* its dated snapshots rather than below them.
+ *
+ * Providers that number by size rather than version (watsonx's `jais-13b`,
+ * `granite-3-8b`) get an ordering that means nothing in particular. It is
+ * stable and alphabetical within a version, which is all it needs to be.
+ */
+function recencyRank(name: string): Array<number> {
+  const stamp = SNAPSHOT_DATE.exec(name);
+  // Strip the stamp before reading version digits, or 2025 becomes a version.
+  const withoutStamp = stamp ? name.replace(stamp[0], "") : name;
+  const version = (withoutStamp.match(/\d+(?:\.\d+)?/g) ?? [])
+    .slice(0, 3)
+    .map(Number);
+  while (version.length < 3) version.push(-1);
+
+  const stampRank = stamp
+    ? -Number(`${stamp[1]}${stamp[2]}${stamp[3]}`)
+    : -Number.MAX_SAFE_INTEGER;
+
+  return [-version[0], -version[1], -version[2], stampRank];
+}
+
 function optionRank(
   option: CatalogSelectOption,
   kind: CatalogModelKind,
 ): Array<number | string> {
   const name = option.value;
-  const lower = name.toLowerCase();
   const caps = option.model?.capabilities ?? [];
   const preferred =
     kind === "embedding"
@@ -105,10 +139,17 @@ function optionRank(
       : PREFERRED_LANGUAGE_MODELS;
   const preferredIndex = preferred.indexOf(name);
   return [
-    lower.startsWith("ft:") ? 1 : 0,
+    // The catalogue no longer carries LiteLLM's `ft:` pricing templates, but a
+    // live `/models/openai` fetch returns the operator's real fine-tunes. Those
+    // are callable and stay listed — just never above a base model.
+    name.toLowerCase().startsWith("ft:") ? 1 : 0,
     caps.length === 0 ? 1 : 0,
     kind === "language" && !caps.includes("function_calling") ? 1 : 0,
     kind === "vision" && !caps.includes("vision") ? 1 : 0,
+    ...recencyRank(name),
+    // Only reached by ids that look equally recent: the embedding lists are
+    // undated and unversioned, so this is what still puts a validated default
+    // on top there.
     preferredIndex === -1 ? preferred.length : preferredIndex,
     name,
   ];
@@ -223,14 +264,31 @@ export function onboardingCatalogConfigured(
   return undefined;
 }
 
-/** Append live /models/{provider} rows that the catalogue does not already list. */
+/**
+ * Append live `/models/{provider}` rows that the catalogue does not list.
+ *
+ * Some providers' inventory is only knowable from the running server: watsonx
+ * publishes *no* embedding models in LiteLLM's bundled table at all, and
+ * Ollama serves whatever the operator pulled. Without this the watsonx group
+ * is empty for embeddings, and `groupedCatalogOptions` then drops the group
+ * entirely — which is why watsonx was missing from the embedding picker
+ * rather than merely short of options. So the merge creates the group when
+ * the catalogue produced none.
+ */
 export function mergeLiveCatalogOptions(
   groups: CatalogOptionGroup[],
   provider: string | undefined,
   live: CatalogSelectOption[],
+  displayName?: string,
 ): CatalogOptionGroup[] {
   if (!provider || live.length === 0) {
     return groups;
+  }
+  if (!groups.some((group) => group.key === provider)) {
+    return [
+      ...groups,
+      { key: provider, group: displayName || provider, options: live },
+    ];
   }
   return groups.map((group) => {
     if (group.key !== provider) {
@@ -243,6 +301,21 @@ export function mergeLiveCatalogOptions(
     }
     return { ...group, options: [...group.options, ...extra] };
   });
+}
+
+/**
+ * Providers whose model list comes from the running server, not from
+ * LiteLLM's bundled table. watsonx publishes no embedding models in that
+ * table at all, and Ollama serves whatever the operator pulled locally.
+ */
+export const LIVE_INVENTORY_PROVIDERS = new Set(["watsonx", "ollama"]);
+
+/** A live `/models/{provider}` row as a picker option. */
+export function liveModelOption(
+  model: string,
+  provider: string,
+): CatalogSelectOption {
+  return { value: model, label: model, provider };
 }
 
 /**

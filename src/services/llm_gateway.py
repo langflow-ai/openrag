@@ -12,6 +12,7 @@ import re
 from collections.abc import AsyncIterator, Mapping
 from typing import Any, Literal
 
+from services import provider_error_log
 from services.model_catalog import is_known_provider
 from utils.logging_config import get_logger
 
@@ -504,6 +505,53 @@ def _log_completion_shape(payload: dict[str, Any], provider: str, model: str) ->
         logger.debug("Could not summarise completion shape", exc_info=True)
 
 
+#: Models seen to refuse function tools alongside their own default reasoning
+#: effort. OpenAI applies a non-none default to reasoning models and rejects
+#: that combination on /v1/chat/completions; the remedy its error names is an
+#: explicit "none". Learned from the first failure rather than assumed, so a
+#: model that accepts the pair keeps its reasoning.
+_TOOLS_NEED_REASONING_OFF: set[str] = set()
+
+
+def _model_info(model: str) -> dict[str, Any]:
+    """LiteLLM's row for `model`, by its full id or its bare name."""
+    try:
+        import litellm
+
+        table = litellm.model_cost
+        info = table.get(model) or table.get(model.rsplit("/", 1)[-1])
+        return info if isinstance(info, dict) else {}
+    except Exception:
+        return {}
+
+
+def _is_reasoning_tool_conflict(detail: str) -> bool:
+    """Whether a failure is the tools-plus-reasoning_effort rejection.
+
+    Matched on the provider's own words. There is no capability flag for it —
+    `supports_reasoning` and `supports_function_calling` are both true for the
+    models that refuse the combination — so the failure itself is the only
+    signal available.
+    """
+    lowered = (detail or "").lower()
+    return "reasoning_effort" in lowered and "tool" in lowered
+
+
+def _reasoning_off_retry(model: str, kwargs: dict[str, Any]) -> bool:
+    """Set `reasoning_effort="none"` for a retry, if that can help here.
+
+    False when the caller chose an effort itself — overriding a deliberate
+    choice would be worse than the error — or when the model cannot take
+    "none", in which case only the Responses API can serve tools for it.
+    """
+    if not kwargs.get("tools") or "reasoning_effort" in kwargs:
+        return False
+    if not _model_info(model).get("supports_none_reasoning_effort"):
+        return False
+    kwargs["reasoning_effort"] = "none"
+    return True
+
+
 async def chat_completions(
     body: Mapping[str, Any], *, config=None
 ) -> dict[str, Any] | AsyncIterator[str]:
@@ -512,10 +560,14 @@ async def chat_completions(
     litellm_model, provider, credentials = resolve_call(body.get("model"), kind="chat", config=cfg)
     kwargs = {key: body[key] for key in _LITELLM_FORWARDED_PARAMS if key in body}
     stream = bool(body.get("stream"))
-    try:
+    if litellm_model in _TOOLS_NEED_REASONING_OFF:
+        # Already learned about this model; do not spend a round-trip relearning.
+        _reasoning_off_retry(litellm_model, kwargs)
+
+    async def _call() -> Any:
         import litellm
 
-        result = await litellm.acompletion(
+        return await litellm.acompletion(
             model=litellm_model,
             messages=list(body.get("messages") or []),
             stream=stream,
@@ -529,6 +581,25 @@ async def chat_completions(
             **credentials,
             **kwargs,
         )
+
+    try:
+        try:
+            result = await _call()
+        except Exception as exc:
+            # `drop_params` cannot help here: reasoning_effort is a supported
+            # parameter, just not one this model accepts beside tools. Retry
+            # once with the value the provider's own error asks for.
+            if not _is_reasoning_tool_conflict(f"{exc}") or not _reasoning_off_retry(
+                litellm_model, kwargs
+            ):
+                raise
+            logger.info(
+                "Retrying completion with reasoning_effort=none",
+                provider=provider,
+                model=litellm_model,
+            )
+            _TOOLS_NEED_REASONING_OFF.add(litellm_model)
+            result = await _call()
     except LlmGatewayError:
         raise
     except Exception as exc:
@@ -536,14 +607,22 @@ async def chat_completions(
         logger.error(
             "LLM chat completions failed", provider=provider, model=litellm_model, error=detail
         )
+        message = _upstream_client_message(detail, provider, litellm_model, exc)
+        # The health banner otherwise reports whatever its own probe hit, which
+        # is a different request and so often a different error. Hand it the
+        # text this caller is being shown.
+        provider_error_log.record_failure(provider, "chat", message)
         raise LlmGatewayError(
-            _upstream_client_message(detail, provider, litellm_model, exc),
+            message,
             _upstream_status_code(exc),
             detail=detail,
         ) from exc
 
     if stream:
+        # A stream can still fail mid-flight, so _stream_sse clears the record
+        # itself once the provider has actually delivered something.
         return _stream_sse(result, provider, litellm_model, credentials)
+    provider_error_log.record_success(provider, "chat")
     payload = _to_openai_dict(result)
     _repair_completion_payload(payload, provider, litellm_model)
     _log_completion_shape(payload, provider, litellm_model)
@@ -797,6 +876,9 @@ async def _stream_sse(
         # the next person has something to search for.
         if tally.content_chars == 0 and tally.tool_calls == 0:
             tally.error = "empty completion"
+            provider_error_log.record_failure(
+                provider, "chat", _empty_stream_message(provider, model, tally.finish_reason)
+            )
             logger.warning(
                 "LLM chat stream produced no content and no tool calls",
                 provider=provider,
@@ -807,6 +889,10 @@ async def _stream_sse(
             yield _error_frame(
                 _empty_stream_message(provider, model, tally.finish_reason), provider, model
             )
+        else:
+            # Content actually reached the client, so whatever the banner was
+            # holding against this provider is no longer true.
+            provider_error_log.record_success(provider, "chat")
     except Exception as exc:
         # Mid-stream failures used to surface as a truncated stream, which the
         # UI could only report as "the server didn't return a response". Emit an
@@ -815,7 +901,9 @@ async def _stream_sse(
         detail = _redact(f"{type(exc).__name__}: {exc}", credentials or {})
         tally.error = detail
         logger.error("LLM chat stream failed", provider=provider, model=model, error=detail)
-        yield _error_frame(_upstream_client_message(detail, provider, model, exc), provider, model)
+        message = _upstream_client_message(detail, provider, model, exc)
+        provider_error_log.record_failure(provider, "chat", message)
+        yield _error_frame(message, provider, model)
     finally:
         close = getattr(stream, "aclose", None) or getattr(stream, "close", None)
         if close is not None:
@@ -866,9 +954,12 @@ async def embeddings(body: Mapping[str, Any], *, config=None) -> dict[str, Any]:
     except Exception as exc:
         detail = _redact(f"{type(exc).__name__}: {exc}", credentials)
         logger.error("LLM embeddings failed", provider=provider, model=litellm_model, error=detail)
+        message = _upstream_client_message(detail, provider, litellm_model, exc)
+        provider_error_log.record_failure(provider, "embedding", message)
         raise LlmGatewayError(
-            _upstream_client_message(detail, provider, litellm_model, exc),
+            message,
             _upstream_status_code(exc),
             detail=detail,
         ) from exc
+    provider_error_log.record_success(provider, "embedding")
     return _to_openai_dict(result)

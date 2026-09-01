@@ -16,25 +16,31 @@ JSON is ~100KB, so paying for it once per process beats a re-read per request.
 `function_calling` and `vision` are published as capability flags so the UI can
 filter (agent vs VLM) without a second live provider call.
 
-The public catalogue is intentionally limited to the providers OpenRAG exposes
-in its settings UI. Generic credential helpers remain available for future
-providers, and a model that is not in the catalogue can still be typed by hand.
+The public catalogue is limited to the providers this run mode exposes, per
+``config/model_providers.yaml`` (see ``config.model_providers``). Generic
+credential helpers remain available for every other provider, and a model that
+is not in the catalogue can still be typed by hand.
 """
 
 from __future__ import annotations
 
 import datetime
 import json
+from fnmatch import fnmatch
 from functools import lru_cache
 from typing import Any
 
+from config.model_providers import ProviderEntry, visible_provider_entries
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
 TEXT_GENERATION_MODES = frozenset({"chat", "completion", "responses"})
 EMBEDDING_MODE = "embedding"
-SUPPORTED_PROVIDER_KEYS = frozenset({"openai", "anthropic", "watsonx", "ollama"})
+
+#: LiteLLM prices fine-tunes off a template row named for the base model. The
+#: row is not a callable id, so it never belongs in a picker.
+FINE_TUNE_TEMPLATE_PREFIX = "ft:"
 
 CAPABILITY_FLAGS: dict[str, str] = {
     "supports_function_calling": "function_calling",
@@ -192,14 +198,50 @@ def _model_entry(name: str, info: dict[str, Any]) -> dict[str, Any]:
     return entry
 
 
-@lru_cache(maxsize=1)
-def _catalog() -> dict[str, Any]:
+def _excluded(name: str, patterns: tuple[str, ...]) -> bool:
+    """Whether a model id is one the config file keeps out of the pickers.
+
+    Matched on the id as the picker shows it — `gpt-3.5-turbo`, not
+    `openai/gpt-3.5-turbo` — because that is the name an operator reads off the
+    screen when deciding what to suppress. `*` and `?` work, so a whole
+    generation goes in one line.
+
+    Also matched on the id's last path segment, so a regional deployment is
+    covered by the plain name: Azure lists `gpt-5.6-luna` as `eu/gpt-5.6-luna`
+    and `us/gpt-5.6-luna` too, and someone suppressing that model means all
+    three. Write `eu/*` to reach a region on its own.
+    """
+    if not patterns:
+        return False
+    lowered = name.lower()
+    bare = lowered.rsplit("/", 1)[-1]
+    return any(fnmatch(lowered, pattern) or fnmatch(bare, pattern) for pattern in patterns)
+
+
+def _declared_entries(names: tuple[str, ...], mode: str) -> list[dict[str, Any]]:
+    """Config-declared model ids as catalogue entries.
+
+    A self-hosted OpenAI-compatible gateway serves whatever its operator
+    deployed, so LiteLLM's bundled table knows none of its ids. Only the name
+    and the mode are known here — no pricing, no capability flags.
+    """
+    return [{"model": name, "mode": mode} for name in names]
+
+
+@lru_cache(maxsize=8)
+def _catalog(providers: tuple[ProviderEntry, ...]) -> dict[str, Any]:
+    """Payload for `providers`, given as `config.model_providers` entries.
+
+    The entries are the cache key, so flipping a provider's visibility (or the
+    run mode, in a test) rebuilds instead of serving a stale list.
+    """
     try:
         import litellm
     except Exception as exc:
         raise CatalogUnavailableError("litellm is not installed on the server") from exc
 
     specs = _provider_field_specs()
+    keys = {entry.name for entry in providers}
     chat_by_provider: dict[str, list[dict[str, Any]]] = {}
     embed_by_provider: dict[str, list[dict[str, Any]]] = {}
 
@@ -208,7 +250,7 @@ def _catalog() -> dict[str, Any]:
             continue
         provider = info.get("litellm_provider")
         mode = info.get("mode")
-        if provider not in SUPPORTED_PROVIDER_KEYS:
+        if provider not in keys:
             continue
         if mode in TEXT_GENERATION_MODES:
             bucket = chat_by_provider
@@ -219,36 +261,66 @@ def _catalog() -> dict[str, Any]:
         name = model_id[len(provider) + 1 :] if model_id.startswith(f"{provider}/") else model_id
         if not name or name == "sample_spec":
             continue
+        if name.startswith(FINE_TUNE_TEMPLATE_PREFIX):
+            # `ft:gpt-4o-2024-08-06` is a pricing row for the *base* of a
+            # fine-tune, not an id anyone can call: a real one carries the org
+            # and job suffix (`ft:gpt-4o-2024-08-06:acme::abc123`). Listing the
+            # template invites picking a model that 404s. Owners of a fine-tune
+            # type their full id into the picker instead.
+            continue
         bucket.setdefault(provider, []).append(_model_entry(name, info))
 
-    providers = []
-    for key in sorted(SUPPORTED_PROVIDER_KEYS):
-        providers.append(
+    entries = []
+    for key, display_name, declared_chat, declared_embed, excluded in providers:
+        if not is_known_provider(key):
+            # The catalogue would still render, but `split_model_id` cannot
+            # recognise the prefix, so every id would be billed to the default
+            # provider. Name the row rather than fail the whole catalogue.
+            logger.warning(
+                "Model provider is not routable by LiteLLM; its models will not resolve",
+                provider=key,
+            )
+        chat = chat_by_provider.get(key, [])
+        embed = embed_by_provider.get(key, [])
+        known_chat = {entry["model"] for entry in chat}
+        known_embed = {entry["model"] for entry in embed}
+        chat = chat + _declared_entries(
+            tuple(name for name in declared_chat if name not in known_chat), "chat"
+        )
+        embed = embed + _declared_entries(
+            tuple(name for name in declared_embed if name not in known_embed), EMBEDDING_MODE
+        )
+        # Applied last, so `exclude_models` also wins over a `models:` row —
+        # a deployment that suppresses an id means it, wherever the id came
+        # from, and the alternative is two lines that quietly contradict.
+        chat = [entry for entry in chat if not _excluded(entry["model"], excluded)]
+        embed = [entry for entry in embed if not _excluded(entry["model"], excluded)]
+        entries.append(
             {
                 "key": key,
-                "name": (specs.get(key) or {}).get("provider_display_name") or key,
+                # The config file names the provider; LiteLLM's own label is
+                # the fallback for a row that left `display_name` out.
+                "name": display_name or (specs.get(key) or {}).get("provider_display_name") or key,
                 "credential_fields": credential_fields(key),
                 "model_placeholder": (specs.get(key) or {}).get("default_model_placeholder"),
-                "models": sorted(chat_by_provider.get(key, []), key=lambda entry: entry["model"]),
-                "embedding_models": sorted(
-                    embed_by_provider.get(key, []), key=lambda entry: entry["model"]
-                ),
+                "models": sorted(chat, key=lambda entry: entry["model"]),
+                "embedding_models": sorted(embed, key=lambda entry: entry["model"]),
             }
         )
-    return {"providers": providers}
+    return {"providers": entries}
 
 
-@lru_cache(maxsize=2)
-def _catalog_for(today: datetime.date) -> dict[str, Any]:
+@lru_cache(maxsize=8)
+def _catalog_for(today: datetime.date, providers: tuple[ProviderEntry, ...]) -> dict[str, Any]:
     """`_catalog()` with models the provider has already retired removed."""
 
     def _keep(model: dict[str, Any]) -> bool:
         retires = _parse_deprecation(model.get("deprecation_date"))
         return retires is None or retires > today
 
-    providers = []
-    for provider in _catalog()["providers"]:
-        providers.append(
+    entries = []
+    for provider in _catalog(providers)["providers"]:
+        entries.append(
             {
                 **provider,
                 "models": [model for model in provider["models"] if _keep(model)],
@@ -257,12 +329,56 @@ def _catalog_for(today: datetime.date) -> dict[str, Any]:
                 ],
             }
         )
-    return {"providers": providers}
+    return {"providers": entries}
+
+
+def exclusions_for(provider: str) -> tuple[str, ...]:
+    """The `exclude_models` patterns configured for `provider`."""
+    key = (provider or "").strip().lower()
+    for entry in visible_provider_entries():
+        if entry.name == key:
+            return entry.exclude_models
+    return ()
+
+
+#: Keys in a live `/models/{provider}` payload that hold model lists.
+LIVE_MODEL_LIST_KEYS = ("language_models", "embedding_models")
+
+
+def hide_excluded_live_models(provider: str, payload: Any) -> Any:
+    """Apply `exclude_models` to a live `/models/{provider}` response.
+
+    Ollama, watsonx, OpenAI and Anthropic are also listed by asking the running
+    provider, which never passes through the catalogue — so without this an
+    excluded id disappears from the settings picker and comes straight back in
+    through onboarding. The filter belongs here rather than in the frontend so
+    every consumer, SDK clients included, sees one list.
+    """
+    patterns = exclusions_for(provider)
+    if not patterns or not isinstance(payload, dict):
+        return payload
+    filtered = dict(payload)
+    for key in LIVE_MODEL_LIST_KEYS:
+        models = payload.get(key)
+        if not isinstance(models, list):
+            continue
+        filtered[key] = [
+            model
+            for model in models
+            if not _excluded(str((model or {}).get("value", "")), patterns)
+            if isinstance(model, dict)
+        ]
+    return filtered
+
+
+def supported_provider_keys() -> frozenset[str]:
+    """The providers this run mode publishes, per `config/model_providers.yaml`."""
+    return frozenset(entry.name for entry in visible_provider_entries())
 
 
 def catalog(today: datetime.date | None = None) -> dict[str, Any]:
-    """Picker payload for OpenRAG's supported providers and their models."""
-    return _catalog_for(today or datetime.date.today())
+    """Picker payload for the providers this run mode exposes, and their models."""
+    return _catalog_for(today or datetime.date.today(), visible_provider_entries())
 
 
 def is_known_provider(provider: str) -> bool:
@@ -273,7 +389,14 @@ def is_known_provider(provider: str) -> bool:
     try:
         import litellm
 
-        if key in {str(value) for value in litellm.provider_list}:
+        # `provider_list` holds LlmProviders enum members, and str() on one
+        # yields "LlmProviders.OPENAI" — never the routable "openai". Reading
+        # .value is what makes this branch match; without it the check fell
+        # through to the credential-form specs below, which do not cover every
+        # provider LiteLLM can route (zai, scaleway, chatgpt, ...). Those
+        # prefixes were then left unsplit and called with the default
+        # provider's credentials.
+        if key in {getattr(value, "value", str(value)) for value in litellm.provider_list}:
             return True
     except Exception:
         logger.debug("Could not read litellm.provider_list", exc_info=True)
@@ -283,15 +406,19 @@ def is_known_provider(provider: str) -> bool:
         return False
 
 
-@lru_cache(maxsize=1)
-def _model_owners() -> dict[str, tuple[str, ...]]:
-    """Map every catalogue model id to the providers that serve it."""
+@lru_cache(maxsize=8)
+def _model_owners(providers: tuple[ProviderEntry, ...]) -> dict[str, tuple[str, ...]]:
+    """Map every catalogue model id to the providers that serve it.
+
+    Keyed by the same entries as `_catalog()`, so a run mode that hides a
+    provider also drops that provider's models from the ownership map.
+    """
     owners: dict[str, set[str]] = {}
     try:
-        providers = _catalog()["providers"]
+        entries = _catalog(providers)["providers"]
     except Exception:
         return {}
-    for provider in providers:
+    for provider in entries:
         for entry in (*provider["models"], *provider["embedding_models"]):
             owners.setdefault(entry["model"], set()).add(provider["key"])
     return {model: tuple(sorted(keys)) for model, keys in owners.items()}
@@ -307,7 +434,7 @@ def catalog_owner(model: str) -> str | None:
     if not name:
         return None
     try:
-        owners = _model_owners().get(name)
+        owners = _model_owners(visible_provider_entries()).get(name)
     except Exception:
         return None
     return owners[0] if owners and len(owners) == 1 else None
@@ -320,7 +447,7 @@ def PROVIDER_SEPARATOR_SAFE_CHECK() -> list[str]:
     Exposed so a test can fail loudly if a future model id breaks the property.
     """
     ambiguous = []
-    for model in _model_owners():
+    for model in _model_owners(visible_provider_entries()):
         head, sep, rest = model.partition(":")
         if sep and rest and is_known_provider(head.lower()):
             ambiguous.append(model)

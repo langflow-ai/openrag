@@ -3,7 +3,7 @@
 import { AlertTriangle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useProviderHealthQuery } from "@/app/api/queries/useProviderHealthQuery";
-import type { ModelProvider } from "@/app/settings/_helpers/model-helpers";
+import { getProviderChrome } from "@/app/settings/_helpers/model-helpers";
 import { Banner, BannerIcon, BannerTitle } from "@/components/ui/banner";
 import { useChat } from "@/contexts/chat-context";
 import { cn } from "@/lib/utils";
@@ -47,14 +47,6 @@ export function useProviderHealth() {
     isBackendUnavailable,
   };
 }
-
-const providerTitleMap: Record<ModelProvider, string> = {
-  openai: "OpenAI",
-  anthropic: "Anthropic",
-  ollama: "Ollama",
-  watsonx: "IBM watsonx.ai",
-  local: "Local",
-};
 
 export function ProviderHealthBanner({ className }: ProviderHealthBannerProps) {
   const { isLoading, isHealthy, isUnhealthy, health } = useProviderHealth();
@@ -100,8 +92,10 @@ export function ProviderHealthBanner({ className }: ProviderHealthBannerProps) {
       errorProvider = llmProvider;
     }
 
+    // One label source for every provider, including ones added through
+    // config/model_providers.yaml that have no built-in chrome.
     const providerTitle = errorProvider
-      ? providerTitleMap[errorProvider as ModelProvider] || errorProvider
+      ? getProviderChrome(errorProvider).name
       : "Provider";
 
     const settingsUrl = errorProvider

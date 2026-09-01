@@ -113,6 +113,12 @@ def register_public_v1_routes(app: FastAPI):
         tags=["public"],
     )
     app.add_api_route(
+        "/v1/model-providers",
+        v1_llm.model_providers_endpoint,
+        methods=["GET"],
+        tags=["public"],
+    )
+    app.add_api_route(
         "/v1/chat/completions",
         v1_llm.chat_completions_endpoint,
         methods=["POST"],
