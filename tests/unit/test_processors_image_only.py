@@ -7,8 +7,20 @@ from models.processors import TaskProcessor
 
 
 @pytest.mark.asyncio
-async def test_placeholder_only_document_returns_no_text_error_before_embedding(monkeypatch):
-    embedding_create = AsyncMock(side_effect=AssertionError("placeholder must not be embedded"))
+@pytest.mark.parametrize(
+    ("pictures", "chunk_size", "expected_result"),
+    [
+        ([{"prov": [{"page_no": 1}], "annotations": []}], None, "indexed"),
+        ([{"prov": [{"page_no": 1}], "annotations": []}], 1, "indexed"),
+        ([], None, "error"),
+    ],
+)
+async def test_image_only_placeholder_succeeds_but_empty_document_fails(
+    monkeypatch, pictures, chunk_size, expected_result
+):
+    embedding_create = AsyncMock(
+        return_value=SimpleNamespace(data=[{"embedding": [0.1, 0.2, 0.3]}])
+    )
     monkeypatch.setattr(
         "models.processors.clients",
         SimpleNamespace(
@@ -23,21 +35,30 @@ async def test_placeholder_only_document_returns_no_text_error_before_embedding(
         lambda: SimpleNamespace(
             knowledge=SimpleNamespace(
                 embedding_model="text-embedding-3-small",
-                chunk_size=None,
+                chunk_size=chunk_size,
                 chunk_overlap=None,
             )
         ),
     )
     monkeypatch.setattr(
         "services.document_service.chunk_texts_for_embeddings",
-        lambda texts, max_tokens: [texts],
+        lambda texts, max_tokens: [texts] if texts else [],
     )
 
     user_client = SimpleNamespace()
+    indexed: dict = {}
+
+    class FakeDocumentIndexWriter:
+        async def index_chunks(self, context, chunks, *, final=False):
+            indexed["context"] = context
+            indexed["chunks"] = chunks
+            indexed["final"] = final
+
     document_service = SimpleNamespace(
         session_manager=SimpleNamespace(
             get_user_opensearch_client=lambda user_id, jwt_token: user_client
-        )
+        ),
+        document_index_writer=FakeDocumentIndexWriter(),
     )
     models_service = SimpleNamespace(
         get_litellm_model_name=AsyncMock(return_value="text-embedding-3-small")
@@ -52,7 +73,7 @@ async def test_placeholder_only_document_returns_no_text_error_before_embedding(
                 },
                 "texts": [],
                 "tables": [],
-                "pictures": [{"prov": [{"page_no": 1}], "annotations": []}],
+                "pictures": pictures,
             }
         )
     )
@@ -68,8 +89,20 @@ async def test_placeholder_only_document_returns_no_text_error_before_embedding(
         picture_descriptions=False,
     )
 
-    assert result == {
-        "status": "error",
-        "error": "No text content could be extracted from document",
-    }
-    embedding_create.assert_not_awaited()
+    if expected_result == "error":
+        assert result == {
+            "status": "error",
+            "error": "No text content could be extracted from document",
+        }
+        embedding_create.assert_not_awaited()
+        assert indexed == {}
+        return
+
+    assert result == {"status": "indexed", "id": "image-hash"}
+    embedding_create.assert_awaited_once_with(
+        model="text-embedding-3-small", input=["<!-- image -->"]
+    )
+    assert indexed["final"] is True
+    assert len(indexed["chunks"]) == 1
+    assert indexed["chunks"][0].text == "<!-- image -->"
+    assert indexed["chunks"][0].page == 1
