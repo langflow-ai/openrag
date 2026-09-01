@@ -185,9 +185,12 @@ class KnowledgeConfig:
     vlm_provider: str = "openai"  # "openai" | "watsonx" | "anthropic" | "local" | "ollama"
     vlm_model: str = ""  # e.g. "gpt-4o" or a watsonx model_id
     vlm_prompt: str = (
-        "Extract ALL the text from the page, ensuring no words are omitted, "
-        "and present it as accurately as possible. "
-        "Then describe the content of the page in English."
+        "Describe the visual content of this image in plain English. "
+        "Include layout, structure, colors, shapes, diagrams, charts, and any visible elements. "
+        "If the image contains text, reproduce it exactly as it appears. "
+        "If there is no text, do not mention text. "
+        "Do not ask follow-up questions. Do not add commentary or suggestions. "
+        "Respond only with the description."
     )
     # Per-page VLM response format only; the docling-serve output stays
     # to_formats="json" so downstream json_content consumers are unaffected.
