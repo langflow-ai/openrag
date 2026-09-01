@@ -3,7 +3,13 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CheckCircle, Loader2, XCircle } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useRef, useState } from "react";
+import {
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import AnimatedProcessingIcon from "@/components/icons/animated-processing-icon";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,8 +36,11 @@ function AuthCallbackContent() {
   const queryClient = useQueryClient();
   const { refreshAuth, isIbmAuthMode } = useAuth();
   const redirectTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
   const [purpose] = useState(() => {
     if (typeof window === "undefined") return "app_auth";
     const authPurpose = localStorage.getItem("auth_purpose");
