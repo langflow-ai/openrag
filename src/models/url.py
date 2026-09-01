@@ -1,3 +1,4 @@
+import os
 import time
 from typing import Any
 
@@ -7,6 +8,102 @@ from .processors import TaskProcessor
 from .tasks import FileTask, TaskStatus, UploadTask
 
 logger = get_logger(__name__)
+
+
+class UrlProcessor(TaskProcessor):
+    """Processor for URL ingestion using the traditional (non-Langflow) pipeline."""
+
+    def __init__(
+        self,
+        document_service,
+        models_service,
+        docs_url: str,
+        crawl_depth: int,
+        owner_user_id: str = None,
+        jwt_token: str = None,
+        owner_name: str = None,
+        owner_email: str = None,
+        connector_type: str = "openrag_docs",
+        is_sample_data: bool = False,
+    ):
+        super().__init__(document_service=document_service, models_service=models_service)
+        self.docs_url = docs_url
+        self.crawl_depth = crawl_depth
+        self.owner_user_id = owner_user_id
+        self.jwt_token = jwt_token
+        self.owner_name = owner_name
+        self.owner_email = owner_email
+        self.connector_type = connector_type
+        self.is_sample_data = is_sample_data
+
+    async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
+        from utils.hash_utils import hash_id
+        from utils.url_content_fetcher import materialize_url_as_text_file
+
+        from .processors import DocumentFileProcessor
+
+        file_task.status = TaskStatus.RUNNING
+        file_task.updated_at = time.time()
+
+        temp_file_path = None
+        try:
+            temp_file_path, title = await materialize_url_as_text_file(
+                docs_url=self.docs_url,
+                crawl_depth=self.crawl_depth,
+            )
+
+            processor = DocumentFileProcessor(
+                self.document_service,
+                models_service=self.models_service,
+                owner_user_id=self.owner_user_id,
+                jwt_token=self.jwt_token,
+                owner_name=self.owner_name,
+                owner_email=self.owner_email,
+                is_sample_data=self.is_sample_data,
+                connector_type=self.connector_type,
+            )
+            result = await processor.process_document_standard(
+                file_path=temp_file_path,
+                file_hash=hash_id(temp_file_path),
+                owner_user_id=self.owner_user_id,
+                original_filename=title,
+                jwt_token=self.jwt_token,
+                owner_name=self.owner_name,
+                owner_email=self.owner_email,
+                file_size=os.path.getsize(temp_file_path),
+                connector_type=self.connector_type,
+                is_sample_data=self.is_sample_data,
+            )
+
+            if result.get("status") == "error":
+                file_task.status = TaskStatus.FAILED
+                file_task.error = result.get("error") or "Failed to process document"
+                file_task.updated_at = time.time()
+                upload_task.failed_files += 1
+            else:
+                file_task.status = TaskStatus.COMPLETED
+                file_task.result = result
+                file_task.updated_at = time.time()
+                upload_task.successful_files += 1
+
+        except Exception as e:
+            file_task.status = TaskStatus.FAILED
+            file_task.error = str(e)
+            file_task.updated_at = time.time()
+            upload_task.failed_files += 1
+            raise
+        finally:
+            if temp_file_path:
+                try:
+                    os.unlink(temp_file_path)
+                except FileNotFoundError:
+                    pass
+                except Exception as e:
+                    logger.error(
+                        "Failed to clean temporary URL docs file",
+                        path=temp_file_path,
+                        error=str(e),
+                    )
 
 
 class LangflowUrlProcessor(TaskProcessor):

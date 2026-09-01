@@ -58,11 +58,37 @@ async def model_catalog_endpoint(
     user: User = Depends(_catalog_read),
 ):
     """LiteLLM picker payload. GET /v1/model-catalog"""
+    # `no-store` for the same reason as /models/providers: the catalogue is
+    # filtered by that config file, so a cached copy survives the restart that
+    # was supposed to apply the edit. LiteLLM's table is cached in-process, so
+    # rebuilding this response is cheap.
     try:
-        return JSONResponse(catalog(), headers={"Cache-Control": "private, max-age=3600"})
+        return JSONResponse(catalog(), headers={"Cache-Control": "no-store"})
     except CatalogUnavailableError as exc:
         logger.error("Model catalogue unavailable", error=str(exc))
         return JSONResponse({"error": CATALOG_UNAVAILABLE_MESSAGE}, status_code=503)
+
+
+async def model_providers_endpoint(
+    user: User = Depends(_catalog_read),
+):
+    """Providers this run mode exposes. GET /v1/model-providers
+
+    Same list the console reads from /models/providers, so an SDK client and the
+    UI never disagree about which providers a deployment offers.
+    """
+    from config.model_providers import provider_visibility_payload
+
+    # `no-store`, not a max-age: the list is derived from
+    # `config/model_providers.yaml`, which an operator edits and then restarts
+    # the backend for. A cached response outlives that restart in the browser,
+    # so the console keeps drawing the old provider cards/tabs and the change
+    # looks like it did nothing. The payload is a few hundred bytes and React
+    # Query already holds it for the session, so the round trip costs nothing.
+    return JSONResponse(
+        provider_visibility_payload(),
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 async def _read_json_body(request: Request) -> dict[str, Any] | JSONResponse:
