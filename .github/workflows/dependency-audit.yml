@@ -14,10 +14,10 @@ jobs:
       matrix:
         directory: ['frontend', 'docs', 'sdks/typescript']
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '20'
 
@@ -42,10 +42,10 @@ jobs:
       matrix:
         directory: ['.', 'sdks/python']
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
 
