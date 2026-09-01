@@ -1063,7 +1063,8 @@ class AppClients:
                 "OpenAI API key not found in environment - will be initialized on first use if needed"
             )
 
-        # Initialize docling-serve HTTP client for document conversion
+    def _create_docling_http_client(self):
+        """Create a new AsyncClient for Docling bound to the currently running event loop."""
         self.docling_http_client = httpx.AsyncClient(
             verify=DOCLING_SERVE_VERIFY_SSL,
             timeout=httpx.Timeout(
@@ -1074,15 +1075,16 @@ class AppClients:
                 pool=30.0,
             ),
         )
+        return self.docling_http_client
 
-        # Eagerly initialize DoclingService to ensure thread-safety
-        from services.docling_service import DoclingService
+    def _ensure_docling_http_client(self):
+        """Ensure docling_http_client is initialized and not closed."""
+        if self.docling_http_client is None or self.docling_http_client.is_closed:
+            return self._create_docling_http_client()
+        return self.docling_http_client
 
-        self._docling_service = DoclingService(httpx_client=self.docling_http_client)
-
-        # Initialize Langflow HTTP client with extended timeouts for large documents
-        # Must be created before wait_for_langflow / get_langflow_api_key
-        # Use explicit timeout configuration to handle large PDF ingestion (300+ pages)
+    def _create_langflow_http_client(self):
+        """Create a new AsyncClient for Langflow bound to the currently running event loop."""
         self.langflow_http_client = httpx.AsyncClient(
             base_url=LANGFLOW_URL,
             timeout=httpx.Timeout(
@@ -1098,6 +1100,26 @@ class AppClients:
             timeout_seconds=LANGFLOW_TIMEOUT,
             connect_timeout_seconds=LANGFLOW_CONNECT_TIMEOUT,
         )
+        return self.langflow_http_client
+
+    def _ensure_langflow_http_client(self):
+        """Ensure langflow_http_client is initialized and not closed."""
+        if self.langflow_http_client is None or self.langflow_http_client.is_closed:
+            return self._create_langflow_http_client()
+        return self.langflow_http_client
+
+        # Initialize docling-serve HTTP client for document conversion
+        self._create_docling_http_client()
+
+        # Eagerly initialize DoclingService to ensure thread-safety
+        from services.docling_service import DoclingService
+
+        self._docling_service = DoclingService(httpx_client=self.docling_http_client)
+
+        # Initialize Langflow HTTP client with extended timeouts for large documents
+        # Must be created before wait_for_langflow / get_langflow_api_key
+        # Use explicit timeout configuration to handle large PDF ingestion (300+ pages)
+        self._create_langflow_http_client()
 
         # Wait for Langflow to be healthy before generating API key
         from utils.langflow_utils import wait_for_langflow
