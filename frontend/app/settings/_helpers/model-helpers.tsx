@@ -1,6 +1,7 @@
 import AiFoundryLogo from "@/components/icons/ai-foundry-logo";
 import AnthropicLogo from "@/components/icons/anthropic-logo";
 import AzureOpenAILogo from "@/components/icons/azure-openai-logo";
+import GenericProviderLogo from "@/components/icons/generic-provider-logo";
 import IBMLogo from "@/components/icons/ibm-logo";
 import OllamaLogo from "@/components/icons/ollama-logo";
 import OpenAILogo from "@/components/icons/openai-logo";
@@ -73,26 +74,6 @@ export interface ProviderChrome {
   /** Onboarding tabs invert some marks; defaults to the card colours. */
   tabLogoColor?: string;
   tabLogoBgColor?: string;
-}
-
-export function GenericProviderLogo(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      {...props}
-    >
-      <title>Model provider</title>
-      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-      <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
-      <line x1="12" y1="22.08" x2="12" y2="12" />
-    </svg>
-  );
 }
 
 /** Logo and colours for the providers OpenRAG ships chrome for. */

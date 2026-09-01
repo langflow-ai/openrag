@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useGetModelCatalogQuery } from "@/app/api/queries/useGetModelsQuery";
 import {
   onboardingCredentialFields,
@@ -52,12 +52,37 @@ export function GenericOnboarding({
   );
 
   const [credentials, setCredentials] = useState<Record<string, string>>({});
+  const [model, setModel] = useState("");
+
+  const syncParentSettings = (
+    nextCredentials: Record<string, string>,
+    nextModel: string,
+  ) => {
+    const submitted: Record<string, string> = {};
+    for (const [key, value] of Object.entries(nextCredentials)) {
+      const trimmed = (value ?? "").trim();
+      if (trimmed !== "") {
+        submitted[key] = trimmed;
+      }
+    }
+
+    setSettings((prev) => ({
+      ...prev,
+      ...(isEmbedding
+        ? { embedding_provider: provider, embedding_model: nextModel }
+        : { llm_provider: provider, llm_model: nextModel }),
+      provider_credentials: Object.keys(submitted).length
+        ? { ...prev.provider_credentials, [provider]: submitted }
+        : prev.provider_credentials,
+    }));
+  };
 
   // Seed the non-secret fields from what is already saved, once per provider.
   const [seededFor, setSeededFor] = useState<string | undefined>();
   if (seededFor !== provider) {
     setSeededFor(provider);
     setCredentials(savedValues);
+    syncParentSettings(savedValues, model);
   }
 
   const catalogEntry = catalog?.providers?.find(
@@ -73,36 +98,27 @@ export function GenericOnboarding({
     }));
   }, [catalogEntry, isEmbedding]);
 
-  const [model, setModel] = useState("");
-
   // Default to the first model the catalogue lists for this provider.
   const [prevModels, setPrevModels] = useState<typeof models | undefined>();
   if (models !== prevModels) {
     setPrevModels(models);
     if (!model && models.length > 0) {
-      setModel(models[0].value);
+      const defaultModel = models[0].value;
+      setModel(defaultModel);
+      syncParentSettings(credentials, defaultModel);
     }
   }
 
-  useEffect(() => {
-    const submitted: Record<string, string> = {};
-    for (const [key, value] of Object.entries(credentials)) {
-      const trimmed = (value ?? "").trim();
-      if (trimmed !== "") {
-        submitted[key] = trimmed;
-      }
-    }
+  const handleCredentialChange = (fieldKey: string, newValue: string) => {
+    const nextCredentials = { ...credentials, [fieldKey]: newValue };
+    setCredentials(nextCredentials);
+    syncParentSettings(nextCredentials, model);
+  };
 
-    setSettings((prev) => ({
-      ...prev,
-      ...(isEmbedding
-        ? { embedding_provider: provider, embedding_model: model }
-        : { llm_provider: provider, llm_model: model }),
-      provider_credentials: Object.keys(submitted).length
-        ? { ...prev.provider_credentials, [provider]: submitted }
-        : prev.provider_credentials,
-    }));
-  }, [credentials, model, provider, isEmbedding, setSettings]);
+  const handleModelChange = (newModel: string) => {
+    setModel(newModel);
+    syncParentSettings(credentials, newModel);
+  };
 
   return (
     <>
@@ -124,10 +140,7 @@ export function GenericOnboarding({
                 }
                 value={credentials[field.key] ?? ""}
                 onChange={(e) =>
-                  setCredentials((prev) => ({
-                    ...prev,
-                    [field.key]: e.target.value,
-                  }))
+                  handleCredentialChange(field.key, e.target.value)
                 }
               />
               {hasSaved && (
@@ -151,8 +164,8 @@ export function GenericOnboarding({
         embeddingModels={isEmbedding ? models : undefined}
         languageModel={isEmbedding ? undefined : model}
         embeddingModel={isEmbedding ? model : undefined}
-        setLanguageModel={isEmbedding ? undefined : setModel}
-        setEmbeddingModel={isEmbedding ? setModel : undefined}
+        setLanguageModel={isEmbedding ? undefined : handleModelChange}
+        setEmbeddingModel={isEmbedding ? handleModelChange : undefined}
       />
     </>
   );
