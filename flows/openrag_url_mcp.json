@@ -5870,7 +5870,7 @@
           "x": 2026.2607693884997,
           "y": 1754.074435768159
         },
-        "selected": false,
+        "selected": true,
         "type": "genericNode"
       },
       {
@@ -6267,7 +6267,7 @@
                 "info": "The OpenSearch index name where documents will be stored and searched. Will be created automatically if it doesn't exist.",
                 "list": false,
                 "list_add_label": "Add More",
-                "load_from_db": false,
+                "load_from_db": true,
                 "name": "index_name",
                 "override_skip": false,
                 "placeholder": "",
@@ -6278,7 +6278,7 @@
                 "trace_as_metadata": true,
                 "track_in_telemetry": false,
                 "type": "str",
-                "value": "langflow"
+                "value": "OPENSEARCH_INDEX_NAME"
               },
               "ingest_data": {
                 "_input_type": "HandleInput",
@@ -6538,7 +6538,7 @@
                 "info": "The connection URL for your OpenSearch cluster (e.g., http://localhost:9200 for local development or your cloud endpoint).",
                 "list": false,
                 "list_add_label": "Add More",
-                "load_from_db": false,
+                "load_from_db": true,
                 "name": "opensearch_url",
                 "override_skip": false,
                 "placeholder": "",
@@ -6549,7 +6549,7 @@
                 "trace_as_metadata": true,
                 "track_in_telemetry": false,
                 "type": "str",
-                "value": "http://localhost:9200"
+                "value": "OPENSEARCH_URL"
               },
               "password": {
                 "_input_type": "SecretStrInput",
@@ -6779,16 +6779,16 @@
       }
     ],
     "viewport": {
-      "x": -1008.9088361518948,
-      "y": -1400.6341082397553,
-      "zoom": 1.1360292647866872
+      "x": -436.49158784467363,
+      "y": -524.7268247650767,
+      "zoom": 0.5381200623918984
     }
   },
   "description": "This flow is to ingest the URL to open search.",
   "endpoint_name": null,
   "id": "72c3d17c-2dac-4a73-b48a-6518473d7830",
   "is_component": false,
-  "last_tested_version": "0.11.5",
+  "last_tested_version": "0.11.6",
   "mcp_enabled": true,
   "locked": true,
   "name": "OpenSearch URL Ingestion Flow",

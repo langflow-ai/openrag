@@ -2855,24 +2855,24 @@
           "width": 192
         },
         "position": {
-          "x": 1470.6414570903364,
-          "y": 1498.1551806347672
+          "x": 1465.188148380901,
+          "y": 1500.6561249291267
         },
         "selected": false,
         "type": "genericNode"
       }
     ],
     "viewport": {
-      "x": -5.301813675612152,
-      "y": -494.77111749273377,
-      "zoom": 0.5307116044748973
+      "x": 218.55846372585756,
+      "y": -682.4564731762473,
+      "zoom": 0.6224371176910848
     }
   },
   "description": "OpenRAG OpenSearch Nudges generator, based on the OpenSearch documents and the chat history.",
   "endpoint_name": null,
   "id": "ebc01d31-1976-46ce-a385-b0240327226c",
   "is_component": false,
-  "last_tested_version": "0.11.5",
+  "last_tested_version": "0.11.6",
   "locked": true,
   "name": "OpenRAG OpenSearch Nudges Flow",
   "tags": [
