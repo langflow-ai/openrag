@@ -121,4 +121,8 @@ async def test_local_default_docs_get_separate_task_from_url_ingest(
         )
 
     assert task_id == "local-task"
-    assert local_helper.await_args.kwargs.get("existing_task_id") is None
+    local_helper.assert_awaited_once()
+    call_args, call_kwargs = local_helper.await_args
+    assert "url-task" not in call_args
+    assert "url-task" not in call_kwargs.values()
+    assert call_kwargs.get("existing_task_id") is None
