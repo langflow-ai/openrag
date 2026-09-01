@@ -62,7 +62,7 @@ class UrlProcessor(TaskProcessor):
                 is_sample_data=self.is_sample_data,
                 connector_type=self.connector_type,
             )
-            await processor.process_document_standard(
+            result = await processor.process_document_standard(
                 file_path=temp_file_path,
                 file_hash=hash_id(temp_file_path),
                 owner_user_id=self.owner_user_id,
@@ -75,9 +75,16 @@ class UrlProcessor(TaskProcessor):
                 is_sample_data=self.is_sample_data,
             )
 
-            file_task.status = TaskStatus.COMPLETED
-            file_task.updated_at = time.time()
-            upload_task.successful_files += 1
+            if result.get("status") == "error":
+                file_task.status = TaskStatus.FAILED
+                file_task.error = result.get("error") or "Failed to process document"
+                file_task.updated_at = time.time()
+                upload_task.failed_files += 1
+            else:
+                file_task.status = TaskStatus.COMPLETED
+                file_task.result = result
+                file_task.updated_at = time.time()
+                upload_task.successful_files += 1
 
         except Exception as e:
             file_task.status = TaskStatus.FAILED

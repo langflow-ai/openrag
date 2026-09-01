@@ -147,7 +147,6 @@ async def ingest_default_documents_when_ready(
                 models_service,
                 task_service,
                 file_paths,
-                existing_task_id=task_id,
                 connector_type="local",
                 jwt_token=jwt_token,
             )
@@ -158,7 +157,6 @@ async def ingest_default_documents_when_ready(
                 session_manager,
                 task_service,
                 file_paths,
-                existing_task_id=task_id,
                 connector_type="local",
                 jwt_token=jwt_token,
             )
@@ -183,7 +181,6 @@ async def _ingest_default_documents_langflow(
     session_manager,
     task_service,
     file_paths,
-    existing_task_id: str = None,
     connector_type: str = "openrag_docs",
     jwt_token=None,
 ):
@@ -227,7 +224,6 @@ async def _ingest_default_documents_langflow(
         settings=None,
         replace_duplicates=True,
         connector_type=connector_type,
-        existing_task_id=existing_task_id,
         temp_file_paths=[],
     )
 
@@ -635,7 +631,6 @@ async def _ingest_default_documents_openrag(
     task_service,
     file_paths,
     connector_type: str = "openrag_docs",
-    existing_task_id: str = None,
     jwt_token=None,
 ):
     """Ingest default documents using traditional OpenRAG processor."""
@@ -660,9 +655,7 @@ async def _ingest_default_documents_openrag(
         connector_type=connector_type,
     )
 
-    task_id = await task_service.create_custom_task(
-        "anonymous", file_paths, processor, existing_task_id=existing_task_id
-    )
+    task_id = await task_service.create_custom_task("anonymous", file_paths, processor)
     logger.info(
         "Started traditional OpenRAG ingestion task",
         task_id=task_id,
