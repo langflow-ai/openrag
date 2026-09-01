@@ -1,6 +1,6 @@
 "use client";
 
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, domAnimation, LazyMotion, m } from "motion/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { FormProvider, useForm } from "react-hook-form";
@@ -19,6 +19,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/auth-context";
+import type { CatalogCredentialField } from "../_helpers/catalog-models";
 import {
   getProviderChrome,
   type ModelProvider,
@@ -28,6 +29,8 @@ import {
   ProviderSettingsForm,
   type ProviderSettingsFormData,
 } from "./provider-settings-form";
+
+const EMPTY_FIELDS: CatalogCredentialField[] = [];
 
 /**
  * Credential dialog for any provider without a bespoke one.
@@ -70,7 +73,7 @@ const ProviderSettingsDialog = ({
   const catalogEntry = catalog?.providers?.find(
     (entry) => entry.key === provider,
   );
-  const fields = catalogEntry?.credential_fields ?? [];
+  const fields = catalogEntry?.credential_fields ?? EMPTY_FIELDS;
 
   const saved = settings.providers?.custom?.[provider];
   const isConfigured = saved?.configured === true;
@@ -142,11 +145,13 @@ const ProviderSettingsDialog = ({
   const onSubmit = (data: ProviderSettingsFormData) => {
     // Blank means "leave the stored value alone": the backend ignores empty
     // values, and secrets are never echoed back for us to resubmit.
-    const credentials = Object.fromEntries(
-      Object.entries(data.credentials ?? {})
-        .map(([key, value]) => [key, (value ?? "").trim()])
-        .filter(([, value]) => value !== ""),
-    );
+    const credentials: Record<string, string> = {};
+    for (const [key, value] of Object.entries(data.credentials ?? {})) {
+      const trimmed = (value ?? "").trim();
+      if (trimmed !== "") {
+        credentials[key] = trimmed;
+      }
+    }
 
     if (Object.keys(credentials).length === 0) {
       methods.setError("root", { message: "Enter at least one credential" });
@@ -191,33 +196,35 @@ const ProviderSettingsDialog = ({
               saveError={methods.formState.errors.root?.message}
             />
 
-            <AnimatePresence mode="wait">
-              {settingsMutation.isError && (
-                <motion.div
-                  key="error"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                >
-                  <p className="rounded-lg border border-destructive p-4 min-w-0 [overflow-wrap:anywhere]">
-                    {settingsMutation.error?.message}
-                  </p>
-                </motion.div>
-              )}
-              {removeMutation.isError &&
-                !isEmbeddingProviderInUseError(removeMutation.error) && (
-                  <motion.div
-                    key="remove-error"
+            <LazyMotion features={domAnimation}>
+              <AnimatePresence mode="wait">
+                {settingsMutation.isError && (
+                  <m.div
+                    key="error"
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -10 }}
                   >
                     <p className="rounded-lg border border-destructive p-4 min-w-0 [overflow-wrap:anywhere]">
-                      {removeMutation.error?.message}
+                      {settingsMutation.error?.message}
                     </p>
-                  </motion.div>
+                  </m.div>
                 )}
-            </AnimatePresence>
+                {removeMutation.isError &&
+                  !isEmbeddingProviderInUseError(removeMutation.error) && (
+                    <m.div
+                      key="remove-error"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                    >
+                      <p className="rounded-lg border border-destructive p-4 min-w-0 [overflow-wrap:anywhere]">
+                        {removeMutation.error?.message}
+                      </p>
+                    </m.div>
+                  )}
+              </AnimatePresence>
+            </LazyMotion>
 
             <ModelProviderDialogFooter
               showRemoveConfirm={showRemoveConfirm}

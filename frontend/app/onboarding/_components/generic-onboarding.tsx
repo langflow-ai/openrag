@@ -85,11 +85,13 @@ export function GenericOnboarding({
   }
 
   useEffect(() => {
-    const submitted = Object.fromEntries(
-      Object.entries(credentials)
-        .map(([key, value]) => [key, (value ?? "").trim()])
-        .filter(([, value]) => value !== ""),
-    );
+    const submitted: Record<string, string> = {};
+    for (const [key, value] of Object.entries(credentials)) {
+      const trimmed = (value ?? "").trim();
+      if (trimmed !== "") {
+        submitted[key] = trimmed;
+      }
+    }
 
     setSettings((prev) => ({
       ...prev,
