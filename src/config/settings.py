@@ -1063,6 +1063,47 @@ class AppClients:
                 "OpenAI API key not found in environment - will be initialized on first use if needed"
             )
 
+        # Initialize docling-serve HTTP client for document conversion
+        self._create_docling_http_client()
+
+        # Eagerly initialize DoclingService to ensure thread-safety
+        from services.docling_service import DoclingService
+
+        self._docling_service = DoclingService(httpx_client=self.docling_http_client)
+
+        # Initialize Langflow HTTP client with extended timeouts for large documents
+        # Must be created before wait_for_langflow / get_langflow_api_key
+        # Use explicit timeout configuration to handle large PDF ingestion (300+ pages)
+        self._create_langflow_http_client()
+
+        # Wait for Langflow to be healthy before generating API key
+        from utils.langflow_utils import wait_for_langflow
+
+        await wait_for_langflow(langflow_http_client=self.langflow_http_client)
+
+        # Generate Langflow API key now that Langflow is confirmed ready
+        await get_langflow_api_key()
+
+        # Initialize Langflow client with generated/provided API key
+        if LANGFLOW_KEY and self.langflow_client is None:
+            try:
+                if not OPENSEARCH_PASSWORD and not IBM_AUTH_ENABLED:
+                    raise ValueError("OPENSEARCH_PASSWORD is not set")
+                else:
+                    await self.ensure_langflow_client()
+                    # Note: OPENSEARCH_PASSWORD global variable should be created automatically
+                    # via LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT in docker-compose
+                    logger.info(
+                        "Langflow client initialized - OPENSEARCH_PASSWORD should be available via environment variables"
+                    )
+            except Exception as e:
+                logger.warning("Failed to initialize Langflow client", error=str(e))
+                self.langflow_client = None
+        if self.langflow_client is None:
+            logger.warning("No Langflow client initialized yet, will attempt later on first use")
+
+        return self
+
     def _create_docling_http_client(self):
         """Create a new AsyncClient for Docling bound to the currently running event loop."""
         self.docling_http_client = httpx.AsyncClient(
@@ -1107,47 +1148,6 @@ class AppClients:
         if self.langflow_http_client is None or self.langflow_http_client.is_closed:
             return self._create_langflow_http_client()
         return self.langflow_http_client
-
-        # Initialize docling-serve HTTP client for document conversion
-        self._create_docling_http_client()
-
-        # Eagerly initialize DoclingService to ensure thread-safety
-        from services.docling_service import DoclingService
-
-        self._docling_service = DoclingService(httpx_client=self.docling_http_client)
-
-        # Initialize Langflow HTTP client with extended timeouts for large documents
-        # Must be created before wait_for_langflow / get_langflow_api_key
-        # Use explicit timeout configuration to handle large PDF ingestion (300+ pages)
-        self._create_langflow_http_client()
-
-        # Wait for Langflow to be healthy before generating API key
-        from utils.langflow_utils import wait_for_langflow
-
-        await wait_for_langflow(langflow_http_client=self.langflow_http_client)
-
-        # Generate Langflow API key now that Langflow is confirmed ready
-        await get_langflow_api_key()
-
-        # Initialize Langflow client with generated/provided API key
-        if LANGFLOW_KEY and self.langflow_client is None:
-            try:
-                if not OPENSEARCH_PASSWORD and not IBM_AUTH_ENABLED:
-                    raise ValueError("OPENSEARCH_PASSWORD is not set")
-                else:
-                    await self.ensure_langflow_client()
-                    # Note: OPENSEARCH_PASSWORD global variable should be created automatically
-                    # via LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT in docker-compose
-                    logger.info(
-                        "Langflow client initialized - OPENSEARCH_PASSWORD should be available via environment variables"
-                    )
-            except Exception as e:
-                logger.warning("Failed to initialize Langflow client", error=str(e))
-                self.langflow_client = None
-        if self.langflow_client is None:
-            logger.warning("No Langflow client initialized yet, will attempt later on first use")
-
-        return self
 
     async def ensure_langflow_client(self):
         """Ensure Langflow client exists; try to generate key and create client lazily."""
@@ -1459,10 +1459,24 @@ class AppClients:
 
             url = f"{LANGFLOW_URL}{endpoint}"
 
+            client = self._ensure_langflow_http_client()
+
             try:
-                response = await self.langflow_http_client.request(
+                response = await client.request(
                     method=method, url=url, headers=headers, **request_kwargs
                 )
+            except RuntimeError as exc:
+                if "Event loop is closed" in str(exc) or "event loop" in str(exc).lower():
+                    logger.warning(
+                        "Langflow HTTP client event loop was closed, recreating client for active event loop",
+                        endpoint=endpoint,
+                    )
+                    client = self._create_langflow_http_client()
+                    response = await client.request(
+                        method=method, url=url, headers=headers, **request_kwargs
+                    )
+                else:
+                    raise
             except httpx.RequestError as exc:
                 last_error = exc
                 if attempt + 1 < max_attempts:
@@ -1491,9 +1505,22 @@ class AppClients:
                 if api_key:
                     headers["x-api-key"] = api_key
                     try:
-                        response = await self.langflow_http_client.request(
+                        client = self._ensure_langflow_http_client()
+                        response = await client.request(
                             method=method, url=url, headers=headers, **request_kwargs
                         )
+                    except RuntimeError as exc:
+                        if "Event loop is closed" in str(exc) or "event loop" in str(exc).lower():
+                            logger.warning(
+                                "Langflow auth retry HTTP client event loop was closed, recreating client for active event loop",
+                                endpoint=endpoint,
+                            )
+                            client = self._create_langflow_http_client()
+                            response = await client.request(
+                                method=method, url=url, headers=headers, **request_kwargs
+                            )
+                        else:
+                            raise
                     except httpx.RequestError as exc:
                         last_error = exc
                         if attempt + 1 < max_attempts:
