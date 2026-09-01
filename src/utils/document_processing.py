@@ -5,6 +5,8 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+IMAGE_PLACEHOLDER = "<!-- image -->"
+
 
 def process_text_file(file_path: str) -> dict:
     """
@@ -82,6 +84,8 @@ def extract_relevant(doc_dict: dict) -> dict:
       - Finds every text fragment in `texts`, groups them by page_no
       - Flattens tables in `tables` into tab-separated text, grouping by row
       - Concatenates each page's fragments and each table into its own chunk
+      - Emits a picture chunk for each picture with description annotations
+      - Emits one image placeholder only when pictures exist and no other chunks were produced
     Returns a slimmed dict ready for indexing, with each chunk under "text".
     """
     origin = doc_dict.get("origin", {})
@@ -136,7 +140,8 @@ def extract_relevant(doc_dict: dict) -> dict:
     # Without this, image-only documents (no text layer) yield zero chunks on the
     # non-Langflow path, which surfaces as a misleading "corrupted or invalid" error.
     # The Langflow path already captures them via Docling's export_to_markdown.
-    for p_idx, picture in enumerate(doc_dict.get("pictures", [])):
+    pictures = doc_dict.get("pictures", [])
+    for p_idx, picture in enumerate(pictures):
         prov = picture.get("prov", [])
         page_no = prov[0].get("page_no") if prov else None
         if page_no is None:
@@ -147,15 +152,28 @@ def extract_relevant(doc_dict: dict) -> dict:
             for ann in picture.get("annotations", [])
             if ann.get("kind") == "description" and ann.get("text", "").strip()
         ]
-        if not descriptions:
-            continue
+        if descriptions:
+            chunks.append(
+                {
+                    "page": page_no,
+                    "type": "picture",
+                    "picture_index": p_idx,
+                    "text": "\n".join(descriptions),
+                }
+            )
 
+    # Preserve a non-empty signal for image-only documents without descriptions,
+    # but avoid embedding one identical placeholder for every uncaptioned picture.
+    if not chunks and pictures:
+        first_picture = pictures[0]
+        prov = first_picture.get("prov", [])
+        page_no = prov[0].get("page_no") if prov else None
         chunks.append(
             {
-                "page": page_no,
+                "page": page_no if page_no is not None else 1,
                 "type": "picture",
-                "picture_index": p_idx,
-                "text": "\n".join(descriptions),
+                "picture_index": 0,
+                "text": IMAGE_PLACEHOLDER,
             }
         )
 

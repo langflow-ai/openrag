@@ -439,6 +439,9 @@ def register_internal_routes(app: FastAPI):
     app.add_api_route(
         "/models/catalog", models.get_model_catalog, methods=["GET"], tags=["internal"]
     )
+    app.add_api_route(
+        "/models/providers", models.get_model_providers, methods=["GET"], tags=["internal"]
+    )
 
     # Onboarding endpoints
     app.add_api_route("/onboarding", settings.onboarding, methods=["POST"], tags=["internal"])

@@ -171,6 +171,13 @@ COMPONENT_CUSTOMIZATIONS: dict[tuple[str, str], dict[str, str]] = {
             "grouped models, capability flags, and credential field specs."
         ),
     },
+    ("/v1/model-providers", "GET"): {
+        "name": "openrag_model_providers",
+        "description": (
+            "Model providers this deployment exposes for its run mode "
+            "(oss / on_prem / saas), with their display names."
+        ),
+    },
     ("/v1/chat/completions", "POST"): {
         "name": "openrag_chat_completions",
         "description": (

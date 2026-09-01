@@ -23,7 +23,9 @@ import {
   PRIMARY_CAPABILITIES,
   supports,
 } from "@/app/settings/_helpers/model-info";
+import AiFoundryLogo from "@/components/icons/ai-foundry-logo";
 import AnthropicLogo from "@/components/icons/anthropic-logo";
+import AzureOpenAILogo from "@/components/icons/azure-openai-logo";
 import IBMLogo from "@/components/icons/ibm-logo";
 import OllamaLogo from "@/components/icons/ollama-logo";
 import OpenAILogo from "@/components/icons/openai-logo";
@@ -95,6 +97,10 @@ const PROVIDER_LOGOS: Record<
   anthropic: AnthropicLogo,
   watsonx: IBMLogo,
   ollama: OllamaLogo,
+  // Both Azure rows: `azure_ai` is Foundry, `azure` is Azure OpenAI Service,
+  // and Microsoft draws the two differently.
+  azure_ai: AiFoundryLogo,
+  azure: AzureOpenAILogo,
 };
 
 function ProviderMark({ provider, name }: { provider?: string; name: string }) {
