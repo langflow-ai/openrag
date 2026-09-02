@@ -1564,54 +1564,32 @@ class TaskService:
         return TaskDeleteResult.DELETED
 
     def delete_all_terminal_tasks(self, user_id: str) -> list[str]:
-        """Remove all completed/failed tasks visible to a user.
+        """Remove all completed/failed tasks owned by a user.
 
-        Mirrors the visibility scope of get_all_tasks: deletes terminal tasks
-        from the user's own store, plus terminal tasks from the shared anonymous
-        store that are not shadowed by a user-owned task with the same ID.
+        Only touches the calling user's own store. Shared tasks stored under
+        the anonymous key are intentionally excluded: they are visible to all
+        authenticated users, so a bulk clear by one user must not remove them
+        for everyone else. Those tasks are aged out by cleanup_old_tasks.
 
         Returns the list of deleted task IDs.
         """
-        deleted: list[str] = []
+        if user_id not in self.task_store:
+            return []
 
-        # Delete from the user's own store first, collecting IDs.
-        if user_id in self.task_store:
-            to_delete = [
-                tid
-                for tid, t in self.task_store[user_id].items()
-                if t.status in [TaskStatus.COMPLETED, TaskStatus.FAILED]
-            ]
-            for tid in to_delete:
-                task = self.task_store[user_id][tid]
-                self._cleanup_upload_temp_files(task, force=True)
-                del self.task_store[user_id][tid]
-                self._task_locks.pop(tid, None)
-                deleted.append(tid)
-            if not self.task_store.get(user_id):
-                self.task_store.pop(user_id, None)
+        to_delete = [
+            tid
+            for tid, t in self.task_store[user_id].items()
+            if t.status in [TaskStatus.COMPLETED, TaskStatus.FAILED]
+        ]
+        for tid in to_delete:
+            task = self.task_store[user_id][tid]
+            self._cleanup_upload_temp_files(task, force=True)
+            del self.task_store[user_id][tid]
+            self._task_locks.pop(tid, None)
+        if not self.task_store.get(user_id):
+            self.task_store.pop(user_id, None)
 
-        # Also delete terminal tasks from the shared anonymous store, but only
-        # those not already present in the user's own store (same deduplication
-        # rule as get_all_tasks so the visibility scope matches exactly).
-        anon_id = AnonymousUser().user_id
-        if anon_id != user_id and anon_id in self.task_store:
-            user_task_ids = set(self.task_store.get(user_id, {}))
-            anon_to_delete = [
-                tid
-                for tid, t in self.task_store[anon_id].items()
-                if t.status in [TaskStatus.COMPLETED, TaskStatus.FAILED]
-                and tid not in user_task_ids
-            ]
-            for tid in anon_to_delete:
-                task = self.task_store[anon_id][tid]
-                self._cleanup_upload_temp_files(task, force=True)
-                del self.task_store[anon_id][tid]
-                self._task_locks.pop(tid, None)
-                deleted.append(tid)
-            if not self.task_store.get(anon_id):
-                self.task_store.pop(anon_id, None)
-
-        return deleted
+        return to_delete
 
     def _file_task_for_temp_path(self, upload_task: UploadTask, temp_path: str) -> FileTask | None:
         """Resolve the FileTask for a staged upload temp path."""
