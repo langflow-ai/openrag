@@ -1166,19 +1166,26 @@ class TaskService:
                 and "}" not in cleaned
             ):
                 lowered = cleaned.lower()
-                user_actionable = is_provider_credential_error(cleaned) or any(
-                    marker in lowered
-                    for marker in (
-                        "model",
-                        "project",
-                        "not found",
-                        "not properly configured",
-                        "no models",
-                        "unauthorized",
-                        "forbidden",
-                        "permission",
-                        "quota",
-                        "rate limit",
+                missing_deployment = "deployment" in lowered and any(
+                    marker in lowered for marker in ("not found", "does not exist")
+                )
+                user_actionable = (
+                    is_provider_credential_error(cleaned)
+                    or missing_deployment
+                    or any(
+                        marker in lowered
+                        for marker in (
+                            "model",
+                            "project",
+                            "not found",
+                            "not properly configured",
+                            "no models",
+                            "unauthorized",
+                            "forbidden",
+                            "permission",
+                            "quota",
+                            "rate limit",
+                        )
                     )
                 )
                 return {

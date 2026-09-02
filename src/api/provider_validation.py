@@ -217,6 +217,7 @@ async def _probe_provider_credential_error(
     project_id: str | None = None,
     embedding_model: str | None = None,
     llm_model: str | None = None,
+    credentials: dict[str, str] | None = None,
 ) -> str | None:
     """Run a lightweight provider check; return a cleaned credential error if auth fails."""
     if not provider:
@@ -230,12 +231,43 @@ async def _probe_provider_credential_error(
             endpoint=endpoint,
             project_id=project_id,
             test_completion=False,
+            credentials=credentials,
         )
     except Exception as probe_exc:
         cleaned = sanitize_provider_error_content(probe_exc)
         if is_provider_credential_error(probe_exc) or is_provider_credential_error(cleaned):
             return cleaned
     return None
+
+
+def _provider_probe_inputs(
+    config,
+    provider: str,
+    provider_config,
+) -> tuple[str | None, str | None, str | None, dict[str, str]]:
+    """Return legacy fields plus the complete LiteLLM credential map.
+
+    The original four providers expose attributes such as ``api_key`` and
+    ``endpoint``. Generic providers (Azure, Bedrock, Gemini, and others) keep
+    every LiteLLM keyword argument in ``ProvidersConfig.credentials`` instead.
+    Recovery probes must use both representations because they run specifically
+    when Langflow has hidden the provider's real failure.
+    """
+    credentials: dict[str, str] = {}
+    credential_values = getattr(getattr(config, "providers", None), "credential_values", None)
+    if callable(credential_values):
+        values = credential_values(provider)
+        if isinstance(values, dict):
+            credentials = dict(values)
+
+    api_key = getattr(provider_config, "api_key", None) or credentials.get("api_key")
+    endpoint = (
+        getattr(provider_config, "resolved_endpoint", None)
+        or getattr(provider_config, "endpoint", None)
+        or credentials.get("api_base")
+    )
+    project_id = getattr(provider_config, "project_id", None) or credentials.get("project_id")
+    return api_key, endpoint, project_id, credentials
 
 
 async def probe_provider_credential_error() -> str | None:
@@ -270,8 +302,11 @@ async def probe_provider_credential_error() -> str | None:
         if not provider or provider in checked or provider_config is None:
             continue
         checked.add(provider)
-        api_key = getattr(provider_config, "api_key", None)
-        endpoint = getattr(provider_config, "endpoint", None)
+        api_key, endpoint, project_id, credentials = _provider_probe_inputs(
+            config,
+            provider,
+            provider_config,
+        )
         if provider == "ollama":
             if not endpoint:
                 continue
@@ -281,7 +316,7 @@ async def probe_provider_credential_error() -> str | None:
                 config.knowledge.embedding_provider,
                 config.agent.llm_provider,
             )
-            and not api_key
+            and not (api_key or credentials)
         ):
             continue
 
@@ -289,9 +324,10 @@ async def probe_provider_credential_error() -> str | None:
             provider=provider,
             api_key=api_key,
             endpoint=endpoint,
-            project_id=getattr(provider_config, "project_id", None),
+            project_id=project_id,
             embedding_model=embedding_model,
             llm_model=llm_model,
+            credentials=credentials,
         )
         if error:
             return error
@@ -318,12 +354,15 @@ async def probe_chat_llm_error() -> str | None:
     if provider_config is None:
         return None
 
-    api_key = getattr(provider_config, "api_key", None)
-    endpoint = getattr(provider_config, "endpoint", None)
+    api_key, endpoint, project_id, credentials = _provider_probe_inputs(
+        config,
+        provider,
+        provider_config,
+    )
     if provider == "ollama":
         if not endpoint:
             return None
-    elif not api_key:
+    elif not (api_key or credentials):
         return None
 
     try:
@@ -334,8 +373,9 @@ async def probe_chat_llm_error() -> str | None:
             api_key=api_key,
             llm_model=llm_model,
             endpoint=endpoint,
-            project_id=getattr(provider_config, "project_id", None),
+            project_id=project_id,
             test_completion=True,
+            credentials=credentials,
         )
     except Exception as probe_exc:
         return sanitize_provider_error_content(probe_exc)
@@ -356,12 +396,15 @@ async def probe_embedding_error() -> str | None:
     if provider_config is None:
         return None
 
-    api_key = getattr(provider_config, "api_key", None)
-    endpoint = getattr(provider_config, "endpoint", None)
+    api_key, endpoint, project_id, credentials = _provider_probe_inputs(
+        config,
+        provider,
+        provider_config,
+    )
     if provider == "ollama":
         if not endpoint:
             return None
-    elif not api_key:
+    elif not (api_key or credentials):
         return None
 
     try:
@@ -370,8 +413,9 @@ async def probe_embedding_error() -> str | None:
             api_key=api_key,
             embedding_model=embedding_model,
             endpoint=endpoint,
-            project_id=getattr(provider_config, "project_id", None),
+            project_id=project_id,
             test_completion=True,
+            credentials=credentials,
         )
     except Exception as probe_exc:
         return sanitize_provider_error_content(probe_exc)
