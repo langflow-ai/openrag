@@ -31,6 +31,9 @@ const BOMARAG_DOCS_FILTERS: FilterInput = {
   connector_types: ["bomarag_docs"],
 };
 
+// Static onboarding prompt; hoisted so it keeps a stable identity across renders.
+const NUDGES = ["What is BomaRAG?"];
+
 const sanitizeCitationResult = (item: ToolCallResult): ToolCallResult => {
   const data = (() => {
     if (!item.data) return undefined;
@@ -228,8 +231,6 @@ export function OnboardingContent({
       });
     },
   });
-
-  const NUDGES = ["What is BomaRAG?"];
 
   const handleNudgeClick = async (nudge: string) => {
     trackButton({
