@@ -275,9 +275,7 @@ async def test_resolve_ingest_error_message_probes_generic_embedding_with_creden
 
     from api.provider_validation import resolve_ingest_error_message
 
-    result = await resolve_ingest_error_message(
-        "Server disconnected without sending a response."
-    )
+    result = await resolve_ingest_error_message("Server disconnected without sending a response.")
 
     assert result == "The API deployment for this resource does not exist."
     assert len(calls) == 1
