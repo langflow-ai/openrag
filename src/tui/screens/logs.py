@@ -148,9 +148,7 @@ class LogsScreen(Screen):
             self.logs_area.write_line("No container runtime available")
             return
 
-        success, logs = await self.container_manager.get_service_logs(
-            self.current_service, lines
-        )
+        success, logs = await self.container_manager.get_service_logs(self.current_service, lines)
 
         if success:
             for line in logs.split("\n"):
@@ -184,7 +182,7 @@ class LogsScreen(Screen):
             self._log_lines.append(cleaned)
             # Trim internal buffer to match max lines
             if len(self._log_lines) > self.MAX_LOG_LINES:
-                self._log_lines = self._log_lines[-self.MAX_LOG_LINES:]
+                self._log_lines = self._log_lines[-self.MAX_LOG_LINES :]
 
     async def _follow_logs(self) -> None:
         """Follow logs in real-time."""
@@ -213,9 +211,7 @@ class LogsScreen(Screen):
             return
 
         try:
-            async for log_line in self.container_manager.follow_service_logs(
-                self.current_service
-            ):
+            async for log_line in self.container_manager.follow_service_logs(self.current_service):
                 if not self.following:
                     break
 

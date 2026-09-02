@@ -20,6 +20,7 @@ KDF_ITERATIONS = 100000
 
 _cached_master_secret: str | None = None
 
+
 def get_master_secret() -> str | None:
     """Retrieve the master secret string from local environment."""
     global _cached_master_secret
@@ -51,8 +52,8 @@ def enforce_startup_prerequisites():
     except RuntimeError as e:
         logger.critical(str(e))
         import sys
-        sys.exit(1)
 
+        sys.exit(1)
 
 
 def encrypt_secret(plaintext: str, tenant_id: str = "openrag") -> dict[str, Any] | str:
@@ -104,7 +105,7 @@ def decrypt_secret(payload: dict[str, Any] | str, expected_tenant_id: str | None
     """
     Decrypt a secret payload using AES-256-GCM.
     Supports backward compatibility with non-KDF base64 raw keys.
-    If expected_tenant_id is provided, it is used as the authoritative tenant identifier 
+    If expected_tenant_id is provided, it is used as the authoritative tenant identifier
     for constructing the AES-GCM AAD, and the payload's tenant_id (if present) must match it.
     """
     if not isinstance(payload, dict):
@@ -140,7 +141,7 @@ def decrypt_secret(payload: dict[str, Any] | str, expected_tenant_id: str | None
         aesgcm = AESGCM(key)
         nonce = base64.b64decode(payload["nonce"])
         ciphertext = base64.b64decode(payload["ciphertext"])
-        
+
         # Determine tenant_id for AAD using a trusted expected value when available.
         payload_tenant_id = payload.get("tenant_id")
         if expected_tenant_id is not None:
@@ -152,7 +153,7 @@ def decrypt_secret(payload: dict[str, Any] | str, expected_tenant_id: str | None
         else:
             # Backwards-compatible behaviour when no external tenant binding is configured.
             tenant_id = payload_tenant_id or "openrag"
-            
+
         aad = f"tenant_id:{tenant_id}".encode()
 
         plaintext_bytes = aesgcm.decrypt(nonce, ciphertext, aad)
@@ -161,6 +162,7 @@ def decrypt_secret(payload: dict[str, Any] | str, expected_tenant_id: str | None
         logger.error(f"Failed to decrypt secret: {e}")
         raise ValueError(f"Failed to decrypt secret: {e}") from e
 
+
 async def read_encrypted_file(file_path: str) -> tuple[str | None, bool]:
     """
     Reads an encrypted or plaintext JSON/string file.
@@ -168,7 +170,7 @@ async def read_encrypted_file(file_path: str) -> tuple[str | None, bool]:
     """
     if not os.path.exists(file_path):
         return None, False
-        
+
     try:
         async with aiofiles.open(file_path) as f:
             raw_data = await f.read()
@@ -193,6 +195,7 @@ async def read_encrypted_file(file_path: str) -> tuple[str | None, bool]:
         logger.error(f"Failed to read encrypted file {file_path}: {e}")
         return None, False
 
+
 async def write_encrypted_file(file_path: str, data: str):
     """
     Encrypts string data (if key is present) and writes to file.
@@ -208,4 +211,3 @@ async def write_encrypted_file(file_path: str, data: str):
 
     async with aiofiles.open(file_path, "w") as f:
         await f.write(payload_to_write)
-

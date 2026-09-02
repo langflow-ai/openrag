@@ -28,6 +28,7 @@ OPENRAG_IMAGE_REPOS = {
 # Helpers
 # =============================================================================
 
+
 def say(msg: str) -> None:
     """Print a message."""
     print(f">>> {msg}")
@@ -90,9 +91,7 @@ def docker_is_podman() -> bool:
     if not has_cmd("docker"):
         return False
     try:
-        result = subprocess.run(
-            ["docker", "--version"], capture_output=True, text=True, timeout=5
-        )
+        result = subprocess.run(["docker", "--version"], capture_output=True, text=True, timeout=5)
         if "podman" in result.stdout.lower():
             return True
         # Check symlink target
@@ -167,12 +166,11 @@ def remove_openrag_images(runtime: str) -> tuple[int, int]:
 # Runtime Detection
 # =============================================================================
 
+
 def docker_daemon_ready() -> bool:
     """Check if Docker daemon is running and accessible."""
     try:
-        result = subprocess.run(
-            ["docker", "info"], capture_output=True, text=True, timeout=10
-        )
+        result = subprocess.run(["docker", "info"], capture_output=True, text=True, timeout=10)
         return result.returncode == 0
     except Exception:
         return False
@@ -181,9 +179,7 @@ def docker_daemon_ready() -> bool:
 def podman_ready() -> bool:
     """Check if Podman is ready (on macOS, machine must be running)."""
     try:
-        result = subprocess.run(
-            ["podman", "info"], capture_output=True, text=True, timeout=10
-        )
+        result = subprocess.run(["podman", "info"], capture_output=True, text=True, timeout=10)
         return result.returncode == 0
     except Exception:
         return False
@@ -193,9 +189,7 @@ def compose_available() -> bool:
     """Check if docker compose or docker-compose is available."""
     # Try docker compose (v2)
     try:
-        result = subprocess.run(
-            ["docker", "compose", "version"], capture_output=True, timeout=5
-        )
+        result = subprocess.run(["docker", "compose", "version"], capture_output=True, timeout=5)
         if result.returncode == 0:
             return True
     except Exception:
@@ -207,6 +201,7 @@ def compose_available() -> bool:
 # =============================================================================
 # Installation (with user consent)
 # =============================================================================
+
 
 def install_homebrew() -> bool:
     """Install Homebrew on macOS. Returns True if successful."""
@@ -221,8 +216,12 @@ def install_homebrew() -> bool:
     try:
         # Pipe installer script to bash - let user see progress interactively
         subprocess.run(
-            ["sh", "-c", "curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh | bash"],
-            check=True
+            [
+                "sh",
+                "-c",
+                "curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh | bash",
+            ],
+            check=True,
         )
         # Add to PATH for this session
         if Path("/opt/homebrew/bin/brew").exists():
@@ -295,10 +294,7 @@ def install_docker_linux() -> bool:
     say("Installing Docker via get.docker.com (may prompt for sudo password)...")
     try:
         # Don't capture output - let user see progress and type sudo password
-        subprocess.run(
-            ["sh", "-c", "curl -fsSL https://get.docker.com | sudo sh"],
-            check=True
-        )
+        subprocess.run(["sh", "-c", "curl -fsSL https://get.docker.com | sudo sh"], check=True)
         # Add user to docker group
         try:
             subprocess.run(["sudo", "usermod", "-aG", "docker", os.environ["USER"]], check=True)
@@ -314,6 +310,7 @@ def install_docker_linux() -> bool:
 # =============================================================================
 # Runtime Setup (with user consent)
 # =============================================================================
+
 
 def start_docker_daemon() -> bool:
     """Start Docker daemon. Returns True if successful."""
@@ -354,7 +351,9 @@ def setup_podman_machine() -> bool:
     try:
         result = subprocess.run(
             ["podman", "machine", "list", "--format", "{{.Name}}"],
-            capture_output=True, text=True, timeout=10
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         machine_exists = bool(result.stdout.strip())
     except Exception:
@@ -367,11 +366,10 @@ def setup_podman_machine() -> bool:
 
         say("Initializing Podman machine...")
         try:
-            subprocess.run([
-                "podman", "machine", "init",
-                "--memory", str(MIN_PODMAN_MEMORY_MB),
-                "--rootful"
-            ], check=True)
+            subprocess.run(
+                ["podman", "machine", "init", "--memory", str(MIN_PODMAN_MEMORY_MB), "--rootful"],
+                check=True,
+            )
         except Exception as e:
             say(f"Failed to init machine: {e}")
             return False
@@ -405,9 +403,17 @@ def check_podman_machine_memory() -> tuple[bool, int]:
 
     try:
         result = subprocess.run(
-            ["podman", "machine", "inspect", "podman-machine-default",
-             "--format", "{{.Resources.Memory}}"],
-            capture_output=True, text=True, timeout=10
+            [
+                "podman",
+                "machine",
+                "inspect",
+                "podman-machine-default",
+                "--format",
+                "{{.Resources.Memory}}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         if result.returncode == 0 and result.stdout.strip():
             current_mb = int(result.stdout.strip())
@@ -420,7 +426,9 @@ def check_podman_machine_memory() -> tuple[bool, int]:
 def fix_podman_memory(version: str) -> bool:
     """Recreate Podman machine with more memory."""
     say("Podman machine has insufficient memory.")
-    if not ask_yes_no(f"Recreate machine with {MIN_PODMAN_MEMORY_MB}MB? (WARNING: deletes containers/images)"):
+    if not ask_yes_no(
+        f"Recreate machine with {MIN_PODMAN_MEMORY_MB}MB? (WARNING: deletes containers/images)"
+    ):
         return False
 
     major = int(version.split(".")[0]) if version and version[0].isdigit() else 0
@@ -428,16 +436,14 @@ def fix_podman_memory(version: str) -> bool:
     if major >= 5:
         say("Resetting Podman machine...")
         result = subprocess.run(
-            ["podman", "machine", "reset", "-f"],
-            capture_output=True, text=True
+            ["podman", "machine", "reset", "-f"], capture_output=True, text=True
         )
         if result.returncode == 0:
             # Re-init with proper memory
-            subprocess.run([
-                "podman", "machine", "init",
-                "--memory", str(MIN_PODMAN_MEMORY_MB),
-                "--rootful"
-            ], capture_output=True)
+            subprocess.run(
+                ["podman", "machine", "init", "--memory", str(MIN_PODMAN_MEMORY_MB), "--rootful"],
+                capture_output=True,
+            )
             subprocess.run(["podman", "machine", "start"], capture_output=True)
             say("Done.")
             return True
@@ -446,11 +452,10 @@ def fix_podman_memory(version: str) -> bool:
     say("Manual reset: stop -> rm -> init -> start...")
     subprocess.run(["podman", "machine", "stop"], capture_output=True)
     subprocess.run(["podman", "machine", "rm", "-f"], capture_output=True)
-    subprocess.run([
-        "podman", "machine", "init",
-        "--memory", str(MIN_PODMAN_MEMORY_MB),
-        "--rootful"
-    ], capture_output=True)
+    subprocess.run(
+        ["podman", "machine", "init", "--memory", str(MIN_PODMAN_MEMORY_MB), "--rootful"],
+        capture_output=True,
+    )
     subprocess.run(["podman", "machine", "start"], capture_output=True)
     say("Done.")
     return True
@@ -459,6 +464,7 @@ def fix_podman_memory(version: str) -> bool:
 # =============================================================================
 # Health Checks
 # =============================================================================
+
 
 def check_runtime_conflict() -> tuple[bool, str | None]:
     """Check if both Docker and Podman are running independently."""
@@ -510,8 +516,7 @@ def fix_storage_corruption(runtime: str, version: str) -> bool:
         if major >= 5:
             say("Resetting Podman machine...")
             result = subprocess.run(
-                ["podman", "machine", "reset", "-f"],
-                capture_output=True, text=True
+                ["podman", "machine", "reset", "-f"], capture_output=True, text=True
             )
             if result.returncode == 0:
                 say("Reset complete.")
@@ -521,11 +526,10 @@ def fix_storage_corruption(runtime: str, version: str) -> bool:
         say("Manual reset...")
         subprocess.run(["podman", "machine", "stop"], capture_output=True)
         subprocess.run(["podman", "machine", "rm", "-f"], capture_output=True)
-        subprocess.run([
-            "podman", "machine", "init",
-            "--memory", str(MIN_PODMAN_MEMORY_MB),
-            "--rootful"
-        ], capture_output=True)
+        subprocess.run(
+            ["podman", "machine", "init", "--memory", str(MIN_PODMAN_MEMORY_MB), "--rootful"],
+            capture_output=True,
+        )
         subprocess.run(["podman", "machine", "start"], capture_output=True)
         say("Done.")
         return True
@@ -553,12 +557,15 @@ def fix_runtime_conflict() -> str | None:
     say("This can cause socket conflicts.")
     print()
 
-    choice = ask_choice("Choose which runtime to use:", [
-        "Stop Docker, use Podman",
-        "Stop Podman, use Docker",
-        "Continue anyway (not recommended)",
-        "Exit"
-    ])
+    choice = ask_choice(
+        "Choose which runtime to use:",
+        [
+            "Stop Docker, use Podman",
+            "Stop Podman, use Docker",
+            "Continue anyway (not recommended)",
+            "Exit",
+        ],
+    )
 
     if choice == 1:
         say("Stopping Docker...")
@@ -579,6 +586,7 @@ def fix_runtime_conflict() -> str | None:
 # Main Entry Point
 # =============================================================================
 
+
 def run_startup_checks() -> bool:
     """
     Run all startup prerequisites and health checks.
@@ -598,11 +606,16 @@ def run_startup_checks() -> bool:
     if not has_docker and not has_podman:
         say("No container runtime found.")
         print()
-        choice = ask_choice("Choose a container runtime to install:", [
-            "Podman (recommended)",
-            "Docker" if plat in ("Linux", "WSL") else "Docker (manual install required on macOS)",
-            "Exit"
-        ])
+        choice = ask_choice(
+            "Choose a container runtime to install:",
+            [
+                "Podman (recommended)",
+                "Docker"
+                if plat in ("Linux", "WSL")
+                else "Docker (manual install required on macOS)",
+                "Exit",
+            ],
+        )
 
         if choice == 1:
             if not install_podman():
@@ -610,7 +623,9 @@ def run_startup_checks() -> bool:
             has_podman = True
         elif choice == 2:
             if plat == "macOS":
-                say("Please install Docker Desktop manually from: https://docker.com/products/docker-desktop")
+                say(
+                    "Please install Docker Desktop manually from: https://docker.com/products/docker-desktop"
+                )
                 say("Then restart OpenRAG.")
                 return False
             else:
@@ -637,7 +652,7 @@ def run_startup_checks() -> bool:
         cmd = ["podman", "--version"] if runtime == "podman" else ["docker", "--version"]
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
         # Extract version number (e.g., "podman version 5.7.1" -> "5.7.1")
-        match = re.search(r'(\d+\.\d+\.\d+)', proc.stdout)
+        match = re.search(r"(\d+\.\d+\.\d+)", proc.stdout)
         if match:
             runtime_version = match.group(1)
     except Exception:

@@ -83,7 +83,7 @@ class FactoryResetWarningModal(ModalScreen[bool]):
                 "• All provider settings and configuration\n\n"
                 "This cannot be undone.\n\n"
                 "Do you want to continue?",
-                id="message"
+                id="message",
             )
             with Horizontal(id="button-row"):
                 yield Button("Cancel", id="cancel-btn")
@@ -99,4 +99,3 @@ class FactoryResetWarningModal(ModalScreen[bool]):
             self.dismiss(True)  # User wants to continue
         else:
             self.dismiss(False)  # User cancelled
-

@@ -23,6 +23,7 @@ def get_latest_published_version(project_name: str) -> Version | None:
     except (requests.RequestException, KeyError, ValueError, InvalidVersion):
         return None
 
+
 def create_tag():
     # Read version from pyproject.toml
     pyproject_path = Path(__file__).parent.parent.parent / "pyproject.toml"
@@ -65,6 +66,7 @@ def create_tag():
     # Git tag uses a leading "v" prefix
     new_nightly_version = f"v{nightly_version_str}"
     return new_nightly_version
+
 
 if __name__ == "__main__":
     try:

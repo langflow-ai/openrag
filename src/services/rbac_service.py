@@ -50,9 +50,7 @@ def is_rbac_enforced() -> bool:
 class RBACService:
     def __init__(self, session_factory) -> None:
         self._session_factory = session_factory
-        self._cache: TTLCache[str, frozenset[str]] = TTLCache(
-            maxsize=1024, ttl=_cache_ttl()
-        )
+        self._cache: TTLCache[str, frozenset[str]] = TTLCache(maxsize=1024, ttl=_cache_ttl())
 
     # ---------------- public API ---------------------------------------
 

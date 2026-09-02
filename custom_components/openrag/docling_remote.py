@@ -270,7 +270,9 @@ class DoclingRemoteComponent(BaseFileComponent):
                 elif isinstance(err, str):
                     err_msg_list.append(err)
 
-            err_details = "; ".join(err_msg_list) if err_msg_list else "Unknown Docling processing error"
+            err_details = (
+                "; ".join(err_msg_list) if err_msg_list else "Unknown Docling processing error"
+            )
 
             msg = f"Docling processing failed: {err_details}"
             raise ValueError(msg)

@@ -1,4 +1,3 @@
-
 from fastapi import Depends, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -43,9 +42,7 @@ async def nudges_from_kb_endpoint(
     except HTTPException:
         raise
     except Exception as e:
-        return JSONResponse(
-            {"error": f"Failed to get nudges: {str(e)}"}, status_code=500
-        )
+        return JSONResponse({"error": f"Failed to get nudges: {str(e)}"}, status_code=500)
 
 
 async def nudges_from_chat_id_endpoint(
@@ -61,6 +58,7 @@ async def nudges_from_chat_id_endpoint(
 
     try:
         from api.chat import _assert_owns
+
         await _assert_owns(chat_id, storage_user_id)
         result = await chat_service.langflow_nudges_chat(
             user.user_id,
@@ -75,6 +73,4 @@ async def nudges_from_chat_id_endpoint(
     except HTTPException:
         raise
     except Exception as e:
-        return JSONResponse(
-            {"error": f"Failed to get nudges: {str(e)}"}, status_code=500
-        )
+        return JSONResponse({"error": f"Failed to get nudges: {str(e)}"}, status_code=500)

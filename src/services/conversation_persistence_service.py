@@ -135,9 +135,7 @@ class ConversationPersistenceService:
         if db_writes_enabled():
             await self._db_upsert(user_id, response_id, serialized)
 
-    async def get_conversation_thread(
-        self, user_id: str, response_id: str
-    ) -> dict[str, Any]:
+    async def get_conversation_thread(self, user_id: str, response_id: str) -> dict[str, Any]:
         mode = get_storage_mode()
         if mode != "files":
             payload = await self._db_get_one(response_id, user_id)
@@ -148,16 +146,11 @@ class ConversationPersistenceService:
         # files or hybrid-with-no-db-row → JSON
         return self._conversations.get(user_id, {}).get(response_id, {})
 
-    async def delete_conversation_thread(
-        self, user_id: str, response_id: str
-    ) -> bool:
+    async def delete_conversation_thread(self, user_id: str, response_id: str) -> bool:
         deleted = False
 
         if file_writes_enabled():
-            if (
-                user_id in self._conversations
-                and response_id in self._conversations[user_id]
-            ):
+            if user_id in self._conversations and response_id in self._conversations[user_id]:
                 del self._conversations[user_id][response_id]
                 await self._save_conversations()
                 deleted = True
@@ -203,9 +196,7 @@ class ConversationPersistenceService:
                     )
                 ).scalar_one()
                 users = (
-                    await session.execute(
-                        select(func.count(func.distinct(Conversation.user_id)))
-                    )
+                    await session.execute(select(func.count(func.distinct(Conversation.user_id))))
                 ).scalar_one()
             return {
                 "total_users": int(users or 0),
@@ -226,6 +217,7 @@ class ConversationPersistenceService:
             return self._session_factory
         try:
             from db.engine import SessionLocal
+
             return SessionLocal
         except Exception:  # noqa: BLE001
             return None
@@ -243,9 +235,7 @@ class ConversationPersistenceService:
             "last_activity": row.last_activity.isoformat() if row.last_activity else None,
         }
 
-    async def _db_upsert(
-        self, user_id: str, response_id: str, payload: dict[str, Any]
-    ) -> None:
+    async def _db_upsert(self, user_id: str, response_id: str, payload: dict[str, Any]) -> None:
         from db.repositories import ConversationRepo
 
         sess_factory = self._resolve_session_factory()
@@ -281,9 +271,7 @@ class ConversationPersistenceService:
             logger.debug("DB get_for_user failed", error=str(exc))
             return {}
 
-    async def _db_get_one(
-        self, response_id: str, user_id: str
-    ) -> dict[str, Any] | None:
+    async def _db_get_one(self, response_id: str, user_id: str) -> dict[str, Any] | None:
         from db.repositories import ConversationRepo
 
         sess_factory = self._resolve_session_factory()

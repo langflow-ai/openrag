@@ -170,22 +170,15 @@ async def ensure_embedding_field_exists(
         "properties": {
             field_name: build_knn_vector_field(dimensions),
             # Also ensure the embedding_model tracking field exists as keyword
-            "embedding_model": {
-                "type": "keyword"
-            },
-            "embedding_dimensions": {
-                "type": "integer"
-            },
+            "embedding_model": {"type": "keyword"},
+            "embedding_dimensions": {"type": "integer"},
         }
     }
 
     try:
         # Try to add the mapping
         # OpenSearch will ignore if field already exists
-        await opensearch_client.indices.put_mapping(
-            index=index_name,
-            body=mapping
-        )
+        await opensearch_client.indices.put_mapping(index=index_name, body=mapping)
         logger.info(
             "Successfully ensured embedding field exists",
             field_name=field_name,

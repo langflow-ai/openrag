@@ -40,6 +40,7 @@ def _reset_db_engine_module_state(monkeypatch):
     """
     try:
         import db.engine as _engine_mod
+
         monkeypatch.setattr(_engine_mod, "_engine", None, raising=False)
         monkeypatch.setattr(_engine_mod, "SessionLocal", None, raising=False)
     except ImportError:
