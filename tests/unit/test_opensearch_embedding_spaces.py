@@ -7,11 +7,11 @@ import pytest
 
 def _load_opensearch_module(monkeypatch: pytest.MonkeyPatch):
     class Input:
-        def __init__(self, *args, **kwargs):
+        def __init__(self, *args: object, **kwargs: object) -> None:
             self.name = kwargs.get("name", "")
 
     class VectorStore:
-        inputs = []
+        inputs: list[object] = []
 
     class Data(dict):
         def __init__(self, text=None, **kwargs):
@@ -41,11 +41,11 @@ def _load_opensearch_module(monkeypatch: pytest.MonkeyPatch):
         "lfx.schema.data": ModuleType("lfx.schema.data"),
         "lfx.schema.dataframe": ModuleType("lfx.schema.dataframe"),
     }
-    modules["lfx.base.vectorstores.model"].LCVectorStoreComponent = VectorStore
-    modules["lfx.base.vectorstores.model"].check_cached_vector_store = lambda func: func
-    modules["lfx.base.vectorstores.vector_store_connection_decorator"].vector_store_connection = (
-        lambda cls: cls
-    )
+    vars(modules["lfx.base.vectorstores.model"])["LCVectorStoreComponent"] = VectorStore
+    vars(modules["lfx.base.vectorstores.model"])["check_cached_vector_store"] = lambda func: func
+    vars(modules["lfx.base.vectorstores.vector_store_connection_decorator"])[
+        "vector_store_connection"
+    ] = lambda cls: cls
     for name in (
         "BoolInput",
         "DropdownInput",
@@ -58,9 +58,9 @@ def _load_opensearch_module(monkeypatch: pytest.MonkeyPatch):
         "TableInput",
     ):
         setattr(modules["lfx.io"], name, Input)
-    modules["lfx.log"].logger = logger
-    modules["lfx.schema.data"].Data = Data
-    modules["lfx.schema.dataframe"].Table = Table
+    vars(modules["lfx.log"])["logger"] = logger
+    vars(modules["lfx.schema.data"])["Data"] = Data
+    vars(modules["lfx.schema.dataframe"])["Table"] = Table
     for name, module in modules.items():
         monkeypatch.setitem(sys.modules, name, module)
 
@@ -139,6 +139,18 @@ def test_detection_separates_provider_qualified_and_legacy_spaces(
             "text-embedding-3-small",
         ),
     ]
+
+
+def test_detection_ignores_missing_bucket_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _load_opensearch_module(monkeypatch)
+    result = {
+        "aggregations": {
+            "embedding_spaces": {"buckets": [{"key": {}}, {"key": None}]},
+            "legacy_embedding_models": {"buckets": [{"key": {}}, {"key": None}]},
+        }
+    }
+
+    assert module.embedding_spaces_from_aggregation(result) == []
 
 
 def test_detection_aggregation_only_treats_documents_without_space_id_as_legacy(

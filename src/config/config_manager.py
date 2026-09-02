@@ -509,9 +509,12 @@ class ConfigManager:
         # user-selected model preference. It must remain overridable after the
         # settings file is marked edited so existing installations can resolve
         # legacy vector spaces without modifying persisted application state.
-        if os.getenv("OPENRAG_LEGACY_EMBEDDING_PROVIDER_MAP"):
+        from config.settings import get_legacy_embedding_provider_map_json
+
+        legacy_provider_map_json = get_legacy_embedding_provider_map_json()
+        if legacy_provider_map_json:
             try:
-                raw_mapping = json.loads(os.environ["OPENRAG_LEGACY_EMBEDDING_PROVIDER_MAP"])
+                raw_mapping = json.loads(legacy_provider_map_json)
                 if not isinstance(raw_mapping, dict):
                     raise TypeError("expected a JSON object")
                 config_data["knowledge"]["legacy_embedding_provider_map"] = {

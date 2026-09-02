@@ -27,6 +27,12 @@ load_dotenv("../", override=False)
 
 logger = get_logger(__name__)
 
+
+def get_legacy_embedding_provider_map_json() -> str | None:
+    """Return the operator-supplied legacy embedding provider mapping JSON."""
+    return os.getenv("OPENRAG_LEGACY_EMBEDDING_PROVIDER_MAP")
+
+
 # Environment variables
 OPENSEARCH_HOST = os.getenv("OPENSEARCH_HOST", "localhost")
 OPENSEARCH_PORT = get_env_int("OPENSEARCH_PORT", 9200)

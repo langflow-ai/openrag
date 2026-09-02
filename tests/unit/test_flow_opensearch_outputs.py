@@ -31,7 +31,9 @@ def test_embedded_opensearch_nodes_expose_json_search_results():
         "flows/openrag_url_mcp.json",
     ):
         flow = _load_flow(flow_path)
-        for node in _opensearch_nodes(flow):
+        nodes = _opensearch_nodes(flow)
+        assert nodes, f"{flow_path} has no OpenSearch nodes"
+        for node in nodes:
             outputs = node["data"]["node"]["outputs"]
             if any(output.get("name") == "component_as_tool" for output in outputs):
                 continue
@@ -99,7 +101,9 @@ def test_embedded_opensearch_nodes_fence_untrusted_text():
         "flows/openrag_url_mcp.json",
     ):
         flow = _load_flow(flow_path)
-        for node in _opensearch_nodes(flow):
+        nodes = _opensearch_nodes(flow)
+        assert nodes, f"{flow_path} has no OpenSearch nodes"
+        for node in nodes:
             embedded_code = node["data"]["node"]["template"]["code"]["value"]
             assert embedded_code == py_code, (
                 f"{flow_path} node {node.get('id')} embedded code is out of sync with "

@@ -6,9 +6,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+import config.model_providers as model_providers
 from api import models as models_api
 from api.provider_health import check_provider_health
-from config import model_providers
 
 
 @pytest.mark.asyncio

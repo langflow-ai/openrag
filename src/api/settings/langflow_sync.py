@@ -378,7 +378,7 @@ async def _update_mcp_server_urls(config, session_manager=None, flows_service=No
 
 
 async def _upsert_selected_model_variable(name: str, value: str | None) -> None:
-    """Push a SELECTED_*_MODEL global var, non-fatally.
+    """Push a required SELECTED_* global variable to Langflow.
 
     Flows no longer carry per-provider embedding/LLM nodes for
     `change_langflow_model_value` to patch — they use the single
@@ -388,13 +388,8 @@ async def _upsert_selected_model_variable(name: str, value: str | None) -> None:
     """
     if not value:
         return
-    try:
-        await _upsert_langflow_global_variable(name, value)
-        logger.info("Set global variable in Langflow", variable_name=name)
-    except Exception as e:
-        logger.warning(
-            "Failed to set global variable in Langflow", variable_name=name, error=str(e)
-        )
+    await _upsert_langflow_global_variable(name, value)
+    logger.info("Set global variable in Langflow", variable_name=name)
 
 
 async def _update_langflow_model_values(
@@ -424,12 +419,13 @@ async def _update_langflow_model_values(
             )
 
         if embedding_model or embedding_provider:
+            configured_embedding_provider = config.knowledge.embedding_provider or "openai"
             effective_embedding_provider = (
-                embedding_provider or config.knowledge.embedding_provider
+                embedding_provider or configured_embedding_provider
             ).lower()
             if (
                 embedding_provider
-                and embedding_provider.lower() != config.knowledge.embedding_provider.lower()
+                and embedding_provider.lower() != configured_embedding_provider.lower()
             ):
                 effective_embedding_model = (
                     embedding_model  # do not fall back; force caller to specify
@@ -474,7 +470,7 @@ async def _update_langflow_model_values(
             # 2. Update ALL configured embedding providers
             embedding_providers = _configured_provider_names(config, _EMBEDDING_PROVIDER_NAMES)
 
-            current_embedding_provider = config.knowledge.embedding_provider.lower()
+            current_embedding_provider = (config.knowledge.embedding_provider or "openai").lower()
             for provider in embedding_providers:
                 # Use configured model for current provider, or None (first available) for others
                 embedding_model = (

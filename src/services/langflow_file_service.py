@@ -174,15 +174,14 @@ class LangflowFileService:
 
             config = get_openrag_config()
             index_name = get_index_name()
-            model_name = embedding_model or get_declared_default_embedding_model(
-                config.knowledge.embedding_provider
-            )
+            embedding_provider = config.knowledge.embedding_provider or "openai"
+            model_name = embedding_model or get_declared_default_embedding_model(embedding_provider)
             embedding_dimensions = await self._detect_embedding_dimensions(
                 model_name,
-                config.knowledge.embedding_provider,
+                embedding_provider,
             )
             embedding_space_id = get_embedding_space_id(
-                config.knowledge.embedding_provider,
+                embedding_provider,
                 model_name,
             )
             if not await clients.opensearch.indices.exists(index=index_name):
@@ -191,7 +190,7 @@ class LangflowFileService:
                     body=await create_index_body(
                         model_name,
                         embedding_dimensions,
-                        embedding_provider=config.knowledge.embedding_provider,
+                        embedding_provider=embedding_provider,
                         embedding_space_id=embedding_space_id,
                     ),
                 )

@@ -583,7 +583,7 @@ async def test_llm_model_change_pushes_selected_language_model(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_selected_model_upsert_failure_is_not_fatal(monkeypatch):
+async def test_selected_model_upsert_failure_stops_flow_update(monkeypatch):
     async def boom(name, value, **kwargs):
         raise RuntimeError("langflow down")
 
@@ -603,14 +603,52 @@ async def test_selected_model_upsert_failure_is_not_fatal(monkeypatch):
         ),
     )
 
-    await langflow_sync._update_langflow_model_values(
-        config,
-        _FlowsService(),
-        embedding_model="text-embedding-3-small",
-        embedding_provider="openai",
+    with pytest.raises(RuntimeError, match="langflow down"):
+        await langflow_sync._update_langflow_model_values(
+            config,
+            _FlowsService(),
+            embedding_model="text-embedding-3-small",
+            embedding_provider="openai",
+        )
+
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_embedding_model_update_defaults_unset_provider_to_openai(monkeypatch):
+    upserts: list[tuple[str, str]] = []
+
+    async def fake_upsert(name, value, **kwargs):
+        upserts.append((name, value))
+
+    monkeypatch.setattr(langflow_sync, "_upsert_langflow_global_variable", fake_upsert)
+
+    class _FlowsService:
+        def __init__(self):
+            self.calls = []
+
+        async def change_langflow_model_value(self, provider, **kwargs):
+            self.calls.append((provider, kwargs))
+            return {"updated": []}
+
+    flows_service = _FlowsService()
+    config = SimpleNamespace(
+        agent=SimpleNamespace(llm_model="gpt-4o-mini", llm_provider="openai"),
+        knowledge=SimpleNamespace(
+            embedding_model="text-embedding-3-small", embedding_provider=None
+        ),
     )
 
-    assert calls == ["openai"]
+    await langflow_sync._update_langflow_model_values(
+        config,
+        flows_service,
+        embedding_model="text-embedding-3-small",
+    )
+
+    assert ("SELECTED_EMBEDDING_PROVIDER", "openai") in upserts
+    assert flows_service.calls == [
+        ("openai", {"embedding_model": "text-embedding-3-small", "force_embedding_update": True})
+    ]
 
 
 # --- guards carried over from main (#2265) -------------------------------
