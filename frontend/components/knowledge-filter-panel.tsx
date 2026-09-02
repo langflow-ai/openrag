@@ -162,7 +162,7 @@ export function KnowledgeFilterPanel() {
   const { data: aggregations } = useGetSearchAggregations("*", 1, 0, {
     enabled: isPanelOpen,
     placeholderData: (prev) => prev,
-    staleTime: 60_000,
+    staleTime: 0,
     gcTime: 5 * 60_000,
   });
 

@@ -122,7 +122,7 @@ export function MultiSelect({
         align="start"
         style={{ width: "var(--radix-popover-trigger-width)" }}
       >
-        <Command>
+        <Command shouldFilter={false}>
           <CommandInput
             placeholder={searchPlaceholder}
             value={searchValue}
