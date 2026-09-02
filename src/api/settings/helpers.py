@@ -27,22 +27,60 @@ _EMBEDDING_PROVIDER_NAMES = ("openai", "watsonx", "ollama")
 def _configured_provider_names(config, provider_names) -> list:
     """Return the provider names from `provider_names` marked configured in the OpenRAG config."""
     providers = config.providers
-    return [name for name in provider_names if getattr(providers, name).configured]
+    configured = [name for name in provider_names if getattr(providers, name).configured]
+    from services.model_catalog import catalog
+
+    entries = {entry["key"]: entry for entry in catalog()["providers"]}
+    embedding = tuple(provider_names) == _EMBEDDING_PROVIDER_NAMES
+    for provider, value in providers.custom.items():
+        entry = entries.get(provider)
+        supports_kind = bool(
+            entry and (entry["embedding_models"] if embedding else entry["models"])
+        )
+        if value.configured and supports_kind and provider not in configured:
+            configured.append(provider)
+    return configured
 
 
 def _first_configured_llm_provider(config, excluding: str) -> str:
-    """Return the first configured LLM provider that isn't `excluding`."""
+    """Return the first configured LLM provider that isn't `excluding`.
+
+    Only providers this run mode shows are eligible: falling back to one the
+    config file hides would leave Settings pointing at a provider whose card
+    the user cannot see (see ``config/model_providers.yaml``).
+    """
+    from config.model_providers import visible_provider_keys
+
+    visible = visible_provider_keys()
     for p in _LLM_PROVIDER_NAMES:
-        if p != excluding and getattr(config.providers, p).configured:
+        if p != excluding and p in visible and getattr(config.providers, p).configured:
             return p
+    for provider, value in config.providers.custom.items():
+        if provider != excluding and provider in visible and value.configured:
+            return provider
     return "openai"
 
 
 def _first_configured_embedding_provider(config, excluding: str) -> str:
-    """Return the first configured embedding provider (openai/watsonx/ollama) that isn't `excluding`, or "" if none."""
+    """Return the first configured embedding provider that isn't `excluding`, or "" if none.
+
+    Providers hidden in this run mode are skipped, as in
+    ``_first_configured_llm_provider``.
+    """
+    from config.model_providers import visible_provider_keys
+
+    visible = visible_provider_keys()
     for p in _EMBEDDING_PROVIDER_NAMES:
-        if p != excluding and getattr(config.providers, p).configured:
+        if p != excluding and p in visible and getattr(config.providers, p).configured:
             return p
+    from services.model_catalog import catalog
+
+    entries = {entry["key"]: entry for entry in catalog()["providers"]}
+    for provider, value in config.providers.custom.items():
+        if provider != excluding and provider in visible and value.configured:
+            entry = entries.get(provider)
+            if entry and entry["embedding_models"]:
+                return provider
     return ""
 
 

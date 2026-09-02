@@ -84,7 +84,7 @@ export function OnboardingStep({
       initial={{ opacity: 0, y: -20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay: 0.4, ease: "easeOut" }}
-      className={isCompleted ? "opacity-50" : ""}
+      className={cn(isCompleted ? "opacity-50" : "", "pr-10 mr-1 flex w-full")}
     >
       <Message
         icon={

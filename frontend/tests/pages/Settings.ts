@@ -43,10 +43,33 @@ export class Settings {
     this.page.getByRole("button", { name: "Remove" });
   private readonly removeAnywayButton = () =>
     this.page.getByRole("button", { name: "Remove Anyway" });
-  private readonly watsonxConnectionErrorMessage = () =>
-    this.page.locator('[role="dialog"] .text-destructive').first();
-  private readonly openaiConnectionErrorMessage = () =>
-    this.page.locator('[role="dialog"] .text-destructive').first();
+  // The dialog's Remove button is also styled `.text-destructive`, so the old
+  // selector matched it and made `successToast.or(errorMsg)` ambiguous under
+  // Playwright strict mode. Target the error element itself.
+  private readonly providerConnectionErrorMessage = () =>
+    this.page
+      .locator('[role="dialog"]')
+      .getByTestId("provider-connection-error")
+      .first();
+
+  /**
+   * Get locator for a provider's card.
+   *
+   * `hasText` matches substrings, so filtering on "OpenAI" also selected the
+   * "Azure OpenAI" tile once both providers shipped, and any button lookup
+   * inside it blew up under strict mode. Anchor on the card heading, which
+   * carries the provider name exactly.
+   * @param providerName - Name of the model provider
+   * @returns Locator for the provider card
+   */
+  private getProviderCard(providerName: string) {
+    return this.page.locator("div.rounded-xl, div.border-border.group").filter({
+      has: this.page.getByRole("heading", {
+        name: providerName,
+        exact: true,
+      }),
+    });
+  }
 
   /**
    * Get locator for configure button by provider name
@@ -54,10 +77,9 @@ export class Settings {
    * @returns Locator for the configure button
    */
   private getConfigureButton(providerName: string) {
-    return this.page
-      .locator("div.rounded-xl, div.border-border.group")
-      .filter({ hasText: providerName })
-      .getByRole("button", { name: "Configure" });
+    return this.getProviderCard(providerName).getByRole("button", {
+      name: "Configure",
+    });
   }
 
   /**
@@ -96,10 +118,9 @@ export class Settings {
    * @returns Locator for the edit setup button
    */
   private getEditSetupButton(providerName: string) {
-    return this.page
-      .locator("div.rounded-xl, div.border-border.group")
-      .filter({ hasText: providerName })
-      .getByRole("button", { name: "Edit Setup" });
+    return this.getProviderCard(providerName).getByRole("button", {
+      name: "Edit Setup",
+    });
   }
 
   /**
@@ -139,9 +160,7 @@ export class Settings {
    * @returns Locator for the search input
    */
   private getSearchModelInput() {
-    let search = this.page.locator(
-      'input[placeholder="Search model..."]:focus',
-    );
+    let search = this.page.locator('[data-testid="model-search-input"]:focus');
     return search;
   }
 
@@ -150,7 +169,7 @@ export class Settings {
    * @returns Locator for the search input
    */
   private getSearchModelInputFallback() {
-    return this.page.locator('input[placeholder="Search model..."]').first();
+    return this.page.locator('[data-testid="model-search-input"]').first();
   }
 
   /**
@@ -364,16 +383,10 @@ export class Settings {
       await this.watsonxProjectIDInput().fill(projectId);
       await this.apiKeyInput().fill(apiKey);
       await this.saveModelProviderButton().click();
-      const successToast = this.getToastByText(
+      await this.awaitProviderConfigResult(
+        "Watsonx.ai",
         "IBM watsonx.ai successfully configured",
       );
-      const errorMsg = this.watsonxConnectionErrorMessage();
-      await expect(successToast.or(errorMsg)).toBeVisible({ timeout: 30000 });
-      if (await errorMsg.isVisible()) {
-        throw new Error(
-          `Watsonx.ai configuration failed: ${await errorMsg.textContent()}`,
-        );
-      }
       logger.info("Watsonx.ai configuration completed");
       await expect(editBtn).toBeEnabled();
     }
@@ -385,6 +398,38 @@ export class Settings {
     // Neither found
     else {
       throw new Error("Neither Configure nor Edit Setup button is visible");
+    }
+  }
+
+  /**
+   * Wait for a provider dialog to report success or a connection error.
+   *
+   * Racing two locators with `.or()` fails under strict mode as soon as either
+   * side matches more than one node, so poll the two outcomes explicitly.
+   */
+  private async awaitProviderConfigResult(
+    provider: string,
+    successText: string,
+  ) {
+    const successToast = this.getToastByText(successText);
+    const errorMsg = this.providerConnectionErrorMessage();
+
+    await expect
+      .poll(
+        async () => {
+          if (await errorMsg.isVisible().catch(() => false)) return "error";
+          if (await successToast.isVisible().catch(() => false))
+            return "success";
+          return "pending";
+        },
+        { timeout: 30000 },
+      )
+      .not.toBe("pending");
+
+    if (await errorMsg.isVisible().catch(() => false)) {
+      throw new Error(
+        `${provider} configuration failed: ${await errorMsg.textContent()}`,
+      );
     }
   }
 
@@ -452,16 +497,10 @@ export class Settings {
       const apiKey = config.openaiApiKey;
       await this.apiKeyInput().fill(apiKey);
       await this.saveModelProviderButton().click();
-      const successToast = this.getToastByText(
+      await this.awaitProviderConfigResult(
+        "OpenAI",
         "OpenAI successfully configured",
       );
-      const errorMsg = this.openaiConnectionErrorMessage();
-      await expect(successToast.or(errorMsg)).toBeVisible({ timeout: 30000 });
-      if (await errorMsg.isVisible()) {
-        throw new Error(
-          `OpenAI configuration failed: ${await errorMsg.textContent()}`,
-        );
-      }
       logger.info("OpenAI configuration completed");
       await expect(editBtn).toBeEnabled();
     }
@@ -505,7 +544,9 @@ export class Settings {
       logger.info(
         "Verify that watsonx.ai configuration failed due to invalid credentials",
       );
-      await expect(this.watsonxConnectionErrorMessage()).toBeVisible();
+      await expect(this.providerConnectionErrorMessage()).toBeVisible({
+        timeout: 30000,
+      });
     }
   }
 }

@@ -63,6 +63,132 @@ These variables are initially set during the [application onboarding process](/i
 | `WATSONX_ENDPOINT` | Not set | Custom provider endpoint for the IBM watsonx.ai model provider. |
 | `WATSONX_PROJECT_ID` | Not set | Project ID for the IBM watsonx.ai model provider. |
 
+### Provider visibility per run mode {#model-provider-visibility}
+
+Which providers appear in **Settings**, in onboarding, and in the model pickers
+is not hardcoded. `src/config/model_providers.yaml` lists each provider and
+whether it is shown in each run mode, and the backend filters that list by
+`OPENRAG_RUN_MODE` (`oss`, `on_prem`, or `saas`). The UI renders whatever the
+API returns, so there is no separate frontend list to keep in step.
+
+```yaml
+providers:
+  - name: ollama
+    display_name: Ollama
+    modes:
+      oss: true
+      on_prem: true
+      saas: false # local inference is not offered in SaaS
+```
+
+A mode key that is missing means the provider is hidden, so adding a run mode
+never exposes a provider by accident. A provider the file does not list is not
+offered in the UI at all, though a model id for it can still be typed by hand if
+the gateway already routes it.
+
+The shipped defaults are:
+
+| Provider | `oss` | `on_prem` | `saas` |
+|----------|-------|-----------|--------|
+| `openai` | Yes | Yes | Yes |
+| `ollama` | Yes | Yes | No |
+| `watsonx` | Yes | Yes | Yes |
+| `anthropic` | Yes | Yes | Yes |
+| `azure_ai` | Yes | Yes | Yes |
+| `azure` | Yes | Yes | Yes |
+
+LiteLLM keys Azure twice, and the two are not interchangeable: `azure_ai` is
+the Azure AI Foundry catalogue (Llama, Phi, Mistral, Cohere, and the gpt-5.x
+entries Foundry serves), while `azure` is Azure OpenAI Service — the only one
+of the two that carries the gpt-4.1 family. Offer both unless a deployment
+uses just one.
+
+To change what a deployment offers, edit the `modes` values and restart, or
+point `OPENRAG_MODEL_PROVIDERS_CONFIG` at your own YAML file. The file is read
+once per process, so the restart is what applies the edit; reload the console
+afterwards to pick up the new list.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OPENRAG_MODEL_PROVIDERS_CONFIG` | Not set | Path to a YAML file that replaces the shipped `model_providers.yaml`. If the file cannot be read, the shipped list is used. |
+
+#### Hide specific models {#exclude-models}
+
+A row can also keep ids out of the pickers. `*` and `?` wildcards work, and
+matching is against the id as the picker shows it — `gpt-3.5-turbo`, not
+`openai/gpt-3.5-turbo`. The id's last path segment is matched too, so a plain
+name also covers Azure's regional listings (`eu/gpt-5.6-luna`,
+`us/gpt-5.6-luna`); write `eu/*` to reach one region on its own.
+
+Exclusions are per provider row. Azure OpenAI serves the same models as
+OpenAI, so a model you want gone from both needs the pattern on both rows.
+
+```yaml
+  - name: openai
+    display_name: OpenAI
+    modes:
+      oss: true
+    exclude_models:
+      - gpt-3.5-*      # a whole generation
+      - gpt-5.6-luna   # one model
+```
+
+Exclusion is applied last, so it also overrides a `models` entry on the same
+provider, and it covers the live `/models/{provider}` lists as well as the
+catalogue — otherwise an id hidden in Settings would reappear in onboarding.
+
+Two other mechanisms already run without configuration, so reach for
+`exclude_models` only when neither covers you:
+
+| Situation | Handled by |
+|---|---|
+| The provider has already retired the model | Dropped from the catalogue automatically |
+| The provider has announced a retirement within 90 days | Hidden behind a **Show N retiring** row in the picker |
+| This deployment does not want the model offered at all | `exclude_models` |
+
+Credentials for a provider without a purpose-built form — Azure AI Foundry
+today — are entered in **Settings** through a form built from the provider's own
+credential fields. Configuring one needs no code change beyond its row in this
+file.
+
+#### Add a custom OpenAI-compatible provider {#custom-openai-compatible-provider}
+
+To offer a self-hosted OpenAI-compatible endpoint — vLLM, LM Studio, or an
+internal gateway — add a row that declares the model ids it serves. The public
+vendors need no `models` list because LiteLLM already ships one, but a private
+gateway serves whatever its operator deployed, so those ids can only come from
+this file.
+
+```yaml
+  - name: openai_like
+    display_name: Internal LLM Gateway
+    modes:
+      oss: true
+      on_prem: true
+      saas: false
+    models:
+      - llama-3.3-70b-instruct
+      - qwen2.5-coder-32b
+    embedding_models:
+      - bge-m3
+```
+
+Restart, then open **Settings** and configure the new card with the gateway's
+**API base** (for example `https://gateway.internal/v1`) and API key. The
+declared models then appear in the agent and ingestion pickers, and are served
+from `/v1/models` as `openai_like:llama-3.3-70b-instruct`.
+
+Use one of LiteLLM's passthrough provider keys for `name` — `openai_like`,
+`hosted_vllm`, `lm_studio`, `llamafile`, or `custom_openai` — rather than
+inventing one. The key must be a provider LiteLLM can route, or the
+`provider:model` ids OpenRAG publishes resolve to the default provider and are
+called with the wrong credentials. A name that is not routable is logged as a
+warning when the catalogue is built.
+
+Declaring `models` on a public vendor row also works, and is how you surface a
+fine-tune or a private deployment that is not in LiteLLM's table. Ids that the
+table already lists are not duplicated.
+
 ## Document processing settings {#document-processing-settings}
 
 Controls some aspects of how OpenRAG [processes and ingests documents](/ingestion) into your knowledge base.
@@ -198,3 +324,40 @@ Configure general system components, session management, and logging.
 | `LOG_LEVEL` | `INFO` | Logging level. Can be one of `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`. `DEBUG` provides the most detailed logs but can impact performance. |
 | `SERVICE_NAME` | `openrag` | Service name used in log entries. |
 | `SESSION_SECRET` | Automatically generated | Secret key for session management. If not provided, a secure random key is generated automatically. |
+
+## Observability and APM settings {#observability-and-apm-settings}
+
+Instrument OpenRAG Backend with [IBM Instana](https://www.ibm.com/products/instana) for application performance monitoring and distributed tracing.
+Instrumentation is off by default.
+
+For a complete walkthrough, including how to obtain an agent key and how to configure Kubernetes deployments, see [Monitor OpenRAG with IBM Instana](/reference/observability).
+
+The first group configures OpenRAG Backend, which sends traces to an Instana host agent.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `INSTANA_ENABLED` | `false` | Whether to load the Instana Python tracer in OpenRAG Backend. Accepts `true`, `1`, or `yes` to enable. This variable is read once at process start, so the backend must be restarted for a change to take effect. The tracer is an optional dependency: the backend container image includes it, and a backend run from source needs `uv sync --extra apm`. If it isn't installed, the backend logs a warning and runs untraced. |
+| `INSTANA_AGENT_HOST` | `host.docker.internal` for containerized deployments; `localhost` for a backend that runs directly on the host | Address of the Instana host agent that the tracer sends spans to. In Kubernetes, leave this unset. The Helm chart and the operator inject the pod's own node IP, which is the address of the per-node agent DaemonSet. |
+| `INSTANA_AGENT_PORT` | `42699` | Port of the Instana host agent. |
+| `INSTANA_SERVICE_NAME` | Not set | Service name that OpenRAG Backend reports to Instana, shown in the **Applications** and **Analyze Traces** views. Leave this unset rather than setting it to an empty value, because the tracer checks it for presence rather than for a value, and an empty value registers a service with a blank name. |
+| `INSTANA_ZONE` | Not set | Custom zone that the host and process are grouped under in the Instana **Infrastructure** view. Presence-sensitive in the same way as `INSTANA_SERVICE_NAME`. |
+| `INSTANA_LOG_LEVEL` | `info` | Verbosity of the tracer's own logging, as one of `debug`, `info`, `warn`, or `error`. This is unrelated to [`LOG_LEVEL`](#system-settings), which controls OpenRAG's application logs. Presence-sensitive in the same way as `INSTANA_SERVICE_NAME`: an empty value logs an `Unknown INSTANA_LOG_LEVEL` warning on every start. |
+| `INSTANA_SECRETS` | `regex:.*key.*,.*pass.*,.*secret.*,.*token.*,q\Z,search\Z,filename\Z` | Query-string parameters that the tracer replaces with `<redacted>` before a span is sent, as `<matcher>:<name>[,<name>]` where the matcher is one of `equals`, `equals-ignore-case`, `contains`, `contains-ignore-case`, or `regex`. OpenRAG sets this rather than leaving it at the tracer's own `contains-ignore-case:key,pass,secret`, which only covers credential-shaped parameter names and not free-text ones such as the `q` of `GET /v2/files/search`. See [Redact query parameters](/reference/observability#redact-query-parameters). |
+| `INSTANA_TRACING_DISABLE` | `logging` | Span categories or types that the tracer skips, as a comma-separated list, or `true` to disable tracing entirely. OpenRAG sets `logging` rather than leaving it empty, because a logging span is created for every `WARNING` and `ERROR` logged inside a request trace, at a cost that grows for as long as the process runs. See [Performance guardrails](/reference/observability#performance-guardrails). |
+| `INSTANA_STACK_TRACE` | `error` | When the tracer captures a Python stack trace for an exit span, as one of `all`, `error`, or `none`. OpenRAG sets `error` rather than the tracer's own `all`, which captures a full stack on every outbound HTTP call, OpenSearch query, and database query. Any other value logs a warning and falls back to `all`, so use `all` to opt out rather than an empty value. See [Performance guardrails](/reference/observability#performance-guardrails). |
+| `INSTANA_STACK_TRACE_LENGTH` | `30` | Maximum number of frames kept in a captured stack trace, between 1 and 40. Only has an effect when `INSTANA_STACK_TRACE` captures a stack. |
+
+The second group configures the optional local Instana host agent that `make instana-agent-up` starts.
+These variables don't affect the backend, and they aren't used by Kubernetes deployments, where the agent is installed separately as a DaemonSet.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `INSTANA_AGENT_KEY` | Not set | Agent key for your Instana tenant, from **Infrastructure > Add a Host** in the Instana UI. Required by `make instana-agent-up`, which fails if the key isn't set. |
+| `INSTANA_AGENT_ENDPOINT` | `ingress-coral-saas.instana.io` | Ingress endpoint that the host agent forwards data to. This value is region-specific, so use the endpoint that your tenant's **Add a Host** wizard shows rather than the default. |
+| `INSTANA_AGENT_ENDPOINT_PORT` | `443` | Port of the ingress endpoint. |
+| `INSTANA_AGENT_IMAGE_TAG` | `1.323.1` | Tag of the `icr.io/instana/agent` image that the local host agent runs. The tag is pinned rather than tracked on `latest` because the agent container runs privileged. For available tags, see [the agent's tag list](https://icr.io/v2/instana/agent/tags/list). |
+
+:::warning
+`make instana-agent-up` starts a privileged container in the host PID namespace with access to the Docker socket, which is effectively root access to the host.
+It's intended for local development machines only. Don't run it on a shared or production host.
+:::

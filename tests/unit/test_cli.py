@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from rich.console import Console
 
@@ -97,3 +98,56 @@ def test_container_port_conflict_from_own_containers_is_not_a_failure():
 
     assert fully_started is True
     assert "Startup incomplete" not in output
+
+
+def test_start_services_cli_ensures_openrag_version(tmp_path, monkeypatch):
+    """CLI _start_services_cli must call ensure_openrag_version to set OPENRAG_VERSION in .env."""
+    env_file = tmp_path / ".env"
+    env_file.write_text("LANGFLOW_SUPERUSER_PASSWORD='secret'\n")
+
+    monkeypatch.delenv("OPENRAG_VERSION", raising=False)
+
+    with (
+        patch("utils.paths.get_tui_env_file", return_value=env_file),
+        patch("tui.utils.version_check.get_current_version", return_value="9.9.9"),
+    ):
+        _run(
+            StubContainerManager(events=[(True, "Started", False)]),
+            StubDoclingManager(running=True),
+        )
+
+    assert env_file.exists()
+    assert "OPENRAG_VERSION='9.9.9'" in env_file.read_text()
+
+
+def test_start_services_cli_version_mismatch_warning(tmp_path, monkeypatch):
+    """CLI _start_services_cli surfaces version mismatch warning notice."""
+    env_file = tmp_path / ".env"
+    env_file.write_text("LANGFLOW_SUPERUSER_PASSWORD='secret'\n")
+
+    class MismatchContainerManager(StubContainerManager):
+        async def check_version_mismatch(self):
+            return True, "0.5.0", "0.7.0"
+
+    # Test user cancelling prompt ('n')
+    monkeypatch.setattr("builtins.input", lambda prompt="": "n")
+    with patch("utils.paths.get_tui_env_file", return_value=env_file):
+        fully_started, output = _run(
+            MismatchContainerManager(events=[(True, "Started", False)]),
+            StubDoclingManager(running=True),
+        )
+
+    assert fully_started is False
+    assert "Version Mismatch Detected" in output
+    assert "Start cancelled" in output
+
+    # Test user accepting prompt ('y')
+    monkeypatch.setattr("builtins.input", lambda prompt="": "y")
+    with patch("utils.paths.get_tui_env_file", return_value=env_file):
+        fully_started, output = _run(
+            MismatchContainerManager(events=[(True, "Started", False)]),
+            StubDoclingManager(running=True),
+        )
+
+    assert fully_started is True
+    assert "Version Mismatch Detected" in output

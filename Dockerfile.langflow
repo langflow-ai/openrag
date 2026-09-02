@@ -32,9 +32,11 @@ COPY custom_components/ /app/custom_components/
 # (which owns /app), then switch to root so the entrypoint can correct
 # bind-mount permissions at runtime before dropping back to uid=1000.
 COPY --chmod=755 scripts/langflow-entrypoint.py /usr/local/bin/langflow-entrypoint
+COPY scripts/patch_langflow_openrag_bundle.py /tmp/patch_langflow_openrag_bundle.py
 COPY flows/component_index.json /app/component_index.json
 USER root
-RUN rm -f /app/flows/component_index.json
+RUN rm -f /app/flows/component_index.json \
+    && python3 /tmp/patch_langflow_openrag_bundle.py
 ENV LANGFLOW_SSRF_ALLOWED_HOSTS=localhost,127.0.0.1,host.docker.internal
 ENV LANGFLOW_LOG_TRACE_LOCALS=false
 ENV LANGFLOW_BLOCK_CODE_INTERPRETER_COMPONENTS=true

@@ -195,7 +195,7 @@ langflow:
     host: "https://cloud.langfuse.com"
 
   # Variables to expose to flows
-  variablesToGetFromEnvironment: "JWT,OPENRAG-QUERY-FILTER,OPENSEARCH_PASSWORD,OPENSEARCH_URL,OPENSEARCH_INDEX_NAME,DOCLING_SERVE_URL,DOCLING_SERVE_VERIFY_SSL,DOCLING_TASK_ID,OWNER,OWNER_NAME,OWNER_EMAIL,CONNECTOR_TYPE,DOCUMENT_ID,SOURCE_URL,ALLOWED_USERS,ALLOWED_GROUPS,ALLOWED_PRINCIPALS,FILENAME,MIMETYPE,FILESIZE,SELECTED_EMBEDDING_MODEL,OPENAI_API_KEY,ANTHROPIC_API_KEY,WATSONX_APIKEY,WATSONX_URL,WATSONX_PROJECT_ID,OLLAMA_BASE_URL,OPENRAG_INGEST_URL,OPENRAG_INGEST_TOKEN,OPENRAG_INGEST_RUN_ID,OPENRAG_INGEST_BATCH_SIZE"
+  variablesToGetFromEnvironment: "JWT,OPENRAG-QUERY-FILTER,OPENSEARCH_PASSWORD,OPENSEARCH_URL,OPENSEARCH_INDEX_NAME,DOCLING_SERVE_URL,DOCLING_SERVE_VERIFY_SSL,DOCLING_TASK_ID,OWNER,OWNER_NAME,OWNER_EMAIL,CONNECTOR_TYPE,DOCUMENT_ID,SOURCE_URL,ALLOWED_USERS,ALLOWED_GROUPS,ALLOWED_PRINCIPALS,FILENAME,MIMETYPE,FILESIZE,SELECTED_EMBEDDING_MODEL,OPENAI_API_KEY,OPENRAG_LLM_TOKEN,OPENRAG_LLM_BASE_URL,ANTHROPIC_API_KEY,WATSONX_APIKEY,WATSONX_URL,WATSONX_PROJECT_ID,OLLAMA_BASE_URL,OPENRAG_INGEST_URL,OPENRAG_INGEST_TOKEN,OPENRAG_INGEST_RUN_ID,OPENRAG_INGEST_BATCH_SIZE"
 
   # Probes
   livenessProbe:
@@ -380,6 +380,50 @@ backend:
   ingestRouter:
     enabled: false
     port: 8100
+
+  # Instana APM (opt-in, default off).
+  #
+  # Requires an Instana agent already running in the cluster — install it
+  # separately with IBM's own instana-agent chart or operator. This chart never
+  # deploys an agent: the agent needs a privileged, host-PID DaemonSet, which is
+  # a cluster-admin concern, not an application one.
+  instana:
+    enabled: false
+    # Agent address. Leave empty to use the pod's own node IP via the Downward
+    # API, which is what the standard agent DaemonSet (hostPort 42699) expects.
+    # Set explicitly only when routing to a fixed address instead, e.g. a
+    # Service in front of a non-DaemonSet agent.
+    agentHost: ""
+    agentPort: 42699
+    # All optional. Left empty they are omitted from the rendered .env entirely
+    # rather than written as an empty value: the tracer tests these for
+    # presence, not truthiness, so an empty string would set a blank service
+    # name and log an "Unknown INSTANA_LOG_LEVEL" warning on every boot.
+    serviceName: ""                       # Shown in Analyze Traces / Applications
+    logLevel: ""                          # Tracer's own verbosity: debug|info|warn|error
+    zone: ""                              # Custom zone in the Infrastructure view
+    # Performance guardrails, plus one privacy default (secrets, below). Unlike
+    # the three vars above these default to a real value rather than empty,
+    # because the tracer's own defaults are either costly or, for secrets,
+    # under-redacting — see the INSTANA_* block in .env.example for the
+    # measurements. Set any of them to "" to fall back to the tracer's own
+    # default.
+    #
+    # tracingDisable: span categories/types not to trace. `logging` avoids an
+    # unbounded event-list leak (and O(n^2) CPU) on every WARNING/ERROR logged
+    # inside a request trace, at no loss of information — the same events are
+    # already in OpenRAG's structured logs.
+    tracingDisable: "logging"
+    # stackTrace: when to capture a Python stack for EXIT spans (all|error|none).
+    # `all` means a full traceback on every httpx / urllib3 / sqlalchemy call.
+    # Anything other than all|error|none logs a warning and falls back to `all`.
+    stackTrace: "error"
+    # secrets: query-string parameter names the tracer redacts before a span
+    # leaves the host. Not a performance concern like the two above — this is
+    # privacy: the tracer's own default only catches credential-shaped names,
+    # so without it OpenRAG's search text (`q`, `search`, `filename` query
+    # parameters) is exported to your Instana tenant verbatim.
+    secrets: "regex:.*key.*,.*pass.*,.*secret.*,.*token.*,q\\Z,search\\Z,filename\\Z"
 
 # ============================================================================
 # OpenRAG Frontend Configuration

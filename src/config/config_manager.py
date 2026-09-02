@@ -4,7 +4,7 @@ import os
 import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Protocol
 
 import yaml
 
@@ -104,6 +104,17 @@ def _sanitize_for_log(value: object) -> str:
     return re.sub(r"[\r\n\t]", "_", str(value))
 
 
+class ProviderConfig(Protocol):
+    """Structural type shared by every provider config dataclass.
+
+    The concrete configs have no common base class, so a tuple mixing them
+    joins to ``object``; annotating against this protocol keeps ``configured``
+    visible to mypy without changing any dataclass field order.
+    """
+
+    configured: bool
+
+
 @dataclass
 class OpenAIConfig:
     """OpenAI provider configuration."""
@@ -140,6 +151,14 @@ class OllamaConfig:
 
 
 @dataclass
+class GenericProviderConfig:
+    """Credentials for any LiteLLM provider not covered by legacy fields."""
+
+    credentials: dict[str, str] = field(default_factory=dict)
+    configured: bool = False
+
+
+@dataclass
 class ProvidersConfig:
     """All provider configurations."""
 
@@ -147,10 +166,18 @@ class ProvidersConfig:
     anthropic: AnthropicConfig
     watsonx: WatsonXConfig
     ollama: OllamaConfig
+    custom: dict[str, GenericProviderConfig] = field(default_factory=dict)
 
     def any_configured(self) -> bool:
         """Return True if at least one provider is marked as configured."""
-        return any(p.configured for p in (self.openai, self.anthropic, self.watsonx, self.ollama))
+        providers: tuple[ProviderConfig, ...] = (
+            self.openai,
+            self.anthropic,
+            self.watsonx,
+            self.ollama,
+            *self.custom.values(),
+        )
+        return any(p.configured for p in providers)
 
     def get_provider_config(self, provider: str):
         """Get configuration for a specific provider."""
@@ -163,8 +190,70 @@ class ProvidersConfig:
             return self.watsonx
         elif provider_lower == "ollama":
             return self.ollama
-        else:
-            raise ValueError(f"Unknown provider: {provider}")
+        return self.custom.get(provider_lower, GenericProviderConfig())
+
+    def set_credentials(self, provider: str, credentials: dict[str, str]) -> None:
+        """Upsert arbitrary LiteLLM credentials while preserving legacy config."""
+        key = provider.strip().lower()
+        clean = {
+            str(name): str(value).strip()
+            for name, value in credentials.items()
+            if str(name).strip() and str(value).strip()
+        }
+        if not clean:
+            # Every submitted value was blank. Creating the entry anyway would
+            # register a provider that reports `configured` with zero
+            # credentials, which then satisfies `any_configured()` and can be
+            # picked as a fallback provider and called with no key at all.
+            return
+        previous = self.custom.get(key, GenericProviderConfig())
+        previous.credentials.update(clean)
+        previous.configured = True
+        self.custom[key] = previous
+        if key == "openai":
+            self.openai.api_key = clean.get("api_key", self.openai.api_key)
+            self.openai.configured = bool(self.openai.api_key)
+        elif key == "anthropic":
+            self.anthropic.api_key = clean.get("api_key", self.anthropic.api_key)
+            self.anthropic.configured = bool(self.anthropic.api_key)
+        elif key == "watsonx":
+            self.watsonx.api_key = clean.get("api_key", self.watsonx.api_key)
+            self.watsonx.endpoint = clean.get("api_base", self.watsonx.endpoint)
+            self.watsonx.project_id = clean.get("project_id", self.watsonx.project_id)
+            self.watsonx.configured = bool(clean or self.watsonx.configured)
+        elif key == "ollama":
+            self.ollama.endpoint = clean.get("api_base", self.ollama.endpoint)
+            self.ollama.configured = bool(self.ollama.endpoint)
+
+    def credential_values(self, provider: str) -> dict[str, str]:
+        """Return LiteLLM keyword arguments for a configured provider."""
+        key = provider.strip().lower()
+        custom = dict(self.custom.get(key, GenericProviderConfig()).credentials)
+        if key == "openai":
+            if self.openai.api_key:
+                custom.setdefault("api_key", self.openai.api_key)
+            return custom
+        if key == "anthropic":
+            if self.anthropic.api_key:
+                custom.setdefault("api_key", self.anthropic.api_key)
+            return custom
+        if key == "watsonx":
+            legacy = {
+                name: value
+                for name, value in {
+                    "api_key": self.watsonx.api_key,
+                    "api_base": self.watsonx.endpoint,
+                    "project_id": self.watsonx.project_id,
+                }.items()
+                if value
+            }
+            return {**legacy, **custom}
+        if key == "ollama":
+            endpoint = self.ollama.resolved_endpoint or self.ollama.endpoint
+            if endpoint:
+                custom.setdefault("api_base", endpoint)
+            return custom
+        return custom
 
 
 @dataclass
@@ -185,9 +274,12 @@ class KnowledgeConfig:
     vlm_provider: str = "openai"  # "openai" | "watsonx" | "anthropic" | "local" | "ollama"
     vlm_model: str = ""  # e.g. "gpt-4o" or a watsonx model_id
     vlm_prompt: str = (
-        "Extract ALL the text from the page, ensuring no words are omitted, "
-        "and present it as accurately as possible. "
-        "Then describe the content of the page in English."
+        "Describe the visual content of this image in plain English. "
+        "Include layout, structure, colors, shapes, diagrams, charts, and any visible elements. "
+        "If the image contains text, reproduce it exactly as it appears. "
+        "If there is no text, do not mention text. "
+        "Do not ask follow-up questions. Do not add commentary or suggestions. "
+        "Respond only with the description."
     )
     # Per-page VLM response format only; the docling-serve output stays
     # to_formats="json" so downstream json_content consumers are unaffected.
@@ -255,12 +347,31 @@ class OpenRAGConfig:
                 new_data["api_key"] = decrypt_secret(new_data["api_key"])
             return new_data
 
+        def _decrypt_custom_provider(provider: str, p_data: dict) -> GenericProviderConfig:
+            from services.model_catalog import secret_field_keys
+
+            credentials = dict(p_data.get("credentials") or {})
+            for key in secret_field_keys(provider):
+                if key in credentials:
+                    credentials[key] = decrypt_secret(credentials[key])
+            return GenericProviderConfig(
+                credentials=credentials,
+                configured=bool(p_data.get("configured", credentials)),
+            )
+
+        custom_data = providers_data.get("custom", {})
+
         return cls(
             providers=ProvidersConfig(
                 openai=OpenAIConfig(**_decrypt_provider(providers_data.get("openai", {}))),
                 anthropic=AnthropicConfig(**_decrypt_provider(providers_data.get("anthropic", {}))),
                 watsonx=WatsonXConfig(**_decrypt_provider(providers_data.get("watsonx", {}))),
                 ollama=OllamaConfig(**_decrypt_provider(providers_data.get("ollama", {}))),
+                custom={
+                    str(provider).lower(): _decrypt_custom_provider(str(provider), value)
+                    for provider, value in custom_data.items()
+                    if isinstance(value, dict)
+                },
             ),
             knowledge=KnowledgeConfig(**data.get("knowledge", {})),
             agent=AgentConfig(**data.get("agent", {})),
@@ -325,6 +436,7 @@ class ConfigManager:
                 "anthropic": {},
                 "watsonx": {},
                 "ollama": {},
+                "custom": {},
             },
             "knowledge": {},
             "agent": {},
@@ -346,7 +458,7 @@ class ConfigManager:
 
                 # Merge file config
                 if "providers" in file_config:
-                    for provider in ["openai", "anthropic", "watsonx", "ollama"]:
+                    for provider in ["openai", "anthropic", "watsonx", "ollama", "custom"]:
                         if provider in file_config["providers"]:
                             provider_data = file_config["providers"][provider]
                             # Check if api_key is unencrypted and we have a key
@@ -509,6 +621,14 @@ class ConfigManager:
             for _provider_name, provider_config in providers.items():
                 if "api_key" in provider_config:
                     provider_config["api_key"] = encrypt_secret(provider_config["api_key"])
+            custom = providers.get("custom", {})
+            from services.model_catalog import secret_field_keys
+
+            for provider, provider_config in custom.items():
+                credentials = provider_config.get("credentials", {})
+                for key in secret_field_keys(provider):
+                    if credentials.get(key):
+                        credentials[key] = encrypt_secret(credentials[key])
 
             with open(config_path, "w") as f:
                 yaml.dump(config_dict, f, default_flow_style=False, indent=2)
