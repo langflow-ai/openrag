@@ -244,6 +244,20 @@ class ProvidersConfig:
         elif key == "ollama":
             self.ollama.endpoint = clean.get("api_base", self.ollama.endpoint)
             self.ollama.configured = bool(self.ollama.endpoint)
+        elif key == "bedrock":
+            # Field names match litellm's own bundled credential-field spec
+            # (provider_create_fields.json) - the generic onboarding form
+            # (GenericOnboarding, driven by config/model_providers.yaml) uses
+            # those names verbatim, so this bridges its generic
+            # provider_credentials submission into the typed fields the rest
+            # of the Bedrock support (model registry gate, lightweight health
+            # check, embedding call kwargs) already reads directly.
+            self.bedrock.region = clean.get("aws_region_name", self.bedrock.region)
+            self.bedrock.access_key_id = clean.get("aws_access_key_id", self.bedrock.access_key_id)
+            self.bedrock.secret_access_key = clean.get(
+                "aws_secret_access_key", self.bedrock.secret_access_key
+            )
+            self.bedrock.configured = bool(self.bedrock.region)
 
     def credential_values(self, provider: str) -> dict[str, str]:
         """Return LiteLLM keyword arguments for a configured provider."""
