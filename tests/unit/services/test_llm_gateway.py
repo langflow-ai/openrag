@@ -56,7 +56,18 @@ def test_split_model_id_recognises_known_prefixes():
 def test_resolve_call_uses_configured_provider_when_model_is_bare():
     model, provider, creds = resolve_call("gpt-4o-mini", kind="chat", config=_config())
     assert provider == "openai"
-    assert model == "gpt-4o-mini"
+    assert model == "openai/gpt-4o-mini"
+    assert creds["api_key"] == "sk-openai"
+
+
+def test_resolve_call_qualifies_openai_even_for_non_catalogue_model_names():
+    """A custom/self-hosted OpenAI-compatible gateway can serve a model name
+    litellm's own static catalogue doesn't recognize (e.g. an open-weight
+    model). Without the "openai/" prefix, litellm has no provider to route
+    on at all - even though api_base/api_key are passed correctly."""
+    model, provider, creds = resolve_call("gpt-oss-120b", kind="chat", config=_config())
+    assert provider == "openai"
+    assert model == "openai/gpt-oss-120b"
     assert creds["api_key"] == "sk-openai"
 
 
@@ -216,7 +227,7 @@ async def test_chat_completions_calls_litellm_with_config_key(monkeypatch):
         config=_config(),
     )
     assert result["choices"][0]["message"]["content"] == "hi"
-    assert captured["model"] == "gpt-4o-mini"
+    assert captured["model"] == "openai/gpt-4o-mini"
     assert captured["api_key"] == "sk-openai"
     assert captured["messages"][0]["content"] == "hi"
 
