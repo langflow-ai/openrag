@@ -56,7 +56,7 @@ type bomaRAGs struct {
 }
 
 // newBomaRAGs returns a BomaRAGs
-func newBomaRAGs(c *OpenrV1alpha1Client, namespace string) *bomaRAGs {
+func newBomaRAGs(c *BomalogicV1alpha1Client, namespace string) *bomaRAGs {
 	return &bomaRAGs{
 		gentype.NewClientWithList[*apiv1alpha1.BomaRAG, *apiv1alpha1.BomaRAGList](
 			"bomarags",

@@ -73,7 +73,7 @@ import (
 client, err := clientset.NewForConfig(config)
 
 // Get BomaRAG (strongly typed - compile-time safety!)
-bomarag, err := client.OpenrV1alpha1().BomaRAGs("default").Get(ctx, "my-bomarag", metav1.GetOptions{})
+bomarag, err := client.BomalogicV1alpha1().BomaRAGs("default").Get(ctx, "my-bomarag", metav1.GetOptions{})
 if err != nil {
     return err
 }
@@ -159,7 +159,7 @@ func main() {
     }
 
     // Create the resource
-    result, err := client.OpenrV1alpha1().BomaRAGs("default").Create(
+    result, err := client.BomalogicV1alpha1().BomaRAGs("default").Create(
         context.Background(),
         bomarag,
         metav1.CreateOptions{},
@@ -172,7 +172,7 @@ func main() {
 
     // Update the resource
     result.Spec.Backend.Replicas = ptr.To(int32(5))
-    updated, err := client.OpenrV1alpha1().BomaRAGs("default").Update(
+    updated, err := client.BomalogicV1alpha1().BomaRAGs("default").Update(
         context.Background(),
         result,
         metav1.UpdateOptions{},
@@ -184,7 +184,7 @@ func main() {
     fmt.Printf("Updated BomaRAG backend replicas to: %d\n", *updated.Spec.Backend.Replicas)
 
     // List all BomaRAG instances
-    list, err := client.OpenrV1alpha1().BomaRAGs("").List(
+    list, err := client.BomalogicV1alpha1().BomaRAGs("").List(
         context.Background(),
         metav1.ListOptions{},
     )
@@ -216,7 +216,7 @@ import (
 informerFactory := informers.NewSharedInformerFactory(client, time.Minute*10)
 
 // Get BomaRAG informer
-bomaragInformer := informerFactory.Openr().V1alpha1().BomaRAGs()
+bomaragInformer := informerFactory.Bomalogic().V1alpha1().BomaRAGs()
 
 // Add event handlers
 bomaragInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{

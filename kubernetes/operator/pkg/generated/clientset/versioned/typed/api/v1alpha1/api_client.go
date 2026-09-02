@@ -26,24 +26,24 @@ import (
 	rest "k8s.io/client-go/rest"
 )
 
-type OpenrV1alpha1Interface interface {
+type BomalogicV1alpha1Interface interface {
 	RESTClient() rest.Interface
 	BomaRAGsGetter
 }
 
-// OpenrV1alpha1Client is used to interact with features provided by the bomalogic.com group.
-type OpenrV1alpha1Client struct {
+// BomalogicV1alpha1Client is used to interact with features provided by the bomalogic.com group.
+type BomalogicV1alpha1Client struct {
 	restClient rest.Interface
 }
 
-func (c *OpenrV1alpha1Client) BomaRAGs(namespace string) BomaRAGInterface {
+func (c *BomalogicV1alpha1Client) BomaRAGs(namespace string) BomaRAGInterface {
 	return newBomaRAGs(c, namespace)
 }
 
-// NewForConfig creates a new OpenrV1alpha1Client for the given config.
+// NewForConfig creates a new BomalogicV1alpha1Client for the given config.
 // NewForConfig is equivalent to NewForConfigAndClient(c, httpClient),
 // where httpClient was generated with rest.HTTPClientFor(c).
-func NewForConfig(c *rest.Config) (*OpenrV1alpha1Client, error) {
+func NewForConfig(c *rest.Config) (*BomalogicV1alpha1Client, error) {
 	config := *c
 	setConfigDefaults(&config)
 	httpClient, err := rest.HTTPClientFor(&config)
@@ -53,21 +53,21 @@ func NewForConfig(c *rest.Config) (*OpenrV1alpha1Client, error) {
 	return NewForConfigAndClient(&config, httpClient)
 }
 
-// NewForConfigAndClient creates a new OpenrV1alpha1Client for the given config and http client.
+// NewForConfigAndClient creates a new BomalogicV1alpha1Client for the given config and http client.
 // Note the http client provided takes precedence over the configured transport values.
-func NewForConfigAndClient(c *rest.Config, h *http.Client) (*OpenrV1alpha1Client, error) {
+func NewForConfigAndClient(c *rest.Config, h *http.Client) (*BomalogicV1alpha1Client, error) {
 	config := *c
 	setConfigDefaults(&config)
 	client, err := rest.RESTClientForConfigAndClient(&config, h)
 	if err != nil {
 		return nil, err
 	}
-	return &OpenrV1alpha1Client{client}, nil
+	return &BomalogicV1alpha1Client{client}, nil
 }
 
-// NewForConfigOrDie creates a new OpenrV1alpha1Client for the given config and
+// NewForConfigOrDie creates a new BomalogicV1alpha1Client for the given config and
 // panics if there is an error in the config.
-func NewForConfigOrDie(c *rest.Config) *OpenrV1alpha1Client {
+func NewForConfigOrDie(c *rest.Config) *BomalogicV1alpha1Client {
 	client, err := NewForConfig(c)
 	if err != nil {
 		panic(err)
@@ -75,9 +75,9 @@ func NewForConfigOrDie(c *rest.Config) *OpenrV1alpha1Client {
 	return client
 }
 
-// New creates a new OpenrV1alpha1Client for the given RESTClient.
-func New(c rest.Interface) *OpenrV1alpha1Client {
-	return &OpenrV1alpha1Client{c}
+// New creates a new BomalogicV1alpha1Client for the given RESTClient.
+func New(c rest.Interface) *BomalogicV1alpha1Client {
+	return &BomalogicV1alpha1Client{c}
 }
 
 func setConfigDefaults(config *rest.Config) {
@@ -93,7 +93,7 @@ func setConfigDefaults(config *rest.Config) {
 
 // RESTClient returns a RESTClient that is used to communicate
 // with API server by this client implementation.
-func (c *OpenrV1alpha1Client) RESTClient() rest.Interface {
+func (c *BomalogicV1alpha1Client) RESTClient() rest.Interface {
 	if c == nil {
 		return nil
 	}

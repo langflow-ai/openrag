@@ -325,9 +325,9 @@ type SharedInformerFactory interface {
 	// client.
 	InformerFor(obj runtime.Object, newFunc internalinterfaces.NewInformerFunc) cache.SharedIndexInformer
 
-	Openr() api.Interface
+	Bomalogic() api.Interface
 }
 
-func (f *sharedInformerFactory) Openr() api.Interface {
+func (f *sharedInformerFactory) Bomalogic() api.Interface {
 	return api.New(f, f.namespace, f.tweakListOptions)
 }

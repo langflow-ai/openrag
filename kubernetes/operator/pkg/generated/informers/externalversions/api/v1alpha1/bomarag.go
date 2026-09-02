@@ -73,25 +73,25 @@ func NewBomaRAGInformerWithOptions(client versioned.Interface, namespace string,
 				if tweakListOptions != nil {
 					tweakListOptions(&opts)
 				}
-				return client.OpenrV1alpha1().BomaRAGs(namespace).List(context.Background(), opts)
+				return client.BomalogicV1alpha1().BomaRAGs(namespace).List(context.Background(), opts)
 			},
 			WatchFunc: func(opts v1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&opts)
 				}
-				return client.OpenrV1alpha1().BomaRAGs(namespace).Watch(context.Background(), opts)
+				return client.BomalogicV1alpha1().BomaRAGs(namespace).Watch(context.Background(), opts)
 			},
 			ListWithContextFunc: func(ctx context.Context, opts v1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&opts)
 				}
-				return client.OpenrV1alpha1().BomaRAGs(namespace).List(ctx, opts)
+				return client.BomalogicV1alpha1().BomaRAGs(namespace).List(ctx, opts)
 			},
 			WatchFuncWithContext: func(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&opts)
 				}
-				return client.OpenrV1alpha1().BomaRAGs(namespace).Watch(ctx, opts)
+				return client.BomalogicV1alpha1().BomaRAGs(namespace).Watch(ctx, opts)
 			},
 		}, client),
 		&bomaragoperatorapiv1alpha1.BomaRAG{},

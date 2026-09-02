@@ -19,7 +19,7 @@ limitations under the License.
 package scheme
 
 import (
-	openrv1alpha1 "github.com/ABISHAIMWANJA/bomarag-operator/api/v1alpha1"
+	bomalogicv1alpha1 "github.com/ABISHAIMWANJA/bomarag-operator/api/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
@@ -31,7 +31,7 @@ var Scheme = runtime.NewScheme()
 var Codecs = serializer.NewCodecFactory(Scheme)
 var ParameterCodec = runtime.NewParameterCodec(Scheme)
 var localSchemeBuilder = runtime.SchemeBuilder{
-	openrv1alpha1.AddToScheme,
+	bomalogicv1alpha1.AddToScheme,
 }
 
 // AddToScheme adds all types of this clientset into the given scheme. This allows composition

@@ -20,8 +20,8 @@ package fake
 
 import (
 	clientset "github.com/ABISHAIMWANJA/bomarag-operator/pkg/generated/clientset/versioned"
-	openrv1alpha1 "github.com/ABISHAIMWANJA/bomarag-operator/pkg/generated/clientset/versioned/typed/api/v1alpha1"
-	fakeopenrv1alpha1 "github.com/ABISHAIMWANJA/bomarag-operator/pkg/generated/clientset/versioned/typed/api/v1alpha1/fake"
+	bomalogicv1alpha1 "github.com/ABISHAIMWANJA/bomarag-operator/pkg/generated/clientset/versioned/typed/api/v1alpha1"
+	fakebomalogicv1alpha1 "github.com/ABISHAIMWANJA/bomarag-operator/pkg/generated/clientset/versioned/typed/api/v1alpha1/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
@@ -95,7 +95,7 @@ var (
 	_ testing.FakeClient  = &Clientset{}
 )
 
-// OpenrV1alpha1 retrieves the OpenrV1alpha1Client
-func (c *Clientset) OpenrV1alpha1() openrv1alpha1.OpenrV1alpha1Interface {
-	return &fakeopenrv1alpha1.FakeOpenrV1alpha1{Fake: &c.Fake}
+// BomalogicV1alpha1 retrieves the BomalogicV1alpha1Client
+func (c *Clientset) BomalogicV1alpha1() bomalogicv1alpha1.BomalogicV1alpha1Interface {
+	return &fakebomalogicv1alpha1.FakeBomalogicV1alpha1{Fake: &c.Fake}
 }

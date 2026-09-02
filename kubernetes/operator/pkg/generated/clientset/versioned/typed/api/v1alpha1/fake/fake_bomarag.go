@@ -27,10 +27,10 @@ import (
 // fakeBomaRAGs implements BomaRAGInterface
 type fakeBomaRAGs struct {
 	*gentype.FakeClientWithList[*v1alpha1.BomaRAG, *v1alpha1.BomaRAGList]
-	Fake *FakeOpenrV1alpha1
+	Fake *FakeBomalogicV1alpha1
 }
 
-func newFakeBomaRAGs(fake *FakeOpenrV1alpha1, namespace string) apiv1alpha1.BomaRAGInterface {
+func newFakeBomaRAGs(fake *FakeBomalogicV1alpha1, namespace string) apiv1alpha1.BomaRAGInterface {
 	return &fakeBomaRAGs{
 		gentype.NewFakeClientWithList[*v1alpha1.BomaRAG, *v1alpha1.BomaRAGList](
 			fake.Fake,

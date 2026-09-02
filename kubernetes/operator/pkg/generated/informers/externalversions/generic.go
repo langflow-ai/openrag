@@ -54,7 +54,7 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 	switch resource {
 	// Group=bomalogic.com, Version=v1alpha1
 	case v1alpha1.SchemeGroupVersion.WithResource("bomarags"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Openr().V1alpha1().BomaRAGs().Informer()}, nil
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Bomalogic().V1alpha1().BomaRAGs().Informer()}, nil
 
 	}
 

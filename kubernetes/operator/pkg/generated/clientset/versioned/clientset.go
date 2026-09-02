@@ -22,7 +22,7 @@ import (
 	fmt "fmt"
 	http "net/http"
 
-	openrv1alpha1 "github.com/ABISHAIMWANJA/bomarag-operator/pkg/generated/clientset/versioned/typed/api/v1alpha1"
+	bomalogicv1alpha1 "github.com/ABISHAIMWANJA/bomarag-operator/pkg/generated/clientset/versioned/typed/api/v1alpha1"
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"
@@ -30,18 +30,18 @@ import (
 
 type Interface interface {
 	Discovery() discovery.DiscoveryInterface
-	OpenrV1alpha1() openrv1alpha1.OpenrV1alpha1Interface
+	BomalogicV1alpha1() bomalogicv1alpha1.BomalogicV1alpha1Interface
 }
 
 // Clientset contains the clients for groups.
 type Clientset struct {
 	*discovery.DiscoveryClient
-	openrV1alpha1 *openrv1alpha1.OpenrV1alpha1Client
+	bomalogicV1alpha1 *bomalogicv1alpha1.BomalogicV1alpha1Client
 }
 
-// OpenrV1alpha1 retrieves the OpenrV1alpha1Client
-func (c *Clientset) OpenrV1alpha1() openrv1alpha1.OpenrV1alpha1Interface {
-	return c.openrV1alpha1
+// BomalogicV1alpha1 retrieves the BomalogicV1alpha1Client
+func (c *Clientset) BomalogicV1alpha1() bomalogicv1alpha1.BomalogicV1alpha1Interface {
+	return c.bomalogicV1alpha1
 }
 
 // Discovery retrieves the DiscoveryClient
@@ -88,7 +88,7 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 
 	var cs Clientset
 	var err error
-	cs.openrV1alpha1, err = openrv1alpha1.NewForConfigAndClient(&configShallowCopy, httpClient)
+	cs.bomalogicV1alpha1, err = bomalogicv1alpha1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +113,7 @@ func NewForConfigOrDie(c *rest.Config) *Clientset {
 // New creates a new Clientset for the given RESTClient.
 func New(c rest.Interface) *Clientset {
 	var cs Clientset
-	cs.openrV1alpha1 = openrv1alpha1.New(c)
+	cs.bomalogicV1alpha1 = bomalogicv1alpha1.New(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClient(c)
 	return &cs
