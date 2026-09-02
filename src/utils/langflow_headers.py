@@ -138,6 +138,9 @@ def build_model_provider_headers(config, embedding_model: str | None = None) -> 
     return {
         "X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL": str(emb_model or ""),
         "X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_PROVIDER": str(emb_provider or "openai"),
+        # Legacy agent-flow compatibility: this selects Langflow's
+        # OpenAI-compatible proxy client, not the upstream embedding provider.
+        # Remove with the legacy flow header template in a future major release.
         "X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL_PROVIDER": "OpenAI",
         "X-LANGFLOW-GLOBAL-VAR-SELECTED_LANGUAGE_MODEL": str(llm_model or ""),
         "X-LANGFLOW-GLOBAL-VAR-SELECTED_LANGUAGE_MODEL_PROVIDER": "OpenAI",
