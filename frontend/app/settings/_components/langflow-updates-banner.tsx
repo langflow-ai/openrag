@@ -20,15 +20,9 @@ export function LangflowUpdatesBanner() {
   const [isDismissed, setIsDismissed] = useState(false);
   const [showModal, setShowModal] = useState(false);
 
-  const undismissedUpdates = updates?.filter((u) => !u.dismissed) ?? [];
+  const hasUpdates = (updates?.length ?? 0) > 0;
 
-  if (
-    !canEdit ||
-    isLoading ||
-    !updates ||
-    undismissedUpdates.length === 0 ||
-    isDismissed
-  ) {
+  if (!canEdit || isLoading || !updates || !hasUpdates || isDismissed) {
     return null;
   }
 
@@ -56,8 +50,8 @@ export function LangflowUpdatesBanner() {
                 Langflow update detected
               </span>
               <span className="text-muted-foreground ml-2 hidden sm:inline text-mmd">
-                Modifications to Langflow require an update to revert any custom
-                changes.
+                A new Langflow version is available. Update Langflow to maintain
+                compatibility with OpenRAG flows.
               </span>
             </div>
           </div>
