@@ -138,4 +138,6 @@ async def delete_all_terminal_tasks(
 ):
     """Delete all completed/failed tasks visible to the authenticated user."""
     deleted_ids = task_service.delete_all_terminal_tasks(user.user_id)
-    return JSONResponse({"status": "deleted", "count": len(deleted_ids), "deleted_ids": deleted_ids})
+    return JSONResponse(
+        {"status": "deleted", "count": len(deleted_ids), "deleted_ids": deleted_ids}
+    )
