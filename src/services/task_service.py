@@ -7,7 +7,14 @@ import uuid
 from collections.abc import Coroutine
 from typing import Any, TypeVar
 
-from models.tasks import DoclingPhaseStatus, FileTask, IngestionPhase, TaskDeleteResult, TaskStatus, UploadTask
+from models.tasks import (
+    DoclingPhaseStatus,
+    FileTask,
+    IngestionPhase,
+    TaskDeleteResult,
+    TaskStatus,
+    UploadTask,
+)
 from session_manager import AnonymousUser
 from utils.gpu_detection import get_worker_count
 from utils.logging_config import get_logger
