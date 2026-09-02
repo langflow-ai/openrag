@@ -261,3 +261,85 @@ class TestOCIInlineKeyEncryptionAtRest:
         cm2 = self._cm(tmp_path)
         reloaded = cm2.load_config()
         assert reloaded.providers.oci.key_file == "/etc/oci/api_key.pem"
+
+
+class TestOCIGenericCredentialsBridge:
+    """OCI is now offered via config/model_providers.yaml, so it renders
+    through GenericOnboarding - the generic-provider form driven by litellm's
+    own bundled credential-field spec, which names OCI's fields
+    oci_user/oci_fingerprint/oci_tenancy/oci_region/oci_compartment_id/
+    oci_key. Those submit through the generic provider_credentials payload
+    (ProvidersConfig.set_credentials), which must bridge them into the typed
+    OCIConfig fields the rest of OCI support (model registry gate,
+    provider_validation.py's signer-shape checks) already reads directly.
+    """
+
+    def _providers(self) -> ProvidersConfig:
+        return ProvidersConfig(
+            openai=OpenAIConfig(),
+            anthropic=AnthropicConfig(),
+            watsonx=WatsonXConfig(),
+            ollama=OllamaConfig(),
+        )
+
+    def test_set_credentials_populates_typed_oci_fields(self):
+        providers = self._providers()
+
+        providers.set_credentials(
+            "oci",
+            {
+                "oci_user": "ocid1.user.oc1..a",
+                "oci_fingerprint": "aa:bb:cc",
+                "oci_tenancy": "ocid1.tenancy.oc1..a",
+                "oci_region": "eu-frankfurt-1",
+                "oci_compartment_id": "ocid1.compartment.oc1..a",
+                "oci_key": "-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----",
+            },
+        )
+
+        assert providers.oci.user == "ocid1.user.oc1..a"
+        assert providers.oci.fingerprint == "aa:bb:cc"
+        assert providers.oci.tenancy == "ocid1.tenancy.oc1..a"
+        assert providers.oci.region == "eu-frankfurt-1"
+        assert providers.oci.compartment_id == "ocid1.compartment.oc1..a"
+        assert providers.oci.key.startswith("-----BEGIN RSA PRIVATE KEY-----")
+        assert providers.oci.configured is True
+
+    def test_set_credentials_incomplete_submission_stays_unconfigured(self):
+        """Matches the model registry gate's own full-credential-set rule -
+        a partial submission can't sign a real request."""
+        providers = self._providers()
+
+        providers.set_credentials(
+            "oci",
+            {
+                "oci_user": "ocid1.user.oc1..a",
+                "oci_region": "eu-frankfurt-1",
+            },
+        )
+
+        assert providers.oci.configured is False
+
+    def test_credential_values_round_trips_through_generic_submission(self):
+        providers = self._providers()
+
+        providers.set_credentials(
+            "oci",
+            {
+                "oci_user": "ocid1.user.oc1..a",
+                "oci_fingerprint": "aa:bb:cc",
+                "oci_tenancy": "ocid1.tenancy.oc1..a",
+                "oci_region": "eu-frankfurt-1",
+                "oci_compartment_id": "ocid1.compartment.oc1..a",
+                "oci_key": "pem-content",
+            },
+        )
+
+        assert providers.credential_values("oci") == {
+            "oci_user": "ocid1.user.oc1..a",
+            "oci_fingerprint": "aa:bb:cc",
+            "oci_tenancy": "ocid1.tenancy.oc1..a",
+            "oci_region": "eu-frankfurt-1",
+            "oci_compartment_id": "ocid1.compartment.oc1..a",
+            "oci_key": "pem-content",
+        }
