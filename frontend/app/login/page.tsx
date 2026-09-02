@@ -3,8 +3,8 @@
 import { Loader2 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect } from "react";
-import GoogleLogo from "@/components/icons/google-logo";
 import Logo from "@/components/icons/bomarag-logo";
+import GoogleLogo from "@/components/icons/google-logo";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth-context";
 

@@ -13,8 +13,8 @@ import {
 import {
   detectImplicitToolCall,
   detectRAGFromContent,
-  parseOpenAIChatChunk,
   parseBomaRAGChunk,
+  parseOpenAIChatChunk,
   parseRealtimeChunk,
 } from "@/lib/chat-stream-parsers";
 import type { FilterInput } from "@/lib/filter-normalization";
