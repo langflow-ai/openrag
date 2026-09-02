@@ -164,9 +164,9 @@ export function FlowsUpdateDialog({
       <Dialog open={isMainOpen} onOpenChange={(open) => !open && handleClose()}>
         <DialogContent className="sm:max-w-[540px]">
           <DialogHeader>
-            <DialogTitle>Langflow Update Available</DialogTitle>
+            <DialogTitle>Langflow flow updates available</DialogTitle>
             <DialogDescription>
-              Action required by a system administrator
+              Action required by an administrator
             </DialogDescription>
           </DialogHeader>
 
@@ -175,15 +175,17 @@ export function FlowsUpdateDialog({
               <AlertTriangle className="h-4 w-4" />
               <AlertTitle>Updates Available</AlertTitle>
               <AlertDescription className="text-muted-foreground leading-relaxed">
-                There are updates available for Langflow flows and an admin
-                needs to go over them. Meanwhile, the functionality of OpenRAG
-                may be disturbed.
+                New versions of one or more Langflow flows are available. An
+                administrator must review and apply the updates. Until then,
+                some flows might not work as expected.
               </AlertDescription>
             </Alert>
           </div>
 
           <DialogFooter>
-            <Button onClick={handleDismiss}>Understand</Button>
+            <Button onClick={handleDismiss}>
+              <div>Understood</div>
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -195,9 +197,9 @@ export function FlowsUpdateDialog({
       <Dialog open={isMainOpen} onOpenChange={(open) => !open && handleClose()}>
         <DialogContent className="sm:max-w-[540px]">
           <DialogHeader>
-            <DialogTitle>Update required for Langflow</DialogTitle>
+            <DialogTitle>Update Langflow flows</DialogTitle>
             <DialogDescription>
-              Updating Langflow removes customizations from OpenRAG flows
+              New versions of one or more Langflow flows are available.
             </DialogDescription>
           </DialogHeader>
 
@@ -212,16 +214,16 @@ export function FlowsUpdateDialog({
 
             <div className="space-y-3 text-sm text-muted-foreground leading-relaxed">
               <p>
-                If you&apos;ve customized any OpenRAG flows, select{" "}
-                <b className="font-semibold">
-                  Back up my flows before updating
-                </b>{" "}
-                to save a copy. OpenRAG stores the backup in its embedded
-                Langflow instance. After the update, you can use the backup to
-                manually reapply your customizations.
+                If you have customized any flows, those customizations will be
+                removed during the update.
               </p>
               <p>
-                If you haven’t customized any OpenRAG flows, a backup isn&apos;t
+                By default, OpenRAG backs up customized flows and stores the
+                backups in its embedded Langflow instance. After the update, you
+                can use the backups to manually reapply your customizations.
+              </p>
+              <p>
+                If you don&apos;t have customized flows, a backup isn&apos;t
                 required.
               </p>
             </div>

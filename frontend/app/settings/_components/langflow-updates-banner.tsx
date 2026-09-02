@@ -47,11 +47,10 @@ export function LangflowUpdatesBanner() {
             )}
             <div className="truncate">
               <span className="font-semibold text-foreground">
-                Langflow update detected
+                Langflow flow updates available
               </span>
               <span className="text-muted-foreground ml-2 hidden sm:inline text-mmd">
-                A new Langflow version is available. Update Langflow to maintain
-                compatibility with OpenRAG flows.
+                New versions of one or more Langflow flows are available.
               </span>
             </div>
           </div>
