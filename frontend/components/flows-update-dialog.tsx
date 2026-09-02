@@ -258,7 +258,7 @@ export function FlowsUpdateDialog({
               disabled={updateMutation.isPending || dismissMutation.isPending}
             >
               <div>
-                {updateMutation.isPending ? "Updating..." : "Update Langflow"}
+                {updateMutation.isPending ? "Updating..." : "Update flows"}
               </div>
             </Button>
           </DialogFooter>
@@ -297,7 +297,7 @@ export function FlowsUpdateDialog({
               }}
               disabled={updateMutation.isPending || dismissMutation.isPending}
             >
-              <div>Update Langflow</div>
+              <div>Update flows</div>
             </Button>
             <Button
               variant="outline"
