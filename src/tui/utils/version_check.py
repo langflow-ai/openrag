@@ -1,12 +1,12 @@
 """Version checking utilities for OpenRAG TUI."""
 
-from typing import Optional, Tuple
+
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
 
-async def get_latest_docker_version(image_name: str = "langflowai/openrag-backend") -> Optional[str]:
+async def get_latest_docker_version(image_name: str = "langflowai/openrag-backend") -> str | None:
     """
     Get the latest version tag from Docker Hub for OpenRAG containers.
     
@@ -22,7 +22,10 @@ async def get_latest_docker_version(image_name: str = "langflowai/openrag-backen
         async with httpx.AsyncClient(timeout=10.0) as client:
             # Docker Hub API v2 endpoint for tags
             url = f"https://hub.docker.com/v2/repositories/{image_name}/tags/"
-            params = {"page_size": 100, "ordering": "-last_updated"}
+            params: dict[str, str | int] = {
+                "page_size": 100,
+                "ordering": "-last_updated",
+            }
             
             response = await client.get(url, params=params)
             if response.status_code == 200:
@@ -153,7 +156,7 @@ def compare_versions(version1: str, version2: str) -> int:
             return 0
 
 
-async def check_if_latest() -> Tuple[bool, Optional[str], str]:
+async def check_if_latest() -> tuple[bool, str | None, str]:
     """
     Check if the current version is the latest available on Docker Hub.
     

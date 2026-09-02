@@ -1,15 +1,16 @@
 """Telemetry client for OpenRAG backend using Scarf."""
 
-from utils.version_utils import OPENRAG_VERSION
 import asyncio
 import os
 import platform
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
+from typing import Any
 from urllib.parse import urlencode
 
 import httpx
+
 from utils.logging_config import get_logger
+from utils.version_utils import OPENRAG_VERSION
 
 logger = get_logger(__name__)
 
@@ -29,11 +30,11 @@ MAX_WAIT_INTERVAL_MS = 5000
 MAX_RETRIES = 3
 
 # Global HTTP client
-_http_client: Optional[httpx.AsyncClient] = None
-_base_url_override: Optional[str] = None
+_http_client: httpx.AsyncClient | None = None
+_base_url_override: str | None = None
 
 
-def _get_http_client() -> Optional[httpx.AsyncClient]:
+def _get_http_client() -> httpx.AsyncClient | None:
     """Get or create the HTTP client for telemetry."""
     global _http_client
     if _http_client is None:
@@ -113,7 +114,7 @@ def _get_os_version() -> str:
 
 def _get_gpu_info() -> dict:
     """Get GPU information for telemetry."""
-    gpu_info = {
+    gpu_info: dict[str, Any] = {
         "gpu_available": False,
         "gpu_count": 0,
         "cuda_available": False,
@@ -144,7 +145,7 @@ def _get_gpu_info() -> dict:
 
 def _get_current_utc() -> str:
     """Get current UTC time as RFC 3339 formatted string."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return now.isoformat().replace("+00:00", "Z")
 
 

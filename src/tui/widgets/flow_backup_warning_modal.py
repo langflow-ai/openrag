@@ -3,7 +3,7 @@
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, Static, Label, Checkbox
+from textual.widgets import Button, Checkbox, Label, Static
 
 
 class FlowBackupWarningModal(ModalScreen[tuple[bool, bool]]):

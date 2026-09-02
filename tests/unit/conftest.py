@@ -11,6 +11,7 @@ so test fixtures cannot accidentally pollute the dev `data/openrag.db` file.
 # guarantees that even if a test imports something that triggers
 # `init_engine()` at import time, the engine binds to an in-memory DB.
 import os as _os
+
 _os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 
 # Defensive default: pin OPENRAG_RBAC_ENFORCE=true for unit tests so a

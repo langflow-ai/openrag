@@ -1,7 +1,8 @@
 """OpenRAG SDK chat client with streaming support."""
 
 import json
-from typing import TYPE_CHECKING, Any, AsyncIterator, Literal, overload
+from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING, Any, Literal, overload
 
 import httpx
 
@@ -501,6 +502,3 @@ class ChatClient:
         except NotFoundError:
             return False
 
-
-# Import Literal for type hints
-from typing import Literal

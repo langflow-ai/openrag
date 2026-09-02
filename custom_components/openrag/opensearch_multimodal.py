@@ -22,7 +22,6 @@ from lfx.io import (
 )
 from lfx.log import logger
 from lfx.schema.data import Data
-from lfx.schema.dataframe import Table
 from opensearchpy import OpenSearch, helpers
 from opensearchpy.exceptions import OpenSearchException, RequestError
 

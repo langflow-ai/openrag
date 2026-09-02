@@ -1,12 +1,11 @@
-from typing import Optional
 
 from fastapi import Depends, HTTPException
-from pydantic import BaseModel
 from fastapi.responses import JSONResponse
-from utils.logging_config import get_logger
+from pydantic import BaseModel
 
-from dependencies import get_chat_service, get_session_manager, get_current_user
+from dependencies import get_chat_service, get_current_user, get_session_manager
 from session_manager import User
+from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
@@ -16,9 +15,9 @@ def _openrag_user_id(user: User) -> str:
 
 
 class NudgesBody(BaseModel):
-    filters: Optional[dict] = None
-    limit: Optional[int] = None
-    score_threshold: Optional[float] = None
+    filters: dict | None = None
+    limit: int | None = None
+    score_threshold: float | None = None
 
 
 async def nudges_from_kb_endpoint(

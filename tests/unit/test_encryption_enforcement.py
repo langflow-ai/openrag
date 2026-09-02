@@ -1,7 +1,10 @@
 import os
-import pytest
 from unittest.mock import patch
+
+import pytest
+
 from utils.encryption import get_master_secret
+
 
 @pytest.fixture(autouse=True)
 def reset_encryption_cache():

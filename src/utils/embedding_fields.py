@@ -8,14 +8,14 @@ This module provides helpers for:
 - Ensuring embedding fields exist in the OpenSearch index
 """
 
-from typing import Any, Dict
+from typing import Any
 
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
 
-def build_knn_vector_field(dimension: int) -> Dict[str, Any]:
+def build_knn_vector_field(dimension: int) -> dict[str, Any]:
     """Build a knn_vector field mapping for OpenSearch using OpenRAG's JVector settings.
 
     All knn_vector fields in the documents index share the same JVector/DiskANN
@@ -140,7 +140,7 @@ async def ensure_embedding_field_exists(
         dimensions=dimensions,
     )
 
-    async def _get_field_definition() -> Dict[str, Any]:
+    async def _get_field_definition() -> dict[str, Any]:
         try:
             mapping = await opensearch_client.indices.get_mapping(index=index_name)
         except Exception as e:

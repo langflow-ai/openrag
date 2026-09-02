@@ -1,12 +1,14 @@
+import base64
+import json
 import os
 import secrets
-import base64
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from typing import Union, Dict, Any, Tuple, Optional
+from typing import Any
+
 import aiofiles
-import json
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -16,7 +18,7 @@ ENCRYPTION_ALGORITHM = "AES-256-GCM"
 KDF_ALGORITHM = hashes.SHA256()
 KDF_ITERATIONS = 100000
 
-_cached_master_secret: Optional[str] = None
+_cached_master_secret: str | None = None
 
 def get_master_secret() -> str | None:
     """Retrieve the master secret string from local environment."""
@@ -53,7 +55,7 @@ def enforce_startup_prerequisites():
 
 
 
-def encrypt_secret(plaintext: str, tenant_id: str = "openrag") -> Union[Dict[str, Any], str]:
+def encrypt_secret(plaintext: str, tenant_id: str = "openrag") -> dict[str, Any] | str:
     """
     Encrypt a plaintext secret using AES-256-GCM and PBKDF2HMAC.
     Returns a JSON-serializable dictionary with the ciphertext and metadata.
@@ -79,7 +81,7 @@ def encrypt_secret(plaintext: str, tenant_id: str = "openrag") -> Union[Dict[str
         aesgcm = AESGCM(derived_key)
         nonce = secrets.token_bytes(12)
         plaintext_bytes = plaintext.encode("utf-8")
-        aad = f"tenant_id:{tenant_id}".encode("utf-8")
+        aad = f"tenant_id:{tenant_id}".encode()
 
         ciphertext = aesgcm.encrypt(nonce, plaintext_bytes, aad)
 
@@ -98,7 +100,7 @@ def encrypt_secret(plaintext: str, tenant_id: str = "openrag") -> Union[Dict[str
         return plaintext
 
 
-def decrypt_secret(payload: Union[Dict[str, Any], str], expected_tenant_id: Optional[str] = None) -> str:
+def decrypt_secret(payload: dict[str, Any] | str, expected_tenant_id: str | None = None) -> str:
     """
     Decrypt a secret payload using AES-256-GCM.
     Supports backward compatibility with non-KDF base64 raw keys.
@@ -151,15 +153,15 @@ def decrypt_secret(payload: Union[Dict[str, Any], str], expected_tenant_id: Opti
             # Backwards-compatible behaviour when no external tenant binding is configured.
             tenant_id = payload_tenant_id or "openrag"
             
-        aad = f"tenant_id:{tenant_id}".encode("utf-8")
+        aad = f"tenant_id:{tenant_id}".encode()
 
         plaintext_bytes = aesgcm.decrypt(nonce, ciphertext, aad)
         return plaintext_bytes.decode("utf-8")
     except Exception as e:
         logger.error(f"Failed to decrypt secret: {e}")
-        raise ValueError(f"Failed to decrypt secret: {e}")
+        raise ValueError(f"Failed to decrypt secret: {e}") from e
 
-async def read_encrypted_file(file_path: str) -> Tuple[Optional[str], bool]:
+async def read_encrypted_file(file_path: str) -> tuple[str | None, bool]:
     """
     Reads an encrypted or plaintext JSON/string file.
     Returns a tuple: (file_content_as_string, needs_upgrade_boolean)
@@ -168,7 +170,7 @@ async def read_encrypted_file(file_path: str) -> Tuple[Optional[str], bool]:
         return None, False
         
     try:
-        async with aiofiles.open(file_path, "r") as f:
+        async with aiofiles.open(file_path) as f:
             raw_data = await f.read()
 
         if not raw_data.strip():

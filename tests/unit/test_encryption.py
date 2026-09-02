@@ -6,6 +6,7 @@ from config.config_manager import ConfigManager
 from connectors.connection_manager import ConnectionManager
 from utils.encryption import decrypt_secret, encrypt_secret
 
+
 @pytest.fixture(autouse=True)
 def setup_encryption_env(monkeypatch):
     import utils.encryption
@@ -31,7 +32,7 @@ def test_encryption_utility():
     # Spoofing the identity dynamically rejects the AES-GCM tags!
     try:
         decrypt_secret(payload, expected_tenant_id="wrong-tenant-id")
-        assert False, "Should have thrown ValueError from AESGCM AAD mismatch"
+        raise AssertionError("Should have thrown ValueError from AESGCM AAD mismatch")
     except ValueError:
         pass
     print("OK")
@@ -51,7 +52,7 @@ def test_config_manager(tmp_path):
     cm.save_config_file(config)
     
     import yaml
-    with open(test_yaml, "r") as f:
+    with open(test_yaml) as f:
         saved_data = yaml.safe_load(f)
         
     # Verify it was encrypted on disk
@@ -92,7 +93,7 @@ async def test_connection_manager(tmp_path):
     )
     # Should be saved encrypted
     import json
-    with open(test_json, "r") as f:
+    with open(test_json) as f:
         data = json.load(f)
             
     found_gd = False
@@ -154,7 +155,7 @@ def test_auto_upgrade_features(tmp_path):
     cm = ConfigManager(str(test_yaml))
     cm.get_config()
     # Upon loading, the auto-upgrade should save the file over itself with the encrypted key.
-    with open(test_yaml, "r") as f:
+    with open(test_yaml) as f:
         upgraded_data = yaml.safe_load(f)
     assert isinstance(upgraded_data["providers"]["openai"]["api_key"], dict), "Failed to auto-upgrade config"
     assert upgraded_data["providers"]["openai"]["api_key"]["algorithm"] == "AES-256-GCM"

@@ -2,11 +2,13 @@
 
 import asyncio
 import re
-from textual.app import ComposeResult
-from textual.containers import Container, Vertical, Horizontal
-from textual.screen import Screen
-from textual.widgets import Header, Footer, Static, Button, Log
+
 from rich.text import Text
+from textual.app import ComposeResult
+from textual.containers import Container, Horizontal, Vertical
+from textual.screen import Screen
+from textual.widgets import Button, Footer, Log, Static
+from textual.worker import Worker
 
 from ..managers.container_manager import ContainerManager
 from ..managers.docling_manager import DoclingManager
@@ -77,8 +79,8 @@ class LogsScreen(Screen):
         self.current_service = initial_service
         self.logs_area: Log | None = None
         self.following = False
-        self.follow_task = None
-        self._status_task = None
+        self.follow_task: Worker[None] | None = None
+        self._status_task: asyncio.Task[None] | None = None
         # Track log content for copy functionality
         self._log_lines: list[str] = []
 

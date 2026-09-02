@@ -1,6 +1,10 @@
 from typing import Any
 
-from lfx.base.data.docling_utils import coerce_docling_document, extract_docling_documents, get_docling_image_ref_mode
+from lfx.base.data.docling_utils import (
+    coerce_docling_document,
+    extract_docling_documents,
+    get_docling_image_ref_mode,
+)
 from lfx.custom import Component
 from lfx.io import DropdownInput, HandleInput, MessageTextInput, Output, StrInput
 from lfx.schema import Data, DataFrame

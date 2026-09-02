@@ -1,13 +1,14 @@
 import os
 import re
 import sys
-import requests
-from packaging.version import Version, InvalidVersion
-from pathlib import Path
 import tomllib
-from typing import Optional
+from pathlib import Path
 
-def get_latest_published_version(project_name: str) -> Optional[Version]:
+import requests
+from packaging.version import InvalidVersion, Version
+
+
+def get_latest_published_version(project_name: str) -> Version | None:
     url = f"https://pypi.org/pypi/{project_name}/json"
     try:
         res = requests.get(url, timeout=10)

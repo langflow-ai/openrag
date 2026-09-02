@@ -1,10 +1,8 @@
 """WorkspaceConfigService — yaml/DB dual-write contract."""
 
-import os
 import sys
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 import pytest_asyncio
@@ -137,7 +135,7 @@ async def test_yaml_write_hooks_mirror_to_db(
 ):
     """Legacy callers that hit config_manager.save_config_file directly
     should auto-mirror to the DB via the installed monkey-patch."""
-    svc = WorkspaceConfigService(
+    _svc = WorkspaceConfigService(
         config_manager=tmp_config_manager, session_factory=session_factory
     )
     # Direct legacy-style call (no service, no await)

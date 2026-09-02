@@ -1,7 +1,9 @@
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
 
 from utils.opensearch_utils import setup_opensearch_security
+
 
 @pytest.mark.asyncio
 async def test_setup_opensearch_security_success():
