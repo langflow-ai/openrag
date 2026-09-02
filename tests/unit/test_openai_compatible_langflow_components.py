@@ -70,14 +70,11 @@ def test_langflow_runtime_globals_cover_chat_and_embeddings():
     assert '"openai_api_base": "OPENRAG_LLM_BASE_URL"' in source
 
 
-def test_langflow_image_ships_the_openrag_bundle_as_a_components_path():
-    """The OpenRAG components are delivered by scan, not by the component index.
+def test_langflow_image_registers_the_openrag_bundle_in_the_component_index():
+    """Registered components work when Langflow forbids dynamic custom components.
 
-    ``flows/component_index.json`` is Langflow's stock index and carries no
-    OpenRAG bundle; the image instead copies ``custom_components/`` in and
-    points ``LANGFLOW_COMPONENTS_PATH`` at it, so Langflow discovers the bundle
-    when it scans. If that copy or that env var goes away, every flow node
-    typed ``ext:openrag:...`` stops resolving.
+    The source bundle remains available as a scan fallback, while the signed
+    component index is the authoritative path for restricted deployments.
     """
     dockerfile = Path("Dockerfile.langflow").read_text(encoding="utf-8")
     assert "COPY custom_components/ /app/custom_components/" in dockerfile
@@ -86,13 +83,22 @@ def test_langflow_image_ships_the_openrag_bundle_as_a_components_path():
     for name in (
         "openai_compatible_llm.py",
         "openai_compatible_embedding.py",
-        "embedding_spaces.py",
         "opensearch_multimodal.py",
     ):
         assert (BUNDLE / name).is_file(), name
 
+    opensearch_source = (BUNDLE / "opensearch_multimodal.py").read_text(encoding="utf-8")
+    assert "from .embedding_spaces import" not in opensearch_source
+    assert not (BUNDLE / "embedding_spaces.py").exists()
+
     index = json.loads(Path("flows/component_index.json").read_text(encoding="utf-8"))
-    assert BUNDLE_NAME not in dict(index["entries"])
+    openrag = dict(index["entries"])[BUNDLE_NAME]
+    assert {
+        "OpenAICompatibleEmbeddingComponent",
+        "OpenAICompatibleLLMComponent",
+        OPENSEARCH_EXT_ID,
+    } <= openrag.keys()
+    assert openrag[OPENSEARCH_EXT_ID]["template"]["code"]["value"] == opensearch_source
 
 
 def test_docker_compose_seeds_openrag_llm_token_placeholder():

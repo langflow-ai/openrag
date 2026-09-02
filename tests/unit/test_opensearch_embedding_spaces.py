@@ -2,15 +2,10 @@ import importlib
 import sys
 from types import ModuleType, SimpleNamespace
 
-from custom_components.openrag.embedding_spaces import (
-    INDEXED_ROUTE_PREFIX,
-    LEGACY_ROUTE_PREFIX,
-    build_embedding_space_aggregation,
-    embedding_spaces_from_aggregation,
-)
+import pytest
 
 
-def _load_opensearch_module(monkeypatch):
+def _load_opensearch_module(monkeypatch: pytest.MonkeyPatch):
     class Input:
         def __init__(self, *args, **kwargs):
             self.name = kwargs.get("name", "")
@@ -115,7 +110,10 @@ def _component(module, client, embedding):
     return component
 
 
-def test_detection_separates_provider_qualified_and_legacy_spaces() -> None:
+def test_detection_separates_provider_qualified_and_legacy_spaces(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_opensearch_module(monkeypatch)
     result = {
         "aggregations": {
             "embedding_spaces": {
@@ -127,24 +125,27 @@ def test_detection_separates_provider_qualified_and_legacy_spaces() -> None:
         }
     }
 
-    spaces = embedding_spaces_from_aggregation(result)
+    spaces = module.embedding_spaces_from_aggregation(result)
 
     assert [(space.space_id, space.route_model, space.field_identity) for space in spaces] == [
         (
             "azure:text-embedding-3-small",
-            f"{INDEXED_ROUTE_PREFIX}azure:text-embedding-3-small",
+            "space:azure:text-embedding-3-small",
             "azure:text-embedding-3-small",
         ),
         (
             "legacy:text-embedding-3-small",
-            f"{LEGACY_ROUTE_PREFIX}text-embedding-3-small",
+            "legacy:text-embedding-3-small",
             "text-embedding-3-small",
         ),
     ]
 
 
-def test_detection_aggregation_only_treats_documents_without_space_id_as_legacy() -> None:
-    aggregation = build_embedding_space_aggregation(size=25)
+def test_detection_aggregation_only_treats_documents_without_space_id_as_legacy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_opensearch_module(monkeypatch)
+    aggregation = module.build_embedding_space_aggregation(size=25)
 
     assert aggregation["embedding_spaces"]["composite"] == {
         "size": 25,
@@ -156,7 +157,7 @@ def test_detection_aggregation_only_treats_documents_without_space_id_as_legacy(
     }
 
 
-def test_search_queries_every_resolvable_provider_space(monkeypatch) -> None:
+def test_search_queries_every_resolvable_provider_space(monkeypatch: pytest.MonkeyPatch) -> None:
     module = _load_opensearch_module(monkeypatch)
     aggregation = {
         "aggregations": {
@@ -209,7 +210,7 @@ def test_search_queries_every_resolvable_provider_space(monkeypatch) -> None:
     }
 
 
-def test_detection_paginates_all_embedding_spaces(monkeypatch) -> None:
+def test_detection_paginates_all_embedding_spaces(monkeypatch: pytest.MonkeyPatch) -> None:
     module = _load_opensearch_module(monkeypatch)
 
     class PagingClient:
@@ -253,7 +254,9 @@ def test_detection_paginates_all_embedding_spaces(monkeypatch) -> None:
     ]
 
 
-def test_search_falls_back_to_keywords_when_no_space_resolves(monkeypatch) -> None:
+def test_search_falls_back_to_keywords_when_no_space_resolves(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     module = _load_opensearch_module(monkeypatch)
     aggregation = {
         "aggregations": {
@@ -280,7 +283,9 @@ def test_search_falls_back_to_keywords_when_no_space_resolves(monkeypatch) -> No
     assert client.query["query"]["bool"]["filter"] == []
 
 
-def test_search_remains_keyword_capable_without_embedding_adapter(monkeypatch) -> None:
+def test_search_remains_keyword_capable_without_embedding_adapter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     module = _load_opensearch_module(monkeypatch)
     aggregation = {
         "aggregations": {
@@ -307,7 +312,9 @@ def test_search_remains_keyword_capable_without_embedding_adapter(monkeypatch) -
     ]
 
 
-def test_direct_ingest_persists_provider_qualified_space(monkeypatch) -> None:
+def test_direct_ingest_persists_provider_qualified_space(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     module = _load_opensearch_module(monkeypatch)
     component = module.OpenSearchVectorStoreComponentMultimodalMultiEmbedding()
     component._openrag_ingest_callback_config = lambda: None
