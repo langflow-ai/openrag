@@ -139,6 +139,7 @@ export function TaskErrorContent({
                 <div
                   className="flex items-center gap-1.5 shrink-0"
                   onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => e.stopPropagation()}
                 >
                   {!isExpanded && (
                     <p className={statusPillClassName}>{statusLabel}</p>

@@ -1,1 +1,2 @@
+export PATH="/Users/jasondong/.nvm/versions/node/v24.18.0/bin:$PATH"
 cd frontend && npx lint-staged

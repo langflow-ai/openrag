@@ -136,6 +136,11 @@ def register_internal_routes(app: FastAPI):
         tasks.delete_task,
         methods=["DELETE"],
         tags=["internal"],
+        responses={
+            200: {"model": tasks._DeletedTaskResponse},
+            404: {"model": tasks._TaskNotFoundResponse},
+            409: {"model": tasks._TaskInProgressResponse},
+        },
     )
     app.add_api_route(
         "/tasks",

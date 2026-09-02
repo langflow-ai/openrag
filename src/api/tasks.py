@@ -3,8 +3,25 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from dependencies import get_current_user, get_task_service
+from models.tasks import TaskDeleteResult
 from session_manager import User
 from utils.telemetry import Category, MessageId, TelemetryClient
+
+
+class _DeletedTaskResponse(BaseModel):
+    status: str = Field("deleted", description="Always 'deleted' on success.")
+    task_id: str = Field(description="ID of the deleted task.")
+
+
+class _TaskNotFoundResponse(BaseModel):
+    error: str = Field("Task not found", description="Task ID does not exist.")
+
+
+class _TaskInProgressResponse(BaseModel):
+    error: str = Field(
+        "Task is still in progress",
+        description="Task exists but has not reached a terminal state yet.",
+    )
 
 
 async def task_status(
@@ -107,9 +124,11 @@ async def delete_task(
     user: User = Depends(get_current_user),
 ):
     """Permanently delete a terminal (completed/failed) task from the task store."""
-    success = task_service.delete_task(user.user_id, task_id)
-    if not success:
-        return JSONResponse({"error": "Task not found or still in progress"}, status_code=404)
+    result = task_service.delete_task(user.user_id, task_id)
+    if result is TaskDeleteResult.NOT_FOUND:
+        return JSONResponse({"error": "Task not found"}, status_code=404)
+    if result is TaskDeleteResult.IN_PROGRESS:
+        return JSONResponse({"error": "Task is still in progress"}, status_code=409)
     return JSONResponse({"status": "deleted", "task_id": task_id})
 
 
@@ -117,6 +136,6 @@ async def delete_all_terminal_tasks(
     task_service=Depends(get_task_service),
     user: User = Depends(get_current_user),
 ):
-    """Delete all completed/failed tasks for the authenticated user."""
-    count = task_service.delete_all_terminal_tasks(user.user_id)
-    return JSONResponse({"status": "deleted", "count": count})
+    """Delete all completed/failed tasks visible to the authenticated user."""
+    deleted_ids = task_service.delete_all_terminal_tasks(user.user_id)
+    return JSONResponse({"status": "deleted", "count": len(deleted_ids), "deleted_ids": deleted_ids})

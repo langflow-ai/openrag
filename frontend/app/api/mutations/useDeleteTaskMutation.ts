@@ -19,18 +19,16 @@ export function useDeleteTaskMutation() {
 export function useDeleteAllTerminalTasksMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async () => {
+    mutationFn: async (): Promise<string[]> => {
       const res = await fetch("/api/tasks", { method: "DELETE" });
       if (!res.ok) throw new Error("Failed to delete tasks");
+      const body = await res.json();
+      return (body.deleted_ids as string[]) ?? [];
     },
-    onSuccess: () => {
+    onSuccess: (deletedIds) => {
+      const deleted = new Set(deletedIds);
       queryClient.setQueryData([...TASKS_QUERY_KEY], (old: any[] | undefined) =>
-        (old ?? []).filter(
-          (t) =>
-            t.status !== "completed" &&
-            t.status !== "failed" &&
-            t.status !== "error",
-        ),
+        (old ?? []).filter((t) => !deleted.has(t.task_id)),
       );
     },
   });
