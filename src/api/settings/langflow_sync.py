@@ -104,6 +104,8 @@ def _required_generic_global_values(config) -> dict[str, str]:
         or "text-embedding-3-small",
         "SELECTED_EMBEDDING_PROVIDER": _string_value(getattr(knowledge, "embedding_provider", None))
         or "openai",
+        # Legacy agent-flow compatibility; this is the proxy client, not the
+        # upstream provider. Remove with that flow template in a future major release.
         "SELECTED_EMBEDDING_MODEL_PROVIDER": "OpenAI",
         "SELECTED_LANGUAGE_MODEL": _string_value(getattr(agent, "llm_model", None))
         or "gpt-4o-mini",
@@ -296,6 +298,8 @@ async def _update_langflow_global_variables(config, flows_service=None):
         "SELECTED_EMBEDDING_PROVIDER",
         getattr(knowledge, "embedding_provider", None) or "openai",
     )
+    # Kept for the legacy agent-flow header template. It selects Langflow's
+    # OpenAI-compatible proxy client; remove in a future major release.
     await _safe_upsert("SELECTED_EMBEDDING_MODEL_PROVIDER", "OpenAI")
 
     agent = getattr(config, "agent", None)
