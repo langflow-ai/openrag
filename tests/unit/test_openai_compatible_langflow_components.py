@@ -60,6 +60,7 @@ def test_langflow_runtime_globals_cover_chat_and_embeddings():
         "OPENRAG_LLM_BASE_URL",
         "SELECTED_LANGUAGE_MODEL",
         "SELECTED_EMBEDDING_MODEL",
+        "SELECTED_EMBEDDING_PROVIDER",
     } <= LANGFLOW_GENERIC_GLOBAL_VARIABLES
 
     source = Path("src/services/flows_service.py").read_text(encoding="utf-8")
@@ -85,6 +86,7 @@ def test_langflow_image_ships_the_openrag_bundle_as_a_components_path():
     for name in (
         "openai_compatible_llm.py",
         "openai_compatible_embedding.py",
+        "embedding_spaces.py",
         "opensearch_multimodal.py",
     ):
         assert (BUNDLE / name).is_file(), name
@@ -159,6 +161,15 @@ def test_embedding_component_pins_deployment_to_the_configured_model():
     """
     code = (BUNDLE / "openai_compatible_embedding.py").read_text(encoding="utf-8")
     assert '"deployment": self.model_name' in code
+
+
+def test_embedding_component_can_resolve_immutable_retrieval_adapters():
+    code = (BUNDLE / "openai_compatible_embedding.py").read_text(encoding="utf-8")
+
+    assert "class OpenRAGEmbeddings(Embeddings):" in code
+    assert "def for_model(self, model_name: str) -> Embeddings:" in code
+    assert "return OpenRAGEmbeddings(" in code
+    assert "dimensions=None" in code
 
 
 def test_flows_embed_the_current_proxy_component_sources():

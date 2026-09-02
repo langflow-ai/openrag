@@ -16,9 +16,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from langchain_core.embeddings import Embeddings
 from langchain_openai import OpenAIEmbeddings
 from lfx.base.embeddings.model import LCEmbeddingsModel
-from lfx.field_typing import Embeddings
 from lfx.io import IntInput, SecretStrInput, StrInput
 
 # Names must match src/api/settings/langflow_sync.py + src/utils/langflow_headers.py
@@ -35,6 +35,70 @@ def _as_str(value: object) -> str | None:
         value = getter()
     text = str(value).strip()
     return text or None
+
+
+class OpenRAGEmbeddings(Embeddings):
+    """One immutable model route plus a factory for other retrieval routes."""
+
+    def __init__(
+        self,
+        *,
+        model_name: str,
+        api_key: str | None,
+        api_base: str | None,
+        chunk_size: int | None = None,
+        dimensions: int | None = None,
+    ) -> None:
+        self.model = model_name
+        self.deployment = model_name
+        self._api_key = api_key
+        self._api_base = api_base
+        self._chunk_size = chunk_size
+
+        kwargs: dict[str, Any] = {
+            "model": self.model,
+            # Keep identity aligned with ``model``. LangChain otherwise exposes
+            # its ada-002 class default as the deployment for every instance.
+            "deployment": self.model_name,
+            "api_key": api_key,
+            "base_url": api_base,
+            "check_embedding_ctx_length": False,
+        }
+        if chunk_size:
+            kwargs["chunk_size"] = chunk_size
+        if dimensions:
+            kwargs["dimensions"] = dimensions
+        self._delegate = OpenAIEmbeddings(**kwargs)
+
+    @property
+    def model_name(self) -> str:
+        return self.model
+
+    def for_model(self, model_name: str) -> Embeddings:
+        """Return a dedicated adapter; never mutate the selected ingestion model."""
+        route = (model_name or "").strip()
+        if not route:
+            raise ValueError("Embedding model route is required")
+        return OpenRAGEmbeddings(
+            model_name=route,
+            api_key=self._api_key,
+            api_base=self._api_base,
+            chunk_size=self._chunk_size,
+            # A selected-model dimension override is not valid for other models.
+            dimensions=None,
+        )
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return self._delegate.embed_documents(texts)
+
+    def embed_query(self, text: str) -> list[float]:
+        return self._delegate.embed_query(text)
+
+    async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
+        return await self._delegate.aembed_documents(texts)
+
+    async def aembed_query(self, text: str) -> list[float]:
+        return await self._delegate.aembed_query(text)
 
 
 class OpenAICompatibleEmbeddingComponent(LCEmbeddingsModel):
@@ -91,27 +155,10 @@ class OpenAICompatibleEmbeddingComponent(LCEmbeddingsModel):
         api_base = _as_str(self.api_base)
         if api_base:
             api_base = api_base.rstrip("/")
-
-        kwargs: dict[str, Any] = {
-            "model": self.model_name,
-            # `OpenAIEmbeddings.deployment` defaults to the class-level default of
-            # `model` — the literal "text-embedding-ada-002" — for every instance,
-            # whatever model is actually configured. The OpenSearch component keys
-            # its embedding lookup on `deployment` as well as `model`, so leaving
-            # the default in place registers this object under ada-002 too, and a
-            # 768-dim vector then gets aimed at a 1536-dim ada-002 vector field.
-            # Only Azure reads this field, so pinning it to the real model is inert
-            # at request time and keeps the component's identity honest.
-            "deployment": self.model_name,
-            "api_key": api_key,
-            "base_url": api_base or None,
-            # Skip tiktoken context checks so non-OpenAI model ids still work.
-            "check_embedding_ctx_length": False,
-        }
-        chunk_size = getattr(self, "chunk_size", None)
-        if chunk_size:
-            kwargs["chunk_size"] = chunk_size
-        dimensions = getattr(self, "dimensions", None)
-        if dimensions:
-            kwargs["dimensions"] = dimensions
-        return OpenAIEmbeddings(**kwargs)
+        return OpenRAGEmbeddings(
+            model_name=self.model_name,
+            api_key=api_key,
+            api_base=api_base,
+            chunk_size=getattr(self, "chunk_size", None),
+            dimensions=getattr(self, "dimensions", None),
+        )

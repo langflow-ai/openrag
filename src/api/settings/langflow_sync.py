@@ -54,6 +54,7 @@ LANGFLOW_GENERIC_GLOBAL_VARIABLES = frozenset(
         "OPENSEARCH_INDEX_NAME",
         "OPENSEARCH_URL",
         "SELECTED_EMBEDDING_MODEL",
+        "SELECTED_EMBEDDING_PROVIDER",
         "SELECTED_EMBEDDING_MODEL_PROVIDER",
         "SELECTED_LANGUAGE_MODEL",
         "SELECTED_LANGUAGE_MODEL_PROVIDER",
@@ -101,6 +102,8 @@ def _required_generic_global_values(config) -> dict[str, str]:
         "OPENSEARCH_URL": settings.get_langflow_opensearch_url(),
         "SELECTED_EMBEDDING_MODEL": _string_value(getattr(knowledge, "embedding_model", None))
         or "text-embedding-3-small",
+        "SELECTED_EMBEDDING_PROVIDER": _string_value(getattr(knowledge, "embedding_provider", None))
+        or "openai",
         "SELECTED_EMBEDDING_MODEL_PROVIDER": "OpenAI",
         "SELECTED_LANGUAGE_MODEL": _string_value(getattr(agent, "llm_model", None))
         or "gpt-4o-mini",
@@ -289,6 +292,10 @@ async def _update_langflow_global_variables(config, flows_service=None):
     knowledge = getattr(config, "knowledge", None)
     if getattr(knowledge, "embedding_model", None):
         await _safe_upsert("SELECTED_EMBEDDING_MODEL", config.knowledge.embedding_model)
+    await _safe_upsert(
+        "SELECTED_EMBEDDING_PROVIDER",
+        getattr(knowledge, "embedding_provider", None) or "openai",
+    )
     await _safe_upsert("SELECTED_EMBEDDING_MODEL_PROVIDER", "OpenAI")
 
     agent = getattr(config, "agent", None)
@@ -431,6 +438,9 @@ async def _update_langflow_model_values(
                 effective_embedding_model = embedding_model or config.knowledge.embedding_model
             await _upsert_selected_model_variable(
                 "SELECTED_EMBEDDING_MODEL", effective_embedding_model
+            )
+            await _upsert_selected_model_variable(
+                "SELECTED_EMBEDDING_PROVIDER", effective_embedding_provider
             )
             result = await flows_service.change_langflow_model_value(
                 effective_embedding_provider,
