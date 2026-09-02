@@ -228,6 +228,20 @@ class TestInferFailureMetadata:
         assert "granite-4-h-small" in meta["user_facing_message"]
         assert "unexpectedly" not in meta["user_facing_message"].lower()
 
+    def test_langflow_azure_deployment_missing_is_user_actionable(self, task_service):
+        ft = _make_file_task(
+            phase=IngestionPhase.LANGFLOW,
+            docling_status=DoclingPhaseStatus.SUCCESS,
+            error="The API deployment for this resource does not exist.",
+        )
+        meta = task_service._infer_failure_metadata(ft)
+        assert meta is not None
+        assert meta["component"] == "langflow"
+        assert meta["actionable_by"] == "USER_ACTIONABLE"
+        assert meta["user_facing_message"] == (
+            "The API deployment for this resource does not exist."
+        )
+
     def test_langflow_revoked_api_key_failure(self, task_service):
         ft = _make_file_task(
             phase=IngestionPhase.LANGFLOW,

@@ -26,7 +26,8 @@ export interface ProviderHealthResponse {
 }
 
 export interface ProviderHealthParams {
-  provider?: "openai" | "ollama" | "watsonx";
+  /** Any provider key recognised by the backend's LiteLLM catalogue. */
+  provider?: string;
   test_completion?: boolean;
 }
 
