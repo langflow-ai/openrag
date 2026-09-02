@@ -227,5 +227,80 @@ class TestConfigManagerBedrockFileRoundTrip:
         assert reloaded.providers.bedrock.configured is True
 
 
+class TestBedrockGenericCredentialsBridge:
+    """Bedrock is now offered via config/model_providers.yaml, so it renders
+    through GenericOnboarding - the generic-provider form driven by litellm's
+    own bundled credential-field spec, which names Bedrock's fields
+    aws_region_name/aws_access_key_id/aws_secret_access_key. Those submit
+    through the generic provider_credentials payload
+    (ProvidersConfig.set_credentials), which must bridge them into the typed
+    BedrockConfig fields the rest of Bedrock support (model registry gate,
+    lightweight health check, embedding call kwargs) already reads directly.
+    """
+
+    def test_set_credentials_populates_typed_bedrock_fields(self):
+        providers = ProvidersConfig(
+            openai=OpenAIConfig(),
+            anthropic=AnthropicConfig(),
+            watsonx=WatsonXConfig(),
+            ollama=OllamaConfig(),
+        )
+
+        providers.set_credentials(
+            "bedrock",
+            {
+                "aws_region_name": "eu-central-1",
+                "aws_access_key_id": "AKIA123",
+                "aws_secret_access_key": "shh",
+            },
+        )
+
+        assert providers.bedrock.region == "eu-central-1"
+        assert providers.bedrock.access_key_id == "AKIA123"
+        assert providers.bedrock.secret_access_key == "shh"
+        assert providers.bedrock.configured is True
+
+    def test_set_credentials_iam_role_mode_needs_only_region(self):
+        """No access key/secret - the IAM role / IRSA auth mode."""
+        providers = ProvidersConfig(
+            openai=OpenAIConfig(),
+            anthropic=AnthropicConfig(),
+            watsonx=WatsonXConfig(),
+            ollama=OllamaConfig(),
+        )
+
+        providers.set_credentials("bedrock", {"aws_region_name": "us-east-1"})
+
+        assert providers.bedrock.region == "us-east-1"
+        assert providers.bedrock.access_key_id == ""
+        assert providers.bedrock.configured is True
+
+    def test_credential_values_round_trips_through_generic_submission(self):
+        """What set_credentials writes, credential_values must read back in
+        the exact litellm kwarg shape - the two are the write and read
+        halves of the same bridge."""
+        providers = ProvidersConfig(
+            openai=OpenAIConfig(),
+            anthropic=AnthropicConfig(),
+            watsonx=WatsonXConfig(),
+            ollama=OllamaConfig(),
+        )
+
+        providers.set_credentials(
+            "bedrock",
+            {
+                "aws_region_name": "eu-central-1",
+                "aws_access_key_id": "AKIA123",
+                "aws_secret_access_key": "shh",
+            },
+        )
+
+        assert providers.credential_values("bedrock") == {
+            "aws_region_name": "eu-central-1",
+            "aws_access_key_id": "AKIA123",
+            "aws_secret_access_key": "shh",
+        }
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
