@@ -3,7 +3,13 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CheckCircle, Loader2, XCircle } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useRef, useState } from "react";
+import {
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import AnimatedProcessingIcon from "@/components/icons/animated-processing-icon";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,7 +36,13 @@ function AuthCallbackContent() {
   const queryClient = useQueryClient();
   const { refreshAuth, isIbmAuthMode } = useAuth();
   const redirectTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
   const [purpose] = useState(() => {
+    if (typeof window === "undefined") return "app_auth";
     const authPurpose = localStorage.getItem("auth_purpose");
     const storedConnectorType = localStorage.getItem(
       "connecting_connector_type",
@@ -46,11 +58,15 @@ function AuthCallbackContent() {
   const errorParam = searchParams.get("error");
   const code = searchParams.get("code");
   const state = searchParams.get("state");
-  const [finalConnectorId] = useState(
-    () => localStorage.getItem("connecting_connector_id") || state,
+  const [finalConnectorId] = useState(() =>
+    typeof window !== "undefined"
+      ? localStorage.getItem("connecting_connector_id") || state
+      : state,
   );
   const [storedConnectorType] = useState(() =>
-    localStorage.getItem("connecting_connector_type"),
+    typeof window !== "undefined"
+      ? localStorage.getItem("connecting_connector_type")
+      : null,
   );
 
   const validationError = errorParam
@@ -196,8 +212,8 @@ function AuthCallbackContent() {
       ? callbackMutation.error.message
       : null);
 
-  const isAppAuth = purpose === "app_auth";
-  const isTest = purpose === "test";
+  const isAppAuth = mounted && purpose === "app_auth";
+  const isTest = mounted && purpose === "test";
 
   const getTitle = () => {
     if (status === "processing") {

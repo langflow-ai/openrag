@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any, Literal
 from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
 from session_manager import AnonymousUser
 from utils.document_processing import (
-    IMAGE_PLACEHOLDER,
     extract_relevant,
     process_text_file,
     resplit_chunks_character_windows,
@@ -531,18 +530,6 @@ class TaskProcessor:
         # This ensures the length of chunks matches the length of the embeddings array,
         # since chunk_texts_for_embeddings also drops empty texts.
         slim_doc["chunks"] = [c for c in slim_doc["chunks"] if c.get("text") and c["text"].strip()]
-
-        # A placeholder preserves picture provenance for otherwise empty documents,
-        # but it is not searchable content and must not turn ingestion into a false
-        # success or consume an embedding request.
-        if slim_doc["chunks"] and all(
-            chunk["text"].strip() == IMAGE_PLACEHOLDER for chunk in slim_doc["chunks"]
-        ):
-            logger.error(
-                "No searchable content extracted — document contains only image placeholders",
-                file_hash=file_hash,
-            )
-            return {"status": "error", "error": "No text content could be extracted from document"}
 
         litellm_embedding_model = (
             await self.models_service.get_litellm_model_name(embedding_model)
