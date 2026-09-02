@@ -22,6 +22,7 @@ class SettingsUpdateBody(BaseModel):
     ocr: bool | None = None
     picture_descriptions: bool | None = None
     disable_ingest_with_langflow: bool | None = None
+    disable_chat_with_langflow: bool | None = None
     vlm_enabled: bool | None = None
     vlm_provider: str | None = Field(None, pattern="^(openai|watsonx|anthropic|local|ollama)$")
     vlm_model: str | None = Field(None, min_length=1)
@@ -209,6 +210,7 @@ class KnowledgeConfig(BaseModel):
 class AgentConfig(BaseModel):
     llm_model: str | None
     llm_provider: str | None
+    disable_chat_with_langflow: bool | None = None
     system_prompt: str | None
     default_system_prompt: str | None = None
 

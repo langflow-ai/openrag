@@ -5,8 +5,8 @@ import threading
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
+import agentd.patch as agentd_patch
 import httpx
-from agentd.patch import patch_openai_with_mcp
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from opensearchpy import AsyncOpenSearch
@@ -18,6 +18,7 @@ from utils.container_utils import determine_docling_host, get_container_host
 from utils.embedding_fields import build_knn_vector_field
 from utils.env_utils import get_env_float, get_env_int, get_env_set
 from utils.logging_config import get_logger
+from utils.openai_compat import install_agentd_response_event_compat
 
 # Import configuration manager
 from .config_manager import config_manager
@@ -26,6 +27,12 @@ load_dotenv(override=False)
 load_dotenv("../", override=False)
 
 logger = get_logger(__name__)
+
+# agentd builds Responses stream events with a model shape older than the
+# installed OpenAI SDK expects. Patch before the first patched client is built,
+# otherwise langflowless streaming chat dies on the first tool call.
+install_agentd_response_event_compat(agentd_patch)
+patch_openai_with_mcp = agentd_patch.patch_openai_with_mcp
 
 # Environment variables
 OPENSEARCH_HOST = os.getenv("OPENSEARCH_HOST", "localhost")
@@ -99,6 +106,37 @@ LANGFLOW_URL = os.getenv("LANGFLOW_URL", f"http://localhost:{LANGFLOW_PORT}")
 # Optional: public URL for browser links (e.g., http://localhost:7860)
 LANGFLOW_PUBLIC_URL = os.getenv("LANGFLOW_PUBLIC_URL")
 LANGFLOW_CHAT_FLOW_ID = os.getenv("LANGFLOW_CHAT_FLOW_ID") or "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
+
+
+def env_flag_enabled(name: str) -> bool:
+    """True when env var `name` is set to a truthy string."""
+    return os.getenv(name, "").strip().lower() in ("true", "1", "yes")
+
+
+def is_chat_with_langflow_disabled() -> bool:
+    """True when chat must bypass Langflow and run the in-process OpenRAG agent.
+
+    The env var is an operator kill switch and is checked first: it stays
+    effective even when config.yaml is marked `edited` (which makes
+    config_manager skip env overrides) and even if the config was already
+    cached before the var was set. Otherwise defer to the settings-UI value.
+    """
+    if env_flag_enabled("DISABLE_CHAT_WITH_LANGFLOW"):
+        return True
+    return bool(get_openrag_config().agent.disable_chat_with_langflow)
+
+
+def is_ingest_with_langflow_disabled() -> bool:
+    """True when ingestion must bypass Langflow and use the OpenRAG processor.
+
+    Same kill-switch precedence as `is_chat_with_langflow_disabled`.
+    """
+    if env_flag_enabled("DISABLE_INGEST_WITH_LANGFLOW"):
+        return True
+    return bool(get_openrag_config().knowledge.disable_ingest_with_langflow)
+
+
+DISABLE_CHAT_WITH_LANGFLOW = env_flag_enabled("DISABLE_CHAT_WITH_LANGFLOW")
 LANGFLOW_INGEST_FLOW_ID = (
     os.getenv("LANGFLOW_INGEST_FLOW_ID") or "5488df7c-b93f-4f87-a446-b67028bc0813"
 )

@@ -299,6 +299,10 @@ class AgentConfig:
 
     llm_model: str = ""
     llm_provider: str = "openai"  # Which provider to use for LLM
+    # Mirrors knowledge.disable_ingest_with_langflow for the chat side: when
+    # True, chat runs the agent in-process against agent.llm_provider instead
+    # of delegating to a Langflow flow.
+    disable_chat_with_langflow: bool = False
     system_prompt: str = DEFAULT_SYSTEM_PROMPT
 
     def __post_init__(self):
@@ -498,10 +502,34 @@ class ConfigManager:
         logger.debug("[CONFIG] Configuration loaded successfully")
         return self._config
 
+    @staticmethod
+    def _apply_langflow_bypass_env_overrides(config_data: dict[str, Any]) -> None:
+        """Force the Langflow bypass switches on when their env vars are truthy.
+
+        Runs even for an edited config. On-only by design: `=false` or unset
+        leaves the saved value alone so the settings UI stays authoritative
+        for turning the bypass back off.
+        """
+
+        def truthy(name: str) -> bool:
+            return os.getenv(name, "").strip().lower() in ("true", "1", "yes")
+
+        if truthy("DISABLE_INGEST_WITH_LANGFLOW"):
+            config_data["knowledge"]["disable_ingest_with_langflow"] = True
+        if truthy("DISABLE_CHAT_WITH_LANGFLOW"):
+            config_data["agent"]["disable_chat_with_langflow"] = True
+
     def _load_env_overrides(
         self, config_data: dict[str, Any], temp_config: Optional["OpenRAGConfig"] = None
     ) -> None:
         """Load environment variable overrides, respecting edited flag."""
+
+        # The Langflow bypass switches are operator kill switches, so they are
+        # applied before the edited check below. Without this, setting them in
+        # .env silently does nothing once anyone has saved settings in the UI.
+        # They are on-only: `=true` forces the bypass, while unset/false defers
+        # to the saved config so the settings-UI toggle keeps working.
+        self._apply_langflow_bypass_env_overrides(config_data)
 
         # Skip all environment overrides if config has been manually edited
         if temp_config and temp_config.edited:
@@ -562,6 +590,10 @@ class ConfigManager:
         if os.getenv("DISABLE_INGEST_WITH_LANGFLOW") is not None:
             config_data["knowledge"]["disable_ingest_with_langflow"] = os.getenv(
                 "DISABLE_INGEST_WITH_LANGFLOW", "false"
+            ).lower() in ("true", "1", "yes")
+        if os.getenv("DISABLE_CHAT_WITH_LANGFLOW") is not None:
+            config_data["agent"]["disable_chat_with_langflow"] = os.getenv(
+                "DISABLE_CHAT_WITH_LANGFLOW", "false"
             ).lower() in ("true", "1", "yes")
 
         # Agent settings
