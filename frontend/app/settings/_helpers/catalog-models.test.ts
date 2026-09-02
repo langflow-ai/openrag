@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   findGroupedSelection,
   groupedCatalogOptions,
+  liveModelOption,
   mergeLiveCatalogOptions,
   onboardingCatalogConfigured,
   onboardingCredentialFields,
@@ -277,6 +278,73 @@ describe("providerCredentialsSatisfied", () => {
         catalog,
       ),
       false,
+    );
+  });
+});
+
+describe("newest models first", () => {
+  const provider = (models: Array<{ model: string }>) => ({
+    providers: [{ key: "p", name: "P", models, embedding_models: [] }],
+  });
+  const order = (names: string[]) =>
+    groupedCatalogOptions(
+      provider(
+        names.map((model) => ({ model, capabilities: ["function_calling"] })),
+      ),
+      undefined,
+      "language",
+    )[0].options.map((option) => option.value);
+
+  it("ranks by version, newest first", () => {
+    assert.deepEqual(order(["gpt-4o", "gpt-3.5-turbo", "gpt-5", "gpt-4.1"]), [
+      "gpt-5",
+      "gpt-4.1",
+      "gpt-4o",
+      "gpt-3.5-turbo",
+    ]);
+  });
+
+  it("puts a bare alias above its own dated snapshot", () => {
+    // `gpt-5` and `gpt-5-2025-08-07` are the same model; the alias is the one
+    // to offer, so a missing stamp has to rank as newer, not older.
+    assert.deepEqual(order(["gpt-5-2025-08-07", "gpt-5"]), [
+      "gpt-5",
+      "gpt-5-2025-08-07",
+    ]);
+  });
+
+  it("orders snapshots of one version by their stamp", () => {
+    assert.deepEqual(
+      order(["claude-opus-4-5-20251101", "claude-opus-4-5-20260401"]),
+      ["claude-opus-4-5-20260401", "claude-opus-4-5-20251101"],
+    );
+  });
+
+  it("falls back to alphabetical when nothing is versioned", () => {
+    assert.deepEqual(order(["mistral-large", "granite-instruct"]), [
+      "granite-instruct",
+      "mistral-large",
+    ]);
+  });
+});
+
+describe("mergeLiveCatalogOptions creates a missing group", () => {
+  it("adds watsonx embeddings the bundled table does not carry", () => {
+    // LiteLLM lists zero watsonx embedding models, so groupedCatalogOptions
+    // drops the group entirely — the live rows are the only ones there are.
+    const merged = mergeLiveCatalogOptions(
+      [],
+      "watsonx",
+      [liveModelOption("ibm/slate-125m-english-rtrvr", "watsonx")],
+      "IBM watsonx.ai",
+    );
+
+    assert.equal(merged.length, 1);
+    assert.equal(merged[0].key, "watsonx");
+    assert.equal(merged[0].group, "IBM watsonx.ai");
+    assert.deepEqual(
+      merged[0].options.map((option) => option.value),
+      ["ibm/slate-125m-english-rtrvr"],
     );
   });
 });

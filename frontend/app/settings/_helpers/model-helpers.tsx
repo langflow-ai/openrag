@@ -1,24 +1,37 @@
+import AiFoundryLogo from "@/components/icons/ai-foundry-logo";
 import AnthropicLogo from "@/components/icons/anthropic-logo";
+import AzureOpenAILogo from "@/components/icons/azure-openai-logo";
+import GenericProviderLogo from "@/components/icons/generic-provider-logo";
 import IBMLogo from "@/components/icons/ibm-logo";
 import OllamaLogo from "@/components/icons/ollama-logo";
 import OpenAILogo from "@/components/icons/openai-logo";
 
-export type ModelProvider =
-  | "openai"
-  | "anthropic"
-  | "ollama"
-  | "watsonx"
-  | "local";
+/**
+ * A provider key as the backend names it.
+ *
+ * Which providers exist — and which of them this deployment shows — comes from
+ * `GET /api/models/providers`, driven by `config/model_providers.yaml` and
+ * OPENRAG_RUN_MODE. So this is a plain string, not a closed union: a provider
+ * added to that file must render without a frontend change. The keys below are
+ * only the ones OpenRAG has bespoke chrome (logo, colours, forms) for.
+ */
+export type ModelProvider = string;
 
-// Full ordered list of providers for settings / cards
-export const ALL_PROVIDERS: ModelProvider[] = [
+export const KNOWN_PROVIDERS = [
   "openai",
+  "anthropic",
   "ollama",
   "watsonx",
-  "anthropic",
-];
+  "azure_ai",
+  "azure",
+  "local",
+] as const;
 
-// Preferred auto-select order for the LLM onboarding step
+export type KnownModelProvider = (typeof KNOWN_PROVIDERS)[number];
+
+// Preferred auto-select order for the LLM onboarding step. Only a preference:
+// providers this run mode hides are dropped, and anything the API returns that
+// is not listed here is appended in API order.
 export const LLM_PROVIDER_ORDER: ModelProvider[] = [
   "anthropic",
   "openai",
@@ -33,12 +46,105 @@ export const EMBEDDING_PROVIDER_ORDER: ModelProvider[] = [
   "ollama",
 ];
 
-// Providers unavailable in cloud (IBM) deployments
-export const CLOUD_EXCLUDED_PROVIDERS: ModelProvider[] = ["ollama"];
+/**
+ * `preferred` first (skipping anything not in `available`), then whatever else
+ * `available` holds, in the order the backend returned it.
+ */
+export function orderProviders(
+  available: ModelProvider[],
+  preferred: ModelProvider[],
+): ModelProvider[] {
+  const offered = new Set(available);
+  const ranked = preferred.filter((provider) => offered.has(provider));
+  const seen = new Set(ranked);
+  return [...ranked, ...available.filter((provider) => !seen.has(provider))];
+}
 
 export interface ModelOption {
   value: string;
   label: string;
+}
+
+export interface ProviderChrome {
+  /** Display name; the API's `display_name` wins over the built-in label. */
+  name: string;
+  logo: (props: React.SVGProps<SVGSVGElement>) => React.ReactNode;
+  logoColor: string;
+  logoBgColor: string;
+  /** Onboarding tabs invert some marks; defaults to the card colours. */
+  tabLogoColor?: string;
+  tabLogoBgColor?: string;
+}
+
+/** Logo and colours for the providers OpenRAG ships chrome for. */
+const PROVIDER_CHROME: Record<string, ProviderChrome> = {
+  openai: {
+    name: "OpenAI",
+    logo: OpenAILogo,
+    logoColor: "text-black",
+    logoBgColor: "bg-white",
+  },
+  anthropic: {
+    name: "Anthropic",
+    logo: AnthropicLogo,
+    logoColor: "text-[#D97757]",
+    logoBgColor: "bg-white",
+    tabLogoColor: "text-black",
+    tabLogoBgColor: "bg-[#D97757]",
+  },
+  ollama: {
+    name: "Ollama",
+    logo: OllamaLogo,
+    logoColor: "text-black",
+    logoBgColor: "bg-white",
+  },
+  watsonx: {
+    name: "IBM watsonx.ai",
+    logo: IBMLogo,
+    logoColor: "text-white",
+    logoBgColor: "bg-[#1063FE]",
+  },
+  // Microsoft draws the two Azure model services differently, and neither is
+  // the generic Azure logo. Both marks paint their own gradients, so logoColor
+  // does nothing for them and the tile stays white.
+  azure_ai: {
+    name: "Azure AI Foundry",
+    logo: AiFoundryLogo,
+    logoColor: "text-black",
+    logoBgColor: "bg-white",
+  },
+  azure: {
+    name: "Azure OpenAI",
+    logo: AzureOpenAILogo,
+    logoColor: "text-black",
+    logoBgColor: "bg-white",
+  },
+  local: {
+    name: "Local",
+    logo: GenericProviderLogo,
+    logoColor: "text-muted-foreground",
+    logoBgColor: "bg-white",
+  },
+};
+
+/**
+ * Chrome for `provider`. A provider the config file adds but the frontend has
+ * no artwork for still renders, under the display name the API gave it.
+ */
+export function getProviderChrome(
+  provider: ModelProvider,
+  displayName?: string,
+): ProviderChrome {
+  const known = PROVIDER_CHROME[provider];
+  if (known) {
+    return displayName ? { ...known, name: displayName } : known;
+  }
+  return {
+    name: displayName || provider,
+    logo: GenericProviderLogo,
+    logoColor: "text-black",
+    logoBgColor: "bg-white",
+  };
 }
 
 // Helper function to get model logo based on provider or model name
@@ -52,6 +158,10 @@ export function getModelLogo(modelValue: string, provider?: string) {
     return <OllamaLogo className="w-4 h-4" />;
   } else if (provider === "watsonx") {
     return <IBMLogo className="w-4 h-4" />;
+  } else if (provider === "azure") {
+    return <AzureOpenAILogo className="w-4 h-4" />;
+  } else if (provider === "azure_ai") {
+    return <AiFoundryLogo className="w-4 h-4" />;
   } else if (provider === "local") {
     return (
       <svg
