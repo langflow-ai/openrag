@@ -1,7 +1,7 @@
 """Unit tests for src/api/flows.py endpoints across all run modes."""
 
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
