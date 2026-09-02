@@ -3,7 +3,15 @@
 When a provider is removed and it was the active LLM or embedding provider,
 the backend should fall back to another configured provider AND select a
 sensible default model (not an empty string).
+
+Ollama is the fallback these cases exercise, and a fallback helper will not
+hand back a provider the run mode hides. The module pins a run mode that
+offers Ollama so these stay about fallback selection whatever
+`config/model_providers.yaml` says; `test_model_providers_config` covers the
+hiding itself.
 """
+
+import pytest
 
 from api.settings.helpers import (
     _default_embedding_model,
@@ -30,6 +38,11 @@ from config.model_constants import (
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _run_mode_that_offers_ollama(monkeypatch):
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "on_prem")
 
 
 def _make_config(

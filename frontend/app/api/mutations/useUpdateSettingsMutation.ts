@@ -53,6 +53,8 @@ export interface UpdateSettingsRequest {
   remove_watsonx_config?: boolean;
   // Bypass the "this provider's embedding models are still in use" guard.
   force_remove?: boolean;
+  provider_credentials?: Record<string, Record<string, string>>;
+  remove_provider_config?: string;
 }
 
 export interface AffectedEmbeddingModel {

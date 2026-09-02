@@ -1,5 +1,7 @@
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -11,6 +13,7 @@ if str(SRC) not in sys.path:
 from services.default_docs_service import (  # noqa: E402
     _ingest_default_documents_langflow,
     _ingest_default_documents_url_langflow,
+    ingest_default_documents_when_ready,
 )
 
 
@@ -70,3 +73,56 @@ async def test_default_url_docs_use_effective_jwt_helper():
     assert task_id == "url-task"
     assert session_manager.calls == [("anonymous", None)]
     assert task_service.url_kwargs["jwt_token"] == "Bearer default-doc-token"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("disable_langflow", "local_helper_name"),
+    [
+        (True, "_ingest_default_documents_openrag"),
+        (False, "_ingest_default_documents_langflow"),
+    ],
+)
+async def test_local_default_docs_get_separate_task_from_url_ingest(
+    tmp_path, disable_langflow, local_helper_name
+):
+    local_doc = tmp_path / "local.md"
+    local_doc.write_text("local default documentation")
+    config = SimpleNamespace(
+        knowledge=SimpleNamespace(disable_ingest_with_langflow=disable_langflow)
+    )
+    local_helper = AsyncMock(return_value="local-task")
+
+    with (
+        patch(
+            "services.default_docs_service.get_openrag_config",
+            return_value=config,
+        ),
+        patch(
+            "services.default_docs_service.ingest_openrag_docs_when_ready",
+            new=AsyncMock(return_value="url-task"),
+        ),
+        patch("services.default_docs_service._get_documents_dir", return_value=str(tmp_path)),
+        patch(
+            f"services.default_docs_service.{local_helper_name}",
+            new=local_helper,
+        ),
+        patch(
+            "services.default_docs_service.TelemetryClient.send_event",
+            new=AsyncMock(),
+        ),
+    ):
+        task_id = await ingest_default_documents_when_ready(
+            document_service=object(),
+            models_service=object(),
+            task_service=object(),
+            langflow_file_service=object(),
+            session_manager=object(),
+        )
+
+    assert task_id == "local-task"
+    local_helper.assert_awaited_once()
+    call_args, call_kwargs = local_helper.await_args
+    assert "url-task" not in call_args
+    assert "url-task" not in call_kwargs.values()
+    assert call_kwargs.get("existing_task_id") is None

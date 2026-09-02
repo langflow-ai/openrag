@@ -141,7 +141,10 @@ export function WatsonxSettingsForm({
           </p>
         )}
         {modelsError && (
-          <p className="text-sm text-destructive min-w-0 [overflow-wrap:anywhere]">
+          <p
+            data-testid="provider-connection-error"
+            className="text-sm text-destructive min-w-0 [overflow-wrap:anywhere]"
+          >
             {modelsError.message}
           </p>
         )}

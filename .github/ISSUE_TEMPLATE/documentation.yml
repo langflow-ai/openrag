@@ -103,4 +103,3 @@ body:
       options:
         - label: I would be willing to submit a pull request to fix this issue.
           required: false
-
