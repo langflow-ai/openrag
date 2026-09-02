@@ -41,8 +41,11 @@ async def nudges_from_kb_endpoint(
         return JSONResponse(result)
     except HTTPException:
         raise
-    except Exception as e:
-        return JSONResponse({"error": f"Failed to get nudges: {str(e)}"}, status_code=500)
+    except Exception:
+        # Log the detail server-side; the response must not carry exception
+        # text, which can expose internal paths and connection details.
+        logger.exception("[NUDGES] Failed to get nudges")
+        return JSONResponse({"error": "Failed to get nudges"}, status_code=500)
 
 
 async def nudges_from_chat_id_endpoint(
@@ -72,5 +75,8 @@ async def nudges_from_chat_id_endpoint(
         return JSONResponse(result)
     except HTTPException:
         raise
-    except Exception as e:
-        return JSONResponse({"error": f"Failed to get nudges: {str(e)}"}, status_code=500)
+    except Exception:
+        # Log the detail server-side; the response must not carry exception
+        # text, which can expose internal paths and connection details.
+        logger.exception("[NUDGES] Failed to get nudges")
+        return JSONResponse({"error": "Failed to get nudges"}, status_code=500)
