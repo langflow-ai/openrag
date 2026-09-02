@@ -298,7 +298,7 @@ def verify_microsoft_access_token(
 
     Args:
         token:              Raw JWT access token string.
-        client_id:          OpenRAG's Azure AD app client ID.
+        client_id:          BomaRAG's Azure AD app client ID.
         tenant_id:          Hint for JWKS endpoint selection; extracted from the
                             unverified tid claim when not provided.
         allowed_tenant_ids: Optional set of permitted Azure AD tenant UUIDs.

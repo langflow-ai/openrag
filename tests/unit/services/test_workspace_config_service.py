@@ -17,7 +17,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 import db.models  # noqa: E402,F401
-from config.config_manager import ConfigManager, OpenRAGConfig  # noqa: E402
+from config.config_manager import BomaRAGConfig, ConfigManager  # noqa: E402
 from db.repositories import WorkspaceConfigRepo  # noqa: E402
 from services.workspace_config_service import WorkspaceConfigService  # noqa: E402
 
@@ -53,7 +53,7 @@ async def test_load_config_falls_back_to_yaml_when_db_empty(
         config_manager=tmp_config_manager, session_factory=session_factory
     )
     config = await svc.load_config()
-    assert isinstance(config, OpenRAGConfig)
+    assert isinstance(config, BomaRAGConfig)
     assert config.edited is False  # fresh install
 
 
@@ -66,7 +66,7 @@ async def test_save_config_writes_to_yaml_and_db(
     The default mode is ``db`` (DB-only, no yaml), so this test forces
     hybrid via an env override to exercise the dual-write contract.
     """
-    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "hybrid")
+    monkeypatch.setenv("BOMARAG_STORAGE_MODE", "hybrid")
     svc = WorkspaceConfigService(
         config_manager=tmp_config_manager, session_factory=session_factory
     )
@@ -163,7 +163,7 @@ async def test_yaml_write_hooks_mirror_to_db(
 
 @pytest.mark.asyncio
 async def test_kill_switch_disables_db(monkeypatch, tmp_config_manager, session_factory):
-    monkeypatch.setenv("OPENRAG_DISABLE_DB_WORKSPACE_CONFIG", "true")
+    monkeypatch.setenv("BOMARAG_DISABLE_DB_WORKSPACE_CONFIG", "true")
     svc = WorkspaceConfigService(
         config_manager=tmp_config_manager, session_factory=session_factory
     )

@@ -9,7 +9,7 @@ from api.provider_validation import (
     is_provider_credential_error,
     sanitize_provider_error_content,
 )
-from config.settings import get_openrag_config
+from config.settings import get_bomarag_config
 from dependencies import get_models_service, require_permission
 from session_manager import User
 from utils.logging_config import get_logger
@@ -85,7 +85,7 @@ async def get_openai_models(
         api_key = body.api_key if body else None
         if not api_key:
             try:
-                config = get_openrag_config()
+                config = get_bomarag_config()
                 api_key = config.providers.openai.api_key
             except Exception as e:
                 logger.error(f"Failed to get config: {e}")
@@ -113,7 +113,7 @@ async def get_anthropic_models(
         api_key = body.api_key if body else None
         if not api_key:
             try:
-                config = get_openrag_config()
+                config = get_bomarag_config()
                 api_key = config.providers.anthropic.api_key
             except Exception as e:
                 logger.error(f"Failed to get config: {e}")
@@ -142,7 +142,7 @@ async def get_ollama_models(
     try:
         if not endpoint:
             try:
-                config = get_openrag_config()
+                config = get_bomarag_config()
                 endpoint = config.providers.ollama.endpoint
             except Exception as e:
                 logger.error(f"Failed to get config: {e}")
@@ -171,7 +171,7 @@ async def get_ibm_models(
         endpoint = body.endpoint if body else None
         project_id = body.project_id if body else None
 
-        config = get_openrag_config()
+        config = get_bomarag_config()
         if not api_key:
             try:
                 api_key = config.providers.watsonx.api_key

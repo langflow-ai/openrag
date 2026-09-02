@@ -1,8 +1,8 @@
-# Robots.txt for OpenRAG Documentation
+# Robots.txt for BomaRAG Documentation
 
 # Allow all crawlers
 User-agent: *
 Allow: /
 
 # Sitemap location
-Sitemap: https://docs.openr.ag/sitemap.xml
+Sitemap: https://docs.bomarag.com/sitemap.xml

@@ -235,7 +235,7 @@ async def test_langflow_follow_up_after_error_reuses_store_id(monkeypatch, store
     }
 
     # Client keeps conversation_id after an error but omits previous_response_id
-    # so Langflow starts fresh while OpenRAG appends to the same sidebar thread.
+    # so Langflow starts fresh while BomaRAG appends to the same sidebar thread.
     chunks = await _collect_error_chunks(
         agent_module.async_langflow_chat_stream(
             langflow_client=object(),
@@ -250,7 +250,7 @@ async def test_langflow_follow_up_after_error_reuses_store_id(monkeypatch, store
     assert chunks[0]["error"]["message"] == provider_message
     assert store_in_memory["stored"] == [(user_id, existing_id)]
     assert list(agent_module.active_conversations[user_id].keys()) == [existing_id]
-    # Fresh Langflow session, same OpenRAG conversation id.
+    # Fresh Langflow session, same BomaRAG conversation id.
     assert stream_calls[0].get("previous_response_id") is None
     stored_messages = agent_module.active_conversations[user_id][existing_id]["messages"]
     assert [m["role"] for m in stored_messages if m["role"] != "system"][-2:] == [

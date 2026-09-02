@@ -1,4 +1,4 @@
-"""OPENRAG_SKIP_OS_SECURITY_SETUP gates the init_index() call to
+"""BOMARAG_SKIP_OS_SECURITY_SETUP gates the init_index() call to
 setup_opensearch_security, but does NOT skip index creation.
 
 Three cases:
@@ -36,7 +36,7 @@ def _fake_os_client():
 def _patch_config(monkeypatch, init_mod):
     monkeypatch.setattr(
         init_mod,
-        "get_openrag_config",
+        "get_bomarag_config",
         lambda: SimpleNamespace(
             knowledge=SimpleNamespace(embedding_model="text-embedding-3-small")
         ),
@@ -47,7 +47,7 @@ def _patch_config(monkeypatch, init_mod):
 async def test_security_setup_called_when_flag_false(monkeypatch):
     import utils.opensearch_init as init_mod
 
-    monkeypatch.setattr(init_mod, "OPENRAG_SKIP_OS_SECURITY_SETUP", False)
+    monkeypatch.setattr(init_mod, "BOMARAG_SKIP_OS_SECURITY_SETUP", False)
     monkeypatch.setattr(init_mod, "IBM_AUTH_ENABLED", False)
     monkeypatch.setattr(init_mod, "PLATFORM_AUTH_DEV_MODE", False)
     _patch_config(monkeypatch, init_mod)
@@ -75,7 +75,7 @@ async def test_security_setup_called_when_flag_false(monkeypatch):
 async def test_security_setup_skipped_when_flag_true(monkeypatch):
     import utils.opensearch_init as init_mod
 
-    monkeypatch.setattr(init_mod, "OPENRAG_SKIP_OS_SECURITY_SETUP", True)
+    monkeypatch.setattr(init_mod, "BOMARAG_SKIP_OS_SECURITY_SETUP", True)
     monkeypatch.setattr(init_mod, "IBM_AUTH_ENABLED", False)
     monkeypatch.setattr(init_mod, "PLATFORM_AUTH_DEV_MODE", False)
     _patch_config(monkeypatch, init_mod)
@@ -108,7 +108,7 @@ async def test_index_creation_still_runs_when_flag_true(monkeypatch):
     """Skipping security setup must NOT skip index creation."""
     import utils.opensearch_init as init_mod
 
-    monkeypatch.setattr(init_mod, "OPENRAG_SKIP_OS_SECURITY_SETUP", True)
+    monkeypatch.setattr(init_mod, "BOMARAG_SKIP_OS_SECURITY_SETUP", True)
     monkeypatch.setattr(init_mod, "IBM_AUTH_ENABLED", False)
     monkeypatch.setattr(init_mod, "PLATFORM_AUTH_DEV_MODE", False)
     _patch_config(monkeypatch, init_mod)

@@ -1,5 +1,5 @@
 /*
-Copyright 2026 The OpenRAG Authors.
+Copyright 2026 The BomaRAG Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,9 +24,9 @@ import (
 	sync "sync"
 	time "time"
 
-	versioned "github.com/langflow-ai/openrag-operator/pkg/generated/clientset/versioned"
-	api "github.com/langflow-ai/openrag-operator/pkg/generated/informers/externalversions/api"
-	internalinterfaces "github.com/langflow-ai/openrag-operator/pkg/generated/informers/externalversions/internalinterfaces"
+	versioned "github.com/ABISHAIMWANJA/bomarag-operator/pkg/generated/clientset/versioned"
+	api "github.com/ABISHAIMWANJA/bomarag-operator/pkg/generated/informers/externalversions/api"
+	internalinterfaces "github.com/ABISHAIMWANJA/bomarag-operator/pkg/generated/informers/externalversions/internalinterfaces"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"

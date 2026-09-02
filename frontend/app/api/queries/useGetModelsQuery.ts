@@ -309,7 +309,7 @@ export interface ModelCatalogResponse {
 
 /**
  * LiteLLM's bundled model list, grouped by provider. Static for the tab's
- * lifetime — same as openrag-next's `/agent/model-catalog` fetch.
+ * lifetime — same as bomarag-next's `/agent/model-catalog` fetch.
  */
 export const useGetModelCatalogQuery = (
   options?: Omit<UseQueryOptions<ModelCatalogResponse>, "queryKey" | "queryFn">,

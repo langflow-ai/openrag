@@ -1,5 +1,5 @@
 ---
-title: Invoke OpenRAG with uvx
+title: Invoke BomaRAG with uvx
 slug: /install-uvx
 ---
 
@@ -18,15 +18,15 @@ import PartialOllamaModels from '@site/docs/_partial-ollama-models.mdx';
 import PartialWatsonxModels from '@site/docs/_partial-watsonx-models.mdx';
 import PartialStartTui from '@site/docs/_partial-start-tui.mdx';
 
-Use [`uvx`](https://docs.astral.sh/uv/guides/tools/#running-tools) to invoke OpenRAG outside of a Python project or without modifying your project's dependencies.
+Use [`uvx`](https://docs.astral.sh/uv/guides/tools/#running-tools) to invoke BomaRAG outside of a Python project or without modifying your project's dependencies.
 
-This installation method is best for testing OpenRAG by running it outside of a Python project.
+This installation method is best for testing BomaRAG by running it outside of a Python project.
 For other installation methods, see [Select an installation method](/install-options).
 
-When you install OpenRAG with `uvx`, you will use an [OpenRAG terminal session](/tui) to configure and manage your OpenRAG deployment.
+When you install BomaRAG with `uvx`, you will use an [BomaRAG terminal session](/tui) to configure and manage your BomaRAG deployment.
 
 :::info
-`uvx openrag` installs the latest version of OpenRAG and dependencies, like Docker or Podman, if they aren't already present in your environment.
+`uvx bomarag` installs the latest version of BomaRAG and dependencies, like Docker or Podman, if they aren't already present in your environment.
 :::
 
 ## Prerequisites
@@ -41,48 +41,48 @@ When you install OpenRAG with `uvx`, you will use an [OpenRAG terminal session](
 
 <PartialPrereqGpu />
 
-## Install and run OpenRAG with uvx
+## Install and run BomaRAG with uvx
 
-1. Create a directory for your OpenRAG configuration files and data, and then change to that directory:
-
-   ```bash
-   mkdir openrag-workspace
-   cd openrag-workspace
-   ```
-
-2. Optional: If you want to use a pre-populated [OpenRAG `.env` file](/reference/configuration), create one at `~/.openrag/tui` before invoking OpenRAG.
-
-3. Invoke OpenRAG and install any missing dependencies:
+1. Create a directory for your BomaRAG configuration files and data, and then change to that directory:
 
    ```bash
-   uvx --python 3.13 openrag
+   mkdir bomarag-workspace
+   cd bomarag-workspace
    ```
 
-   You can invoke a specific version using any of the [`uvx` version specifiers](https://docs.astral.sh/uv/guides/tools/#requesting-specific-versions), such as `uvx --from openrag==0.1.30 openrag`.
+2. Optional: If you want to use a pre-populated [BomaRAG `.env` file](/reference/configuration), create one at `~/.bomarag/tui` before invoking BomaRAG.
+
+3. Invoke BomaRAG and install any missing dependencies:
+
+   ```bash
+   uvx --python 3.13 bomarag
+   ```
+
+   You can invoke a specific version using any of the [`uvx` version specifiers](https://docs.astral.sh/uv/guides/tools/#requesting-specific-versions), such as `uvx --from bomarag==0.1.30 bomarag`.
 
    <PartialStartTui />
 
 4. If needed, respond to any prompts to install and configure dependencies like Docker or Podman.
 
 The entire setup process can take a few minutes.
-Once the environment is ready, the OpenRAG terminal session starts.
+Once the environment is ready, the BomaRAG terminal session starts.
 
-Invoking OpenRAG with `uvx openrag` creates a cached, ephemeral environment for the terminal session in your local `uv` cache.
-Your OpenRAG configuration files and data are stored in `~/.openrag`, which is separate from the `uv` cache.
-Clearing the `uv` cache doesn't remove your entire OpenRAG installation; it only clears `uv` dependencies.
-After clearing the cache, you can re-invoke OpenRAG (`uvx openrag`) to restart the terminal session with your preserved configuration and data.
+Invoking BomaRAG with `uvx bomarag` creates a cached, ephemeral environment for the terminal session in your local `uv` cache.
+Your BomaRAG configuration files and data are stored in `~/.bomarag`, which is separate from the `uv` cache.
+Clearing the `uv` cache doesn't remove your entire BomaRAG installation; it only clears `uv` dependencies.
+After clearing the cache, you can re-invoke BomaRAG (`uvx bomarag`) to restart the terminal session with your preserved configuration and data.
 
-If you encounter errors during installation, see [Troubleshoot OpenRAG](/support/troubleshoot).
+If you encounter errors during installation, see [Troubleshoot BomaRAG](/support/troubleshoot).
 
-## Configure OpenRAG in the terminal {#setup}
+## Configure BomaRAG in the terminal {#setup}
 
-When you install OpenRAG with `uvx`, you manage the OpenRAG services in an OpenRAG terminal session.
-The terminal session guides you through the initial configuration process before you start the OpenRAG services.
+When you install BomaRAG with `uvx`, you manage the BomaRAG services in an BomaRAG terminal session.
+The terminal session guides you through the initial configuration process before you start the BomaRAG services.
 
-Your configuration values are stored in an [OpenRAG `.env` file](/reference/configuration) that is created automatically at `~/.openrag/tui`.
-If OpenRAG detects an existing `.env` file in this directory, then OpenRAG can populate those values automatically during setup and onboarding.
+Your configuration values are stored in an [BomaRAG `.env` file](/reference/configuration) that is created automatically at `~/.bomarag/tui`.
+If BomaRAG detects an existing `.env` file in this directory, then BomaRAG can populate those values automatically during setup and onboarding.
 
-Container definitions are stored in the `docker-compose` files in the same directory as the OpenRAG `.env` file.
+Container definitions are stored in the `docker-compose` files in the same directory as the BomaRAG `.env` file.
 
 <PartialSetup />
 

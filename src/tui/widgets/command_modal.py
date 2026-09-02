@@ -1,4 +1,4 @@
-"""Command output modal dialog for OpenRAG TUI."""
+"""Command output modal dialog for BomaRAG TUI."""
 
 import asyncio
 import inspect
@@ -185,7 +185,7 @@ class CommandOutputModal(ModalScreen):
             title: Title of the modal dialog
             command_generator: Async generator that yields (is_complete, message) or (is_complete, message, replace_last) tuples
             on_complete: Optional callback to run when command completes
-            show_launch_button: Whether to show the Launch OpenRAG button on success
+            show_launch_button: Whether to show the Launch BomaRAG button on success
         """
         super().__init__()
         self.title_text = title
@@ -235,13 +235,13 @@ class CommandOutputModal(ModalScreen):
         elif event.button.id == "copy-btn":
             self.copy_to_clipboard()
         elif event.button.id == "launch-btn":
-            self._launch_openrag()
+            self._launch_bomarag()
 
-    def _launch_openrag(self) -> None:
-        """Open the OpenRAG app in the default browser."""
+    def _launch_bomarag(self) -> None:
+        """Open the BomaRAG app in the default browser."""
         try:
             webbrowser.open(f"http://localhost:{os.getenv('FRONTEND_PORT', '3000')}")
-            self.notify("Opening OpenRAG app in browser...", severity="information")
+            self.notify("Opening BomaRAG app in browser...", severity="information")
         except Exception as e:
             self.notify(f"Error opening app: {e}", severity="error")
 
@@ -326,7 +326,7 @@ class CommandOutputModal(ModalScreen):
                         button_row = self.query_one("#button-row", Horizontal)
                         close_btn = self.query_one("#close-btn", Button)
                         launch_btn = Button(
-                            "Launch OpenRAG", variant="success", id="launch-btn"
+                            "Launch BomaRAG", variant="success", id="launch-btn"
                         )
                         button_row.mount(launch_btn, before=close_btn)
 

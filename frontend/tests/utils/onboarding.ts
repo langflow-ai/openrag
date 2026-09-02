@@ -170,7 +170,7 @@ export async function completeOnboarding(
   // 2. Embeddings configuration
   await setupProvider(embeddingProvider, true);
 
-  // 3. What is OpenRAG (Tutorial)
+  // 3. What is BomaRAG (Tutorial)
   await expect(
     page.getByText("Excellent, let's move on to learning the basics."),
   ).toBeVisible();
@@ -181,13 +181,13 @@ export async function completeOnboarding(
   await page.getByTestId("suggestion-0").click();
 
   await expect(page.getByTestId("user-message").first()).toHaveText(
-    "What is OpenRAG?",
+    "What is BomaRAG?",
   );
-  const openRagAnswer = page.getByText("is an open-source package");
-  await expect(page.getByText("Thinking").or(openRagAnswer)).toBeVisible({
+  const bomaRagAnswer = page.getByText("is an open-source package");
+  await expect(page.getByText("Thinking").or(bomaRagAnswer)).toBeVisible({
     timeout: 60000,
   });
-  await expect(openRagAnswer).toBeVisible({
+  await expect(bomaRagAnswer).toBeVisible({
     timeout: 60000,
   });
 

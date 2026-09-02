@@ -70,7 +70,7 @@ async def test_upload_ingest_router_ignores_preview_when_disabled():
     mock_temp_file.name = "/tmp/sample.pdf"
 
     with (
-        patch("api.router.get_openrag_config") as mock_cfg,
+        patch("api.router.get_bomarag_config") as mock_cfg,
         patch("api.router.tempfile.NamedTemporaryFile", return_value=mock_temp_file),
         patch("api.router.open", create=True),
         patch("utils.file_utils.safe_unlink"),

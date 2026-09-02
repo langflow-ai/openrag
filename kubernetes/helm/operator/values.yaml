@@ -1,10 +1,10 @@
-# Default values for openrag-operator
+# Default values for bomarag-operator
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 
 # Operator image configuration
 image:
-  repository: ghcr.io/langflow-ai/openrag-operator
+  repository: ghcr.io/ABISHAIMWANJA/bomarag-operator
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
   tag: "latest"

@@ -10,7 +10,7 @@ import pytest_asyncio
 
 pytestmark = [
     pytest.mark.asyncio,
-    pytest.mark.openrag_skip_app_onboard,
+    pytest.mark.bomarag_skip_app_onboard,
 ]
 
 
@@ -43,7 +43,7 @@ _RELOAD_MODULES = [
 _EXCLUDED_DEFAULT_DOCS = {"warmup_ocr.pdf"}
 
 
-def _reload_openrag_modules() -> None:
+def _reload_bomarag_modules() -> None:
     for module_name in _RELOAD_MODULES:
         sys.modules.pop(module_name, None)
 
@@ -72,7 +72,7 @@ async def isolated_onboarding_docs_workspace(tmp_path: Path, monkeypatch):
             "ANTHROPIC_API_KEY is required for onboarding sample-doc ingestion (ibm_anthropic.pdf)"
         )
 
-    docs_dir = Path(__file__).resolve().parents[3] / "openrag-documents"
+    docs_dir = Path(__file__).resolve().parents[3] / "bomarag-documents"
     expected_filenames = sorted(
         path.name
         for path in docs_dir.rglob("*")
@@ -88,30 +88,30 @@ async def isolated_onboarding_docs_workspace(tmp_path: Path, monkeypatch):
         directory.mkdir()
 
     index_name = f"documents_onboarding_sample_{uuid4().hex}"
-    db_path = tmp_path / "openrag.db"
+    db_path = tmp_path / "bomarag.db"
 
     monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///{db_path}")
-    monkeypatch.setenv("OPENRAG_CONFIG_PATH", str(config_dir))
-    monkeypatch.setenv("OPENRAG_DATA_PATH", str(data_dir))
-    monkeypatch.setenv("OPENRAG_DOCUMENTS_PATH", str(docs_dir))
-    monkeypatch.setenv("OPENRAG_KEYS_PATH", str(keys_dir))
+    monkeypatch.setenv("BOMARAG_CONFIG_PATH", str(config_dir))
+    monkeypatch.setenv("BOMARAG_DATA_PATH", str(data_dir))
+    monkeypatch.setenv("BOMARAG_DOCUMENTS_PATH", str(docs_dir))
+    monkeypatch.setenv("BOMARAG_KEYS_PATH", str(keys_dir))
     monkeypatch.setenv("OPENSEARCH_INDEX_NAME", index_name)
     monkeypatch.setenv("INGEST_SAMPLE_DATA", "true")
     monkeypatch.setenv("DEFAULT_DOCS_INGEST_SOURCE", "files")
     monkeypatch.setenv("DISABLE_INGEST_WITH_LANGFLOW", "false")
     monkeypatch.setenv("DISABLE_STARTUP_INGEST", "true")
-    monkeypatch.setenv("FETCH_OPENRAG_DOCS_AT_STARTUP", "false")
+    monkeypatch.setenv("FETCH_BOMARAG_DOCS_AT_STARTUP", "false")
     monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_ID", "")
     monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_SECRET", "")
-    monkeypatch.setenv("OPENRAG_NOAUTH_ROLE", "admin")
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
+    monkeypatch.setenv("BOMARAG_NOAUTH_ROLE", "admin")
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "true")
 
     from db.engine import dispose_engine
     from dependencies import invalidate_user_ensured_cache
 
     await dispose_engine()
     invalidate_user_ensured_cache()
-    _reload_openrag_modules()
+    _reload_bomarag_modules()
     await _require_langflow_ready()
 
     try:
@@ -133,7 +133,7 @@ async def isolated_onboarding_docs_workspace(tmp_path: Path, monkeypatch):
             pass
         await dispose_engine()
         invalidate_user_ensured_cache()
-        _reload_openrag_modules()
+        _reload_bomarag_modules()
 
 
 async def _wait_for_task(task_service, task_id: str, timeout_s: float = 900.0) -> dict:
@@ -164,7 +164,7 @@ async def _post_onboarding_when_langflow_ready(
     return last_response
 
 
-async def test_onboarding_ingests_sample_docs_and_creates_openrag_docs_filter(
+async def test_onboarding_ingests_sample_docs_and_creates_bomarag_docs_filter(
     isolated_onboarding_docs_workspace,
 ):
     from config.settings import clients, config_manager
@@ -200,7 +200,7 @@ async def test_onboarding_ingests_sample_docs_and_creates_openrag_docs_filter(
         payload = response.json()
         assert payload["sample_data_ingested"] is True
         assert payload["task_id"]
-        assert payload["openrag_docs_filter_id"]
+        assert payload["bomarag_docs_filter_id"]
 
         task_status = await _wait_for_task(app.state.services["task_service"], payload["task_id"])
         assert task_status["status"] == "completed"
@@ -210,8 +210,8 @@ async def test_onboarding_ingests_sample_docs_and_creates_openrag_docs_filter(
         assert task_status["failed_files"] == 0
 
         config = config_manager.get_config()
-        assert config.onboarding.openrag_docs_filter_id == payload["openrag_docs_filter_id"]
-        assert config.onboarding.openrag_docs_ingested_version
+        assert config.onboarding.bomarag_docs_filter_id == payload["bomarag_docs_filter_id"]
+        assert config.onboarding.bomarag_docs_ingested_version
 
         await clients.opensearch.indices.refresh(
             index=isolated_onboarding_docs_workspace["index_name"]

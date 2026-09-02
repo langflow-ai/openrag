@@ -33,11 +33,11 @@ def _find_node_by_display_name(flow: dict, display_name: str):
 
 
 def test_agent_flow_has_agent_node_with_system_prompt():
-    """The Agent node must exist in openrag_agent.json and expose a system_prompt field."""
-    flow = _load_flow("flows/openrag_agent.json")
+    """The Agent node must exist in bomarag_agent.json and expose a system_prompt field."""
+    flow = _load_flow("flows/bomarag_agent.json")
     agent_node = _find_node_by_display_name(flow, "Agent")
 
-    assert agent_node is not None, "No node with display_name='Agent' found in openrag_agent.json"
+    assert agent_node is not None, "No node with display_name='Agent' found in bomarag_agent.json"
     template = agent_node.get("data", {}).get("node", {}).get("template", {})
     assert "system_prompt" in template, (
         "Agent node does not have a system_prompt field in its template"
@@ -50,7 +50,7 @@ async def test_update_chat_flow_system_prompt_updates_agent_node(monkeypatch):
     from services.flows_service import FlowsService
 
     get_response = MagicMock(status_code=200)
-    get_response.json.return_value = _load_flow("flows/openrag_agent.json")
+    get_response.json.return_value = _load_flow("flows/bomarag_agent.json")
     patch_response = MagicMock(status_code=200)
 
     request = AsyncMock(side_effect=[get_response, patch_response])
@@ -78,7 +78,7 @@ async def test_get_chat_flow_system_prompt_success(monkeypatch):
     from services.flows_service import FlowsService
 
     get_response = MagicMock(status_code=200)
-    get_response.json.return_value = _load_flow("flows/openrag_agent.json")
+    get_response.json.return_value = _load_flow("flows/bomarag_agent.json")
 
     request = AsyncMock(return_value=get_response)
     monkeypatch.setattr("services.flows_service.LANGFLOW_CHAT_FLOW_ID", "test-flow-id")
@@ -125,7 +125,7 @@ async def test_update_chat_flow_system_prompt_expected_mismatch_raises(monkeypat
     """update_chat_flow_system_prompt raises Exception when expected_prompt does not match remote value."""
     from services.flows_service import FlowsService
 
-    flow = _load_flow("flows/openrag_agent.json")
+    flow = _load_flow("flows/bomarag_agent.json")
     get_response = MagicMock(status_code=200)
     get_response.json.return_value = flow
 

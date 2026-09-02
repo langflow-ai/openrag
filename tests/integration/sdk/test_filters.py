@@ -10,7 +10,7 @@ import uuid
 from pathlib import Path
 
 import pytest
-from openrag_sdk.exceptions import OpenRAGError
+from bomarag_sdk.exceptions import BomaRAGError
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("SKIP_SDK_INTEGRATION_TESTS") == "true",
@@ -204,7 +204,7 @@ class TestFilterIdInChat:
     @pytest.mark.asyncio
     async def test_filter_id_not_found_chat(self, client):
         """A non-existent filter_id surfaces as a 404-class error."""
-        with pytest.raises(OpenRAGError):
+        with pytest.raises(BomaRAGError):
             await client.chat.create(
                 message="hi",
                 filter_id=f"does-not-exist-{uuid.uuid4().hex}",
@@ -256,7 +256,7 @@ class TestFilterIdInSearch:
     @pytest.mark.asyncio
     async def test_filter_id_not_found_search(self, client):
         """A non-existent filter_id on search surfaces as an error."""
-        with pytest.raises(OpenRAGError):
+        with pytest.raises(BomaRAGError):
             await client.search.query(
                 "anything",
                 filter_id=f"does-not-exist-{uuid.uuid4().hex}",

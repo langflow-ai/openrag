@@ -22,40 +22,40 @@ For example, it is typical to upload some documents with OCR enabled and others 
 
 ## Select a Docling implementation {#select-a-docling-implementation}
 
-OpenRAG uses [Docling](https://docling-project.github.io/docling/) for document ingestion.
+BomaRAG uses [Docling](https://docling-project.github.io/docling/) for document ingestion.
 Docling processes files, splits them into chunks, and stores them as separate, structured documents in your OpenSearch knowledge base.
 
-You can configure OpenRAG to use either a Docling Serve service or a Docling processor pipeline for document processing:
+You can configure BomaRAG to use either a Docling Serve service or a Docling processor pipeline for document processing:
 
-* **Docling Serve ingestion**: By default, OpenRAG uses [Docling Serve](https://github.com/docling-project/docling-serve).
-When you start OpenRAG, a local `docling serve` process starts, and then OpenRAG runs Docling ingestion through the Docling Serve API.
+* **Docling Serve ingestion**: By default, BomaRAG uses [Docling Serve](https://github.com/docling-project/docling-serve).
+When you start BomaRAG, a local `docling serve` process starts, and then BomaRAG runs Docling ingestion through the Docling Serve API.
 
-   To use a remote `docling serve` instance or your own local instance, set `DOCLING_SERVE_URL=http://HOST_IP:5001` in your [OpenRAG `.env` file](/reference/configuration#document-processing-settings).
+   To use a remote `docling serve` instance or your own local instance, set `DOCLING_SERVE_URL=http://HOST_IP:5001` in your [BomaRAG `.env` file](/reference/configuration#document-processing-settings).
    The service must run on port 5001.
 
-   For terminal-managed deployments, the OpenRAG terminal session can alert you if `docling serve` isn't running or isn't detected by OpenRAG.
-   You can also use the terminal's **Show status** option to [inspect and manage the OpenRAG services](/manage-services).
+   For terminal-managed deployments, the BomaRAG terminal session can alert you if `docling serve` isn't running or isn't detected by BomaRAG.
+   You can also use the terminal's **Show status** option to [inspect and manage the BomaRAG services](/manage-services).
 
 * **Docling processor ingestion**: Instead of using a separate Docling Serve service and the Docling Serve API, you can use the Docling processor directly.
-To do this, set `DISABLE_INGEST_WITH_LANGFLOW=true` in your [OpenRAG `.env` file](/reference/configuration#document-processing-settings), and then [restart the OpenRAG services](/manage-services).
-For the underlying functionality for this option, see [`processors.py`](https://github.com/langflow-ai/openrag/blob/main/src/models/processors.py#L58) in the OpenRAG repository.
+To do this, set `DISABLE_INGEST_WITH_LANGFLOW=true` in your [BomaRAG `.env` file](/reference/configuration#document-processing-settings), and then [restart the BomaRAG services](/manage-services).
+For the underlying functionality for this option, see [`processors.py`](https://github.com/ABISHAIMWANJA/bomarag/blob/main/src/models/processors.py#L58) in the BomaRAG repository.
 
 ## Set the embedding model and dimensions {#set-the-embedding-model-and-dimensions}
 
-When you install OpenRAG, you select at least one embedding model during the [application onboarding process](/install-uvx#application-onboarding).
-OpenRAG automatically detects and configures the appropriate vector dimensions for your selected embedding model, ensuring optimal search performance and compatibility.
+When you install BomaRAG, you select at least one embedding model during the [application onboarding process](/install-uvx#application-onboarding).
+BomaRAG automatically detects and configures the appropriate vector dimensions for your selected embedding model, ensuring optimal search performance and compatibility.
 
-After onboarding, you can change the embedding model on the OpenRAG <Icon name="Settings2" aria-hidden="true"/> **Settings** page.
-OpenRAG automatically updates all relevant [OpenRAG flows](/agents) to use the selected embedding model and dimensions when ingesting documents.
+After onboarding, you can change the embedding model on the BomaRAG <Icon name="Settings2" aria-hidden="true"/> **Settings** page.
+BomaRAG automatically updates all relevant [BomaRAG flows](/agents) to use the selected embedding model and dimensions when ingesting documents.
 
 You can only select models that are available from your configured model providers, such as an Ollama instance or an OpenAI account.
 For more information, see [Troubleshoot model availability and performance issues](/support/troubleshoot#model-availability-and-performance-issues).
 
-Because the OpenRAG UI validates model availability and compatibility, setting models directly in the [OpenRAG `.env` file](/reference/configuration) isn't recommended.
+Because the BomaRAG UI validates model availability and compatibility, setting models directly in the [BomaRAG `.env` file](/reference/configuration) isn't recommended.
 
 ### Documents aren't reingested after changing the embedding model
 
-OpenRAG _doesn't_ reprocess existing documents when you change, add, or remove embedding models.
+BomaRAG _doesn't_ reprocess existing documents when you change, add, or remove embedding models.
 
 If you want to generate new embeddings for existing documents, you must reupload the documents after enabling the new embedding model.
 
@@ -63,11 +63,11 @@ To remove previously generated embeddings, you must remove the existing document
 
 ### Best practices for multiple embedding models {#best-practices-for-multiple-embedding-models}
 
-* **Make sure the active embedding model is correct before ingesting documents**: For ingestion, OpenRAG allows only one active embedding model at a time.
+* **Make sure the active embedding model is correct before ingesting documents**: For ingestion, BomaRAG allows only one active embedding model at a time.
 The active model is set on the <Icon name="Settings2" aria-hidden="true"/> **Settings** page.
 
-* **Chat searches take longer with multiple embedding models**: OpenRAG **Chat** can use multiple embedding models, regardless of the active model for ingestion.
-If your OpenRAG knowledge base has documents with embeddings from different embedding models, the agent runs a separate similarity search against each model's embeddings, and then prepares a unified set of search results.
+* **Chat searches take longer with multiple embedding models**: BomaRAG **Chat** can use multiple embedding models, regardless of the active model for ingestion.
+If your BomaRAG knowledge base has documents with embeddings from different embedding models, the agent runs a separate similarity search against each model's embeddings, and then prepares a unified set of search results.
 Be aware that this can increase processing time for chat responses.
 
 * **Use filters to exclude unrelated models**: You can create [filters](/knowledge-filters) to separate documents that were embedded with different models.
@@ -77,7 +77,7 @@ This can save time and improve the relevance of search results because the agent
 * **Unavailable embedding models can cause errors**: Errors can occur in **Chat** if you an embedding model is unavailable _and_ your knowledge base contains documents with embeddings generated by that model.
 Similarly, errors can occur with ingestion if the active embedding model (on the <Icon name="Settings2" aria-hidden="true"/> **Settings** page) is unavailable.
 
-Models become unavailable when you remove an embedding model or provider from the OpenRAG <Icon name="Settings2" aria-hidden="true"/> **Settings** page, your model provider credentials are expired or invalid, or there are network issues preventing access to the model.
+Models become unavailable when you remove an embedding model or provider from the BomaRAG <Icon name="Settings2" aria-hidden="true"/> **Settings** page, your model provider credentials are expired or invalid, or there are network issues preventing access to the model.
 
 If you remove a model or provider that you don't want to use anymore, it is recommended that you [remove documents](/knowledge-browse#delete-documents) that were embedded with the unavailable model.
 If you don't remove or [filters](/knowledge-filters) these documents, then **Chat** responses can fail or return incomplete results.
@@ -85,7 +85,7 @@ This is because the agent cannot access the model to generate a query embedding 
 
 ## Set the chunking strategy
 
-You can edit the following settings on the OpenRAG <Icon name="Settings2" aria-hidden="true"/> **Settings** page in the **Knowledge Ingest** section:
+You can edit the following settings on the BomaRAG <Icon name="Settings2" aria-hidden="true"/> **Settings** page in the **Knowledge Ingest** section:
 
 * **Chunk size**: Set the average number of characters for each text chunk when breaking down a file.
 
@@ -118,34 +118,34 @@ You can edit the following settings on the OpenRAG <Icon name="Settings2" aria-h
 
 ## Configure table parsing
 
-You can edit the following setting on the OpenRAG <Icon name="Settings2" aria-hidden="true"/> **Settings** page in the **Knowledge Ingest** section:
+You can edit the following setting on the BomaRAG <Icon name="Settings2" aria-hidden="true"/> **Settings** page in the **Knowledge Ingest** section:
 
 * **Table structure**: Enables Docling's [`DocumentConverter`](https://docling-project.github.io/docling/reference/document_converter/) tool for parsing tables. Instead of treating tables as plain text, tables are output as structured table data with preserved relationships and metadata. This option is enabled by default.
 
 ## Configure OCR and image processing
 
-You can edit the following settings on the OpenRAG <Icon name="Settings2" aria-hidden="true"/> **Settings** page in the **Knowledge Ingest** section:
+You can edit the following settings on the BomaRAG <Icon name="Settings2" aria-hidden="true"/> **Settings** page in the **Knowledge Ingest** section:
 
 * **OCR**: Enables Optical Character Recognition (OCR) processing when extracting text from images and ingesting scanned documents. This setting is best suited for processing text-based documents faster with Docling's [`DocumentConverter`](https://docling-project.github.io/docling/reference/document_converter/). Images are ignored and not processed.
 
    This option is disabled by default. Enabling OCR can slow ingestion performance.
 
-   If OpenRAG detects that the local machine is running on macOS, OpenRAG uses the [ocrmac](https://www.piwheels.org/project/ocrmac/) OCR engine. Other platforms use [easyocr](https://www.jaided.ai/easyocr/).
+   If BomaRAG detects that the local machine is running on macOS, BomaRAG uses the [ocrmac](https://www.piwheels.org/project/ocrmac/) OCR engine. Other platforms use [easyocr](https://www.jaided.ai/easyocr/).
 
 * **Picture descriptions**: Only applicable if **OCR** is enabled. Adds image descriptions generated by the [`SmolVLM-256M-Instruct`](https://huggingface.co/HuggingFaceTB/SmolVLM-Instruct) model. Enabling picture descriptions can slow ingestion performance.
 
 ## Set the local documents path {#set-the-local-documents-path}
 
-The local documents paths is set when you install OpenRAG and start the OpenRAG services.
+The local documents paths is set when you install BomaRAG and start the BomaRAG services.
 
-The default path for local uploads is `~/.openrag/documents`.
-This is mounted to the `/app/openrag-documents/` directory inside the OpenRAG container.
+The default path for local uploads is `~/.bomarag/documents`.
+This is mounted to the `/app/bomarag-documents/` directory inside the BomaRAG container.
 Files added to the host or container directory are visible in both locations.
 
-To change this location, modify either of the following, and then [restart the OpenRAG services](/manage-services):
+To change this location, modify either of the following, and then [restart the BomaRAG services](/manage-services):
 
 * The **Documents Paths** setting in the [**Reconfigure** terminal option](/install-uvx#setup)
-* The `OPENRAG_DOCUMENTS_PATH` variable in the [OpenRAG `.env` file](/reference/configuration).
+* The `BOMARAG_DOCUMENTS_PATH` variable in the [BomaRAG `.env` file](/reference/configuration).
 
 ## See also
 

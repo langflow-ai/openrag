@@ -38,7 +38,7 @@ import type {
 import { INITIAL_ASSISTANT_MESSAGE } from "./_types/types";
 
 function ChatPage() {
-  const isDebugMode = process.env.NEXT_PUBLIC_OPENRAG_DEBUG === "true";
+  const isDebugMode = process.env.NEXT_PUBLIC_BOMARAG_DEBUG === "true";
   const {
     endpoint,
     setEndpoint,
@@ -638,7 +638,7 @@ function ChatPage() {
         })()
       : undefined;
 
-    // OpenRAG sidebar thread vs Langflow session are separate:
+    // BomaRAG sidebar thread vs Langflow session are separate:
     // - conversationId keeps the same list entry after errors
     // - previousResponseId is omitted after an error so Langflow starts fresh
     const lastAssistant = [...messages]

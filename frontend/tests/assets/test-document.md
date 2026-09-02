@@ -1,6 +1,6 @@
-OpenRAG Project Overview
+BomaRAG Project Overview
 
-OpenRAG is a platform designed to simplify the creation of agentic RAG systems.
+BomaRAG is a platform designed to simplify the creation of agentic RAG systems.
 It integrates seamlessly with various LLM providers and vector databases to provide a robust knowledge base for AI agents.
 
 Key features include:
@@ -12,4 +12,4 @@ Key features include:
 Keywords: "AgenticRAG", "VectorDB", "Embedding", "LLM-Orchestration", "SemanticSearch".
 
 This document serves as a verification asset for automated testing procedures.
-ID: OPENRAG-GENERIC-ASSET-001
+ID: BOMARAG-GENERIC-ASSET-001

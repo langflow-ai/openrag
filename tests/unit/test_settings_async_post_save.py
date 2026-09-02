@@ -52,7 +52,7 @@ async def test_update_settings_retains_background_task_reference(monkeypatch):
         coro.close()
         return fake_task
 
-    monkeypatch.setattr(settings_api, "get_openrag_config", lambda: config, raising=True)
+    monkeypatch.setattr(settings_api, "get_bomarag_config", lambda: config, raising=True)
     monkeypatch.setattr(
         settings_api.config_manager,
         "save_config_file",
@@ -101,7 +101,7 @@ async def test_provider_removal_triggers_mcp_server_update(monkeypatch):
         coro.close()
         return fake_task
 
-    monkeypatch.setattr(settings_api, "get_openrag_config", lambda: config, raising=True)
+    monkeypatch.setattr(settings_api, "get_bomarag_config", lambda: config, raising=True)
     monkeypatch.setattr(
         settings_api.config_manager,
         "save_config_file",

@@ -1,4 +1,4 @@
-"""OPENRAG_SKIP_OS_SECURITY_SETUP gates the startup_orchestrator call to
+"""BOMARAG_SKIP_OS_SECURITY_SETUP gates the startup_orchestrator call to
 setup_opensearch_security.
 
 Two cases:
@@ -32,7 +32,7 @@ async def test_setup_runs_when_flag_false(monkeypatch):
     """Default (flag false): setup_opensearch_security is called."""
     import services.startup_orchestrator as orchestrator
 
-    monkeypatch.setattr(orchestrator, "OPENRAG_SKIP_OS_SECURITY_SETUP", False)
+    monkeypatch.setattr(orchestrator, "BOMARAG_SKIP_OS_SECURITY_SETUP", False)
     monkeypatch.setattr(orchestrator, "DISABLE_INGEST_WITH_LANGFLOW", False)
     # IBM_AUTH_ENABLED is imported lazily inside startup_tasks().
     monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", False, raising=False)
@@ -54,7 +54,7 @@ async def test_setup_runs_when_flag_false(monkeypatch):
         # short-circuits both the recovery init_index and the flow check.
         with patch.object(
             orchestrator,
-            "get_openrag_config",
+            "get_bomarag_config",
             MagicMock(
                 return_value=MagicMock(edited=False, knowledge=MagicMock(embedding_model=None))
             ),
@@ -69,7 +69,7 @@ async def test_setup_runs_when_flag_false(monkeypatch):
             await orchestrator.startup_tasks(services)
 
     assert setup_mock.await_count == 1, (
-        "setup_opensearch_security must run when OPENRAG_SKIP_OS_SECURITY_SETUP is false"
+        "setup_opensearch_security must run when BOMARAG_SKIP_OS_SECURITY_SETUP is false"
     )
 
 
@@ -78,7 +78,7 @@ async def test_setup_skipped_when_flag_true(monkeypatch):
     """Flag true: setup_opensearch_security is NOT called."""
     import services.startup_orchestrator as orchestrator
 
-    monkeypatch.setattr(orchestrator, "OPENRAG_SKIP_OS_SECURITY_SETUP", True)
+    monkeypatch.setattr(orchestrator, "BOMARAG_SKIP_OS_SECURITY_SETUP", True)
     monkeypatch.setattr(orchestrator, "DISABLE_INGEST_WITH_LANGFLOW", False)
     monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", False, raising=False)
 
@@ -103,7 +103,7 @@ async def test_setup_skipped_when_flag_true(monkeypatch):
     ):
         with patch.object(
             orchestrator,
-            "get_openrag_config",
+            "get_bomarag_config",
             MagicMock(
                 return_value=MagicMock(edited=False, knowledge=MagicMock(embedding_model=None))
             ),
@@ -118,7 +118,7 @@ async def test_setup_skipped_when_flag_true(monkeypatch):
             await orchestrator.startup_tasks(services)
 
     assert setup_mock.await_count == 0, (
-        "setup_opensearch_security must NOT run when OPENRAG_SKIP_OS_SECURITY_SETUP is true"
+        "setup_opensearch_security must NOT run when BOMARAG_SKIP_OS_SECURITY_SETUP is true"
     )
     info_messages = [call.args[0] for call in logger_spy.info.call_args_list if call.args]
     assert any("Skipping OpenSearch security setup at startup" in msg for msg in info_messages), (

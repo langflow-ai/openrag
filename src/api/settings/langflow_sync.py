@@ -19,7 +19,7 @@ from api.settings.helpers import (
     _get_flows_service,
 )
 from config import settings
-from config.settings import clients, get_openrag_config
+from config.settings import clients, get_bomarag_config
 from services.docling_service import get_docling_preset_configs
 from utils.logging_config import get_logger
 
@@ -33,7 +33,7 @@ LANGFLOW_CREDENTIAL_GLOBAL_VARIABLES = frozenset(
     {
         "JWT",
         "OPENAI_API_KEY",
-        "OPENRAG_LLM_TOKEN",
+        "BOMARAG_LLM_TOKEN",
         "OPENSEARCH_PASSWORD",
     }
 )
@@ -45,12 +45,12 @@ LANGFLOW_GENERIC_GLOBAL_VARIABLES = frozenset(
         "DOCLING_TASK_ID",
         "FILESIZE",
         "MIMETYPE",
-        "OPENRAG-QUERY-FILTER",
-        "OPENRAG_INGEST_BATCH_SIZE",
-        "OPENRAG_INGEST_RUN_ID",
-        "OPENRAG_INGEST_TOKEN",
-        "OPENRAG_INGEST_URL",
-        "OPENRAG_LLM_BASE_URL",
+        "BOMARAG-QUERY-FILTER",
+        "BOMARAG_INGEST_BATCH_SIZE",
+        "BOMARAG_INGEST_RUN_ID",
+        "BOMARAG_INGEST_TOKEN",
+        "BOMARAG_INGEST_URL",
+        "BOMARAG_LLM_BASE_URL",
         "OPENSEARCH_INDEX_NAME",
         "OPENSEARCH_URL",
         "SELECTED_EMBEDDING_MODEL",
@@ -90,12 +90,12 @@ def _required_generic_global_values(config) -> dict[str, str]:
         "DOCLING_TASK_ID": "None",
         "FILESIZE": "0",
         "MIMETYPE": "None",
-        "OPENRAG-QUERY-FILTER": "{}",
-        "OPENRAG_INGEST_BATCH_SIZE": "100",
-        "OPENRAG_INGEST_RUN_ID": "OPENRAG_INGEST_RUN_ID",
-        "OPENRAG_INGEST_TOKEN": "OPENRAG_INGEST_TOKEN",
-        "OPENRAG_INGEST_URL": "OPENRAG_INGEST_URL",
-        "OPENRAG_LLM_BASE_URL": settings.get_langflow_llm_base_url(),
+        "BOMARAG-QUERY-FILTER": "{}",
+        "BOMARAG_INGEST_BATCH_SIZE": "100",
+        "BOMARAG_INGEST_RUN_ID": "BOMARAG_INGEST_RUN_ID",
+        "BOMARAG_INGEST_TOKEN": "BOMARAG_INGEST_TOKEN",
+        "BOMARAG_INGEST_URL": "BOMARAG_INGEST_URL",
+        "BOMARAG_LLM_BASE_URL": settings.get_langflow_llm_base_url(),
         "OPENSEARCH_INDEX_NAME": _string_value(getattr(knowledge, "index_name", None))
         or "documents",
         "OPENSEARCH_URL": settings.get_langflow_opensearch_url(),
@@ -114,7 +114,7 @@ def _required_generic_global_values(config) -> dict[str, str]:
 # headers overwrite it with the hop token on each Langflow run.
 LANGFLOW_RUNTIME_CREDENTIAL_PLACEHOLDERS = frozenset(
     {
-        "OPENRAG_LLM_TOKEN",
+        "BOMARAG_LLM_TOKEN",
     }
 )
 LANGFLOW_RUNTIME_CREDENTIAL_PLACEHOLDER_VALUE = "None"
@@ -125,7 +125,7 @@ async def ensure_required_langflow_global_variables(config=None):
 
     Credential placeholders stay non-empty so Langflow can resolve load_from_db fields.
     """
-    config = config or get_openrag_config()
+    config = config or get_bomarag_config()
     required_values = _required_generic_global_values(config)
 
     existing_by_name = {}
@@ -282,7 +282,7 @@ async def _update_langflow_global_variables(config, flows_service=None):
             )
             errors.append(f"{name}: {e}")
 
-    await _safe_upsert("OPENRAG_LLM_BASE_URL", settings.get_langflow_llm_base_url())
+    await _safe_upsert("BOMARAG_LLM_BASE_URL", settings.get_langflow_llm_base_url())
 
     # Every model runs through the OpenAI-compatible LLM proxy, so the provider
     # is always "OpenAI" here and no provider secret is pushed to Langflow.
@@ -316,7 +316,7 @@ async def _run_async_post_save_langflow_updates(
 ) -> None:
     """Apply post-save Langflow synchronization asynchronously."""
     try:
-        current_config = get_openrag_config()
+        current_config = get_bomarag_config()
         flows_service = _get_flows_service()
 
         # Refresh model registry so get_litellm_model_name(strict=True) sees the
@@ -529,7 +529,7 @@ async def reapply_all_settings(session_manager=None):
     This is called when flows are detected to have been reset.
     """
     try:
-        config = get_openrag_config()
+        config = get_bomarag_config()
         flows_service = _get_flows_service()
 
         logger.info("Reapplying all settings to Langflow flows and global variables")

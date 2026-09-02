@@ -1,5 +1,5 @@
 ---
-title: Troubleshoot OpenRAG
+title: Troubleshoot BomaRAG
 slug: /support/troubleshoot
 ---
 
@@ -7,11 +7,11 @@ import Icon from "@site/src/components/icon/icon";
 import PartialOllamaModels from '@site/docs/_partial-ollama-models.mdx';
 import PartialWatsonxModels from '@site/docs/_partial-watsonx-models.mdx';
 
-This page provides troubleshooting advice for issues you might encounter when using OpenRAG or contributing to OpenRAG.
+This page provides troubleshooting advice for issues you might encounter when using BomaRAG or contributing to BomaRAG.
 
-## OpenRAG installation fails with unable to get local issuer certificate
+## BomaRAG installation fails with unable to get local issuer certificate
 
-If you are installing OpenRAG on macOS, and the installation fails with `unable to get local issuer certificate`, run the following command, and then retry the installation:
+If you are installing BomaRAG on macOS, and the installation fails with `unable to get local issuer certificate`, run the following command, and then retry the installation:
 
 ```bash
 open "/Applications/Python 3.13/Install Certificates.command"
@@ -19,21 +19,21 @@ open "/Applications/Python 3.13/Install Certificates.command"
 
 ## No container runtime found, or Docker/Podman not ready {#no-container-runtime-found-or-dockerpodman-not-ready}
 
-When you start OpenRAG, `No container runtime found` and `Docker/Podman not ready` errors indicate that OpenRAG cannot find or start a running Docker or Podman machine to run the OpenRAG containers.
+When you start BomaRAG, `No container runtime found` and `Docker/Podman not ready` errors indicate that BomaRAG cannot find or start a running Docker or Podman machine to run the BomaRAG containers.
 
-Before starting OpenRAG, do the following:
+Before starting BomaRAG, do the following:
 
 1. Install Docker or Podman as well as docker-compose or podman-compose.
 2. Make sure Docker or Podman is available in the PATH.
-3. Unless you are running OpenRAG with a Linux-based VM, such as a Linux-based [WSL](/install-windows) image, start the container VM.
+3. Unless you are running BomaRAG with a Linux-based VM, such as a Linux-based [WSL](/install-windows) image, start the container VM.
 Either run `podman machine start` or a similar command, or start the Docker/Podman Desktop app.
 
 For Linux environments, you can find more troubleshooting advice in the [Podman installation documentation](https://podman.io/docs/installation#installing-on-linux) and the [Docker installation documentation](https://docs.docker.com/engine/install/).
 
 ## Container image pull failures {#image-pull-failures}
 
-Before pulling a missing image, OpenRAG verifies that the image exists in its registry.
-If the check fails, OpenRAG stops rather than attempting the pull, and reports an error in the following form:
+Before pulling a missing image, BomaRAG verifies that the image exists in its registry.
+If the check fails, BomaRAG stops rather than attempting the pull, and reports an error in the following form:
 
 ```
 ERROR: Cannot pull image 'REGISTRY/ORG/IMAGE:TAG': REASON
@@ -43,28 +43,28 @@ The reason identifies which part of your [image and registry configuration](/ref
 
 | Reason | Cause | Resolution |
 |---|---|---|
-| `Image 'IMAGE' not found in registry` | If the registry is reachable and your credentials are valid, then the registry has no image at the given repository path and tag. | Verify that `IMAGE_ORG` matches the organization in your registry, and that the tag from `OPENRAG_IMAGE_TAG` or `OPENRAG_VERSION` exists. This commonly occurs when neither tag variable is set, because OpenRAG then requests the `latest` tag, which many private registries don't populate. |
+| `Image 'IMAGE' not found in registry` | If the registry is reachable and your credentials are valid, then the registry has no image at the given repository path and tag. | Verify that `IMAGE_ORG` matches the organization in your registry, and that the tag from `BOMARAG_IMAGE_TAG` or `BOMARAG_VERSION` exists. This commonly occurs when neither tag variable is set, because BomaRAG then requests the `latest` tag, which many private registries don't populate. |
 | `Authentication failure accessing 'IMAGE'` | The registry rejected the request with a `401` or `403`. | Sign in to the registry with `docker login REGISTRY` or `podman login REGISTRY` on the host that runs the containers, then retry. If you are already signed in, confirm that the account can read the repository, because some registries return an authentication error rather than a not-found error for repositories you can't access. |
 | `Registry unreachable for 'IMAGE'` | The registry host couldn't be reached because of a DNS, network, or TLS failure. | Check that the hostname in `IMAGE_REGISTRY` resolves and is reachable from the host. If your registry uses a private certificate authority, add the certificate to your container runtime's trust store. If your registry listens on a non-standard port, include it in the variable, such as `registry.example.com:5000`. |
 | `Timed out contacting registry for 'IMAGE'` | The registry didn't respond within 30 seconds. | Check for a proxy or firewall that silently drops the connection, and confirm the registry is healthy. |
 | `Image reference 'IMAGE' could not be parsed`, or `Image reference is malformed` | The resolved image reference isn't a valid image name. | Remove any scheme (`https://`) or trailing slash from `IMAGE_REGISTRY` and `IMAGE_ORG`, and make sure neither variable contains spaces or is set to an empty value. |
 | `Container runtime 'docker' not found on PATH` | The container runtime executable is unavailable. | See [No container runtime found, or Docker/Podman not ready](#no-container-runtime-found-or-dockerpodman-not-ready). |
 
-This check only covers the OpenRAG-owned images.
+This check only covers the BomaRAG-owned images.
 The OpenSearch Dashboards image isn't validated in advance, so an incorrect `DASHBOARDS_REGISTRY` value doesn't produce one of the errors above.
 Instead, the deployment fails later with a pull error from Docker or Podman.
 Because the repository path and tag for that image are fixed, confirm that the mirrored image is available at `DASHBOARDS_REGISTRY/opensearchproject/opensearch-dashboards:3.6.0`, and make sure `DASHBOARDS_REGISTRY` is set correctly.
 
-For instructions on mirroring the images, see [Deploy OpenRAG from a private registry](/docker#private-registry).
+For instructions on mirroring the images, see [Deploy BomaRAG from a private registry](/docker#private-registry).
 
 ## The terminal session doesn't report available upgrades {#no-upgrade-check-with-private-registry}
 
-The terminal session checks for new OpenRAG versions by querying the Docker Hub API.
+The terminal session checks for new BomaRAG versions by querying the Docker Hub API.
 If you set `IMAGE_REGISTRY` to any host other than `docker.io`, this check can't run.
 
 The **Status** page then reports neither an available upgrade nor an up-to-date confirmation, and no notification appears.
 This is expected, and it doesn't indicate a problem with your deployment.
-To track new releases, monitor your own registry or the [OpenRAG releases page](https://github.com/langflow-ai/openrag/releases), and then [upgrade](/upgrade) by mirroring the new images and updating `OPENRAG_IMAGE_TAG` or `OPENRAG_VERSION`.
+To track new releases, monitor your own registry or the [BomaRAG releases page](https://github.com/ABISHAIMWANJA/bomarag/releases), and then [upgrade](/upgrade) by mirroring the new images and updating `BOMARAG_IMAGE_TAG` or `BOMARAG_VERSION`.
 
 ## Container out of memory errors {#container-out-of-memory-errors}
 
@@ -73,7 +73,7 @@ If you encounter container memory errors, try the following:
 * Increase your Podman or Docker VM's allocated memory.
 
    If you're using Podman on macOS, you might need to increase VM memory on your Podman machine.
-   This example, the following commands stop Podman, increase the machine size to 8 GB of RAM (the minimum recommended RAM for OpenRAG), and then restart the VM:
+   This example, the following commands stop Podman, increase the machine size to 8 GB of RAM (the minimum recommended RAM for BomaRAG), and then restart the VM:
 
    ```bash
    podman machine stop
@@ -82,11 +82,11 @@ If you encounter container memory errors, try the following:
    podman machine start
    ```
 
-   You must also restart your OpenRAG services after increasing the container VM's memory.
+   You must also restart your BomaRAG services after increasing the container VM's memory.
 
 * Use a CPU-only deployment to reduce memory usage.
 
-   For terminal-managed deployments, you must [start the terminal session with `--tui`](/tui#access-the-tui), such as `uv run openrag --tui`. Then, click **Status** in the [TUI](/tui), and then click **Switch to CPU mode**.
+   For terminal-managed deployments, you must [start the terminal session with `--tui`](/tui#access-the-tui), such as `uv run bomarag --tui`. Then, click **Status** in the [TUI](/tui), and then click **Switch to CPU mode**.
 
    For self-managed deployments, CPU-only deployments use the `docker-compose.yml` file that doesn't have GPU overrides.
 
@@ -94,15 +94,15 @@ If you encounter container memory errors, try the following:
 
 Check that the value of the `OPENSEARCH_PASSWORD` [environment variable](/reference/configuration) meets the [OpenSearch password complexity requirements](https://docs.opensearch.org/latest/security/configuration/demo-configuration/#setting-up-a-custom-admin-password).
 
-If you need to change the password, you must [reset the OpenRAG services](/manage-services).
+If you need to change the password, you must [reset the BomaRAG services](/manage-services).
 
-## OpenRAG fails to start from the terminal with operation not supported
+## BomaRAG fails to start from the terminal with operation not supported
 
-This error occurs when starting OpenRAG with the terminal's **Start services** option while in the [WSL (Windows Subsystem for Linux)](https://learn.microsoft.com/en-us/windows/wsl/install).
+This error occurs when starting BomaRAG with the terminal's **Start services** option while in the [WSL (Windows Subsystem for Linux)](https://learn.microsoft.com/en-us/windows/wsl/install).
 
-The error occurs because OpenRAG is running within a WSL environment, so `webbrowser.open()` can't launch a browser automatically.
+The error occurs because BomaRAG is running within a WSL environment, so `webbrowser.open()` can't launch a browser automatically.
 
-To access the OpenRAG application, open a web browser, and then enter `http://localhost:3000` in the address bar.
+To access the BomaRAG application, open a web browser, and then enter `http://localhost:3000` in the address bar.
 
 ## Application onboarding gets stuck or fails
 
@@ -111,17 +111,17 @@ If the application onboarding process hangs for a long time or fails for an unsp
 * Make sure you have enough free space (more than 50 GB) available for the temporary storage required for document ingestion.
 * Clear your browser's cache.
 
-## OpenRAG reports Docling Serve errors but docling-serve is running
+## BomaRAG reports Docling Serve errors but docling-serve is running
 
-Make sure your `docling-serve` version is compatible with your OpenRAG version.
-OpenRAG version 0.4.1 requires `docling-serve` version 1.5.0.
+Make sure your `docling-serve` version is compatible with your BomaRAG version.
+BomaRAG version 0.4.1 requires `docling-serve` version 1.5.0.
 
-If you started a `docling-serve` container before starting or installing OpenRAG, and the `docling-serve` version is incompatible with your OpenRAG version, you need to remove or restart the incompatible container.
+If you started a `docling-serve` container before starting or installing BomaRAG, and the `docling-serve` version is incompatible with your BomaRAG version, you need to remove or restart the incompatible container.
 There are several ways to do this:
 
-* Remove the `docling-serve` container that is running the incompatible version, and then [reinstall OpenRAG](/reinstall) with `uv` or `uvx` to automatically start a compatible `docling-serve` container.
+* Remove the `docling-serve` container that is running the incompatible version, and then [reinstall BomaRAG](/reinstall) with `uv` or `uvx` to automatically start a compatible `docling-serve` container.
 
-* After starting OpenRAG, restart the `docling-serve` container with the required version:
+* After starting BomaRAG, restart the `docling-serve` container with the required version:
 
    ```bash
    uvx --from 'docling-serve[ui]==1.5.0' \
@@ -138,22 +138,22 @@ For more information about this variable and how this variable controls Langflow
 
 ## Port conflicts
 
-By default, OpenRAG requires the following ports to be available on the host machine:
+By default, BomaRAG requires the following ports to be available on the host machine:
 
-* `3000`: OpenRAG frontend
+* `3000`: BomaRAG frontend
 * `7860`: Langflow service
-* `8000`: OpenRAG backend
+* `8000`: BomaRAG backend
 * `9200`: OpenSearch service
 * `5601`: OpenSearch dashboards
 * `5001`: Docling service
 
-If the default ports for the OpenRAG frontend (`3000`) or Langflow (`7860`) are already in use on your host machine, you can set the `FRONTEND_PORT` or `LANGFLOW_PORT` [environment variables](/reference/configuration) to map these services to different host ports.
+If the default ports for the BomaRAG frontend (`3000`) or Langflow (`7860`) are already in use on your host machine, you can set the `FRONTEND_PORT` or `LANGFLOW_PORT` [environment variables](/reference/configuration) to map these services to different host ports.
 If you set `LANGFLOW_PORT`, you must also set `LANGFLOW_PUBLIC_URL` to use the new port.
-To apply the port mapping, [restart the containers](/manage-services#stop-and-start-containers) after editing your OpenRAG `.env` file.
+To apply the port mapping, [restart the containers](/manage-services#stop-and-start-containers) after editing your BomaRAG `.env` file.
 
 ## Upgrade fails due to Langflow container already exists {#langflow-container-already-exists-during-upgrade}
 
-If you encounter a `langflow container already exists` error when upgrading OpenRAG, this typically means you upgraded OpenRAG with `uv`, but you didn't remove or upgrade containers from a previous installation.
+If you encounter a `langflow container already exists` error when upgrading BomaRAG, this typically means you upgraded BomaRAG with `uv`, but you didn't remove or upgrade containers from a previous installation.
 
 To resolve this issue, do the following:
 
@@ -181,25 +181,25 @@ To resolve this issue, do the following:
 
 2. Retry the [upgrade](/upgrade).
 
-3. If reinstalling the Langflow container doesn't resolve the issue, then you must [reset all containers](/manage-services) or [reinstall OpenRAG](/reinstall).
+3. If reinstalling the Langflow container doesn't resolve the issue, then you must [reset all containers](/manage-services) or [reinstall BomaRAG](/reinstall).
 
 4. Retry the [upgrade](/upgrade).
 
-   If no updates are available after reinstalling OpenRAG, then you reinstalled at the latest version, and your deployment is up to date.
+   If no updates are available after reinstalling BomaRAG, then you reinstalled at the latest version, and your deployment is up to date.
 
 ## Model availability and performance issues {#model-availability-and-performance-issues}
 
-The following issues relate to the models you can use with OpenRAG and potential performance issues, such as malformed responses and excessive hallucinations.
+The following issues relate to the models you can use with BomaRAG and potential performance issues, such as malformed responses and excessive hallucinations.
 
 See also [Chat issues](#chat-issues).
 
-### Language model isn't listed in OpenRAG settings or application onboarding
+### Language model isn't listed in BomaRAG settings or application onboarding
 
-If your language model isn't listed in the OpenRAG settings or application onboarding, then the model likely doesn't support tool calling, which is required for OpenRAG.
+If your language model isn't listed in the BomaRAG settings or application onboarding, then the model likely doesn't support tool calling, which is required for BomaRAG.
 You must select a different model.
 If no other models are listed, make sure your model provider API key or instance has access to models that support tool calling.
 
-You can submit an [OpenRAG GitHub issue](https://github.com/langflow-ai/openrag/issues) to request support for specific models.
+You can submit an [BomaRAG GitHub issue](https://github.com/ABISHAIMWANJA/bomarag/issues) to request support for specific models.
 
 ### IBM watsonx.ai model issues {#ibm-watsonxai-model-issues}
 
@@ -233,7 +233,7 @@ Ingesting very large PDFs (more than 300 pages) and folders with many documents 
 
 Make sure your container VM has [sufficient memory](/support/troubleshoot#container-out-of-memory-errors) for processing large files and folders.
 
-If you experience timeouts during ingestion, edit the following environment variables in your [OpenRAG `.env` file](/reference/configuration):
+If you experience timeouts during ingestion, edit the following environment variables in your [BomaRAG `.env` file](/reference/configuration):
 
 * `LANGFLOW_TIMEOUT`
 * `LANGFLOW_CONNECT_TIMEOUT`
@@ -246,15 +246,15 @@ If you experience timeouts during ingestion, edit the following environment vari
 ### OCR ingestion fails (easyocr not installed) {#ocr-ingestion-fails-easyocr-not-installed}
 
 Docling ingestion can fail with an OCR-related error that mentions `easyocr` is missing.
-This is likely due to a stale `uv` cache when you [install OpenRAG with `uvx`](/install-uvx).
+This is likely due to a stale `uv` cache when you [install BomaRAG with `uvx`](/install-uvx).
 
-When you invoke OpenRAG with `uvx openrag`, `uvx` creates a cached, ephemeral environment that doesn't modify your project.
+When you invoke BomaRAG with `uvx bomarag`, `uvx` creates a cached, ephemeral environment that doesn't modify your project.
 The location and path of this cache depends on your operating system.
 For example, on macOS, this is typically a user cache directory, such as `~/.cache/uv`.
 
 This cache can become stale, producing errors like missing dependencies.
 
-1. If an active OpenRAG terminal is running, select the **Exit** option to end the session.
+1. If an active BomaRAG terminal is running, select the **Exit** option to end the session.
 
 2. Clear the `uv` cache:
 
@@ -262,30 +262,30 @@ This cache can become stale, producing errors like missing dependencies.
    uv cache clean
    ```
 
-   Or clear only the OpenRAG cache:
+   Or clear only the BomaRAG cache:
 
    ```bash
-   uv cache clean openrag
+   uv cache clean bomarag
    ```
 
-3. Invoke OpenRAG to restart the terminal session and regenerate the cache:
+3. Invoke BomaRAG to restart the terminal session and regenerate the cache:
 
    ```bash
-   uvx openrag
+   uvx bomarag
    ```
 
-4. Select the **Start services** option to restart the OpenRAG containers.
+4. Select the **Start services** option to restart the BomaRAG containers.
 
-5. Select the **Open OpenRAG in browser** option, and then retry document ingestion.
+5. Select the **Open BomaRAG in browser** option, and then retry document ingestion.
 
-In contrast to `uvx`, if you install OpenRAG with `uv`, dependencies are synced directly from your `pyproject.toml` file.
-This should automatically install `easyocr` because `easyocr` is included as a dependency in OpenRAG's `pyproject.toml`.
+In contrast to `uvx`, if you install BomaRAG with `uv`, dependencies are synced directly from your `pyproject.toml` file.
+This should automatically install `easyocr` because `easyocr` is included as a dependency in BomaRAG's `pyproject.toml`.
 
 If you don't need OCR, you can disable OCR-based processing in your [ingestion settings](/ingestion-configure) to avoid requiring `easyocr`.
 
 ### Problems when referencing documents in chat
 
-If the OpenRAG **Chat** doesn't seem to use your documents correctly, [browse your knowledge base](/knowledge-browse) to confirm that the documents are uploaded in full, and the chunks are correct.
+If the BomaRAG **Chat** doesn't seem to use your documents correctly, [browse your knowledge base](/knowledge-browse) to confirm that the documents are uploaded in full, and the chunks are correct.
 
 If the documents are present and well-formed, check your [knowledge filters](/knowledge-filters).
 If you applied a filter to the chat, make sure the expected documents aren't excluded by the filter settings.
@@ -302,24 +302,24 @@ For example:
 
 ## Chat issues {#chat-issues}
 
-The following issues can occur when using the [OpenRAG **Chat**](/chat) feature.
+The following issues can occur when using the [BomaRAG **Chat**](/chat) feature.
 
 ### Documents seem to be missing or misinterpreted
 
 In the **Chat**, click <Icon name="Gear" aria-hidden="true"/> **Function Call: search_documents (tool_call)** to view the log of tool calls made by the agent.
 This can shows you how the agent used particular tools and the reasoning.
 
-Click <Icon name="Library" aria-hidden="true"/> **Knowledge** to confirm that the documents are present in the OpenRAG OpenSearch knowledge base, and then click each document to see how the document was chunked.
+Click <Icon name="Library" aria-hidden="true"/> **Knowledge** to confirm that the documents are present in the BomaRAG OpenSearch knowledge base, and then click each document to see how the document was chunked.
 If a document was chunked improperly, you might need to tweak the [ingestion settings](/ingestion-configure) or modify and reupload the document.
 
 See also [Document ingestion or similarity search issues](#document-ingestion-or-similarity-search-issues).
 
 ### Service is suddenly unavailable when it was working previously
 
-First, verify that the container VM and the OpenRAG services are running and healthy.
+First, verify that the container VM and the BomaRAG services are running and healthy.
 
 Second, make sure there are no issues with the flow configuration.
-If you edited the **OpenRAG OpenSearch Agent** flow, use the [**Restore flow** option](/agents#revert-a-built-in-flow-to-its-original-configuration) to revert the flow to its original configuration.
+If you edited the **BomaRAG OpenSearch Agent** flow, use the [**Restore flow** option](/agents#revert-a-built-in-flow-to-its-original-configuration) to revert the flow to its original configuration.
 
 If you want to preserve your customizations, you can [export the flow](https://docs.langflow.org/concepts-flows-import) before restoring the flow.
 
@@ -341,11 +341,11 @@ For more information, see [Model availability and performance issues](#model-ava
 
 ### Responses are good but could be better
 
-If your model is compatible with OpenRAG, and it isn't exhibiting any obvious errors, then you can use RAG best practices to refine the response quality, such as [knowledge filters](/knowledge-filters) and prompt engineering.
+If your model is compatible with BomaRAG, and it isn't exhibiting any obvious errors, then you can use RAG best practices to refine the response quality, such as [knowledge filters](/knowledge-filters) and prompt engineering.
 
 ## Cannot detect GPU with Fedora or local Ollama
 
-If your machine has GPU support, but OpenRAG is having problems detecting or using the GPU, you might see errors like the following:
+If your machine has GPU support, but BomaRAG is having problems detecting or using the GPU, you might see errors like the following:
 
 ```console
 Auto-detected mode as 'legacy'
@@ -457,5 +457,5 @@ The following steps explain how to troubleshoot these issues with Fedora 43, Pod
    docker.io/ollama/ollama:latest
    ```
 
-12. In a terminal, run OpenRAG, and then start the OpenRAG services with GPU mode enabled.
-Or, for self-managed deployments, deploy OpenRAG with the `docker-compose-gpu.yml` file.
+12. In a terminal, run BomaRAG, and then start the BomaRAG services with GPU mode enabled.
+Or, for self-managed deployments, deploy BomaRAG with the `docker-compose-gpu.yml` file.

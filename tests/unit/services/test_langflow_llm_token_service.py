@@ -59,7 +59,7 @@ def test_ingest_token_is_not_an_llm_token():
     llm = LangflowLlmTokenService(secret=SECRET, ttl_seconds=60)
     with pytest.raises(ValueError, match="Invalid Langflow LLM proxy token"):
         llm.validate_token(token)
-    assert langflow_hop_audience(token) == "openrag-langflow-ingest"
+    assert langflow_hop_audience(token) == "bomarag-langflow-ingest"
 
 
 def test_wrong_scope_is_rejected():

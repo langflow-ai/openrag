@@ -42,7 +42,7 @@ def _run(container_manager, docling_manager):
     """Invoke the CLI helper with a recording console.
 
     Returns (fully_started, output) — the boolean is what the walkthrough
-    gates its "OpenRAG is running" message and browser launch on.
+    gates its "BomaRAG is running" message and browser launch on.
     """
     original = cli.console
     recorder = Console(record=True, width=120)
@@ -86,7 +86,7 @@ def test_container_port_conflict_from_own_containers_is_not_a_failure():
     already-running ones so the status guard must treat them as up, not failed."""
     running = {
         "opensearch": SimpleNamespace(status=ServiceStatus.RUNNING),
-        "openrag-backend": SimpleNamespace(status=ServiceStatus.RUNNING),
+        "bomarag-backend": SimpleNamespace(status=ServiceStatus.RUNNING),
     }
     fully_started, output = _run(
         StubContainerManager(
@@ -100,12 +100,12 @@ def test_container_port_conflict_from_own_containers_is_not_a_failure():
     assert "Startup incomplete" not in output
 
 
-def test_start_services_cli_ensures_openrag_version(tmp_path, monkeypatch):
-    """CLI _start_services_cli must call ensure_openrag_version to set OPENRAG_VERSION in .env."""
+def test_start_services_cli_ensures_bomarag_version(tmp_path, monkeypatch):
+    """CLI _start_services_cli must call ensure_bomarag_version to set BOMARAG_VERSION in .env."""
     env_file = tmp_path / ".env"
     env_file.write_text("LANGFLOW_SUPERUSER_PASSWORD='secret'\n")
 
-    monkeypatch.delenv("OPENRAG_VERSION", raising=False)
+    monkeypatch.delenv("BOMARAG_VERSION", raising=False)
 
     with (
         patch("utils.paths.get_tui_env_file", return_value=env_file),
@@ -117,7 +117,7 @@ def test_start_services_cli_ensures_openrag_version(tmp_path, monkeypatch):
         )
 
     assert env_file.exists()
-    assert "OPENRAG_VERSION='9.9.9'" in env_file.read_text()
+    assert "BOMARAG_VERSION='9.9.9'" in env_file.read_text()
 
 
 def test_start_services_cli_version_mismatch_warning(tmp_path, monkeypatch):

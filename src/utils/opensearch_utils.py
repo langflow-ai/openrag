@@ -13,7 +13,7 @@ logger = get_logger(__name__)
 DISK_SPACE_ERROR_MESSAGE = (
     "OpenSearch has run out of available disk space. "
     "Search and indexing operations are blocked. "
-    "Please free up disk space to restore OpenRAG functionality."
+    "Please free up disk space to restore BomaRAG functionality."
 )
 
 # Error strings emitted by OpenSearch when disk watermark thresholds are breached
@@ -57,7 +57,7 @@ def is_opensearch_auth_error(error: Exception | str) -> bool:
     """Whether *error* is an OpenSearch authentication failure (401).
 
     Accepts an exception or an already-stringified error message. Distinct from
-    authorization ("only the owner can …"): this means the credential OpenRAG
+    authorization ("only the owner can …"): this means the credential BomaRAG
     presented was not accepted at all. Callers should map it to HTTP 401
     (re-authenticate), not 403.
     """
@@ -294,8 +294,8 @@ async def setup_opensearch_security(
     The setup involves:
     1. GET /_plugins/_security/api/rolesmapping (check existing)
     2. GET /_cluster/health
-    3. PUT /_plugins/_security/api/roles/openrag_user_role (create role)
-    4. PUT /_plugins/_security/api/rolesmapping/openrag_user_role (create mapping)
+    3. PUT /_plugins/_security/api/roles/bomarag_user_role (create role)
+    4. PUT /_plugins/_security/api/rolesmapping/bomarag_user_role (create mapping)
     5. PUT /_plugins/_security/api/rolesmapping/all_access (merge admin mapping)
     6. Verify with final GETs.
 
@@ -368,12 +368,12 @@ async def setup_opensearch_security(
             roles=list(roles_config.keys()) if roles_config else [],
         )
 
-        # 3. Create openrag_user_role
-        if "openrag_user_role" in roles_config:
-            role_body = roles_config["openrag_user_role"]
+        # 3. Create bomarag_user_role
+        if "bomarag_user_role" in roles_config:
+            role_body = roles_config["bomarag_user_role"]
 
             logger.info(
-                "[OPENSEARCH] Creating 'openrag_user_role' role",
+                "[OPENSEARCH] Creating 'bomarag_user_role' role",
                 patterns=role_body["index_permissions"][0]["index_patterns"]
                 if "index_permissions" in role_body
                 else "default",
@@ -384,13 +384,13 @@ async def setup_opensearch_security(
 
             resp = await opensearch_client.transport.perform_request(
                 "PUT",
-                "/_plugins/_security/api/roles/openrag_user_role",
+                "/_plugins/_security/api/roles/bomarag_user_role",
                 body=role_body,
                 headers={"Content-Type": "application/json"},
             )
             logger.info("[OPENSEARCH] Role creation response", response=resp)
         else:
-            logger.warning("[OPENSEARCH] 'openrag_user_role' not found in roles.yml")
+            logger.warning("[OPENSEARCH] 'bomarag_user_role' not found in roles.yml")
 
         # Load roles mapping from YAML
         if not os.path.exists(roles_mapping_file):
@@ -405,17 +405,17 @@ async def setup_opensearch_security(
             mappings=list(mapping_config.keys()) if mapping_config else [],
         )
 
-        # 4. Create openrag_user_role mapping
-        if "openrag_user_role" in mapping_config:
-            mapping_body = mapping_config["openrag_user_role"]
+        # 4. Create bomarag_user_role mapping
+        if "bomarag_user_role" in mapping_config:
+            mapping_body = mapping_config["bomarag_user_role"]
             logger.info(
-                "[OPENSEARCH] Creating 'openrag_user_role' mapping",
+                "[OPENSEARCH] Creating 'bomarag_user_role' mapping",
                 backend_roles=mapping_body.get("backend_roles", []),
                 users=mapping_body.get("users", []),
             )
             resp = await opensearch_client.transport.perform_request(
                 "PUT",
-                "/_plugins/_security/api/rolesmapping/openrag_user_role",
+                "/_plugins/_security/api/rolesmapping/bomarag_user_role",
                 body=mapping_body,
                 headers={"Content-Type": "application/json"},
             )
@@ -509,12 +509,12 @@ async def setup_opensearch_security(
         # 6. Final verification
         logger.info("[OPENSEARCH] Verifying security configuration...")
         role_verify = await opensearch_client.transport.perform_request(
-            "GET", "/_plugins/_security/api/roles/openrag_user_role"
+            "GET", "/_plugins/_security/api/roles/bomarag_user_role"
         )
         logger.info("[OPENSEARCH] Role verification", role=role_verify)
 
         mapping_verify = await opensearch_client.transport.perform_request(
-            "GET", "/_plugins/_security/api/rolesmapping/openrag_user_role"
+            "GET", "/_plugins/_security/api/rolesmapping/bomarag_user_role"
         )
         logger.info("[OPENSEARCH] Role mapping verification", mapping=mapping_verify)
 

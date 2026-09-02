@@ -142,7 +142,7 @@ async def test_upload_success(docling_service, mock_httpx_client):
     mock_httpx_client.post.return_value = _make_response(200, {"task_id": "new-task-id"})
 
     # Mock config to avoid missing attribute errors during _build_docling_options
-    with patch("services.docling_service.get_openrag_config") as mock_get_config:
+    with patch("services.docling_service.get_bomarag_config") as mock_get_config:
         mock_config = MagicMock()
         mock_config.knowledge.table_structure = False
         mock_config.knowledge.ocr = False
@@ -166,7 +166,7 @@ async def test_upload_http_error(docling_service, mock_httpx_client):
     """Raises exception if upload returns non-200."""
     mock_httpx_client.post.return_value = _make_response(400)
 
-    with patch("services.docling_service.get_openrag_config") as mock_get_config:
+    with patch("services.docling_service.get_bomarag_config") as mock_get_config:
         mock_config = MagicMock()
         mock_config.knowledge.table_structure = False
         mock_config.knowledge.ocr = False
@@ -183,14 +183,14 @@ async def test_upload_http_error(docling_service, mock_httpx_client):
 
 @pytest.mark.asyncio
 async def test_build_docling_options_toggles(docling_service):
-    """Correctly maps OpenRAG config to Docling options."""
+    """Correctly maps BomaRAG config to Docling options."""
     mock_config = MagicMock()
     mock_config.knowledge.table_structure = True
     mock_config.knowledge.ocr = True
     mock_config.knowledge.picture_descriptions = False
     mock_config.knowledge.vlm_enabled = False
 
-    with patch("services.docling_service.get_openrag_config", return_value=mock_config):
+    with patch("services.docling_service.get_bomarag_config", return_value=mock_config):
         options = await docling_service._build_docling_options_async()
 
     assert options["do_table_structure"] is True
@@ -211,7 +211,7 @@ async def test_build_docling_options_preview_mode_embeds_page_images(docling_ser
     mock_config.knowledge.picture_descriptions = False
     mock_config.knowledge.vlm_enabled = False
 
-    with patch("services.docling_service.get_openrag_config", return_value=mock_config):
+    with patch("services.docling_service.get_bomarag_config", return_value=mock_config):
         options = await docling_service._build_docling_options_async(preview_mode=True)
 
     assert options["to_formats"] == "json"
@@ -275,7 +275,7 @@ def _vlm_mock_config(provider: str) -> MagicMock:
 async def test_build_vlm_options_openai(docling_service):
     """OpenAI VLM options carry the provider key and chat-completions params."""
     mock_config = _vlm_mock_config("openai")
-    with patch("services.docling_service.get_openrag_config", return_value=mock_config):
+    with patch("services.docling_service.get_bomarag_config", return_value=mock_config):
         options = await docling_service._build_docling_options_async()
 
     assert options["do_picture_description"] is True
@@ -292,7 +292,7 @@ async def test_build_vlm_options_watsonx(docling_service):
     """watsonx VLM options exchange the API key for an IAM bearer token."""
     mock_config = _vlm_mock_config("watsonx")
     with (
-        patch("services.docling_service.get_openrag_config", return_value=mock_config),
+        patch("services.docling_service.get_bomarag_config", return_value=mock_config),
         patch("services.watsonx_iam.get_iam_token", new_callable=AsyncMock) as mock_token,
     ):
         mock_token.return_value = "iam-token"
@@ -314,7 +314,7 @@ async def test_build_vlm_options_watsonx_unconfigured(docling_service):
     """Raises DoclingServeError when watsonx provider is incomplete."""
     mock_config = _vlm_mock_config("watsonx")
     mock_config.providers.watsonx.project_id = ""
-    with patch("services.docling_service.get_openrag_config", return_value=mock_config):
+    with patch("services.docling_service.get_bomarag_config", return_value=mock_config):
         with pytest.raises(DoclingServeError, match="watsonx provider is not fully"):
             await docling_service._build_docling_options_async()
 
@@ -325,7 +325,7 @@ async def test_build_vlm_options_ollama(docling_service):
     mock_config = _vlm_mock_config("ollama")
     mock_config.providers.ollama.endpoint = "http://localhost:11434"
     mock_config.providers.ollama.configured = True
-    with patch("services.docling_service.get_openrag_config", return_value=mock_config):
+    with patch("services.docling_service.get_bomarag_config", return_value=mock_config):
         options = await docling_service._build_docling_options_async()
 
     assert options["do_picture_description"] is True
@@ -344,7 +344,7 @@ async def test_upload_vlm_enabled_sends_vlm_form_fields(docling_service, mock_ht
 
     mock_httpx_client.post.return_value = _make_response(200, {"task_id": "vlm-task"})
     mock_config = _vlm_mock_config("openai")
-    with patch("services.docling_service.get_openrag_config", return_value=mock_config):
+    with patch("services.docling_service.get_bomarag_config", return_value=mock_config):
         task_id = await docling_service.upload_to_docling_direct_async("test.pdf", b"data")
 
     assert task_id == "vlm-task"

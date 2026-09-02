@@ -2,7 +2,7 @@
 
 Same family as ingest tokens: minted per Langflow run, scoped to the LLM
 proxy, and useless on the rest of `/v1`. Langflow's OpenAI client sends the
-token as `Authorization: Bearer` (`OPENRAG_LLM_TOKEN`). SDK and MCP callers keep
+token as `Authorization: Bearer` (`BOMARAG_LLM_TOKEN`). SDK and MCP callers keep
 using the user JWT or an `orag_` key.
 """
 
@@ -19,12 +19,12 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-LANGFLOW_LLM_AUDIENCE = "openrag-langflow-llm"
+LANGFLOW_LLM_AUDIENCE = "bomarag-langflow-llm"
 LANGFLOW_LLM_SCOPE = "llm:proxy"
 LANGFLOW_HOP_AUDIENCES = frozenset(
     {
         LANGFLOW_LLM_AUDIENCE,
-        "openrag-langflow-ingest",
+        "bomarag-langflow-ingest",
     }
 )
 

@@ -1,5 +1,5 @@
 ---
-title: Manage OpenRAG containers and services
+title: Manage BomaRAG containers and services
 slug: /manage-services
 ---
 
@@ -11,23 +11,23 @@ import PartialFactorResetWarning from '@site/docs/_partial-factory-reset-warning
 import PartialExportFlows from '@site/docs/_partial-export-flows.mdx';
 import PartialContainerVm from '@site/docs/_partial-container-vm.mdx';
 
-Service management is an essential part of maintaining your OpenRAG deployment.
+Service management is an essential part of maintaining your BomaRAG deployment.
 
-Most OpenRAG services run in containers.
+Most BomaRAG services run in containers.
 However, some services, like Docling, run directly on the local machine.
 
-If you [installed OpenRAG](/install-options) with `uv` or `uvx`, then you can use an [OpenRAG terminal session](/tui) to manage your OpenRAG configuration and services.
+If you [installed BomaRAG](/install-options) with `uv` or `uvx`, then you can use an [BomaRAG terminal session](/tui) to manage your BomaRAG configuration and services.
 
-For [self-managed deployments](/docker), run Docker or Podman commands to manage your OpenRAG services.
+For [self-managed deployments](/docker), run Docker or Podman commands to manage your BomaRAG services.
 
 ## Monitor services and view logs
 
 <Tabs>
 <TabItem value="TUI" label="Terminal-managed services" default>
 
-In the terminal session, select the **Show status** option to access information about all OpenRAG services, including container health, ports, and image versions.
+In the terminal session, select the **Show status** option to access information about all BomaRAG services, including container health, ports, and image versions.
 
-For more information and options, you must [start the terminal session with `--tui`](/tui#access-the-tui), such as `uv run openrag --tui`.
+For more information and options, you must [start the terminal session with `--tui`](/tui#access-the-tui), such as `uv run bomarag --tui`.
 Then, click **Status** to access controls to stop, start, or restart individual services.
 To view streaming logs, click the name of a service, and then press <kbd>l</kbd>.
 
@@ -48,9 +48,9 @@ For the Docling native service, see [Stop, start, and inspect native services](#
 <Tabs>
 <TabItem value="TUI" label="Terminal-managed services" default>
 
-In the terminal session, use the **Start services** and **Stop services** options to start or stop all OpenRAG services.
+In the terminal session, use the **Start services** and **Stop services** options to start or stop all BomaRAG services.
 
-For fine-grained controls, you must [start the terminal session with `--tui`](/tui#access-the-tui), such as `uv run openrag --tui`.
+For fine-grained controls, you must [start the terminal session with `--tui`](/tui#access-the-tui), such as `uv run bomarag --tui`.
 Then, click **Status** to access controls to stop, start, or restart individual services.
 
 :::tip
@@ -62,11 +62,11 @@ Then, click **Status** to access controls to stop, start, or restart individual 
 
 When you restart or start services in the terminal session, the following processes are triggered:
 
-1. OpenRAG automatically detects your container runtime, and then checks if your machine has compatible GPU support by checking for `CUDA`, `NVIDIA_SMI`, and Docker/Podman runtime support. This check determines which Docker Compose file OpenRAG uses because there are separate Docker Compose files for GPU and CPU deployments.
+1. BomaRAG automatically detects your container runtime, and then checks if your machine has compatible GPU support by checking for `CUDA`, `NVIDIA_SMI`, and Docker/Podman runtime support. This check determines which Docker Compose file BomaRAG uses because there are separate Docker Compose files for GPU and CPU deployments.
 
-2. OpenRAG pulls the OpenRAG container images with `docker compose pull` if any images are missing.
+2. BomaRAG pulls the BomaRAG container images with `docker compose pull` if any images are missing.
 
-3. OpenRAG deploys the containers with `docker compose up -d`.
+3. BomaRAG deploys the containers with `docker compose up -d`.
 
 </details>
 
@@ -93,15 +93,15 @@ For self-managed deployments, run the Docker/Podman commands to stop and start c
 
 ## Stop, start, and inspect native services (Docling) {#start-native-services}
 
-A _native service_ in OpenRAG is a service that runs locally on your machine, not within a container. For example, the `docling serve` process is an OpenRAG native service because this document processing service runs on your local machine, separate from the OpenRAG containers.
+A _native service_ in BomaRAG is a service that runs locally on your machine, not within a container. For example, the `docling serve` process is an BomaRAG native service because this document processing service runs on your local machine, separate from the BomaRAG containers.
 
 <Tabs>
 <TabItem value="TUI" label="Terminal-managed services" default>
 
-In the terminal session, select the **Show status** option to view the status, port, and process ID (PID) for OpenRAG's native services.
+In the terminal session, select the **Show status** option to view the status, port, and process ID (PID) for BomaRAG's native services.
 Native services are started and stopped when you use the **Start services** and **Stop services** options.
 
-For more information and options, you must [start the terminal session with `--tui`](/tui#access-the-tui), such as `uv run openrag --tui`.
+For more information and options, you must [start the terminal session with `--tui`](/tui#access-the-tui), such as `uv run bomarag --tui`.
 Then, click **Status** to access controls to stop, start, or restart individual services.
 To view streaming logs, click the name of a service, and then press <kbd>l</kbd>.
 
@@ -142,29 +142,29 @@ Because the Docling service doesn't run in a container, you must start and stop 
 
 ## Upgrade services
 
-See [Upgrade OpenRAG](/upgrade).
+See [Upgrade BomaRAG](/upgrade).
 
 ## Reset containers (destructive) {#reset-containers}
 
 <PartialFactorResetWarning />
 
-Use these steps to reset your OpenRAG deployment by recreating the containers and deleting all data in the `~/.openrag` directory _except_ for the `.env` file and the `/documents` subdirectory.
+Use these steps to reset your BomaRAG deployment by recreating the containers and deleting all data in the `~/.bomarag` directory _except_ for the `.env` file and the `/documents` subdirectory.
 
-This restores your OpenRAG deployment to a near-initial state while preserving your configuration (in `.env`) and uploaded documents (in `/documents`).
+This restores your BomaRAG deployment to a near-initial state while preserving your configuration (in `.env`) and uploaded documents (in `/documents`).
 Your documents are reingested into a fresh OpenSearch index after the reset.
 
-To reset your OpenRAG deployment _and_ delete all OpenRAG data, see [Reinstall OpenRAG](/reinstall).
+To reset your BomaRAG deployment _and_ delete all BomaRAG data, see [Reinstall BomaRAG](/reinstall).
 
 <Tabs>
 <TabItem value="TUI" label="Terminal-managed services" default>
 
 <PartialExportFlows />
 
-2. To destroy and recreate your OpenRAG containers, [start the terminal session with `--tui`](/tui#access-the-tui), such as `uv run openrag --tui`.
+2. To destroy and recreate your BomaRAG containers, [start the terminal session with `--tui`](/tui#access-the-tui), such as `uv run bomarag --tui`.
 
 3. Click **Status** in the [TUI](/tui), and then click **Factory Reset**.
 
-4. Repeat the [setup process](/install-uvx#setup) to restart the services and launch the OpenRAG app. Your previous configuration, including credentials, are restored from the `.env` file.
+4. Repeat the [setup process](/install-uvx#setup) to restart the services and launch the BomaRAG app. Your previous configuration, including credentials, are restored from the `.env` file.
 
 5. If you exported customized flows, [import your flows](https://docs.langflow.org/concepts-flows-import) into Langflow after completing the onboarding process.
 
@@ -183,7 +183,7 @@ To reset your OpenRAG deployment _and_ delete all OpenRAG data, see [Reinstall O
    podman compose up --build --force-recreate --remove-orphans
    ```
 
-3. Launch the OpenRAG app, and then repeat the [application onboarding process](/docker#application-onboarding).
+3. Launch the BomaRAG app, and then repeat the [application onboarding process](/docker#application-onboarding).
 
 4. If you exported customized flows, [import your flows](https://docs.langflow.org/concepts-flows-import) into Langflow after completing the onboarding process.
 
@@ -192,15 +192,15 @@ To reset your OpenRAG deployment _and_ delete all OpenRAG data, see [Reinstall O
 
 ## Prune images
 
-Use image pruning to free up disk space by removing unused OpenRAG container images.
+Use image pruning to free up disk space by removing unused BomaRAG container images.
 
-For terminal-managed services, you must [start the terminal session with `--tui`](/tui#access-the-tui), such as `uv run openrag --tui`.
-Then, use the **Prune Images** option to clean up your OpenRAG container images.
+For terminal-managed services, you must [start the terminal session with `--tui`](/tui#access-the-tui), such as `uv run bomarag --tui`.
+Then, use the **Prune Images** option to clean up your BomaRAG container images.
 You can choose to prune unused images only or all images.
-If you prune all images, the OpenRAG services are stopped, all images are pruned, and then the required images are pulled the next time you start the OpenRAG services.
+If you prune all images, the BomaRAG services are stopped, all images are pruned, and then the required images are pulled the next time you start the BomaRAG services.
 
 For self-managed services, use [`docker image prune`](https://docs.docker.com/engine/reference/commandline/image_prune/) or [`podman image prune`](https://docs.podman.io/en/latest/markdown/podman-image-prune.1.html) to remove unused images.
 
 ## See also
 
-* [Uninstall OpenRAG](/uninstall)
+* [Uninstall BomaRAG](/uninstall)

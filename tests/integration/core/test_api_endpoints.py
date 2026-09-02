@@ -214,7 +214,7 @@ async def test_upload_and_search_endpoint(tmp_path: Path, disable_langflow_inges
             file_path = tmp_path / "endpoint_test_doc.md"
             file_text = (
                 "# Single Test Document\n\n"
-                "This is a test document about OpenRAG testing framework. "
+                "This is a test document about BomaRAG testing framework. "
                 "The content should be indexed and searchable in OpenSearch after processing."
             )
             file_path.write_text(file_text)
@@ -231,7 +231,7 @@ async def test_upload_and_search_endpoint(tmp_path: Path, disable_langflow_inges
             body = upload_resp.json()
             assert upload_resp.status_code == 202, upload_resp.text
 
-            # Traditional OpenRAG and Langflow upload both use task-based ingestion (202)
+            # Traditional BomaRAG and Langflow upload both use task-based ingestion (202)
             task_id = body.get("task_id")
             assert isinstance(task_id, str)
             assert body.get("file_count") == 1
@@ -244,7 +244,7 @@ async def test_upload_and_search_endpoint(tmp_path: Path, disable_langflow_inges
                 while asyncio.get_event_loop().time() < deadline:
                     resp = await client.post(
                         "/search",
-                        json={"query": "OpenRAG testing framework", "limit": 5},
+                        json={"query": "BomaRAG testing framework", "limit": 5},
                     )
                     if resp.status_code == 200 and resp.json().get("results"):
                         return resp
@@ -455,7 +455,7 @@ async def test_langflow_chat_and_nudges_endpoints():
             if task_id:
                 await _wait_for_task_completion(client, task_id)
 
-            prompt = "Respond with a brief acknowledgement for the OpenRAG integration test."
+            prompt = "Respond with a brief acknowledgement for the BomaRAG integration test."
             langflow_payload = {"prompt": prompt, "limit": 5, "scoreThreshold": 0}
             langflow_data = await _wait_for_langflow_chat(client, langflow_payload)
 

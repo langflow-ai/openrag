@@ -60,7 +60,7 @@ import {
 } from "../../components/delete-confirmation-dialog";
 import { SyncConfirmDialog } from "../../components/sync-confirm-dialog";
 import { useDeleteDocument } from "../api/mutations/useDeleteDocument";
-import { useRefreshOpenragDocs } from "../api/mutations/useRefreshOpenragDocs";
+import { useRefreshBomaragDocs } from "../api/mutations/useRefreshBomaragDocs";
 import {
   type SyncAllPreviewResponse,
   useSyncAllConnectors,
@@ -110,7 +110,7 @@ function getSourceIcon(connectorType?: string) {
     if (Icon) return <Icon className="h-4 w-4 text-foreground flex-shrink-0" />;
   }
   switch (connectorType) {
-    case "openrag_docs":
+    case "bomarag_docs":
     case "url":
       return <Globe className="h-4 w-4 text-muted-foreground flex-shrink-0" />;
     case "s3":
@@ -191,7 +191,7 @@ function SearchPage() {
   const deleteDocumentMutation = useDeleteDocument();
   const syncAllConnectorsMutation = useSyncAllConnectors();
   const syncAllPreviewMutation = useSyncAllConnectorsPreview();
-  const refreshOpenragDocsMutation = useRefreshOpenragDocs();
+  const refreshBomaragDocsMutation = useRefreshBomaragDocs();
   const [syncDialogOpen, setSyncDialogOpen] = useState(false);
   const [syncPreview, setSyncPreview] = useState<SyncAllPreviewResponse | null>(
     null,
@@ -411,9 +411,9 @@ function SearchPage() {
         currentPage * currentPageSize,
       );
 
-  const isOpenragDocsRow = useCallback((file?: File) => {
+  const isBomaragDocsRow = useCallback((file?: File) => {
     return (
-      file?.connector_type === "openrag_docs" ||
+      file?.connector_type === "bomarag_docs" ||
       file?.connector_type === "system_default"
     );
   }, []);
@@ -460,7 +460,7 @@ function SearchPage() {
     }
   }, []);
 
-  const hasOpenragRefreshCueFromTasks = tasks.some((task) => {
+  const hasBomaragRefreshCueFromTasks = tasks.some((task) => {
     const isTaskActive =
       task.status === "pending" ||
       task.status === "running" ||
@@ -472,12 +472,12 @@ function SearchPage() {
     return Object.entries(task.files).some(([fileKey, fileInfo]) => {
       const filename = (fileInfo as { filename?: string })?.filename ?? "";
       return (
-        filename === "OpenRAG docs refresh" || fileKey.includes("openr.ag")
+        filename === "BomaRAG docs refresh" || fileKey.includes("bomarag.com")
       );
     });
   });
-  const hasOpenragRefreshCue =
-    refreshOpenragDocsMutation.isPending || hasOpenragRefreshCueFromTasks;
+  const hasBomaragRefreshCue =
+    refreshBomaragDocsMutation.isPending || hasBomaragRefreshCueFromTasks;
 
   // Show toast notification for search errors
   useEffect(() => {
@@ -595,8 +595,8 @@ function SearchPage() {
       cellRenderer: ({ data, value }: CustomCellRendererProps<File>) => {
         const status = data?.status || "active";
         const isActive = status === "active";
-        const showOpenragSourceAnimation =
-          isOpenragDocsRow(data) && hasOpenragRefreshCue;
+        const showBomaragSourceAnimation =
+          isBomaragDocsRow(data) && hasBomaragRefreshCue;
         return (
           <div className="flex items-center overflow-hidden w-full min-w-0 h-full">
             <div
@@ -629,7 +629,7 @@ function SearchPage() {
                   <span
                     className={cn(
                       "font-medium truncate min-w-0",
-                      showOpenragSourceAnimation
+                      showBomaragSourceAnimation
                         ? "text-primary animate-pulse"
                         : "text-foreground",
                     )}
@@ -744,10 +744,10 @@ function SearchPage() {
         getStatusSortRank(valueA) - getStatusSortRank(valueB),
       cellRenderer: ({ data }: CustomCellRendererProps<File>) => {
         const status = data?.status || "active";
-        const showOpenragRefreshCue =
-          isOpenragDocsRow(data) && hasOpenragRefreshCue;
+        const showBomaragRefreshCue =
+          isBomaragDocsRow(data) && hasBomaragRefreshCue;
 
-        if (showOpenragRefreshCue) {
+        if (showBomaragRefreshCue) {
           if (isCloudBrand) {
             return (
               <div className="inline-flex items-center gap-2 text-primary">
@@ -760,7 +760,7 @@ function SearchPage() {
             <div className="inline-flex items-center justify-center h-5 w-5">
               <RefreshCw
                 className="h-4 w-4 text-primary animate-spin"
-                aria-label="OpenRAG doc is refreshing"
+                aria-label="BomaRAG doc is refreshing"
               />
             </div>
           );
@@ -1001,7 +1001,7 @@ function SearchPage() {
                 type="button"
                 variant="outline"
                 className="rounded-lg flex-shrink-0"
-                disabled={refreshOpenragDocsMutation.isPending}
+                disabled={refreshBomaragDocsMutation.isPending}
                 onClick={async () => {
                   trackButton({
                     CTA: "Fetch Latest Docs",
@@ -1009,20 +1009,20 @@ function SearchPage() {
                     namespace: "knowledge",
                   });
                   try {
-                    toast.info("Refreshing OpenRAG docs...");
+                    toast.info("Refreshing BomaRAG docs...");
                     const result =
-                      await refreshOpenragDocsMutation.mutateAsync();
+                      await refreshBomaragDocsMutation.mutateAsync();
                     toast.success(result.message);
                   } catch (error) {
                     toast.error(
                       error instanceof Error
                         ? error.message
-                        : "Failed to refresh OpenRAG docs",
+                        : "Failed to refresh BomaRAG docs",
                     );
                   }
                 }}
               >
-                {refreshOpenragDocsMutation.isPending ? (
+                {refreshBomaragDocsMutation.isPending ? (
                   <>Refreshing docs...</>
                 ) : (
                   <>Fetch latest docs</>

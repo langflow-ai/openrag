@@ -1,5 +1,5 @@
 /**
- * OpenRAG SDK types.
+ * BomaRAG SDK types.
  */
 
 // Chat types
@@ -303,14 +303,14 @@ export interface DeleteKnowledgeFilterResponse {
 }
 
 // Client options
-export interface OpenRAGClientOptions {
-  /** API key for authentication. Falls back to OPENRAG_API_KEY env var.
+export interface BomaRAGClientOptions {
+  /** API key for authentication. Falls back to BOMARAG_API_KEY env var.
    *  Optional when using IBM auth — pass credentials via extraHeaders instead. */
   apiKey?: string;
   /** Additional headers forwarded on every request. Used in IBM auth mode
    *  to pass X-Username and X-Api-Key from the user's MCP config. */
   extraHeaders?: Record<string, string>;
-  /** Base URL for the API. Falls back to OPENRAG_URL env var. */
+  /** Base URL for the API. Falls back to BOMARAG_URL env var. */
   baseUrl?: string;
   /** Request timeout in milliseconds (default 30000). */
   timeout?: number;
@@ -338,45 +338,45 @@ export interface SearchQueryOptions {
 }
 
 // Error types
-export class OpenRAGError extends Error {
+export class BomaRAGError extends Error {
   constructor(
     message: string,
     public statusCode?: number
   ) {
     super(message);
-    this.name = "OpenRAGError";
+    this.name = "BomaRAGError";
   }
 }
 
-export class AuthenticationError extends OpenRAGError {
+export class AuthenticationError extends BomaRAGError {
   constructor(message: string, statusCode?: number) {
     super(message, statusCode);
     this.name = "AuthenticationError";
   }
 }
 
-export class NotFoundError extends OpenRAGError {
+export class NotFoundError extends BomaRAGError {
   constructor(message: string, statusCode?: number) {
     super(message, statusCode);
     this.name = "NotFoundError";
   }
 }
 
-export class ValidationError extends OpenRAGError {
+export class ValidationError extends BomaRAGError {
   constructor(message: string, statusCode?: number) {
     super(message, statusCode);
     this.name = "ValidationError";
   }
 }
 
-export class RateLimitError extends OpenRAGError {
+export class RateLimitError extends BomaRAGError {
   constructor(message: string, statusCode?: number) {
     super(message, statusCode);
     this.name = "RateLimitError";
   }
 }
 
-export class ServerError extends OpenRAGError {
+export class ServerError extends BomaRAGError {
   constructor(message: string, statusCode?: number) {
     super(message, statusCode);
     this.name = "ServerError";

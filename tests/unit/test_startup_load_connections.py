@@ -4,7 +4,7 @@ dev bucket connectors even in no-auth mode.
 Bug: `initialize_services()` skipped `connector_service.initialize()` (which
 calls `load_connections()`) whenever no-auth mode was active, on the assumption
 that connectors require OAuth. But the Azure Blob bucket connector works in
-no-auth dev mode via OPENRAG_DEV_AZURE_BLOB=true. Skipping the load left the
+no-auth dev mode via BOMARAG_DEV_AZURE_BLOB=true. Skipping the load left the
 in-memory connections dict empty after a restart, so a saved connection
 silently reverted to the "Connect" state until re-saved.
 

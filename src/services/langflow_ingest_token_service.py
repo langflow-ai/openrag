@@ -60,7 +60,7 @@ class LangflowIngestTokenService:
     batch.
     """
 
-    audience = "openrag-langflow-ingest"
+    audience = "bomarag-langflow-ingest"
 
     def __init__(self, secret: str | None = None, ttl_seconds: int | None = None):
         if secret is not None:

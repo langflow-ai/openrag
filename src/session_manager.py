@@ -35,7 +35,7 @@ class User:
     jwt_token: str | None = None
     opensearch_username: str | None = None
     opensearch_credentials: str | None = None  # Raw base64 credentials (without "Basic " prefix)
-    db_user_id: str | None = None  # Internal OpenRAG users.id
+    db_user_id: str | None = None  # Internal BomaRAG users.id
 
     def __post_init__(self):
         if self.created_at is None:
@@ -207,11 +207,11 @@ class SessionManager:
 
     def _get_oidc_issuer(self) -> str:
         # Use OpenSearch-compatible issuer for OIDC validation
-        from config.settings import OPENRAG_BACKEND_PORT, OPENRAG_FQDN
+        from config.settings import BOMARAG_BACKEND_PORT, BOMARAG_FQDN
 
-        oidc_issuer = f"http://openrag-backend:{OPENRAG_BACKEND_PORT}"
-        if OPENRAG_FQDN:
-            oidc_issuer = f"http://{OPENRAG_FQDN}:{OPENRAG_BACKEND_PORT}"
+        oidc_issuer = f"http://bomarag-backend:{BOMARAG_BACKEND_PORT}"
+        if BOMARAG_FQDN:
+            oidc_issuer = f"http://{BOMARAG_FQDN}:{BOMARAG_BACKEND_PORT}"
         return oidc_issuer
 
     def _create_signed_jwt_token(
@@ -222,12 +222,12 @@ class SessionManager:
     ) -> str:
         # Create JWT token with OIDC-compliant claims
         now = datetime.now(UTC)
-        roles = ["openrag_user"]
+        roles = ["bomarag_user"]
         token_payload = {
             # OIDC standard claims
             "iss": self._get_oidc_issuer(),  # Fixed issuer for OpenSearch OIDC
             "sub": user.user_id,  # Subject (user ID)
-            "aud": ["opensearch", "openrag"],  # Audience
+            "aud": ["opensearch", "bomarag"],  # Audience
             "exp": now + expires_delta,  # Expiration
             "iat": now,  # Issued at
             "auth_time": int(now.timestamp()),  # Authentication time
@@ -248,7 +248,7 @@ class SessionManager:
         return f"Bearer {token}"
 
     def create_jwt_token(self, user: User) -> str:
-        """Create the long-lived OpenRAG session JWT for an existing user."""
+        """Create the long-lived BomaRAG session JWT for an existing user."""
         return self._create_signed_jwt_token(
             user,
             expires_delta=timedelta(days=7),
@@ -287,7 +287,7 @@ class SessionManager:
                 raw,
                 self.public_key,
                 algorithms=[self.algorithm],
-                audience=["opensearch", "openrag"],
+                audience=["opensearch", "bomarag"],
             )
             _JWT_CLAIMS_CACHE[raw] = payload
             return payload

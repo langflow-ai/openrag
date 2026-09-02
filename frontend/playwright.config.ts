@@ -6,7 +6,7 @@ import path from "path";
 dotenv.config({ path: path.resolve(__dirname, "..", ".env") });
 
 const PORT = process.env.FRONTEND_PORT || 3000;
-const BACKEND_PORT = process.env.OPENRAG_BACKEND_PORT || 8000;
+const BACKEND_PORT = process.env.BOMARAG_BACKEND_PORT || 8000;
 
 export default defineConfig({
   testDir: "./tests",

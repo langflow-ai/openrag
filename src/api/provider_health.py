@@ -7,7 +7,7 @@ from fastapi import Depends
 from fastapi.responses import JSONResponse
 
 from api.provider_validation import sanitize_provider_error_content, validate_provider_setup
-from config.settings import get_openrag_config
+from config.settings import get_bomarag_config
 from dependencies import require_permission
 from services.model_catalog import is_known_provider
 from session_manager import User
@@ -48,7 +48,7 @@ async def check_provider_health(
     _health_leader_key: str | None = None  # set when this coroutine wins leader election
     try:
         # Get current config
-        current_config = get_openrag_config()
+        current_config = get_bomarag_config()
 
         # Determine which provider to check
         if check_provider:

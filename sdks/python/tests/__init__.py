@@ -1,1 +1,1 @@
-"""OpenRAG SDK tests."""
+"""BomaRAG SDK tests."""

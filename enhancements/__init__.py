@@ -1,4 +1,4 @@
-"""OpenRAG enhancements package.
+"""BomaRAG enhancements package.
 
 This directory is populated by enterprise / SaaS overlays via the
 `git checkout --ours enhancements/ frontend/enhancements/` merge strategy.

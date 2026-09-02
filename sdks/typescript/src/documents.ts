@@ -1,8 +1,8 @@
 /**
- * OpenRAG SDK documents client.
+ * BomaRAG SDK documents client.
  */
 
-import type { OpenRAGClient } from "./client";
+import type { BomaRAGClient } from "./client";
 import type {
   DeleteDocumentOptions,
   DeleteDocumentResponse,
@@ -31,7 +31,7 @@ export interface IngestOptions {
 }
 
 export class DocumentsClient {
-  constructor(private client: OpenRAGClient) {}
+  constructor(private client: BomaRAGClient) {}
 
   /**
    * Ingest a document into the knowledge base.

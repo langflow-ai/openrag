@@ -2,7 +2,7 @@
 Unit tests for the embedding field helpers.
 
 Focuses on ``build_knn_vector_field``, the single source of truth for
-OpenRAG's ``knn_vector`` field mapping. Callers across ``config.settings``,
+BomaRAG's ``knn_vector`` field mapping. Callers across ``config.settings``,
 ``utils.embeddings``, ``utils.embedding_fields``, and
 ``scripts.migrate_embedding_model_field`` rely on it producing a consistent
 JVector/DiskANN method configuration with only the dimension varying per
@@ -110,7 +110,7 @@ class TestBuildKnnVectorFieldCallSitesMatch:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(
-            "config.settings.get_openrag_config",
+            "config.settings.get_bomarag_config",
             lambda: SimpleNamespace(
                 knowledge=SimpleNamespace(embedding_model="text-embedding-3-large")
             ),

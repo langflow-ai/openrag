@@ -33,7 +33,7 @@ def is_instana_enabled(value: str | None = None) -> bool:
     return value.strip().lower() in _TRUTHY_VALUES
 
 
-TEST_OPT_IN_ENV_VAR = "OPENRAG_TEST_INSTANA"
+TEST_OPT_IN_ENV_VAR = "BOMARAG_TEST_INSTANA"
 
 
 def is_instana_test_opt_in(value: str | None = None) -> bool:

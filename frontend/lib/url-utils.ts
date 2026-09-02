@@ -64,10 +64,10 @@ export function resolveLangflowEditUrl({
 }
 
 /**
- * Derives the Langflow base URL from the current OpenRAG URL in IBM SaaS environments.
+ * Derives the Langflow base URL from the current BomaRAG URL in IBM SaaS environments.
  *
  * IBM SaaS URL pattern:
- *   OpenRAG:  https://{instance_id}.or.{domain}/
+ *   BomaRAG:  https://{instance_id}.or.{domain}/
  *   Langflow: https://{instance_id}-langflow.or.{domain}/
  *
  * The transformation appends "-langflow" to the instance ID segment of the hostname.
@@ -97,17 +97,17 @@ function deriveCloudLangflowUrl(
 }
 
 /**
- * Derives the Langflow base URL from the current OpenRAG URL in IBM on-prem (CPD) environments.
+ * Derives the Langflow base URL from the current BomaRAG URL in IBM on-prem (CPD) environments.
  *
  * IBM on-prem URL pattern:
- *   https://openrag-{app}-{instance_namespace}.{ingress_name}
+ *   https://bomarag-{app}-{instance_namespace}.{ingress_name}
  *   where {app} is "fe" (frontend) or "lf" (Langflow).
  *
  * Examples:
- *   OpenRAG:  https://openrag-fe-cpd-instance.apps.sythis.cp.fyre.ibm.com/
- *   Langflow: https://openrag-lf-cpd-instance.apps.sythis.cp.fyre.ibm.com/
+ *   BomaRAG:  https://bomarag-fe-cpd-instance.apps.sythis.cp.fyre.ibm.com/
+ *   Langflow: https://bomarag-lf-cpd-instance.apps.sythis.cp.fyre.ibm.com/
  *
- * The transformation swaps the "openrag-fe-" host prefix for "openrag-lf-".
+ * The transformation swaps the "bomarag-fe-" host prefix for "bomarag-lf-".
  * Returns null if the current URL does not match the expected on-prem pattern.
  */
 function deriveOnPremLangflowUrl(
@@ -119,13 +119,13 @@ function deriveOnPremLangflowUrl(
 
   try {
     const url = new URL(locationOrigin);
-    // Match: openrag-fe-{instance_namespace}.{ingress_name}
+    // Match: bomarag-fe-{instance_namespace}.{ingress_name}
     const hostname = url.hostname;
-    const match = hostname.match(/^openrag-fe-(.+)$/);
+    const match = hostname.match(/^bomarag-fe-(.+)$/);
     if (!match) return null;
 
     const [, instanceAndIngress] = match;
-    url.hostname = `openrag-lf-${instanceAndIngress}`;
+    url.hostname = `bomarag-lf-${instanceAndIngress}`;
     return url.origin;
   } catch {
     return null;

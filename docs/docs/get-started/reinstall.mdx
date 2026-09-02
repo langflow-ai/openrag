@@ -1,5 +1,5 @@
 ---
-title: Reinstall OpenRAG
+title: Reinstall BomaRAG
 slug: /reinstall
 ---
 
@@ -10,10 +10,10 @@ import PartialDockerRemoveAndCleanupSteps from '@site/docs/_partial-docker-remov
 import PartialFactorResetWarning from '@site/docs/_partial-factory-reset-warning.mdx';
 import PartialExportFlows from '@site/docs/_partial-export-flows.mdx';
 
-You can reset your OpenRAG deployment to its initial state by recreating the containers and deleting accessory data, such as the `.env` file and ingested documents.
+You can reset your BomaRAG deployment to its initial state by recreating the containers and deleting accessory data, such as the `.env` file and ingested documents.
 
 :::warning
-These are destructive operations that reset your OpenRAG deployment to an initial state.
+These are destructive operations that reset your BomaRAG deployment to an initial state.
 Destroyed containers and deleted data are lost and cannot be recovered after running these operations.
 :::
 
@@ -21,31 +21,31 @@ Destroyed containers and deleted data are lost and cannot be recovered after run
 
 <PartialExportFlows />
 
-2. [Start the terminal session with `--tui`](/tui#access-the-tui), such as `uv run openrag --tui` or `uvx openrag --tui`.
+2. [Start the terminal session with `--tui`](/tui#access-the-tui), such as `uv run bomarag --tui` or `uvx bomarag --tui`.
 
 3. Click **Status** in the [TUI](/tui).
 
-4. Click **Factory Reset** to [reset your OpenRAG containers](/manage-services#reset-containers).
+4. Click **Factory Reset** to [reset your BomaRAG containers](/manage-services#reset-containers).
 
    <PartialFactorResetWarning />
 
 5. Press <kbd>q</kbd> to quit the TUI.
 
-6. Optional: Delete or edit [OpenRAG's `.env` file](/reference/configuration), which is stored at `~/.openrag/tui`.
+6. Optional: Delete or edit [BomaRAG's `.env` file](/reference/configuration), which is stored at `~/.bomarag/tui`.
 
-   This file contains your OpenRAG configuration, including OpenRAG passwords, API keys, OAuth credentials, and other environment variables. If you delete this file, OpenRAG automatically generates a new one after you repeat the setup and onboarding process. If you preserve this file, OpenRAG can read values from the existing `.env` file during setup and onboarding.
+   This file contains your BomaRAG configuration, including BomaRAG passwords, API keys, OAuth credentials, and other environment variables. If you delete this file, BomaRAG automatically generates a new one after you repeat the setup and onboarding process. If you preserve this file, BomaRAG can read values from the existing `.env` file during setup and onboarding.
 
-7. Optional: Remove any files from the `~/.openrag/documents` subdirectory that you don't want to reingest after redeploying the containers.
-It is recommended that you preserve OpenRAG's [default documents](https://github.com/langflow-ai/openrag/tree/main/openrag-documents).
+7. Optional: Remove any files from the `~/.bomarag/documents` subdirectory that you don't want to reingest after redeploying the containers.
+It is recommended that you preserve BomaRAG's [default documents](https://github.com/ABISHAIMWANJA/bomarag/tree/main/bomarag-documents).
 
-8. Run OpenRAG with `uv run openrag` or `uvx openrag`.
+8. Run BomaRAG with `uv run bomarag` or `uvx bomarag`.
 
-9. Repeat the [setup process](/install-uvx#setup) to configure OpenRAG and restart all services.
-Then, open OpenRAG in your browser and repeat the [application onboarding process](/install-uvx#application-onboarding).
+9. Repeat the [setup process](/install-uvx#setup) to configure BomaRAG and restart all services.
+Then, open BomaRAG in your browser and repeat the [application onboarding process](/install-uvx#application-onboarding).
 
 ## Reinstall self-managed containers with `docker compose` or `podman compose`
 
-Use these steps to reinstall OpenRAG containers with streamlined `docker compose` or `podman compose` commands:
+Use these steps to reinstall BomaRAG containers with streamlined `docker compose` or `podman compose` commands:
 
 <PartialExportFlows />
 
@@ -55,20 +55,20 @@ Use these steps to reinstall OpenRAG containers with streamlined `docker compose
 
    <PartialDockerComposeDownAndPrune />
 
-3. Optional: Edit OpenRAG's `.env` file if needed.
+3. Optional: Edit BomaRAG's `.env` file if needed.
 
-4. Optional: Remove any files from the `~/.openrag/documents` subdirectory that you don't want to reingest after redeploying the containers.
-It is recommended that you preserve OpenRAG's [default documents](https://github.com/langflow-ai/openrag/tree/main/openrag-documents).
+4. Optional: Remove any files from the `~/.bomarag/documents` subdirectory that you don't want to reingest after redeploying the containers.
+It is recommended that you preserve BomaRAG's [default documents](https://github.com/ABISHAIMWANJA/bomarag/tree/main/bomarag-documents).
 
-5. Redeploy OpenRAG:
+5. Redeploy BomaRAG:
 
    <PartialDockerComposeUp />
 
-6. Launch the OpenRAG app, and then repeat the [application onboarding process](/docker#application-onboarding).
+6. Launch the BomaRAG app, and then repeat the [application onboarding process](/docker#application-onboarding).
 
 ## Reinstall self-managed containers with discrete `docker` or `podman` commands
 
-Use these commands to remove and clean up OpenRAG containers with discrete `docker` or `podman` commands.
+Use these commands to remove and clean up BomaRAG containers with discrete `docker` or `podman` commands.
 
 If you want to reinstall one container, specify the container name in the commands instead of running the commands on all containers.
 
@@ -82,10 +82,10 @@ If you want to reinstall one container, specify the container name in the comman
 
    <PartialDockerRemoveAndCleanupSteps />
 
-4. Optional: Edit OpenRAG's `.env` file if needed.
+4. Optional: Edit BomaRAG's `.env` file if needed.
 
-5. Optional: If you removed all containers or specifically the OpenSearch container, then you can remove any files from the `~/.openrag/documents` subdirectory that you don't want to reingest after redeploying the containers.
-It is recommended that you preserve OpenRAG's [default documents](https://github.com/langflow-ai/openrag/tree/main/openrag-documents).
+5. Optional: If you removed all containers or specifically the OpenSearch container, then you can remove any files from the `~/.bomarag/documents` subdirectory that you don't want to reingest after redeploying the containers.
+It is recommended that you preserve BomaRAG's [default documents](https://github.com/ABISHAIMWANJA/bomarag/tree/main/bomarag-documents).
 
-6. If you removed all OpenRAG containers, [redeploy OpenRAG](/docker).
+6. If you removed all BomaRAG containers, [redeploy BomaRAG](/docker).
 If you removed only one container, redeploy that container with the appropriate `docker run` or `podman run` command.

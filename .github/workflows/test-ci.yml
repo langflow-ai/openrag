@@ -26,9 +26,9 @@ env:
   # Total number of parallel E2E test shards
   TOTAL_SHARDS: 8
   IS_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
-  OPENSEARCH_PASSWORD: ${{ vars.OPENSEARCH_PASSWORD || secrets.OPENSEARCH_PASSWORD || 'OpenRag#2025!' }}
+  OPENSEARCH_PASSWORD: ${{ vars.OPENSEARCH_PASSWORD || secrets.OPENSEARCH_PASSWORD || 'BomaRag#2025!' }}
   LANGFLOW_SUPERUSER: "admin"
-  LANGFLOW_SUPERUSER_PASSWORD: ${{ vars.LANGFLOW_SUPERUSER_PASSWORD || secrets.LANGFLOW_SUPERUSER_PASSWORD || 'OpenRag#2025!' }}
+  LANGFLOW_SUPERUSER_PASSWORD: ${{ vars.LANGFLOW_SUPERUSER_PASSWORD || secrets.LANGFLOW_SUPERUSER_PASSWORD || 'BomaRag#2025!' }}
   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
   LANGFLOW_AUTO_LOGIN: "True"
   LANGFLOW_NEW_USER_IS_ACTIVE: "True"
@@ -119,9 +119,9 @@ jobs:
             echo "dockerfile=Dockerfile.${{ matrix.image }}" >> "$GITHUB_OUTPUT"
           fi
           if [ "${{ env.IS_FORK }}" = "true" ]; then
-            echo "image=langflowai/openrag-${{ matrix.image }}:${CI_IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+            echo "image=bomalogic/bomarag-${{ matrix.image }}:${CI_IMAGE_TAG}" >> "$GITHUB_OUTPUT"
           else
-            echo "image=ghcr.io/${{ steps.repo.outputs.name }}/openrag-${{ matrix.image }}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+            echo "image=ghcr.io/${{ steps.repo.outputs.name }}/bomarag-${{ matrix.image }}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
           fi
           # Build locally for PRs, local dispatch, and the OpenSearch image
           # (which has no DockerHub publish); otherwise reuse the prebuilt
@@ -135,7 +135,7 @@ jobs:
           # every non-fork PR reads it, so a PR that doesn't touch this image
           # gets its layers for free on the first run. PRs also keep a per-PR
           # gha cache so a second commit in the same PR reuses its own layers.
-          REG_CACHE="ghcr.io/${{ steps.repo.outputs.name }}/openrag-${{ matrix.image }}:buildcache"
+          REG_CACHE="ghcr.io/${{ steps.repo.outputs.name }}/bomarag-${{ matrix.image }}:buildcache"
           {
             echo "cache_from<<EOF"
             echo "type=registry,ref=${REG_CACHE}"
@@ -185,8 +185,8 @@ jobs:
         if: steps.params.outputs.mode == 'pull'
         run: |
           for i in 1 2 3; do
-            if docker pull "langflowai/openrag-${{ matrix.image }}:latest"; then
-              docker tag "langflowai/openrag-${{ matrix.image }}:latest" "${{ steps.params.outputs.image }}"
+            if docker pull "bomalogic/bomarag-${{ matrix.image }}:latest"; then
+              docker tag "bomalogic/bomarag-${{ matrix.image }}:latest" "${{ steps.params.outputs.image }}"
               if [ "${{ env.IS_FORK }}" != "true" ]; then
                 docker push "${{ steps.params.outputs.image }}"
               fi
@@ -198,17 +198,17 @@ jobs:
           echo "Pull failed after 3 attempts."
           exit 1
 
-      - name: Save OpenRAG image (Fork fallback)
+      - name: Save BomaRAG image (Fork fallback)
         if: env.IS_FORK == 'true'
         run: |
           mkdir -p .ci-artifacts
-          docker save -o .ci-artifacts/${{ matrix.image }}.tar langflowai/openrag-${{ matrix.image }}:${CI_IMAGE_TAG}
+          docker save -o .ci-artifacts/${{ matrix.image }}.tar bomalogic/bomarag-${{ matrix.image }}:${CI_IMAGE_TAG}
 
-      - name: Upload OpenRAG image artifact (Fork fallback)
+      - name: Upload BomaRAG image artifact (Fork fallback)
         if: env.IS_FORK == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: openrag-ci-image-${{ matrix.image }}-${{ github.sha }}
+          name: bomarag-ci-image-${{ matrix.image }}-${{ github.sha }}
           path: .ci-artifacts/${{ matrix.image }}.tar
           retention-days: 1
           compression-level: 0
@@ -220,7 +220,7 @@ jobs:
           docker compose -f docker-compose.yml down -v --remove-orphans || true
           docker system prune -f || true
           for i in 1 2 3; do
-            docker run --rm -v $(pwd):/work alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows/backup /work/openrag-documents" && break
+            docker run --rm -v $(pwd):/work alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows/backup /work/bomarag-documents" && break
             echo "Attempt $i failed, retrying in 5s..."
             sleep 5
           done || true
@@ -259,15 +259,15 @@ jobs:
       - name: Python version
         run: uv python install 3.13
 
-      - name: Download OpenRAG image artifacts (Fork fallback)
+      - name: Download BomaRAG image artifacts (Fork fallback)
         if: env.IS_FORK == 'true'
         uses: actions/download-artifact@v4
         with:
-          pattern: openrag-ci-image-*-${{ github.sha }}
+          pattern: bomarag-ci-image-*-${{ github.sha }}
           path: .ci-artifacts
           merge-multiple: true
 
-      - name: Load OpenRAG images (Fork fallback)
+      - name: Load BomaRAG images (Fork fallback)
         if: env.IS_FORK == 'true'
         run: |
           for f in .ci-artifacts/*.tar; do
@@ -289,13 +289,13 @@ jobs:
         run: |
           echo "name=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
-      - name: Pull and tag OpenRAG images
+      - name: Pull and tag BomaRAG images
         if: env.IS_FORK != 'true'
         run: |
           REGISTRY_PREFIX="ghcr.io/${{ steps.repo.outputs.name }}"
           for image in opensearch backend frontend langflow; do
-            docker pull "${REGISTRY_PREFIX}/openrag-${image}:${{ github.sha }}"
-            docker tag "${REGISTRY_PREFIX}/openrag-${image}:${{ github.sha }}" "langflowai/openrag-${image}:${CI_IMAGE_TAG}"
+            docker pull "${REGISTRY_PREFIX}/bomarag-${image}:${{ github.sha }}"
+            docker tag "${REGISTRY_PREFIX}/bomarag-${image}:${{ github.sha }}" "bomalogic/bomarag-${image}:${CI_IMAGE_TAG}"
           done
 
       - name: Run ${{ matrix.suite }} integration suite
@@ -314,7 +314,7 @@ jobs:
           DISABLE_STARTUP_INGEST: "true"
         run: |
           chmod +x scripts/ci/run_integration_suite.sh
-          OPENRAG_VERSION="${CI_IMAGE_TAG}" TEST_SUITE="${{ matrix.suite }}" make test-ci-suite
+          BOMARAG_VERSION="${CI_IMAGE_TAG}" TEST_SUITE="${{ matrix.suite }}" make test-ci-suite
           echo "Keys directory after tests:"
           ls -la keys/ || echo "No keys directory"
 
@@ -332,7 +332,7 @@ jobs:
           make clean || true
           docker system prune -f || true
           for i in 1 2 3; do
-            docker run --rm -v $(pwd):/work alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows/backup /work/openrag-documents" && break
+            docker run --rm -v $(pwd):/work alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows/backup /work/bomarag-documents" && break
             echo "Attempt $i failed, retrying in 5s..."
             sleep 5
           done || true
@@ -405,15 +405,15 @@ jobs:
             fi
           done
 
-      - name: Download OpenRAG image artifacts (Fork fallback)
+      - name: Download BomaRAG image artifacts (Fork fallback)
         if: env.IS_FORK == 'true'
         uses: actions/download-artifact@v4
         with:
-          pattern: openrag-ci-image-*-${{ github.sha }}
+          pattern: bomarag-ci-image-*-${{ github.sha }}
           path: .ci-artifacts
           merge-multiple: true
 
-      - name: Load OpenRAG images (Fork fallback)
+      - name: Load BomaRAG images (Fork fallback)
         if: env.IS_FORK == 'true'
         run: |
           for f in .ci-artifacts/*.tar; do
@@ -435,19 +435,19 @@ jobs:
         run: |
           echo "name=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
-      - name: Pull and tag OpenRAG images
+      - name: Pull and tag BomaRAG images
         if: env.IS_FORK != 'true'
         run: |
           REGISTRY_PREFIX="ghcr.io/${{ steps.repo.outputs.name }}"
           for image in opensearch backend frontend langflow; do
-            docker pull "${REGISTRY_PREFIX}/openrag-${image}:${{ github.sha }}"
-            docker tag "${REGISTRY_PREFIX}/openrag-${image}:${{ github.sha }}" "langflowai/openrag-${image}:${CI_IMAGE_TAG}"
+            docker pull "${REGISTRY_PREFIX}/bomarag-${image}:${{ github.sha }}"
+            docker tag "${REGISTRY_PREFIX}/bomarag-${image}:${{ github.sha }}" "bomalogic/bomarag-${image}:${CI_IMAGE_TAG}"
           done
 
       - name: Setup E2E infrastructure
         run: |
           chmod +x scripts/setup-e2e.sh
-          OPENRAG_VERSION="${CI_IMAGE_TAG}" ./scripts/setup-e2e.sh
+          BOMARAG_VERSION="${CI_IMAGE_TAG}" ./scripts/setup-e2e.sh
 
       - name: Run Playwright tests (shard ${{ matrix.shard }}/${{ matrix.total_shards }})
         working-directory: frontend
@@ -467,11 +467,11 @@ jobs:
         if: failure()
         run: |
           mkdir -p service-logs
-          docker logs openrag-opensearch > service-logs/opensearch.log 2>&1 || true
-          docker logs openrag-backend > service-logs/backend.log 2>&1 || true
-          docker logs openrag-frontend > service-logs/frontend.log 2>&1 || true
-          docker logs openrag-langflow > service-logs/langflow.log 2>&1 || true
-          cp ~/.openrag/tui/docling-serve.log service-logs/docling.log 2>&1 || true
+          docker logs bomarag-opensearch > service-logs/opensearch.log 2>&1 || true
+          docker logs bomarag-backend > service-logs/backend.log 2>&1 || true
+          docker logs bomarag-frontend > service-logs/frontend.log 2>&1 || true
+          docker logs bomarag-langflow > service-logs/langflow.log 2>&1 || true
+          cp ~/.bomarag/tui/docling-serve.log service-logs/docling.log 2>&1 || true
 
       - name: Upload service logs
         uses: actions/upload-artifact@v4
@@ -501,11 +501,11 @@ jobs:
         if: always()
         run: |
           make docling-stop || true
-          docker rm -f openrag-backend-proxy 2>/dev/null || true
+          docker rm -f bomarag-backend-proxy 2>/dev/null || true
           make clean || true
           docker system prune -f || true
           for i in 1 2 3; do
-            docker run --rm -v $(pwd):/work alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows/backup /work/openrag-documents" && break
+            docker run --rm -v $(pwd):/work alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows/backup /work/bomarag-documents" && break
             echo "Attempt $i failed, retrying in 5s..."
             sleep 5
           done || true
@@ -619,7 +619,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           for image in opensearch backend frontend langflow; do
-            PACKAGE_NAME="openrag-${image}"
+            PACKAGE_NAME="bomarag-${image}"
             echo "Searching for version of package ${PACKAGE_NAME} with tag ${{ github.sha }}..."
             OWNER="${{ github.repository_owner }}"
             

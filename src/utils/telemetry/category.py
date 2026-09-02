@@ -1,4 +1,4 @@
-"""Telemetry categories for OpenRAG backend."""
+"""Telemetry categories for BomaRAG backend."""
 
 
 class Category:

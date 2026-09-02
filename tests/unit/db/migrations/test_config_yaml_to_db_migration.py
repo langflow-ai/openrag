@@ -44,7 +44,7 @@ def tmp_yaml(monkeypatch):
     with tempfile.TemporaryDirectory() as tmp:
         cfg_dir = Path(tmp) / "config"
         cfg_dir.mkdir()
-        monkeypatch.setenv("OPENRAG_CONFIG_PATH", str(cfg_dir))
+        monkeypatch.setenv("BOMARAG_CONFIG_PATH", str(cfg_dir))
         # ConfigManager is a singleton at module level — reset its
         # internal state so it picks up the new path on next load.
         from config.config_manager import config_manager

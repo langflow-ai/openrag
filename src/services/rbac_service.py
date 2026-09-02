@@ -1,11 +1,11 @@
 """RBAC chokepoint.
 
-Every permission decision in OpenRAG goes through `RBACService.has_permission`
+Every permission decision in BomaRAG goes through `RBACService.has_permission`
 or `RBACService.get_user_permissions`. Keeping a single class here is what
 makes a future swap to Casbin / OpenFGA / SpiceDB a one-class refactor
 rather than a sweep across every route handler.
 
-Permissions are cached per-process for `OPENRAG_PERM_CACHE_TTL` seconds
+Permissions are cached per-process for `BOMARAG_PERM_CACHE_TTL` seconds
 (default 60). Cache invalidates explicitly on role/permission mutations.
 """
 
@@ -27,7 +27,7 @@ logger = get_logger(__name__)
 
 def _cache_ttl() -> int:
     try:
-        return int(os.getenv("OPENRAG_PERM_CACHE_TTL", "60"))
+        return int(os.getenv("BOMARAG_PERM_CACHE_TTL", "60"))
     except ValueError:
         return 60
 
@@ -35,17 +35,17 @@ def _cache_ttl() -> int:
 def is_rbac_enforced() -> bool:
     """Whether ``require_permission`` should actually check permissions.
 
-    Default: ``false`` — RBAC is **opt-in**. Out of the box OpenRAG
+    Default: ``false`` — RBAC is **opt-in**. Out of the box BomaRAG
     behaves exactly like the pre-RBAC release: any authenticated user
     has full access; API-key role overrides are also bypassed. This is
     intentional so single-user OSS installs and migration paths don't
     need any RBAC ceremony.
 
-    Set ``OPENRAG_RBAC_ENFORCE=true`` to turn the permissions system
-    on for multi-user deployments. Available in all ``OPENRAG_RUN_MODE``
+    Set ``BOMARAG_RBAC_ENFORCE=true`` to turn the permissions system
+    on for multi-user deployments. Available in all ``BOMARAG_RUN_MODE``
     values; operators own the trade-off.
     """
-    raw = os.getenv("OPENRAG_RBAC_ENFORCE", "false").strip().lower()
+    raw = os.getenv("BOMARAG_RBAC_ENFORCE", "false").strip().lower()
     return raw in ("true", "1", "yes", "on")
 
 
@@ -102,7 +102,7 @@ class RBACService:
     ) -> None:
         """Self-or-elevated check used by /delete:own etc. Raises 403 on miss.
 
-        When ``OPENRAG_RBAC_ENFORCE=false`` this returns immediately —
+        When ``BOMARAG_RBAC_ENFORCE=false`` this returns immediately —
         every authenticated user passes every gate, matching the
         bypass in ``dependencies.require_permission``.
         """

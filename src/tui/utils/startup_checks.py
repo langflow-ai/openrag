@@ -1,4 +1,4 @@
-"""Startup prerequisites and health checks - ported from run_openrag_with_prereqs.sh
+"""Startup prerequisites and health checks - ported from run_bomarag_with_prereqs.sh
 
 All actions require explicit user consent via Y/n prompts.
 """
@@ -13,12 +13,12 @@ from typing import Tuple, Optional
 from pathlib import Path
 
 MIN_PODMAN_MEMORY_MB = 8192  # 8 GB minimum
-OPENRAG_IMAGE_REPOS = {
-    "langflowai/openrag-backend",
-    "langflowai/openrag-frontend",
-    "langflowai/openrag-langflow",
-    "langflowai/openrag-opensearch",
-    "langflowai/openrag-dashboards",
+BOMARAG_IMAGE_REPOS = {
+    "bomalogic/bomarag-backend",
+    "bomalogic/bomarag-frontend",
+    "bomalogic/bomarag-langflow",
+    "bomalogic/bomarag-opensearch",
+    "bomalogic/bomarag-dashboards",
     "langflow/langflow",
     "opensearchproject/opensearch",
     "opensearchproject/opensearch-dashboards",
@@ -112,14 +112,14 @@ def _extract_repository(image_tag: str) -> str:
     return image_tag.rsplit(":", 1)[0] if ":" in image_tag else image_tag
 
 
-def _is_openrag_repository(repository: str) -> bool:
-    """Check whether repository is OpenRAG-related, with optional registry prefix."""
+def _is_bomarag_repository(repository: str) -> bool:
+    """Check whether repository is BomaRAG-related, with optional registry prefix."""
     repo = repository.lower()
-    return any(repo == known or repo.endswith(f"/{known}") for known in OPENRAG_IMAGE_REPOS)
+    return any(repo == known or repo.endswith(f"/{known}") for known in BOMARAG_IMAGE_REPOS)
 
 
-def remove_openrag_images(runtime: str) -> tuple[int, int]:
-    """Remove only OpenRAG-related images for the given runtime."""
+def remove_bomarag_images(runtime: str) -> tuple[int, int]:
+    """Remove only BomaRAG-related images for the given runtime."""
     result = subprocess.run(
         [runtime, "images", "--format", "{{.Repository}}:{{.Tag}}\t{{.ID}}"],
         capture_output=True,
@@ -143,7 +143,7 @@ def remove_openrag_images(runtime: str) -> tuple[int, int]:
             continue
 
         repository = _extract_repository(image_tag)
-        if not _is_openrag_repository(repository):
+        if not _is_bomarag_repository(repository):
             continue
 
         if image_id in seen_ids:
@@ -502,7 +502,7 @@ def fix_storage_corruption(runtime: str, version: str) -> bool:
     if runtime == "podman":
         prompt = f"Reset {runtime} storage? (WARNING: deletes all containers/images)"
     else:
-        prompt = "Remove OpenRAG Docker images? (OpenRAG images only)"
+        prompt = "Remove BomaRAG Docker images? (BomaRAG images only)"
     if not ask_yes_no(prompt):
         return False
 
@@ -531,17 +531,17 @@ def fix_storage_corruption(runtime: str, version: str) -> bool:
         say("Done.")
         return True
     else:
-        say("Removing OpenRAG Docker images...")
-        removed, total = remove_openrag_images("docker")
-        say(f"Removed {removed}/{total} OpenRAG image(s).")
+        say("Removing BomaRAG Docker images...")
+        removed, total = remove_bomarag_images("docker")
+        say(f"Removed {removed}/{total} BomaRAG image(s).")
         # Treat outcomes based on how many images were removed vs. found.
         if total == 0:
-            # No OpenRAG images found; nothing to clean up, but this is not an error.
+            # No BomaRAG images found; nothing to clean up, but this is not an error.
             return True
         if removed < total:
             # We attempted cleanup but some images could not be removed.
             say(
-                "Warning: Some OpenRAG Docker images could not be removed. "
+                "Warning: Some BomaRAG Docker images could not be removed. "
                 "Please try removing them manually or check your Docker installation."
             )
             return False
@@ -612,7 +612,7 @@ def run_startup_checks() -> bool:
         elif choice == 2:
             if plat == "macOS":
                 say("Please install Docker Desktop manually from: https://docker.com/products/docker-desktop")
-                say("Then restart OpenRAG.")
+                say("Then restart BomaRAG.")
                 return False
             else:
                 if not install_docker_linux():
@@ -675,7 +675,7 @@ def run_startup_checks() -> bool:
     # 6. Check compose
     if not compose_available():
         say("Docker Compose not found.")
-        say("OpenRAG requires docker-compose or 'docker compose'.")
+        say("BomaRAG requires docker-compose or 'docker compose'.")
         if runtime == "podman":
             say("Podman typically includes compose. Try: podman compose version")
         else:

@@ -1,5 +1,5 @@
 /*
-Copyright 2026 The OpenRAG Authors.
+Copyright 2026 The BomaRAG Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ limitations under the License.
 package fake
 
 import (
-	v1alpha1 "github.com/langflow-ai/openrag-operator/pkg/generated/clientset/versioned/typed/api/v1alpha1"
+	v1alpha1 "github.com/ABISHAIMWANJA/bomarag-operator/pkg/generated/clientset/versioned/typed/api/v1alpha1"
 	rest "k8s.io/client-go/rest"
 	testing "k8s.io/client-go/testing"
 )
@@ -28,8 +28,8 @@ type FakeOpenrV1alpha1 struct {
 	*testing.Fake
 }
 
-func (c *FakeOpenrV1alpha1) OpenRAGs(namespace string) v1alpha1.OpenRAGInterface {
-	return newFakeOpenRAGs(c, namespace)
+func (c *FakeOpenrV1alpha1) BomaRAGs(namespace string) v1alpha1.BomaRAGInterface {
+	return newFakeBomaRAGs(c, namespace)
 }
 
 // RESTClient returns a RESTClient that is used to communicate

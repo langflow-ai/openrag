@@ -1,5 +1,5 @@
 ---
-title: Install OpenRAG in a Python project with uv
+title: Install BomaRAG in a Python project with uv
 slug: /install-uv
 ---
 
@@ -19,9 +19,9 @@ import PartialOllamaModels from '@site/docs/_partial-ollama-models.mdx';
 import PartialWatsonxModels from '@site/docs/_partial-watsonx-models.mdx';
 import PartialStartTui from '@site/docs/_partial-start-tui.mdx';
 
-Use [`uv`](https://docs.astral.sh/uv/getting-started/installation/) to install OpenRAG as a managed or unmanaged dependency in a new or existing Python project.
+Use [`uv`](https://docs.astral.sh/uv/getting-started/installation/) to install BomaRAG as a managed or unmanaged dependency in a new or existing Python project.
 
-When you install OpenRAG with `uv`, you will use an [OpenRAG terminal session](/tui) to configure and manage your OpenRAG deployment.
+When you install BomaRAG with `uv`, you will use an [BomaRAG terminal session](/tui) to configure and manage your BomaRAG deployment.
 
 For other installation methods, see [Select an installation method](/install-options).
 
@@ -39,13 +39,13 @@ For other installation methods, see [Select an installation method](/install-opt
 
 <PartialPrereqGpu />
 
-## Install and start OpenRAG with uv
+## Install and start BomaRAG with uv
 
-Use `uv add` to install OpenRAG as a managed dependency in a new or existing `uv` Python project.
-This command adds OpenRAG to your `pyproject.toml` and lockfile.
+Use `uv add` to install BomaRAG as a managed dependency in a new or existing `uv` Python project.
+This command adds BomaRAG to your `pyproject.toml` and lockfile.
 This provides better management of dependencies and the virtual environment as compared to commands like `uv pip`.
 
-If you encounter errors during installation, see [Troubleshoot OpenRAG](/support/troubleshoot).
+If you encounter errors during installation, see [Troubleshoot BomaRAG](/support/troubleshoot).
 
 1. Create a new `uv`-managed Python project:
 
@@ -53,7 +53,7 @@ If you encounter errors during installation, see [Troubleshoot OpenRAG](/support
    uv init PROJECT_NAME --python 3.13
    ```
 
-   The `--python` flag ensures that your project uses the minimum required Python version for OpenRAG.
+   The `--python` flag ensures that your project uses the minimum required Python version for BomaRAG.
    You can omit this flag if your system's default Python version is 3.13.
 
 2. Change into your new project directory:
@@ -65,47 +65,47 @@ If you encounter errors during installation, see [Troubleshoot OpenRAG](/support
    Because `uv` manages the virtual environment for you, you won't see a `(venv)` prompt.
    `uv` commands automatically use the project's virtual environment.
 
-3. Add OpenRAG to your project:
+3. Add BomaRAG to your project:
 
    * Add the latest version:
 
       ```bash
-      uv add openrag
+      uv add bomarag
       ```
 
    * Add a specific version:
 
       ```bash
-      uv add openrag==0.1.30
+      uv add bomarag==0.1.30
       ```
 
    * Add a local wheel:
 
       ```bash
-      uv add path/to/openrag-VERSION-py3-none-any.whl
+      uv add path/to/bomarag-VERSION-py3-none-any.whl
       ```
 
    For more options, see [Managing dependencies with `uv`](https://docs.astral.sh/uv/concepts/projects/dependencies/).
 
-4. Optional: If you want to use a pre-populated [OpenRAG `.env` file](/reference/configuration), create one at `~/.openrag/tui` before starting OpenRAG.
+4. Optional: If you want to use a pre-populated [BomaRAG `.env` file](/reference/configuration), create one at `~/.bomarag/tui` before starting BomaRAG.
 
-5. Start the OpenRAG terminal session:
+5. Start the BomaRAG terminal session:
 
    ```bash
-   uv run openrag
+   uv run bomarag
    ```
 
    <PartialStartTui />
 
-## Configure OpenRAG in the terminal {#setup}
+## Configure BomaRAG in the terminal {#setup}
 
-When you install OpenRAG with `uv`, you manage the OpenRAG services in an OpenRAG terminal session.
-The terminal session guides you through the initial configuration process before you start the OpenRAG services.
+When you install BomaRAG with `uv`, you manage the BomaRAG services in an BomaRAG terminal session.
+The terminal session guides you through the initial configuration process before you start the BomaRAG services.
 
-Your configuration values are stored in an [OpenRAG `.env` file](/reference/configuration) that is created automatically at `~/.openrag/tui`.
-If OpenRAG detects an existing `.env` file in this directory, then OpenRAG can populate those values automatically during setup and onboarding.
+Your configuration values are stored in an [BomaRAG `.env` file](/reference/configuration) that is created automatically at `~/.bomarag/tui`.
+If BomaRAG detects an existing `.env` file in this directory, then BomaRAG can populate those values automatically during setup and onboarding.
 
-Container definitions are stored in the `docker-compose` files in the same directory as the OpenRAG `.env` file.
+Container definitions are stored in the `docker-compose` files in the same directory as the BomaRAG `.env` file.
 
 <PartialSetup />
 

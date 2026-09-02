@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for helping improve OpenRAG's documentation! Please provide details about the issue or your request.
+        Thanks for helping improve BomaRAG's documentation! Please provide details about the issue or your request.
 
   - type: dropdown
     id: issue-type
@@ -54,7 +54,7 @@ body:
     attributes:
       label: Documentation URL
       description: If applicable, provide a link to the specific documentation page.
-      placeholder: "https://docs.openr.ag/..."
+      placeholder: "https://docs.bomarag.com/..."
     validations:
       required: false
 

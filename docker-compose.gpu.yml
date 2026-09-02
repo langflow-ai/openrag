@@ -1,5 +1,5 @@
 services:
-  openrag-backend:
+  bomarag-backend:
     environment:
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - NVIDIA_VISIBLE_DEVICES=all

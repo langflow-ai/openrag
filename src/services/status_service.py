@@ -5,9 +5,9 @@ from datetime import UTC, datetime
 from api.schemas.status import ComponentState, ComponentStatus, StatusResponse
 from services.component_logs import record
 from services.status_checks import (
+    check_bomarag_backend,
     check_docling,
     check_langflow,
-    check_openrag_backend,
     check_opensearch,
 )
 from utils.logging_config import get_logger
@@ -16,11 +16,11 @@ logger = get_logger(__name__)
 
 CHECK_TIMEOUT_S = 5.0
 
-CHECK_SPECS = [check_openrag_backend, check_docling, check_langflow, check_opensearch]
+CHECK_SPECS = [check_bomarag_backend, check_docling, check_langflow, check_opensearch]
 
 
 def _check_name(fn: Callable) -> str:
-    return fn.__name__.replace("check_", "").replace("openrag_backend", "openrag")
+    return fn.__name__.replace("check_", "").replace("bomarag_backend", "bomarag")
 
 
 # component name → its check function, for refreshing a single component (#2183).

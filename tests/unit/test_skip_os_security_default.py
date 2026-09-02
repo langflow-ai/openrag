@@ -1,9 +1,9 @@
-"""The OPENRAG_SKIP_OS_SECURITY_SETUP default flips with OPENRAG_RUN_MODE.
+"""The BOMARAG_SKIP_OS_SECURITY_SETUP default flips with BOMARAG_RUN_MODE.
 
   * saas / on_prem (CPD) -> default "true"  (platform owns security context)
   * anything else        -> default "false" (today's behaviour)
 
-An explicit OPENRAG_SKIP_OS_SECURITY_SETUP always wins.
+An explicit BOMARAG_SKIP_OS_SECURITY_SETUP always wins.
 """
 
 import sys
@@ -34,7 +34,7 @@ from config.settings import _resolve_skip_os_security_default  # noqa: E402
 )
 def test_default_resolves_from_run_mode(monkeypatch, run_mode, expected):
     if run_mode:
-        monkeypatch.setenv("OPENRAG_RUN_MODE", run_mode)
+        monkeypatch.setenv("BOMARAG_RUN_MODE", run_mode)
     else:
-        monkeypatch.delenv("OPENRAG_RUN_MODE", raising=False)
+        monkeypatch.delenv("BOMARAG_RUN_MODE", raising=False)
     assert _resolve_skip_os_security_default() == expected

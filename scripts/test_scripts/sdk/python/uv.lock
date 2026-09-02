@@ -93,28 +93,28 @@ wheels = [
 ]
 
 [[package]]
-name = "openrag-sdk"
+name = "bomarag-sdk"
 version = "0.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c0/ec/24e8d8a9c91715a77bd2365ef29293c368958edac6971fff90b8d3d493b2/openrag_sdk-0.3.1.tar.gz", hash = "sha256:ab8ec5956b3f27bda0946691efd4279b9e71cbd4890e75bb9caf88b1fe4301f7", size = 15450, upload-time = "2026-04-15T15:32:10.309Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c0/ec/24e8d8a9c91715a77bd2365ef29293c368958edac6971fff90b8d3d493b2/bomarag_sdk-0.3.1.tar.gz", hash = "sha256:ab8ec5956b3f27bda0946691efd4279b9e71cbd4890e75bb9caf88b1fe4301f7", size = 15450, upload-time = "2026-04-15T15:32:10.309Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8b/b5/7bbded4ee1dbcd13fdf00ebce23df0248be55607472478fa3dd201b1ec36/openrag_sdk-0.3.1-py3-none-any.whl", hash = "sha256:4c3e8c78b0950a0ff13af374ea8842a81087d96163a1ed2d2155bac56bc84d45", size = 16595, upload-time = "2026-04-15T15:32:09.102Z" },
+    { url = "https://files.pythonhosted.org/packages/8b/b5/7bbded4ee1dbcd13fdf00ebce23df0248be55607472478fa3dd201b1ec36/bomarag_sdk-0.3.1-py3-none-any.whl", hash = "sha256:4c3e8c78b0950a0ff13af374ea8842a81087d96163a1ed2d2155bac56bc84d45", size = 16595, upload-time = "2026-04-15T15:32:09.102Z" },
 ]
 
 [[package]]
-name = "openrag-sdk-smoke-tests"
+name = "bomarag-sdk-smoke-tests"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
-    { name = "openrag-sdk" },
+    { name = "bomarag-sdk" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "openrag-sdk", specifier = ">=0.3.1" }]
+requires-dist = [{ name = "bomarag-sdk", specifier = ">=0.3.1" }]
 
 [[package]]
 name = "pydantic"

@@ -13,7 +13,7 @@ from config.settings import (
     DOCLING_ERROR_DETAIL_MAX_LENGTH,
     DOCLING_SERVE_URL,
     DOCLING_SERVE_VERIFY_SSL,
-    get_openrag_config,
+    get_bomarag_config,
 )
 from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
@@ -155,10 +155,10 @@ class DoclingService:
         picture_descriptions_override: bool | None = None,
         preview_mode: bool = False,
     ) -> dict[str, Any]:
-        """Build the options payload for docling from OpenRAG configs, incorporating VLM settings if enabled."""
+        """Build the options payload for docling from BomaRAG configs, incorporating VLM settings if enabled."""
         from services.watsonx_iam import WatsonxIamError, get_iam_token
 
-        config = get_openrag_config()
+        config = get_bomarag_config()
         knowledge_config = config.knowledge
 
         is_ocr_enabled = ocr_override if ocr_override is not None else knowledge_config.ocr
@@ -393,7 +393,7 @@ class DoclingService:
         Single (non-blocking) status check against Docling Serve.
 
         Used by the backend polling coordinator so that the polling loop lives
-        in OpenRAG and not inside Langflow. Maps the Docling Serve response
+        in BomaRAG and not inside Langflow. Maps the Docling Serve response
         into a DoclingStatusSnapshot regardless of HTTP outcome.
         """
         client = self._get_client()

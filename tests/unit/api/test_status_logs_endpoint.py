@@ -62,7 +62,7 @@ async def test_404_detail_lists_all_known_names():
         await get_component_logs_endpoint(component="unknown", tail=50, user=_user())
 
     detail = exc_info.value.detail
-    for name in ("docling", "langflow", "openrag", "opensearch"):
+    for name in ("docling", "langflow", "bomarag", "opensearch"):
         assert name in detail
 
 
@@ -99,9 +99,9 @@ async def test_empty_buffer_returns_zero_count():
 @pytest.mark.asyncio
 async def test_tail_parameter_limits_entries():
     for i in range(20):
-        cl.record("openrag", "warning", f"msg-{i}")
+        cl.record("bomarag", "warning", f"msg-{i}")
 
-    result = await get_component_logs_endpoint(component="openrag", tail=5, user=_user())
+    result = await get_component_logs_endpoint(component="bomarag", tail=5, user=_user())
 
     assert result.count == 5
     assert len(result.entries) == 5
@@ -139,9 +139,9 @@ async def test_count_matches_entries_length():
 
 @pytest.mark.asyncio
 async def test_log_entry_detail_can_be_none():
-    cl.record("openrag", "warning", "no detail")
+    cl.record("bomarag", "warning", "no detail")
 
-    result = await get_component_logs_endpoint(component="openrag", tail=10, user=_user())
+    result = await get_component_logs_endpoint(component="bomarag", tail=10, user=_user())
 
     assert result.entries[0].detail is None
 
@@ -161,7 +161,7 @@ async def test_langflow_uses_buffer_like_all_other_components():
 @pytest.mark.asyncio
 async def test_all_known_components_return_200():
     """All four known components must not raise, even with empty buffers."""
-    for name in ("openrag", "langflow", "docling", "opensearch"):
+    for name in ("bomarag", "langflow", "docling", "opensearch"):
         result = await get_component_logs_endpoint(component=name, tail=10, user=_user())
         assert result.component == name
         assert isinstance(result.entries, list)

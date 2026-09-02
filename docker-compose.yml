@@ -1,18 +1,18 @@
 services:
   opensearch:
-    image: docker.io/langflowai/openrag-opensearch:${OPENRAG_VERSION:-latest}
+    image: docker.io/bomalogic/bomarag-opensearch:${BOMARAG_VERSION:-latest}
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: ${COMPOSE_PROJECT_NAME:-openrag}-opensearch
+    container_name: ${COMPOSE_PROJECT_NAME:-bomarag}-opensearch
     environment:
       - discovery.type=single-node
       - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_PASSWORD}
       - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
-      - OPENRAG_BACKEND_PORT=${OPENRAG_BACKEND_PORT:-8000}
-      - OPENRAG_BACKEND_HOST=${OPENRAG_BACKEND_HOST:-openrag-backend}
-      - OPENRAG_BACKEND_INTERNAL_URL=${OPENRAG_BACKEND_INTERNAL_URL:-http://${OPENRAG_BACKEND_HOST:-openrag-backend}:${OPENRAG_BACKEND_PORT:-8000}}
-    # NOTE: do NOT add `extra_hosts: openrag-backend:host-gateway` here.
+      - BOMARAG_BACKEND_PORT=${BOMARAG_BACKEND_PORT:-8000}
+      - BOMARAG_BACKEND_HOST=${BOMARAG_BACKEND_HOST:-bomarag-backend}
+      - BOMARAG_BACKEND_INTERNAL_URL=${BOMARAG_BACKEND_INTERNAL_URL:-http://${BOMARAG_BACKEND_HOST:-bomarag-backend}:${BOMARAG_BACKEND_PORT:-8000}}
+    # NOTE: do NOT add `extra_hosts: bomarag-backend:host-gateway` here.
     # `extra_hosts` writes to /etc/hosts, which libc resolves BEFORE
     # docker DNS — so the alias overrides docker-compose service-name
     # resolution unconditionally and routes OpenSearch's JWKS lookup to
@@ -36,7 +36,7 @@ services:
 
   dashboards:
     image: docker.io/opensearchproject/opensearch-dashboards:3.6.0
-    container_name: ${COMPOSE_PROJECT_NAME:-openrag}-dashboards
+    container_name: ${COMPOSE_PROJECT_NAME:-bomarag}-dashboards
     depends_on:
       - opensearch
     environment:
@@ -46,19 +46,19 @@ services:
     ports:
       - "${OPENSEARCH_DASHBOARDS_PORT:-5601}:5601"
 
-  openrag-backend:
-    image: docker.io/langflowai/openrag-backend:${OPENRAG_VERSION:-latest}
+  bomarag-backend:
+    image: docker.io/bomalogic/bomarag-backend:${BOMARAG_VERSION:-latest}
     build:
       context: .
       dockerfile: Dockerfile.backend
-    container_name: ${COMPOSE_PROJECT_NAME:-openrag}-backend
+    container_name: ${COMPOSE_PROJECT_NAME:-bomarag}-backend
     depends_on:
       - langflow
     environment:
       - OPENSEARCH_HOST=${OPENSEARCH_HOST:-opensearch}
       - LANGFLOW_URL=http://langflow:7860
-      - OPENRAG_BACKEND_INTERNAL_URL=${OPENRAG_BACKEND_INTERNAL_URL:-http://openrag-backend:${OPENRAG_BACKEND_PORT:-8000}}
-      - OPENRAG_BACKEND_ROUTER_ENABLE=${OPENRAG_BACKEND_ROUTER_ENABLE:-false}
+      - BOMARAG_BACKEND_INTERNAL_URL=${BOMARAG_BACKEND_INTERNAL_URL:-http://bomarag-backend:${BOMARAG_BACKEND_PORT:-8000}}
+      - BOMARAG_BACKEND_ROUTER_ENABLE=${BOMARAG_BACKEND_ROUTER_ENABLE:-false}
       - LANGFLOW_PUBLIC_URL=${LANGFLOW_PUBLIC_URL}
       - LANGFLOW_AUTO_LOGIN=${LANGFLOW_AUTO_LOGIN}
       - LANGFLOW_SUPERUSER=${LANGFLOW_SUPERUSER}
@@ -97,9 +97,9 @@ services:
       - IBM_COS_HMAC_SECRET_ACCESS_KEY=${IBM_COS_HMAC_SECRET_ACCESS_KEY}
       - IBM_COS_AUTH_ENDPOINT=${IBM_COS_AUTH_ENDPOINT}
       - OPENSEARCH_INDEX_NAME=${OPENSEARCH_INDEX_NAME:-documents}
-      - OPENRAG_OPENSEARCH_NUMBER_OF_SHARDS=${OPENRAG_OPENSEARCH_NUMBER_OF_SHARDS:-1}
-      - OPENRAG_OPENSEARCH_NUMBER_OF_REPLICAS=${OPENRAG_OPENSEARCH_NUMBER_OF_REPLICAS:-0}
-      - OPENRAG_ENSURE_INDEX_REPLICAS_ON_STARTUP=${OPENRAG_ENSURE_INDEX_REPLICAS_ON_STARTUP:-false}
+      - BOMARAG_OPENSEARCH_NUMBER_OF_SHARDS=${BOMARAG_OPENSEARCH_NUMBER_OF_SHARDS:-1}
+      - BOMARAG_OPENSEARCH_NUMBER_OF_REPLICAS=${BOMARAG_OPENSEARCH_NUMBER_OF_REPLICAS:-0}
+      - BOMARAG_ENSURE_INDEX_REPLICAS_ON_STARTUP=${BOMARAG_ENSURE_INDEX_REPLICAS_ON_STARTUP:-false}
       - LANGFLOW_KEY=${LANGFLOW_KEY}
       - SEGMENT_WRITE_KEY=${SEGMENT_WRITE_KEY:-}
       - ENVIRONMENT=${ENVIRONMENT:-production}
@@ -110,7 +110,7 @@ services:
       - SERVICE_NAME=${SERVICE_NAME}
       - SESSION_SECRET=${SESSION_SECRET:-your-secret-key-change-in-production}
       - JWT_SIGNING_KEY=${JWT_SIGNING_KEY}
-      - OPENRAG_ENCRYPTION_KEY=${OPENRAG_ENCRYPTION_KEY}
+      - BOMARAG_ENCRYPTION_KEY=${BOMARAG_ENCRYPTION_KEY}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - NO_COLOR=${NO_COLOR:-}
       - ACCESS_LOG=${ACCESS_LOG:-true}
@@ -120,7 +120,7 @@ services:
       - UPLOAD_BATCH_SIZE=${UPLOAD_BATCH_SIZE:-25}
       - MAX_WORKERS=${MAX_WORKERS:-4}
       - IBM_AUTH_ENABLED=${IBM_AUTH_ENABLED:-false}
-      - OPENRAG_AZURE_BLOB_ENABLED=${OPENRAG_AZURE_BLOB_ENABLED:-true}
+      - BOMARAG_AZURE_BLOB_ENABLED=${BOMARAG_AZURE_BLOB_ENABLED:-true}
       - PLATFORM_AUTH_DEV_MODE=${PLATFORM_AUTH_DEV_MODE:-false}
       - DOCLING_SERVE_URL=${DOCLING_SERVE_URL:-http://host.docker.internal:5001}
       - DOCLING_SERVE_VERIFY_SSL=${DOCLING_SERVE_VERIFY_SSL:-true}
@@ -150,7 +150,7 @@ services:
       # Redact free-text query parameters before spans leave the host — a
       # privacy default, not a performance one. The tracer's own default
       # (contains-ignore-case:key,pass,secret) only catches credential-shaped
-      # names, so without this OpenRAG's search text
+      # names, so without this BomaRAG's search text
       # (GET /v2/files/search?q=..., and the `search`/`filename` params) is
       # exported to Instana verbatim. Forwarded with `:-` (unset or empty),
       # same reasoning as INSTANA_STACK_TRACE above: an empty value fails the
@@ -167,46 +167,46 @@ services:
       - INSTANA_LOG_LEVEL
       - INSTANA_ZONE
     volumes:
-      - ${OPENRAG_DOCUMENTS_PATH:-./openrag-documents}:/app/openrag-documents:U,z
-      - ${OPENRAG_KEYS_PATH:-./keys}:/app/keys:U,z
-      - ${OPENRAG_FLOWS_PATH:-./flows}:/app/flows:U,z
-      - ${OPENRAG_FLOWS_BACKUP_PATH:-./flows/backup}:/app/flows/backup:U,z
-      - ${OPENRAG_CONFIG_PATH:-./config}:/app/config:U,z
-      - ${OPENRAG_DATA_PATH:-./data}:/app/data:U,z
+      - ${BOMARAG_DOCUMENTS_PATH:-./bomarag-documents}:/app/bomarag-documents:U,z
+      - ${BOMARAG_KEYS_PATH:-./keys}:/app/keys:U,z
+      - ${BOMARAG_FLOWS_PATH:-./flows}:/app/flows:U,z
+      - ${BOMARAG_FLOWS_BACKUP_PATH:-./flows/backup}:/app/flows/backup:U,z
+      - ${BOMARAG_CONFIG_PATH:-./config}:/app/config:U,z
+      - ${BOMARAG_DATA_PATH:-./data}:/app/data:U,z
     # Linux: Docker Engine does not auto-inject host.docker.internal; map it to the host gateway
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
-  openrag-frontend:
-    image: docker.io/langflowai/openrag-frontend:${OPENRAG_VERSION:-latest}
+  bomarag-frontend:
+    image: docker.io/bomalogic/bomarag-frontend:${BOMARAG_VERSION:-latest}
     build:
       context: .
       dockerfile: Dockerfile.frontend
-    container_name: ${COMPOSE_PROJECT_NAME:-openrag}-frontend
+    container_name: ${COMPOSE_PROJECT_NAME:-bomarag}-frontend
     depends_on:
-      - openrag-backend
+      - bomarag-backend
     environment:
-      - OPENRAG_BACKEND_HOST=openrag-backend
+      - BOMARAG_BACKEND_HOST=bomarag-backend
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
 
   langflow:
-    image: docker.io/langflowai/openrag-langflow:${OPENRAG_VERSION:-latest}
+    image: docker.io/bomalogic/bomarag-langflow:${BOMARAG_VERSION:-latest}
     build:
       context: .
       dockerfile: Dockerfile.langflow
-    container_name: ${COMPOSE_PROJECT_NAME:-openrag}-langflow
+    container_name: ${COMPOSE_PROJECT_NAME:-bomarag}-langflow
     ports:
       - "${LANGFLOW_PORT:-7860}:7860"
     volumes:
-      - ${OPENRAG_FLOWS_PATH:-./flows}:/app/flows:U,z
+      - ${BOMARAG_FLOWS_PATH:-./flows}:/app/flows:U,z
       - ${LANGFLOW_DATA_PATH:-./langflow-data}:/app/langflow-data:U,z
     # Linux: Docker Engine does not auto-inject host.docker.internal; map it to the host gateway
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
       - LANGFLOW_ALLOW_CUSTOM_COMPONENTS=${LANGFLOW_ALLOW_CUSTOM_COMPONENTS:-false}
-      # Prefer the bind-mounted index so `scripts/update_openrag_component_index.py`
+      # Prefer the bind-mounted index so `scripts/update_bomarag_component_index.py`
       # takes effect on `docker compose restart langflow` without an image rebuild.
       - LANGFLOW_COMPONENTS_INDEX_PATH=/app/flows/component_index.json
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
@@ -214,11 +214,11 @@ services:
       - LANGFUSE_HOST=${LANGFUSE_HOST:-}
       - LANGFLOW_DEACTIVATE_TRACING
       # Hop token is injected per Langflow run. Seed a non-empty placeholder
-      # so load_from_db can resolve OPENRAG_LLM_TOKEN; Langflow treats "" as
+      # so load_from_db can resolve BOMARAG_LLM_TOKEN; Langflow treats "" as
       # missing. Do not pass a vendor key here.
       - OPENAI_API_KEY=${LANGFLOW_OPENAI_API_KEY:-}
-      - OPENRAG_LLM_TOKEN=None
-      - OPENRAG_LLM_BASE_URL=${OPENRAG_LLM_BASE_URL:-}
+      - BOMARAG_LLM_TOKEN=None
+      - BOMARAG_LLM_BASE_URL=${BOMARAG_LLM_BASE_URL:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - WATSONX_APIKEY=${WATSONX_API_KEY}
       - WATSONX_URL=${WATSONX_URL:-${WATSONX_ENDPOINT}}
@@ -241,11 +241,11 @@ services:
       - ALLOWED_USERS=[]
       - ALLOWED_GROUPS=[]
       - ALLOWED_PRINCIPALS=[]
-      - OPENRAG-QUERY-FILTER="{}"
-      - OPENRAG_INGEST_URL=OPENRAG_INGEST_URL
-      - OPENRAG_INGEST_TOKEN=OPENRAG_INGEST_TOKEN
-      - OPENRAG_INGEST_RUN_ID=OPENRAG_INGEST_RUN_ID
-      - OPENRAG_INGEST_BATCH_SIZE=100
+      - BOMARAG-QUERY-FILTER="{}"
+      - BOMARAG_INGEST_URL=BOMARAG_INGEST_URL
+      - BOMARAG_INGEST_TOKEN=BOMARAG_INGEST_TOKEN
+      - BOMARAG_INGEST_RUN_ID=BOMARAG_INGEST_RUN_ID
+      - BOMARAG_INGEST_BATCH_SIZE=100
       - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
       - OPENSEARCH_HOST=${OPENSEARCH_HOST:-opensearch}
       - OPENSEARCH_PORT=${OPENSEARCH_INTERNAL_PORT:-9200}
@@ -258,7 +258,7 @@ services:
       - MIMETYPE=None
       - FILESIZE=0
       - SELECTED_EMBEDDING_MODEL=${SELECTED_EMBEDDING_MODEL:-text-embedding-3-small}
-      - LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT=JWT,OPENRAG-QUERY-FILTER,OPENSEARCH_PASSWORD,OPENSEARCH_URL,DOCLING_SERVE_URL,DOCLING_SERVE_VERIFY_SSL,DOCLING_TASK_ID,OWNER,OWNER_NAME,OWNER_EMAIL,CONNECTOR_TYPE,DOCUMENT_ID,SOURCE_URL,ALLOWED_USERS,ALLOWED_GROUPS,ALLOWED_PRINCIPALS,FILENAME,MIMETYPE,FILESIZE,SELECTED_EMBEDDING_MODEL,OPENAI_API_KEY,OPENRAG_LLM_TOKEN,OPENRAG_LLM_BASE_URL,ANTHROPIC_API_KEY,WATSONX_APIKEY,WATSONX_URL,WATSONX_PROJECT_ID,OLLAMA_BASE_URL,OPENSEARCH_INDEX_NAME,OPENRAG_INGEST_URL,OPENRAG_INGEST_TOKEN,OPENRAG_INGEST_RUN_ID,OPENRAG_INGEST_BATCH_SIZE
+      - LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT=JWT,BOMARAG-QUERY-FILTER,OPENSEARCH_PASSWORD,OPENSEARCH_URL,DOCLING_SERVE_URL,DOCLING_SERVE_VERIFY_SSL,DOCLING_TASK_ID,OWNER,OWNER_NAME,OWNER_EMAIL,CONNECTOR_TYPE,DOCUMENT_ID,SOURCE_URL,ALLOWED_USERS,ALLOWED_GROUPS,ALLOWED_PRINCIPALS,FILENAME,MIMETYPE,FILESIZE,SELECTED_EMBEDDING_MODEL,OPENAI_API_KEY,BOMARAG_LLM_TOKEN,BOMARAG_LLM_BASE_URL,ANTHROPIC_API_KEY,WATSONX_APIKEY,WATSONX_URL,WATSONX_PROJECT_ID,OLLAMA_BASE_URL,OPENSEARCH_INDEX_NAME,BOMARAG_INGEST_URL,BOMARAG_INGEST_TOKEN,BOMARAG_INGEST_RUN_ID,BOMARAG_INGEST_BATCH_SIZE
       - LANGFLOW_LOG_LEVEL=DEBUG
       - LANGFLOW_WORKERS=${LANGFLOW_WORKERS:-1}
       - LANGFLOW_RATE_LIMIT_PER_MINUTE=${LANGFLOW_RATE_LIMIT_PER_MINUTE:-100}
@@ -267,7 +267,7 @@ services:
       - LANGFLOW_SUPERUSER_PASSWORD=${LANGFLOW_SUPERUSER_PASSWORD}
       - LANGFLOW_NEW_USER_IS_ACTIVE=${LANGFLOW_NEW_USER_IS_ACTIVE}
       - LANGFLOW_ENABLE_SUPERUSER_CLI=${LANGFLOW_ENABLE_SUPERUSER_CLI}
-      # - DEFAULT_FOLDER_NAME=OpenRAG
+      # - DEFAULT_FOLDER_NAME=BomaRAG
       - HIDE_GETTING_STARTED_PROGRESS=true
       - LANGFLOW_SSRF_ALLOWED_HOSTS=${LANGFLOW_SSRF_ALLOWED_HOSTS:-localhost,127.0.0.1,host.docker.internal}
 

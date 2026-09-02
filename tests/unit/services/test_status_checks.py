@@ -8,68 +8,68 @@ from api.schemas.status import ComponentState
 from config.settings import clients
 from services import status_checks
 from services.status_checks import (
+    check_bomarag_backend,
     check_docling,
     check_langflow,
-    check_openrag_backend,
     check_opensearch,
 )
-from utils.version_utils import OPENRAG_VERSION
+from utils.version_utils import BOMARAG_VERSION
 
-# OpenRAG backend check tests
+# BomaRAG backend check tests
 
 
 @pytest.fixture
 def config_ok(monkeypatch):
-    monkeypatch.setattr(status_checks, "get_openrag_config", lambda: object(), raising=True)
+    monkeypatch.setattr(status_checks, "get_bomarag_config", lambda: object(), raising=True)
 
 
 @pytest.mark.asyncio
-async def test_openrag_all_initialized_is_healthy(monkeypatch, config_ok):
+async def test_bomarag_all_initialized_is_healthy(monkeypatch, config_ok):
     monkeypatch.setattr(clients, "opensearch", MagicMock(), raising=True)
     monkeypatch.setattr(clients, "langflow_http_client", MagicMock(), raising=True)
     monkeypatch.setattr(clients, "docling_http_client", MagicMock(), raising=True)
 
-    r = await check_openrag_backend()
+    r = await check_bomarag_backend()
 
-    assert r.name == "openrag"
+    assert r.name == "bomarag"
     assert r.status == ComponentState.HEALTHY
-    assert r.version == OPENRAG_VERSION
+    assert r.version == BOMARAG_VERSION
 
 
 @pytest.mark.asyncio
-async def test_openrag_missing_client_is_degraded(monkeypatch, config_ok):
+async def test_bomarag_missing_client_is_degraded(monkeypatch, config_ok):
     monkeypatch.setattr(clients, "opensearch", None, raising=False)
     monkeypatch.setattr(clients, "langflow_http_client", MagicMock(), raising=False)
     monkeypatch.setattr(clients, "docling_http_client", MagicMock(), raising=False)
 
-    r = await check_openrag_backend()
+    r = await check_bomarag_backend()
 
     assert r.status == ComponentState.DEGRADED
     assert "opensearch" in (r.message or "").lower()
 
 
 @pytest.mark.asyncio
-async def test_openrag_config_not_loaded_is_unhealthy(monkeypatch):
+async def test_bomarag_config_not_loaded_is_unhealthy(monkeypatch):
     def _raise():
         raise RuntimeError("config not loaded")
 
-    monkeypatch.setattr(status_checks, "get_openrag_config", _raise, raising=True)
+    monkeypatch.setattr(status_checks, "get_bomarag_config", _raise, raising=True)
 
-    r = await check_openrag_backend()
+    r = await check_bomarag_backend()
 
     assert r.status == ComponentState.UNHEALTHY
     assert "configuration" in (r.message or "").lower()
 
 
 @pytest.mark.asyncio
-async def test_openrag_latency_is_measured(monkeypatch, config_ok):
+async def test_bomarag_latency_is_measured(monkeypatch, config_ok):
     ticks = iter([1000.0, 1000.25])
     monkeypatch.setattr(status_checks, "perf_counter", lambda: next(ticks))
     monkeypatch.setattr(clients, "opensearch", MagicMock(), raising=False)
     monkeypatch.setattr(clients, "langflow_http_client", MagicMock(), raising=False)
     monkeypatch.setattr(clients, "docling_http_client", MagicMock(), raising=False)
 
-    r = await check_openrag_backend()
+    r = await check_bomarag_backend()
 
     assert r.latency_ms == 250
 
@@ -241,16 +241,16 @@ def _reset_log_buffer():
 
 
 @pytest.mark.asyncio
-async def test_openrag_unhealthy_records_to_buffer(monkeypatch):
+async def test_bomarag_unhealthy_records_to_buffer(monkeypatch):
     def _raise():
         raise RuntimeError("config missing")
 
-    monkeypatch.setattr(status_checks, "get_openrag_config", _raise, raising=True)
+    monkeypatch.setattr(status_checks, "get_bomarag_config", _raise, raising=True)
 
-    r = await check_openrag_backend()
+    r = await check_bomarag_backend()
 
     assert r.status == ComponentState.UNHEALTHY
-    entries = _cl.get_entries("openrag", 10)
+    entries = _cl.get_entries("bomarag", 10)
     assert len(entries) >= 1
     assert entries[-1]["level"] == "error"
     assert entries[-1]["detail"] is not None
@@ -258,33 +258,33 @@ async def test_openrag_unhealthy_records_to_buffer(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_openrag_degraded_records_to_buffer(monkeypatch):
-    monkeypatch.setattr(status_checks, "get_openrag_config", lambda: object(), raising=True)
+async def test_bomarag_degraded_records_to_buffer(monkeypatch):
+    monkeypatch.setattr(status_checks, "get_bomarag_config", lambda: object(), raising=True)
     monkeypatch.setattr(clients, "opensearch", None, raising=False)
     monkeypatch.setattr(clients, "langflow_http_client", MagicMock(), raising=False)
     monkeypatch.setattr(clients, "docling_http_client", MagicMock(), raising=False)
 
-    r = await check_openrag_backend()
+    r = await check_bomarag_backend()
 
     assert r.status == ComponentState.DEGRADED
-    entries = _cl.get_entries("openrag", 10)
+    entries = _cl.get_entries("bomarag", 10)
     assert len(entries) >= 1
     assert entries[-1]["level"] == "warning"
 
 
 @pytest.mark.asyncio
-async def test_openrag_healthy_does_not_flood_buffer(monkeypatch):
+async def test_bomarag_healthy_does_not_flood_buffer(monkeypatch):
     """Steady-state healthy should not write to the buffer on repeated calls."""
-    monkeypatch.setattr(status_checks, "get_openrag_config", lambda: object(), raising=True)
+    monkeypatch.setattr(status_checks, "get_bomarag_config", lambda: object(), raising=True)
     monkeypatch.setattr(clients, "opensearch", MagicMock(), raising=False)
     monkeypatch.setattr(clients, "langflow_http_client", MagicMock(), raising=False)
     monkeypatch.setattr(clients, "docling_http_client", MagicMock(), raising=False)
 
-    await check_openrag_backend()
-    await check_openrag_backend()
-    await check_openrag_backend()
+    await check_bomarag_backend()
+    await check_bomarag_backend()
+    await check_bomarag_backend()
 
-    entries = _cl.get_entries("openrag", 10)
+    entries = _cl.get_entries("bomarag", 10)
     assert len(entries) == 1
     assert entries[0]["level"] == "info"
 

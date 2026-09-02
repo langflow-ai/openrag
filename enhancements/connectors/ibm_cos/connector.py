@@ -1,7 +1,7 @@
-"""IBM Cloud Object Storage connector for OpenRAG.
+"""IBM Cloud Object Storage connector for BomaRAG.
 
 Enterprise/SaaS-only ``bucket``-kind connector, gated by ``IBM_AUTH_ENABLED``
-(or ``OPENRAG_DEV_IBM_COS=true`` for local dev/MinIO testing).
+(or ``BOMARAG_DEV_IBM_COS=true`` for local dev/MinIO testing).
 """
 
 import mimetypes
@@ -70,7 +70,7 @@ class IBMCOSConnector(BaseConnector):
     @classmethod
     def is_available(cls, manager, user_id=None) -> bool:
         # Enterprise/SaaS gate is IBM_AUTH_ENABLED, like the other bucket
-        # connectors (aws_s3, azure_blob). OPENRAG_DEV_IBM_COS=true bypasses it
+        # connectors (aws_s3, azure_blob). BOMARAG_DEV_IBM_COS=true bypasses it
         # for local dev (e.g. against MinIO in HMAC mode; never in production).
         return IBM_AUTH_ENABLED or is_dev_ibm_cos_enabled()
 

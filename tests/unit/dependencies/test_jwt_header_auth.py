@@ -7,7 +7,7 @@ The branch resolves a forwarded JWT (config.utils.resolve_jwt_claims)
 and, when valid, makes the JWT the source of identity; under RBAC it also
 supplies/enforces roles. We monkeypatch ``resolve_jwt_claims`` (no real keys
 needed) and ``_attach_db_user_id`` (no DB needed) to isolate the dependency
-logic, and drive RBAC on/off via ``OPENRAG_RBAC_ENFORCE``.
+logic, and drive RBAC on/off via ``BOMARAG_RBAC_ENFORCE``.
 """
 
 import sys
@@ -49,34 +49,34 @@ class _FakeRequest:
 @pytest.fixture(autouse=True)
 def _role_claim_env(monkeypatch):
     """Known role-claim mapping for every test."""
-    monkeypatch.setenv("OPENRAG_JWT_ROLES_CLAIM", "openrag_roles")
-    monkeypatch.setenv("OPENRAG_ROLE_CLAIM_ADMIN", "admin")
-    monkeypatch.setenv("OPENRAG_ROLE_CLAIM_DEVELOPER", "manager")
-    monkeypatch.setenv("OPENRAG_ROLE_CLAIM_USER", "user")
-    monkeypatch.delenv("OPENRAG_ROLE_CLAIM_VIEWER", raising=False)
+    monkeypatch.setenv("BOMARAG_JWT_ROLES_CLAIM", "bomarag_roles")
+    monkeypatch.setenv("BOMARAG_ROLE_CLAIM_ADMIN", "admin")
+    monkeypatch.setenv("BOMARAG_ROLE_CLAIM_DEVELOPER", "manager")
+    monkeypatch.setenv("BOMARAG_ROLE_CLAIM_USER", "user")
+    monkeypatch.delenv("BOMARAG_ROLE_CLAIM_VIEWER", raising=False)
     # Pin the JWT header name so tests stay decoupled from its default.
-    monkeypatch.setenv("OPENRAG_JWT_AUTH_HEADER", "X-OpenRAG-JWT")
+    monkeypatch.setenv("BOMARAG_JWT_AUTH_HEADER", "X-BomaRAG-JWT")
 
 
 # ── _stage_jwt_roles ────────────────────────────────────────────────────
 
 
 def test_stage_roles_rbac_off_is_noop(monkeypatch):
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "false")
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "false")
     req = _FakeRequest()
-    _stage_jwt_roles(req, {"openrag_roles": ["admin"]}, "alice")
+    _stage_jwt_roles(req, {"bomarag_roles": ["admin"]}, "alice")
     assert req.state.jwt_roles is None
 
 
 def test_stage_roles_rbac_on_extracts(monkeypatch):
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "true")
     req = _FakeRequest()
-    _stage_jwt_roles(req, {"openrag_roles": ["manager"]}, "alice")
+    _stage_jwt_roles(req, {"bomarag_roles": ["manager"]}, "alice")
     assert req.state.jwt_roles == ["developer"]
 
 
 def test_stage_roles_rbac_on_no_role_401(monkeypatch):
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "true")
     req = _FakeRequest()
     with pytest.raises(HTTPException) as exc:
         _stage_jwt_roles(req, {"sub": "alice"}, "alice")
@@ -106,9 +106,9 @@ def _patch_verify(monkeypatch, claims):
 
 @pytest.mark.asyncio
 async def test_valid_jwt_rbac_off_identity_only(monkeypatch, _patch_attach):
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "false")
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "false")
     _patch_verify(monkeypatch, {"sub": "s1", "username": "alice", "display_name": "Alice"})
-    req = _FakeRequest({"X-OpenRAG-JWT": "Bearer tok"})
+    req = _FakeRequest({"X-BomaRAG-JWT": "Bearer tok"})
 
     user = await get_api_key_user_async(req, api_key_service=None, session_manager=None)
 
@@ -121,9 +121,9 @@ async def test_valid_jwt_rbac_off_identity_only(monkeypatch, _patch_attach):
 
 @pytest.mark.asyncio
 async def test_valid_jwt_rbac_on_syncs_roles(monkeypatch, _patch_attach):
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
-    _patch_verify(monkeypatch, {"sub": "s1", "username": "alice", "openrag_roles": ["admin"]})
-    req = _FakeRequest({"X-OpenRAG-JWT": "tok"})  # raw, no Bearer prefix
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "true")
+    _patch_verify(monkeypatch, {"sub": "s1", "username": "alice", "bomarag_roles": ["admin"]})
+    req = _FakeRequest({"X-BomaRAG-JWT": "tok"})  # raw, no Bearer prefix
 
     user = await get_api_key_user_async(req, api_key_service=None, session_manager=None)
 
@@ -135,14 +135,14 @@ async def test_valid_jwt_rbac_on_syncs_roles(monkeypatch, _patch_attach):
 
 @pytest.mark.asyncio
 async def test_valid_jwt_rbac_on_no_role_401(monkeypatch, _patch_attach):
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "true")
     _patch_verify(monkeypatch, {"sub": "s1", "username": "alice"})  # no roles claim
-    req = _FakeRequest({"X-OpenRAG-JWT": "tok"})
+    req = _FakeRequest({"X-BomaRAG-JWT": "tok"})
 
     with pytest.raises(HTTPException) as exc:
         await get_api_key_user_async(req, api_key_service=None, session_manager=None)
     assert exc.value.status_code == 401
-    assert exc.value.detail == "User has no OpenRAG roles assigned"
+    assert exc.value.detail == "User has no BomaRAG roles assigned"
     # 401 fires inside _stage_jwt_roles, before _attach_request_user -> no DB
     # user/role write, so a roles-less JWT can never reach _sync_jwt_roles.
     assert "user" not in _patch_attach
@@ -150,9 +150,9 @@ async def test_valid_jwt_rbac_on_no_role_401(monkeypatch, _patch_attach):
 
 @pytest.mark.asyncio
 async def test_invalid_jwt_rbac_on_401(monkeypatch, _patch_attach):
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "true")
     _patch_verify(monkeypatch, None)  # verification failed
-    req = _FakeRequest({"X-OpenRAG-JWT": "garbage"})
+    req = _FakeRequest({"X-BomaRAG-JWT": "garbage"})
 
     with pytest.raises(HTTPException) as exc:
         await get_api_key_user_async(req, api_key_service=None, session_manager=None)
@@ -164,13 +164,13 @@ async def test_invalid_jwt_rbac_on_401(monkeypatch, _patch_attach):
 @pytest.mark.asyncio
 async def test_langflow_llm_hop_token_is_rejected_on_v1_identity_path(monkeypatch, _patch_attach):
     """A Langflow LLM hop token must not authenticate as the user on /v1/search etc."""
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "true")
     from services.langflow_llm_token_service import LangflowLlmTokenService
 
     token = LangflowLlmTokenService(
         secret="llm-hop-test-secret-with-32-bytes!!", ttl_seconds=60
     ).create_token(user_id="alice")
-    req = _FakeRequest({"X-OpenRAG-JWT": f"Bearer {token}"})
+    req = _FakeRequest({"X-BomaRAG-JWT": f"Bearer {token}"})
 
     with pytest.raises(HTTPException) as exc:
         await get_api_key_user_async(req, api_key_service=None, session_manager=None)
@@ -182,10 +182,10 @@ async def test_langflow_llm_hop_token_is_rejected_on_v1_identity_path(monkeypatc
 @pytest.mark.asyncio
 async def test_invalid_jwt_rbac_off_falls_through_to_api_key(monkeypatch):
     """RBAC off + bad JWT -> ignore the JWT and require an API key (terminal 401)."""
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "false")
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "false")
     monkeypatch.setenv("IBM_AUTH_ENABLED", "false")
     _patch_verify(monkeypatch, None)
-    req = _FakeRequest({"X-OpenRAG-JWT": "garbage"})  # no API key header
+    req = _FakeRequest({"X-BomaRAG-JWT": "garbage"})  # no API key header
 
     with pytest.raises(HTTPException) as exc:
         await get_api_key_user_async(req, api_key_service=None, session_manager=None)
@@ -197,7 +197,7 @@ async def test_invalid_jwt_rbac_off_falls_through_to_api_key(monkeypatch):
 @pytest.mark.asyncio
 async def test_no_header_does_not_engage_jwt_path(monkeypatch):
     """No JWT header -> the JWT branch is skipped entirely (regression guard)."""
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "true")
     monkeypatch.setenv("IBM_AUTH_ENABLED", "false")
 
     def _boom(*a, **k):  # must never be called when no header present
@@ -221,7 +221,7 @@ async def test_no_header_does_not_engage_jwt_path(monkeypatch):
 # become the jwt_token, mirroring _get_ibm_user's header branch.
 
 _B64 = base64.b64encode(b"alice:secret").decode()
-_CLAIMS = {"sub": "s1", "username": "alice", "openrag_roles": ["admin"]}
+_CLAIMS = {"sub": "s1", "username": "alice", "bomarag_roles": ["admin"]}
 
 
 class _FakeConnectionManager:
@@ -246,7 +246,7 @@ class _FakeConnectionManager:
 
 
 def _ibm_setup(monkeypatch, stored_credentials=None, broken=False):
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "true")
     monkeypatch.setattr(app_settings, "IBM_AUTH_ENABLED", True)
     _patch_verify(monkeypatch, dict(_CLAIMS))
     manager = _FakeConnectionManager(stored_credentials, broken=broken)
@@ -260,7 +260,7 @@ async def test_jwt_present_keeps_bearer_and_skips_credential_resolution(monkeypa
     ignored and nothing is persisted."""
     manager, services = _ibm_setup(monkeypatch)
     req = _FakeRequest(
-        {"X-OpenRAG-JWT": "Bearer tok", "X-IBM-LH-Credentials": _B64},
+        {"X-BomaRAG-JWT": "Bearer tok", "X-IBM-LH-Credentials": _B64},
         services=services,
     )
 
@@ -278,7 +278,7 @@ async def test_jwt_present_never_queries_connections_store(monkeypatch, _patch_a
     """A broken connections store cannot affect a JWT-authenticated request
     because the store is never consulted when the JWT is present."""
     _, services = _ibm_setup(monkeypatch, stored_credentials=_B64, broken=True)
-    req = _FakeRequest({"X-OpenRAG-JWT": "Bearer tok"}, services=services)
+    req = _FakeRequest({"X-BomaRAG-JWT": "Bearer tok"}, services=services)
 
     user = await get_api_key_user_async(req, api_key_service=None, session_manager=None)
 
@@ -290,7 +290,7 @@ async def test_jwt_present_never_queries_connections_store(monkeypatch, _patch_a
 async def test_jwt_without_credentials_keeps_bearer(monkeypatch, _patch_attach):
     """No lakehouse creds anywhere -> the JWT is the token (primary path)."""
     _, services = _ibm_setup(monkeypatch)
-    req = _FakeRequest({"X-OpenRAG-JWT": "Bearer tok"}, services=services)
+    req = _FakeRequest({"X-BomaRAG-JWT": "Bearer tok"}, services=services)
 
     user = await get_api_key_user_async(req, api_key_service=None, session_manager=None)
 
@@ -337,7 +337,7 @@ async def test_no_jwt_saas_rbac_on_fails_loud_no_db_write(monkeypatch, _patch_at
     before any _attach_request_user instead.
     """
     manager, services = _ibm_setup(monkeypatch)
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
+    monkeypatch.setenv("BOMARAG_RUN_MODE", "saas")
     errors: list[str] = []
     monkeypatch.setattr(deps.logger, "error", lambda msg, **kw: errors.append(msg))
     # Even with a valid LH-credentials header present, saas_rbac must not use it.
@@ -361,7 +361,7 @@ async def test_no_jwt_saas_rbac_on_rejects_api_key_fail_fast(monkeypatch, _patch
     is present. In SaaS the gateway JWT is mandatory; the API key must not be
     consulted, and the key service must never be called (no DB side effects)."""
     _ibm_setup(monkeypatch)
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
+    monkeypatch.setenv("BOMARAG_RUN_MODE", "saas")
 
     calls: list[str] = []
 
@@ -384,8 +384,8 @@ async def test_no_jwt_saas_rbac_on_rejects_api_key_fail_fast(monkeypatch, _patch
 @pytest.mark.asyncio
 async def test_no_jwt_saas_rbac_off_no_error_log(monkeypatch):
     """saas + RBAC off + no JWT -> no error log (legacy API-key behavior)."""
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "false")
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "false")
+    monkeypatch.setenv("BOMARAG_RUN_MODE", "saas")
     monkeypatch.setattr(app_settings, "IBM_AUTH_ENABLED", False)
     errors: list[str] = []
     monkeypatch.setattr(deps.logger, "error", lambda msg, **kw: errors.append(msg))
@@ -405,7 +405,7 @@ async def test_no_jwt_on_prem_rbac_on_fails_loud_no_db_write(monkeypatch, _patch
     """on_prem + RBAC + no gateway JWT -> fail loud with 401 missing_user_jwt
     and do NOT silently fall back to lakehouse creds (matches saas)."""
     manager, services = _ibm_setup(monkeypatch)
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "on_prem")
+    monkeypatch.setenv("BOMARAG_RUN_MODE", "on_prem")
     errors: list[str] = []
     monkeypatch.setattr(deps.logger, "error", lambda msg, **kw: errors.append(msg))
     # Even with a valid LH-credentials header present, platform_rbac must not use it.
@@ -426,7 +426,7 @@ async def test_no_jwt_on_prem_rbac_on_rejects_api_key_fail_fast(monkeypatch, _pa
     """on_prem + RBAC + no gateway JWT -> fail fast even when a valid orag_ API
     key is present (matches saas)."""
     _ibm_setup(monkeypatch)
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "on_prem")
+    monkeypatch.setenv("BOMARAG_RUN_MODE", "on_prem")
 
     calls: list[str] = []
 
@@ -450,8 +450,8 @@ async def test_no_jwt_on_prem_rbac_on_rejects_api_key_fail_fast(monkeypatch, _pa
 async def test_no_jwt_on_prem_rbac_off_no_error_log(monkeypatch):
     """on_prem + RBAC off + no JWT -> no error log (legacy API-key behavior),
     exactly as when RBAC is off today."""
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "false")
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "on_prem")
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "false")
+    monkeypatch.setenv("BOMARAG_RUN_MODE", "on_prem")
     monkeypatch.setattr(app_settings, "IBM_AUTH_ENABLED", False)
     errors: list[str] = []
     monkeypatch.setattr(deps.logger, "error", lambda msg, **kw: errors.append(msg))
@@ -467,11 +467,11 @@ async def test_no_jwt_on_prem_rbac_off_no_error_log(monkeypatch):
 async def test_invalid_jwt_rbac_on_logs_error(monkeypatch, _patch_attach):
     """Header present but unverifiable under RBAC -> 401 plus a clear
     'failed verification' error log (distinct from the not-found case)."""
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "true")
     _patch_verify(monkeypatch, None)
     errors: list[str] = []
     monkeypatch.setattr(deps.logger, "error", lambda msg, **kw: errors.append(msg))
-    req = _FakeRequest({"X-OpenRAG-JWT": "garbage"})
+    req = _FakeRequest({"X-BomaRAG-JWT": "garbage"})
 
     with pytest.raises(HTTPException) as exc:
         await get_api_key_user_async(req, api_key_service=None, session_manager=None)
@@ -486,7 +486,7 @@ async def test_x_username_headers_never_become_credentials(monkeypatch, _patch_a
     _, services = _ibm_setup(monkeypatch)
     req = _FakeRequest(
         {
-            "X-OpenRAG-JWT": "Bearer tok",
+            "X-BomaRAG-JWT": "Bearer tok",
             "X-Username": "alice",
             "X-Api-Key": "lakehouse-api-key",
         },

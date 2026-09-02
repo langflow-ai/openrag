@@ -124,10 +124,10 @@ class OnboardingStateBody(BaseModel):
     selected_nudge: str | None = None
     card_steps: dict[str, Any] | None = None
     upload_steps: dict[str, Any] | None = None
-    openrag_docs_filter_id: str | None = None
+    bomarag_docs_filter_id: str | None = None
     user_doc_filter_id: str | None = None
-    openrag_docs_ingested_version: str | None = None
-    openrag_docs_remote_signature: str | None = None
+    bomarag_docs_ingested_version: str | None = None
+    bomarag_docs_remote_signature: str | None = None
 
 
 class DoclingPresetBody(BaseModel):
@@ -143,10 +143,10 @@ class OnboardingStateConfig(BaseModel):
     selected_nudge: str | None
     card_steps: dict[str, Any] | None
     upload_steps: dict[str, Any] | None
-    openrag_docs_filter_id: str | None
+    bomarag_docs_filter_id: str | None
     user_doc_filter_id: str | None
-    openrag_docs_ingested_version: str | None
-    openrag_docs_remote_signature: str | None
+    bomarag_docs_ingested_version: str | None
+    bomarag_docs_remote_signature: str | None
 
 
 class OpenAIProviderConfig(BaseModel):
@@ -250,11 +250,11 @@ class OnboardingResponse(BaseModel):
     message: str
     edited: bool
     sample_data_ingested: bool
-    openrag_docs_filter_id: str | None = None
+    bomarag_docs_filter_id: str | None = None
     task_id: str | None = None
 
 
-class RefreshOpenRAGDocsResponse(BaseModel):
+class RefreshBomaRAGDocsResponse(BaseModel):
     message: str
     refreshed: bool
 

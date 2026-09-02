@@ -1,6 +1,6 @@
 """Integration tests for client.documents.list_files().
 
-These tests require a running OpenRAG instance and at least one ingested file.
+These tests require a running BomaRAG instance and at least one ingested file.
 They are skipped when SKIP_SDK_INTEGRATION_TESTS=true (CI without a live stack).
 """
 

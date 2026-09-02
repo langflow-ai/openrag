@@ -1,4 +1,4 @@
-"""File handling utilities for OpenRAG"""
+"""File handling utilities for BomaRAG"""
 
 import os
 import tempfile

@@ -72,7 +72,7 @@ def _patch_embedding_pipeline(monkeypatch, chunk_count: int, write_client=None):
     # Embedding model resolution path (config + fallback).
     fake_config = MagicMock()
     fake_config.knowledge.embedding_model = "text-embedding-3-small"
-    monkeypatch.setattr(processors_mod, "get_openrag_config", lambda: fake_config)
+    monkeypatch.setattr(processors_mod, "get_bomarag_config", lambda: fake_config)
     monkeypatch.setattr(processors_mod, "get_embedding_model", lambda: "text-embedding-3-small")
     monkeypatch.setattr(processors_mod, "get_index_name", lambda: "test-index")
 

@@ -1,1 +1,3 @@
 recursive-include src/tui/_assets *
+include LICENSE
+include NOTICE

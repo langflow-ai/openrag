@@ -17,9 +17,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	openragv1alpha1 "github.com/langflow-ai/openrag-operator/api/v1alpha1"
-	"github.com/langflow-ai/openrag-operator/internal/config"
-	"github.com/langflow-ai/openrag-operator/internal/controller"
+	bomaragv1alpha1 "github.com/ABISHAIMWANJA/bomarag-operator/api/v1alpha1"
+	"github.com/ABISHAIMWANJA/bomarag-operator/internal/config"
+	"github.com/ABISHAIMWANJA/bomarag-operator/internal/controller"
 )
 
 var (
@@ -32,7 +32,7 @@ func init() {
 	utilruntime.Must(appsv1.AddToScheme(scheme))
 	utilruntime.Must(corev1.AddToScheme(scheme))
 	utilruntime.Must(networkingv1.AddToScheme(scheme))
-	utilruntime.Must(openragv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(bomaragv1alpha1.AddToScheme(scheme))
 }
 
 func main() {
@@ -47,7 +47,7 @@ func main() {
 		Metrics:                metricsserver.Options{BindAddress: cfg.MetricsBindAddress},
 		HealthProbeBindAddress: cfg.HealthProbeBindAddress,
 		LeaderElection:         cfg.LeaderElectionEnabled,
-		LeaderElectionID:       "openrag-operator.openr.ag",
+		LeaderElectionID:       "bomarag-operator.bomalogic.com",
 	}
 
 	// If WATCH_NAMESPACE is set, configure namespace-scoped watching
@@ -69,9 +69,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	err = controller.NewOpenRAGReconciler(mgr.GetClient(), mgr.GetScheme()).SetupWithManager(mgr)
+	err = controller.NewBomaRAGReconciler(mgr.GetClient(), mgr.GetScheme()).SetupWithManager(mgr)
 	if err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "OpenRAG")
+		setupLog.Error(err, "unable to create controller", "controller", "BomaRAG")
 		os.Exit(1)
 	}
 

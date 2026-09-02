@@ -55,7 +55,7 @@ class LangflowHistoryService:
 
             if response.status_code == 200:
                 messages = response.json()
-                # Convert to OpenRAG format
+                # Convert to BomaRAG format
                 return self._convert_langflow_messages(messages)
             else:
                 logger.error(
@@ -70,7 +70,7 @@ class LangflowHistoryService:
     def _convert_langflow_messages(
         self, langflow_messages: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
-        """Convert Langflow messages to OpenRAG format"""
+        """Convert Langflow messages to BomaRAG format"""
         converted_messages: list[dict[str, Any]] = []
 
         for msg in langflow_messages:
@@ -89,7 +89,7 @@ class LangflowHistoryService:
                     if is_error:
                         content = sanitize_provider_error_content(content)
 
-                # Map Langflow message format to OpenRAG format
+                # Map Langflow message format to BomaRAG format
                 converted_msg = {
                     "role": "user" if is_user else "assistant",
                     "content": content,

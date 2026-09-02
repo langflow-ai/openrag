@@ -10,25 +10,25 @@ the /v1 handler (it is in get_http_headers()'s exclude set), so neither an
 ``Authorization`` JWT nor ``Authorization: Bearer orag_...`` survives the proxy.
 Use ``X-API-Key`` for API keys. For SaaS/IBM auth, the gateway (Traefik)
 authenticates the X-Username/X-Api-Key pair and injects the minted user JWT into
-the add-on ``X-OpenRAG-API-JWT`` header (OPENRAG_API_JWT_HEADER), which FastMCP
+the add-on ``X-BomaRAG-API-JWT`` header (BOMARAG_API_JWT_HEADER), which FastMCP
 forwards because it is not in the exclude set; the /v1 auth dependency reads it.
 
 Supported authentication methods:
 
-1. OpenRAG API Key:
+1. BomaRAG API Key:
    - X-API-Key: orag_...
 
 2. IBM Auth (when IBM_AUTH_ENABLED=true):
    - X-Username: <ibm_username>
    - X-Api-Key: <ibm_api_key>
-   The gateway exchanges these for a user JWT placed in X-OpenRAG-API-JWT.
+   The gateway exchanges these for a user JWT placed in X-BomaRAG-API-JWT.
 
 Usage (MCP client config):
 
     Standard API key:
     {
       "mcpServers": {
-        "openrag": {
+        "bomarag": {
           "url": "http://localhost:8000/mcp",
           "headers": { "X-API-Key": "orag_..." }
         }
@@ -38,7 +38,7 @@ Usage (MCP client config):
     IBM auth:
     {
       "mcpServers": {
-        "openrag": {
+        "bomarag": {
           "url": "http://localhost:8000/mcp",
           "headers": {
             "X-Username": "your_ibm_username",
@@ -68,31 +68,31 @@ logger = get_logger(__name__)
 COMPONENT_CUSTOMIZATIONS: dict[tuple[str, str], dict[str, str]] = {
     # Chat endpoints
     ("/v1/chat", "POST"): {
-        "name": "openrag_chat",
+        "name": "bomarag_chat",
         "description": (
-            "Send a message to OpenRAG and get a RAG-enhanced response. "
+            "Send a message to BomaRAG and get a RAG-enhanced response. "
             "The response is informed by documents in your knowledge base. "
             "Use chat_id to continue a previous conversation, or filter_id "
             "to apply a knowledge filter."
         ),
     },
     ("/v1/chat", "GET"): {
-        "name": "openrag_list_chats",
+        "name": "bomarag_list_chats",
         "description": "List all chat conversations.",
     },
     ("/v1/chat/{chat_id}", "GET"): {
-        "name": "openrag_get_chat",
+        "name": "bomarag_get_chat",
         "description": "Get a specific chat conversation by ID.",
     },
     ("/v1/chat/{chat_id}", "DELETE"): {
-        "name": "openrag_delete_chat",
+        "name": "bomarag_delete_chat",
         "description": "Delete a chat conversation by ID.",
     },
     # Search endpoint
     ("/v1/search", "POST"): {
-        "name": "openrag_search",
+        "name": "bomarag_search",
         "description": (
-            "Search the OpenRAG knowledge base using semantic search. "
+            "Search the BomaRAG knowledge base using semantic search. "
             "Returns matching document chunks with relevance scores. "
             "Optionally pass `filter_id` to scope results to a knowledge "
             "filter's data_sources, or inline `filters` (data_sources, "
@@ -106,33 +106,33 @@ COMPONENT_CUSTOMIZATIONS: dict[tuple[str, str], dict[str, str]] = {
     # Multipart file uploads are not supported through FastMCP's from_fastapi
     # auto-conversion; use the HTTP API or SDK directly to ingest documents.
     ("/v1/tasks/enhanced", "GET"): {
-        "name": "openrag_list_tasks_enhanced",
+        "name": "bomarag_list_tasks_enhanced",
         "description": (
             "List all ingestion tasks with structured failure metadata "
             "(component, failure_phase, user_facing_message, actionable_by) "
             "on any failed file. Completed files are omitted to reduce payload "
-            "size; use openrag_get_task_status_enhanced for a task's full file list."
+            "size; use bomarag_get_task_status_enhanced for a task's full file list."
         ),
     },
     ("/v1/tasks/{task_id}", "GET"): {
-        "name": "openrag_get_task_status",
+        "name": "bomarag_get_task_status",
         "description": (
-            "Check the status of an ingestion task. Use the task_id returned from openrag_ingest."
+            "Check the status of an ingestion task. Use the task_id returned from bomarag_ingest."
         ),
     },
     ("/v1/tasks/{task_id}/enhanced", "GET"): {
-        "name": "openrag_get_task_status_enhanced",
+        "name": "bomarag_get_task_status_enhanced",
         "description": (
             "Check the status of an ingestion task with structured failure "
             "metadata (component, failure_phase, user_facing_message, "
             "actionable_by) on any failed file. Includes completed files in "
-            "the task's file list. Use the task_id returned from openrag_ingest."
+            "the task's file list. Use the task_id returned from bomarag_ingest."
         ),
     },
     ("/v1/documents", "DELETE"): {
-        "name": "openrag_delete_document",
+        "name": "bomarag_delete_document",
         "description": (
-            "Delete document(s) from the OpenRAG knowledge base. "
+            "Delete document(s) from the BomaRAG knowledge base. "
             "Provide exactly one of: `filename` to delete a single file, "
             "or `filter_id` to delete every filename listed in that "
             "knowledge filter's `data_sources` (wildcards rejected for safety)."
@@ -140,54 +140,54 @@ COMPONENT_CUSTOMIZATIONS: dict[tuple[str, str], dict[str, str]] = {
     },
     # Settings endpoints
     ("/v1/settings", "GET"): {
-        "name": "openrag_get_settings",
+        "name": "bomarag_get_settings",
         "description": (
-            "Get the current OpenRAG configuration. Returns LLM provider and model, "
+            "Get the current BomaRAG configuration. Returns LLM provider and model, "
             "embedding provider and model, chunk settings, document processing options "
             "(table structure, OCR, picture descriptions), and system prompt."
         ),
     },
     ("/v1/settings", "POST"): {
-        "name": "openrag_update_settings",
+        "name": "bomarag_update_settings",
         "description": (
-            "Update OpenRAG configuration. All parameters are optional; only provided "
+            "Update BomaRAG configuration. All parameters are optional; only provided "
             "fields are changed. Use this to set LLM model, embedding model, chunk size/overlap, "
             "system prompt, and document processing options."
         ),
     },
     # Models / LLM proxy
     ("/v1/models", "GET"): {
-        "name": "openrag_list_openai_models",
+        "name": "bomarag_list_openai_models",
         "description": (
-            "List every language and embedding model OpenRAG can serve, in OpenAI "
+            "List every language and embedding model BomaRAG can serve, in OpenAI "
             "`GET /v1/models` format. Use this from an OpenAI-compatible client "
             "pointed at the LLM proxy."
         ),
     },
     ("/v1/model-catalog", "GET"): {
-        "name": "openrag_model_catalog",
+        "name": "bomarag_model_catalog",
         "description": (
             "LiteLLM provider/model catalogue used by the settings picker: "
             "grouped models, capability flags, and credential field specs."
         ),
     },
     ("/v1/chat/completions", "POST"): {
-        "name": "openrag_chat_completions",
+        "name": "bomarag_chat_completions",
         "description": (
-            "OpenAI-compatible chat completions. OpenRAG routes to the configured "
+            "OpenAI-compatible chat completions. BomaRAG routes to the configured "
             "provider via LiteLLM. Send a Langflow hop token, user JWT, or orag_ "
             "API key as Bearer."
         ),
     },
     ("/v1/embeddings", "POST"): {
-        "name": "openrag_embeddings",
+        "name": "bomarag_embeddings",
         "description": (
-            "OpenAI-compatible embeddings. OpenRAG routes to the configured "
+            "OpenAI-compatible embeddings. BomaRAG routes to the configured "
             "embedding provider via LiteLLM."
         ),
     },
     ("/v1/models/{provider}", "GET"): {
-        "name": "openrag_list_models",
+        "name": "bomarag_list_models",
         "description": (
             "List available language models and embedding models for a provider. "
             "Use this before updating settings to see which model values are valid. "
@@ -196,31 +196,31 @@ COMPONENT_CUSTOMIZATIONS: dict[tuple[str, str], dict[str, str]] = {
     },
     # Knowledge filters endpoints
     ("/v1/knowledge-filters", "POST"): {
-        "name": "openrag_create_knowledge_filter",
+        "name": "bomarag_create_knowledge_filter",
         "description": (
             "Create a new knowledge filter to scope searches and chats "
             "to specific documents or data sources."
         ),
     },
     ("/v1/knowledge-filters/search", "POST"): {
-        "name": "openrag_search_knowledge_filters",
+        "name": "bomarag_search_knowledge_filters",
         "description": "Search for knowledge filters by name or other criteria.",
     },
     ("/v1/knowledge-filters/{filter_id}", "GET"): {
-        "name": "openrag_get_knowledge_filter",
+        "name": "bomarag_get_knowledge_filter",
         "description": "Get a specific knowledge filter by ID.",
     },
     ("/v1/knowledge-filters/{filter_id}", "PUT"): {
-        "name": "openrag_update_knowledge_filter",
+        "name": "bomarag_update_knowledge_filter",
         "description": "Update an existing knowledge filter.",
     },
     ("/v1/knowledge-filters/{filter_id}", "DELETE"): {
-        "name": "openrag_delete_knowledge_filter",
+        "name": "bomarag_delete_knowledge_filter",
         "description": "Delete a knowledge filter by ID.",
     },
     # files endpoints (v1 — offset pagination)
     ("/v1/files/get_all", "GET"): {
-        "name": "openrag_get_all_files",
+        "name": "bomarag_get_all_files",
         "description": (
             "Return all ingested files from the knowledge base. "
             "No parameters — use GET /v2/files for filtering, sorting, or pagination."
@@ -228,11 +228,11 @@ COMPONENT_CUSTOMIZATIONS: dict[tuple[str, str], dict[str, str]] = {
     },
     # files endpoints (v2 — composite-agg cursor pagination)
     ("/v2/files", "GET"): {
-        "name": "openrag_list_files_v2",
+        "name": "bomarag_list_files_v2",
         "description": "List all ingested files with cursor-based composite-aggregation pagination.",
     },
     ("/v2/files/search", "GET"): {
-        "name": "openrag_search_files_v2",
+        "name": "bomarag_search_files_v2",
         "description": "Search ingested files by file name (case-insensitive).",
     },
 }
@@ -275,7 +275,7 @@ def create_mcp_server(app: FastAPI) -> FastMCP:
     The MCP convention is "GET = resource," but most LLM clients in agent mode
     only invoke tools — resources require a separate read protocol that many
     clients don't surface to the model. Exposing GETs as tools makes
-    operations like `openrag_get_knowledge_filter` callable in agent loops.
+    operations like `bomarag_get_knowledge_filter` callable in agent loops.
     """
     route_maps = [
         # Exclude /v1/documents/ingest: multipart/form-data file uploads are
@@ -311,7 +311,7 @@ def create_mcp_server(app: FastAPI) -> FastMCP:
 
     mcp = FastMCP.from_fastapi(
         app=app,
-        name="OpenRAG",
+        name="BomaRAG",
         route_maps=route_maps,
         mcp_component_fn=_customize_mcp_component,
     )

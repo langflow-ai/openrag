@@ -25,7 +25,7 @@ export const DEFAULT_INGEST_PREVIEW_SETTINGS: IngestPreviewSettings = {
   completionNotification: true,
 };
 
-const SETTINGS_KEY = "openrag.ingest-preview.settings";
+const SETTINGS_KEY = "bomarag.ingest-preview.settings";
 
 /** Former Settings toggles. Still present in some localStorage blobs. */
 const LEGACY_PREVIEW_FLAG_KEYS = [

@@ -244,9 +244,9 @@ async def probe_provider_credential_error() -> str | None:
     Langflow receives every configured provider key, so a revoked watsonx key can
     crash ingest even when the selected embedding provider is OpenAI.
     """
-    from config.settings import get_openrag_config
+    from config.settings import get_bomarag_config
 
-    config = get_openrag_config()
+    config = get_bomarag_config()
     checked: set[str] = set()
 
     candidates: list[tuple[str | None, object, str | None, str | None]] = [
@@ -306,9 +306,9 @@ async def probe_chat_llm_error() -> str | None:
     instead of being misreported as API-key failures (or left as opaque
     Langflow text).
     """
-    from config.settings import get_openrag_config
+    from config.settings import get_bomarag_config
 
-    config = get_openrag_config()
+    config = get_bomarag_config()
     provider = config.agent.llm_provider
     llm_model = (config.agent.llm_model or "").strip()
     if not provider or not llm_model:
@@ -344,9 +344,9 @@ async def probe_chat_llm_error() -> str | None:
 
 async def probe_embedding_error() -> str | None:
     """Return a cleaned error if the configured embedding model fails auth or inference."""
-    from config.settings import get_openrag_config
+    from config.settings import get_bomarag_config
 
-    config = get_openrag_config()
+    config = get_bomarag_config()
     provider = config.knowledge.embedding_provider
     embedding_model = (config.knowledge.embedding_model or "").strip()
     if not provider or not embedding_model:
@@ -669,7 +669,7 @@ async def _test_litellm_provider(
     if embedding_model:
         await litellm.aembedding(
             model=litellm_model,
-            input="OpenRAG provider validation",
+            input="BomaRAG provider validation",
             **credentials,
         )
         return

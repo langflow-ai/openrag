@@ -3,7 +3,7 @@
 import os
 
 import pytest
-from openrag_sdk.exceptions import ValidationError
+from bomarag_sdk.exceptions import ValidationError
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("SKIP_SDK_INTEGRATION_TESTS") == "true",

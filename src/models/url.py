@@ -22,7 +22,7 @@ class LangflowUrlProcessor(TaskProcessor):
         jwt_token: str = None,
         owner_name: str = None,
         owner_email: str = None,
-        connector_type: str = "openrag_docs",
+        connector_type: str = "bomarag_docs",
         prevent_outside: bool = True,
         tweaks: dict[str, Any] | None = None,
     ):
@@ -40,7 +40,7 @@ class LangflowUrlProcessor(TaskProcessor):
         self.tweaks = tweaks
 
     async def _count_system_default_docs(self, opensearch_client) -> int:
-        """Count indexed OpenRAG docs for the current owner/context."""
+        """Count indexed BomaRAG docs for the current owner/context."""
         from config.settings import get_index_name
 
         must_filters = [
@@ -133,10 +133,10 @@ class LangflowUrlProcessor(TaskProcessor):
             #     docs_after = await self._count_system_default_docs(opensearch_client)
             # if docs_after <= 0:
             #     raise ValueError(
-            #         "URL ingestion completed but no OpenRAG docs were indexed"
+            #         "URL ingestion completed but no BomaRAG docs were indexed"
             #     )
             # logger.info(
-            #     "URL ingestion indexed OpenRAG docs",
+            #     "URL ingestion indexed BomaRAG docs",
             #     docs_before=docs_before,
             #     docs_after=docs_after,
             # )

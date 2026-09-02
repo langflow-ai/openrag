@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.4
 # BuildKit: enables cache mounts and better layer reuse.
 #
-# Build: docker build -t openrag-backend -f Dockerfile.backend .
+# Build: docker build -t bomarag-backend -f Dockerfile.backend .
 
 # -----------------------------------------------------------------------------
 # Stage: base (system + uv)
@@ -66,7 +66,7 @@ COPY cloud_securityconfig/ ./cloud_securityconfig/
 # starts empty (no users / conversations / session_ownership tables).
 COPY alembic.ini ./
 COPY alembic/ ./alembic/
-COPY openrag-documents/ ./openrag-documents/
+COPY bomarag-documents/ ./bomarag-documents/
 
 # -----------------------------------------------------------------------------
 # Stage: runtime (minimal image)
@@ -116,13 +116,13 @@ ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/app/.venv
 #   data/              - connections.json
 #   config/            - config.yaml (ConfigManager runtime settings)
 #   flows/backup/      - Langflow flow backups (flows/ itself is COPY'd from builder)
-#   openrag-documents/ - uploaded documents staging area
-RUN mkdir -p keys data config flows/backup openrag-documents \
-    && chown -R appuser:appuser keys data config flows/backup openrag-documents \
+#   bomarag-documents/ - uploaded documents staging area
+RUN mkdir -p keys data config flows/backup bomarag-documents \
+    && chown -R appuser:appuser keys data config flows/backup bomarag-documents \
     && chmod +x /entrypoint.sh
 
 EXPOSE 8000
-# Ingestion-callback proxy router (OPENRAG_BACKEND_ROUTER_ENABLE), when enabled.
+# Ingestion-callback proxy router (BOMARAG_BACKEND_ROUTER_ENABLE), when enabled.
 EXPOSE 8100
 
 ENTRYPOINT ["/entrypoint.sh"]

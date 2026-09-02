@@ -146,7 +146,7 @@ export function ConsoleStatusProvider({
 
     if (SEVERITY_RANK[nextSev] > SEVERITY_RANK[prevSev]) {
       const message =
-        nextSev === "down" ? "OpenRAG component down" : "OpenRAG degraded";
+        nextSev === "down" ? "BomaRAG component down" : "BomaRAG degraded";
       const fire = nextSev === "down" ? toast.error : toast.warning;
       fire(message, {
         description: problemSummary(problems),

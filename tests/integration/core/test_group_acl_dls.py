@@ -6,7 +6,7 @@ from opensearchpy._async.http_aiohttp import AIOHttpConnection
 
 pytestmark = [
     pytest.mark.asyncio,
-    pytest.mark.openrag_skip_app_onboard,
+    pytest.mark.bomarag_skip_app_onboard,
 ]
 
 

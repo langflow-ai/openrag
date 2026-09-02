@@ -1,7 +1,7 @@
-"""Sync DB user roles when OPENRAG_DEFAULT_ROLE / OPENRAG_NOAUTH_ROLE change.
+"""Sync DB user roles when BOMARAG_DEFAULT_ROLE / BOMARAG_NOAUTH_ROLE change.
 
-Opt-in via ``OPENRAG_SYNC_DEFAULT_ROLE=true``. OSS run mode only
-(``OPENRAG_RUN_MODE=oss``). Run manually via ``scripts/sync_default_user_roles.py``.
+Opt-in via ``BOMARAG_SYNC_DEFAULT_ROLE=true``. OSS run mode only
+(``BOMARAG_RUN_MODE=oss``). Run manually via ``scripts/sync_default_user_roles.py``.
 
 Only users with *exactly one* role matching the previously recorded env
 default are updated. Users with multiple roles or a manually changed
@@ -142,8 +142,8 @@ async def sync_default_roles_if_changed(
     run — use when the baseline was recorded before users were migrated
     (e.g. baseline and env are both ``admin`` but users still have ``user``).
 
-    ``to_role`` / ``to_noauth_role`` override ``OPENRAG_DEFAULT_ROLE`` /
-    ``OPENRAG_NOAUTH_ROLE`` for this run when set explicitly on the CLI.
+    ``to_role`` / ``to_noauth_role`` override ``BOMARAG_DEFAULT_ROLE`` /
+    ``BOMARAG_NOAUTH_ROLE`` for this run when set explicitly on the CLI.
     """
     flag_enabled = is_default_role_sync_enabled() if enabled is None else enabled
     new_default = to_role if to_role is not None else get_default_user_role()
@@ -157,7 +157,7 @@ async def sync_default_roles_if_changed(
     )
 
     if not flag_enabled:
-        logger.debug("Default role sync skipped — OPENRAG_SYNC_DEFAULT_ROLE is off")
+        logger.debug("Default role sync skipped — BOMARAG_SYNC_DEFAULT_ROLE is off")
         return result
 
     config_repo = WorkspaceConfigRepo(session)

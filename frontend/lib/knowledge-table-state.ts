@@ -96,7 +96,7 @@ export function inferTaskFileConnectorType(
       continue;
     }
     if (looksLikeHttpUrl(normalized)) {
-      return normalized.includes("openr.ag") ? "openrag_docs" : "url";
+      return normalized.includes("bomarag.com") ? "bomarag_docs" : "url";
     }
   }
 
@@ -207,7 +207,7 @@ export function buildKnowledgeTableRows(
   const taskFileMap = indexTaskFileOverlays(taskFilesAsFiles);
 
   const backendFiles = searchData.map((file) => {
-    if (file.connector_type === "openrag_docs") {
+    if (file.connector_type === "bomarag_docs") {
       return file;
     }
     const taskFile = lookupTaskFileOverlay(taskFileMap, file);
@@ -248,12 +248,12 @@ export function buildKnowledgeTableRows(
 
   const filteredTaskFiles = taskFilesAsFiles.filter((taskFile) => {
     if (
-      taskFile.filename === "OpenRAG docs refresh" ||
-      (taskFile.source_url ?? "").includes("openr.ag")
+      taskFile.filename === "BomaRAG docs refresh" ||
+      (taskFile.source_url ?? "").includes("bomarag.com")
     ) {
       return false;
     }
-    if (taskFile.connector_type === "openrag_docs") {
+    if (taskFile.connector_type === "bomarag_docs") {
       return false;
     }
     if (

@@ -1,4 +1,4 @@
-"""OpenRAG Terminal User Interface package."""
+"""BomaRAG Terminal User Interface package."""
 
 from .utils.version_check import get_current_version
 

@@ -32,7 +32,7 @@ jobs:
       - name: Check if version already published
         id: check
         run: |
-          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://pypi.org/pypi/openrag-sdk/${{ steps.version.outputs.version }}/json)
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://pypi.org/pypi/bomarag-sdk/${{ steps.version.outputs.version }}/json)
           if [ "$HTTP_STATUS" = "200" ]; then
             echo "exists=true" >> $GITHUB_OUTPUT
           else

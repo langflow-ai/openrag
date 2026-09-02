@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	DefaultNamespace           = "openrag-control"
+	DefaultNamespace           = "bomarag-control"
 	metricsBindAddressEnv      = "METRICS_BIND_ADDRESS"
 	healthProbeBindAddressEnv  = "HEALTH_PROBE_BIND_ADDRESS"
 	leaderElectionNamespaceEnv = "LEADER_ELECTION_NAMESPACE"

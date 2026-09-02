@@ -1,4 +1,4 @@
-"""OPENRAG_RBAC_ENFORCE kill switch.
+"""BOMARAG_RBAC_ENFORCE kill switch.
 
 When the flag is off, every authenticated user passes every gate:
 - ``require_permission`` returns the user without checking
@@ -45,19 +45,19 @@ from session_manager import User  # noqa: E402
 
 def test_default_does_not_enforce(monkeypatch):
     """RBAC is opt-in: with no env var set, enforcement is off."""
-    monkeypatch.delenv("OPENRAG_RBAC_ENFORCE", raising=False)
+    monkeypatch.delenv("BOMARAG_RBAC_ENFORCE", raising=False)
     assert is_rbac_enforced() is False
 
 
 @pytest.mark.parametrize("v", ["true", "TRUE", "1", "yes", "on", "True"])
 def test_on_values(monkeypatch, v):
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", v)
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", v)
     assert is_rbac_enforced() is True
 
 
 @pytest.mark.parametrize("v", ["false", "0", "no", "off", "", "garbage"])
 def test_off_values(monkeypatch, v):
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", v)
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", v)
     assert is_rbac_enforced() is False
 
 
@@ -70,7 +70,7 @@ def test_off_values(monkeypatch, v):
 async def app(monkeypatch):
     """Spin up a tiny FastAPI app with one gated endpoint, two personas
     (admin + non-admin), and the kill switch monkeypatch-controlled."""
-    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "user")
+    monkeypatch.setenv("BOMARAG_DEFAULT_ROLE", "user")
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:",
         connect_args={"check_same_thread": False},
@@ -138,13 +138,13 @@ async def test_kill_switch_bypasses_require_permission(app, monkeypatch):
     transport = httpx.ASGITransport(app=fastapi_app)
     async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
         # Enforced: blocked
-        monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
+        monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "true")
         r = await c.get("/admin/users", headers={"X-Test-Persona": "user"})
         assert r.status_code == 403
         assert r.json()["detail"]["required"] == "users:list"
 
         # Kill switch off (default): passes
-        monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "false")
+        monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "false")
         r = await c.get("/admin/users", headers={"X-Test-Persona": "user"})
         assert r.status_code == 200
 
@@ -154,11 +154,11 @@ async def test_kill_switch_bypasses_require_any_permission(app, monkeypatch):
     fastapi_app, _, _, _ = app
     transport = httpx.ASGITransport(app=fastapi_app)
     async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
-        monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
+        monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "true")
         r = await c.delete("/anonymous-documents", headers={"X-Test-Persona": "user"})
         assert r.status_code == 403
 
-        monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "false")
+        monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "false")
         r = await c.delete("/anonymous-documents", headers={"X-Test-Persona": "user"})
         assert r.status_code == 200
 
@@ -166,7 +166,7 @@ async def test_kill_switch_bypasses_require_any_permission(app, monkeypatch):
 @pytest.mark.asyncio
 async def test_kill_switch_bypasses_assert_owner_or_perm(monkeypatch):
     """The shared helper used by `:own` endpoints must also bypass."""
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "false")
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "false")
 
     # Mock session_factory — it should never be hit
     factory = MagicMock(side_effect=AssertionError("DB should not be queried"))
@@ -186,7 +186,7 @@ async def test_kill_switch_bypasses_assert_owner_or_perm(monkeypatch):
 async def test_kill_switch_bypasses_api_key_role_override(app, monkeypatch):
     """API-key role_override is also bypassed — the flag is unconditional."""
     fastapi_app, _, _, _ = app
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "false")
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "false")
 
     # Inject a request middleware that pretends an API key with a
     # "viewer-only" role override is in play. With the kill switch the
@@ -210,7 +210,7 @@ async def test_kill_switch_bypasses_api_key_role_override(app, monkeypatch):
 @pytest.mark.asyncio
 async def test_me_returns_full_permission_catalog_when_disabled(app, monkeypatch):
     fastapi_app, SessionLocal, _, _ = app
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "false")
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "false")
 
     from api import users as users_api
 
@@ -232,7 +232,7 @@ async def test_me_returns_full_permission_catalog_when_disabled(app, monkeypatch
 @pytest.mark.asyncio
 async def test_me_returns_only_user_perms_when_enforced(app, monkeypatch):
     fastapi_app, _, _, _ = app
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "true")
 
     from api import users as users_api
 

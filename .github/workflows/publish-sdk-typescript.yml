@@ -36,7 +36,7 @@ jobs:
       - name: Check if version already published
         id: check
         run: |
-          if npm view openrag-sdk@${{ steps.version.outputs.version }} version 2>/dev/null; then
+          if npm view bomarag-sdk@${{ steps.version.outputs.version }} version 2>/dev/null; then
             echo "exists=true" >> $GITHUB_OUTPUT
           else
             echo "exists=false" >> $GITHUB_OUTPUT

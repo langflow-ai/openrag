@@ -1,5 +1,5 @@
 /*
-Copyright 2026 The OpenRAG Authors.
+Copyright 2026 The BomaRAG Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,8 +19,8 @@ limitations under the License.
 package api
 
 import (
-	v1alpha1 "github.com/langflow-ai/openrag-operator/pkg/generated/informers/externalversions/api/v1alpha1"
-	internalinterfaces "github.com/langflow-ai/openrag-operator/pkg/generated/informers/externalversions/internalinterfaces"
+	v1alpha1 "github.com/ABISHAIMWANJA/bomarag-operator/pkg/generated/informers/externalversions/api/v1alpha1"
+	internalinterfaces "github.com/ABISHAIMWANJA/bomarag-operator/pkg/generated/informers/externalversions/internalinterfaces"
 )
 
 // Interface provides access to each of this group's versions.

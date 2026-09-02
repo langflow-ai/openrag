@@ -91,13 +91,13 @@ jobs:
 
       - name: Template Helm chart
         run: |
-          helm template openrag-operator kubernetes/helm/operator \
-            --namespace openrag-control \
+          helm template bomarag-operator kubernetes/helm/operator \
+            --namespace bomarag-control \
             --debug
 
       - name: Verify CRD symlink
         run: |
-          if [ ! -L kubernetes/helm/operator/crds/openr.ag_openrags.yaml ]; then
+          if [ ! -L kubernetes/helm/operator/crds/bomarag.com_bomarags.yaml ]; then
             echo "Error: CRD file is not a symlink"
             exit 1
           fi

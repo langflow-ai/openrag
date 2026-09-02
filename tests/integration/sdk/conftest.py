@@ -1,8 +1,8 @@
 """
-Shared fixtures and setup for OpenRAG SDK integration tests.
+Shared fixtures and setup for BomaRAG SDK integration tests.
 
-All tests in this directory require a running OpenRAG instance.
-Set OPENRAG_URL (default: http://localhost:3000) before running.
+All tests in this directory require a running BomaRAG instance.
+Set BOMARAG_URL (default: http://localhost:3000) before running.
 """
 
 import os
@@ -15,13 +15,13 @@ import pytest
 import pytest_asyncio
 
 _cached_api_key: str | None = None
-_base_url = os.environ.get("OPENRAG_URL", "http://localhost:3000")
+_base_url = os.environ.get("BOMARAG_URL", "http://localhost:3000")
 _onboarding_done = False
 
 
 @pytest_asyncio.fixture(scope="session", autouse=True)
 async def ensure_onboarding():
-    """Ensure the OpenRAG instance is onboarded before running tests.
+    """Ensure the BomaRAG instance is onboarded before running tests.
 
     Uses httpx.AsyncClient so the async event loop is never blocked,
     even on a slow or unreachable server.
@@ -75,26 +75,26 @@ async def _fetch_api_key() -> str:
 
 @pytest_asyncio.fixture
 async def client():
-    """OpenRAG client authenticated with a valid test API key."""
-    from openrag_sdk import OpenRAGClient
+    """BomaRAG client authenticated with a valid test API key."""
+    from bomarag_sdk import BomaRAGClient
 
     api_key = await _fetch_api_key()
 
     async def log_request(request: httpx.Request) -> None:
         request_id = f"sdk-{uuid.uuid4().hex}"
         request.headers["x-request-id"] = request_id
-        request.extensions["openrag_request_id"] = request_id
-        request.extensions["openrag_started_at"] = time.perf_counter()
+        request.extensions["bomarag_request_id"] = request_id
+        request.extensions["bomarag_started_at"] = time.perf_counter()
         print(f"[SDK HTTP] start request_id={request_id} method={request.method} url={request.url}")
 
     async def log_response(response: httpx.Response) -> None:
-        started_at = response.request.extensions.get("openrag_started_at")
+        started_at = response.request.extensions.get("bomarag_started_at")
         duration_ms = (
             round((time.perf_counter() - started_at) * 1000)
             if isinstance(started_at, float)
             else None
         )
-        request_id = response.request.extensions.get("openrag_request_id")
+        request_id = response.request.extensions.get("bomarag_request_id")
         print(
             "[SDK HTTP] response "
             f"request_id={request_id} status={response.status_code} duration_ms={duration_ms}"
@@ -107,13 +107,13 @@ async def client():
         timeout=120.0,
         event_hooks={"request": [log_request], "response": [log_response]},
     ) as http_client:
-        c = OpenRAGClient(api_key=api_key, base_url=_base_url, http_client=http_client)
+        c = BomaRAGClient(api_key=api_key, base_url=_base_url, http_client=http_client)
         yield c
 
 
 @pytest.fixture
 def base_url() -> str:
-    """The base URL of the running OpenRAG instance."""
+    """The base URL of the running BomaRAG instance."""
     return _base_url
 
 
@@ -124,7 +124,7 @@ def test_file(tmp_path) -> Path:
     file_path.write_text(
         f"# SDK Integration Test Document\n\n"
         f"ID: {uuid.uuid4()}\n\n"
-        "This document tests the OpenRAG Python SDK.\n\n"
+        "This document tests the BomaRAG Python SDK.\n\n"
         "It contains unique content about purple elephants dancing.\n"
     )
     return file_path

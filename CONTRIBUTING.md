@@ -1,13 +1,13 @@
-# Contributing to OpenRAG
+# Contributing to BomaRAG
 
 ![Contributions Welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg)
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.13+-blue.svg)
 ![Node.js](https://img.shields.io/badge/node.js-18+-green.svg)
 
-**Thank you for your interest in contributing to OpenRAG!** 🎉
+**Thank you for your interest in contributing to BomaRAG!** 🎉
 
-Whether you're fixing a bug, adding a feature, improving documentation, or just exploring — every contribution matters and helps make OpenRAG better for everyone.
+Whether you're fixing a bug, adding a feature, improving documentation, or just exploring — every contribution matters and helps make BomaRAG better for everyone.
 
 This guide will help you set up your development environment and start contributing quickly.
 
@@ -32,15 +32,15 @@ This guide will help you set up your development environment and start contribut
 
 ## Quickstart
 
-Get OpenRAG running in three commands:
+Get BomaRAG running in three commands:
 
 ```bash
 make check_tools  # Verify you have all prerequisites
 make setup        # Install dependencies and create .env
-make dev          # Start OpenRAG
+make dev          # Start BomaRAG
 ```
 
-OpenRAG is now running locally on the following ports:
+BomaRAG is now running locally on the following ports:
 
 - **Frontend**: http://localhost:3000
 - **Langflow**: http://localhost:7860
@@ -49,19 +49,19 @@ OpenRAG is now running locally on the following ports:
 
 ## What's in this repo
 
-OpenRAG is a monorepo. Here's the shape of it and where to look depending on what you're changing:
+BomaRAG is a monorepo. Here's the shape of it and where to look depending on what you're changing:
 
 | Component | Where | What it is |
 |---|---|---|
 | **Backend** | `src/` | A FastAPI (Python 3.13) service — REST API, RBAC/auth, connectors, document ingestion orchestration, and the built-in MCP server. Runs on port `8000`. |
 | **Frontend** | `frontend/` | A Next.js (App Router, TypeScript, Tailwind) app — chat UI, document management, settings. Runs on port `3000` and proxies API/MCP calls to the backend. |
 | **Langflow** | (pulled as a container, or built from source — see [Branch Development](#c-branch-development-custom-langflow)) | Powers the actual RAG flows: ingestion, retrieval, and agentic nudges. Runs on port `7860`. |
-| **Python SDK** | `sdks/python/` | `openrag-sdk` on PyPI — a thin client for the OpenRAG REST API (chat, search, ingestion, settings). See `sdks/python/README.md` or run `/sdk`. |
-| **TypeScript SDK** | `sdks/typescript/` | `openrag-sdk` on npm — same API surface as the Python SDK, for JS/TS apps. See `sdks/typescript/README.md`. |
-| **MCP** | built into the backend, docs in `sdks/mcp/` | OpenRAG exposes a [Model Context Protocol](https://modelcontextprotocol.io/) server over streamable HTTP at `/mcp` (no separate process to run). Any MCP client (Cursor, Claude Desktop, etc.) can connect using an OpenRAG API key. The old standalone `openrag-mcp` PyPI package is deprecated — use the built-in endpoint instead. |
-| **Flows** | `flows/` | Langflow flow JSON definitions (ingestion, retrieval, agents) that ship with OpenRAG. |
-| **Docs** | `docs/` | The docs site source (published to [docs.openr.ag](https://docs.openr.ag)). |
-| **Kubernetes operator** | `kubernetes/operator/` | Go operator for running OpenRAG on Kubernetes; see `kubernetes/operator/README.md`. |
+| **Python SDK** | `sdks/python/` | `bomarag-sdk` on PyPI — a thin client for the BomaRAG REST API (chat, search, ingestion, settings). See `sdks/python/README.md` or run `/sdk`. |
+| **TypeScript SDK** | `sdks/typescript/` | `bomarag-sdk` on npm — same API surface as the Python SDK, for JS/TS apps. See `sdks/typescript/README.md`. |
+| **MCP** | built into the backend, docs in `sdks/mcp/` | BomaRAG exposes a [Model Context Protocol](https://modelcontextprotocol.io/) server over streamable HTTP at `/mcp` (no separate process to run). Any MCP client (Cursor, Claude Desktop, etc.) can connect using an BomaRAG API key. The old standalone `bomarag-mcp` PyPI package is deprecated — use the built-in endpoint instead. |
+| **Flows** | `flows/` | Langflow flow JSON definitions (ingestion, retrieval, agents) that ship with BomaRAG. |
+| **Docs** | `docs/` | The docs site source (published to [docs.bomarag.com](https://docs.bomarag.com)). |
+| **Kubernetes operator** | `kubernetes/operator/` | Go operator for running BomaRAG on Kubernetes; see `kubernetes/operator/README.md`. |
 
 If you're a first-time contributor, the [Development Workflows](#development-workflows) section below is the fastest way to get all of these running locally.
 
@@ -104,7 +104,7 @@ What these flags are doing:
 | `--vz-rosetta` | Enables Rosetta translation inside the VM, so `x86_64` images run at near-native speed on Apple Silicon. |
 | `--mount-type virtiofs` | Faster host↔VM filesystem mounts than the default (matters for volume-mounted dev reloads). |
 | `--ssh-port 2222` | Avoids clashing with a real SSH server on port 22. |
-| `--port-forwarder grpc` | More reliable port forwarding for the many ports OpenRAG exposes (3000, 7860, 8000, 9200, 5601, ...). |
+| `--port-forwarder grpc` | More reliable port forwarding for the many ports BomaRAG exposes (3000, 7860, 8000, 9200, 5601, ...). |
 
 Once Colima is running, `docker` (and `docker compose`) point at it automatically — everything in this guide works as-is. Useful commands:
 
@@ -132,7 +132,7 @@ podman machine start
 ```
 
 > [!IMPORTANT]
-> 8GB RAM is the minimum recommended for running OpenRAG smoothly. If you experience crashes or slowness, increase the memory allocation.
+> 8GB RAM is the minimum recommended for running BomaRAG smoothly. If you experience crashes or slowness, increase the memory allocation.
 
 ### Verify Prerequisites
 
@@ -150,12 +150,12 @@ You should see: `All required tools are installed.`
 1. Clone the repo and setup the project:
 
    ```bash
-   git clone https://github.com/langflow-ai/openrag.git
-   cd openrag
+   git clone https://github.com/ABISHAIMWANJA/bomarag.git
+   cd bomarag
    make setup
    ```
 
-2. Configure the required environment variables before starting OpenRAG:
+2. Configure the required environment variables before starting BomaRAG:
 
    ```env
    OPENAI_API_KEY=
@@ -168,9 +168,9 @@ You should see: `All required tools are installed.`
 
    If `LANGFLOW_SUPERUSER_PASSWORD` isn't set, then the Langflow instance starts without authentication enabled.
 
-   For more information, see the [OpenRAG environment variables reference](https://docs.openr.ag/reference/configuration).
+   For more information, see the [BomaRAG environment variables reference](https://docs.bomarag.com/reference/configuration).
 
-3. Start OpenRAG using one of the options described in the next section.
+3. Start BomaRAG using one of the options described in the next section.
     ```bash
     make dev      # With GPU support
     # or
@@ -181,11 +181,11 @@ You should see: `All required tools are installed.`
 
 ## Development Workflows
 
-There are multiple ways to start OpenRAG based on your use case:
+There are multiple ways to start BomaRAG based on your use case:
 
 * Local development environment: Recommended for development.
 * Full Docker stack: Simple build that runs everything in containers. Not ideal for development. Best for testing the full system.
-* Branch development: Build OpenRAG with a fork or branch of the [Langflow repository](https://github.com/langflow-ai/langflow).
+* Branch development: Build BomaRAG with a fork or branch of the [Langflow repository](https://github.com/langflow-ai/langflow).
 * Docling only: Run the Docling service by itself.
 
 ### Full Docker Stack (Simplest)
@@ -280,13 +280,13 @@ A quick-reference cheat sheet of the commands you'll reach for most while contri
 |---|---|
 | `make check_tools` | Verify Docker/Podman/Colima, Python, uv, Node.js, and npm are installed and meet version requirements. |
 | `make setup` | Install backend + frontend dependencies and scaffold `.env` from `.env.example`. Run once, and again after pulling changes that touch dependencies. |
-| `make dev` / `make dev-cpu` | Start the **full stack** in containers (GPU or CPU). Simplest option, best for just trying OpenRAG out — not ideal for iterating on code. |
+| `make dev` / `make dev-cpu` | Start the **full stack** in containers (GPU or CPU). Simplest option, best for just trying BomaRAG out — not ideal for iterating on code. |
 | `make dev-local-cpu` | Start **infra only** (OpenSearch, Dashboards, Langflow) in containers, with the backend/frontend run on the host. This is the recommended loop for active development — see [Local Development](#b-local-development-recommended-for-development). |
 | `make backend` | Run the FastAPI backend on the host (`uv run python src/main.py`), hot-reloading on code changes. Requires infra started via `make dev-local-cpu` first. |
 | `make frontend` | Run the Next.js frontend on the host (`npx next dev`), hot-reloading on code changes. |
 | `make docling` / `make docling-stop` | Start/stop the Docling service used for document parsing and OCR. |
 | `make dev-branch BRANCH=<name>` | Build and run the full stack with a custom Langflow branch instead of the published image — see [Branch Development](#c-branch-development-custom-langflow). |
-| `make stop` | Stop and remove all OpenRAG containers. |
+| `make stop` | Stop and remove all BomaRAG containers. |
 | `make clean` | Stop containers and delete volumes (data is wiped). |
 | `make factory-reset` | Full reset — containers, volumes, and on-disk data. Use when you want a completely clean slate. |
 | `make logs` / `make logs-be` / `make logs-fe` / `make logs-lf` | Tail logs for all services, or just backend/frontend/Langflow. |
@@ -302,7 +302,7 @@ A quick-reference cheat sheet of the commands you'll reach for most while contri
 ### Stop All Services
 
 ```bash
-make stop  # Stops and removes all OpenRAG containers
+make stop  # Stops and removes all BomaRAG containers
 ```
 
 ### Check Status
@@ -384,7 +384,7 @@ make help_utils   # Utility commands (logs, cleanup, etc.)
 ```bash
 make test              # Run all backend tests
 make test-integration  # Run integration tests (requires infra)
-make test-sdk          # Run SDK tests (requires running OpenRAG)
+make test-sdk          # Run SDK tests (requires running BomaRAG)
 make lint              # Run linting checks
 ```
 
@@ -400,7 +400,7 @@ make test-ci-local  # Same as above, but builds images locally
 ## Project Structure
 
 ```
-openrag/
+bomarag/
 ├── src/                    # Backend Python code
 │   ├── api/               # REST API endpoints
 │   ├── services/          # Business logic
@@ -425,7 +425,7 @@ openrag/
 ### Port Conflicts
 
 > [!NOTE]
-> Ensure these ports are available before starting OpenRAG:
+> Ensure these ports are available before starting BomaRAG:
 
 | Port | Service |
 |------|---------|
@@ -473,7 +473,7 @@ make health
 ### Need More Help?
 
 - Run `make help` to see all available commands
-- Check existing [issues](https://github.com/langflow-ai/openrag/issues)
+- Check existing [issues](https://github.com/ABISHAIMWANJA/bomarag/issues)
 - Review [documentation](docs/)
 - Use `make status` and `make health` for debugging
 - View logs with `make logs`
@@ -498,19 +498,19 @@ make health
 
 ## Create a Pull Request
 
-If you want to propose your changes to the OpenRAG maintainers, make sure your code is fully tested and ready for review:
+If you want to propose your changes to the BomaRAG maintainers, make sure your code is fully tested and ready for review:
 
 1. **Fork and Branch**: Create a feature branch from `main`
 2. **Test**: Ensure tests pass with `make test` and `make lint`
 3. **Document**: Update relevant documentation.
-To build and test documentation changes, see [Contribute OpenRAG documentation](https://docs.openr.ag/support/contribute#contribute-documentation).
+To build and test documentation changes, see [Contribute BomaRAG documentation](https://docs.bomarag.com/support/contribute#contribute-documentation).
 4. **Commit**: Use clear, descriptive commit messages
 5. **PR Description**: Explain changes and include testing instructions
 
 > [!IMPORTANT]
 > All PRs must pass CI tests before merging.
 
-For more information and suggestions for successful contributions, see [Contribute to OpenRAG](https://docs.openr.ag/support/contribute#contribute-to-the-codebase).
+For more information and suggestions for successful contributions, see [Contribute to BomaRAG](https://docs.bomarag.com/support/contribute#contribute-to-the-codebase).
 
 
-Thank you for contributing to OpenRAG! 🚀
+Thank you for contributing to BomaRAG! 🚀

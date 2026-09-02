@@ -10,9 +10,9 @@ also refreshes ``metadata.code_hash`` (sha256 prefix, 12 chars) and can set
 
 Example:
     python scripts/update_flow_components.py \\
-        --code-file custom_components/openrag/opensearch_multimodal.py \\
+        --code-file custom_components/bomarag/opensearch_multimodal.py \\
         --display-name "OpenSearch (Multi-Model Multi-Embedding)" \\
-        --set-module custom_components.OpenRAG.opensearch_multimodal.OpenSearchVectorStoreComponentMultimodalMultiEmbedding
+        --set-module custom_components.BomaRAG.opensearch_multimodal.OpenSearchVectorStoreComponentMultimodalMultiEmbedding
 """
 
 from __future__ import annotations

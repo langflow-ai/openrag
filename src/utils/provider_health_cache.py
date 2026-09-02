@@ -21,7 +21,7 @@ from cachetools import TTLCache
 from config.settings import PROVIDER_HEALTH_CACHE_TTL_SECONDS
 
 # TTL is fixed at the value present in the environment when this module is first
-# imported. Changing OPENRAG_PROVIDER_HEALTH_TTL requires a server restart.
+# imported. Changing BOMARAG_PROVIDER_HEALTH_TTL requires a server restart.
 _HEALTH_CACHE: TTLCache[str, dict] = TTLCache(maxsize=64, ttl=PROVIDER_HEALTH_CACHE_TTL_SECONDS)
 # Per-key in-flight events for singleflight deduplication. Only the first
 # coroutine to miss the cache for a given key calls the upstream provider;

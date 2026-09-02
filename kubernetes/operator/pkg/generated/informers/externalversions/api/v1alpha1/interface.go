@@ -1,5 +1,5 @@
 /*
-Copyright 2026 The OpenRAG Authors.
+Copyright 2026 The BomaRAG Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,13 +19,13 @@ limitations under the License.
 package v1alpha1
 
 import (
-	internalinterfaces "github.com/langflow-ai/openrag-operator/pkg/generated/informers/externalversions/internalinterfaces"
+	internalinterfaces "github.com/ABISHAIMWANJA/bomarag-operator/pkg/generated/informers/externalversions/internalinterfaces"
 )
 
 // Interface provides access to all the informers in this group version.
 type Interface interface {
-	// OpenRAGs returns a OpenRAGInformer.
-	OpenRAGs() OpenRAGInformer
+	// BomaRAGs returns a BomaRAGInformer.
+	BomaRAGs() BomaRAGInformer
 }
 
 type version struct {
@@ -39,7 +39,7 @@ func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakList
 	return &version{factory: f, namespace: namespace, tweakListOptions: tweakListOptions}
 }
 
-// OpenRAGs returns a OpenRAGInformer.
-func (v *version) OpenRAGs() OpenRAGInformer {
-	return &openRAGInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+// BomaRAGs returns a BomaRAGInformer.
+func (v *version) BomaRAGs() BomaRAGInformer {
+	return &bomaRAGInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }

@@ -220,7 +220,7 @@ export default function ConnectorCards() {
           if (!open) setDisconnectTarget(null);
         }}
         title={`Disconnect ${disconnectTarget?.name ?? "connector"}?`}
-        description={`This will remove the ${disconnectTarget?.name ?? "connector"} connection from OpenRAG.`}
+        description={`This will remove the ${disconnectTarget?.name ?? "connector"} connection from BomaRAG.`}
         confirmText="Disconnect"
         onConfirm={confirmDisconnect}
         isLoading={disconnectMutation.isPending}

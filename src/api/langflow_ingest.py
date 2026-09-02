@@ -31,9 +31,9 @@ class LangflowIngestBatch(BaseModel):
 
 def _extract_ingest_token(
     authorization: str | None,
-    x_openrag_ingest_token: str | None,
+    x_bomarag_ingest_token: str | None,
 ) -> str:
-    token = x_openrag_ingest_token or authorization or ""
+    token = x_bomarag_ingest_token or authorization or ""
     token = token.strip()
     if token.lower().startswith("bearer "):
         token = token[7:].strip()
@@ -72,11 +72,11 @@ def _describe_ingest_error(error: Exception) -> tuple[dict[str, Any], str]:
 async def ingest_langflow_chunks(
     body: LangflowIngestBatch,
     authorization: str | None = Header(default=None),
-    x_openrag_ingest_token: str | None = Header(default=None),
+    x_bomarag_ingest_token: str | None = Header(default=None),
     token_service: LangflowIngestTokenService = Depends(get_langflow_ingest_token_service),
     writer: DocumentIndexWriter = Depends(get_document_index_writer),
 ):
-    token = _extract_ingest_token(authorization, x_openrag_ingest_token)
+    token = _extract_ingest_token(authorization, x_bomarag_ingest_token)
     try:
         context, jti = token_service.validate_token(token)
     except ValueError as e:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Entrypoint for the OpenRAG Langflow container.
+"""Entrypoint for the BomaRAG Langflow container.
 
 Runs as root to correct /app/langflow-data bind-mount permissions, then drops
 to uid/gid 1000 (langflow user) before exec-ing the main process.

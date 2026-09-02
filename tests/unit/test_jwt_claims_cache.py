@@ -18,8 +18,8 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-os.environ.setdefault("OPENRAG_JWT_CACHE_TTL", "60")
-os.environ.setdefault("OPENRAG_JWT_CACHE_MAXSIZE", "1024")
+os.environ.setdefault("BOMARAG_JWT_CACHE_TTL", "60")
+os.environ.setdefault("BOMARAG_JWT_CACHE_MAXSIZE", "1024")
 
 import auth.ibm_auth as ibm_auth  # noqa: E402
 import session_manager as sm  # noqa: E402

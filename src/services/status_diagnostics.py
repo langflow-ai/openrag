@@ -8,7 +8,7 @@ from api.schemas.status import ComponentState, ComponentStatus, DiagnosisRespons
 from services.component_logs import LogEntry as ComponentLogEntry
 
 _DISPLAY = {
-    "openrag": "OpenRAG Backend",
+    "bomarag": "BomaRAG Backend",
     "langflow": "Langflow",
     "docling": "Docling",
     "opensearch": "OpenSearch",

@@ -1,8 +1,8 @@
-from config.config_manager import OpenRAGConfig
+from config.config_manager import BomaRAGConfig
 
 
 def test_arbitrary_provider_credentials_round_trip():
-    config = OpenRAGConfig.from_dict({})
+    config = BomaRAGConfig.from_dict({})
     config.providers.set_credentials(
         "gemini",
         {
@@ -12,7 +12,7 @@ def test_arbitrary_provider_credentials_round_trip():
         },
     )
 
-    loaded = OpenRAGConfig.from_dict(config.to_dict())
+    loaded = BomaRAGConfig.from_dict(config.to_dict())
 
     assert loaded.providers.custom["gemini"].configured is True
     assert loaded.providers.credential_values("gemini") == {
@@ -23,7 +23,7 @@ def test_arbitrary_provider_credentials_round_trip():
 
 
 def test_legacy_provider_keeps_extra_catalog_fields():
-    config = OpenRAGConfig.from_dict({})
+    config = BomaRAGConfig.from_dict({})
     config.providers.set_credentials(
         "openai",
         {
@@ -48,7 +48,7 @@ def test_blank_credentials_do_not_register_a_configured_provider():
     helpers pick the first configured entry — a provider marked configured with
     zero credentials would be selected and then called with no key at all.
     """
-    config = OpenRAGConfig.from_dict({})
+    config = BomaRAGConfig.from_dict({})
 
     config.providers.set_credentials("gemini", {"api_key": "   ", "": "x"})
 
@@ -57,7 +57,7 @@ def test_blank_credentials_do_not_register_a_configured_provider():
 
 
 def test_blank_credentials_leave_an_existing_provider_untouched():
-    config = OpenRAGConfig.from_dict({})
+    config = BomaRAGConfig.from_dict({})
     config.providers.set_credentials("gemini", {"api_key": "secret"})
 
     config.providers.set_credentials("gemini", {"api_key": ""})

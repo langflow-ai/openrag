@@ -34,7 +34,7 @@ _IBM_JWT_CLAIMS_CACHE: TTLCache[str, dict] = TTLCache(
 def decode_ibm_jwt(token: str) -> dict | None:
     """Decode *token* without signature verification, using an in-process cache.
 
-    Used for the ibm-openrag-session cookie path where Traefik has already
+    Used for the ibm-bomarag-session cookie path where Traefik has already
     validated the JWT. Returns the claims dict, or None if decoding fails.
     """
     cached = _IBM_JWT_CLAIMS_CACHE.get(token)

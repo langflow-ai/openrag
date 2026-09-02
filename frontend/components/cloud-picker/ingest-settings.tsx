@@ -281,7 +281,7 @@ export const IngestSettings = ({
                   Make documents available to all users
                 </div>
                 <div className="text-sm text-muted-foreground">
-                  Shared documents are visible to all users in this OpenRAG
+                  Shared documents are visible to all users in this BomaRAG
                   instance.
                 </div>
               </div>

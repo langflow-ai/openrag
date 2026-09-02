@@ -55,17 +55,17 @@ async def legacy_migration_workspace(tmp_path: Path, monkeypatch):
     config_dir.mkdir()
     keys_dir.mkdir()
 
-    db_path = tmp_path / "openrag.db"
+    db_path = tmp_path / "bomarag.db"
     monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///{db_path}")
-    monkeypatch.setenv("OPENRAG_DATA_PATH", str(data_dir))
-    monkeypatch.setenv("OPENRAG_CONFIG_PATH", str(config_dir))
-    monkeypatch.setenv("OPENRAG_KEYS_PATH", str(keys_dir))
-    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "db")
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
-    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "user")
-    monkeypatch.setenv("OPENRAG_NOAUTH_ROLE", "admin")
+    monkeypatch.setenv("BOMARAG_DATA_PATH", str(data_dir))
+    monkeypatch.setenv("BOMARAG_CONFIG_PATH", str(config_dir))
+    monkeypatch.setenv("BOMARAG_KEYS_PATH", str(keys_dir))
+    monkeypatch.setenv("BOMARAG_STORAGE_MODE", "db")
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "true")
+    monkeypatch.setenv("BOMARAG_DEFAULT_ROLE", "user")
+    monkeypatch.setenv("BOMARAG_NOAUTH_ROLE", "admin")
     monkeypatch.setenv("DISABLE_STARTUP_INGEST", "true")
-    monkeypatch.setenv("FETCH_OPENRAG_DOCS_AT_STARTUP", "false")
+    monkeypatch.setenv("FETCH_BOMARAG_DOCS_AT_STARTUP", "false")
 
     from db.engine import dispose_engine as dispose_existing_engine
 
@@ -146,7 +146,7 @@ def _write_legacy_files(*, config_dir: Path, data_dir: Path) -> None:
                 },
                 "onboarding": {
                     "current_step": 4,
-                    "openrag_docs_filter_id": "legacy-filter",
+                    "bomarag_docs_filter_id": "legacy-filter",
                 },
                 "edited": True,
             }

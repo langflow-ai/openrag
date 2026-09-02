@@ -2,7 +2,7 @@
 
 One row per logical section ('providers' | 'knowledge' | 'agent' |
 'onboarding' | 'meta'). The `value` JSON column holds the section's
-payload — the same shape the existing ``OpenRAGConfig.to_dict()``
+payload — the same shape the existing ``BomaRAGConfig.to_dict()``
 produces for that section, so the migration is a 1:1 copy of what
 lives in ``config/config.yaml`` today.
 

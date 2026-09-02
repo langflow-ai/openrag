@@ -1,4 +1,4 @@
-"""CLI interactive walkthrough for OpenRAG."""
+"""CLI interactive walkthrough for BomaRAG."""
 
 import asyncio
 import getpass
@@ -139,7 +139,7 @@ def _existing_config_menu(
         if running:
             console.print("  [green]✓ Services are running[/green]")
             console.print()
-            options.append(("open", "Open OpenRAG in browser"))
+            options.append(("open", "Open BomaRAG in browser"))
             options.append(("stop", "Stop services"))
         else:
             options.append(("start", "Start services"))
@@ -234,7 +234,7 @@ def _setup_walkthrough(
         if fully_started:
             console.print()
             frontend_url = f"http://localhost:{os.getenv('FRONTEND_PORT', '3000')}"
-            console.print(f"[bold green]OpenRAG is running at {frontend_url}[/bold green]")
+            console.print(f"[bold green]BomaRAG is running at {frontend_url}[/bold green]")
             try:
                 webbrowser.open(frontend_url)
             except Exception:
@@ -309,9 +309,9 @@ def _collect_config(
                     console.print(f"  {strength}")
 
             # Special handling: sync documents path
-            if field.name == "openrag_documents_paths" and value:
+            if field.name == "bomarag_documents_paths" and value:
                 first_path = value.split(",")[0].strip()
-                config.openrag_documents_path = first_path
+                config.bomarag_documents_path = first_path
 
             # Run validator and warn (but don't block)
             if value and field.validator and not field.validator(value):
@@ -323,7 +323,7 @@ def _collect_config(
 def _validate_and_save(env_manager: EnvManager) -> bool:
     """Validate config and save .env file."""
     env_manager.setup_secure_defaults()
-    env_manager.ensure_openrag_version()
+    env_manager.ensure_bomarag_version()
 
     if not env_manager.validate_config():
         console.print()
@@ -369,7 +369,7 @@ def _start_services_cli(
             console.print("  This may cause compatibility issues with your flows.\n")
             console.print("  [yellow]⚠️  Please backup your flows before continuing.[/yellow]")
             console.print(
-                "     Customizations to OpenRAG built-in flows are backed up in ~/.openrag/flows/backup/"
+                "     Customizations to BomaRAG built-in flows are backed up in ~/.bomarag/flows/backup/"
             )
             console.print("     Other user created flows are not backed up automatically.\n")
             try:
@@ -381,14 +381,14 @@ def _start_services_cli(
                 console.print("[yellow]Start cancelled.[/yellow]")
                 return False
 
-    env_manager.ensure_openrag_version()
+    env_manager.ensure_bomarag_version()
 
     if not env_manager.config.langflow_superuser_password:
         console.print("[red]✗ Error: Langflow password is required. Cannot start services.[/red]")
         return False
 
     console.print()
-    console.print("Starting OpenRAG services...", style="bold")
+    console.print("Starting BomaRAG services...", style="bold")
 
     async def _inner():
         containers_ok = True
@@ -449,7 +449,7 @@ def _stop_services_cli(
 ):
     """Stop container services and docling via async bridge."""
     console.print()
-    console.print("Stopping OpenRAG services...", style="bold")
+    console.print("Stopping BomaRAG services...", style="bold")
 
     async def _inner():
         # Stop container services

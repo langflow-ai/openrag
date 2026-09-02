@@ -37,7 +37,7 @@ def _make_es256_token(issuer: str) -> tuple[str, str]:
     token = jwt.encode(
         {
             "iss": issuer,
-            "sub": "system:serviceaccount:tenant:wxd-openrag-be",
+            "sub": "system:serviceaccount:tenant:wxd-bomarag-be",
             "exp": now + 900,
             "iat": now,
             "roles": ["access_all"],
@@ -50,7 +50,7 @@ def _make_es256_token(issuer: str) -> tuple[str, str]:
 
 
 def test_verify_jwt_from_issuer_fetches_public_key_and_validates_es256_token():
-    issuer = "https://authserver-oidc-svc.openrag-control.svc.cluster.local:8082/keys/workload"
+    issuer = "https://authserver-oidc-svc.bomarag-control.svc.cluster.local:8082/keys/workload"
     token, public_pem = _make_es256_token(issuer)
 
     response = MagicMock()
@@ -74,7 +74,7 @@ def test_verify_jwt_from_issuer_fetches_public_key_and_validates_es256_token():
 
 
 def test_verify_jwt_from_issuer_accepts_standard_jwks_response():
-    issuer = "https://authserver-oidc-svc.openrag-control.svc.cluster.local:8082/keys/workload"
+    issuer = "https://authserver-oidc-svc.bomarag-control.svc.cluster.local:8082/keys/workload"
     private_key = ec.generate_private_key(ec.SECP256R1())
     public_numbers = private_key.public_key().public_numbers()
 
@@ -101,7 +101,7 @@ def test_verify_jwt_from_issuer_accepts_standard_jwks_response():
     token = jwt.encode(
         {
             "iss": issuer,
-            "sub": "system:serviceaccount:tenant:wxd-openrag-be",
+            "sub": "system:serviceaccount:tenant:wxd-bomarag-be",
             "exp": now + 900,
             "iat": now,
         },
@@ -128,7 +128,7 @@ def test_verify_jwt_from_issuer_accepts_standard_jwks_response():
 
 
 def test_verify_jwt_from_issuer_accepts_raw_pem_response():
-    issuer = "https://authserver-oidc-svc.openrag-control.svc.cluster.local:8082/keys/raw"
+    issuer = "https://authserver-oidc-svc.bomarag-control.svc.cluster.local:8082/keys/raw"
     token, public_pem = _make_es256_token(issuer)
 
     response = MagicMock()

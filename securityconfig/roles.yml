@@ -2,7 +2,7 @@ _meta:
   type: "roles"
   config_version: 2
 
-openrag_user_role:
+bomarag_user_role:
   description: "DLS: user can read docs they own or are allowed on"
   cluster_permissions:
     - "indices:data/read/scroll"
@@ -19,7 +19,7 @@ openrag_user_role:
           {"term":{"owner":"${attr.jwt.email}"}},
           {"term":{"allowed_users":"${user.name}"}},
           {"term":{"allowed_users":"${attr.jwt.email}"}},
-          {"terms":{"allowed_principals":{"index":"openrag_dls_principals","id":"${user.name}","path":"principals"}}},
+          {"terms":{"allowed_principals":{"index":"bomarag_dls_principals","id":"${user.name}","path":"principals"}}},
           {"bool":{"must_not":{"exists":{"field":"owner"}}}}
         ],"minimum_should_match":1}}
     - index_patterns: ["documents", "*documents*", "knowledge_filters", "knowledge_filters*"]
@@ -27,14 +27,14 @@ openrag_user_role:
         - indices:admin/mappings/get
         - indices:admin/exists
         - indices:admin/get
-    - index_patterns: ["openrag_dls_principals", "openrag_dls_principals*"]
+    - index_patterns: ["bomarag_dls_principals", "bomarag_dls_principals*"]
       allowed_actions:
         - read
         - indices:data/read/get
         - indices:data/read/search
       dls: >
         {"term":{"user_name":"${user.name}"}}
-    - index_patterns: ["openrag_dls_principals", "openrag_dls_principals*"]
+    - index_patterns: ["bomarag_dls_principals", "bomarag_dls_principals*"]
       allowed_actions:
         - indices:admin/exists
     - index_patterns: ["api_keys", "api_keys*"]

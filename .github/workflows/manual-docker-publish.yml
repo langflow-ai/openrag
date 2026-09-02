@@ -63,7 +63,7 @@ jobs:
           file: ./Dockerfile.backend
           platforms: ${{ github.event.inputs.platforms }}
           push: true
-          tags: ${{ secrets.DOCKER_NAMESPACE_MANUAL }}/openrag-backend:${{ steps.vars.outputs.tag }}
+          tags: ${{ secrets.DOCKER_NAMESPACE_MANUAL }}/bomarag-backend:${{ steps.vars.outputs.tag }}
           cache-from: type=gha,scope=backend
           cache-to: type=gha,mode=max,scope=backend
 
@@ -74,7 +74,7 @@ jobs:
           file: ./Dockerfile.frontend
           platforms: ${{ github.event.inputs.platforms }}
           push: true
-          tags: ${{ secrets.DOCKER_NAMESPACE_MANUAL }}/openrag-frontend:${{ steps.vars.outputs.tag }}
+          tags: ${{ secrets.DOCKER_NAMESPACE_MANUAL }}/bomarag-frontend:${{ steps.vars.outputs.tag }}
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
 
@@ -85,7 +85,7 @@ jobs:
           file: ./Dockerfile.langflow
           platforms: ${{ github.event.inputs.platforms }}
           push: true
-          tags: ${{ secrets.DOCKER_NAMESPACE_MANUAL }}/openrag-langflow:${{ steps.vars.outputs.tag }}
+          tags: ${{ secrets.DOCKER_NAMESPACE_MANUAL }}/bomarag-langflow:${{ steps.vars.outputs.tag }}
           cache-from: type=gha,scope=langflow
           cache-to: type=gha,mode=max,scope=langflow
 
@@ -96,6 +96,6 @@ jobs:
           file: ./Dockerfile
           platforms: ${{ github.event.inputs.platforms }}
           push: true
-          tags: ${{ secrets.DOCKER_NAMESPACE_MANUAL }}/openrag-opensearch:${{ steps.vars.outputs.tag }}
+          tags: ${{ secrets.DOCKER_NAMESPACE_MANUAL }}/bomarag-opensearch:${{ steps.vars.outputs.tag }}
           cache-from: type=gha,scope=opensearch
           cache-to: type=gha,mode=max,scope=opensearch

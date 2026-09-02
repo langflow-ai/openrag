@@ -50,7 +50,7 @@ def _should_load_persisted_connections() -> bool:
 
     Normally skipped in no-auth mode because OAuth connectors are unusable
     there — but dev bucket connectors (e.g. Azure Blob via
-    OPENRAG_DEV_AZURE_BLOB) DO work in no-auth mode and persist real
+    BOMARAG_DEV_AZURE_BLOB) DO work in no-auth mode and persist real
     connections. Without loading them, a saved connection silently disappears
     on restart (the in-memory dict empties), leaving the UI stuck on "Connect".
     OR in those dev flags so their connections survive a restart.

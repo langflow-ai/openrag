@@ -377,8 +377,8 @@ def register_internal_routes(app: FastAPI):
         tags=["internal"],
     )
     app.add_api_route(
-        "/openrag-docs/refresh",
-        settings.refresh_openrag_docs,
+        "/bomarag-docs/refresh",
+        settings.refresh_bomarag_docs,
         methods=["POST"],
         tags=["internal"],
     )

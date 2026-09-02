@@ -87,7 +87,7 @@ async def delete_missing_idempotent(ctx: Context) -> None:
 async def delete_by_filter_id(ctx: Context) -> None:
     """Deleting via filter_id removes only files in the filter's data_sources."""
     if not supports_delete_by_filter_id(ctx.client):
-        raise Skip("documents.delete(filter_id=...) requires openrag-sdk >= 0.4.0")
+        raise Skip("documents.delete(filter_id=...) requires bomarag-sdk >= 0.4.0")
 
     alpha, _ = make_doc(ctx, "delfilter_alpha", "Unique content about copper falcons.")
     beta, _ = make_doc(ctx, "delfilter_beta", "Unique content about silver herons.")

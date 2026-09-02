@@ -1,8 +1,8 @@
 import type { IndexProofChunk } from "@/app/api/queries/useIngestPreviewQuery";
 
-export const SAMPLE_DEMO_FILENAME = "openrag-ingest-preview-sample.txt";
+export const SAMPLE_DEMO_FILENAME = "bomarag-ingest-preview-sample.txt";
 
-const SAMPLE_TITLE = "OpenRAG ingest preview sample";
+const SAMPLE_TITLE = "BomaRAG ingest preview sample";
 
 const SAMPLE_INTRO = `This short document demonstrates how files are parsed and
 chunked before they are used for retrieval. Nothing from this

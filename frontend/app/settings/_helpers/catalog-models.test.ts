@@ -83,7 +83,7 @@ const catalog = {
 };
 
 describe("groupedCatalogOptions", () => {
-  it("keeps only configured OpenRAG providers", () => {
+  it("keeps only configured BomaRAG providers", () => {
     const groups = groupedCatalogOptions(
       catalog,
       { openai: true, anthropic: false },

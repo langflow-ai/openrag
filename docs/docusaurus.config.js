@@ -12,8 +12,8 @@ const isProduction = process.env.NODE_ENV === 'production';
 
 /** @type {import('@docusaurus/types').Config} */
 const config = {
-  title: 'OpenRAG',
-  tagline: 'Open Source RAG Platform',
+  title: 'BomaRAG',
+  tagline: 'Enterprise RAG by Bomalogic Automation',
   favicon: 'img/favicon.ico',
 
   headTags: [
@@ -121,7 +121,7 @@ const config = {
   // },
 
   // Set the production url of your site here
-  url: 'https://docs.openr.ag',
+  url: 'https://docs.bomarag.com',
   // Set the /<baseUrl>/ pathname under which your site is served
   // For GitHub pages deployment, it is often '/<projectName>/'
   baseUrl: process.env.BASE_URL ? process.env.BASE_URL : '/',
@@ -131,8 +131,8 @@ const config = {
 
   // GitHub pages deployment config.
   // If you aren't using GitHub pages, you don't need these.
-  organizationName: 'langflow-ai', // Usually your GitHub org/user name.
-  projectName: 'openrag', // Usually your repo name.
+  organizationName: 'ABISHAIMWANJA', // Usually your GitHub org/user name.
+  projectName: 'bomarag', // Usually your repo name.
 
   onBrokenLinks: 'throw',
   markdown: {
@@ -160,7 +160,7 @@ const config = {
           // Please change this to your repo.
           // Remove this to remove the "edit this page" links.
           editUrl:
-            'https://github.com/openrag/openrag/tree/main/docs/',
+            'https://github.com/bomarag/bomarag/tree/main/docs/',
           routeBasePath: '/',
           // Versioning configuration - see VERSIONING_SETUP.md
           // To enable versioning, uncomment the following lines:
@@ -218,17 +218,17 @@ const config = {
       // Replace with your project's social card
       // image: 'img/docusaurus-social-card.jpg',
       navbar: {
-        // title: 'OpenRAG',
+        // title: 'BomaRAG',
         logo: {
-          alt: 'OpenRAG Logo',
-          src: "img/logo-openrag-docs-light.svg",
-          srcDark: "img/logo-openrag-docs-dark.svg",
+          alt: 'BomaRAG Logo',
+          src: "img/logo-bomarag-docs-light.svg",
+          srcDark: "img/logo-bomarag-docs-dark.svg",
           href: '/',
         },
         items: [
           {
             position: "right",
-            href: "https://github.com/langflow-ai/openrag",
+            href: "https://github.com/ABISHAIMWANJA/bomarag",
             className: "header-github-link",
             target: "_blank",
             rel: null,
@@ -243,7 +243,7 @@ const config = {
             items: [
               {
                 html: `<div class="footer-links">
-                  <span>© ${new Date().getFullYear()} OpenRAG</span>
+                  <span>© ${new Date().getFullYear()} BomaRAG</span>
                   <span id="preferenceCenterContainer"> ·&nbsp; <a href="#" onclick="if(typeof window !== 'undefined' && window.truste && window.truste.eu && window.truste.eu.clickListener) { window.truste.eu.clickListener(); } return false;" style="cursor: pointer;">Manage Privacy Choices</a></span>
                   </div>`,
               },
@@ -255,7 +255,7 @@ const config = {
         appId: "SMEA51Q5OL",
         // public key, safe to commit
         apiKey: "b2ec302e9880e8979ad6a68f0c36271e",
-        indexName: "openrag-algolia",
+        indexName: "bomarag-algolia",
         contextualSearch: true,
         searchParameters: {},
         searchPagePath: "search",

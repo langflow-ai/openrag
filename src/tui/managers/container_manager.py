@@ -1,4 +1,4 @@
-"""Container lifecycle manager for OpenRAG TUI."""
+"""Container lifecycle manager for BomaRAG TUI."""
 
 import asyncio
 import json
@@ -77,14 +77,14 @@ def format_port_conflict_message(conflicts: list[tuple[str, int, str]], max_show
 
 
 class ContainerManager:
-    """Manages Docker/Podman container lifecycle for OpenRAG."""
+    """Manages Docker/Podman container lifecycle for BomaRAG."""
 
-    OPENRAG_IMAGE_REPOS = {
-        "langflowai/openrag-backend",
-        "langflowai/openrag-frontend",
-        "langflowai/openrag-langflow",
-        "langflowai/openrag-opensearch",
-        "langflowai/openrag-dashboards",
+    BOMARAG_IMAGE_REPOS = {
+        "bomalogic/bomarag-backend",
+        "bomalogic/bomarag-frontend",
+        "bomalogic/bomarag-langflow",
+        "bomalogic/bomarag-opensearch",
+        "bomalogic/bomarag-dashboards",
         "langflow/langflow",
         "opensearchproject/opensearch",
         "opensearchproject/opensearch-dashboards",
@@ -106,21 +106,21 @@ class ContainerManager:
 
         # Expected services based on compose files
         self.expected_services = [
-            "openrag-backend",
-            "openrag-frontend",
+            "bomarag-backend",
+            "bomarag-frontend",
             "opensearch",
             "dashboards",
             "langflow",
         ]
 
-        # Get compose project name from env or default to "openrag"
+        # Get compose project name from env or default to "bomarag"
         env = self._get_env_from_file()
-        project_name = env.get("COMPOSE_PROJECT_NAME", "openrag")
+        project_name = env.get("COMPOSE_PROJECT_NAME", "bomarag")
 
         # Map container names to service names
         self.container_name_map = {
-            f"{project_name}-backend": "openrag-backend",
-            f"{project_name}-frontend": "openrag-frontend",
+            f"{project_name}-backend": "bomarag-backend",
+            f"{project_name}-frontend": "bomarag-frontend",
             f"{project_name}-opensearch": "opensearch",
             f"{project_name}-dashboards": "dashboards",
             f"{project_name}-langflow": "langflow",
@@ -131,11 +131,11 @@ class ContainerManager:
         """Extract repository name from <repository>:<tag> image reference."""
         return image_tag.rsplit(":", 1)[0] if ":" in image_tag else image_tag
 
-    def _is_openrag_repository(self, repository: str) -> bool:
-        """Check whether repository is OpenRAG-related, with optional registry prefix."""
+    def _is_bomarag_repository(self, repository: str) -> bool:
+        """Check whether repository is BomaRAG-related, with optional registry prefix."""
         repo = repository.lower()
         return any(
-            repo == known or repo.endswith(f"/{known}") for known in self.OPENRAG_IMAGE_REPOS
+            repo == known or repo.endswith(f"/{known}") for known in self.BOMARAG_IMAGE_REPOS
         )
 
     def _find_compose_file(self, filename: str) -> Path:
@@ -144,7 +144,7 @@ class ContainerManager:
 
         self._compose_search_log = f"Searching for {filename}:\n"
 
-        # First check centralized TUI directory (~/.openrag/tui/)
+        # First check centralized TUI directory (~/.bomarag/tui/)
         is_gpu = "gpu" in filename
         tui_path = get_tui_compose_file(gpu=is_gpu)
         self._compose_search_log += f"  1. TUI directory: {tui_path.absolute()}"
@@ -599,10 +599,10 @@ class ContainerManager:
         except Exception as e:
             return False, "", f"Command execution failed: {e}"
 
-    async def _list_openrag_images(
+    async def _list_bomarag_images(
         self, include_created: bool = False
     ) -> tuple[bool, list[dict[str, str]], str]:
-        """List OpenRAG-related images available in the container runtime."""
+        """List BomaRAG-related images available in the container runtime."""
         format_parts = ["{{.Repository}}:{{.Tag}}", "{{.ID}}"]
         if include_created:
             format_parts.append("{{.CreatedAt}}")
@@ -630,7 +630,7 @@ class ContainerManager:
                 continue
 
             repository = self._extract_repository(image_tag)
-            if not self._is_openrag_repository(repository):
+            if not self._is_bomarag_repository(repository):
                 continue
 
             image_data = {
@@ -645,7 +645,7 @@ class ContainerManager:
         return True, images, ""
 
     def _resolve_service_name(self, compose_service: str | None, container_name: str) -> str | None:
-        """Resolve a container to its canonical OpenRAG service name"""
+        """Resolve a container to its canonical BomaRAG service name"""
         if compose_service and compose_service in self.expected_services:
             return compose_service
 
@@ -704,7 +704,7 @@ class ContainerManager:
         try:
             # Check for backend container first (most reliable)
             env = self._get_env_from_file()
-            project_name = env.get("COMPOSE_PROJECT_NAME", "openrag")
+            project_name = env.get("COMPOSE_PROJECT_NAME", "bomarag")
             success, stdout, _ = await self._run_runtime_command(
                 [
                     "ps",
@@ -721,12 +721,12 @@ class ContainerManager:
                 if not image_tag or image_tag == "N/A":
                     return None
 
-                # Extract version from image tag (e.g., langflowai/openrag-backend:0.1.47)
+                # Extract version from image tag (e.g., bomalogic/bomarag-backend:0.1.47)
                 if ":" in image_tag:
                     version = image_tag.split(":")[-1]
-                    # If version is "latest", check .env file for OPENRAG_VERSION
+                    # If version is "latest", check .env file for BOMARAG_VERSION
                     if version == "latest":
-                        env_version = env.get("OPENRAG_VERSION", "").strip().strip("'\"")
+                        env_version = env.get("BOMARAG_VERSION", "").strip().strip("'\"")
                         if env_version and env_version != "latest":
                             return env_version
                         return None
@@ -743,7 +743,7 @@ class ContainerManager:
                 images = stdout.strip().splitlines()
                 for image in images:
                     image = image.strip()
-                    if "openrag" in image.lower() and ":" in image:
+                    if "bomarag" in image.lower() and ":" in image:
                         version = image.split(":")[-1]
                         if version and version != "latest":
                             return version
@@ -1086,7 +1086,7 @@ class ContainerManager:
             yield False, "No container runtime available", False
             return
 
-        # Ensure secure defaults and OPENRAG_VERSION are set in .env file
+        # Ensure secure defaults and BOMARAG_VERSION are set in .env file
         try:
             from ..managers.env_manager import EnvManager
 
@@ -1142,7 +1142,7 @@ class ContainerManager:
             yield False, format_port_conflict_message(conflicts), False
             return
 
-        yield False, "Starting OpenRAG services...", False
+        yield False, "Starting BomaRAG services...", False
 
         missing_images: list[str] = []
         try:
@@ -1223,7 +1223,7 @@ class ContainerManager:
 
     async def stop_services(self) -> AsyncIterator[tuple[bool, str]]:
         """Stop all services and yield progress updates."""
-        yield False, "Stopping OpenRAG services..."
+        yield False, "Stopping BomaRAG services..."
 
         success, stdout, stderr = await self._run_compose_command(["stop"])
 
@@ -1234,7 +1234,7 @@ class ContainerManager:
 
     async def restart_services(self, cpu_mode: bool = False) -> AsyncIterator[tuple[bool, str]]:
         """Restart all services and yield progress updates."""
-        yield False, "Restarting OpenRAG services..."
+        yield False, "Restarting BomaRAG services..."
 
         success, stdout, stderr = await self._run_compose_command(["restart"], cpu_mode)
 
@@ -1327,15 +1327,15 @@ class ContainerManager:
 
         # Get project name from env to include COMPOSE_PROJECT_NAME-derived prefix
         env = self._get_env_from_file()
-        project_name = env.get("COMPOSE_PROJECT_NAME", "openrag")
+        project_name = env.get("COMPOSE_PROJECT_NAME", "bomarag")
 
         possible_names = list(
             dict.fromkeys(
                 [
                     volume_name,
-                    f"{project_name}_{volume_name}",  # e.g. openrag_opensearch-data or custom_opensearch-data
-                    f"{Path.cwd().name.lower()}_{volume_name}",  # e.g. openrag_opensearch-data
-                    f"{Path.cwd().name.lower().replace('-', '')}_{volume_name}",  # e.g. openrag_opensearch-data (dashes stripped)
+                    f"{project_name}_{volume_name}",  # e.g. bomarag_opensearch-data or custom_opensearch-data
+                    f"{Path.cwd().name.lower()}_{volume_name}",  # e.g. bomarag_opensearch-data
+                    f"{Path.cwd().name.lower().replace('-', '')}_{volume_name}",  # e.g. bomarag_opensearch-data (dashes stripped)
                 ]
             )
         )
@@ -1385,14 +1385,14 @@ class ContainerManager:
             yield False, f"Failed to stop services: {stderr}"
             return
 
-        yield False, "Removing OpenRAG images..."
-        success, images, stderr = await self._list_openrag_images()
+        yield False, "Removing BomaRAG images..."
+        success, images, stderr = await self._list_bomarag_images()
         if not success:
-            yield False, f"Failed to list OpenRAG images: {stderr}"
+            yield False, f"Failed to list BomaRAG images: {stderr}"
             return
 
         if not images:
-            yield True, "System reset completed - OpenRAG containers and volumes removed"
+            yield True, "System reset completed - BomaRAG containers and volumes removed"
             return
 
         # Deduplicate by image ID (same ID can have multiple tags)
@@ -1415,7 +1415,7 @@ class ContainerManager:
 
         yield (
             True,
-            f"System reset completed - removed {removed} OpenRAG image(s)",
+            f"System reset completed - removed {removed} BomaRAG image(s)",
         )
 
     async def get_service_logs(self, service_name: str, lines: int = 100) -> tuple[bool, str]:
@@ -1544,11 +1544,11 @@ class ContainerManager:
         return is_sufficient, message
 
     async def prune_old_images(self) -> AsyncIterator[tuple[bool, str]]:
-        """Prune old OpenRAG images and dependencies, keeping only the latest versions.
+        """Prune old BomaRAG images and dependencies, keeping only the latest versions.
 
         This method:
         1. Lists all images
-        2. Identifies OpenRAG-related images (openrag-backend, openrag-frontend, langflow, opensearch, dashboards)
+        2. Identifies BomaRAG-related images (bomarag-backend, bomarag-frontend, langflow, opensearch, dashboards)
         3. For each repository, keeps only the latest/currently used image
         4. Removes old images
 
@@ -1559,9 +1559,9 @@ class ContainerManager:
             yield False, "No container runtime available"
             return
 
-        yield False, "Scanning for OpenRAG images..."
+        yield False, "Scanning for BomaRAG images..."
 
-        success, images, stderr = await self._list_openrag_images(include_created=True)
+        success, images, stderr = await self._list_bomarag_images(include_created=True)
         if not success:
             yield False, f"Failed to list images: {stderr}"
             return
@@ -1574,7 +1574,7 @@ class ContainerManager:
             images_by_repo[repo].append(image)
 
         if not images_by_repo:
-            yield True, "No OpenRAG images found to prune"
+            yield True, "No BomaRAG images found to prune"
             return
 
         # Get currently used images (from running/stopped containers)
@@ -1584,7 +1584,7 @@ class ContainerManager:
             if service_info.image and service_info.image != "N/A":
                 current_images.add(service_info.image)
 
-        yield False, f"Found {len(images_by_repo)} OpenRAG image repositories"
+        yield False, f"Found {len(images_by_repo)} BomaRAG image repositories"
 
         # For each repository, remove old images (keep latest and currently used)
         total_removed = 0
@@ -1633,11 +1633,11 @@ class ContainerManager:
         yield True, "Image pruning completed"
 
     async def prune_all_images(self) -> AsyncIterator[tuple[bool, str]]:
-        """Stop services and prune ALL OpenRAG images and dependencies.
+        """Stop services and prune ALL BomaRAG images and dependencies.
 
         This is a more aggressive pruning that:
         1. Stops all running services
-        2. Removes ALL OpenRAG-related images (not just old versions)
+        2. Removes ALL BomaRAG-related images (not just old versions)
 
         This frees up maximum disk space but requires re-downloading images on next start.
 
@@ -1661,19 +1661,19 @@ class ContainerManager:
 
         await asyncio.sleep(2)
 
-        yield False, "Scanning for OpenRAG images..."
+        yield False, "Scanning for BomaRAG images..."
 
-        success, images_to_remove, stderr = await self._list_openrag_images()
+        success, images_to_remove, stderr = await self._list_bomarag_images()
         if not success:
             yield False, f"Failed to list images: {stderr}"
             return
 
         if not images_to_remove:
-            yield True, "No OpenRAG images found to remove"
+            yield True, "No BomaRAG images found to remove"
         else:
-            yield False, f"Found {len(images_to_remove)} OpenRAG image(s) to remove"
+            yield False, f"Found {len(images_to_remove)} BomaRAG image(s) to remove"
 
-            # Remove all OpenRAG images
+            # Remove all BomaRAG images
             total_removed = 0
             for img in images_to_remove:
                 yield False, f"Removing image: {img['full_tag']}"
@@ -1687,8 +1687,8 @@ class ContainerManager:
                     yield False, f"  ⚠ Could not remove {img['full_tag']}: {stderr.strip()}"
 
             if total_removed > 0:
-                yield True, f"Removed {total_removed} OpenRAG image(s)"
+                yield True, f"Removed {total_removed} BomaRAG image(s)"
             else:
                 yield False, "No images were removed"
 
-        yield True, "All OpenRAG images removed successfully"
+        yield True, "All BomaRAG images removed successfully"

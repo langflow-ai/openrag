@@ -74,13 +74,13 @@ func TestEnvVarManager_OperatorEnvPrefixFiltering(t *testing.T) {
 	assert.Equal(t, "langflow_value", lfResult["TEST_VAR"], "Langflow should use OPTLF_ prefixed var")
 
 	// Test Backend - should only pick up OPTORBE_
-	manager.DefaultOpenRagBEEnvVars = map[string]string{"TEST_VAR": "default"}
+	manager.DefaultBomaRagBEEnvVars = map[string]string{"TEST_VAR": "default"}
 	beResult, err := manager.GetBackendEnvVars(context.Background(), nil, "test-ns", nil)
 	require.NoError(t, err)
 	assert.Equal(t, "backend_value", beResult["TEST_VAR"], "Backend should use OPTORBE_ prefixed var")
 
 	// Test Frontend - should only pick up OPTORFE_
-	manager.DefaultOpenRagFEEnvVars = map[string]string{"TEST_VAR": "default"}
+	manager.DefaultBomaRagFEEnvVars = map[string]string{"TEST_VAR": "default"}
 	feResult, err := manager.GetFrontendEnvVars(context.Background(), nil, "test-ns", nil)
 	require.NoError(t, err)
 	assert.Equal(t, "frontend_value", feResult["TEST_VAR"], "Frontend should use OPTORFE_ prefixed var")
@@ -144,7 +144,7 @@ func TestEnvVarManager_CREmptyValueOverridesDefault(t *testing.T) {
 // special characters (spaces, quotes, hashes, URLs) are passed through without modification.
 func TestEnvVarManager_CRValueIsLiterallyRespected(t *testing.T) {
 	manager := &EnvVarManager{
-		DefaultOpenRagBEEnvVars: map[string]string{
+		DefaultBomaRagBEEnvVars: map[string]string{
 			"DATABASE_URL": "default-url",
 			"DESCRIPTION":  "default-desc",
 			"API_KEY":      "default-key",
@@ -304,18 +304,18 @@ func TestEnvVarManager_NewEnvVarManagerDefaults(t *testing.T) {
 	assert.Equal(t, "4", manager.DefaultLangflowEnvVars["LANGFLOW_WORKERS"])
 
 	// Verify Backend defaults
-	assert.NotNil(t, manager.DefaultOpenRagBEEnvVars)
-	assert.Equal(t, "http://openrag-be:8000", manager.DefaultOpenRagBEEnvVars["OPENRAG_BACKEND_INTERNAL_URL"])
-	assert.Equal(t, "2400", manager.DefaultOpenRagBEEnvVars["LANGFLOW_TIMEOUT"])
-	assert.Equal(t, "/app/backend-data", manager.DefaultOpenRagBEEnvVars["OPENRAG_DATA_PATH"])
-	assert.Equal(t, "/app/openrag-documents", manager.DefaultOpenRagBEEnvVars["OPENRAG_DOCUMENTS_PATH"])
-	assert.Equal(t, "DEBUG", manager.DefaultOpenRagBEEnvVars["LOG_LEVEL"])
-	assert.Equal(t, "json", manager.DefaultOpenRagBEEnvVars["LOG_FORMAT"])
-	assert.Equal(t, "3600", manager.DefaultOpenRagBEEnvVars["INGESTION_TIMEOUT"])
-	assert.Equal(t, "4", manager.DefaultOpenRagBEEnvVars["MAX_WORKERS"])
+	assert.NotNil(t, manager.DefaultBomaRagBEEnvVars)
+	assert.Equal(t, "http://bomarag-be:8000", manager.DefaultBomaRagBEEnvVars["BOMARAG_BACKEND_INTERNAL_URL"])
+	assert.Equal(t, "2400", manager.DefaultBomaRagBEEnvVars["LANGFLOW_TIMEOUT"])
+	assert.Equal(t, "/app/backend-data", manager.DefaultBomaRagBEEnvVars["BOMARAG_DATA_PATH"])
+	assert.Equal(t, "/app/bomarag-documents", manager.DefaultBomaRagBEEnvVars["BOMARAG_DOCUMENTS_PATH"])
+	assert.Equal(t, "DEBUG", manager.DefaultBomaRagBEEnvVars["LOG_LEVEL"])
+	assert.Equal(t, "json", manager.DefaultBomaRagBEEnvVars["LOG_FORMAT"])
+	assert.Equal(t, "3600", manager.DefaultBomaRagBEEnvVars["INGESTION_TIMEOUT"])
+	assert.Equal(t, "4", manager.DefaultBomaRagBEEnvVars["MAX_WORKERS"])
 
 	// Verify Frontend defaults (empty for now)
-	assert.NotNil(t, manager.DefaultOpenRagFEEnvVars)
+	assert.NotNil(t, manager.DefaultBomaRagFEEnvVars)
 }
 
 func TestEnvVarManager_EnsureRequiredEnvVars(t *testing.T) {
@@ -450,7 +450,7 @@ func TestEnvVarManager_EnsureRequiredEnvVars_Integration(t *testing.T) {
 	manager.EnsureRequiredEnvVars(envVars)
 
 	// Parse the required variables list
-	requiredVars := []string{"JWT", "OPENRAG_QUERY_FILTER", "OPENSEARCH_PASSWORD", "OPENSEARCH_URL",
+	requiredVars := []string{"JWT", "BOMARAG_QUERY_FILTER", "OPENSEARCH_PASSWORD", "OPENSEARCH_URL",
 		"OPENSEARCH_INDEX_NAME", "DOCLING_SERVE_URL", "DOCLING_SERVE_VERIFY_SSL", "DOCLING_TASK_ID", "OWNER", "OWNER_NAME",
 		"OWNER_EMAIL", "CONNECTOR_TYPE", "DOCUMENT_ID", "SOURCE_URL", "ALLOWED_USERS",
 		"ALLOWED_GROUPS", "FILENAME", "MIMETYPE", "FILESIZE", "SELECTED_EMBEDDING_MODEL",

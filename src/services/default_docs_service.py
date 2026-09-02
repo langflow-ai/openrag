@@ -1,13 +1,13 @@
-"""Default OpenRAG docs ingestion / refresh / upgrade-reingest.
+"""Default BomaRAG docs ingestion / refresh / upgrade-reingest.
 
 This module owns the bundled-docs onboarding flow: deciding whether to
 ingest from a URL or from local files, choosing the Langflow or
-direct-OpenRAG pipeline, detecting upstream content changes via HTTP
+direct-BomaRAG pipeline, detecting upstream content changes via HTTP
 ETag/Last-Modified, and deleting stale chunks before reingestion.
 
 Public entry points used outside this module:
 - ingest_default_documents_when_ready  (api/settings.py)
-- refresh_default_openrag_docs         (api/settings.py)
+- refresh_default_bomarag_docs         (api/settings.py)
 - _get_remote_docs_signature           (test_main_docs_signature.py)
 """
 
@@ -23,19 +23,19 @@ from config.settings import (
     DEFAULT_DOCS_URL,
     LANGFLOW_URL_INGEST_FLOW_ID,
     config_manager,
+    get_bomarag_config,
     get_index_name,
-    get_openrag_config,
 )
 from utils.logging_config import get_logger
 from utils.telemetry import Category, MessageId, TelemetryClient
 from utils.url_content_fetcher import materialize_url_as_text_file
-from utils.version_utils import OPENRAG_VERSION
+from utils.version_utils import BOMARAG_VERSION
 
 logger = get_logger(__name__)
 
 # Files to exclude from startup ingestion
 EXCLUDED_INGESTION_FILES = {"warmup_ocr.pdf"}
-URL_INGEST_EXCLUDED_INGESTION_FILES = {"openrag-documentation.pdf"}
+URL_INGEST_EXCLUDED_INGESTION_FILES = {"bomarag-documentation.pdf"}
 
 
 def _get_documents_dir():
@@ -50,7 +50,7 @@ def _should_use_url_default_docs_ingest() -> bool:
     return DEFAULT_DOCS_INGEST_SOURCE == "url" and bool(DEFAULT_DOCS_URL)
 
 
-async def ingest_openrag_docs_when_ready(
+async def ingest_bomarag_docs_when_ready(
     document_service,
     models_service,
     task_service,
@@ -58,7 +58,7 @@ async def ingest_openrag_docs_when_ready(
     session_manager,
     jwt_token=None,
 ):
-    """Ingest OpenRAG docs during onboarding."""
+    """Ingest BomaRAG docs during onboarding."""
     use_url_ingest = _should_use_url_default_docs_ingest()
     task_id = None
     if use_url_ingest:
@@ -66,7 +66,7 @@ async def ingest_openrag_docs_when_ready(
             await TelemetryClient.send_event(
                 Category.DOCUMENT_INGESTION, MessageId.ORB_DOC_DEFAULT_URL_START
             )
-            if get_openrag_config().knowledge.disable_ingest_with_langflow:
+            if get_bomarag_config().knowledge.disable_ingest_with_langflow:
                 task_id = await _ingest_default_documents_url(
                     document_service=document_service,
                     models_service=models_service,
@@ -106,17 +106,17 @@ async def ingest_default_documents_when_ready(
     session_manager,
     jwt_token=None,
 ):
-    """Ingest default OpenRAG docs during onboarding."""
+    """Ingest default BomaRAG docs during onboarding."""
     try:
         logger.info(
             "Ingesting default documents when ready",
-            disable_langflow_ingest=get_openrag_config().knowledge.disable_ingest_with_langflow,
+            disable_langflow_ingest=get_bomarag_config().knowledge.disable_ingest_with_langflow,
             ingest_source=DEFAULT_DOCS_INGEST_SOURCE,
         )
         await TelemetryClient.send_event(
             Category.DOCUMENT_INGESTION, MessageId.ORB_DOC_DEFAULT_START
         )
-        task_id = await ingest_openrag_docs_when_ready(
+        task_id = await ingest_bomarag_docs_when_ready(
             document_service,
             models_service,
             task_service,
@@ -143,8 +143,8 @@ async def ingest_default_documents_when_ready(
         if not file_paths:
             raise FileNotFoundError(f"No default documents found in {base_dir}")
 
-        if get_openrag_config().knowledge.disable_ingest_with_langflow:
-            new_task_id = await _ingest_default_documents_openrag(
+        if get_bomarag_config().knowledge.disable_ingest_with_langflow:
+            new_task_id = await _ingest_default_documents_bomarag(
                 document_service,
                 models_service,
                 task_service,
@@ -186,7 +186,7 @@ async def _ingest_default_documents_langflow(
     task_service,
     file_paths,
     existing_task_id: str = None,
-    connector_type: str = "openrag_docs",
+    connector_type: str = "bomarag_docs",
     jwt_token=None,
 ):
     """Ingest default documents using Langflow upload-ingest-delete pipeline."""
@@ -210,7 +210,7 @@ async def _ingest_default_documents_langflow(
                 {"key": "owner", "value": None},
                 {"key": "owner_name", "value": anonymous_user.name},
                 {"key": "owner_email", "value": anonymous_user.email},
-                {"key": "connector_type", "value": "openrag_docs"},
+                {"key": "connector_type", "value": "bomarag_docs"},
                 {"key": "is_sample_data", "value": "true"},
             ]
         }
@@ -273,7 +273,7 @@ async def _ingest_default_documents_url_langflow(
                 {"key": "owner", "value": None},
                 {"key": "owner_name", "value": anonymous_user.name},
                 {"key": "owner_email", "value": anonymous_user.email},
-                {"key": "connector_type", "value": "openrag_docs"},
+                {"key": "connector_type", "value": "bomarag_docs"},
                 {"key": "is_sample_data", "value": "true"},
             ]
         }
@@ -288,7 +288,7 @@ async def _ingest_default_documents_url_langflow(
         jwt_token=effective_jwt,
         owner_name=anonymous_user.name,
         owner_email=anonymous_user.email,
-        connector_type="openrag_docs",
+        connector_type="bomarag_docs",
         tweaks=default_tweaks,
     )
 
@@ -307,12 +307,12 @@ async def _ingest_default_documents_url(
     crawl_depth: int,
     jwt_token=None,
 ):
-    """Ingest default docs from URL using OpenRAG ingestion logic (no Langflow)."""
+    """Ingest default docs from URL using BomaRAG ingestion logic (no Langflow)."""
     if not docs_url:
         raise ValueError("DEFAULT_DOCS_URL is not configured")
 
     logger.info(
-        "Running default URL docs ingestion with OpenRAG processor",
+        "Running default URL docs ingestion with BomaRAG processor",
         docs_url=docs_url,
         crawl_depth=crawl_depth,
     )
@@ -335,7 +335,7 @@ async def _ingest_default_documents_url(
             owner_name=anonymous_user.name,
             owner_email=anonymous_user.email,
             is_sample_data=True,
-            connector_type="openrag_docs",
+            connector_type="bomarag_docs",
         )
         await processor.process_document_standard(
             file_path=temp_file_path,
@@ -346,7 +346,7 @@ async def _ingest_default_documents_url(
             owner_name=anonymous_user.name,
             owner_email=anonymous_user.email,
             file_size=os.path.getsize(temp_file_path),
-            connector_type="openrag_docs",
+            connector_type="bomarag_docs",
             is_sample_data=True,
         )
     finally:
@@ -363,7 +363,7 @@ async def _ingest_default_documents_url(
 
 
 async def _delete_existing_default_docs(session_manager, connector_type: str, jwt_token=None):
-    """Delete previously ingested default OpenRAG docs before reingestion."""
+    """Delete previously ingested default BomaRAG docs before reingestion."""
     from config.settings import clients
     from session_manager import AnonymousUser
     from utils.opensearch_delete import collect_visible_document_ids, delete_document_ids
@@ -417,7 +417,7 @@ async def _delete_existing_default_docs(session_manager, connector_type: str, jw
         document_ids=document_ids,
     )
     logger.info(
-        "Deleted existing default OpenRAG docs before reingestion",
+        "Deleted existing default BomaRAG docs before reingestion",
         deleted_chunks=deleted_chunks,
     )
 
@@ -430,31 +430,31 @@ async def _reingest_default_docs_on_upgrade_if_needed(
     session_manager,
     jwt_token=None,
 ):
-    """Reingest default OpenRAG docs once when app version changes."""
-    config = get_openrag_config()
+    """Reingest default BomaRAG docs once when app version changes."""
+    config = get_bomarag_config()
 
-    previous_version = config.onboarding.openrag_docs_ingested_version
-    current_version = OPENRAG_VERSION
+    previous_version = config.onboarding.bomarag_docs_ingested_version
+    current_version = BOMARAG_VERSION
     should_reingest = bool(previous_version) and previous_version != current_version
 
     # Legacy installs may not have a stored docs ingestion version.
-    # Use the presence of the OpenRAG docs filter as the signal that docs were
+    # Use the presence of the BomaRAG docs filter as the signal that docs were
     # already onboarded, independent of whether config.edited is set.
-    if not previous_version and config.onboarding.openrag_docs_filter_id:
+    if not previous_version and config.onboarding.bomarag_docs_filter_id:
         should_reingest = True
 
     if not should_reingest:
         return False
 
     logger.info(
-        "Detected OpenRAG upgrade; reingesting default docs",
+        "Detected BomaRAG upgrade; reingesting default docs",
         previous_version=previous_version,
         current_version=current_version,
     )
     await _delete_existing_default_docs(
-        session_manager, connector_type="openrag_docs", jwt_token=jwt_token
+        session_manager, connector_type="bomarag_docs", jwt_token=jwt_token
     )
-    await ingest_openrag_docs_when_ready(
+    await ingest_bomarag_docs_when_ready(
         document_service,
         models_service,
         task_service,
@@ -462,20 +462,20 @@ async def _reingest_default_docs_on_upgrade_if_needed(
         session_manager,
         jwt_token=jwt_token,
     )
-    config.onboarding.openrag_docs_ingested_version = current_version
+    config.onboarding.bomarag_docs_ingested_version = current_version
     if _should_use_url_default_docs_ingest():
         # Refresh signature metadata after upgrade reingestion so startup
         # signature checks don't trigger an immediate duplicate ingest.
-        config.onboarding.openrag_docs_remote_signature = await _get_remote_docs_signature(
+        config.onboarding.bomarag_docs_remote_signature = await _get_remote_docs_signature(
             DEFAULT_DOCS_URL
         )
     else:
-        config.onboarding.openrag_docs_remote_signature = None
+        config.onboarding.bomarag_docs_remote_signature = None
     if not config_manager.save_config_file(config):
         logger.warning(
             "Default docs were reingested but failed to persist metadata",
             current_version=current_version,
-            signature=config.onboarding.openrag_docs_remote_signature,
+            signature=config.onboarding.bomarag_docs_remote_signature,
         )
     return True
 
@@ -525,7 +525,7 @@ async def _get_remote_docs_signature(docs_url: str):
         return None
 
 
-async def refresh_default_openrag_docs(
+async def refresh_default_bomarag_docs(
     document_service,
     models_service,
     task_service,
@@ -535,7 +535,7 @@ async def refresh_default_openrag_docs(
     reason: str = "startup",
     jwt_token=None,
 ):
-    """Refresh OpenRAG docs if remote content changed or when forced."""
+    """Refresh BomaRAG docs if remote content changed or when forced."""
     await TelemetryClient.send_event(
         Category.DOCUMENT_INGESTION,
         MessageId.ORB_DOC_REFRESH_START,
@@ -544,9 +544,9 @@ async def refresh_default_openrag_docs(
     try:
         if not _should_use_url_default_docs_ingest():
             logger.info(
-                "Skipping OpenRAG docs refresh: URL ingestion is not active",
+                "Skipping BomaRAG docs refresh: URL ingestion is not active",
                 ingest_source=DEFAULT_DOCS_INGEST_SOURCE,
-                disable_langflow_ingest=get_openrag_config().knowledge.disable_ingest_with_langflow,
+                disable_langflow_ingest=get_bomarag_config().knowledge.disable_ingest_with_langflow,
                 has_url_ingest_flow_id=bool(LANGFLOW_URL_INGEST_FLOW_ID),
                 has_docs_url=bool(DEFAULT_DOCS_URL),
             )
@@ -561,9 +561,9 @@ async def refresh_default_openrag_docs(
             )
             return False
 
-        config = get_openrag_config()
+        config = get_bomarag_config()
         if not config.edited:
-            logger.info("Skipping OpenRAG docs refresh: onboarding not completed")
+            logger.info("Skipping BomaRAG docs refresh: onboarding not completed")
             await TelemetryClient.send_event(
                 Category.DOCUMENT_INGESTION,
                 MessageId.ORB_DOC_REFRESH_SKIPPED,
@@ -588,11 +588,11 @@ async def refresh_default_openrag_docs(
             )
             return False
 
-        previous_signature = config.onboarding.openrag_docs_remote_signature
+        previous_signature = config.onboarding.bomarag_docs_remote_signature
         should_refresh = force or (signature is not None and signature != previous_signature)
         if not should_refresh:
             logger.info(
-                "OpenRAG docs refresh skipped: remote signature unchanged",
+                "BomaRAG docs refresh skipped: remote signature unchanged",
                 signature=signature,
             )
             await TelemetryClient.send_event(
@@ -607,16 +607,16 @@ async def refresh_default_openrag_docs(
             return False
 
         logger.info(
-            "Refreshing default OpenRAG docs",
+            "Refreshing default BomaRAG docs",
             reason=reason,
             force=force,
             previous_signature=previous_signature,
             new_signature=signature,
         )
         await _delete_existing_default_docs(
-            session_manager, connector_type="openrag_docs", jwt_token=jwt_token
+            session_manager, connector_type="bomarag_docs", jwt_token=jwt_token
         )
-        await ingest_openrag_docs_when_ready(
+        await ingest_bomarag_docs_when_ready(
             document_service,
             models_service,
             task_service,
@@ -624,16 +624,16 @@ async def refresh_default_openrag_docs(
             session_manager,
             jwt_token=jwt_token,
         )
-        config.onboarding.openrag_docs_ingested_version = OPENRAG_VERSION
+        config.onboarding.bomarag_docs_ingested_version = BOMARAG_VERSION
         # Keep docs version/signature metadata consistent after a refresh.
         # If signature retrieval failed, persist None explicitly instead of
         # leaving a stale previous signature value.
-        config.onboarding.openrag_docs_remote_signature = signature
+        config.onboarding.bomarag_docs_remote_signature = signature
         if not config_manager.save_config_file(config):
             logger.warning(
-                "OpenRAG docs refreshed but failed to persist metadata",
-                version=config.onboarding.openrag_docs_ingested_version,
-                signature=config.onboarding.openrag_docs_remote_signature,
+                "BomaRAG docs refreshed but failed to persist metadata",
+                version=config.onboarding.bomarag_docs_ingested_version,
+                signature=config.onboarding.bomarag_docs_remote_signature,
             )
         await TelemetryClient.send_event(
             Category.DOCUMENT_INGESTION,
@@ -654,18 +654,18 @@ async def refresh_default_openrag_docs(
         raise
 
 
-async def _ingest_default_documents_openrag(
+async def _ingest_default_documents_bomarag(
     document_service,
     models_service,
     task_service,
     file_paths,
-    connector_type: str = "openrag_docs",
+    connector_type: str = "bomarag_docs",
     existing_task_id: str = None,
     jwt_token=None,
 ):
-    """Ingest default documents using traditional OpenRAG processor."""
+    """Ingest default documents using traditional BomaRAG processor."""
     logger.info(
-        "Using traditional OpenRAG ingestion for default documents",
+        "Using traditional BomaRAG ingestion for default documents",
         file_count=len(file_paths),
     )
 
@@ -689,7 +689,7 @@ async def _ingest_default_documents_openrag(
         "anonymous", file_paths, processor, existing_task_id=existing_task_id
     )
     logger.info(
-        "Started traditional OpenRAG ingestion task",
+        "Started traditional BomaRAG ingestion task",
         task_id=task_id,
         file_count=len(file_paths),
     )

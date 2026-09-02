@@ -80,7 +80,7 @@ async def diagnose_console_component(
 
 
 async def health_check(request: Request):
-    """Simple liveness probe: Indicates that the OpenRAG Backend service is online and running."""
+    """Simple liveness probe: Indicates that the BomaRAG Backend service is online and running."""
     return JSONResponse({"status": "ok"}, status_code=200)
 
 

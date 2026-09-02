@@ -1,5 +1,5 @@
 /**
- * OpenRAG SDK client.
+ * BomaRAG SDK client.
  */
 
 import { ChatClient } from "./chat";
@@ -9,8 +9,8 @@ import { KnowledgeFiltersClient } from "./knowledge-filters";
 import {
   AuthenticationError,
   NotFoundError,
-  OpenRAGError,
-  OpenRAGClientOptions,
+  BomaRAGError,
+  BomaRAGClientOptions,
   RateLimitError,
   ServerError,
   SettingsResponse,
@@ -31,10 +31,10 @@ function getEnv(key: string): string | undefined {
 }
 
 class SettingsClient {
-  constructor(private client: OpenRAGClient) {}
+  constructor(private client: BomaRAGClient) {}
 
   /**
-   * Get current OpenRAG configuration.
+   * Get current BomaRAG configuration.
    */
   async get(): Promise<SettingsResponse> {
     const response = await this.client._request("GET", "/api/v1/settings");
@@ -46,7 +46,7 @@ class SettingsClient {
   }
 
   /**
-   * Update OpenRAG configuration.
+   * Update BomaRAG configuration.
    *
    * @param options - The settings to update.
    * @returns Success response with message.
@@ -69,26 +69,26 @@ interface RequestOptions {
 }
 
 /**
- * OpenRAG API client.
+ * BomaRAG API client.
  *
  * The client can be configured via constructor arguments or environment variables:
- * - OPENRAG_API_KEY: API key for authentication
- * - OPENRAG_URL: Base URL for the OpenRAG frontend (default: http://localhost:3000)
+ * - BOMARAG_API_KEY: API key for authentication
+ * - BOMARAG_URL: Base URL for the BomaRAG frontend (default: http://localhost:3000)
  *
  * @example
  * ```typescript
  * // Using environment variables
- * const client = new OpenRAGClient();
+ * const client = new BomaRAGClient();
  * const response = await client.chat.create({ message: "Hello" });
  *
  * // Using explicit arguments
- * const client = new OpenRAGClient({
+ * const client = new BomaRAGClient({
  *   apiKey: "orag_...",
  *   baseUrl: "https://api.example.com"
  * });
  * ```
  */
-export class OpenRAGClient {
+export class BomaRAGClient {
   private static readonly DEFAULT_BASE_URL = "http://localhost:3000";
 
   private readonly _apiKey: string | undefined;
@@ -107,16 +107,16 @@ export class OpenRAGClient {
   /** Knowledge filters client for managing filters. */
   readonly knowledgeFilters: KnowledgeFiltersClient;
 
-  constructor(options: OpenRAGClientOptions = {}) {
+  constructor(options: BomaRAGClientOptions = {}) {
     // Resolve API key from argument or environment
-    this._apiKey = options.apiKey || getEnv("OPENRAG_API_KEY") || undefined;
+    this._apiKey = options.apiKey || getEnv("BOMARAG_API_KEY") || undefined;
     this._extraHeaders = options.extraHeaders ?? {};
 
     // Resolve base URL from argument or environment
     this._baseUrl = (
       options.baseUrl ||
-      getEnv("OPENRAG_URL") ||
-      OpenRAGClient.DEFAULT_BASE_URL
+      getEnv("BOMARAG_URL") ||
+      BomaRAGClient.DEFAULT_BASE_URL
     ).replace(/\/$/, "");
 
     this._timeout = options.timeout ?? 30000;
@@ -203,7 +203,7 @@ export class OpenRAGClient {
     } else if (statusCode >= 500) {
       throw new ServerError(message, statusCode);
     } else {
-      throw new OpenRAGError(message, statusCode);
+      throw new BomaRAGError(message, statusCode);
     }
   }
 }

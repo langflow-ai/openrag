@@ -106,7 +106,7 @@ def _provider_credential_failure_metadata(error: str) -> dict | None:
         return None
 
     return {
-        "component": "openrag",
+        "component": "bomarag",
         "failure_phase": "embedding",
         "user_facing_message": cleaned,
         "actionable_by": "USER_ACTIONABLE",
@@ -360,7 +360,7 @@ class TaskService:
         jwt_token: str = None,
         owner_name: str = None,
         owner_email: str = None,
-        connector_type: str = "openrag_docs",
+        connector_type: str = "bomarag_docs",
         prevent_outside: bool = True,
         tweaks: dict = None,
         existing_task_id: str = None,
@@ -1113,7 +1113,7 @@ class TaskService:
 
         if "already exists" in error:
             return {
-                "component": "openrag",
+                "component": "bomarag",
                 "failure_phase": "file_validation",
                 "user_facing_message": "A file with this name already exists.",
                 "actionable_by": "USER_ACTIONABLE",

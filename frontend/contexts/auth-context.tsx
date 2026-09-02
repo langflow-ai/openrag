@@ -34,7 +34,7 @@ interface AuthContextType {
   permissions: Set<string>;
   roles: string[];
   /**
-   * Whether the backend is enforcing RBAC (mirrors `OPENRAG_RBAC_ENFORCE`).
+   * Whether the backend is enforcing RBAC (mirrors `BOMARAG_RBAC_ENFORCE`).
    * When false, the system behaves like the pre-RBAC release: any
    * authenticated user has full access. The UI hides RBAC-only
    * sections (Users & Roles, audit log, role pills) so the experience

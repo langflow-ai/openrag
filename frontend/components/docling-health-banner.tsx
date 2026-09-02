@@ -39,7 +39,7 @@ function DoclingSetupDialog({
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText("uv run openrag");
+    await navigator.clipboard.writeText("uv run bomarag");
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -58,7 +58,7 @@ function DoclingSetupDialog({
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <code className="flex-1 bg-muted px-3 py-2.5 rounded-md text-sm font-mono">
-              uv run openrag
+              uv run bomarag
             </code>
             <Button
               variant="ghost"
@@ -76,7 +76,7 @@ function DoclingSetupDialog({
             <span className="font-semibold text-foreground">
               Start All Services
             </span>{" "}
-            in the TUI. Once docling-serve is running, refresh OpenRAG.
+            in the TUI. Once docling-serve is running, refresh BomaRAG.
           </DialogDescription>
         </div>
 

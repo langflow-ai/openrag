@@ -1,4 +1,4 @@
-"""Environment configuration manager for OpenRAG TUI."""
+"""Environment configuration manager for BomaRAG TUI."""
 
 import os
 import re
@@ -30,16 +30,16 @@ class EnvConfig:
 
     # Core settings
     openai_api_key: str = ""
-    openrag_encryption_key: str = ""
-    openrag_tenant_id: str = "openrag"
-    openrag_enforce_prerequisites: str = "false"
+    bomarag_encryption_key: str = ""
+    bomarag_tenant_id: str = "bomarag"
+    bomarag_enforce_prerequisites: str = "false"
     opensearch_password: str = ""
     opensearch_username: str = "admin"
     opensearch_host: str = "opensearch"
     opensearch_port: str = "9200"
     opensearch_dashboards_port: str = "5601"
     opensearch_perf_port: str = "9600"
-    compose_project_name: str = "openrag"
+    compose_project_name: str = "bomarag"
     langflow_port: str = "7860"
     opensearch_index_name: str = "documents"
     langflow_secret_key: str = ""
@@ -95,26 +95,26 @@ class EnvConfig:
     ingest_sample_data: str = "True"
 
     # Document paths (comma-separated) - use centralized location by default
-    openrag_documents_paths: str = "$HOME/.openrag/documents"
+    bomarag_documents_paths: str = "$HOME/.bomarag/documents"
 
     # Volume mount paths - use centralized location by default
-    openrag_documents_path: str = "$HOME/.openrag/documents"  # Primary documents path for compose
-    openrag_keys_path: str = "$HOME/.openrag/keys"
-    openrag_flows_path: str = "$HOME/.openrag/flows"
-    openrag_config_path: str = "$HOME/.openrag/config"
-    openrag_data_path: str = "$HOME/.openrag/data"  # Backend data (conversations, tokens, etc.)
-    langflow_data_path: str = "$HOME/.openrag/data/langflow-data"
-    openrag_tui_config_path_legacy: str = "$HOME/.openrag/tui/config"
+    bomarag_documents_path: str = "$HOME/.bomarag/documents"  # Primary documents path for compose
+    bomarag_keys_path: str = "$HOME/.bomarag/keys"
+    bomarag_flows_path: str = "$HOME/.bomarag/flows"
+    bomarag_config_path: str = "$HOME/.bomarag/config"
+    bomarag_data_path: str = "$HOME/.bomarag/data"  # Backend data (conversations, tokens, etc.)
+    langflow_data_path: str = "$HOME/.bomarag/data/langflow-data"
+    bomarag_tui_config_path_legacy: str = "$HOME/.bomarag/tui/config"
 
     # Container version (linked to TUI version)
-    openrag_version: str = ""
+    bomarag_version: str = ""
 
     # Validation errors
     validation_errors: dict[str, str] = field(default_factory=dict)
 
 
 class EnvManager:
-    """Manages environment configuration for OpenRAG."""
+    """Manages environment configuration for BomaRAG."""
 
     assignment_pattern = re.compile(r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=")
 
@@ -169,8 +169,8 @@ class EnvManager:
         """Generate a secure secret key for Langflow."""
         return secrets.token_urlsafe(32)
 
-    def generate_openrag_encryption_key(self) -> str:
-        """Generate a secure AES-256 base64 master key for OpenRAG."""
+    def generate_bomarag_encryption_key(self) -> str:
+        """Generate a secure AES-256 base64 master key for BomaRAG."""
         import base64
 
         return base64.b64encode(secrets.token_bytes(32)).decode("ascii")
@@ -193,9 +193,9 @@ class EnvManager:
             "WATSONX_API_KEY": "watsonx_api_key",  # pragma: allowlist secret
             "WATSONX_ENDPOINT": "watsonx_endpoint",
             "WATSONX_PROJECT_ID": "watsonx_project_id",
-            "OPENRAG_ENCRYPTION_KEY": "openrag_encryption_key",  # pragma: allowlist secret
-            "OPENRAG_TENANT_ID": "openrag_tenant_id",
-            "OPENRAG_ENFORCE_PREREQUISITES": "openrag_enforce_prerequisites",
+            "BOMARAG_ENCRYPTION_KEY": "bomarag_encryption_key",  # pragma: allowlist secret
+            "BOMARAG_TENANT_ID": "bomarag_tenant_id",
+            "BOMARAG_ENFORCE_PREREQUISITES": "bomarag_enforce_prerequisites",
             "OPENSEARCH_PASSWORD": "opensearch_password",  # pragma: allowlist secret
             "OPENSEARCH_USERNAME": "opensearch_username",
             "OPENSEARCH_HOST": "opensearch_host",
@@ -229,19 +229,19 @@ class EnvManager:
             "IBM_COS_HMAC_ACCESS_KEY_ID": "ibm_cos_hmac_access_key_id",
             "IBM_COS_HMAC_SECRET_ACCESS_KEY": "ibm_cos_hmac_secret_access_key",  # pragma: allowlist secret
             "IBM_COS_AUTH_ENDPOINT": "ibm_cos_auth_endpoint",
-            "OPENRAG_DOCUMENTS_PATHS": "openrag_documents_paths",
-            "OPENRAG_DOCUMENTS_PATH": "openrag_documents_path",
-            "OPENRAG_KEYS_PATH": "openrag_keys_path",
-            "OPENRAG_FLOWS_PATH": "openrag_flows_path",
-            "OPENRAG_CONFIG_PATH": "openrag_config_path",
-            "OPENRAG_DATA_PATH": "openrag_data_path",
+            "BOMARAG_DOCUMENTS_PATHS": "bomarag_documents_paths",
+            "BOMARAG_DOCUMENTS_PATH": "bomarag_documents_path",
+            "BOMARAG_KEYS_PATH": "bomarag_keys_path",
+            "BOMARAG_FLOWS_PATH": "bomarag_flows_path",
+            "BOMARAG_CONFIG_PATH": "bomarag_config_path",
+            "BOMARAG_DATA_PATH": "bomarag_data_path",
             "LANGFLOW_DATA_PATH": "langflow_data_path",
             "LANGFLOW_AUTO_LOGIN": "langflow_auto_login",
             "LANGFLOW_NEW_USER_IS_ACTIVE": "langflow_new_user_is_active",
             "LANGFLOW_ENABLE_SUPERUSER_CLI": "langflow_enable_superuser_cli",
             "DISABLE_INGEST_WITH_LANGFLOW": "disable_ingest_with_langflow",
             "INGEST_SAMPLE_DATA": "ingest_sample_data",
-            "OPENRAG_VERSION": "openrag_version",
+            "BOMARAG_VERSION": "bomarag_version",
             "LANGFUSE_SECRET_KEY": "langfuse_secret_key",  # pragma: allowlist secret
             "LANGFUSE_PUBLIC_KEY": "langfuse_public_key",  # pragma: allowlist secret
             "LANGFUSE_HOST": "langfuse_host",
@@ -319,20 +319,20 @@ class EnvManager:
         if not self.config.langflow_secret_key:
             self.config.langflow_secret_key = self.generate_langflow_secret_key()
 
-        if not self.config.openrag_encryption_key:
-            self.config.openrag_encryption_key = self.generate_openrag_encryption_key()
+        if not self.config.bomarag_encryption_key:
+            self.config.bomarag_encryption_key = self.generate_bomarag_encryption_key()
 
         if not self.config.langflow_superuser_password:
             self.config.langflow_superuser_password = self.generate_secure_password()
 
-        # Set OPENRAG_VERSION to TUI version if not already set
-        if not self.config.openrag_version:
+        # Set BOMARAG_VERSION to TUI version if not already set
+        if not self.config.bomarag_version:
             try:
                 from ..utils.version_check import get_current_version
 
                 current_version = get_current_version()
                 if current_version != "unknown":
-                    self.config.openrag_version = current_version
+                    self.config.bomarag_version = current_version
             except Exception:
                 # If we can't get version, leave it empty (will use 'latest' from compose)
                 pass
@@ -383,10 +383,10 @@ class EnvManager:
                 )
 
         # Validate documents paths only if provided (optional)
-        if self.config.openrag_documents_paths:
-            is_valid, error_msg, _ = validate_documents_paths(self.config.openrag_documents_paths)
+        if self.config.bomarag_documents_paths:
+            is_valid, error_msg, _ = validate_documents_paths(self.config.bomarag_documents_paths)
             if not is_valid:
-                self.config.validation_errors["openrag_documents_paths"] = error_msg
+                self.config.validation_errors["bomarag_documents_paths"] = error_msg
 
         # Validate port settings
         if self.config.langflow_port and not validate_port(self.config.langflow_port):
@@ -472,8 +472,8 @@ class EnvManager:
             # Create .env file with secure permissions (owner read/write only) to protect secrets
             fd = os.open(self.env_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
             with os.fdopen(fd, "w") as f:
-                f.write("# OpenRAG Environment Configuration\n")
-                f.write("# Generated by OpenRAG TUI\n\n")
+                f.write("# BomaRAG Environment Configuration\n")
+                f.write("# Generated by BomaRAG TUI\n\n")
 
                 # Core settings
                 f.write("# Core settings\n")
@@ -497,13 +497,13 @@ class EnvManager:
                 )
                 f.write(f"NUDGES_FLOW_ID={self._quote_env_value(self.config.nudges_flow_id)}\n")
                 f.write(
-                    f"OPENRAG_ENCRYPTION_KEY={self._quote_env_value(self.config.openrag_encryption_key)}\n"
+                    f"BOMARAG_ENCRYPTION_KEY={self._quote_env_value(self.config.bomarag_encryption_key)}\n"
                 )
                 f.write(
-                    f"OPENRAG_TENANT_ID={self._quote_env_value(self.config.openrag_tenant_id)}\n"
+                    f"BOMARAG_TENANT_ID={self._quote_env_value(self.config.bomarag_tenant_id)}\n"
                 )
                 f.write(
-                    f"OPENRAG_ENFORCE_PREREQUISITES={self._quote_env_value(self.config.openrag_enforce_prerequisites)}\n"
+                    f"BOMARAG_ENFORCE_PREREQUISITES={self._quote_env_value(self.config.bomarag_enforce_prerequisites)}\n"
                 )
                 f.write(
                     f"OPENSEARCH_PASSWORD={self._quote_env_value(self.config.opensearch_password)}\n"
@@ -540,32 +540,32 @@ class EnvManager:
                 from utils.paths import expand_path
 
                 f.write(
-                    f"OPENRAG_DOCUMENTS_PATHS={self._quote_env_value(expand_path(self.config.openrag_documents_paths))}\n"
+                    f"BOMARAG_DOCUMENTS_PATHS={self._quote_env_value(expand_path(self.config.bomarag_documents_paths))}\n"
                 )
                 f.write("\n")
 
                 # Volume mount paths for Docker Compose
                 f.write("# Volume mount paths for Docker Compose\n")
                 f.write(
-                    f"OPENRAG_DOCUMENTS_PATH={self._quote_env_value(expand_path(self.config.openrag_documents_path))}\n"
+                    f"BOMARAG_DOCUMENTS_PATH={self._quote_env_value(expand_path(self.config.bomarag_documents_path))}\n"
                 )
                 f.write(
-                    f"OPENRAG_KEYS_PATH={self._quote_env_value(expand_path(self.config.openrag_keys_path))}\n"
+                    f"BOMARAG_KEYS_PATH={self._quote_env_value(expand_path(self.config.bomarag_keys_path))}\n"
                 )
                 f.write(
-                    f"OPENRAG_FLOWS_PATH={self._quote_env_value(expand_path(self.config.openrag_flows_path))}\n"
+                    f"BOMARAG_FLOWS_PATH={self._quote_env_value(expand_path(self.config.bomarag_flows_path))}\n"
                 )
                 f.write(
-                    f"OPENRAG_CONFIG_PATH={self._quote_env_value(expand_path(self.config.openrag_config_path))}\n"
+                    f"BOMARAG_CONFIG_PATH={self._quote_env_value(expand_path(self.config.bomarag_config_path))}\n"
                 )
                 f.write(
-                    f"OPENRAG_DATA_PATH={self._quote_env_value(expand_path(self.config.openrag_data_path))}\n"
+                    f"BOMARAG_DATA_PATH={self._quote_env_value(expand_path(self.config.bomarag_data_path))}\n"
                 )
                 f.write(
                     f"LANGFLOW_DATA_PATH={self._quote_env_value(expand_path(self.config.langflow_data_path))}\n"
                 )
-                # Write OPENRAG_VERSION once
-                version_to_write = self.config.openrag_version
+                # Write BOMARAG_VERSION once
+                version_to_write = self.config.bomarag_version
                 if not version_to_write:
                     try:
                         from ..utils.version_check import get_current_version
@@ -577,12 +577,12 @@ class EnvManager:
                         pass
 
                 if version_to_write:
-                    f.write(f"OPENRAG_VERSION={self._quote_env_value(version_to_write)}\n")
+                    f.write(f"BOMARAG_VERSION={self._quote_env_value(version_to_write)}\n")
 
                 # Write COMPOSE_PROJECT_NAME only if non-default
                 if (
                     self.config.compose_project_name
-                    and self.config.compose_project_name != "openrag"
+                    and self.config.compose_project_name != "bomarag"
                 ):
                     f.write(
                         f"COMPOSE_PROJECT_NAME={self._quote_env_value(self.config.compose_project_name)}\n"
@@ -728,8 +728,8 @@ class EnvManager:
         return [
             ("openai_api_key", "OpenAI API Key", "sk-... or leave empty", False),
             (
-                "openrag_encryption_key",
-                "OpenRAG Encryption Key",
+                "bomarag_encryption_key",
+                "BomaRAG Encryption Key",
                 "Will be auto-generated if empty",
                 True,
             ),
@@ -746,9 +746,9 @@ class EnvManager:
                 True,
             ),
             (
-                "openrag_documents_paths",
+                "bomarag_documents_paths",
                 "Documents Paths",
-                "~/.openrag/documents",
+                "~/.bomarag/documents",
                 False,
             ),
         ]
@@ -826,8 +826,8 @@ class EnvManager:
 
         return base_fields + oauth_fields + flow_fields + optional_fields
 
-    def ensure_openrag_version(self) -> None:
-        """Ensure OPENRAG_VERSION is set in .env file to match TUI version."""
+    def ensure_bomarag_version(self) -> None:
+        """Ensure BOMARAG_VERSION is set in .env file to match TUI version."""
         try:
             from ..utils.version_check import get_current_version
 
@@ -835,17 +835,17 @@ class EnvManager:
             if current_version == "unknown":
                 return
 
-            # Check if OPENRAG_VERSION is already set in .env
+            # Check if BOMARAG_VERSION is already set in .env
             if self.env_file.exists():
                 # Load .env file using load_dotenv
                 load_dotenv(dotenv_path=self.env_file, override=False)
-                existing_value = os.environ.get("OPENRAG_VERSION", "")
+                existing_value = os.environ.get("BOMARAG_VERSION", "")
                 if existing_value and existing_value == current_version:
                     # Already correct, no update needed
                     return
 
-            # Set or update OPENRAG_VERSION
-            self.config.openrag_version = current_version
+            # Set or update BOMARAG_VERSION
+            self.config.bomarag_version = current_version
 
             # Update .env file
             if self.env_file.exists():
@@ -855,10 +855,10 @@ class EnvManager:
                 new_lines = []
 
                 for line in lines:
-                    if line.strip().startswith("OPENRAG_VERSION"):
+                    if line.strip().startswith("BOMARAG_VERSION"):
                         # Replace existing line
                         new_lines.append(
-                            f"OPENRAG_VERSION={self._quote_env_value(current_version)}"
+                            f"BOMARAG_VERSION={self._quote_env_value(current_version)}"
                         )
                         updated = True
                     else:
@@ -872,7 +872,7 @@ class EnvManager:
                             insert_pos = i + 1
                             break
                     new_lines.insert(
-                        insert_pos, f"OPENRAG_VERSION={self._quote_env_value(current_version)}"
+                        insert_pos, f"BOMARAG_VERSION={self._quote_env_value(current_version)}"
                     )
 
                 fd = os.open(self.env_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
@@ -883,24 +883,24 @@ class EnvManager:
                     f.flush()
                     os.fsync(f.fileno())
             else:
-                # Create new .env file with just OPENRAG_VERSION
+                # Create new .env file with just BOMARAG_VERSION
                 fd = os.open(self.env_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
                 with os.fdopen(fd, "w") as f:
                     content = (
-                        f"# OpenRAG Environment Configuration\n"
-                        f"# Generated by OpenRAG TUI\n\n"
-                        f"OPENRAG_VERSION={self._quote_env_value(current_version)}\n"
+                        f"# BomaRAG Environment Configuration\n"
+                        f"# Generated by BomaRAG TUI\n\n"
+                        f"BOMARAG_VERSION={self._quote_env_value(current_version)}\n"
                     )
                     f.write(content)
                     f.flush()
                     os.fsync(f.fileno())
         except Exception as e:
-            logger.error(f"Error ensuring OPENRAG_VERSION: {e}")
+            logger.error(f"Error ensuring BOMARAG_VERSION: {e}")
 
     def generate_compose_volume_mounts(self) -> list[str]:
         """Generate Docker Compose volume mount strings from documents paths."""
         # Expand $HOME before validation
-        paths_str = self.config.openrag_documents_paths.replace("$HOME", str(Path.home()))
+        paths_str = self.config.bomarag_documents_paths.replace("$HOME", str(Path.home()))
         is_valid, error_msg, validated_paths = validate_documents_paths(paths_str)
 
         if not is_valid:
@@ -910,10 +910,10 @@ class EnvManager:
         volume_mounts = []
         for i, path in enumerate(validated_paths):
             if i == 0:
-                # First path maps to the default /app/openrag-documents
-                volume_mounts.append(f"{path}:/app/openrag-documents:Z")
+                # First path maps to the default /app/bomarag-documents
+                volume_mounts.append(f"{path}:/app/bomarag-documents:Z")
             else:
                 # Additional paths map to numbered directories
-                volume_mounts.append(f"{path}:/app/openrag-documents{i + 1}:Z")
+                volume_mounts.append(f"{path}:/app/bomarag-documents{i + 1}:Z")
 
         return volume_mounts

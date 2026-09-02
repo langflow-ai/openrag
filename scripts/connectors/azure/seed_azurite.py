@@ -7,8 +7,8 @@ Pass --reset to delete and recreate the containers before uploading:
     uv run python scripts/connectors/azure/seed_azurite.py --reset
 
 Two containers are seeded:
-    * CONTAINER_1 ("openrag-test-1") — plain text, markdown, and a PDF.
-    * CONTAINER_2 ("openrag-test-2") — Office/web document formats
+    * CONTAINER_1 ("bomarag-test-1") — plain text, markdown, and a PDF.
+    * CONTAINER_2 ("bomarag-test-2") — Office/web document formats
       (docx, xlsx, pptx, csv, html) for exercising the parser end to end.
 
 The Office formats (docx/xlsx/pptx) are built as minimal-but-valid OOXML
@@ -28,8 +28,8 @@ from azure.storage.blob import BlobServiceClient
 # http://127.0.0.1:10000/devstoreaccount1.
 CONN = "UseDevelopmentStorage=true"
 
-CONTAINER_1 = "openrag-test-1"
-CONTAINER_2 = "openrag-test-2"
+CONTAINER_1 = "bomarag-test-1"
+CONTAINER_2 = "bomarag-test-2"
 
 
 def _make_sample_pdf() -> bytes:
@@ -441,7 +441,7 @@ _WORD_DOC = _make_docx(
     "Fascinating Facts about Azure",
     [
         "This Word document was ingested from the local Azurite emulator to "
-        "verify the OpenRAG Azure Blob connector handles .docx files end to end.",
+        "verify the BomaRAG Azure Blob connector handles .docx files end to end.",
         *_AZURE_FACTS,
     ],
 )
@@ -476,7 +476,7 @@ _HTML_DOC = (
     b"<title>Fascinating Facts about Azure</title>\n</head>\n<body>\n"
     b"<h1>Fascinating Facts about Azure</h1>\n"
     b"<p>This HTML file was ingested from the local Azurite emulator to verify "
-    b"the OpenRAG Azure Blob connector handles .html files end to end.</p>\n"
+    b"the BomaRAG Azure Blob connector handles .html files end to end.</p>\n"
     b"<ul>\n"
     b"<li>Microsoft chose the name 'Azure' for the blue sky behind the clouds.</li>\n"
     b"<li>Azure Orbital connects satellite operators to spacecraft from datacenters.</li>\n"
@@ -489,11 +489,11 @@ _HTML_DOC = (
 
 # Container 1: plain text, markdown, PDF.
 BLOBS_1 = {
-    "azure-blob-text.txt": b"Hello from Azurite! OpenRAG Azure Blob connector test document.\n",
+    "azure-blob-text.txt": b"Hello from Azurite! BomaRAG Azure Blob connector test document.\n",
     "notes/azure-blob-markdown.md": (
         b"# Azure Blob Connector\n\n"
         b"This markdown blob was ingested from the local Azurite emulator "
-        b"to verify the OpenRAG Azure Blob connector end to end.\n\n"
+        b"to verify the BomaRAG Azure Blob connector end to end.\n\n"
         b"Microsoft Azure is a massive global cloud platform offering over 200 services. "
         b"It powers 95% of Fortune 500 companies and is connected by enough fiber-optic cable "
         b"to stretch to the Moon and back three times.\n"
@@ -506,12 +506,12 @@ BLOBS_1 = {
 # detection can be exercised via `--update`.
 BLOBS_1_V2 = {
     "azure-blob-text.txt": (
-        b"Hello from Azurite! OpenRAG Azure Blob connector test document. VERSION_2\n"
+        b"Hello from Azurite! BomaRAG Azure Blob connector test document. VERSION_2\n"
     ),
     "notes/azure-blob-markdown.md": (
         b"# Azure Blob Connector (VERSION_2)\n\n"
         b"This markdown blob was ingested from the local Azurite emulator "
-        b"to verify the OpenRAG Azure Blob connector end to end.\n\n"
+        b"to verify the BomaRAG Azure Blob connector end to end.\n\n"
         b"Microsoft Azure is a massive global cloud platform offering over 200 services. "
         b"It powers 95% of Fortune 500 companies and is connected by enough fiber-optic cable "
         b"to stretch to the Moon and back three times.\n"

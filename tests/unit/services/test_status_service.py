@@ -20,7 +20,7 @@ async def test_all_healthy_overall_healthy(monkeypatch):
         status_service,
         "CHECK_SPECS",
         [
-            lambda: ok("openrag"),
+            lambda: ok("bomarag"),
             lambda: ok("opensearch"),
         ],
         raising=True,
@@ -36,7 +36,7 @@ async def test_all_healthy_overall_healthy(monkeypatch):
 @pytest.mark.asyncio
 async def test_worst_wins(monkeypatch):
     async def healthy():
-        return _result("openrag", ComponentState.HEALTHY)
+        return _result("bomarag", ComponentState.HEALTHY)
 
     async def unhealthy():
         return _result("opensearch", ComponentState.UNHEALTHY)
@@ -54,7 +54,7 @@ async def test_timeout_becomes_unknown_and_does_not_block(monkeypatch):
         return _result("docling", ComponentState.HEALTHY)
 
     async def fast():
-        return _result("openrag", ComponentState.HEALTHY)
+        return _result("bomarag", ComponentState.HEALTHY)
 
     monkeypatch.setattr(status_service, "CHECK_TIMEOUT_S", 0.05, raising=True)
     monkeypatch.setattr(status_service, "CHECK_SPECS", [fast, slow], raising=True)
@@ -71,7 +71,7 @@ async def test_timeout_becomes_unknown_and_does_not_block(monkeypatch):
 @pytest.mark.asyncio
 async def test_check_exception_becomes_unknown(monkeypatch):
     async def healthy():
-        return _result("openrag", ComponentState.HEALTHY)
+        return _result("bomarag", ComponentState.HEALTHY)
 
     async def boom():
         raise RuntimeError("x")

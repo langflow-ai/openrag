@@ -4,7 +4,7 @@ import { expect, test } from "../utils/fixtures";
 import logger from "../utils/logger";
 import { navigateToHome } from "../utils/navigation";
 
-const TEST_DOCUMENT = "OpenRAG.Index.Test.Document.txt";
+const TEST_DOCUMENT = "BomaRAG.Index.Test.Document.txt";
 const TEST_DOCUMENT_PATH = path.join(__dirname, "../test-data", TEST_DOCUMENT);
 const UNIQUE_SEARCH_TOKEN = "OPENSEARCH-7419-ZX";
 

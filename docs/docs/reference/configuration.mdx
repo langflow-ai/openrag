@@ -5,25 +5,25 @@ slug: /reference/configuration
 
 import PartialDockerComposeUp from '@site/docs/_partial-docker-compose-up.mdx';
 
-OpenRAG's `.env` file is the primary configuration file for OpenRAG.
+BomaRAG's `.env` file is the primary configuration file for BomaRAG.
 Environment variables in `.env` always take precedence over other sources.
 
-For deployments managed with an OpenRAG terminal session, this file is located at `~/.openrag/tui`, and it can be created automatically during [installation](/install-options).
+For deployments managed with an BomaRAG terminal session, this file is located at `~/.bomarag/tui`, and it can be created automatically during [installation](/install-options).
 
-For [self-managed deployments](/docker), this file can be located at the root of your OpenRAG project directory or referenced from another location.
+For [self-managed deployments](/docker), this file can be located at the root of your BomaRAG project directory or referenced from another location.
 
-For an example, see [`.env.example` in the OpenRAG repository](https://github.com/langflow-ai/openrag/blob/main/.env.example).
+For an example, see [`.env.example` in the BomaRAG repository](https://github.com/ABISHAIMWANJA/bomarag/blob/main/.env.example).
 
 :::tip
-OpenRAG's Docker Compose files are populated automatically using values from the `.env` file, so you don't need to edit the Docker Compose files manually.
+BomaRAG's Docker Compose files are populated automatically using values from the `.env` file, so you don't need to edit the Docker Compose files manually.
 :::
 
-If a variable isn't set, OpenRAG uses default or fallback values where available.
+If a variable isn't set, BomaRAG uses default or fallback values where available.
 Not all variables have default values, and errors can occur if required variables aren't set.
-Default values can be found in the reference tables on this page and in [`config_manager.py`](https://github.com/langflow-ai/openrag/blob/main/src/config/config_manager.py), [`settings.py`](https://github.com/langflow-ai/openrag/blob/main/src/config/settings.py), and [`logging_config.py`](https://github.com/langflow-ai/openrag/blob/main/src/utils/logging_config.py).
+Default values can be found in the reference tables on this page and in [`config_manager.py`](https://github.com/ABISHAIMWANJA/bomarag/blob/main/src/config/config_manager.py), [`settings.py`](https://github.com/ABISHAIMWANJA/bomarag/blob/main/src/config/settings.py), and [`logging_config.py`](https://github.com/ABISHAIMWANJA/bomarag/blob/main/src/utils/logging_config.py).
 
 You can [temporarily set Langflow variables at runtime](/agents#modify-a-flow-at-runtime).
-However, these temporary overrides don't overlap with most OpenRAG environment variables.
+However, these temporary overrides don't overlap with most BomaRAG environment variables.
 The only exceptions are flow-level Langflow settings, such as the language model used in a flow.
 
 ## Edit the `.env` file and apply configuration changes {#set-environment-variables}
@@ -32,21 +32,21 @@ During [installation](/install-options), you prepare an initial `.env` file.
 For terminal-managed deployments, this file is created automatically.
 For self-managed deployments, you create this file manually.
 
-After installation, you can edit the `.env` file to change your OpenRAG configuration.
+After installation, you can edit the `.env` file to change your BomaRAG configuration.
 
 :::tip
 For terminal-managed deployments, many environment variables can be set through the **Reconfigure** option in the terminal session. The terminal session updates the `.env` file automatically.
 :::
 
-Most OpenRAG environment variables are mutable, and you can apply changes to these settings by [stopping and restarting the OpenRAG services](/manage-services) after editing the `.env` file.
+Most BomaRAG environment variables are mutable, and you can apply changes to these settings by [stopping and restarting the BomaRAG services](/manage-services) after editing the `.env` file.
 
-If a change doesn't take effect after restarting the services, then the variable is immutable, and you must [redeploy OpenRAG](/reinstall) with your modified `.env` file.
-This is typically only required for critical configuration changes that affect the core OpenRAG infrastructure.
+If a change doesn't take effect after restarting the services, then the variable is immutable, and you must [redeploy BomaRAG](/reinstall) with your modified `.env` file.
+This is typically only required for critical configuration changes that affect the core BomaRAG infrastructure.
 
 ## Model provider settings {#model-provider-settings}
 
-Configure which models and providers OpenRAG uses to generate text and embeddings.
-You only need to provide credentials for the providers you are using in OpenRAG.
+Configure which models and providers BomaRAG uses to generate text and embeddings.
+You only need to provide credentials for the providers you are using in BomaRAG.
 
 These variables are initially set during the [application onboarding process](/install-uvx#application-onboarding).
 
@@ -65,24 +65,24 @@ These variables are initially set during the [application onboarding process](/i
 
 ## Document processing settings {#document-processing-settings}
 
-Controls some aspects of how OpenRAG [processes and ingests documents](/ingestion) into your knowledge base.
+Controls some aspects of how BomaRAG [processes and ingests documents](/ingestion) into your knowledge base.
 
-For the embedding model and Docling engine variables that you can set on the OpenRAG **Settings** page, see [Configure ingestion](/ingestion-configure).
+For the embedding model and Docling engine variables that you can set on the BomaRAG **Settings** page, see [Configure ingestion](/ingestion-configure).
 
 For Langflow flow IDs and Langflow timeout settings, see [Langflow settings](#langflow-settings).
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `DISABLE_INGEST_WITH_LANGFLOW` | `false` | Disable Langflow ingestion pipeline if you don't want to use the default [Docling Serve instance](/ingestion-configure#select-a-docling-implementation). |
-| `DOCLING_SERVE_URL` | `http://HOST_IP:5001` | URL for the [Docling Serve instance](/ingestion-configure#select-a-docling-implementation). By default, OpenRAG starts a local `docling serve` process and auto-detects the host. To use your own local or remote Docling Serve instance, set this variable to the full path to the target instance. The service must run on port 5001. |
-| `OPENRAG_DOCUMENTS_PATH` | `~/.openrag/documents` | The [local documents path](/ingestion-configure#set-the-local-documents-path) for ingestion. |
-| `HOST_DOCKER_INTERNAL` | `host.docker.internal` | Host address for accessing services running on the host machine from within Docker containers. This is used to connect to the local Docling Serve instance started by OpenRAG. If your system uses a different hostname for this purpose, set this variable accordingly. |
+| `DOCLING_SERVE_URL` | `http://HOST_IP:5001` | URL for the [Docling Serve instance](/ingestion-configure#select-a-docling-implementation). By default, BomaRAG starts a local `docling serve` process and auto-detects the host. To use your own local or remote Docling Serve instance, set this variable to the full path to the target instance. The service must run on port 5001. |
+| `BOMARAG_DOCUMENTS_PATH` | `~/.bomarag/documents` | The [local documents path](/ingestion-configure#set-the-local-documents-path) for ingestion. |
+| `HOST_DOCKER_INTERNAL` | `host.docker.internal` | Host address for accessing services running on the host machine from within Docker containers. This is used to connect to the local Docling Serve instance started by BomaRAG. If your system uses a different hostname for this purpose, set this variable accordingly. |
 | `INGESTION_TIMEOUT` | `3600` | Document ingestion timeout limit in seconds for each file. Increase this value if you experience timeouts when ingesting very large documents. Must be greater than or equal to [`LANGFLOW_TIMEOUT`](#langflow-settings).  |
 | `UPLOAD_BATCH_SIZE` | `25` | When ingesting folders, set the maximum number of files to ingest per batch. Each batch is an [ingestion task](/ingestion#monitor-ingestion). Increase this value to ingest more files per batch. If this value is too high, performance issues can occur. |
 
 ## Langflow settings {#langflow-settings}
 
-Configure the OpenRAG Langflow server's authentication, contact point, and built-in flow definitions.
+Configure the BomaRAG Langflow server's authentication, contact point, and built-in flow definitions.
 
 :::info
 The `LANGFLOW_SUPERUSER_PASSWORD` is set in your `.env` file, and this value determines the default values for several other Langflow authentication variables.
@@ -94,25 +94,25 @@ For better security, it is recommended to set `LANGFLOW_SUPERUSER_PASSWORD` so t
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LANGFLOW_DATA_PATH` | `./langflow-data` | The path where OpenRAG persists the Langflow database (flows, credentials, settings) across container restarts. |
+| `LANGFLOW_DATA_PATH` | `./langflow-data` | The path where BomaRAG persists the Langflow database (flows, credentials, settings) across container restarts. |
 | `LANGFLOW_AUTO_LOGIN` | Determined by `LANGFLOW_SUPERUSER_PASSWORD` | Whether to enable [auto-login mode](https://docs.langflow.org/api-keys-and-authentication#langflow-auto-login) for the Langflow visual editor and CLI. If `LANGFLOW_SUPERUSER_PASSWORD` isn't set, then `LANGFLOW_AUTO_LOGIN` is `True` and auto-login mode is enabled. If `LANGFLOW_SUPERUSER_PASSWORD` is set, then `LANGFLOW_AUTO_LOGIN` is `False` and auto-login mode is disabled. Langflow API calls always require authentication with a Langflow API key regardless of the auto-login setting. |
 | `LANGFLOW_ENABLE_SUPERUSER_CLI` | Determined by `LANGFLOW_SUPERUSER_PASSWORD` | Whether to enable the [Langflow CLI `langflow superuser` command](https://docs.langflow.org/api-keys-and-authentication#langflow-enable-superuser-cli). If `LANGFLOW_SUPERUSER_PASSWORD` isn't set, then `LANGFLOW_ENABLE_SUPERUSER_CLI` is `True` and superuser accounts can be created with the Langflow CLI. If `LANGFLOW_SUPERUSER_PASSWORD` is set, then `LANGFLOW_ENABLE_SUPERUSER_CLI` is `False` and the `langflow superuser` command is disabled. |
 | `LANGFLOW_NEW_USER_IS_ACTIVE` | Determined by `LANGFLOW_SUPERUSER_PASSWORD` | Whether new [Langflow user accounts are active by default](https://docs.langflow.org/api-keys-and-authentication#langflow-new-user-is-active). If `LANGFLOW_SUPERUSER_PASSWORD` isn't set, then `LANGFLOW_NEW_USER_IS_ACTIVE` is `True` and new user accounts are active by default. If `LANGFLOW_SUPERUSER_PASSWORD` is set, then `LANGFLOW_NEW_USER_IS_ACTIVE` is `False` and new user accounts are inactive by default. |
 | `LANGFLOW_PORT` | `7860` | Host port for the Langflow service. Change this if port 7860 is already in use on your system. If you change this, you must also set `LANGFLOW_PUBLIC_URL` to the new port. |
-| `LANGFLOW_PUBLIC_URL` | `http://localhost:7860` | Public URL for the Langflow instance. Forms the base URL for Langflow API calls and other interfaces with your OpenRAG Langflow instance. Can also be set in the terminal's **Reconfigure** option at the **Cloud connector and advanced settings** prompt. |
+| `LANGFLOW_PUBLIC_URL` | `http://localhost:7860` | Public URL for the Langflow instance. Forms the base URL for Langflow API calls and other interfaces with your BomaRAG Langflow instance. Can also be set in the terminal's **Reconfigure** option at the **Cloud connector and advanced settings** prompt. |
 | `LANGFLOW_SECRET_KEY` | Automatically generated | Secret encryption key for Langflow internal operations. It is recommended to [generate your own Langflow secret key](https://docs.langflow.org/api-keys-and-authentication#langflow-secret-key) for this variable. If this variable isn't set, then Langflow generates a secret key automatically.  |
 | `LANGFLOW_SUPERUSER` | `admin` | Username for the Langflow administrator user. |
 | `LANGFLOW_SUPERUSER_PASSWORD` | Not set | Langflow administrator password. If this variable isn't set, then the Langflow server starts _without_ authentication enabled. It is recommended to set `LANGFLOW_SUPERUSER_PASSWORD` so the [Langflow server starts with authentication enabled](https://docs.langflow.org/api-keys-and-authentication#start-a-langflow-server-with-authentication-enabled). |
-| `LANGFLOW_CHAT_FLOW_ID`, `LANGFLOW_INGEST_FLOW_ID`, `NUDGES_FLOW_ID`, `LANGFLOW_URL_INGEST_FLOW_ID` | Built-in flow IDs | These variables are set automatically to the IDs of the chat, Docling ingestion, URL ingestion, and nudges [flows](/agents). The default values are found in [`.env.example`](https://github.com/langflow-ai/openrag/blob/main/.env.example). Only change these values if you want to replace a built-in flow with your own custom flow. The flow JSON must be present in your version of the OpenRAG codebase. For example, if you [deploy self-managed services](/docker), you can add the flow JSON to your local clone of the OpenRAG repository before deploying OpenRAG. |
+| `LANGFLOW_CHAT_FLOW_ID`, `LANGFLOW_INGEST_FLOW_ID`, `NUDGES_FLOW_ID`, `LANGFLOW_URL_INGEST_FLOW_ID` | Built-in flow IDs | These variables are set automatically to the IDs of the chat, Docling ingestion, URL ingestion, and nudges [flows](/agents). The default values are found in [`.env.example`](https://github.com/ABISHAIMWANJA/bomarag/blob/main/.env.example). Only change these values if you want to replace a built-in flow with your own custom flow. The flow JSON must be present in your version of the BomaRAG codebase. For example, if you [deploy self-managed services](/docker), you can add the flow JSON to your local clone of the BomaRAG repository before deploying BomaRAG. |
 | `LANGFUSE_SECRET_KEY` | Not set | Optional Langfuse secret key to enable the [Langflow integration with Langfuse](https://docs.langflow.org/integrations-langfuse). |
 | `LANGFUSE_PUBLIC_KEY` | Not set | Optional Langfuse public key to enable the [Langflow integration with Langfuse](https://docs.langflow.org/integrations-langfuse). |
-| `LANGFUSE_HOST` | Not set | Leave empty for Langfuse Cloud. Required for self-hosted Langfuse deployments if `LANGFUSE_SECRET_KEY` and `LANGFUSE_PUBLIC_KEY` are set. The address must be relative to the OpenRAG container deployment. For example, `http://localhost:3002` or `http://host.docker.internal:3000`. |
+| `LANGFUSE_HOST` | Not set | Leave empty for Langfuse Cloud. Required for self-hosted Langfuse deployments if `LANGFUSE_SECRET_KEY` and `LANGFUSE_PUBLIC_KEY` are set. The address must be relative to the BomaRAG container deployment. For example, `http://localhost:3002` or `http://host.docker.internal:3000`. |
 | `LANGFLOW_TIMEOUT` | `2400` | Total Langflow HTTP timeout limit in seconds. Increase this value if you experience timeouts when ingesting very large PDFs. See also [`INGESTION_TIMEOUT`](#document-processing-settings).|
 | `LANGFLOW_CONNECT_TIMEOUT` | `30` | Langflow HTTP connection timeout limit in seconds. Increase this value if you experience timeouts when ingesting very large PDFs. |
-| `LANGFLOW_KEY` | Automatically generated | A Langflow API key to run flows with Langflow API calls. Because Langflow API keys are server-specific, allow OpenRAG to generate this key initially. You can create additional Langflow API keys after deploying OpenRAG. |
+| `LANGFLOW_KEY` | Automatically generated | A Langflow API key to run flows with Langflow API calls. Because Langflow API keys are server-specific, allow BomaRAG to generate this key initially. You can create additional Langflow API keys after deploying BomaRAG. |
 | `LANGFLOW_KEY_RETRIES` | `15` | Number of retries for Langflow key generation. |
 | `LANGFLOW_KEY_RETRY_DELAY` | `2.0` | Delay between retries in seconds. |
-| `LANGFLOW_VERSION` | `OPENRAG_VERSION` | Langflow Docker image version. By default, OpenRAG uses the `OPENRAG_VERSION` for the Langflow Docker image version. **This variable is currently inactive and for information purposes only.** |
+| `LANGFLOW_VERSION` | `BOMARAG_VERSION` | Langflow Docker image version. By default, BomaRAG uses the `BOMARAG_VERSION` for the Langflow Docker image version. **This variable is currently inactive and for information purposes only.** |
 
 ## OAuth and cloud storage connector settings {#oauth-and-cloud-storage-connector-settings}
 
@@ -126,7 +126,7 @@ For more information, see [Configure connectors](/knowledge-connectors).
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AWS_ACCESS_KEY_ID`<br/>`AWS_SECRET_ACCESS_KEY` | Not set | Authorize OpenRAG to ingest documents from AWS S3 with an [AWS OAuth app](https://docs.aws.amazon.com/singlesignon/latest/userguide/manage-your-applications.html) integration. |
+| `AWS_ACCESS_KEY_ID`<br/>`AWS_SECRET_ACCESS_KEY` | Not set | Authorize BomaRAG to ingest documents from AWS S3 with an [AWS OAuth app](https://docs.aws.amazon.com/singlesignon/latest/userguide/manage-your-applications.html) integration. |
 | `GOOGLE_OAUTH_CLIENT_ID`<br/>`GOOGLE_OAUTH_CLIENT_SECRET` | Not set | Enable OAuth mode _and_ the Google Drive cloud storage connector with the [Google OAuth client](https://developers.google.com/identity/protocols/oauth2) integration. You can generate these values in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials). |
 | `MICROSOFT_GRAPH_OAUTH_CLIENT_ID`<br/>`MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET` | Not set | Enable the [Microsoft Graph OAuth client](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/graph-oauth) integration by providing [Azure application registration credentials for SharePoint and OneDrive](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/app-registration?view=odsp-graph-online). |
 | `WEBHOOK_BASE_URL` | Not set | Optional base URL for OAuth connector webhook endpoints. If not set, a default base URL is used. This variable is required to enable automatic cloud storage ingestion. |
@@ -137,9 +137,9 @@ Configure cryptographic parameters and connection data isolation protocols.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `OPENRAG_ENCRYPTION_KEY` | Not set | 32-byte Base64 AES-256-GCM master key locking all database index payloads. Automatically generated when you run the TUI or CLI configuration wizard. If left completely unset, the master encryption wrapper remains inactive and credentials remain in plaintext matrices. Warning: Cannot be lost or rotated without risking data-loss. |
-| `OPENRAG_TENANT_ID` | `openrag` | Identifier for AAD (Additional Authenticated Data) tenant binding. Ensures that encrypted files are correctly associated with the expected tenant environment. |
-| `IBM_AUTH_ENABLED` | `false` | Enabling this feature queries the IBM Secrets Manager API for your decryption keys natively. If the IBM API request is unauthorized, misconfigured, or fails, the system automatically falls back to evaluating your local `OPENRAG_ENCRYPTION_KEY`. |
+| `BOMARAG_ENCRYPTION_KEY` | Not set | 32-byte Base64 AES-256-GCM master key locking all database index payloads. Automatically generated when you run the TUI or CLI configuration wizard. If left completely unset, the master encryption wrapper remains inactive and credentials remain in plaintext matrices. Warning: Cannot be lost or rotated without risking data-loss. |
+| `BOMARAG_TENANT_ID` | `bomarag` | Identifier for AAD (Additional Authenticated Data) tenant binding. Ensures that encrypted files are correctly associated with the expected tenant environment. |
+| `IBM_AUTH_ENABLED` | `false` | Enabling this feature queries the IBM Secrets Manager API for your decryption keys natively. If the IBM API request is unauthorized, misconfigured, or fails, the system automatically falls back to evaluating your local `BOMARAG_ENCRYPTION_KEY`. |
 
 ## OpenSearch settings
 
@@ -153,32 +153,32 @@ Configure OpenSearch database authentication.
 | `OPENSEARCH_HOST` | `localhost` | OpenSearch service host. |
 | `OPENSEARCH_PORT` | `9200` | OpenSearch service port. |
 | `OPENSEARCH_USERNAME` | `admin` | OpenSearch administrator username. |
-| `OPENRAG_OPENSEARCH_NUMBER_OF_SHARDS` | `2` | Primary shard count for newly-created OpenRAG indices. Existing indices must be reindexed to change shard count. |
-| `OPENRAG_OPENSEARCH_NUMBER_OF_REPLICAS` | `2` | Replica shard count for OpenRAG indices. OpenRAG reconciles existing managed indices to this value at startup. |
-| `LANGFLOW_OPENSEARCH_HOST` | Not set | By default, OpenRAG passes the `OPENSEARCH_HOST` value to Langflow. Use the `LANGFLOW_OPENSEARCH_*` variables to set a different OpenSearch endpoint for Langflow specifically. OpenRAG itself still uses the `OPENSEARCH_HOST` value. |
-| `LANGFLOW_OPENSEARCH_PORT` | Not set | By default, OpenRAG passes the `OPENSEARCH_PORT` value to Langflow. Use the `LANGFLOW_OPENSEARCH_*` variables to set a different OpenSearch endpoint for Langflow specifically. OpenRAG itself still uses the `OPENSEARCH_PORT` value. |
+| `BOMARAG_OPENSEARCH_NUMBER_OF_SHARDS` | `2` | Primary shard count for newly-created BomaRAG indices. Existing indices must be reindexed to change shard count. |
+| `BOMARAG_OPENSEARCH_NUMBER_OF_REPLICAS` | `2` | Replica shard count for BomaRAG indices. BomaRAG reconciles existing managed indices to this value at startup. |
+| `LANGFLOW_OPENSEARCH_HOST` | Not set | By default, BomaRAG passes the `OPENSEARCH_HOST` value to Langflow. Use the `LANGFLOW_OPENSEARCH_*` variables to set a different OpenSearch endpoint for Langflow specifically. BomaRAG itself still uses the `OPENSEARCH_HOST` value. |
+| `LANGFLOW_OPENSEARCH_PORT` | Not set | By default, BomaRAG passes the `OPENSEARCH_PORT` value to Langflow. Use the `LANGFLOW_OPENSEARCH_*` variables to set a different OpenSearch endpoint for Langflow specifically. BomaRAG itself still uses the `OPENSEARCH_PORT` value. |
 
 ## Container image and registry settings {#container-image-and-registry-settings}
 
-By default, OpenRAG pulls its container images from Docker Hub under the `langflowai` organization.
+By default, BomaRAG pulls its container images from Docker Hub under the `bomalogic` organization.
 Use these variables to pull images from a private registry or an internal mirror instead, such as in an enterprise or air-gapped environment.
 
-For a complete walkthrough, including how to mirror the images, see [Deploy OpenRAG from a private registry](/docker#private-registry).
+For a complete walkthrough, including how to mirror the images, see [Deploy BomaRAG from a private registry](/docker#private-registry).
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `IMAGE_REGISTRY` | `docker.io` | Registry host for the OpenRAG-owned images (`openrag-backend`, `openrag-frontend`, `openrag-langflow`, and `openrag-opensearch`). Set this to your registry hostname, and include the port if your registry uses a non-standard one, such as `registry.example.com:5000`. Don't include a scheme (`https://`) or a trailing slash. This variable doesn't affect the OpenSearch Dashboards image; use `DASHBOARDS_REGISTRY` for that image. |
-| `IMAGE_ORG` | `langflowai` | Organization or namespace that contains the OpenRAG-owned images within `IMAGE_REGISTRY`. Together, these variables form the repository path `IMAGE_REGISTRY/IMAGE_ORG/IMAGE_NAME`. For example, `IMAGE_REGISTRY=registry.example.com` and `IMAGE_ORG=platform-team` resolves the backend image to `registry.example.com/platform-team/openrag-backend`. |
-| `OPENRAG_IMAGE_TAG` | Not set | Overrides the image tag applied to all OpenRAG-owned images. When set, this variable takes precedence over `OPENRAG_VERSION`. When it isn't set, OpenRAG falls back to `OPENRAG_VERSION`, and then to `latest`. Use this variable when your mirror re-tags images and the tags don't match the OpenRAG release versions. |
-| `DASHBOARDS_REGISTRY` | `docker.io` | Registry host for the OpenSearch Dashboards image only. This lets you point Dashboards at a mirror without redirecting the OpenRAG-owned images. The repository path and tag within the registry are fixed, so the mirrored image must be available at `DASHBOARDS_REGISTRY/opensearchproject/opensearch-dashboards:3.6.0`. |
+| `IMAGE_REGISTRY` | `docker.io` | Registry host for the BomaRAG-owned images (`bomarag-backend`, `bomarag-frontend`, `bomarag-langflow`, and `bomarag-opensearch`). Set this to your registry hostname, and include the port if your registry uses a non-standard one, such as `registry.example.com:5000`. Don't include a scheme (`https://`) or a trailing slash. This variable doesn't affect the OpenSearch Dashboards image; use `DASHBOARDS_REGISTRY` for that image. |
+| `IMAGE_ORG` | `bomalogic` | Organization or namespace that contains the BomaRAG-owned images within `IMAGE_REGISTRY`. Together, these variables form the repository path `IMAGE_REGISTRY/IMAGE_ORG/IMAGE_NAME`. For example, `IMAGE_REGISTRY=registry.example.com` and `IMAGE_ORG=platform-team` resolves the backend image to `registry.example.com/platform-team/bomarag-backend`. |
+| `BOMARAG_IMAGE_TAG` | Not set | Overrides the image tag applied to all BomaRAG-owned images. When set, this variable takes precedence over `BOMARAG_VERSION`. When it isn't set, BomaRAG falls back to `BOMARAG_VERSION`, and then to `latest`. Use this variable when your mirror re-tags images and the tags don't match the BomaRAG release versions. |
+| `DASHBOARDS_REGISTRY` | `docker.io` | Registry host for the OpenSearch Dashboards image only. This lets you point Dashboards at a mirror without redirecting the BomaRAG-owned images. The repository path and tag within the registry are fixed, so the mirrored image must be available at `DASHBOARDS_REGISTRY/opensearchproject/opensearch-dashboards:3.6.0`. |
 
 :::important
 These variables are read by Docker Compose, so they apply to [self-managed deployments](/docker).
-Terminal-managed deployments read them from `~/.openrag/tui/.env`, where they determine which images the terminal session treats as OpenRAG-owned when it pulls or cleans up images.
+Terminal-managed deployments read them from `~/.bomarag/tui/.env`, where they determine which images the terminal session treats as BomaRAG-owned when it pulls or cleans up images.
 
-Setting `IMAGE_REGISTRY` to a host other than `docker.io` also disables the terminal session's update check, because that check queries the Docker Hub API. The **Status** page reports neither an available upgrade nor an up-to-date confirmation. Track new releases through your registry or the [OpenRAG releases page](https://github.com/langflow-ai/openrag/releases) instead.
+Setting `IMAGE_REGISTRY` to a host other than `docker.io` also disables the terminal session's update check, because that check queries the Docker Hub API. The **Status** page reports neither an available upgrade nor an up-to-date confirmation. Track new releases through your registry or the [BomaRAG releases page](https://github.com/ABISHAIMWANJA/bomarag/releases) instead.
 
-Kubernetes deployments don't use these variables. The Helm charts in [`kubernetes/helm`](https://github.com/langflow-ai/openrag/tree/main/kubernetes/helm) configure images through their own `global.imageRegistry`, `global.imageTag`, and `global.imagePullSecrets` values. Note that the chart's `global.imageRegistry` value holds the organization (`langflowai` by default), which is the equivalent of `IMAGE_ORG` rather than `IMAGE_REGISTRY`.
+Kubernetes deployments don't use these variables. The Helm charts in [`kubernetes/helm`](https://github.com/ABISHAIMWANJA/bomarag/tree/main/kubernetes/helm) configure images through their own `global.imageRegistry`, `global.imageTag`, and `global.imagePullSecrets` values. Note that the chart's `global.imageRegistry` value holds the organization (`bomalogic` by default), which is the equivalent of `IMAGE_ORG` rather than `IMAGE_REGISTRY`.
 :::
 
 ## System settings
@@ -187,38 +187,38 @@ Configure general system components, session management, and logging.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `FRONTEND_PORT` | `3000` | Host port for the OpenRAG frontend web interface. Change this if port 3000 is already in use on your system. |
-| `OPENRAG_VERSION` | `latest` | The version of the OpenRAG Docker images to run. If [`OPENRAG_IMAGE_TAG`](#container-image-and-registry-settings) is set, it takes precedence over this variable. For more information, see [Upgrade OpenRAG](/upgrade) |
-| `NEXT_ALLOWED_DEV_ORIGINS` | `http://localhost:3000` | Only used when [running OpenRAG in development mode](/support/contribute). Accepts a comma-separated list of hostnames to allow additional origins to make requests to the Next.js development server. |
+| `FRONTEND_PORT` | `3000` | Host port for the BomaRAG frontend web interface. Change this if port 3000 is already in use on your system. |
+| `BOMARAG_VERSION` | `latest` | The version of the BomaRAG Docker images to run. If [`BOMARAG_IMAGE_TAG`](#container-image-and-registry-settings) is set, it takes precedence over this variable. For more information, see [Upgrade BomaRAG](/upgrade) |
+| `NEXT_ALLOWED_DEV_ORIGINS` | `http://localhost:3000` | Only used when [running BomaRAG in development mode](/support/contribute). Accepts a comma-separated list of hostnames to allow additional origins to make requests to the Next.js development server. |
 | `MAX_WORKERS` | `min(4, CPU_COUNT // 2)` | Number of Backend worker processes for concurrent request handling.  Be mindful of hardware limitations to avoid overtaxing system resources. |
 | `LANGFLOW_WORKERS` | `1` | Number of Langflow worker processes for concurrent request handling. Be mindful of hardware limitations to avoid overtaxing system resources. |
 | `DOCLING_WORKERS` | `1` | Number of Docling worker processes for concurrent request handling. Be mindful of hardware limitations to avoid overtaxing system resources. |
-| `ACCESS_LOG` | `true` | Whether to enable access logging for OpenRAG services, such as `INFO: 127.0.0.1:45132 - "GET /tasks HTTP/1.1" 200 OK`. Access logs provide information about incoming requests, and they can be useful for monitoring and debugging. |
+| `ACCESS_LOG` | `true` | Whether to enable access logging for BomaRAG services, such as `INFO: 127.0.0.1:45132 - "GET /tasks HTTP/1.1" 200 OK`. Access logs provide information about incoming requests, and they can be useful for monitoring and debugging. |
 | `LOG_FORMAT` | `json` | Set to `json` to enable JSON-formatted log output, or `text` for standard text logs. |
 | `LOG_LEVEL` | `INFO` | Logging level. Can be one of `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`. `DEBUG` provides the most detailed logs but can impact performance. |
-| `SERVICE_NAME` | `openrag` | Service name used in log entries. |
+| `SERVICE_NAME` | `bomarag` | Service name used in log entries. |
 | `SESSION_SECRET` | Automatically generated | Secret key for session management. If not provided, a secure random key is generated automatically. |
 
 ## Observability and APM settings {#observability-and-apm-settings}
 
-Instrument OpenRAG Backend with [IBM Instana](https://www.ibm.com/products/instana) for application performance monitoring and distributed tracing.
+Instrument BomaRAG Backend with [IBM Instana](https://www.ibm.com/products/instana) for application performance monitoring and distributed tracing.
 Instrumentation is off by default.
 
-For a complete walkthrough, including how to obtain an agent key and how to configure Kubernetes deployments, see [Monitor OpenRAG with IBM Instana](/reference/observability).
+For a complete walkthrough, including how to obtain an agent key and how to configure Kubernetes deployments, see [Monitor BomaRAG with IBM Instana](/reference/observability).
 
-The first group configures OpenRAG Backend, which sends traces to an Instana host agent.
+The first group configures BomaRAG Backend, which sends traces to an Instana host agent.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `INSTANA_ENABLED` | `false` | Whether to load the Instana Python tracer in OpenRAG Backend. Accepts `true`, `1`, or `yes` to enable. This variable is read once at process start, so the backend must be restarted for a change to take effect. The tracer is an optional dependency: the backend container image includes it, and a backend run from source needs `uv sync --extra apm`. If it isn't installed, the backend logs a warning and runs untraced. |
+| `INSTANA_ENABLED` | `false` | Whether to load the Instana Python tracer in BomaRAG Backend. Accepts `true`, `1`, or `yes` to enable. This variable is read once at process start, so the backend must be restarted for a change to take effect. The tracer is an optional dependency: the backend container image includes it, and a backend run from source needs `uv sync --extra apm`. If it isn't installed, the backend logs a warning and runs untraced. |
 | `INSTANA_AGENT_HOST` | `host.docker.internal` for containerized deployments; `localhost` for a backend that runs directly on the host | Address of the Instana host agent that the tracer sends spans to. In Kubernetes, leave this unset. The Helm chart and the operator inject the pod's own node IP, which is the address of the per-node agent DaemonSet. |
 | `INSTANA_AGENT_PORT` | `42699` | Port of the Instana host agent. |
-| `INSTANA_SERVICE_NAME` | Not set | Service name that OpenRAG Backend reports to Instana, shown in the **Applications** and **Analyze Traces** views. Leave this unset rather than setting it to an empty value, because the tracer checks it for presence rather than for a value, and an empty value registers a service with a blank name. |
+| `INSTANA_SERVICE_NAME` | Not set | Service name that BomaRAG Backend reports to Instana, shown in the **Applications** and **Analyze Traces** views. Leave this unset rather than setting it to an empty value, because the tracer checks it for presence rather than for a value, and an empty value registers a service with a blank name. |
 | `INSTANA_ZONE` | Not set | Custom zone that the host and process are grouped under in the Instana **Infrastructure** view. Presence-sensitive in the same way as `INSTANA_SERVICE_NAME`. |
-| `INSTANA_LOG_LEVEL` | `info` | Verbosity of the tracer's own logging, as one of `debug`, `info`, `warn`, or `error`. This is unrelated to [`LOG_LEVEL`](#system-settings), which controls OpenRAG's application logs. Presence-sensitive in the same way as `INSTANA_SERVICE_NAME`: an empty value logs an `Unknown INSTANA_LOG_LEVEL` warning on every start. |
-| `INSTANA_SECRETS` | `regex:.*key.*,.*pass.*,.*secret.*,.*token.*,q\Z,search\Z,filename\Z` | Query-string parameters that the tracer replaces with `<redacted>` before a span is sent, as `<matcher>:<name>[,<name>]` where the matcher is one of `equals`, `equals-ignore-case`, `contains`, `contains-ignore-case`, or `regex`. OpenRAG sets this rather than leaving it at the tracer's own `contains-ignore-case:key,pass,secret`, which only covers credential-shaped parameter names and not free-text ones such as the `q` of `GET /v2/files/search`. See [Redact query parameters](/reference/observability#redact-query-parameters). |
-| `INSTANA_TRACING_DISABLE` | `logging` | Span categories or types that the tracer skips, as a comma-separated list, or `true` to disable tracing entirely. OpenRAG sets `logging` rather than leaving it empty, because a logging span is created for every `WARNING` and `ERROR` logged inside a request trace, at a cost that grows for as long as the process runs. See [Performance guardrails](/reference/observability#performance-guardrails). |
-| `INSTANA_STACK_TRACE` | `error` | When the tracer captures a Python stack trace for an exit span, as one of `all`, `error`, or `none`. OpenRAG sets `error` rather than the tracer's own `all`, which captures a full stack on every outbound HTTP call, OpenSearch query, and database query. Any other value logs a warning and falls back to `all`, so use `all` to opt out rather than an empty value. See [Performance guardrails](/reference/observability#performance-guardrails). |
+| `INSTANA_LOG_LEVEL` | `info` | Verbosity of the tracer's own logging, as one of `debug`, `info`, `warn`, or `error`. This is unrelated to [`LOG_LEVEL`](#system-settings), which controls BomaRAG's application logs. Presence-sensitive in the same way as `INSTANA_SERVICE_NAME`: an empty value logs an `Unknown INSTANA_LOG_LEVEL` warning on every start. |
+| `INSTANA_SECRETS` | `regex:.*key.*,.*pass.*,.*secret.*,.*token.*,q\Z,search\Z,filename\Z` | Query-string parameters that the tracer replaces with `<redacted>` before a span is sent, as `<matcher>:<name>[,<name>]` where the matcher is one of `equals`, `equals-ignore-case`, `contains`, `contains-ignore-case`, or `regex`. BomaRAG sets this rather than leaving it at the tracer's own `contains-ignore-case:key,pass,secret`, which only covers credential-shaped parameter names and not free-text ones such as the `q` of `GET /v2/files/search`. See [Redact query parameters](/reference/observability#redact-query-parameters). |
+| `INSTANA_TRACING_DISABLE` | `logging` | Span categories or types that the tracer skips, as a comma-separated list, or `true` to disable tracing entirely. BomaRAG sets `logging` rather than leaving it empty, because a logging span is created for every `WARNING` and `ERROR` logged inside a request trace, at a cost that grows for as long as the process runs. See [Performance guardrails](/reference/observability#performance-guardrails). |
+| `INSTANA_STACK_TRACE` | `error` | When the tracer captures a Python stack trace for an exit span, as one of `all`, `error`, or `none`. BomaRAG sets `error` rather than the tracer's own `all`, which captures a full stack on every outbound HTTP call, OpenSearch query, and database query. Any other value logs a warning and falls back to `all`, so use `all` to opt out rather than an empty value. See [Performance guardrails](/reference/observability#performance-guardrails). |
 | `INSTANA_STACK_TRACE_LENGTH` | `30` | Maximum number of frames kept in a captured stack trace, between 1 and 40. Only has an effect when `INSTANA_STACK_TRACE` captures a stack. |
 
 The second group configures the optional local Instana host agent that `make instana-agent-up` starts.

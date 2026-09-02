@@ -5,15 +5,15 @@ slug: /knowledge
 
 import PartialOpensearchAuthModes from '@site/docs/_partial-opensearch-auth-modes.mdx';
 
-OpenRAG includes a built-in [OpenSearch](https://docs.opensearch.org/latest/) instance that serves as the underlying datastore for your _knowledge_ (documents).
+BomaRAG includes a built-in [OpenSearch](https://docs.opensearch.org/latest/) instance that serves as the underlying datastore for your _knowledge_ (documents).
 This specialized database is used to store and retrieve your documents and the associated vector data (embeddings).
 
-The documents in your OpenSearch knowledge base provide specialized context in addition to the general knowledge available to the language model that you select when you [install OpenRAG](/install-options) or [edit a flow](/agents).
+The documents in your OpenSearch knowledge base provide specialized context in addition to the general knowledge available to the language model that you select when you [install BomaRAG](/install-options) or [edit a flow](/agents).
 
 You can [upload documents](/ingestion) from a variety of sources to populate your knowledge base with unique content, such as your own company documents, research papers, or websites.
-Documents are processed through OpenRAG's knowledge ingestion flows with Docling.
+Documents are processed through BomaRAG's knowledge ingestion flows with Docling.
 
-Then, the [OpenRAG **Chat**](/chat) can run [similarity searches](https://www.ibm.com/think/topics/vector-search) against your OpenSearch knowledge base to retrieve relevant information and generate context-aware responses.
+Then, the [BomaRAG **Chat**](/chat) can run [similarity searches](https://www.ibm.com/think/topics/vector-search) against your OpenSearch knowledge base to retrieve relevant information and generate context-aware responses.
 
 You can configure how documents are ingested and how the **Chat** interacts with your knowledge base.
 
@@ -25,13 +25,13 @@ You can configure how documents are ingested and how the **Chat** interacts with
 
 An [OpenSearch index](https://docs.opensearch.org/latest/getting-started/intro/#index) is a collection of documents in an OpenSearch database.
 
-By default, all documents you upload to your OpenRAG knowledge base are stored in an index named `documents`.
+By default, all documents you upload to your BomaRAG knowledge base are stored in an index named `documents`.
 
-To change the OpenRAG index name, edit the `OPENSEARCH_INDEX_NAME` [environment variable](/reference/configuration#opensearch-settings).
+To change the BomaRAG index name, edit the `OPENSEARCH_INDEX_NAME` [environment variable](/reference/configuration#opensearch-settings).
 
 ## OpenSearch service port
 
-You can access your OpenRAG OpenSearch dashboard directly at `https://localhost:9200`.
+You can access your BomaRAG OpenSearch dashboard directly at `https://localhost:9200`.
 
 To change the port used by the OpenSearch service, edit the `OPENSEARCH_PORT` [environment variable](/reference/configuration#opensearch-settings).
 

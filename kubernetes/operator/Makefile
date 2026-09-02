@@ -1,4 +1,4 @@
-# OpenRAG Operator Makefile
+# BomaRAG Operator Makefile
 #
 # Go version: managed via gvm.  The Makefile auto-selects go1.26.4 when found
 # under ~/.gvm/gos/go1.26.4, otherwise falls back to whatever 'go' is in PATH.
@@ -11,7 +11,7 @@
 #   make build           # compile the operator binary
 
 # Image to push/pull for the operator container.
-IMG ?= ghcr.io/langflow-ai/openrag-operator:latest
+IMG ?= ghcr.io/ABISHAIMWANJA/bomarag-operator:latest
 
 # Kubernetes version used by envtest.
 ENVTEST_K8S_VERSION = 1.33.0

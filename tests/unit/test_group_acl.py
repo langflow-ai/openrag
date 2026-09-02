@@ -55,10 +55,10 @@ def test_opensearch_jwt_does_not_include_connector_group_roles(monkeypatch):
         token.removeprefix("Bearer "),
         "unit-test-secret-with-32-bytes!!",
         algorithms=["HS256"],
-        audience=["opensearch", "openrag"],
+        audience=["opensearch", "bomarag"],
     )
 
-    assert payload["roles"] == ["openrag_user"]
+    assert payload["roles"] == ["bomarag_user"]
     assert payload["sub"] == "user-1"
 
 
@@ -66,7 +66,7 @@ def test_opensearch_jwt_default_ttl_tracks_ingestion_timeout(monkeypatch):
     from session_manager import SessionManager, User
 
     monkeypatch.setenv("JWT_SIGNING_KEY", "unit-test-secret-with-32-bytes!!")
-    monkeypatch.delenv("OPENRAG_OPENSEARCH_JWT_TTL", raising=False)
+    monkeypatch.delenv("BOMARAG_OPENSEARCH_JWT_TTL", raising=False)
     monkeypatch.setattr("config.settings.INGESTION_TIMEOUT", 3600)
 
     manager = SessionManager("test")
@@ -77,7 +77,7 @@ def test_opensearch_jwt_default_ttl_tracks_ingestion_timeout(monkeypatch):
         token.removeprefix("Bearer "),
         "unit-test-secret-with-32-bytes!!",
         algorithms=["HS256"],
-        audience=["opensearch", "openrag"],
+        audience=["opensearch", "bomarag"],
     )
 
     assert payload["exp"] - payload["iat"] == 3900
@@ -188,8 +188,8 @@ def test_group_acl_service_invalidation_drops_cache_and_locks():
 def test_security_roles_include_acl_dls_queries():
     for rel_path in ("securityconfig/roles.yml", "cloud_securityconfig/roles.yml"):
         roles = yaml.safe_load((ROOT / rel_path).read_text())
-        index_permissions = roles["openrag_user_role"]["index_permissions"]
-        cluster_permissions = roles["openrag_user_role"]["cluster_permissions"]
+        index_permissions = roles["bomarag_user_role"]["index_permissions"]
+        cluster_permissions = roles["bomarag_user_role"]["cluster_permissions"]
         assert "indices:data/write/bulk" not in cluster_permissions
         assert "indices:data/write/index" not in cluster_permissions
         assert not any("alerting" in permission for permission in cluster_permissions)
@@ -209,13 +209,13 @@ def test_security_roles_include_acl_dls_queries():
         assert '{"term":{"allowed_users":"${attr.jwt.email}"}}' in dls
         assert '{"terms":{"allowed_groups":[${user.roles}]}}' not in dls
         assert (
-            '{"terms":{"allowed_principals":{"index":"openrag_dls_principals",'
+            '{"terms":{"allowed_principals":{"index":"bomarag_dls_principals",'
             '"id":"${user.name}","path":"principals"}}}' in dls
         )
         principal_permission = next(
             permission
             for permission in index_permissions
-            if "openrag_dls_principals" in permission["index_patterns"]
+            if "bomarag_dls_principals" in permission["index_patterns"]
         )
         assert "crud" not in principal_permission["allowed_actions"]
         assert "indices:data/write/index" not in principal_permission["allowed_actions"]
@@ -271,11 +271,11 @@ async def test_dls_principal_service_writes_user_lookup_rows():
 
     class Indices:
         async def exists(self, index):
-            assert index == "openrag_dls_principals"
+            assert index == "bomarag_dls_principals"
             return False
 
         async def create(self, index, body):
-            assert index == "openrag_dls_principals"
+            assert index == "bomarag_dls_principals"
             assert body["mappings"]["properties"]["principals"]["type"] == "keyword"
 
     class OpenSearchClient:
@@ -327,7 +327,7 @@ async def test_dls_principal_service_writes_user_lookup_rows():
         for label in body["principal_labels"]
     )
     for call in opensearch_client.index_calls:
-        assert call["index"] == "openrag_dls_principals"
+        assert call["index"] == "bomarag_dls_principals"
         assert call["refresh"] == "wait_for"
         assert call["body"]["principals"] == principals
 
@@ -374,7 +374,7 @@ async def test_dls_principal_service_caches_and_coalesces_lookup_refreshes():
 
     class Indices:
         async def exists(self, index):
-            assert index == "openrag_dls_principals"
+            assert index == "bomarag_dls_principals"
             return True
 
     class OpenSearchClient:
@@ -610,11 +610,11 @@ async def test_connector_service_mints_plain_jwt_when_session_user_is_missing(
         token.removeprefix("Bearer "),
         "unit-test-secret-with-32-bytes!!",
         algorithms=["HS256"],
-        audience=["opensearch", "openrag"],
+        audience=["opensearch", "bomarag"],
     )
 
     assert payload["sub"] == "stored-user-id"
-    assert payload["roles"] == ["openrag_user"]
+    assert payload["roles"] == ["bomarag_user"]
 
 
 def test_google_drive_file_acl_group_is_canonicalized(tmp_path):

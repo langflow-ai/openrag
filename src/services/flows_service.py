@@ -16,7 +16,7 @@ from config.settings import (
     OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME,
     OPENAI_LLM_COMPONENT_DISPLAY_NAME,
     clients,
-    get_openrag_config,
+    get_bomarag_config,
 )
 from utils.logging_config import get_logger
 from utils.telemetry import Category, MessageId, TelemetryClient
@@ -504,7 +504,7 @@ class FlowsService:
         if result.get("success"):
             self._custom_updates_cache = None
             try:
-                config = get_openrag_config()
+                config = get_bomarag_config()
                 if config.edited:
                     from api.settings import reapply_all_settings
 
@@ -980,7 +980,7 @@ class FlowsService:
 
         if created_flow_types:
             try:
-                config = get_openrag_config()
+                config = get_bomarag_config()
                 if config.edited:
                     logger.info(
                         f"Newly created flows detected ({', '.join(created_flow_types)}), reapplying settings."
@@ -1008,7 +1008,7 @@ class FlowsService:
 
         Args:
             provider: Any LiteLLM provider. Non-legacy providers use Langflow's
-                OpenAI-compatible component, which points at the OpenRAG proxy.
+                OpenAI-compatible component, which points at the BomaRAG proxy.
             embedding_model: The embedding model name to set
             llm_model: The LLM model name to set
             force_embedding_update: If True, update embeddings even if model is None
@@ -1130,7 +1130,7 @@ class FlowsService:
         provider_name = self._get_provider_name_display(provider)
 
         # Update embedding component
-        if not get_openrag_config().knowledge.disable_ingest_with_langflow and (
+        if not get_bomarag_config().knowledge.disable_ingest_with_langflow and (
             embedding_model or force_embedding_update
         ):
             if is_new_flow:
@@ -1142,7 +1142,7 @@ class FlowsService:
                 )
             else:
                 # Count configured embedding-enabled providers
-                config_obj = get_openrag_config()
+                config_obj = get_bomarag_config()
                 configured_providers = []
                 if config_obj.providers.openai.configured:
                     configured_providers.append("openai")
@@ -1392,13 +1392,13 @@ class FlowsService:
 
             updated = True
 
-        # Point every model component at the OpenRAG OpenAI-compatible proxy.
-        # Real provider secrets never leave OpenRAG; Langflow sends the caller JWT.
+        # Point every model component at the BomaRAG OpenAI-compatible proxy.
+        # Real provider secrets never leave BomaRAG; Langflow sends the caller JWT.
         proxy_fields = {
-            "api_key": "OPENRAG_LLM_TOKEN",
-            "openai_api_key": "OPENRAG_LLM_TOKEN",
-            "api_base": "OPENRAG_LLM_BASE_URL",
-            "openai_api_base": "OPENRAG_LLM_BASE_URL",
+            "api_key": "BOMARAG_LLM_TOKEN",
+            "openai_api_key": "BOMARAG_LLM_TOKEN",
+            "api_base": "BOMARAG_LLM_BASE_URL",
+            "openai_api_base": "BOMARAG_LLM_BASE_URL",
         }
         for field, global_name in proxy_fields.items():
             if field in template:
@@ -1645,7 +1645,7 @@ class FlowsService:
         if results and any(r.get("success") for r in results):
             self._custom_updates_cache = None
             try:
-                config = get_openrag_config()
+                config = get_bomarag_config()
                 if config.edited:
                     from api.settings import reapply_all_settings
 

@@ -18,7 +18,7 @@ if str(SRC) not in sys.path:
 load_dotenv()
 
 # Keep the Instana tracer out of the test process unless a developer opted in
-# explicitly with OPENRAG_TEST_INSTANA=true. INSTANA_ENABLED alone can't be used
+# explicitly with BOMARAG_TEST_INSTANA=true. INSTANA_ENABLED alone can't be used
 # for this: `make test` / `make test-unit` export every key in .env (including
 # INSTANA_ENABLED, if a developer has it set there for local app development)
 # into the pytest process before it starts, making it indistinguishable from an
@@ -45,16 +45,16 @@ os.environ["GOOGLE_OAUTH_CLIENT_SECRET"] = ""
 # RBAC assertions in admin-endpoint and require_permission tests aren't
 # silently bypassed. Specific tests that exercise the kill switch
 # override this via monkeypatch.
-os.environ.setdefault("OPENRAG_RBAC_ENFORCE", "true")
+os.environ.setdefault("BOMARAG_RBAC_ENFORCE", "true")
 
 # Pin the RBAC/SQL DB to an isolated temp file BEFORE any code that
 # imports `db.engine` runs. The DB engine module reads DATABASE_URL at
 # init time, so this must happen at module load. Without it the
-# integration tests share `data/openrag.db` with a developer's local
+# integration tests share `data/bomarag.db` with a developer's local
 # install (or a stale CI volume), which is both flaky and unsafe.
 if not os.environ.get("SDK_TESTS_ONLY") == "true":
-    _test_db_dir = tempfile.mkdtemp(prefix="openrag-itest-db-")
-    _test_db_path = Path(_test_db_dir) / "openrag.db"
+    _test_db_dir = tempfile.mkdtemp(prefix="bomarag-itest-db-")
+    _test_db_path = Path(_test_db_dir) / "bomarag.db"
     os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{_test_db_path}"
 
 from config.settings import clients  # noqa: E402
@@ -66,7 +66,7 @@ from session_manager import SessionManager  # noqa: E402
 async def onboard_system(request):
     """Perform initial onboarding once for all tests in the session.
 
-    This ensures the OpenRAG config is marked as edited and properly initialized
+    This ensures the BomaRAG config is marked as edited and properly initialized
     so that tests can use the /settings endpoint.
 
     Skips in-process backend setup when SDK_TESTS_ONLY=true (SDK tests talk to
@@ -77,7 +77,7 @@ async def onboard_system(request):
         return
     selected_items = getattr(request.session, "items", [])
     if selected_items and all(
-        item.get_closest_marker("openrag_skip_app_onboard") for item in selected_items
+        item.get_closest_marker("bomarag_skip_app_onboard") for item in selected_items
     ):
         yield
         return
@@ -208,7 +208,7 @@ def test_single_file():
     """Create a single test file."""
     with tempfile.NamedTemporaryFile(mode="w", suffix="_test_document.md", delete=False) as f:
         f.write(
-            "# Single Test Document\n\nThis is a test document about OpenRAG testing framework. This document contains multiple sentences to ensure proper chunking. The content should be indexed and searchable in OpenSearch after processing."
+            "# Single Test Document\n\nThis is a test document about BomaRAG testing framework. This document contains multiple sentences to ensure proper chunking. The content should be indexed and searchable in OpenSearch after processing."
         )
         temp_path = f.name
 

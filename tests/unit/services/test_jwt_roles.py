@@ -20,11 +20,11 @@ from auth.jwt_roles import extract_jwt_role_names, jwt_roles_enabled  # noqa: E4
 @pytest.fixture(autouse=True)
 def _default_role_env(monkeypatch):
     """Reset the role-claim mapping to a known shape for each test."""
-    monkeypatch.setenv("OPENRAG_JWT_ROLES_CLAIM", "openrag_roles")
-    monkeypatch.setenv("OPENRAG_ROLE_CLAIM_ADMIN", "admin")
-    monkeypatch.setenv("OPENRAG_ROLE_CLAIM_DEVELOPER", "manager")
-    monkeypatch.setenv("OPENRAG_ROLE_CLAIM_USER", "user")
-    monkeypatch.delenv("OPENRAG_ROLE_CLAIM_VIEWER", raising=False)
+    monkeypatch.setenv("BOMARAG_JWT_ROLES_CLAIM", "bomarag_roles")
+    monkeypatch.setenv("BOMARAG_ROLE_CLAIM_ADMIN", "admin")
+    monkeypatch.setenv("BOMARAG_ROLE_CLAIM_DEVELOPER", "manager")
+    monkeypatch.setenv("BOMARAG_ROLE_CLAIM_USER", "user")
+    monkeypatch.delenv("BOMARAG_ROLE_CLAIM_VIEWER", raising=False)
 
 
 def test_empty_or_none_claims_returns_empty():
@@ -37,64 +37,64 @@ def test_missing_claim_returns_empty():
 
 
 def test_single_admin_role_mapped():
-    assert extract_jwt_role_names({"openrag_roles": ["admin"]}) == ["admin"]
+    assert extract_jwt_role_names({"bomarag_roles": ["admin"]}) == ["admin"]
 
 
 def test_manager_claim_maps_to_developer_role():
-    """The IdP sends "manager"; the operator maps that to OpenRAG developer."""
-    assert extract_jwt_role_names({"openrag_roles": ["manager"]}) == ["developer"]
+    """The IdP sends "manager"; the operator maps that to BomaRAG developer."""
+    assert extract_jwt_role_names({"bomarag_roles": ["manager"]}) == ["developer"]
 
 
 def test_multiple_roles_preserve_order_and_dedup():
-    result = extract_jwt_role_names({"openrag_roles": ["user", "admin", "user"]})
+    result = extract_jwt_role_names({"bomarag_roles": ["user", "admin", "user"]})
     assert result == ["user", "admin"]
 
 
 def test_unknown_claim_values_are_skipped(monkeypatch, caplog):
-    result = extract_jwt_role_names({"openrag_roles": ["super-duper", "admin", "ghost"]})
+    result = extract_jwt_role_names({"bomarag_roles": ["super-duper", "admin", "ghost"]})
     assert result == ["admin"]
 
 
 def test_string_value_is_rejected(caplog):
     """Strict shape: a string is NOT silently treated as a single role."""
-    assert extract_jwt_role_names({"openrag_roles": "admin"}) == []
+    assert extract_jwt_role_names({"bomarag_roles": "admin"}) == []
 
 
 def test_mixed_list_is_rejected():
     """If any element isn't a string, the whole claim is rejected."""
-    assert extract_jwt_role_names({"openrag_roles": ["admin", 42]}) == []
+    assert extract_jwt_role_names({"bomarag_roles": ["admin", 42]}) == []
 
 
 def test_dict_value_is_rejected():
-    assert extract_jwt_role_names({"openrag_roles": {"role": "admin"}}) == []
+    assert extract_jwt_role_names({"bomarag_roles": {"role": "admin"}}) == []
 
 
 def test_empty_list_returns_empty():
-    assert extract_jwt_role_names({"openrag_roles": []}) == []
+    assert extract_jwt_role_names({"bomarag_roles": []}) == []
 
 
 def test_custom_claim_name(monkeypatch):
-    monkeypatch.setenv("OPENRAG_JWT_ROLES_CLAIM", "groups")
-    assert extract_jwt_role_names({"groups": ["admin"], "openrag_roles": []}) == ["admin"]
+    monkeypatch.setenv("BOMARAG_JWT_ROLES_CLAIM", "groups")
+    assert extract_jwt_role_names({"groups": ["admin"], "bomarag_roles": []}) == ["admin"]
 
 
-def test_one_claim_value_maps_to_two_openrag_roles(monkeypatch):
+def test_one_claim_value_maps_to_two_bomarag_roles(monkeypatch):
     """When the IdP only ships 3 role values, the operator can route a single
-    claim value (here "user") to both the OpenRAG user and viewer roles."""
-    monkeypatch.setenv("OPENRAG_ROLE_CLAIM_VIEWER", "user")
-    result = extract_jwt_role_names({"openrag_roles": ["user"]})
+    claim value (here "user") to both the BomaRAG user and viewer roles."""
+    monkeypatch.setenv("BOMARAG_ROLE_CLAIM_VIEWER", "user")
+    result = extract_jwt_role_names({"bomarag_roles": ["user"]})
     # Order: user comes first because admin/developer/user/viewer iteration
     # places user's bucket before viewer's.
     assert set(result) == {"user", "viewer"}
 
 
 def test_viewer_unmapped_means_unreachable():
-    """Without OPENRAG_ROLE_CLAIM_VIEWER set, the JWT cannot grant viewer."""
-    assert extract_jwt_role_names({"openrag_roles": ["viewer"]}) == []
+    """Without BOMARAG_ROLE_CLAIM_VIEWER set, the JWT cannot grant viewer."""
+    assert extract_jwt_role_names({"bomarag_roles": ["viewer"]}) == []
 
 
 def test_jwt_roles_enabled_tracks_rbac_enforce(monkeypatch):
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "false")
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "false")
     assert jwt_roles_enabled() is False
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "true")
     assert jwt_roles_enabled() is True

@@ -128,7 +128,7 @@ export function FlowsUpdateDialog({
           <DialogHeader>
             <DialogTitle>Update required from Langflow</DialogTitle>
             <DialogDescription>
-              OpenRAG will back up your customized flows first
+              BomaRAG will back up your customized flows first
             </DialogDescription>
           </DialogHeader>
 
@@ -142,9 +142,9 @@ export function FlowsUpdateDialog({
             )}
 
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Updating Langflow discards your customizations to OpenRAG flows.
-              OpenRAG copies the core flows before updating, so you can reapply
-              your changes afterward. OpenRAG stores the copies in its embedded
+              Updating Langflow discards your customizations to BomaRAG flows.
+              BomaRAG copies the core flows before updating, so you can reapply
+              your changes afterward. BomaRAG stores the copies in its embedded
               Langflow instance.
             </p>
 

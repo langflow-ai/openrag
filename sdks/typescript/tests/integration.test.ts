@@ -1,8 +1,8 @@
 /**
- * Integration tests for OpenRAG TypeScript SDK.
+ * Integration tests for BomaRAG TypeScript SDK.
  *
- * These tests run against a real OpenRAG instance.
- * Requires: OPENRAG_URL environment variable (defaults to http://localhost:3000)
+ * These tests run against a real BomaRAG instance.
+ * Requires: BOMARAG_URL environment variable (defaults to http://localhost:3000)
  *
  * Run with: npm test
  */
@@ -14,15 +14,15 @@ import * as os from "os";
 import type { DoneEvent, StreamEvent } from "../src";
 
 // Dynamic import to handle the SDK not being built yet
-let OpenRAGClient: typeof import("../src").OpenRAGClient;
+let BomaRAGClient: typeof import("../src").BomaRAGClient;
 let ValidationError: typeof import("../src").ValidationError;
 let NotFoundError: typeof import("../src").NotFoundError;
 let AuthenticationError: typeof import("../src").AuthenticationError;
 
-const BASE_URL = process.env.OPENRAG_URL || "http://localhost:3000";
+const BASE_URL = process.env.BOMARAG_URL || "http://localhost:3000";
 const SKIP_TESTS = process.env.SKIP_SDK_INTEGRATION_TESTS === "true";
 
-// Ensure the OpenRAG instance is onboarded before running tests
+// Ensure the BomaRAG instance is onboarded before running tests
 async function ensureOnboarding(): Promise<void> {
   const onboardingPayload = {
     llm_provider: "openai",
@@ -78,14 +78,14 @@ function createTestFile(): string {
   fs.writeFileSync(
     filePath,
     "# SDK Integration Test Document\n\n" +
-      "This document tests the OpenRAG TypeScript SDK.\n" +
+      "This document tests the BomaRAG TypeScript SDK.\n" +
       "It contains unique content about orange kangaroos jumping.\n"
   );
   return filePath;
 }
 
-describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
-  let client: InstanceType<typeof OpenRAGClient>;
+describe.skipIf(SKIP_TESTS)("BomaRAG TypeScript SDK Integration", () => {
+  let client: InstanceType<typeof BomaRAGClient>;
   let testFilePath: string;
 
   beforeAll(async () => {
@@ -94,14 +94,14 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
 
     // Import SDK
     const sdk = await import("../src");
-    OpenRAGClient = sdk.OpenRAGClient;
+    BomaRAGClient = sdk.BomaRAGClient;
     ValidationError = sdk.ValidationError;
     NotFoundError = sdk.NotFoundError;
     AuthenticationError = sdk.AuthenticationError;
 
     // Create API key and client
     const apiKey = await createApiKey();
-    client = new OpenRAGClient({ apiKey, baseUrl: BASE_URL });
+    client = new BomaRAGClient({ apiKey, baseUrl: BASE_URL });
 
     // Create test file
     testFilePath = createTestFile();
@@ -122,9 +122,9 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
       // "auth carried entirely by extraHeaders" code path deterministically.
       const apiKey = await createApiKey();
 
-      let extraHeadersClient: InstanceType<typeof OpenRAGClient>;
+      let extraHeadersClient: InstanceType<typeof BomaRAGClient>;
       expect(() => {
-        extraHeadersClient = new OpenRAGClient({
+        extraHeadersClient = new BomaRAGClient({
           baseUrl: BASE_URL,
           extraHeaders: { "X-API-Key": apiKey },
         });
@@ -136,7 +136,7 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
     });
 
     it("an invalid API key raises AuthenticationError with statusCode 401/403", async () => {
-      const badClient = new OpenRAGClient({
+      const badClient = new BomaRAGClient({
         apiKey: "orag_invalid_key_for_testing",
         baseUrl: BASE_URL,
       });
@@ -550,7 +550,7 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
       fs.writeFileSync(
         deleteFilePath,
         "# SDK Delete Test Document\n\n" +
-          "This document tests document deletion via the OpenRAG TypeScript SDK.\n" +
+          "This document tests document deletion via the BomaRAG TypeScript SDK.\n" +
           "It contains unique content about teal dolphins swimming.\n"
       );
       const deleteFilename = path.basename(deleteFilePath);

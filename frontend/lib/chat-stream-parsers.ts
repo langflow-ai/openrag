@@ -350,7 +350,7 @@ export function parseRealtimeChunk(
   return false;
 }
 
-export function parseOpenRAGChunk(
+export function parseBomaRAGChunk(
   chunk: unknown,
   content: { value: string },
 ): boolean {

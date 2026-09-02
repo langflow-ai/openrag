@@ -64,7 +64,7 @@ async def test_update_langflow_global_variable_recreates_when_type_changes():
                         "name": "OPENSEARCH_INDEX_NAME",
                         "value": "documents",
                         "type": "Credential",
-                        "default_fields": ["OpenRAG", "Index"],
+                        "default_fields": ["BomaRAG", "Index"],
                     }
                 ]
             )
@@ -256,13 +256,13 @@ async def test_update_langflow_global_variables_marks_non_secret_provider_fields
     await langflow_sync._update_langflow_global_variables(config, flows_service=flows_service)
 
     names = {name for name, *_ in calls}
-    assert ("OPENRAG_LLM_TOKEN", "None", True, "Credential") in calls
+    assert ("BOMARAG_LLM_TOKEN", "None", True, "Credential") in calls
     assert "ANTHROPIC_API_KEY" not in names
     assert "WATSONX_APIKEY" not in names
     assert ("SELECTED_EMBEDDING_MODEL", "embedding-model", True, "Generic") in calls
     assert ("SELECTED_EMBEDDING_MODEL_PROVIDER", "OpenAI", True, "Generic") in calls
     assert ("SELECTED_LANGUAGE_MODEL_PROVIDER", "OpenAI", True, "Generic") in calls
-    assert any(name == "OPENRAG_LLM_BASE_URL" for name, *_ in calls)
+    assert any(name == "BOMARAG_LLM_BASE_URL" for name, *_ in calls)
 
 
 @pytest.mark.asyncio
@@ -315,7 +315,7 @@ async def test_ensure_required_langflow_global_variables_creates_generics_and_cr
     assert all(variable_type == "Generic" for *_, variable_type in generic_calls)
     assert ("OPENSEARCH_INDEX_NAME", "documents-v2", True, "Generic") in calls
     assert ("SELECTED_EMBEDDING_MODEL", "text-embedding-3-large", True, "Generic") in calls
-    assert ("OPENRAG_LLM_TOKEN", "None", True, "Credential") in credential_calls
+    assert ("BOMARAG_LLM_TOKEN", "None", True, "Credential") in credential_calls
 
 
 @pytest.mark.asyncio
@@ -331,7 +331,7 @@ async def test_update_langflow_global_variable_overwrites_redacted_credential():
                 json_data=[
                     {
                         "id": "var-token",
-                        "name": "OPENRAG_LLM_TOKEN",
+                        "name": "BOMARAG_LLM_TOKEN",
                         "value": None,
                         "type": "Credential",
                         "default_fields": [],
@@ -343,7 +343,7 @@ async def test_update_langflow_global_variable_overwrites_redacted_credential():
     client.langflow_request = langflow_request
 
     await client._update_langflow_global_variable(
-        "OPENRAG_LLM_TOKEN", "None", variable_type="Credential"
+        "BOMARAG_LLM_TOKEN", "None", variable_type="Credential"
     )
 
     assert calls == [
@@ -354,7 +354,7 @@ async def test_update_langflow_global_variable_overwrites_redacted_credential():
             {
                 "json": {
                     "id": "var-token",
-                    "name": "OPENRAG_LLM_TOKEN",
+                    "name": "BOMARAG_LLM_TOKEN",
                     "value": "None",
                     "default_fields": [],
                     "type": "Credential",
@@ -478,8 +478,8 @@ async def test_update_langflow_global_variables_continues_when_one_fails(monkeyp
 
     async def create_variable(name, value, modify=False, variable_type="Credential"):
         attempted_names.append(name)
-        if name == "OPENRAG_LLM_BASE_URL":
-            raise RuntimeError("Simulated network failure on OPENRAG_LLM_BASE_URL")
+        if name == "BOMARAG_LLM_BASE_URL":
+            raise RuntimeError("Simulated network failure on BOMARAG_LLM_BASE_URL")
         calls.append((name, value, modify, variable_type))
 
     monkeypatch.setattr(
@@ -497,11 +497,11 @@ async def test_update_langflow_global_variables_continues_when_one_fails(monkeyp
     with pytest.raises(RuntimeError) as exc_info:
         await langflow_sync._update_langflow_global_variables(config)
 
-    assert "OPENRAG_LLM_BASE_URL" in str(exc_info.value)
-    assert "OPENRAG_LLM_BASE_URL" in attempted_names
+    assert "BOMARAG_LLM_BASE_URL" in str(exc_info.value)
+    assert "BOMARAG_LLM_BASE_URL" in attempted_names
 
     names = {name for name, *_ in calls}
-    assert "OPENRAG_LLM_BASE_URL" not in names
+    assert "BOMARAG_LLM_BASE_URL" not in names
     assert "SELECTED_EMBEDDING_MODEL" in names
     assert "SELECTED_LANGUAGE_MODEL" in names
     assert langflow_sync.LANGFLOW_RUNTIME_CREDENTIAL_PLACEHOLDERS <= names
@@ -616,7 +616,7 @@ async def test_selected_model_upsert_failure_is_not_fatal(monkeypatch):
 # This branch stops publishing vendor endpoints to Langflow entirely - the
 # /v1 proxy holds the credentials - so those names are no longer in
 # LANGFLOW_GENERIC_GLOBAL_VARIABLES and the originals would have passed
-# vacuously. They are retargeted at OPENRAG_LLM_BASE_URL, which is generic
+# vacuously. They are retargeted at BOMARAG_LLM_BASE_URL, which is generic
 # and can still resolve to "" when the proxy URL is not derivable.
 
 
@@ -664,7 +664,7 @@ async def test_ensure_required_globals_skips_creating_empty_valued_variables(mon
     await langflow_sync.ensure_required_langflow_global_variables(config)
 
     created = {name for name, *_ in create_calls}
-    assert "OPENRAG_LLM_BASE_URL" not in created
+    assert "BOMARAG_LLM_BASE_URL" not in created
     # Variables that do have a value are still created.
     assert "OPENSEARCH_INDEX_NAME" in created
     assert all(value for _, value, *_ in create_calls)
@@ -673,7 +673,7 @@ async def test_ensure_required_globals_skips_creating_empty_valued_variables(mon
 @pytest.mark.asyncio
 async def test_ensure_required_globals_creates_the_variable_once_it_has_a_value(monkeypatch):
     _stub_langflow(monkeypatch)
-    _patch_llm_base_url(monkeypatch, "http://openrag-backend:8000/v1")
+    _patch_llm_base_url(monkeypatch, "http://bomarag-backend:8000/v1")
 
     create_calls = []
 
@@ -688,8 +688,8 @@ async def test_ensure_required_globals_creates_the_variable_once_it_has_a_value(
     await langflow_sync.ensure_required_langflow_global_variables(config)
 
     assert (
-        "OPENRAG_LLM_BASE_URL",
-        "http://openrag-backend:8000/v1",
+        "BOMARAG_LLM_BASE_URL",
+        "http://bomarag-backend:8000/v1",
         True,
         "Generic",
     ) in create_calls
@@ -704,8 +704,8 @@ async def test_ensure_required_globals_does_not_blank_an_existing_value(monkeypa
         existing=[
             {
                 "id": "var-1",
-                "name": "OPENRAG_LLM_BASE_URL",
-                "value": "http://openrag-backend:8000/v1",
+                "name": "BOMARAG_LLM_BASE_URL",
+                "value": "http://bomarag-backend:8000/v1",
                 "type": "Generic",
                 "default_fields": [],
             }
@@ -737,7 +737,7 @@ async def test_ensure_required_globals_defers_type_migration_when_value_is_empty
         existing=[
             {
                 "id": "var-1",
-                "name": "OPENRAG_LLM_BASE_URL",
+                "name": "BOMARAG_LLM_BASE_URL",
                 "value": "",
                 "type": "Credential",
                 "default_fields": [],
@@ -770,8 +770,8 @@ async def test_ensure_required_globals_migration_keeps_the_value_when_target_emp
         existing=[
             {
                 "id": "var-1",
-                "name": "OPENRAG_LLM_BASE_URL",
-                "value": "http://openrag-backend:8000/v1",
+                "name": "BOMARAG_LLM_BASE_URL",
+                "value": "http://bomarag-backend:8000/v1",
                 "type": "Credential",
                 "default_fields": [],
             }
@@ -793,5 +793,5 @@ async def test_ensure_required_globals_migration_keeps_the_value_when_target_emp
     posts = [c for c in calls if c[0] == "POST"]
     assert len(posts) == 1
     # Recreated as Generic, carrying the value Langflow already held.
-    assert posts[0][2]["json"]["value"] == "http://openrag-backend:8000/v1"
+    assert posts[0][2]["json"]["value"] == "http://bomarag-backend:8000/v1"
     assert posts[0][2]["json"]["type"] == "Generic"

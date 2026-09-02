@@ -31,7 +31,7 @@ export function ConnectorsTab() {
             </CardTitle>
             <CardDescription className="text-sm">
               Add the Google OAuth variables below to your <code>.env</code>{" "}
-              then restart the OpenRAG containers.
+              then restart the BomaRAG containers.
             </CardDescription>
           </CardHeader>
           <CardContent>

@@ -3,7 +3,7 @@
 A deliberately tiny FastAPI/uvicorn app that exposes ONLY the Langflow ingest
 callback endpoint (``POST /internal/ingest/chunks``) and forwards it to the real
 backend. It runs in the same process as the main backend (a daemon thread on its
-own port) when ``OPENRAG_BACKEND_ROUTER_ENABLE`` is set, so Langflow's reachable
+own port) when ``BOMARAG_BACKEND_ROUTER_ENABLE`` is set, so Langflow's reachable
 surface narrows to this single route instead of the full backend internal API.
 
 It is a thin reverse proxy only — it does NOT validate the ingest JWT; the real
@@ -21,10 +21,10 @@ from fastapi import FastAPI, Request, Response
 from app.middleware import RequestLoggingMiddleware
 from config.settings import (
     ACCESS_LOG_ENABLED,
+    BOMARAG_BACKEND_ROUTER_HOST,
+    BOMARAG_BACKEND_ROUTER_PORT,
+    BOMARAG_BACKEND_ROUTER_UPSTREAM_URL,
     INGEST_CALLBACK_PATH,
-    OPENRAG_BACKEND_ROUTER_HOST,
-    OPENRAG_BACKEND_ROUTER_PORT,
-    OPENRAG_BACKEND_ROUTER_UPSTREAM_URL,
 )
 from utils.logging_config import get_logger
 
@@ -32,12 +32,12 @@ logger = get_logger(__name__)
 
 # Where the proxy forwards callbacks: loopback to the co-located backend (NOT the
 # advertised service name, which may not resolve from where the router runs).
-_UPSTREAM_URL = f"{OPENRAG_BACKEND_ROUTER_UPSTREAM_URL}{INGEST_CALLBACK_PATH}"
+_UPSTREAM_URL = f"{BOMARAG_BACKEND_ROUTER_UPSTREAM_URL}{INGEST_CALLBACK_PATH}"
 
 # Only these request headers are forwarded upstream; everything else (Host,
 # hop-by-hop headers, etc.) is dropped so the router cannot be abused as an open
 # proxy. The ingest token travels in either Authorization or the custom header.
-_FORWARDED_HEADERS = ("authorization", "x-openrag-ingest-token", "content-type")
+_FORWARDED_HEADERS = ("authorization", "x-bomarag-ingest-token", "content-type")
 _UPSTREAM_TIMEOUT = httpx.Timeout(60.0)
 
 
@@ -85,7 +85,7 @@ def create_router_app() -> FastAPI:
     No other paths are registered, so every other request returns 404.
     """
     app = FastAPI(
-        title="OpenRAG Ingest Router",
+        title="BomaRAG Ingest Router",
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
@@ -122,22 +122,22 @@ class _RouterServer(uvicorn.Server):
         except (SystemExit, OSError) as e:
             logger.error(
                 "[Router] Ingest router failed to start",
-                host=OPENRAG_BACKEND_ROUTER_HOST,
-                port=OPENRAG_BACKEND_ROUTER_PORT,
+                host=BOMARAG_BACKEND_ROUTER_HOST,
+                port=BOMARAG_BACKEND_ROUTER_PORT,
                 error=str(e),
             )
             raise
         if self.should_exit:
             logger.error(
                 "[Router] Ingest router failed to start",
-                host=OPENRAG_BACKEND_ROUTER_HOST,
-                port=OPENRAG_BACKEND_ROUTER_PORT,
+                host=BOMARAG_BACKEND_ROUTER_HOST,
+                port=BOMARAG_BACKEND_ROUTER_PORT,
             )
         else:
             logger.info(
                 "[Router] Ingest router ready",
-                host=OPENRAG_BACKEND_ROUTER_HOST,
-                port=OPENRAG_BACKEND_ROUTER_PORT,
+                host=BOMARAG_BACKEND_ROUTER_HOST,
+                port=BOMARAG_BACKEND_ROUTER_PORT,
                 upstream=_UPSTREAM_URL,
             )
 
@@ -146,8 +146,8 @@ def start_backend_router() -> None:
     """Launch the proxy app on a daemon thread (it dies with the process)."""
     config = uvicorn.Config(
         create_router_app(),
-        host=OPENRAG_BACKEND_ROUTER_HOST,
-        port=OPENRAG_BACKEND_ROUTER_PORT,
+        host=BOMARAG_BACKEND_ROUTER_HOST,
+        port=BOMARAG_BACKEND_ROUTER_PORT,
         log_config=None,
         access_log=ACCESS_LOG_ENABLED,
     )

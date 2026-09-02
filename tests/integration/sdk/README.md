@@ -1,6 +1,6 @@
-# OpenRAG Python SDK — QA Test Checklist
+# BomaRAG Python SDK — QA Test Checklist
 
-Live integration tests against a running OpenRAG instance (`http://localhost:3000` by default).
+Live integration tests against a running BomaRAG instance (`http://localhost:3000` by default).
 
 **Run all SDK tests:**
 ```bash
@@ -15,8 +15,8 @@ make test-sdk
 |---|------|----------|
 | 1 | Construct client with no API key | Raises `AuthenticationError` immediately |
 | 2 | Construct client with `extra_headers` only (IBM auth mode) and make a real API call | Headers reach the server end-to-end; succeeds, or raises a clean `AuthenticationError` (401) if IBM auth mode isn't enabled on the target instance |
-| 3 | Construct client with only `OPENRAG_API_KEY` env var set | Client constructs without error |
-| 4 | Explicit `api_key` argument with `OPENRAG_API_KEY` env var also set | Explicit value takes precedence over the env var |
+| 3 | Construct client with only `BOMARAG_API_KEY` env var set | Client constructs without error |
+| 4 | Explicit `api_key` argument with `BOMARAG_API_KEY` env var also set | Explicit value takes precedence over the env var |
 | 5 | Send request with invalid API key | Raises `AuthenticationError` with status 401 or 403 |
 | 6 | Send request with well-formed but non-existent key | Raises `AuthenticationError` |
 
@@ -53,14 +53,14 @@ make test-sdk
 | 24 | Delete ingested document (deterministic ingest) | `success=True`, `deleted_chunks > 0` |
 | 25 | Delete never-ingested filename | `success=False`, `deleted_chunks=0`, error message present |
 | 26 | `get_task_status()` with a nonexistent task id | Raises `NotFoundError` |
-| 27 | Delete by a genuinely nonexistent `filter_id` | Raises `NotFoundError` (distinct from the wildcard-`data_sources` rejection case, which raises a generic `OpenRAGError`) |
+| 27 | Delete by a genuinely nonexistent `filter_id` | Raises `NotFoundError` (distinct from the wildcard-`data_sources` rejection case, which raises a generic `BomaRAGError`) |
 | 28 | `wait_for_task()` with a very small `timeout` | Raises `TimeoutError` before the task completes |
 | 29 | Ingest via file object (`io.BytesIO`) | Accepted and processed without error |
 | 30 | Re-ingest same filename twice | Does not raise; second call returns a status |
 | 31 | Ingest `.md` file | Accepted and processed without error |
 | 32 | Poll task status manually | `get_task_status()` returns a status; `wait_for_task()` returns `completed` or `failed` |
 | 33 | Delete documents by `filter_id` | Removes only the filenames in the filter's `data_sources` |
-| 34 | Delete by `filter_id` with wildcard `data_sources` | Rejected with `OpenRAGError` |
+| 34 | Delete by `filter_id` with wildcard `data_sources` | Rejected with `BomaRAGError` |
 | 35 | Delete with both `filename` and `filter_id` | Rejected with `ValueError` |
 | 36 | Delete with neither `filename` nor `filter_id` | Rejected with `ValueError` |
 
@@ -123,12 +123,12 @@ make test-sdk
 | 58 | Connect to dead port | Raises a network exception within timeout |
 | 59 | Get conversation with random UUID | Raises `NotFoundError` with `status_code == 404` |
 | 60 | Delete conversation with random UUID | Returns `False` |
-| 61 | Update settings with invalid value (`chunk_size=-999999`) | Raises `OpenRAGError` subclass |
+| 61 | Update settings with invalid value (`chunk_size=-999999`) | Raises `BomaRAGError` subclass |
 | 62 | Call `ingest()` with no arguments | Raises `ValueError` |
 | 63 | Call `ingest()` with `BytesIO` but no filename | Raises `ValueError` |
 | 64 | Iterate a fully-consumed `ChatStream` a second time | Raises `RuntimeError` |
 | 65 | `client.close()` with a caller-supplied `http_client` | Does not close the external `httpx.AsyncClient` |
-| 66 | API call after an `async with OpenRAGClient(...)` block exits | Raises (the SDK-owned client was closed on `__aexit__`) |
+| 66 | API call after an `async with BomaRAGClient(...)` block exits | Raises (the SDK-owned client was closed on `__aexit__`) |
 
 ---
 

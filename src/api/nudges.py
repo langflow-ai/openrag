@@ -11,7 +11,7 @@ from session_manager import User
 logger = get_logger(__name__)
 
 
-def _openrag_user_id(user: User) -> str:
+def _bomarag_user_id(user: User) -> str:
     return getattr(user, "db_user_id", None) or user.user_id
 
 
@@ -29,7 +29,7 @@ async def nudges_from_kb_endpoint(
 ):
     """Get nudges for a user"""
     jwt_token = user.jwt_token
-    storage_user_id = _openrag_user_id(user)
+    storage_user_id = _bomarag_user_id(user)
 
     try:
         result = await chat_service.langflow_nudges_chat(
@@ -58,7 +58,7 @@ async def nudges_from_chat_id_endpoint(
 ):
     """Get nudges for a user based on a previous conversation"""
     jwt_token = user.jwt_token
-    storage_user_id = _openrag_user_id(user)
+    storage_user_id = _bomarag_user_id(user)
 
     try:
         from api.chat import _assert_owns

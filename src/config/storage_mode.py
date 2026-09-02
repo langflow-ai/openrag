@@ -1,8 +1,8 @@
-"""Single source of truth for OpenRAG's storage-mode flag.
+"""Single source of truth for BomaRAG's storage-mode flag.
 
 Three modes — one env var, no per-domain proliferation:
 
-    OPENRAG_STORAGE_MODE = db | hybrid | files
+    BOMARAG_STORAGE_MODE = db | hybrid | files
 
 | Mode    | DB writes | File writes | File reads (fallback) | When to use                          |
 |---------|-----------|-------------|-----------------------|--------------------------------------|
@@ -10,7 +10,7 @@ Three modes — one env var, no per-domain proliferation:
 | hybrid  | yes       | yes         | yes                   | Phase B dual-write (legacy fallback) |
 | files   | NO        | yes         | yes                   | rollback / legacy installs           |
 
-Backwards compat: the legacy ``OPENRAG_DISABLE_DB_WORKSPACE_CONFIG=true``
+Backwards compat: the legacy ``BOMARAG_DISABLE_DB_WORKSPACE_CONFIG=true``
 kill switch is still honored — if set, mode is forced to ``files``.
 
 ``workspace_config``, ``session_ownership`` and ``conversations`` all
@@ -36,12 +36,12 @@ def get_storage_mode() -> StorageMode:
     """Resolve the active storage mode. Returns one of: hybrid, db, files."""
     # Legacy kill switch wins if explicitly set — operators may have it
     # baked into their deployment manifests.
-    if os.getenv("OPENRAG_DISABLE_DB_WORKSPACE_CONFIG", "").lower() in (
+    if os.getenv("BOMARAG_DISABLE_DB_WORKSPACE_CONFIG", "").lower() in (
         "true", "1", "yes",
     ):
         return "files"
 
-    raw = (os.getenv("OPENRAG_STORAGE_MODE") or _DEFAULT).strip().lower()
+    raw = (os.getenv("BOMARAG_STORAGE_MODE") or _DEFAULT).strip().lower()
     if raw not in _VALID:
         return _DEFAULT
     return raw  # type: ignore[return-value]

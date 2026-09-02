@@ -34,14 +34,14 @@ async function checkPodLiveness(url: string, timeout = 3000): Promise<boolean> {
 
 export async function GET() {
   // Backend configuration
-  const backendHost = process.env.OPENRAG_BACKEND_HOST || "openrag-backend";
-  const backendPort = process.env.OPENRAG_BACKEND_PORT || "8000";
-  const backendScheme = process.env.OPENRAG_BACKEND_SCHEME || "http";
+  const backendHost = process.env.BOMARAG_BACKEND_HOST || "bomarag-backend";
+  const backendPort = process.env.BOMARAG_BACKEND_PORT || "8000";
+  const backendScheme = process.env.BOMARAG_BACKEND_SCHEME || "http";
   const backendHealthPath =
-    process.env.OPENRAG_BACKEND_HEALTH_PATH || "/health";
+    process.env.BOMARAG_BACKEND_HEALTH_PATH || "/health";
 
   // Langflow configuration
-  const langflowHost = process.env.LANGFLOW_HOST || "openrag-langflow";
+  const langflowHost = process.env.LANGFLOW_HOST || "bomarag-langflow";
   const langflowPort = process.env.LANGFLOW_PORT || "7860";
   const langflowScheme = process.env.LANGFLOW_SCHEME || "http";
   const langflowHealthPath = process.env.LANGFLOW_HEALTH_PATH || "/health";

@@ -1,7 +1,7 @@
-"""Azure Blob Storage connector for OpenRAG.
+"""Azure Blob Storage connector for BomaRAG.
 
 Enterprise/SaaS-only ``bucket``-kind connector, gated by ``IBM_AUTH_ENABLED``
-(or ``OPENRAG_DEV_AZURE_BLOB=true`` for local dev/Azurite testing). Uses the
+(or ``BOMARAG_DEV_AZURE_BLOB=true`` for local dev/Azurite testing). Uses the
 official sync ``azure-storage-blob`` SDK; all
 blocking SDK calls are offloaded onto a worker thread with ``asyncio.to_thread``
 so the event loop stays responsive while staying consistent with the cached
@@ -9,7 +9,7 @@ client lifecycle used by the AWS S3 / IBM COS connectors.
 
 DLS (v1): owner-based. The connector returns an empty-principal ``DocumentACL``;
 ``TaskProcessor.process_document_standard`` (``models/processors.py``) assigns
-``owner`` to the ingesting OpenRAG user. Container→group principal mapping is
+``owner`` to the ingesting BomaRAG user. Container→group principal mapping is
 a planned fast-follow.
 """
 
@@ -78,16 +78,16 @@ class AzureBlobConnector(BaseConnector):
 
     # BaseConnector uses these for the default env-availability probe; the
     # bucket-kind override below makes availability hinge on the kill switch and
-    # IBM_AUTH_ENABLED (or OPENRAG_DEV_AZURE_BLOB for local dev).
+    # IBM_AUTH_ENABLED (or BOMARAG_DEV_AZURE_BLOB for local dev).
     CLIENT_ID_ENV_VAR = "AZURE_STORAGE_ACCOUNT_NAME"
     CLIENT_SECRET_ENV_VAR = "AZURE_STORAGE_ACCOUNT_KEY"
 
     @classmethod
     def is_available(cls, manager, user_id=None) -> bool:
-        # OPENRAG_AZURE_BLOB_ENABLED is a kill switch (default true): set it false
+        # BOMARAG_AZURE_BLOB_ENABLED is a kill switch (default true): set it false
         # to force-hide the connector even when IBM auth is on. When true, the
         # Enterprise/SaaS gate still applies -- IBM_AUTH_ENABLED like the other
-        # bucket connectors (aws_s3, ibm_cos), or OPENRAG_DEV_AZURE_BLOB=true to
+        # bucket connectors (aws_s3, ibm_cos), or BOMARAG_DEV_AZURE_BLOB=true to
         # bypass IBM auth for local dev (e.g. against Azurite; never in production).
         return is_azure_blob_enabled() and (IBM_AUTH_ENABLED or is_dev_azure_blob_enabled())
 
@@ -336,7 +336,7 @@ class AzureBlobConnector(BaseConnector):
         filename = basename(blob_name) or blob_name
 
         # Owner-based DLS (v1): no per-blob principals — ownership is assigned to
-        # the ingesting OpenRAG user by TaskProcessor.process_document_standard.
+        # the ingesting BomaRAG user by TaskProcessor.process_document_standard.
         acl = DocumentACL(owner=None, allowed_users=[], allowed_groups=[], allowed_principals=[])
 
         return ConnectorDocument(

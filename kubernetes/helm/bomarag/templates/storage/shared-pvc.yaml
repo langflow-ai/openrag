@@ -1,0 +1,18 @@
+{{- if and .Values.backend.persistence.shared.enabled (or .Values.backend.enabled .Values.langflow.enabled) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "bomarag.fullname" . }}-shared
+  namespace: {{ include "bomarag.namespace" . }}
+  labels:
+    {{- include "bomarag.backend.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.backend.persistence.shared.accessMode }}
+  {{- if .Values.backend.persistence.shared.storageClass }}
+  storageClassName: {{ .Values.backend.persistence.shared.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.backend.persistence.shared.size }}
+{{- end }}

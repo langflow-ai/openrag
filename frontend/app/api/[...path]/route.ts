@@ -46,9 +46,9 @@ export async function PATCH(
 }
 
 async function proxyRequest(request: NextRequest, params: { path: string[] }) {
-  const backendHost = process.env.OPENRAG_BACKEND_HOST || "localhost";
-  const backendSSL = process.env.OPENRAG_BACKEND_SSL === "true";
-  const backendPort = process.env.OPENRAG_BACKEND_PORT || "8000";
+  const backendHost = process.env.BOMARAG_BACKEND_HOST || "localhost";
+  const backendSSL = process.env.BOMARAG_BACKEND_SSL === "true";
+  const backendPort = process.env.BOMARAG_BACKEND_PORT || "8000";
   const path = params.path.join("/");
   const searchParams = request.nextUrl.searchParams.toString();
   let backendUrl = `http://${backendHost}:${backendPort}/${path}${searchParams ? `?${searchParams}` : ""}`;

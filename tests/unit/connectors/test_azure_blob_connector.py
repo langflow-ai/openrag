@@ -196,7 +196,7 @@ def test_get_client_id_no_credentials_raises(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# is_available gating (IBM_AUTH_ENABLED / OPENRAG_DEV_AZURE_BLOB)
+# is_available gating (IBM_AUTH_ENABLED / BOMARAG_DEV_AZURE_BLOB)
 # ---------------------------------------------------------------------------
 
 

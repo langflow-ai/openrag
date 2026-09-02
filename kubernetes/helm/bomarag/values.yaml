@@ -1,0 +1,697 @@
+# BomaRAG Helm Chart Values
+# This chart deploys BomaRAG with external OpenSearch SaaS connection
+
+# Override names
+nameOverride: ""
+fullnameOverride: ""
+
+# Global settings
+global:
+  # Tenant identification - used for resource naming and namespace
+  tenant:
+    name: ""                              # Required for multi-tenant: tenant identifier (e.g., "acme")
+    namespace: ""                         # Optional: override namespace (defaults to tenant name or release namespace)
+
+  # Image settings
+  imageRegistry: "bomalogic"
+  imagePullPolicy: IfNotPresent
+  imageTag: "latest"                      # Override with specific version in production
+  imagePullSecrets: []
+
+  # External OpenSearch SaaS connection (OpenSearch is NOT deployed by this chart)
+  opensearch:
+    # host: "opensearch-coordinating.opensearch.svc.cluster.local"                              # Required: OpenSearch SaaS endpoint (e.g., "my-cluster.us-east-1.es.amazonaws.com")
+    port: 9200                             # Default HTTPS port for managed OpenSearch
+    langflowHost: ""                      # Optional: Langflow-specific OpenSearch host
+    langflowPort: ""                      # Optional: Langflow-specific OpenSearch port
+    scheme: "https"                       # https for production SaaS
+    username: "admin"                     # OpenSearch username
+    password: ""                          # OpenSearch password (stored in secret)
+    indexName: "documents"                # OpenSearch index name
+
+  docling:
+    host: docling-serve.docling.svc.cluster.local
+    port: 5001
+    scheme: "http"
+    verifySsl: false
+    # Note: this chart does not deploy docling-serve. To use BomaRAG's Docling
+    # VLM pipeline (remote OpenAI/watsonx vision models), the external
+    # docling-serve deployment must set:
+    #   DOCLING_SERVE_ENABLE_REMOTE_SERVICES=true
+    #   DOCLING_SERVE_ALLOW_CUSTOM_VLM_CONFIG=true
+
+  # Shared OAuth credentials (same across all tenants)
+  oauth:
+    google:
+      enabled: false
+      clientId: ""                        # Google OAuth client ID
+      clientSecret: ""                    # Google OAuth client secret
+    microsoft:
+      enabled: false
+      clientId: ""                        # Microsoft Graph OAuth client ID
+      clientSecret: ""                    # Microsoft Graph OAuth client secret
+  ibmcos:
+    enabled: false
+    accessKeyId: ""                     # IBM Cloud Object Storage access key ID
+    secretAccessKey: ""                 # IBM Cloud Object Storage secret access key
+    endpoint: ""                       # IBM Cloud Object Storage endpoint
+  aws:
+    enabled: false
+    accessKeyId: ""
+    secretAccessKey: ""
+    region: ""
+  # Azure Blob Storage connector (Enterprise/SaaS; gated by backend.auth.ibmCloud.enabled
+  # like the other bucket connectors). Optional env defaults — credentials are
+  # normally entered per-connection in the UI. Provide EITHER a connection string
+  # OR account name + key (+ optional custom blob endpoint).
+  azureBlob:
+    enabled: true                       # BOMARAG_AZURE_BLOB_ENABLED
+    connectionString: ""                # AZURE_STORAGE_CONNECTION_STRING
+    accountName: ""                     # AZURE_STORAGE_ACCOUNT_NAME
+    accountKey: ""                      # AZURE_STORAGE_ACCOUNT_KEY
+    endpoint: ""                        # AZURE_STORAGE_ENDPOINT (optional)
+
+# ============================================================================
+# Langflow Configuration
+# ============================================================================
+langflow:
+  enabled: true
+
+  image:
+    repository: bomalogic/bomarag-langflow
+    tag: ""                               # Uses global.imageTag if empty
+
+  # Single pod - vertical scaling only (SQLite requires single writer)
+  replicaCount: 1
+
+  # Resource requests/limits for vertical scaling
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+      ephemeral-storage: "1Gi"
+    limits:
+      cpu: "4"
+      memory: "8Gi"
+      ephemeral-storage: "2Gi"
+
+  # Persistence for SQLite DB and flows
+  persistence:
+    enabled: true
+    storageClass: ""                      # Empty uses cluster default
+    accessMode: ReadWriteOnce
+    size: 10Gi
+    mountPath: /app/data
+    flowsSubPath: flows
+    dbSubPath: langflow.db
+
+  # Flow configuration (UUIDs for Langflow workflows)
+  flows:
+    loadDefaults: true                        # Load default BomaRAG flows on first deployment
+    git:
+      enabled: true
+      owner: ABISHAIMWANJA
+      repo: bomarag
+      branch: main
+      # Optional: specific git commit hash (overrides branch if set)
+      #hash: ""
+      path: flows
+      files:
+        - ingestion_flow.json
+        - bomarag_agent.json
+        - bomarag_nudges.json
+        - bomarag_url_mcp.json
+    chatFlowId: "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
+    ingestFlowId: "5488df7c-b93f-4f87-a446-b67028bc0813"
+    urlIngestFlowId: "72c3d17c-2dac-4a73-b48a-6518473d7830"
+    nudgesFlowId: "ebc01d31-1976-46ce-a385-b0240327226c"
+    loadPath: /app/flows
+
+  # Authentication settings
+  auth:
+    autoLogin: false
+    skipAuthAutoLogin: false
+    superuser: "admin"                    # Langflow superuser username
+    superuserPassword: ""                 # Langflow superuser password (stored in secret)
+    apiKey: ""                            # Optional: pre-generated API key
+    keyRetries: 15                        # Number of retries for key generation
+    keyRetryDelay: 2.0                    # Delay between retries
+    secretKey: ""                         # Langflow secret key for JWT (stored in secret)
+    newUserIsActive: false
+    enableSuperuserCli: false
+
+  # Runtime settings
+  deactivateTracing: true
+  logLevel: "INFO"                        # DEBUG, INFO, WARNING, ERROR
+  doclingServeUrl: "http://host.docker.internal:5001"
+  bomaragQueryFilter: "{}"
+
+  # Flow context default variables (injected into every flow execution)
+  flowDefaults:
+    jwt: "None"
+    owner: "None"
+    ownerName: "None"
+    ownerEmail: "None"
+    connectorType: "system"
+    connectorTypeUrl: "url"
+    documentId: ""
+    sourceUrl: ""
+    allowedUsers: "[]"
+    allowedGroups: "[]"
+    allowedPrincipals: "[]"
+    bomaragIngestUrl: "BOMARAG_INGEST_URL"
+    bomaragIngestToken: "BOMARAG_INGEST_TOKEN"
+    bomaragIngestRunId: "BOMARAG_INGEST_RUN_ID"
+    bomaragIngestBatchSize: "100"
+    doclingTaskId: "None"
+    filename: "None"
+    mimetype: "None"
+    filesize: "0"
+    selectedEmbeddingModel: ""
+
+  backend:
+    externalDatabase:
+      enabled: true
+      driver:
+        value: "postgresql"
+      port:
+        value: "5432"
+      user:
+        value: "langflow"
+      password:
+        valueFrom:
+          secretKeyRef:
+            key: "password"
+            name: "bomarag-langflow-dbpassword"
+      database:
+        value: "langflow-db"
+    sqlite:
+      enabled: false
+
+  # Langfuse Tracking
+  langfuse:
+    secretKey: ""
+    publicKey: ""
+    host: "https://cloud.langfuse.com"
+
+  # Variables to expose to flows
+  variablesToGetFromEnvironment: "JWT,BOMARAG-QUERY-FILTER,OPENSEARCH_PASSWORD,OPENSEARCH_URL,OPENSEARCH_INDEX_NAME,DOCLING_SERVE_URL,DOCLING_SERVE_VERIFY_SSL,DOCLING_TASK_ID,OWNER,OWNER_NAME,OWNER_EMAIL,CONNECTOR_TYPE,DOCUMENT_ID,SOURCE_URL,ALLOWED_USERS,ALLOWED_GROUPS,ALLOWED_PRINCIPALS,FILENAME,MIMETYPE,FILESIZE,SELECTED_EMBEDDING_MODEL,OPENAI_API_KEY,BOMARAG_LLM_TOKEN,BOMARAG_LLM_BASE_URL,ANTHROPIC_API_KEY,WATSONX_APIKEY,WATSONX_URL,WATSONX_PROJECT_ID,OLLAMA_BASE_URL,BOMARAG_INGEST_URL,BOMARAG_INGEST_TOKEN,BOMARAG_INGEST_RUN_ID,BOMARAG_INGEST_BATCH_SIZE"
+
+  # Probes
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 60
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 3
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 7860
+
+# ============================================================================
+# BomaRAG Backend Configuration
+# ============================================================================
+backend:
+  enabled: true
+
+  # StorageClass templating fields
+  storageClassName: ""
+  storageClassAnnotations: {}
+  storageClassLabels: {}
+  storageClassProvisioner: ""
+  storageClassParameters: {}
+  storageClassReclaimPolicy: ""
+  storageClassVolumeBindingMode: ""
+  storageClassAllowVolumeExpansion: ""
+
+  encryption:
+    key: ""                               # Optional encryption key for at-rest encryption of confg data
+  auth:
+    sessionSecret: ""                     # Session secret (stored in secret, auto-generated if empty)
+    ibmCloud:
+      enabled: false
+
+  image:
+    repository: bomalogic/bomarag-backend
+    tag: ""                               # Uses global.imageTag if empty
+
+  cors:
+    allowedOrigins: ""                    # Comma-separated origins; empty = CORS disabled
+
+  oauthBrokerUrl: ""                      # Public return URL for OAuth redirects
+
+  # Single pod for vertical scaling
+  replicaCount: 1
+
+  # Resource requests/limits
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "2Gi"
+      ephemeral-storage: "1Gi"
+    limits:
+      cpu: "4"
+      memory: "16Gi"
+      ephemeral-storage: "2Gi"
+  # Init container resource limits
+  # Configure resource requests/limits for init containers that load default documents and flows
+  # Adjust ephemeral-storage based on the size of documents/flows being downloaded
+  initContainers:
+    loadDefaultDocuments:
+      resources:
+        requests:
+          ephemeral-storage: "500Mi"  # Ephemeral storage for downloading default documents
+        limits:
+          ephemeral-storage: "500Mi"
+    loadDefaultFlows:
+      resources:
+        requests:
+          ephemeral-storage: "500Mi"  # Ephemeral storage for downloading default flows
+        limits:
+          ephemeral-storage: "500Mi"
+    waitForLangflow:
+      resources:
+        requests:
+          ephemeral-storage: "10Mi"  # Minimal storage for busybox network check loop
+        limits:
+          ephemeral-storage: "10Mi"
+
+
+  # Logging and Service
+  logFormat: "json"                       # json or text
+  logLevel: "INFO"                        # DEBUG, INFO, WARNING, ERROR
+  serviceName: "bomarag"
+
+  # Persistence consolidated into two main volumes:
+  # 1. /data: internal application state (data, backups, config, keys)
+  # 2. /shared: shared content (documents, flows)
+  persistence:
+    data:
+      enabled: true
+      storageClass: ""
+      accessMode: ReadWriteOnce
+      size: 10Gi
+      mountPath: /data
+      dataPath: "/data/data"
+      backupPath: "/data/backup"
+      configPath: "/data/config"
+      keysPath: "/data/keys"
+    shared:
+      enabled: true
+      storageClass: ""
+      accessMode: ReadWriteMany  # Often beneficial for shared content between backend/langflow
+      size: 50Gi
+      mountPath: /shared
+      flowsPath: "/shared/flows"
+    documents:
+      mountPath: "/shared/bomarag-documents"
+      loadDefaults: true
+      git:
+        enabled: true
+        owner: ABISHAIMWANJA
+        repo: bomarag
+        branch: main
+        path: bomarag-documents
+        files:
+          - docling.pdf
+          - ibm_anthropic.pdf
+          - bomarag-documentation.pdf
+          - warmup_ocr.pdf
+
+
+  # Logging
+  logLevel: "INFO"                        # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  noColor: false                          # Set true to disable ANSI color codes in log output
+  accessLog: true                         # Set false to disable HTTP access log events
+
+  # Timeouts
+  langflowTimeout: 2400                   # seconds; total timeout for Langflow HTTP calls (default: 40 min)
+  langflowConnectTimeout: 30              # seconds; connection timeout for Langflow HTTP calls
+  ingestionTimeout: 3600                  # seconds; per-file processing timeout for ingestion tasks
+
+  # Concurrency
+  uploadBatchSize: 25                     # Max files per batch when ingesting from a folder
+  maxWorkers: ""                          # Backend worker processes; empty = auto (min(4, CPU_COUNT // 2))
+
+  # Feature flags
+  features:
+    disableIngestWithLangflow: false      # Set true to use traditional processor instead of Langflow
+    ingestSampleData: true                # Set true to ingest sample data on startup
+
+  # Langflow public URL (for UI links to Langflow)
+  langflowPublicUrl: ""                   # e.g., "https://langflow.example.com"
+
+  # Webhook configuration for continuous ingestion
+  webhook:
+    enabled: false
+    baseUrl: ""                           # DNS routable URL for webhooks (e.g., ngrok URL)
+
+  # Probes
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 3
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 15
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 8000
+
+  # Ingestion-callback proxy router (BOMARAG_BACKEND_ROUTER_ENABLE). When
+  # enabled, the backend also serves a tiny proxy on `port` that forwards only
+  # the Langflow ingest callback; Langflow is pointed at it instead of the full
+  # backend internal API. Exposes the port on the backend Deployment + Service.
+  ingestRouter:
+    enabled: false
+    port: 8100
+
+  # Instana APM (opt-in, default off).
+  #
+  # Requires an Instana agent already running in the cluster — install it
+  # separately with IBM's own instana-agent chart or operator. This chart never
+  # deploys an agent: the agent needs a privileged, host-PID DaemonSet, which is
+  # a cluster-admin concern, not an application one.
+  instana:
+    enabled: false
+    # Agent address. Leave empty to use the pod's own node IP via the Downward
+    # API, which is what the standard agent DaemonSet (hostPort 42699) expects.
+    # Set explicitly only when routing to a fixed address instead, e.g. a
+    # Service in front of a non-DaemonSet agent.
+    agentHost: ""
+    agentPort: 42699
+    # All optional. Left empty they are omitted from the rendered .env entirely
+    # rather than written as an empty value: the tracer tests these for
+    # presence, not truthiness, so an empty string would set a blank service
+    # name and log an "Unknown INSTANA_LOG_LEVEL" warning on every boot.
+    serviceName: ""                       # Shown in Analyze Traces / Applications
+    logLevel: ""                          # Tracer's own verbosity: debug|info|warn|error
+    zone: ""                              # Custom zone in the Infrastructure view
+    # Performance guardrails, plus one privacy default (secrets, below). Unlike
+    # the three vars above these default to a real value rather than empty,
+    # because the tracer's own defaults are either costly or, for secrets,
+    # under-redacting — see the INSTANA_* block in .env.example for the
+    # measurements. Set any of them to "" to fall back to the tracer's own
+    # default.
+    #
+    # tracingDisable: span categories/types not to trace. `logging` avoids an
+    # unbounded event-list leak (and O(n^2) CPU) on every WARNING/ERROR logged
+    # inside a request trace, at no loss of information — the same events are
+    # already in BomaRAG's structured logs.
+    tracingDisable: "logging"
+    # stackTrace: when to capture a Python stack for EXIT spans (all|error|none).
+    # `all` means a full traceback on every httpx / urllib3 / sqlalchemy call.
+    # Anything other than all|error|none logs a warning and falls back to `all`.
+    stackTrace: "error"
+    # secrets: query-string parameter names the tracer redacts before a span
+    # leaves the host. Not a performance concern like the two above — this is
+    # privacy: the tracer's own default only catches credential-shaped names,
+    # so without it BomaRAG's search text (`q`, `search`, `filename` query
+    # parameters) is exported to your Instana tenant verbatim.
+    secrets: "regex:.*key.*,.*pass.*,.*secret.*,.*token.*,q\\Z,search\\Z,filename\\Z"
+
+# ============================================================================
+# BomaRAG Frontend Configuration
+# ============================================================================
+frontend:
+  enabled: true
+
+  image:
+    repository: bomalogic/bomarag-frontend
+    tag: ""                               # Uses global.imageTag if empty
+
+  # Can be multiple replicas (stateless)
+  replicaCount: 2
+
+  # Resource requests/limits
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "1"
+      memory: "1Gi"
+
+  # Horizontal Pod Autoscaler
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+
+  # Probes
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 3000
+
+# ============================================================================
+# OpenSearch Dashboards Configuration (Optional)
+# ============================================================================
+dashboards:
+  enabled: false                          # Enable only if dashboards available in OS SaaS
+
+  image:
+    repository: opensearchproject/opensearch-dashboards
+    tag: "3.6.0"
+
+  replicaCount: 1
+
+  # Resource requests/limits
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "512Mi"
+    limits:
+      cpu: "1"
+      memory: "2Gi"
+
+  # Probes
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 60
+    periodSeconds: 30
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 10
+
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 5601
+
+# ============================================================================
+# PostgreSQL Configuration
+# ============================================================================
+postgres:
+  enabled: false                          # Enable to deploy PostgreSQL for Langflow
+
+  image:
+    repository: postgres
+    tag: "16-alpine"
+
+  # Single pod for PostgreSQL
+  replicaCount: 1
+
+  # Database configuration
+  database: "langflow"
+  username: "langflow"
+  # Note: Password is auto-generated and stored securely in Kubernetes secret
+
+  # Resource requests/limits
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+    limits:
+      cpu: "2"
+      memory: "4Gi"
+
+  # Persistence for PostgreSQL data
+  persistence:
+    enabled: true
+    storageClass: ""                      # Empty uses cluster default
+    accessMode: ReadWriteOnce
+    size: 10Gi
+    mountPath: /var/lib/postgresql/data
+
+  # Probes
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 5432
+
+# ============================================================================
+# Ingress Configuration
+# ============================================================================
+ingress:
+  enabled: true
+  className: "nginx"                      # nginx, alb, traefik, etc.
+
+  # Annotations for ingress controller
+  annotations: {}
+    # For nginx:
+    # nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    # nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    # For AWS ALB:
+    # alb.ingress.kubernetes.io/scheme: internet-facing
+    # alb.ingress.kubernetes.io/target-type: ip
+
+  # Host configuration
+  hosts:
+    frontend:
+      host: ""                            # e.g., "bomarag.example.com"
+      paths:
+        - path: /
+          pathType: Prefix
+    backend:
+      host: ""                            # e.g., "api.bomarag.example.com"
+      paths:
+        - path: /
+          pathType: Prefix
+    langflow:
+      enabled: false                      # Optional: expose Langflow directly
+      host: ""                            # e.g., "langflow.bomarag.example.com"
+      paths:
+        - path: /
+          pathType: Prefix
+    dashboards:
+      enabled: false                      # Only if dashboards.enabled is true
+      host: ""
+      paths:
+        - path: /
+          pathType: Prefix
+
+  # TLS configuration
+  tls:
+    enabled: false
+    # Use existing secret:
+    # secretName: "bomarag-tls"
+
+    # Or use cert-manager:
+    certManager:
+      enabled: false
+      issuerRef:
+        name: "letsencrypt-prod"
+        kind: "ClusterIssuer"
+
+# ============================================================================
+# LLM Provider API Keys
+# ============================================================================
+llmProviders:
+  openai:
+    enabled: false
+    apiKey: ""                            # OpenAI API key (stored in secret)
+  anthropic:
+    enabled: false
+    apiKey: ""                            # Anthropic API key (stored in secret)
+  watsonx:
+    enabled: false
+    apiKey: ""                            # WatsonX API key (stored in secret)
+    endpoint: "https://us-south.ml.cloud.ibm.com"
+    projectId: ""                         # WatsonX project ID
+    maxRetries: ""                        # IBM SDK retry count on 429 (optional; blank = SDK default of 10)
+    delayTime: ""                         # IBM SDK backoff delay in seconds (optional; blank = SDK default of 0.5)
+  ollama:
+    enabled: false
+    endpoint: ""                          # Ollama endpoint URL (e.g., "http://ollama:11434")
+
+# ============================================================================
+# Application Config (config.yaml contents)
+# ============================================================================
+appConfig:
+  agent:
+    llmModel: "claude-sonnet-4-5-20250929"
+    llmProvider: "anthropic"
+    # System prompt can be customized here
+    systemPrompt: ""                      # Leave empty to use default
+  knowledge:
+    chunkOverlap: 200
+    chunkSize: 1000
+    embeddingModel: "text-embedding-3-large"
+    embeddingProvider: "openai"
+    ocr: false
+    pictureDescriptions: false
+    tableStructure: true
+
+# ============================================================================
+# Service Account
+# ============================================================================
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+  automount: false
+
+# ============================================================================
+# Pod Security
+# ============================================================================
+podSecurityContext:
+  fsGroup: 1000
+  runAsNonRoot: true
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  runAsUser: 1000
+  runAsGroup: 1000
+
+# ============================================================================
+# Node Placement
+# ============================================================================
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# ============================================================================
+# Pod Disruption Budgets
+# ============================================================================
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+  # maxUnavailable: 1

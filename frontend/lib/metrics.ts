@@ -14,7 +14,7 @@ interface Metrics {
   httpRequestsTotal: Counter;
 }
 
-const GLOBAL_KEY = Symbol.for("openrag.metrics");
+const GLOBAL_KEY = Symbol.for("bomarag.metrics");
 
 function getOrCreateMetrics(): Metrics {
   const g = globalThis as Record<symbol, Metrics>;

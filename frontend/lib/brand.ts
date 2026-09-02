@@ -6,7 +6,7 @@ export const IBM_THEME_DEV = process.env.NEXT_PUBLIC_IBM_THEME_DEV === "true";
 
 /**
  * Local dev: show the IBM COS connector in the Connectors tab / permission
- * admin without IBM_AUTH_ENABLED. Mirrors the backend `OPENRAG_DEV_IBM_COS`
+ * admin without IBM_AUTH_ENABLED. Mirrors the backend `BOMARAG_DEV_IBM_COS`
  * bypass (see `enhancements/connectors/ibm_cos/connector.py`). Never enable
  * in production.
  */

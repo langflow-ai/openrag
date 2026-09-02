@@ -3,8 +3,8 @@
 import io
 import uuid
 
+from bomarag_sdk.exceptions import BomaRAGError, NotFoundError
 from harness import Check, Context, Skip
-from openrag_sdk.exceptions import NotFoundError, OpenRAGError
 
 from checks.common import supports_delete_by_filter_id
 
@@ -25,9 +25,9 @@ async def delete_missing_conversation(ctx: Context) -> None:
 async def invalid_settings_value(ctx: Context) -> None:
     try:
         await ctx.client.settings.update({"chunk_size": -999999})
-    except OpenRAGError:
+    except BomaRAGError:
         return
-    raise AssertionError("invalid settings value did not raise OpenRAGError")
+    raise AssertionError("invalid settings value did not raise BomaRAGError")
 
 
 async def ingest_without_args(ctx: Context) -> None:
@@ -48,7 +48,7 @@ async def ingest_file_object_without_filename(ctx: Context) -> None:
 
 async def delete_with_filename_and_filter_id(ctx: Context) -> None:
     if not supports_delete_by_filter_id(ctx.client):
-        raise Skip("documents.delete(filter_id=...) requires openrag-sdk >= 0.4.0")
+        raise Skip("documents.delete(filter_id=...) requires bomarag-sdk >= 0.4.0")
     try:
         await ctx.client.documents.delete("foo.pdf", filter_id="something")
     except ValueError:
@@ -59,17 +59,17 @@ async def delete_with_filename_and_filter_id(ctx: Context) -> None:
 async def bogus_filter_id_in_search(ctx: Context) -> None:
     try:
         await ctx.client.search.query("anything", filter_id=f"does-not-exist-{uuid.uuid4().hex}")
-    except OpenRAGError:
+    except BomaRAGError:
         return
-    raise AssertionError("search with a bogus filter_id did not raise OpenRAGError")
+    raise AssertionError("search with a bogus filter_id did not raise BomaRAGError")
 
 
 async def bogus_filter_id_in_chat(ctx: Context) -> None:
     try:
         await ctx.client.chat.create(message="hi", filter_id=f"does-not-exist-{uuid.uuid4().hex}")
-    except OpenRAGError:
+    except BomaRAGError:
         return
-    raise AssertionError("chat with a bogus filter_id did not raise OpenRAGError")
+    raise AssertionError("chat with a bogus filter_id did not raise BomaRAGError")
 
 
 CHECKS = [

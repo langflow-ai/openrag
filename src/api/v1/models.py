@@ -8,7 +8,7 @@ Uses API key authentication. Uses stored credentials from config.
 from fastapi import Depends
 from fastapi.responses import JSONResponse
 
-from config.settings import get_openrag_config
+from config.settings import get_bomarag_config
 from dependencies import get_models_service, require_api_key_permission
 from services.model_catalog import catalog, is_known_provider
 from session_manager import User
@@ -121,7 +121,7 @@ async def list_models_endpoint(
         )
 
     try:
-        config = get_openrag_config()
+        config = get_bomarag_config()
         models, error_response = await _fetch_models(provider, config, models_service)
         if error_response is not None:
             return error_response

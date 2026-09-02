@@ -16,7 +16,7 @@ from services.connector_access_service import (
 from session_manager import User
 from utils.logging_config import get_logger
 from utils.telemetry import Category, MessageId, TelemetryClient
-from utils.version_utils import OPENRAG_VERSION
+from utils.version_utils import BOMARAG_VERSION
 
 logger = get_logger(__name__)
 
@@ -117,7 +117,7 @@ async def auth_me(
 ):
     """Get current user information"""
     result = await auth_service.get_user_info(request)
-    result["version"] = OPENRAG_VERSION
+    result["version"] = BOMARAG_VERSION
     from utils.run_mode_utils import get_run_mode
 
     result["run_mode"] = get_run_mode()
@@ -162,7 +162,7 @@ async def ibm_login(request: Request):
     """IBM login endpoint.
 
     Production: Traefik intercepts the request, validates Basic credentials
-    with AMS, and sets the ibm-openrag-session cookie before forwarding here.
+    with AMS, and sets the ibm-bomarag-session cookie before forwarding here.
     This handler just returns 200 — no cookie work needed.
 
     Local dev (no Traefik): stores the Basic Auth header in ibm-auth-basic

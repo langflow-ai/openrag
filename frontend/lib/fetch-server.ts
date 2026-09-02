@@ -4,9 +4,9 @@ export async function fetchFromBackend(
   path: string,
   init?: RequestInit,
 ): Promise<Response> {
-  const backendHost = process.env.OPENRAG_BACKEND_HOST || "localhost";
-  const backendSSL = process.env.OPENRAG_BACKEND_SSL === "true";
-  const backendPort = process.env.OPENRAG_BACKEND_PORT || "8000";
+  const backendHost = process.env.BOMARAG_BACKEND_HOST || "localhost";
+  const backendSSL = process.env.BOMARAG_BACKEND_SSL === "true";
+  const backendPort = process.env.BOMARAG_BACKEND_PORT || "8000";
   const baseUrl = backendSSL
     ? `https://${backendHost}:${backendPort}`
     : `http://${backendHost}:${backendPort}`;
@@ -15,14 +15,14 @@ export async function fetchFromBackend(
   const incoming = await headers();
 
   // Forward the gateway-injected auth headers, not just the cookie. In RBAC
-  // mode (OPENRAG_RBAC_ENFORCE=true) the backend derives identity/permissions
+  // mode (BOMARAG_RBAC_ENFORCE=true) the backend derives identity/permissions
   // from the JWT in the Authorization header and ignores the session cookie
   // (src/dependencies.py). The browser proxy (app/api/[...path]/route.ts)
   // already forwards these; server components must too, or server-rendered
   // permission checks (e.g. settings/[tab]/page.tsx) see no permissions and
   // wrongly redirect. Header names honor the backend's env overrides.
   const jwtAuthHeader = (
-    process.env.OPENRAG_JWT_AUTH_HEADER || "Authorization"
+    process.env.BOMARAG_JWT_AUTH_HEADER || "Authorization"
   ).toLowerCase();
   const ibmCredentialsHeader = (
     process.env.IBM_CREDENTIALS_HEADER || "X-IBM-LH-Credentials"

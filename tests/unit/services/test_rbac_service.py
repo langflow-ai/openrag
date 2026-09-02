@@ -23,7 +23,7 @@ from session_manager import User  # noqa: E402
 
 @pytest_asyncio.fixture
 async def setup(monkeypatch):
-    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "user")
+    monkeypatch.setenv("BOMARAG_DEFAULT_ROLE", "user")
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:",
         connect_args={"check_same_thread": False},

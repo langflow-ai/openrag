@@ -46,7 +46,7 @@ async def test_default_file_docs_use_effective_jwt_helper():
         langflow_file_service=object(),
         session_manager=session_manager,
         task_service=task_service,
-        file_paths=["/tmp/openrag-doc.md"],
+        file_paths=["/tmp/bomarag-doc.md"],
     )
 
     assert task_id == "upload-task"

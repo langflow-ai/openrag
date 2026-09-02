@@ -1,12 +1,12 @@
-"""OpenRAG Python SDK smoke tests against a remote (IBM SaaS) deployment.
+"""BomaRAG Python SDK smoke tests against a remote (IBM SaaS) deployment.
 
 Exercises every SDK functionality (settings, models, documents, search, chat,
 knowledge filters, error handling) and writes a pass/fail report to reports/.
 
 Configuration (CLI flags override environment, which overrides .env):
-    OPENRAG_URL       base URL of the deployment
-    OPENRAG_USERNAME  sent as the X-Username header (IBM SaaS auth)
-    OPENRAG_API_KEY   sent as the X-Api-Key header (IBM SaaS auth)
+    BOMARAG_URL       base URL of the deployment
+    BOMARAG_USERNAME  sent as the X-Username header (IBM SaaS auth)
+    BOMARAG_API_KEY   sent as the X-Api-Key header (IBM SaaS auth)
 
 Usage:
     uv run python main.py
@@ -27,6 +27,7 @@ from datetime import UTC, datetime, timezone
 from pathlib import Path
 
 import httpx
+from bomarag_sdk import BomaRAGClient
 from checks import ALL_SUITES, SUITE_NAMES
 from harness import (
     FAIL,
@@ -39,7 +40,6 @@ from harness import (
     summarize,
     write_reports,
 )
-from openrag_sdk import OpenRAGClient
 
 HERE = Path(__file__).resolve().parent
 
@@ -58,11 +58,11 @@ def load_dotenv(path: Path) -> None:
 
 def parse_config(argv: list[str]) -> Config:
     parser = argparse.ArgumentParser(
-        description="Smoke-test the OpenRAG Python SDK against a remote deployment."
+        description="Smoke-test the BomaRAG Python SDK against a remote deployment."
     )
-    parser.add_argument("--url", help="Base URL (env: OPENRAG_URL)")
-    parser.add_argument("--username", help="SaaS username (env: OPENRAG_USERNAME)")
-    parser.add_argument("--api-key", help="SaaS API key (env: OPENRAG_API_KEY)")
+    parser.add_argument("--url", help="Base URL (env: BOMARAG_URL)")
+    parser.add_argument("--username", help="SaaS username (env: BOMARAG_USERNAME)")
+    parser.add_argument("--api-key", help="SaaS API key (env: BOMARAG_API_KEY)")
     parser.add_argument(
         "--timeout",
         type=float,
@@ -90,16 +90,16 @@ def parse_config(argv: list[str]) -> Config:
 
     load_dotenv(args.env_file)
 
-    url = args.url or os.environ.get("OPENRAG_URL", "")
-    username = args.username or os.environ.get("OPENRAG_USERNAME", "")
-    api_key = args.api_key or os.environ.get("OPENRAG_API_KEY", "")
+    url = args.url or os.environ.get("BOMARAG_URL", "")
+    username = args.username or os.environ.get("BOMARAG_USERNAME", "")
+    api_key = args.api_key or os.environ.get("BOMARAG_API_KEY", "")
 
     missing = [
         name
         for name, value in [
-            ("--url / OPENRAG_URL", url),
-            ("--username / OPENRAG_USERNAME", username),
-            ("--api-key / OPENRAG_API_KEY", api_key),
+            ("--url / BOMARAG_URL", url),
+            ("--username / BOMARAG_USERNAME", username),
+            ("--api-key / BOMARAG_API_KEY", api_key),
         ]
         if not value
     ]
@@ -126,7 +126,7 @@ def parse_config(argv: list[str]) -> Config:
 
 
 async def amain(cfg: Config) -> int:
-    client = OpenRAGClient(
+    client = BomaRAGClient(
         base_url=cfg.url,
         extra_headers={"X-Username": cfg.username, "X-Api-Key": cfg.api_key},
         timeout=cfg.timeout,
@@ -168,7 +168,7 @@ async def amain(cfg: Config) -> int:
 
         started_at = datetime.now(UTC)
         start = time.perf_counter()
-        with tempfile.TemporaryDirectory(prefix="openrag-sdk-smoke-") as tmpdir:
+        with tempfile.TemporaryDirectory(prefix="bomarag-sdk-smoke-") as tmpdir:
             ctx = Context(client=client, cfg=cfg, shared={"tmpdir": tmpdir})
             results = [preflight] + await run_suites(suites, ctx)
         total_duration = time.perf_counter() - start

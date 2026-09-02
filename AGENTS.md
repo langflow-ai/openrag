@@ -1,14 +1,14 @@
 # Agent Instructions
 
-This repository ships with **agent skills** that any compliant agent can use to help users install OpenRAG, integrate the OpenRAG SDK, and run the local dev stack. The canonical skill files are markdown with YAML frontmatter (the [Agent Skills](https://github.com/anthropics/skills) format), and live under `plugins/openrag/skills/`.
+This repository ships with **agent skills** that any compliant agent can use to help users install BomaRAG, integrate the BomaRAG SDK, and run the local dev stack. The canonical skill files are markdown with YAML frontmatter (the [Agent Skills](https://github.com/anthropics/skills) format), and live under `plugins/bomarag/skills/`.
 
 ## Available skills
 
 | Skill | File | Purpose |
 | --- | --- | --- |
-| `openrag_install` | [`plugins/openrag/skills/install/SKILL.md`](plugins/openrag/skills/install/SKILL.md) | Plan and execute a minimal OpenRAG installation, verify locally. |
-| `openrag_sdk` | [`plugins/openrag/skills/sdk/SKILL.md`](plugins/openrag/skills/sdk/SKILL.md) | Guide SDK integration (Python, TypeScript, MCP) with code examples. |
-| `openrag_dev_stack` | [`plugins/openrag/skills/dev-stack/SKILL.md`](plugins/openrag/skills/dev-stack/SKILL.md) | Start, monitor, restart, or stop the local dev stack (Docker infra + host backend + host frontend). |
+| `bomarag_install` | [`plugins/bomarag/skills/install/SKILL.md`](plugins/bomarag/skills/install/SKILL.md) | Plan and execute a minimal BomaRAG installation, verify locally. |
+| `bomarag_sdk` | [`plugins/bomarag/skills/sdk/SKILL.md`](plugins/bomarag/skills/sdk/SKILL.md) | Guide SDK integration (Python, TypeScript, MCP) with code examples. |
+| `bomarag_dev_stack` | [`plugins/bomarag/skills/dev-stack/SKILL.md`](plugins/bomarag/skills/dev-stack/SKILL.md) | Start, monitor, restart, or stop the local dev stack (Docker infra + host backend + host frontend). |
 
 ## How to use these skills
 
@@ -21,13 +21,13 @@ Pick the path that matches your agent runtime.
 ### Claude Code (install globally, any repo)
 
 ```
-/plugin marketplace add langflow-ai/openrag
-/plugin install openrag@openrag
+/plugin marketplace add ABISHAIMWANJA/bomarag
+/plugin install bomarag@bomarag
 ```
 
 ### Claude Agent SDK / other skill-aware runtimes
 
-Point your skill loader at `plugins/openrag/skills/`. Each subdirectory is one skill.
+Point your skill loader at `plugins/bomarag/skills/`. Each subdirectory is one skill.
 
 ### Any other agent (generic)
 
@@ -41,11 +41,11 @@ Read the `SKILL.md` files directly. The frontmatter `description` tells you when
 
 ## Operational constraints
 
-**Single-worker only (until Redis cache lands).** The RBAC permission cache and OAuth-subject→DB-id cache are both per-process (`cachetools.TTLCache`). Running with multiple uvicorn workers or multiple helm replicas means a role grant or revoke takes effect in only one process; the others serve stale permissions for up to `OPENRAG_PERM_CACHE_TTL` seconds (default 60). The startup event in `src/main.py` enforces `UVICORN_WORKERS<=1` and `CACHE_BACKEND=memory` and hard-fails otherwise. To horizontally scale, swap the cache to Redis first.
+**Single-worker only (until Redis cache lands).** The RBAC permission cache and OAuth-subject→DB-id cache are both per-process (`cachetools.TTLCache`). Running with multiple uvicorn workers or multiple helm replicas means a role grant or revoke takes effect in only one process; the others serve stale permissions for up to `BOMARAG_PERM_CACHE_TTL` seconds (default 60). The startup event in `src/main.py` enforces `UVICORN_WORKERS<=1` and `CACHE_BACKEND=memory` and hard-fails otherwise. To horizontally scale, swap the cache to Redis first.
 
-**RBAC is opt-in.** `OPENRAG_RBAC_ENFORCE` defaults to `false`, which makes OpenRAG behave like the pre-RBAC release: every authenticated user has full access; API-key role overrides are also bypassed. To turn the permissions system on (admin/developer/user/viewer roles, `require_permission` gates, audit denials), set `OPENRAG_RBAC_ENFORCE=true`. Available in all `OPENRAG_RUN_MODE` values — operators own the trade-off. The startup event logs the enforcement state on every boot.
+**RBAC is opt-in.** `BOMARAG_RBAC_ENFORCE` defaults to `false`, which makes BomaRAG behave like the pre-RBAC release: every authenticated user has full access; API-key role overrides are also bypassed. To turn the permissions system on (admin/developer/user/viewer roles, `require_permission` gates, audit denials), set `BOMARAG_RBAC_ENFORCE=true`. Available in all `BOMARAG_RUN_MODE` values — operators own the trade-off. The startup event logs the enforcement state on every boot.
 
-**Dev-local with backend on host.** When you run `make dev-local-cpu` (or `dev-local`) and then `make backend` on the host, OpenSearch needs to resolve `openrag-backend` to the host machine so it can fetch JWKS for OIDC validation. Langflow also needs that name for backend ingest callbacks. The base `docker-compose.yml` does NOT add this alias — it would break CI, where the backend is a docker-compose service. To enable the host-backend mode, layer the override file:
+**Dev-local with backend on host.** When you run `make dev-local-cpu` (or `dev-local`) and then `make backend` on the host, OpenSearch needs to resolve `bomarag-backend` to the host machine so it can fetch JWKS for OIDC validation. Langflow also needs that name for backend ingest callbacks. The base `docker-compose.yml` does NOT add this alias — it would break CI, where the backend is a docker-compose service. To enable the host-backend mode, layer the override file:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.host-backend.yml up -d opensearch dashboards langflow
@@ -53,4 +53,4 @@ make backend     # in another terminal
 make frontend    # in another terminal
 ```
 
-The override only adds `extra_hosts: openrag-backend:host-gateway` to the OpenSearch and Langflow services. Without it, OIDC and ingest callbacks work because docker DNS routes `openrag-backend` to the in-compose backend container.
+The override only adds `extra_hosts: bomarag-backend:host-gateway` to the OpenSearch and Langflow services. Without it, OIDC and ingest callbacks work because docker DNS routes `bomarag-backend` to the in-compose backend container.

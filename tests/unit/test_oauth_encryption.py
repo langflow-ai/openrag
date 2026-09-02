@@ -14,7 +14,7 @@ async def test_google_drive_auth_upgrade(tmp_path, monkeypatch):
     # Reset internal cache to ensure it reads from env
     utils.encryption._cached_master_secret = None
     monkeypatch.setenv(
-        "OPENRAG_ENCRYPTION_KEY",
+        "BOMARAG_ENCRYPTION_KEY",
         "dGVzdC1rZXktMzItYnl0ZXMtZm9yLXVuaXQtdGVzdGluZy1vbmx5",
     )  # 32-byte base64
 
@@ -45,7 +45,7 @@ async def test_google_drive_auth_missing_scopes_forces_reauth(tmp_path, monkeypa
 
     utils.encryption._cached_master_secret = None
     monkeypatch.setenv(
-        "OPENRAG_ENCRYPTION_KEY",
+        "BOMARAG_ENCRYPTION_KEY",
         "dGVzdC1rZXktMzItYnl0ZXMtZm9yLXVuaXQtdGVzdGluZy1vbmx5",
     )
 
@@ -72,7 +72,7 @@ async def test_google_drive_auth_allows_missing_optional_group_scopes(tmp_path, 
 
     utils.encryption._cached_master_secret = None
     monkeypatch.setenv(
-        "OPENRAG_ENCRYPTION_KEY",
+        "BOMARAG_ENCRYPTION_KEY",
         "dGVzdC1rZXktMzItYnl0ZXMtZm9yLXVuaXQtdGVzdGluZy1vbmx5",
     )
 
@@ -101,7 +101,7 @@ async def test_msal_auth_upgrade(tmp_path, monkeypatch):
     # Reset internal cache to ensure it reads from env
     utils.encryption._cached_master_secret = None
     monkeypatch.setenv(
-        "OPENRAG_ENCRYPTION_KEY",
+        "BOMARAG_ENCRYPTION_KEY",
         "dGVzdC1rZXktMzItYnl0ZXMtZm9yLXVuaXQtdGVzdGluZy1vbmx5",
     )  # 32-byte base64
 

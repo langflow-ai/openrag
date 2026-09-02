@@ -1,0 +1,14 @@
+{{- if .Values.langflow.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "bomarag.fullname" . }}-flow-ids
+  namespace: {{ include "bomarag.namespace" . }}
+  labels:
+    {{- include "bomarag.labels" . | nindent 4 }}
+data:
+  chat-flow-id: {{ .Values.langflow.flows.chatFlowId | quote }}
+  ingest-flow-id: {{ .Values.langflow.flows.ingestFlowId | quote }}
+  url-ingest-flow-id: {{ .Values.langflow.flows.urlIngestFlowId | quote }}
+  nudges-flow-id: {{ .Values.langflow.flows.nudgesFlowId | quote }}
+{{- end }}

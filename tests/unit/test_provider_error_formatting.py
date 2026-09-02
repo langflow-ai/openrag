@@ -91,7 +91,7 @@ def test_looks_like_provider_error_content():
     assert looks_like_provider_error_content(
         'Failed to authenticate: {"errorMessage":"Provided API key could not be found."}'
     )
-    assert not looks_like_provider_error_content("OpenRAG is an open-source package.")
+    assert not looks_like_provider_error_content("BomaRAG is an open-source package.")
     assert is_generic_upstream_error("An unknown error occurred.")
 
 
@@ -204,7 +204,7 @@ async def test_probe_chat_llm_error_surfaces_missing_model(monkeypatch):
             "This model may be unsupported, deprecated, or removed."
         )
 
-    monkeypatch.setattr("config.settings.get_openrag_config", lambda: FakeConfig())
+    monkeypatch.setattr("config.settings.get_bomarag_config", lambda: FakeConfig())
     monkeypatch.setattr("api.provider_validation.validate_provider_setup", fake_validate)
 
     from api.provider_validation import probe_chat_llm_error
@@ -323,7 +323,7 @@ async def test_probe_checks_non_selected_providers_with_keys(monkeypatch):
         if kwargs.get("provider") == "watsonx":
             raise Exception("Provided API key could not be found.")
 
-    monkeypatch.setattr("config.settings.get_openrag_config", lambda: FakeConfig())
+    monkeypatch.setattr("config.settings.get_bomarag_config", lambda: FakeConfig())
     monkeypatch.setattr("api.provider_validation.validate_provider_setup", fake_validate)
 
     from api.provider_validation import probe_provider_credential_error

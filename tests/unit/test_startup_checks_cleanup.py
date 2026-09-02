@@ -1,4 +1,4 @@
-"""Tests for OpenRAG-only image cleanup behavior in startup checks."""
+"""Tests for BomaRAG-only image cleanup behavior in startup checks."""
 
 from unittest.mock import MagicMock, patch
 
@@ -14,13 +14,13 @@ def _run_result(returncode: int = 0, stdout: str = "", stderr: str = "") -> Magi
     return result
 
 
-def test_remove_openrag_images_filters_to_openrag_repos():
+def test_remove_bomarag_images_filters_to_bomarag_repos():
     with patch("src.tui.utils.startup_checks.subprocess.run") as mock_run:
         mock_run.side_effect = [
             _run_result(
                 stdout=(
-                    "langflowai/openrag-backend:latest\timg-openrag-1\n"
-                    "docker.io/langflowai/openrag-frontend:v1\timg-openrag-2\n"
+                    "bomalogic/bomarag-backend:latest\timg-bomarag-1\n"
+                    "docker.io/bomalogic/bomarag-frontend:v1\timg-bomarag-2\n"
                     "library/ubuntu:latest\timg-ubuntu\n"
                     "<none>:<none>\timg-dangling\n"
                 )
@@ -29,19 +29,19 @@ def test_remove_openrag_images_filters_to_openrag_repos():
             _run_result(returncode=0),
         ]
 
-        removed, total = startup_checks.remove_openrag_images("docker")
+        removed, total = startup_checks.remove_bomarag_images("docker")
 
     assert (removed, total) == (2, 2)
     calls = [call.args[0] for call in mock_run.call_args_list]
     assert calls[0] == ["docker", "images", "--format", "{{.Repository}}:{{.Tag}}\t{{.ID}}"]
-    assert ["docker", "rmi", "-f", "img-openrag-1"] in calls
-    assert ["docker", "rmi", "-f", "img-openrag-2"] in calls
+    assert ["docker", "rmi", "-f", "img-bomarag-1"] in calls
+    assert ["docker", "rmi", "-f", "img-bomarag-2"] in calls
     assert all("img-ubuntu" not in call for call in calls)
 
 
 def test_fix_storage_corruption_docker_avoids_system_prune():
     with patch("src.tui.utils.startup_checks.ask_yes_no", return_value=True), patch(
-        "src.tui.utils.startup_checks.remove_openrag_images", return_value=(1, 1)
+        "src.tui.utils.startup_checks.remove_bomarag_images", return_value=(1, 1)
     ) as mock_remove, patch("src.tui.utils.startup_checks.subprocess.run") as mock_run:
         ok = startup_checks.fix_storage_corruption(runtime="docker", version="26.1.0")
 

@@ -1,6 +1,6 @@
-"""Telemetry message IDs for OpenRAG backend.
+"""Telemetry message IDs for BomaRAG backend.
 
-All message IDs start with ORB_ (OpenRAG Backend) followed by descriptive text.
+All message IDs start with ORB_ (BomaRAG Backend) followed by descriptive text.
 Format: ORB_<CATEGORY>_<ACTION>[_<STATUS>]
 """
 

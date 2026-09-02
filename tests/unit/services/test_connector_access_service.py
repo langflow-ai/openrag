@@ -112,33 +112,33 @@ async def test_set_connector_access_bulk_rejects_unknown_type(session):
 
 
 def test_connector_access_policy_enforced_in_saas_run_mode(monkeypatch):
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
+    monkeypatch.setenv("BOMARAG_RUN_MODE", "saas")
     monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", False)
     assert is_connector_access_policy_enforced() is True
 
 
 def test_connector_access_policy_enforced_with_ibm_auth(monkeypatch):
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+    monkeypatch.setenv("BOMARAG_RUN_MODE", "oss")
     monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", True)
     assert is_connector_access_policy_enforced() is True
 
 
 def test_connector_access_policy_not_enforced_in_oss_run_mode(monkeypatch):
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+    monkeypatch.setenv("BOMARAG_RUN_MODE", "oss")
     monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", False)
-    monkeypatch.delenv("OPENRAG_DEV_CONNECTOR_POLICY", raising=False)
+    monkeypatch.delenv("BOMARAG_DEV_CONNECTOR_POLICY", raising=False)
     assert is_connector_access_policy_enforced() is False
 
 
 def test_connector_access_policy_enforced_with_dev_connector_policy(monkeypatch):
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+    monkeypatch.setenv("BOMARAG_RUN_MODE", "oss")
     monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", False)
-    monkeypatch.setenv("OPENRAG_DEV_CONNECTOR_POLICY", "true")
+    monkeypatch.setenv("BOMARAG_DEV_CONNECTOR_POLICY", "true")
     assert is_connector_access_policy_enforced() is True
 
 
 def test_governable_connector_types_excludes_buckets_in_saas(monkeypatch):
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
+    monkeypatch.setenv("BOMARAG_RUN_MODE", "saas")
     monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", False)
 
     governable = governable_connector_types()
@@ -151,7 +151,7 @@ def test_governable_connector_types_excludes_buckets_in_saas(monkeypatch):
 
 
 def test_governable_connector_types_includes_buckets_with_ibm_auth(monkeypatch):
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
+    monkeypatch.setenv("BOMARAG_RUN_MODE", "saas")
     monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", True)
 
     governable = governable_connector_types()
@@ -165,9 +165,9 @@ def test_governable_connector_types_includes_buckets_with_ibm_auth(monkeypatch):
 def test_governable_connector_types_excludes_azure_blob_when_kill_switch_off(monkeypatch):
     # Kill switch off must hide azure_blob from the admin permission tab even
     # when IBM auth is on (matches AzureBlobConnector.is_available()).
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
+    monkeypatch.setenv("BOMARAG_RUN_MODE", "saas")
     monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", True)
-    monkeypatch.setenv("OPENRAG_AZURE_BLOB_ENABLED", "false")
+    monkeypatch.setenv("BOMARAG_AZURE_BLOB_ENABLED", "false")
 
     governable = governable_connector_types()
 
@@ -180,7 +180,7 @@ def test_governable_connector_types_excludes_azure_blob_when_kill_switch_off(mon
 @pytest.mark.asyncio
 async def test_list_access_for_admin_includes_disabled_types(session, monkeypatch):
     """Admin permission list is independent of the filtered connectors tab."""
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
+    monkeypatch.setenv("BOMARAG_RUN_MODE", "saas")
     monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", False)
 
     await set_connector_access_bulk(

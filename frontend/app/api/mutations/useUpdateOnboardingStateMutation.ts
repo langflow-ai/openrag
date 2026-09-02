@@ -12,7 +12,7 @@ interface UpdateOnboardingStateVariables {
   selected_nudge?: string | null;
   card_steps?: Record<string, unknown> | null;
   upload_steps?: Record<string, unknown> | null;
-  openrag_docs_filter_id?: string | null;
+  bomarag_docs_filter_id?: string | null;
   user_doc_filter_id?: string | null;
 }
 

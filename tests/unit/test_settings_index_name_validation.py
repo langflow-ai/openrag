@@ -25,7 +25,7 @@ def _make_config(index_name="documents"):
 @pytest.mark.asyncio
 async def test_update_settings_rejects_index_name_outside_security_role_patterns(monkeypatch):
     config = _make_config()
-    monkeypatch.setattr(settings_endpoints, "get_openrag_config", lambda: config, raising=True)
+    monkeypatch.setattr(settings_endpoints, "get_bomarag_config", lambda: config, raising=True)
 
     with pytest.raises(HTTPException) as exc_info:
         await settings_api.update_settings(
@@ -46,7 +46,7 @@ async def test_update_settings_rejects_index_name_without_partially_applying_oth
     """A validation failure partway through must not leave earlier fields in
     the same request mutated on the live config object (atomicity)."""
     config = _make_config()
-    monkeypatch.setattr(settings_endpoints, "get_openrag_config", lambda: config, raising=True)
+    monkeypatch.setattr(settings_endpoints, "get_bomarag_config", lambda: config, raising=True)
 
     with pytest.raises(HTTPException):
         await settings_api.update_settings(
@@ -65,7 +65,7 @@ async def test_update_settings_rejects_index_name_without_partially_applying_oth
 async def test_update_settings_accepts_index_name_matching_security_role_patterns(monkeypatch):
     config = _make_config()
     saved_configs = []
-    monkeypatch.setattr(settings_endpoints, "get_openrag_config", lambda: config, raising=True)
+    monkeypatch.setattr(settings_endpoints, "get_bomarag_config", lambda: config, raising=True)
     monkeypatch.setattr(
         settings_endpoints.config_manager,
         "save_config_file",

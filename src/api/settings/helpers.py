@@ -2,7 +2,7 @@
 
 Provider-fallback selection, embedding-model conflict detection (used to
 warn before removing a provider whose embeddings are still indexed), the
-OpenRAG-docs knowledge-filter creator, and a flows-service factory.
+BomaRAG-docs knowledge-filter creator, and a flows-service factory.
 
 Lifted verbatim from the original `src/api/settings.py` (lines 371–480 and
 1388–1455). No behavior change.
@@ -25,7 +25,7 @@ _EMBEDDING_PROVIDER_NAMES = ("openai", "watsonx", "ollama")
 
 
 def _configured_provider_names(config, provider_names) -> list:
-    """Return the provider names from `provider_names` marked configured in the OpenRAG config."""
+    """Return the provider names from `provider_names` marked configured in the BomaRAG config."""
     providers = config.providers
     configured = [name for name in provider_names if getattr(providers, name).configured]
     from services.model_catalog import catalog
@@ -201,8 +201,8 @@ def _embedding_conflict_response(
     )
 
 
-async def _create_openrag_docs_filter(knowledge_filter_service, session_manager, user):
-    """Create the OpenRAG Docs knowledge filter for onboarding"""
+async def _create_bomarag_docs_filter(knowledge_filter_service, session_manager, user):
+    """Create the BomaRAG Docs knowledge filter for onboarding"""
     import json
     import uuid
     from datetime import datetime
@@ -228,11 +228,11 @@ async def _create_openrag_docs_filter(knowledge_filter_service, session_manager,
             "query": "",
             "filters": {
                 # URL-based docs ingestion produces many source URLs.
-                # Filter by connector type to target OpenRAG docs only.
+                # Filter by connector type to target BomaRAG docs only.
                 "data_sources": ["*"],
                 "document_types": ["*"],
                 "owners": ["*"],
-                "connector_types": ["openrag_docs"],
+                "connector_types": ["bomarag_docs"],
             },
             "limit": 10,
             "scoreThreshold": 0,
@@ -243,8 +243,8 @@ async def _create_openrag_docs_filter(knowledge_filter_service, session_manager,
 
     filter_doc = {
         "id": filter_id,
-        "name": "OpenRAG Docs",
-        "description": "Filter for OpenRAG documentation",
+        "name": "BomaRAG Docs",
+        "description": "Filter for BomaRAG documentation",
         "query_data": query_data,
         "owner": owner_user_id,
         "allowed_users": [],
@@ -260,7 +260,7 @@ async def _create_openrag_docs_filter(knowledge_filter_service, session_manager,
     if result.get("success"):
         return filter_id
     else:
-        logger.error("Failed to create OpenRAG Docs filter", error=result.get("error"))
+        logger.error("Failed to create BomaRAG Docs filter", error=result.get("error"))
         return None
 
 

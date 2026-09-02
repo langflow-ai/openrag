@@ -1,4 +1,4 @@
-"""Consolidated startup + shutdown lifecycle for the OpenRAG backend.
+"""Consolidated startup + shutdown lifecycle for the BomaRAG backend.
 
 `run_startup(app)` and `run_shutdown(app)` collapse what previously lived
 as three @app.on_event("startup") handlers and three @app.on_event("shutdown")
@@ -14,17 +14,17 @@ import asyncio
 from fastapi import FastAPI
 
 from config.settings import (
+    BOMARAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP,
+    BOMARAG_ENSURE_INDEX_REPLICAS_ON_STARTUP,
     JWT_CLAIMS_CACHE_MAX_SIZE,
     JWT_CLAIMS_CACHE_TTL_SECONDS,
-    OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP,
-    OPENRAG_ENSURE_INDEX_REPLICAS_ON_STARTUP,
     OPENSEARCH_WAIT_MAX_RETRIES,
     RBAC_CACHE_BACKEND,
     RBAC_PERMISSION_CACHE_TTL_SECONDS,
     UVICORN_WORKER_COUNT,
     clients,
-    get_openrag_config,
-    get_openrag_service_token,
+    get_bomarag_config,
+    get_bomarag_service_token,
     get_opensearch_password,
     get_opensearch_username,
 )
@@ -81,7 +81,7 @@ async def _periodic_backup(services):
         try:
             await asyncio.sleep(5 * 60)
 
-            config = get_openrag_config()
+            config = get_bomarag_config()
             if not config.edited:
                 logger.debug("Onboarding not completed yet, skipping periodic backup")
                 continue
@@ -155,7 +155,7 @@ async def run_startup(app: FastAPI):
     # Hard-fail if the operator has configured multiple workers. The
     # RBAC permission cache and the OAuth-subject→DB-id cache are
     # both per-process; a second worker silently sees stale
-    # permissions for up to OPENRAG_PERM_CACHE_TTL seconds after
+    # permissions for up to BOMARAG_PERM_CACHE_TTL seconds after
     # role mutations. Until the cache moves to a shared backend
     # (Redis), this constraint is real and must be enforced.
     if UVICORN_WORKER_COUNT > 1:
@@ -184,7 +184,7 @@ async def run_startup(app: FastAPI):
         maxsize=JWT_CLAIMS_CACHE_MAX_SIZE,
     )
 
-    # RBAC kill-switch visibility. OPENRAG_RBAC_ENFORCE=false makes
+    # RBAC kill-switch visibility. BOMARAG_RBAC_ENFORCE=false makes
     # every authenticated user effectively admin — log loudly so
     # operators see it on every boot. Available in all run modes;
     # the operator owns the trade-off.
@@ -196,7 +196,7 @@ async def run_startup(app: FastAPI):
     else:
         logger.warning(
             "RBAC enforcement is DISABLED — every authenticated "
-            "user has full access via the OPENRAG_RBAC_ENFORCE=false "
+            "user has full access via the BOMARAG_RBAC_ENFORCE=false "
             "kill switch.",
             run_mode=get_run_mode(),
         )
@@ -250,13 +250,13 @@ async def run_startup(app: FastAPI):
     # startup work talks to OpenSearch. The block is entered when EITHER flag is
     # set so both steps can reuse the same per-run-mode authenticated client;
     # each step is then gated on its OWN flag. The setup_opensearch_security call
-    # inside startup_tasks is suppressed when OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP
+    # inside startup_tasks is suppressed when BOMARAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP
     # is on.
-    if OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP or OPENRAG_ENSURE_INDEX_REPLICAS_ON_STARTUP:
+    if BOMARAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP or BOMARAG_ENSURE_INDEX_REPLICAS_ON_STARTUP:
         logger.info(
             "OpenSearch startup tasks enabled",
-            security_bootstrap=OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP,
-            reconcile_replicas=OPENRAG_ENSURE_INDEX_REPLICAS_ON_STARTUP,
+            security_bootstrap=BOMARAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP,
+            reconcile_replicas=BOMARAG_ENSURE_INDEX_REPLICAS_ON_STARTUP,
         )
         from utils.opensearch_init import wait_for_opensearch
         from utils.opensearch_utils import setup_opensearch_security
@@ -272,28 +272,28 @@ async def run_startup(app: FastAPI):
         admin_username = None
         opensearch_client = None
         if is_run_mode_saas() or is_run_mode_on_prem():
-            service_token = get_openrag_service_token()
+            service_token = get_bomarag_service_token()
             if not service_token:
                 # A missing service token is fatal only when security bootstrap
                 # was explicitly requested; replica reconciliation is best-effort,
                 # so skip it rather than aborting startup.
-                if OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP:
+                if BOMARAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP:
                     raise RuntimeError(
-                        "OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP is enabled but "
-                        "OPENRAG_SERVICE_TOKEN is not set"
+                        "BOMARAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP is enabled but "
+                        "BOMARAG_SERVICE_TOKEN is not set"
                     )
                 logger.warning(
                     "Skipping startup OpenSearch replica reconciliation: "
-                    f"{get_run_mode()} mode requires OPENRAG_SERVICE_TOKEN, "
+                    f"{get_run_mode()} mode requires BOMARAG_SERVICE_TOKEN, "
                     "which is not set"
                 )
             else:
                 from auth.ibm_auth import admin_username_from_service_jwt
 
                 admin_username = admin_username_from_service_jwt(service_token)
-                if not admin_username and OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP:
+                if not admin_username and BOMARAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP:
                     raise RuntimeError(
-                        "OPENRAG_SERVICE_TOKEN has no 'username' or 'sub' claim; "
+                        "BOMARAG_SERVICE_TOKEN has no 'username' or 'sub' claim; "
                         "cannot bootstrap OpenSearch security"
                     )
                 opensearch_client = clients.create_opensearch_client_from_jwt(service_token)
@@ -320,7 +320,7 @@ async def run_startup(app: FastAPI):
                     opensearch_client, max_retries=OPENSEARCH_WAIT_MAX_RETRIES
                 )
 
-                if OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP:
+                if BOMARAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP:
                     logger.info("Bootstrapping OpenSearch security", admin_username=admin_username)
                     await setup_opensearch_security(
                         opensearch_client, admin_username=admin_username
@@ -329,15 +329,15 @@ async def run_startup(app: FastAPI):
                         "OpenSearch security bootstrap completed", admin_username=admin_username
                     )
 
-                # Reconcile replica counts on existing OpenRAG indices using the
+                # Reconcile replica counts on existing BomaRAG indices using the
                 # authenticated (admin / service-token) client, before serving
                 # traffic. Best-effort: failures are logged, not fatal.
-                if OPENRAG_ENSURE_INDEX_REPLICAS_ON_STARTUP:
+                if BOMARAG_ENSURE_INDEX_REPLICAS_ON_STARTUP:
                     try:
-                        from utils.opensearch_init import ensure_openrag_index_replicas
+                        from utils.opensearch_init import ensure_bomarag_index_replicas
 
                         logger.info("Reconciling index replicas at startup")
-                        await ensure_openrag_index_replicas(opensearch_client)
+                        await ensure_bomarag_index_replicas(opensearch_client)
                     except Exception as e:
                         logger.warning(
                             "Index replica reconciliation at startup failed", error=str(e)

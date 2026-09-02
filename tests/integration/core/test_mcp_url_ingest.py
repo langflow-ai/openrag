@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-OPENRAG_MCP_SERVER_NAME = "lf-starter_project"
+BOMARAG_MCP_SERVER_NAME = "lf-starter_project"
 LANGFLOW_GLOBAL_VAR_PREFIX = "x-langflow-global-var-"
 
 
@@ -75,7 +75,7 @@ def _assert_no_persisted_langflow_globals(headers: dict[str, str]) -> None:
 
 
 @pytest.mark.asyncio
-async def test_openrag_mcp_server_url_is_patched_without_persisting_request_globals():
+async def test_bomarag_mcp_server_url_is_patched_without_persisting_request_globals():
     from config.settings import LANGFLOW_URL
     from services.langflow_mcp_service import LangflowMCPService
 
@@ -90,11 +90,11 @@ async def test_openrag_mcp_server_url_is_patched_without_persisting_request_glob
 
     servers = await mcp_service.list_mcp_servers()
     server_names = [_server_name(server) for server in servers]
-    assert OPENRAG_MCP_SERVER_NAME in server_names, (
-        f"Expected OpenRAG MCP server {OPENRAG_MCP_SERVER_NAME!r}; found {server_names}"
+    assert BOMARAG_MCP_SERVER_NAME in server_names, (
+        f"Expected BomaRAG MCP server {BOMARAG_MCP_SERVER_NAME!r}; found {server_names}"
     )
 
-    server_config = await mcp_service.get_mcp_server(OPENRAG_MCP_SERVER_NAME)
+    server_config = await mcp_service.get_mcp_server(BOMARAG_MCP_SERVER_NAME)
     urls = _extract_server_urls(server_config)
     assert urls, f"MCP server has no configured URL: {server_config}"
 
@@ -126,20 +126,20 @@ async def test_loaded_agent_flow_routes_request_globals_into_mcp_headers():
     flow_text = json.dumps(response.json())
 
     assert "opensearch_url_ingestion_flow" in flow_text
-    assert OPENRAG_MCP_SERVER_NAME in flow_text
+    assert BOMARAG_MCP_SERVER_NAME in flow_text
     assert '"name": "headers"' in flow_text
 
     for global_var_name in [
         "JWT",
-        "OPENRAG_LLM_TOKEN",
+        "BOMARAG_LLM_TOKEN",
         "OPENSEARCH_URL",
         "SELECTED_EMBEDDING_MODEL",
         "WATSONX_APIKEY",
         "WATSONX_PROJECT_ID",
         "OPENSEARCH_INDEX_NAME",
-        "OPENRAG_INGEST_URL",
-        "OPENRAG_INGEST_TOKEN",
-        "OPENRAG_INGEST_RUN_ID",
-        "OPENRAG_INGEST_BATCH_SIZE",
+        "BOMARAG_INGEST_URL",
+        "BOMARAG_INGEST_TOKEN",
+        "BOMARAG_INGEST_RUN_ID",
+        "BOMARAG_INGEST_BATCH_SIZE",
     ]:
         assert f"X-Langflow-Global-Var-{global_var_name}" in flow_text

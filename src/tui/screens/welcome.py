@@ -1,4 +1,4 @@
-"""Welcome screen for OpenRAG TUI."""
+"""Welcome screen for BomaRAG TUI."""
 
 import os
 from pathlib import Path
@@ -80,7 +80,7 @@ class WelcomeScreen(Screen):
         env_manager = EnvManager()
         env_manager.load_existing_env()
         flows_path = Path(
-            env_manager.config.openrag_flows_path.replace("$HOME", str(Path.home()))
+            env_manager.config.bomarag_flows_path.replace("$HOME", str(Path.home()))
         ).expanduser()
         backup_dir = flows_path / "backup"
         if not backup_dir.exists():
@@ -193,7 +193,7 @@ class WelcomeScreen(Screen):
 ╚═════╝ ╚═╝     ╚══════╝╚═╝  ╚═══╝╚═╝  ╚═╝╚═╝  ╚═╝╚═════╝
 """
         welcome_text.append(ascii_art, style="bold white")
-        welcome_text.append("Terminal User Interface for OpenRAG\n", style="dim")
+        welcome_text.append("Terminal User Interface for BomaRAG\n", style="dim")
         welcome_text.append(f"v{__version__}\n\n", style="white")
 
         # Check if all services are running
@@ -237,7 +237,7 @@ class WelcomeScreen(Screen):
 
         if all_services_running:
             # All services running - show app link first, then stop all
-            buttons.append(Button("Launch OpenRAG", variant="success", id="open-app-btn"))
+            buttons.append(Button("Launch BomaRAG", variant="success", id="open-app-btn"))
             buttons.append(Button("Stop All Services", variant="error", id="stop-all-services-btn"))
         else:
             # Some or no services running - show setup options and start all
@@ -249,7 +249,7 @@ class WelcomeScreen(Screen):
                 buttons.append(Button("Basic Setup", variant="success", id="basic-setup-btn"))
                 buttons.append(Button("Advanced Setup", variant="default", id="advanced-setup-btn"))
 
-            buttons.append(Button("Start OpenRAG", variant="primary", id="start-all-services-btn"))
+            buttons.append(Button("Start BomaRAG", variant="primary", id="start-all-services-btn"))
 
         # Always show status option
         buttons.append(Button("Status", variant="default", id="status-btn"))
@@ -529,13 +529,13 @@ class WelcomeScreen(Screen):
                 if not should_continue:
                     self.notify("Start cancelled", severity="information")
                     return
-                # Ensure OPENRAG_VERSION is set in .env BEFORE starting services
+                # Ensure BOMARAG_VERSION is set in .env BEFORE starting services
                 # This ensures docker compose reads the correct version
                 try:
                     from ..managers.env_manager import EnvManager
 
                     env_manager = EnvManager()
-                    env_manager.ensure_openrag_version()
+                    env_manager.ensure_bomarag_version()
                     # Small delay to ensure .env file is written and flushed
                     import asyncio
 
@@ -638,14 +638,14 @@ class WelcomeScreen(Screen):
         await self._refresh_welcome_content()
 
     def action_open_app(self) -> None:
-        """Open the OpenRAG app in the default browser."""
+        """Open the BomaRAG app in the default browser."""
         import webbrowser
 
         try:
             # Get the frontend port from environment variable, defaulting to 3000
             frontend_port = os.getenv("FRONTEND_PORT", "3000")
             webbrowser.open(f"http://localhost:{frontend_port}")
-            self.notify("Opening OpenRAG app in browser...", severity="information")
+            self.notify("Opening BomaRAG app in browser...", severity="information")
         except Exception as e:
             self.notify(f"Error opening app: {e}", severity="error")
 

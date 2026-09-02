@@ -1,4 +1,4 @@
-"""Service monitoring screen for OpenRAG TUI."""
+"""Service monitoring screen for BomaRAG TUI."""
 
 import asyncio
 import re
@@ -310,8 +310,8 @@ class MonitorScreen(Screen):
         elif button_id.startswith("logs-"):
             # Map button IDs to actual service names
             service_mapping = {
-                "logs-backend": "openrag-backend",
-                "logs-frontend": "openrag-frontend",
+                "logs-backend": "bomarag-backend",
+                "logs-frontend": "bomarag-frontend",
                 "logs-opensearch": "opensearch",
                 "logs-langflow": "langflow",
             }
@@ -358,13 +358,13 @@ class MonitorScreen(Screen):
                 if not should_continue:
                     self.notify("Start cancelled", severity="information")
                     return
-                # Ensure OPENRAG_VERSION is set in .env BEFORE starting services
+                # Ensure BOMARAG_VERSION is set in .env BEFORE starting services
                 # This ensures docker compose reads the correct version
                 try:
                     from ..managers.env_manager import EnvManager
 
                     env_manager = EnvManager()
-                    env_manager.ensure_openrag_version()
+                    env_manager.ensure_bomarag_version()
                     # Small delay to ensure .env file is written and flushed
                     await asyncio.sleep(0.5)
                 except Exception:
@@ -476,8 +476,8 @@ class MonitorScreen(Screen):
                 def expand_path(path_str: str) -> Path:
                     return Path(path_str.replace("$HOME", str(Path.home()))).expanduser()
 
-                config_path = expand_path(env_manager.config.openrag_config_path)
-                flows_path = expand_path(env_manager.config.openrag_flows_path)
+                config_path = expand_path(env_manager.config.bomarag_config_path)
+                flows_path = expand_path(env_manager.config.bomarag_flows_path)
                 flows_backup_path = flows_path / "backup"
 
                 if config_path.exists():
@@ -491,8 +491,8 @@ class MonitorScreen(Screen):
                     # Recreate empty config directory
                     config_path.mkdir(parents=True, exist_ok=True)
 
-                # Also delete legacy TUI config folder if it exists (~/.openrag/tui/config/)
-                tui_config_path = expand_path(env_manager.config.openrag_tui_config_path_legacy)
+                # Also delete legacy TUI config folder if it exists (~/.bomarag/tui/config/)
+                tui_config_path = expand_path(env_manager.config.bomarag_tui_config_path_legacy)
                 if tui_config_path.exists():
                     success, msg = await self.container_manager.clear_directory_with_container(
                         tui_config_path
@@ -504,7 +504,7 @@ class MonitorScreen(Screen):
                     tui_config_path.mkdir(parents=True, exist_ok=True)
 
                 # Clear backend data directory (database, session ownership, conversations, oauth tokens)
-                data_path = expand_path(env_manager.config.openrag_data_path)
+                data_path = expand_path(env_manager.config.bomarag_data_path)
                 if data_path.exists():
                     success, msg = await self.container_manager.clear_directory_with_container(
                         data_path
@@ -569,7 +569,7 @@ class MonitorScreen(Screen):
         yield False, "Clearing Langflow data..."
         from tui.main import _resolve_langflow_data_path
 
-        langflow_data_path = _resolve_langflow_data_path(Path.home() / ".openrag").resolve()
+        langflow_data_path = _resolve_langflow_data_path(Path.home() / ".bomarag").resolve()
         home = Path.home().resolve()
         if not str(langflow_data_path).startswith(str(home) + "/"):
             yield False, f"Refusing to delete path outside home directory: {langflow_data_path}"
@@ -585,7 +585,7 @@ class MonitorScreen(Screen):
         yield True, "Factory reset completed successfully"
 
     async def _prune_images(self) -> None:
-        """Prune old OpenRAG images with progress updates."""
+        """Prune old BomaRAG images with progress updates."""
         self.operation_in_progress = True
         try:
             # Show prune options modal
@@ -627,7 +627,7 @@ class MonitorScreen(Screen):
         env_manager = EnvManager()
         env_manager.load_existing_env()
         flows_path = Path(
-            env_manager.config.openrag_flows_path.replace("$HOME", str(Path.home()))
+            env_manager.config.bomarag_flows_path.replace("$HOME", str(Path.home()))
         ).expanduser()
         backup_dir = flows_path / "backup"
         if not backup_dir.exists():
@@ -1015,8 +1015,8 @@ class MonitorScreen(Screen):
 
             service_name = str(row_data[0])
             service_mapping = {
-                "openrag-backend": "openrag-backend",
-                "openrag-frontend": "openrag-frontend",
+                "bomarag-backend": "bomarag-backend",
+                "bomarag-frontend": "bomarag-frontend",
                 "opensearch": "opensearch",
                 "langflow": "langflow",
                 "dashboards": "dashboards",

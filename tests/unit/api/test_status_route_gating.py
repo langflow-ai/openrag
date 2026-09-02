@@ -1,6 +1,6 @@
 """Unit tests asserting that status routes are registered only in OSS run mode.
 
-Route registration reads OPENRAG_RUN_MODE (via is_run_mode_oss()) at the
+Route registration reads BOMARAG_RUN_MODE (via is_run_mode_oss()) at the
 moment register_*_routes() is called.  Because each route module imports
 is_run_mode_oss by name at module load time, we must patch the name inside
 each route module — not the originating utils module.
@@ -132,10 +132,10 @@ class TestInternalStatusRouteOnPrem:
 
 class TestPublicStatusDefaultEnv:
     def test_v1_status_present_when_env_unset(self, monkeypatch):
-        """OPENRAG_RUN_MODE unset defaults to oss — routes must be registered."""
+        """BOMARAG_RUN_MODE unset defaults to oss — routes must be registered."""
         from utils import run_mode_utils
 
-        monkeypatch.delenv("OPENRAG_RUN_MODE", raising=False)
+        monkeypatch.delenv("BOMARAG_RUN_MODE", raising=False)
         # Restore the real function so we exercise get_run_mode()'s default logic.
         monkeypatch.setattr(
             public_v1_routes,

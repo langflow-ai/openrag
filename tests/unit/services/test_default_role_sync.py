@@ -43,13 +43,13 @@ def _user(uid: str) -> User:
 
 @pytest.mark.asyncio
 async def test_sync_skipped_outside_oss(session, monkeypatch):
-    monkeypatch.setenv("OPENRAG_SYNC_DEFAULT_ROLE", "true")
-    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "user")
+    monkeypatch.setenv("BOMARAG_SYNC_DEFAULT_ROLE", "true")
+    monkeypatch.setenv("BOMARAG_DEFAULT_ROLE", "user")
     user_row = await ensure_user_row(session, _user("u1"))
     await session.commit()
 
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
-    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "admin")
+    monkeypatch.setenv("BOMARAG_RUN_MODE", "saas")
+    monkeypatch.setenv("BOMARAG_DEFAULT_ROLE", "admin")
     result = await sync_default_roles_if_changed(session)
     roles = await RoleRepo(session).list_user_roles(user_row.id)
 
@@ -60,8 +60,8 @@ async def test_sync_skipped_outside_oss(session, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_sync_disabled_is_noop(session, monkeypatch):
-    monkeypatch.setenv("OPENRAG_SYNC_DEFAULT_ROLE", "false")
-    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "user")
+    monkeypatch.setenv("BOMARAG_SYNC_DEFAULT_ROLE", "false")
+    monkeypatch.setenv("BOMARAG_DEFAULT_ROLE", "user")
     row = await ensure_user_row(session, _user("u1"))
     await session.commit()
 
@@ -74,8 +74,8 @@ async def test_sync_disabled_is_noop(session, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_first_run_with_unchanged_env_records_baseline(session, monkeypatch):
-    monkeypatch.setenv("OPENRAG_SYNC_DEFAULT_ROLE", "true")
-    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "user")
+    monkeypatch.setenv("BOMARAG_SYNC_DEFAULT_ROLE", "true")
+    monkeypatch.setenv("BOMARAG_DEFAULT_ROLE", "user")
     user_row = await ensure_user_row(session, _user("u1"))
     await session.commit()
 
@@ -93,12 +93,12 @@ async def test_first_run_with_unchanged_env_records_baseline(session, monkeypatc
 
 @pytest.mark.asyncio
 async def test_first_run_migrates_from_implicit_user_default(session, monkeypatch):
-    monkeypatch.setenv("OPENRAG_SYNC_DEFAULT_ROLE", "true")
-    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "user")
+    monkeypatch.setenv("BOMARAG_SYNC_DEFAULT_ROLE", "true")
+    monkeypatch.setenv("BOMARAG_DEFAULT_ROLE", "user")
     user_row = await ensure_user_row(session, _user("u1"))
     await session.commit()
 
-    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "admin")
+    monkeypatch.setenv("BOMARAG_DEFAULT_ROLE", "admin")
     result = await sync_default_roles_if_changed(session, enabled=True)
     await session.commit()
 
@@ -112,8 +112,8 @@ async def test_first_run_migrates_from_implicit_user_default(session, monkeypatc
 
 @pytest.mark.asyncio
 async def test_from_role_overrides_wrong_baseline(session, monkeypatch):
-    monkeypatch.setenv("OPENRAG_SYNC_DEFAULT_ROLE", "true")
-    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "user")
+    monkeypatch.setenv("BOMARAG_SYNC_DEFAULT_ROLE", "true")
+    monkeypatch.setenv("BOMARAG_DEFAULT_ROLE", "user")
     user_row = await ensure_user_row(session, _user("u1"))
     await session.commit()
 
@@ -124,7 +124,7 @@ async def test_from_role_overrides_wrong_baseline(session, monkeypatch):
     )
     await session.commit()
 
-    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "admin")
+    monkeypatch.setenv("BOMARAG_DEFAULT_ROLE", "admin")
     result = await sync_default_roles_if_changed(session, enabled=True, from_role="user")
     await session.commit()
 
@@ -135,13 +135,13 @@ async def test_from_role_overrides_wrong_baseline(session, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_env_change_updates_single_role_users(session, monkeypatch):
-    monkeypatch.setenv("OPENRAG_SYNC_DEFAULT_ROLE", "true")
-    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "user")
+    monkeypatch.setenv("BOMARAG_SYNC_DEFAULT_ROLE", "true")
+    monkeypatch.setenv("BOMARAG_DEFAULT_ROLE", "user")
     user_row = await ensure_user_row(session, _user("u1"))
     await sync_default_roles_if_changed(session, enabled=True)
     await session.commit()
 
-    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "admin")
+    monkeypatch.setenv("BOMARAG_DEFAULT_ROLE", "admin")
     result = await sync_default_roles_if_changed(session, enabled=True)
     await session.commit()
 
@@ -153,8 +153,8 @@ async def test_env_change_updates_single_role_users(session, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_skips_multi_role_users(session, monkeypatch):
-    monkeypatch.setenv("OPENRAG_SYNC_DEFAULT_ROLE", "true")
-    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "user")
+    monkeypatch.setenv("BOMARAG_SYNC_DEFAULT_ROLE", "true")
+    monkeypatch.setenv("BOMARAG_DEFAULT_ROLE", "user")
     user_row = await ensure_user_row(session, _user("u1"))
     role_repo = RoleRepo(session)
     dev_role = await role_repo.get_by_name("developer")
@@ -162,7 +162,7 @@ async def test_skips_multi_role_users(session, monkeypatch):
     await sync_default_roles_if_changed(session, enabled=True)
     await session.commit()
 
-    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "admin")
+    monkeypatch.setenv("BOMARAG_DEFAULT_ROLE", "admin")
     result = await sync_default_roles_if_changed(session, enabled=True)
     await session.commit()
 
@@ -175,8 +175,8 @@ async def test_skips_multi_role_users(session, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_explicit_to_role_overrides_env(session, monkeypatch):
-    monkeypatch.setenv("OPENRAG_SYNC_DEFAULT_ROLE", "true")
-    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "admin")
+    monkeypatch.setenv("BOMARAG_SYNC_DEFAULT_ROLE", "true")
+    monkeypatch.setenv("BOMARAG_DEFAULT_ROLE", "admin")
     user_row = await ensure_user_row(session, _user("u1"))
     role_repo = RoleRepo(session)
     user_role = await role_repo.get_by_name("user")
@@ -201,13 +201,13 @@ async def test_explicit_to_role_overrides_env(session, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_dry_run_does_not_write(session, monkeypatch):
-    monkeypatch.setenv("OPENRAG_SYNC_DEFAULT_ROLE", "true")
-    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "user")
+    monkeypatch.setenv("BOMARAG_SYNC_DEFAULT_ROLE", "true")
+    monkeypatch.setenv("BOMARAG_DEFAULT_ROLE", "user")
     user_row = await ensure_user_row(session, _user("u1"))
     await sync_default_roles_if_changed(session, enabled=True)
     await session.commit()
 
-    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "viewer")
+    monkeypatch.setenv("BOMARAG_DEFAULT_ROLE", "viewer")
     result = await sync_default_roles_if_changed(session, enabled=True, dry_run=True)
 
     roles = await RoleRepo(session).list_user_roles(user_row.id)

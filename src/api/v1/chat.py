@@ -27,7 +27,7 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 
-def _openrag_user_id(user: User) -> str:
+def _bomarag_user_id(user: User) -> str:
     return getattr(user, "db_user_id", None) or user.user_id
 
 
@@ -129,7 +129,7 @@ async def chat_create_endpoint(
         return JSONResponse({"error": "Message is required"}, status_code=400)
 
     user_id = user.user_id
-    storage_user_id = _openrag_user_id(user)
+    storage_user_id = _bomarag_user_id(user)
     jwt_token = user.jwt_token
     request_id = request.headers.get("x-request-id")
     if body.chat_id:
@@ -229,7 +229,7 @@ async def chat_list_endpoint(
 ):
     """List all conversations for the authenticated user. GET /v1/chat"""
     try:
-        history = await chat_service.get_langflow_history(_openrag_user_id(user))
+        history = await chat_service.get_langflow_history(_bomarag_user_id(user))
         conversations = [
             {
                 "chat_id": conv.get("response_id"),
@@ -253,7 +253,7 @@ async def chat_get_endpoint(
 ):
     """Get a specific conversation with full message history. GET /v1/chat/{chat_id}"""
     try:
-        history = await chat_service.get_langflow_history(_openrag_user_id(user))
+        history = await chat_service.get_langflow_history(_bomarag_user_id(user))
 
         conversation = None
         for conv in history.get("conversations", []):
@@ -307,7 +307,7 @@ async def chat_delete_endpoint(
     try:
         from api.chat import _assert_owns
 
-        storage_user_id = _openrag_user_id(user)
+        storage_user_id = _bomarag_user_id(user)
         await _assert_owns(chat_id, storage_user_id)
         result = await chat_service.delete_session(storage_user_id, chat_id)
         if result.get("not_found"):

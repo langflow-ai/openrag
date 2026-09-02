@@ -7,7 +7,7 @@ import {
 /** Component that failed, from GET /tasks/enhanced file metadata. */
 export type TaskFailureComponent =
   | "docling"
-  | "openrag"
+  | "bomarag"
   | "langflow"
   | "opensearch";
 

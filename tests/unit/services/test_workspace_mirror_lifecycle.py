@@ -42,7 +42,7 @@ async def session_factory():
 
 @pytest.fixture
 def cm(monkeypatch):
-    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "hybrid")
+    monkeypatch.setenv("BOMARAG_STORAGE_MODE", "hybrid")
     with tempfile.TemporaryDirectory() as tmp:
         cfg_file = Path(tmp) / "config.yaml"
         yield ConfigManager(config_file=str(cfg_file))
@@ -106,7 +106,7 @@ async def test_pending_mirrors_drained_via_await_handle(cm, session_factory):
 @pytest.mark.asyncio
 async def test_no_pending_mirrors_on_files_mode(cm, monkeypatch, session_factory):
     """In files mode the mirror is never scheduled."""
-    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "files")
+    monkeypatch.setenv("BOMARAG_STORAGE_MODE", "files")
     svc = WorkspaceConfigService(config_manager=cm, session_factory=session_factory)
     cfg = cm.load_config()
     cfg.agent.system_prompt = "files mode"

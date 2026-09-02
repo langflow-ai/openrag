@@ -28,7 +28,7 @@ export interface OnboardingVariables {
 interface OnboardingResponse {
   message: string;
   edited: boolean;
-  openrag_docs_filter_id?: string;
+  bomarag_docs_filter_id?: string;
   task_id?: string;
 }
 
@@ -68,11 +68,11 @@ export const useOnboardingMutation = (
   return useMutation({
     mutationFn: submitOnboarding,
     onSuccess: (data) => {
-      // Save OpenRAG docs filter ID if sample data was ingested
-      if (data.openrag_docs_filter_id) {
+      // Save BomaRAG docs filter ID if sample data was ingested
+      if (data.bomarag_docs_filter_id) {
         // Save to backend
         updateOnboardingMutation.mutateAsync({
-          openrag_docs_filter_id: data.openrag_docs_filter_id,
+          bomarag_docs_filter_id: data.bomarag_docs_filter_id,
         });
       }
     },

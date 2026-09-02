@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Copyright The OpenRAG Authors.
+# Copyright The BomaRAG Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -44,7 +44,7 @@ kube::codegen::gen_client \
   --with-watch \
   --one-input-api "api/v1alpha1" \
   --output-dir "${SCRIPT_ROOT}/pkg/generated" \
-  --output-pkg "github.com/langflow-ai/openrag-operator/pkg/generated" \
+  --output-pkg "github.com/ABISHAIMWANJA/bomarag-operator/pkg/generated" \
   --boilerplate "${SCRIPT_ROOT}/hack/boilerplate.go.txt" \
   "${SCRIPT_ROOT}"
 
@@ -57,4 +57,4 @@ echo "  - pkg/generated/listers/api/v1alpha1/     (Listers)"
 echo "  - pkg/generated/informers/externalversions/ (Informers)"
 echo ""
 echo "Users can now import:"
-echo "  import clientset \"github.com/langflow-ai/openrag-operator/pkg/generated/clientset/versioned\""
+echo "  import clientset \"github.com/ABISHAIMWANJA/bomarag-operator/pkg/generated/clientset/versioned\""

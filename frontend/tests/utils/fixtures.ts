@@ -14,7 +14,7 @@ type TestFixtures = {
 };
 
 /**
- * Extended test with custom fixtures for OpenRAG UI testing
+ * Extended test with custom fixtures for BomaRAG UI testing
  * Provides page objects and cleanup utilities
  *
  * Route Configuration:

@@ -1,6 +1,6 @@
 "use client";
 
-import Logo from "@/components/icons/openrag-logo";
+import Logo from "@/components/icons/bomarag-logo";
 
 /**
  * Shown to non-admin users when the workspace has not been onboarded yet.
@@ -17,10 +17,10 @@ export function OnboardingBlocked() {
     <div className="flex h-full w-full flex-col items-center justify-center gap-6 px-8 text-center">
       <Logo className="fill-primary" width={50} height={40} />
       <h1 className="text-2xl font-medium font-chivo">
-        OpenRAG isn&apos;t set up yet
+        BomaRAG isn&apos;t set up yet
       </h1>
       <p className="max-w-md text-muted-foreground">
-        An admin needs to finish setting up OpenRAG for this workspace before it
+        An admin needs to finish setting up BomaRAG for this workspace before it
         can be used. Once that&apos;s done, check back here.
       </p>
       <button

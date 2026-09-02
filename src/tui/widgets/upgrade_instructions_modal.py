@@ -1,4 +1,4 @@
-"""Upgrade instructions modal for OpenRAG TUI."""
+"""Upgrade instructions modal for BomaRAG TUI."""
 
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal
@@ -92,10 +92,10 @@ class UpgradeInstructionsModal(ModalScreen[bool]):
                 "To upgrade the TUI:\n"
                 "1. Exit TUI (press 'q')\n"
                 "2. Run one of:\n"
-                "   • pip install --upgrade openrag\n"
-                "   • uv pip install --upgrade openrag\n"
-                "   • uvx --from openrag openrag\n"
-                "3. Restart: openrag\n\n"
+                "   • pip install --upgrade bomarag\n"
+                "   • uv pip install --upgrade bomarag\n"
+                "   • uvx --from bomarag bomarag\n"
+                "3. Restart: bomarag\n\n"
                 "After upgrading, containers will automatically use the new version.",
                 id="message"
             )

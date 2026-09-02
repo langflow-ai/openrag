@@ -1,23 +1,23 @@
 ---
-title: Use the OpenRAG terminal
+title: Use the BomaRAG terminal
 slug: /tui
 ---
 
 import PartialGpuModeTip from '@site/docs/_partial-gpu-mode-tip.mdx';
 import PartialContainerVm from '@site/docs/_partial-container-vm.mdx';
 
-The OpenRAG terminal session provides a simplified and guided experience for configuring, managing, and monitoring your OpenRAG deployment directly from the terminal.
+The BomaRAG terminal session provides a simplified and guided experience for configuring, managing, and monitoring your BomaRAG deployment directly from the terminal.
 
-If you install OpenRAG with [`uv`](/install-uv) or [`uvx`](/install-uvx), you use an OpenRAG terminal session to manage your OpenRAG deployment.
-The terminal session guides you through the initial setup, automatically manages your OpenRAG `.env` and `docker-compose` files, and provides convenient access to [service management](/manage-services) controls.
+If you install BomaRAG with [`uv`](/install-uv) or [`uvx`](/install-uvx), you use an BomaRAG terminal session to manage your BomaRAG deployment.
+The terminal session guides you through the initial setup, automatically manages your BomaRAG `.env` and `docker-compose` files, and provides convenient access to [service management](/manage-services) controls.
 
-In contrast, when you [deploy OpenRAG with self-managed services](/docker), you must manually configure OpenRAG by preparing a `.env` file, and then use Docker or Podman commands to deploy and manage your OpenRAG services.
+In contrast, when you [deploy BomaRAG with self-managed services](/docker), you must manually configure BomaRAG by preparing a `.env` file, and then use Docker or Podman commands to deploy and manage your BomaRAG services.
 
 ## Start a terminal session {#access-the-tui}
 
-If you installed OpenRAG with `uv`, start a terminal session with `uv run openrag`.
+If you installed BomaRAG with `uv`, start a terminal session with `uv run bomarag`.
 
-If you installed OpenRAG with `uvx`, start a terminal session with `uvx openrag`.
+If you installed BomaRAG with `uvx`, start a terminal session with `uvx bomarag`.
 
 ### Start a GUI terminal session
 
@@ -25,11 +25,11 @@ If you installed OpenRAG with `uvx`, start a terminal session with `uvx openrag`
 The GUI terminal (TUI) is required to access certain controls like **Factory Reset**, **GPU/CPU mode**, and **Upgrade**.
 :::
 
-For a GUI terminal experience, start OpenRAG with the `--tui` flag.
+For a GUI terminal experience, start BomaRAG with the `--tui` flag.
 
 The GUI terminal, also known as the Terminal User Interface (TUI), provides the same options as the CLI terminal session with added support for mouse navigation and button-like controls for a more visual and interactive experience.
 
-![OpenRAG TUI Interface](@site/static/img/openrag_tui_dec_2025.png)
+![BomaRAG TUI Interface](@site/static/img/bomarag_tui_dec_2025.png)
 
 ## Manage services with the terminal
 
@@ -37,33 +37,33 @@ The GUI terminal, also known as the Terminal User Interface (TUI), provides the 
 <PartialContainerVm />
 :::
 
-Use the terminal's **Start services** and **Stop services** options to start and stop the OpenRAG services.
+Use the terminal's **Start services** and **Stop services** options to start and stop the BomaRAG services.
 
-For more information and fine-grained controls, see [Manage OpenRAG services](/manage-services).
+For more information and fine-grained controls, see [Manage BomaRAG services](/manage-services).
 
 ## Toggle GPU/CPU mode
 
 You can toggle between GPU and CPU mode if your system has compatible GPU hardware and drivers installed:
 
-1. [Start the terminal session with `--tui`](#access-the-tui), such as `uv run openrag --tui`.
+1. [Start the terminal session with `--tui`](#access-the-tui), such as `uv run bomarag --tui`.
 
 2. Click **Status** in the TUI.
 
 3. Click **Switch to GPU Mode** or **Switch to CPU Mode**.
 
-This change requires restarting all OpenRAG services because each mode has its own `docker-compose` file.
+This change requires restarting all BomaRAG services because each mode has its own `docker-compose` file.
 
 :::tip
 <PartialGpuModeTip />
 :::
 
-## Exit the OpenRAG terminal
+## Exit the BomaRAG terminal
 
-To exit the OpenRAG terminal session, select the **Exit** option from the terminal menu, or quit the process (<kbd>Cmd</kbd>+<kbd>C</kbd> on macOS).
+To exit the BomaRAG terminal session, select the **Exit** option from the terminal menu, or quit the process (<kbd>Cmd</kbd>+<kbd>C</kbd> on macOS).
 
 If you are using the TUI (`--tui`), you can press <kbd>q</kbd> to quit the TUI.
 
-Exiting the terminal session doesn't stop your OpenRAG services.
-Your OpenRAG services continue to run until they are stopped from within the terminal session or by another process that inadvertently stops them.
+Exiting the terminal session doesn't stop your BomaRAG services.
+Your BomaRAG services continue to run until they are stopped from within the terminal session or by another process that inadvertently stops them.
 
 To restart the terminal session, see [Start a terminal session](#access-the-tui).

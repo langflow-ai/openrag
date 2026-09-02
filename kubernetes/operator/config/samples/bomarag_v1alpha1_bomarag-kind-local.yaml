@@ -1,0 +1,65 @@
+# BomaRAG sample for local kind/Colima clusters (typically 2 CPUs).
+#
+# Build and load images from the repo root (Docker/Colima):
+#   make kind-build-load-apps
+#   # or: make build-be build-fe build-lf && make kind-load-app-images
+#
+# Apply (operator must be running via `make run` or deployed):
+#   kubectl create namespace my-tenant
+#   kubectl apply -f config/samples/bomarag_v1alpha1_bomarag-kind-local.yaml
+#
+# After rebuilding images, reload into kind and restart workloads:
+#   make kind-load-app-images
+#   kubectl rollout restart deployment -n my-tenant bomarag-fe bomarag-be bomarag-lf
+#
+# imagePullPolicy: Never — use images pre-loaded with `kind load docker-image` (do not pull from registry).
+apiVersion: bomalogic.com/v1alpha1
+kind: BomaRAG
+metadata:
+  name: my-bomarag
+  namespace: my-tenant
+spec:
+  targetNamespace: my-tenant
+
+  frontend:
+    image: bomalogic/bomarag-frontend:latest
+    imagePullPolicy: Never
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+      limits:
+        cpu: "500m"
+        memory: "1Gi"
+
+  backend:
+    image: bomalogic/bomarag-backend:latest
+    imagePullPolicy: Never
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "512Mi"
+      limits:
+        cpu: "1"
+        memory: "4Gi"
+    storage:
+      enabled: true
+      size: "1Gi"
+
+  langflow:
+    image: bomalogic/bomarag-langflow:latest
+    imagePullPolicy: Never
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "512Mi"
+      limits:
+        cpu: "1"
+        memory: "2Gi"
+    storage:
+      enabled: true
+      size: "1Gi"
+    flowsRef: release-saas-0.1
+
+  networkPolicy:
+    enabled: false

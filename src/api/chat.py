@@ -17,7 +17,7 @@ logger = get_logger(__name__)
 MAX_BULK_DELETE = 100
 
 
-def _openrag_user_id(user: User) -> str:
+def _bomarag_user_id(user: User) -> str:
     return getattr(user, "db_user_id", None) or user.user_id
 
 
@@ -42,7 +42,7 @@ async def _assert_owns(session_id: str | None, user_id: str) -> None:
 class ChatBody(BaseModel):
     prompt: str
     previous_response_id: str | None = None
-    # OpenRAG sidebar/thread id. Distinct from previous_response_id so a retry
+    # BomaRAG sidebar/thread id. Distinct from previous_response_id so a retry
     # after an error can stay in the same chat while starting a fresh Langflow session.
     conversation_id: str | None = None
     stream: bool = False
@@ -66,7 +66,7 @@ async def chat_endpoint(
     if not body.prompt:
         return JSONResponse({"error": "Prompt is required"}, status_code=400)
 
-    storage_user_id = _openrag_user_id(user)
+    storage_user_id = _bomarag_user_id(user)
     await _assert_owns(body.previous_response_id, storage_user_id)
 
     jwt_token = user.jwt_token
@@ -121,7 +121,7 @@ async def langflow_endpoint(
     if not body.prompt:
         return JSONResponse({"error": "Prompt is required"}, status_code=400)
 
-    storage_user_id = _openrag_user_id(user)
+    storage_user_id = _bomarag_user_id(user)
     await _assert_owns(body.previous_response_id, storage_user_id)
     await _assert_owns(body.conversation_id, storage_user_id)
 
@@ -186,7 +186,7 @@ async def chat_history_endpoint(
 ):
     """Get chat history for a user"""
     try:
-        history = await chat_service.get_chat_history(_openrag_user_id(user))
+        history = await chat_service.get_chat_history(_bomarag_user_id(user))
         return JSONResponse(history)
     except Exception:
         logger.exception("[CHAT] Failed to get chat history")
@@ -199,7 +199,7 @@ async def langflow_history_endpoint(
 ):
     """Get langflow chat history for a user"""
     try:
-        history = await chat_service.get_langflow_history(_openrag_user_id(user))
+        history = await chat_service.get_langflow_history(_bomarag_user_id(user))
         return JSONResponse(history)
     except Exception:
         logger.exception("[CHAT] Failed to get langflow history")
@@ -212,7 +212,7 @@ async def delete_session_endpoint(
     user: User = Depends(require_permission("conversations:delete:own")),
 ):
     """Delete a chat session"""
-    storage_user_id = _openrag_user_id(user)
+    storage_user_id = _bomarag_user_id(user)
     await _assert_owns(session_id, storage_user_id)
     try:
         result = await chat_service.delete_session(storage_user_id, session_id)
@@ -239,7 +239,7 @@ async def bulk_delete_sessions_endpoint(
     if len(body.session_ids) > MAX_BULK_DELETE:
         raise HTTPException(status_code=400, detail={"error": "too_many_session_ids"})
 
-    storage_user_id = _openrag_user_id(user)
+    storage_user_id = _bomarag_user_id(user)
     try:
         result = await chat_service.delete_sessions(storage_user_id, body.session_ids)
         return JSONResponse(

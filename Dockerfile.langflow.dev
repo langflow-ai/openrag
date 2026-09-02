@@ -34,8 +34,8 @@ RUN pip install --no-cache-dir --upgrade "pip>=26.1.2" \
 RUN echo "Cloning ${GIT_REPO} branch ${GIT_BRANCH}..." && \
     git clone --depth 1 --branch ${GIT_BRANCH} ${GIT_REPO} /app
 
-COPY scripts/patch_langflow_openrag_bundle.py /tmp/patch_langflow_openrag_bundle.py
-RUN python3 /tmp/patch_langflow_openrag_bundle.py /app/src/frontend/src/utils/styleUtils.ts
+COPY scripts/patch_langflow_bomarag_bundle.py /tmp/patch_langflow_bomarag_bundle.py
+RUN python3 /tmp/patch_langflow_bomarag_bundle.py /app/src/frontend/src/utils/styleUtils.ts
 
 # Install backend dependencies
 RUN uv sync --frozen --no-install-project --no-editable --extra postgresql

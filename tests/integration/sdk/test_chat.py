@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 import pytest
-from openrag_sdk import Source
+from bomarag_sdk import Source
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("SKIP_SDK_INTEGRATION_TESTS") == "true",

@@ -13,10 +13,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	openragv1alpha1 "github.com/langflow-ai/openrag-operator/api/v1alpha1"
+	bomaragv1alpha1 "github.com/ABISHAIMWANJA/bomarag-operator/api/v1alpha1"
 )
 
-func (r *OpenRAGReconciler) handleDeletion(ctx context.Context, o *openragv1alpha1.OpenRAG) error {
+func (r *BomaRAGReconciler) handleDeletion(ctx context.Context, o *bomaragv1alpha1.BomaRAG) error {
 	logger := log.FromContext(ctx)
 	logger.Info("handleDeletion called", "name", o.Name, "namespace", o.Namespace)
 
@@ -95,7 +95,7 @@ func (r *OpenRAGReconciler) handleDeletion(ctx context.Context, o *openragv1alph
 	// Use DNS-compliant names (lowercase, hyphens instead of underscores)
 	// These names must match getOrGenerateSecret() logic: o.Name + "-" + strings.ToLower(strings.ReplaceAll(envKeyName, "_", "-")) + "-default"
 	defaultSecretNames := []string{
-		o.Name + "-openrag-encryption-key-default", // OPENRAG_ENCRYPTION_KEY
+		o.Name + "-bomarag-encryption-key-default", // BOMARAG_ENCRYPTION_KEY
 		o.Name + "-jwt-signing-key-default",        // JWT_SIGNING_KEY (not jwt-private-key!)
 		o.Name + "-langflow-secret-key-default",    // LANGFLOW_SECRET_KEY
 	}
@@ -172,7 +172,7 @@ func (r *OpenRAGReconciler) handleDeletion(ctx context.Context, o *openragv1alph
 
 // deleteResources explicitly deletes all resources created by the operator in the target namespace
 // This is necessary when deploying to an existing namespace that we don't manage
-func (r *OpenRAGReconciler) deleteResources(ctx context.Context, o *openragv1alpha1.OpenRAG, targetNS string) error {
+func (r *BomaRAGReconciler) deleteResources(ctx context.Context, o *bomaragv1alpha1.BomaRAG, targetNS string) error {
 	logger := log.FromContext(ctx)
 
 	// Delete .env secrets with finalizers first
@@ -201,7 +201,7 @@ func (r *OpenRAGReconciler) deleteResources(ctx context.Context, o *openragv1alp
 	// Delete auto-generated default secrets with finalizers
 	// These names must match getOrGenerateSecret() logic: o.Name + "-" + strings.ToLower(strings.ReplaceAll(envKeyName, "_", "-")) + "-default"
 	defaultSecretNames := []string{
-		o.Name + "-openrag-encryption-key-default", // OPENRAG_ENCRYPTION_KEY
+		o.Name + "-bomarag-encryption-key-default", // BOMARAG_ENCRYPTION_KEY
 		o.Name + "-jwt-signing-key-default",        // JWT_SIGNING_KEY (not jwt-private-key!)
 		o.Name + "-langflow-secret-key-default",    // LANGFLOW_SECRET_KEY
 	}
@@ -284,10 +284,10 @@ func (r *OpenRAGReconciler) deleteResources(ctx context.Context, o *openragv1alp
 	// Default is "Retain" to preserve user data
 	policy := o.Spec.Langflow.PVCReclaimPolicy
 	if policy == "" {
-		policy = openragv1alpha1.PVCReclaimRetain // default if not specified
+		policy = bomaragv1alpha1.PVCReclaimRetain // default if not specified
 	}
 
-	if policy == openragv1alpha1.PVCReclaimDelete {
+	if policy == bomaragv1alpha1.PVCReclaimDelete {
 		pvc := &corev1.PersistentVolumeClaim{}
 		err := r.Get(ctx, client.ObjectKey{Name: instanceResourceName(o, "lf-data"), Namespace: targetNS}, pvc)
 		if err == nil {

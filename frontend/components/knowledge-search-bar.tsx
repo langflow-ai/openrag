@@ -1,7 +1,7 @@
 import { ArrowRight, RefreshCw, Search, X } from "lucide-react";
 import { type ChangeEvent, type FormEvent, useCallback, useState } from "react";
 import { toast } from "sonner";
-import { useRefreshOpenragDocs } from "@/app/api/mutations/useRefreshOpenragDocs";
+import { useRefreshBomaragDocs } from "@/app/api/mutations/useRefreshBomaragDocs";
 import {
   type SyncAllPreviewResponse,
   useSyncAllConnectors,
@@ -46,7 +46,7 @@ export const KnowledgeSearchBar = () => {
 
   const syncAllConnectorsMutation = useSyncAllConnectors();
   const syncAllPreviewMutation = useSyncAllConnectorsPreview();
-  const refreshOpenragDocsMutation = useRefreshOpenragDocs();
+  const refreshBomaragDocsMutation = useRefreshBomaragDocs();
   const [syncDialogOpen, setSyncDialogOpen] = useState(false);
   const [syncPreview, setSyncPreview] = useState<SyncAllPreviewResponse | null>(
     null,
@@ -171,23 +171,23 @@ export const KnowledgeSearchBar = () => {
           <Button
             type="button"
             variant="ghost"
-            disabled={refreshOpenragDocsMutation.isPending}
+            disabled={refreshBomaragDocsMutation.isPending}
             className="h-auto flex-shrink-0 rounded-none px-3 text-sm hover:bg-accent hover:text-foreground"
             onClick={async () => {
               try {
-                toast.info("Refreshing OpenRAG docs...");
-                const result = await refreshOpenragDocsMutation.mutateAsync();
+                toast.info("Refreshing BomaRAG docs...");
+                const result = await refreshBomaragDocsMutation.mutateAsync();
                 toast.success(result.message);
               } catch (error) {
                 toast.error(
                   error instanceof Error
                     ? error.message
-                    : "Failed to refresh OpenRAG docs",
+                    : "Failed to refresh BomaRAG docs",
                 );
               }
             }}
           >
-            {refreshOpenragDocsMutation.isPending
+            {refreshBomaragDocsMutation.isPending
               ? "Refreshing docs..."
               : "Fetch latest docs"}
           </Button>

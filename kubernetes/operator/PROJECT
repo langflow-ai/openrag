@@ -2,19 +2,19 @@
 # This file is used to track the info used to scaffold your project
 # and allow the plugins properly work.
 # More info: https://book.kubebuilder.io/reference/project-config.html
-domain: openr.ag
+domain: bomalogic.com
 layout:
 - go.kubebuilder.io/v4
-projectName: openrag-operator
-repo: github.com/langflow-ai/openrag-operator
+projectName: bomarag-operator
+repo: github.com/ABISHAIMWANJA/bomarag-operator
 resources:
 - api:
     crdVersion: v1
     namespaced: true
   controller: true
-  domain: openr.ag
-  group: openrag
-  kind: OpenRAG
-  path: github.com/langflow-ai/openrag-operator/api/v1alpha1
+  domain: bomalogic.com
+  group: bomarag
+  kind: BomaRAG
+  path: github.com/ABISHAIMWANJA/bomarag-operator/api/v1alpha1
   version: v1alpha1
 version: "3"

@@ -1,5 +1,5 @@
 /*
-Copyright 2026 The OpenRAG Authors.
+Copyright 2026 The BomaRAG Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,10 +18,10 @@ limitations under the License.
 
 package v1alpha1
 
-// OpenRAGListerExpansion allows custom methods to be added to
-// OpenRAGLister.
-type OpenRAGListerExpansion interface{}
+// BomaRAGListerExpansion allows custom methods to be added to
+// BomaRAGLister.
+type BomaRAGListerExpansion interface{}
 
-// OpenRAGNamespaceListerExpansion allows custom methods to be added to
-// OpenRAGNamespaceLister.
-type OpenRAGNamespaceListerExpansion interface{}
+// BomaRAGNamespaceListerExpansion allows custom methods to be added to
+// BomaRAGNamespaceLister.
+type BomaRAGNamespaceListerExpansion interface{}

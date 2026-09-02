@@ -4,7 +4,7 @@ import os
 import time
 from typing import TYPE_CHECKING, Any, Literal
 
-from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
+from config.settings import clients, get_bomarag_config, get_embedding_model, get_index_name
 from session_manager import AnonymousUser
 from utils.document_processing import (
     extract_relevant,
@@ -459,8 +459,8 @@ class TaskProcessor:
 
         # Use provided embedding model or configured model.
         # get_embedding_model() returns empty string when Langflow ingest is enabled,
-        # but OpenRAG processors still need a concrete embedding model.
-        config = get_openrag_config()
+        # but BomaRAG processors still need a concrete embedding model.
+        config = get_bomarag_config()
         configured_embedding_model = config.knowledge.embedding_model
         embedding_model = embedding_model or configured_embedding_model or get_embedding_model()
 
@@ -805,7 +805,7 @@ class DocumentFileProcessor(TaskProcessor):
                         except (TypeError, ValueError):
                             pass
 
-            config = get_openrag_config()
+            config = get_bomarag_config()
             standard_kwargs["ocr"] = config.knowledge.ocr
             standard_kwargs["picture_descriptions"] = config.knowledge.picture_descriptions
 
@@ -1198,7 +1198,7 @@ class ConnectorFileProcessor(TaskProcessor):
                         {}, connector_tweak_settings
                     )
 
-                    config = get_openrag_config()
+                    config = get_bomarag_config()
                     effective_ingest_settings = (
                         dict(self.ingest_settings) if self.ingest_settings else {}
                     )
@@ -1271,7 +1271,7 @@ class ConnectorFileProcessor(TaskProcessor):
                             indexed_filename=file_task.filename,
                         )
                 else:
-                    # Standard OpenRAG processing pipeline (process_document_standard)
+                    # Standard BomaRAG processing pipeline (process_document_standard)
                     standard_kwargs: dict[str, Any] = {}
                     if isinstance(self.ingest_settings, dict):
                         s = self.ingest_settings
@@ -1288,7 +1288,7 @@ class ConnectorFileProcessor(TaskProcessor):
                                     standard_kwargs[param] = int(raw)
                                 except (TypeError, ValueError):
                                     pass
-                    config = get_openrag_config()
+                    config = get_bomarag_config()
                     standard_kwargs["ocr"] = config.knowledge.ocr
                     standard_kwargs["picture_descriptions"] = config.knowledge.picture_descriptions
 
@@ -1539,7 +1539,7 @@ class LangflowFileProcessor(TaskProcessor):
 
             # Build settings with fresh OCR/pictureDescriptions from live
             # config so retries pick up configuration changes.
-            config = get_openrag_config()
+            config = get_bomarag_config()
             effective_settings = dict(self.settings) if self.settings else {}
             effective_settings["ocr"] = config.knowledge.ocr
             effective_settings["pictureDescriptions"] = config.knowledge.picture_descriptions

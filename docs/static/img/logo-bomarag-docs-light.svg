@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="220" height="48" viewBox="0 0 220 48" role="img" aria-label="BomaRAG">
+  <title>BomaRAG</title>
+  <!-- Placeholder Bomalogic mark + wordmark. Replace with the official
+       Bomalogic asset - see branding/README.md -->
+  <g fill="none" stroke="#0F172A" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><rect x="26" y="4" width="18" height="24" rx="2.5"/><path d="M31 12h8M31 17h8M31 22h5"/><path d="M10 16v8a6 6 0 0 0 6 6h10"/><path d="M10 32v-8a6 6 0 0 1 6-6h10"/></g><circle cx="10" cy="10" r="6" fill="#0F172A"/><circle cx="10" cy="38" r="6" fill="#0F172A"/>
+  <text x="58" y="32" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif" font-size="26" font-weight="700" letter-spacing="-0.5" fill="#0F172A">BomaRAG</text>
+</svg>

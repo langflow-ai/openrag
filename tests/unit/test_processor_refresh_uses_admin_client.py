@@ -1,11 +1,11 @@
 """Index refresh after a duplicate-replace must run on the admin client.
 
 `indices:admin/refresh` is index-wide and cannot be DLS-scoped, so the
-read-only `openrag_user_role` does not grant it. The visibility check and the
+read-only `bomarag_user_role` does not grant it. The visibility check and the
 delete are still issued as the user (delete mutates via the admin client
 internally), but the trailing refresh must run under the admin/service client
 (`clients.opensearch`) — otherwise OpenSearch returns a 403
-`security_exception` for `[indices:admin/refresh] ... backend_roles=[openrag_user]`
+`security_exception` for `[indices:admin/refresh] ... backend_roles=[bomarag_user]`
 during the onboarding "replace duplicate" path.
 
 Regression guard for both processors that issue this refresh:

@@ -27,11 +27,11 @@ logger = get_logger(__name__)
 
 
 def _default_new_user_role() -> str:
-    return os.getenv("OPENRAG_DEFAULT_ROLE", "user")
+    return os.getenv("BOMARAG_DEFAULT_ROLE", "user")
 
 
 def _noauth_role() -> str:
-    return os.getenv("OPENRAG_NOAUTH_ROLE", "admin")
+    return os.getenv("BOMARAG_NOAUTH_ROLE", "admin")
 
 
 async def ensure_user_row(
@@ -44,8 +44,8 @@ async def ensure_user_row(
     Role assignment:
 
     * ``jwt_roles is None`` — env-default behavior (oss / RBAC-off). Every new
-      user gets ``OPENRAG_DEFAULT_ROLE`` (default ``user``); the synthetic
-      anonymous user gets ``OPENRAG_NOAUTH_ROLE`` (default ``admin``). There is
+      user gets ``BOMARAG_DEFAULT_ROLE`` (default ``user``); the synthetic
+      anonymous user gets ``BOMARAG_NOAUTH_ROLE`` (default ``admin``). There is
       no first-user-becomes-admin bootstrap.
     * ``jwt_roles is not None`` — JWT is authoritative (saas / on_prem). The
       user's DB role assignments are reconciled against the list every call.
@@ -271,7 +271,7 @@ async def _assign_default_role(
     Role assignment is owned outside the app: saas/on_prem deployments sync
     roles from the JWT claim (see ``_sync_jwt_roles``), and everything else
     falls back here. There is no first-user-becomes-admin bootstrap — an oss
-    operator who wants an admin sets ``OPENRAG_DEFAULT_ROLE=admin``.
+    operator who wants an admin sets ``BOMARAG_DEFAULT_ROLE=admin``.
     """
     # No-auth synthetic user -> configurable role
     if user_id == "anonymous":

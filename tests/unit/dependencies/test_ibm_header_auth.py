@@ -3,7 +3,7 @@
 Covers the RBAC-gated token source in ``_get_ibm_user`` (``src/dependencies.py``):
 when JWT-role sync is enabled the end-user JWT is read from the gateway-forwarded
 header named by ``get_jwt_auth_header()``; when RBAC is off the existing
-``ibm-openrag-session`` cookie flow is preserved. ``decode_ibm_jwt`` is
+``ibm-bomarag-session`` cookie flow is preserved. ``decode_ibm_jwt`` is
 monkeypatched so no real token is needed.
 """
 
@@ -22,7 +22,7 @@ if str(SRC) not in sys.path:
 import auth.ibm_auth as ibm_auth  # noqa: E402
 from auth.request_identity import _get_ibm_user  # noqa: E402
 
-COOKIE_NAME = "ibm-openrag-session"
+COOKIE_NAME = "ibm-bomarag-session"
 
 
 class _FakeRequest:
@@ -38,21 +38,21 @@ class _FakeRequest:
 
 @pytest.fixture(autouse=True)
 def _env(monkeypatch):
-    monkeypatch.setenv("OPENRAG_JWT_ROLES_CLAIM", "openrag_roles")
-    monkeypatch.setenv("OPENRAG_ROLE_CLAIM_ADMIN", "admin")
-    monkeypatch.setenv("OPENRAG_ROLE_CLAIM_DEVELOPER", "manager")
-    monkeypatch.setenv("OPENRAG_ROLE_CLAIM_USER", "user")
-    monkeypatch.delenv("OPENRAG_ROLE_CLAIM_VIEWER", raising=False)
-    monkeypatch.setenv("OPENRAG_JWT_AUTH_HEADER", "X-OpenRAG-JWT")
+    monkeypatch.setenv("BOMARAG_JWT_ROLES_CLAIM", "bomarag_roles")
+    monkeypatch.setenv("BOMARAG_ROLE_CLAIM_ADMIN", "admin")
+    monkeypatch.setenv("BOMARAG_ROLE_CLAIM_DEVELOPER", "manager")
+    monkeypatch.setenv("BOMARAG_ROLE_CLAIM_USER", "user")
+    monkeypatch.delenv("BOMARAG_ROLE_CLAIM_VIEWER", raising=False)
+    monkeypatch.setenv("BOMARAG_JWT_AUTH_HEADER", "X-BomaRAG-JWT")
 
 
 @pytest.mark.asyncio
 async def test_rbac_on_reads_jwt_from_header(monkeypatch):
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
-    claims = {"sub": "s1", "username": "alice", "display_name": "Alice", "openrag_roles": ["admin"]}
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "true")
+    claims = {"sub": "s1", "username": "alice", "display_name": "Alice", "bomarag_roles": ["admin"]}
     monkeypatch.setattr(ibm_auth, "decode_ibm_jwt", lambda tok: claims if tok == "tok" else None)
     # Cookie present too — it must be ignored when RBAC is on.
-    req = _FakeRequest(headers={"X-OpenRAG-JWT": "Bearer tok"}, cookies={COOKIE_NAME: "COOKIE"})
+    req = _FakeRequest(headers={"X-BomaRAG-JWT": "Bearer tok"}, cookies={COOKIE_NAME: "COOKIE"})
 
     user = await _get_ibm_user(req, required=True)
 
@@ -65,11 +65,11 @@ async def test_rbac_on_reads_jwt_from_header(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_rbac_off_reads_jwt_from_cookie(monkeypatch):
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "false")
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "false")
     claims = {"sub": "s2", "username": "bob"}
     monkeypatch.setattr(ibm_auth, "decode_ibm_jwt", lambda tok: claims if tok == "ctok" else None)
     # Header present too — it must be ignored when RBAC is off.
-    req = _FakeRequest(headers={"X-OpenRAG-JWT": "Bearer HEADERTOK"}, cookies={COOKIE_NAME: "ctok"})
+    req = _FakeRequest(headers={"X-BomaRAG-JWT": "Bearer HEADERTOK"}, cookies={COOKIE_NAME: "ctok"})
 
     user = await _get_ibm_user(req, required=True)
 
@@ -81,7 +81,7 @@ async def test_rbac_off_reads_jwt_from_cookie(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_rbac_on_missing_header_401(monkeypatch):
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "true")
 
     def _boom(tok):  # decode must not run when no header token is present
         raise AssertionError("decode_ibm_jwt should not be called without a header token")
@@ -103,8 +103,8 @@ LH_HEADER = "X-IBM-LH-Credentials"
 async def test_saas_rbac_no_jwt_does_not_degrade_to_lakehouse(monkeypatch):
     """saas+RBAC with no forwarded JWT must fail loud, even when the lakehouse
     credentials header is present — it must NOT build a Basic lakehouse user."""
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "true")
+    monkeypatch.setenv("BOMARAG_RUN_MODE", "saas")
     monkeypatch.setattr(
         ibm_auth,
         "decode_ibm_jwt",
@@ -123,8 +123,8 @@ async def test_saas_rbac_no_jwt_does_not_degrade_to_lakehouse(monkeypatch):
 async def test_saas_rbac_no_jwt_optional_returns_none(monkeypatch):
     """saas+RBAC with no forwarded JWT on an optional endpoint returns None
     (anonymous), not a 401."""
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "true")
+    monkeypatch.setenv("BOMARAG_RUN_MODE", "saas")
     req = _FakeRequest(headers={LH_HEADER: "dGVzdDp0ZXN0"})
 
     user = await _get_ibm_user(req, required=False)
@@ -136,11 +136,11 @@ async def test_saas_rbac_no_jwt_optional_returns_none(monkeypatch):
 async def test_saas_rbac_jwt_wins_over_lakehouse_header(monkeypatch):
     """saas+RBAC: a valid forwarded JWT is authoritative — the lakehouse header
     must never override it into a Basic credential."""
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
-    claims = {"sub": "s1", "username": "alice", "display_name": "Alice", "openrag_roles": ["admin"]}
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "true")
+    monkeypatch.setenv("BOMARAG_RUN_MODE", "saas")
+    claims = {"sub": "s1", "username": "alice", "display_name": "Alice", "bomarag_roles": ["admin"]}
     monkeypatch.setattr(ibm_auth, "decode_ibm_jwt", lambda tok: claims if tok == "tok" else None)
-    req = _FakeRequest(headers={"X-OpenRAG-JWT": "Bearer tok", LH_HEADER: "dGVzdDp0ZXN0"})
+    req = _FakeRequest(headers={"X-BomaRAG-JWT": "Bearer tok", LH_HEADER: "dGVzdDp0ZXN0"})
 
     user = await _get_ibm_user(req, required=True)
 
@@ -157,8 +157,8 @@ async def test_on_prem_rbac_no_jwt_does_not_degrade_to_lakehouse(monkeypatch):
     """on_prem+RBAC with no forwarded JWT must fail loud, even when the
     lakehouse credentials header is present — it must NOT build a Basic
     lakehouse user (matches saas)."""
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "on_prem")
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "true")
+    monkeypatch.setenv("BOMARAG_RUN_MODE", "on_prem")
     monkeypatch.setattr(
         ibm_auth,
         "decode_ibm_jwt",
@@ -176,8 +176,8 @@ async def test_on_prem_rbac_no_jwt_does_not_degrade_to_lakehouse(monkeypatch):
 async def test_on_prem_rbac_no_jwt_optional_returns_none(monkeypatch):
     """on_prem+RBAC with no forwarded JWT on an optional endpoint returns None
     (anonymous), not a 401."""
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "on_prem")
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "true")
+    monkeypatch.setenv("BOMARAG_RUN_MODE", "on_prem")
     req = _FakeRequest(headers={LH_HEADER: "dGVzdDp0ZXN0"})
 
     user = await _get_ibm_user(req, required=False)
@@ -189,11 +189,11 @@ async def test_on_prem_rbac_no_jwt_optional_returns_none(monkeypatch):
 async def test_on_prem_rbac_jwt_wins_over_lakehouse_header(monkeypatch):
     """on_prem+RBAC: a valid forwarded JWT is authoritative — the lakehouse
     header must never override it into a Basic credential."""
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "on_prem")
-    claims = {"sub": "s1", "username": "alice", "display_name": "Alice", "openrag_roles": ["admin"]}
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "true")
+    monkeypatch.setenv("BOMARAG_RUN_MODE", "on_prem")
+    claims = {"sub": "s1", "username": "alice", "display_name": "Alice", "bomarag_roles": ["admin"]}
     monkeypatch.setattr(ibm_auth, "decode_ibm_jwt", lambda tok: claims if tok == "tok" else None)
-    req = _FakeRequest(headers={"X-OpenRAG-JWT": "Bearer tok", LH_HEADER: "dGVzdDp0ZXN0"})
+    req = _FakeRequest(headers={"X-BomaRAG-JWT": "Bearer tok", LH_HEADER: "dGVzdDp0ZXN0"})
 
     user = await _get_ibm_user(req, required=True)
 

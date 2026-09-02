@@ -12,13 +12,13 @@ async def test_setup_opensearch_security_success():
 
     # Sample configurations
     roles_data = {
-        "openrag_user_role": {
+        "bomarag_user_role": {
             "cluster_permissions": ["read"],
             "index_permissions": [{"index_patterns": ["*"], "allowed_actions": ["crud"]}]
         }
     }
     mapping_data = {
-        "openrag_user_role": {"backend_roles": ["openrag_user"]},
+        "bomarag_user_role": {"backend_roles": ["bomarag_user"]},
         "all_access": {"users": ["admin"]}
     }
 

@@ -41,7 +41,7 @@ class DoclingManager:
         self._starting = False
         self._external_process = False
 
-        # PID file and log file to track docling-serve across sessions (centralized in ~/.openrag/tui/)
+        # PID file and log file to track docling-serve across sessions (centralized in ~/.bomarag/tui/)
         from utils.paths import get_tui_dir
 
         self._tui_dir = get_tui_dir()

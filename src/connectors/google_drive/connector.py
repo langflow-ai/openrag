@@ -101,7 +101,7 @@ class GoogleDriveConnector(BaseConnector):
 
     @classmethod
     def get_auth_user_principals(cls, user: Any) -> list[str]:
-        """Return Google Drive principals derivable from a Google-auth OpenRAG user."""
+        """Return Google Drive principals derivable from a Google-auth BomaRAG user."""
         provider = str(getattr(user, "provider", "") or "").lower()
         if not provider.startswith("google"):
             return []

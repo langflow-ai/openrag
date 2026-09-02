@@ -1,6 +1,6 @@
-"""Centralized path helpers for OpenRAG.
+"""Centralized path helpers for BomaRAG.
 
-This module is the single source of truth for the OPENRAG_*_PATH environment variables.
+This module is the single source of truth for the BOMARAG_*_PATH environment variables.
 Variables are read directly via ``os.getenv`` here to avoid circular imports
 (settings → config_manager → paths → settings).
 """
@@ -14,10 +14,10 @@ import os
 def get_documents_path() -> str:
     """Return the path to the documents directory.
 
-    Environment variable: OPENRAG_DOCUMENTS_PATH
-    Default: ``openrag-documents``  (relative to the working directory)
+    Environment variable: BOMARAG_DOCUMENTS_PATH
+    Default: ``bomarag-documents``  (relative to the working directory)
     """
-    return os.getenv("OPENRAG_DOCUMENTS_PATH") or "openrag-documents"
+    return os.getenv("BOMARAG_DOCUMENTS_PATH") or "bomarag-documents"
 
 
 # ---------------------------------------------------------------------------
@@ -26,10 +26,10 @@ def get_documents_path() -> str:
 def get_keys_path() -> str:
     """Return the path to the JWT keys directory.
 
-    Environment variable: OPENRAG_KEYS_PATH
+    Environment variable: BOMARAG_KEYS_PATH
     Default: ``keys``  (relative to the working directory)
     """
-    return os.getenv("OPENRAG_KEYS_PATH") or "keys"
+    return os.getenv("BOMARAG_KEYS_PATH") or "keys"
 
 
 # ---------------------------------------------------------------------------
@@ -38,19 +38,19 @@ def get_keys_path() -> str:
 def get_flows_path() -> str:
     """Return the path to the flows directory.
 
-    Environment variable: OPENRAG_FLOWS_PATH
+    Environment variable: BOMARAG_FLOWS_PATH
     Default: ``flows``  (relative to the working directory)
     """
-    return os.getenv("OPENRAG_FLOWS_PATH") or "flows"
+    return os.getenv("BOMARAG_FLOWS_PATH") or "flows"
 
 
 def get_flows_backup_path() -> str:
     """Return the path to the flows backup directory.
 
-    Environment variable: OPENRAG_FLOWS_BACKUP_PATH
+    Environment variable: BOMARAG_FLOWS_BACKUP_PATH
     Default: ``<flows_path>/backup``
     """
-    return os.getenv("OPENRAG_FLOWS_BACKUP_PATH") or os.path.join(get_flows_path(), "backup")
+    return os.getenv("BOMARAG_FLOWS_BACKUP_PATH") or os.path.join(get_flows_path(), "backup")
 
 
 # ---------------------------------------------------------------------------
@@ -59,10 +59,10 @@ def get_flows_backup_path() -> str:
 def get_config_path() -> str:
     """Return the path to the configuration directory.
 
-    Environment variable: OPENRAG_CONFIG_PATH
+    Environment variable: BOMARAG_CONFIG_PATH
     Default: ``config``  (relative to the working directory)
     """
-    return os.getenv("OPENRAG_CONFIG_PATH") or "config"
+    return os.getenv("BOMARAG_CONFIG_PATH") or "config"
 
 
 def get_config_file_path() -> str:
@@ -76,10 +76,10 @@ def get_config_file_path() -> str:
 def get_data_path() -> str:
     """Return the path to the data directory.
 
-    Environment variable: OPENRAG_DATA_PATH
+    Environment variable: BOMARAG_DATA_PATH
     Default: ``data``  (relative to the working directory)
     """
-    return os.getenv("OPENRAG_DATA_PATH") or "data"
+    return os.getenv("BOMARAG_DATA_PATH") or "data"
 
 
 def get_data_file(filename: str) -> str:
@@ -88,6 +88,6 @@ def get_data_file(filename: str) -> str:
     Example::
 
         get_data_file("conversations.json")
-        # → "data/conversations.json"  (or $OPENRAG_DATA_PATH/conversations.json)
+        # → "data/conversations.json"  (or $BOMARAG_DATA_PATH/conversations.json)
     """
     return os.path.join(get_data_path(), filename)

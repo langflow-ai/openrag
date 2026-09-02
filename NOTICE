@@ -1,0 +1,45 @@
+BomaRAG
+Copyright (c) 2026 Bomalogic Automation
+
+This product includes software originally developed as OpenRAG by
+Langflow AI / DataStax and contributors:
+
+    https://github.com/langflow-ai/openrag
+
+The original work is licensed under the Apache License, Version 2.0.
+A copy of that license is included in the LICENSE file at the root of
+this repository.
+
+------------------------------------------------------------------------
+Statement of changes (Apache License 2.0, Section 4(b))
+------------------------------------------------------------------------
+
+BomaRAG is a fork of OpenRAG. The following modifications have been made
+to the original work:
+
+  * Renamed the project, packages, container images, Helm charts,
+    Kubernetes custom resources, environment variables, and all
+    user-facing branding from "OpenRAG" to "BomaRAG".
+  * Changed the Kubernetes API group from "openr.ag" to "bomalogic.com"
+    and the custom resource kind from "OpenRAG" to "BomaRAG".
+  * Replaced project logos, colors, documentation, and marketing content
+    with Bomalogic Automation branding.
+  * Repointed repository, documentation, and container registry URLs to
+    Bomalogic-owned locations.
+
+Subsequent modifications are recorded in the git history of this
+repository.
+
+------------------------------------------------------------------------
+Trademarks
+------------------------------------------------------------------------
+
+"OpenRAG", "Langflow", and "DataStax" are trademarks or trade names of
+their respective owners. Bomalogic Automation is not affiliated with,
+endorsed by, or sponsored by those parties. Use of those names in this
+NOTICE is solely for the attribution required by the Apache License,
+Version 2.0.
+
+"OpenSearch" is a trademark of the OpenSearch Software Foundation.
+"Docling" is a project of IBM Research. All other trademarks are the
+property of their respective owners.

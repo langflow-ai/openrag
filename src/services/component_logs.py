@@ -19,7 +19,7 @@ from api.schemas.status import ComponentState
 BUFFER_MAXLEN = 200
 
 # Valid component names — used by the API layer for 404 gating.
-KNOWN_COMPONENTS: frozenset[str] = frozenset({"openrag", "langflow", "docling", "opensearch"})
+KNOWN_COMPONENTS: frozenset[str] = frozenset({"bomarag", "langflow", "docling", "opensearch"})
 
 # Reuse the same pattern as logging_config._SENSITIVE_HEADER_RE so that keys
 # / tokens never surface in HTTP responses.

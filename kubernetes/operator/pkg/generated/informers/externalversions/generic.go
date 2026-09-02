@@ -1,5 +1,5 @@
 /*
-Copyright 2026 The OpenRAG Authors.
+Copyright 2026 The BomaRAG Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ package externalversions
 import (
 	fmt "fmt"
 
-	v1alpha1 "github.com/langflow-ai/openrag-operator/api/v1alpha1"
+	v1alpha1 "github.com/ABISHAIMWANJA/bomarag-operator/api/v1alpha1"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	cache "k8s.io/client-go/tools/cache"
 )
@@ -52,9 +52,9 @@ func (f *genericInformer) Lister() cache.GenericLister {
 // TODO extend this to unknown resources with a client pool
 func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource) (GenericInformer, error) {
 	switch resource {
-	// Group=openr.ag, Version=v1alpha1
-	case v1alpha1.SchemeGroupVersion.WithResource("openrags"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Openr().V1alpha1().OpenRAGs().Informer()}, nil
+	// Group=bomalogic.com, Version=v1alpha1
+	case v1alpha1.SchemeGroupVersion.WithResource("bomarags"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Openr().V1alpha1().BomaRAGs().Informer()}, nil
 
 	}
 

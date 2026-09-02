@@ -1,4 +1,4 @@
-"""Utilities for determining the OpenRAG application run mode."""
+"""Utilities for determining the BomaRAG application run mode."""
 
 import os
 
@@ -26,12 +26,12 @@ def is_run_mode_on_prem() -> bool:
 
 
 def get_run_mode() -> str:
-    """Return the current OpenRAG run mode.
+    """Return the current BomaRAG run mode.
 
-    Reads the OPENRAG_RUN_MODE environment variable. If unset or empty,
+    Reads the BOMARAG_RUN_MODE environment variable. If unset or empty,
     defaults to "oss". If an unrecognized value is provided, defaults to "oss".
     """
-    value = os.getenv("OPENRAG_RUN_MODE", "").strip().lower()
+    value = os.getenv("BOMARAG_RUN_MODE", "").strip().lower()
     if value in _VALID_RUN_MODES:
         return value
     return _DEFAULT_RUN_MODE

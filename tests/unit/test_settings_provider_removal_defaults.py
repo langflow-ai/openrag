@@ -14,11 +14,11 @@ from api.settings.helpers import (
 from config.config_manager import (
     AgentConfig,
     AnthropicConfig,
+    BomaRAGConfig,
     KnowledgeConfig,
     OllamaConfig,
     OnboardingState,
     OpenAIConfig,
-    OpenRAGConfig,
     ProvidersConfig,
     WatsonXConfig,
 )
@@ -42,9 +42,9 @@ def _make_config(
     llm_model="gpt-5.4-mini",
     embedding_provider="openai",
     embedding_model="text-embedding-3-small",
-) -> OpenRAGConfig:
-    """Build a minimal OpenRAGConfig with the requested providers configured."""
-    return OpenRAGConfig(
+) -> BomaRAGConfig:
+    """Build a minimal BomaRAGConfig with the requested providers configured."""
+    return BomaRAGConfig(
         providers=ProvidersConfig(
             openai=OpenAIConfig(api_key="sk-test" if openai else "", configured=openai),
             anthropic=AnthropicConfig(api_key="sk-ant" if anthropic else "", configured=anthropic),
@@ -189,7 +189,7 @@ class TestProviderRemovalLlmDefault:
     """Simulate the provider-removal code path from endpoints.py and verify
     that the resulting llm_model is a sensible default, not empty."""
 
-    def _simulate_llm_removal(self, config: OpenRAGConfig, removed: str):
+    def _simulate_llm_removal(self, config: BomaRAGConfig, removed: str):
         """Replicate the fallback logic from update_settings()."""
         if config.agent.llm_provider == removed:
             fb = _first_configured_llm_provider(config, removed)
@@ -262,7 +262,7 @@ class TestProviderRemovalLlmDefault:
 class TestProviderRemovalEmbeddingDefault:
     """Simulate embedding provider fallback on removal."""
 
-    def _simulate_embedding_removal(self, config: OpenRAGConfig, removed: str):
+    def _simulate_embedding_removal(self, config: BomaRAGConfig, removed: str):
         if config.knowledge.embedding_provider == removed:
             fb = _first_configured_embedding_provider(config, removed)
             config.knowledge.embedding_provider = fb

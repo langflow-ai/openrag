@@ -4,7 +4,7 @@ import { Loader2 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect } from "react";
 import GoogleLogo from "@/components/icons/google-logo";
-import Logo from "@/components/icons/openrag-logo";
+import Logo from "@/components/icons/bomarag-logo";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth-context";
 
@@ -50,7 +50,7 @@ function LoginPageContent() {
         <Logo className="fill-primary" width={50} height={40} />
         <div className="flex flex-col items-center justify-center gap-16">
           <h1 className="text-2xl font-medium font-chivo">
-            Welcome to OpenRAG
+            Welcome to BomaRAG
           </h1>
           <Button onClick={login} className="w-80 gap-1.5" size="lg">
             <GoogleLogo className="h-4 w-4" />

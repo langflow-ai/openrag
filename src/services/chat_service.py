@@ -87,13 +87,13 @@ class ChatService:
             extra_headers["X-LANGFLOW-GLOBAL-VAR-JWT"] = jwt_token
 
         # Pass the selected embedding model as a global variable
-        from config.settings import get_openrag_config
+        from config.settings import get_bomarag_config
         from utils.langflow_headers import (
             add_provider_credentials_to_headers,
             build_model_provider_headers,
         )
 
-        config = get_openrag_config()
+        config = get_bomarag_config()
         embedding_model = config.knowledge.embedding_model
         chunk_size = getattr(config.knowledge, "chunk_size", 1000)
         chunk_overlap = getattr(config.knowledge, "chunk_overlap", 200)
@@ -137,10 +137,10 @@ class ChatService:
         token_service = LangflowIngestTokenService()
         ingest_token = token_service.create_token(context)
 
-        extra_headers["X-Langflow-Global-Var-OPENRAG_INGEST_URL"] = get_ingest_callback_url()
-        extra_headers["X-Langflow-Global-Var-OPENRAG_INGEST_TOKEN"] = ingest_token
-        extra_headers["X-Langflow-Global-Var-OPENRAG_INGEST_RUN_ID"] = ingest_run_id
-        extra_headers["X-Langflow-Global-Var-OPENRAG_INGEST_BATCH_SIZE"] = str(
+        extra_headers["X-Langflow-Global-Var-BOMARAG_INGEST_URL"] = get_ingest_callback_url()
+        extra_headers["X-Langflow-Global-Var-BOMARAG_INGEST_TOKEN"] = ingest_token
+        extra_headers["X-Langflow-Global-Var-BOMARAG_INGEST_RUN_ID"] = ingest_run_id
+        extra_headers["X-Langflow-Global-Var-BOMARAG_INGEST_BATCH_SIZE"] = str(
             LANGFLOW_INGEST_CALLBACK_BATCH_SIZE
         )
         extra_headers["X-Langflow-Global-Var-CONNECTOR_TYPE"] = "url"
@@ -200,10 +200,10 @@ class ChatService:
 
         # Pass the complete filter expression as a single header to Langflow (only if we have something to send)
         logger.info(
-            "Sending OpenRAG query filter to Langflow",
+            "Sending BomaRAG query filter to Langflow",
             filter_expression=filter_expression,
         )
-        extra_headers["X-LANGFLOW-GLOBAL-VAR-OPENRAG-QUERY-FILTER"] = json.dumps(filter_expression)
+        extra_headers["X-LANGFLOW-GLOBAL-VAR-BOMARAG-QUERY-FILTER"] = json.dumps(filter_expression)
         logger.info(
             "[CHAT] Langflow chat request", stream=stream, filters_applied=bool(filter_expression)
         )
@@ -271,13 +271,13 @@ class ChatService:
         if jwt_token:
             extra_headers["X-LANGFLOW-GLOBAL-VAR-JWT"] = jwt_token
 
-        from config.settings import get_openrag_config
+        from config.settings import get_bomarag_config
         from utils.langflow_headers import (
             add_provider_credentials_to_headers,
             build_model_provider_headers,
         )
 
-        config = get_openrag_config()
+        config = get_bomarag_config()
         extra_headers.update(build_model_provider_headers(config))
 
         # Add provider credentials to headers
@@ -336,7 +336,7 @@ class ChatService:
             filter_expression["score_threshold"] = score_threshold
 
         # Pass the complete filter expression as a single header to Langflow (only if we have something to send)
-        extra_headers["X-LANGFLOW-GLOBAL-VAR-OPENRAG-QUERY-FILTER"] = json.dumps(filter_expression)
+        extra_headers["X-LANGFLOW-GLOBAL-VAR-BOMARAG-QUERY-FILTER"] = json.dumps(filter_expression)
         logger.info("[CHAT] Nudges request", filters_applied=bool(filter_expression))
 
         # Ensure the Langflow client exists; try lazy init if needed
@@ -527,13 +527,13 @@ class ChatService:
             if jwt_token:
                 extra_headers["X-LANGFLOW-GLOBAL-VAR-JWT"] = jwt_token
 
-            from config.settings import get_openrag_config
+            from config.settings import get_bomarag_config
             from utils.langflow_headers import (
                 add_provider_credentials_to_headers,
                 build_model_provider_headers,
             )
 
-            config = get_openrag_config()
+            config = get_bomarag_config()
             embedding_model = config.knowledge.embedding_model
             chunk_size = getattr(config.knowledge, "chunk_size", 1000)
             chunk_overlap = getattr(config.knowledge, "chunk_overlap", 200)
@@ -577,10 +577,10 @@ class ChatService:
             token_service = LangflowIngestTokenService()
             ingest_token = token_service.create_token(context)
 
-            extra_headers["X-Langflow-Global-Var-OPENRAG_INGEST_URL"] = get_ingest_callback_url()
-            extra_headers["X-Langflow-Global-Var-OPENRAG_INGEST_TOKEN"] = ingest_token
-            extra_headers["X-Langflow-Global-Var-OPENRAG_INGEST_RUN_ID"] = ingest_run_id
-            extra_headers["X-Langflow-Global-Var-OPENRAG_INGEST_BATCH_SIZE"] = str(
+            extra_headers["X-Langflow-Global-Var-BOMARAG_INGEST_URL"] = get_ingest_callback_url()
+            extra_headers["X-Langflow-Global-Var-BOMARAG_INGEST_TOKEN"] = ingest_token
+            extra_headers["X-Langflow-Global-Var-BOMARAG_INGEST_RUN_ID"] = ingest_run_id
+            extra_headers["X-Langflow-Global-Var-BOMARAG_INGEST_BATCH_SIZE"] = str(
                 LANGFLOW_INGEST_CALLBACK_BATCH_SIZE
             )
             extra_headers["X-Langflow-Global-Var-CONNECTOR_TYPE"] = "url"
@@ -729,7 +729,7 @@ class ChatService:
 
     @staticmethod
     def _messages_from_active_conversation(conversation_state: dict) -> list[dict]:
-        """Serialize in-memory OpenRAG thread messages for the history API."""
+        """Serialize in-memory BomaRAG thread messages for the history API."""
         messages = []
         for msg in conversation_state.get("messages", []):
             if msg.get("role") not in ["user", "assistant"]:
@@ -740,7 +740,7 @@ class ChatService:
                 "timestamp": msg.get("timestamp").isoformat()
                 if hasattr(msg.get("timestamp"), "isoformat")
                 else msg.get("timestamp"),
-                "source": "openrag_memory",
+                "source": "bomarag_memory",
             }
             if msg.get("error"):
                 message_data["error"] = True
@@ -752,7 +752,7 @@ class ChatService:
         return messages
 
     async def get_langflow_history(self, user_id: str):
-        """Get langflow conversation history for a user - now fetches from both OpenRAG memory and Langflow database"""
+        """Get langflow conversation history for a user - now fetches from both BomaRAG memory and Langflow database"""
         from agent import active_conversations, get_user_conversations
         from services.langflow_history_service import langflow_history_service
 
@@ -807,14 +807,14 @@ class ChatService:
 
                         messages.append(message_data)
 
-                    # Prefer OpenRAG memory when it has more turns (error retries use a
-                    # fresh Langflow session under the same OpenRAG thread id).
+                    # Prefer BomaRAG memory when it has more turns (error retries use a
+                    # fresh Langflow session under the same BomaRAG thread id).
                     memory_messages = self._messages_from_active_conversation(
                         in_memory.get(session_id, {})
                     )
                     if len(memory_messages) > len(messages):
                         messages = memory_messages
-                        source = "openrag_memory_preferred"
+                        source = "bomarag_memory_preferred"
                     else:
                         source = "langflow_enhanced"
 
@@ -870,7 +870,7 @@ class ChatService:
                 if len(messages) > len(existing.get("messages") or []):
                     existing["messages"] = messages
                     existing["total_messages"] = len(messages)
-                    existing["source"] = "openrag_memory_preferred"
+                    existing["source"] = "bomarag_memory_preferred"
                 continue
 
             if not messages and not metadata.get("title"):

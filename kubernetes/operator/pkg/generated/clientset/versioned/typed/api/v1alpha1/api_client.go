@@ -1,5 +1,5 @@
 /*
-Copyright 2026 The OpenRAG Authors.
+Copyright 2026 The BomaRAG Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,23 +21,23 @@ package v1alpha1
 import (
 	http "net/http"
 
-	apiv1alpha1 "github.com/langflow-ai/openrag-operator/api/v1alpha1"
-	scheme "github.com/langflow-ai/openrag-operator/pkg/generated/clientset/versioned/scheme"
+	apiv1alpha1 "github.com/ABISHAIMWANJA/bomarag-operator/api/v1alpha1"
+	scheme "github.com/ABISHAIMWANJA/bomarag-operator/pkg/generated/clientset/versioned/scheme"
 	rest "k8s.io/client-go/rest"
 )
 
 type OpenrV1alpha1Interface interface {
 	RESTClient() rest.Interface
-	OpenRAGsGetter
+	BomaRAGsGetter
 }
 
-// OpenrV1alpha1Client is used to interact with features provided by the openr.ag group.
+// OpenrV1alpha1Client is used to interact with features provided by the bomalogic.com group.
 type OpenrV1alpha1Client struct {
 	restClient rest.Interface
 }
 
-func (c *OpenrV1alpha1Client) OpenRAGs(namespace string) OpenRAGInterface {
-	return newOpenRAGs(c, namespace)
+func (c *OpenrV1alpha1Client) BomaRAGs(namespace string) BomaRAGInterface {
+	return newBomaRAGs(c, namespace)
 }
 
 // NewForConfig creates a new OpenrV1alpha1Client for the given config.

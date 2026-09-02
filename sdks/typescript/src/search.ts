@@ -1,12 +1,12 @@
 /**
- * OpenRAG SDK search client.
+ * BomaRAG SDK search client.
  */
 
-import type { OpenRAGClient } from "./client";
+import type { BomaRAGClient } from "./client";
 import type { SearchQueryOptions, SearchResponse } from "./types";
 
 export class SearchClient {
-  constructor(private client: OpenRAGClient) {}
+  constructor(private client: BomaRAGClient) {}
 
   /**
    * Perform semantic search on documents.

@@ -3,7 +3,7 @@
 import { Loader2, ShieldAlert } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import Logo from "@/components/icons/openrag-logo";
+import Logo from "@/components/icons/bomarag-logo";
 import { useAuth } from "@/contexts/auth-context";
 
 export default function UnauthorizedPage() {
@@ -42,7 +42,7 @@ export default function UnauthorizedPage() {
         {isIbmAuthMode ? (
           <p className="text-muted-foreground">
             Your session could not be authenticated. Please ensure you are
-            accessing OpenRAG through IBM watsonx.data with valid credentials.
+            accessing BomaRAG through IBM watsonx.data with valid credentials.
           </p>
         ) : (
           <p className="text-muted-foreground">

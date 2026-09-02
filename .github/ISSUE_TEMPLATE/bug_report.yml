@@ -1,5 +1,5 @@
 name: Bug Report
-description: Report a bug or unexpected behavior in OpenRAG
+description: Report a bug or unexpected behavior in BomaRAG
 title: "[Bug]: "
 labels: ["bug"]
 body:
@@ -9,10 +9,10 @@ body:
         Thanks for taking the time to report a bug! Please fill out the form below to help us understand and fix the issue.
 
   - type: input
-    id: openrag-version
+    id: bomarag-version
     attributes:
-      label: OpenRAG Version
-      description: What version of OpenRAG are you using? Run `openrag --version` or check your package version.
+      label: BomaRAG Version
+      description: What version of BomaRAG are you using? Run `bomarag --version` or check your package version.
       placeholder: "e.g., 0.1.0"
     validations:
       required: true
@@ -21,9 +21,9 @@ body:
     id: deployment-method
     attributes:
       label: Deployment Method
-      description: How are you running OpenRAG?
+      description: How are you running BomaRAG?
       options:
-        - uvx (uvx openrag)
+        - uvx (uvx bomarag)
         - uv add (installed in project)
         - Docker
         - Podman
@@ -54,7 +54,7 @@ body:
     id: affected-area
     attributes:
       label: Affected Area
-      description: Which area(s) of OpenRAG does this bug affect? Select all that apply.
+      description: Which area(s) of BomaRAG does this bug affect? Select all that apply.
       multiple: true
       options:
         - Ingestion (document processing, upload, Docling)

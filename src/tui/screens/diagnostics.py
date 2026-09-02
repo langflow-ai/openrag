@@ -1,4 +1,4 @@
-"""Diagnostics screen for OpenRAG TUI."""
+"""Diagnostics screen for BomaRAG TUI."""
 
 import asyncio
 import logging
@@ -19,7 +19,7 @@ from ..utils.platform import PlatformDetector
 
 
 class DiagnosticsScreen(Screen):
-    """Diagnostics screen for debugging OpenRAG."""
+    """Diagnostics screen for debugging BomaRAG."""
 
     CSS = """
     #diagnostics-log {
@@ -54,14 +54,14 @@ class DiagnosticsScreen(Screen):
         super().__init__()
         self.container_manager = ContainerManager()
         self.platform_detector = PlatformDetector()
-        self._logger = logging.getLogger("openrag.diagnostics")
+        self._logger = logging.getLogger("bomarag.diagnostics")
         self._status_timer = None
 
     def compose(self) -> ComposeResult:
         """Create the diagnostics screen layout."""
         yield Header()
         with Container(id="main-container"):
-            yield Static("OpenRAG Diagnostics", classes="tab-header")
+            yield Static("BomaRAG Diagnostics", classes="tab-header")
             with Horizontal(classes="button-row"):
                 yield Button("Refresh", variant="primary", id="refresh-btn")
                 yield Button("Check Podman", variant="default", id="check-podman-btn")
@@ -167,12 +167,12 @@ class DiagnosticsScreen(Screen):
             status = self.query_one("#copy-status", Static)
 
             # Create logs directory if it doesn't exist
-            logs_dir = Path.home() / ".openrag" / "logs"
+            logs_dir = Path.home() / ".bomarag" / "logs"
             logs_dir.mkdir(parents=True, exist_ok=True)
 
             # Create a timestamped filename
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = logs_dir / f"openrag_diagnostics_{timestamp}.txt"
+            filename = logs_dir / f"bomarag_diagnostics_{timestamp}.txt"
 
             # Save to file
             with open(filename, "w") as f:

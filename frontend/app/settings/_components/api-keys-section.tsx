@@ -125,7 +125,7 @@ export function ApiKeysSection() {
             </RequirePermission>
           </div>
           <CardDescription>
-            API keys allow programmatic access to OpenRAG via the public API.
+            API keys allow programmatic access to BomaRAG via the public API.
             Keep your keys secure and never share them publicly.
           </CardDescription>
         </CardHeader>

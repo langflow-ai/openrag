@@ -6,7 +6,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	openragv1alpha1 "github.com/langflow-ai/openrag-operator/api/v1alpha1"
+	bomaragv1alpha1 "github.com/ABISHAIMWANJA/bomarag-operator/api/v1alpha1"
 )
 
 // TestMapOrderingDoesNotAffectHash verifies that map iteration order doesn't cause
@@ -15,10 +15,10 @@ import (
 func TestMapOrderingDoesNotAffectHash(t *testing.T) {
 	// Create two services with identical labels but built in different orders
 	labels1 := map[string]string{
-		"app.kubernetes.io/name":       "openrag",
+		"app.kubernetes.io/name":       "bomarag",
 		"app.kubernetes.io/instance":   "test",
 		"app.kubernetes.io/component":  "backend",
-		"app.kubernetes.io/managed-by": "openrag-operator",
+		"app.kubernetes.io/managed-by": "bomarag-operator",
 		"environment":                  "production",
 		"team":                         "platform",
 		"cost-center":                  "12345",
@@ -28,10 +28,10 @@ func TestMapOrderingDoesNotAffectHash(t *testing.T) {
 		"cost-center":                  "12345",
 		"team":                         "platform",
 		"environment":                  "production",
-		"app.kubernetes.io/managed-by": "openrag-operator",
+		"app.kubernetes.io/managed-by": "bomarag-operator",
 		"app.kubernetes.io/component":  "backend",
 		"app.kubernetes.io/instance":   "test",
-		"app.kubernetes.io/name":       "openrag",
+		"app.kubernetes.io/name":       "bomarag",
 	}
 
 	svc1 := &corev1.Service{
@@ -78,8 +78,8 @@ func TestMapOrderingDoesNotAffectHash(t *testing.T) {
 // TestMergeResourceLabelsIsDeterministic verifies that merging labels produces
 // consistent results regardless of the order in which source maps are iterated.
 func TestMergeResourceLabelsIsDeterministic(t *testing.T) {
-	o := &openragv1alpha1.OpenRAG{
-		Spec: openragv1alpha1.OpenRAGSpec{
+	o := &bomaragv1alpha1.BomaRAG{
+		Spec: bomaragv1alpha1.BomaRAGSpec{
 			CommonResourceLabels: map[string]string{
 				"environment": "production",
 				"team":        "platform",
@@ -88,8 +88,8 @@ func TestMergeResourceLabelsIsDeterministic(t *testing.T) {
 	}
 
 	baseLabels := map[string]string{
-		"app.kubernetes.io/name":       "openrag",
-		"app.kubernetes.io/managed-by": "openrag-operator",
+		"app.kubernetes.io/name":       "bomarag",
+		"app.kubernetes.io/managed-by": "bomarag-operator",
 	}
 
 	componentLabels := map[string]string{
@@ -124,8 +124,8 @@ func TestMergeResourceLabelsIsDeterministic(t *testing.T) {
 // TestMergeResourceAnnotationsIsDeterministic verifies that merging annotations
 // produces consistent results.
 func TestMergeResourceAnnotationsIsDeterministic(t *testing.T) {
-	o := &openragv1alpha1.OpenRAG{
-		Spec: openragv1alpha1.OpenRAGSpec{
+	o := &bomaragv1alpha1.BomaRAG{
+		Spec: bomaragv1alpha1.BomaRAGSpec{
 			CommonResourceAnnotations: map[string]string{
 				"backup.velero.io/backup-volumes": "true",
 				"monitoring.prometheus.io/scrape": "true",
@@ -163,8 +163,8 @@ func TestMergeResourceAnnotationsIsDeterministic(t *testing.T) {
 
 // TestLabelPrecedence verifies that labels are merged with the correct priority.
 func TestLabelPrecedence(t *testing.T) {
-	o := &openragv1alpha1.OpenRAG{
-		Spec: openragv1alpha1.OpenRAGSpec{
+	o := &bomaragv1alpha1.BomaRAG{
+		Spec: bomaragv1alpha1.BomaRAGSpec{
 			CommonResourceLabels: map[string]string{
 				"environment": "dev",
 				"team":        "platform",
@@ -173,8 +173,8 @@ func TestLabelPrecedence(t *testing.T) {
 	}
 
 	baseLabels := map[string]string{
-		"app.kubernetes.io/name":       "openrag",
-		"app.kubernetes.io/managed-by": "openrag-operator",
+		"app.kubernetes.io/name":       "bomarag",
+		"app.kubernetes.io/managed-by": "bomarag-operator",
 		"environment":                  "production", // Should override common
 	}
 
@@ -199,8 +199,8 @@ func TestLabelPrecedence(t *testing.T) {
 	}
 
 	// Base labels should always be present
-	if result["app.kubernetes.io/name"] != "openrag" {
-		t.Errorf("expected app.kubernetes.io/name=openrag, got %s", result["app.kubernetes.io/name"])
+	if result["app.kubernetes.io/name"] != "bomarag" {
+		t.Errorf("expected app.kubernetes.io/name=bomarag, got %s", result["app.kubernetes.io/name"])
 	}
 }
 

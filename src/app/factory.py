@@ -14,7 +14,7 @@ from app.middleware import RequestLoggingMiddleware
 from app.routes import register_all_routes
 from config.settings import CORS_ALLOWED_ORIGINS, FASTAPI_DEBUG
 from utils.logging_config import get_logger
-from utils.version_utils import OPENRAG_VERSION
+from utils.version_utils import BOMARAG_VERSION
 
 logger = get_logger(__name__)
 
@@ -23,7 +23,7 @@ async def create_app():
     """Create and configure the FastAPI application"""
     services = await initialize_services()
 
-    app = FastAPI(title="OpenRAG API", version=OPENRAG_VERSION, debug=FASTAPI_DEBUG)
+    app = FastAPI(title="BomaRAG API", version=BOMARAG_VERSION, debug=FASTAPI_DEBUG)
     app.state.services = services
     app.state.background_tasks = set()
 

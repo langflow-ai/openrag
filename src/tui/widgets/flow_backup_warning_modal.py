@@ -1,4 +1,4 @@
-"""Flow backup warning modal for OpenRAG TUI."""
+"""Flow backup warning modal for BomaRAG TUI."""
 
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical
@@ -101,7 +101,7 @@ class FlowBackupWarningModal(ModalScreen[tuple[bool, bool]]):
             yield Label("⚠ Flow Backups Detected", id="title")
             yield Static(
                 f"Flow backups found in your flows/backup directory.\n\n"
-                f"Proceeding with {self.operation} will reset OpenRAG's built-in flows to their default configuration and discard user-created flows.\n"
+                f"Proceeding with {self.operation} will reset BomaRAG's built-in flows to their default configuration and discard user-created flows.\n"
                 f"Your customizations to the built-in flows are backed up in the flows/backup/ directory.\n"
                 f"Other user-created flows aren't backed up; you must export these flows to preserve them.\n"
                 f"Learn more: https://docs.langflow.org/concepts-flows-import\n\n"

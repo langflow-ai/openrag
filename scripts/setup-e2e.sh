@@ -47,20 +47,20 @@ COMPOSE_PROJECT_NAME=""
 OPENSEARCH_PORT=""
 LANGFLOW_PORT=""
 FRONTEND_PORT=""
-OPENRAG_BACKEND_PORT=""
+BOMARAG_BACKEND_PORT=""
 if [ -f .env ]; then
     COMPOSE_PROJECT_NAME=$(grep -E '^COMPOSE_PROJECT_NAME=' .env | cut -d= -f2- | tr -d '"'\')
     OPENSEARCH_PORT=$(grep -E '^OPENSEARCH_PORT=' .env | cut -d= -f2- | tr -d '"'\')
     LANGFLOW_PORT=$(grep -E '^LANGFLOW_PORT=' .env | cut -d= -f2- | tr -d '"'\')
     FRONTEND_PORT=$(grep -E '^FRONTEND_PORT=' .env | cut -d= -f2- | tr -d '"'\')
-    OPENRAG_BACKEND_PORT=$(grep -E '^OPENRAG_BACKEND_PORT=' .env | cut -d= -f2- | tr -d '"'\')
+    BOMARAG_BACKEND_PORT=$(grep -E '^BOMARAG_BACKEND_PORT=' .env | cut -d= -f2- | tr -d '"'\')
 fi
 
-COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-openrag}"
+COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-bomarag}"
 OPENSEARCH_PORT="${OPENSEARCH_PORT:-9200}"
 LANGFLOW_PORT="${LANGFLOW_PORT:-7860}"
 FRONTEND_PORT="${FRONTEND_PORT:-3000}"
-OPENRAG_BACKEND_PORT="${OPENRAG_BACKEND_PORT:-8000}"
+BOMARAG_BACKEND_PORT="${BOMARAG_BACKEND_PORT:-8000}"
 
 BACKEND_CONTAINER="${COMPOSE_PROJECT_NAME}-backend"
 OPENSEARCH_CONTAINER="${COMPOSE_PROJECT_NAME}-opensearch"
@@ -81,7 +81,7 @@ else
 fi
 
 # Get image architecture
-image_name="langflowai/openrag-backend:${OPENRAG_VERSION:-latest}"
+image_name="bomalogic/bomarag-backend:${BOMARAG_VERSION:-latest}"
 image_arch=$(${CONTAINER_RUNTIME} inspect --format '{{.Architecture}}' "$image_name" 2>/dev/null || echo "")
 
 if [[ -n "$image_arch" && "$image_arch" != "$host_arch_norm" ]]; then
@@ -111,27 +111,27 @@ fi
 
 # Start required services (CPU)
 echo "Starting required services (CPU)..."
-make dev-cpu SERVICES="opensearch langflow openrag-backend openrag-frontend"
+make dev-cpu SERVICES="opensearch langflow bomarag-backend bomarag-frontend"
 
 echo "Starting docling..."
 make docling
 
 # Forward backend port using a proxy container
 # We find the network of the backend container and use a proxy to bridge it to the host.
-echo "Starting backend port forwarder at localhost:${OPENRAG_BACKEND_PORT}..."
+echo "Starting backend port forwarder at localhost:${BOMARAG_BACKEND_PORT}..."
 ${CONTAINER_RUNTIME} rm -f ${BACKEND_PROXY_NAME} 2>/dev/null || true
 BACKEND_NETWORK=$(${CONTAINER_RUNTIME} inspect ${BACKEND_CONTAINER} -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}' | head -n 1)
 ${CONTAINER_RUNTIME} run -d --rm \
     --name ${BACKEND_PROXY_NAME} \
     --network "$BACKEND_NETWORK" \
-    -p ${OPENRAG_BACKEND_PORT}:8000 \
+    -p ${BOMARAG_BACKEND_PORT}:8000 \
     alpine/socat TCP-LISTEN:8000,fork,reuseaddr TCP:${BACKEND_CONTAINER}:8000
 
 # On Linux/CI, Docker volumes are root-owned. Fix them so the host runner can write to them.
 if [ "$CI" = "true" ] && [[ "$OSTYPE" != "darwin"* ]]; then
     echo "Fixing volume permissions for CI..."
-    ${CONTAINER_RUNTIME} run --rm -v "$(pwd):/work" alpine sh -c "chown -R $(id -u):$(id -g) /work/config /work/data /work/keys /work/opensearch-data /work/openrag-documents || true"
-    chmod -R 777 config data keys opensearch-data openrag-documents 2>/dev/null || true
+    ${CONTAINER_RUNTIME} run --rm -v "$(pwd):/work" alpine sh -c "chown -R $(id -u):$(id -g) /work/config /work/data /work/keys /work/opensearch-data /work/bomarag-documents || true"
+    chmod -R 777 config data keys opensearch-data bomarag-documents 2>/dev/null || true
 fi
 
 # Extract CA certificate from OpenSearch container for secure HTTPS communication
@@ -234,7 +234,7 @@ done
 
 echo "Waiting for Backend (via proxy)..."
 ELAPSED=0
-until [ "$(curl -s http://localhost:${OPENRAG_BACKEND_PORT}/search/health -o /dev/null -w "%{http_code}")" -eq 200 ]; do
+until [ "$(curl -s http://localhost:${BOMARAG_BACKEND_PORT}/search/health -o /dev/null -w "%{http_code}")" -eq 200 ]; do
     sleep 5
     ELAPSED=$((ELAPSED + 5))
     if [ $ELAPSED -ge $TIMEOUT ]; then

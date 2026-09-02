@@ -18,7 +18,7 @@ if [ "$(id -u)" = "0" ]; then
         /app/flows \
         /app/config \
         /app/data \
-        /app/openrag-documents \
+        /app/bomarag-documents \
         2>/dev/null || true
     exec runuser -u appuser -- env \
         VIRTUAL_ENV=/app/.venv \

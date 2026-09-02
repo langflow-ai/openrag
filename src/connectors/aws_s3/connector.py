@@ -1,4 +1,4 @@
-"""Amazon S3 / S3-compatible storage connector for OpenRAG."""
+"""Amazon S3 / S3-compatible storage connector for BomaRAG."""
 
 import mimetypes
 import os

@@ -79,8 +79,8 @@ def test_buffer_respects_maxlen():
 
 def test_entries_oldest_to_newest_order():
     for i in range(5):
-        cl.record("openrag", "warning", f"w{i}")
-    msgs = [e["message"] for e in cl.get_entries("openrag", tail=10)]
+        cl.record("bomarag", "warning", f"w{i}")
+    msgs = [e["message"] for e in cl.get_entries("bomarag", tail=10)]
     assert msgs == ["w0", "w1", "w2", "w3", "w4"]
 
 
@@ -194,8 +194,8 @@ def test_degraded_to_healthy_records_recovery():
 
 
 def test_bearer_token_in_detail_is_redacted():
-    cl.record("openrag", "error", "auth failed", detail="Authorization: Bearer abc123token")
-    detail = cl.get_entries("openrag", 1)[0]["detail"]
+    cl.record("bomarag", "error", "auth failed", detail="Authorization: Bearer abc123token")
+    detail = cl.get_entries("bomarag", 1)[0]["detail"]
     assert "abc123token" not in detail
     assert "Bearer ***" in detail
 

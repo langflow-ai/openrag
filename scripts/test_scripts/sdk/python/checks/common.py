@@ -10,7 +10,7 @@ from harness import Context
 
 
 def supports_delete_by_filter_id(client) -> bool:
-    """documents.delete(filter_id=...) was added in openrag-sdk 0.4.0."""
+    """documents.delete(filter_id=...) was added in bomarag-sdk 0.4.0."""
     return "filter_id" in inspect.signature(client.documents.delete).parameters
 
 

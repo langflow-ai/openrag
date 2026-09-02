@@ -7,8 +7,8 @@ import {
   normalizeRoute,
 } from "./lib/metrics";
 
-const SERVER_KEY = Symbol.for("openrag.metricsServer");
-const START_TIME = Symbol("openrag.requestStart");
+const SERVER_KEY = Symbol.for("bomarag.metricsServer");
+const START_TIME = Symbol("bomarag.requestStart");
 
 export async function registerNodeInstrumentation() {
   if ((globalThis as Record<symbol, boolean>)[SERVER_KEY]) return;

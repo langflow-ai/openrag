@@ -1,8 +1,8 @@
 /**
- * OpenRAG SDK chat client with streaming support.
+ * BomaRAG SDK chat client with streaming support.
  */
 
-import type { OpenRAGClient } from "./client";
+import type { BomaRAGClient } from "./client";
 import type {
   ChatCreateOptions,
   ChatResponse,
@@ -39,7 +39,7 @@ export class ChatStream implements AsyncIterable<StreamEvent>, Disposable {
   private _response: Response | null = null;
 
   constructor(
-    private client: OpenRAGClient,
+    private client: BomaRAGClient,
     private options: ChatCreateOptions
   ) {}
 
@@ -179,7 +179,7 @@ export class ChatStream implements AsyncIterable<StreamEvent>, Disposable {
 }
 
 export class ChatClient {
-  constructor(private client: OpenRAGClient) {}
+  constructor(private client: BomaRAGClient) {}
 
   /**
    * Send a chat message (non-streaming).

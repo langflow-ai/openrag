@@ -8,7 +8,7 @@ on:
 
 jobs:
   create-nightly-tag:
-    if: github.repository == 'langflow-ai/openrag'
+    if: github.repository == 'ABISHAIMWANJA/bomarag'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -83,8 +83,8 @@ jobs:
 
       - name: Commit and push tag
         run: |
-          git config --global user.email "bot-nightly-builds@openrag.org"
-          git config --global user.name "OpenRAG Bot"
+          git config --global user.email "bot-nightly-builds@bomarag.org"
+          git config --global user.name "BomaRAG Bot"
           
           git add pyproject.toml
           git commit -m "Update version and project name for nightly ${{ steps.ensure_unique_tag.outputs.nightly_version }}"
@@ -101,62 +101,62 @@ jobs:
           # backend
           - image: backend
             file: ./Dockerfile.backend
-            service: openrag-backend
+            service: bomarag-backend
             platform: linux/amd64
             arch: amd64
             runs-on: ubuntu-latest
           - image: backend
             file: ./Dockerfile.backend
-            service: openrag-backend
+            service: bomarag-backend
             platform: linux/arm64
             arch: arm64
             runs-on: 
-              labels: ["self-hosted", "linux", "ARM64", "langflow-ai-arm64-40gb-ephemeral-sudo"]
+              labels: ["ubuntu-24.04-arm"]
 
           # frontend
           - image: frontend
             file: ./Dockerfile.frontend
-            service: openrag-frontend
+            service: bomarag-frontend
             platform: linux/amd64
             arch: amd64
             runs-on: ubuntu-latest
           - image: frontend
             file: ./Dockerfile.frontend
-            service: openrag-frontend
+            service: bomarag-frontend
             platform: linux/arm64
             arch: arm64
             runs-on: 
-              labels: ["self-hosted", "linux", "ARM64", "langflow-ai-arm64-40gb-ephemeral-sudo"]
+              labels: ["ubuntu-24.04-arm"]
 
           # langflow
           - image: langflow
             file: ./Dockerfile.langflow
-            service: openrag-langflow
+            service: bomarag-langflow
             platform: linux/amd64
             arch: amd64
             runs-on: ubuntu-latest
           - image: langflow
             file: ./Dockerfile.langflow
-            service: openrag-langflow
+            service: bomarag-langflow
             platform: linux/arm64
             arch: arm64
             runs-on: 
-              labels: ["self-hosted", "linux", "ARM64", "langflow-ai-arm64-40gb-ephemeral-sudo"]
+              labels: ["ubuntu-24.04-arm"]
 
           # opensearch
           - image: opensearch
             file: ./Dockerfile
-            service: openrag-opensearch
+            service: bomarag-opensearch
             platform: linux/amd64
             arch: amd64
             runs-on: ubuntu-latest
           - image: opensearch
             file: ./Dockerfile
-            service: openrag-opensearch
+            service: bomarag-opensearch
             platform: linux/arm64
             arch: arm64
             runs-on: 
-              labels: ["self-hosted", "linux", "ARM64", "langflow-ai-arm64-40gb-ephemeral-sudo"]
+              labels: ["ubuntu-24.04-arm"]
 
 
     runs-on: ${{ matrix.runs-on }}
@@ -183,7 +183,7 @@ jobs:
           file: ${{ matrix.file }}
           platforms: ${{ matrix.platform }}
           push: true
-          tags: langflowai/${{ matrix.service }}:${{ needs.create-nightly-tag.outputs.nightly_version }}-${{ matrix.arch }}
+          tags: bomalogic/${{ matrix.service }}:${{ needs.create-nightly-tag.outputs.nightly_version }}-${{ matrix.arch }}
           cache-from: type=gha,scope=nightly-${{ matrix.image }}-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=nightly-${{ matrix.image }}-${{ matrix.arch }}
 
@@ -215,7 +215,7 @@ jobs:
 
       - name: Create and push multi-arch manifests
         run: |
-          NS="langflowai"
+          NS="bomalogic"
           VERSION=${{ needs.create-nightly-tag.outputs.nightly_version }}
 
           # Derive the list of services from the artifacts produced by the build matrix
@@ -237,7 +237,7 @@ jobs:
   publish-pypi:
     needs: [create-nightly-tag]
     runs-on: ubuntu-latest
-    if: github.repository == 'langflow-ai/openrag'
+    if: github.repository == 'ABISHAIMWANJA/bomarag'
     steps:
       - name: Checkout
         uses: actions/checkout@v4

@@ -1,6 +1,6 @@
-# OpenRAG Operator
+# BomaRAG Operator
 
-A Kubernetes operator that manages OpenRAG deployments via a single `OpenRAG` custom resource.
+A Kubernetes operator that manages BomaRAG deployments via a single `BomaRAG` custom resource.
 It creates and owns the frontend, backend, and Langflow deployments, services, and service accounts.
 External dependencies (OpenSearch, Docling) are referenced by connection config — not deployed by this operator.
 
@@ -18,27 +18,27 @@ The Helm chart deploys both the CRDs and the operator deployment.
 
 ```bash
 # Install from local chart
-helm install openrag-operator ./kubernetes/helm/operator \
-  --namespace openrag-control \
+helm install bomarag-operator ./kubernetes/helm/operator \
+  --namespace bomarag-control \
   --create-namespace
 
 # Verify installation
-kubectl get deployment -n openrag-control
-kubectl get crd openrags.openr.ag
+kubectl get deployment -n bomarag-control
+kubectl get crd bomarags.bomalogic.com
 ```
 
 **Customize installation:**
 
 ```bash
 # Set custom image tag
-helm install openrag-operator ./kubernetes/helm/operator \
-  --namespace openrag-control \
+helm install bomarag-operator ./kubernetes/helm/operator \
+  --namespace bomarag-control \
   --create-namespace \
   --set image.tag=v0.1.0
 
 # Or use a values file
-helm install openrag-operator ./kubernetes/helm/operator \
-  --namespace openrag-control \
+helm install bomarag-operator ./kubernetes/helm/operator \
+  --namespace bomarag-control \
   --create-namespace \
   -f my-values.yaml
 ```
@@ -50,7 +50,7 @@ helm install openrag-operator ./kubernetes/helm/operator \
 make install
 
 # Deploy the operator
-make deploy IMG=ghcr.io/langflow-ai/openrag-operator:latest
+make deploy IMG=ghcr.io/ABISHAIMWANJA/bomarag-operator:latest
 ```
 
 ### Option 3: Local development (see below)
@@ -74,20 +74,20 @@ Add this to your shell profile (`~/.zshrc` or `~/.bashrc`) to make it permanent.
 ### 3. Create the cluster
 
 ```bash
-kind create cluster --name openrag
+kind create cluster --name bomarag
 ```
 
 Verify it is running:
 
 ```bash
-kubectl cluster-info --context kind-openrag
+kubectl cluster-info --context kind-bomarag
 kubectl get nodes
 ```
 
 ### 3a. Start the podman machine if it's not running after restart your laptop
 ```bash
-podman start openrag-control-plane
-kubectl config use-context kind-openrag  
+podman start bomarag-control-plane
+kubectl config use-context kind-bomarag  
 ```
 
 ### 4. Load a locally built operator image (optional)
@@ -95,8 +95,8 @@ kubectl config use-context kind-openrag
 If you built the image locally instead of pulling from GHCR:
 
 ```bash
-make docker-build IMG=openrag-operator:dev
-podman save openrag-operator:dev | kind load image-archive /dev/stdin --name openrag
+make docker-build IMG=bomarag-operator:dev
+podman save bomarag-operator:dev | kind load image-archive /dev/stdin --name bomarag
 ```
 
 Install CRD
@@ -116,11 +116,11 @@ Apply a sample CR (create the namespace first; the operator does not create it w
 ```bash
 kubectl create namespace my-tenant
 # kind/Colima clusters usually have only 2 CPUs — use the kind-local sample:
-kubectl apply -f config/samples/openrag_v1alpha1_openrag-kind-local.yaml
+kubectl apply -f config/samples/bomarag_v1alpha1_bomarag-kind-local.yaml
 kubectl get pods -n my-tenant
 ```
 
-On a 2-CPU kind node, the default sample (`openrag_v1alpha1_openrag.yaml`) requests 1500m CPU for frontend+backend+langflow and langflow will stay `Pending` with `Insufficient cpu`.
+On a 2-CPU kind node, the default sample (`bomarag_v1alpha1_bomarag.yaml`) requests 1500m CPU for frontend+backend+langflow and langflow will stay `Pending` with `Insufficient cpu`.
 
 ### Build app images locally and use them in kind (Colima/Docker)
 
@@ -136,31 +136,31 @@ make install
 make run
 
 kubectl create namespace my-tenant
-kubectl apply -f config/samples/openrag_v1alpha1_openrag-kind-local.yaml
+kubectl apply -f config/samples/bomarag_v1alpha1_bomarag-kind-local.yaml
 ```
 
-Images are tagged the same as upstream (`langflowai/openrag-*:latest`) so the kind-local sample does not need custom names. `imagePullPolicy: Never` forces the cluster to use the copies loaded with `kind load docker-image`.
+Images are tagged the same as upstream (`bomalogic/bomarag-*:latest`) so the kind-local sample does not need custom names. `imagePullPolicy: Never` forces the cluster to use the copies loaded with `kind load docker-image`.
 
 After you change code and rebuild:
 
 ```bash
 make kind-build-load-apps   # or build only what changed, then make kind-load-app-images
-kubectl rollout restart deployment -n my-tenant openrag-fe openrag-be openrag-lf
+kubectl rollout restart deployment -n my-tenant bomarag-fe bomarag-be bomarag-lf
 ```
 
 Optional: build/load the **operator** image the same way:
 
 ```bash
 cd kubernetes/operator
-make docker-build IMG=openrag-operator:dev
-kind load docker-image openrag-operator:dev --name openrag
-make deploy IMG=openrag-operator:dev   # instead of make run
+make docker-build IMG=bomarag-operator:dev
+kind load docker-image bomarag-operator:dev --name bomarag
+make deploy IMG=bomarag-operator:dev   # instead of make run
 ```
 
 ### 5. Tear down
 
 ```bash
-kind delete cluster --name openrag
+kind delete cluster --name bomarag
 ```
 
 ## Quick start (development)
@@ -171,14 +171,14 @@ make manifests     # regenerate CRD + RBAC YAML (run after editing types)
 make generate      # regenerate DeepCopy methods (run after editing types)
 make build         # compile bin/manager
 make install       # install the CRD into the current cluster
-make deploy IMG=ghcr.io/langflow-ai/openrag-operator:latest
+make deploy IMG=ghcr.io/ABISHAIMWANJA/bomarag-operator:latest
 ```
 
 Apply the sample CR:
 
 ```bash
-kubectl apply -f config/samples/openrag_v1alpha1_openrag.yaml
-kubectl get openrag
+kubectl apply -f config/samples/bomarag_v1alpha1_bomarag.yaml
+kubectl get bomarag
 ```
 
 ## Helm Chart
@@ -191,7 +191,7 @@ kubernetes/helm/operator/
 ├── values.yaml                    # Default configuration values
 ├── .helmignore                    # Files to ignore when packaging
 ├── crds/
-│   └── openr.ag_openrags.yaml    # OpenRAG CRD (auto-installed)
+│   └── bomalogic.com_bomarags.yaml    # BomaRAG CRD (auto-installed)
 └── templates/
     ├── _helpers.tpl               # Template helpers
     ├── NOTES.txt                  # Post-install notes
@@ -209,7 +209,7 @@ Key configurable values in `values.yaml`:
 
 ```yaml
 image:
-  repository: ghcr.io/langflow-ai/openrag-operator
+  repository: ghcr.io/ABISHAIMWANJA/bomarag-operator
   tag: ""  # defaults to chart appVersion
   pullPolicy: IfNotPresent
 
@@ -240,8 +240,8 @@ helm lint ./kubernetes/helm/operator
 
 **Template the chart (dry-run):**
 ```bash
-helm template openrag-operator ./kubernetes/helm/operator \
-  --namespace openrag-control
+helm template bomarag-operator ./kubernetes/helm/operator \
+  --namespace bomarag-control
 ```
 
 **Package the chart:**
@@ -251,38 +251,38 @@ helm package ./kubernetes/helm/operator
 
 **Upgrade the operator:**
 ```bash
-helm upgrade openrag-operator ./kubernetes/helm/operator \
-  --namespace openrag-control
+helm upgrade bomarag-operator ./kubernetes/helm/operator \
+  --namespace bomarag-control
 ```
 
 **Uninstall:**
 ```bash
-helm uninstall openrag-operator --namespace openrag-control
+helm uninstall bomarag-operator --namespace bomarag-control
 ```
 
 **Note:** CRDs are not automatically upgraded by Helm. If the CRD changes, manually apply it:
 ```bash
-kubectl apply -f kubernetes/helm/operator/crds/openr.ag_openrags.yaml
+kubectl apply -f kubernetes/helm/operator/crds/bomalogic.com_bomarags.yaml
 ```
 
 ## CR overview
 
 ```yaml
-apiVersion: openr.ag/v1alpha1
-kind: OpenRAG
+apiVersion: bomalogic.com/v1alpha1
+kind: BomaRAG
 metadata:
-  name: my-openrag
+  name: my-bomarag
 spec:
   frontend:
-    image: langflowai/openrag-frontend:latest
+    image: bomalogic/bomarag-frontend:latest
   backend:
-    image: langflowai/openrag-backend:latest
+    image: bomalogic/bomarag-backend:latest
     envSecret: my-backend-env      # Secret with a ".env" key
     storage:
       enabled: true
       size: 10Gi
   langflow:
-    image: langflowai/openrag-langflow:latest
+    image: bomalogic/bomarag-langflow:latest
     envSecret: my-langflow-env
     storage:
       enabled: true
@@ -296,7 +296,7 @@ spec:
     enabled: false
 ```
 
-See [`config/samples/openrag_v1alpha1_openrag.yaml`](config/samples/openrag_v1alpha1_openrag.yaml) for a full annotated example.
+See [`config/samples/bomarag_v1alpha1_bomarag.yaml`](config/samples/bomarag_v1alpha1_bomarag.yaml) for a full annotated example.
 
 ## Release Process
 
@@ -314,7 +314,7 @@ git push origin operator/v0.1.0
 
 This triggers the `.github/workflows/operator-release.yml` workflow which:
 1. Builds multi-architecture images (linux/amd64, linux/arm64)
-2. Pushes to `ghcr.io/<owner>/openrag-operator:v0.1.0`
+2. Pushes to `ghcr.io/<owner>/bomarag-operator:v0.1.0`
 3. Creates a multi-arch manifest with `:latest` tag
 4. Creates a GitHub release with release notes
 
@@ -323,7 +323,7 @@ You can also trigger the release workflow manually from the GitHub Actions UI wi
 
 **Image location:**
 - Registry: `ghcr.io`
-- Repository: `ghcr.io/langflow-ai/openrag-operator`
+- Repository: `ghcr.io/ABISHAIMWANJA/bomarag-operator`
 - Tags: `v0.1.0`, `v0.1.0-amd64`, `v0.1.0-arm64`, `latest`
 
 ### Helm Chart Publishing

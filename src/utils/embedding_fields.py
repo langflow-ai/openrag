@@ -16,7 +16,7 @@ logger = get_logger(__name__)
 
 
 def build_knn_vector_field(dimension: int) -> Dict[str, Any]:
-    """Build a knn_vector field mapping for OpenSearch using OpenRAG's JVector settings.
+    """Build a knn_vector field mapping for OpenSearch using BomaRAG's JVector settings.
 
     All knn_vector fields in the documents index share the same JVector/DiskANN
     method configuration, differing only in their vector dimension. This helper

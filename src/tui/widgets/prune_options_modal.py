@@ -1,4 +1,4 @@
-"""Prune options modal for OpenRAG TUI."""
+"""Prune options modal for BomaRAG TUI."""
 
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal
@@ -77,12 +77,12 @@ class PruneOptionsModal(ModalScreen[str]):
         with Container(id="dialog"):
             yield Label("🗑️  Prune Images", id="title")
             yield Static(
-                "Choose how to prune OpenRAG images:\n\n"
+                "Choose how to prune BomaRAG images:\n\n"
                 "• Prune Unused Only\n"
                 "  Remove old versions, keep latest and currently used images\n"
                 "  (Services will continue running)\n\n"
                 "• Stop & Prune All\n"
-                "  Stop all services and remove ALL OpenRAG images\n"
+                "  Stop all services and remove ALL BomaRAG images\n"
                 "  (Frees maximum disk space, images will be re-downloaded on next start)\n\n"
                 "What would you like to do?",
                 id="message",

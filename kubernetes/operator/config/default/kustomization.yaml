@@ -1,6 +1,6 @@
-namespace: openrag-operator-system
+namespace: bomarag-operator-system
 
-namePrefix: openrag-operator-
+namePrefix: bomarag-operator-
 
 resources:
 - ../rbac

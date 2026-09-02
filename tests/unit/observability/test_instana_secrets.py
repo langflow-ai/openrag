@@ -17,7 +17,7 @@ import pytest
 instana_secrets = pytest.importorskip("instana.util.secrets")
 
 # Mirrors the INSTANA_SECRETS default in .env.example / docker-compose.yml /
-# kubernetes/helm/openrag/values.yaml / kubernetes/operator's env.go.
+# kubernetes/helm/bomarag/values.yaml / kubernetes/operator's env.go.
 INSTANA_SECRETS_DEFAULT = "regex:.*key.*,.*pass.*,.*secret.*,.*token.*,q\\Z,search\\Z,filename\\Z"
 
 

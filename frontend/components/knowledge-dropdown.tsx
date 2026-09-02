@@ -825,7 +825,7 @@ export function KnowledgeDropdown() {
     });
 
   // Gate each bucket connector on its backend availability (IBM auth, or the
-  // OPENRAG_DEV_AZURE_BLOB dev flag for Azure Blob) AND a saved connection,
+  // BOMARAG_DEV_AZURE_BLOB dev flag for Azure Blob) AND a saved connection,
   // rather than the global IBM-auth flag — this keeps S3/IBM COS hidden outside
   // IBM auth while letting Azure Blob appear in local dev once configured.
   const bucketConnectorItems = getConnectorDescriptors()

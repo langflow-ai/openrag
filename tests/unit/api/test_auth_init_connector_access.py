@@ -41,7 +41,7 @@ class _FakeRequest:
 
 @pytest.mark.asyncio
 async def test_auth_init_blocks_disabled_connector_without_user(session, monkeypatch):
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
+    monkeypatch.setenv("BOMARAG_RUN_MODE", "saas")
     monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", False)
 
     await WorkspaceConfigRepo(session).upsert(
@@ -68,7 +68,7 @@ async def test_auth_init_blocks_disabled_connector_without_user(session, monkeyp
 
 @pytest.mark.asyncio
 async def test_auth_init_allows_disabled_connector_when_policy_not_enforced(session, monkeypatch):
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+    monkeypatch.setenv("BOMARAG_RUN_MODE", "oss")
     monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", False)
 
     await WorkspaceConfigRepo(session).upsert(

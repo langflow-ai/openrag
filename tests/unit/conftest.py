@@ -4,7 +4,7 @@ Overrides the session-scoped onboard_system fixture from the root conftest
 so that unit tests don't require running infrastructure (Langflow, OpenSearch, etc.).
 
 Also forces every unit test to use an in-memory SQLite for the RBAC layer
-so test fixtures cannot accidentally pollute the dev `data/openrag.db` file.
+so test fixtures cannot accidentally pollute the dev `data/bomarag.db` file.
 """
 
 # CRITICAL: set DATABASE_URL BEFORE any module imports `db.engine`. This
@@ -13,11 +13,11 @@ so test fixtures cannot accidentally pollute the dev `data/openrag.db` file.
 import os as _os
 _os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 
-# Defensive default: pin OPENRAG_RBAC_ENFORCE=true for unit tests so a
+# Defensive default: pin BOMARAG_RBAC_ENFORCE=true for unit tests so a
 # developer who has the kill switch in their local `.env` doesn't
 # silently make every 403-asserting test pass-through. Tests that
 # explicitly want the bypass override this via monkeypatch.
-_os.environ["OPENRAG_RBAC_ENFORCE"] = "true"
+_os.environ["BOMARAG_RBAC_ENFORCE"] = "true"
 
 import pytest
 import pytest_asyncio

@@ -5,7 +5,7 @@ from fastapi import Depends, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from config.settings import OPENRAG_BACKEND_PORT, OPENRAG_FQDN
+from config.settings import BOMARAG_BACKEND_PORT, BOMARAG_FQDN
 from dependencies import get_session_manager
 from utils.logging_config import get_logger
 
@@ -21,8 +21,8 @@ async def oidc_discovery(
     session_manager=Depends(get_session_manager),
 ):
     """OIDC discovery endpoint"""
-    if OPENRAG_FQDN:
-        base_url = f"http://{OPENRAG_FQDN}:{OPENRAG_BACKEND_PORT}"
+    if BOMARAG_FQDN:
+        base_url = f"http://{BOMARAG_FQDN}:{BOMARAG_BACKEND_PORT}"
     else:
         base_url = str(request.base_url).rstrip("/")
 
@@ -77,7 +77,7 @@ async def jwks_endpoint(
             "kty": "RSA",
             "use": "sig",
             "alg": "RS256",
-            "kid": "openrag-key-1",
+            "kid": "bomarag-key-1",
             "n": int_to_base64url(public_numbers.n),
             "e": int_to_base64url(public_numbers.e),
         }

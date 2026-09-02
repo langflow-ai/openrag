@@ -1,6 +1,0 @@
-{
-  "name": "openrag",
-  "version": "0.2.0",
-  "description": "OpenRAG agent skills: guided installation, SDK integration, and local dev-stack management.",
-  "repository": "https://github.com/langflow-ai/openrag"
-}

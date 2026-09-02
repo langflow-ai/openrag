@@ -8,7 +8,7 @@ import tempfile
 from fastapi import Depends, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 
-from config.settings import get_openrag_config
+from config.settings import get_bomarag_config
 from dependencies import (
     get_current_user,
     get_document_service,
@@ -40,10 +40,10 @@ async def upload_ingest_router(
     """
     Router endpoint that automatically routes upload requests based on configuration.
 
-    - If DISABLE_INGEST_WITH_LANGFLOW is True: uses traditional OpenRAG upload
+    - If DISABLE_INGEST_WITH_LANGFLOW is True: uses traditional BomaRAG upload
     - If DISABLE_INGEST_WITH_LANGFLOW is False (default): uses Langflow upload-ingest via task service
     """
-    disable_ingest_with_langflow = get_openrag_config().knowledge.disable_ingest_with_langflow
+    disable_ingest_with_langflow = get_bomarag_config().knowledge.disable_ingest_with_langflow
     requested_preview = preview.lower() == "true"
     preview_mode = requested_preview and is_ingest_preview_enabled()
     if requested_preview and not preview_mode:
@@ -55,7 +55,7 @@ async def upload_ingest_router(
     )
 
     if disable_ingest_with_langflow:
-        logger.debug("Routing to traditional OpenRAG upload via task service")
+        logger.debug("Routing to traditional BomaRAG upload via task service")
         return await _traditional_upload_ingest_task(
             upload_files=file,
             replace_duplicates=replace_duplicates.lower() == "true",

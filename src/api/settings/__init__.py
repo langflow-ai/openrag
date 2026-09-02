@@ -18,7 +18,7 @@ re-export it here.
 from api.settings.endpoints import (
     get_settings,
     onboarding,
-    refresh_openrag_docs,
+    refresh_bomarag_docs,
     rollback_onboarding,
     update_docling_preset,
     update_onboarding_state,
@@ -41,7 +41,7 @@ from api.settings.models import (
     OnboardingStateResponse,
     OpenAIProviderConfig,
     ProvidersConfig,
-    RefreshOpenRAGDocsResponse,
+    RefreshBomaRAGDocsResponse,
     RollbackBody,
     RollbackResponse,
     SettingsResponse,
@@ -58,7 +58,7 @@ __all__ = [
     "update_onboarding_state",
     "rollback_onboarding",
     "update_docling_preset",
-    "refresh_openrag_docs",
+    "refresh_bomarag_docs",
     # Internal orchestrator (called from services/startup_orchestrator.py)
     "reapply_all_settings",
     # Pydantic models (some are imported externally; re-export all for parity
@@ -79,7 +79,7 @@ __all__ = [
     "IngestionDefaultsConfig",
     "SettingsResponse",
     "OnboardingResponse",
-    "RefreshOpenRAGDocsResponse",
+    "RefreshBomaRAGDocsResponse",
     "DoclingPresetResponse",
     "OnboardingStateResponse",
     "SettingsUpdateResponse",

@@ -1,8 +1,8 @@
-apiVersion: openr.ag/v1alpha1
-kind: OpenRAG
+apiVersion: bomalogic.com/v1alpha1
+kind: BomaRAG
 metadata:
-  name: openrag-docling-complete
-  namespace: openrag-system
+  name: bomarag-docling-complete
+  namespace: bomarag-system
 spec:
   # Global settings
   imagePullSecrets:
@@ -76,7 +76,7 @@ spec:
 
       # Docling configuration for the serve API
       config:
-        # Required for OpenRAG's Docling VLM pipeline (remote OpenAI/watsonx
+        # Required for BomaRAG's Docling VLM pipeline (remote OpenAI/watsonx
         # vision models). Harmless when VLM is not used.
         extraEnv:
           - name: "DOCLING_SERVE_ENABLE_REMOTE_SERVICES"

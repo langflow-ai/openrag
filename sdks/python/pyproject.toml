@@ -3,16 +3,16 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "openrag-sdk"
+name = "bomarag-sdk"
 version = "0.4.0.dev0"
-description = "Official Python SDK for OpenRAG API"
+description = "Official Python SDK for BomaRAG API"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
 authors = [
-    { name = "OpenRAG Team" }
+    { name = "BomaRAG Team" }
 ]
-keywords = ["openrag", "rag", "retrieval", "ai", "sdk", "api"]
+keywords = ["bomarag", "rag", "retrieval", "ai", "sdk", "api"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -39,13 +39,13 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/langflow-ai/openrag"
-Documentation = "https://docs.openr.ag/sdk/python"
-Repository = "https://github.com/langflow-ai/openrag"
-Issues = "https://github.com/langflow-ai/openrag/issues"
+Homepage = "https://github.com/ABISHAIMWANJA/bomarag"
+Documentation = "https://docs.bomarag.com/sdk/python"
+Repository = "https://github.com/ABISHAIMWANJA/bomarag"
+Issues = "https://github.com/ABISHAIMWANJA/bomarag/issues"
 
 [tool.setuptools.packages.find]
-include = ["openrag_sdk*"]
+include = ["bomarag_sdk*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

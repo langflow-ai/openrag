@@ -4,7 +4,7 @@ import { Bell } from "lucide-react";
 import { BrandSwitcher } from "@/components/brand-switcher";
 import { ConsoleStatusButton } from "@/components/console-status";
 import { DevRoleToggle } from "@/components/dev-role-toggle";
-import Logo from "@/components/icons/openrag-logo";
+import Logo from "@/components/icons/bomarag-logo";
 import { UserNav } from "@/components/user-nav";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
@@ -54,7 +54,7 @@ export function Header() {
             className="text-lg font-semibold pl-2.5"
             style={{ fontFamily: '"IBM Plex Mono", monospace' }}
           >
-            OpenRAG
+            BomaRAG
           </span>
         </div>
       </div>
@@ -67,7 +67,7 @@ export function Header() {
             /> */}
 
           {/* GitHub Star Button */}
-          {/* <GitHubStarButton repo="phact/openrag" /> */}
+          {/* <GitHubStarButton repo="phact/bomarag" /> */}
 
           {/* Discord Link */}
           {/* <DiscordLink inviteCode="EqksyE2EX9" /> */}

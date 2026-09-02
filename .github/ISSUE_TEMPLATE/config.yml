@@ -1,14 +1,14 @@
 blank_issues_enabled: false
 contact_links:
-  - name: OpenRAG Documentation
-    url: https://docs.openr.ag/
-    about: Learn more about OpenRAG's features, installation, and configuration.
+  - name: BomaRAG Documentation
+    url: https://docs.bomarag.com/
+    about: Learn more about BomaRAG's features, installation, and configuration.
   - name: Troubleshooting Guide
-    url: https://docs.openr.ag/support/troubleshoot
+    url: https://docs.bomarag.com/support/troubleshoot
     about: Check the troubleshooting guide for common issues and solutions.
   - name: GitHub Discussions
-    url: https://github.com/langflow-ai/openrag/discussions
+    url: https://github.com/ABISHAIMWANJA/bomarag/discussions
     about: Ask questions and discuss ideas with the community.
   - name: Contributing Guide
-    url: https://github.com/langflow-ai/openrag/blob/main/CONTRIBUTING.md
-    about: Learn how to contribute to OpenRAG development.
+    url: https://github.com/ABISHAIMWANJA/bomarag/blob/main/CONTRIBUTING.md
+    about: Learn how to contribute to BomaRAG development.

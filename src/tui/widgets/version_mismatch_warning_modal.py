@@ -1,4 +1,4 @@
-"""Version mismatch warning modal for OpenRAG TUI."""
+"""Version mismatch warning modal for BomaRAG TUI."""
 
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal
@@ -93,7 +93,7 @@ class VersionMismatchWarningModal(ModalScreen[bool]):
                 f"Starting services will update containers to version {self.tui_version}.\n"
                 f"This may cause compatibility issues with your flows.\n\n"
                 f"⚠️  Please backup your flows before continuing.\n"
-                f"   Customizations to OpenRAG built-in flows are backed up in ~/.openrag/flows/backup/\n"
+                f"   Customizations to BomaRAG built-in flows are backed up in ~/.bomarag/flows/backup/\n"
                 f"   Other user created flows are not backed up automatically.\n\n"
                 f"Do you want to continue?",
                 id="message"

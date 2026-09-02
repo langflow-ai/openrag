@@ -93,7 +93,7 @@ def get_opensearch_password() -> str | None:
     return os.getenv("OPENSEARCH_PASSWORD") or OPENSEARCH_PASSWORD
 
 
-OPENRAG_FQDN = os.getenv("OPENRAG_FQDN")
+BOMARAG_FQDN = os.getenv("BOMARAG_FQDN")
 LANGFLOW_PORT = get_env_int("LANGFLOW_PORT", 7860)
 LANGFLOW_URL = os.getenv("LANGFLOW_URL", f"http://localhost:{LANGFLOW_PORT}")
 # Optional: public URL for browser links (e.g., http://localhost:7860)
@@ -107,7 +107,7 @@ LANGFLOW_URL_INGEST_FLOW_ID = (
 )
 DEFAULT_CHUNK_SIZE = 1000
 DEFAULT_CHUNK_OVERLAP = 200
-OPENRAG_BACKEND_PORT = get_env_int("OPENRAG_BACKEND_PORT", 8000)
+BOMARAG_BACKEND_PORT = get_env_int("BOMARAG_BACKEND_PORT", 8000)
 
 # CORS – comma-separated list of allowed origins (e.g. "https://app.example.com,https://admin.example.com").
 # Unset → defaults to http://localhost:3000.  Set to "" to disable CORS entirely.
@@ -115,22 +115,22 @@ _raw_cors_origins = os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000")
 CORS_ALLOWED_ORIGINS: list[str] = [
     o.strip() for o in _raw_cors_origins.split(",") if o.strip() and o.strip() != "*"
 ]
-OPENRAG_BACKEND_INTERNAL_URL = os.getenv(
-    "OPENRAG_BACKEND_INTERNAL_URL",
-    f"http://openrag-backend:{OPENRAG_BACKEND_PORT}",
+BOMARAG_BACKEND_INTERNAL_URL = os.getenv(
+    "BOMARAG_BACKEND_INTERNAL_URL",
+    f"http://bomarag-backend:{BOMARAG_BACKEND_PORT}",
 ).rstrip("/")
 
 
 def get_langflow_llm_base_url() -> str:
     """OpenAI-compatible base URL Langflow should call (must end with /v1).
 
-    Override with OPENRAG_LLM_PROXY_URL when Langflow cannot reach
-    OPENRAG_BACKEND_INTERNAL_URL (rare; same cases as a custom ingest router).
+    Override with BOMARAG_LLM_PROXY_URL when Langflow cannot reach
+    BOMARAG_BACKEND_INTERNAL_URL (rare; same cases as a custom ingest router).
     """
-    override = os.getenv("OPENRAG_LLM_PROXY_URL")
+    override = os.getenv("BOMARAG_LLM_PROXY_URL")
     if override:
         return override.rstrip("/")
-    return f"{OPENRAG_BACKEND_INTERNAL_URL}/v1"
+    return f"{BOMARAG_BACKEND_INTERNAL_URL}/v1"
 
 
 # --- Backend ingestion-callback proxy router ------------------------------
@@ -142,25 +142,25 @@ def get_langflow_llm_base_url() -> str:
 INGEST_CALLBACK_PATH = "/internal/ingest/chunks"
 
 
-# Default depends on OPENRAG_RUN_MODE:
+# Default depends on BOMARAG_RUN_MODE:
 #   * saas                 -> "true" (the platform requires the narrowed surface)
 #   * anything else        -> "false" (today's behaviour preserved)
-# An explicit OPENRAG_BACKEND_ROUTER_ENABLE value always wins.
+# An explicit BOMARAG_BACKEND_ROUTER_ENABLE value always wins.
 def _resolve_backend_router_enable_default() -> str:
     from utils.run_mode_utils import is_run_mode_saas
 
     return "true" if is_run_mode_saas() else "false"
 
 
-OPENRAG_BACKEND_ROUTER_ENABLE = os.getenv(
-    "OPENRAG_BACKEND_ROUTER_ENABLE", _resolve_backend_router_enable_default()
+BOMARAG_BACKEND_ROUTER_ENABLE = os.getenv(
+    "BOMARAG_BACKEND_ROUTER_ENABLE", _resolve_backend_router_enable_default()
 ).lower() in (
     "true",
     "1",
     "yes",
 )
-OPENRAG_BACKEND_ROUTER_HOST = os.getenv("OPENRAG_BACKEND_ROUTER_HOST", "0.0.0.0")
-OPENRAG_BACKEND_ROUTER_PORT = get_env_int("OPENRAG_BACKEND_ROUTER_PORT", 8100)
+BOMARAG_BACKEND_ROUTER_HOST = os.getenv("BOMARAG_BACKEND_ROUTER_HOST", "0.0.0.0")
+BOMARAG_BACKEND_ROUTER_PORT = get_env_int("BOMARAG_BACKEND_ROUTER_PORT", 8100)
 
 
 def _derive_router_url() -> str:
@@ -168,46 +168,46 @@ def _derive_router_url() -> str:
 
     The router runs in the SAME pod/container as the backend, so it shares the
     backend's host and differs only by port. Deriving from
-    OPENRAG_BACKEND_INTERNAL_URL means this resolves correctly in every
+    BOMARAG_BACKEND_INTERNAL_URL means this resolves correctly in every
     environment that var already works in (Helm, operator) with no new Service.
     """
-    parts = urlsplit(OPENRAG_BACKEND_INTERNAL_URL)
-    host = parts.hostname or "openrag-backend"
-    netloc = f"{host}:{OPENRAG_BACKEND_ROUTER_PORT}"
+    parts = urlsplit(BOMARAG_BACKEND_INTERNAL_URL)
+    host = parts.hostname or "bomarag-backend"
+    netloc = f"{host}:{BOMARAG_BACKEND_ROUTER_PORT}"
     return urlunsplit((parts.scheme or "http", netloc, "", "", ""))
 
 
 # Externally reachable base URL Langflow calls back to. Defaults to the backend
 # host on the router port; override only if fronted by a separate Service/ingress.
-OPENRAG_BACKEND_ROUTER_URL = (
-    os.getenv("OPENRAG_BACKEND_ROUTER_URL") or _derive_router_url()
+BOMARAG_BACKEND_ROUTER_URL = (
+    os.getenv("BOMARAG_BACKEND_ROUTER_URL") or _derive_router_url()
 ).rstrip("/")
 
 
 # Upstream the router FORWARDS callbacks to. The router is co-located with the
 # backend (same process), so the HOST is always loopback — but the scheme/port
-# are sourced from OPENRAG_BACKEND_INTERNAL_URL so the upstream tracks the
+# are sourced from BOMARAG_BACKEND_INTERNAL_URL so the upstream tracks the
 # backend's configured port automatically. We force 127.0.0.1 (not the advertised
 # service name) because that name need not resolve where the router runs (e.g. a
 # host-run backend). Loopback is correct in every mode: host dev, single
 # container, and same k8s pod.
 def _derive_router_upstream_url() -> str:
-    parts = urlsplit(OPENRAG_BACKEND_INTERNAL_URL)
+    parts = urlsplit(BOMARAG_BACKEND_INTERNAL_URL)
     port = parts.port or 8000
     return urlunsplit((parts.scheme or "http", f"127.0.0.1:{port}", "", "", ""))
 
 
-OPENRAG_BACKEND_ROUTER_UPSTREAM_URL = (
-    os.getenv("OPENRAG_BACKEND_ROUTER_UPSTREAM_URL") or _derive_router_upstream_url()
+BOMARAG_BACKEND_ROUTER_UPSTREAM_URL = (
+    os.getenv("BOMARAG_BACKEND_ROUTER_UPSTREAM_URL") or _derive_router_upstream_url()
 ).rstrip("/")
 
 
 def get_ingest_callback_url() -> str:
     """URL Langflow should call back to: the router when enabled, else the backend."""
     base = (
-        OPENRAG_BACKEND_ROUTER_URL
-        if OPENRAG_BACKEND_ROUTER_ENABLE
-        else OPENRAG_BACKEND_INTERNAL_URL
+        BOMARAG_BACKEND_ROUTER_URL
+        if BOMARAG_BACKEND_ROUTER_ENABLE
+        else BOMARAG_BACKEND_INTERNAL_URL
     )
     return f"{base}{INGEST_CALLBACK_PATH}"
 
@@ -237,9 +237,9 @@ MICROSOFT_ALLOWED_TENANT_IDS: set[str] | None = get_env_set("MICROSOFT_ALLOWED_T
 
 # IBM AMS authentication (Watsonx Data embedded mode)
 IBM_AUTH_ENABLED = os.getenv("IBM_AUTH_ENABLED", "false").lower() in ("true", "1", "yes")
-OPENRAG_TENANT_ID = os.getenv("OPENRAG_TENANT_ID", "openrag")
+BOMARAG_TENANT_ID = os.getenv("BOMARAG_TENANT_ID", "bomarag")
 IBM_JWT_PUBLIC_KEY_URL = os.getenv("IBM_JWT_PUBLIC_KEY_URL", "")
-IBM_SESSION_COOKIE_NAME = os.getenv("IBM_SESSION_COOKIE_NAME", "ibm-openrag-session")
+IBM_SESSION_COOKIE_NAME = os.getenv("IBM_SESSION_COOKIE_NAME", "ibm-bomarag-session")
 IBM_CREDENTIALS_HEADER = os.getenv("IBM_CREDENTIALS_HEADER", "X-IBM-LH-Credentials")
 
 
@@ -247,50 +247,50 @@ IBM_CREDENTIALS_HEADER = os.getenv("IBM_CREDENTIALS_HEADER", "X-IBM-LH-Credentia
 # These are exposed as functions (not module constants) so they are read
 # per-call: auth/jwt_roles.py must pick up runtime overrides, and the unit
 # tests drive them via monkeypatch.setenv. This mirrors is_rbac_enforced(),
-# which reads OPENRAG_RBAC_ENFORCE the same way.
+# which reads BOMARAG_RBAC_ENFORCE the same way.
 
 
 def get_jwt_roles_claim() -> str:
-    """Name of the JWT claim that carries the user's OpenRAG roles.
+    """Name of the JWT claim that carries the user's BomaRAG roles.
 
     The claim's value MUST be a JSON array of strings; anything else is
     treated as no roles and rejected (HTTP 401) when JWT-role sync is active.
     """
-    return os.getenv("OPENRAG_JWT_ROLES_CLAIM", "openrag_roles")
+    return os.getenv("BOMARAG_JWT_ROLES_CLAIM", "bomarag_roles")
 
 
-# Mapping from OpenRAG built-in role -> JWT claim value. When the JWT roles
-# claim contains the returned value, the user is granted that OpenRAG role.
-# A None return (viewer, unset by default) means the OpenRAG role cannot be
+# Mapping from BomaRAG built-in role -> JWT claim value. When the JWT roles
+# claim contains the returned value, the user is granted that BomaRAG role.
+# A None return (viewer, unset by default) means the BomaRAG role cannot be
 # assigned via JWT (e.g. when the IdP only ships 3 roles).
 def get_role_claim_admin() -> str:
-    return os.getenv("OPENRAG_ROLE_CLAIM_ADMIN", "admin")
+    return os.getenv("BOMARAG_ROLE_CLAIM_ADMIN", "admin")
 
 
 def get_role_claim_developer() -> str:
-    return os.getenv("OPENRAG_ROLE_CLAIM_DEVELOPER", "manager")
+    return os.getenv("BOMARAG_ROLE_CLAIM_DEVELOPER", "manager")
 
 
 def get_role_claim_user() -> str:
-    return os.getenv("OPENRAG_ROLE_CLAIM_USER", "user")
+    return os.getenv("BOMARAG_ROLE_CLAIM_USER", "user")
 
 
 def get_role_claim_viewer() -> str | None:
-    return os.getenv("OPENRAG_ROLE_CLAIM_VIEWER")
+    return os.getenv("BOMARAG_ROLE_CLAIM_VIEWER")
 
 
 def is_dev_role_toggle_enabled() -> bool:
     """Allow POST /users/me/dev-role for local RBAC UI testing.
 
-    Requires ``OPENRAG_DEV_ROLE_TOGGLE=true``. Never enable in production.
+    Requires ``BOMARAG_DEV_ROLE_TOGGLE=true``. Never enable in production.
     """
-    raw = os.getenv("OPENRAG_DEV_ROLE_TOGGLE", "false").strip().lower()
+    raw = os.getenv("BOMARAG_DEV_ROLE_TOGGLE", "false").strip().lower()
     return raw in ("true", "1", "yes", "on")
 
 
 def is_dev_connector_policy_enabled() -> bool:
     """Local OSS dev: enforce workspace connector policy (pair with IBM theme dev UI)."""
-    raw = os.getenv("OPENRAG_DEV_CONNECTOR_POLICY", "false").strip().lower()
+    raw = os.getenv("BOMARAG_DEV_CONNECTOR_POLICY", "false").strip().lower()
     return raw in ("true", "1", "yes", "on")
 
 
@@ -299,9 +299,9 @@ def is_dev_azure_blob_enabled() -> bool:
 
     Allows testing the Azure Blob connector (e.g. against Azurite) in a local
     environment where IBM auth is not configured. Never enable in production.
-    Requires ``OPENRAG_DEV_AZURE_BLOB=true``.
+    Requires ``BOMARAG_DEV_AZURE_BLOB=true``.
     """
-    raw = os.getenv("OPENRAG_DEV_AZURE_BLOB", "false").strip().lower()
+    raw = os.getenv("BOMARAG_DEV_AZURE_BLOB", "false").strip().lower()
     return raw in ("true", "1", "yes", "on")
 
 
@@ -310,22 +310,22 @@ def is_dev_ibm_cos_enabled() -> bool:
 
     Allows testing the IBM COS connector (e.g. against MinIO in HMAC mode) in a
     local environment where IBM auth is not configured. Never enable in
-    production. Requires ``OPENRAG_DEV_IBM_COS=true``.
+    production. Requires ``BOMARAG_DEV_IBM_COS=true``.
     """
-    raw = os.getenv("OPENRAG_DEV_IBM_COS", "false").strip().lower()
+    raw = os.getenv("BOMARAG_DEV_IBM_COS", "false").strip().lower()
     return raw in ("true", "1", "yes", "on")
 
 
 def is_azure_blob_enabled() -> bool:
     """Feature kill switch for the Azure Blob connector (default: enabled).
 
-    Independent of ``IBM_AUTH_ENABLED``. Set ``OPENRAG_AZURE_BLOB_ENABLED=false``
+    Independent of ``IBM_AUTH_ENABLED``. Set ``BOMARAG_AZURE_BLOB_ENABLED=false``
     to force-hide the connector in the UI even when IBM auth is on. When true
     (the default), availability still requires the Enterprise/SaaS gate
-    (``IBM_AUTH_ENABLED``) or the ``OPENRAG_DEV_AZURE_BLOB`` dev bypass -- this
+    (``IBM_AUTH_ENABLED``) or the ``BOMARAG_DEV_AZURE_BLOB`` dev bypass -- this
     flag is subtractive (AND-ed with that gate), not an override.
     """
-    raw = os.getenv("OPENRAG_AZURE_BLOB_ENABLED", "true").strip().lower()
+    raw = os.getenv("BOMARAG_AZURE_BLOB_ENABLED", "true").strip().lower()
     return raw in ("true", "1", "yes", "on")
 
 
@@ -333,11 +333,11 @@ def is_ingest_preview_flag_enabled() -> bool:
     """Raw opt-in flag for the preview-mode ingest backend.
 
     Read per-call (like the other feature-flag accessors in this module) so
-    runtime/test overrides of ``OPENRAG_INGEST_PREVIEW_ENABLED`` take effect
+    runtime/test overrides of ``BOMARAG_INGEST_PREVIEW_ENABLED`` take effect
     without a restart. This is only the flag itself; run-mode gating is applied
     by ``utils.ingest_preview_flag.is_ingest_preview_enabled()``.
     """
-    raw = os.getenv("OPENRAG_INGEST_PREVIEW_ENABLED", "false").strip().lower()
+    raw = os.getenv("BOMARAG_INGEST_PREVIEW_ENABLED", "false").strip().lower()
     return raw in ("true", "1", "yes", "on")
 
 
@@ -348,9 +348,9 @@ def is_workspace_oauth_overrides_enabled() -> bool:
     id/secret overrides on OAuth-kind connectors, resolution of those
     overrides in BaseConnector.get_client_id()/get_client_secret() (env vars
     still work either way), and the OAuth "test connection" flow. Set
-    ``OPENRAG_WORKSPACE_OAUTH_OVERRIDES_ENABLED=true`` to turn it on.
+    ``BOMARAG_WORKSPACE_OAUTH_OVERRIDES_ENABLED=true`` to turn it on.
     """
-    raw = os.getenv("OPENRAG_WORKSPACE_OAUTH_OVERRIDES_ENABLED", "false").strip().lower()
+    raw = os.getenv("BOMARAG_WORKSPACE_OAUTH_OVERRIDES_ENABLED", "false").strip().lower()
     return raw in ("true", "1", "yes", "on")
 
 
@@ -363,39 +363,39 @@ def is_cloud_context() -> bool:
 
 def get_default_user_role() -> str:
     """Built-in role assigned to new users when JWT role sync is off."""
-    return os.getenv("OPENRAG_DEFAULT_ROLE", "user")
+    return os.getenv("BOMARAG_DEFAULT_ROLE", "user")
 
 
 def get_noauth_user_role() -> str:
     """Built-in role for the synthetic anonymous user in no-auth mode."""
-    return os.getenv("OPENRAG_NOAUTH_ROLE", "admin")
+    return os.getenv("BOMARAG_NOAUTH_ROLE", "admin")
 
 
 def is_default_role_sync_enabled() -> bool:
     """When true, sync eligible existing users if default-role env vars change.
 
-    Only active in ``OPENRAG_RUN_MODE=oss``. SaaS and on-prem assign roles
+    Only active in ``BOMARAG_RUN_MODE=oss``. SaaS and on-prem assign roles
     via JWT sync; env-driven bulk migration is an OSS dev workflow.
     """
     from utils.run_mode_utils import is_run_mode_oss
 
     if not is_run_mode_oss():
         return False
-    raw = os.getenv("OPENRAG_SYNC_DEFAULT_ROLE", "false").strip().lower()
+    raw = os.getenv("BOMARAG_SYNC_DEFAULT_ROLE", "false").strip().lower()
     return raw in ("true", "1", "yes", "on")
 
 
-def get_openrag_service_token() -> str | None:
+def get_bomarag_service_token() -> str | None:
     """Platform-issued service JWT used at startup to bootstrap the OpenSearch
     security context (admin role mapping). Read per-call — like the JWT-claim
     accessors above — so runtime/test overrides take effect without a restart."""
-    return os.getenv("OPENRAG_SERVICE_TOKEN")
+    return os.getenv("BOMARAG_SERVICE_TOKEN")
 
 
 def get_jwt_auth_header() -> str:
     """HTTP header that may carry a gateway-forwarded JWT for /v1 (API-key)
     callers. Read per-call so tests can override via monkeypatch.setenv."""
-    return os.getenv("OPENRAG_JWT_AUTH_HEADER", "Authorization")
+    return os.getenv("BOMARAG_JWT_AUTH_HEADER", "Authorization")
 
 
 def get_api_jwt_header() -> str:
@@ -413,9 +413,9 @@ def get_api_jwt_header() -> str:
     surface and is trusted as an identity source. It is gateway-managed: Traefik
     mints and injects it, and MUST strip any client-supplied value at the edge
     (standard internal-trust-header hygiene) so callers cannot forge it —
-    important because claims are decode-only unless ``OPENRAG_JWT_VERIFY_SIGNATURE``
+    important because claims are decode-only unless ``BOMARAG_JWT_VERIFY_SIGNATURE``
     is enabled."""
-    return os.getenv("OPENRAG_API_JWT_HEADER", "X-OpenRAG-API-JWT")
+    return os.getenv("BOMARAG_API_JWT_HEADER", "X-BomaRAG-API-JWT")
 
 
 def get_jwt_issuer_verify_tls() -> bool:
@@ -423,7 +423,7 @@ def get_jwt_issuer_verify_tls() -> bool:
     ``iss`` URL (``verify_jwt_from_issuer``). Defaults to false for internal
     issuers with cluster/self-signed certs; set true when the issuer uses a
     public or pod-trusted CA."""
-    return os.getenv("OPENRAG_JWT_ISSUER_VERIFY_TLS", "false").strip().lower() in (
+    return os.getenv("BOMARAG_JWT_ISSUER_VERIFY_TLS", "false").strip().lower() in (
         "true",
         "1",
         "yes",
@@ -433,7 +433,7 @@ def get_jwt_issuer_verify_tls() -> bool:
 def get_jwt_verify_signature() -> bool:
     """When true, verify forwarded JWTs via issuer JWKS; when false, decode
     claims only (upstream auth must have authenticated the caller)."""
-    return os.getenv("OPENRAG_JWT_VERIFY_SIGNATURE", "false").strip().lower() in (
+    return os.getenv("BOMARAG_JWT_VERIFY_SIGNATURE", "false").strip().lower() in (
         "true",
         "1",
         "yes",
@@ -460,14 +460,14 @@ DOCLING_SERVE_VERIFY_SSL = os.getenv("DOCLING_SERVE_VERIFY_SSL", "true").lower()
 
 
 # Skip the OpenSearch security context setup (roles, role mappings,
-# all_access admin pin). When true, OpenRAG assumes the security context
+# all_access admin pin). When true, BomaRAG assumes the security context
 # is managed externally (e.g., by Traefik in CPD or by a SaaS platform
 # operator).
 #
-# Default depends on OPENRAG_RUN_MODE:
+# Default depends on BOMARAG_RUN_MODE:
 #   * saas / on_prem (CPD) -> "true" (the platform owns the security context)
 #   * anything else (oss)  -> "false" (today's behaviour preserved)
-# An explicit OPENRAG_SKIP_OS_SECURITY_SETUP value always wins, so an
+# An explicit BOMARAG_SKIP_OS_SECURITY_SETUP value always wins, so an
 # operator can force-enable the setup in SaaS for a one-off bootstrap.
 def _resolve_skip_os_security_default() -> str:
     from utils.run_mode_utils import is_run_mode_on_prem, is_run_mode_saas
@@ -475,27 +475,27 @@ def _resolve_skip_os_security_default() -> str:
     return "true" if is_run_mode_saas() or is_run_mode_on_prem() else "false"
 
 
-OPENRAG_SKIP_OS_SECURITY_SETUP = os.getenv(
-    "OPENRAG_SKIP_OS_SECURITY_SETUP", _resolve_skip_os_security_default()
+BOMARAG_SKIP_OS_SECURITY_SETUP = os.getenv(
+    "BOMARAG_SKIP_OS_SECURITY_SETUP", _resolve_skip_os_security_default()
 ).lower() in ("true", "1", "yes")
 
 # Run setup_opensearch_security once during FastAPI lifespan startup,
-# using the admin username derived from OPENRAG_SERVICE_TOKEN. Intended
+# using the admin username derived from BOMARAG_SERVICE_TOKEN. Intended
 # for platform-managed deployments (saas / on_prem) where the platform
 # issues a service token that identifies the admin user that must be
 # pinned into the all_access role mapping. Default off.
 #
 # When this flag is true the corresponding call inside startup_tasks()
 # is suppressed — bootstrap is the single source of truth on startup.
-OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP = os.getenv(
-    "OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP", "false"
+BOMARAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP = os.getenv(
+    "BOMARAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP", "false"
 ).lower() in ("true", "1", "yes")
 
-# Reconcile replica counts on existing OpenRAG indices at startup so they match
+# Reconcile replica counts on existing BomaRAG indices at startup so they match
 # OPENSEARCH_NUMBER_OF_REPLICAS. Defaults to true for production (multi-node)
 # deployments; single-node dev (docker-compose) overrides it to false.
-OPENRAG_ENSURE_INDEX_REPLICAS_ON_STARTUP = os.getenv(
-    "OPENRAG_ENSURE_INDEX_REPLICAS_ON_STARTUP", "true"
+BOMARAG_ENSURE_INDEX_REPLICAS_ON_STARTUP = os.getenv(
+    "BOMARAG_ENSURE_INDEX_REPLICAS_ON_STARTUP", "true"
 ).lower() in ("true", "1", "yes")
 
 # Enable FastAPI's `debug` mode (verbose tracebacks in HTTP error responses
@@ -531,18 +531,18 @@ RBAC_CACHE_BACKEND = os.getenv("CACHE_BACKEND", "memory").lower()
 
 # TTL (seconds) for cached RBAC permission lookups. Stale permissions can
 # linger for up to this many seconds after a role mutation.
-RBAC_PERMISSION_CACHE_TTL_SECONDS = get_env_int("OPENRAG_PERM_CACHE_TTL", 60)
+RBAC_PERMISSION_CACHE_TTL_SECONDS = get_env_int("BOMARAG_PERM_CACHE_TTL", 60)
 
 # TTL (seconds) for cached upstream group memberships used when minting
 # OpenSearch JWTs. Defaults to 0 so group membership changes are resolved per
 # request unless an operator explicitly accepts bounded staleness.
-GROUP_ACL_CACHE_TTL_SECONDS = get_env_int("OPENRAG_GROUP_ACL_CACHE_TTL", 0)
+GROUP_ACL_CACHE_TTL_SECONDS = get_env_int("BOMARAG_GROUP_ACL_CACHE_TTL", 0)
 
 # Minimum interval (seconds) between DLS principal lookup-index refreshes for
 # the same effective OpenSearch user. This bounds connector directory calls and
 # lookup-index writes on authenticated request paths. Group/alias changes can be
 # stale for up to this many seconds; set to 0 for strict per-request refresh.
-DLS_PRINCIPAL_REFRESH_TTL_SECONDS = get_env_int("OPENRAG_DLS_PRINCIPAL_REFRESH_TTL", 60)
+DLS_PRINCIPAL_REFRESH_TTL_SECONDS = get_env_int("BOMARAG_DLS_PRINCIPAL_REFRESH_TTL", 60)
 
 ACL_PRINCIPAL_LABELS_MAPPING = {
     "type": "object",
@@ -559,17 +559,17 @@ ACL_PRINCIPAL_LABELS_MAPPING = {
 # TTL (seconds) for the in-process JWT claims cache. A cached entry is also
 # checked against the token's own `exp` claim on every hit, so a revoked token
 # can linger at most min(this value, token_remaining_lifetime) seconds.
-JWT_CLAIMS_CACHE_TTL_SECONDS = get_env_int("OPENRAG_JWT_CACHE_TTL", 60)
+JWT_CLAIMS_CACHE_TTL_SECONDS = get_env_int("BOMARAG_JWT_CACHE_TTL", 60)
 
 # Maximum number of distinct tokens kept in the JWT claims cache.
 # Each entry holds ~1 KB of claim data; 1024 entries ≈ 1 MB.
-JWT_CLAIMS_CACHE_MAX_SIZE = get_env_int("OPENRAG_JWT_CACHE_MAXSIZE", 1024)
+JWT_CLAIMS_CACHE_MAX_SIZE = get_env_int("BOMARAG_JWT_CACHE_MAXSIZE", 1024)
 
 # TTL (seconds) for the in-process provider health-check response cache.
 # The banner polls GET /api/provider/health every 5-30 s per browser tab;
 # caching coalesces concurrent identical calls so watsonx round-trips are
 # not fanned out. Must be >= 1; non-positive values fall back to the default.
-_raw_phc_ttl = get_env_int("OPENRAG_PROVIDER_HEALTH_TTL", 10)
+_raw_phc_ttl = get_env_int("BOMARAG_PROVIDER_HEALTH_TTL", 10)
 PROVIDER_HEALTH_CACHE_TTL_SECONDS = _raw_phc_ttl if _raw_phc_ttl > 0 else 10
 
 # Docling service URL configuration
@@ -606,48 +606,48 @@ DISABLE_INGEST_WITH_LANGFLOW = os.getenv("DISABLE_INGEST_WITH_LANGFLOW", "false"
 )
 
 # Show the "+" file upload button in the chat input
-OPENRAG_INGEST_VIA_CHAT = os.getenv("OPENRAG_INGEST_VIA_CHAT", "false").lower() in (
+BOMARAG_INGEST_VIA_CHAT = os.getenv("BOMARAG_INGEST_VIA_CHAT", "false").lower() in (
     "true",
     "1",
     "yes",
 )
 
 # Show per-upload ingest settings (chunk size, overlap, OCR, etc.) in cloud picker flows
-OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS = os.getenv(
-    "OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS", "false"
+BOMARAG_SHOW_PROVIDER_INGEST_SETTINGS = os.getenv(
+    "BOMARAG_SHOW_PROVIDER_INGEST_SETTINGS", "false"
 ).lower() in ("true", "1", "yes")
 
 # Show the "Advanced Vision Model (VLM) Settings" section in ingest settings.
 # On by default; set to "false" to hide the VLM UI (kill switch — the backend
 # VLM settings endpoints stay functional either way).
-OPENRAG_SHOW_VLM_SETTINGS = os.getenv("OPENRAG_SHOW_VLM_SETTINGS", "true").lower() in (
+BOMARAG_SHOW_VLM_SETTINGS = os.getenv("BOMARAG_SHOW_VLM_SETTINGS", "true").lower() in (
     "true",
     "1",
     "yes",
 )
 
 # Show the "Make documents available to all users" (shared) toggle for COS bucket
-# ingestion, independent of OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS. Deployments that
+# ingestion, independent of BOMARAG_SHOW_PROVIDER_INGEST_SETTINGS. Deployments that
 # hide the general per-upload ingest tuning knobs (e.g. SaaS) still get just this
 # toggle. On by default; set to "false" to hide it.
-OPENRAG_SHOW_SHARED_UPLOAD_TOGGLE = os.getenv(
-    "OPENRAG_SHOW_SHARED_UPLOAD_TOGGLE", "true"
+BOMARAG_SHOW_SHARED_UPLOAD_TOGGLE = os.getenv(
+    "BOMARAG_SHOW_SHARED_UPLOAD_TOGGLE", "true"
 ).lower() in ("true", "1", "yes")
 
 # Ingest sample data configuration
 INGEST_SAMPLE_DATA = os.getenv("INGEST_SAMPLE_DATA", "true").lower() in ("true", "1", "yes")
 
-# Default OpenRAG docs sample ingestion source
+# Default BomaRAG docs sample ingestion source
 # - "url": crawl DEFAULT_DOCS_URL with URL ingestion flow
-# - "files": ingest files from the openrag-documents directory
+# - "files": ingest files from the bomarag-documents directory
 
 DEFAULT_DOCS_INGEST_SOURCE = os.getenv("DEFAULT_DOCS_INGEST_SOURCE", "url").lower()
-DEFAULT_DOCS_URL = os.getenv("DEFAULT_DOCS_URL", "https://docs.openr.ag/")
+DEFAULT_DOCS_URL = os.getenv("DEFAULT_DOCS_URL", "https://docs.bomarag.com/")
 # TODO: Enable this when the flow is updated to use the new variables
 
 DEFAULT_DOCS_CRAWL_DEPTH = get_env_int("DEFAULT_DOCS_CRAWL_DEPTH", 2)
 
-FETCH_OPENRAG_DOCS_AT_STARTUP = os.getenv("FETCH_OPENRAG_DOCS_AT_STARTUP", "false").lower() in (
+FETCH_BOMARAG_DOCS_AT_STARTUP = os.getenv("FETCH_BOMARAG_DOCS_AT_STARTUP", "false").lower() in (
     "true",
     "1",
     "yes",
@@ -676,7 +676,7 @@ LANGFLOW_INGEST_CALLBACK_BATCH_SIZE = get_env_int("LANGFLOW_INGEST_CALLBACK_BATC
 
 
 def get_langflow_llm_proxy_ttl_seconds() -> int:
-    """TTL for the Langflow → OpenRAG LLM hop token.
+    """TTL for the Langflow → BomaRAG LLM hop token.
 
     Defaults to the ingest-callback TTL so one Langflow ingest run can call
     embeddings for the whole document. Override with LANGFLOW_LLM_PROXY_TTL_SECONDS.
@@ -693,13 +693,13 @@ OPENSEARCH_JWT_TTL_BUFFER_SECONDS = 300
 def get_opensearch_jwt_ttl_seconds() -> int:
     """Return the effective short-lived OpenSearch JWT TTL."""
     return get_env_int(
-        "OPENRAG_OPENSEARCH_JWT_TTL",
+        "BOMARAG_OPENSEARCH_JWT_TTL",
         INGESTION_TIMEOUT + OPENSEARCH_JWT_TTL_BUFFER_SECONDS,
     )
 
 
 # Two-phase ingestion: backend-side Docling polling configuration.
-# Controls how the OpenRAG backend waits for Docling Serve to finish converting
+# Controls how the BomaRAG backend waits for Docling Serve to finish converting
 # a document before invoking the Langflow ingestion flow. Decoupling this poll
 # from Langflow keeps Langflow execution slots free during long Docling jobs.
 # When ENABLE_BACKEND_DOCLING_POLLING is false, the backend submits to Docling
@@ -763,8 +763,8 @@ def _get_min_env_int(key: str, default: int, minimum: int) -> int:
 VECTOR_DIM = 1536
 KNN_EF_CONSTRUCTION = 100
 KNN_M = 16
-OPENSEARCH_NUMBER_OF_SHARDS = _get_min_env_int("OPENRAG_OPENSEARCH_NUMBER_OF_SHARDS", 2, 1)
-OPENSEARCH_NUMBER_OF_REPLICAS = _get_min_env_int("OPENRAG_OPENSEARCH_NUMBER_OF_REPLICAS", 2, 0)
+OPENSEARCH_NUMBER_OF_SHARDS = _get_min_env_int("BOMARAG_OPENSEARCH_NUMBER_OF_SHARDS", 2, 1)
+OPENSEARCH_NUMBER_OF_REPLICAS = _get_min_env_int("BOMARAG_OPENSEARCH_NUMBER_OF_REPLICAS", 2, 0)
 
 INDEX_BODY = {
     "settings": {
@@ -803,7 +803,7 @@ INDEX_BODY = {
     },
 }
 
-DLS_PRINCIPAL_INDEX_NAME = "openrag_dls_principals"
+DLS_PRINCIPAL_INDEX_NAME = "bomarag_dls_principals"
 DLS_PRINCIPAL_INDEX_BODY: dict[str, Any] = {
     "settings": {
         "index": {
@@ -949,7 +949,7 @@ async def get_langflow_api_key(force_regenerate: bool = False):
                             "Content-Type": "application/json",
                             "Authorization": f"Bearer {access_token}",
                         },
-                        json={"name": "openrag-auto-generated"},
+                        json={"name": "bomarag-auto-generated"},
                     )
                     api_key_response.raise_for_status()
                     api_key = api_key_response.json().get("api_key")
@@ -1020,10 +1020,10 @@ class AppClients:
         #   saas/on_prem -> platform service token (JWT); required, raises if unset
         #   oss          -> OpenSearch basic auth
         if is_run_mode_saas() or is_run_mode_on_prem():
-            service_token = get_openrag_service_token()
+            service_token = get_bomarag_service_token()
             if not service_token:
                 raise RuntimeError(
-                    "OPENRAG_SERVICE_TOKEN is required to initialize the global "
+                    "BOMARAG_SERVICE_TOKEN is required to initialize the global "
                     f"OpenSearch writer client in {get_run_mode()} mode."
                 )
             logger.info(
@@ -1169,7 +1169,7 @@ class AppClients:
             # Load all provider credentials into environment for LiteLLM
             # LiteLLM routes based on model name prefixes (openai/, ollama/, watsonx/, etc.)
             try:
-                config = get_openrag_config()
+                config = get_bomarag_config()
 
                 # Set OpenAI credentials
                 if config.providers.openai.api_key:
@@ -1765,15 +1765,15 @@ class AppClients:
                           so admin calls (e.g. HEAD /<index>) would fail.
           oss          -> OpenSearch basic auth
 
-        Raises RuntimeError when saas/on_prem is missing OPENRAG_SERVICE_TOKEN.
+        Raises RuntimeError when saas/on_prem is missing BOMARAG_SERVICE_TOKEN.
         """
         from utils.run_mode_utils import get_run_mode, is_run_mode_on_prem, is_run_mode_saas
 
         if is_run_mode_saas() or is_run_mode_on_prem():
-            service_token = get_openrag_service_token()
+            service_token = get_bomarag_service_token()
             if not service_token:
                 raise RuntimeError(
-                    "OPENRAG_SERVICE_TOKEN is required for the index-admin "
+                    "BOMARAG_SERVICE_TOKEN is required for the index-admin "
                     f"OpenSearch client in {get_run_mode()} mode."
                 )
             logger.info(
@@ -1845,36 +1845,36 @@ clients = AppClients()
 
 
 # Configuration access
-def get_openrag_config():
-    """Get current OpenRAG configuration."""
+def get_bomarag_config():
+    """Get current BomaRAG configuration."""
     return config_manager.get_config()
 
 
 # Expose configuration settings for backward compatibility and easy access
 def get_provider_config():
     """Get provider configuration."""
-    return get_openrag_config().providers
+    return get_bomarag_config().providers
 
 
 def get_knowledge_config():
     """Get knowledge configuration."""
-    return get_openrag_config().knowledge
+    return get_bomarag_config().knowledge
 
 
 def get_agent_config():
     """Get agent configuration."""
-    return get_openrag_config().agent
+    return get_bomarag_config().agent
 
 
 def get_embedding_model() -> str:
     """Return the currently configured embedding model."""
-    return get_openrag_config().knowledge.embedding_model or (
+    return get_bomarag_config().knowledge.embedding_model or (
         OPENAI_DEFAULT_EMBEDDING_MODEL
-        if get_openrag_config().knowledge.disable_ingest_with_langflow
+        if get_bomarag_config().knowledge.disable_ingest_with_langflow
         else ""
     )
 
 
 def get_index_name() -> str:
     """Return the currently configured index name."""
-    return get_openrag_config().knowledge.index_name
+    return get_bomarag_config().knowledge.index_name

@@ -2,11 +2,11 @@ _meta:
   type: "rolesmapping"
   config_version: 2
 
-openrag_user_role:
+bomarag_user_role:
   users: []
   hosts: []
   backend_roles:
-    - "openrag_user"
+    - "bomarag_user"
 
 all_access:
   users:

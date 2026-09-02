@@ -1,22 +1,22 @@
-# OpenRAG Python SDK
+# BomaRAG Python SDK
 
-Official Python SDK for the [OpenRAG](https://openr.ag) API.
+Official Python SDK for the [BomaRAG](https://bomarag.com) API.
 
 ## Installation
 
 ```bash
-pip install openrag-sdk
+pip install bomarag-sdk
 ```
 
 ## Quick Start
 
 ```python
 import asyncio
-from openrag_sdk import OpenRAGClient
+from bomarag_sdk import BomaRAGClient
 
 async def main():
-    # Client auto-discovers OPENRAG_API_KEY and OPENRAG_URL from environment
-    async with OpenRAGClient() as client:
+    # Client auto-discovers BOMARAG_API_KEY and BOMARAG_URL from environment
+    async with BomaRAGClient() as client:
         # Simple chat
         response = await client.chat.create(message="What is RAG?")
         print(response.response)
@@ -31,15 +31,15 @@ The SDK can be configured via environment variables or constructor arguments:
 
 | Environment Variable | Constructor Argument | Description |
 |---------------------|---------------------|-------------|
-| `OPENRAG_API_KEY` | `api_key` | API key for authentication (required) |
-| `OPENRAG_URL` | `base_url` | Base URL for the OpenRAG frontend (default: `http://localhost:3000`) |
+| `BOMARAG_API_KEY` | `api_key` | API key for authentication (required) |
+| `BOMARAG_URL` | `base_url` | Base URL for the BomaRAG frontend (default: `http://localhost:3000`) |
 
 ```python
 # Using environment variables
-client = OpenRAGClient()
+client = BomaRAGClient()
 
 # Using explicit arguments
-client = OpenRAGClient(
+client = BomaRAGClient(
     api_key="orag_...",
     base_url="https://api.example.com"
 )
@@ -132,7 +132,7 @@ for result in results.results:
     print(f"  {result.text[:100]}...")
 
 # Search with filters
-from openrag_sdk import SearchFilters
+from bomarag_sdk import SearchFilters
 
 results = await client.search.query(
     "API documentation",
@@ -294,8 +294,8 @@ results = await client.search.query("API endpoints", filter_id=filter_id)
 ## Error Handling
 
 ```python
-from openrag_sdk import (
-    OpenRAGError,
+from bomarag_sdk import (
+    BomaRAGError,
     AuthenticationError,
     NotFoundError,
     ValidationError,
@@ -315,7 +315,7 @@ except RateLimitError as e:
     print(f"Rate limited: {e.message}")
 except ServerError as e:
     print(f"Server error: {e.message}")
-except OpenRAGError as e:
+except BomaRAGError as e:
     print(f"API error: {e.message} (status: {e.status_code})")
 ```
 

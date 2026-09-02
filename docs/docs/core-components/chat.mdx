@@ -1,5 +1,5 @@
 ---
-title: Chat in OpenRAG
+title: Chat in BomaRAG
 slug: /chat
 ---
 
@@ -9,30 +9,30 @@ import TabItem from '@theme/TabItem';
 import PartialTempKnowledge from '@site/docs/_partial-temp-knowledge.mdx';
 import PartialEditAgentFlow from '@site/docs/_partial-edit-agent-flow.mdx';
 
-After you [upload documents to your knowledge base](/ingestion), you can use the OpenRAG <Icon name="MessageSquare" aria-hidden="true"/> **Chat** feature to interact with your knowledge through natural language queries.
+After you [upload documents to your knowledge base](/ingestion), you can use the BomaRAG <Icon name="MessageSquare" aria-hidden="true"/> **Chat** feature to interact with your knowledge through natural language queries.
 
-The OpenRAG <Icon name="MessageSquare" aria-hidden="true"/> **Chat** uses an LLM-powered agent to understand your queries, retrieve relevant information from your knowledge base, and generate context-aware responses.
+The BomaRAG <Icon name="MessageSquare" aria-hidden="true"/> **Chat** uses an LLM-powered agent to understand your queries, retrieve relevant information from your knowledge base, and generate context-aware responses.
 The agent can also fetch information from URLs and new documents that you provide during the chat session.
 To limit the knowledge available to the agent, use [filters](/knowledge-filters).
 
 The agent can call specialized Model Context Protocol (MCP) tools to extend its capabilities.
-To add or change the available tools, you must edit the [**OpenRAG OpenSearch Agent** flow](#flow).
+To add or change the available tools, you must edit the [**BomaRAG OpenSearch Agent** flow](#flow).
 
 :::tip
 Try chatting, uploading documents, and modifying chat settings in the [quickstart](/quickstart).
 :::
 
-## OpenRAG OpenSearch Agent flow {#flow}
+## BomaRAG OpenSearch Agent flow {#flow}
 
-When you use the OpenRAG <Icon name="MessageSquare" aria-hidden="true"/> **Chat**, the **OpenRAG OpenSearch Agent** flow runs in the background to retrieve relevant information from your knowledge base and generate a response.
+When you use the BomaRAG <Icon name="MessageSquare" aria-hidden="true"/> **Chat**, the **BomaRAG OpenSearch Agent** flow runs in the background to retrieve relevant information from your knowledge base and generate a response.
 
 If you [inspect the flow in Langflow](/agents#inspect-and-modify-flows), you'll see that it is comprised of eight components that work together to ingest chat messages, retrieve relevant information from your knowledge base, and then generate responses.
 When you inspect this flow, you can edit the components to customize the agent's behavior.
 
-![OpenRAG Open Search Agent Flow](/img/opensearch-agent-flow.png)
+![BomaRAG Open Search Agent Flow](/img/opensearch-agent-flow.png)
 
 * [**Chat Input** component](https://docs.langflow.org/chat-input-and-output#chat-input): This component starts the flow when it receives a chat message. It is connected to the **Agent** component's **Input** port.
-When you use the OpenRAG <Icon name="MessageSquare" aria-hidden="true"/> **Chat**, your chat messages are passed to the **Chat Input** component, which then sends them to the **Agent** component for processing.
+When you use the BomaRAG <Icon name="MessageSquare" aria-hidden="true"/> **Chat**, your chat messages are passed to the **Chat Input** component, which then sends them to the **Agent** component for processing.
 
 * [**Agent** component](https://docs.langflow.org/components-agents): This component orchestrates the entire flow by processing chat messages, searching the knowledge base, and organizing the retrieved information into a cohesive response.
 The agent's general behavior is defined by the prompt in the **Agent Instructions** field and the model connected to the **Language Model** port.
@@ -57,29 +57,29 @@ One or more specialized tools can be attached to the **Tools** port to extend th
 
    Different models can change the style and content of the agent's responses, and some models might be better suited for certain tasks than others. If the agent doesn't seem to be handling requests well, try changing the model to see how the responses change. For example, fast models might be good for simple queries, but they might not have the depth of reasoning for complex, multi-faceted queries.
 
-* [**MCP Tools** component](https://docs.langflow.org/mcp-client): Connected to the **Agent** component's **Tools** port, this component can be used to [access any MCP server](https://docs.langflow.org/mcp-server) and the MCP tools provided by that server. In this case, your OpenRAG Langflow instance's [**Starter Project**](https://docs.langflow.org/concepts-flows#projects) is the MCP server, and the [**OpenSearch URL Ingestion** flow](/ingestion#url-flow) is the MCP tool.
-This flow fetches content from URLs, and then stores the content in your OpenRAG OpenSearch knowledge base. By serving this flow as an MCP tool, the agent can selectively call this tool if a URL is detected in the chat input.
+* [**MCP Tools** component](https://docs.langflow.org/mcp-client): Connected to the **Agent** component's **Tools** port, this component can be used to [access any MCP server](https://docs.langflow.org/mcp-server) and the MCP tools provided by that server. In this case, your BomaRAG Langflow instance's [**Starter Project**](https://docs.langflow.org/concepts-flows#projects) is the MCP server, and the [**OpenSearch URL Ingestion** flow](/ingestion#url-flow) is the MCP tool.
+This flow fetches content from URLs, and then stores the content in your BomaRAG OpenSearch knowledge base. By serving this flow as an MCP tool, the agent can selectively call this tool if a URL is detected in the chat input.
 
-* [**OpenSearch** component](https://docs.langflow.org/bundles-elastic#opensearch): Connected to the **Agent** component's **Tools** port, this component lets the agent search your [OpenRAG OpenSearch knowledge base](/knowledge). The agent might not use this database for every request; the agent uses this connection only if it decides that documents in your knowledge base are relevant to your query.
+* [**OpenSearch** component](https://docs.langflow.org/bundles-elastic#opensearch): Connected to the **Agent** component's **Tools** port, this component lets the agent search your [BomaRAG OpenSearch knowledge base](/knowledge). The agent might not use this database for every request; the agent uses this connection only if it decides that documents in your knowledge base are relevant to your query.
 
 * [**Embedding Model** component](https://docs.langflow.org/components-embedding-models): Connected to the **OpenSearch** component's **Embedding** port, this component generates embeddings from chat input that are used in [similarity search](https://www.ibm.com/think/topics/vector-search) to find content in your knowledge base that is relevant to the chat input. The agent uses this information to generate context-aware responses that are specialized for your data.
 
    It is critical that the embedding model used here matches the embedding model used when you [upload documents to your knowledge base](/ingestion). Mismatched models and dimensions can degrade the quality of similarity search results causing the agent to retrieve irrelevant documents from your knowledge base.
 
-* [**Text Input** component](https://docs.langflow.org/text-input-and-output#text-input): Connected to the **OpenSearch** component's **Search Filters** port, this component is populated with a Langflow global variable named `OPENRAG-QUERY-FILTER`. If a global or chat-level [knowledge filter](/knowledge-filters) is set, then the variable contains the filter expression, which limits the documents that the agent can access in the knowledge base.
-If no knowledge filter is set, then the `OPENRAG-QUERY-FILTER` variable is empty, and the agent can access all documents in the knowledge base.
+* [**Text Input** component](https://docs.langflow.org/text-input-and-output#text-input): Connected to the **OpenSearch** component's **Search Filters** port, this component is populated with a Langflow global variable named `BOMARAG-QUERY-FILTER`. If a global or chat-level [knowledge filter](/knowledge-filters) is set, then the variable contains the filter expression, which limits the documents that the agent can access in the knowledge base.
+If no knowledge filter is set, then the `BOMARAG-QUERY-FILTER` variable is empty, and the agent can access all documents in the knowledge base.
 
 * [**Chat Output** component](https://docs.langflow.org/chat-input-and-output#chat-output): Connected to the **Agent** component's **Output** port, this component returns the agent's generated response as a chat message.
 
 ## Nudges {#nudges}
 
-When you use the OpenRAG <Icon name="MessageSquare" aria-hidden="true"/> **Chat**, the **OpenRAG OpenSearch Nudges** flow runs in the background to pull additional context from your knowledge base and chat history.
+When you use the BomaRAG <Icon name="MessageSquare" aria-hidden="true"/> **Chat**, the **BomaRAG OpenSearch Nudges** flow runs in the background to pull additional context from your knowledge base and chat history.
 
-Nudges appear as prompts in the chat, and they are based on the contents of your OpenRAG OpenSearch knowledge base.
+Nudges appear as prompts in the chat, and they are based on the contents of your BomaRAG OpenSearch knowledge base.
 Click a nudge to accept it and start a chat based on the nudge.
 
-Like OpenRAG's other built-in flows, you can [inspect the flow in Langflow](/agents#inspect-and-modify-flows), and you can customize it if you want to change the nudge behavior.
-However, this flow is specifically designed to work with the OpenRAG chat and knowledge base.
+Like BomaRAG's other built-in flows, you can [inspect the flow in Langflow](/agents#inspect-and-modify-flows), and you can customize it if you want to change the nudge behavior.
+However, this flow is specifically designed to work with the BomaRAG chat and knowledge base.
 Major changes to this flow might break the nudge functionality or produce irrelevant nudges.
 
 The **Nudges** flow consists of **Embedding model**, **Language model**, **OpenSearch**, **Input/Output*, and other components that browse your knowledge base, identify key themes and possible insights, and then produce prompts based on the findings.
@@ -102,34 +102,34 @@ If tool calls and knowledge appear normal, but the agent's responses seem off-to
 
 <PartialEditAgentFlow />
 
-## Integrate OpenRAG chat into an application
+## Integrate BomaRAG chat into an application
 
-You can integrate OpenRAG flows into your applications using the OpenRAG SDKs (recommended) or the Langflow API.
+You can integrate BomaRAG flows into your applications using the BomaRAG SDKs (recommended) or the Langflow API.
 
-### Use the OpenRAG SDKs (Recommended)
+### Use the BomaRAG SDKs (Recommended)
 
-It is strongly recommended that you use the OpenRAG SDKs to interact with OpenRAG programmatically or integrate OpenRAG into an application.
-This is because OpenRAG passes specific configuration settings to the Langflow API when it runs a flow or conducts a chat session.
+It is strongly recommended that you use the BomaRAG SDKs to interact with BomaRAG programmatically or integrate BomaRAG into an application.
+This is because BomaRAG passes specific configuration settings to the Langflow API when it runs a flow or conducts a chat session.
 For more information, see the following:
 
-* [Python SDK README](https://github.com/langflow-ai/openrag/tree/main/sdks/python)
-* [TypeScript/JavaScript SDK README](https://github.com/langflow-ai/openrag/tree/main/sdks/typescript)
+* [Python SDK README](https://github.com/ABISHAIMWANJA/bomarag/tree/main/sdks/python)
+* [TypeScript/JavaScript SDK README](https://github.com/ABISHAIMWANJA/bomarag/tree/main/sdks/typescript)
 
 ### Use the Langflow API (Not recommended)
 
 To trigger a flow with the [Langflow API](https://docs.langflow.org/api-reference-api-examples), you can get pre-configured code snippets directly from the embedded Langflow visual editor.
-However, these snippets don't include OpenRAG-specific configuration settings, so the behavior won't be identical to using OpenRAG directly.
+However, these snippets don't include BomaRAG-specific configuration settings, so the behavior won't be identical to using BomaRAG directly.
 
-The following example demonstrates how to generate and use code snippets for the **OpenRAG OpenSearch Agent** flow:
+The following example demonstrates how to generate and use code snippets for the **BomaRAG OpenSearch Agent** flow:
 
-1. Open the **OpenRAG OpenSearch Agent** flow in the Langflow visual editor:
+1. Open the **BomaRAG OpenSearch Agent** flow in the Langflow visual editor:
 
-   1. In OpenRAG, click <Icon name="Settings2" aria-hidden="true"/> **Settings**.
+   1. In BomaRAG, click <Icon name="Settings2" aria-hidden="true"/> **Settings**.
    2. Click **Edit in Langflow**, and then click **Proceed** to launch the Langflow visual editor.
-   3. If Langflow requests login information, enter the `LANGFLOW_SUPERUSER` and `LANGFLOW_SUPERUSER_PASSWORD` from your [OpenRAG `.env` file](/reference/configuration).
+   3. If Langflow requests login information, enter the `LANGFLOW_SUPERUSER` and `LANGFLOW_SUPERUSER_PASSWORD` from your [BomaRAG `.env` file](/reference/configuration).
 
-2. Optional: If you don't want to use the Langflow API key that is generated automatically when you install OpenRAG, you can [create a Langflow API key](https://docs.langflow.org/api-keys-and-authentication).
-This key is used to authenticate with the Langflow API; it doesn't grant access to your entire OpenRAG deployment.
+2. Optional: If you don't want to use the Langflow API key that is generated automatically when you install BomaRAG, you can [create a Langflow API key](https://docs.langflow.org/api-keys-and-authentication).
+This key is used to authenticate with the Langflow API; it doesn't grant access to your entire BomaRAG deployment.
 
 3. In the Langflow visual [generate Langflow API code snippets](https://docs.langflow.org/concepts-publish#generate-api-code-snippets) that you can use to run the flow programmatically.
 For an example, see the [Langflow quickstart](https://docs.langflow.org/get-started-quickstart#extract-data-from-the-response).

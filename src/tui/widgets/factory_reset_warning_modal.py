@@ -1,4 +1,4 @@
-"""Factory reset warning modal for OpenRAG TUI."""
+"""Factory reset warning modal for BomaRAG TUI."""
 
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal

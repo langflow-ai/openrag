@@ -1,4 +1,4 @@
-"""Configuration screen for OpenRAG TUI."""
+"""Configuration screen for BomaRAG TUI."""
 
 import os
 from pathlib import Path
@@ -178,12 +178,12 @@ class ConfigScreen(Screen):
         if self.mode == "no_auth":
             header_text.append("Quick Setup - No Authentication\n", style="bold green")
             header_text.append(
-                "Configure OpenRAG for local document processing only.\n\n", style="dim"
+                "Configure BomaRAG for local document processing only.\n\n", style="dim"
             )
         else:
             header_text.append("Full Setup - OAuth Integration\n", style="bold cyan")
             header_text.append(
-                "Configure OpenRAG with cloud service integrations.\n\n", style="dim"
+                "Configure BomaRAG with cloud service integrations.\n\n", style="dim"
             )
 
         header_text.append("Required fields are marked with *\n", style="yellow")
@@ -207,7 +207,7 @@ class ConfigScreen(Screen):
         "langflow_data_path",
         "google_oauth_client_id",
         "microsoft_graph_oauth_client_id",
-        "openrag_documents_paths",
+        "bomarag_documents_paths",
     }
 
     def _create_all_fields(self) -> ComposeResult:
@@ -388,7 +388,7 @@ class ConfigScreen(Screen):
         self.inputs[field.name] = input_widget
         yield Static(" ")
 
-    def _render_openrag_documents_paths(self, field: ConfigField) -> ComposeResult:
+    def _render_bomarag_documents_paths(self, field: ConfigField) -> ComposeResult:
         """Documents paths with validator and file picker."""
         yield Label(field.label)
         yield Static(field.helper_text, classes="helper-text")
@@ -451,9 +451,9 @@ class ConfigScreen(Screen):
         if opensearch_input:
             self.env_manager.config.opensearch_password = opensearch_input.value
 
-        encryption_key_input = self.inputs.get("openrag_encryption_key")
+        encryption_key_input = self.inputs.get("bomarag_encryption_key")
         if encryption_key_input:
-            self.env_manager.config.openrag_encryption_key = encryption_key_input.value
+            self.env_manager.config.bomarag_encryption_key = encryption_key_input.value
 
         langflow_input = self.inputs.get("langflow_superuser_password")
         if langflow_input:
@@ -476,9 +476,9 @@ class ConfigScreen(Screen):
                 self.env_manager.generate_langflow_secret_key()
             )
 
-        if not self.env_manager.config.openrag_encryption_key:
-            self.env_manager.config.openrag_encryption_key = (
-                self.env_manager.generate_openrag_encryption_key()
+        if not self.env_manager.config.bomarag_encryption_key:
+            self.env_manager.config.bomarag_encryption_key = (
+                self.env_manager.generate_bomarag_encryption_key()
             )
 
         # Update input fields with generated values
@@ -489,7 +489,7 @@ class ConfigScreen(Screen):
             langflow_input.value = self.env_manager.config.langflow_superuser_password
 
         if encryption_key_input:
-            encryption_key_input.value = self.env_manager.config.openrag_encryption_key
+            encryption_key_input.value = self.env_manager.config.bomarag_encryption_key
 
         self.notify("Generated secure passwords and encryption keys", severity="information")
 
@@ -559,7 +559,7 @@ class ConfigScreen(Screen):
             return
 
         # Determine starting path from current input if possible
-        input_widget = self.inputs.get("openrag_documents_paths")
+        input_widget = self.inputs.get("bomarag_documents_paths")
         start = Path.home()
         if input_widget and input_widget.value:
             first = input_widget.value.split(",")[0].strip()

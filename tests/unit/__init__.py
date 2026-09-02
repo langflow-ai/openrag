@@ -1,1 +1,1 @@
-# Unit tests for OpenRAG
+# Unit tests for BomaRAG

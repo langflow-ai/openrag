@@ -21,7 +21,7 @@ def test_resolve_empty_token_returns_none(token):
 
 
 def test_resolve_verify_mode_calls_verify_jwt_from_issuer(monkeypatch):
-    monkeypatch.setenv("OPENRAG_JWT_VERIFY_SIGNATURE", "true")
+    monkeypatch.setenv("BOMARAG_JWT_VERIFY_SIGNATURE", "true")
     verify = MagicMock(return_value={"sub": "alice"})
     monkeypatch.setattr(config_utils, "verify_jwt_from_issuer", verify)
     decode = MagicMock()
@@ -35,7 +35,7 @@ def test_resolve_verify_mode_calls_verify_jwt_from_issuer(monkeypatch):
 
 
 def test_resolve_decode_mode_calls_decode_ibm_jwt(monkeypatch):
-    monkeypatch.delenv("OPENRAG_JWT_VERIFY_SIGNATURE", raising=False)
+    monkeypatch.delenv("BOMARAG_JWT_VERIFY_SIGNATURE", raising=False)
     verify = MagicMock()
     monkeypatch.setattr(config_utils, "verify_jwt_from_issuer", verify)
     decode = MagicMock(return_value={"sub": "bob"})

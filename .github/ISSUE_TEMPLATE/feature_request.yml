@@ -1,5 +1,5 @@
 name: Feature Request
-description: Suggest a new feature or enhancement for OpenRAG
+description: Suggest a new feature or enhancement for BomaRAG
 title: "[Feature]: "
 labels: ["enhancement"]
 body:
@@ -12,7 +12,7 @@ body:
     id: feature-area
     attributes:
       label: Feature Area
-      description: Which area(s) of OpenRAG does this feature relate to?
+      description: Which area(s) of BomaRAG does this feature relate to?
       multiple: true
       options:
         - Ingestion (document processing, upload, Docling)

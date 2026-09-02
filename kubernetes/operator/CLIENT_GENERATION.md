@@ -1,6 +1,6 @@
-# Typed Kubernetes Client Generation for OpenRAG
+# Typed Kubernetes Client Generation for BomaRAG
 
-This document explains how to generate and use typed Kubernetes clients for the OpenRAG CRDs.
+This document explains how to generate and use typed Kubernetes clients for the BomaRAG CRDs.
 
 ## Overview
 
@@ -43,13 +43,13 @@ import (
 // Create unstructured client
 dynamicClient, err := dynamic.NewForConfig(config)
 gvr := schema.GroupVersionResource{
-    Group:    "openr.ag",
+    Group:    "bomalogic.com",
     Version:  "v1alpha1",
-    Resource: "openrags",
+    Resource: "bomarags",
 }
 
-// Get OpenRAG (weakly typed - runtime errors)
-obj, err := dynamicClient.Resource(gvr).Namespace("default").Get(ctx, "my-openrag", metav1.GetOptions{})
+// Get BomaRAG (weakly typed - runtime errors)
+obj, err := dynamicClient.Resource(gvr).Namespace("default").Get(ctx, "my-bomarag", metav1.GetOptions{})
 if err != nil {
     return err
 }
@@ -65,25 +65,25 @@ image, found, err := unstructured.NestedString(backend, "image")
 
 ```go
 import (
-    openragv1alpha1 "github.com/langflow-ai/openrag-operator/api/v1alpha1"
-    clientset "github.com/langflow-ai/openrag-operator/pkg/generated/clientset/versioned"
+    bomaragv1alpha1 "github.com/ABISHAIMWANJA/bomarag-operator/api/v1alpha1"
+    clientset "github.com/ABISHAIMWANJA/bomarag-operator/pkg/generated/clientset/versioned"
 )
 
 // Create typed client
 client, err := clientset.NewForConfig(config)
 
-// Get OpenRAG (strongly typed - compile-time safety!)
-openrag, err := client.OpenrV1alpha1().OpenRAGs("default").Get(ctx, "my-openrag", metav1.GetOptions{})
+// Get BomaRAG (strongly typed - compile-time safety!)
+bomarag, err := client.OpenrV1alpha1().BomaRAGs("default").Get(ctx, "my-bomarag", metav1.GetOptions{})
 if err != nil {
     return err
 }
 
 // Direct field access with type safety
-image := openrag.Spec.Backend.Image  // ✅ Type-safe!
-replicas := openrag.Spec.Backend.Replicas  // ✅ Auto-complete!
+image := bomarag.Spec.Backend.Image  // ✅ Type-safe!
+replicas := bomarag.Spec.Backend.Replicas  // ✅ Auto-complete!
 ```
 
-## Full Example: Creating an OpenRAG Instance
+## Full Example: Creating an BomaRAG Instance
 
 ```go
 package main
@@ -98,8 +98,8 @@ import (
     "k8s.io/client-go/tools/clientcmd"
     "k8s.io/utils/ptr"
 
-    openragv1alpha1 "github.com/langflow-ai/openrag-operator/api/v1alpha1"
-    clientset "github.com/langflow-ai/openrag-operator/pkg/generated/clientset/versioned"
+    bomaragv1alpha1 "github.com/ABISHAIMWANJA/bomarag-operator/api/v1alpha1"
+    clientset "github.com/ABISHAIMWANJA/bomarag-operator/pkg/generated/clientset/versioned"
 )
 
 func main() {
@@ -109,23 +109,23 @@ func main() {
         panic(err)
     }
 
-    // Create OpenRAG typed client
+    // Create BomaRAG typed client
     client, err := clientset.NewForConfig(config)
     if err != nil {
         panic(err)
     }
 
-    // Define OpenRAG instance
-    openrag := &openragv1alpha1.OpenRAG{
+    // Define BomaRAG instance
+    bomarag := &bomaragv1alpha1.BomaRAG{
         ObjectMeta: metav1.ObjectMeta{
-            Name:      "my-openrag",
+            Name:      "my-bomarag",
             Namespace: "default",
         },
-        Spec: openragv1alpha1.OpenRAGSpec{
+        Spec: bomaragv1alpha1.BomaRAGSpec{
             TenantID: "tenant-123",
-            Frontend: openragv1alpha1.FrontendSpec{
-                ComponentSpec: openragv1alpha1.ComponentSpec{
-                    Image:    "myregistry/openrag-frontend:v1.0.0",
+            Frontend: bomaragv1alpha1.FrontendSpec{
+                ComponentSpec: bomaragv1alpha1.ComponentSpec{
+                    Image:    "myregistry/bomarag-frontend:v1.0.0",
                     Replicas: ptr.To(int32(2)),
                     Resources: corev1.ResourceRequirements{
                         Requests: corev1.ResourceList{
@@ -135,44 +135,44 @@ func main() {
                     },
                 },
             },
-            Backend: openragv1alpha1.BackendSpec{
-                ComponentSpec: openragv1alpha1.ComponentSpec{
-                    Image:    "myregistry/openrag-backend:v1.0.0",
+            Backend: bomaragv1alpha1.BackendSpec{
+                ComponentSpec: bomaragv1alpha1.ComponentSpec{
+                    Image:    "myregistry/bomarag-backend:v1.0.0",
                     Replicas: ptr.To(int32(3)),
                     Env: []corev1.EnvVar{
                         {Name: "CUSTOM_VAR", Value: "custom_value"},
                     },
                 },
-                Storage: &openragv1alpha1.PersistenceSpec{
+                Storage: &bomaragv1alpha1.PersistenceSpec{
                     Enabled: true,
                     Size:    resource.MustParse("10Gi"),
                 },
             },
-            Langflow: openragv1alpha1.LangflowSpec{
-                ComponentSpec: openragv1alpha1.ComponentSpec{
+            Langflow: bomaragv1alpha1.LangflowSpec{
+                ComponentSpec: bomaragv1alpha1.ComponentSpec{
                     Image:    "myregistry/langflow:v1.0.0",
                     Replicas: ptr.To(int32(2)),
                 },
-                PVCReclaimPolicy: openragv1alpha1.PVCReclaimRetain,
+                PVCReclaimPolicy: bomaragv1alpha1.PVCReclaimRetain,
             },
         },
     }
 
     // Create the resource
-    result, err := client.OpenrV1alpha1().OpenRAGs("default").Create(
+    result, err := client.OpenrV1alpha1().BomaRAGs("default").Create(
         context.Background(),
-        openrag,
+        bomarag,
         metav1.CreateOptions{},
     )
     if err != nil {
         panic(err)
     }
 
-    fmt.Printf("Created OpenRAG: %s\n", result.Name)
+    fmt.Printf("Created BomaRAG: %s\n", result.Name)
 
     // Update the resource
     result.Spec.Backend.Replicas = ptr.To(int32(5))
-    updated, err := client.OpenrV1alpha1().OpenRAGs("default").Update(
+    updated, err := client.OpenrV1alpha1().BomaRAGs("default").Update(
         context.Background(),
         result,
         metav1.UpdateOptions{},
@@ -181,10 +181,10 @@ func main() {
         panic(err)
     }
 
-    fmt.Printf("Updated OpenRAG backend replicas to: %d\n", *updated.Spec.Backend.Replicas)
+    fmt.Printf("Updated BomaRAG backend replicas to: %d\n", *updated.Spec.Backend.Replicas)
 
-    // List all OpenRAG instances
-    list, err := client.OpenrV1alpha1().OpenRAGs("").List(
+    // List all BomaRAG instances
+    list, err := client.OpenrV1alpha1().BomaRAGs("").List(
         context.Background(),
         metav1.ListOptions{},
     )
@@ -192,7 +192,7 @@ func main() {
         panic(err)
     }
 
-    fmt.Printf("Found %d OpenRAG instances\n", len(list.Items))
+    fmt.Printf("Found %d BomaRAG instances\n", len(list.Items))
     for _, item := range list.Items {
         fmt.Printf("  - %s/%s (Phase: %s)\n", item.Namespace, item.Name, item.Status.Phase)
     }
@@ -209,28 +209,28 @@ import (
 
     "k8s.io/client-go/tools/cache"
 
-    informers "github.com/langflow-ai/openrag-operator/pkg/generated/informers/externalversions"
+    informers "github.com/ABISHAIMWANJA/bomarag-operator/pkg/generated/informers/externalversions"
 )
 
 // Create informer factory
 informerFactory := informers.NewSharedInformerFactory(client, time.Minute*10)
 
-// Get OpenRAG informer
-openragInformer := informerFactory.Openr().V1alpha1().OpenRAGs()
+// Get BomaRAG informer
+bomaragInformer := informerFactory.Openr().V1alpha1().BomaRAGs()
 
 // Add event handlers
-openragInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+bomaragInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
     AddFunc: func(obj interface{}) {
-        openrag := obj.(*openragv1alpha1.OpenRAG)
-        fmt.Printf("OpenRAG added: %s/%s\n", openrag.Namespace, openrag.Name)
+        bomarag := obj.(*bomaragv1alpha1.BomaRAG)
+        fmt.Printf("BomaRAG added: %s/%s\n", bomarag.Namespace, bomarag.Name)
     },
     UpdateFunc: func(old, new interface{}) {
-        newOpenRAG := new.(*openragv1alpha1.OpenRAG)
-        fmt.Printf("OpenRAG updated: %s/%s\n", newOpenRAG.Namespace, newOpenRAG.Name)
+        newBomaRAG := new.(*bomaragv1alpha1.BomaRAG)
+        fmt.Printf("BomaRAG updated: %s/%s\n", newBomaRAG.Namespace, newBomaRAG.Name)
     },
     DeleteFunc: func(obj interface{}) {
-        openrag := obj.(*openragv1alpha1.OpenRAG)
-        fmt.Printf("OpenRAG deleted: %s/%s\n", openrag.Namespace, openrag.Name)
+        bomarag := obj.(*bomaragv1alpha1.BomaRAG)
+        fmt.Printf("BomaRAG deleted: %s/%s\n", bomarag.Namespace, bomarag.Name)
     },
 })
 
@@ -240,13 +240,13 @@ defer close(stopCh)
 informerFactory.Start(stopCh)
 
 // Wait for cache sync
-if !cache.WaitForCacheSync(stopCh, openragInformer.Informer().HasSynced) {
+if !cache.WaitForCacheSync(stopCh, bomaragInformer.Informer().HasSynced) {
     panic("Failed to sync cache")
 }
 
 // Now use the lister for efficient reads
-lister := openragInformer.Lister()
-openrags, err := lister.OpenRAGs("default").List(labels.Everything())
+lister := bomaragInformer.Lister()
+bomarags, err := lister.BomaRAGs("default").List(labels.Everything())
 ```
 
 ## Benefits
@@ -257,7 +257,7 @@ openrags, err := lister.OpenRAGs("default").List(labels.Everything())
 image := obj.Object["spec"].(map[string]interface{})["backend"].(map[string]interface{})["image"].(string)
 
 // ✅ Typed - Compile-time error if field doesn't exist
-image := openrag.Spec.Backend.Image
+image := bomarag.Spec.Backend.Image
 ```
 
 ### IDE Support
@@ -287,7 +287,7 @@ make generate-client # Regenerate clientsets, listers, informers
 Users can import directly:
 
 ```go
-import clientset "github.com/langflow-ai/openrag-operator/pkg/generated/clientset/versioned"
+import clientset "github.com/ABISHAIMWANJA/bomarag-operator/pkg/generated/clientset/versioned"
 ```
 
 ### Option 2: Copy Generated Code
@@ -355,7 +355,7 @@ make generate        # Regenerate deepcopy code
 make manifests       # Regenerate CRDs and RBAC
 make generate-client # Regenerate typed client
 git add api/ config/ pkg/generated/
-git commit -m "feat: add new field to OpenRAG spec"
+git commit -m "feat: add new field to BomaRAG spec"
 ```
 
 See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for more details.

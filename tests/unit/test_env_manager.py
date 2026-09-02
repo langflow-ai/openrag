@@ -25,7 +25,7 @@ def _perms(path: Path) -> int:
 
 @pytest.fixture
 def env_manager(tmp_path):
-    """EnvManager pointed at a temp directory (no real ~/.openrag I/O)."""
+    """EnvManager pointed at a temp directory (no real ~/.bomarag I/O)."""
     from tui.managers.env_manager import EnvManager
 
     return EnvManager(env_file=tmp_path / ".env")
@@ -84,7 +84,7 @@ class TestSaveEnvFilePermissions:
     def test_preserves_unmanaged_env_variables(self, env_manager, tmp_path):
         """Saving config must keep existing .env keys that TUI does not manage."""
         env_file = tmp_path / ".env"
-        env_file.write_text("OPENRAG_BACKEND_HOST='my-host'\nOPENSEARCH_PASSWORD='old-password'\n")
+        env_file.write_text("BOMARAG_BACKEND_HOST='my-host'\nOPENSEARCH_PASSWORD='old-password'\n")
 
         env_manager.config.opensearch_password = "NewSecurePass!123"
 
@@ -93,8 +93,8 @@ class TestSaveEnvFilePermissions:
 
         assert result is True
         content = env_file.read_text()
-        assert "OPENRAG_BACKEND_HOST='my-host'" in content
-        assert content.count("OPENRAG_BACKEND_HOST=") == 1
+        assert "BOMARAG_BACKEND_HOST='my-host'" in content
+        assert content.count("BOMARAG_BACKEND_HOST=") == 1
         assert "OPENSEARCH_PASSWORD='NewSecurePass!123'" in content
         assert "OPENSEARCH_PASSWORD='old-password'" not in content
 
@@ -140,38 +140,38 @@ class TestSaveEnvFilePermissions:
 
 
 # ---------------------------------------------------------------------------
-# ensure_openrag_version
+# ensure_bomarag_version
 # ---------------------------------------------------------------------------
 
 
-class TestEnsureOpenragVersionPermissions:
-    """ensure_openrag_version must enforce 0o600 on every .env it touches."""
+class TestEnsureBomaragVersionPermissions:
+    """ensure_bomarag_version must enforce 0o600 on every .env it touches."""
 
     def test_existing_file_update_has_secure_permissions(self, env_manager, tmp_path, monkeypatch):
-        """Updating OPENRAG_VERSION in a permissive .env (0o644) must set 0o600."""
+        """Updating BOMARAG_VERSION in a permissive .env (0o644) must set 0o600."""
         env_file = tmp_path / ".env"
         env_file.write_text("OPENSEARCH_PASSWORD='test'\n")
         env_file.chmod(0o644)
         assert _perms(env_file) == 0o644, "pre-condition: file starts permissive"
 
-        # Prevent stale OPENRAG_VERSION in the process environment from
-        # causing ensure_openrag_version to bail out early.
-        monkeypatch.delenv("OPENRAG_VERSION", raising=False)
+        # Prevent stale BOMARAG_VERSION in the process environment from
+        # causing ensure_bomarag_version to bail out early.
+        monkeypatch.delenv("BOMARAG_VERSION", raising=False)
 
         with patch("tui.utils.version_check.get_current_version", return_value="1.2.3"):
-            env_manager.ensure_openrag_version()
+            env_manager.ensure_bomarag_version()
 
         assert env_file.exists()
         assert _perms(env_file) == 0o600, f"expected 0o600, got {oct(_perms(env_file))}"
-        assert "OPENRAG_VERSION='1.2.3'" in env_file.read_text()
+        assert "BOMARAG_VERSION='1.2.3'" in env_file.read_text()
 
     def test_new_file_creation_has_secure_permissions(self, env_manager, tmp_path):
-        """When no .env exists ensure_openrag_version must create one with 0o600."""
+        """When no .env exists ensure_bomarag_version must create one with 0o600."""
         env_file = tmp_path / ".env"
         assert not env_file.exists(), "pre-condition: no .env yet"
 
         with patch("tui.utils.version_check.get_current_version", return_value="1.2.3"):
-            env_manager.ensure_openrag_version()
+            env_manager.ensure_bomarag_version()
 
         assert env_file.exists()
         assert _perms(env_file) == 0o600, f"expected 0o600, got {oct(_perms(env_file))}"

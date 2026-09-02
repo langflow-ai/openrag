@@ -21,7 +21,7 @@ if [[ -f "$env_file" ]]; then
   LANGFLOW_PORT="$(grep -E '^LANGFLOW_PORT=' "$env_file" | cut -d= -f2- | tr -d '"'\')"
 fi
 
-COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-openrag}"
+COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-bomarag}"
 OPENSEARCH_PORT="${OPENSEARCH_PORT:-9200}"
 LANGFLOW_PORT="${LANGFLOW_PORT:-7860}"
 
@@ -100,8 +100,8 @@ dump_logs() {
   "$container_runtime" logs --tail 10000 "${COMPOSE_PROJECT_NAME}-backend" 2>&1 | redact > service-logs/backend.log || echo "${red}Could not get backend logs${nc}"
   "$container_runtime" logs --tail 10000 "${COMPOSE_PROJECT_NAME}-frontend" 2>&1 | redact > service-logs/frontend.log || echo "${red}Could not get frontend logs${nc}"
   "$container_runtime" logs --tail 10000 "${COMPOSE_PROJECT_NAME}-opensearch" 2>&1 | redact > service-logs/opensearch.log || echo "${red}Could not get OpenSearch logs${nc}"
-  if [[ -f ~/.openrag/tui/docling-serve.log ]]; then
-    redact < ~/.openrag/tui/docling-serve.log > service-logs/docling.log || echo "${red}Could not get Docling logs${nc}"
+  if [[ -f ~/.bomarag/tui/docling-serve.log ]]; then
+    redact < ~/.bomarag/tui/docling-serve.log > service-logs/docling.log || echo "${red}Could not get Docling logs${nc}"
   fi
 }
 
@@ -127,15 +127,15 @@ clean_infra() {
   # would remove those tracked files for the remainder of this job (no re-checkout
   # happens before a retry), breaking every flow-dependent request afterwards.
   if command -v sudo >/dev/null 2>&1; then
-    if ! sudo rm -rf langflow-data config data keys opensearch-data openrag-documents flows/backup; then
+    if ! sudo rm -rf langflow-data config data keys opensearch-data bomarag-documents flows/backup; then
       echo "${red}ERROR: sudo rm -rf failed${nc}"
       exit_status=1
     fi
   else
-    if ! rm -rf langflow-data config data keys opensearch-data openrag-documents flows/backup 2>/dev/null; then
+    if ! rm -rf langflow-data config data keys opensearch-data bomarag-documents flows/backup 2>/dev/null; then
       local docker_rm_success=false
       for i in 1 2 3; do
-        if docker run --rm -v "$(pwd):/work" alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows/backup /work/openrag-documents"; then
+        if docker run --rm -v "$(pwd):/work" alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows/backup /work/bomarag-documents"; then
           docker_rm_success=true
           break
         fi
@@ -163,8 +163,8 @@ run_attempt() {
   local exit_code=0
 
   echo "::group::Start Infrastructure"
-  echo "${yellow}Starting infra for suite '${suite}' with OpenRAG version '${OPENRAG_VERSION:-latest}'${nc}"
-  if ! OPENSEARCH_HOST=opensearch "${compose_cmd[@]}" up -d opensearch langflow openrag-backend openrag-frontend; then
+  echo "${yellow}Starting infra for suite '${suite}' with BomaRAG version '${BOMARAG_VERSION:-latest}'${nc}"
+  if ! OPENSEARCH_HOST=opensearch "${compose_cmd[@]}" up -d opensearch langflow bomarag-backend bomarag-frontend; then
     echo "${red}ERROR: docker compose up failed${nc}"
     return 1
   fi
@@ -183,7 +183,7 @@ run_attempt() {
   fi
 
   # Get image architecture
-  image_name="langflowai/openrag-backend:${OPENRAG_VERSION:-latest}"
+  image_name="bomalogic/bomarag-backend:${BOMARAG_VERSION:-latest}"
   image_arch=$("$container_runtime" inspect --format '{{.Architecture}}' "$image_name" 2>/dev/null || echo "")
 
   if [[ -n "$image_arch" && "$image_arch" != "$host_arch_norm" ]]; then
@@ -214,7 +214,7 @@ run_attempt() {
 
   echo "${yellow}Waiting for backend OIDC endpoint...${nc}"
   for i in $(seq 1 60); do
-    if "${compose_cmd[@]}" exec -T openrag-backend curl -sf http://localhost:8000/.well-known/openid-configuration >/dev/null 2>&1; then
+    if "${compose_cmd[@]}" exec -T bomarag-backend curl -sf http://localhost:8000/.well-known/openid-configuration >/dev/null 2>&1; then
       break
     fi
     if [[ "$i" -eq 60 ]]; then
@@ -299,7 +299,7 @@ run_attempt() {
         echo "${red}ERROR: uv pip install failed${nc}"
         return 1
       fi
-      SDK_TESTS_ONLY=true OPENRAG_URL=http://localhost:3000 uv run pytest tests/integration/sdk/ -vv -s --log-file=service-logs/pytest-sdk.log --log-file-level=DEBUG --junitxml=service-logs/junit-sdk-python.xml || exit_code=1
+      SDK_TESTS_ONLY=true BOMARAG_URL=http://localhost:3000 uv run pytest tests/integration/sdk/ -vv -s --log-file=service-logs/pytest-sdk.log --log-file-level=DEBUG --junitxml=service-logs/junit-sdk-python.xml || exit_code=1
       echo "::endgroup::"
       ;;
     sdk-typescript)
@@ -311,7 +311,7 @@ run_attempt() {
       echo "${purple} SDK Integration Tests (TypeScript)${nc}"
       echo "${cyan}════════════════════════════════════════${nc}"
       cd sdks/typescript
-      npm install && npm run build && OPENRAG_URL=http://localhost:3000 npm test -- --reporter=junit --outputFile=../../service-logs/junit-sdk-typescript.xml || exit_code=1
+      npm install && npm run build && BOMARAG_URL=http://localhost:3000 npm test -- --reporter=junit --outputFile=../../service-logs/junit-sdk-typescript.xml || exit_code=1
       cd ../..
       echo "::endgroup::"
       ;;

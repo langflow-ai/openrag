@@ -6,7 +6,7 @@ import uuid
 from pathlib import Path
 
 import pytest
-from openrag_sdk.exceptions import NotFoundError, OpenRAGError
+from bomarag_sdk.exceptions import BomaRAGError, NotFoundError
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("SKIP_SDK_INTEGRATION_TESTS") == "true",
@@ -80,7 +80,7 @@ class TestDocuments:
         """Deleting by a genuinely nonexistent filter_id must raise NotFoundError.
 
         Distinct from the wildcard-data_sources rejection test in
-        TestDeleteByFilterId, which raises a generic OpenRAGError (validation),
+        TestDeleteByFilterId, which raises a generic BomaRAGError (validation),
         not NotFoundError.
         """
         with pytest.raises(NotFoundError):
@@ -241,7 +241,7 @@ class TestDeleteByFilterId:
         filter_id = None
         try:
             filter_id = await self._create_filter(client, ["*"])
-            with pytest.raises(OpenRAGError):
+            with pytest.raises(BomaRAGError):
                 await client.documents.delete(filter_id=filter_id)
         finally:
             if filter_id is not None:

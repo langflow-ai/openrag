@@ -26,7 +26,7 @@ def get_database_url() -> str:
     url = os.getenv("DATABASE_URL")
     if url:
         return url
-    sqlite_path = os.path.abspath(get_data_file("openrag.db"))
+    sqlite_path = os.path.abspath(get_data_file("bomarag.db"))
     return f"sqlite+aiosqlite:///{sqlite_path}"
 
 
@@ -42,7 +42,7 @@ def init_engine() -> AsyncEngine:
     connect_args = {"check_same_thread": False} if is_sqlite else {}
     _engine = create_async_engine(
         url,
-        echo=os.getenv("OPENRAG_DB_ECHO", "false").lower() in ("true", "1", "yes"),
+        echo=os.getenv("BOMARAG_DB_ECHO", "false").lower() in ("true", "1", "yes"),
         future=True,
         connect_args=connect_args,
         pool_pre_ping=not is_sqlite,

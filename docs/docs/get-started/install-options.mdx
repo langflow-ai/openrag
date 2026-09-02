@@ -3,31 +3,31 @@ title: Select an installation method
 slug: /install-options
 ---
 
-The [OpenRAG architecture](/#openrag-architecture) is lightweight and container-based with a central OpenRAG backend that orchestrates the various services and external connectors.
-Depending on your use case, OpenRAG can assist with service management, or you can manage the services yourself.
+The [BomaRAG architecture](/#bomarag-architecture) is lightweight and container-based with a central BomaRAG backend that orchestrates the various services and external connectors.
+Depending on your use case, BomaRAG can assist with service management, or you can manage the services yourself.
 
 Select the installation method that best fits your needs:
 
-* **Use an [OpenRAG terminal session](/tui) to manage services**: For guided configuration and simplified service management, install OpenRAG with terminal-managed services. Use one of the following options:
+* **Use an [BomaRAG terminal session](/tui) to manage services**: For guided configuration and simplified service management, install BomaRAG with terminal-managed services. Use one of the following options:
 
-   * [**`uv`**](/install-uv): Install OpenRAG as a dependency of a new or existing Python project.
-   * [**`uvx`**](/install-uvx): Install OpenRAG without creating a project or modifying your project's dependencies. This option also automatically installs Docker or Podman if neither is present in your environment.
+   * [**`uv`**](/install-uv): Install BomaRAG as a dependency of a new or existing Python project.
+   * [**`uvx`**](/install-uvx): Install BomaRAG without creating a project or modifying your project's dependencies. This option also automatically installs Docker or Podman if neither is present in your environment.
 
-* [**Install OpenRAG on Microsoft Windows**](/install-windows): On Windows machines, you must install OpenRAG within the Windows Subsystem for Linux (WSL).
+* [**Install BomaRAG on Microsoft Windows**](/install-windows): On Windows machines, you must install BomaRAG within the Windows Subsystem for Linux (WSL).
 
    :::warning
-   OpenRAG doesn't support nested virtualization; don't run OpenRAG on a WSL distribution that is inside a Windows VM.
+   BomaRAG doesn't support nested virtualization; don't run BomaRAG on a WSL distribution that is inside a Windows VM.
    :::
 
-* [**Manage your own services**](/docker): You can use Docker or Podman to deploy self-managed OpenRAG services.
+* [**Manage your own services**](/docker): You can use Docker or Podman to deploy self-managed BomaRAG services.
 
-The first time you start OpenRAG, you must complete the application onboarding process.
-This is required for all installation methods because it prepares the minimum required configuration for OpenRAG to run.
-For terminal-managed services, you must also complete initial setup before you start the OpenRAG services.
+The first time you start BomaRAG, you must complete the application onboarding process.
+This is required for all installation methods because it prepares the minimum required configuration for BomaRAG to run.
+For terminal-managed services, you must also complete initial setup before you start the BomaRAG services.
 For more information, see the instructions for your preferred installation method.
 
-Your OpenRAG configuration is stored in a `.env` file.
-When using terminal-managed services, this file is created automatically at `~/.openrag/tui`, or you can provide a pre-populated `.env` file in this directory before starting the terminal session.
+Your BomaRAG configuration is stored in a `.env` file.
+When using terminal-managed services, this file is created automatically at `~/.bomarag/tui`, or you can provide a pre-populated `.env` file in this directory before starting the terminal session.
 The terminal session prompts you for the required values during setup and onboarding, and any values detected in a preexisting `.env` file are populated automatically.
 When using self-managed services, you must provide a pre-populated `.env` file, as you would for any Docker or Podman deployment.
-For more information, see the instructions for your preferred installation method and the [OpenRAG environment variables reference](/reference/configuration).
+For more information, see the instructions for your preferred installation method and the [BomaRAG environment variables reference](/reference/configuration).

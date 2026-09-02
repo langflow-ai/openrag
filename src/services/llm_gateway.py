@@ -1,7 +1,7 @@
 """OpenAI-compatible LLM gateway backed by the LiteLLM SDK.
 
 Langflow and other OpenAI clients call `/v1/chat/completions` and
-`/v1/embeddings`. This module owns provider secrets (from OpenRAG config) and
+`/v1/embeddings`. This module owns provider secrets (from BomaRAG config) and
 routes by model prefix / configured provider. Callers never see upstream keys.
 """
 
@@ -53,12 +53,12 @@ class LlmGatewayError(Exception):
 
 
 def _get_config():
-    from config.settings import get_openrag_config
+    from config.settings import get_bomarag_config
 
-    return get_openrag_config()
+    return get_bomarag_config()
 
 
-#: Canonical separator between an OpenRAG provider tag and the model id.
+#: Canonical separator between an BomaRAG provider tag and the model id.
 #: `/` cannot serve as one: watsonx hosts `openai/gpt-oss-120b`, whose own name
 #: begins with a provider key, so a `/`-split routes it to OpenAI and LiteLLM
 #: then rejects the bare `gpt-oss-120b`. No catalogue id has a provider-shaped
@@ -68,7 +68,7 @@ PROVIDER_SEPARATOR = ":"
 
 
 def split_model_id(model: str) -> tuple[str | None, str]:
-    """Split an OpenRAG provider tag off a model id.
+    """Split an BomaRAG provider tag off a model id.
 
     `provider:model` is the canonical form and is checked first. `provider/`
     is still accepted so ids stored before the switch keep resolving, but only
@@ -117,7 +117,7 @@ def default_model(kind: Literal["chat", "embedding"], config=None) -> str:
 
 
 def provider_credentials(provider: str, config=None) -> dict[str, Any]:
-    """LiteLLM kwargs for any configured OpenRAG provider. Never logs secrets."""
+    """LiteLLM kwargs for any configured BomaRAG provider. Never logs secrets."""
     cfg = config or _get_config()
     key = (provider or "").strip().lower()
     try:
@@ -158,7 +158,7 @@ def provider_credentials(provider: str, config=None) -> dict[str, Any]:
     configured = bool(getattr(custom_config, "configured", False))
     if not credentials and not configured:
         raise LlmGatewayError(
-            f"Provider {key!r} is not configured in OpenRAG. "
+            f"Provider {key!r} is not configured in BomaRAG. "
             "Configure it in Settings or pick a model from a configured provider.",
             400,
         )
@@ -268,7 +268,7 @@ def _is_provider_attributable(exc: BaseException | None) -> bool:
 
     Anything LiteLLM raises describes the upstream request — it tags its
     exceptions with `llm_provider`, and its transport wrappers live under the
-    `litellm` package. A `RuntimeError` from OpenRAG code does not, and its text
+    `litellm` package. A `RuntimeError` from BomaRAG code does not, and its text
     is ours to keep in the logs.
     """
     if exc is None:
@@ -324,7 +324,7 @@ def _provider_error_text(detail: str, exc: BaseException | None) -> str | None:
 
 
 #: Upstream statuses worth passing through: a client can act on these itself.
-#: Everything else becomes 502 — an upstream 401/403 must not read as an OpenRAG
+#: Everything else becomes 502 — an upstream 401/403 must not read as an BomaRAG
 #: auth failure, and an upstream 400 must not read as a bad request to us.
 _PASSTHROUGH_UPSTREAM_STATUSES = frozenset({408, 429, 503, 504})
 

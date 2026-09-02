@@ -1,5 +1,5 @@
 """WorkspaceConfigService — coverage for the 3 storage modes
-(`hybrid`, `db`, `files`) selected by ``OPENRAG_STORAGE_MODE``.
+(`hybrid`, `db`, `files`) selected by ``BOMARAG_STORAGE_MODE``.
 
 The contract:
 
@@ -62,34 +62,34 @@ def tmp_config_manager():
 
 
 def test_default_mode_is_db(monkeypatch):
-    monkeypatch.delenv("OPENRAG_STORAGE_MODE", raising=False)
-    monkeypatch.delenv("OPENRAG_DISABLE_DB_WORKSPACE_CONFIG", raising=False)
+    monkeypatch.delenv("BOMARAG_STORAGE_MODE", raising=False)
+    monkeypatch.delenv("BOMARAG_DISABLE_DB_WORKSPACE_CONFIG", raising=False)
     assert get_storage_mode() == "db"
 
 
 def test_explicit_mode_db(monkeypatch):
-    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "db")
+    monkeypatch.setenv("BOMARAG_STORAGE_MODE", "db")
     assert get_storage_mode() == "db"
     assert db_writes_enabled() is True
     assert file_writes_enabled() is False
 
 
 def test_explicit_mode_files(monkeypatch):
-    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "files")
+    monkeypatch.setenv("BOMARAG_STORAGE_MODE", "files")
     assert get_storage_mode() == "files"
     assert db_writes_enabled() is False
     assert file_writes_enabled() is True
 
 
 def test_legacy_kill_switch_forces_files(monkeypatch):
-    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "db")
-    monkeypatch.setenv("OPENRAG_DISABLE_DB_WORKSPACE_CONFIG", "true")
+    monkeypatch.setenv("BOMARAG_STORAGE_MODE", "db")
+    monkeypatch.setenv("BOMARAG_DISABLE_DB_WORKSPACE_CONFIG", "true")
     assert get_storage_mode() == "files"  # legacy switch wins
 
 
 def test_invalid_value_falls_back_to_default(monkeypatch):
-    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "weird")
-    monkeypatch.delenv("OPENRAG_DISABLE_DB_WORKSPACE_CONFIG", raising=False)
+    monkeypatch.setenv("BOMARAG_STORAGE_MODE", "weird")
+    monkeypatch.delenv("BOMARAG_DISABLE_DB_WORKSPACE_CONFIG", raising=False)
     assert get_storage_mode() == "db"
 
 
@@ -100,7 +100,7 @@ def test_invalid_value_falls_back_to_default(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_db_mode_does_not_create_yaml(monkeypatch, tmp_config_manager, session_factory):
-    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "db")
+    monkeypatch.setenv("BOMARAG_STORAGE_MODE", "db")
     svc = WorkspaceConfigService(config_manager=tmp_config_manager, session_factory=session_factory)
     config = tmp_config_manager.load_config()
     config.agent.system_prompt = "db-only test"
@@ -119,7 +119,7 @@ async def test_db_mode_does_not_create_yaml(monkeypatch, tmp_config_manager, ses
 
 @pytest.mark.asyncio
 async def test_files_mode_does_not_write_db(monkeypatch, tmp_config_manager, session_factory):
-    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "files")
+    monkeypatch.setenv("BOMARAG_STORAGE_MODE", "files")
     svc = WorkspaceConfigService(config_manager=tmp_config_manager, session_factory=session_factory)
     config = tmp_config_manager.load_config()
     config.agent.system_prompt = "files-only test"
@@ -138,7 +138,7 @@ async def test_files_mode_does_not_write_db(monkeypatch, tmp_config_manager, ses
 
 @pytest.mark.asyncio
 async def test_hybrid_mode_writes_both(monkeypatch, tmp_config_manager, session_factory):
-    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "hybrid")
+    monkeypatch.setenv("BOMARAG_STORAGE_MODE", "hybrid")
     svc = WorkspaceConfigService(config_manager=tmp_config_manager, session_factory=session_factory)
     config = tmp_config_manager.load_config()
     config.agent.system_prompt = "hybrid test"
@@ -168,7 +168,7 @@ async def test_db_mode_ignores_yaml_fallback(monkeypatch, tmp_config_manager, se
     tmp_config_manager.save_config_file(cfg)
     assert tmp_config_manager.config_file.exists()
 
-    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "db")
+    monkeypatch.setenv("BOMARAG_STORAGE_MODE", "db")
     svc = WorkspaceConfigService(config_manager=tmp_config_manager, session_factory=session_factory)
     # DB is empty → db mode must say NOT onboarded
     assert await svc.is_onboarded() is False
@@ -184,7 +184,7 @@ async def test_files_mode_reads_only_yaml(monkeypatch, tmp_config_manager, sessi
         await WorkspaceConfigRepo(session).upsert("meta", {"edited": True})
         await session.commit()
 
-    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "files")
+    monkeypatch.setenv("BOMARAG_STORAGE_MODE", "files")
     svc = WorkspaceConfigService(config_manager=tmp_config_manager, session_factory=session_factory)
     assert await svc.is_onboarded() is False
 
@@ -198,7 +198,7 @@ async def test_hybrid_falls_back_to_yaml_when_db_empty(
     cfg.edited = True
     tmp_config_manager.save_config_file(cfg)
 
-    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "hybrid")
+    monkeypatch.setenv("BOMARAG_STORAGE_MODE", "hybrid")
     svc = WorkspaceConfigService(config_manager=tmp_config_manager, session_factory=session_factory)
     assert await svc.is_onboarded() is True
 
@@ -214,7 +214,7 @@ async def test_db_mode_legacy_save_skips_yaml_writes(
 ):
     """A legacy caller that hits config_manager.save_config_file()
     directly should NOT create a yaml file in db mode."""
-    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "db")
+    monkeypatch.setenv("BOMARAG_STORAGE_MODE", "db")
     WorkspaceConfigService(config_manager=tmp_config_manager, session_factory=session_factory)
     # Legacy-style call
     cfg = tmp_config_manager.load_config()
@@ -243,7 +243,7 @@ async def test_db_mode_legacy_save_skips_yaml_writes(
 async def test_files_mode_does_not_install_hooks(monkeypatch, tmp_config_manager, session_factory):
     """In files mode the monkey-patch must not be installed —
     legacy ``config_manager.save_config_file`` is left pristine."""
-    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "files")
+    monkeypatch.setenv("BOMARAG_STORAGE_MODE", "files")
     WorkspaceConfigService(config_manager=tmp_config_manager, session_factory=session_factory)
     assert not getattr(tmp_config_manager, "_db_mirror_installed", False)
 

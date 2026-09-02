@@ -37,7 +37,7 @@ func TestInstanaAgentHostEnvVar_DisabledByDefault(t *testing.T) {
 
 	assert.Nil(t, m.InstanaAgentHostEnvVar(resolvedBackendEnv(t, nil)),
 		"Instana is opt-in; nothing should be injected when the flag is unset")
-	assert.Equal(t, "false", m.DefaultOpenRagBEEnvVars["INSTANA_ENABLED"],
+	assert.Equal(t, "false", m.DefaultBomaRagBEEnvVars["INSTANA_ENABLED"],
 		"the default must keep the feature off")
 }
 
@@ -84,7 +84,7 @@ func TestInstanaAgentHostEnvVar_ExplicitHostWins(t *testing.T) {
 func TestInstanaAgentHostEnvVar_HonoursOperatorEnvPrefix(t *testing.T) {
 	m := NewEnvVarManager()
 
-	t.Setenv(OPENRAGBE_ENV_PREFIX+"INSTANA_ENABLED", "true")
+	t.Setenv(BOMARAGBE_ENV_PREFIX+"INSTANA_ENABLED", "true")
 	assert.NotNil(t, m.InstanaAgentHostEnvVar(resolvedBackendEnv(t, nil)),
 		"level 2 (operator env) must be able to enable Instana on its own")
 
@@ -199,26 +199,26 @@ func TestInstanaPresenceSensitiveVarsAreNotDefaulted(t *testing.T) {
 	// deliberately NOT in this list: the tracer treats an empty value for
 	// those as a parseable (if weaker) setting rather than "unset", so they
 	// carry a real default instead — see
-	// TestInstanaSecretsDefaultRedactsOpenRAGQueryParams below.
+	// TestInstanaSecretsDefaultRedactsBomaRAGQueryParams below.
 	for _, k := range []string{"INSTANA_SERVICE_NAME", "INSTANA_LOG_LEVEL", "INSTANA_ZONE", "INSTANA_AGENT_HOST"} {
-		_, ok := m.DefaultOpenRagBEEnvVars[k]
+		_, ok := m.DefaultBomaRagBEEnvVars[k]
 		assert.False(t, ok, "%s must not carry an empty default", k)
 	}
 }
 
-func TestInstanaSecretsDefaultRedactsOpenRAGQueryParams(t *testing.T) {
+func TestInstanaSecretsDefaultRedactsBomaRAGQueryParams(t *testing.T) {
 	m := NewEnvVarManager()
 
 	assert.Equal(t,
 		`regex:.*key.*,.*pass.*,.*secret.*,.*token.*,q\Z,search\Z,filename\Z`,
-		m.DefaultOpenRagBEEnvVars["INSTANA_SECRETS"],
-		"must keep the tracer's own credential coverage and add OpenRAG's free-text search parameters")
+		m.DefaultBomaRagBEEnvVars["INSTANA_SECRETS"],
+		"must keep the tracer's own credential coverage and add BomaRAG's free-text search parameters")
 }
 
 func TestBackendDeploymentInjectsInstanaHost(t *testing.T) {
 	r, _ := reconciler(newScheme(t))
 
-	cr := minimalCR("my-openrag", "my-ns")
+	cr := minimalCR("my-bomarag", "my-ns")
 	backendEnv := func(instanaHost *corev1.EnvVar) []corev1.EnvVar {
 		return r.backendDeployment(cr, "my-ns", "hash", instanaHost).Spec.Template.Spec.Containers[0].Env
 	}

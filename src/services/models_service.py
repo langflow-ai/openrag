@@ -38,7 +38,7 @@ def _watsonx_rate_limited(failures: list[tuple[str, int, str]]) -> bool:
 
 
 # OpenAI /v1/models is a flat inventory. These IDs are real products but not
-# usable as OpenRAG agent LLMs (wrong modality / API surface).
+# usable as BomaRAG agent LLMs (wrong modality / API surface).
 _OPENAI_NON_CHAT_PREFIXES = (
     "whisper",
     "dall-e",

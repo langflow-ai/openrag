@@ -21,9 +21,9 @@ class TestErrorHandling:
     @pytest.mark.asyncio
     async def test_connection_refused_raises_exception(self):
         """Pointing the client at a dead port must raise a network exception, not hang."""
-        from openrag_sdk import OpenRAGClient
+        from bomarag_sdk import BomaRAGClient
 
-        dead_client = OpenRAGClient(
+        dead_client = BomaRAGClient(
             api_key="orag_test",
             base_url="http://localhost:19999",
             timeout=3.0,
@@ -37,7 +37,7 @@ class TestErrorHandling:
     @pytest.mark.asyncio
     async def test_get_nonexistent_conversation_raises_not_found(self, client):
         """Fetching a conversation with a random UUID must raise NotFoundError."""
-        from openrag_sdk.exceptions import NotFoundError
+        from bomarag_sdk.exceptions import NotFoundError
 
         with pytest.raises(NotFoundError) as exc_info:
             await client.chat.get(str(uuid.uuid4()))
@@ -51,10 +51,10 @@ class TestErrorHandling:
 
     @pytest.mark.asyncio
     async def test_invalid_settings_value_raises_error(self, client):
-        """Sending an invalid settings value must raise a subclass of OpenRAGError."""
-        from openrag_sdk.exceptions import OpenRAGError
+        """Sending an invalid settings value must raise a subclass of BomaRAGError."""
+        from bomarag_sdk.exceptions import BomaRAGError
 
-        with pytest.raises(OpenRAGError):
+        with pytest.raises(BomaRAGError):
             await client.settings.update({"chunk_size": -999999})
 
     @pytest.mark.asyncio
@@ -89,11 +89,11 @@ class TestErrorHandling:
     @pytest.mark.asyncio
     async def test_close_does_not_close_external_http_client(self):
         """The SDK must not close a caller-supplied httpx.AsyncClient on client.close()."""
-        from openrag_sdk import OpenRAGClient
+        from bomarag_sdk import BomaRAGClient
 
         ext_client = httpx.AsyncClient()
         try:
-            sdk_client = OpenRAGClient(
+            sdk_client = BomaRAGClient(
                 api_key="orag_test", base_url=_base_url, http_client=ext_client
             )
             await sdk_client.close()
@@ -104,9 +104,9 @@ class TestErrorHandling:
     @pytest.mark.asyncio
     async def test_client_closed_after_context_manager_exit(self):
         """An SDK-owned http client is closed on __aexit__; later calls must fail."""
-        from openrag_sdk import OpenRAGClient
+        from bomarag_sdk import BomaRAGClient
 
-        async with OpenRAGClient(api_key="orag_test", base_url=_base_url) as c:
+        async with BomaRAGClient(api_key="orag_test", base_url=_base_url) as c:
             pass
 
         with pytest.raises(RuntimeError):

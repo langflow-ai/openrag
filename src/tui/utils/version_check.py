@@ -1,4 +1,4 @@
-"""Version checking utilities for OpenRAG TUI."""
+"""Version checking utilities for BomaRAG TUI."""
 
 from typing import Optional, Tuple
 from utils.logging_config import get_logger
@@ -6,12 +6,12 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 
-async def get_latest_docker_version(image_name: str = "langflowai/openrag-backend") -> Optional[str]:
+async def get_latest_docker_version(image_name: str = "bomalogic/bomarag-backend") -> Optional[str]:
     """
-    Get the latest version tag from Docker Hub for OpenRAG containers.
+    Get the latest version tag from Docker Hub for BomaRAG containers.
     
     Args:
-        image_name: Name of the Docker image to check (default: "langflowai/openrag-backend")
+        image_name: Name of the Docker image to check (default: "bomalogic/bomarag-backend")
         
     Returns:
         Latest version string if found, None otherwise
@@ -83,12 +83,12 @@ async def get_latest_docker_version(image_name: str = "langflowai/openrag-backen
 
 def get_current_version() -> str:
     """
-    Get the current installed version of OpenRAG.
+    Get the current installed version of BomaRAG.
     
     Returns:
         Version string or "unknown" if not available
     """
-    for dist_name in ["openrag", "openrag-nightly"]:
+    for dist_name in ["bomarag", "bomarag-nightly"]:
         try:
             from importlib.metadata import version
             return version(dist_name)

@@ -308,10 +308,10 @@ class BaseConnector(ABC):
 
     @classmethod
     def get_auth_user_principals(cls, user: Any) -> list[str]:
-        """Return connector principals derivable from the OpenRAG auth user.
+        """Return connector principals derivable from the BomaRAG auth user.
 
         This hook covers cases where a document ACL names a provider user alias
-        but the current OpenRAG user has no saved connector connection to query.
+        but the current BomaRAG user has no saved connector connection to query.
         Connectors should only return aliases when the auth provider gives enough
         information to construct the same principal used during ingestion.
         """

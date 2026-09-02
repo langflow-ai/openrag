@@ -1,9 +1,9 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ include "openrag-operator.fullname" . }}-manager-role
+  name: {{ include "bomarag-operator.fullname" . }}-manager-role
   labels:
-    {{- include "openrag-operator.labels" . | nindent 4 }}
+    {{- include "bomarag-operator.labels" . | nindent 4 }}
 rules:
 - apiGroups:
   - ""
@@ -75,9 +75,9 @@ rules:
   - update
   - watch
 - apiGroups:
-  - openr.ag
+  - bomalogic.com
   resources:
-  - openrags
+  - bomarags
   verbs:
   - create
   - delete
@@ -87,15 +87,15 @@ rules:
   - update
   - watch
 - apiGroups:
-  - openr.ag
+  - bomalogic.com
   resources:
-  - openrags/finalizers
+  - bomarags/finalizers
   verbs:
   - update
 - apiGroups:
-  - openr.ag
+  - bomalogic.com
   resources:
-  - openrags/status
+  - bomarags/status
   verbs:
   - get
   - patch

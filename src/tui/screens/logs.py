@@ -1,4 +1,4 @@
-"""Logs viewing screen for OpenRAG TUI."""
+"""Logs viewing screen for BomaRAG TUI."""
 
 import asyncio
 import re
@@ -57,22 +57,22 @@ class LogsScreen(Screen):
     # Maximum lines to keep in the log widget
     MAX_LOG_LINES = 1000
 
-    def __init__(self, initial_service: str = "openrag-backend"):
+    def __init__(self, initial_service: str = "bomarag-backend"):
         super().__init__()
         self.container_manager = ContainerManager()
         self.docling_manager = DoclingManager()
 
         # Validate the initial service against available options
         valid_services = [
-            "openrag-backend",
-            "openrag-frontend",
+            "bomarag-backend",
+            "bomarag-frontend",
             "opensearch",
             "langflow",
             "dashboards",
             "docling-serve",  # Add docling-serve as a valid service
         ]
         if initial_service not in valid_services:
-            initial_service = "openrag-backend"  # fallback
+            initial_service = "bomarag-backend"  # fallback
 
         self.current_service = initial_service
         self.logs_area: Log | None = None

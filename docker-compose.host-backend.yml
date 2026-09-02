@@ -1,11 +1,11 @@
 # docker-compose.host-backend.yml
 #
-# Layered override for the dev-local mode where the OpenRAG backend
+# Layered override for the dev-local mode where the BomaRAG backend
 # runs on the HOST machine via `make backend` (not as a compose
 # service). In that mode OpenSearch — running inside its container —
 # needs to reach the host's port 8000 to fetch the OIDC discovery /
 # JWKS for JWT validation. This override adds the alias that routes
-# `openrag-backend` from inside the OpenSearch container to the host
+# `bomarag-backend` from inside the OpenSearch container to the host
 # gateway.
 #
 # Do NOT merge this into the base `docker-compose.yml`: `extra_hosts`
@@ -27,7 +27,7 @@
 services:
   opensearch:
     extra_hosts:
-      - "openrag-backend:host-gateway"
+      - "bomarag-backend:host-gateway"
   langflow:
     extra_hosts:
-      - "openrag-backend:host-gateway"
+      - "bomarag-backend:host-gateway"

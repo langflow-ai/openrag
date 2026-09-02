@@ -251,7 +251,7 @@ class DLSPrincipalService:
         try:
             from config.settings import (
                 clients,
-                get_openrag_service_token,
+                get_bomarag_service_token,
                 get_opensearch_password,
                 get_opensearch_username,
             )
@@ -262,10 +262,10 @@ class DLSPrincipalService:
             )
 
             if is_run_mode_saas() or is_run_mode_on_prem():
-                service_token = get_openrag_service_token()
+                service_token = get_bomarag_service_token()
                 if not service_token:
                     raise RuntimeError(
-                        "OPENRAG_SERVICE_TOKEN is required for the DLS principal "
+                        "BOMARAG_SERVICE_TOKEN is required for the DLS principal "
                         f"OpenSearch client in {get_run_mode()} mode."
                     )
                 self._admin_opensearch_client = clients.create_opensearch_client_from_jwt(

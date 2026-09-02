@@ -16,15 +16,15 @@ import (
 
 const (
 	LANGFLOW_ENV_PREFIX  = "OPTLF_"
-	OPENRAGBE_ENV_PREFIX = "OPTORBE_"
-	OPENRAGFE_ENV_PREFIX = "OPTORFE_"
+	BOMARAGBE_ENV_PREFIX = "OPTORBE_"
+	BOMARAGFE_ENV_PREFIX = "OPTORFE_"
 )
 
 type EnvVarManager struct {
 	// a map makes look up faster and easier
 	DefaultLangflowEnvVars  map[string]string
-	DefaultOpenRagBEEnvVars map[string]string
-	DefaultOpenRagFEEnvVars map[string]string
+	DefaultBomaRagBEEnvVars map[string]string
+	DefaultBomaRagFEEnvVars map[string]string
 }
 
 func NewEnvVarManager() *EnvVarManager {
@@ -34,7 +34,7 @@ func NewEnvVarManager() *EnvVarManager {
 			"LANGFLOW_DATABASE_URL": "sqlite:////app/data/langflow.db",
 
 			// Variables to expose to Langflow components
-			"LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT": "JWT,OPENRAG_QUERY_FILTER,OPENSEARCH_PASSWORD,OPENSEARCH_URL,OPENSEARCH_INDEX_NAME,DOCLING_SERVE_URL,DOCLING_SERVE_VERIFY_SSL,DOCLING_TASK_ID,OWNER,OWNER_NAME,OWNER_EMAIL,CONNECTOR_TYPE,DOCUMENT_ID,SOURCE_URL,ALLOWED_USERS,ALLOWED_GROUPS,ALLOWED_PRINCIPALS,FILENAME,MIMETYPE,FILESIZE,SELECTED_EMBEDDING_MODEL,OPENAI_API_KEY,OPENRAG_LLM_TOKEN,OPENRAG_LLM_BASE_URL,ANTHROPIC_API_KEY,WATSONX_API_KEY,WATSONX_ENDPOINT,WATSONX_PROJECT_ID,OLLAMA_BASE_URL,OPENRAG_INGEST_URL,OPENRAG_INGEST_TOKEN,OPENRAG_INGEST_RUN_ID,OPENRAG_INGEST_BATCH_SIZE",
+			"LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT": "JWT,BOMARAG_QUERY_FILTER,OPENSEARCH_PASSWORD,OPENSEARCH_URL,OPENSEARCH_INDEX_NAME,DOCLING_SERVE_URL,DOCLING_SERVE_VERIFY_SSL,DOCLING_TASK_ID,OWNER,OWNER_NAME,OWNER_EMAIL,CONNECTOR_TYPE,DOCUMENT_ID,SOURCE_URL,ALLOWED_USERS,ALLOWED_GROUPS,ALLOWED_PRINCIPALS,FILENAME,MIMETYPE,FILESIZE,SELECTED_EMBEDDING_MODEL,OPENAI_API_KEY,BOMARAG_LLM_TOKEN,BOMARAG_LLM_BASE_URL,ANTHROPIC_API_KEY,WATSONX_API_KEY,WATSONX_ENDPOINT,WATSONX_PROJECT_ID,OLLAMA_BASE_URL,BOMARAG_INGEST_URL,BOMARAG_INGEST_TOKEN,BOMARAG_INGEST_RUN_ID,BOMARAG_INGEST_BATCH_SIZE",
 
 			// Authentication and user management
 			"LANGFLOW_SKIP_AUTH_AUTO_LOGIN": "true",
@@ -67,11 +67,11 @@ func NewEnvVarManager() *EnvVarManager {
 			"ALLOWED_USERS":             "[]",
 			"ALLOWED_GROUPS":            "[]",
 			"ALLOWED_PRINCIPALS":        "[]",
-			"OPENRAG_QUERY_FILTER":      "{}",
-			"OPENRAG_INGEST_URL":        "OPENRAG_INGEST_URL",
-			"OPENRAG_INGEST_TOKEN":      "OPENRAG_INGEST_TOKEN",
-			"OPENRAG_INGEST_RUN_ID":     "OPENRAG_INGEST_RUN_ID",
-			"OPENRAG_INGEST_BATCH_SIZE": "100",
+			"BOMARAG_QUERY_FILTER":      "{}",
+			"BOMARAG_INGEST_URL":        "BOMARAG_INGEST_URL",
+			"BOMARAG_INGEST_TOKEN":      "BOMARAG_INGEST_TOKEN",
+			"BOMARAG_INGEST_RUN_ID":     "BOMARAG_INGEST_RUN_ID",
+			"BOMARAG_INGEST_BATCH_SIZE": "100",
 			"FILENAME":                  "None",
 			"MIMETYPE":                  "None",
 			"FILESIZE":                  "0",
@@ -88,8 +88,8 @@ func NewEnvVarManager() *EnvVarManager {
 
 			// Provider API keys (defaults to None, overridden by CR spec)
 			"OPENAI_API_KEY":       "None",
-			"OPENRAG_LLM_TOKEN":    "None",
-			"OPENRAG_LLM_BASE_URL": "None",
+			"BOMARAG_LLM_TOKEN":    "None",
+			"BOMARAG_LLM_BASE_URL": "None",
 			"ANTHROPIC_API_KEY":    "None",
 			"WATSONX_API_KEY":      "None",
 			"OLLAMA_BASE_URL":      "None",
@@ -98,12 +98,12 @@ func NewEnvVarManager() *EnvVarManager {
 			"LLM_MODEL":            "ibm/granite-3-2-8b-instruct",
 			"LLM_PROVIDER":         "watsonx",
 		},
-		DefaultOpenRagBEEnvVars: map[string]string{
+		DefaultBomaRagBEEnvVars: map[string]string{
 			// Langflow connection
 			"LANGFLOW_URL":                  "http://langflow:7860",
-			"OPENRAG_BACKEND_INTERNAL_URL":  "http://openrag-be:8000",
-			"OPENRAG_BACKEND_ROUTER_ENABLE": "false",
-			"OPENRAG_BACKEND_ROUTER_PORT":   "8100",
+			"BOMARAG_BACKEND_INTERNAL_URL":  "http://bomarag-be:8000",
+			"BOMARAG_BACKEND_ROUTER_ENABLE": "false",
+			"BOMARAG_BACKEND_ROUTER_PORT":   "8100",
 			"LANGFLOW_TIMEOUT":              "2400",
 			"LANGFLOW_CONNECT_TIMEOUT":      "30",
 			"LANGFLOW_AUTO_LOGIN":           "true",
@@ -112,12 +112,12 @@ func NewEnvVarManager() *EnvVarManager {
 			"LANGFLOW_KEY":                  "",
 
 			// Backend data paths
-			"OPENRAG_DATA_PATH":         "/app/backend-data",
-			"OPENRAG_DOCUMENTS_PATH":    "/app/openrag-documents",
-			"OPENRAG_FLOWS_BACKUP_PATH": "/app/backend-data/flow-backups",
-			"OPENRAG_KEYS_PATH":         "/app/backend-data/keys",
-			"OPENRAG_CONFIG_PATH":       "/app/backend-data/config",
-			"OPENRAG_VERSION":           "latest",
+			"BOMARAG_DATA_PATH":         "/app/backend-data",
+			"BOMARAG_DOCUMENTS_PATH":    "/app/bomarag-documents",
+			"BOMARAG_FLOWS_BACKUP_PATH": "/app/backend-data/flow-backups",
+			"BOMARAG_KEYS_PATH":         "/app/backend-data/keys",
+			"BOMARAG_CONFIG_PATH":       "/app/backend-data/config",
+			"BOMARAG_VERSION":           "latest",
 
 			// OpenSearch configuration
 			"OPENSEARCH_DATA_PATH": "",
@@ -126,7 +126,7 @@ func NewEnvVarManager() *EnvVarManager {
 			"LOG_LEVEL":    "DEBUG",
 			"LOG_FORMAT":   "json",
 			"ACCESS_LOG":   "true",
-			"SERVICE_NAME": "openrag",
+			"SERVICE_NAME": "bomarag",
 
 			// Environment
 			"ENVIRONMENT": "development",
@@ -150,10 +150,10 @@ func NewEnvVarManager() *EnvVarManager {
 			"WATSONX_PROJECT_ID":       "",
 			"DOCLING_SERVE_VERIFY_SSL": "false",
 
-			// Azure Blob Storage connector (Enterprise/SaaS; gated by IBM_AUTH_ENABLED or OPENRAG_DEV_AZURE_BLOB for local dev).
+			// Azure Blob Storage connector (Enterprise/SaaS; gated by IBM_AUTH_ENABLED or BOMARAG_DEV_AZURE_BLOB for local dev).
 			// Optional env defaults — credentials are normally entered per-connection
 			// in the UI. Override via the CR spec.env when env-based defaults are wanted.
-			// OPENRAG_AZURE_BLOB_ENABLED is intentionally omitted: the backend defaults it to
+			// BOMARAG_AZURE_BLOB_ENABLED is intentionally omitted: the backend defaults it to
 			// true (kill switch); set it via spec.env to force-hide the connector.
 			"AZURE_STORAGE_CONNECTION_STRING": "",
 			"AZURE_STORAGE_ACCOUNT_NAME":      "",
@@ -188,7 +188,7 @@ func NewEnvVarManager() *EnvVarManager {
 			// INSTANA_SECRETS carries a real default for a different reason:
 			// privacy, not performance. The tracer's own default
 			// (contains-ignore-case:key,pass,secret) only redacts
-			// credential-shaped query-parameter names, so OpenRAG's free-text
+			// credential-shaped query-parameter names, so BomaRAG's free-text
 			// search parameters (`q`, `search`, `filename` on
 			// GET /v2/files/search and file listing) would otherwise be
 			// exported to the Instana tenant verbatim. Override via spec.env
@@ -199,7 +199,7 @@ func NewEnvVarManager() *EnvVarManager {
 			"INSTANA_STACK_TRACE":     "error",
 			"INSTANA_SECRETS":         `regex:.*key.*,.*pass.*,.*secret.*,.*token.*,q\Z,search\Z,filename\Z`,
 		},
-		DefaultOpenRagFEEnvVars: map[string]string{
+		DefaultBomaRagFEEnvVars: map[string]string{
 			// Frontend environment variables will be added here
 		},
 	}
@@ -218,7 +218,7 @@ func (m *EnvVarManager) GetLangflowEnvVars(ctx context.Context, c client.Client,
 // 2. Medium priority: Operator env vars with OPTORBE_ prefix
 // 3. Lowest priority: Hardcoded defaults
 func (m *EnvVarManager) GetBackendEnvVars(ctx context.Context, c client.Client, namespace string, crEnvVars []corev1.EnvVar) (map[string]string, error) {
-	return m.mergeEnvVars(ctx, c, namespace, m.DefaultOpenRagBEEnvVars, OPENRAGBE_ENV_PREFIX, crEnvVars)
+	return m.mergeEnvVars(ctx, c, namespace, m.DefaultBomaRagBEEnvVars, BOMARAGBE_ENV_PREFIX, crEnvVars)
 }
 
 // GetFrontendEnvVars returns merged Frontend env vars with three-level priority:
@@ -226,7 +226,7 @@ func (m *EnvVarManager) GetBackendEnvVars(ctx context.Context, c client.Client, 
 // 2. Medium priority: Operator env vars with OPTORFE_ prefix
 // 3. Lowest priority: Hardcoded defaults
 func (m *EnvVarManager) GetFrontendEnvVars(ctx context.Context, c client.Client, namespace string, crEnvVars []corev1.EnvVar) (map[string]string, error) {
-	return m.mergeEnvVars(ctx, c, namespace, m.DefaultOpenRagFEEnvVars, OPENRAGFE_ENV_PREFIX, crEnvVars)
+	return m.mergeEnvVars(ctx, c, namespace, m.DefaultBomaRagFEEnvVars, BOMARAGFE_ENV_PREFIX, crEnvVars)
 }
 
 // mergeEnvVars implements the three-level override priority:

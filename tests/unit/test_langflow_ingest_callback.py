@@ -11,10 +11,10 @@ from services.langflow_file_service import LangflowFileService
 from services.langflow_ingest_token_service import LangflowIngestTokenService
 
 CALLBACK_GLOBAL_VARS = {
-    "OPENRAG_INGEST_URL",
-    "OPENRAG_INGEST_TOKEN",
-    "OPENRAG_INGEST_RUN_ID",
-    "OPENRAG_INGEST_BATCH_SIZE",
+    "BOMARAG_INGEST_URL",
+    "BOMARAG_INGEST_TOKEN",
+    "BOMARAG_INGEST_RUN_ID",
+    "BOMARAG_INGEST_BATCH_SIZE",
 }
 
 
@@ -69,7 +69,7 @@ async def test_langflow_ingest_callback_indexes_authoritative_token_context():
     result = await ingest_langflow_chunks(
         body,
         authorization=f"Bearer {token}",
-        x_openrag_ingest_token=None,
+        x_bomarag_ingest_token=None,
         token_service=token_service,
         writer=writer,
     )
@@ -97,7 +97,7 @@ async def test_langflow_ingest_callback_indexes_authoritative_token_context():
         await ingest_langflow_chunks(
             body,
             authorization=f"Bearer {token}",
-            x_openrag_ingest_token=None,
+            x_bomarag_ingest_token=None,
             token_service=token_service,
             writer=writer,
         )
@@ -162,7 +162,7 @@ async def test_langflow_ingest_callback_rewrites_langflow_chunk_ids():
     await ingest_langflow_chunks(
         body,
         authorization=f"Bearer {token}",
-        x_openrag_ingest_token=None,
+        x_bomarag_ingest_token=None,
         token_service=token_service,
         writer=writer,
     )
@@ -202,7 +202,7 @@ async def test_langflow_file_service_sends_backend_callback_global_vars(monkeypa
         add_provider_credentials_to_headers,
     )
     monkeypatch.setattr(
-        "config.settings.get_openrag_config",
+        "config.settings.get_bomarag_config",
         lambda: SimpleNamespace(
             knowledge=SimpleNamespace(embedding_model="text-embedding-3-small")
         ),
@@ -224,15 +224,15 @@ async def test_langflow_file_service_sends_backend_callback_global_vars(monkeypa
     payload = captured["json"]
     assert LangflowFileService.INGEST_OPENSEARCH_COMPONENT_ID not in payload["tweaks"]
     headers = captured["headers"]
-    assert headers["X-Langflow-Global-Var-OPENRAG_INGEST_URL"].endswith("/internal/ingest/chunks")
-    assert headers["X-Langflow-Global-Var-OPENRAG_INGEST_TOKEN"]
-    assert headers["X-Langflow-Global-Var-OPENRAG_INGEST_RUN_ID"]
-    assert headers["X-Langflow-Global-Var-OPENRAG_INGEST_BATCH_SIZE"]
+    assert headers["X-Langflow-Global-Var-BOMARAG_INGEST_URL"].endswith("/internal/ingest/chunks")
+    assert headers["X-Langflow-Global-Var-BOMARAG_INGEST_TOKEN"]
+    assert headers["X-Langflow-Global-Var-BOMARAG_INGEST_RUN_ID"]
+    assert headers["X-Langflow-Global-Var-BOMARAG_INGEST_BATCH_SIZE"]
 
     decoded_context, _ = token_service.validate_token(
-        headers["X-Langflow-Global-Var-OPENRAG_INGEST_TOKEN"]
+        headers["X-Langflow-Global-Var-BOMARAG_INGEST_TOKEN"]
     )
-    assert decoded_context.ingest_run_id == headers["X-Langflow-Global-Var-OPENRAG_INGEST_RUN_ID"]
+    assert decoded_context.ingest_run_id == headers["X-Langflow-Global-Var-BOMARAG_INGEST_RUN_ID"]
     assert decoded_context.owner == "user-1"
     assert decoded_context.filename == "source.pdf"
     assert decoded_context.mimetype == "application/pdf"
@@ -243,7 +243,7 @@ async def test_langflow_file_service_sends_backend_callback_global_vars(monkeypa
 
 
 @pytest.mark.asyncio
-async def test_langflow_file_service_marks_openrag_docs_callback_as_sample_data(monkeypatch):
+async def test_langflow_file_service_marks_bomarag_docs_callback_as_sample_data(monkeypatch):
     token_service = LangflowIngestTokenService(secret="test-secret" * 4, ttl_seconds=60)
     captured = {}
 
@@ -272,7 +272,7 @@ async def test_langflow_file_service_marks_openrag_docs_callback_as_sample_data(
         add_provider_credentials_to_headers,
     )
     monkeypatch.setattr(
-        "config.settings.get_openrag_config",
+        "config.settings.get_bomarag_config",
         lambda: SimpleNamespace(
             knowledge=SimpleNamespace(embedding_model="text-embedding-3-small")
         ),
@@ -284,11 +284,11 @@ async def test_langflow_file_service_marks_openrag_docs_callback_as_sample_data(
         file_paths=["/tmp/source.pdf"],
         file_tuples=[("source.pdf", b"content", "application/pdf")],
         jwt_token="user-token",
-        connector_type="openrag_docs",
+        connector_type="bomarag_docs",
     )
 
     decoded_context, _ = token_service.validate_token(
-        captured["headers"]["X-Langflow-Global-Var-OPENRAG_INGEST_TOKEN"]
+        captured["headers"]["X-Langflow-Global-Var-BOMARAG_INGEST_TOKEN"]
     )
     assert decoded_context.index_name == "unit-documents"
     assert decoded_context.is_sample_data is True
@@ -298,7 +298,7 @@ async def test_langflow_file_service_marks_openrag_docs_callback_as_sample_data(
     ("flow_path", "component_id"),
     [
         ("flows/ingestion_flow.json", LangflowFileService.INGEST_OPENSEARCH_COMPONENT_ID),
-        ("flows/openrag_url_mcp.json", LangflowFileService.URL_INGEST_OPENSEARCH_COMPONENT_ID),
+        ("flows/bomarag_url_mcp.json", LangflowFileService.URL_INGEST_OPENSEARCH_COMPONENT_ID),
     ],
 )
 def test_ingest_flows_resolve_callback_config_from_global_vars(flow_path, component_id):
@@ -312,30 +312,30 @@ def test_ingest_flows_resolve_callback_config_from_global_vars(flow_path, compon
     )
     template = node["data"]["node"]["template"]
 
-    assert template["openrag_ingest_url"]["value"] == "OPENRAG_INGEST_URL"
-    assert template["openrag_ingest_token"]["value"] == "OPENRAG_INGEST_TOKEN"
-    assert template["openrag_ingest_run_id"]["value"] == "OPENRAG_INGEST_RUN_ID"
-    assert template["openrag_ingest_url"]["load_from_db"] is True
-    assert template["openrag_ingest_token"]["load_from_db"] is True
-    assert template["openrag_ingest_run_id"]["load_from_db"] is True
-    assert template["openrag_ingest_url"]["input_types"] == ["Text", "Message"]
-    assert template["openrag_ingest_token"]["input_types"] == ["Text", "Message"]
-    assert template["openrag_ingest_run_id"]["input_types"] == ["Text", "Message"]
-    assert template["openrag_ingest_token"]["_input_type"] == "SecretStrInput"
-    assert "OPENRAG_INGEST_URL" in template["code"]["value"]
-    assert "_openrag_ingest_global_placeholders" in template["code"]["value"]
-    assert 'url = self._openrag_callback_value("openrag_ingest_url")' in template["code"]["value"]
+    assert template["bomarag_ingest_url"]["value"] == "BOMARAG_INGEST_URL"
+    assert template["bomarag_ingest_token"]["value"] == "BOMARAG_INGEST_TOKEN"
+    assert template["bomarag_ingest_run_id"]["value"] == "BOMARAG_INGEST_RUN_ID"
+    assert template["bomarag_ingest_url"]["load_from_db"] is True
+    assert template["bomarag_ingest_token"]["load_from_db"] is True
+    assert template["bomarag_ingest_run_id"]["load_from_db"] is True
+    assert template["bomarag_ingest_url"]["input_types"] == ["Text", "Message"]
+    assert template["bomarag_ingest_token"]["input_types"] == ["Text", "Message"]
+    assert template["bomarag_ingest_run_id"]["input_types"] == ["Text", "Message"]
+    assert template["bomarag_ingest_token"]["_input_type"] == "SecretStrInput"
+    assert "BOMARAG_INGEST_URL" in template["code"]["value"]
+    assert "_bomarag_ingest_global_placeholders" in template["code"]["value"]
+    assert 'url = self._bomarag_callback_value("bomarag_ingest_url")' in template["code"]["value"]
     assert (
-        'token = self._openrag_callback_value("openrag_ingest_token")' in template["code"]["value"]
+        'token = self._bomarag_callback_value("bomarag_ingest_token")' in template["code"]["value"]
     )
     assert (
-        'ingest_run_id = self._openrag_callback_value("openrag_ingest_run_id")'
+        'ingest_run_id = self._bomarag_callback_value("bomarag_ingest_run_id")'
         in template["code"]["value"]
     )
-    assert 'url = (self.openrag_ingest_url or "").strip()' not in template["code"]["value"]
-    assert 'token = (self.openrag_ingest_token or "").strip()' not in template["code"]["value"]
+    assert 'url = (self.bomarag_ingest_url or "").strip()' not in template["code"]["value"]
+    assert 'token = (self.bomarag_ingest_token or "").strip()' not in template["code"]["value"]
     assert (
-        'ingest_run_id = (self.openrag_ingest_run_id or "").strip()'
+        'ingest_run_id = (self.bomarag_ingest_run_id or "").strip()'
         not in template["code"]["value"]
     )
     assert "value.lower() in" not in template["code"]["value"]
@@ -345,7 +345,7 @@ def test_ingest_flows_resolve_callback_config_from_global_vars(flow_path, compon
     ("flow_path", "component_id"),
     [
         ("flows/ingestion_flow.json", LangflowFileService.INGEST_OPENSEARCH_COMPONENT_ID),
-        ("flows/openrag_url_mcp.json", LangflowFileService.URL_INGEST_OPENSEARCH_COMPONENT_ID),
+        ("flows/bomarag_url_mcp.json", LangflowFileService.URL_INGEST_OPENSEARCH_COMPONENT_ID),
     ],
 )
 def test_ingest_flows_wire_callback_global_vars_into_opensearch(flow_path, component_id):
@@ -354,9 +354,9 @@ def test_ingest_flows_wire_callback_global_vars_into_opensearch(flow_path, compo
     component = nodes[component_id]
     template = component["data"]["node"]["template"]
     expected = {
-        "openrag_ingest_url": "OPENRAG_INGEST_URL",
-        "openrag_ingest_token": "OPENRAG_INGEST_TOKEN",
-        "openrag_ingest_run_id": "OPENRAG_INGEST_RUN_ID",
+        "bomarag_ingest_url": "BOMARAG_INGEST_URL",
+        "bomarag_ingest_token": "BOMARAG_INGEST_TOKEN",
+        "bomarag_ingest_run_id": "BOMARAG_INGEST_RUN_ID",
     }
 
     for field_name, variable_name in expected.items():
@@ -365,16 +365,16 @@ def test_ingest_flows_wire_callback_global_vars_into_opensearch(flow_path, compo
         assert input_template["load_from_db"] is True
         assert input_template["show"] is True
 
-    assert template["openrag_ingest_batch_size"]["value"] == 100
-    assert template["openrag_ingest_batch_size"].get("load_from_db") is None
-    assert template["openrag_ingest_batch_size"]["show"] is True
+    assert template["bomarag_ingest_batch_size"]["value"] == 100
+    assert template["bomarag_ingest_batch_size"].get("load_from_db") is None
+    assert template["bomarag_ingest_batch_size"]["show"] is True
 
 
 @pytest.mark.parametrize(
     "config_path",
     [
         "docker-compose.yml",
-        "kubernetes/helm/openrag/values.yaml",
+        "kubernetes/helm/bomarag/values.yaml",
         "kubernetes/operator/internal/controller/env.go",
     ],
 )
@@ -393,7 +393,7 @@ def test_langflow_callback_global_vars_are_allowlisted(config_path):
     "config_path",
     [
         "docker-compose.yml",
-        "kubernetes/helm/openrag/templates/langflow/langflow-dotenv.yaml",
+        "kubernetes/helm/bomarag/templates/langflow/langflow-dotenv.yaml",
         "kubernetes/operator/internal/controller/env.go",
     ],
 )

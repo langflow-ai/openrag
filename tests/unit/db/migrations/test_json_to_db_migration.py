@@ -25,7 +25,7 @@ from db.models import MigrationStatus, User as UserRow  # noqa: E402
 @pytest_asyncio.fixture
 async def session_in_temp_data():
     with tempfile.TemporaryDirectory() as data_dir:
-        os.environ["OPENRAG_DATA_PATH"] = data_dir
+        os.environ["BOMARAG_DATA_PATH"] = data_dir
         Path(data_dir, "connections.json").write_text(
             json.dumps(
                 {
@@ -54,7 +54,7 @@ async def session_in_temp_data():
         async with SessionLocal() as s:
             yield s
         await engine.dispose()
-        del os.environ["OPENRAG_DATA_PATH"]
+        del os.environ["BOMARAG_DATA_PATH"]
 
 
 @pytest.mark.asyncio

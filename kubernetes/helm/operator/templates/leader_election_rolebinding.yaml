@@ -2,17 +2,17 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: {{ include "openrag-operator.fullname" . }}-leader-election-rolebinding
+  name: {{ include "bomarag-operator.fullname" . }}-leader-election-rolebinding
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "openrag-operator.labels" . | nindent 4 }}
+    {{- include "bomarag-operator.labels" . | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: {{ include "openrag-operator.fullname" . }}-leader-election-role
+  name: {{ include "bomarag-operator.fullname" . }}-leader-election-role
 subjects:
 - kind: ServiceAccount
-  name: {{ include "openrag-operator.serviceAccountName" . }}
+  name: {{ include "bomarag-operator.serviceAccountName" . }}
   namespace: {{ .Release.Namespace }}
 {{- end }}
 

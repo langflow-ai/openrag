@@ -1,8 +1,8 @@
 /**
- * OpenRAG SDK knowledge filters client.
+ * BomaRAG SDK knowledge filters client.
  */
 
-import type { OpenRAGClient } from "./client";
+import type { BomaRAGClient } from "./client";
 import type {
   CreateKnowledgeFilterOptions,
   CreateKnowledgeFilterResponse,
@@ -14,7 +14,7 @@ import type {
 } from "./types";
 
 export class KnowledgeFiltersClient {
-  constructor(private client: OpenRAGClient) {}
+  constructor(private client: BomaRAGClient) {}
 
   /**
    * Create a new knowledge filter.

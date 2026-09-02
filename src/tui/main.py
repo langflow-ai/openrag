@@ -1,4 +1,4 @@
-"""Main TUI application for OpenRAG."""
+"""Main TUI application for BomaRAG."""
 
 import os
 import subprocess
@@ -26,10 +26,10 @@ except ImportError:
 logger = get_logger(__name__)
 
 
-class OpenRAGTUI(App):
-    """OpenRAG Terminal User Interface application."""
+class BomaRAGTUI(App):
+    """BomaRAG Terminal User Interface application."""
 
-    TITLE = "OpenRAG TUI"
+    TITLE = "BomaRAG TUI"
     SUB_TITLE = "Container Management & Configuration"
 
     CSS = """
@@ -464,8 +464,8 @@ def _copy_assets(
 def copy_sample_documents(*, force: bool = False) -> None:
     """Copy sample documents from package to host directory.
 
-    Uses the first path from OPENRAG_DOCUMENTS_PATHS env var.
-    Defaults to ~/.openrag/documents if not configured.
+    Uses the first path from BOMARAG_DOCUMENTS_PATHS env var.
+    Defaults to ~/.bomarag/documents if not configured.
     """
     from pathlib import Path
 
@@ -476,7 +476,7 @@ def copy_sample_documents(*, force: bool = False) -> None:
     env_manager.load_existing_env()
 
     # Parse the first path from the documents paths config
-    documents_path_str = env_manager.config.openrag_documents_paths
+    documents_path_str = env_manager.config.bomarag_documents_paths
     if documents_path_str:
         first_path = documents_path_str.split(",")[0].strip()
         # Expand $HOME and ~
@@ -484,12 +484,12 @@ def copy_sample_documents(*, force: bool = False) -> None:
         documents_dir = Path(first_path).expanduser()
     else:
         # Default fallback
-        documents_dir = Path.home() / ".openrag" / "documents"
+        documents_dir = Path.home() / ".bomarag" / "documents"
 
     documents_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        assets_files = files("tui._assets") / "openrag-documents"
+        assets_files = files("tui._assets") / "bomarag-documents"
         _copy_assets(assets_files, documents_dir, allowed_suffixes=(".pdf",), force=force)
     except Exception as e:
         logger.debug(f"Could not copy sample documents: {e}")
@@ -499,12 +499,12 @@ def copy_sample_documents(*, force: bool = False) -> None:
 def copy_sample_flows(*, force: bool = False) -> None:
     """Copy sample flows from package to host directory.
 
-    Flows are placed in ~/.openrag/flows/ which will be volume-mounted to containers.
+    Flows are placed in ~/.bomarag/flows/ which will be volume-mounted to containers.
     """
     from pathlib import Path
 
-    # Flows always go to ~/.openrag/flows/ - this will be volume-mounted
-    flows_dir = Path.home() / ".openrag" / "flows"
+    # Flows always go to ~/.bomarag/flows/ - this will be volume-mounted
+    flows_dir = Path.home() / ".bomarag" / "flows"
     flows_dir.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -555,7 +555,7 @@ def copy_compose_files(*, force: bool = False) -> None:
 
 
 def migrate_legacy_data_directories():
-    """Migrate data from CWD-based directories to ~/.openrag/.
+    """Migrate data from CWD-based directories to ~/.bomarag/.
 
     This is a one-time migration for users upgrading from the old layout.
     Migrates: documents, flows, keys, config, langflow-data
@@ -567,7 +567,7 @@ def migrate_legacy_data_directories():
     import sys
 
     cwd = Path.cwd()
-    target_base = Path.home() / ".openrag"
+    target_base = Path.home() / ".bomarag"
     marker = target_base / ".migrated"
 
     # Check if migration already completed
@@ -576,7 +576,7 @@ def migrate_legacy_data_directories():
 
     # Define migration mappings: (source_path, target_path, description)
     migrations = [
-        (cwd / "openrag-documents", target_base / "documents", "documents"),
+        (cwd / "bomarag-documents", target_base / "documents", "documents"),
         (cwd / "flows", target_base / "flows", "flows"),
         (cwd / "keys", target_base / "keys", "keys"),
         (cwd / "config", target_base / "config", "config"),
@@ -600,13 +600,13 @@ def migrate_legacy_data_directories():
             env_manager.load_existing_env()
             # Explicitly set centralized paths (overrides any old CWD-relative paths)
             home = str(Path.home())
-            env_manager.config.openrag_documents_paths = f"{home}/.openrag/documents"
-            env_manager.config.openrag_documents_path = f"{home}/.openrag/documents"
-            env_manager.config.openrag_keys_path = f"{home}/.openrag/keys"
-            env_manager.config.openrag_flows_path = f"{home}/.openrag/flows"
-            env_manager.config.openrag_config_path = f"{home}/.openrag/config"
-            env_manager.config.openrag_data_path = f"{home}/.openrag/data"
-            env_manager.config.langflow_data_path = f"{home}/.openrag/data/langflow-data"
+            env_manager.config.bomarag_documents_paths = f"{home}/.bomarag/documents"
+            env_manager.config.bomarag_documents_path = f"{home}/.bomarag/documents"
+            env_manager.config.bomarag_keys_path = f"{home}/.bomarag/keys"
+            env_manager.config.bomarag_flows_path = f"{home}/.bomarag/flows"
+            env_manager.config.bomarag_config_path = f"{home}/.bomarag/config"
+            env_manager.config.bomarag_data_path = f"{home}/.bomarag/data"
+            env_manager.config.langflow_data_path = f"{home}/.bomarag/data/langflow-data"
             env_manager.save_env_file()
             logger.info("Updated .env file with centralized paths")
         except Exception as e:
@@ -615,9 +615,9 @@ def migrate_legacy_data_directories():
 
     # Prompt user for confirmation
     print("\n" + "=" * 60)
-    print("  OpenRAG Data Migration Required")
+    print("  BomaRAG Data Migration Required")
     print("=" * 60)
-    print("\nStarting with this version, OpenRAG stores data in:")
+    print("\nStarting with this version, BomaRAG stores data in:")
     print(f"  {target_base}")
     print("\nThe following will be copied from your current directory:")
     for source, target, desc in sources_to_migrate:
@@ -680,13 +680,13 @@ def migrate_legacy_data_directories():
         env_manager.load_existing_env()
         # Explicitly set centralized paths (overrides any old CWD-relative paths)
         home = str(Path.home())
-        env_manager.config.openrag_documents_paths = f"{home}/.openrag/documents"
-        env_manager.config.openrag_documents_path = f"{home}/.openrag/documents"
-        env_manager.config.openrag_keys_path = f"{home}/.openrag/keys"
-        env_manager.config.openrag_flows_path = f"{home}/.openrag/flows"
-        env_manager.config.openrag_config_path = f"{home}/.openrag/config"
-        env_manager.config.openrag_data_path = f"{home}/.openrag/data"
-        env_manager.config.langflow_data_path = f"{home}/.openrag/data/langflow-data"
+        env_manager.config.bomarag_documents_paths = f"{home}/.bomarag/documents"
+        env_manager.config.bomarag_documents_path = f"{home}/.bomarag/documents"
+        env_manager.config.bomarag_keys_path = f"{home}/.bomarag/keys"
+        env_manager.config.bomarag_flows_path = f"{home}/.bomarag/flows"
+        env_manager.config.bomarag_config_path = f"{home}/.bomarag/config"
+        env_manager.config.bomarag_data_path = f"{home}/.bomarag/data"
+        env_manager.config.langflow_data_path = f"{home}/.bomarag/data/langflow-data"
         env_manager.save_env_file()
         print("  Updated .env with centralized paths")
         logger.info("Updated .env file with centralized paths")
@@ -800,17 +800,17 @@ def generate_jwt_keys(keys_dir: Path):
 
 
 def setup_host_directories():
-    """Initialize OpenRAG directory structure on the host.
+    """Initialize BomaRAG directory structure on the host.
 
     Creates directories that will be volume-mounted into containers:
-    - ~/.openrag/documents/ (for document ingestion)
-    - ~/.openrag/flows/ (for Langflow flows)
-    - ~/.openrag/keys/ (for JWT keys)
-    - ~/.openrag/config/ (for configuration)
-    - ~/.openrag/data/ (for backend data: conversations, OAuth tokens, etc.)
+    - ~/.bomarag/documents/ (for document ingestion)
+    - ~/.bomarag/flows/ (for Langflow flows)
+    - ~/.bomarag/keys/ (for JWT keys)
+    - ~/.bomarag/config/ (for configuration)
+    - ~/.bomarag/data/ (for backend data: conversations, OAuth tokens, etc.)
     - LANGFLOW_DATA_PATH (for Langflow database and state)
     """
-    base_dir = Path.home() / ".openrag"
+    base_dir = Path.home() / ".bomarag"
     directories = [
         base_dir / "documents",
         base_dir / "flows",
@@ -873,7 +873,7 @@ def _resolve_langflow_data_path(base_dir: Path) -> Path:
     """Return the absolute path for the Langflow data directory.
 
     Reads LANGFLOW_DATA_PATH from the TUI .env file when available; falls back
-    to the default location (~/.openrag/data/langflow-data).
+    to the default location (~/.bomarag/data/langflow-data).
 
     Relative paths are not valid in the TUI context because the process working
     directory is unpredictable.  If a relative path is found the default is used
@@ -912,7 +912,7 @@ def _run_tui_app():
     """Run the existing Textual TUI application."""
     app = None
     try:
-        # Migrate legacy data directories from CWD to ~/.openrag/
+        # Migrate legacy data directories from CWD to ~/.bomarag/
         migrate_legacy_data_directories()
 
         # Initialize host directory structure
@@ -923,12 +923,12 @@ def _run_tui_app():
         copy_sample_flows(force=True)
         copy_compose_files(force=True)
 
-        app = OpenRAGTUI()
+        app = BomaRAGTUI()
         app.run()
     except KeyboardInterrupt:
-        logger.info("OpenRAG TUI interrupted by user")
+        logger.info("BomaRAG TUI interrupted by user")
     except Exception as e:
-        logger.error("Error running OpenRAG TUI", error=str(e))
+        logger.error("Error running BomaRAG TUI", error=str(e))
     finally:
         # Ensure cleanup happens even on exceptions
         if app and hasattr(app, "docling_manager"):
@@ -937,12 +937,12 @@ def _run_tui_app():
 
 
 def run_tui():
-    """Run the OpenRAG application (CLI walkthrough by default, TUI with --tui)."""
+    """Run the BomaRAG application (CLI walkthrough by default, TUI with --tui)."""
     import argparse
 
     parser = argparse.ArgumentParser(
-        prog="openrag",
-        description="OpenRAG — AI-powered document management",
+        prog="bomarag",
+        description="BomaRAG — AI-powered document management",
     )
     parser.add_argument(
         "--tui",

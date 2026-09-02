@@ -1,4 +1,4 @@
-"""LLM gateway: route OpenAI-shaped requests through LiteLLM using OpenRAG config."""
+"""LLM gateway: route OpenAI-shaped requests through LiteLLM using BomaRAG config."""
 
 import json
 from types import SimpleNamespace
@@ -904,7 +904,7 @@ async def test_chat_completions_passes_through_a_rate_limit_status(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_chat_completions_masks_an_upstream_4xx_as_a_gateway_failure(monkeypatch):
-    """An upstream 401 must not read to the client as an OpenRAG auth failure."""
+    """An upstream 401 must not read to the client as an BomaRAG auth failure."""
 
     async def boom(**kwargs):
         raise _FakeLiteLLMError("model does not exist", status_code=404)

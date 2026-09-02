@@ -242,7 +242,7 @@ export default function ConnectorCard({
                   ? "underline-offset-2"
                   : "text-accent-pink-foreground"
               }
-              href="https://docs.openr.ag/knowledge#oauth-ingestion"
+              href="https://docs.bomarag.com/knowledge#oauth-ingestion"
               target="_blank"
               rel="noopener noreferrer"
             >

@@ -9,7 +9,7 @@ from agentd.tool_decorator import tool
 
 from auth_context import get_auth_context
 from config.embedding_constants import get_declared_default_embedding_model
-from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
+from config.settings import clients, get_bomarag_config, get_embedding_model, get_index_name
 from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 
@@ -242,7 +242,7 @@ class SearchService:
     def _configure_provider_env(self):
         """Set provider env vars once at init time."""
         try:
-            config = get_openrag_config()
+            config = get_bomarag_config()
             if config.providers.ollama.endpoint:
                 fixed = transform_localhost_url(config.providers.ollama.endpoint)
                 # Use setdefault to avoid clobbering existing env vars if they were
@@ -274,7 +274,7 @@ class SearchService:
             embedding_model
             or get_embedding_model()
             or get_declared_default_embedding_model(
-                get_openrag_config().knowledge.embedding_provider
+                get_bomarag_config().knowledge.embedding_provider
             )
         )
         embedding_field_name = get_embedding_field_name(embedding_model)

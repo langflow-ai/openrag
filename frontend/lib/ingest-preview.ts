@@ -5,7 +5,7 @@ import { IBM_THEME_DEV } from "@/lib/brand";
 /**
  * Eligible run modes for showing ingest-preview UI.
  * SaaS omitted until product approval — add "saas" here to restore.
- * The backend still requires `OPENRAG_INGEST_PREVIEW_ENABLED=true` before
+ * The backend still requires `BOMARAG_INGEST_PREVIEW_ENABLED=true` before
  * `preview_mode` is honored — uploads then report `preview_mode` in the 202 body.
  */
 const INGEST_PREVIEW_RUN_MODES = new Set(["oss"]);
@@ -16,7 +16,7 @@ const INGEST_PREVIEW_RUN_MODES = new Set(["oss"]);
  *
  * Local IBM theme (`NEXT_PUBLIC_IBM_THEME_DEV`): the header OSS/IBM switch does
  * not change backend `runMode`, so pass `isCloudBrand` to hide preview in the
- * IBM/SaaS brand view the same way real `OPENRAG_RUN_MODE=saas` would.
+ * IBM/SaaS brand view the same way real `BOMARAG_RUN_MODE=saas` would.
  */
 export function isIngestPreviewEnabled(
   runMode: string | null | undefined,

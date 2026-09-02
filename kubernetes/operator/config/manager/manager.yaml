@@ -5,7 +5,7 @@ metadata:
   namespace: system
   labels:
     control-plane: controller-manager
-    app.kubernetes.io/name: openrag-operator
+    app.kubernetes.io/name: bomarag-operator
     app.kubernetes.io/managed-by: kustomize
 spec:
   selector:

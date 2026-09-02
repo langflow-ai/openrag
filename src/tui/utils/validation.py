@@ -147,7 +147,7 @@ def validate_documents_paths(paths_str: str) -> tuple[bool, str, list[str]]:
 
             # Check if we can write to it
             try:
-                test_file = path_obj / ".openrag_test"
+                test_file = path_obj / ".bomarag_test"
                 test_file.touch()
                 test_file.unlink()
             except (OSError, PermissionError):

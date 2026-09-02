@@ -28,7 +28,7 @@ logger = get_logger(__name__)
 async def _effective_permissions(rbac, db_id: str, session: AsyncSession) -> set[str]:
     """Return the permissions the UI should treat the user as having.
 
-    When ``OPENRAG_RBAC_ENFORCE=false``, the backend lets every
+    When ``BOMARAG_RBAC_ENFORCE=false``, the backend lets every
     authenticated user through every gate, so the frontend should also
     show every action — otherwise users see disabled buttons that
     actually work. We return the full permission catalog from the DB.
@@ -53,7 +53,7 @@ class MeResponse(BaseModel):
     provider: str
     roles: list[str]
     permissions: list[str]
-    # OPENRAG_RBAC_ENFORCE — surfaced so the UI can hide RBAC-only
+    # BOMARAG_RBAC_ENFORCE — surfaced so the UI can hide RBAC-only
     # sections (Users & Roles, Audit log, role pills) when the
     # operator has the kill switch off.
     rbac_enforced: bool

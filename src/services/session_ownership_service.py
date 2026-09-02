@@ -2,7 +2,7 @@
 
 Tracks which user owns which chat session. Mode-aware:
 
-| OPENRAG_STORAGE_MODE | Reads                          | Writes                |
+| BOMARAG_STORAGE_MODE | Reads                          | Writes                |
 |----------------------|--------------------------------|-----------------------|
 | db (default)         | DB only — JSON ignored         | DB only — no JSON     |
 | hybrid               | DB → JSON fallback             | DB + JSON dual-write  |

@@ -213,7 +213,7 @@ export function groupedCatalogOptions(
 }
 
 /**
- * Onboarding lists every OpenRAG-credentialed provider, even before the
+ * Onboarding lists every BomaRAG-credentialed provider, even before the
  * operator has saved a key — they are here to configure one.
  */
 export function onboardingCatalogConfigured(

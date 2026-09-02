@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="./docs/static/img/openrag-logo-dog.svg" alt="" width="120"/>
+<img src="./docs/static/img/bomarag-logo.svg" alt="" width="120"/>
 
-# OpenRAG
+# BomaRAG
 
 <h3>
   <em>Intelligent Agent-powered document search</em>
@@ -14,29 +14,30 @@
 [![OpenSearch](https://img.shields.io/badge/OpenSearch-005EB8?style=for-the-badge&logo=opensearch&logoColor=white)](https://github.com/opensearch-project/OpenSearch)
 [![Docling](https://img.shields.io/badge/Docling-000000?style=for-the-badge)](https://github.com/docling-project/docling)
 
-[![YouTube Channel](https://img.shields.io/youtube/channel/subscribers/UCn2bInQrjdDYKEEmbpwblLQ?label=Subscribe&style=social)](https://www.youtube.com/@OpenRAG/)
-[![GitHub stars](https://img.shields.io/github/stars/langflow-ai/openrag?style=social)](https://github.com/langflow-ai/openrag/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/langflow-ai/openrag?style=social)](https://github.com/langflow-ai/openrag/network/members)
+[![Documentation](https://img.shields.io/badge/Documentation-773eff?style=for-the-badge)](https://docs.bomarag.com)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue?style=for-the-badge)](./LICENSE)
 
-[![Documentation](https://img.shields.io/badge/Documentation-773eff)](https://docs.openr.ag) [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/langflow-ai/openrag)
+<sub>A <strong>Bomalogic Automation</strong> product.</sub>
 
 </div>
 
 ---
 
-OpenRAG is a comprehensive Retrieval-Augmented Generation platform that enables intelligent document search and AI-powered conversations.
+**BomaRAG** is Bomalogic Automation's Retrieval-Augmented Generation platform: intelligent document search and AI-powered conversations over your own knowledge base, deployable as a private stack or a hosted multi-tenant service.
 
 Users can upload, process, and query documents through a chat interface backed by large language models and semantic search capabilities. The system utilizes Langflow for document ingestion, retrieval workflows, and intelligent nudges, providing a seamless RAG experience.
 
-Check out the [documentation](https://docs.openr.ag/) or get started with the [quickstart](https://docs.openr.ag/quickstart).
+Check out the [documentation](https://docs.bomarag.com/) or get started with the [quickstart](https://docs.bomarag.com/quickstart).
 
 Built with [FastAPI](https://fastapi.tiangolo.com/) and [Next.js](https://github.com/vercel/next.js). 
 Powered by [OpenSearch](https://github.com/opensearch-project/OpenSearch), [Langflow](https://github.com/langflow-ai/langflow), and [Docling](https://github.com/docling-project/docling).
 
+BomaRAG is a fork of the Apache-2.0 licensed [OpenRAG](https://github.com/langflow-ai/openrag) project. See [NOTICE](./NOTICE) for attribution and a summary of changes.
+
 ---
 
 <div align="center">
-  <img src="./docs/static/img/openrag_readme_downsized.gif" alt="OpenRAG Demo" width="100%"/>
+  <img src="./docs/static/img/bomarag_readme_downsized.gif" alt="BomaRAG Demo" width="100%"/>
 </div>
 
 ## ✨ Highlight Features
@@ -48,39 +49,39 @@ Powered by [OpenSearch](https://github.com/opensearch-project/OpenSearch), [Lang
 - **Modular enterprise add-ons** - Extend functionality when you need it
 - **Enterprise search at any scale** - Powered by OpenSearch for production-grade performance
 
-## 🔄 How OpenRAG Works
+## 🔄 How BomaRAG Works
 
-OpenRAG follows a streamlined workflow to transform your documents into intelligent, searchable knowledge:
+BomaRAG follows a streamlined workflow to transform your documents into intelligent, searchable knowledge:
 
 <div align="center">
-  <img src="./docs/static/img/workflow-diagram.svg" alt="OpenRAG Workflow Diagram" width="800"/>
+  <img src="./docs/static/img/workflow-diagram.svg" alt="BomaRAG Workflow Diagram" width="800"/>
 </div>
 
-## 🚀 Install OpenRAG
+## 🚀 Install BomaRAG
 
-To get started with OpenRAG, see the installation guides in the OpenRAG documentation:
+To get started with BomaRAG, see the installation guides in the BomaRAG documentation:
 
-* [Quickstart](https://docs.openr.ag/quickstart)
-* [Install the OpenRAG Python package](https://docs.openr.ag/install-options)
-* [Deploy self-managed services with Docker or Podman](https://docs.openr.ag/docker)
+* [Quickstart](https://docs.bomarag.com/quickstart)
+* [Install the BomaRAG Python package](https://docs.bomarag.com/install-options)
+* [Deploy self-managed services with Docker or Podman](https://docs.bomarag.com/docker)
 
 ## ✨ Quick Start Workflow
 
 <div align="center">
 
-<img src="./docs/static/img/uv_run_openrag.png" alt="Use uv run openrag to start" width="300"/>
+<img src="./docs/static/img/uv_run_bomarag.png" alt="Use uv run bomarag to start" width="300"/>
 
-**1. Launch OpenRAG**
+**1. Launch BomaRAG**
 
 ↓
 
-<img src="./docs/static/img/add_knowledge_openrag.png" alt="Add files or folders as knowledge" width="300"/>
+<img src="./docs/static/img/add_knowledge_bomarag.png" alt="Add files or folders as knowledge" width="300"/>
 
 **2. Add Knowledge**
 
 ↓
 
-<img src="./docs/static/img/chat_openrag.png" alt="Start Chatting with your knowledge" width="700"/>
+<img src="./docs/static/img/chat_bomarag.png" alt="Start Chatting with your knowledge" width="700"/>
 
 **3. Start Chatting**
 
@@ -88,21 +89,21 @@ To get started with OpenRAG, see the installation guides in the OpenRAG document
 
 ## 📦 SDKs
 
-Integrate OpenRAG into your applications with our official SDKs:
+Integrate BomaRAG into your applications with our official SDKs:
 
 ### Python SDK
 ```bash
-pip install openrag-sdk
+pip install bomarag-sdk
 ```
 
 **Quick Example:**
 ```python
 import asyncio
-from openrag_sdk import OpenRAGClient
+from bomarag_sdk import BomaRAGClient
 
 
 async def main():
-    async with OpenRAGClient() as client:
+    async with BomaRAGClient() as client:
         response = await client.chat.create(message="What is RAG?")
         print(response.response)
 
@@ -111,35 +112,35 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-📖 [Full Python SDK Documentation](https://pypi.org/project/openrag-sdk/)
+📖 [Full Python SDK Documentation](https://pypi.org/project/bomarag-sdk/)
 
 ### TypeScript/JavaScript SDK
 ```bash
-npm install openrag-sdk
+npm install bomarag-sdk
 ```
 
 **Quick Example:**
 ```typescript
-import { OpenRAGClient } from "openrag-sdk";
+import { BomaRAGClient } from "bomarag-sdk";
 
-const client = new OpenRAGClient();
+const client = new BomaRAGClient();
 const response = await client.chat.create({ message: "What is RAG?" });
 console.log(response.response);
 ```
 
-📖 [Full TypeScript/JavaScript SDK Documentation](https://www.npmjs.com/package/openrag-sdk)
+📖 [Full TypeScript/JavaScript SDK Documentation](https://www.npmjs.com/package/bomarag-sdk)
 
 ## 🔌 Model Context Protocol (MCP)
 
-OpenRAG ships a built-in MCP server over **streamable HTTP**, mounted on your instance at `/mcp`. Connect AI assistants like Cursor, Claude Desktop, and IBM Bob to your OpenRAG knowledge base — no subprocess and no separate install. Authenticate with the same OpenRAG API key you use for the REST API, passed via the `X-API-Key` header.
+BomaRAG ships a built-in MCP server over **streamable HTTP**, mounted on your instance at `/mcp`. Connect AI assistants like Cursor, Claude Desktop, and IBM Bob to your BomaRAG knowledge base — no subprocess and no separate install. Authenticate with the same BomaRAG API key you use for the REST API, passed via the `X-API-Key` header.
 
-> **Important:** The standalone `openrag-mcp` PyPI package is deprecated. Connect your MCP client directly to the `/mcp` endpoint instead.
+> **Important:** The standalone `bomarag-mcp` PyPI package is deprecated. Connect your MCP client directly to the `/mcp` endpoint instead.
 
 **Quick Example (Cursor/Claude Desktop config):**
 ```json
 {
   "mcpServers": {
-    "openrag": {
+    "bomarag": {
       "url": "http://localhost:3000/mcp",
       "headers": {
         "X-API-Key": "orag_your_api_key_here"
@@ -151,14 +152,14 @@ OpenRAG ships a built-in MCP server over **streamable HTTP**, mounted on your in
 
 The MCP server provides tools for RAG-enhanced chat, semantic search, document ingestion, knowledge filters, and settings management.
 
-📖 [Full MCP Documentation](https://github.com/langflow-ai/openrag/tree/main/sdks/mcp)
+📖 [Full MCP Documentation](https://github.com/ABISHAIMWANJA/bomarag/tree/main/sdks/mcp)
 
 ## 🛠️ Development
 
-For developers who want to [contribute to OpenRAG](https://docs.openr.ag/support/contribute) or set up a development environment, see [CONTRIBUTING.md](CONTRIBUTING.md).
+For developers who want to [contribute to BomaRAG](https://docs.bomarag.com/support/contribute) or set up a development environment, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## 🛟 Troubleshooting
 
-For assistance with OpenRAG, see [Troubleshoot OpenRAG](https://docs.openr.ag/support/troubleshoot) and visit the [Discussions page](https://github.com/langflow-ai/openrag/discussions).
+For assistance with BomaRAG, see [Troubleshoot BomaRAG](https://docs.bomarag.com/support/troubleshoot) and visit the [Discussions page](https://github.com/ABISHAIMWANJA/bomarag/discussions).
 
-To report a bug or submit a feature request, visit the [Issues page](https://github.com/langflow-ai/openrag/issues).
+To report a bug or submit a feature request, visit the [Issues page](https://github.com/ABISHAIMWANJA/bomarag/issues).

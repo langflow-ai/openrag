@@ -15,7 +15,7 @@ test("can configure OpenAI provider", async ({ page }) => {
   });
 
   await expect(
-    page.getByTestId("conversation-button-What is OpenRAG?").first(),
+    page.getByTestId("conversation-button-What is BomaRAG?").first(),
   ).toBeVisible();
 
   await expect(page.getByTestId("selected-knowledge-filter")).toContainText(
@@ -28,7 +28,7 @@ test("can configure OpenAI provider", async ({ page }) => {
 
   await page.getByTestId("send-button").click();
 
-  const verificationAnswer = page.getByText("OPENRAG-GENERIC-ASSET-001");
+  const verificationAnswer = page.getByText("BOMARAG-GENERIC-ASSET-001");
   await expect(page.getByText("Thinking").or(verificationAnswer)).toBeVisible({
     timeout: 60000,
   });

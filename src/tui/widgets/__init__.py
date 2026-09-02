@@ -1,4 +1,4 @@
-"""Widgets for OpenRAG TUI."""
+"""Widgets for BomaRAG TUI."""
 
 from .flow_backup_warning_modal import FlowBackupWarningModal
 

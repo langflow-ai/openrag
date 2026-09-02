@@ -37,7 +37,7 @@ const ibmPlexSans = IBM_Plex_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "OpenRAG",
+  title: "BomaRAG",
   description: "Open source RAG (Retrieval Augmented Generation) system",
 };
 export default function RootLayout({

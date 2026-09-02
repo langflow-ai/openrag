@@ -1,7 +1,7 @@
 {
-  "name": "openrag-sdk",
+  "name": "bomarag-sdk",
   "version": "0.4.0-dev0",
-  "description": "Official TypeScript/JavaScript SDK for OpenRAG API",
+  "description": "Official TypeScript/JavaScript SDK for BomaRAG API",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
@@ -27,7 +27,7 @@
     "prepublishOnly": "npm run build"
   },
   "keywords": [
-    "openrag",
+    "bomarag",
     "rag",
     "retrieval",
     "ai",
@@ -36,15 +36,15 @@
     "typescript",
     "javascript"
   ],
-  "author": "OpenRAG Team",
+  "author": "BomaRAG Team",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/langflow-ai/openrag"
+    "url": "https://github.com/ABISHAIMWANJA/bomarag"
   },
-  "homepage": "https://docs.openr.ag/sdk/typescript",
+  "homepage": "https://docs.bomarag.com/sdk/typescript",
   "bugs": {
-    "url": "https://github.com/langflow-ai/openrag/issues"
+    "url": "https://github.com/ABISHAIMWANJA/bomarag/issues"
   },
   "devDependencies": {
     "@types/node": "^26.0.1",

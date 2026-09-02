@@ -11,7 +11,7 @@ function toPageName(pathname: string): string {
     .replace(/^\//, "")
     .replace(/\//g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
-  return `OpenRAG - ${label} Page Viewed`;
+  return `BomaRAG - ${label} Page Viewed`;
 }
 
 export function Analytics() {

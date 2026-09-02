@@ -1,8 +1,8 @@
 """Unit tests for startup replica reconciliation.
 
-Covers ``ensure_openrag_index_replicas`` (and the underlying
+Covers ``ensure_bomarag_index_replicas`` (and the underlying
 ``_ensure_index_replicas`` helper) in ``utils.opensearch_init``: it should align
-each existing OpenRAG index's ``number_of_replicas`` with the configured
+each existing BomaRAG index's ``number_of_replicas`` with the configured
 ``OPENSEARCH_NUMBER_OF_REPLICAS`` and skip indices that do not exist.
 """
 
@@ -12,13 +12,13 @@ from unittest.mock import AsyncMock
 import pytest
 
 import utils.opensearch_init as osi
-from utils.opensearch_init import ensure_openrag_index_replicas
+from utils.opensearch_init import ensure_bomarag_index_replicas
 
 EXPECTED_INDEX_NAMES = [
     "documents",
     "knowledge_filters",
     "api_keys",
-    "openrag_dls_principals",
+    "bomarag_dls_principals",
 ]
 
 
@@ -44,14 +44,14 @@ def _stable_index_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(osi, "IBM_AUTH_ENABLED", False)
     monkeypatch.setattr(osi, "PLATFORM_AUTH_DEV_MODE", False)
     monkeypatch.setattr(osi, "API_KEYS_INDEX_NAME", "api_keys")
-    monkeypatch.setattr(osi, "DLS_PRINCIPAL_INDEX_NAME", "openrag_dls_principals")
+    monkeypatch.setattr(osi, "DLS_PRINCIPAL_INDEX_NAME", "bomarag_dls_principals")
 
 
 @pytest.mark.asyncio
 async def test_corrects_replicas_for_all_known_indices() -> None:
     client = _make_os_client(exists=True, current_replicas=0)
 
-    await ensure_openrag_index_replicas(client)
+    await ensure_bomarag_index_replicas(client)
 
     assert client.indices.put_settings.await_count == len(EXPECTED_INDEX_NAMES)
     corrected = {call.kwargs["index"] for call in client.indices.put_settings.await_args_list}
@@ -64,7 +64,7 @@ async def test_corrects_replicas_for_all_known_indices() -> None:
 async def test_noop_when_replicas_already_match() -> None:
     client = _make_os_client(exists=True, current_replicas=2)
 
-    await ensure_openrag_index_replicas(client)
+    await ensure_bomarag_index_replicas(client)
 
     client.indices.put_settings.assert_not_awaited()
 
@@ -73,7 +73,7 @@ async def test_noop_when_replicas_already_match() -> None:
 async def test_skips_missing_indices() -> None:
     client = _make_os_client(exists=False, current_replicas=0)
 
-    await ensure_openrag_index_replicas(client)
+    await ensure_bomarag_index_replicas(client)
 
     client.indices.get_settings.assert_not_awaited()
     client.indices.put_settings.assert_not_awaited()

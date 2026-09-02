@@ -1,5 +1,5 @@
 """FastAPI endpoint handlers for /settings, /onboarding, /onboarding/state,
-/onboarding/rollback, /settings/docling-preset, and /openrag-docs/refresh.
+/onboarding/rollback, /settings/docling-preset, and /bomarag-docs/refresh.
 
 Lifted verbatim from the original `src/api/settings.py`. Models live in
 `api.settings.models`; provider/filter helpers in `api.settings.helpers`;
@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse
 from api.provider_validation import sanitize_provider_error_content, validate_provider_setup
 from api.settings.helpers import (
     _affected_embedding_models,
-    _create_openrag_docs_filter,
+    _create_bomarag_docs_filter,
     _default_embedding_model,
     _default_llm_model,
     _embedding_conflict_response,
@@ -49,7 +49,7 @@ from api.settings.models import (
     OnboardingStateResponse,
     OpenAIProviderConfig,
     ProvidersConfig,
-    RefreshOpenRAGDocsResponse,
+    RefreshBomaRAGDocsResponse,
     RollbackBody,
     RollbackResponse,
     SettingsResponse,
@@ -63,6 +63,10 @@ from config.config_manager import (
     is_permitted_index_name,
 )
 from config.settings import (
+    BOMARAG_INGEST_VIA_CHAT,
+    BOMARAG_SHOW_PROVIDER_INGEST_SETTINGS,
+    BOMARAG_SHOW_SHARED_UPLOAD_TOGGLE,
+    BOMARAG_SHOW_VLM_SETTINGS,
     DEFAULT_DOCS_URL,
     ENVIRONMENT,
     HF_HOME,
@@ -73,14 +77,10 @@ from config.settings import (
     LANGFLOW_PUBLIC_URL,
     LANGFLOW_URL,
     LOCALHOST_URL,
-    OPENRAG_INGEST_VIA_CHAT,
-    OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS,
-    OPENRAG_SHOW_SHARED_UPLOAD_TOGGLE,
-    OPENRAG_SHOW_VLM_SETTINGS,
     SEGMENT_WRITE_KEY,
     clients,
     config_manager,
-    get_openrag_config,
+    get_bomarag_config,
     is_workspace_oauth_overrides_enabled,
 )
 from dependencies import (
@@ -104,7 +104,7 @@ from utils import provider_health_cache
 from utils.langflow_utils import LangflowNotReadyError, wait_for_langflow
 from utils.logging_config import get_logger, log_bootstrap_env
 from utils.telemetry import Category, MessageId, TelemetryClient
-from utils.version_utils import OPENRAG_VERSION
+from utils.version_utils import BOMARAG_VERSION
 
 logger = get_logger(__name__)
 
@@ -120,7 +120,7 @@ def _provider_key(provider: str | None) -> str:
     return (provider or "").strip().lower()
 
 
-def _custom_providers_for_settings(openrag_config) -> dict[str, GenericProviderConfig]:
+def _custom_providers_for_settings(bomarag_config) -> dict[str, GenericProviderConfig]:
     """Public provider payloads: never drop a legacy secret when custom slots exist."""
 
     def payload(
@@ -149,36 +149,36 @@ def _custom_providers_for_settings(openrag_config) -> dict[str, GenericProviderC
     providers = {
         "openai": payload(
             "openai",
-            configured=openrag_config.providers.openai.configured,
-            secret_fields=["api_key"] if openrag_config.providers.openai.api_key else [],
+            configured=bomarag_config.providers.openai.configured,
+            secret_fields=["api_key"] if bomarag_config.providers.openai.api_key else [],
         ),
         "anthropic": payload(
             "anthropic",
-            configured=openrag_config.providers.anthropic.configured,
-            secret_fields=["api_key"] if openrag_config.providers.anthropic.api_key else [],
+            configured=bomarag_config.providers.anthropic.configured,
+            secret_fields=["api_key"] if bomarag_config.providers.anthropic.api_key else [],
         ),
         "watsonx": payload(
             "watsonx",
-            configured=openrag_config.providers.watsonx.configured,
+            configured=bomarag_config.providers.watsonx.configured,
             credential_values={
                 key: value
                 for key, value in {
-                    "api_base": openrag_config.providers.watsonx.endpoint,
-                    "project_id": openrag_config.providers.watsonx.project_id,
+                    "api_base": bomarag_config.providers.watsonx.endpoint,
+                    "project_id": bomarag_config.providers.watsonx.project_id,
                 }.items()
                 if value
             },
-            secret_fields=["api_key"] if openrag_config.providers.watsonx.api_key else [],
+            secret_fields=["api_key"] if bomarag_config.providers.watsonx.api_key else [],
         ),
         "ollama": payload(
             "ollama",
-            configured=openrag_config.providers.ollama.configured,
-            credential_values={"api_base": openrag_config.providers.ollama.endpoint}
-            if openrag_config.providers.ollama.endpoint
+            configured=bomarag_config.providers.ollama.configured,
+            credential_values={"api_base": bomarag_config.providers.ollama.endpoint}
+            if bomarag_config.providers.ollama.endpoint
             else {},
         ),
     }
-    for provider, stored in openrag_config.providers.custom.items():
+    for provider, stored in bomarag_config.providers.custom.items():
         previous = providers.get(provider)
         providers[provider] = payload(
             provider,
@@ -226,7 +226,7 @@ async def get_settings(
 ) -> SettingsResponse:
     """Get application settings"""
     try:
-        openrag_config = get_openrag_config()
+        bomarag_config = get_bomarag_config()
 
         # Provider configuration is admin-only. Non-admins still get the rest of
         # settings (the UI needs them) but the providers section is redacted.
@@ -235,8 +235,8 @@ async def get_settings(
             uid = user.db_user_id or user.user_id
             show_providers = await rbac.has_permission(uid, "providers:read")
 
-        knowledge_config = openrag_config.knowledge
-        agent_config = openrag_config.agent
+        knowledge_config = bomarag_config.knowledge
+        agent_config = bomarag_config.agent
 
         # Only expose edit URLs when a public URL is configured
         langflow_edit_url = None
@@ -251,7 +251,7 @@ async def get_settings(
 
         ingestion_defaults_obj = None
         # Fetch ingestion flow configuration to get actual component defaults
-        if LANGFLOW_INGEST_FLOW_ID and openrag_config.edited:
+        if LANGFLOW_INGEST_FLOW_ID and bomarag_config.edited:
             try:
                 response = await clients.langflow_request(
                     "GET", f"/api/v1/flows/{LANGFLOW_INGEST_FLOW_ID}"
@@ -301,38 +301,38 @@ async def get_settings(
             flow_id=LANGFLOW_CHAT_FLOW_ID,
             ingest_flow_id=LANGFLOW_INGEST_FLOW_ID,
             langflow_public_url=LANGFLOW_PUBLIC_URL,
-            edited=openrag_config.edited,
+            edited=bomarag_config.edited,
             onboarding=OnboardingStateConfig(
-                current_step=openrag_config.onboarding.current_step,
-                assistant_message=openrag_config.onboarding.assistant_message,
-                selected_nudge=openrag_config.onboarding.selected_nudge,
-                card_steps=openrag_config.onboarding.card_steps,
-                upload_steps=openrag_config.onboarding.upload_steps,
-                openrag_docs_filter_id=openrag_config.onboarding.openrag_docs_filter_id,
-                user_doc_filter_id=openrag_config.onboarding.user_doc_filter_id,
-                openrag_docs_ingested_version=openrag_config.onboarding.openrag_docs_ingested_version,
-                openrag_docs_remote_signature=openrag_config.onboarding.openrag_docs_remote_signature,
+                current_step=bomarag_config.onboarding.current_step,
+                assistant_message=bomarag_config.onboarding.assistant_message,
+                selected_nudge=bomarag_config.onboarding.selected_nudge,
+                card_steps=bomarag_config.onboarding.card_steps,
+                upload_steps=bomarag_config.onboarding.upload_steps,
+                bomarag_docs_filter_id=bomarag_config.onboarding.bomarag_docs_filter_id,
+                user_doc_filter_id=bomarag_config.onboarding.user_doc_filter_id,
+                bomarag_docs_ingested_version=bomarag_config.onboarding.bomarag_docs_ingested_version,
+                bomarag_docs_remote_signature=bomarag_config.onboarding.bomarag_docs_remote_signature,
             ),
             providers=ProvidersConfig(
                 openai=OpenAIProviderConfig(
-                    has_api_key=bool(openrag_config.providers.openai.api_key),
-                    configured=openrag_config.providers.openai.configured,
+                    has_api_key=bool(bomarag_config.providers.openai.api_key),
+                    configured=bomarag_config.providers.openai.configured,
                 ),
                 anthropic=AnthropicProviderConfig(
-                    has_api_key=bool(openrag_config.providers.anthropic.api_key),
-                    configured=openrag_config.providers.anthropic.configured,
+                    has_api_key=bool(bomarag_config.providers.anthropic.api_key),
+                    configured=bomarag_config.providers.anthropic.configured,
                 ),
                 watsonx=WatsonXProviderConfig(
-                    has_api_key=bool(openrag_config.providers.watsonx.api_key),
-                    endpoint=openrag_config.providers.watsonx.endpoint or None,
-                    project_id=openrag_config.providers.watsonx.project_id or None,
-                    configured=openrag_config.providers.watsonx.configured,
+                    has_api_key=bool(bomarag_config.providers.watsonx.api_key),
+                    endpoint=bomarag_config.providers.watsonx.endpoint or None,
+                    project_id=bomarag_config.providers.watsonx.project_id or None,
+                    configured=bomarag_config.providers.watsonx.configured,
                 ),
                 ollama=OllamaProviderConfig(
-                    endpoint=openrag_config.providers.ollama.endpoint or None,
-                    configured=openrag_config.providers.ollama.configured,
+                    endpoint=bomarag_config.providers.ollama.endpoint or None,
+                    configured=bomarag_config.providers.ollama.configured,
                 ),
-                custom=_custom_providers_for_settings(openrag_config),
+                custom=_custom_providers_for_settings(bomarag_config),
             )
             if show_providers
             else None,
@@ -366,11 +366,11 @@ async def get_settings(
             langflow_edit_url=langflow_edit_url,
             langflow_ingest_edit_url=langflow_ingest_edit_url,
             ingestion_defaults=ingestion_defaults_obj,
-            ingest_via_chat=OPENRAG_INGEST_VIA_CHAT,
-            show_provider_ingest_settings=OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS,
-            show_vlm_settings=OPENRAG_SHOW_VLM_SETTINGS,
+            ingest_via_chat=BOMARAG_INGEST_VIA_CHAT,
+            show_provider_ingest_settings=BOMARAG_SHOW_PROVIDER_INGEST_SETTINGS,
+            show_vlm_settings=BOMARAG_SHOW_VLM_SETTINGS,
             local_vlm_models=await asyncio.to_thread(_detect_local_vlm_models),
-            show_shared_upload_toggle=OPENRAG_SHOW_SHARED_UPLOAD_TOGGLE,
+            show_shared_upload_toggle=BOMARAG_SHOW_SHARED_UPLOAD_TOGGLE,
             show_workspace_oauth_overrides=is_workspace_oauth_overrides_enabled(),
             segment_write_key=SEGMENT_WRITE_KEY or None,
             environment=ENVIRONMENT or None,
@@ -392,7 +392,7 @@ async def update_settings(
     """Update settings in configuration"""
     try:
         # Get current configuration
-        current_config = get_openrag_config()
+        current_config = get_bomarag_config()
 
         # Check if config is marked as edited
         if not current_config.edited:
@@ -1102,7 +1102,7 @@ async def onboarding(
         log_bootstrap_env(logger, "onboarding")
 
         # Get current configuration
-        current_config = get_openrag_config()
+        current_config = get_bomarag_config()
 
         # Warn if config was already edited (onboarding being re-run)
         if current_config.edited:
@@ -1374,7 +1374,7 @@ async def onboarding(
             try:
                 from config.settings import clients as app_clients
                 from config.settings import (
-                    get_openrag_service_token,
+                    get_bomarag_service_token,
                     get_opensearch_username,
                 )
                 from main import init_index
@@ -1390,10 +1390,10 @@ async def onboarding(
                 # The matching client comes from the shared run-mode-aware helper.
                 admin_username = None
                 if is_run_mode_saas() or is_run_mode_on_prem():
-                    service_token = get_openrag_service_token()
+                    service_token = get_bomarag_service_token()
                     if not service_token:
                         raise RuntimeError(
-                            "OPENRAG_SERVICE_TOKEN is required to determine the "
+                            "BOMARAG_SERVICE_TOKEN is required to determine the "
                             "OpenSearch admin identity during onboarding in "
                             f"{get_run_mode()} mode."
                         )
@@ -1405,7 +1405,7 @@ async def onboarding(
                     admin_username = admin_username_from_service_jwt(service_token)
                     if not admin_username:
                         raise RuntimeError(
-                            "OPENRAG_SERVICE_TOKEN has no 'username' or 'sub' claim; "
+                            "BOMARAG_SERVICE_TOKEN has no 'username' or 'sub' claim; "
                             "cannot determine OpenSearch admin during onboarding"
                         )
                 else:
@@ -1456,18 +1456,18 @@ async def onboarding(
                         session_manager,
                         jwt_token=ingestion_jwt,
                     )
-                    current_config.onboarding.openrag_docs_ingested_version = OPENRAG_VERSION
+                    current_config.onboarding.bomarag_docs_ingested_version = BOMARAG_VERSION
                     from main import (
                         _get_remote_docs_signature,
                         _should_use_url_default_docs_ingest,
                     )
 
                     if _should_use_url_default_docs_ingest():
-                        current_config.onboarding.openrag_docs_remote_signature = (
+                        current_config.onboarding.bomarag_docs_remote_signature = (
                             await _get_remote_docs_signature(DEFAULT_DOCS_URL)
                         )
                     else:
-                        current_config.onboarding.openrag_docs_remote_signature = None
+                        current_config.onboarding.bomarag_docs_remote_signature = None
                     logger.info("Sample data ingestion completed successfully")
 
                 except Exception as e:
@@ -1520,37 +1520,37 @@ async def onboarding(
         # Refresh cached patched client so latest credentials take effect immediately
         await clients.refresh_patched_client()
 
-        # Create OpenRAG Docs knowledge filter if sample data was ingested
+        # Create BomaRAG Docs knowledge filter if sample data was ingested
         # Only create on embedding step to avoid duplicates (both LLM and embedding cards submit with sample_data)
         # Also skip if a filter was already created (e.g. user re-submits the embedding step)
-        openrag_docs_filter_id = None
+        bomarag_docs_filter_id = None
         if (
             should_ingest_sample_data
             and (body.embedding_provider or body.embedding_model)
-            and not current_config.onboarding.openrag_docs_filter_id
+            and not current_config.onboarding.bomarag_docs_filter_id
         ):
             try:
-                openrag_docs_filter_id = await _create_openrag_docs_filter(
+                bomarag_docs_filter_id = await _create_bomarag_docs_filter(
                     knowledge_filter_service, session_manager, user
                 )
-                if openrag_docs_filter_id:
+                if bomarag_docs_filter_id:
                     logger.info(
-                        "OpenRAG Docs knowledge filter ready",
-                        filter_id=openrag_docs_filter_id,
+                        "BomaRAG Docs knowledge filter ready",
+                        filter_id=bomarag_docs_filter_id,
                     )
                     # Save the filter ID to the config
-                    current_config.onboarding.openrag_docs_filter_id = openrag_docs_filter_id
+                    current_config.onboarding.bomarag_docs_filter_id = bomarag_docs_filter_id
                     if not config_manager.save_config_file(current_config):
-                        logger.error("Failed to save openrag_docs_filter_id to config")
+                        logger.error("Failed to save bomarag_docs_filter_id to config")
             except Exception as e:
-                logger.error("Failed to create OpenRAG Docs knowledge filter", error=str(e))
+                logger.error("Failed to create BomaRAG Docs knowledge filter", error=str(e))
                 # Don't fail onboarding if filter creation fails
 
         return OnboardingResponse(
             message="Onboarding configuration updated successfully",
             edited=True,  # Confirm that config is now marked as edited
             sample_data_ingested=should_ingest_sample_data,
-            openrag_docs_filter_id=openrag_docs_filter_id,
+            bomarag_docs_filter_id=bomarag_docs_filter_id,
             task_id=task_id,
         )
 
@@ -1618,7 +1618,7 @@ async def rollback_onboarding(
     """
     try:
         # Get current configuration
-        current_config = get_openrag_config()
+        current_config = get_bomarag_config()
 
         # Only allow rollback if config was marked as edited (onboarding completed)
         if not current_config.edited:
@@ -1653,9 +1653,9 @@ async def rollback_onboarding(
                     except Exception as e:
                         logger.warning(f"Exception deleting knowledge filter {filter_id}: {str(e)}")
 
-            if getattr(current_config.onboarding, "openrag_docs_filter_id", None):
-                await remove_filter(current_config.onboarding.openrag_docs_filter_id)
-                current_config.onboarding.openrag_docs_filter_id = None
+            if getattr(current_config.onboarding, "bomarag_docs_filter_id", None):
+                await remove_filter(current_config.onboarding.bomarag_docs_filter_id)
+                current_config.onboarding.bomarag_docs_filter_id = None
 
             if getattr(current_config.onboarding, "user_doc_filter_id", None):
                 await remove_filter(current_config.onboarding.user_doc_filter_id)
@@ -1762,8 +1762,8 @@ async def rollback_onboarding(
         # Clear embedding provider and model settings
         current_config.knowledge.embedding_provider = "openai"  # Reset to default
         current_config.knowledge.embedding_model = ""
-        current_config.onboarding.openrag_docs_ingested_version = None
-        current_config.onboarding.openrag_docs_remote_signature = None
+        current_config.onboarding.bomarag_docs_ingested_version = None
+        current_config.onboarding.bomarag_docs_remote_signature = None
         current_config.onboarding.assistant_message = None
         current_config.onboarding.selected_nudge = None
         current_config.onboarding.card_steps = None
@@ -1904,19 +1904,19 @@ async def update_docling_preset(
         raise HTTPException(status_code=500, detail="Failed to update docling settings") from e
 
 
-async def refresh_openrag_docs(
+async def refresh_bomarag_docs(
     document_service=Depends(get_document_service),
     task_service=Depends(get_task_service),
     models_service=Depends(get_models_service),
     langflow_file_service=Depends(get_langflow_file_service),
     session_manager=Depends(get_session_manager),
     user: User = Depends(require_permission("config:write")),
-) -> RefreshOpenRAGDocsResponse:
-    """Manually refresh OpenRAG docs ingestion on demand."""
+) -> RefreshBomaRAGDocsResponse:
+    """Manually refresh BomaRAG docs ingestion on demand."""
     try:
-        from main import refresh_default_openrag_docs
+        from main import refresh_default_bomarag_docs
 
-        refreshed = await refresh_default_openrag_docs(
+        refreshed = await refresh_default_bomarag_docs(
             document_service=document_service,
             models_service=models_service,
             task_service=task_service,
@@ -1926,17 +1926,17 @@ async def refresh_openrag_docs(
             reason="manual",
             jwt_token=user.jwt_token if getattr(user, "jwt_token", None) else None,
         )
-        return RefreshOpenRAGDocsResponse(
+        return RefreshBomaRAGDocsResponse(
             message=(
-                "OpenRAG docs were refreshed."
+                "BomaRAG docs were refreshed."
                 if refreshed
-                else "OpenRAG docs refresh was skipped by current configuration."
+                else "BomaRAG docs refresh was skipped by current configuration."
             ),
             refreshed=refreshed,
         )
     except Exception as e:
-        logger.error("Failed to refresh OpenRAG docs on demand", error=str(e))
+        logger.error("Failed to refresh BomaRAG docs on demand", error=str(e))
         raise HTTPException(
             status_code=500,
-            detail="Failed to refresh OpenRAG docs. Please try again or contact support.",
+            detail="Failed to refresh BomaRAG docs. Please try again or contact support.",
         ) from e

@@ -1,8 +1,8 @@
 """JWT-sourced role assignment.
 
-Reads the role claim named by `OPENRAG_JWT_ROLES_CLAIM` from a decoded JWT
-and maps each claim value to a built-in OpenRAG role via the
-`OPENRAG_ROLE_CLAIM_*` settings.
+Reads the role claim named by `BOMARAG_JWT_ROLES_CLAIM` from a decoded JWT
+and maps each claim value to a built-in BomaRAG role via the
+`BOMARAG_ROLE_CLAIM_*` settings.
 
 Pure helper — no DB access. Config is read through the per-call accessors in
 `config.settings` so test overrides (`monkeypatch.setenv`) take effect without
@@ -25,7 +25,7 @@ logger = get_logger(__name__)
 
 
 def _claim_to_role_map() -> dict[str, list[str]]:
-    """Build a {jwt_claim_value: [openrag_role, ...]} map from current env.
+    """Build a {jwt_claim_value: [bomarag_role, ...]} map from current env.
 
     Constructed per call so test overrides are picked up. Skips unset
     mappings entirely.
@@ -37,15 +37,15 @@ def _claim_to_role_map() -> dict[str, list[str]]:
         ("viewer", get_role_claim_viewer()),
     )
     mapping: dict[str, list[str]] = {}
-    for openrag_role, claim_value in pairs:
+    for bomarag_role, claim_value in pairs:
         if not claim_value:
             continue
-        mapping.setdefault(claim_value, []).append(openrag_role)
+        mapping.setdefault(claim_value, []).append(bomarag_role)
     return mapping
 
 
 def extract_jwt_role_names(claims: dict | None) -> list[str]:
-    """Return the OpenRAG role names derived from a decoded JWT.
+    """Return the BomaRAG role names derived from a decoded JWT.
 
     Returns an empty list when the claim is missing, malformed, or contains
     no recognized role values. The returned list preserves the order of the
@@ -76,11 +76,11 @@ def extract_jwt_role_names(claims: dict | None) -> list[str]:
     seen: set[str] = set()
     result: list[str] = []
     for value in raw:
-        openrag_roles = mapping.get(value)
-        if not openrag_roles:
+        bomarag_roles = mapping.get(value)
+        if not bomarag_roles:
             logger.debug("Unknown JWT role claim value ignored", value=value)
             continue
-        for role in openrag_roles:
+        for role in bomarag_roles:
             if role not in seen:
                 seen.add(role)
                 result.append(role)

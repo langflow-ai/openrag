@@ -18,8 +18,8 @@ const sidebars = {
   tutorialSidebar: [
     {
       type: "doc",
-      id: "get-started/what-is-openrag",
-      label: "About OpenRAG"
+      id: "get-started/what-is-bomarag",
+      label: "About BomaRAG"
     },
     "get-started/quickstart",
     {
@@ -29,12 +29,12 @@ const sidebars = {
         "get-started/install-options",
         { type: "doc",
           id: "get-started/install-uv",
-          label: "Install OpenRAG with uv",
+          label: "Install BomaRAG with uv",
         },
         "get-started/install-uvx",
         { type: "doc",
           id: "get-started/install-windows",
-          label: "Install OpenRAG on Windows",
+          label: "Install BomaRAG on Windows",
         },
         { type: "doc",
           id: "get-started/docker",
@@ -90,7 +90,7 @@ const sidebars = {
     {
       type: "link",
       label: "Changelog",
-      href: "https://github.com/langflow-ai/openrag/releases",
+      href: "https://github.com/ABISHAIMWANJA/bomarag/releases",
     },
   ],
 };

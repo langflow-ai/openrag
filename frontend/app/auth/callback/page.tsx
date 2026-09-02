@@ -209,7 +209,7 @@ function AuthCallbackContent() {
     }
     if (status === "success") {
       return isAppAuth
-        ? "Welcome to OpenRAG!"
+        ? "Welcome to BomaRAG!"
         : isTest
           ? "Test Successful!"
           : "Connection Successful!";

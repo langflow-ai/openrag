@@ -1,14 +1,14 @@
 /**
- * OpenRAG TypeScript SDK.
+ * BomaRAG TypeScript SDK.
  *
- * A TypeScript/JavaScript client library for the OpenRAG API.
+ * A TypeScript/JavaScript client library for the BomaRAG API.
  *
  * @example
  * ```typescript
- * import { OpenRAGClient } from "openrag-sdk";
+ * import { BomaRAGClient } from "bomarag-sdk";
  *
- * // Using environment variables (OPENRAG_API_KEY, OPENRAG_URL)
- * const client = new OpenRAGClient();
+ * // Using environment variables (BOMARAG_API_KEY, BOMARAG_URL)
+ * const client = new BomaRAGClient();
  *
  * // Non-streaming chat
  * const response = await client.chat.create({ message: "What is RAG?" });
@@ -33,7 +33,7 @@
  * @packageDocumentation
  */
 
-export { OpenRAGClient } from "./client";
+export { BomaRAGClient } from "./client";
 export { ChatClient, ChatStream } from "./chat";
 export { SearchClient } from "./search";
 export { DocumentsClient } from "./documents";
@@ -41,14 +41,14 @@ export { KnowledgeFiltersClient } from "./knowledge-filters";
 
 export {
   // Error types
-  OpenRAGError,
+  BomaRAGError,
   AuthenticationError,
   NotFoundError,
   ValidationError,
   RateLimitError,
   ServerError,
   // Request/Response types
-  OpenRAGClientOptions,
+  BomaRAGClientOptions,
   ChatCreateOptions,
   SearchQueryOptions,
   SearchFilters,

@@ -1,4 +1,4 @@
-"""Amazon S3 / S3-compatible connector for OpenRAG."""
+"""Amazon S3 / S3-compatible connector for BomaRAG."""
 
 from .connector import S3Connector
 from .models import S3ConfigureBody

@@ -6,7 +6,7 @@ import PartialWatsonxModels from '@site/docs/_partial-watsonx-models.mdx';
 
 ## Complete the application onboarding process {#application-onboarding}
 
-The first time you start the OpenRAG application, you must complete the application onboarding process to select language and embedding models that are essential for OpenRAG features like the [**Chat**](/chat).
+The first time you start the BomaRAG application, you must complete the application onboarding process to select language and embedding models that are essential for BomaRAG features like the [**Chat**](/chat).
 
 To complete onboarding, you must configure at least one language model and one embedding model.
 
@@ -20,11 +20,11 @@ Additionally, you can select multiple embedding models.
 Anthropic doesn't provide embedding models. If you select Anthropic for your language model, you must select a different provider for the embedding model.
 :::
 
-1. Enter your Anthropic API key, or enable **Use environment API key** to pull the key from your [OpenRAG `.env` file](/reference/configuration).
+1. Enter your Anthropic API key, or enable **Use environment API key** to pull the key from your [BomaRAG `.env` file](/reference/configuration).
 
 2. Under **Advanced settings**, select the language model that you want to use.
 
-   Language models must support tool calling to be compatible with OpenRAG.
+   Language models must support tool calling to be compatible with BomaRAG.
    Incompatible models aren't listed.
 
 3. Click **Complete**.
@@ -34,12 +34,12 @@ For information about another provider's credentials and settings, see the instr
 
 5. Click **Complete**.
 
-   After you configure the embedding model, OpenRAG uses your credentials and models to ingest some [initial documents](/knowledge-browse#default-documents). This tests the connection, and it allows you to ask OpenRAG about itself in the [**Chat**](/chat).
+   After you configure the embedding model, BomaRAG uses your credentials and models to ingest some [initial documents](/knowledge-browse#default-documents). This tests the connection, and it allows you to ask BomaRAG about itself in the [**Chat**](/chat).
    If there is a problem with the model configuration, an error occurs and you are redirected back to the application onboarding screen.
    Verify that the credential is valid and has access to the selected model, and then click **Complete** to retry ingestion.
 
-6. Continue through the overview slides for a brief introduction to OpenRAG, or click <Icon name="ArrowRight" aria-hidden="true"/> **Skip overview**.
-The overview demonstrates some basic functionality that is covered in the [quickstart](/quickstart#chat-with-documents) and in other parts of the OpenRAG documentation.
+6. Continue through the overview slides for a brief introduction to BomaRAG, or click <Icon name="ArrowRight" aria-hidden="true"/> **Skip overview**.
+The overview demonstrates some basic functionality that is covered in the [quickstart](/quickstart#chat-with-documents) and in other parts of the BomaRAG documentation.
 
 </TabItem>
 <TabItem value="IBM watsonx.ai" label="IBM watsonx.ai">
@@ -52,11 +52,11 @@ The overview demonstrates some basic functionality that is covered in the [quick
 
 2. Enter your watsonx.ai deployment's project ID and API key.
 
-   You can enable **Use environment API key** to pull the key from your [OpenRAG `.env` file](/reference/configuration).
+   You can enable **Use environment API key** to pull the key from your [BomaRAG `.env` file](/reference/configuration).
 
 3. Under **Advanced settings**, select the language model that you want to use.
 
-   Language models must support tool calling to be compatible with OpenRAG.
+   Language models must support tool calling to be compatible with BomaRAG.
    Incompatible models aren't listed.
 
 4. Click **Complete**.
@@ -66,18 +66,18 @@ For information about another provider's credentials and settings, see the instr
 
 6. Click **Complete**.
 
-   After you configure the embedding model, OpenRAG uses your credentials and models to ingest some [initial documents](/knowledge-browse#default-documents). This tests the connection, and it allows you to ask OpenRAG about itself in the [**Chat**](/chat).
+   After you configure the embedding model, BomaRAG uses your credentials and models to ingest some [initial documents](/knowledge-browse#default-documents). This tests the connection, and it allows you to ask BomaRAG about itself in the [**Chat**](/chat).
    If there is a problem with the model configuration, an error occurs and you are redirected back to the application onboarding screen.
    Verify that the credentials are valid and have access to the selected model, and then click **Complete** to retry ingestion.
 
-7. Continue through the overview slides for a brief introduction to OpenRAG, or click <Icon name="ArrowRight" aria-hidden="true"/> **Skip overview**.
-The overview demonstrates some basic functionality that is covered in the [quickstart](/quickstart#chat-with-documents) and in other parts of the OpenRAG documentation.
+7. Continue through the overview slides for a brief introduction to BomaRAG, or click <Icon name="ArrowRight" aria-hidden="true"/> **Skip overview**.
+The overview demonstrates some basic functionality that is covered in the [quickstart](/quickstart#chat-with-documents) and in other parts of the BomaRAG documentation.
 
 </TabItem>
 <TabItem value="Ollama" label="Ollama">
 
 Using Ollama as your language and embedding model provider offers greater flexibility and configuration options for hosting models.
-However, it requires additional setup because Ollama isn't included with OpenRAG.
+However, it requires additional setup because Ollama isn't included with BomaRAG.
 You must deploy Ollama separately if you want to use Ollama as a model provider.
 
 :::info
@@ -86,9 +86,9 @@ You must deploy Ollama separately if you want to use Ollama as a model provider.
 
 1. [Install Ollama locally or on a remote server](https://docs.ollama.com/), or [run models in Ollama Cloud](https://docs.ollama.com/cloud).
 
-   If you are running a remote server, it must be accessible from your OpenRAG deployment.
+   If you are running a remote server, it must be accessible from your BomaRAG deployment.
 
-2. In the OpenRAG onboarding dialog, enter your Ollama server's base URL:
+2. In the BomaRAG onboarding dialog, enter your Ollama server's base URL:
 
    * **Local Ollama server**: Enter your Ollama server's base URL and port. The default Ollama server address is `http://localhost:11434`.
    * **Ollama Cloud**: Because Ollama Cloud models run at the same address as a local Ollama server and automatically offload to Ollama's cloud service, you can use the same base URL and port as you would for a local Ollama server. The default address is `http://localhost:11434`.
@@ -96,7 +96,7 @@ You must deploy Ollama separately if you want to use Ollama as a model provider.
 
 3. Select a language model that your Ollama server is running.
 
-   OpenRAG only lists language models that support tool calling.
+   BomaRAG only lists language models that support tool calling.
    If your server isn't running any compatible language models, you must either deploy a compatible language model on your Ollama server, or use another provider for the language model.
 
    Language model and embedding model selections are independent.
@@ -111,22 +111,22 @@ For information about another provider's credentials and settings, see the instr
 
 6. Click **Complete**.
 
-   After you configure the embedding model, OpenRAG uses your credentials and models to ingest some [initial documents](/knowledge-browse#default-documents). This tests the connection, and it allows you to ask OpenRAG about itself in the [**Chat**](/chat).
+   After you configure the embedding model, BomaRAG uses your credentials and models to ingest some [initial documents](/knowledge-browse#default-documents). This tests the connection, and it allows you to ask BomaRAG about itself in the [**Chat**](/chat).
    If there is a problem with the model configuration, an error occurs and you are redirected back to the application onboarding screen.
    Verify that the server address is valid, and that the selected model is running on the server.
    Then, click **Complete** to retry ingestion.
 
-7. Continue through the overview slides for a brief introduction to OpenRAG, or click <Icon name="ArrowRight" aria-hidden="true"/> **Skip overview**.
-The overview demonstrates some basic functionality that is covered in the [quickstart](/quickstart#chat-with-documents) and in other parts of the OpenRAG documentation.
+7. Continue through the overview slides for a brief introduction to BomaRAG, or click <Icon name="ArrowRight" aria-hidden="true"/> **Skip overview**.
+The overview demonstrates some basic functionality that is covered in the [quickstart](/quickstart#chat-with-documents) and in other parts of the BomaRAG documentation.
 
 </TabItem>
 <TabItem value="OpenAI" label="OpenAI (default)">
 
-1. Enter your OpenAI API key, or enable **Use environment API key** to pull the key from your [OpenRAG `.env` file](/reference/configuration).
+1. Enter your OpenAI API key, or enable **Use environment API key** to pull the key from your [BomaRAG `.env` file](/reference/configuration).
 
 2. Under **Advanced settings**, select the language model that you want to use.
 
-   Language models must support tool calling to be compatible with OpenRAG.
+   Language models must support tool calling to be compatible with BomaRAG.
    Incompatible models aren't listed.
 
 3. Click **Complete**.
@@ -136,12 +136,12 @@ For information about another provider's credentials and settings, see the instr
 
 5. Click **Complete**.
 
-   After you configure the embedding model, OpenRAG uses your credentials and models to ingest some [initial documents](/knowledge-browse#default-documents). This tests the connection, and it allows you to ask OpenRAG about itself in the [**Chat**](/chat).
+   After you configure the embedding model, BomaRAG uses your credentials and models to ingest some [initial documents](/knowledge-browse#default-documents). This tests the connection, and it allows you to ask BomaRAG about itself in the [**Chat**](/chat).
    If there is a problem with the model configuration, an error occurs and you are redirected back to the application onboarding screen.
    Verify that the credential is valid and has access to the selected model, and then click **Complete** to retry ingestion.
 
-6. Continue through the overview slides for a brief introduction to OpenRAG, or click <Icon name="ArrowRight" aria-hidden="true"/> **Skip overview**.
-The overview demonstrates some basic functionality that is covered in the [quickstart](/quickstart#chat-with-documents) and in other parts of the OpenRAG documentation.
+6. Continue through the overview slides for a brief introduction to BomaRAG, or click <Icon name="ArrowRight" aria-hidden="true"/> **Skip overview**.
+The overview demonstrates some basic functionality that is covered in the [quickstart](/quickstart#chat-with-documents) and in other parts of the BomaRAG documentation.
 
 </TabItem>
 </Tabs>

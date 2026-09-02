@@ -1,5 +1,5 @@
 ---
-title: Upgrade OpenRAG
+title: Upgrade BomaRAG
 slug: /upgrade
 ---
 
@@ -7,24 +7,24 @@ import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 import PartialExportFlows from '@site/docs/_partial-export-flows.mdx';
 
-Use these steps to upgrade your OpenRAG deployment to the latest version or a specific version.
+Use these steps to upgrade your BomaRAG deployment to the latest version or a specific version.
 
 ## Export customized flows before upgrading
 
-If you modified the built-in flows or created custom flows in your OpenRAG Langflow instance, [export your flows](https://docs.langflow.org/concepts-flows-import) before upgrading.
+If you modified the built-in flows or created custom flows in your BomaRAG Langflow instance, [export your flows](https://docs.langflow.org/concepts-flows-import) before upgrading.
 This ensures that you won't lose your flows after upgrading, and you can reference the exported flows if there are any breaking changes in the new version.
 
 ## Upgrade terminal-managed deployments
 
-To upgrade OpenRAG, you need to upgrade the OpenRAG Python package, and then upgrade the OpenRAG containers.
+To upgrade BomaRAG, you need to upgrade the BomaRAG Python package, and then upgrade the BomaRAG containers.
 
 Upgrading the Python package also upgrades Docling by bumping the dependency in `pyproject.toml`.
 
-This is a two-part process because upgrading the OpenRAG Python package updates the OpenRAG terminal and Python code, but the container versions are controlled by environment variables in your [OpenRAG `.env` file](/reference/configuration).
+This is a two-part process because upgrading the BomaRAG Python package updates the BomaRAG terminal and Python code, but the container versions are controlled by environment variables in your [BomaRAG `.env` file](/reference/configuration).
 
 <PartialExportFlows />
 
-2. To check for updates, you must [start the terminal session with `--tui`](/tui#access-the-tui), such as `uv run openrag --tui`.
+2. To check for updates, you must [start the terminal session with `--tui`](/tui#access-the-tui), such as `uv run bomarag --tui`.
 
 3. Click **Status** in the [TUI](/tui), and then click **Upgrade**.
 
@@ -32,36 +32,36 @@ This is a two-part process because upgrading the OpenRAG Python package updates 
 
 5. Press <kbd>q</kbd> to exit the TUI.
 
-6. Upgrade the OpenRAG Python package to the latest version from [PyPI](https://pypi.org/project/openrag/).
-The commands to upgrade the package depend on how you installed OpenRAG.
+6. Upgrade the BomaRAG Python package to the latest version from [PyPI](https://pypi.org/project/bomarag/).
+The commands to upgrade the package depend on how you installed BomaRAG.
 
    <Tabs>
    <TabItem value="installer" label="uvx" default>
 
-   Use these steps to upgrade the Python package if you installed OpenRAG using [`uvx`](/install-uvx):
+   Use these steps to upgrade the Python package if you installed BomaRAG using [`uvx`](/install-uvx):
 
-   1. Navigate to your OpenRAG workspace directory:
+   1. Navigate to your BomaRAG workspace directory:
 
       ```bash
-      cd openrag-workspace
+      cd bomarag-workspace
       ```
 
-   2. Upgrade the OpenRAG package:
+   2. Upgrade the BomaRAG package:
 
       ```bash
-      uvx --from openrag openrag
+      uvx --from bomarag bomarag
       ```
 
       You can invoke a specific version using any of the [`uvx` version specifiers](https://docs.astral.sh/uv/guides/tools/#requesting-specific-versions), such as `--from`:
 
       ```bash
-      uvx --from openrag==0.1.30 openrag
+      uvx --from bomarag==0.1.30 bomarag
       ```
 
    </TabItem>
    <TabItem value="uv-add" label="uv add">
 
-   Use these steps to upgrade the Python package if you installed OpenRAG with [`uv add`](/install-uv):
+   Use these steps to upgrade the Python package if you installed BomaRAG with [`uv add`](/install-uv):
 
    1. Navigate to your project directory:
 
@@ -69,52 +69,52 @@ The commands to upgrade the package depend on how you installed OpenRAG.
       cd YOUR_PROJECT_NAME
       ```
 
-   2. Update OpenRAG to the latest version:
+   2. Update BomaRAG to the latest version:
 
       ```bash
-      uv add --upgrade openrag
+      uv add --upgrade bomarag
       ```
 
       To upgrade to a specific version:
 
       ```bash
-      uv add --upgrade openrag==0.1.33
+      uv add --upgrade bomarag==0.1.33
       ```
 
       To update `uv.lock`, and then sync the virtual environment separately:
 
       ```bash
-      uv lock --upgrade-package openrag
+      uv lock --upgrade-package bomarag
       uv sync
       ```
 
-   3. Start the OpenRAG terminal session:
+   3. Start the BomaRAG terminal session:
 
       ```bash
-      uv run openrag
+      uv run bomarag
       ```
 
    </TabItem>
    </Tabs>
 
-7. In the OpenRAG terminal session, select the **Start services** option, and then wait while the services start.
+7. In the BomaRAG terminal session, select the **Start services** option, and then wait while the services start.
 
-   When you start services, OpenRAG dictates the container version at runtime. It automatically sets the `OPENRAG_VERSION` variable in your `.env` file to match the currently installed OpenRAG Python package version.
-   This ensures that your terminal and containers are always synchronized when using an OpenRAG terminal session to manage services.
+   When you start services, BomaRAG dictates the container version at runtime. It automatically sets the `BOMARAG_VERSION` variable in your `.env` file to match the currently installed BomaRAG Python package version.
+   This ensures that your terminal and containers are always synchronized when using an BomaRAG terminal session to manage services.
    If you want to use a specific container version that is different from your terminal version, you must use the self-managed deployment commands.
 
    If you get an error that `langflow container already exists` error during upgrade, see [Langflow container already exists during upgrade](/support/troubleshoot#langflow-container-already-exists-during-upgrade).
 
-8. After the containers start, select the **Open OpenRAG in browser** option if the app doesn't launch automatically.
+8. After the containers start, select the **Open BomaRAG in browser** option if the app doesn't launch automatically.
 
 ## Upgrade self-managed deployments
 
 <PartialExportFlows />
 
-2. If you [pull images from a private registry](/docker#private-registry), mirror the new version's images to your registry first, and then set `OPENRAG_IMAGE_TAG` or `OPENRAG_VERSION` in your `.env` file to the new tag.
+2. If you [pull images from a private registry](/docker#private-registry), mirror the new version's images to your registry first, and then set `BOMARAG_IMAGE_TAG` or `BOMARAG_VERSION` in your `.env` file to the new tag.
    The pull in the next step fails if the new images aren't present in your registry yet.
 
-3. Fetch and apply the latest container images while preserving your OpenRAG data:
+3. Fetch and apply the latest container images while preserving your BomaRAG data:
 
    ```bash title="Docker"
    docker compose pull
@@ -126,18 +126,18 @@ The commands to upgrade the package depend on how you installed OpenRAG.
    podman compose up -d --force-recreate
    ```
 
-   By default, OpenRAG's `docker-compose` files pull the latest container images.
-   To use a specific earlier version, you set `OPENRAG_VERSION` in your `.env` file to the desired image tag, and then run OpenRAG with `docker compose`, `podman compose`, or [`make`](/support/contribute) commands.
+   By default, BomaRAG's `docker-compose` files pull the latest container images.
+   To use a specific earlier version, you set `BOMARAG_VERSION` in your `.env` file to the desired image tag, and then run BomaRAG with `docker compose`, `podman compose`, or [`make`](/support/contribute) commands.
    Overriding the image tag is only possible with self-managed deployments.
-   This allows you to pin your OpenRAG containers to a specific version rather than deploying the latest version.
+   This allows you to pin your BomaRAG containers to a specific version rather than deploying the latest version.
 
-   You can also set [`OPENRAG_IMAGE_TAG`](/reference/configuration#container-image-and-registry-settings), which overrides the image tag for all OpenRAG images and takes precedence over `OPENRAG_VERSION`.
-   If both variables are set, OpenRAG uses `OPENRAG_IMAGE_TAG`, so check that variable first if the containers don't start at the version you expect.
-   `OPENRAG_IMAGE_TAG` is primarily useful when you [pull images from a private registry](/docker#private-registry) that tags them differently from the OpenRAG releases.
+   You can also set [`BOMARAG_IMAGE_TAG`](/reference/configuration#container-image-and-registry-settings), which overrides the image tag for all BomaRAG images and takes precedence over `BOMARAG_VERSION`.
+   If both variables are set, BomaRAG uses `BOMARAG_IMAGE_TAG`, so check that variable first if the containers don't start at the version you expect.
+   `BOMARAG_IMAGE_TAG` is primarily useful when you [pull images from a private registry](/docker#private-registry) that tags them differently from the BomaRAG releases.
 
-4. After the containers start, access the OpenRAG application at `http://localhost:3000`.
+4. After the containers start, access the BomaRAG application at `http://localhost:3000`.
 
 ## See also
 
-* [Manage OpenRAG services](/manage-services)
-* [Troubleshoot OpenRAG](/support/troubleshoot)
+* [Manage BomaRAG services](/manage-services)
+* [Troubleshoot BomaRAG](/support/troubleshoot)

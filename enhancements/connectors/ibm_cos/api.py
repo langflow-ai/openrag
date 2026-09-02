@@ -31,7 +31,7 @@ async def ibm_cos_defaults(
     endpoint = os.getenv("IBM_COS_ENDPOINT", "")
     hmac_access_key = os.getenv("IBM_COS_HMAC_ACCESS_KEY_ID", "")
     hmac_secret_key = os.getenv("IBM_COS_HMAC_SECRET_ACCESS_KEY", "")
-    disable_iam = os.getenv("OPENRAG_IBM_COS_IAM_UI", "").lower() not in ("1", "true", "yes")
+    disable_iam = os.getenv("BOMARAG_IBM_COS_IAM_UI", "").lower() not in ("1", "true", "yes")
 
     connections = await connector_service.connection_manager.list_connections(
         user_id=user.user_id, connector_type="ibm_cos"

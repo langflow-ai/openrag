@@ -1,6 +1,6 @@
-// Package v1alpha1 contains API Schema definitions for the openr.ag v1alpha1 API group.
+// Package v1alpha1 contains API Schema definitions for the bomalogic.com v1alpha1 API group.
 // +k8s:deepcopy-gen=package
-// +groupName=openr.ag
+// +groupName=bomalogic.com
 package v1alpha1
 
 import (
@@ -8,7 +8,7 @@ import (
 )
 
 // SchemeGroupVersion is group version used to register these objects
-var SchemeGroupVersion = schema.GroupVersion{Group: "openr.ag", Version: "v1alpha1"}
+var SchemeGroupVersion = schema.GroupVersion{Group: "bomalogic.com", Version: "v1alpha1"}
 
 // Resource takes an unqualified resource and returns a Group qualified GroupResource
 func Resource(resource string) schema.GroupResource {

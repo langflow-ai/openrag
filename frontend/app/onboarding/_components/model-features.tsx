@@ -189,7 +189,7 @@ export function ModelFeatures({
       {model.mode !== "embedding" && !supports(model, "function_calling") && (
         <p className="border-l-2 border-destructive pl-2 text-mmd text-muted-foreground">
           This model does not advertise function calling, so it may not be able
-          to run the OpenRAG agent tools.
+          to run the BomaRAG agent tools.
         </p>
       )}
       {model.deprecation_date && (

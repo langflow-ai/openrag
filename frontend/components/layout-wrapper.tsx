@@ -89,7 +89,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
           <AnimatedProcessingIcon className="h-8 w-8 text-current" />
-          <p className="text-muted-foreground">Starting OpenRAG...</p>
+          <p className="text-muted-foreground">Starting BomaRAG...</p>
         </div>
       </div>
     );

@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Sync existing user roles when OPENRAG_DEFAULT_ROLE env values change.
+"""Sync existing user roles when BOMARAG_DEFAULT_ROLE env values change.
 
-Requires ``OPENRAG_SYNC_DEFAULT_ROLE=true``. OSS run mode only
-(``OPENRAG_RUN_MODE=oss``). Run manually via ``scripts/sync_default_user_roles.py``.
+Requires ``BOMARAG_SYNC_DEFAULT_ROLE=true``. OSS run mode only
+(``BOMARAG_RUN_MODE=oss``). Run manually via ``scripts/sync_default_user_roles.py``.
 
 Usage:
-    OPENRAG_SYNC_DEFAULT_ROLE=true uv run python scripts/sync_default_user_roles.py
-    OPENRAG_SYNC_DEFAULT_ROLE=true uv run python scripts/sync_default_user_roles.py --dry-run
-    OPENRAG_SYNC_DEFAULT_ROLE=true uv run python scripts/sync_default_user_roles.py --record-baseline
-    OPENRAG_SYNC_DEFAULT_ROLE=true uv run python scripts/sync_default_user_roles.py --from-role user
-    OPENRAG_SYNC_DEFAULT_ROLE=true uv run python scripts/sync_default_user_roles.py --from-role admin --to-role user
+    BOMARAG_SYNC_DEFAULT_ROLE=true uv run python scripts/sync_default_user_roles.py
+    BOMARAG_SYNC_DEFAULT_ROLE=true uv run python scripts/sync_default_user_roles.py --dry-run
+    BOMARAG_SYNC_DEFAULT_ROLE=true uv run python scripts/sync_default_user_roles.py --record-baseline
+    BOMARAG_SYNC_DEFAULT_ROLE=true uv run python scripts/sync_default_user_roles.py --from-role user
+    BOMARAG_SYNC_DEFAULT_ROLE=true uv run python scripts/sync_default_user_roles.py --from-role admin --to-role user
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ if str(SRC) not in sys.path:
 
 async def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Sync DB user roles after OPENRAG_DEFAULT_ROLE / OPENRAG_NOAUTH_ROLE change.",
+        description="Sync DB user roles after BOMARAG_DEFAULT_ROLE / BOMARAG_NOAUTH_ROLE change.",
     )
     parser.add_argument(
         "--dry-run",
@@ -55,12 +55,12 @@ async def main() -> int:
     parser.add_argument(
         "--to-role",
         metavar="ROLE",
-        help="Target role for regular users (overrides OPENRAG_DEFAULT_ROLE for this run)",
+        help="Target role for regular users (overrides BOMARAG_DEFAULT_ROLE for this run)",
     )
     parser.add_argument(
         "--to-noauth-role",
         metavar="ROLE",
-        help="Target role for the anonymous user (overrides OPENRAG_NOAUTH_ROLE for this run)",
+        help="Target role for the anonymous user (overrides BOMARAG_NOAUTH_ROLE for this run)",
     )
     args = parser.parse_args()
 
@@ -80,14 +80,14 @@ async def main() -> int:
 
         if not is_run_mode_oss():
             print(
-                "Default role sync is only available when OPENRAG_RUN_MODE=oss "
+                "Default role sync is only available when BOMARAG_RUN_MODE=oss "
                 f"(current: {get_run_mode()!r}).",
                 file=sys.stderr,
             )
         else:
             print(
-                "OPENRAG_SYNC_DEFAULT_ROLE is not enabled. "
-                "Set OPENRAG_SYNC_DEFAULT_ROLE=true and retry.",
+                "BOMARAG_SYNC_DEFAULT_ROLE is not enabled. "
+                "Set BOMARAG_SYNC_DEFAULT_ROLE=true and retry.",
                 file=sys.stderr,
             )
         return 1
@@ -104,7 +104,7 @@ async def main() -> int:
             f"{args.from_role or '(from baseline/env)'} -> {args.to_role or '(from env)'}",
         )
     else:
-        print("Using OPENRAG_DEFAULT_ROLE and OPENRAG_NOAUTH_ROLE from the environment.")
+        print("Using BOMARAG_DEFAULT_ROLE and BOMARAG_NOAUTH_ROLE from the environment.")
     if args.dry_run:
         print("Dry run — no writes.")
 
@@ -128,7 +128,7 @@ async def main() -> int:
         if result.stale_users:
             print(
                 f"Found {result.stale_users} user(s) whose sole role differs from "
-                "OPENRAG_DEFAULT_ROLE but the stored baseline already matches env. "
+                "BOMARAG_DEFAULT_ROLE but the stored baseline already matches env. "
                 "Re-run with:\n"
                 "  --from-role user   # or whichever role they currently have"
             )

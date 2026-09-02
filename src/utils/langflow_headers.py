@@ -74,13 +74,13 @@ async def add_provider_credentials_to_headers(
     jwt_token: str = None,
     user_id: str | None = None,
 ) -> None:
-    """Add Langflow global variables for the OpenRAG LLM proxy and infra URLs.
+    """Add Langflow global variables for the BomaRAG LLM proxy and infra URLs.
 
     Provider API keys are NOT forwarded. Langflow's Language/Embedding Model
-    components (and the OpenRAG LLM/Embeddings custom components)
-    speak OpenAI-compatible HTTP to OpenRAG (`OPENRAG_LLM_BASE_URL`) and
-    authenticate with a short-lived hop token as `OPENRAG_LLM_TOKEN` — same
-    pattern as `OPENRAG_INGEST_TOKEN`, scoped to the LLM proxy only.
+    components (and the BomaRAG LLM/Embeddings custom components)
+    speak OpenAI-compatible HTTP to BomaRAG (`BOMARAG_LLM_BASE_URL`) and
+    authenticate with a short-lived hop token as `BOMARAG_LLM_TOKEN` — same
+    pattern as `BOMARAG_INGEST_TOKEN`, scoped to the LLM proxy only.
     Chat and embeddings share that base URL and hop token.
 
     NOTE: `headers` may hold a JWT after this call. Never log it directly —
@@ -89,11 +89,11 @@ async def add_provider_credentials_to_headers(
     from config.settings import get_langflow_llm_base_url
     from services.langflow_llm_token_service import LangflowLlmTokenService
 
-    headers["X-LANGFLOW-GLOBAL-VAR-OPENRAG_LLM_BASE_URL"] = get_langflow_llm_base_url()
+    headers["X-LANGFLOW-GLOBAL-VAR-BOMARAG_LLM_BASE_URL"] = get_langflow_llm_base_url()
 
     subject = (user_id or "").strip() or "anonymous"
     hop_token = LangflowLlmTokenService().create_token(user_id=subject)
-    headers["X-LANGFLOW-GLOBAL-VAR-OPENRAG_LLM_TOKEN"] = hop_token
+    headers["X-LANGFLOW-GLOBAL-VAR-BOMARAG_LLM_TOKEN"] = hop_token
     # Stock Language/Embedding Model nodes still bind api_key to OPENAI_API_KEY.
     headers["X-LANGFLOW-GLOBAL-VAR-OPENAI_API_KEY"] = hop_token
 
@@ -125,7 +125,7 @@ def build_model_provider_headers(config, embedding_model: str | None = None) -> 
     """Build Langflow global variable headers for selected models.
 
     Provider is always OpenAI so Langflow uses its OpenAI-compatible client
-    against the OpenRAG LLM proxy. The real provider lives in OpenRAG config
+    against the BomaRAG LLM proxy. The real provider lives in BomaRAG config
     and is applied by the gateway when it routes the model name.
     """
     emb_model = embedding_model or getattr(

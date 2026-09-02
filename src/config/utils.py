@@ -183,7 +183,7 @@ def verify_jwt_from_issuer(
 def resolve_jwt_claims(token: str | None) -> dict[str, Any] | None:
     """Resolve claims from a forwarded JWT (header or session token).
 
-    When ``OPENRAG_JWT_VERIFY_SIGNATURE`` is true, verifies the signature via
+    When ``BOMARAG_JWT_VERIFY_SIGNATURE`` is true, verifies the signature via
     the token's ``iss`` JWKS URL. Otherwise decodes without verification,
     trusting that upstream auth already validated the caller.
     """

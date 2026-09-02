@@ -1,6 +1,6 @@
 """The workspace OAuth connector credential override cache must never surface
 overrides — even ones already loaded into the in-process cache — while the
-OPENRAG_WORKSPACE_OAUTH_OVERRIDES_ENABLED feature flag is off."""
+BOMARAG_WORKSPACE_OAUTH_OVERRIDES_ENABLED feature flag is off."""
 
 import pytest
 
@@ -15,7 +15,7 @@ def _reset_cache():
 
 
 def test_cached_getters_return_none_when_flag_disabled(monkeypatch):
-    monkeypatch.delenv("OPENRAG_WORKSPACE_OAUTH_OVERRIDES_ENABLED", raising=False)
+    monkeypatch.delenv("BOMARAG_WORKSPACE_OAUTH_OVERRIDES_ENABLED", raising=False)
     svc._CACHE = {"google_drive": {"client_id": "abc", "client_secret": "shh"}}
 
     assert svc.get_cached_client_id("google_drive") is None
@@ -23,7 +23,7 @@ def test_cached_getters_return_none_when_flag_disabled(monkeypatch):
 
 
 def test_cached_getters_return_values_when_flag_enabled(monkeypatch):
-    monkeypatch.setenv("OPENRAG_WORKSPACE_OAUTH_OVERRIDES_ENABLED", "true")
+    monkeypatch.setenv("BOMARAG_WORKSPACE_OAUTH_OVERRIDES_ENABLED", "true")
     svc._CACHE = {"google_drive": {"client_id": "abc", "client_secret": "shh"}}
 
     assert svc.get_cached_client_id("google_drive") == "abc"
@@ -32,7 +32,7 @@ def test_cached_getters_return_values_when_flag_enabled(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_warm_cache_no_ops_when_flag_disabled(monkeypatch):
-    monkeypatch.delenv("OPENRAG_WORKSPACE_OAUTH_OVERRIDES_ENABLED", raising=False)
+    monkeypatch.delenv("BOMARAG_WORKSPACE_OAUTH_OVERRIDES_ENABLED", raising=False)
     svc._CACHE = None
 
     called = False

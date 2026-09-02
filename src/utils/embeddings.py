@@ -19,10 +19,10 @@ async def create_index_body(
         OPENSEARCH_NUMBER_OF_REPLICAS,
         OPENSEARCH_NUMBER_OF_SHARDS,
         VECTOR_DIM,
-        get_openrag_config,
+        get_bomarag_config,
     )
 
-    config = get_openrag_config()
+    config = get_bomarag_config()
     resolved_embedding_model = (
         embedding_model
         or config.knowledge.embedding_model

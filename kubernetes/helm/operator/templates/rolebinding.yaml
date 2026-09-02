@@ -1,15 +1,15 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: {{ include "openrag-operator.fullname" . }}-manager-rolebinding
+  name: {{ include "bomarag-operator.fullname" . }}-manager-rolebinding
   labels:
-    {{- include "openrag-operator.labels" . | nindent 4 }}
+    {{- include "bomarag-operator.labels" . | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: {{ include "openrag-operator.fullname" . }}-manager-role
+  name: {{ include "bomarag-operator.fullname" . }}-manager-role
 subjects:
 - kind: ServiceAccount
-  name: {{ include "openrag-operator.serviceAccountName" . }}
+  name: {{ include "bomarag-operator.serviceAccountName" . }}
   namespace: {{ .Release.Namespace }}
 

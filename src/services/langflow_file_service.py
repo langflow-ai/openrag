@@ -9,11 +9,11 @@ from typing import Any, NoReturn
 import httpx
 
 from config.settings import (
+    BOMARAG_BACKEND_ROUTER_ENABLE,
     DOCLING_SERVE_VERIFY_SSL,
     LANGFLOW_INGEST_CALLBACK_BATCH_SIZE,
     LANGFLOW_INGEST_FLOW_ID,
     LANGFLOW_URL_INGEST_FLOW_ID,
-    OPENRAG_BACKEND_ROUTER_ENABLE,
     clients,
     get_ingest_callback_url,
 )
@@ -82,9 +82,9 @@ class LangflowFileService:
         """
         final_tweaks = dict(tweaks) if tweaks else {}
 
-        from config.settings import DEFAULT_CHUNK_OVERLAP, DEFAULT_CHUNK_SIZE, get_openrag_config
+        from config.settings import DEFAULT_CHUNK_OVERLAP, DEFAULT_CHUNK_SIZE, get_bomarag_config
 
-        config = get_openrag_config()
+        config = get_bomarag_config()
 
         # Build and merge Docling Serve tweaks
         from services.docling_service import get_docling_preset_configs
@@ -165,11 +165,11 @@ class LangflowFileService:
 
         try:
             from config.embedding_constants import get_declared_default_embedding_model
-            from config.settings import get_index_name, get_openrag_config
+            from config.settings import get_bomarag_config, get_index_name
             from utils.embedding_fields import ensure_embedding_field_exists
             from utils.embeddings import create_index_body
 
-            config = get_openrag_config()
+            config = get_bomarag_config()
             index_name = get_index_name()
             model_name = embedding_model or get_declared_default_embedding_model(
                 config.knowledge.embedding_provider
@@ -246,10 +246,10 @@ class LangflowFileService:
         if self.ingest_token_service is None:
             logger.warning(
                 "[LF] Backend-owned ingest delegation DISABLED: no ingest_token_service "
-                "wired. No OPENRAG_INGEST_* globals will be sent, so the Langflow "
+                "wired. No BOMARAG_INGEST_* globals will be sent, so the Langflow "
                 "OpenSearch component will fall back to a direct write.",
                 document_id=document_id,
-                backend_router_enabled=OPENRAG_BACKEND_ROUTER_ENABLE,
+                backend_router_enabled=BOMARAG_BACKEND_ROUTER_ENABLE,
             )
             return None, None
 
@@ -272,7 +272,7 @@ class LangflowFileService:
             allowed_principals=allowed_principals or [],
             allowed_principal_labels=allowed_principal_labels or [],
             ingest_run_id=ingest_run_id,
-            is_sample_data=connector_type == "openrag_docs",
+            is_sample_data=connector_type == "bomarag_docs",
             index_name=get_index_name(),
             parser=parser,
             chunk_size=chunk_size,
@@ -299,7 +299,7 @@ class LangflowFileService:
             logger.warning(
                 "[LF] Ingest callback globals NOT attached to Langflow run "
                 "(missing token or run_id) — OpenSearch component will resolve "
-                "OPENRAG_INGEST_* to their placeholders and fall back to a direct "
+                "BOMARAG_INGEST_* to their placeholders and fall back to a direct "
                 "write instead of delegating to the backend.",
                 has_token=bool(ingest_token),
                 has_run_id=bool(ingest_run_id),
@@ -313,10 +313,10 @@ class LangflowFileService:
             batch_size=LANGFLOW_INGEST_CALLBACK_BATCH_SIZE,
         )
         return {
-            "X-Langflow-Global-Var-OPENRAG_INGEST_URL": callback_url,
-            "X-Langflow-Global-Var-OPENRAG_INGEST_TOKEN": ingest_token,
-            "X-Langflow-Global-Var-OPENRAG_INGEST_RUN_ID": ingest_run_id,
-            "X-Langflow-Global-Var-OPENRAG_INGEST_BATCH_SIZE": str(
+            "X-Langflow-Global-Var-BOMARAG_INGEST_URL": callback_url,
+            "X-Langflow-Global-Var-BOMARAG_INGEST_TOKEN": ingest_token,
+            "X-Langflow-Global-Var-BOMARAG_INGEST_RUN_ID": ingest_run_id,
+            "X-Langflow-Global-Var-BOMARAG_INGEST_BATCH_SIZE": str(
                 LANGFLOW_INGEST_CALLBACK_BATCH_SIZE
             ),
         }
@@ -433,9 +433,9 @@ class LangflowFileService:
         if not tweaks:
             tweaks = {}
 
-        from config.settings import get_openrag_config
+        from config.settings import get_bomarag_config
 
-        config = get_openrag_config()
+        config = get_bomarag_config()
 
         # Pass files via tweaks to File component (File-PSU37 from the flow)
         if file_paths:
@@ -665,13 +665,13 @@ class LangflowFileService:
         if not tweaks:
             tweaks = {}
 
-        from config.settings import DEFAULT_CHUNK_OVERLAP, DEFAULT_CHUNK_SIZE, get_openrag_config
+        from config.settings import DEFAULT_CHUNK_OVERLAP, DEFAULT_CHUNK_SIZE, get_bomarag_config
         from utils.langflow_headers import (
             add_provider_credentials_to_headers,
             build_model_provider_headers,
         )
 
-        config = get_openrag_config()
+        config = get_bomarag_config()
         embedding_model = config.knowledge.embedding_model
         resolved_document_id = hash_id(io.BytesIO(docs_url.encode("utf-8")))
         split_tweaks = tweaks.get("Split Text", {}) if isinstance(tweaks, dict) else {}
@@ -794,7 +794,7 @@ class LangflowFileService:
 
         from config.paths import get_flows_path
 
-        flow_file = Path(get_flows_path()) / "openrag_url_mcp.json"
+        flow_file = Path(get_flows_path()) / "bomarag_url_mcp.json"
         if not flow_file.exists():
             raise ValueError(
                 f"LANGFLOW_URL_INGEST_FLOW_ID is invalid and flow file was not found at {flow_file}"

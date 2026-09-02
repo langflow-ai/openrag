@@ -58,7 +58,7 @@ async def wait_for_ready(client: httpx.AsyncClient, timeout_s: float = 30.0):
 
 
 def count_files_in_documents() -> int:
-    base_dir = Path(os.getcwd()) / "openrag-documents"
+    base_dir = Path(os.getcwd()) / "bomarag-documents"
     if not base_dir.is_dir():
         return 0
     return sum(

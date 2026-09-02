@@ -11,13 +11,13 @@ test.describe("Fetch Latest Docs Functionality", () => {
     test.setTimeout(360000); // 6 minutes timeout
 
     logger.info("Starting Fetch Latest Docs E2E test");
-    const expectedDocName = "What is OpenRAG? | OpenRAG";
+    const expectedDocName = "What is BomaRAG? | BomaRAG";
 
     // Navigate initially to load the app UI (sidebar with Settings link)
     await navigateToKnowledge(page);
     logger.info("Successfully loaded the app UI");
 
-    // --- Phase 1: Test with Langflow Ingestion DISABLED (Traditional OpenRAG processing) ---
+    // --- Phase 1: Test with Langflow Ingestion DISABLED (Traditional BomaRAG processing) ---
     logger.info("PHASE 1: Testing with Langflow Ingestion DISABLED");
     await settings.setDisableLangflowIngestion(true);
 

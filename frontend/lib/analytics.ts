@@ -31,7 +31,7 @@ export const getRequiredStaticProperties =
     productPlanName: "enterprise-mcsp",
     productTitle: "IBM watsonx.data as a Service",
     accountPlan: "PAYG",
-    category: "OpenRAG wxd",
+    category: "BomaRAG wxd",
   });
 
 export const page = (

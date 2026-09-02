@@ -1,32 +1,32 @@
 from time import perf_counter
 
 from api.schemas.status import ComponentBuild, ComponentState, ComponentStatus
-from config.settings import DOCLING_SERVE_URL, LANGFLOW_URL, clients, get_openrag_config
+from config.settings import DOCLING_SERVE_URL, LANGFLOW_URL, clients, get_bomarag_config
 from services.component_logs import record_check_result
 from utils.logging_config import get_logger
-from utils.version_utils import OPENRAG_VERSION
+from utils.version_utils import BOMARAG_VERSION
 
 logger = get_logger(__name__)
 
 _CHECK_TIMEOUT_S = 2.0
 
 
-async def check_openrag_backend() -> ComponentStatus:
+async def check_bomarag_backend() -> ComponentStatus:
     start = perf_counter()
     try:
-        get_openrag_config()
+        get_bomarag_config()
     except Exception as e:
-        logger.warning("OpenRAG config not loaded", error=str(e))
-        message = "OpenRAG configuration is not loaded"
+        logger.warning("BomaRAG config not loaded", error=str(e))
+        message = "BomaRAG configuration is not loaded"
         record_check_result(
-            "openrag",
+            "bomarag",
             ComponentState.UNHEALTHY,
             message,
             detail=f"{type(e).__name__}: {e}",
         )
         return ComponentStatus(
-            name="openrag",
-            display_name="OpenRAG Backend",
+            name="bomarag",
+            display_name="BomaRAG Backend",
             status=ComponentState.UNHEALTHY,
             required=True,
             latency_ms=int((perf_counter() - start) * 1000),
@@ -48,21 +48,21 @@ async def check_openrag_backend() -> ComponentStatus:
     if missing:
         status = ComponentState.DEGRADED
         message = "Backend serving but not fully initialized: " + ", ".join(missing)
-        record_check_result("openrag", ComponentState.DEGRADED, message)
+        record_check_result("bomarag", ComponentState.DEGRADED, message)
         last_error: str | None = message
     else:
-        status, message = ComponentState.HEALTHY, "OpenRAG backend is ready"
-        record_check_result("openrag", ComponentState.HEALTHY, message)
+        status, message = ComponentState.HEALTHY, "BomaRAG backend is ready"
+        record_check_result("bomarag", ComponentState.HEALTHY, message)
         last_error = None
 
     return ComponentStatus(
-        name="openrag",
-        display_name="OpenRAG Backend",
+        name="bomarag",
+        display_name="BomaRAG Backend",
         status=status,
         required=True,
         latency_ms=int((perf_counter() - start) * 1000),
         message=message,
-        version=OPENRAG_VERSION,
+        version=BOMARAG_VERSION,
         build=ComponentBuild(),  # NOTE: deferring this to later Version and build traceability step
         metadata={},
         last_error=last_error,

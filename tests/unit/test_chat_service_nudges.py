@@ -38,7 +38,7 @@ async def test_langflow_nudges_chat_with_chunks_in_memory(monkeypatch):
     agent.active_conversations[test_user_id] = {
         test_resp_id: {
             "messages": [
-                {"role": "user", "content": "What is OpenRAG?"},
+                {"role": "user", "content": "What is BomaRAG?"},
                 {"role": "assistant", "content": "It is an AI platform.", "chunks": chunks_data},
             ]
         }
@@ -59,7 +59,7 @@ async def test_langflow_nudges_chat_with_chunks_in_memory(monkeypatch):
 
     assert res["response"] == "Nudge 1\nNudge 2"
     assert captured_prompt is not None
-    assert "user: What is OpenRAG?" in captured_prompt
+    assert "user: What is BomaRAG?" in captured_prompt
     assert "assistant: It is an AI platform." in captured_prompt
     assert "Context Chunks:" in captured_prompt
     assert "Important retrieved content." in captured_prompt

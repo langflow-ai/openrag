@@ -1,5 +1,5 @@
 /*
-Copyright 2026 The OpenRAG Authors.
+Copyright 2026 The BomaRAG Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ import (
 	fmt "fmt"
 	http "net/http"
 
-	openrv1alpha1 "github.com/langflow-ai/openrag-operator/pkg/generated/clientset/versioned/typed/api/v1alpha1"
+	openrv1alpha1 "github.com/ABISHAIMWANJA/bomarag-operator/pkg/generated/clientset/versioned/typed/api/v1alpha1"
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"

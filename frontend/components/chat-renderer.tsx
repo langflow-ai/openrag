@@ -78,7 +78,7 @@ export function ChatRenderer({
   useEffect(() => {
     if (!showLayout && !onboardingPageTracked.current) {
       onboardingPageTracked.current = true;
-      page("OpenRAG - Onboarding Page Viewed");
+      page("BomaRAG - Onboarding Page Viewed");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showLayout]);
@@ -103,7 +103,7 @@ export function ChatRenderer({
   }, [showLayout, pathname, router]);
 
   const userDocFilterId = settings?.onboarding?.user_doc_filter_id;
-  const openragDocsFilterId = settings?.onboarding?.openrag_docs_filter_id;
+  const bomaragDocsFilterId = settings?.onboarding?.bomarag_docs_filter_id;
 
   // Helper to store default filter ID for new conversations after onboarding
   const storeDefaultFilterForNewConversations = useCallback(
@@ -147,11 +147,11 @@ export function ChatRenderer({
           null;
       }
 
-      // Fall back to OpenRAG docs filter
+      // Fall back to BomaRAG docs filter
       if (!filterId) {
         filterId =
-          settingsToUse?.onboarding?.openrag_docs_filter_id ||
-          openragDocsFilterId ||
+          settingsToUse?.onboarding?.bomarag_docs_filter_id ||
+          bomaragDocsFilterId ||
           null;
       }
 
@@ -172,7 +172,7 @@ export function ChatRenderer({
         }
       }
     },
-    [setConversationFilter, userDocFilterId, openragDocsFilterId],
+    [setConversationFilter, userDocFilterId, bomaragDocsFilterId],
   );
 
   // Note: Current step is now saved to backend via handleStepComplete
@@ -239,13 +239,13 @@ export function ChatRenderer({
       selected_nudge: null,
       card_steps: null,
       upload_steps: null,
-      openrag_docs_filter_id: null,
+      bomarag_docs_filter_id: null,
       user_doc_filter_id: null,
     });
 
     // Mark onboarding as complete in context
     setOnboardingComplete(true);
-    // Store the OpenRAG docs filter as default for new conversations
+    // Store the BomaRAG docs filter as default for new conversations
     await storeDefaultFilterForNewConversations(false);
     setShowLayout(true);
   };

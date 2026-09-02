@@ -2,7 +2,7 @@
 
 Each row is one logical section ('providers' | 'knowledge' | 'agent' |
 'onboarding' | 'meta'). The repo speaks plain dicts — serialization
-to/from ``OpenRAGConfig`` is the service's job.
+to/from ``BomaRAGConfig`` is the service's job.
 """
 
 from datetime import UTC, datetime

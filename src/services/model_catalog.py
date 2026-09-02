@@ -3,7 +3,7 @@
 Two things come out of LiteLLM's own bundled data, so the list never has to be
 hand-maintained the way the four-provider live fetches used to be:
 
-- **models** from `litellm.model_cost` — models for OpenRAG's supported
+- **models** from `litellm.model_cost` — models for BomaRAG's supported
   providers, tagged with the provider they belong to. Chat/completion/responses
   modes feed the agent picker; embedding mode feeds the ingest picker.
 - **credential fields** from `litellm/proxy/public_endpoints/provider_create_fields.json`
@@ -16,7 +16,7 @@ JSON is ~100KB, so paying for it once per process beats a re-read per request.
 `function_calling` and `vision` are published as capability flags so the UI can
 filter (agent vs VLM) without a second live provider call.
 
-The public catalogue is intentionally limited to the providers OpenRAG exposes
+The public catalogue is intentionally limited to the providers BomaRAG exposes
 in its settings UI. Generic credential helpers remain available for future
 providers, and a model that is not in the catalogue can still be typed by hand.
 """
@@ -261,7 +261,7 @@ def _catalog_for(today: datetime.date) -> dict[str, Any]:
 
 
 def catalog(today: datetime.date | None = None) -> dict[str, Any]:
-    """Picker payload for OpenRAG's supported providers and their models."""
+    """Picker payload for BomaRAG's supported providers and their models."""
     return _catalog_for(today or datetime.date.today())
 
 

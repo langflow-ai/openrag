@@ -18,7 +18,7 @@ logger = get_logger(__name__)
 # across hops without exposing the secret.
 _SENSITIVE_HEADERS = {
     "authorization",
-    "x-openrag-api-jwt",
+    "x-bomarag-api-jwt",
     "x-api-key",
     "x-username",
     "cookie",
@@ -40,7 +40,7 @@ async def _attach_db_user_id(request: Request, user: User | None) -> User | None
     """Attach the internal SQL users.id to the request user.
 
     `User.user_id` remains the external auth subject used in JWT/OpenSearch
-    flows. `User.db_user_id` is the OpenRAG owner id used by SQL-backed
+    flows. `User.db_user_id` is the BomaRAG owner id used by SQL-backed
     RBAC and ownership tables.
     """
     if user is None:
@@ -112,15 +112,15 @@ async def _attach_request_user(
 
 
 def _stage_jwt_roles(request: Request, claims: dict, user_id: str | None) -> None:
-    """Extract OpenRAG roles from decoded JWT *claims* and stash them on
+    """Extract BomaRAG roles from decoded JWT *claims* and stash them on
     ``request.state.jwt_roles`` so the subsequent ``_attach_db_user_id`` call
     syncs them to the DB.
 
-    Behavior mirrors the ibm-openrag-session cookie path:
+    Behavior mirrors the ibm-bomarag-session cookie path:
       * RBAC off (``jwt_roles_enabled()`` False) -> ``jwt_roles = None`` so the
         legacy default-role path runs and existing DB roles are not clobbered.
       * RBAC on -> roles are extracted; if the JWT carries no recognized
-        OpenRAG role, raise HTTP 401.
+        BomaRAG role, raise HTTP 401.
     """
     from auth.jwt_roles import extract_jwt_role_names, jwt_roles_enabled
 
@@ -129,12 +129,12 @@ def _stage_jwt_roles(request: Request, claims: dict, user_id: str | None) -> Non
         jwt_roles = extract_jwt_role_names(claims)
         if not jwt_roles:
             logger.warning(
-                "JWT carries no recognized OpenRAG role claim",
+                "JWT carries no recognized BomaRAG role claim",
                 user_id=user_id,
             )
             raise HTTPException(
                 status_code=401,
-                detail="User has no OpenRAG roles assigned",
+                detail="User has no BomaRAG roles assigned",
             )
     logger.debug(f"JWT roles: {jwt_roles}")
     request.state.jwt_roles = jwt_roles
@@ -218,7 +218,7 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
 
     # When RBAC/JWT-role sync is on, the gateway forwards the end-user JWT in the
     # configured header; use it as the source of identity and roles. When RBAC is
-    # off, preserve the existing ibm-openrag-session cookie flow.
+    # off, preserve the existing ibm-bomarag-session cookie flow.
     if jwt_roles_enabled():
         header_name = get_jwt_auth_header()
         raw_jwt = request.headers.get(header_name, "")
@@ -539,7 +539,7 @@ async def resolve_api_key_user(request: Request, api_key_service, session_manage
             # and downstream OpenSearch calls, which validate it via OIDC) —
             # same as the session surface (_get_ibm_user). NOTE (gateway
             # requirement): under RBAC this JWT is also the authoritative role
-            # source. Traefik must mint it with the user's real OpenRAG role
+            # source. Traefik must mint it with the user's real BomaRAG role
             # claims (same as the UI session JWT), otherwise every /v1 call
             # re-syncs the user down to whatever the claim carries.
             request.state.user = user

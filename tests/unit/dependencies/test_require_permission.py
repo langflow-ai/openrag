@@ -54,7 +54,7 @@ require_document_delete_permission = require_any_permission(
 
 @pytest_asyncio.fixture
 async def app(monkeypatch):
-    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "user")
+    monkeypatch.setenv("BOMARAG_DEFAULT_ROLE", "user")
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:",
         connect_args={"check_same_thread": False},
@@ -66,7 +66,7 @@ async def app(monkeypatch):
     PERSONAS.clear()
     async with SessionLocal() as s:
         await seed_roles_and_permissions(s)
-        # Every user gets OPENRAG_DEFAULT_ROLE = "user"; promote personas
+        # Every user gets BOMARAG_DEFAULT_ROLE = "user"; promote personas
         # explicitly (no bootstrap-admin rule).
         admin_db = await ensure_user_row(
             s, User(user_id="admin-sub", email="a@x.com", name="A", provider="google")

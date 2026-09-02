@@ -1,4 +1,4 @@
-"""OpenRAG backend entry point.
+"""BomaRAG backend entry point.
 
 Most of what used to live in this file moved into focused modules:
 - app/factory.py                       — FastAPI app construction
@@ -33,12 +33,12 @@ import atexit
 import httpx  # noqa: F401
 
 from app.factory import create_app
-from config.settings import ACCESS_LOG_ENABLED, OPENRAG_BACKEND_PORT
+from config.settings import ACCESS_LOG_ENABLED, BOMARAG_BACKEND_PORT
 from services.default_docs_service import (
     _get_remote_docs_signature,
     _should_use_url_default_docs_ingest,
     ingest_default_documents_when_ready,
-    refresh_default_openrag_docs,
+    refresh_default_bomarag_docs,
 )
 from services.startup_orchestrator import startup_tasks
 from utils.encryption import enforce_startup_prerequisites
@@ -56,7 +56,7 @@ __all__ = [
     "init_index",
     "_ensure_opensearch_index",
     "ingest_default_documents_when_ready",
-    "refresh_default_openrag_docs",
+    "refresh_default_bomarag_docs",
     "_get_remote_docs_signature",
     "_should_use_url_default_docs_ingest",
 ]
@@ -94,19 +94,19 @@ if __name__ == "__main__":
     # Optionally spin up the standalone ingestion-callback proxy router in this
     # same process (own daemon thread + port) so Langflow calls back to it
     # instead of the full backend internal API surface.
-    from config.settings import OPENRAG_BACKEND_ROUTER_ENABLE, OPENRAG_BACKEND_ROUTER_PORT
+    from config.settings import BOMARAG_BACKEND_ROUTER_ENABLE, BOMARAG_BACKEND_ROUTER_PORT
 
-    if OPENRAG_BACKEND_ROUTER_ENABLE:
+    if BOMARAG_BACKEND_ROUTER_ENABLE:
         from app.router_app import start_backend_router
 
         start_backend_router()
-        logger.info("Backend ingestion router enabled", port=OPENRAG_BACKEND_ROUTER_PORT)
+        logger.info("Backend ingestion router enabled", port=BOMARAG_BACKEND_ROUTER_PORT)
 
     uvicorn.run(
         app,
         workers=1,
         host="0.0.0.0",
-        port=OPENRAG_BACKEND_PORT,
+        port=BOMARAG_BACKEND_PORT,
         reload=False,
         access_log=ACCESS_LOG_ENABLED,
         log_config=None,

@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from api.settings import SettingsUpdateBody
-from config.settings import get_openrag_config
+from config.settings import get_bomarag_config
 from dependencies import (
     get_models_service,
     get_rbac_service,
@@ -47,9 +47,9 @@ class SettingsResponse(BaseModel):
 async def get_settings_endpoint(
     user: User = Depends(require_api_key_permission("providers:read")),
 ) -> SettingsResponse:
-    """Get current OpenRAG configuration (read-only). GET /v1/settings"""
+    """Get current BomaRAG configuration (read-only). GET /v1/settings"""
     try:
-        config = get_openrag_config()
+        config = get_bomarag_config()
         return SettingsResponse(
             agent=AgentSettings(
                 llm_provider=config.agent.llm_provider,
@@ -78,7 +78,7 @@ async def update_settings_endpoint(
     models_service=Depends(get_models_service),
     rbac=Depends(get_rbac_service),
 ):
-    """Update OpenRAG configuration settings. POST /v1/settings"""
+    """Update BomaRAG configuration settings. POST /v1/settings"""
     from api.settings import update_settings
 
     return await update_settings(

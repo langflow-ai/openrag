@@ -87,7 +87,7 @@ class ConnectionManager:
 
     def __init__(self, connections_file: str | None = None):
         if connections_file is None:
-            data_dir = Path(os.getenv("OPENRAG_DATA_PATH", "data"))
+            data_dir = Path(os.getenv("BOMARAG_DATA_PATH", "data"))
             self.connections_file = data_dir / "connections.json"
         else:
             self.connections_file = Path(connections_file)
@@ -114,7 +114,7 @@ class ConnectionManager:
                     for k, v in conn_data["config"].items():
                         if isinstance(v, dict) and v.get("algorithm") == "AES-256-GCM":
                             try:
-                                tenant = conn_data.get("user_id") or "openrag"
+                                tenant = conn_data.get("user_id") or "bomarag"
                                 conn_data["config"][k] = decrypt_secret(
                                     v, expected_tenant_id=tenant
                                 )
@@ -166,7 +166,7 @@ class ConnectionManager:
             if "config" in conn_data and isinstance(conn_data["config"], dict):
                 for k, v in conn_data["config"].items():
                     if k in secret_keys and isinstance(v, str):
-                        tenant_id = conn_data.get("user_id") or "openrag"
+                        tenant_id = conn_data.get("user_id") or "bomarag"
                         conn_data["config"][k] = encrypt_secret(v, tenant_id=tenant_id)
 
             # Convert datetime objects to strings
@@ -481,7 +481,7 @@ class ConnectionManager:
         return result
 
     def get_auth_user_principals(self, user: Any) -> list[str]:
-        """Return connector ACL principals derivable from the OpenRAG auth user."""
+        """Return connector ACL principals derivable from the BomaRAG auth user."""
         from utils.group_acl import unique_acl_principals
 
         principals: list[str] = []

@@ -223,7 +223,7 @@ class TestInferFailureMetadata:
         )
         meta = task_service._infer_failure_metadata(ft)
         assert meta is not None
-        assert meta["component"] == "openrag"
+        assert meta["component"] == "bomarag"
         assert meta["failure_phase"] == "embedding"
         assert meta["actionable_by"] == "USER_ACTIONABLE"
         assert "API key" in meta["user_facing_message"]
@@ -243,7 +243,7 @@ class TestInferFailureMetadata:
         )
         meta = task_service._infer_failure_metadata(ft)
         assert meta is not None
-        assert meta["component"] == "openrag"
+        assert meta["component"] == "bomarag"
         assert meta["failure_phase"] == "embedding"
         assert meta["actionable_by"] == "USER_ACTIONABLE"
         assert "disabled" in meta["user_facing_message"].lower()
@@ -272,7 +272,7 @@ class TestInferFailureMetadata:
         )
         meta = task_service._infer_failure_metadata(ft)
         assert meta is not None
-        assert meta["component"] == "openrag"
+        assert meta["component"] == "bomarag"
         assert meta["failure_phase"] == "file_validation"
         assert meta["actionable_by"] == "USER_ACTIONABLE"
 
@@ -284,7 +284,7 @@ class TestInferFailureMetadata:
         )
         meta = task_service._infer_failure_metadata(ft)
         assert meta is not None
-        assert meta["component"] == "openrag"
+        assert meta["component"] == "bomarag"
         assert meta["failure_phase"] == "file_validation"
         assert meta["actionable_by"] == "USER_ACTIONABLE"
 
@@ -389,7 +389,7 @@ class TestGetTaskStatus2FailureMetadata:
         result = task_service.get_task_status2("user1", "t4")
         file_entry = result["files"]["report.pdf"]
 
-        assert file_entry["component"] == "openrag"
+        assert file_entry["component"] == "bomarag"
         assert file_entry["failure_phase"] == "file_validation"
         assert file_entry["actionable_by"] == "USER_ACTIONABLE"
 

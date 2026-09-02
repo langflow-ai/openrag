@@ -1,7 +1,7 @@
 """Fetch a URL, strip HTML, and write the visible text to a temporary file.
 
 Used by the default-docs ingestion flow when DEFAULT_DOCS_INGEST_SOURCE=url
-and the OpenRAG (non-Langflow) ingestion path is active.
+and the BomaRAG (non-Langflow) ingestion path is active.
 """
 
 import html
@@ -37,7 +37,7 @@ class _VisibleTextHTMLParser(HTMLParser):
 
 
 async def materialize_url_as_text_file(docs_url: str, crawl_depth: int) -> tuple[str, str]:
-    """Fetch URL content and write a temporary text file for OpenRAG ingestion, returning path and title."""
+    """Fetch URL content and write a temporary text file for BomaRAG ingestion, returning path and title."""
     async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
         response = await client.get(docs_url)
         response.raise_for_status()
@@ -49,7 +49,7 @@ async def materialize_url_as_text_file(docs_url: str, crawl_depth: int) -> tuple
         flags=re.IGNORECASE | re.DOTALL,
     )
     title = html.unescape(title_match.group(1).strip()) if title_match else ""
-    title = title or "OpenRAG"
+    title = title or "BomaRAG"
 
     text_parser = _VisibleTextHTMLParser()
     text_parser.feed(raw_html)
@@ -63,7 +63,7 @@ async def materialize_url_as_text_file(docs_url: str, crawl_depth: int) -> tuple
     temp_file = tempfile.NamedTemporaryFile(
         mode="w",
         suffix=".txt",
-        prefix="openrag-url-default-",
+        prefix="bomarag-url-default-",
         delete=False,
         encoding="utf-8",
     )

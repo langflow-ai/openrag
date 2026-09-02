@@ -1,7 +1,7 @@
 """OpenAI-compatible LLM proxy for Langflow and other OpenAI clients.
 
 Auth is a short-lived Langflow hop token (same family as ingest tokens),
-the user JWT, or an `orag_` API key. Provider secrets stay in OpenRAG.
+the user JWT, or an `orag_` API key. Provider secrets stay in BomaRAG.
 """
 
 from typing import Any

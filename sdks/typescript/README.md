@@ -1,24 +1,24 @@
-# OpenRAG TypeScript SDK
+# BomaRAG TypeScript SDK
 
-Official TypeScript/JavaScript SDK for the [OpenRAG](https://openr.ag) API.
+Official TypeScript/JavaScript SDK for the [BomaRAG](https://bomarag.com) API.
 
 ## Installation
 
 ```bash
-npm install openrag-sdk
+npm install bomarag-sdk
 # or
-yarn add openrag-sdk
+yarn add bomarag-sdk
 # or
-pnpm add openrag-sdk
+pnpm add bomarag-sdk
 ```
 
 ## Quick Start
 
 ```typescript
-import { OpenRAGClient } from "openrag-sdk";
+import { BomaRAGClient } from "bomarag-sdk";
 
-// Client auto-discovers OPENRAG_API_KEY and OPENRAG_URL from environment
-const client = new OpenRAGClient();
+// Client auto-discovers BOMARAG_API_KEY and BOMARAG_URL from environment
+const client = new BomaRAGClient();
 
 // Simple chat
 const response = await client.chat.create({ message: "What is RAG?" });
@@ -32,15 +32,15 @@ The SDK can be configured via environment variables or constructor arguments:
 
 | Environment Variable | Constructor Option | Description |
 |---------------------|-------------------|-------------|
-| `OPENRAG_API_KEY` | `apiKey` | API key for authentication (required) |
-| `OPENRAG_URL` | `baseUrl` | Base URL for the OpenRAG frontend (default: `http://localhost:3000`) |
+| `BOMARAG_API_KEY` | `apiKey` | API key for authentication (required) |
+| `BOMARAG_URL` | `baseUrl` | Base URL for the BomaRAG frontend (default: `http://localhost:3000`) |
 
 ```typescript
 // Using environment variables
-const client = new OpenRAGClient();
+const client = new BomaRAGClient();
 
 // Using explicit arguments
-const client = new OpenRAGClient({
+const client = new BomaRAGClient({
   apiKey: "orag_...",
   baseUrl: "https://api.example.com",
 });
@@ -321,13 +321,13 @@ const results = await client.search.query("API endpoints", { filterId });
 
 ```typescript
 import {
-  OpenRAGError,
+  BomaRAGError,
   AuthenticationError,
   NotFoundError,
   ValidationError,
   RateLimitError,
   ServerError,
-} from "openrag-sdk";
+} from "bomarag-sdk";
 
 try {
   const response = await client.chat.create({ message: "Hello" });
@@ -342,7 +342,7 @@ try {
     console.log(`Rate limited: ${e.message}`);
   } else if (e instanceof ServerError) {
     console.log(`Server error: ${e.message}`);
-  } else if (e instanceof OpenRAGError) {
+  } else if (e instanceof BomaRAGError) {
     console.log(`API error: ${e.message} (status: ${e.statusCode})`);
   }
 }
@@ -366,7 +366,7 @@ import type {
   SearchResponse,
   IngestResponse,
   SettingsResponse,
-} from "openrag-sdk";
+} from "bomarag-sdk";
 ```
 
 ## License

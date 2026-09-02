@@ -20,8 +20,8 @@ export class Knowledge {
     this.page.getByText(/Failed to embed with model/i);
   private readonly fetchLatestDocsButton = () =>
     this.page.getByRole("button", { name: "Fetch latest docs" });
-  private readonly openragDocsRefreshedToast = () =>
-    this.page.getByText(/OpenRAG docs were refreshed/i).first();
+  private readonly bomaragDocsRefreshedToast = () =>
+    this.page.getByText(/BomaRAG docs were refreshed/i).first();
   private readonly taskCompletedToast = () =>
     this.page.getByText(/task completed/i).first();
   readonly addKnowledgeButton = () =>
@@ -314,25 +314,25 @@ export class Knowledge {
 
   /**
    * Click "Fetch latest docs" button to refresh the document list.
-   * Waits for the "What is OpenRAG?" document re-ingestion to complete.
+   * Waits for the "What is BomaRAG?" document re-ingestion to complete.
    */
   async fetchLatestDocs() {
     if (this.isPageClosed()) return;
     const fetchButton = this.fetchLatestDocsButton();
     await fetchButton.click();
     // Wait for the refresh confirmation toast
-    await expect(this.openragDocsRefreshedToast()).toBeVisible({
+    await expect(this.bomaragDocsRefreshedToast()).toBeVisible({
       timeout: 10000,
     });
     // Brief pause — reduced from 1000 ms to avoid eating into the test budget
     await this.safeWait(500);
-    // "Fetch latest docs" triggers re-ingestion of "What is OpenRAG?" document.
+    // "Fetch latest docs" triggers re-ingestion of "What is BomaRAG?" document.
     // Wait for its "Task completed" message so we don't confuse it with our own uploads.
     try {
       if (this.isPageClosed()) return;
       await expect(this.taskCompletedToast()).toBeVisible({ timeout: 30000 });
       logger.info(
-        `  ⏳ Waiting for "What is OpenRAG?" re-ingestion to complete...`,
+        `  ⏳ Waiting for "What is BomaRAG?" re-ingestion to complete...`,
       );
       // Wait for the toast to auto-dismiss (~3-5 s); reduced from 6000 ms
       await this.safeWait(4000);

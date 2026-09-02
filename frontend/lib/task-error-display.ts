@@ -11,7 +11,7 @@ export type TaskErrorComponentCause =
   | "OpenSearch"
   | "Docling"
   | "Langflow"
-  | "OpenRAG";
+  | "BomaRAG";
 
 export type TaskPipelineStepId =
   | "parsing"
@@ -59,7 +59,7 @@ const PIPELINE_STEP_LABELS: Record<TaskPipelineStepId, string> = {
 const COMPONENT_LABELS: Record<TaskFailureComponent, TaskErrorComponentCause> =
   {
     docling: "Docling",
-    openrag: "OpenRAG",
+    bomarag: "BomaRAG",
     langflow: "Langflow",
     opensearch: "OpenSearch",
   };

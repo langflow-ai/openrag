@@ -9,17 +9,17 @@ from config.settings import (
     ACL_PRINCIPAL_LABELS_MAPPING,
     API_KEYS_INDEX_BODY,
     API_KEYS_INDEX_NAME,
+    BOMARAG_SKIP_OS_SECURITY_SETUP,
     DLS_PRINCIPAL_INDEX_BODY,
     DLS_PRINCIPAL_INDEX_NAME,
     IBM_AUTH_ENABLED,
     INDEX_BODY,
-    OPENRAG_SKIP_OS_SECURITY_SETUP,
     OPENSEARCH_NUMBER_OF_REPLICAS,
     OPENSEARCH_NUMBER_OF_SHARDS,
     PLATFORM_AUTH_DEV_MODE,
     clients,
+    get_bomarag_config,
     get_index_name,
-    get_openrag_config,
 )
 from utils.embeddings import create_index_body
 from utils.logging_config import get_logger
@@ -135,10 +135,10 @@ async def _ensure_index_replicas(os_client, index_name: str) -> None:
         )
 
 
-async def ensure_openrag_index_replicas(os_client=None) -> None:
-    """Reconcile replica counts for all known OpenRAG indices at startup.
+async def ensure_bomarag_index_replicas(os_client=None) -> None:
+    """Reconcile replica counts for all known BomaRAG indices at startup.
 
-    Aligns each existing OpenRAG index's number_of_replicas with
+    Aligns each existing BomaRAG index's number_of_replicas with
     OPENSEARCH_NUMBER_OF_REPLICAS. Indices that do not yet exist are skipped —
     init_index creates them with the correct replica count.
     """
@@ -262,12 +262,12 @@ async def init_index(opensearch_client=None, admin_username: str = None):
 
         # Skip security setup when the platform manages it externally
         # (SaaS / CPD). Index creation below still runs — SaaS / CPD
-        # deployments still need indices, they just don't want OpenRAG
+        # deployments still need indices, they just don't want BomaRAG
         # touching roles or role mappings.
-        if OPENRAG_SKIP_OS_SECURITY_SETUP:
+        if BOMARAG_SKIP_OS_SECURITY_SETUP:
             logger.info(
                 "Skipping OpenSearch security setup during init_index "
-                "(OPENRAG_SKIP_OS_SECURITY_SETUP=true)",
+                "(BOMARAG_SKIP_OS_SECURITY_SETUP=true)",
                 admin_username=admin_username,
             )
         else:
@@ -277,7 +277,7 @@ async def init_index(opensearch_client=None, admin_username: str = None):
             await setup_opensearch_security(os_client, admin_username=admin_username)
 
         step = "build_index_body"
-        config = get_openrag_config()
+        config = get_bomarag_config()
         embedding_model = config.knowledge.embedding_model
 
         index_body = await create_index_body()

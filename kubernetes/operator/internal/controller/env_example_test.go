@@ -54,10 +54,10 @@ func Example_componentSpecificPrefixes() {
 		DefaultLangflowEnvVars: map[string]string{
 			"WORKERS": "4",
 		},
-		DefaultOpenRagBEEnvVars: map[string]string{
+		DefaultBomaRagBEEnvVars: map[string]string{
 			"WORKERS": "2",
 		},
-		DefaultOpenRagFEEnvVars: map[string]string{
+		DefaultBomaRagFEEnvVars: map[string]string{
 			"WORKERS": "1",
 		},
 	}

@@ -49,7 +49,7 @@ require_api_key_delete_permission = require_api_key_any_permission(
 
 @pytest_asyncio.fixture
 async def app(monkeypatch):
-    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "user")
+    monkeypatch.setenv("BOMARAG_DEFAULT_ROLE", "user")
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:",
         connect_args={"check_same_thread": False},
@@ -167,7 +167,7 @@ def _client(fastapi_app):
 
 @pytest.mark.asyncio
 async def test_kill_switch_off_bypasses(app, monkeypatch):
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "false")
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "false")
     fastapi_app, _ = app
     async with _client(fastapi_app) as c:
         # 'user' lacks users:delete, but the kill switch lets it through
@@ -177,7 +177,7 @@ async def test_kill_switch_off_bypasses(app, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_kill_switch_off_bypasses_api_key_any_permission(app, monkeypatch):
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "false")
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "false")
     fastapi_app, _ = app
     async with _client(fastapi_app) as c:
         r = await c.get("/probe/delete-document", headers={"X-Test-Persona": "user"})
@@ -186,7 +186,7 @@ async def test_kill_switch_off_bypasses_api_key_any_permission(app, monkeypatch)
 
 @pytest.mark.asyncio
 async def test_admin_passes_when_enforced(app, monkeypatch):
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "true")
     fastapi_app, _ = app
     async with _client(fastapi_app) as c:
         r = await c.get("/probe/users-delete", headers={"X-Test-Persona": "admin"})
@@ -195,7 +195,7 @@ async def test_admin_passes_when_enforced(app, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_user_denied_when_enforced(app, monkeypatch):
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "true")
     fastapi_app, _ = app
     async with _client(fastapi_app) as c:
         r = await c.get("/probe/users-delete", headers={"X-Test-Persona": "user"})
@@ -205,7 +205,7 @@ async def test_user_denied_when_enforced(app, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_user_passes_perm_it_holds(app, monkeypatch):
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "true")
     fastapi_app, _ = app
     async with _client(fastapi_app) as c:
         r = await c.get("/probe/chat-use", headers={"X-Test-Persona": "user"})
@@ -216,7 +216,7 @@ async def test_user_passes_perm_it_holds(app, monkeypatch):
 async def test_kf_read_granted_to_every_builtin_role(app, monkeypatch):
     """All built-in roles (even viewer) hold kf:read, so KF search/get keep
     working for existing API consumers once the gate is enforced."""
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "true")
     fastapi_app, _ = app
     async with _client(fastapi_app) as c:
         for persona in ("admin", "user", "viewer"):
@@ -228,7 +228,7 @@ async def test_kf_read_granted_to_every_builtin_role(app, monkeypatch):
 async def test_real_v1_kf_search_gated_on_kf_read(app, monkeypatch):
     """End-to-end wiring: POST /v1/knowledge-filters/search now requires
     kf:read instead of accepting any authenticated caller."""
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "true")
     fastapi_app, _ = app
     async with _client(fastapi_app) as c:
         r = await c.post(
@@ -243,7 +243,7 @@ async def test_real_v1_kf_search_gated_on_kf_read(app, monkeypatch):
 @pytest.mark.asyncio
 async def test_real_v1_delete_blocks_viewer(app, monkeypatch):
     """The v1 delete endpoint accepts own or anonymous scope and rejects a viewer."""
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "true")
     fastapi_app, _ = app
     async with _client(fastapi_app) as c:
         r = await c.request(
@@ -261,7 +261,7 @@ async def test_real_v1_delete_blocks_viewer(app, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_real_v1_delete_blocks_delete_any_only_role(app, monkeypatch):
-    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
+    monkeypatch.setenv("BOMARAG_RBAC_ENFORCE", "true")
     fastapi_app, _ = app
     async with _client(fastapi_app) as c:
         r = await c.request(

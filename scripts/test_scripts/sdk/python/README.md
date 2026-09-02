@@ -1,11 +1,11 @@
-# OpenRAG Python SDK smoke tests (remote / IBM SaaS)
+# BomaRAG Python SDK smoke tests (remote / IBM SaaS)
 
 A standalone [uv](https://docs.astral.sh/uv/) project that exercises **every
-functionality of the [`openrag-sdk`](https://pypi.org/project/openrag-sdk/)
-Python client** against a remote OpenRAG deployment and writes a pass/fail
+functionality of the [`bomarag-sdk`](https://pypi.org/project/bomarag-sdk/)
+Python client** against a remote BomaRAG deployment and writes a pass/fail
 report. Designed for IBM SaaS deployments, where authentication uses a
 username + API key (sent as `X-Username` / `X-Api-Key` headers) instead of the
-self-hosted `OPENRAG_API_KEY` flow.
+self-hosted `BOMARAG_API_KEY` flow.
 
 The checks mirror the repo's pytest integration suite
 (`tests/integration/sdk/`) but run standalone — no pytest, no local backend,
@@ -15,13 +15,13 @@ no onboarding step.
 
 ```bash
 cd scripts/test_scripts/sdk/python
-uv sync                 # installs the latest openrag-sdk from PyPI
+uv sync                 # installs the latest bomarag-sdk from PyPI
 cp .env.example .env    # then fill in your URL, username, and API key
 ```
 
 To pick up a newer SDK release later: `uv lock --upgrade && uv sync`.
 
-The project depends on the latest `openrag-sdk` published to PyPI (currently
+The project depends on the latest `bomarag-sdk` published to PyPI (currently
 0.3.1). The two delete-by-filter_id checks need the unreleased 0.4.0 API and
 auto-skip (with a reason in the report) until that version ships — re-run
 `uv lock --upgrade` once it does.
@@ -41,9 +41,9 @@ Configuration precedence: CLI flags > environment variables > `.env`.
 
 | Setting | CLI flag | Env var |
 |---|---|---|
-| Base URL | `--url` | `OPENRAG_URL` |
-| Username | `--username` | `OPENRAG_USERNAME` |
-| API key | `--api-key` | `OPENRAG_API_KEY` |
+| Base URL | `--url` | `BOMARAG_URL` |
+| Username | `--username` | `BOMARAG_USERNAME` |
+| API key | `--api-key` | `BOMARAG_API_KEY` |
 | Request timeout (default 120s) | `--timeout` | — |
 | Suites to run | `--only` | — |
 | Report directory | `--report-dir` | — |

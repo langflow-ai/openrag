@@ -1,5 +1,5 @@
 resources:
-- bases/openr.ag_openrags.yaml
+- bases/bomalogic.com_bomarags.yaml
 #+kubebuilder:scaffold:crdkustomizeresource
 
 patches:

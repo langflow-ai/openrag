@@ -32,7 +32,7 @@ def create_tag():
     local_version = Version(local_version_str)
 
     # Check PyPI for the latest published stable version
-    pypi_main = get_latest_published_version("openrag")
+    pypi_main = get_latest_published_version("bomarag")
 
     # Find the highest version between local and PyPI
     # We use this as a reference point for the dev suffix

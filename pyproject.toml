@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "openrag"
+name = "bomarag"
 version = "0.5.0"
-description = "OpenRAG is a comprehensive Retrieval-Augmented Generation platform that enables intelligent document search and AI-powered conversations."
+description = "BomaRAG is a comprehensive Retrieval-Augmented Generation platform that enables intelligent document search and AI-powered conversations."
 readme = "README.md"
 requires-python = ">=3.13"
 classifiers = [
@@ -93,14 +93,14 @@ dev = [
 ]
 
 [project.scripts]
-openrag = "tui.main:run_tui"
+bomarag = "tui.main:run_tui"
 
 [tool.pytest.ini_options]
 filterwarnings = [
     "error::RuntimeWarning",
 ]
 markers = [
-    "openrag_skip_app_onboard: selected tests manage their own infrastructure clients and do not need the session app onboarding fixture",
+    "bomarag_skip_app_onboard: selected tests manage their own infrastructure clients and do not need the session app onboarding fixture",
 ]
 
 [tool.uv]

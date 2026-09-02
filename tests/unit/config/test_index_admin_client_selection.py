@@ -16,7 +16,7 @@ def test_saas_uses_service_token(monkeypatch):
     sentinel = object()
     monkeypatch.setattr(run_mode_utils, "is_run_mode_saas", lambda: True)
     monkeypatch.setattr(run_mode_utils, "is_run_mode_on_prem", lambda: False)
-    monkeypatch.setattr(settings, "get_openrag_service_token", lambda: "svc-jwt-token")
+    monkeypatch.setattr(settings, "get_bomarag_service_token", lambda: "svc-jwt-token")
     captured = {}
 
     def fake_from_jwt(token):
@@ -37,9 +37,9 @@ def test_saas_without_service_token_raises(monkeypatch):
 
     monkeypatch.setattr(run_mode_utils, "is_run_mode_saas", lambda: True)
     monkeypatch.setattr(run_mode_utils, "is_run_mode_on_prem", lambda: False)
-    monkeypatch.setattr(settings, "get_openrag_service_token", lambda: None)
+    monkeypatch.setattr(settings, "get_bomarag_service_token", lambda: None)
 
-    with pytest.raises(RuntimeError, match="OPENRAG_SERVICE_TOKEN"):
+    with pytest.raises(RuntimeError, match="BOMARAG_SERVICE_TOKEN"):
         settings.clients.create_index_admin_opensearch_client("Bearer user-jwt")
 
 
@@ -50,7 +50,7 @@ def test_on_prem_uses_service_token(monkeypatch):
     sentinel = object()
     monkeypatch.setattr(run_mode_utils, "is_run_mode_saas", lambda: False)
     monkeypatch.setattr(run_mode_utils, "is_run_mode_on_prem", lambda: True)
-    monkeypatch.setattr(settings, "get_openrag_service_token", lambda: "svc-jwt-token")
+    monkeypatch.setattr(settings, "get_bomarag_service_token", lambda: "svc-jwt-token")
     captured = {}
 
     def fake_from_jwt(token):
@@ -71,9 +71,9 @@ def test_on_prem_without_service_token_raises(monkeypatch):
 
     monkeypatch.setattr(run_mode_utils, "is_run_mode_saas", lambda: False)
     monkeypatch.setattr(run_mode_utils, "is_run_mode_on_prem", lambda: True)
-    monkeypatch.setattr(settings, "get_openrag_service_token", lambda: None)
+    monkeypatch.setattr(settings, "get_bomarag_service_token", lambda: None)
 
-    with pytest.raises(RuntimeError, match="OPENRAG_SERVICE_TOKEN"):
+    with pytest.raises(RuntimeError, match="BOMARAG_SERVICE_TOKEN"):
         settings.clients.create_index_admin_opensearch_client("Bearer user-jwt")
 
 

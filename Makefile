@@ -29,8 +29,8 @@ CONTAINER_RUNTIME := $(shell command -v docker >/dev/null 2>&1 && echo "docker" 
 # so that Alpine (running as root) can re-own volume directories back to the host user.
 HOST_UID := $(shell id -u)
 HOST_GID := $(shell id -g)
-OPENRAG_IMAGE_REPOS := langflowai/openrag-backend langflowai/openrag-frontend langflowai/openrag-langflow langflowai/openrag-opensearch langflowai/openrag-dashboards langflow/langflow opensearchproject/opensearch opensearchproject/opensearch-dashboards
-COMPOSE_PROJECT_NAME ?= openrag
+BOMARAG_IMAGE_REPOS := bomalogic/bomarag-backend bomalogic/bomarag-frontend bomalogic/bomarag-langflow bomalogic/bomarag-opensearch bomalogic/bomarag-dashboards langflow/langflow opensearchproject/opensearch opensearchproject/opensearch-dashboards
+COMPOSE_PROJECT_NAME ?= bomarag
 
 # Only pass --env-file if the file actually exists
 ifneq (,$(wildcard $(ENV_FILE)))
@@ -93,9 +93,9 @@ define fix_backend_volume_ownership
 		-v "$$(pwd)/keys:/mnt/keys" \
 		-v "$$(pwd)/config:/mnt/config" \
 		-v "$$(pwd)/data:/mnt/data" \
-		-v "$$(pwd)/openrag-documents:/mnt/openrag-documents" \
-		alpine sh -c "chown -R $(HOST_UID):$(HOST_GID) /mnt/flows /mnt/keys /mnt/config /mnt/data /mnt/openrag-documents && chmod 775 /mnt/flows /mnt/keys /mnt/config /mnt/data /mnt/openrag-documents" 2>/dev/null \
-		|| { chown -R $(HOST_UID):$(HOST_GID) flows keys config data openrag-documents 2>/dev/null || true; chmod 775 flows keys config data openrag-documents 2>/dev/null || true; }
+		-v "$$(pwd)/bomarag-documents:/mnt/bomarag-documents" \
+		alpine sh -c "chown -R $(HOST_UID):$(HOST_GID) /mnt/flows /mnt/keys /mnt/config /mnt/data /mnt/bomarag-documents && chmod 775 /mnt/flows /mnt/keys /mnt/config /mnt/data /mnt/bomarag-documents" 2>/dev/null \
+		|| { chown -R $(HOST_UID):$(HOST_GID) flows keys config data bomarag-documents 2>/dev/null || true; chmod 775 flows keys config data bomarag-documents 2>/dev/null || true; }
 endef
 
 ######################
@@ -166,7 +166,7 @@ check_tools: ## Verify required tools are installed with correct versions
 help: ## Show main help with common commands
 	@echo ''
 	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
-	@echo "$(PURPLE)                    OPENRAG MAKEFILE COMMANDS                       $(NC)"
+	@echo "$(PURPLE)                    BOMARAG MAKEFILE COMMANDS                       $(NC)"
 	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
 	@echo ''
 	@echo "$(PURPLE)Quick Start:$(NC)"
@@ -175,7 +175,7 @@ help: ## Show main help with common commands
 	@echo "  $(PURPLE)make dev-cpu$(NC)         - Start full stack with CPU only"
 	@echo "  $(PURPLE)make dev-build$(NC)       - Build all images and start full stack with GPU support"
 	@echo "  $(PURPLE)make dev-build-cpu$(NC)   - Build all images and start full stack with CPU only"
-	@echo "  $(PURPLE)make stop$(NC)            - Stop and remove all OpenRAG containers"
+	@echo "  $(PURPLE)make stop$(NC)            - Stop and remove all BomaRAG containers"
 	@echo ''
 	@echo "$(PURPLE)Common Commands:$(NC)"
 	@echo "  $(PURPLE)make backend$(NC)         - Run backend locally"
@@ -211,11 +211,11 @@ help_operator: ## Show Kubernetes operator and kind local cluster commands
 	@echo "$(PURPLE)App images → kind (from repo root, Colima/Docker):$(NC)"
 	@echo "  $(PURPLE)make kind-build-load-apps$(NC)  - Build backend/frontend/langflow + load into kind"
 	@echo "  $(PURPLE)make kind-load-app-images$(NC)  - Load already-built app images into kind"
-	@echo "                         $(CYAN)KIND_CLUSTER_NAME$(NC)=$(KIND_CLUSTER_NAME) (default: openrag)"
+	@echo "                         $(CYAN)KIND_CLUSTER_NAME$(NC)=$(KIND_CLUSTER_NAME) (default: bomarag)"
 	@echo ''
 	@echo "$(PURPLE)Operator binary & CRD ($(OPERATOR_DIR)):$(NC)"
 	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make deps$(NC)       - Install controller-gen, kustomize, envtest"
-	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make install$(NC)    - Install OpenRAG CRD into current cluster"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make install$(NC)    - Install BomaRAG CRD into current cluster"
 	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make run$(NC)        - Run operator on host (uses kubeconfig)"
 	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make build$(NC)      - Compile operator to bin/manager"
 	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make test$(NC)       - Operator unit tests (envtest)"
@@ -227,23 +227,23 @@ help_operator: ## Show Kubernetes operator and kind local cluster commands
 	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make deploy$(NC)     - Deploy operator (IMG=...)"
 	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make undeploy$(NC)   - Remove operator deployment"
 	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make docker-build$(NC) - Build operator image (IMG=...)"
-	@echo "  $(PURPLE)kind load docker-image openrag-operator:dev --name openrag$(NC)"
-	@echo "  $(PURPLE)helm install openrag-operator ./kubernetes/helm/operator -n openrag-control --create-namespace$(NC)"
+	@echo "  $(PURPLE)kind load docker-image bomarag-operator:dev --name bomarag$(NC)"
+	@echo "  $(PURPLE)helm install bomarag-operator ./kubernetes/helm/operator -n bomarag-control --create-namespace$(NC)"
 	@echo ''
-	@echo "$(PURPLE)Sample OpenRAG CR (after make run or make deploy):$(NC)"
+	@echo "$(PURPLE)Sample BomaRAG CR (after make run or make deploy):$(NC)"
 	@echo "  $(PURPLE)kubectl create namespace my-tenant$(NC)"
-	@echo "  $(PURPLE)kubectl apply -f $(OPERATOR_DIR)/config/samples/openrag_v1alpha1_openrag-kind-local.yaml$(NC)"
+	@echo "  $(PURPLE)kubectl apply -f $(OPERATOR_DIR)/config/samples/bomarag_v1alpha1_bomarag-kind-local.yaml$(NC)"
 	@echo "                         (low CPU + imagePullPolicy: Never for local images)"
 	@echo "  $(PURPLE)kubectl get pods -n my-tenant$(NC)"
-	@echo "  $(PURPLE)kubectl rollout restart deployment -n my-tenant openrag-fe openrag-be openrag-lf$(NC)"
+	@echo "  $(PURPLE)kubectl rollout restart deployment -n my-tenant bomarag-fe bomarag-be bomarag-lf$(NC)"
 	@echo "                         (after rebuilding and reloading images)"
 	@echo ''
 	@echo "$(PURPLE)Typical kind + local images workflow:$(NC)"
-	@echo "  1. $(CYAN)kind create cluster --name openrag$(NC)"
+	@echo "  1. $(CYAN)kind create cluster --name bomarag$(NC)"
 	@echo "  2. $(CYAN)make kind-build-load-apps$(NC)"
 	@echo "  3. $(CYAN)cd $(OPERATOR_DIR) && make install && make run$(NC)"
 	@echo "  4. $(CYAN)kubectl create namespace my-tenant$(NC)"
-	@echo "  5. $(CYAN)kubectl apply -f $(OPERATOR_DIR)/config/samples/openrag_v1alpha1_openrag-kind-local.yaml$(NC)"
+	@echo "  5. $(CYAN)kubectl apply -f $(OPERATOR_DIR)/config/samples/bomarag_v1alpha1_bomarag-kind-local.yaml$(NC)"
 	@echo ''
 	@echo "$(PURPLE)All operator Makefile targets:$(NC) $(CYAN)cd $(OPERATOR_DIR) && make help$(NC)"
 	@echo ''
@@ -261,7 +261,7 @@ help_dev: ## Show development environment commands
 	@echo "  $(PURPLE)make dev-cpu$(NC)         - Start full stack with CPU only"
 	@echo "  $(PURPLE)make dev-build$(NC)       - Build all images and start full stack with GPU support"
 	@echo "  $(PURPLE)make dev-build-cpu$(NC)   - Build all images and start full stack with CPU only"
-	@echo "  $(PURPLE)make stop$(NC)            - Stop and remove all OpenRAG containers"
+	@echo "  $(PURPLE)make stop$(NC)            - Stop and remove all BomaRAG containers"
 	@echo "  $(PURPLE)make restart$(NC)         - Restart all containers"
 	@echo ''
 	@echo "$(PURPLE)Infrastructure Only:$(NC)"
@@ -299,11 +299,11 @@ help_docker: ## Show Docker and container commands
 	@echo "  $(PURPLE)make build-be$(NC)        - Build backend Docker image only"
 	@echo "  $(PURPLE)make build-fe$(NC)        - Build frontend Docker image only"
 	@echo "  $(PURPLE)make build-lf$(NC)        - Build Langflow Docker image only"
-	@echo "  $(PURPLE)make kind-build-load-apps$(NC) - Build app images and load into kind (KIND_CLUSTER_NAME=openrag)"
+	@echo "  $(PURPLE)make kind-build-load-apps$(NC) - Build app images and load into kind (KIND_CLUSTER_NAME=bomarag)"
 	@echo "  $(PURPLE)make kind-load-app-images$(NC) - Load already-built app images into kind"
 	@echo ''
 	@echo "$(PURPLE)Container Management:$(NC)"
-	@echo "  $(PURPLE)make stop$(NC)            - Stop and remove all OpenRAG containers"
+	@echo "  $(PURPLE)make stop$(NC)            - Stop and remove all BomaRAG containers"
 	@echo "  $(PURPLE)make restart$(NC)         - Restart all containers"
 	@echo "  $(PURPLE)make clean$(NC)           - Stop containers and remove volumes"
 	@echo "  $(PURPLE)make status$(NC)          - Show container status"
@@ -336,7 +336,7 @@ help_test: ## Show testing commands
 	@echo ''
 	@echo "$(PURPLE)SDK Tests:$(NC)"
 	@echo "  $(PURPLE)make test-sdk$(NC)        - Run SDK integration tests"
-	@echo "                         (requires running OpenRAG at localhost:3000)"
+	@echo "                         (requires running BomaRAG at localhost:3000)"
 	@echo ''
 	@echo "$(PURPLE)Diagnostic Tests:$(NC)"
 	@echo "  $(PURPLE)make test-os-jwt$(NC)     - Test JWT authentication against OpenSearch"
@@ -421,8 +421,8 @@ ensure-langflow-data: ## Create the langflow-data directory if it does not exist
 	@chmod 777 langflow-data
 
 ensure-backend-volumes: ## Create and permission backend volume directories
-	@mkdir -p flows keys config data openrag-documents
-	@chmod 775 flows keys config data openrag-documents 2>/dev/null \
+	@mkdir -p flows keys config data bomarag-documents
+	@chmod 775 flows keys config data bomarag-documents 2>/dev/null \
 		|| echo "$(YELLOW)Warning: Could not chmod backend volume directories.$(NC)"
 
 check-env: ## Verify required environment variables are set in .env
@@ -493,44 +493,44 @@ generate-langflow-password: ## Auto-generate and append Langflow superuser crede
 	echo "  LANGFLOW_SUPERUSER_PASSWORD=$$PW"
 
 dev: ensure-langflow-data ensure-backend-volumes check-env ## Start full stack with GPU support
-	@echo "$(YELLOW)Starting OpenRAG with GPU support...$(NC)"
+	@echo "$(YELLOW)Starting BomaRAG with GPU support...$(NC)"
 	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml up -d
 	@echo "$(PURPLE)Services started!$(NC)"
-	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
+	@echo "   $(CYAN)Backend:$(NC)    http://bomarag-backend"
 	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:$${FRONTEND_PORT:-3000}"
 	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
 	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
 
 dev-cpu: ensure-langflow-data ensure-backend-volumes check-env ## Start full stack with CPU only
-	@echo "$(YELLOW)Starting OpenRAG with CPU only...$(NC)"
+	@echo "$(YELLOW)Starting BomaRAG with CPU only...$(NC)"
 	$(COMPOSE_CMD) up -d $(SERVICES)
 	@echo "$(PURPLE)Services started!$(NC)"
-	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
+	@echo "   $(CYAN)Backend:$(NC)    http://bomarag-backend"
 	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:$${FRONTEND_PORT:-3000}"
 	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
 	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
 
 dev-build: ensure-langflow-data ensure-backend-volumes check-env ## Start full stack with GPU support, building all images first
-	@echo "$(YELLOW)Building all OpenRAG images...$(NC)"
+	@echo "$(YELLOW)Building all BomaRAG images...$(NC)"
 	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml build
-	@echo "$(YELLOW)Starting OpenRAG with GPU support...$(NC)"
+	@echo "$(YELLOW)Starting BomaRAG with GPU support...$(NC)"
 	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml up -d
 	@echo "$(PURPLE)Services started!$(NC)"
-	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
+	@echo "   $(CYAN)Backend:$(NC)    http://bomarag-backend"
 	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:$${FRONTEND_PORT:-3000}"
 	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
 	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
 
 dev-build-cpu: ensure-langflow-data ensure-backend-volumes check-env ## Start full stack with CPU only, building all images first
-	@echo "$(YELLOW)Building all OpenRAG images (CPU)...$(NC)"
+	@echo "$(YELLOW)Building all BomaRAG images (CPU)...$(NC)"
 	$(COMPOSE_CMD) build
-	@echo "$(YELLOW)Starting OpenRAG with CPU only...$(NC)"
+	@echo "$(YELLOW)Starting BomaRAG with CPU only...$(NC)"
 	$(COMPOSE_CMD) up -d
 	@echo "$(PURPLE)Services started!$(NC)"
-	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
+	@echo "   $(CYAN)Backend:$(NC)    http://bomarag-backend"
 	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:$${FRONTEND_PORT:-3000}"
 	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
@@ -573,7 +573,7 @@ dev-branch: ensure-langflow-data ensure-backend-volumes check-env ## Build & run
 	@echo "$(YELLOW)This may take several minutes for the first build...$(NC)"
 	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.dev.yml build langflow
 	@echo ""
-	@echo "$(YELLOW)Starting OpenRAG with custom Langflow build...$(NC)"
+	@echo "$(YELLOW)Starting BomaRAG with custom Langflow build...$(NC)"
 	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.dev.yml up -d
 	@echo ""
 	@echo "$(PURPLE)Dev environment started!$(NC)"
@@ -589,7 +589,7 @@ dev-branch-cpu: ensure-langflow-data ensure-backend-volumes check-env ## Build &
 	@echo "$(YELLOW)This may take several minutes for the first build...$(NC)"
 	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.dev.yml build langflow
 	@echo ""
-	@echo "$(YELLOW)Starting OpenRAG (CPU only) with custom Langflow build...$(NC)"
+	@echo "$(YELLOW)Starting BomaRAG (CPU only) with custom Langflow build...$(NC)"
 	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.dev.yml up -d
 	@echo ""
 	@echo "$(PURPLE)Dev environment started!$(NC)"
@@ -672,19 +672,19 @@ status-dev: ## Show dev container status
 # CONTAINER MANAGEMENT
 ######################
 
-stop: ## Stop and remove all OpenRAG containers
-	@echo "$(YELLOW)Stopping and removing all OpenRAG containers...$(NC)"
-	@$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) down --remove-orphans 2>/dev/null || true
-	@$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) -f docker-compose.dev.yml down --remove-orphans 2>/dev/null || true
-	@$(CONTAINER_RUNTIME) ps -a --filter "name=openrag" --filter "name=langflow" --filter "name=opensearch" -q | xargs -r $(CONTAINER_RUNTIME) rm -f 2>/dev/null || true
-	@echo "$(PURPLE)All OpenRAG containers stopped and removed.$(NC)"
+stop: ## Stop and remove all BomaRAG containers
+	@echo "$(YELLOW)Stopping and removing all BomaRAG containers...$(NC)"
+	@$(COMPOSE_CMD) $(BOMARAG_ENV_FILE) down --remove-orphans 2>/dev/null || true
+	@$(COMPOSE_CMD) $(BOMARAG_ENV_FILE) -f docker-compose.dev.yml down --remove-orphans 2>/dev/null || true
+	@$(CONTAINER_RUNTIME) ps -a --filter "name=bomarag" --filter "name=langflow" --filter "name=opensearch" -q | xargs -r $(CONTAINER_RUNTIME) rm -f 2>/dev/null || true
+	@echo "$(PURPLE)All BomaRAG containers stopped and removed.$(NC)"
 
 restart: stop dev ## Restart all containers
 
-remove-openrag-images: ## Remove OpenRAG-related images and dependencies (may affect other projects using shared images)
-	@echo "$(YELLOW)Removing OpenRAG-related images and dependencies...$(NC)"
+remove-bomarag-images: ## Remove BomaRAG-related images and dependencies (may affect other projects using shared images)
+	@echo "$(YELLOW)Removing BomaRAG-related images and dependencies...$(NC)"
 	@removed=0; total=0; \
-	for repo in $(OPENRAG_IMAGE_REPOS); do \
+	for repo in $(BOMARAG_IMAGE_REPOS); do \
 		ids=$$($(CONTAINER_RUNTIME) images "$$repo" -q 2>/dev/null | sort -u); \
 		for id in $$ids; do \
 			total=$$((total+1)); \
@@ -693,12 +693,12 @@ remove-openrag-images: ## Remove OpenRAG-related images and dependencies (may af
 			fi; \
 		done; \
 	done; \
-	echo "$(PURPLE)Removed $$removed/$$total OpenRAG image(s).$(NC)"
+	echo "$(PURPLE)Removed $$removed/$$total BomaRAG image(s).$(NC)"
 
 clean: stop ## Stop containers and remove volumes
 	@echo "$(YELLOW)Cleaning up containers and volumes...$(NC)"
 	$(COMPOSE_CMD) down -v --remove-orphans
-	@$(MAKE) remove-openrag-images
+	@$(MAKE) remove-bomarag-images
 	@echo "$(PURPLE)Cleanup complete!$(NC)"
 
 define FACTORY_RESET_SCRIPT
@@ -729,10 +729,10 @@ if [ -d "data" ]; then \
 	rm -rf data; \
 	echo "$(PURPLE)data removed$(NC)"; \
 fi; \
-if [ -n "$$OPENRAG_DATA_PATH" ] && [ -d "$$OPENRAG_DATA_PATH" ]; then \
-	echo "Removing $$OPENRAG_DATA_PATH..."; \
-	rm -rf "$$OPENRAG_DATA_PATH"; \
-	echo "$(PURPLE)$$OPENRAG_DATA_PATH removed$(NC)"; \
+if [ -n "$$BOMARAG_DATA_PATH" ] && [ -d "$$BOMARAG_DATA_PATH" ]; then \
+	echo "Removing $$BOMARAG_DATA_PATH..."; \
+	rm -rf "$$BOMARAG_DATA_PATH"; \
+	echo "$(PURPLE)$$BOMARAG_DATA_PATH removed$(NC)"; \
 fi; \
 if [ -f "keys/private_key.pem" ] || [ -f "keys/public_key.pem" ]; then \
 	echo "Removing JWT keys..."; \
@@ -743,7 +743,7 @@ fi
 endef
 
 factory-reset: ## Complete reset (stop, remove volumes, clear data)
-	@echo "$(RED)WARNING: This will completely reset OpenRAG data!$(NC)"; \
+	@echo "$(RED)WARNING: This will completely reset BomaRAG data!$(NC)"; \
 	echo "$(YELLOW)This will:$(NC)"; \
 	echo "  - Stop all containers"; \
 	echo "  - Remove all volumes"; \
@@ -759,7 +759,7 @@ factory-reset: ## Complete reset (stop, remove volumes, clear data)
 	echo "$(CYAN)Run 'make dev' or 'make dev-cpu' to start fresh.$(NC)";
 
 factory-reset-clean-build: ## Complete reset (stop, remove volumes, clear data, remove images)
-	@echo "$(RED)WARNING: This will completely reset OpenRAG and remove images!$(NC)"; \
+	@echo "$(RED)WARNING: This will completely reset BomaRAG and remove images!$(NC)"; \
 	echo "$(YELLOW)This will:$(NC)"; \
 	echo "  - Stop all containers"; \
 	echo "  - Remove all volumes"; \
@@ -768,7 +768,7 @@ factory-reset-clean-build: ## Complete reset (stop, remove volumes, clear data, 
 	echo "  - Delete data directory (database and session configs)"; \
 	echo "  - Delete opensearch-data directory (legacy OpenSearch bind-mount data)"; \
 	echo "  - Delete JWT keys (private_key.pem, public_key.pem)"; \
-	echo "  - Remove OpenRAG images"; \
+	echo "  - Remove BomaRAG images"; \
 	echo ""; \
 	echo ""; \
 	if [ "$(FORCE)" != "true" ]; then \
@@ -805,10 +805,10 @@ factory-reset-clean-build: ## Complete reset (stop, remove volumes, clear data, 
 			echo "$(RED)Warning: Failed to remove opensearch-data (check permissions)$(NC)"; \
 		fi; \
 	fi; \
-	if [ -n "$$OPENRAG_DATA_PATH" ] && [ -d "$$OPENRAG_DATA_PATH" ]; then \
-		echo "Removing $$OPENRAG_DATA_PATH..."; \
-		rm -rf "$$OPENRAG_DATA_PATH"; \
-		echo "$(PURPLE)$$OPENRAG_DATA_PATH removed$(NC)"; \
+	if [ -n "$$BOMARAG_DATA_PATH" ] && [ -d "$$BOMARAG_DATA_PATH" ]; then \
+		echo "Removing $$BOMARAG_DATA_PATH..."; \
+		rm -rf "$$BOMARAG_DATA_PATH"; \
+		echo "$(PURPLE)$$BOMARAG_DATA_PATH removed$(NC)"; \
 	fi; \
 	if [ -f "keys/private_key.pem" ] || [ -f "keys/public_key.pem" ]; then \
 		echo "Removing JWT keys..."; \
@@ -816,8 +816,8 @@ factory-reset-clean-build: ## Complete reset (stop, remove volumes, clear data, 
 			$(CONTAINER_RUNTIME) run --rm -v "$$(pwd)/keys:/keys" alpine rm -f /keys/private_key.pem /keys/public_key.pem 2>/dev/null || true; \
 		echo "$(PURPLE)JWT keys removed$(NC)"; \
 	fi; \
-	echo "$(YELLOW)Removing OpenRAG images...$(NC)"; \
-	$(MAKE) remove-openrag-images; \
+	echo "$(YELLOW)Removing BomaRAG images...$(NC)"; \
+	$(MAKE) remove-bomarag-images; \
 	echo ""; \
 	echo "$(PURPLE)Factory reset complete!$(NC)"; \
 	echo "$(CYAN)Run 'make dev' or 'make dev-cpu' to start fresh.$(NC)";
@@ -910,35 +910,35 @@ build: build-os build-be build-fe build-lf ## Build all Docker images locally
 
 build-os: ## Build OpenSearch Docker image
 	@echo "$(YELLOW)Building OpenSearch image...$(NC)"
-	$(CONTAINER_RUNTIME) build -t langflowai/openrag-opensearch:latest -f Dockerfile .
+	$(CONTAINER_RUNTIME) build -t bomalogic/bomarag-opensearch:latest -f Dockerfile .
 	@echo "$(PURPLE)OpenSearch image built.$(NC)"
 
 build-be: ## Build backend Docker image
 	@echo "$(YELLOW)Building backend image...$(NC)"
-	$(CONTAINER_RUNTIME) build -t langflowai/openrag-backend:latest -f Dockerfile.backend .
+	$(CONTAINER_RUNTIME) build -t bomalogic/bomarag-backend:latest -f Dockerfile.backend .
 	@echo "$(PURPLE)Backend image built.$(NC)"
 
 build-fe: ## Build frontend Docker image
 	@echo "$(YELLOW)Building frontend image...$(NC)"
-	$(CONTAINER_RUNTIME) build -t langflowai/openrag-frontend:latest -f Dockerfile.frontend .
+	$(CONTAINER_RUNTIME) build -t bomalogic/bomarag-frontend:latest -f Dockerfile.frontend .
 	@echo "$(PURPLE)Frontend image built.$(NC)"
 
 build-lf: ## Build Langflow Docker image
 	@echo "$(YELLOW)Building Langflow image...$(NC)"
-	$(CONTAINER_RUNTIME) build -t langflowai/openrag-langflow:latest -f Dockerfile.langflow .
+	$(CONTAINER_RUNTIME) build -t bomalogic/bomarag-langflow:latest -f Dockerfile.langflow .
 	@echo "$(PURPLE)Langflow image built.$(NC)"
 
 # kind cluster name for local Kubernetes (see kubernetes/operator/README.md)
-KIND_CLUSTER_NAME ?= openrag
+KIND_CLUSTER_NAME ?= bomarag
 
-kind-load-app-images: ## Load OpenRAG app images into a kind cluster (Colima/Docker)
+kind-load-app-images: ## Load BomaRAG app images into a kind cluster (Colima/Docker)
 	@command -v kind >/dev/null 2>&1 || { echo "$(RED)kind is not installed$(NC)"; exit 1; }
 	@echo "$(YELLOW)Loading app images into kind cluster '$(KIND_CLUSTER_NAME)'...$(NC)"
-	kind load docker-image langflowai/openrag-backend:latest --name $(KIND_CLUSTER_NAME)
-	kind load docker-image langflowai/openrag-frontend:latest --name $(KIND_CLUSTER_NAME)
-	kind load docker-image langflowai/openrag-langflow:latest --name $(KIND_CLUSTER_NAME)
+	kind load docker-image bomalogic/bomarag-backend:latest --name $(KIND_CLUSTER_NAME)
+	kind load docker-image bomalogic/bomarag-frontend:latest --name $(KIND_CLUSTER_NAME)
+	kind load docker-image bomalogic/bomarag-langflow:latest --name $(KIND_CLUSTER_NAME)
 	@echo "$(PURPLE)Images loaded. Restart pods if they already exist:$(NC)"
-	@echo "  kubectl rollout restart deployment -n my-tenant openrag-fe openrag-be openrag-lf"
+	@echo "  kubectl rollout restart deployment -n my-tenant bomarag-fe bomarag-be bomarag-lf"
 
 kind-build-load-apps: build-be build-fe build-lf kind-load-app-images ## Build app images and load into kind
 
@@ -952,11 +952,11 @@ logs: ## Show logs from all containers
 
 logs-be: ## Show backend container logs
 	@echo "$(YELLOW)Showing backend logs...$(NC)"
-	$(COMPOSE_CMD) logs -f openrag-backend
+	$(COMPOSE_CMD) logs -f bomarag-backend
 
 logs-fe: ## Show frontend container logs
 	@echo "$(YELLOW)Showing frontend logs...$(NC)"
-	$(COMPOSE_CMD) logs -f openrag-frontend
+	$(COMPOSE_CMD) logs -f bomarag-frontend
 
 logs-lf: ## Show langflow container logs
 	@echo "$(YELLOW)Showing langflow logs...$(NC)"
@@ -972,7 +972,7 @@ logs-os: ## Show opensearch container logs
 
 shell-be: ## Shell into backend container
 	@echo "$(YELLOW)Opening shell in backend container...$(NC)"
-	$(COMPOSE_CMD) exec openrag-backend /bin/bash
+	$(COMPOSE_CMD) exec bomarag-backend /bin/bash
 
 shell-lf: ## Shell into langflow container
 	@echo "$(YELLOW)Opening shell in langflow container...$(NC)"
@@ -1003,27 +1003,27 @@ test-integration: ## Run integration tests (requires infrastructure)
 	@echo "$(YELLOW)Make sure to run 'make dev-local' first!$(NC)"
 	uv run pytest tests/integration/core/ -v
 
-ci-build-images: ## Build all OpenRAG images for CI artifact sharing
+ci-build-images: ## Build all BomaRAG images for CI artifact sharing
 	@set -e; \
-	IMAGE_TAG=$${OPENRAG_VERSION:-latest}; \
-	echo "$(YELLOW)Building all OpenRAG images with tag '$$IMAGE_TAG'...$(NC)"; \
-	$(CONTAINER_RUNTIME) build -t langflowai/openrag-opensearch:$$IMAGE_TAG -f Dockerfile .; \
-	$(CONTAINER_RUNTIME) build -t langflowai/openrag-backend:$$IMAGE_TAG -f Dockerfile.backend .; \
-	$(CONTAINER_RUNTIME) build -t langflowai/openrag-frontend:$$IMAGE_TAG -f Dockerfile.frontend .; \
-	$(CONTAINER_RUNTIME) build -t langflowai/openrag-langflow:$$IMAGE_TAG -f Dockerfile.langflow .; \
+	IMAGE_TAG=$${BOMARAG_VERSION:-latest}; \
+	echo "$(YELLOW)Building all BomaRAG images with tag '$$IMAGE_TAG'...$(NC)"; \
+	$(CONTAINER_RUNTIME) build -t bomalogic/bomarag-opensearch:$$IMAGE_TAG -f Dockerfile .; \
+	$(CONTAINER_RUNTIME) build -t bomalogic/bomarag-backend:$$IMAGE_TAG -f Dockerfile.backend .; \
+	$(CONTAINER_RUNTIME) build -t bomalogic/bomarag-frontend:$$IMAGE_TAG -f Dockerfile.frontend .; \
+	$(CONTAINER_RUNTIME) build -t bomalogic/bomarag-langflow:$$IMAGE_TAG -f Dockerfile.langflow .; \
 	echo "$(GREEN)All images built successfully!$(NC)"
 
-ci-save-images: ## Save CI-built OpenRAG images to .ci-artifacts/openrag-ci-images.tar
+ci-save-images: ## Save CI-built BomaRAG images to .ci-artifacts/bomarag-ci-images.tar
 	@set -e; \
-	IMAGE_TAG=$${OPENRAG_VERSION:-latest}; \
+	IMAGE_TAG=$${BOMARAG_VERSION:-latest}; \
 	mkdir -p .ci-artifacts; \
-	echo "$(YELLOW)Saving OpenRAG images with tag '$$IMAGE_TAG'...$(NC)"; \
-	$(CONTAINER_RUNTIME) save -o .ci-artifacts/openrag-ci-images.tar \
-		langflowai/openrag-opensearch:$$IMAGE_TAG \
-		langflowai/openrag-backend:$$IMAGE_TAG \
-		langflowai/openrag-frontend:$$IMAGE_TAG \
-		langflowai/openrag-langflow:$$IMAGE_TAG; \
-	ls -lh .ci-artifacts/openrag-ci-images.tar
+	echo "$(YELLOW)Saving BomaRAG images with tag '$$IMAGE_TAG'...$(NC)"; \
+	$(CONTAINER_RUNTIME) save -o .ci-artifacts/bomarag-ci-images.tar \
+		bomalogic/bomarag-opensearch:$$IMAGE_TAG \
+		bomalogic/bomarag-backend:$$IMAGE_TAG \
+		bomalogic/bomarag-frontend:$$IMAGE_TAG \
+		bomalogic/bomarag-langflow:$$IMAGE_TAG; \
+	ls -lh .ci-artifacts/bomarag-ci-images.tar
 
 test-ci-suite: ensure-langflow-data ensure-backend-volumes ## Run one CI integration suite: TEST_SUITE=core|sdk-python|sdk-typescript
 	@scripts/ci/run_integration_suite.sh "$${TEST_SUITE:-core}"
@@ -1039,11 +1039,11 @@ test-ci: ensure-langflow-data ensure-backend-volumes ## Start infra, run integra
 	echo "$(YELLOW)Pulling latest images...$(NC)"; \
 	$(COMPOSE_CMD) pull; \
 	echo "$(YELLOW)Building OpenSearch image override...$(NC)"; \
-	$(CONTAINER_RUNTIME) build --no-cache -t langflowai/openrag-opensearch:latest -f Dockerfile .; \
+	$(CONTAINER_RUNTIME) build --no-cache -t bomalogic/bomarag-opensearch:latest -f Dockerfile .; \
 	echo "::endgroup::"; \
 	echo "::group::Start Infrastructure"; \
 	echo "$(YELLOW)Starting infra (OpenSearch + Langflow + Backend + Frontend) with CPU containers$(NC)"; \
-	OPENSEARCH_HOST=opensearch $(COMPOSE_CMD) up -d opensearch langflow openrag-backend openrag-frontend; \
+	OPENSEARCH_HOST=opensearch $(COMPOSE_CMD) up -d opensearch langflow bomarag-backend bomarag-frontend; \
 	echo "$(CYAN)Architecture: $$(uname -m), Platform: $$(uname -s)$(NC)"; \
 	echo "$(YELLOW)Starting docling-serve...$(NC)"; \
 	DOCLING_START_FAILED=0; \
@@ -1065,7 +1065,7 @@ test-ci: ensure-langflow-data ensure-backend-volumes ## Start infra, run integra
 	uv run python scripts/docling_ctl.py status 2>&1 || true; \
 	echo "$(YELLOW)Waiting for backend OIDC endpoint...$(NC)"; \
 	for i in $$(seq 1 60); do \
-		$(COMPOSE_CMD) exec -T openrag-backend curl -s http://localhost:8000/.well-known/openid-configuration >/dev/null 2>&1 && break || sleep 2; \
+		$(COMPOSE_CMD) exec -T bomarag-backend curl -s http://localhost:8000/.well-known/openid-configuration >/dev/null 2>&1 && break || sleep 2; \
 	done; \
 	echo "$(YELLOW)Fixing JWT key ownership for test runner (host UID $$(id -u))...$(NC)"; \
 	$(CONTAINER_RUNTIME) run --rm -v $$(pwd)/keys:/keys alpine sh -c "chown $$(id -u):$$(id -g) /keys/private_key.pem /keys/public_key.pem 2>/dev/null; chmod 600 /keys/private_key.pem; chmod 644 /keys/public_key.pem 2>/dev/null" 2>/dev/null || true; \
@@ -1134,7 +1134,7 @@ test-ci: ensure-langflow-data ensure-backend-volumes ## Start infra, run integra
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
 	uv pip install --quiet -e sdks/python; \
 	mkdir -p service-logs; \
-	SDK_TESTS_ONLY=true OPENRAG_URL=http://localhost:3000 uv run pytest tests/integration/sdk/ -vv -s --log-file=service-logs/pytest-sdk.log --log-file-level=DEBUG --junitxml=service-logs/junit-sdk-python.xml || TEST_RESULT=1; \
+	SDK_TESTS_ONLY=true BOMARAG_URL=http://localhost:3000 uv run pytest tests/integration/sdk/ -vv -s --log-file=service-logs/pytest-sdk.log --log-file-level=DEBUG --junitxml=service-logs/junit-sdk-python.xml || TEST_RESULT=1; \
 	echo "::endgroup::"; \
 	echo "::group::SDK Integration Tests (TypeScript)"; \
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
@@ -1142,7 +1142,7 @@ test-ci: ensure-langflow-data ensure-backend-volumes ## Start infra, run integra
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
 	cd sdks/typescript && \
 	npm install && npm run build && \
-	OPENRAG_URL=http://localhost:3000 npm test -- --reporter=junit --outputFile=../../service-logs/junit-sdk-typescript.xml || TEST_RESULT=1; \
+	BOMARAG_URL=http://localhost:3000 npm test -- --reporter=junit --outputFile=../../service-logs/junit-sdk-typescript.xml || TEST_RESULT=1; \
 	cd ../..; \
 	echo "::endgroup::"; \
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
@@ -1165,15 +1165,15 @@ test-ci-local: ensure-langflow-data ensure-backend-volumes ## Same as test-ci bu
 	echo "$(YELLOW)Cleaning up old containers and volumes...$(NC)"; \
 	$(COMPOSE_CMD) down -v 2>/dev/null || true; \
 	echo "$(YELLOW)Building all images locally...$(NC)"; \
-	$(CONTAINER_RUNTIME) build -t langflowai/openrag-opensearch:latest -f Dockerfile .; \
-	$(CONTAINER_RUNTIME) build -t langflowai/openrag-backend:latest -f Dockerfile.backend .; \
-	$(CONTAINER_RUNTIME) build -t langflowai/openrag-frontend:latest -f Dockerfile.frontend .; \
-	$(CONTAINER_RUNTIME) build -t langflowai/openrag-langflow:latest -f Dockerfile.langflow .; \
+	$(CONTAINER_RUNTIME) build -t bomalogic/bomarag-opensearch:latest -f Dockerfile .; \
+	$(CONTAINER_RUNTIME) build -t bomalogic/bomarag-backend:latest -f Dockerfile.backend .; \
+	$(CONTAINER_RUNTIME) build -t bomalogic/bomarag-frontend:latest -f Dockerfile.frontend .; \
+	$(CONTAINER_RUNTIME) build -t bomalogic/bomarag-langflow:latest -f Dockerfile.langflow .; \
 	echo "::endgroup::"; \
 	echo "::group::Start Infrastructure"; \
 	echo "$(YELLOW)Starting infra (OpenSearch + Langflow + Backend + Frontend) with CPU containers$(NC)"; \
 	echo "$(CYAN)Architecture: $$(uname -m), Platform: $$(uname -s)$(NC)"; \
-	OPENSEARCH_HOST=opensearch $(COMPOSE_CMD) up -d opensearch langflow openrag-backend openrag-frontend; \
+	OPENSEARCH_HOST=opensearch $(COMPOSE_CMD) up -d opensearch langflow bomarag-backend bomarag-frontend; \
 	echo "$(YELLOW)Starting docling-serve...$(NC)"; \
 	DOCLING_START_FAILED=0; \
 	DOCLING_START_OUTPUT=$$(uv run python scripts/docling_ctl.py start --port 5001 --timeout 180 2>&1) || DOCLING_START_FAILED=1; \
@@ -1194,7 +1194,7 @@ test-ci-local: ensure-langflow-data ensure-backend-volumes ## Same as test-ci bu
 	uv run python scripts/docling_ctl.py status 2>&1 || true; \
 	echo "$(YELLOW)Waiting for backend OIDC endpoint...$(NC)"; \
 	for i in $$(seq 1 60); do \
-		$(COMPOSE_CMD) exec -T openrag-backend curl -s http://localhost:8000/.well-known/openid-configuration >/dev/null 2>&1 && break || sleep 2; \
+		$(COMPOSE_CMD) exec -T bomarag-backend curl -s http://localhost:8000/.well-known/openid-configuration >/dev/null 2>&1 && break || sleep 2; \
 	done; \
 	echo "$(YELLOW)Fixing JWT key ownership for test runner (host UID $$(id -u))...$(NC)"; \
 	$(CONTAINER_RUNTIME) run --rm -v $$(pwd)/keys:/keys alpine sh -c "chown $$(id -u):$$(id -g) /keys/private_key.pem /keys/public_key.pem 2>/dev/null; chmod 600 /keys/private_key.pem; chmod 644 /keys/public_key.pem 2>/dev/null" 2>/dev/null || true; \
@@ -1263,7 +1263,7 @@ test-ci-local: ensure-langflow-data ensure-backend-volumes ## Same as test-ci bu
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
 	uv pip install --quiet -e sdks/python; \
 	mkdir -p service-logs; \
-	SDK_TESTS_ONLY=true OPENRAG_URL=http://localhost:3000 uv run pytest tests/integration/sdk/ -vv -s --log-file=service-logs/pytest-sdk.log --log-file-level=DEBUG --junitxml=service-logs/junit-sdk-python.xml || TEST_RESULT=1; \
+	SDK_TESTS_ONLY=true BOMARAG_URL=http://localhost:3000 uv run pytest tests/integration/sdk/ -vv -s --log-file=service-logs/pytest-sdk.log --log-file-level=DEBUG --junitxml=service-logs/junit-sdk-python.xml || TEST_RESULT=1; \
 	echo "::endgroup::"; \
 	echo "::group::SDK Integration Tests (TypeScript)"; \
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
@@ -1271,7 +1271,7 @@ test-ci-local: ensure-langflow-data ensure-backend-volumes ## Same as test-ci bu
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
 	cd sdks/typescript && \
 	npm install && npm run build && \
-	OPENRAG_URL=http://localhost:3000 npm test -- --reporter=junit --outputFile=../../service-logs/junit-sdk-typescript.xml || TEST_RESULT=1; \
+	BOMARAG_URL=http://localhost:3000 npm test -- --reporter=junit --outputFile=../../service-logs/junit-sdk-typescript.xml || TEST_RESULT=1; \
 	cd ../..; \
 	echo "::endgroup::"; \
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
@@ -1283,7 +1283,7 @@ test-ci-local: ensure-langflow-data ensure-backend-volumes ## Same as test-ci bu
 		$(CONTAINER_RUNTIME) logs $(COMPOSE_PROJECT_NAME)-backend > service-logs/backend.log 2>&1 || echo "$(RED)Could not get backend logs$(NC)"; \
 		$(CONTAINER_RUNTIME) logs $(COMPOSE_PROJECT_NAME)-frontend > service-logs/frontend.log 2>&1 || echo "$(RED)Could not get frontend logs$(NC)"; \
 		$(CONTAINER_RUNTIME) logs $(COMPOSE_PROJECT_NAME)-opensearch > service-logs/opensearch.log 2>&1 || echo "$(RED)Could not get OpenSearch logs$(NC)"; \
-		if [ -f ~/.openrag/tui/docling-serve.log ]; then cp ~/.openrag/tui/docling-serve.log service-logs/docling.log 2>/dev/null || echo "$(RED)Could not get Docling logs$(NC)"; fi; \
+		if [ -f ~/.bomarag/tui/docling-serve.log ]; then cp ~/.bomarag/tui/docling-serve.log service-logs/docling.log 2>/dev/null || echo "$(RED)Could not get Docling logs$(NC)"; fi; \
 	fi; \
 	echo "::group::Test Failure Report"; \
 	uv run python scripts/ci/generate_test_report.py service-logs || true; \
@@ -1297,16 +1297,16 @@ test-ci-local: ensure-langflow-data ensure-backend-volumes ## Same as test-ci bu
 test-os-jwt: ## Test JWT authentication against OpenSearch
 	@$(call test_jwt_opensearch)
 
-test-sdk: ## Run SDK integration tests (requires running OpenRAG at localhost:3000)
+test-sdk: ## Run SDK integration tests (requires running BomaRAG at localhost:3000)
 	@echo "$(CYAN)════════════════════════════════════════$(NC)"
 	@echo "$(PURPLE) SDK Integration Tests (Python)$(NC)"
 	@echo "$(CYAN)════════════════════════════════════════$(NC)"
-	@echo "$(YELLOW)Make sure OpenRAG is running at localhost:3000 (make dev)$(NC)"
+	@echo "$(YELLOW)Make sure BomaRAG is running at localhost:3000 (make dev)$(NC)"
 	uv pip install -e sdks/python
-	SDK_TESTS_ONLY=true OPENRAG_URL=http://localhost:3000 uv run pytest tests/integration/sdk/ -vv -s
+	SDK_TESTS_ONLY=true BOMARAG_URL=http://localhost:3000 uv run pytest tests/integration/sdk/ -vv -s
 	@echo ""
 	@echo "$(PURPLE)Running TypeScript SDK tests...$(NC)"
-	cd sdks/typescript && npm install && npm run build && OPENRAG_URL=http://localhost:3000 npm test
+	cd sdks/typescript && npm install && npm run build && BOMARAG_URL=http://localhost:3000 npm test
 	@echo "$(PURPLE)SDK tests complete.$(NC)"
 
 lint: ## Run linting checks
@@ -1327,11 +1327,11 @@ health: ## Check health of all services
 	@printf "$(CYAN)Frontend:$(NC)   "
 	@if curl -s -k --fail http://127.0.0.1:$${FRONTEND_PORT:-3000}/ >/dev/null 2>&1; then printf "$(GREEN)Healthy$(NC)\n"; else printf "$(RED)Not responding$(NC)\n"; fi
 	@printf "$(CYAN)Backend:$(NC)     "
-	@if curl -s -k --fail http://127.0.0.1:$${OPENRAG_BACKEND_PORT:-8000}/health >/dev/null 2>&1; then \
+	@if curl -s -k --fail http://127.0.0.1:$${BOMARAG_BACKEND_PORT:-8000}/health >/dev/null 2>&1; then \
 		printf "$(GREEN)Healthy$(NC)\n"; \
-	elif command -v podman >/dev/null 2>&1 && podman ps --format "{{.Names}}" | grep -q "^openrag-backend$$" && podman exec openrag-backend curl -s -k --fail http://127.0.0.1:8000/health >/dev/null 2>&1; then \
+	elif command -v podman >/dev/null 2>&1 && podman ps --format "{{.Names}}" | grep -q "^bomarag-backend$$" && podman exec bomarag-backend curl -s -k --fail http://127.0.0.1:8000/health >/dev/null 2>&1; then \
 		printf "$(GREEN)Healthy$(NC)\n"; \
-	elif command -v docker >/dev/null 2>&1 && docker ps --format "{{.Names}}" | grep -q "^openrag-backend$$" && docker exec openrag-backend curl -s -k --fail http://127.0.0.1:8000/health >/dev/null 2>&1; then \
+	elif command -v docker >/dev/null 2>&1 && docker ps --format "{{.Names}}" | grep -q "^bomarag-backend$$" && docker exec bomarag-backend curl -s -k --fail http://127.0.0.1:8000/health >/dev/null 2>&1; then \
 		printf "$(GREEN)Healthy$(NC)\n"; \
 	else \
 		printf "$(RED)Not responding$(NC)\n"; \

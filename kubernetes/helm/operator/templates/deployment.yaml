@@ -1,15 +1,15 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "openrag-operator.fullname" . }}
+  name: {{ include "bomarag-operator.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "openrag-operator.labels" . | nindent 4 }}
+    {{- include "bomarag-operator.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      {{- include "openrag-operator.selectorLabels" . | nindent 6 }}
+      {{- include "bomarag-operator.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       {{- with .Values.podAnnotations }}
@@ -17,18 +17,18 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        {{- include "openrag-operator.selectorLabels" . | nindent 8 }}
+        {{- include "bomarag-operator.selectorLabels" . | nindent 8 }}
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "openrag-operator.serviceAccountName" . }}
+      serviceAccountName: {{ include "bomarag-operator.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
       - name: manager
-        image: {{ include "openrag-operator.image" . }}
+        image: {{ include "bomarag-operator.image" . }}
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         args:
         {{- if .Values.leaderElection.enabled }}

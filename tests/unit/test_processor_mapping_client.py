@@ -89,7 +89,7 @@ async def test_standard_processor_uses_shared_writer_for_embedding_mapping_and_w
         lambda: "text-embedding-3-small",
     )
     monkeypatch.setattr(
-        "models.processors.get_openrag_config",
+        "models.processors.get_bomarag_config",
         lambda: SimpleNamespace(knowledge=SimpleNamespace(embedding_model="")),
     )
     monkeypatch.setattr(

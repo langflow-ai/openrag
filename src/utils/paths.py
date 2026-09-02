@@ -1,7 +1,7 @@
-"""Host-side path management for OpenRAG TUI.
+"""Host-side path management for BomaRAG TUI.
 
 This module provides functions for TUI to get standardized paths on the host machine.
-All TUI files are centralized under ~/.openrag/ to avoid cluttering the user's CWD.
+All TUI files are centralized under ~/.bomarag/ to avoid cluttering the user's CWD.
 
 Note: This module is for HOST-SIDE (TUI) use only. Container code should not use these paths.
 """
@@ -9,13 +9,13 @@ Note: This module is for HOST-SIDE (TUI) use only. Container code should not use
 from pathlib import Path
 
 
-def get_openrag_home() -> Path:
-    """Get the OpenRAG home directory on the host.
+def get_bomarag_home() -> Path:
+    """Get the BomaRAG home directory on the host.
     
     Returns:
-        Path to ~/.openrag/ directory
+        Path to ~/.bomarag/ directory
     """
-    home_dir = Path.home() / ".openrag"
+    home_dir = Path.home() / ".bomarag"
     home_dir.mkdir(parents=True, exist_ok=True)
     return home_dir
 
@@ -24,9 +24,9 @@ def get_tui_dir() -> Path:
     """Get the TUI directory for TUI-specific files.
     
     Returns:
-        Path to ~/.openrag/tui/ directory
+        Path to ~/.bomarag/tui/ directory
     """
-    tui_dir = get_openrag_home() / "tui"
+    tui_dir = get_bomarag_home() / "tui"
     tui_dir.mkdir(parents=True, exist_ok=True)
     return tui_dir
 
@@ -35,7 +35,7 @@ def get_tui_env_file() -> Path:
     """Get the TUI .env file path.
     
     Returns:
-        Path to ~/.openrag/tui/.env file
+        Path to ~/.bomarag/tui/.env file
     """
     return get_tui_dir() / ".env"
 
@@ -47,7 +47,7 @@ def get_tui_compose_file(gpu: bool = False) -> Path:
         gpu: If True, returns path to docker-compose.gpu.yml
     
     Returns:
-        Path to docker-compose file in ~/.openrag/tui/
+        Path to docker-compose file in ~/.bomarag/tui/
     """
     filename = "docker-compose.gpu.yml" if gpu else "docker-compose.yml"
     return get_tui_dir() / filename

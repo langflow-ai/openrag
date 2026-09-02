@@ -13,10 +13,10 @@ from config.settings import get_jwt_auth_header  # noqa: E402
 
 
 def test_default_header(monkeypatch):
-    monkeypatch.delenv("OPENRAG_JWT_AUTH_HEADER", raising=False)
+    monkeypatch.delenv("BOMARAG_JWT_AUTH_HEADER", raising=False)
     assert get_jwt_auth_header() == "Authorization"
 
 
 def test_override_header(monkeypatch):
-    monkeypatch.setenv("OPENRAG_JWT_AUTH_HEADER", "X-Forwarded-Access-Token")
+    monkeypatch.setenv("BOMARAG_JWT_AUTH_HEADER", "X-Forwarded-Access-Token")
     assert get_jwt_auth_header() == "X-Forwarded-Access-Token"

@@ -1,4 +1,4 @@
-module github.com/langflow-ai/openrag-operator
+module github.com/ABISHAIMWANJA/bomarag-operator
 
 go 1.26.5
 

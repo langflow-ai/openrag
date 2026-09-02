@@ -34,12 +34,12 @@ async def session():
 
 @pytest.mark.asyncio
 async def test_reset_onboarding_clears_edited_and_step(session, monkeypatch):
-    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "db")
+    monkeypatch.setenv("BOMARAG_STORAGE_MODE", "db")
     repo = WorkspaceConfigRepo(session)
     await repo.upsert("meta", {"edited": True})
     await repo.upsert(
         "onboarding",
-        {"current_step": 4, "selected_nudge": "docs", "openrag_docs_filter_id": "kf-1"},
+        {"current_step": 4, "selected_nudge": "docs", "bomarag_docs_filter_id": "kf-1"},
     )
     await repo.upsert("agent", {"llm_model": "gpt-4o", "llm_provider": "openai"})
     await session.commit()
@@ -56,13 +56,13 @@ async def test_reset_onboarding_clears_edited_and_step(session, monkeypatch):
     assert meta["edited"] is False
     assert onboarding["current_step"] == 0
     assert onboarding.get("selected_nudge") is None
-    assert onboarding.get("openrag_docs_filter_id") is None
+    assert onboarding.get("bomarag_docs_filter_id") is None
     assert agent["llm_model"] == "gpt-4o"
 
 
 @pytest.mark.asyncio
 async def test_reset_models_clears_llm_and_embedding(session, monkeypatch):
-    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "db")
+    monkeypatch.setenv("BOMARAG_STORAGE_MODE", "db")
     repo = WorkspaceConfigRepo(session)
     await repo.upsert("meta", {"edited": True})
     await repo.upsert("onboarding", {"current_step": 4})
@@ -87,7 +87,7 @@ async def test_reset_models_clears_llm_and_embedding(session, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_dry_run_does_not_write(session, monkeypatch):
-    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "db")
+    monkeypatch.setenv("BOMARAG_STORAGE_MODE", "db")
     repo = WorkspaceConfigRepo(session)
     await repo.upsert("meta", {"edited": True})
     await repo.upsert("onboarding", {"current_step": 2})

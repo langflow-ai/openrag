@@ -1,7 +1,7 @@
 """Conversation persistence — chat-history metadata only (full message
 bodies live in Langflow).
 
-Mode-aware (``OPENRAG_STORAGE_MODE`` from ``src/config/storage_mode.py``):
+Mode-aware (``BOMARAG_STORAGE_MODE`` from ``src/config/storage_mode.py``):
 
 | Mode         | Reads                | Writes              |
 |--------------|----------------------|---------------------|

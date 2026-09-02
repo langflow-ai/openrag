@@ -1,0 +1,6 @@
+{
+  "name": "bomarag",
+  "version": "0.2.0",
+  "description": "BomaRAG agent skills: guided installation, SDK integration, and local dev-stack management.",
+  "repository": "https://github.com/ABISHAIMWANJA/bomarag"
+}

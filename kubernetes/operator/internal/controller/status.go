@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	openragv1alpha1 "github.com/langflow-ai/openrag-operator/api/v1alpha1"
+	bomaragv1alpha1 "github.com/ABISHAIMWANJA/bomarag-operator/api/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -17,7 +17,7 @@ import (
 
 // updateStatusSuccess updates the status to indicate successful reconciliation
 // Phase is set to "Reconciled" initially, then updated to "Running" if backend pod is ready
-func (r *OpenRAGReconciler) updateStatusSuccess(ctx context.Context, instance *openragv1alpha1.OpenRAG, targetNS string) (ctrl.Result, error) {
+func (r *BomaRAGReconciler) updateStatusSuccess(ctx context.Context, instance *bomaragv1alpha1.BomaRAG, targetNS string) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	scaledDown := ((instance.Spec.Backend.Replicas != nil && *instance.Spec.Backend.Replicas == 0) &&
@@ -61,7 +61,7 @@ func (r *OpenRAGReconciler) updateStatusSuccess(ctx context.Context, instance *o
 }
 
 // updateStatusError updates the status to indicate reconciliation failure and schedules retry after 5 minutes
-func (r *OpenRAGReconciler) updateStatusError(ctx context.Context, instance *openragv1alpha1.OpenRAG, component string, reconcileErr error) (ctrl.Result, error) {
+func (r *BomaRAGReconciler) updateStatusError(ctx context.Context, instance *bomaragv1alpha1.BomaRAG, component string, reconcileErr error) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	instance.Status.Phase = phaseError
@@ -81,7 +81,7 @@ func (r *OpenRAGReconciler) updateStatusError(ctx context.Context, instance *ope
 }
 
 // updateBackendCondition checks the backend deployment pod status and updates the BackendReady condition
-func (r *OpenRAGReconciler) updateBackendCondition(ctx context.Context, instance *openragv1alpha1.OpenRAG, targetNS string) (metav1.ConditionStatus, error) {
+func (r *BomaRAGReconciler) updateBackendCondition(ctx context.Context, instance *bomaragv1alpha1.BomaRAG, targetNS string) (metav1.ConditionStatus, error) {
 	logger := log.FromContext(ctx)
 
 	deployment := &appsv1.Deployment{}

@@ -1,12 +1,12 @@
 # Environment Variable Override System
 
-The OpenRAG operator implements a three-level environment variable override system that allows fine-grained control over environment variables for Langflow, Backend, and Frontend components.
+The BomaRAG operator implements a three-level environment variable override system that allows fine-grained control over environment variables for Langflow, Backend, and Frontend components.
 
 ## Three-Level Priority System
 
 Environment variables are merged using the following priority (highest to lowest):
 
-1. **CR Spec Env Vars** (Highest Priority) - Defined in the `OpenRAG` custom resource
+1. **CR Spec Env Vars** (Highest Priority) - Defined in the `BomaRAG` custom resource
 2. **Operator Environment** (Medium Priority) - Set in the operator's deployment with component-specific prefixes
 3. **Hardcoded Defaults** (Lowest Priority) - Built into the operator code
 
@@ -70,7 +70,7 @@ This allows you to set different values for the same environment variable across
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: openrag-operator
+  name: bomarag-operator
 spec:
   template:
     spec:
@@ -90,10 +90,10 @@ spec:
 ### Example 1: Override with CR Spec
 
 ```yaml
-apiVersion: openr.ag/v1alpha1
-kind: OpenRAG
+apiVersion: bomalogic.com/v1alpha1
+kind: BomaRAG
 metadata:
-  name: my-openrag
+  name: my-bomarag
 spec:
   langflow:
     env:
@@ -111,7 +111,7 @@ Deploy the operator with custom defaults:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: openrag-operator
+  name: bomarag-operator
 spec:
   template:
     spec:
@@ -140,11 +140,11 @@ env:
   value: "8"
 
 ---
-# OpenRAG CR with high-priority overrides
-apiVersion: openr.ag/v1alpha1
-kind: OpenRAG
+# BomaRAG CR with high-priority overrides
+apiVersion: bomalogic.com/v1alpha1
+kind: BomaRAG
 metadata:
-  name: my-openrag
+  name: my-bomarag
 spec:
   langflow:
     env:
@@ -165,8 +165,8 @@ spec:
 type EnvVarManager struct {
     Config                  config.OperatorConfig
     DefaultLangflowEnvVars  map[string]string
-    DefaultOpenRagBEEnvVars map[string]string
-    DefaultOpenRagFEEnvVars map[string]string
+    DefaultBomaRagBEEnvVars map[string]string
+    DefaultBomaRagFEEnvVars map[string]string
 }
 ```
 
@@ -247,16 +247,16 @@ spec:
       # presence, not truthiness, so "" means a blank service name and an
       # "Unknown INSTANA_LOG_LEVEL" warning on every boot.
       - name: INSTANA_SERVICE_NAME
-        value: "OpenRAG Backend"
+        value: "BomaRAG Backend"
       - name: INSTANA_ZONE
-        value: "openrag-cpd"
+        value: "bomarag-cpd"
 ```
 
 `INSTANA_AGENT_HOST` is injected automatically and should be left unset. Setting it explicitly suppresses the injection and pins the tracer to that address instead — use that only for a non-DaemonSet agent reached through a Service.
 
-`INSTANA_TRACING_DISABLE=logging` and `INSTANA_STACK_TRACE=error` are defaulted for you, and unlike the presence-sensitive vars above they carry a real value rather than being omitted. They are performance guardrails against two costly tracer defaults: a span per in-trace `WARNING`/`ERROR` whose bookkeeping grows for the life of the process, and a full Python stack capture on every outbound HTTP, OpenSearch, and database call. Override them through `spec.env` like any other backend var — with `all` rather than `""` for the stack-trace level, which the tracer rejects. See [Performance guardrails](https://docs.openr.ag/reference/observability#performance-guardrails).
+`INSTANA_TRACING_DISABLE=logging` and `INSTANA_STACK_TRACE=error` are defaulted for you, and unlike the presence-sensitive vars above they carry a real value rather than being omitted. They are performance guardrails against two costly tracer defaults: a span per in-trace `WARNING`/`ERROR` whose bookkeeping grows for the life of the process, and a full Python stack capture on every outbound HTTP, OpenSearch, and database call. Override them through `spec.env` like any other backend var — with `all` rather than `""` for the stack-trace level, which the tracer rejects. See [Performance guardrails](https://docs.bomarag.com/reference/observability#performance-guardrails).
 
-`INSTANA_SECRETS` gets the same real-default treatment, for privacy rather than performance: the tracer's own default (`contains-ignore-case:key,pass,secret`) only redacts credential-shaped query-parameter names, so without it OpenRAG's search text (`q`, `search`, `filename` on `GET /v2/files/search` and file listing) is exported to your Instana tenant verbatim. Override it through `spec.env` like the two above.
+`INSTANA_SECRETS` gets the same real-default treatment, for privacy rather than performance: the tracer's own default (`contains-ignore-case:key,pass,secret`) only redacts credential-shaped query-parameter names, so without it BomaRAG's search text (`q`, `search`, `filename` on `GET /v2/files/search` and file listing) is exported to your Instana tenant verbatim. Override it through `spec.env` like the two above.
 
 Both decisions — whether to inject, and whether an explicit host already exists — are made from the **resolved** backend environment (the map `GetBackendEnvVars` returns), not from the raw `spec.env`. So `INSTANA_ENABLED` and `INSTANA_AGENT_HOST` behave the same whether they are literals, `secretKeyRef`, or `configMapKeyRef`: the operator sees exactly the value the backend will read out of its `.env`. Reading the raw `spec.env` instead would let the two disagree — a Secret-backed `INSTANA_ENABLED=true` would boot the tracer with no agent host, and a Secret-backed explicit host would be silently overridden by the injected node IP.
 
@@ -286,7 +286,7 @@ go test -v ./internal/controller -run Instana
 
 ## Best Practices
 
-1. **Use CR spec for instance-specific overrides**: Each OpenRAG instance can have custom settings
+1. **Use CR spec for instance-specific overrides**: Each BomaRAG instance can have custom settings
 2. **Use operator env for organization-wide defaults**: Set in operator deployment for all instances
 3. **Modify hardcoded defaults sparingly**: Only change when updating the operator version
 4. **Use descriptive names**: Operator env vars include the component in the name (e.g., `OPTLF_LANGFLOW_WORKERS`)

@@ -53,7 +53,7 @@ def _resolve_conversation_store_id(
     previous_loaded_from_memory: bool,
     mint_if_missing: bool = False,
 ) -> str | None:
-    """Resolve the OpenRAG conversation id used for persistence.
+    """Resolve the BomaRAG conversation id used for persistence.
 
     Prefer an in-memory thread id so follow-ups stay on one sidebar entry.
     Never reuse a cold thread id (would overwrite metadata with empty state).
@@ -891,7 +891,7 @@ async def async_langflow_chat_stream(
         conversation_id=conversation_id,
     )
 
-    # conversation_id keeps the OpenRAG sidebar thread; previous_response_id chains
+    # conversation_id keeps the BomaRAG sidebar thread; previous_response_id chains
     # the Langflow session. After errors the client omits previous_response_id.
     thread_id = conversation_id or previous_response_id
     previous_loaded_from_memory = _conversation_thread_in_memory(user_id, thread_id)

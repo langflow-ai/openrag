@@ -1,7 +1,7 @@
-"""SQL database layer for OpenRAG.
+"""SQL database layer for BomaRAG.
 
 Owns users, roles, permissions, audit, preferences, api_keys.
-Defaults to SQLite under data/openrag.db; switch via DATABASE_URL.
+Defaults to SQLite under data/bomarag.db; switch via DATABASE_URL.
 """
 
 from db.engine import (

@@ -54,7 +54,7 @@ class CheckResult:
 
 @dataclass
 class Context:
-    client: Any  # OpenRAGClient
+    client: Any  # BomaRAGClient
     cfg: Config
     shared: dict[str, Any] = field(default_factory=dict)
     # (label, async callable) pairs, run LIFO after all suites
@@ -160,7 +160,7 @@ def _sdk_version() -> str:
     try:
         from importlib.metadata import version
 
-        return version("openrag-sdk")
+        return version("bomarag-sdk")
     except Exception:
         return "unknown"
 
@@ -204,7 +204,7 @@ def write_reports(
     }
 
     md_lines = [
-        "# OpenRAG SDK Smoke-Test Report",
+        "# BomaRAG SDK Smoke-Test Report",
         "",
         f"- **Timestamp:** {timestamp}",
         f"- **Target:** {cfg.url}",

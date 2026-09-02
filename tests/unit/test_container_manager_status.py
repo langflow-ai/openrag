@@ -16,11 +16,11 @@ def _make_manager() -> ContainerManager:
     )
     manager.services_cache = {}
     manager.last_status_update = 0.0
-    manager.expected_services = ["opensearch", "openrag-backend"]
-    # Name map uses the default "openrag" prefix; real containers below are "tui-*".
+    manager.expected_services = ["opensearch", "bomarag-backend"]
+    # Name map uses the default "bomarag" prefix; real containers below are "tui-*".
     manager.container_name_map = {
-        "openrag-opensearch": "opensearch",
-        "openrag-backend": "openrag-backend",
+        "bomarag-opensearch": "opensearch",
+        "bomarag-backend": "bomarag-backend",
     }
     return manager
 
@@ -59,5 +59,5 @@ def test_resolve_service_name_falls_back_to_name_map():
     """Without a compose label, resolution matches the legacy name map (no regression)."""
     manager = _make_manager()
 
-    assert manager._resolve_service_name(None, "openrag-opensearch") == "opensearch"
+    assert manager._resolve_service_name(None, "bomarag-opensearch") == "opensearch"
     assert manager._resolve_service_name(None, "unrelated-container") is None

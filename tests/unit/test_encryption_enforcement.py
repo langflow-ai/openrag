@@ -13,19 +13,19 @@ def reset_encryption_cache():
 
 def test_enforce_prerequisites_fail():
     """Test that get_master_secret raises RuntimeError when enforcement is enabled and key is missing."""
-    with patch.dict(os.environ, {"OPENRAG_ENFORCE_PREREQUISITES": "true", "OPENRAG_ENCRYPTION_KEY": "", "IBM_AUTH_ENABLED": "false"}):
+    with patch.dict(os.environ, {"BOMARAG_ENFORCE_PREREQUISITES": "true", "BOMARAG_ENCRYPTION_KEY": "", "IBM_AUTH_ENABLED": "false"}):
         with pytest.raises(RuntimeError) as excinfo:
             get_master_secret()
-        assert "OPENRAG_ENFORCE_PREREQUISITES is enabled but no master encryption key could be retrieved" in str(excinfo.value)
+        assert "BOMARAG_ENFORCE_PREREQUISITES is enabled but no master encryption key could be retrieved" in str(excinfo.value)
 
 def test_enforce_prerequisites_success():
     """Test that get_master_secret succeeds when enforcement is enabled and key is present."""
-    with patch.dict(os.environ, {"OPENRAG_ENFORCE_PREREQUISITES": "true", "OPENRAG_ENCRYPTION_KEY": "some-key", "IBM_AUTH_ENABLED": "false"}):
+    with patch.dict(os.environ, {"BOMARAG_ENFORCE_PREREQUISITES": "true", "BOMARAG_ENCRYPTION_KEY": "some-key", "IBM_AUTH_ENABLED": "false"}):
         secret = get_master_secret()
         assert secret == "some-key"
 
 def test_no_enforce_prerequisites_none():
     """Test that get_master_secret returns None when enforcement is disabled and key is missing."""
-    with patch.dict(os.environ, {"OPENRAG_ENFORCE_PREREQUISITES": "false", "OPENRAG_ENCRYPTION_KEY": "", "IBM_AUTH_ENABLED": "false"}):
+    with patch.dict(os.environ, {"BOMARAG_ENFORCE_PREREQUISITES": "false", "BOMARAG_ENCRYPTION_KEY": "", "IBM_AUTH_ENABLED": "false"}):
         secret = get_master_secret()
         assert secret is None

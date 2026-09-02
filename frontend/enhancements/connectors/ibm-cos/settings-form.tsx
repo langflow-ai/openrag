@@ -95,7 +95,7 @@ export function IBMCOSSettingsForm({
                   className={disableIam ? "opacity-40 cursor-not-allowed" : ""}
                   title={
                     disableIam
-                      ? "IAM mode is disabled. Set OPENRAG_IBM_COS_IAM_UI=true to enable."
+                      ? "IAM mode is disabled. Set BOMARAG_IBM_COS_IAM_UI=true to enable."
                       : undefined
                   }
                 >

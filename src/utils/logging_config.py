@@ -97,7 +97,7 @@ def add_global_fields_factory(service: str, env: str, version: str):
 
 
 def mirror_to_component_buffer(_, __, event_dict: dict[str, Any]) -> dict[str, Any]:
-    """Structlog processor: mirror WARNING+ backend events into the 'openrag' buffer.
+    """Structlog processor: mirror WARNING+ backend events into the 'bomarag' buffer.
 
     Runs after add_log_level so event_dict["level"] is always present.
     Uses lazy import to avoid circular imports at module load time.
@@ -130,7 +130,7 @@ def mirror_to_component_buffer(_, __, event_dict: dict[str, Any]) -> dict[str, A
         detail_parts = [f"{k}={v}" for k, v in safe.items() if k not in skip and v is not None]
         detail = "; ".join(detail_parts) if detail_parts else None
 
-        record("openrag", level_str.lower(), message, detail=detail)
+        record("bomarag", level_str.lower(), message, detail=detail)
     except Exception:  # pragma: no cover — never let logging crash the app
         pass
     return event_dict
@@ -155,7 +155,7 @@ def configure_logging(
     log_level: str = "INFO",
     json_logs: bool = False,
     include_timestamps: bool = True,
-    service_name: str = "openrag",
+    service_name: str = "bomarag",
     app_env: str = "production",
     app_version: str = "unknown",
 ) -> None:
@@ -351,19 +351,19 @@ def log_bootstrap_env(logger, stage: str) -> None:
     Logs parsed booleans from config.settings (OpenSearch bootstrap, JWT auth, run mode).
     """
     from config.settings import (
-        OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP,
-        OPENRAG_SKIP_OS_SECURITY_SETUP,
+        BOMARAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP,
+        BOMARAG_SKIP_OS_SECURITY_SETUP,
         get_jwt_issuer_verify_tls,
         get_jwt_verify_signature,
     )
     from utils.run_mode_utils import get_run_mode
 
     logger.info(
-        "OpenRAG run mode details",
+        "BomaRAG run mode details",
         stage=stage,
         run_mode=get_run_mode(),
-        bootstrap_os_security_on_startup=OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP,
-        skip_os_security_setup=OPENRAG_SKIP_OS_SECURITY_SETUP,
+        bootstrap_os_security_on_startup=BOMARAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP,
+        skip_os_security_setup=BOMARAG_SKIP_OS_SECURITY_SETUP,
         jwt_verify_signature=get_jwt_verify_signature(),
         jwt_issuer_verify_tls=get_jwt_issuer_verify_tls(),
     )
@@ -371,11 +371,11 @@ def log_bootstrap_env(logger, stage: str) -> None:
 
 def configure_from_env() -> None:
     """Configure logging from environment variables."""
-    from utils.version_utils import OPENRAG_VERSION  # avoid circular import at module level
+    from utils.version_utils import BOMARAG_VERSION  # avoid circular import at module level
 
     log_level = os.getenv("LOG_LEVEL", "INFO")
     json_logs = os.getenv("LOG_FORMAT", "").lower() == "json"
-    service_name = os.getenv("SERVICE_NAME", "openrag")
+    service_name = os.getenv("SERVICE_NAME", "bomarag")
     app_env = os.getenv("APP_ENV", "production")
 
     configure_logging(
@@ -383,6 +383,6 @@ def configure_from_env() -> None:
         json_logs=json_logs,
         service_name=service_name,
         app_env=app_env,
-        app_version=OPENRAG_VERSION,
+        app_version=BOMARAG_VERSION,
     )
     configure_stdlib_logging(log_level=log_level)

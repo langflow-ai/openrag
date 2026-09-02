@@ -23,9 +23,9 @@ from config import settings
 )
 def test_enable_default_resolves_from_run_mode(monkeypatch, run_mode, expected):
     if run_mode:
-        monkeypatch.setenv("OPENRAG_RUN_MODE", run_mode)
+        monkeypatch.setenv("BOMARAG_RUN_MODE", run_mode)
     else:
-        monkeypatch.delenv("OPENRAG_RUN_MODE", raising=False)
+        monkeypatch.delenv("BOMARAG_RUN_MODE", raising=False)
     assert settings._resolve_backend_router_enable_default() == expected
 
 
@@ -33,21 +33,21 @@ def test_enable_default_resolves_from_run_mode(monkeypatch, run_mode, expected):
 
 
 def test_callback_url_uses_router_when_enabled(monkeypatch):
-    monkeypatch.setattr(settings, "OPENRAG_BACKEND_ROUTER_ENABLE", True)
-    monkeypatch.setattr(settings, "OPENRAG_BACKEND_ROUTER_URL", "http://router:8100")
+    monkeypatch.setattr(settings, "BOMARAG_BACKEND_ROUTER_ENABLE", True)
+    monkeypatch.setattr(settings, "BOMARAG_BACKEND_ROUTER_URL", "http://router:8100")
     assert settings.get_ingest_callback_url() == "http://router:8100/internal/ingest/chunks"
 
 
 def test_callback_url_uses_backend_when_disabled(monkeypatch):
-    monkeypatch.setattr(settings, "OPENRAG_BACKEND_ROUTER_ENABLE", False)
-    monkeypatch.setattr(settings, "OPENRAG_BACKEND_INTERNAL_URL", "http://be:8000")
+    monkeypatch.setattr(settings, "BOMARAG_BACKEND_ROUTER_ENABLE", False)
+    monkeypatch.setattr(settings, "BOMARAG_BACKEND_INTERNAL_URL", "http://be:8000")
     assert settings.get_ingest_callback_url() == "http://be:8000/internal/ingest/chunks"
 
 
 def test_router_url_derives_backend_host_on_router_port(monkeypatch):
-    monkeypatch.setattr(settings, "OPENRAG_BACKEND_INTERNAL_URL", "http://openrag-be:8000")
-    monkeypatch.setattr(settings, "OPENRAG_BACKEND_ROUTER_PORT", 8100)
-    assert settings._derive_router_url() == "http://openrag-be:8100"
+    monkeypatch.setattr(settings, "BOMARAG_BACKEND_INTERNAL_URL", "http://bomarag-be:8000")
+    monkeypatch.setattr(settings, "BOMARAG_BACKEND_ROUTER_PORT", 8100)
+    assert settings._derive_router_url() == "http://bomarag-be:8100"
 
 
 # --- proxy behaviour --------------------------------------------------------
@@ -89,7 +89,7 @@ def test_proxy_forwards_only_allowlisted_headers(monkeypatch):
         content=b'{"ingest_run_id":"run-1","chunks":[]}',
         headers={
             "Authorization": "Bearer tok",
-            "X-OpenRAG-Ingest-Token": "tok2",
+            "X-BomaRAG-Ingest-Token": "tok2",
             "Content-Type": "application/json",
             "X-Evil": "should-be-dropped",
         },
@@ -105,7 +105,7 @@ def test_proxy_forwards_only_allowlisted_headers(monkeypatch):
     assert captured["content"] == b'{"ingest_run_id":"run-1","chunks":[]}'
     fwd = {k.lower() for k in captured["headers"]}
     assert "authorization" in fwd
-    assert "x-openrag-ingest-token" in fwd
+    assert "x-bomarag-ingest-token" in fwd
     assert "x-evil" not in fwd
 
 

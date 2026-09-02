@@ -1,5 +1,5 @@
 ---
-title: Deploy OpenRAG with self-managed services
+title: Deploy BomaRAG with self-managed services
 slug: /docker
 ---
 
@@ -18,9 +18,9 @@ import PartialWatsonxModels from '@site/docs/_partial-watsonx-models.mdx';
 import PartialGpuModeTip from '@site/docs/_partial-gpu-mode-tip.mdx';
 import PartialOAuthCredentials from '@site/docs/_partial-oauth-credentials.mdx';
 
-To manage your own OpenRAG services, deploy OpenRAG with Docker or Podman.
+To manage your own BomaRAG services, deploy BomaRAG with Docker or Podman.
 
-Use this installation method if you don't want to [use an OpenRAG terminal session](/tui), or you need to run OpenRAG in an environment where terminal interaction is unavailable.
+Use this installation method if you don't want to [use an BomaRAG terminal session](/tui), or you need to run BomaRAG in an environment where terminal interaction is unavailable.
 
 ## Prerequisites
 
@@ -38,16 +38,16 @@ Use this installation method if you don't want to [use an OpenRAG terminal sessi
 
 ## Prepare your deployment {#setup}
 
-1. Clone the OpenRAG repository:
+1. Clone the BomaRAG repository:
 
    ```bash
-   git clone https://github.com/langflow-ai/openrag.git
+   git clone https://github.com/ABISHAIMWANJA/bomarag.git
    ```
 
 2. Change to the root of the cloned repository:
 
    ```bash
-   cd openrag
+   cd bomarag
    ```
 
 3. Install dependencies:
@@ -58,15 +58,15 @@ Use this installation method if you don't want to [use an OpenRAG terminal sessi
 
 4. Create a `.env` file at the root of the cloned repository.
 
-   You can create an empty file or copy the repository's [`.env.example`](https://github.com/langflow-ai/openrag/blob/main/.env.example) file.
-   The example file contains some of the [OpenRAG environment variables](/reference/configuration) to get you started with configuring your deployment.
+   You can create an empty file or copy the repository's [`.env.example`](https://github.com/ABISHAIMWANJA/bomarag/blob/main/.env.example) file.
+   The example file contains some of the [BomaRAG environment variables](/reference/configuration) to get you started with configuring your deployment.
 
    ```bash
    cp .env.example .env
    ```
 
-5. Edit the `.env` file to configure your deployment using [OpenRAG environment variables](/reference/configuration).
-The OpenRAG Docker Compose files pull values from your `.env` file to configure the OpenRAG containers.
+5. Edit the `.env` file to configure your deployment using [BomaRAG environment variables](/reference/configuration).
+The BomaRAG Docker Compose files pull values from your `.env` file to configure the BomaRAG containers.
 The following variables are required or recommended:
 
    * **`OPENSEARCH_PASSWORD` (Required)**: Sets the OpenSearch administrator password. It must adhere to the [OpenSearch password complexity requirements](https://docs.opensearch.org/latest/security/configuration/demo-configuration/#setting-up-a-custom-admin-password).
@@ -88,7 +88,7 @@ The following variables are required or recommended:
 
 6. To enable [OAuth mode or cloud storage connectors](/knowledge-connectors), do the following:
 
-   1. Register OpenRAG as an OAuth application in your cloud provider, and then obtain the app's OAuth credentials, such as a client ID and secret key. To enable multiple connectors, you must register an app and generate credentials for each provider.
+   1. Register BomaRAG as an OAuth application in your cloud provider, and then obtain the app's OAuth credentials, such as a client ID and secret key. To enable multiple connectors, you must register an app and generate credentials for each provider.
 
    2. In your `.env` file, set the [OAuth environment variables](/reference/configuration#oauth-and-cloud-storage-connector-settings) for the providers that you want to use:
 
@@ -105,12 +105,12 @@ The following variables are required or recommended:
 
       <PartialOAuthCredentials />
 
-   3. For each connector, you must register the OpenRAG redirect URIs in your OAuth apps:
+   3. For each connector, you must register the BomaRAG redirect URIs in your OAuth apps:
 
       * Local deployments: `http://localhost:3000/auth/callback`
       * Production deployments: `https://your-domain.com/auth/callback`
 
-      The redirect URIs are used for the cloud storage connector webhooks. For Google, the redirect URIs are also used to redirect users back to OpenRAG after they sign in.
+      The redirect URIs are used for the cloud storage connector webhooks. For Google, the redirect URIs are also used to redirect users back to BomaRAG after they sign in.
 
    4. Optional: Set the `WEBHOOK_BASE_URL` to the base address for your OAuth connector endpoints. If set, the OAuth connector webhook URLs are constructed as `WEBHOOK_BASE_URL/connectors/${provider}/webhook`. This option is required to enable automatic ingestion from cloud storage.
 
@@ -124,28 +124,28 @@ The following variables are required or recommended:
 
 ## Deploy from a private registry {#private-registry}
 
-By default, OpenRAG pulls its container images from Docker Hub.
-If your environment can't reach Docker Hub, or your organization requires images to be served from an approved registry, mirror the OpenRAG images to your own registry and then point your deployment at it.
+By default, BomaRAG pulls its container images from Docker Hub.
+If your environment can't reach Docker Hub, or your organization requires images to be served from an approved registry, mirror the BomaRAG images to your own registry and then point your deployment at it.
 
 This is only supported for self-managed deployments. For Kubernetes deployments, configure the registry through the Helm chart's `global.imageRegistry`, `global.imageTag`, and `global.imagePullSecrets` values instead.
 
 1. Mirror the following images to your registry.
 
-   The OpenRAG containers use five images. Replace `VERSION` with the OpenRAG version you intend to deploy, such as `0.6.4`:
+   The BomaRAG containers use five images. Replace `VERSION` with the BomaRAG version you intend to deploy, such as `0.6.4`:
 
    | Source image | Mirrored path must be |
    |---|---|
-   | `docker.io/langflowai/openrag-backend:VERSION` | `REGISTRY/ORG/openrag-backend:TAG` |
-   | `docker.io/langflowai/openrag-frontend:VERSION` | `REGISTRY/ORG/openrag-frontend:TAG` |
-   | `docker.io/langflowai/openrag-langflow:VERSION` | `REGISTRY/ORG/openrag-langflow:TAG` |
-   | `docker.io/langflowai/openrag-opensearch:VERSION` | `REGISTRY/ORG/openrag-opensearch:TAG` |
+   | `docker.io/bomalogic/bomarag-backend:VERSION` | `REGISTRY/ORG/bomarag-backend:TAG` |
+   | `docker.io/bomalogic/bomarag-frontend:VERSION` | `REGISTRY/ORG/bomarag-frontend:TAG` |
+   | `docker.io/bomalogic/bomarag-langflow:VERSION` | `REGISTRY/ORG/bomarag-langflow:TAG` |
+   | `docker.io/bomalogic/bomarag-opensearch:VERSION` | `REGISTRY/ORG/bomarag-opensearch:TAG` |
    | `docker.io/opensearchproject/opensearch-dashboards:3.6.0` | `DASHBOARDS_REGISTRY/opensearchproject/opensearch-dashboards:3.6.0` |
 
    The first four images resolve from `IMAGE_REGISTRY` and `IMAGE_ORG`, so you can mirror them into any organization you control.
    The OpenSearch Dashboards image resolves from `DASHBOARDS_REGISTRY` only, so you must preserve the `opensearchproject/opensearch-dashboards` path and the `3.6.0` tag when you mirror it.
 
    :::tip
-   The OpenRAG images are multi-architecture manifests.
+   The BomaRAG images are multi-architecture manifests.
    Copy them with a tool that preserves every architecture, such as `skopeo copy --all` or `docker buildx imagetools create`.
    A plain `docker pull` followed by `docker push` copies only the architecture of the machine that ran it, which produces images that fail to start on other platforms.
    :::
@@ -160,7 +160,7 @@ This is only supported for self-managed deployments. For Kubernetes deployments,
    podman login registry.example.com
    ```
 
-   OpenRAG checks that each image exists in the registry before it pulls, and that check uses your local credentials.
+   BomaRAG checks that each image exists in the registry before it pulls, and that check uses your local credentials.
    Signing in first prevents the deployment from failing with an authentication error.
    
    If your `IMAGE_REGISTRY` and `DASHBOARDS_REGISTRY` are different, you might sign in to both registry hosts.
@@ -173,14 +173,14 @@ This is only supported for self-managed deployments. For Kubernetes deployments,
    DASHBOARDS_REGISTRY=registry.example.com
 
    # Set the tag your mirrored images use.
-   OPENRAG_IMAGE_TAG=0.6.4
+   BOMARAG_IMAGE_TAG=0.6.4
    ```
 
    Set `IMAGE_REGISTRY` to a hostname without a scheme or trailing slash, and include the port if your registry uses a non-standard one, such as `registry.example.com:5000`.
 
-   Set `OPENRAG_IMAGE_TAG` if your mirrored images are tagged differently from the OpenRAG release versions.
-   It takes precedence over `OPENRAG_VERSION`.
-   If neither variable is set, OpenRAG pulls the `latest` tag, which many private registries don't populate.
+   Set `BOMARAG_IMAGE_TAG` if your mirrored images are tagged differently from the BomaRAG release versions.
+   It takes precedence over `BOMARAG_VERSION`.
+   If neither variable is set, BomaRAG pulls the `latest` tag, which many private registries don't populate.
 
 4. Save your `.env` file, and then continue with [Start services](#start-services).
 
@@ -197,7 +197,7 @@ If the containers fail to start with an image pull error, see [Container image p
    Docling cannot run inside a Docker container due to system-level dependencies, so you must manage it as a separate service on the host machine.
    For more information, see [Stop, start, and inspect native services](/manage-services#start-native-services).
 
-   Port 5001 is required to deploy OpenRAG successfully; don't use a different port.
+   Port 5001 is required to deploy BomaRAG successfully; don't use a different port.
    Additionally, this enables the [MLX framework](https://opensource.apple.com/projects/mlx/) for accelerated performance on Apple Silicon Mac machines.
 
    :::tip
@@ -221,7 +221,7 @@ If the containers fail to start with an image pull error, see [Container image p
    PID: 27746
    ```
 
-3. Deploy the OpenRAG containers locally using the appropriate Docker Compose configuration for your environment:
+3. Deploy the BomaRAG containers locally using the appropriate Docker Compose configuration for your environment:
 
    * **CPU-only deployment (Default and recommended)**: If your host machine doesn't have NVIDIA GPU support, use the base `docker-compose.yml` file:
 
@@ -247,7 +247,7 @@ If the containers fail to start with an image pull error, see [Container image p
    <PartialGpuModeTip />
    :::
 
-4. Wait for the OpenRAG containers to start, and then confirm that all containers are running:
+4. Wait for the BomaRAG containers to start, and then confirm that all containers are running:
 
    ```bash title="Docker"
    docker compose ps
@@ -257,21 +257,21 @@ If the containers fail to start with an image pull error, see [Container image p
    podman compose ps
    ```
 
-   The OpenRAG Docker Compose files deploy the following containers:
+   The BomaRAG Docker Compose files deploy the following containers:
 
    | Container Name | Default address | Purpose |
    |---|---|---|
-   | OpenRAG Backend | http://localhost:8000 | FastAPI server and core functionality. |
-   | OpenRAG Frontend | http://localhost:3000 | React web interface for user interaction. |
+   | BomaRAG Backend | http://localhost:8000 | FastAPI server and core functionality. |
+   | BomaRAG Frontend | http://localhost:3000 | React web interface for user interaction. |
    | Langflow | http://localhost:7860 | [AI workflow engine](/agents). |
    | OpenSearch | http://localhost:9200 | Datastore for [knowledge](/knowledge). |
    | OpenSearch Dashboards | http://localhost:5601 | OpenSearch database administration interface. |
 
-   When the containers are running, you can access your OpenRAG services at their addresses.
+   When the containers are running, you can access your BomaRAG services at their addresses.
 
-5. Access the OpenRAG frontend at `http://localhost:3000`, and then continue with the [application onboarding process](#application-onboarding).
+5. Access the BomaRAG frontend at `http://localhost:3000`, and then continue with the [application onboarding process](#application-onboarding).
 
-   If you provided Google OAuth credentials, you must sign in with Google before you are redirected to your OpenRAG instance.
+   If you provided Google OAuth credentials, you must sign in with Google before you are redirected to your BomaRAG instance.
 
 <PartialOnboarding />
 

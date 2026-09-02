@@ -1,4 +1,4 @@
-"""Langflow talks to the OpenRAG LLM proxy with a hop token, not provider keys."""
+"""Langflow talks to the BomaRAG LLM proxy with a hop token, not provider keys."""
 
 from types import SimpleNamespace
 
@@ -31,7 +31,7 @@ async def test_add_provider_credentials_injects_hop_token_not_jwt_or_provider_ke
 ):
     monkeypatch.setattr(
         "config.settings.get_langflow_llm_base_url",
-        lambda: "http://openrag-backend:8000/v1",
+        lambda: "http://bomarag-backend:8000/v1",
     )
     monkeypatch.setattr("config.settings.get_langflow_opensearch_url", lambda: "")
     monkeypatch.setattr("config.settings.get_langflow_docling_url", lambda: "")
@@ -50,15 +50,15 @@ async def test_add_provider_credentials_injects_hop_token_not_jwt_or_provider_ke
     await add_provider_credentials_to_headers(
         headers, config, jwt_token="Bearer user-jwt-token", user_id="alice"
     )
-    hop = headers["X-LANGFLOW-GLOBAL-VAR-OPENRAG_LLM_TOKEN"]
+    hop = headers["X-LANGFLOW-GLOBAL-VAR-BOMARAG_LLM_TOKEN"]
     assert hop != "user-jwt-token"
     user = LangflowLlmTokenService().validate_token(hop)
     assert user.user_id == "alice"
     assert user.provider == "langflow_llm"
-    assert headers["X-LANGFLOW-GLOBAL-VAR-OPENRAG_LLM_BASE_URL"] == "http://openrag-backend:8000/v1"
+    assert headers["X-LANGFLOW-GLOBAL-VAR-BOMARAG_LLM_BASE_URL"] == "http://bomarag-backend:8000/v1"
     # Chat (`/v1/chat/completions`) and embeddings (`/v1/embeddings`) share these.
     assert headers["X-LANGFLOW-GLOBAL-VAR-OPENAI_API_KEY"] == hop
-    assert "X-LANGFLOW-GLOBAL-VAR-OPENRAG_LLM_TOKEN" in headers
+    assert "X-LANGFLOW-GLOBAL-VAR-BOMARAG_LLM_TOKEN" in headers
     # Match on the serialized headers: `in headers.values()` compares whole
     # values, so a secret embedded in a larger value ("Bearer sk-real-openai")
     # would slip past the very leak this test exists to catch.
@@ -76,7 +76,7 @@ async def test_hop_token_is_minted_when_caller_only_has_ibm_basic():
 
     with (
         patch(
-            "config.settings.get_langflow_llm_base_url", lambda: "http://openrag-backend:8000/v1"
+            "config.settings.get_langflow_llm_base_url", lambda: "http://bomarag-backend:8000/v1"
         ),
         patch("config.settings.get_langflow_opensearch_url", lambda: ""),
         patch("config.settings.get_langflow_docling_url", lambda: ""),
@@ -87,7 +87,7 @@ async def test_hop_token_is_minted_when_caller_only_has_ibm_basic():
         await add_provider_credentials_to_headers(
             headers, SimpleNamespace(), jwt_token="Basic dXNlcjpwYXNz", user_id="ibm-user"
         )
-    hop = headers["X-LANGFLOW-GLOBAL-VAR-OPENRAG_LLM_TOKEN"]
+    hop = headers["X-LANGFLOW-GLOBAL-VAR-BOMARAG_LLM_TOKEN"]
     user = LangflowLlmTokenService().validate_token(hop)
     assert user.user_id == "ibm-user"
     assert not hop.startswith("Basic ")

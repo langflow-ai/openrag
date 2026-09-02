@@ -1,6 +1,6 @@
 """Unit tests for the IBM COS connector's `is_available` gating.
 
-Covers IBM_AUTH_ENABLED / OPENRAG_DEV_IBM_COS, mirroring the equivalent
+Covers IBM_AUTH_ENABLED / BOMARAG_DEV_IBM_COS, mirroring the equivalent
 Azure Blob coverage (tests/unit/connectors/test_azure_blob_connector.py).
 """
 
@@ -33,9 +33,9 @@ def test_is_available_dev_flag_bypasses_ibm_auth(monkeypatch):
 
 def test_is_dev_ibm_cos_enabled_defaults_false_when_unset(monkeypatch):
     """Regression: must default to disabled, or IBM COS becomes available in
-    every deployment (including production) whenever OPENRAG_DEV_IBM_COS is
+    every deployment (including production) whenever BOMARAG_DEV_IBM_COS is
     simply unset, defeating the point of the dev-only bypass."""
     from config.settings import is_dev_ibm_cos_enabled
 
-    monkeypatch.delenv("OPENRAG_DEV_IBM_COS", raising=False)
+    monkeypatch.delenv("BOMARAG_DEV_IBM_COS", raising=False)
     assert is_dev_ibm_cos_enabled() is False

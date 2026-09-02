@@ -1,7 +1,7 @@
 """DB-backed workspace config — replaces ``config.yaml`` as the source
 of truth, with yaml kept as a fallback when storage mode is `hybrid`.
 
-Honors the unified ``OPENRAG_STORAGE_MODE`` flag (see
+Honors the unified ``BOMARAG_STORAGE_MODE`` flag (see
 ``src/config/storage_mode.py``):
 
 | Mode             | Reads             | Writes               |
@@ -29,7 +29,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from config.config_manager import ConfigManager, OpenRAGConfig
+from config.config_manager import BomaRAGConfig, ConfigManager
 from config.storage_mode import (
     db_writes_enabled,
     file_writes_enabled,
@@ -44,7 +44,7 @@ logger = get_logger(__name__)
 
 class WorkspaceConfigService:
     """Drop-in replacement for the parts of ConfigManager that touch
-    persistence. Behavior selected by ``OPENRAG_STORAGE_MODE``."""
+    persistence. Behavior selected by ``BOMARAG_STORAGE_MODE``."""
 
     def __init__(
         self,
@@ -81,7 +81,7 @@ class WorkspaceConfigService:
     # Read paths
     # ------------------------------------------------------------------
 
-    async def load_config(self) -> OpenRAGConfig:
+    async def load_config(self) -> BomaRAGConfig:
         """Mode-aware read.
 
         - ``files``: yaml only.
@@ -89,7 +89,7 @@ class WorkspaceConfigService:
         - ``hybrid``: DB-first, yaml fallback when DB is empty.
 
         Updates the ConfigManager in-process cache so synchronous
-        ``get_openrag_config()`` callers see the same data.
+        ``get_bomarag_config()`` callers see the same data.
         """
         mode = get_storage_mode()
         if mode == "files":
@@ -102,7 +102,7 @@ class WorkspaceConfigService:
         except Exception as exc:  # noqa: BLE001
             if mode == "db":
                 logger.error("DB read failed in db mode — returning defaults", error=str(exc))
-                return OpenRAGConfig.from_dict({})
+                return BomaRAGConfig.from_dict({})
             logger.warning(
                 "DB read failed, falling back to yaml (hybrid)",
                 error=str(exc),
@@ -114,7 +114,7 @@ class WorkspaceConfigService:
                 # Pre-migration boot in pure-db mode — return defaults.
                 # The boot-time migration (config_yaml_to_db_v1) will
                 # populate the DB on the next request.
-                return OpenRAGConfig.from_dict({})
+                return BomaRAGConfig.from_dict({})
             return self._cm.load_config()  # hybrid fallback
 
         merged: dict[str, Any] = {
@@ -124,16 +124,16 @@ class WorkspaceConfigService:
             "onboarding": rows.get("onboarding", {}),
             "edited": (rows.get("meta") or {}).get("edited", False),
         }
-        config = OpenRAGConfig.from_dict(merged)
+        config = BomaRAGConfig.from_dict(merged)
         self._cm._config = config
         return config
 
-    async def get_config(self) -> OpenRAGConfig:
+    async def get_config(self) -> BomaRAGConfig:
         if self._cm._config is not None:
             return self._cm._config
         return await self.load_config()
 
-    async def reload_config(self) -> OpenRAGConfig:
+    async def reload_config(self) -> BomaRAGConfig:
         self._cm._config = None
         return await self.load_config()
 
@@ -142,7 +142,7 @@ class WorkspaceConfigService:
         lifespan startup.
 
         Without this, in `db` mode a restart leaves ``_config = None``
-        and the synchronous ``get_openrag_config()`` falls back to
+        and the synchronous ``get_bomarag_config()`` falls back to
         defaults (no yaml exists) — so ``/api/settings`` reports
         ``onboarding.current_step=0`` and the frontend flashes the
         wizard on every restart. ``load_config()`` is itself mode-aware,
@@ -194,7 +194,7 @@ class WorkspaceConfigService:
 
     async def save_config(
         self,
-        config: OpenRAGConfig | None = None,
+        config: BomaRAGConfig | None = None,
         *,
         preserve_edited: bool = False,
         actor_user_id: str | None = None,
@@ -213,7 +213,7 @@ class WorkspaceConfigService:
         else:
             # In `db` mode we still need to update the in-process
             # ConfigManager cache and flip `edited` so callers see the
-            # new state via the legacy synchronous ``get_openrag_config()``.
+            # new state via the legacy synchronous ``get_bomarag_config()``.
             self._apply_in_memory(config, preserve_edited=preserve_edited)
 
         if not db_writes_enabled():
@@ -334,7 +334,7 @@ class WorkspaceConfigService:
 
     def _apply_in_memory(
         self,
-        config: OpenRAGConfig | None,
+        config: BomaRAGConfig | None,
         preserve_edited: bool,
     ) -> None:
         """Mirror the in-process effects of ``ConfigManager.save_config_file``
@@ -384,7 +384,7 @@ class WorkspaceConfigService:
 
     async def _mirror_to_db(
         self,
-        config: OpenRAGConfig,
+        config: BomaRAGConfig,
         *,
         actor_user_id: str | None = None,
     ) -> None:

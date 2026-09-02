@@ -84,7 +84,7 @@ describe("looksLikeProviderErrorContent", () => {
 
   it("does not flag ordinary replies", () => {
     assert.equal(
-      looksLikeProviderErrorContent("OpenRAG uses Langflow and OpenSearch."),
+      looksLikeProviderErrorContent("BomaRAG uses Langflow and OpenSearch."),
       false,
     );
     assert.equal(

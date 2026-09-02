@@ -14,7 +14,7 @@ def _purge_modules():
     for mod in [
         "api.router",
         "api.connector_router",
-        "config.config_manager",  # reset cached OpenRAGConfig so env-var overrides take effect
+        "config.config_manager",  # reset cached BomaRAGConfig so env-var overrides take effect
         "config.settings",
         "auth_middleware",
         "main",

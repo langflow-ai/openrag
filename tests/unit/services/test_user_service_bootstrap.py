@@ -43,7 +43,7 @@ def _user(uid="u1", email="a@example.com", name="A", provider="google"):
 @pytest.mark.asyncio
 async def test_first_user_gets_default_role(session, monkeypatch):
     """No bootstrap-admin: even the first user gets the env default role."""
-    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "user")
+    monkeypatch.setenv("BOMARAG_DEFAULT_ROLE", "user")
     row = await ensure_user_row(session, _user(uid="oauth-1"))
     await session.commit()
 
@@ -54,7 +54,7 @@ async def test_first_user_gets_default_role(session, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_all_users_get_default_role(session, monkeypatch):
-    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "user")
+    monkeypatch.setenv("BOMARAG_DEFAULT_ROLE", "user")
     first = await ensure_user_row(session, _user(uid="oauth-1", email="a@x.com"))
     second = await ensure_user_row(session, _user(uid="oauth-2", email="b@x.com"))
     await session.commit()
@@ -68,8 +68,8 @@ async def test_all_users_get_default_role(session, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_default_role_is_configurable(session, monkeypatch):
-    """An oss operator who wants an admin sets OPENRAG_DEFAULT_ROLE=admin."""
-    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "admin")
+    """An oss operator who wants an admin sets BOMARAG_DEFAULT_ROLE=admin."""
+    monkeypatch.setenv("BOMARAG_DEFAULT_ROLE", "admin")
     row = await ensure_user_row(session, _user(uid="oauth-1"))
     await session.commit()
     roles = {r.name for r in await RoleRepo(session).list_user_roles(row.id)}
@@ -78,7 +78,7 @@ async def test_default_role_is_configurable(session, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_repeated_calls_are_idempotent(session, monkeypatch):
-    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "user")
+    monkeypatch.setenv("BOMARAG_DEFAULT_ROLE", "user")
     a = await ensure_user_row(session, _user(uid="oauth-1"))
     b = await ensure_user_row(session, _user(uid="oauth-1"))
     await session.commit()
@@ -91,7 +91,7 @@ async def test_repeated_calls_are_idempotent(session, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_existing_user_without_roles_is_repaired_on_signin(session, monkeypatch):
-    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "user")
+    monkeypatch.setenv("BOMARAG_DEFAULT_ROLE", "user")
     await ensure_user_row(session, _user(uid="oauth-admin", email="root@x.com"))
     await session.commit()
 
@@ -133,7 +133,7 @@ async def test_new_user_id_matches_oauth_subject(session):
 
 @pytest.mark.asyncio
 async def test_legacy_user_merges_on_real_signin(session, monkeypatch):
-    monkeypatch.setenv("OPENRAG_DEFAULT_ROLE", "user")
+    monkeypatch.setenv("BOMARAG_DEFAULT_ROLE", "user")
     # Pre-seed an existing user; the legacy merge below should still get the
     # env default role, not anything special.
     await ensure_user_row(session, _user(uid="oauth-admin", email="root@x.com"))

@@ -3,18 +3,18 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 
-def _get_openrag_version() -> str:
-    """Get OpenRAG version from package metadata."""
+def _get_bomarag_version() -> str:
+    """Get BomaRAG version from package metadata."""
     try:
         from importlib.metadata import PackageNotFoundError, version
 
         try:
-            for dist_name in ["openrag", "openrag-nightly"]:
+            for dist_name in ["bomarag", "bomarag-nightly"]:
                 try:
                     return version(dist_name)
                 except PackageNotFoundError:
                     continue
-            raise PackageNotFoundError("openrag")
+            raise PackageNotFoundError("bomarag")
         except PackageNotFoundError:
             # Fallback: try to read from pyproject.toml if package not installed (dev mode)
             try:
@@ -35,8 +35,8 @@ def _get_openrag_version() -> str:
 
             return "dev"
     except Exception as e:
-        logger.warning(f"Failed to get OpenRAG version: {e}")
+        logger.warning(f"Failed to get BomaRAG version: {e}")
         return "unknown"
 
 
-OPENRAG_VERSION = _get_openrag_version()
+BOMARAG_VERSION = _get_bomarag_version()

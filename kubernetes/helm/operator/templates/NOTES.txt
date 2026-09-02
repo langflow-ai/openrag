@@ -2,36 +2,36 @@ Thank you for installing {{ .Chart.Name }}!
 
 Your release is named {{ .Release.Name }}.
 
-The OpenRAG Operator has been deployed to namespace: {{ .Release.Namespace }}
+The BomaRAG Operator has been deployed to namespace: {{ .Release.Namespace }}
 
 To verify the installation:
 
-  kubectl get deployment -n {{ .Release.Namespace }} {{ include "openrag-operator.fullname" . }}
+  kubectl get deployment -n {{ .Release.Namespace }} {{ include "bomarag-operator.fullname" . }}
   kubectl get pods -n {{ .Release.Namespace }} -l control-plane=controller-manager
 
 To check the operator logs:
 
   kubectl logs -n {{ .Release.Namespace }} -l control-plane=controller-manager -f
 
-The operator will watch for OpenRAG custom resources. To create an OpenRAG instance:
+The operator will watch for BomaRAG custom resources. To create an BomaRAG instance:
 
   kubectl apply -f - <<EOF
-  apiVersion: openr.ag/v1alpha1
-  kind: OpenRAG
+  apiVersion: bomalogic.com/v1alpha1
+  kind: BomaRAG
   metadata:
-    name: my-openrag
+    name: my-bomarag
     namespace: default
   spec:
     frontend:
-      image: langflowai/openrag-frontend:latest
+      image: bomalogic/bomarag-frontend:latest
     backend:
-      image: langflowai/openrag-backend:latest
+      image: bomalogic/bomarag-backend:latest
       envSecret: my-backend-env
       storage:
         enabled: true
         size: 10Gi
     langflow:
-      image: langflowai/openrag-langflow:latest
+      image: bomalogic/bomarag-langflow:latest
       envSecret: my-langflow-env
       storage:
         enabled: true
@@ -42,4 +42,4 @@ The operator will watch for OpenRAG custom resources. To create an OpenRAG insta
   EOF
 
 For more information, visit:
-  https://github.com/langflow-ai/openrag
+  https://github.com/ABISHAIMWANJA/bomarag
