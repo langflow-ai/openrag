@@ -1,8 +1,13 @@
 """OpenAI-compatible Langflow components bind proxy globals at runtime."""
 
 import hashlib
+import importlib
 import json
+import sys
 from pathlib import Path
+from types import ModuleType
+
+import pytest
 
 # The Langflow bundle is the single home for these components: the former
 # ``flows/components`` copies were removed once the bundle became canonical.
@@ -12,8 +17,6 @@ BUNDLE = Path("custom_components/openrag")
 # its own canonical extension id everywhere (index key and flow node types).
 OPENSEARCH_EXT_ID = "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra"
 OPENSEARCH_MODULE = "_lfx_ext.extra.openrag.opensearch_multimodal"
-# Langflow uses the bundle directory name as the sidebar category label.
-BUNDLE_NAME = "OpenRAG"
 
 
 def test_llm_component_binds_proxy_globals():
@@ -60,6 +63,7 @@ def test_langflow_runtime_globals_cover_chat_and_embeddings():
         "OPENRAG_LLM_BASE_URL",
         "SELECTED_LANGUAGE_MODEL",
         "SELECTED_EMBEDDING_MODEL",
+        "SELECTED_EMBEDDING_PROVIDER",
     } <= LANGFLOW_GENERIC_GLOBAL_VARIABLES
 
     source = Path("src/services/flows_service.py").read_text(encoding="utf-8")
@@ -69,15 +73,8 @@ def test_langflow_runtime_globals_cover_chat_and_embeddings():
     assert '"openai_api_base": "OPENRAG_LLM_BASE_URL"' in source
 
 
-def test_langflow_image_ships_the_openrag_bundle_as_a_components_path():
-    """The OpenRAG components are delivered by scan, not by the component index.
-
-    ``flows/component_index.json`` is Langflow's stock index and carries no
-    OpenRAG bundle; the image instead copies ``custom_components/`` in and
-    points ``LANGFLOW_COMPONENTS_PATH`` at it, so Langflow discovers the bundle
-    when it scans. If that copy or that env var goes away, every flow node
-    typed ``ext:openrag:...`` stops resolving.
-    """
+def test_langflow_image_installs_the_openrag_component_bundle():
+    """The Langflow image includes the OpenRAG component source bundle."""
     dockerfile = Path("Dockerfile.langflow").read_text(encoding="utf-8")
     assert "COPY custom_components/ /app/custom_components/" in dockerfile
     assert "ENV LANGFLOW_COMPONENTS_PATH=/app/custom_components" in dockerfile
@@ -89,8 +86,9 @@ def test_langflow_image_ships_the_openrag_bundle_as_a_components_path():
     ):
         assert (BUNDLE / name).is_file(), name
 
-    index = json.loads(Path("flows/component_index.json").read_text(encoding="utf-8"))
-    assert BUNDLE_NAME not in dict(index["entries"])
+    opensearch_source = (BUNDLE / "opensearch_multimodal.py").read_text(encoding="utf-8")
+    assert "from .embedding_spaces import" not in opensearch_source
+    assert not (BUNDLE / "embedding_spaces.py").exists()
 
 
 def test_docker_compose_seeds_openrag_llm_token_placeholder():
@@ -159,6 +157,66 @@ def test_embedding_component_pins_deployment_to_the_configured_model():
     """
     code = (BUNDLE / "openai_compatible_embedding.py").read_text(encoding="utf-8")
     assert '"deployment": self.model_name' in code
+
+
+def test_embedding_component_can_resolve_immutable_retrieval_adapters():
+    code = (BUNDLE / "openai_compatible_embedding.py").read_text(encoding="utf-8")
+
+    assert "class OpenRAGEmbeddings(Embeddings):" in code
+    assert "def for_model(self, model_name: str) -> Embeddings:" in code
+    assert "return OpenRAGEmbeddings(" in code
+    assert "dimensions=dimensions" in code
+
+
+def test_embedding_adapter_preserves_dimensions_only_for_selected_provider_route(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Retrieval keeps a selected model's configured vector dimensions."""
+    created: list[dict[str, object]] = []
+
+    class FakeOpenAIEmbeddings:
+        def __init__(self, **kwargs: object) -> None:
+            created.append(kwargs)
+
+    class FakeInput:
+        def __init__(self, **kwargs: object) -> None:
+            self.name = kwargs.get("name")
+
+    modules: dict[str, ModuleType] = {
+        "langchain_core": ModuleType("langchain_core"),
+        "langchain_core.embeddings": ModuleType("langchain_core.embeddings"),
+        "langchain_openai": ModuleType("langchain_openai"),
+        "lfx": ModuleType("lfx"),
+        "lfx.base": ModuleType("lfx.base"),
+        "lfx.base.embeddings": ModuleType("lfx.base.embeddings"),
+        "lfx.base.embeddings.model": ModuleType("lfx.base.embeddings.model"),
+        "lfx.io": ModuleType("lfx.io"),
+    }
+    vars(modules["langchain_core.embeddings"])["Embeddings"] = object
+    vars(modules["langchain_openai"])["OpenAIEmbeddings"] = FakeOpenAIEmbeddings
+    vars(modules["lfx.base.embeddings.model"])["LCEmbeddingsModel"] = object
+    for input_name in ("IntInput", "SecretStrInput", "StrInput"):
+        setattr(modules["lfx.io"], input_name, FakeInput)
+    for module_name, module in modules.items():
+        monkeypatch.setitem(sys.modules, module_name, module)
+
+    module_name = "custom_components.openrag.openai_compatible_embedding"
+    sys.modules.pop(module_name, None)
+    component = importlib.import_module(module_name)
+
+    root = component.OpenRAGEmbeddings(
+        model_name="text-embedding-3-small",
+        api_key="token",
+        api_base="http://openrag/v1",
+        provider_name="openai",
+        dimensions=512,
+    )
+    root.for_model("space:openai:text-embedding-3-small")
+    root.for_model("legacy:text-embedding-3-small")
+    root.for_model("space:azure:text-embedding-3-small")
+    root.for_model("text-embedding-3-small")
+
+    assert [kwargs.get("dimensions") for kwargs in created] == [512, 512, None, None, None]
 
 
 def test_flows_embed_the_current_proxy_component_sources():

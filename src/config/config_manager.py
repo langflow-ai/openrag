@@ -1,5 +1,6 @@
 """Configuration management for OpenRAG."""
 
+import json
 import os
 import re
 from dataclasses import asdict, dataclass, field
@@ -262,6 +263,7 @@ class KnowledgeConfig:
 
     embedding_model: str = ""
     embedding_provider: str = "openai"  # Which provider to use for embeddings
+    legacy_embedding_provider_map: dict[str, str] = field(default_factory=dict)
     chunk_size: int = 1000
     chunk_overlap: int = 200
     table_structure: bool = True
@@ -530,6 +532,29 @@ class ConfigManager:
         # They are on-only: `=true` forces the bypass, while unset/false defers
         # to the saved config so the settings-UI toggle keeps working.
         self._apply_langflow_bypass_env_overrides(config_data)
+
+        # Provenance recovery is an operational compatibility setting, not a
+        # user-selected model preference. It must remain overridable after the
+        # settings file is marked edited so existing installations can resolve
+        # legacy vector spaces without modifying persisted application state.
+        from config.settings import get_legacy_embedding_provider_map_json
+
+        legacy_provider_map_json = get_legacy_embedding_provider_map_json()
+        if legacy_provider_map_json:
+            try:
+                raw_mapping = json.loads(legacy_provider_map_json)
+                if not isinstance(raw_mapping, dict):
+                    raise TypeError("expected a JSON object")
+                config_data["knowledge"]["legacy_embedding_provider_map"] = {
+                    str(model).strip(): str(provider).strip().lower()
+                    for model, provider in raw_mapping.items()
+                    if str(model).strip() and str(provider).strip()
+                }
+            except (json.JSONDecodeError, TypeError) as e:
+                logger.warning(
+                    "Ignoring invalid OPENRAG_LEGACY_EMBEDDING_PROVIDER_MAP",
+                    error=str(e),
+                )
 
         # Skip all environment overrides if config has been manually edited
         if temp_config and temp_config.edited:

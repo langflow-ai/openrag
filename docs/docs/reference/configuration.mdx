@@ -54,6 +54,7 @@ These variables are initially set during the [application onboarding process](/i
 |----------|---------|-------------|
 | `EMBEDDING_PROVIDER` | `openai` | Embedding model provider, as one of `openai`, `watsonx`, or `ollama`. |
 | `EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model for generating vector embeddings for documents in the knowledge base and similarity search queries. Can be changed after the application onboarding process. |
+| `OPENRAG_LEGACY_EMBEDDING_PROVIDER_MAP` | `{}` | JSON object mapping model names from legacy OpenSearch documents to their original provider, for example `{"ibm/slate-125m-english-rtrvr":"watsonx"}`. Legacy `text-embedding-3-small` is inferred as OpenAI automatically. |
 | `LLM_PROVIDER` | `openai` | Language model provider, as one of `openai`, `watsonx`, `ollama`, or `anthropic`. |
 | `LLM_MODEL` | `gpt-4o-mini` | Language model for language processing and text generation in the **Chat** feature. Can be changed after the application onboarding process. |
 | `ANTHROPIC_API_KEY` | Not set | API key for the Anthropic model provider. |
@@ -62,6 +63,13 @@ These variables are initially set during the [application onboarding process](/i
 | `WATSONX_API_KEY` | Not set | API key for the IBM watsonx.ai model provider. |
 | `WATSONX_ENDPOINT` | Not set | Custom provider endpoint for the IBM watsonx.ai model provider. |
 | `WATSONX_PROJECT_ID` | Not set | Project ID for the IBM watsonx.ai model provider. |
+
+Newly indexed chunks keep the model name in `embedding_model` for compatibility and also store
+`embedding_provider` plus the unambiguous `embedding_space_id` (`provider:model`). Retrieval queries
+each indexed space whose provider is configured. Chunks created before this metadata existed remain
+searchable: `text-embedding-3-small` is treated as OpenAI, while other legacy model names require
+`OPENRAG_LEGACY_EMBEDDING_PROVIDER_MAP`. If a legacy provider cannot be resolved, OpenRAG skips its
+vector query but keeps those documents eligible for keyword search.
 
 ### Provider visibility per run mode {#model-provider-visibility}
 

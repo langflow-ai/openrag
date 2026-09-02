@@ -49,7 +49,8 @@ async def test_standard_processor_uses_shared_writer_for_embedding_mapping_and_w
             return user_client
 
     class ModelsService:
-        async def get_litellm_model_name(self, embedding_model):
+        async def get_litellm_model_name(self, embedding_model, provider=None):
+            assert provider == "openai"
             return embedding_model
 
     class EmbeddingClient:
@@ -63,10 +64,10 @@ async def test_standard_processor_uses_shared_writer_for_embedding_mapping_and_w
 
     async def ensure_embedding_field_exists(client, model_name, index_name, dimensions):
         mapping_clients.append(client)
-        assert model_name == "text-embedding-3-small"
+        assert model_name == "openai:text-embedding-3-small"
         assert index_name == "documents"
         assert dimensions == 3
-        return "chunk_embedding_text_embedding_3_small"
+        return "chunk_embedding_openai_text_embedding_3_small"
 
     monkeypatch.setattr(
         "config.settings.clients",
@@ -90,7 +91,14 @@ async def test_standard_processor_uses_shared_writer_for_embedding_mapping_and_w
     )
     monkeypatch.setattr(
         "models.processors.get_openrag_config",
-        lambda: SimpleNamespace(knowledge=SimpleNamespace(embedding_model="")),
+        lambda: SimpleNamespace(
+            knowledge=SimpleNamespace(
+                embedding_model="",
+                embedding_provider="openai",
+                chunk_size=None,
+                chunk_overlap=None,
+            )
+        ),
     )
     monkeypatch.setattr(
         "services.document_index_writer.ensure_embedding_field_exists",
@@ -136,4 +144,6 @@ async def test_standard_processor_uses_shared_writer_for_embedding_mapping_and_w
     assert bulk_body[0]["index"]["_id"].endswith("_file-1_0")
     assert bulk_body[1]["document_id"] == "file-1"
     assert bulk_body[1]["owner"] == "user-1"
-    assert bulk_body[1]["chunk_embedding_text_embedding_3_small"] == [0.1, 0.2, 0.3]
+    assert bulk_body[1]["chunk_embedding_openai_text_embedding_3_small"] == [0.1, 0.2, 0.3]
+    assert bulk_body[1]["embedding_provider"] == "openai"
+    assert bulk_body[1]["embedding_space_id"] == "openai:text-embedding-3-small"

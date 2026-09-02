@@ -216,6 +216,113 @@ async def test_probe_chat_llm_error_surfaces_missing_model(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_resolve_ingest_error_message_probes_generic_embedding_with_credentials(
+    monkeypatch,
+):
+    """Opaque Langflow failures must expose missing Azure deployments.
+
+    Generic LiteLLM providers store their connection fields in ``credentials``
+    rather than legacy ``api_key`` / ``endpoint`` attributes.
+    """
+
+    credentials = {
+        "api_key": "azure-key",
+        "api_base": "https://example.openai.azure.com",
+        "api_version": "2025-01-01-preview",
+    }
+
+    class GenericProvider:
+        configured = True
+
+    class FakeProviders:
+        custom = {"azure": GenericProvider()}
+        openai = None
+        anthropic = None
+        watsonx = None
+        ollama = None
+
+        def credential_values(self, provider):
+            assert provider == "azure"
+            return dict(credentials)
+
+    class FakeConfig:
+        class knowledge:
+            embedding_provider = "azure"
+            embedding_model = "missing-embedding-deployment"
+
+        class agent:
+            llm_provider = "azure"
+            llm_model = "missing-chat-deployment"
+
+        providers = FakeProviders()
+
+        def get_embedding_provider_config(self):
+            return self.providers.custom["azure"]
+
+        def get_llm_provider_config(self):
+            return self.providers.custom["azure"]
+
+    calls = []
+
+    async def fake_validate(**kwargs):
+        calls.append(kwargs)
+        assert kwargs["embedding_model"] == "missing-embedding-deployment"
+        assert kwargs["credentials"] == credentials
+        raise Exception("The API deployment for this resource does not exist.")
+
+    monkeypatch.setattr("config.settings.get_openrag_config", lambda: FakeConfig())
+    monkeypatch.setattr("api.provider_validation.validate_provider_setup", fake_validate)
+
+    from api.provider_validation import resolve_ingest_error_message
+
+    result = await resolve_ingest_error_message("Server disconnected without sending a response.")
+
+    assert result == "The API deployment for this resource does not exist."
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_probe_chat_llm_error_uses_generic_provider_credentials(monkeypatch):
+    credentials = {
+        "api_key": "azure-key",
+        "api_base": "https://example.openai.azure.com",
+        "api_version": "2025-01-01-preview",
+    }
+
+    class GenericProvider:
+        configured = True
+
+    class FakeProviders:
+        custom = {"azure": GenericProvider()}
+
+        def credential_values(self, provider):
+            assert provider == "azure"
+            return dict(credentials)
+
+    class FakeConfig:
+        class agent:
+            llm_provider = "azure"
+            llm_model = "missing-chat-deployment"
+
+        providers = FakeProviders()
+
+        def get_llm_provider_config(self):
+            return self.providers.custom["azure"]
+
+    async def fake_validate(**kwargs):
+        assert kwargs["llm_model"] == "missing-chat-deployment"
+        assert kwargs["credentials"] == credentials
+        raise Exception("DeploymentNotFound: missing-chat-deployment")
+
+    monkeypatch.setattr("config.settings.get_openrag_config", lambda: FakeConfig())
+    monkeypatch.setattr("api.provider_validation.validate_provider_setup", fake_validate)
+
+    from api.provider_validation import probe_chat_llm_error
+
+    assert await probe_chat_llm_error() == "DeploymentNotFound: missing-chat-deployment"
+
+
+@pytest.mark.asyncio
 async def test_resolve_ingest_error_message_probes_credentials_on_disconnect(monkeypatch):
     async def fake_none():
         return None

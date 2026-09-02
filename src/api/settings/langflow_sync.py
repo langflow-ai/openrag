@@ -54,6 +54,7 @@ LANGFLOW_GENERIC_GLOBAL_VARIABLES = frozenset(
         "OPENSEARCH_INDEX_NAME",
         "OPENSEARCH_URL",
         "SELECTED_EMBEDDING_MODEL",
+        "SELECTED_EMBEDDING_PROVIDER",
         "SELECTED_EMBEDDING_MODEL_PROVIDER",
         "SELECTED_LANGUAGE_MODEL",
         "SELECTED_LANGUAGE_MODEL_PROVIDER",
@@ -101,6 +102,10 @@ def _required_generic_global_values(config) -> dict[str, str]:
         "OPENSEARCH_URL": settings.get_langflow_opensearch_url(),
         "SELECTED_EMBEDDING_MODEL": _string_value(getattr(knowledge, "embedding_model", None))
         or "text-embedding-3-small",
+        "SELECTED_EMBEDDING_PROVIDER": _string_value(getattr(knowledge, "embedding_provider", None))
+        or "openai",
+        # Legacy agent-flow compatibility; this is the proxy client, not the
+        # upstream provider. Remove with that flow template in a future major release.
         "SELECTED_EMBEDDING_MODEL_PROVIDER": "OpenAI",
         "SELECTED_LANGUAGE_MODEL": _string_value(getattr(agent, "llm_model", None))
         or "gpt-4o-mini",
@@ -289,6 +294,12 @@ async def _update_langflow_global_variables(config, flows_service=None):
     knowledge = getattr(config, "knowledge", None)
     if getattr(knowledge, "embedding_model", None):
         await _safe_upsert("SELECTED_EMBEDDING_MODEL", config.knowledge.embedding_model)
+    await _safe_upsert(
+        "SELECTED_EMBEDDING_PROVIDER",
+        getattr(knowledge, "embedding_provider", None) or "openai",
+    )
+    # Kept for the legacy agent-flow header template. It selects Langflow's
+    # OpenAI-compatible proxy client; remove in a future major release.
     await _safe_upsert("SELECTED_EMBEDDING_MODEL_PROVIDER", "OpenAI")
 
     agent = getattr(config, "agent", None)
@@ -371,7 +382,7 @@ async def _update_mcp_server_urls(config, session_manager=None, flows_service=No
 
 
 async def _upsert_selected_model_variable(name: str, value: str | None) -> None:
-    """Push a SELECTED_*_MODEL global var, non-fatally.
+    """Push a required SELECTED_* global variable to Langflow.
 
     Flows no longer carry per-provider embedding/LLM nodes for
     `change_langflow_model_value` to patch — they use the single
@@ -381,13 +392,8 @@ async def _upsert_selected_model_variable(name: str, value: str | None) -> None:
     """
     if not value:
         return
-    try:
-        await _upsert_langflow_global_variable(name, value)
-        logger.info("Set global variable in Langflow", variable_name=name)
-    except Exception as e:
-        logger.warning(
-            "Failed to set global variable in Langflow", variable_name=name, error=str(e)
-        )
+    await _upsert_langflow_global_variable(name, value)
+    logger.info("Set global variable in Langflow", variable_name=name)
 
 
 async def _update_langflow_model_values(
@@ -417,12 +423,13 @@ async def _update_langflow_model_values(
             )
 
         if embedding_model or embedding_provider:
+            configured_embedding_provider = config.knowledge.embedding_provider or "openai"
             effective_embedding_provider = (
-                embedding_provider or config.knowledge.embedding_provider
+                embedding_provider or configured_embedding_provider
             ).lower()
             if (
                 embedding_provider
-                and embedding_provider.lower() != config.knowledge.embedding_provider.lower()
+                and embedding_provider.lower() != configured_embedding_provider.lower()
             ):
                 effective_embedding_model = (
                     embedding_model  # do not fall back; force caller to specify
@@ -431,6 +438,9 @@ async def _update_langflow_model_values(
                 effective_embedding_model = embedding_model or config.knowledge.embedding_model
             await _upsert_selected_model_variable(
                 "SELECTED_EMBEDDING_MODEL", effective_embedding_model
+            )
+            await _upsert_selected_model_variable(
+                "SELECTED_EMBEDDING_PROVIDER", effective_embedding_provider
             )
             result = await flows_service.change_langflow_model_value(
                 effective_embedding_provider,
@@ -464,7 +474,7 @@ async def _update_langflow_model_values(
             # 2. Update ALL configured embedding providers
             embedding_providers = _configured_provider_names(config, _EMBEDDING_PROVIDER_NAMES)
 
-            current_embedding_provider = config.knowledge.embedding_provider.lower()
+            current_embedding_provider = (config.knowledge.embedding_provider or "openai").lower()
             for provider in embedding_providers:
                 # Use configured model for current provider, or None (first available) for others
                 embedding_model = (

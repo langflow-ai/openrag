@@ -252,6 +252,8 @@ class IngestPreviewService:
                             "text",
                             "page",
                             "embedding_model",
+                            "embedding_provider",
+                            "embedding_space_id",
                             "embedding_dimensions",
                         ]
                     },
@@ -282,6 +284,8 @@ class IngestPreviewService:
         chunks_truncated = chunk_count > chunks_returned
         chunks = []
         embedding_model = None
+        embedding_provider = None
+        embedding_space_id = None
         embedding_dimensions = None
 
         for hit in hits:
@@ -289,6 +293,10 @@ class IngestPreviewService:
             text = source.get("text") or ""
             if embedding_model is None and source.get("embedding_model"):
                 embedding_model = source["embedding_model"]
+            if embedding_provider is None and source.get("embedding_provider"):
+                embedding_provider = source["embedding_provider"]
+            if embedding_space_id is None and source.get("embedding_space_id"):
+                embedding_space_id = source["embedding_space_id"]
             if embedding_dimensions is None and source.get("embedding_dimensions"):
                 embedding_dimensions = source["embedding_dimensions"]
             preview_text = text.strip()
@@ -310,6 +318,8 @@ class IngestPreviewService:
             "chunks_returned": chunks_returned,
             "chunks_truncated": chunks_truncated,
             "embedding_model": embedding_model,
+            "embedding_provider": embedding_provider,
+            "embedding_space_id": embedding_space_id,
             "embedding_dimensions": embedding_dimensions,
             "chunks": chunks,
             "document_id": document_id,

@@ -13,7 +13,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
-from utils.embedding_fields import ensure_embedding_field_exists
+from utils.embedding_fields import ensure_embedding_field_exists, get_embedding_space_id
 from utils.embeddings import create_index_body
 from utils.group_acl import unique_acl_principal_labels, unique_acl_principals
 from utils.logging_config import get_logger
@@ -26,6 +26,7 @@ class DocumentIndexContext:
     document_id: str
     mimetype: str
     embedding_model: str
+    embedding_provider: str | None = None
     filename: str | None = None
     owner: str | None = None
     owner_name: str | None = None
@@ -96,12 +97,15 @@ class DocumentIndexWriter:
             raise ValueError("Cannot index chunks with empty embeddings")
 
         dimensions = len(first_vector)
+        embedding_space_id = self._embedding_space_id(context)
         client = self._get_write_client()
         index_name = context.index_name or get_index_name()
         embedding_field = await self._ensure_index_and_embedding_field(
             client,
             index_name=index_name,
             embedding_model=context.embedding_model,
+            embedding_provider=context.embedding_provider,
+            embedding_space_id=embedding_space_id,
             dimensions=dimensions,
         )
 
@@ -186,19 +190,33 @@ class DocumentIndexWriter:
         *,
         index_name: str,
         embedding_model: str,
+        embedding_provider: str | None,
+        embedding_space_id: str,
         dimensions: int,
     ) -> str:
         if not await client.indices.exists(index=index_name):
             await client.indices.create(
                 index=index_name,
-                body=await create_index_body(embedding_model, dimensions),
+                body=await create_index_body(
+                    embedding_model,
+                    dimensions,
+                    embedding_provider=embedding_provider,
+                    embedding_space_id=embedding_space_id,
+                ),
             )
         return await ensure_embedding_field_exists(
             client,
-            embedding_model,
+            embedding_space_id,
             index_name,
             dimensions,
         )
+
+    @staticmethod
+    def _embedding_space_id(context: DocumentIndexContext) -> str:
+        """Use exact provider provenance when present; preserve legacy ids otherwise."""
+        if context.embedding_provider:
+            return get_embedding_space_id(context.embedding_provider, context.embedding_model)
+        return context.embedding_model
 
     def _build_chunk_document(
         self,
@@ -236,6 +254,10 @@ class DocumentIndexWriter:
             "indexed_time": indexed_time,
             "metadata": metadata.get("metadata", {}),
         }
+
+        if context.embedding_provider:
+            doc["embedding_provider"] = context.embedding_provider.strip().lower()
+            doc["embedding_space_id"] = self._embedding_space_id(context)
 
         parser = context.parser or metadata.get("parser")
         if parser:
