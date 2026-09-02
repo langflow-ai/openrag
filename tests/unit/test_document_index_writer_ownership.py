@@ -47,7 +47,9 @@ class InMemoryOpenSearch:
         return [document for document in self.documents.values() if document.get("owner") == owner]
 
 
-def make_context(owner: str | None, *, embedding_provider: str | None = None) -> DocumentIndexContext:
+def make_context(
+    owner: str | None, *, embedding_provider: str | None = None
+) -> DocumentIndexContext:
     return DocumentIndexContext(
         document_id="same-content-hash",
         filename="report.pdf",
