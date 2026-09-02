@@ -18,16 +18,19 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/auth-context";
+import { useOnboardingState } from "@/hooks/use-onboarding-state";
 import { formatFlowName } from "@/lib/utils";
 
 interface FlowsUpdateDialogProps {
   overrideOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
+  isOnboarding?: boolean;
 }
 
 export function FlowsUpdateDialog({
   overrideOpen,
   onOpenChange,
+  isOnboarding: propIsOnboarding,
 }: FlowsUpdateDialogProps = {}) {
   const { roles, isNoAuthMode, rbacEnforced, can } = useAuth();
   const isAdmin =
@@ -36,23 +39,27 @@ export function FlowsUpdateDialog({
     roles.includes("admin") ||
     can("config:write");
 
+  const { isOnboardingComplete } = useOnboardingState();
+  const isOnboarding = propIsOnboarding ?? !isOnboardingComplete;
+
   const { data: updates, isLoading } = useGetFlowsUpdatesQuery({
     enabled: true,
   });
   const updateMutation = useUpdateFlowsMutation();
   const dismissMutation = useDismissFlowsUpdateMutation();
   const [internalIsOpen, setInternalIsOpen] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
+  const [showSkipConfirm, setShowSkipConfirm] = useState(false);
+  const [showUpdateConfirm, setShowUpdateConfirm] = useState(false);
+  const [isUpdatingWithBackup, setIsUpdatingWithBackup] = useState<
+    boolean | null
+  >(null);
   const [backupCustom, setBackupCustom] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const isOpen = overrideOpen ?? internalIsOpen;
-  const setIsOpen = (open: boolean) => {
-    setInternalIsOpen(open);
-    onOpenChange?.(open);
-  };
-
-  const undismissedUpdates = updates?.filter((u) => !u.dismissed) ?? [];
+  const allUpdates = updates ?? [];
+  const undismissedUpdates = allUpdates.filter((u) => !u.dismissed);
+  const targetUpdates =
+    undismissedUpdates.length > 0 ? undismissedUpdates : allUpdates;
   const hasUndismissed = undismissedUpdates.length > 0;
 
   const [prevIsLoading, setPrevIsLoading] = useState(isLoading);
@@ -70,33 +77,55 @@ export function FlowsUpdateDialog({
     }
   }
 
+  const isMainOpen =
+    !showSkipConfirm && !showUpdateConfirm && (overrideOpen ?? internalIsOpen);
+
+  const handleClose = () => {
+    setInternalIsOpen(false);
+    setShowSkipConfirm(false);
+    setShowUpdateConfirm(false);
+    setIsUpdatingWithBackup(null);
+    onOpenChange?.(false);
+  };
+
   const handleDismiss = async () => {
-    setIsOpen(false);
-    setShowConfirm(false);
-    if (undismissedUpdates.length === 0) return;
+    handleClose();
+    if (targetUpdates.length === 0) return;
     try {
       await dismissMutation.mutateAsync({
-        flow_types: undismissedUpdates.map((u) => u.flow_type),
+        flow_types: targetUpdates.map((u) => u.flow_type),
       });
     } catch (e) {
       console.error("Failed to dismiss flow updates", e);
     }
   };
 
-  const handleInitialUpdateClick = () => {
-    setIsOpen(false);
-    setShowConfirm(true);
+  const handleSkipClick = () => {
+    setShowSkipConfirm(true);
   };
 
-  const handleConfirmUpdate = async () => {
-    if (undismissedUpdates.length === 0) return;
+  const handleSkipConfirmOpenChange = (open: boolean) => {
+    setShowSkipConfirm(open);
+  };
+
+  const handleInitialUpdateClick = () => {
+    if (!backupCustom) {
+      setShowUpdateConfirm(true);
+    } else {
+      handleConfirmUpdate(true);
+    }
+  };
+
+  const handleConfirmUpdate = async (withBackup: boolean) => {
+    if (targetUpdates.length === 0) return;
     setErrorMessage(null);
-    const flowTypes = undismissedUpdates.map((u) => u.flow_type);
+    setIsUpdatingWithBackup(withBackup);
+    const flowTypes = targetUpdates.map((u) => u.flow_type);
 
     try {
       const results = await updateMutation.mutateAsync({
         flow_types: flowTypes,
-        backup_custom: backupCustom,
+        backup_custom: withBackup,
       });
 
       const failed = results.filter((r) => !r.success);
@@ -109,23 +138,30 @@ export function FlowsUpdateDialog({
           .join("; ");
         setErrorMessage(errorText);
         toast.error(`Flow update failed: ${errorText}`);
+        setShowUpdateConfirm(false);
+        setInternalIsOpen(true);
       } else {
         toast.success("Flows updated successfully");
-        setShowConfirm(false);
+        handleClose();
       }
-    } catch (e: any) {
-      const msg = e?.message || "Failed to update flows";
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Failed to update flows";
       setErrorMessage(msg);
       toast.error(msg);
+      setShowUpdateConfirm(false);
+      setInternalIsOpen(true);
+    } finally {
+      setIsUpdatingWithBackup(null);
     }
   };
 
+  if (targetUpdates.length === 0) return null;
   if (overrideOpen === undefined && undismissedUpdates.length === 0)
     return null;
 
   if (!isAdmin) {
     return (
-      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <Dialog open={isMainOpen} onOpenChange={(open) => !open && handleClose()}>
         <DialogContent className="sm:max-w-[540px]">
           <DialogHeader>
             <DialogTitle>Langflow Update Available</DialogTitle>
@@ -156,12 +192,12 @@ export function FlowsUpdateDialog({
 
   return (
     <>
-      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <Dialog open={isMainOpen} onOpenChange={(open) => !open && handleClose()}>
         <DialogContent className="sm:max-w-[540px]">
           <DialogHeader>
-            <DialogTitle>Update required from Langflow</DialogTitle>
+            <DialogTitle>Update required for Langflow</DialogTitle>
             <DialogDescription>
-              OpenRAG will back up your customized flows first
+              Updating Langflow removes customizations from OpenRAG flows
             </DialogDescription>
           </DialogHeader>
 
@@ -174,12 +210,21 @@ export function FlowsUpdateDialog({
               </Alert>
             )}
 
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              Updating Langflow discards your customizations to OpenRAG flows.
-              OpenRAG copies the core flows before updating, so you can reapply
-              your changes afterward. OpenRAG stores the copies in its embedded
-              Langflow instance.
-            </p>
+            <div className="space-y-3 text-sm text-muted-foreground leading-relaxed">
+              <p>
+                If you&apos;ve customized any OpenRAG flows, select{" "}
+                <b className="font-semibold">
+                  Back up my flows before updating
+                </b>{" "}
+                to save a copy. OpenRAG stores the backup in its embedded
+                Langflow instance. After the update, you can use the backup to
+                manually reapply your customizations.
+              </p>
+              <p>
+                If you haven’t customized any OpenRAG flows, a backup isn&apos;t
+                required.
+              </p>
+            </div>
 
             <div className="flex items-center space-x-2 pt-2">
               <Checkbox
@@ -189,51 +234,123 @@ export function FlowsUpdateDialog({
               />
               <label
                 htmlFor="backup-custom"
-                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
               >
-                Back up my flows in Langflow before updating
+                Back up my flows before updating
               </label>
             </div>
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={handleDismiss}>
-              Skip action
+            {!isOnboarding && (
+              <Button
+                variant="outline"
+                onClick={handleSkipClick}
+                disabled={updateMutation.isPending || dismissMutation.isPending}
+              >
+                <div>Skip update</div>
+              </Button>
+            )}
+            <Button
+              onClick={handleInitialUpdateClick}
+              disabled={updateMutation.isPending || dismissMutation.isPending}
+            >
+              <div>
+                {updateMutation.isPending ? "Updating..." : "Update Langflow"}
+              </div>
             </Button>
-            <Button onClick={handleInitialUpdateClick}>Update flow</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showConfirm} onOpenChange={setShowConfirm}>
+      <Dialog open={showSkipConfirm} onOpenChange={handleSkipConfirmOpenChange}>
         <DialogContent className="sm:max-w-[540px]">
           <DialogHeader>
-            <DialogTitle>Confirm Langflow Update</DialogTitle>
+            <DialogTitle>Skip the Langflow update</DialogTitle>
+            <DialogDescription className="sr-only">
+              Skip the Langflow update confirmation
+            </DialogDescription>
           </DialogHeader>
 
-          <div className="py-2">
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              Updating Langflow will overwrite any custom changes made. Backup
-              copies of your flows will be created in Langflow. Do you want to
-              continue?
+          <div className="space-y-3 py-2 text-sm text-muted-foreground leading-relaxed">
+            <p>
+              OpenRAG flows are designed to work with the latest supported
+              version of Langflow.
+            </p>
+            <p>
+              If you skip this update, some flows might become incompatible and
+              stop working correctly.
             </p>
           </div>
 
           <DialogFooter>
             <Button
-              variant="outline"
               onClick={() => {
-                setShowConfirm(false);
-                setIsOpen(true);
+                setShowSkipConfirm(false);
+                if (!backupCustom) {
+                  setShowUpdateConfirm(true);
+                } else {
+                  handleConfirmUpdate(true);
+                }
               }}
+              disabled={updateMutation.isPending || dismissMutation.isPending}
             >
-              Cancel
+              <div>Update Langflow</div>
             </Button>
             <Button
-              onClick={handleConfirmUpdate}
+              variant="outline"
+              onClick={handleDismiss}
+              disabled={updateMutation.isPending || dismissMutation.isPending}
+            >
+              <div>
+                {dismissMutation.isPending ? "Skipping..." : "Skip update"}
+              </div>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showUpdateConfirm} onOpenChange={setShowUpdateConfirm}>
+        <DialogContent className="sm:max-w-[540px]">
+          <DialogHeader>
+            <DialogTitle>Update without a backup</DialogTitle>
+            <DialogDescription className="sr-only">
+              Update without a backup confirmation
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-2 text-sm text-muted-foreground leading-relaxed">
+            <p>
+              If you&apos;ve customized any OpenRAG flows, updating without a
+              backup permanently removes those customizations. You won&apos;t be
+              able to restore them after the update.
+            </p>
+          </div>
+
+          <DialogFooter>
+            <Button
+              onClick={() => {
+                setBackupCustom(true);
+                handleConfirmUpdate(true);
+              }}
               disabled={updateMutation.isPending}
             >
-              {updateMutation.isPending ? "Updating..." : "Continue update"}
+              <div>
+                {updateMutation.isPending && isUpdatingWithBackup
+                  ? "Updating..."
+                  : "Back up my flows"}
+              </div>
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => handleConfirmUpdate(false)}
+              disabled={updateMutation.isPending}
+            >
+              <div>
+                {updateMutation.isPending && isUpdatingWithBackup === false
+                  ? "Updating..."
+                  : "Continue without backup"}
+              </div>
             </Button>
           </DialogFooter>
         </DialogContent>
