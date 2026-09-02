@@ -2899,14 +2899,14 @@ func (r *BomaRAGReconciler) getOrGenerateSecret(ctx context.Context, o *bomaragv
 			Namespace: targetNS,
 			Labels: map[string]string{
 				"app.kubernetes.io/managed-by": "bomarag-operator",
-				"bomalogic.com/auto-generated":      "true",
-				"bomalogic.com/bomarag-name":        o.Name,
+				"bomalogic.com/auto-generated": "true",
+				"bomalogic.com/bomarag-name":   o.Name,
 			},
 			Annotations: map[string]string{
 				"bomalogic.com/generated-at": generatedTime,
 				"bomalogic.com/secret-key":   envKeyName,
 				"bomalogic.com/tenant-id":    o.Spec.TenantID,
-				immutableAnnotation:     "true",
+				immutableAnnotation:          "true",
 			},
 			Finalizers: []string{userSecretFinalizer},
 		},
