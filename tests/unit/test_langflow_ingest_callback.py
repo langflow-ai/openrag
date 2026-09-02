@@ -321,7 +321,7 @@ def test_ingest_flows_resolve_callback_config_from_global_vars(flow_path, compon
     assert template["openrag_ingest_url"]["input_types"] == ["Text", "Message"]
     assert template["openrag_ingest_token"]["input_types"] == ["Text", "Message"]
     assert template["openrag_ingest_run_id"]["input_types"] == ["Text", "Message"]
-    assert template["openrag_ingest_token"]["_input_type"] == "StrInput"
+    assert template["openrag_ingest_token"]["_input_type"] == "SecretStrInput"
     assert "OPENRAG_INGEST_URL" in template["code"]["value"]
     assert "_openrag_ingest_global_placeholders" in template["code"]["value"]
     assert 'url = self._openrag_callback_value("openrag_ingest_url")' in template["code"]["value"]

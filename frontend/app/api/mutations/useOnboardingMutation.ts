@@ -22,6 +22,7 @@ export interface OnboardingVariables {
   watsonx_endpoint?: string;
   watsonx_project_id?: string;
   ollama_endpoint?: string;
+  provider_credentials?: Record<string, Record<string, string>>;
 }
 
 interface OnboardingResponse {

@@ -31,6 +31,7 @@ from services.ingest_preview_service import IngestPreviewService
 from services.knowledge_filter_service import KnowledgeFilterService
 from services.langflow_file_service import LangflowFileService
 from services.langflow_ingest_token_service import LangflowIngestTokenService
+from services.langflow_llm_token_service import LangflowLlmTokenService
 from services.langflow_mcp_service import LangflowMCPService
 from services.models_service import ModelsService
 from services.monitor_service import MonitorService
@@ -85,6 +86,7 @@ async def initialize_services():
     models_service = ModelsService()
     document_index_writer = DocumentIndexWriter()
     langflow_ingest_token_service = LangflowIngestTokenService()
+    langflow_llm_token_service = LangflowLlmTokenService()
     ingest_preview_service = IngestPreviewService()
     document_service = DocumentService(
         session_manager=session_manager,
@@ -228,6 +230,7 @@ async def initialize_services():
         "langflow_file_service": langflow_file_service,
         "document_index_writer": document_index_writer,
         "langflow_ingest_token_service": langflow_ingest_token_service,
+        "langflow_llm_token_service": langflow_llm_token_service,
         "auth_service": auth_service,
         "connector_service": connector_service,
         "group_acl_service": group_acl_service,

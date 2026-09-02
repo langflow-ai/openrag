@@ -4,10 +4,9 @@ import { ArrowUpRight, ChevronDown, Loader2, Minus, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
-  useGetAnthropicModelsQuery,
   useGetIBMModelsQuery,
+  useGetModelCatalogQuery,
   useGetOllamaModelsQuery,
-  useGetOpenAIModelsQuery,
 } from "@/app/api/queries/useGetModelsQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
@@ -46,7 +45,18 @@ import { DEFAULT_KNOWLEDGE_SETTINGS } from "@/lib/constants";
 import { resolveLangflowEditUrl } from "@/lib/url-utils";
 import { cn } from "@/lib/utils";
 import { useUpdateSettingsMutation } from "../../api/mutations/useUpdateSettingsMutation";
-import { ModelSelector } from "../../onboarding/_components/model-selector";
+import { ModelFeatures } from "../../onboarding/_components/model-features";
+import {
+  type GroupedModelOption,
+  ModelSelector,
+} from "../../onboarding/_components/model-selector";
+import {
+  findGroupedSelection,
+  groupedCatalogOptions,
+  LIVE_INVENTORY_PROVIDERS,
+  liveModelOption,
+  mergeLiveCatalogOptions,
+} from "../_helpers/catalog-models";
 import { getModelLogo } from "../_helpers/model-helpers";
 import { LangflowIcon } from "./langflow-icon";
 
@@ -96,171 +106,127 @@ export function IngestSettingsSection() {
 
   const showVlmSettings = settings.show_vlm_settings ?? true;
 
-  const { data: openaiModels, isLoading: openaiLoading } =
-    useGetOpenAIModelsQuery(
-      { apiKey: "" },
-      { enabled: settings?.providers?.openai?.configured === true },
-    );
-  const { data: anthropicModels, isLoading: anthropicLoading } =
-    useGetAnthropicModelsQuery(
-      { apiKey: "" },
-      { enabled: settings?.providers?.anthropic?.configured === true },
-    );
-  const { data: ollamaModels, isLoading: ollamaLoading } =
-    useGetOllamaModelsQuery(
-      { endpoint: settings?.providers?.ollama?.endpoint },
-      {
-        enabled:
-          settings?.providers?.ollama?.configured === true &&
-          !!settings?.providers?.ollama?.endpoint,
-      },
-    );
-  const { data: watsonxModels, isLoading: watsonxLoading } =
-    useGetIBMModelsQuery(
-      {
-        endpoint: settings?.providers?.watsonx?.endpoint,
-        apiKey: "",
-        projectId: settings?.providers?.watsonx?.project_id,
-      },
-      {
-        enabled:
-          settings?.providers?.watsonx?.configured === true &&
-          !!settings?.providers?.watsonx?.endpoint &&
-          !!settings?.providers?.watsonx?.project_id,
-      },
-    );
+  const {
+    data: catalog,
+    isLoading: catalogLoading,
+    // The catalogue query does not retry, so a failed fetch leaves the groups
+    // empty. Without this flag the selector would tell the user to configure a
+    // provider when the real problem is that the catalogue never loaded.
+    isError: catalogError,
+  } = useGetModelCatalogQuery({
+    enabled: isAuthenticated || isNoAuthMode,
+  });
 
-  const groupedEmbeddingModels = useMemo(
-    () =>
-      [
-        {
-          group: "OpenAI",
-          provider: "openai",
-          icon: getModelLogo("", "openai"),
-          models: openaiModels?.embedding_models || [],
-          configured: settings.providers?.openai?.configured === true,
-        },
-        {
-          group: "Ollama",
-          provider: "ollama",
-          icon: getModelLogo("", "ollama"),
-          models: ollamaModels?.embedding_models || [],
-          configured: settings.providers?.ollama?.configured === true,
-        },
-        {
-          group: "IBM watsonx.ai",
-          provider: "watsonx",
-          icon: getModelLogo("", "watsonx"),
-          models: watsonxModels?.embedding_models || [],
-          configured: settings.providers?.watsonx?.configured === true,
-        },
-      ]
-        .filter((p) => p.configured)
-        .map((p) => ({
-          group: p.group,
-          icon: p.icon,
-          options: p.models.map((m) => ({ ...m, provider: p.provider })),
-        })),
-    [
-      openaiModels?.embedding_models,
-      ollamaModels?.embedding_models,
-      watsonxModels?.embedding_models,
-      settings.providers?.openai?.configured,
-      settings.providers?.ollama?.configured,
-      settings.providers?.watsonx?.configured,
-    ],
+  const configuredProviders = useMemo(
+    () => ({
+      openai: settings.providers?.openai?.configured === true,
+      anthropic: settings.providers?.anthropic?.configured === true,
+      ollama: settings.providers?.ollama?.configured === true,
+      watsonx: settings.providers?.watsonx?.configured === true,
+      ...Object.fromEntries(
+        Object.entries(settings.providers?.custom ?? {}).map(
+          ([provider, value]) => [provider, value.configured === true],
+        ),
+      ),
+    }),
+    [settings.providers],
   );
 
+  // watsonx and Ollama publish their inventory from the running server, not
+  // from LiteLLM's bundled table, which carries *no* embedding models for
+  // either of them — so the live list is the only thing that puts their group
+  // in this picker at all.
+  //
+  // Fetched whenever the provider is configured, never gated on it already
+  // being the selected embedding provider: the whole point of the group is to
+  // be there before you pick it. Gating on selection is why watsonx stayed
+  // missing after the first attempt at this.
+  const authed = isAuthenticated || isNoAuthMode;
+  const watsonx = settings.providers?.watsonx;
+  const ollama = settings.providers?.ollama;
+
+  const ibmModels = useGetIBMModelsQuery(
+    {
+      endpoint: watsonx?.endpoint,
+      projectId: watsonx?.project_id,
+      useEnvKey: true,
+    },
+    {
+      enabled:
+        authed &&
+        configuredProviders.watsonx &&
+        !!watsonx?.endpoint &&
+        !!watsonx?.project_id,
+    },
+  );
+  const ollamaModels = useGetOllamaModelsQuery(
+    { endpoint: ollama?.endpoint },
+    { enabled: authed && configuredProviders.ollama && !!ollama?.endpoint },
+  );
+
+  const groupedEmbeddingModels = useMemo(() => {
+    const named = (key: string) =>
+      catalog?.providers?.find((provider) => provider.key === key)?.name;
+    const liveFor = (key: string, models?: { value: string }[]) =>
+      (models ?? []).map((model) => liveModelOption(model.value, key));
+
+    let groups = groupedCatalogOptions(
+      catalog,
+      configuredProviders,
+      "embedding",
+    );
+    const liveByProvider: Record<string, { value: string }[] | undefined> = {
+      watsonx: ibmModels.data?.embedding_models,
+      ollama: ollamaModels.data?.embedding_models,
+    };
+    for (const key of LIVE_INVENTORY_PROVIDERS) {
+      groups = mergeLiveCatalogOptions(
+        groups,
+        key,
+        liveFor(key, liveByProvider[key]),
+        named(key),
+      );
+    }
+    return groups.map((group) => ({
+      group: group.group,
+      provider: group.key,
+      icon: getModelLogo("", group.key),
+      options: group.options,
+    }));
+  }, [catalog, configuredProviders, ibmModels.data, ollamaModels.data]);
+
   const isLoadingAnyEmbeddingModels =
-    openaiLoading || ollamaLoading || watsonxLoading;
+    catalogLoading || ibmModels.isLoading || ollamaModels.isLoading;
 
   const groupedVlmModels = useMemo(() => {
-    const list: any[] = [];
+    const list: GroupedModelOption[] = groupedCatalogOptions(
+      catalog,
+      configuredProviders,
+      "vision",
+    ).map((group) => ({
+      group: group.group,
+      provider: group.key,
+      icon: getModelLogo("", group.key),
+      options: group.options,
+    }));
 
-    // 1. Local Models
     if (settings.local_vlm_models && settings.local_vlm_models.length > 0) {
-      list.push({
+      list.unshift({
         group: "Local Models",
+        provider: "local",
         icon: getModelLogo("", "local"),
         options: settings.local_vlm_models.map((m: string) => ({
           value: m,
-          label: m.split("/").pop(),
+          label: m.split("/").pop() ?? m,
           provider: "local",
         })),
       });
     }
 
-    // 2. OpenAI
-    if (settings.providers?.openai?.configured) {
-      const models = (openaiModels?.language_models || [])
-        .filter((m: any) => m.supports_images === true)
-        .map((m: any) => ({ ...m, provider: "openai" }));
-      if (models.length > 0) {
-        list.push({
-          group: "OpenAI",
-          icon: getModelLogo("", "openai"),
-          options: models,
-        });
-      }
-    }
-
-    // 3. Anthropic
-    if (settings.providers?.anthropic?.configured) {
-      const models = (anthropicModels?.language_models || [])
-        .filter((m: any) => m.supports_images === true)
-        .map((m: any) => ({ ...m, provider: "anthropic" }));
-      if (models.length > 0) {
-        list.push({
-          group: "Anthropic",
-          icon: getModelLogo("", "anthropic"),
-          options: models,
-        });
-      }
-    }
-
-    // 4. Ollama
-    if (settings.providers?.ollama?.configured) {
-      const models = (ollamaModels?.language_models || [])
-        .filter((m: any) => m.supports_images === true)
-        .map((m: any) => ({ ...m, provider: "ollama" }));
-      if (models.length > 0) {
-        list.push({
-          group: "Ollama",
-          icon: getModelLogo("", "ollama"),
-          options: models,
-        });
-      }
-    }
-
-    // 5. IBM watsonx.ai
-    if (settings.providers?.watsonx?.configured) {
-      const models = (watsonxModels?.language_models || [])
-        .filter((m: any) => m.supports_images === true)
-        .map((m: any) => ({ ...m, provider: "watsonx" }));
-      if (models.length > 0) {
-        list.push({
-          group: "IBM watsonx.ai",
-          icon: getModelLogo("", "watsonx"),
-          options: models,
-        });
-      }
-    }
-
     return list;
-  }, [
-    settings.local_vlm_models,
-    settings.providers?.openai?.configured,
-    settings.providers?.anthropic?.configured,
-    settings.providers?.ollama?.configured,
-    settings.providers?.watsonx?.configured,
-    openaiModels?.language_models,
-    anthropicModels?.language_models,
-    ollamaModels?.language_models,
-    watsonxModels?.language_models,
-  ]);
+  }, [catalog, configuredProviders, settings.local_vlm_models]);
 
-  const isLoadingAnyVlmModels =
-    openaiLoading || anthropicLoading || ollamaLoading || watsonxLoading;
+  const isLoadingAnyVlmModels = catalogLoading;
 
   const allVlmOptions = useMemo(
     () => groupedVlmModels.flatMap((g) => g.options),
@@ -280,6 +246,13 @@ export function IngestSettingsSection() {
     () => groupedEmbeddingModels.flatMap((g) => g.options),
     [groupedEmbeddingModels],
   );
+  const selectedEmbeddingMatch = findGroupedSelection(
+    groupedEmbeddingModels,
+    settings.knowledge?.embedding_model,
+    settings.knowledge?.embedding_provider,
+  );
+  const selectedEmbedding = selectedEmbeddingMatch?.option;
+  const selectedEmbeddingGroup = selectedEmbeddingMatch?.group;
 
   const handleEmbeddingModelChange = useCallback(
     (newModel: string, provider?: string) => {
@@ -402,28 +375,19 @@ export function IngestSettingsSection() {
 
   useRegisterDirty("ingest-settings", userEdited && knowledgeIngestDirty);
 
+  // Resolve through the same map that builds the groups: the catalogue now
+  // contributes custom LiteLLM providers, so a hard-coded chain would report
+  // OpenAI's state for any provider outside the four legacy keys.
   const providerConfigured =
     settings.providers === undefined || settings.providers === null
       ? undefined
-      : vlmProvider === "watsonx"
-        ? settings.providers.watsonx?.configured === true
-        : vlmProvider === "anthropic"
-          ? settings.providers.anthropic?.configured === true
-          : vlmProvider === "ollama"
-            ? settings.providers.ollama?.configured === true
-            : vlmProvider === "local"
-              ? true
-              : settings.providers.openai?.configured === true;
+      : vlmProvider === "local"
+        ? true
+        : configuredProviders[
+            vlmProvider as keyof typeof configuredProviders
+          ] === true;
 
   const providerWarning = pictureDescriptions && providerConfigured === false;
-  const providerLabel =
-    vlmProvider === "watsonx"
-      ? "IBM watsonx.ai"
-      : vlmProvider === "anthropic"
-        ? "Anthropic"
-        : vlmProvider === "ollama"
-          ? "Ollama"
-          : "OpenAI";
 
   const handleChunkSizeChange = (value: string) => {
     setUserEdited(true);
@@ -655,15 +619,36 @@ export function IngestSettingsSection() {
             >
               <ModelSelector
                 groupedOptions={groupedEmbeddingModels}
+                custom
                 noOptionsPlaceholder={
                   isLoadingAnyEmbeddingModels
                     ? "Loading models..."
-                    : "No embedding models detected. Configure a provider first."
+                    : catalogError
+                      ? "Could not load the model catalogue. Retry later."
+                      : "No embedding models detected. Configure a provider first."
                 }
                 value={settings.knowledge?.embedding_model || ""}
+                selectedProvider={settings.knowledge?.embedding_provider}
                 onValueChange={handleEmbeddingModelChange}
               />
             </LabelWrapper>
+            {settings.knowledge?.embedding_model && selectedEmbeddingGroup && (
+              <div className="mt-3">
+                <ModelFeatures
+                  model={
+                    selectedEmbedding?.model ?? {
+                      model: settings.knowledge.embedding_model,
+                      // Without an explicit mode the panel treats an
+                      // off-catalogue embedding model as a language model and
+                      // warns that it cannot run the agent tools.
+                      mode: "embedding",
+                    }
+                  }
+                  providerName={selectedEmbeddingGroup.group}
+                  provider={selectedEmbeddingGroup.provider}
+                />
+              </div>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -878,12 +863,16 @@ export function IngestSettingsSection() {
                       >
                         <ModelSelector
                           groupedOptions={groupedVlmModels}
+                          custom
                           noOptionsPlaceholder={
                             isLoadingAnyVlmModels
                               ? "Loading models..."
-                              : "No models detected. Configure OpenAI, Anthropic, Ollama, or IBM watsonx.ai first."
+                              : catalogError
+                                ? "Could not load the model catalogue. Retry later."
+                                : "No models detected. Configure OpenAI, Anthropic, Ollama, or IBM watsonx.ai first."
                           }
                           value={vlmModel}
+                          selectedProvider={vlmProvider}
                           onValueChange={handleVlmModelChange}
                           hasError={!!validationError}
                           disabled={!pictureDescriptions}

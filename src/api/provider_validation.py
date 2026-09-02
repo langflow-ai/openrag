@@ -616,6 +616,7 @@ async def validate_provider_setup(
     endpoint: str = None,
     project_id: str = None,
     test_completion: bool = False,
+    credentials: dict[str, str] | None = None,
 ) -> None:
     """
     Validate provider setup by testing completion with tool calling and embedding.
@@ -634,13 +635,27 @@ async def validate_provider_setup(
         Exception: If validation fails, raises the original exception with the actual error message.
     """
     provider_lower = provider.lower()
+    supplied = dict(credentials or {})
+    if api_key:
+        supplied.setdefault("api_key", api_key)
+    if endpoint:
+        supplied.setdefault("api_base", endpoint)
+    if project_id:
+        supplied.setdefault("project_id", project_id)
 
     try:
         logger.info(
             f"Starting validation for provider: {provider_lower} (test_completion={test_completion})"
         )
 
-        if test_completion:
+        if provider_lower not in {"openai", "watsonx", "ollama", "anthropic"}:
+            await _test_litellm_provider(
+                provider=provider_lower,
+                credentials=supplied,
+                embedding_model=embedding_model,
+                llm_model=llm_model,
+            )
+        elif test_completion:
             # Full validation with completion/embedding tests (consumes credits)
             if embedding_model:
                 # Test embedding
@@ -675,6 +690,35 @@ async def validate_provider_setup(
         logger.error(f"Validation failed for provider {provider_lower}: {str(e)}")
         # Preserve the original error message instead of replacing it with a generic one
         raise
+
+
+async def _test_litellm_provider(
+    *,
+    provider: str,
+    credentials: dict[str, str],
+    embedding_model: str | None,
+    llm_model: str | None,
+) -> None:
+    """Validate arbitrary providers through the same LiteLLM adapter used at runtime."""
+    import litellm
+
+    model = embedding_model or llm_model
+    if not model:
+        raise ValueError("A model is required to validate the provider")
+    litellm_model = f"{provider}/{model}"
+    if embedding_model:
+        await litellm.aembedding(
+            model=litellm_model,
+            input="OpenRAG provider validation",
+            **credentials,
+        )
+        return
+    await litellm.acompletion(
+        model=litellm_model,
+        messages=[{"role": "user", "content": "Reply with OK."}],
+        max_tokens=4,
+        **credentials,
+    )
 
 
 async def test_lightweight_health(

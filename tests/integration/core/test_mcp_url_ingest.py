@@ -131,7 +131,7 @@ async def test_loaded_agent_flow_routes_request_globals_into_mcp_headers():
 
     for global_var_name in [
         "JWT",
-        "OPENAI_API_KEY",
+        "OPENRAG_LLM_TOKEN",
         "OPENSEARCH_URL",
         "SELECTED_EMBEDDING_MODEL",
         "WATSONX_APIKEY",

@@ -38,6 +38,7 @@ from api.settings.models import (
     AnthropicProviderConfig,
     DoclingPresetBody,
     DoclingPresetResponse,
+    GenericProviderConfig,
     IngestionDefaultsConfig,
     KnowledgeConfig,
     OllamaProviderConfig,
@@ -96,6 +97,7 @@ from dependencies import (
     require_permission,
 )
 from services.docling_service import DoclingConfig, get_docling_preset_configs
+from services.model_catalog import secret_field_keys
 from services.rbac_service import is_rbac_enforced
 from session_manager import User
 from utils import provider_health_cache
@@ -105,6 +107,87 @@ from utils.telemetry import Category, MessageId, TelemetryClient
 from utils.version_utils import OPENRAG_VERSION
 
 logger = get_logger(__name__)
+
+
+def _provider_key(provider: str | None) -> str:
+    """Normalize a provider name the way credential storage does.
+
+    `set_credentials` and `credential_values` both key off `strip().lower()`,
+    and `llm_provider`/`embedding_provider` no longer have a fixed pattern, so a
+    request carrying "Gemini" must still find the credentials submitted under
+    "gemini".
+    """
+    return (provider or "").strip().lower()
+
+
+def _custom_providers_for_settings(openrag_config) -> dict[str, GenericProviderConfig]:
+    """Public provider payloads: never drop a legacy secret when custom slots exist."""
+
+    def payload(
+        provider: str,
+        *,
+        configured: bool,
+        credential_values: dict[str, str] | None = None,
+        secret_fields: list[str] | None = None,
+        stored=None,
+    ) -> GenericProviderConfig:
+        values = dict(credential_values or {})
+        secrets = list(secret_fields or [])
+        if stored is not None:
+            secret_keys = secret_field_keys(provider)
+            values.update(
+                {key: value for key, value in stored.credentials.items() if key not in secret_keys}
+            )
+            secrets.extend(key for key in secret_keys if stored.credentials.get(key))
+            configured = configured or stored.configured
+        return GenericProviderConfig(
+            configured=configured,
+            credential_values={key: value for key, value in values.items() if value},
+            secret_fields=list(dict.fromkeys(secrets)),
+        )
+
+    providers = {
+        "openai": payload(
+            "openai",
+            configured=openrag_config.providers.openai.configured,
+            secret_fields=["api_key"] if openrag_config.providers.openai.api_key else [],
+        ),
+        "anthropic": payload(
+            "anthropic",
+            configured=openrag_config.providers.anthropic.configured,
+            secret_fields=["api_key"] if openrag_config.providers.anthropic.api_key else [],
+        ),
+        "watsonx": payload(
+            "watsonx",
+            configured=openrag_config.providers.watsonx.configured,
+            credential_values={
+                key: value
+                for key, value in {
+                    "api_base": openrag_config.providers.watsonx.endpoint,
+                    "project_id": openrag_config.providers.watsonx.project_id,
+                }.items()
+                if value
+            },
+            secret_fields=["api_key"] if openrag_config.providers.watsonx.api_key else [],
+        ),
+        "ollama": payload(
+            "ollama",
+            configured=openrag_config.providers.ollama.configured,
+            credential_values={"api_base": openrag_config.providers.ollama.endpoint}
+            if openrag_config.providers.ollama.endpoint
+            else {},
+        ),
+    }
+    for provider, stored in openrag_config.providers.custom.items():
+        previous = providers.get(provider)
+        providers[provider] = payload(
+            provider,
+            configured=previous.configured if previous else stored.configured,
+            credential_values=previous.credential_values if previous else {},
+            secret_fields=previous.secret_fields if previous else [],
+            stored=stored,
+        )
+    return providers
 
 
 def _detect_local_vlm_models() -> list[str]:
@@ -249,6 +332,7 @@ async def get_settings(
                     endpoint=openrag_config.providers.ollama.endpoint or None,
                     configured=openrag_config.providers.ollama.configured,
                 ),
+                custom=_custom_providers_for_settings(openrag_config),
             )
             if show_providers
             else None,
@@ -330,6 +414,8 @@ async def update_settings(
             "watsonx_endpoint",
             "watsonx_project_id",
             "ollama_endpoint",
+            "provider_credentials",
+            "remove_provider_config",
         ]
 
         should_validate = any(getattr(body, field) is not None for field in provider_fields)
@@ -372,7 +458,7 @@ async def update_settings(
                 # Validate LLM provider if being changed
                 if body.llm_provider is not None or body.llm_model is not None:
                     llm_provider = (
-                        body.llm_provider
+                        body.llm_provider.strip().lower()
                         if body.llm_provider is not None
                         else current_config.agent.llm_provider
                     )
@@ -389,6 +475,16 @@ async def update_settings(
                     api_key = getattr(llm_provider_config, "api_key", None)
                     endpoint = getattr(llm_provider_config, "endpoint", None)
                     project_id = getattr(llm_provider_config, "project_id", None)
+                    llm_provider_key = _provider_key(llm_provider)
+                    submitted_credentials = {
+                        _provider_key(name): values
+                        for name, values in (body.provider_credentials or {}).items()
+                    }
+                    credentials = current_config.providers.credential_values(llm_provider_key)
+                    credentials.update(submitted_credentials.get(llm_provider_key, {}))
+                    api_key = credentials.get("api_key", api_key)
+                    endpoint = credentials.get("api_base", endpoint)
+                    project_id = credentials.get("project_id", project_id)
 
                     if (
                         getattr(body, f"{llm_provider}_api_key", None) is not None
@@ -406,13 +502,14 @@ async def update_settings(
                         llm_model=llm_model,
                         endpoint=endpoint,
                         project_id=project_id,
+                        credentials=credentials,
                     )
                     logger.info(f"LLM provider validation successful for {llm_provider}")
 
                 # Validate embedding provider if being changed
                 if body.embedding_provider is not None or body.embedding_model is not None:
                     embedding_provider = (
-                        body.embedding_provider
+                        body.embedding_provider.strip().lower()
                         if body.embedding_provider is not None
                         else current_config.knowledge.embedding_provider
                     )
@@ -431,6 +528,16 @@ async def update_settings(
                     api_key = getattr(embedding_provider_config, "api_key", None)
                     endpoint = getattr(embedding_provider_config, "endpoint", None)
                     project_id = getattr(embedding_provider_config, "project_id", None)
+                    embedding_provider_key = _provider_key(embedding_provider)
+                    submitted_credentials = {
+                        _provider_key(name): values
+                        for name, values in (body.provider_credentials or {}).items()
+                    }
+                    credentials = current_config.providers.credential_values(embedding_provider_key)
+                    credentials.update(submitted_credentials.get(embedding_provider_key, {}))
+                    api_key = credentials.get("api_key", api_key)
+                    endpoint = credentials.get("api_base", endpoint)
+                    project_id = credentials.get("project_id", project_id)
 
                     if (
                         getattr(body, f"{embedding_provider}_api_key", None) is not None
@@ -448,6 +555,7 @@ async def update_settings(
                         embedding_model=embedding_model,
                         endpoint=endpoint,
                         project_id=project_id,
+                        credentials=credentials,
                     )
                     logger.info(
                         f"Embedding provider validation successful for {embedding_provider}"
@@ -724,6 +832,11 @@ async def update_settings(
 
         # Update provider-specific settings
         provider_updated = False
+        for provider, credentials in (body.provider_credentials or {}).items():
+            working_config.providers.set_credentials(provider, credentials)
+            config_updated = True
+            provider_updated = True
+
         if body.openai_api_key is not None and body.openai_api_key.strip():
             working_config.providers.openai.api_key = body.openai_api_key.strip()
             working_config.providers.openai.configured = True
@@ -880,6 +993,31 @@ async def update_settings(
                 working_config.knowledge.embedding_model = _default_embedding_model(fb)
             config_updated = True
             provider_updated = True
+
+        if body.remove_provider_config:
+            provider = body.remove_provider_config.strip().lower()
+            if provider in working_config.providers.custom:
+                del working_config.providers.custom[provider]
+                if not working_config.providers.any_configured():
+                    return JSONResponse(
+                        {
+                            "error": (
+                                "Cannot remove provider configuration: "
+                                "configure another model provider first."
+                            )
+                        },
+                        status_code=400,
+                    )
+                if working_config.agent.llm_provider == provider:
+                    fallback = _first_configured_llm_provider(working_config, provider)
+                    working_config.agent.llm_provider = fallback
+                    working_config.agent.llm_model = _default_llm_model(fallback)
+                if working_config.knowledge.embedding_provider == provider:
+                    fallback = _first_configured_embedding_provider(working_config, provider)
+                    working_config.knowledge.embedding_provider = fallback
+                    working_config.knowledge.embedding_model = _default_embedding_model(fallback)
+                config_updated = True
+                provider_updated = True
 
         if provider_updated:
             await TelemetryClient.send_event(
@@ -1060,6 +1198,10 @@ async def onboarding(
             current_config.providers.ollama.configured = True
             config_updated = True
 
+        for provider, credentials in (body.provider_credentials or {}).items():
+            current_config.providers.set_credentials(provider, credentials)
+            config_updated = True
+
         # Mark providers as configured if they were chosen during onboarding
         # Check LLM provider
         if body.llm_provider:
@@ -1126,6 +1268,7 @@ async def onboarding(
                     endpoint=getattr(llm_provider_config, "endpoint", None),
                     project_id=getattr(llm_provider_config, "project_id", None),
                     test_completion=True,  # Full validation with completion test - ensures provider health
+                    credentials=current_config.providers.credential_values(llm_provider),
                 )
                 logger.info(
                     f"LLM provider setup validation completed successfully for {llm_provider}"
@@ -1146,6 +1289,7 @@ async def onboarding(
                     endpoint=getattr(embedding_provider_config, "endpoint", None),
                     project_id=getattr(embedding_provider_config, "project_id", None),
                     test_completion=True,  # Full validation with completion test - ensures provider health
+                    credentials=current_config.providers.credential_values(embedding_provider),
                 )
                 logger.info(
                     f"Embedding provider setup validation completed successfully for {embedding_provider}"
@@ -1180,6 +1324,7 @@ async def onboarding(
                     body.watsonx_endpoint,
                     body.watsonx_project_id,
                     body.ollama_endpoint,
+                    body.provider_credentials,
                 ]
             )
 

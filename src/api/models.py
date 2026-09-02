@@ -11,6 +11,7 @@ from api.provider_validation import (
 )
 from config.settings import get_openrag_config
 from dependencies import get_models_service, require_permission
+from services.model_catalog import hide_excluded_live_models
 from session_manager import User
 from utils.logging_config import get_logger
 
@@ -97,7 +98,7 @@ async def get_openai_models(
             )
 
         models = await models_service.get_openai_models(api_key=api_key)
-        return JSONResponse(models)
+        return JSONResponse(hide_excluded_live_models("openai", models))
     except Exception as e:
         logger.error(f"Failed to get OpenAI models: {str(e)}")
         return _models_error_response(e)
@@ -127,7 +128,7 @@ async def get_anthropic_models(
             )
 
         models = await models_service.get_anthropic_models(api_key=api_key)
-        return JSONResponse(models)
+        return JSONResponse(hide_excluded_live_models("anthropic", models))
     except Exception as e:
         logger.error(f"Failed to get Anthropic models: {str(e)}")
         return _models_error_response(e)
@@ -154,7 +155,7 @@ async def get_ollama_models(
             )
 
         models = await models_service.get_ollama_models(endpoint=endpoint)
-        return JSONResponse(models)
+        return JSONResponse(hide_excluded_live_models("ollama", models))
     except Exception as e:
         logger.error(f"Failed to get Ollama models: {str(e)}")
         return _models_error_response(e)
@@ -211,7 +212,53 @@ async def get_ibm_models(
         models = await models_service.get_ibm_models(
             endpoint=endpoint, api_key=api_key, project_id=project_id
         )
-        return JSONResponse(models)
+        return JSONResponse(hide_excluded_live_models("watsonx", models))
     except Exception as e:
         logger.error(f"Failed to get IBM models: {str(e)}")
         return _models_error_response(e)
+
+
+async def get_model_providers(
+    user: User = Depends(require_permission("providers:read")),
+):
+    """Providers this run mode exposes. GET /models/providers
+
+    The one list Settings cards, Onboarding tabs and the model pickers render.
+    Unlike /models/catalog it does not need LiteLLM, so the UI can still lay out
+    its provider surfaces when the catalogue is unavailable.
+    """
+    from config.model_providers import provider_visibility_payload
+
+    # `no-store`, not a max-age: the list is derived from
+    # `config/model_providers.yaml`, which an operator edits and then restarts
+    # the backend for. A cached response outlives that restart in the browser,
+    # so the console keeps drawing the old provider cards/tabs and the change
+    # looks like it did nothing. The payload is a few hundred bytes and React
+    # Query already holds it for the session, so the round trip costs nothing.
+    return JSONResponse(
+        provider_visibility_payload(),
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+async def get_model_catalog(
+    user: User = Depends(require_permission("providers:read")),
+):
+    """LiteLLM catalogue for the settings model dropdown. GET /models/catalog"""
+    from services.model_catalog import (
+        CATALOG_UNAVAILABLE_MESSAGE,
+        CatalogUnavailableError,
+        catalog,
+    )
+
+    # `no-store` for the same reason as /models/providers: the catalogue is
+    # filtered by that config file, so a cached copy survives the restart that
+    # was supposed to apply the edit. LiteLLM's table is cached in-process, so
+    # rebuilding this response is cheap.
+    try:
+        return JSONResponse(catalog(), headers={"Cache-Control": "no-store"})
+    except CatalogUnavailableError as e:
+        # Log the cause, but never echo exception text back to the caller
+        # (CodeQL py/stack-trace-exposure).
+        logger.error("Model catalogue unavailable", error=str(e))
+        return JSONResponse({"error": CATALOG_UNAVAILABLE_MESSAGE}, status_code=503)

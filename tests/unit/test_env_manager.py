@@ -240,7 +240,7 @@ class TestLangflowPasswordAndAutoLogin:
         content = env_file.read_text()
         assert "LANGFLOW_SUPERUSER_PASSWORD='LangflowPass123!'" in content
         assert "LANGFLOW_AUTO_LOGIN='True'" in content
-        assert "LANGFLOW_SUPERUSER='admin'" in content
+        assert "LANGFLOW_SUPERUSER='langflow'" in content
 
     def test_validate_config_requires_langflow_password(self, env_manager):
         env_manager.config.opensearch_password = "Pass123!"

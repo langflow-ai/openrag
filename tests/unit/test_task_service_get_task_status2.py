@@ -159,6 +159,22 @@ class TestInferFailureMetadata:
         assert meta is not None
         assert meta["actionable_by"] == "USER_ACTIONABLE"
 
+    def test_image_without_text_prompts_user_to_enable_ocr(self, task_service):
+        ft = _make_file_task(
+            file_path="scan.png",
+            filename="scan.png",
+            error="No text content could be extracted from document",
+        )
+
+        meta = task_service._infer_failure_metadata(ft)
+
+        assert meta is not None
+        assert meta["actionable_by"] == "RETRYABLE"
+        assert meta["user_facing_message"] == (
+            "No text content could be extracted from this image file. "
+            "Enable OCR in Settings > Knowledge Base and retry ingestion."
+        )
+
     def test_docling_phase_still_processing(self, task_service):
         ft = _make_file_task(
             phase=IngestionPhase.DOCLING,

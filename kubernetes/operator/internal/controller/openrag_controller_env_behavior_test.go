@@ -23,7 +23,7 @@ func TestComponentSpec_Env_DirectValues_GoToEnvFileOnly(t *testing.T) {
 	}
 
 	// Check .env file content contains direct values
-	backendEnvContent, err := r.buildBackendEnv(context.Background(), cr, "test-ns")
+	backendEnvContent, _, err := r.buildBackendEnv(context.Background(), cr, "test-ns")
 	require.NoError(t, err)
 	assert.Contains(t, backendEnvContent, `CUSTOM_VAR=custom_value`,
 		"Direct value should be in .env file")
@@ -31,7 +31,7 @@ func TestComponentSpec_Env_DirectValues_GoToEnvFileOnly(t *testing.T) {
 		"Direct value should be in .env file")
 
 	// Check container env is EMPTY (no spec.Env)
-	deploy := r.backendDeployment(cr, "test-ns", "hash123")
+	deploy := r.backendDeployment(cr, "test-ns", "hash123", nil)
 	containerEnv := deploy.Spec.Template.Spec.Containers[0].Env
 
 	// Container Env should be empty or only contain operator-managed vars
@@ -77,7 +77,7 @@ func TestComponentSpec_Env_SecretRefs_ResolvedToEnvFile(t *testing.T) {
 	}
 
 	// Check .env file content - should contain RESOLVED secret value
-	backendEnvContent, err := r.buildBackendEnv(context.Background(), cr, "test-ns")
+	backendEnvContent, _, err := r.buildBackendEnv(context.Background(), cr, "test-ns")
 	require.NoError(t, err)
 	assert.Contains(t, backendEnvContent, `DATABASE_PASSWORD=super-secret-password`,
 		".env file should contain RESOLVED secret value")
@@ -85,7 +85,7 @@ func TestComponentSpec_Env_SecretRefs_ResolvedToEnvFile(t *testing.T) {
 		".env file should contain direct values")
 
 	// Check container env - should be EMPTY (no spec.Env)
-	deploy := r.backendDeployment(cr, "test-ns", "hash123")
+	deploy := r.backendDeployment(cr, "test-ns", "hash123", nil)
 	containerEnv := deploy.Spec.Template.Spec.Containers[0].Env
 
 	// Container Env should NOT contain DATABASE_PASSWORD or REGULAR_VAR
@@ -127,13 +127,13 @@ func TestComponentSpec_Env_ConfigMapRefs_ResolvedToEnvFile(t *testing.T) {
 	}
 
 	// Check .env file - should contain resolved value
-	backendEnvContent, err := r.buildBackendEnv(context.Background(), cr, "test-ns")
+	backendEnvContent, _, err := r.buildBackendEnv(context.Background(), cr, "test-ns")
 	require.NoError(t, err)
 	assert.Contains(t, backendEnvContent, `API_ENDPOINT=https://api.example.com`,
 		".env file should contain resolved configmap value")
 
 	// Check container env - should be empty
-	deploy := r.backendDeployment(cr, "test-ns", "hash123")
+	deploy := r.backendDeployment(cr, "test-ns", "hash123", nil)
 	containerEnv := deploy.Spec.Template.Spec.Containers[0].Env
 
 	for _, env := range containerEnv {
@@ -209,7 +209,7 @@ func TestComponentSpec_Env_FieldRef_RejectedWithError(t *testing.T) {
 	}
 
 	// Should fail with clear error message
-	_, err := r.buildBackendEnv(context.Background(), cr, "test-ns")
+	_, _, err := r.buildBackendEnv(context.Background(), cr, "test-ns")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "fieldRef is not supported",
 		"Should reject fieldRef with helpful error message")
@@ -268,7 +268,7 @@ func TestComponentSpec_Env_MixedTypes_AllResolvedToEnvFile(t *testing.T) {
 	}
 
 	// Check .env file - should contain ALL 5 resolved values
-	backendEnvContent, err := r.buildBackendEnv(context.Background(), cr, "test-ns")
+	backendEnvContent, _, err := r.buildBackendEnv(context.Background(), cr, "test-ns")
 	require.NoError(t, err)
 	assert.Contains(t, backendEnvContent, `LITERAL_1=value1`)
 	assert.Contains(t, backendEnvContent, `SECRET_REF=secret-value-1`)
@@ -277,7 +277,7 @@ func TestComponentSpec_Env_MixedTypes_AllResolvedToEnvFile(t *testing.T) {
 	assert.Contains(t, backendEnvContent, `LITERAL_3=value3`)
 
 	// Check container env - should be empty (no spec.Env vars)
-	deploy := r.backendDeployment(cr, "test-ns", "hash123")
+	deploy := r.backendDeployment(cr, "test-ns", "hash123", nil)
 	containerEnv := deploy.Spec.Template.Spec.Containers[0].Env
 
 	// Verify none of the 5 env vars are in container env
