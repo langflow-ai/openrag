@@ -108,6 +108,20 @@ def test_embedded_opensearch_nodes_fence_untrusted_text():
             )
 
 
+def test_embedded_opensearch_nodes_bind_exact_embedding_provider():
+    for flow_path in (
+        "flows/ingestion_flow.json",
+        "flows/openrag_agent.json",
+        "flows/openrag_nudges.json",
+        "flows/openrag_url_mcp.json",
+    ):
+        flow = _load_flow(flow_path)
+        for node in _opensearch_nodes(flow):
+            provider_input = node["data"]["node"]["template"]["embedding_provider_name"]
+            assert provider_input["load_from_db"] is True
+            assert provider_input["value"] == "SELECTED_EMBEDDING_PROVIDER"
+
+
 def test_query_filter_text_input_feeds_opensearch_filter_expression():
     """The OPENRAG-QUERY-FILTER global var must reach the retrieval component.
 

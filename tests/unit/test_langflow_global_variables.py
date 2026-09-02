@@ -260,6 +260,7 @@ async def test_update_langflow_global_variables_marks_non_secret_provider_fields
     assert "ANTHROPIC_API_KEY" not in names
     assert "WATSONX_APIKEY" not in names
     assert ("SELECTED_EMBEDDING_MODEL", "embedding-model", True, "Generic") in calls
+    assert ("SELECTED_EMBEDDING_PROVIDER", "openai", True, "Generic") in calls
     assert ("SELECTED_EMBEDDING_MODEL_PROVIDER", "OpenAI", True, "Generic") in calls
     assert ("SELECTED_LANGUAGE_MODEL_PROVIDER", "OpenAI", True, "Generic") in calls
     assert any(name == "OPENRAG_LLM_BASE_URL" for name, *_ in calls)
@@ -549,6 +550,7 @@ async def test_model_change_pushes_selected_model_globals(monkeypatch):
     )
 
     assert ("SELECTED_EMBEDDING_MODEL", "ibm/slate-125m-english-rtrvr-v2") in upserts
+    assert ("SELECTED_EMBEDDING_PROVIDER", "watsonx") in upserts
     assert not any(name == "SELECTED_LANGUAGE_MODEL" for name, _ in upserts)
 
 

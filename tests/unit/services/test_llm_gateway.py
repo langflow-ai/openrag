@@ -79,6 +79,61 @@ def test_resolve_call_watsonx_includes_project_and_endpoint():
     assert creds["api_base"] == "https://us-south.ml.cloud.ibm.com"
 
 
+def test_legacy_text_embedding_3_small_routes_to_openai_not_selected_provider():
+    cfg = _config(
+        knowledge=SimpleNamespace(
+            embedding_model="azure-deployment",
+            embedding_provider="azure",
+            legacy_embedding_provider_map={},
+        )
+    )
+
+    model, provider, creds = resolve_call(
+        "legacy:text-embedding-3-small", kind="embedding", config=cfg
+    )
+
+    assert provider == "openai"
+    assert model == "text-embedding-3-small"
+    assert creds["api_key"] == "sk-openai"
+
+
+def test_operator_mapping_routes_other_legacy_embedding_models():
+    cfg = _config()
+    cfg.knowledge.legacy_embedding_provider_map = {"ibm/slate-125m": "watsonx"}
+
+    model, provider, creds = resolve_call("legacy:ibm/slate-125m", kind="embedding", config=cfg)
+
+    assert provider == "watsonx"
+    assert model == "watsonx/ibm/slate-125m"
+    assert creds["project_id"] == "proj"
+
+
+def test_unmapped_legacy_model_does_not_fall_back_to_selected_provider():
+    cfg = _config(
+        knowledge=SimpleNamespace(
+            embedding_model="azure-deployment",
+            embedding_provider="azure",
+            legacy_embedding_provider_map={},
+        )
+    )
+
+    with pytest.raises(LlmGatewayError) as exc:
+        resolve_call("legacy:ibm/slate-125m", kind="embedding", config=cfg)
+
+    assert "has no provider mapping" in exc.value.message
+    assert "legacy_embedding_provider_map" in exc.value.message
+
+
+def test_indexed_space_with_removed_provider_does_not_fall_back_to_selected_provider():
+    cfg = _config()
+
+    with pytest.raises(LlmGatewayError) as exc:
+        resolve_call("space:removed:model-a", kind="embedding", config=cfg)
+
+    assert "removed" in exc.value.message
+    assert "not configured" in exc.value.message
+
+
 def test_provider_credentials_rejects_unknown_provider():
     with pytest.raises(LlmGatewayError) as exc:
         provider_credentials("gemini", _config())
@@ -116,6 +171,30 @@ def test_provider_credentials_supports_arbitrary_litellm_provider():
         "api_key": "gemini-secret",
         "vertex_project": "project-1",
     }
+
+
+def test_indexed_space_routes_through_its_configured_generic_provider():
+    providers = ProvidersConfig(
+        openai=OpenAIConfig(),
+        anthropic=AnthropicConfig(),
+        watsonx=WatsonXConfig(),
+        ollama=OllamaConfig(),
+        custom={
+            "gemini": GenericProviderConfig(
+                credentials={"api_key": "gemini-secret"},
+                configured=True,
+            )
+        },
+    )
+    cfg = SimpleNamespace(providers=providers)
+
+    model, provider, credentials = resolve_call(
+        "space:gemini:text-embedding-004", kind="embedding", config=cfg
+    )
+
+    assert model == "gemini/text-embedding-004"
+    assert provider == "gemini"
+    assert credentials == {"api_key": "gemini-secret"}
 
 
 @pytest.mark.asyncio

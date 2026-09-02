@@ -8,14 +8,127 @@ This module provides helpers for:
 - Ensuring embedding fields exist in the OpenSearch index
 """
 
-from typing import Any, Dict
+from dataclasses import dataclass
+from typing import Any
 
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+EMBEDDING_SPACE_SEPARATOR = ":"
+LEGACY_EMBEDDING_ROUTE_PREFIX = "legacy:"
+INDEXED_EMBEDDING_ROUTE_PREFIX = "space:"
 
-def build_knn_vector_field(dimension: int) -> Dict[str, Any]:
+
+@dataclass(frozen=True)
+class EmbeddingSpace:
+    """One indexed vector space and the provider route needed to query it."""
+
+    space_id: str
+    route_model: str
+    field_identity: str
+    legacy: bool = False
+
+
+def get_embedding_space_id(provider: str, model_name: str) -> str:
+    """Return the stable provider-qualified identity of an embedding space."""
+    provider_key = (provider or "").strip().lower()
+    model = (model_name or "").strip()
+    if not provider_key or not model:
+        raise ValueError("Embedding provider and model name are required")
+    return f"{provider_key}{EMBEDDING_SPACE_SEPARATOR}{model}"
+
+
+def split_embedding_space_id(space_id: str) -> tuple[str | None, str]:
+    """Split ``provider:model`` while leaving legacy model-only ids intact."""
+    value = (space_id or "").strip()
+    provider, separator, model = value.partition(EMBEDDING_SPACE_SEPARATOR)
+    if separator and provider and model:
+        return provider.lower(), model
+    return None, value
+
+
+def build_embedding_space_aggregation(
+    *,
+    size: int,
+    qualified_after: dict[str, Any] | None = None,
+    legacy_after: dict[str, Any] | None = None,
+    include_qualified: bool = True,
+    include_legacy: bool = True,
+) -> dict[str, Any]:
+    """Build pageable discovery aggregations for exact and legacy vector spaces."""
+    aggregations: dict[str, Any] = {}
+    if include_qualified:
+        composite: dict[str, Any] = {
+            "size": size,
+            "sources": [{"space_id": {"terms": {"field": "embedding_space_id"}}}],
+        }
+        if qualified_after:
+            composite["after"] = qualified_after
+        aggregations["embedding_spaces"] = {"composite": composite}
+
+    if include_legacy:
+        composite = {
+            "size": size,
+            "sources": [{"model": {"terms": {"field": "embedding_model"}}}],
+        }
+        if legacy_after:
+            composite["after"] = legacy_after
+        aggregations["legacy_embedding_models"] = {"composite": composite}
+    return aggregations
+
+
+def embedding_space_after_keys(
+    result: dict[str, Any],
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Return composite pagination cursors for exact and legacy aggregations."""
+    aggregations = result.get("aggregations", {})
+    qualified_after = aggregations.get("embedding_spaces", {}).get("after_key")
+    legacy_after = aggregations.get("legacy_embedding_models", {}).get("after_key")
+    return qualified_after, legacy_after
+
+
+def embedding_spaces_from_aggregation(result: dict[str, Any]) -> list[EmbeddingSpace]:
+    """Convert an OpenSearch aggregation response into retrieval identities."""
+    aggregations = result.get("aggregations", {})
+    qualified_buckets = aggregations.get("embedding_spaces", {}).get("buckets", [])
+    legacy_buckets = aggregations.get("legacy_embedding_models", {}).get("buckets", [])
+
+    spaces: list[EmbeddingSpace] = []
+    seen: set[str] = set()
+    for bucket in qualified_buckets:
+        key = bucket.get("key")
+        space_id = str(key.get("space_id") if isinstance(key, dict) else key or "").strip()
+        if not space_id or space_id in seen:
+            continue
+        seen.add(space_id)
+        spaces.append(
+            EmbeddingSpace(
+                space_id=space_id,
+                route_model=f"{INDEXED_EMBEDDING_ROUTE_PREFIX}{space_id}",
+                field_identity=space_id,
+            )
+        )
+
+    for bucket in legacy_buckets:
+        key = bucket.get("key")
+        model = str(key.get("model") if isinstance(key, dict) else key or "").strip()
+        space_id = f"{LEGACY_EMBEDDING_ROUTE_PREFIX}{model}"
+        if not model or space_id in seen:
+            continue
+        seen.add(space_id)
+        spaces.append(
+            EmbeddingSpace(
+                space_id=space_id,
+                route_model=space_id,
+                field_identity=model,
+                legacy=True,
+            )
+        )
+    return spaces
+
+
+def build_knn_vector_field(dimension: int) -> dict[str, Any]:
     """Build a knn_vector field mapping for OpenSearch using OpenRAG's JVector settings.
 
     All knn_vector fields in the documents index share the same JVector/DiskANN
@@ -140,7 +253,7 @@ async def ensure_embedding_field_exists(
         dimensions=dimensions,
     )
 
-    async def _get_field_definition() -> Dict[str, Any]:
+    async def _get_field_definition() -> dict[str, Any]:
         try:
             mapping = await opensearch_client.indices.get_mapping(index=index_name)
         except Exception as e:
@@ -170,22 +283,17 @@ async def ensure_embedding_field_exists(
         "properties": {
             field_name: build_knn_vector_field(dimensions),
             # Also ensure the embedding_model tracking field exists as keyword
-            "embedding_model": {
-                "type": "keyword"
-            },
-            "embedding_dimensions": {
-                "type": "integer"
-            },
+            "embedding_model": {"type": "keyword"},
+            "embedding_provider": {"type": "keyword"},
+            "embedding_space_id": {"type": "keyword"},
+            "embedding_dimensions": {"type": "integer"},
         }
     }
 
     try:
         # Try to add the mapping
         # OpenSearch will ignore if field already exists
-        await opensearch_client.indices.put_mapping(
-            index=index_name,
-            body=mapping
-        )
+        await opensearch_client.indices.put_mapping(index=index_name, body=mapping)
         logger.info(
             "Successfully ensured embedding field exists",
             field_name=field_name,

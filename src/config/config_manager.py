@@ -1,5 +1,6 @@
 """Configuration management for OpenRAG."""
 
+import json
 import os
 import re
 from dataclasses import asdict, dataclass, field
@@ -262,6 +263,7 @@ class KnowledgeConfig:
 
     embedding_model: str = ""
     embedding_provider: str = "openai"  # Which provider to use for embeddings
+    legacy_embedding_provider_map: dict[str, str] = field(default_factory=dict)
     chunk_size: int = 1000
     chunk_overlap: int = 200
     table_structure: bool = True
@@ -502,6 +504,26 @@ class ConfigManager:
         self, config_data: dict[str, Any], temp_config: Optional["OpenRAGConfig"] = None
     ) -> None:
         """Load environment variable overrides, respecting edited flag."""
+
+        # Provenance recovery is an operational compatibility setting, not a
+        # user-selected model preference. It must remain overridable after the
+        # settings file is marked edited so existing installations can resolve
+        # legacy vector spaces without modifying persisted application state.
+        if os.getenv("OPENRAG_LEGACY_EMBEDDING_PROVIDER_MAP"):
+            try:
+                raw_mapping = json.loads(os.environ["OPENRAG_LEGACY_EMBEDDING_PROVIDER_MAP"])
+                if not isinstance(raw_mapping, dict):
+                    raise TypeError("expected a JSON object")
+                config_data["knowledge"]["legacy_embedding_provider_map"] = {
+                    str(model).strip(): str(provider).strip().lower()
+                    for model, provider in raw_mapping.items()
+                    if str(model).strip() and str(provider).strip()
+                }
+            except (json.JSONDecodeError, TypeError) as e:
+                logger.warning(
+                    "Ignoring invalid OPENRAG_LEGACY_EMBEDDING_PROVIDER_MAP",
+                    error=str(e),
+                )
 
         # Skip all environment overrides if config has been manually edited
         if temp_config and temp_config.edited:

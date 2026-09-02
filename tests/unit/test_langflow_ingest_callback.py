@@ -125,6 +125,22 @@ def test_ingest_token_round_trips_connector_file_id():
     assert restored_context.connector_file_id == "my-bucket::報告書.pdf"
 
 
+def test_ingest_token_round_trips_embedding_provider() -> None:
+    token_service = LangflowIngestTokenService(secret="test-secret" * 4, ttl_seconds=60)
+    context = DocumentIndexContext(
+        document_id="doc-1",
+        filename="report.pdf",
+        mimetype="application/pdf",
+        embedding_model="text-embedding-3-small",
+        embedding_provider="azure",
+        ingest_run_id="run-1",
+    )
+
+    restored_context, _jti = token_service.validate_token(token_service.create_token(context))
+
+    assert restored_context.embedding_provider == "azure"
+
+
 @pytest.mark.asyncio
 async def test_langflow_ingest_callback_rewrites_langflow_chunk_ids():
     token_service = LangflowIngestTokenService(secret="test-secret" * 4, ttl_seconds=60)

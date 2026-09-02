@@ -15,8 +15,18 @@ class InMemoryIndices:
         return True
 
     async def get_mapping(self, *, index: str) -> dict[str, Any]:
-        field = get_embedding_field_name("test-model")
-        return {index: {"mappings": {"properties": {field: {"type": "knn_vector"}}}}}
+        legacy_field = get_embedding_field_name("test-model")
+        qualified_field = get_embedding_field_name("azure:test-model")
+        return {
+            index: {
+                "mappings": {
+                    "properties": {
+                        legacy_field: {"type": "knn_vector"},
+                        qualified_field: {"type": "knn_vector"},
+                    }
+                }
+            }
+        }
 
     async def refresh(self, *, index: str) -> None:
         return None
@@ -37,12 +47,13 @@ class InMemoryOpenSearch:
         return [document for document in self.documents.values() if document.get("owner") == owner]
 
 
-def make_context(owner: str | None) -> DocumentIndexContext:
+def make_context(owner: str | None, *, embedding_provider: str | None = None) -> DocumentIndexContext:
     return DocumentIndexContext(
         document_id="same-content-hash",
         filename="report.pdf",
         mimetype="application/pdf",
         embedding_model="test-model",
+        embedding_provider=embedding_provider,
         owner=owner,
     )
 
@@ -90,3 +101,17 @@ async def test_reingesting_a_shared_chunk_updates_it_in_place():
 
     assert len(opensearch.documents) == 1
     assert next(iter(opensearch.documents.values()))["text"] == "new shared text"
+
+
+@pytest.mark.asyncio
+async def test_new_chunks_persist_provider_qualified_embedding_space() -> None:
+    opensearch = InMemoryOpenSearch()
+    writer = DocumentIndexWriter(opensearch_client=opensearch)
+
+    await writer.index_chunks(make_context("user-a", embedding_provider="Azure"), [make_chunk()])
+
+    document = next(iter(opensearch.documents.values()))
+    assert document["embedding_model"] == "test-model"
+    assert document["embedding_provider"] == "azure"
+    assert document["embedding_space_id"] == "azure:test-model"
+    assert document["chunk_embedding_azure_test_model"] == [0.1, 0.2, 0.3]

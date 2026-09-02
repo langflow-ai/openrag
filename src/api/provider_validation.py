@@ -3,6 +3,7 @@
 import asyncio
 import json
 import re
+from typing import Any
 
 import httpx
 
@@ -241,9 +242,9 @@ async def _probe_provider_credential_error(
 
 
 def _provider_probe_inputs(
-    config,
+    config: Any,
     provider: str,
-    provider_config,
+    provider_config: Any,
 ) -> tuple[str | None, str | None, str | None, dict[str, str]]:
     """Return legacy fields plus the complete LiteLLM credential map.
 
