@@ -208,6 +208,12 @@ def resplit_chunks_character_windows(
         if not isinstance(text, str):
             out.append(dict(ch) if isinstance(ch, dict) else ch)
             continue
+        # This marker is a semantic signal that Docling detected an image even
+        # though it extracted no text. Keep it intact so image-only documents
+        # remain ingestible and display the same placeholder as the Langflow path.
+        if text.strip() == IMAGE_PLACEHOLDER:
+            out.append(dict(ch))
+            continue
         if len(text) <= chunk_size:
             out.append(dict(ch))
             continue
