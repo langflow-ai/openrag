@@ -48,7 +48,9 @@ class KnowledgeFiltersClient:
 
         # Convert query_data to JSON string if it's a model
         if isinstance(query_data, KnowledgeFilterQueryData):
-            query_data_str = query_data.model_dump_json(by_alias=True, exclude_none=True)
+            query_data_str = query_data.model_dump_json(
+                by_alias=True, exclude_none=True
+            )
         elif isinstance(query_data, dict):
             query_data_str = json.dumps(query_data)
         else:

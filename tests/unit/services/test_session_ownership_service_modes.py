@@ -106,9 +106,11 @@ async def test_hybrid_mode_writes_both(monkeypatch, tmp_data_dir, session_factor
 async def test_db_mode_ignores_pre_existing_json(monkeypatch, tmp_data_dir, session_factory):
     """Stale JSON on disk must not bleed through in db mode."""
     tmp_data_dir.parent.mkdir(parents=True, exist_ok=True)
-    tmp_data_dir.write_text(json.dumps({
-        "ghost-sess": {"user_id": "ghost-user", "created_at": "x", "last_accessed": "x"}
-    }))
+    tmp_data_dir.write_text(
+        json.dumps(
+            {"ghost-sess": {"user_id": "ghost-user", "created_at": "x", "last_accessed": "x"}}
+        )
+    )
 
     monkeypatch.setenv("BOMARAG_STORAGE_MODE", "db")
     svc = _svc(session_factory)

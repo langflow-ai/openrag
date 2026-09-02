@@ -1,15 +1,16 @@
 """Telemetry client for BomaRAG backend using Scarf."""
 
-from utils.version_utils import BOMARAG_VERSION
 import asyncio
 import os
 import platform
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from typing import Optional
 from urllib.parse import urlencode
 
 import httpx
+
 from utils.logging_config import get_logger
+from utils.version_utils import BOMARAG_VERSION
 
 logger = get_logger(__name__)
 
@@ -29,11 +30,11 @@ MAX_WAIT_INTERVAL_MS = 5000
 MAX_RETRIES = 3
 
 # Global HTTP client
-_http_client: Optional[httpx.AsyncClient] = None
-_base_url_override: Optional[str] = None
+_http_client: httpx.AsyncClient | None = None
+_base_url_override: str | None = None
 
 
-def _get_http_client() -> Optional[httpx.AsyncClient]:
+def _get_http_client() -> httpx.AsyncClient | None:
     """Get or create the HTTP client for telemetry."""
     global _http_client
     if _http_client is None:
@@ -101,6 +102,7 @@ def _get_os_version() -> str:
             # Linux - try to get distribution info
             try:
                 import distro
+
                 return f"{distro.name()} {distro.version()}".strip() or platform.release()
             except ImportError:
                 # Fallback to platform.release() if distro not available
@@ -119,18 +121,19 @@ def _get_gpu_info() -> dict:
         "cuda_available": False,
         "cuda_version": None,
     }
-    
+
     try:
         # Try to use the existing GPU detection utility
         from utils.gpu_detection import detect_gpu_devices
-        
+
         has_gpu, gpu_count = detect_gpu_devices()
         gpu_info["gpu_available"] = has_gpu
         gpu_info["gpu_count"] = gpu_count if isinstance(gpu_count, int) else 0
-        
+
         # Also check CUDA availability via torch
         try:
             import torch
+
             gpu_info["cuda_available"] = torch.cuda.is_available()
             if torch.cuda.is_available():
                 gpu_info["cuda_version"] = torch.version.cuda or "unknown"
@@ -138,29 +141,29 @@ def _get_gpu_info() -> dict:
             pass
     except Exception as e:
         logger.debug(f"Failed to detect GPU info: {e}")
-    
+
     return gpu_info
 
 
 def _get_current_utc() -> str:
     """Get current UTC time as RFC 3339 formatted string."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return now.isoformat().replace("+00:00", "Z")
 
 
 def _get_exponential_backoff_delay(attempt: int) -> float:
     """Calculate exponential backoff delay with full jitter (in seconds).
-    
+
     Formula:
     temp = min(MAX_BACKOFF, base * 2^attempt)
     sleep = random_between(0, temp)
     """
     import random
-    
-    exp = min(2 ** attempt, MAX_WAIT_INTERVAL_MS // RETRY_BASE_MS)
+
+    exp = min(2**attempt, MAX_WAIT_INTERVAL_MS // RETRY_BASE_MS)
     temp_ms = RETRY_BASE_MS * exp
     temp_ms = min(temp_ms, MAX_WAIT_INTERVAL_MS)
-    
+
     # Full jitter: random duration between 0 and temp_ms
     sleep_ms = random.uniform(0, temp_ms) if temp_ms > 0 else 0
     return sleep_ms / 1000.0  # Convert to seconds
@@ -172,25 +175,23 @@ async def _send_scarf_event(
     metadata: dict = None,
 ) -> None:
     """Send a telemetry event to Scarf.
-    
+
     Args:
         category: Event category
         message_id: Event message ID
         metadata: Optional dictionary of additional metadata to include in the event
     """
     if is_do_not_track():
-        logger.debug(
-            f"Telemetry event aborted: {category}:{message_id}. DO_NOT_TRACK is enabled"
-        )
+        logger.debug(f"Telemetry event aborted: {category}:{message_id}. DO_NOT_TRACK is enabled")
         return
-    
+
     http_client = _get_http_client()
     if http_client is None:
         logger.error(
             f"Telemetry event aborted: {category}:{message_id}. HTTP client not initialized"
         )
         return
-    
+
     os_name = _get_os()
     os_version = _get_os_version()
     gpu_info = _get_gpu_info()
@@ -198,7 +199,7 @@ async def _send_scarf_event(
     effective_base_url = _get_effective_base_url()
     # Build URL with format: /bomarag/{platform}.{version}
     base_url = f"{effective_base_url}/{SCARF_PATH}/{PLATFORM_TYPE}.{BOMARAG_VERSION}"
-    
+
     # Build query parameters
     params = {
         "clientType": CLIENT_TYPE,
@@ -213,21 +214,21 @@ async def _send_scarf_event(
         "message_id": message_id,
         "timestamp": timestamp,
     }
-    
+
     # Add CUDA version if available
     if gpu_info["cuda_version"]:
         params["cuda_version"] = str(gpu_info["cuda_version"])
-    
+
     # Add metadata if provided
     if metadata:
         for key, value in metadata.items():
             if value is not None:
                 # URL encode the value
                 params[key] = str(value)
-    
+
     url = f"{base_url}?{urlencode(params)}"
     retry_count = 0
-    
+
     while retry_count < MAX_RETRIES:
         if retry_count == 0:
             logger.info(f"Sending telemetry event: {category}:{message_id}...")
@@ -235,13 +236,13 @@ async def _send_scarf_event(
             logger.info(
                 f"Sending telemetry event: {category}:{message_id}. Retry #{retry_count}..."
             )
-        
+
         logger.debug(f"Telemetry URL: {url}")
-        
+
         try:
             response = await http_client.get(url)
             status = response.status_code
-            
+
             if 200 <= status < 300:
                 logger.info(
                     f"Successfully sent telemetry event: {category}:{message_id}. Status: {status}"
@@ -259,12 +260,10 @@ async def _send_scarf_event(
                     f"Status: {status} (non-retryable)"
                 )
                 return
-                
+
         except httpx.TimeoutException:
             # Don't retry timeouts - Scarf is slow/unreachable, retrying won't help
-            logger.warning(
-                f"Telemetry timeout for {category}:{message_id}, skipping retries"
-            )
+            logger.warning(f"Telemetry timeout for {category}:{message_id}, skipping retries")
             return
         except httpx.ConnectError:
             # Don't retry connection errors - network is unreachable
@@ -275,22 +274,20 @@ async def _send_scarf_event(
         except httpx.RequestError as e:
             # Non-retryable request errors
             logger.error(
-                f"Failed to send telemetry event: {category}:{message_id}. "
-                f"Request error: {e}"
+                f"Failed to send telemetry event: {category}:{message_id}. Request error: {e}"
             )
             return
         except Exception as e:
             logger.error(
-                f"Failed to send telemetry event: {category}:{message_id}. "
-                f"Unknown error: {e}"
+                f"Failed to send telemetry event: {category}:{message_id}. Unknown error: {e}"
             )
-        
+
         retry_count += 1
-        
+
         if retry_count < MAX_RETRIES:
             delay = _get_exponential_backoff_delay(retry_count)
             await asyncio.sleep(delay)
-    
+
     logger.error(
         f"Failed to send telemetry event: {category}:{message_id}. "
         f"Maximum retries exceeded: {MAX_RETRIES}"
@@ -326,14 +323,14 @@ class TelemetryClient:
 
         # Fire and forget - don't block the caller
         asyncio.create_task(_send_with_error_handling())
-    
+
     @staticmethod
     def send_event_sync(category: str, message_id: str, metadata: dict = None) -> None:
         """Send a telemetry event synchronously (creates a task).
-        
+
         This is a convenience method for use in synchronous contexts.
         It creates an async task but doesn't wait for it.
-        
+
         Args:
             category: Event category
             message_id: Event message ID
@@ -344,7 +341,7 @@ class TelemetryClient:
                 f"Telemetry event aborted: {category}:{message_id}. DO_NOT_TRACK is enabled"
             )
             return
-        
+
         try:
             # Try to get the current event loop
             try:
@@ -372,4 +369,3 @@ async def cleanup_telemetry_client() -> None:
             logger.debug("Telemetry HTTP client closed")
         except Exception as e:
             logger.error(f"Error closing telemetry HTTP client: {e}")
-

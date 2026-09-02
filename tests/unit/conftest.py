@@ -11,6 +11,7 @@ so test fixtures cannot accidentally pollute the dev `data/bomarag.db` file.
 # guarantees that even if a test imports something that triggers
 # `init_engine()` at import time, the engine binds to an in-memory DB.
 import os as _os
+
 _os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 
 # Defensive default: pin BOMARAG_RBAC_ENFORCE=true for unit tests so a
@@ -39,6 +40,7 @@ def _reset_db_engine_module_state(monkeypatch):
     """
     try:
         import db.engine as _engine_mod
+
         monkeypatch.setattr(_engine_mod, "_engine", None, raising=False)
         monkeypatch.setattr(_engine_mod, "SessionLocal", None, raising=False)
     except ImportError:

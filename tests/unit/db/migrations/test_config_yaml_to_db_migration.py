@@ -48,15 +48,14 @@ def tmp_yaml(monkeypatch):
         # ConfigManager is a singleton at module level — reset its
         # internal state so it picks up the new path on next load.
         from config.config_manager import config_manager
+
         config_manager.config_file = cfg_dir / "config.yaml"
         config_manager._config = None
         yield cfg_dir / "config.yaml"
 
 
 @pytest.mark.asyncio
-async def test_migration_writes_all_sections_from_existing_yaml(
-    tmp_yaml, session
-):
+async def test_migration_writes_all_sections_from_existing_yaml(tmp_yaml, session):
     """Existing install with config.yaml → all sections copied to DB."""
     yaml_payload = {
         "providers": {

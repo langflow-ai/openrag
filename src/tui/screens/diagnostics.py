@@ -1,17 +1,17 @@
 """Diagnostics screen for BomaRAG TUI."""
 
 import asyncio
+import datetime
 import logging
 import os
-import datetime
 from pathlib import Path
 from typing import List, Optional
 
-from textual.app import ComposeResult
-from textual.containers import Container, Vertical, Horizontal, ScrollableContainer
-from textual.screen import Screen
-from textual.widgets import Header, Footer, Static, Button, Log
 from rich.text import Text
+from textual.app import ComposeResult
+from textual.containers import Container, Horizontal, ScrollableContainer, Vertical
+from textual.screen import Screen
+from textual.widgets import Button, Footer, Header, Log, Static
 
 from ..managers.container_manager import ContainerManager
 from ..utils.clipboard import copy_text_to_clipboard
@@ -66,7 +66,11 @@ class DiagnosticsScreen(Screen):
                 yield Button("Refresh", variant="primary", id="refresh-btn")
                 yield Button("Check Podman", variant="default", id="check-podman-btn")
                 yield Button("Check Docker", variant="default", id="check-docker-btn")
-                yield Button("Check OpenSearch Security", variant="default", id="check-opensearch-security-btn")
+                yield Button(
+                    "Check OpenSearch Security",
+                    variant="default",
+                    id="check-opensearch-security-btn",
+                )
                 yield Button("Copy to Clipboard", variant="default", id="copy-btn")
                 yield Button("Save to File", variant="default", id="save-btn")
                 yield Button("Back", variant="default", id="back-btn")
@@ -135,9 +139,7 @@ class DiagnosticsScreen(Screen):
             status.update(f"❌ Failed to copy: {e}")
             self._hide_status_after_delay(status)
 
-    def _hide_status_after_delay(
-        self, status_widget: Static, delay: float = 3.0
-    ) -> None:
+    def _hide_status_after_delay(self, status_widget: Static, delay: float = 3.0) -> None:
         """Hide the status message after a delay."""
         # Cancel any existing timer
         if self._status_timer:
@@ -148,9 +150,7 @@ class DiagnosticsScreen(Screen):
             self._clear_status_after_delay(status_widget, delay)
         )
 
-    async def _clear_status_after_delay(
-        self, status_widget: Static, delay: float
-    ) -> None:
+    async def _clear_status_after_delay(self, status_widget: Static, delay: float) -> None:
         """Clear the status message after a delay."""
         await asyncio.sleep(delay)
         status_widget.update("")
@@ -253,9 +253,7 @@ class DiagnosticsScreen(Screen):
         services = await self.container_manager.get_service_status(force_refresh=True)
         for name, info in services.items():
             status_color = "green" if info.status == "running" else "red"
-            log.write(
-                f"[bold]{name}[/bold]: [{status_color}]{info.status.value}[/{status_color}]"
-            )
+            log.write(f"[bold]{name}[/bold]: [{status_color}]{info.status.value}[/{status_color}]")
             if info.health:
                 log.write(f"  Health: {info.health}")
             if info.ports:
@@ -287,9 +285,7 @@ class DiagnosticsScreen(Screen):
         if process.returncode == 0:
             log.write(f"Podman version: {stdout.decode().strip()}")
         else:
-            log.write(
-                f"[red]Failed to get Podman version: {stderr.decode().strip()}[/red]"
-            )
+            log.write(f"[red]Failed to get Podman version: {stderr.decode().strip()}[/red]")
 
         # Check Podman containers
         cmd = ["podman", "ps", "--all"]
@@ -302,9 +298,7 @@ class DiagnosticsScreen(Screen):
             for line in stdout.decode().strip().split("\n"):
                 log.write(f"  {line}")
         else:
-            log.write(
-                f"[red]Failed to list Podman containers: {stderr.decode().strip()}[/red]"
-            )
+            log.write(f"[red]Failed to list Podman containers: {stderr.decode().strip()}[/red]")
 
         # Check Podman compose
         cmd = ["podman", "compose", "ps"]
@@ -345,9 +339,7 @@ class DiagnosticsScreen(Screen):
         if process.returncode == 0:
             log.write(f"Docker version: {stdout.decode().strip()}")
         else:
-            log.write(
-                f"[red]Failed to get Docker version: {stderr.decode().strip()}[/red]"
-            )
+            log.write(f"[red]Failed to get Docker version: {stderr.decode().strip()}[/red]")
 
         # Check Docker containers
         cmd = ["docker", "ps", "--all"]
@@ -360,9 +352,7 @@ class DiagnosticsScreen(Screen):
             for line in stdout.decode().strip().split("\n"):
                 log.write(f"  {line}")
         else:
-            log.write(
-                f"[red]Failed to list Docker containers: {stderr.decode().strip()}[/red]"
-            )
+            log.write(f"[red]Failed to list Docker containers: {stderr.decode().strip()}[/red]")
 
         # Check Docker compose
         cmd = ["docker", "compose", "ps"]
@@ -405,15 +395,20 @@ class DiagnosticsScreen(Screen):
         # Test basic authentication
         log.write("Testing basic authentication...")
         cmd = [
-            "curl", "-s", "-k", "-w", "%{http_code}",
-            "-u", f"admin:{opensearch_password}",
-            opensearch_url
+            "curl",
+            "-s",
+            "-k",
+            "-w",
+            "%{http_code}",
+            "-u",
+            f"admin:{opensearch_password}",
+            opensearch_url,
         ]
         process = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
         stdout, stderr = await process.communicate()
-        
+
         if process.returncode == 0:
             response = stdout.decode().strip()
             # Extract HTTP status code (last 3 characters)
@@ -424,6 +419,7 @@ class DiagnosticsScreen(Screen):
                     log.write("[green]✓ Basic authentication successful[/green]")
                     try:
                         import json
+
                         info = json.loads(response_body)
                         if "version" in info and "distribution" in info["version"]:
                             log.write(f"  OpenSearch version: {info['version']['number']}")
@@ -439,15 +435,20 @@ class DiagnosticsScreen(Screen):
         # Test security plugin account info
         log.write("Testing security plugin account info...")
         cmd = [
-            "curl", "-s", "-k", "-w", "%{http_code}",
-            "-u", f"admin:{opensearch_password}",
-            f"{opensearch_url}/_plugins/_security/api/account"
+            "curl",
+            "-s",
+            "-k",
+            "-w",
+            "%{http_code}",
+            "-u",
+            f"admin:{opensearch_password}",
+            f"{opensearch_url}/_plugins/_security/api/account",
         ]
         process = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
         stdout, stderr = await process.communicate()
-        
+
         if process.returncode == 0:
             response = stdout.decode().strip()
             if len(response) >= 3:
@@ -457,13 +458,14 @@ class DiagnosticsScreen(Screen):
                     log.write("[green]✓ Security plugin accessible[/green]")
                     try:
                         import json
+
                         user_info = json.loads(response_body)
                         if "user_name" in user_info:
                             log.write(f"  Current user: {user_info['user_name']}")
                         if "roles" in user_info:
                             log.write(f"  Roles: {', '.join(user_info['roles'])}")
                         if "tenants" in user_info:
-                            tenants = list(user_info['tenants'].keys())
+                            tenants = list(user_info["tenants"].keys())
                             log.write(f"  Tenants: {', '.join(tenants)}")
                     except:
                         log.write("  Account info retrieved but couldn't parse JSON")
@@ -475,15 +477,20 @@ class DiagnosticsScreen(Screen):
         # Test internal users
         log.write("Testing internal users configuration...")
         cmd = [
-            "curl", "-s", "-k", "-w", "%{http_code}",
-            "-u", f"admin:{opensearch_password}",
-            f"{opensearch_url}/_plugins/_security/api/internalusers"
+            "curl",
+            "-s",
+            "-k",
+            "-w",
+            "%{http_code}",
+            "-u",
+            f"admin:{opensearch_password}",
+            f"{opensearch_url}/_plugins/_security/api/internalusers",
         ]
         process = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
         stdout, stderr = await process.communicate()
-        
+
         if process.returncode == 0:
             response = stdout.decode().strip()
             if len(response) >= 3:
@@ -492,6 +499,7 @@ class DiagnosticsScreen(Screen):
                 if status_code == "200":
                     try:
                         import json
+
                         users = json.loads(response_body)
                         if "admin" in users:
                             log.write("[green]✓ Admin user configured[/green]")
@@ -509,15 +517,20 @@ class DiagnosticsScreen(Screen):
         # Test authentication domains configuration
         log.write("Testing authentication configuration...")
         cmd = [
-            "curl", "-s", "-k", "-w", "%{http_code}",
-            "-u", f"admin:{opensearch_password}",
-            f"{opensearch_url}/_plugins/_security/api/securityconfig"
+            "curl",
+            "-s",
+            "-k",
+            "-w",
+            "%{http_code}",
+            "-u",
+            f"admin:{opensearch_password}",
+            f"{opensearch_url}/_plugins/_security/api/securityconfig",
         ]
         process = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
         stdout, stderr = await process.communicate()
-        
+
         if process.returncode == 0:
             response = stdout.decode().strip()
             if len(response) >= 3:
@@ -526,26 +539,41 @@ class DiagnosticsScreen(Screen):
                 if status_code == "200":
                     try:
                         import json
+
                         config = json.loads(response_body)
-                        if "config" in config and "dynamic" in config["config"] and "authc" in config["config"]["dynamic"]:
+                        if (
+                            "config" in config
+                            and "dynamic" in config["config"]
+                            and "authc" in config["config"]["dynamic"]
+                        ):
                             authc = config["config"]["dynamic"]["authc"]
                             if "openid_auth_domain" in authc:
-                                log.write("[green]✓ OpenID Connect authentication domain configured[/green]")
-                                oidc_config = authc["openid_auth_domain"].get("http_authenticator", {}).get("config", {})
+                                log.write(
+                                    "[green]✓ OpenID Connect authentication domain configured[/green]"
+                                )
+                                oidc_config = (
+                                    authc["openid_auth_domain"]
+                                    .get("http_authenticator", {})
+                                    .get("config", {})
+                                )
                                 if "openid_connect_url" in oidc_config:
                                     log.write(f"  OIDC URL: {oidc_config['openid_connect_url']}")
                                 if "subject_key" in oidc_config:
                                     log.write(f"  Subject key: {oidc_config['subject_key']}")
                             if "basic_internal_auth_domain" in authc:
-                                log.write("[green]✓ Basic internal authentication domain configured[/green]")
-                            
+                                log.write(
+                                    "[green]✓ Basic internal authentication domain configured[/green]"
+                                )
+
                             # Check for multi-tenancy
                             if "kibana" in config["config"]["dynamic"]:
                                 kibana_config = config["config"]["dynamic"]["kibana"]
                                 if kibana_config.get("multitenancy_enabled"):
                                     log.write("[green]✓ Multi-tenancy enabled[/green]")
                         else:
-                            log.write("[yellow]⚠ Authentication configuration not found in expected format[/yellow]")
+                            log.write(
+                                "[yellow]⚠ Authentication configuration not found in expected format[/yellow]"
+                            )
                     except Exception as e:
                         log.write("[green]✓ Security config endpoint accessible[/green]")
                         log.write(f"  (Could not parse JSON: {str(e)[:50]}...)")
@@ -557,15 +585,20 @@ class DiagnosticsScreen(Screen):
         # Test indices with potential security filtering
         log.write("Testing index access...")
         cmd = [
-            "curl", "-s", "-k", "-w", "%{http_code}",
-            "-u", f"admin:{opensearch_password}",
-            f"{opensearch_url}/_cat/indices?v"
+            "curl",
+            "-s",
+            "-k",
+            "-w",
+            "%{http_code}",
+            "-u",
+            f"admin:{opensearch_password}",
+            f"{opensearch_url}/_cat/indices?v",
         ]
         process = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
         stdout, stderr = await process.communicate()
-        
+
         if process.returncode == 0:
             response = stdout.decode().strip()
             if len(response) >= 3:
@@ -573,16 +606,16 @@ class DiagnosticsScreen(Screen):
                 response_body = response[:-3]
                 if status_code == "200":
                     log.write("[green]✓ Index listing accessible[/green]")
-                    lines = response_body.strip().split('\n')
+                    lines = response_body.strip().split("\n")
                     if len(lines) > 1:  # Skip header
                         indices_found = []
                         for line in lines[1:]:
-                            if 'documents' in line:
-                                indices_found.append('documents')
-                            elif 'knowledge_filters' in line:
-                                indices_found.append('knowledge_filters')
-                            elif '.opendistro_security' in line:
-                                indices_found.append('.opendistro_security')
+                            if "documents" in line:
+                                indices_found.append("documents")
+                            elif "knowledge_filters" in line:
+                                indices_found.append("knowledge_filters")
+                            elif ".opendistro_security" in line:
+                                indices_found.append(".opendistro_security")
                         if indices_found:
                             log.write(f"  Key indices found: {', '.join(indices_found)}")
                 else:

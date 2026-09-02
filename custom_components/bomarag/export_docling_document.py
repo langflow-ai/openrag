@@ -1,6 +1,10 @@
 from typing import Any
 
-from lfx.base.data.docling_utils import coerce_docling_document, extract_docling_documents, get_docling_image_ref_mode
+from lfx.base.data.docling_utils import (
+    coerce_docling_document,
+    extract_docling_documents,
+    get_docling_image_ref_mode,
+)
 from lfx.custom import Component
 from lfx.io import DropdownInput, HandleInput, MessageTextInput, Output, StrInput
 from lfx.schema import Data, DataFrame
@@ -67,7 +71,9 @@ class ExportDoclingDocumentComponent(Component):
         Output(display_name="Table", name="dataframe", method="as_dataframe"),
     ]
 
-    def update_build_config(self, build_config: dict, field_value: Any, field_name: str | None = None) -> dict:
+    def update_build_config(
+        self, build_config: dict, field_value: Any, field_name: str | None = None
+    ) -> dict:
         if field_name == "export_format" and field_value == "Markdown":
             build_config["md_image_placeholder"]["show"] = True
             build_config["md_page_break_placeholder"]["show"] = True
@@ -89,7 +95,6 @@ class ExportDoclingDocumentComponent(Component):
     @staticmethod
     def _coerce_exportable_document(doc: Any) -> Any:
         return coerce_docling_document(doc)
-
 
     def _base_metadata(self, doc) -> dict:
         """Build shared metadata from a DoclingDocument."""

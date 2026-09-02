@@ -53,7 +53,9 @@ def _log_watsonx_rate_limit_headers(error: Exception) -> None:
         if not headers:
             return
         status = getattr(response, "status_code", "unknown")
-        observed = {h: headers.get(h) for h in _WATSONX_RATE_LIMIT_HEADERS if headers.get(h) is not None}
+        observed = {
+            h: headers.get(h) for h in _WATSONX_RATE_LIMIT_HEADERS if headers.get(h) is not None
+        }
         if str(status) == "429" or observed:
             logger.warning(f"watsonx rate-limit response (status={status}): {observed}")
     except Exception as log_error:  # never let diagnostics mask the real error
@@ -114,9 +116,9 @@ def fence_untrusted_text(text: str) -> str:
     """
     if not text:
         return text
-    escaped = text.replace(
-        UNTRUSTED_CHUNK_FENCE_START, "\\" + UNTRUSTED_CHUNK_FENCE_START
-    ).replace(UNTRUSTED_CHUNK_FENCE_END, "\\" + UNTRUSTED_CHUNK_FENCE_END)
+    escaped = text.replace(UNTRUSTED_CHUNK_FENCE_START, "\\" + UNTRUSTED_CHUNK_FENCE_START).replace(
+        UNTRUSTED_CHUNK_FENCE_END, "\\" + UNTRUSTED_CHUNK_FENCE_END
+    )
     return f"{UNTRUSTED_CHUNK_FENCE_START}\n{escaped}\n{UNTRUSTED_CHUNK_FENCE_END}"
 
 
@@ -379,7 +381,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                 "Valid JSON Web Token for authentication. "
                 "Will be sent in the Authorization header (with optional 'Bearer ' prefix)."
             ),
-            required=False
+            required=False,
         ),
         StrInput(
             name="jwt_header",
@@ -544,10 +546,8 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
 
             # Apply score_threshold / scoreThreshold as min_score if not already set
             if "min_score" not in query_body:
-
                 score_threshold = self._resolve_score_threshold(filter_obj)
                 if score_threshold is not None:
-
                     query_body["min_score"] = score_threshold
 
         client = self.build_client()
@@ -910,7 +910,9 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                     f"chunks={len(payload['chunks'])} final={final}"
                 )
                 response = client.post(url, json=payload, headers=headers)
-                logger.debug(f"[BomaRAG ingest POST resp] batch={batch_number} status={response.status_code}")
+                logger.debug(
+                    f"[BomaRAG ingest POST resp] batch={batch_number} status={response.status_code}"
+                )
                 if response.status_code >= 400:
                     msg = (
                         "BomaRAG ingest callback failed "
@@ -1140,6 +1142,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         pwd = (self._bomarag_input_to_str(self.password) or "").strip()
         if pwd == "OPENSEARCH_PASSWORD" or not pwd:
             from config.settings import get_opensearch_password
+
             pwd = get_opensearch_password() or ""
         if not user or not pwd:
             msg = "Auth Mode is 'basic' but username/password are missing."
@@ -1425,7 +1428,6 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         logger.debug(f"Is IBM/watsonx embedding: {is_ibm}")
 
         if is_ibm:
-
             # Hand the full batch to the SDK and let it batch/throttle/retry.
             # Retry attempts and base backoff are tunable via the SDK's own
             # WATSONX_MAX_RETRIES / WATSONX_DELAY_TIME environment variables.
@@ -1701,7 +1703,6 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                 context_clauses.append({"terms": {field: values}})
         return context_clauses
 
-
     def _parse_filter_expression(self) -> dict | None:
         """Parse and validate optional filter_expression JSON.
 
@@ -1756,8 +1757,9 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             return None
         return float(score_threshold)
 
-    def _detect_available_models(self, client: OpenSearch, filter_clauses: list[dict] | None = None) -> list[str]:
-
+    def _detect_available_models(
+        self, client: OpenSearch, filter_clauses: list[dict] | None = None
+    ) -> list[str]:
         """Detect which embedding models have documents in the index.
 
         Uses aggregation to find all unique embedding_model values, optionally
@@ -2388,7 +2390,6 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         ]
 
     def search_documents(self) -> list[Data]:
-
         """Search documents and return results as a list of Data objects.
 
         This is the main interface method that performs the multi-model search using the
