@@ -257,6 +257,31 @@ class ProvidersConfig:
         elif key == "ollama":
             self.ollama.endpoint = clean.get("api_base", self.ollama.endpoint)
             self.ollama.configured = bool(self.ollama.endpoint)
+        elif key == "oci":
+            # Field names match litellm's own bundled credential-field spec
+            # (provider_create_fields.json) - the generic onboarding form
+            # (GenericOnboarding, driven by config/model_providers.yaml) uses
+            # those names verbatim, so this bridges its generic
+            # provider_credentials submission into the typed OCIConfig
+            # fields the rest of OCI support (model registry gate,
+            # provider_validation.py's signer-shape checks) already reads
+            # directly. key_file has no litellm field (it only exposes an
+            # inline PEM textarea) but is kept here for parity with the
+            # dedicated onboarding fields, which do support it.
+            self.oci.user = clean.get("oci_user", self.oci.user)
+            self.oci.fingerprint = clean.get("oci_fingerprint", self.oci.fingerprint)
+            self.oci.tenancy = clean.get("oci_tenancy", self.oci.tenancy)
+            self.oci.region = clean.get("oci_region", self.oci.region)
+            self.oci.compartment_id = clean.get("oci_compartment_id", self.oci.compartment_id)
+            self.oci.key = clean.get("oci_key", self.oci.key)
+            self.oci.key_file = clean.get("oci_key_file", self.oci.key_file)
+            self.oci.configured = bool(
+                self.oci.user
+                and self.oci.fingerprint
+                and self.oci.tenancy
+                and self.oci.compartment_id
+                and (self.oci.key or self.oci.key_file)
+            )
 
     def credential_values(self, provider: str) -> dict[str, str]:
         """Return LiteLLM keyword arguments for a configured provider."""
@@ -286,6 +311,27 @@ class ProvidersConfig:
             if endpoint:
                 custom.setdefault("api_base", endpoint)
             return custom
+        if key == "oci":
+            # api_key auth only - instance_principal/workload_identity need a
+            # constructed OCI SDK Signer object (utils.oci_auth), which this
+            # getter deliberately does not attempt: that construction can
+            # fail (not running on OCI Compute, no Workload Identity) and
+            # belongs in the dedicated call sites that already build it
+            # per-call (models/processors.py, services/search_service.py),
+            # not a passive credential-value lookup.
+            legacy = {
+                name: value
+                for name, value in {
+                    "oci_user": self.oci.user,
+                    "oci_fingerprint": self.oci.fingerprint,
+                    "oci_tenancy": self.oci.tenancy,
+                    "oci_region": self.oci.region,
+                    "oci_compartment_id": self.oci.compartment_id,
+                    "oci_key": self.oci.key,
+                }.items()
+                if value
+            }
+            return {**legacy, **custom}
         return custom
 
 
