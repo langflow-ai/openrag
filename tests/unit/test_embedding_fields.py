@@ -74,6 +74,17 @@ def test_embedding_space_aggregation_preserves_exact_and_legacy_routes() -> None
     )
 
 
+def test_embedding_space_aggregation_ignores_missing_bucket_keys() -> None:
+    result = {
+        "aggregations": {
+            "embedding_spaces": {"buckets": [{"key": {}}, {"key": None}]},
+            "legacy_embedding_models": {"buckets": [{"key": {}}, {"key": None}]},
+        }
+    }
+
+    assert embedding_spaces_from_aggregation(result) == []
+
+
 class TestBuildKnnVectorFieldStructure:
     """Shape of the returned mapping dict."""
 

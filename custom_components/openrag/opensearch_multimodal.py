@@ -94,7 +94,8 @@ def embedding_spaces_from_aggregation(result: dict[str, Any]) -> list[EmbeddingS
     seen: set[str] = set()
     for bucket in qualified_buckets:
         key = bucket.get("key")
-        space_id = str(key.get("space_id") if isinstance(key, dict) else key or "").strip()
+        raw_space_id = key.get("space_id") if isinstance(key, dict) else key
+        space_id = str(raw_space_id or "").strip()
         if not space_id or space_id in seen:
             continue
         seen.add(space_id)
@@ -108,7 +109,8 @@ def embedding_spaces_from_aggregation(result: dict[str, Any]) -> list[EmbeddingS
 
     for bucket in legacy_buckets:
         key = bucket.get("key")
-        model = str(key.get("model") if isinstance(key, dict) else key or "").strip()
+        raw_model = key.get("model") if isinstance(key, dict) else key
+        model = str(raw_model or "").strip()
         space_id = f"{LEGACY_EMBEDDING_ROUTE_PREFIX}{model}"
         if not model or space_id in seen:
             continue

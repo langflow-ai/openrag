@@ -267,6 +267,37 @@ async def test_langflow_preflight_detects_embedding_dimensions_with_probe(monkey
 
 
 @pytest.mark.asyncio
+async def test_langflow_preflight_defaults_unset_embedding_provider_to_openai(monkeypatch):
+    class FakeIndices:
+        async def exists(self, *, index):
+            return True
+
+    fake_opensearch = SimpleNamespace(indices=FakeIndices())
+    monkeypatch.setattr("services.langflow_file_service.clients.opensearch", fake_opensearch)
+    monkeypatch.setattr(
+        "config.settings.get_openrag_config",
+        lambda: SimpleNamespace(knowledge=SimpleNamespace(embedding_provider=None)),
+    )
+    monkeypatch.setattr("config.settings.get_index_name", lambda: "documents")
+
+    ensure_field = AsyncMock()
+    monkeypatch.setattr("utils.embedding_fields.ensure_embedding_field_exists", ensure_field)
+
+    svc = LangflowFileService(docling_service=AsyncMock())
+    svc._detect_embedding_dimensions = AsyncMock(return_value=1536)
+
+    await svc._ensure_langflow_ingest_index("text-embedding-3-small")
+
+    svc._detect_embedding_dimensions.assert_awaited_once_with("text-embedding-3-small", "openai")
+    ensure_field.assert_awaited_once_with(
+        fake_opensearch,
+        "openai:text-embedding-3-small",
+        "documents",
+        1536,
+    )
+
+
+@pytest.mark.asyncio
 async def test_task_service_threads_polling_service_to_processor(monkeypatch):
     """TaskService.create_langflow_upload_task must forward its injected
     polling service to the LangflowFileProcessor it constructs. This is the

@@ -28,3 +28,15 @@ def test_operator_legacy_map_applies_after_settings_have_been_edited(monkeypatch
     assert config.knowledge.legacy_embedding_provider_map == {
         "ibm/slate-125m-english-rtrvr": "watsonx"
     }
+
+
+def test_legacy_map_is_read_through_settings_boundary(monkeypatch, tmp_path):
+    monkeypatch.delenv("OPENRAG_LEGACY_EMBEDDING_PROVIDER_MAP", raising=False)
+    monkeypatch.setattr(
+        "config.settings.get_legacy_embedding_provider_map_json",
+        lambda: '{"custom-embed":"azure"}',
+    )
+
+    config = ConfigManager(str(tmp_path / "config.yaml")).load_config()
+
+    assert config.knowledge.legacy_embedding_provider_map == {"custom-embed": "azure"}

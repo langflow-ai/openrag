@@ -25,6 +25,9 @@ from lfx.io import IntInput, SecretStrInput, StrInput
 OPENRAG_LLM_BASE_URL_VAR = "OPENRAG_LLM_BASE_URL"
 OPENRAG_LLM_TOKEN_VAR = "OPENRAG_LLM_TOKEN"
 SELECTED_EMBEDDING_MODEL_VAR = "SELECTED_EMBEDDING_MODEL"
+SELECTED_EMBEDDING_PROVIDER_VAR = "SELECTED_EMBEDDING_PROVIDER"
+LEGACY_EMBEDDING_ROUTE_PREFIX = "legacy:"
+INDEXED_EMBEDDING_ROUTE_PREFIX = "space:"
 
 
 def _as_str(value: object) -> str | None:
@@ -37,6 +40,19 @@ def _as_str(value: object) -> str | None:
     return text or None
 
 
+def _embedding_route_identity(route: str) -> tuple[str | None, str]:
+    """Return the provider and model identity encoded in a retrieval route."""
+    if route.startswith(LEGACY_EMBEDDING_ROUTE_PREFIX):
+        return None, route.removeprefix(LEGACY_EMBEDDING_ROUTE_PREFIX)
+    if route.startswith(INDEXED_EMBEDDING_ROUTE_PREFIX):
+        qualified = route.removeprefix(INDEXED_EMBEDDING_ROUTE_PREFIX)
+        provider, separator, model_name = qualified.partition(":")
+        if separator and provider and model_name:
+            return provider.lower(), model_name
+        return None, qualified
+    return None, route
+
+
 class OpenRAGEmbeddings(Embeddings):
     """One immutable model route plus a factory for other retrieval routes."""
 
@@ -46,6 +62,7 @@ class OpenRAGEmbeddings(Embeddings):
         model_name: str,
         api_key: str | None,
         api_base: str | None,
+        provider_name: str | None = None,
         chunk_size: int | None = None,
         dimensions: int | None = None,
     ) -> None:
@@ -53,7 +70,9 @@ class OpenRAGEmbeddings(Embeddings):
         self.deployment = model_name
         self._api_key = api_key
         self._api_base = api_base
+        self._provider_name = (provider_name or "openai").strip().lower()
         self._chunk_size = chunk_size
+        self._dimensions = dimensions
 
         kwargs: dict[str, Any] = {
             "model": self.model,
@@ -79,13 +98,16 @@ class OpenRAGEmbeddings(Embeddings):
         route = (model_name or "").strip()
         if not route:
             raise ValueError("Embedding model route is required")
+        route_provider, route_model = _embedding_route_identity(route)
+        is_selected_route = route_provider == self._provider_name and route_model == self.model_name
+        dimensions = self._dimensions if is_selected_route else None
         return OpenRAGEmbeddings(
             model_name=route,
             api_key=self._api_key,
             api_base=self._api_base,
+            provider_name=self._provider_name,
             chunk_size=self._chunk_size,
-            # A selected-model dimension override is not valid for other models.
-            dimensions=None,
+            dimensions=dimensions,
         )
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
@@ -116,6 +138,13 @@ class OpenAICompatibleEmbeddingComponent(LCEmbeddingsModel):
             display_name="Model Name",
             info="Embedding model id. Bound to SELECTED_EMBEDDING_MODEL at runtime.",
             value=SELECTED_EMBEDDING_MODEL_VAR,
+            load_from_db=True,
+        ),
+        StrInput(
+            name="provider_name",
+            display_name="Provider Name",
+            info="Embedding provider id. Bound to SELECTED_EMBEDDING_PROVIDER at runtime.",
+            value=SELECTED_EMBEDDING_PROVIDER_VAR,
             load_from_db=True,
         ),
         SecretStrInput(
@@ -159,6 +188,7 @@ class OpenAICompatibleEmbeddingComponent(LCEmbeddingsModel):
             model_name=self.model_name,
             api_key=api_key,
             api_base=api_base,
+            provider_name=getattr(self, "provider_name", None),
             chunk_size=getattr(self, "chunk_size", None),
             dimensions=getattr(self, "dimensions", None),
         )
