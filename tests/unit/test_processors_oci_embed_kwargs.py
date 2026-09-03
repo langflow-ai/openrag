@@ -61,7 +61,7 @@ async def test_standard_processor_passes_cohere_input_type_and_oci_credentials(
             return user_client
 
     class ModelsService:
-        async def get_litellm_model_name(self, embedding_model):
+        async def get_litellm_model_name(self, embedding_model, provider=None):
             assert embedding_model == "cohere.embed-multilingual-v3.0"
             return "oci/cohere.embed-multilingual-v3.0"
 
