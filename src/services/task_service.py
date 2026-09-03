@@ -1525,7 +1525,11 @@ class TaskService:
         # would deadlock with cancel_task holding that same lock.
         async with self._get_task_lock(task_id):
             # Can only cancel pending or running tasks.
-            if upload_task.status in [TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED]:
+            if upload_task.status in [
+                TaskStatus.COMPLETED,
+                TaskStatus.FAILED,
+                TaskStatus.CANCELLED,
+            ]:
                 return False
             # Mark in-flight immediately so a concurrent cancel sees CANCELLED
             # and returns False without repeating the work below.
