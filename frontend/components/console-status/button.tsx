@@ -26,12 +26,12 @@ export function ConsoleStatusButton({
       aria-haspopup="dialog"
       className={cn(
         "flex items-center gap-2 px-3 py-2 rounded-lg",
-        "bg-zinc-800 border border-zinc-700 text-zinc-200 text-sm font-medium",
-        "hover:bg-zinc-700 hover:border-zinc-600 transition-colors shadow-lg",
-        isOpen && "bg-zinc-700 border-zinc-500",
+        "bg-muted border border-border text-foreground text-sm font-medium",
+        "hover:bg-muted/80 hover:border-muted-foreground/40 transition-colors shadow-sm",
+        isOpen && "bg-muted/80 border-muted-foreground/40",
       )}
     >
-      <EvCharger size={14} className="shrink-0 text-zinc-400" />
+      <EvCharger size={14} className="shrink-0 text-muted-foreground" />
       <span>Console Status</span>
       {overallStatus && (
         <span className="relative flex h-2 w-2 shrink-0">
