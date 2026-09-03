@@ -58,7 +58,7 @@ test("@smoke Knowledge filter functionality @33219234", async ({
   const response2 = await chat.askQuestion(testQuestion);
 
   const lacksKnowledge =
-    /no relevant.*sources|cannot find|no information|not available|unable to|don't have|no supporting/i.test(
+    /no relevant.*sources|cannot find|no information|not available|unable to|don['’]t have|no supporting/i.test(
       response2,
     );
   const hasDocumentSpecifics =
@@ -169,7 +169,7 @@ test("Knowledge filter scope restriction - Negative test", async ({
 
   // Verify filter restricts retrieval (document not found in filtered scope)
   const indicatesNotFound =
-    /no relevant.*sources|cannot find|didn't find|couldn't find|not available|unable to|don't have|no supporting|no.*matching/i.test(
+    /no relevant.*sources|cannot find|didn['’]t find|couldn['’]t find|not available|unable to|don['’]t have|no supporting|no.*matching/i.test(
       response,
     );
 
