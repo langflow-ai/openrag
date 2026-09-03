@@ -1567,6 +1567,15 @@ async def embeddings(
     try:
         import litellm
 
+        extra: dict[str, Any] = {}
+        # Cohere-family embedding models (Bedrock, OCI GenAI, ...) require an
+        # explicit input_type on every call - there is no default - so a
+        # caller that already knows it's addressing one of those spaces
+        # (see services.search_service) passes it through here rather than
+        # this generic gateway trying to infer query-vs-document intent.
+        if body.get("input_type"):
+            extra["input_type"] = body["input_type"]
+
         if not should_batch:
             async with _embedding_slot(limiter, provider, litellm_model, lane):
                 result = await with_stale_connection_retry(
@@ -1575,6 +1584,7 @@ async def embeddings(
                         input=embedding_input,
                         **credentials,
                         **runtime_kwargs,
+                        **extra,
                     ),
                     provider=provider,
                     model=litellm_model,
@@ -1599,6 +1609,7 @@ async def embeddings(
                             input=batch,
                             **credentials,
                             **runtime_kwargs,
+                            **extra,
                         ),
                         provider=provider,
                         model=litellm_model,
