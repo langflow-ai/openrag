@@ -1,18 +1,26 @@
 """Query-time coverage for OCI Generative AI embedding calls.
 
-``SearchService.search_tool``'s inner ``embed_with_model`` closure calls
-``clients.patched_embedding_client.embeddings.create(...)``. Once the model
-resolves to a non-openai provider, agentd's ``patch_openai_with_mcp`` routes
-that straight through to ``litellm.aembedding(**kwargs)`` -- so any kwargs
-beyond ``model``/``input`` (input_type, the oci_* credential fields) must be
-passed as plain kwargs on that call, not via ``extra_body`` or environment
-variables. This test intercepts that call and asserts on exactly what was
-sent for a query (as opposed to an ingest/document) embedding.
+Retrieval now routes query-time embeds through
+`services.llm_gateway.embeddings` (the same credential-aware gateway
+Langflow uses) rather than a direct litellm/OpenAI-SDK call - see
+`search_service.embed_with_space`. These tests mock that gateway call
+directly and force the OpenSearch aggregation lookup to fail, which
+exercises the code's own single-space fallback (built from the configured
+embedding_model/embedding_provider) without needing to replicate the real
+composite-aggregation response shape.
 
-No auth context is set, so ``search_tool`` returns its "Authentication
-required" error right after generating query embeddings -- which lets this
-test exercise the embedding call without also needing to mock the
-downstream KNN search response.
+`credential_values("oci")` (config.config_manager) resolves the static
+api_key-style oci_* fields generically, but deliberately can't build an SDK
+Signer for instance_principal/workload_identity auth - that construction
+can fail (not running on OCI Compute, no Workload Identity) and belongs at
+the call site. So `embed_with_space` builds it itself and forwards it
+through the gateway's generic body passthrough (see
+`services.llm_gateway.embeddings`).
+
+The embedding call happens before SearchService.search_tool's auth check, so
+these tests intentionally don't set an auth context - the call is captured,
+then the function short-circuits with an "Authentication required" result
+without needing to mock the rest of the OpenSearch hybrid-query pipeline.
 """
 
 from types import SimpleNamespace
@@ -22,40 +30,25 @@ import pytest
 from services.search_service import SearchService
 
 
-@pytest.mark.asyncio
-async def test_embed_with_model_passes_cohere_input_type_and_oci_credentials(monkeypatch):
-    captured_calls = []
+class _FakeOpenSearchClient:
+    """Always fails the embedding-space aggregation, forcing the code's own
+    single-space fallback built from the configured embedding_model/provider -
+    much simpler than replicating the real composite-aggregation JSON shape."""
 
-    class FakeEmbeddings:
-        async def create(self, model, input, **kwargs):
-            captured_calls.append({"model": model, "input": input, **kwargs})
-            return SimpleNamespace(data=[SimpleNamespace(embedding=[0.1, 0.2, 0.3])])
+    async def search(self, index, body, params=None):
+        raise RuntimeError("no corpus indexed yet")
 
-    class FakeEmbeddingClient:
-        embeddings = FakeEmbeddings()
 
-    class FakeOpenSearchClient:
-        async def search(self, **kwargs):
-            # Aggregation query used to detect embedding models already in the corpus.
-            return {
-                "aggregations": {
-                    "embedding_models": {
-                        "buckets": [{"key": "cohere.embed-multilingual-v3.0", "doc_count": 3}]
-                    }
-                }
-            }
+class _FakeSessionManager:
+    def __init__(self, opensearch_client):
+        self._client = opensearch_client
 
-    class FakeSessionManager:
-        def get_user_opensearch_client(self, user_id, jwt_token):
-            return FakeOpenSearchClient()
+    def get_user_opensearch_client(self, user_id, jwt_token):
+        return self._client
 
-    class FakeModelsService:
-        async def get_litellm_model_name(self, model_name, strict=False):
-            assert model_name == "cohere.embed-multilingual-v3.0"
-            assert strict is True
-            return "oci/cohere.embed-multilingual-v3.0"
 
-    oci_config = SimpleNamespace(
+def _oci_config(*, auth_method="api_key"):
+    return SimpleNamespace(
         user="ocid1.user.oc1..xxx",
         fingerprint="xx:xx:xx:xx",
         tenancy="ocid1.tenancy.oc1..xxx",
@@ -64,90 +57,113 @@ async def test_embed_with_model_passes_cohere_input_type_and_oci_credentials(mon
         key_file="/tmp/oci_key.pem",
         region="us-ashburn-1",
         configured=True,
-        auth_method="api_key",
-    )
-    fake_openrag_config = SimpleNamespace(
-        providers=SimpleNamespace(ollama=SimpleNamespace(endpoint=""), oci=oci_config),
+        auth_method=auth_method,
     )
 
-    monkeypatch.setattr("services.search_service.get_openrag_config", lambda: fake_openrag_config)
+
+async def _run_search(
+    monkeypatch,
+    *,
+    embedding_provider: str,
+    embedding_model: str,
+    oci_config=None,
+    signer=None,
+):
     monkeypatch.setattr(
-        "services.search_service.clients",
-        SimpleNamespace(patched_embedding_client=FakeEmbeddingClient()),
+        "services.search_service.get_openrag_config",
+        lambda: SimpleNamespace(
+            providers=SimpleNamespace(ollama=SimpleNamespace(endpoint=""), oci=oci_config),
+            knowledge=SimpleNamespace(embedding_provider=embedding_provider),
+        ),
     )
     monkeypatch.setattr("services.search_service.get_index_name", lambda: "documents")
+    monkeypatch.setattr("services.search_service.get_cached_oci_signer", lambda auth_method: signer)
 
-    service = SearchService(session_manager=FakeSessionManager(), models_service=FakeModelsService())
+    calls = []
+
+    async def fake_gateway_embeddings(body):
+        calls.append(body)
+        return {"data": [{"embedding": [0.1, 0.2, 0.3], "index": 0}]}
+
+    monkeypatch.setattr("services.search_service.gateway_embeddings", fake_gateway_embeddings)
+
+    service = SearchService(session_manager=_FakeSessionManager(_FakeOpenSearchClient()))
 
     result = await service.search_tool(
-        "what is the capital of france?", embedding_model="cohere.embed-multilingual-v3.0"
+        "what is the capital of france?", embedding_model=embedding_model
     )
 
+    # No auth context was set, so the function stops right after generating
+    # embeddings - proof the embed call itself already happened above.
     assert result == {"results": [], "error": "Authentication required"}
-    assert len(captured_calls) == 1
-    call = captured_calls[0]
-    assert call["model"] == "oci/cohere.embed-multilingual-v3.0"
-    assert call["input"] == ["what is the capital of france?"]
-    assert call["input_type"] == "search_query"
-    assert call["oci_user"] == "ocid1.user.oc1..xxx"
-    assert call["oci_fingerprint"] == "xx:xx:xx:xx"
-    assert call["oci_tenancy"] == "ocid1.tenancy.oc1..xxx"
-    assert call["oci_compartment_id"] == "ocid1.compartment.oc1..xxx"
-    assert call["oci_key_file"] == "/tmp/oci_key.pem"
-    assert call["oci_region"] == "us-ashburn-1"
-    # Empty string ("key" not set) must not be forwarded as a kwarg.
-    assert "oci_key" not in call
+    return calls
 
 
-@pytest.mark.asyncio
-async def test_embed_with_model_omits_extra_kwargs_for_non_cohere_openai_model(monkeypatch):
-    """Sanity check: an OpenAI model gets no input_type/oci_* kwargs at all."""
-    captured_calls = []
+class TestOciApiKeyAuth:
+    @pytest.mark.asyncio
+    async def test_cohere_model_gets_input_type_and_oci_credentials(self, monkeypatch):
+        calls = await _run_search(
+            monkeypatch,
+            embedding_provider="oci",
+            embedding_model="cohere.embed-multilingual-v3.0",
+            oci_config=_oci_config(auth_method="api_key"),
+        )
 
-    class FakeEmbeddings:
-        async def create(self, model, input, **kwargs):
-            captured_calls.append({"model": model, "input": input, **kwargs})
-            return SimpleNamespace(data=[SimpleNamespace(embedding=[0.4, 0.5, 0.6])])
+        assert len(calls) == 1
+        call = calls[0]
+        assert call["model"] == "space:oci:cohere.embed-multilingual-v3.0"
+        assert call["input"] == ["what is the capital of france?"]
+        assert call["input_type"] == "search_query"
+        assert call["oci_user"] == "ocid1.user.oc1..xxx"
+        assert call["oci_fingerprint"] == "xx:xx:xx:xx"
+        assert call["oci_tenancy"] == "ocid1.tenancy.oc1..xxx"
+        assert call["oci_compartment_id"] == "ocid1.compartment.oc1..xxx"
+        assert call["oci_key_file"] == "/tmp/oci_key.pem"
+        assert call["oci_region"] == "us-ashburn-1"
+        # Empty string ("key" not set) must not be forwarded as a kwarg.
+        assert "oci_key" not in call
+        assert "oci_signer" not in call
 
-    class FakeEmbeddingClient:
-        embeddings = FakeEmbeddings()
 
-    class FakeOpenSearchClient:
-        async def search(self, **kwargs):
-            return {
-                "aggregations": {
-                    "embedding_models": {
-                        "buckets": [{"key": "text-embedding-3-small", "doc_count": 5}]
-                    }
-                }
-            }
+class TestOciSignerAuth:
+    @pytest.mark.asyncio
+    async def test_instance_principal_forwards_signer_not_manual_credentials(self, monkeypatch):
+        sentinel_signer = object()
+        calls = await _run_search(
+            monkeypatch,
+            embedding_provider="oci",
+            embedding_model="cohere.embed-multilingual-v3.0",
+            oci_config=_oci_config(auth_method="instance_principal"),
+            signer=sentinel_signer,
+        )
 
-    class FakeSessionManager:
-        def get_user_opensearch_client(self, user_id, jwt_token):
-            return FakeOpenSearchClient()
+        assert len(calls) == 1
+        call = calls[0]
+        assert call["oci_signer"] is sentinel_signer
+        assert call["oci_compartment_id"] == "ocid1.compartment.oc1..xxx"
+        assert call["oci_region"] == "us-ashburn-1"
+        # A signer supersedes the manual key-based fields entirely.
+        assert "oci_user" not in call
+        assert "oci_fingerprint" not in call
+        assert "oci_tenancy" not in call
+        assert "oci_key" not in call
+        assert "oci_key_file" not in call
 
-    class FakeModelsService:
-        async def get_litellm_model_name(self, model_name, strict=False):
-            return model_name
 
-    fake_openrag_config = SimpleNamespace(
-        providers=SimpleNamespace(ollama=SimpleNamespace(endpoint="")),
-    )
+class TestNonOciModelOmitsOciKwargs:
+    @pytest.mark.asyncio
+    async def test_openai_model_gets_no_input_type_or_oci_kwargs(self, monkeypatch):
+        calls = await _run_search(
+            monkeypatch,
+            embedding_provider="openai",
+            embedding_model="text-embedding-3-small",
+        )
 
-    monkeypatch.setattr("services.search_service.get_openrag_config", lambda: fake_openrag_config)
-    monkeypatch.setattr(
-        "services.search_service.clients",
-        SimpleNamespace(patched_embedding_client=FakeEmbeddingClient()),
-    )
-    monkeypatch.setattr("services.search_service.get_index_name", lambda: "documents")
+        assert len(calls) == 1
+        call = calls[0]
+        assert call["model"] == "space:openai:text-embedding-3-small"
+        assert set(call.keys()) == {"model", "input"}
 
-    service = SearchService(session_manager=FakeSessionManager(), models_service=FakeModelsService())
 
-    result = await service.search_tool("hello", embedding_model="text-embedding-3-small")
-
-    assert result == {"results": [], "error": "Authentication required"}
-    assert len(captured_calls) == 1
-    call = captured_calls[0]
-    assert call["model"] == "text-embedding-3-small"
-    assert call["input"] == ["hello"]
-    assert set(call.keys()) == {"model", "input"}
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

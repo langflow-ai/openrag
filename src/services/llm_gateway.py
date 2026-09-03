@@ -1558,6 +1558,14 @@ async def embeddings(
     limiter = _embedding_limiter(provider, cfg)
     lane = _INTERACTIVE_LANE if interactive else _BULK_LANE
     embedding_input = _embedding_input(body.get("input"))
+    # Call-specific kwargs beyond model/input - e.g. Cohere-family models'
+    # required input_type (see services.search_service), or an OCI signer
+    # object for instance_principal/workload_identity auth (credential_values
+    # only resolves static api_key-style credentials; a Signer must be built
+    # per-call by the caller - see services.search_service.embed_with_space).
+    # Deliberately override same-named static credentials when both are set.
+    extra = {k: v for k, v in body.items() if k not in ("model", "input")}
+    call_kwargs = {**credentials, **runtime_kwargs, **extra}
     should_batch = (
         provider == "watsonx_onprem"
         and isinstance(embedding_input, list)
@@ -1573,8 +1581,7 @@ async def embeddings(
                     lambda: litellm.aembedding(
                         model=litellm_model,
                         input=embedding_input,
-                        **credentials,
-                        **runtime_kwargs,
+                        **call_kwargs,
                     ),
                     provider=provider,
                     model=litellm_model,
@@ -1597,8 +1604,7 @@ async def embeddings(
                             litellm.aembedding,
                             model=litellm_model,
                             input=batch,
-                            **credentials,
-                            **runtime_kwargs,
+                            **call_kwargs,
                         ),
                         provider=provider,
                         model=litellm_model,
