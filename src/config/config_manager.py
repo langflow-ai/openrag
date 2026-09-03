@@ -79,6 +79,39 @@ def is_permitted_index_name(index_name: str) -> bool:
     return bool(_PERMITTED_INDEX_NAME.match(index_name))
 
 
+def apply_index_name_env_override(knowledge: dict[str, Any]) -> None:
+    """Apply ``OPENSEARCH_INDEX_NAME`` onto a ``knowledge`` config dict in place.
+
+    The index name is a role-gated infra setting (``securityconfig/roles.yml``),
+    shared by every workspace on a deployment, not a user preference. This
+    override therefore always wins when the env var is set — independent of the
+    storage mode or the ``edited`` flag — so the ingest-write path and the
+    connector enrichment path can never resolve different index names (issue
+    81583). Mirrors the unconditional ``legacy_embedding_provider_map`` override.
+
+    An env value outside the security role's index patterns is rejected and the
+    prior value kept, since applying it would break search/write with a 403.
+    """
+    env_index_name = os.getenv("OPENSEARCH_INDEX_NAME")
+    if not env_index_name:
+        return
+    if not is_permitted_index_name(env_index_name):
+        logger.error(
+            f"OPENSEARCH_INDEX_NAME={env_index_name!r} is not permitted by the "
+            f"OpenSearch security role (must match one of "
+            f"{ALLOWED_INDEX_NAME_PATTERNS}); ignoring and keeping "
+            f"{knowledge.get('index_name', 'documents')!r}. "
+            "See securityconfig/roles.yml."
+        )
+        return
+    if knowledge.get("index_name") not in (None, env_index_name):
+        logger.warning(
+            f"Stored index_name {knowledge.get('index_name')!r} overridden by "
+            f"OPENSEARCH_INDEX_NAME={env_index_name!r}"
+        )
+    knowledge["index_name"] = env_index_name
+
+
 def _validate_config_path(config_file: str | Path) -> Path:
     """Validate a config file path against a strict allowlist (anti path-injection)."""
     value = os.fspath(config_file)
@@ -528,6 +561,10 @@ class ConfigManager:
                     error=str(e),
                 )
 
+        # The index name is infra, not a user preference: it must resolve the
+        # same way after onboarding marks the config edited (issue 81583).
+        apply_index_name_env_override(config_data["knowledge"])
+
         # Skip all environment overrides if config has been manually edited
         if temp_config and temp_config.edited:
             logger.debug("Skipping all env overrides - config marked as edited")
@@ -562,18 +599,7 @@ class ConfigManager:
             config_data["knowledge"]["chunk_size"] = int(os.getenv("CHUNK_SIZE"))
         if os.getenv("CHUNK_OVERLAP"):
             config_data["knowledge"]["chunk_overlap"] = int(os.getenv("CHUNK_OVERLAP"))
-        if os.getenv("OPENSEARCH_INDEX_NAME"):
-            env_index_name = os.getenv("OPENSEARCH_INDEX_NAME")
-            if is_permitted_index_name(env_index_name):
-                config_data["knowledge"]["index_name"] = env_index_name
-            else:
-                logger.error(
-                    f"OPENSEARCH_INDEX_NAME={env_index_name!r} is not permitted by the "
-                    f"OpenSearch security role (must match one of "
-                    f"{ALLOWED_INDEX_NAME_PATTERNS}); ignoring and keeping "
-                    f"{config_data['knowledge'].get('index_name', 'documents')!r}. "
-                    "See securityconfig/roles.yml."
-                )
+        # OPENSEARCH_INDEX_NAME is applied above, before the edited-flag gate.
         if os.getenv("OCR_ENABLED"):
             config_data["knowledge"]["ocr"] = os.getenv("OCR_ENABLED").lower() in (
                 "true",
