@@ -21,7 +21,18 @@ logger = get_logger(__name__)
 
 # Provider names in priority order. LLM supports anthropic; embeddings do not.
 _LLM_PROVIDER_NAMES = ("openai", "anthropic", "watsonx", "ollama")
+# Embedding providers with a Langflow flow component - langflow_sync.py's
+# change_langflow_model_value() only recognizes these and raises ValueError
+# for anything else, so this list must stay exactly the providers that have
+# a Langflow embedding component.
 _EMBEDDING_PROVIDER_NAMES = ("openai", "watsonx", "ollama")
+# All embedding providers OpenRAG supports, including ones with no Langflow
+# component (bedrock is ingested/queried entirely via the native,
+# non-Langflow path - see services/search_service.py and
+# models/processors.py). Use this one for provider-agnostic logic like
+# fallback selection; use _EMBEDDING_PROVIDER_NAMES specifically where
+# Langflow flow syncing is involved.
+_ALL_EMBEDDING_PROVIDER_NAMES = (*_EMBEDDING_PROVIDER_NAMES, "bedrock")
 
 
 def _configured_provider_names(config, provider_names) -> list:
@@ -62,7 +73,8 @@ def _first_configured_llm_provider(config, excluding: str) -> str:
 
 
 def _first_configured_embedding_provider(config, excluding: str) -> str:
-    """Return the first configured embedding provider that isn't `excluding`, or "" if none.
+    """Return the first configured embedding provider (openai/watsonx/ollama/bedrock)
+    that isn't `excluding`, or "" if none.
 
     Providers hidden in this run mode are skipped, as in
     ``_first_configured_llm_provider``.
@@ -70,7 +82,7 @@ def _first_configured_embedding_provider(config, excluding: str) -> str:
     from config.model_providers import visible_provider_keys
 
     visible = visible_provider_keys()
-    for p in _EMBEDDING_PROVIDER_NAMES:
+    for p in _ALL_EMBEDDING_PROVIDER_NAMES:
         if p != excluding and p in visible and getattr(config.providers, p).configured:
             return p
     from services.model_catalog import catalog

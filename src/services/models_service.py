@@ -37,6 +37,21 @@ def _watsonx_rate_limited(failures: list[tuple[str, int, str]]) -> bool:
     return False
 
 
+KNOWN_PREFIXES = ["openai", "ollama", "watsonx", "anthropic", "bedrock"]
+
+
+def is_cohere_embedding_model(model_name: str) -> bool:
+    """Return True if ``model_name`` looks like a Cohere embedding model.
+
+    Cohere's Embed models (served via Bedrock, OCI GenAI, or Cohere's own
+    API) require an ``input_type`` parameter on every embedding call - there
+    is no default. Matching on the model name substring (rather than e.g.
+    "resolved provider == bedrock") is more robust: it also covers other
+    Cohere-serving providers using the same litellm embeddings.create() path
+    without needing a provider-specific branch at each call site.
+    """
+    return "cohere" in (model_name or "").lower()
+
 # OpenAI /v1/models is a flat inventory. These IDs are real products but not
 # usable as OpenRAG agent LLMs (wrong modality / API surface).
 _OPENAI_NON_CHAT_PREFIXES = (
@@ -202,6 +217,17 @@ class ModelsService:
                         self.add_models(res, "watsonx", new_registry)
                     except Exception as e:
                         logger.debug(f"Could not fetch WatsonX models for registry: {str(e)}")
+
+                # Bedrock. Gated on `region` (the one field always required,
+                # even with IAM-role/IRSA auth) rather than `configured`,
+                # mirroring the other providers' gate on their one
+                # always-required field (e.g. watsonx.api_key above).
+                if config.providers.bedrock.region:
+                    try:
+                        res = await self.get_bedrock_models(update_index=False)
+                        self.add_models(res, "bedrock", new_registry)
+                    except Exception as e:
+                        logger.debug(f"Could not fetch Bedrock models for registry: {str(e)}")
 
                 from services.model_catalog import catalog
 
@@ -790,3 +816,42 @@ class ModelsService:
         except Exception as e:
             logger.error(f"Error fetching IBM models: {str(e)}")
             raise
+
+    async def get_bedrock_models(
+        self, update_index: bool = True
+    ) -> Dict[str, List[Dict[str, str]]]:
+        """Return the static list of AWS Bedrock Cohere Embed models OpenRAG supports.
+
+        Unlike the other providers, this is not fetched via a live API call:
+        Bedrock's ListFoundationModels API requires a signed SigV4 request
+        (an AWS SDK dependency this project doesn't otherwise need, since
+        embedding calls themselves are routed entirely through LiteLLM), and
+        the small, stable set of Cohere Embed model IDs Bedrock exposes
+        doesn't change often enough to justify one. Bedrock is currently
+        wired as an embedding-only provider, so "language_models" is empty.
+        """
+        result: Dict[str, List[Dict[str, str]]] = {
+            "language_models": [],
+            "embedding_models": [
+                {
+                    "value": "cohere.embed-english-v3",
+                    "label": "Cohere Embed English v3",
+                    "default": False,
+                },
+                {
+                    "value": "cohere.embed-multilingual-v3",
+                    "label": "Cohere Embed Multilingual v3",
+                    "default": True,
+                },
+                {
+                    "value": "cohere.embed-v4:0",
+                    "label": "Cohere Embed v4",
+                    "default": False,
+                },
+            ],
+        }
+
+        if update_index:
+            await self.add_models_to_registry(result, "bedrock")
+
+        return result

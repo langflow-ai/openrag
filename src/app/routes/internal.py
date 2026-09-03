@@ -442,6 +442,9 @@ def register_internal_routes(app: FastAPI):
     app.add_api_route(
         "/models/providers", models.get_model_providers, methods=["GET"], tags=["internal"]
     )
+    app.add_api_route(
+        "/models/bedrock", models.get_bedrock_models, methods=["POST"], tags=["internal"]
+    )
 
     # Onboarding endpoints
     app.add_api_route("/onboarding", settings.onboarding, methods=["POST"], tags=["internal"])

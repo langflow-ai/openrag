@@ -177,11 +177,23 @@ class GenericProviderConfig(BaseModel):
     secret_fields: list[str] = Field(default_factory=list)
 
 
+class BedrockProviderConfig(BaseModel):
+    has_access_key: bool
+    region: str | None
+    configured: bool
+
+
 class ProvidersConfig(BaseModel):
     openai: OpenAIProviderConfig
     anthropic: AnthropicProviderConfig
     watsonx: WatsonXProviderConfig
     ollama: OllamaProviderConfig
+    # Optional with a default: unlike the other providers, `get_settings()`
+    # does not yet populate this (Bedrock is primarily configured via env
+    # vars/IAM role rather than the settings UI - see settings/endpoints.py
+    # follow-up). Keeping it optional means the endpoint doesn't need to
+    # change today to keep constructing a valid response.
+    bedrock: BedrockProviderConfig | None = None
     custom: dict[str, GenericProviderConfig] = Field(default_factory=dict)
 
 

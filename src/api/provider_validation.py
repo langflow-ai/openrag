@@ -623,7 +623,7 @@ async def validate_provider_setup(
     Validate provider setup by testing completion with tool calling and embedding.
 
     Args:
-        provider: Provider name ('openai', 'watsonx', 'ollama', 'anthropic')
+        provider: Provider name ('openai', 'watsonx', 'ollama', 'anthropic', 'bedrock')
         api_key: API key for the provider (optional for ollama)
         embedding_model: Embedding model to test
         llm_model: LLM model to test
@@ -738,6 +738,8 @@ async def test_lightweight_health(
         await _test_ollama_lightweight_health(endpoint)
     elif provider == "anthropic":
         await _test_anthropic_lightweight_health(api_key)
+    elif provider == "bedrock":
+        await _test_bedrock_lightweight_health()
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -778,6 +780,11 @@ async def test_embedding(
         await _test_watsonx_embedding(api_key, embedding_model, endpoint, project_id)
     elif provider == "ollama":
         await _test_ollama_embedding(embedding_model, endpoint)
+    elif provider == "bedrock":
+        # No boto3/SigV4 dependency to make a real signed embedding call from
+        # here; fall back to the same credential-shape check as the
+        # lightweight health check (see _test_bedrock_lightweight_health).
+        await _test_bedrock_lightweight_health()
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -1435,3 +1442,39 @@ async def _test_anthropic_completion_with_tools(api_key: str, llm_model: str) ->
     except Exception as e:
         logger.error(f"Anthropic completion test failed: {str(e)}")
         raise
+
+
+# Bedrock validation functions
+async def _test_bedrock_lightweight_health() -> None:
+    """Validate AWS Bedrock credential *shape* without making a live cloud call.
+
+    Bedrock authentication is AWS SigV4 request signing (via IAM access
+    keys or an IAM role/IRSA), performed by LiteLLM at call time - OpenRAG
+    never signs a request directly here. A genuine "cheap" probe (e.g. a
+    signed ``ListFoundationModels`` call) would require adding an AWS SDK
+    dependency solely for this health check, which is out of scope since
+    embedding calls themselves are routed entirely through LiteLLM.
+
+    Instead this validates configuration shape: a region is required (with
+    or without explicit keys), and if either access key field is set, both
+    must be set together (a lone key or lone secret is almost always a
+    misconfiguration; IAM role/IRSA setups leave both blank).
+
+    Reads directly from config rather than accepting api_key/endpoint
+    params like the other `_test_*_lightweight_health` functions, because
+    BedrockConfig's field names (region/access_key_id/secret_access_key)
+    don't line up with the generic api_key/endpoint slots the shared
+    validation call chain (validate_provider_setup -> test_lightweight_health)
+    threads through for every provider.
+    """
+    from config.config_manager import config_manager
+
+    bedrock_config = config_manager.get_config().providers.bedrock
+    if not bedrock_config.region:
+        raise Exception("AWS Bedrock requires a region to be configured")
+    if bool(bedrock_config.access_key_id) != bool(bedrock_config.secret_access_key):
+        raise Exception(
+            "AWS Bedrock requires both access_key_id and secret_access_key to be "
+            "set together, or both left blank to use an IAM role"
+        )
+    logger.info("Bedrock lightweight health check passed - credential shape is valid")

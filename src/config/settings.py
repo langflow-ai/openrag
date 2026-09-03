@@ -1211,6 +1211,19 @@ class AppClients:
                     os.environ["OLLAMA_ENDPOINT"] = config.providers.ollama.endpoint
                     logger.debug("Loaded Ollama endpoint from config")
 
+                # Set Bedrock credentials. access_key_id/secret_access_key are
+                # only set if explicitly configured, so an IAM role (e.g.
+                # IRSA) can be used with zero explicit creds; region is
+                # always set whenever configured since LiteLLM needs it to
+                # route/sign every Bedrock request regardless of auth mode.
+                if config.providers.bedrock.access_key_id:
+                    os.environ["AWS_ACCESS_KEY_ID"] = config.providers.bedrock.access_key_id
+                if config.providers.bedrock.secret_access_key:
+                    os.environ["AWS_SECRET_ACCESS_KEY"] = config.providers.bedrock.secret_access_key
+                if config.providers.bedrock.region:
+                    os.environ["AWS_REGION_NAME"] = config.providers.bedrock.region
+                    logger.debug("Loaded Bedrock credentials from config")
+
                 # Determine model and provider for both probe and production client
                 model_name = config.knowledge.embedding_model or OPENAI_DEFAULT_EMBEDDING_MODEL
                 provider = config.knowledge.embedding_provider or "openai"
