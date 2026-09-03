@@ -463,20 +463,25 @@ def _model_owners(providers: tuple[ProviderEntry, ...]) -> dict[str, tuple[str, 
     return {model: tuple(sorted(keys)) for model, keys in owners.items()}
 
 
+def catalog_owners(model: str) -> tuple[str, ...]:
+    """Every provider in this run mode whose catalogue lists `model`."""
+    name = (model or "").strip()
+    if not name:
+        return ()
+    try:
+        return _model_owners(visible_provider_entries()).get(name) or ()
+    except Exception:
+        return ()
+
+
 def catalog_owner(model: str) -> str | None:
     """The single provider that serves `model`, if exactly one does.
 
     Used to disambiguate vendor-qualified names such as `openai/gpt-oss-120b`,
     which watsonx serves and whose own prefix names a different provider.
     """
-    name = (model or "").strip()
-    if not name:
-        return None
-    try:
-        owners = _model_owners(visible_provider_entries()).get(name)
-    except Exception:
-        return None
-    return owners[0] if owners and len(owners) == 1 else None
+    owners = catalog_owners(model)
+    return owners[0] if len(owners) == 1 else None
 
 
 def PROVIDER_SEPARATOR_SAFE_CHECK() -> list[str]:

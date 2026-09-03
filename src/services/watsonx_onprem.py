@@ -22,6 +22,37 @@ What differs is everything around the call:
 The provider key is OpenRAG's own; `LITELLM_PROVIDER` is what it routes as.
 Nothing here imports OpenRAG config — `config_manager`, `model_catalog` and
 `llm_gateway` all read this module, so it has to stay a leaf.
+
+TLS: trusting a cluster's own CA
+--------------------------------
+A CPD cluster is usually fronted by an internal or self-signed CA, and the call
+then fails before it leaves the process::
+
+    litellm.InternalServerError: WatsonxException - Cannot connect to host
+    <cluster>:443 ssl:True [SSLCertVerificationError: ... certificate verify
+    failed: self-signed certificate in certificate chain]
+
+There is no per-provider setting for this, and no OpenRAG one either. LiteLLM
+resolves TLS trust from process-wide environment only — verified against
+litellm 1.84 with a self-signed server, chat and embeddings both:
+
+- ``SSL_CERT_FILE=<path>``   works. **This is the fix.**
+- ``SSL_VERIFY=false``       works, but turns verification off for *every*
+  provider in the process, OpenAI and Anthropic included. Development only.
+- ``ssl_verify=False`` as a per-call kwarg does **not** work: litellm threads it
+  through only some providers, and watsonx is not one of them. It is silently
+  ignored, so do not reach for it.
+
+``SSL_CERT_FILE`` *replaces* certifi's roots rather than adding to them, so
+pointing it at the cluster CA alone breaks every public provider. Concatenate::
+
+    cat "$(python -m certifi)" cluster-ca.crt > /etc/ssl/certs/openrag-ca.pem
+    export SSL_CERT_FILE=/etc/ssl/certs/openrag-ca.pem
+
+In Kubernetes, mount the cluster CA into the backend pod and build that bundle
+in the entrypoint; the operator's ConfigMap is the usual home for the CA. A
+failure that gets this far is reported by the gateway as a trust problem rather
+than as an outage — see ``_UPSTREAM_TLS_MESSAGE`` in ``services/llm_gateway``.
 """
 
 from __future__ import annotations
@@ -164,6 +195,36 @@ def litellm_credentials(stored: Mapping[str, Any]) -> dict[str, str]:
     if credentials:
         install_litellm_compatibility()
     return credentials
+
+
+#: Catalogue endpoint used to check credentials. It needs no model, no project
+#: and no space, which is what makes it a health check the provider can pass
+#: before anything has been selected in Settings.
+MODEL_SPECS_PATH = "/ml/v1/foundation_model_specs"
+
+#: Pinned to what LiteLLM itself calls with, so the health check exercises the
+#: same API contract as real traffic rather than a newer one the cluster may
+#: not serve.
+API_VERSION = "2024-03-13"
+
+
+def auth_header(stored: Mapping[str, Any]) -> str:
+    """The `Authorization` value for OpenRAG's own calls to the cluster.
+
+    The health check talks to `/ml/v1` directly rather than through LiteLLM, so
+    it has to build the same header LiteLLM would.
+    """
+    credentials = litellm_credentials(stored)
+    if credentials.get("zen_api_key"):
+        return f"ZenApiKey {credentials['zen_api_key']}"
+    if credentials.get("api_key"):
+        return f"Bearer {credentials['api_key']}"
+    return ""
+
+
+def model_specs_url(api_base: str) -> str:
+    """The catalogue URL on `api_base`, however the operator typed the cluster URL."""
+    return f"{(api_base or '').rstrip('/')}{MODEL_SPECS_PATH}?version={API_VERSION}"
 
 
 # --------------------------------------------------------------------------
