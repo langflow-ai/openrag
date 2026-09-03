@@ -21,6 +21,7 @@ from utils.embedding_fields import (
     embedding_spaces_from_aggregation,
     get_embedding_field_name,
     get_embedding_space_id,
+    normalize_model_name,
     split_embedding_space_id,
 )
 
@@ -222,3 +223,12 @@ class TestBuildKnnVectorFieldCallSitesMatch:
         assert "chunk_embedding_azure_text_embedding_3_small" in properties
         assert properties["embedding_provider"] == {"type": "keyword"}
         assert properties["embedding_space_id"] == {"type": "keyword"}
+
+
+class TestNormalizeModelName:
+    """normalize_model_name() must produce distinct, safe field-name suffixes."""
+
+    def test_still_distinguishes_cohere_variants(self) -> None:
+        a = normalize_model_name("cohere.embed-multilingual-v3")
+        b = normalize_model_name("cohere.embed-multilingual-v3.0")
+        assert a != b

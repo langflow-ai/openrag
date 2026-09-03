@@ -222,7 +222,13 @@ def resolve_call(
         provider = default_provider(kind, cfg)
         name = requested
     credentials = provider_credentials(provider, cfg)
-    litellm_model = f"{provider}/{name}" if provider != "openai" else name
+    # Always qualify with the provider - including "openai". litellm only
+    # infers the provider from a bare model name via its own static catalogue
+    # (e.g. "gpt-4o"), so a custom/self-hosted OpenAI-compatible gateway
+    # serving a model outside that catalogue (e.g. "gpt-oss-120b",
+    # "Qwen3-Embedding-8B") would otherwise have no provider to route on at
+    # all, even though api_base/api_key are already being passed correctly.
+    litellm_model = f"{provider}/{name}"
     return litellm_model, provider, credentials
 
 

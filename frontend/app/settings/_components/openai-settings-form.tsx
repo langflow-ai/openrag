@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 
 export interface OpenAISettingsFormData {
   apiKey: string;
+  baseUrl?: string;
 }
 
 export function OpenAISettingsForm({
@@ -51,6 +52,20 @@ export function OpenAISettingsForm({
         {isLoadingModels && (
           <p className="text-sm text-muted-foreground">Validating API key...</p>
         )}
+      </div>
+      <div className="min-w-0 space-y-2">
+        <LabelWrapper
+          label="Base URL"
+          helperText="Optional: point to a self-hosted OpenAI-compatible gateway instead of api.openai.com"
+          id="base-url"
+        >
+          <Input
+            {...register("baseUrl")}
+            id="base-url"
+            type="text"
+            placeholder="https://api.openai.com/v1"
+          />
+        </LabelWrapper>
       </div>
       <p className="text-sm text-muted-foreground">
         Configure language and embedding models in the Settings page after
