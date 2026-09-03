@@ -270,7 +270,8 @@ export function TaskNotificationMenu() {
       if (
         task.status === "cancelled" ||
         task.status === "failed" ||
-        task.status === "completed"
+        task.status === "completed" ||
+        task.status === "error"
       ) {
         terminalTaskIds.add(task.task_id);
       }
