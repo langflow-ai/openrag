@@ -17,9 +17,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useAuth } from "@/contexts/auth-context";
 import { useOnboardingState } from "@/hooks/use-onboarding-state";
+import { useSettingsTabAccess } from "@/hooks/use-permissions";
+import { canManageFlowUpdates, canViewFlowUpdates } from "@/lib/brand";
 import { formatFlowName } from "@/lib/utils";
+
+const SESSION_DISMISSED_KEY = "openrag_flows_update_dismissed_session";
 
 interface FlowsUpdateDialogProps {
   overrideOpen?: boolean;
@@ -32,22 +35,32 @@ export function FlowsUpdateDialog({
   onOpenChange,
   isOnboarding: propIsOnboarding,
 }: FlowsUpdateDialogProps = {}) {
-  const { roles, isNoAuthMode, rbacEnforced, can } = useAuth();
-  const isAdmin =
-    isNoAuthMode ||
-    !rbacEnforced ||
-    roles.includes("admin") ||
-    can("config:write");
+  const tabAccess = useSettingsTabAccess();
+  const isAdmin = canManageFlowUpdates(tabAccess);
+  const canView = canViewFlowUpdates(tabAccess);
 
   const { isOnboardingComplete } = useOnboardingState();
   const isOnboarding = propIsOnboarding ?? !isOnboardingComplete;
 
   const { data: updates, isLoading } = useGetFlowsUpdatesQuery({
-    enabled: true,
+    enabled: canView,
   });
   const updateMutation = useUpdateFlowsMutation();
   const dismissMutation = useDismissFlowsUpdateMutation();
   const [internalIsOpen, setInternalIsOpen] = useState(false);
+  const [isSessionDismissed, setIsSessionDismissed] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      if (sessionStorage.getItem(SESSION_DISMISSED_KEY)) {
+        setIsSessionDismissed(true);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
   const [showSkipConfirm, setShowSkipConfirm] = useState(false);
   const [showUpdateConfirm, setShowUpdateConfirm] = useState(false);
   const [isUpdatingWithBackup, setIsUpdatingWithBackup] = useState<
@@ -78,7 +91,9 @@ export function FlowsUpdateDialog({
   }
 
   const isMainOpen =
-    !showSkipConfirm && !showUpdateConfirm && (overrideOpen ?? internalIsOpen);
+    !showSkipConfirm &&
+    !showUpdateConfirm &&
+    (overrideOpen ?? (internalIsOpen && !(!isAdmin && isSessionDismissed)));
 
   const handleClose = () => {
     setInternalIsOpen(false);
@@ -98,6 +113,18 @@ export function FlowsUpdateDialog({
     } catch (e) {
       console.error("Failed to dismiss flow updates", e);
     }
+  };
+
+  const handleNonAdminDismiss = () => {
+    handleClose();
+    if (typeof window !== "undefined") {
+      try {
+        sessionStorage.setItem(SESSION_DISMISSED_KEY, "true");
+      } catch {
+        // ignore
+      }
+    }
+    setIsSessionDismissed(true);
   };
 
   const handleSkipClick = () => {
@@ -158,6 +185,7 @@ export function FlowsUpdateDialog({
   if (targetUpdates.length === 0) return null;
   if (overrideOpen === undefined && undismissedUpdates.length === 0)
     return null;
+  if (!isAdmin && overrideOpen === undefined && isSessionDismissed) return null;
 
   if (!isAdmin) {
     return (
@@ -183,7 +211,7 @@ export function FlowsUpdateDialog({
           </div>
 
           <DialogFooter>
-            <Button onClick={handleDismiss}>
+            <Button onClick={handleNonAdminDismiss}>
               <div>Understood</div>
             </Button>
           </DialogFooter>

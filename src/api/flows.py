@@ -18,7 +18,7 @@ FlowType = Literal["nudges", "retrieval", "ingest"]
 async def reset_flow_endpoint(
     flow_type: str,
     flows_service=Depends(get_flows_service),
-    user: User = Depends(require_permission("config:write")),
+    user: User = Depends(require_permission("flows:edit")),
 ):
     """Reset a Langflow flow by type (nudges, retrieval, or ingest)"""
     if flow_type not in ["nudges", "retrieval", "ingest"]:

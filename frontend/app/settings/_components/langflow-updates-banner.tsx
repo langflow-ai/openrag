@@ -4,25 +4,25 @@ import { AlertTriangle, X } from "lucide-react";
 import { useState } from "react";
 import { useGetFlowsUpdatesQuery } from "@/app/api/queries/useGetFlowsUpdatesQuery";
 import { FlowsUpdateDialog } from "@/components/flows-update-dialog";
-import { useAuth } from "@/contexts/auth-context";
 import { useBrand } from "@/contexts/brand-context";
-import { usePermissions } from "@/hooks/use-permissions";
+import { useSettingsTabAccess } from "@/hooks/use-permissions";
+import { canViewFlowUpdates } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 
 export function LangflowUpdatesBanner() {
   const { brand } = useBrand();
   const isIbm = brand === "ibm";
-  const { can } = usePermissions();
-  const canEdit = can("config:write");
+  const tabAccess = useSettingsTabAccess();
+  const canView = canViewFlowUpdates(tabAccess);
   const { data: updates, isLoading } = useGetFlowsUpdatesQuery({
-    enabled: canEdit,
+    enabled: canView,
   });
   const [isDismissed, setIsDismissed] = useState(false);
   const [showModal, setShowModal] = useState(false);
 
   const hasUpdates = (updates?.length ?? 0) > 0;
 
-  if (!canEdit || isLoading || !updates || !hasUpdates || isDismissed) {
+  if (!canView || isLoading || !updates || !hasUpdates || isDismissed) {
     return null;
   }
 
