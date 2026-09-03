@@ -219,3 +219,68 @@ async def test_reinstall_does_not_chain_closures(tmp_config_manager, session_fac
     await svc1.await_pending_mirrors()
     await svc2.await_pending_mirrors()
     delattr(tmp_config_manager, "_db_mirror_installed")
+
+
+# ---------------------------------------------------------------------------
+# OPENSEARCH_INDEX_NAME override on the DB-backed loader (issue 81583)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_db_load_applies_index_name_env_override_when_row_missing_it(
+    monkeypatch, tmp_config_manager, session_factory
+):
+    """db mode builds config straight from DB rows; the env-configured index
+    name must still win so the enrichment path can't resolve a stale default."""
+    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "db")
+    monkeypatch.setenv("OPENSEARCH_INDEX_NAME", "orag-documents")
+    svc = WorkspaceConfigService(
+        config_manager=tmp_config_manager, session_factory=session_factory
+    )
+    async with session_factory() as session:
+        # A knowledge row that predates index_name being persisted, plus the
+        # edited marker a completed onboarding leaves behind.
+        await WorkspaceConfigRepo(session).upsert("knowledge", {"chunk_size": 512})
+        await WorkspaceConfigRepo(session).upsert("meta", {"edited": True})
+        await session.commit()
+
+    config = await svc.load_config()
+
+    assert config.knowledge.index_name == "orag-documents"
+
+
+@pytest.mark.asyncio
+async def test_db_load_index_name_env_override_beats_stored_value(
+    monkeypatch, tmp_config_manager, session_factory
+):
+    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "db")
+    monkeypatch.setenv("OPENSEARCH_INDEX_NAME", "orag-documents")
+    svc = WorkspaceConfigService(
+        config_manager=tmp_config_manager, session_factory=session_factory
+    )
+    async with session_factory() as session:
+        await WorkspaceConfigRepo(session).upsert(
+            "knowledge", {"index_name": "documents"}
+        )
+        await session.commit()
+
+    config = await svc.load_config()
+
+    assert config.knowledge.index_name == "orag-documents"
+
+
+@pytest.mark.asyncio
+async def test_db_load_applies_index_name_env_override_on_empty_db(
+    monkeypatch, tmp_config_manager, session_factory
+):
+    """Pre-migration boot in pure-db mode returns defaults from an empty DB;
+    the index name must come from the env, not the dataclass default."""
+    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "db")
+    monkeypatch.setenv("OPENSEARCH_INDEX_NAME", "orag-documents")
+    svc = WorkspaceConfigService(
+        config_manager=tmp_config_manager, session_factory=session_factory
+    )
+
+    config = await svc.load_config()
+
+    assert config.knowledge.index_name == "orag-documents"
