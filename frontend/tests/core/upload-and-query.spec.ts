@@ -54,7 +54,7 @@ test.describe("Document Upload and Query @33219204 , @34548303 , @34548305 , @34
       TEST_CONFIG.timeouts.default,
     );
     expect(responseUnrelated).toMatch(
-      /no (relevant|documents|sources|results|information)|did not (return|provide|find|yield)|not found|cannot find|unable to locate|could not find|couldn't find/i,
+      /no (relevant|documents|sources|results|information)|did not (return|provide|find|yield)|not found|cannot find|unable to locate|could not find|couldn['’]t find/i,
     );
 
     // //--- SCENARIO 2: Upload password protected file ---
