@@ -13,7 +13,7 @@ from collections.abc import AsyncIterator, Mapping
 from typing import Any, Literal
 
 from services import provider_error_log
-from services.model_catalog import is_known_provider
+from services.model_catalog import is_known_provider, litellm_provider_key
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -222,7 +222,11 @@ def resolve_call(
         provider = default_provider(kind, cfg)
         name = requested
     credentials = provider_credentials(provider, cfg)
-    litellm_model = f"{provider}/{name}" if provider != "openai" else name
+    # An OpenRAG provider that LiteLLM does not know by that name is routed
+    # under the key it aliases (`watsonx_onprem` -> `watsonx`). The OpenRAG key
+    # is still what the caller sees and what credentials are stored under.
+    route = litellm_provider_key(provider)
+    litellm_model = f"{route}/{name}" if route != "openai" else name
     return litellm_model, provider, credentials
 
 
