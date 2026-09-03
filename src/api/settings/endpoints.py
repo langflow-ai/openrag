@@ -1223,6 +1223,9 @@ async def onboarding(
             elif llm_provider == "ollama" and current_config.providers.ollama.endpoint:
                 current_config.providers.ollama.configured = True
                 logger.info("Marked Ollama as configured (chosen as LLM provider)")
+            elif llm_provider in current_config.providers.custom and current_config.providers.custom[llm_provider].credentials:
+                current_config.providers.custom[llm_provider].configured = True
+                logger.info(f"Marked {llm_provider} as configured (chosen as LLM provider)")
 
         # Check embedding provider
         if body.embedding_provider:
@@ -1241,6 +1244,9 @@ async def onboarding(
             elif embedding_provider == "ollama" and current_config.providers.ollama.endpoint:
                 current_config.providers.ollama.configured = True
                 logger.info("Marked Ollama as configured (chosen as embedding provider)")
+            elif embedding_provider in current_config.providers.custom and current_config.providers.custom[embedding_provider].credentials:
+                current_config.providers.custom[embedding_provider].configured = True
+                logger.info(f"Marked {embedding_provider} as configured (chosen as embedding provider)")
 
         should_ingest_sample_data = INGEST_SAMPLE_DATA
         if should_ingest_sample_data:

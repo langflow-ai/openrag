@@ -29,7 +29,13 @@ env:
   OPENSEARCH_PASSWORD: ${{ vars.OPENSEARCH_PASSWORD || secrets.OPENSEARCH_PASSWORD || 'OpenRag#2025!' }}
   LANGFLOW_SUPERUSER: "admin"
   LANGFLOW_SUPERUSER_PASSWORD: ${{ vars.LANGFLOW_SUPERUSER_PASSWORD || secrets.LANGFLOW_SUPERUSER_PASSWORD || 'OpenRag#2025!' }}
-  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+  AZURE_OPENAI_ENDPOINT: ${{ vars.AZURE_OPENAI_ENDPOINT || secrets.AZURE_OPENAI_ENDPOINT }}
+  AZURE_OPENAI_API_VERSION: ${{ vars.AZURE_OPENAI_API_VERSION || secrets.AZURE_OPENAI_API_VERSION || '2024-02-01' }}
+  LLM_PROVIDER: "azure"
+  EMBEDDING_PROVIDER: "azure"
+  LLM_MODEL: "gpt-4.1"
+  EMBEDDING_MODEL: "text-embedding-3-small"
   LANGFLOW_AUTO_LOGIN: "True"
   LANGFLOW_NEW_USER_IS_ACTIVE: "True"
   LANGFLOW_ENABLE_SUPERUSER_CLI: "True"
@@ -461,6 +467,13 @@ jobs:
           LANGFLOW_SUPERUSER_PASSWORD: ${{ env.LANGFLOW_SUPERUSER_PASSWORD }}
           GOOGLE_OAUTH_CLIENT_ID: ""
           GOOGLE_OAUTH_CLIENT_SECRET: ""
+          AZURE_OPENAI_API_KEY: ${{ env.AZURE_OPENAI_API_KEY }}
+          AZURE_OPENAI_ENDPOINT: ${{ env.AZURE_OPENAI_ENDPOINT }}
+          AZURE_OPENAI_API_VERSION: ${{ env.AZURE_OPENAI_API_VERSION }}
+          LLM_PROVIDER: "azure"
+          EMBEDDING_PROVIDER: "azure"
+          LLM_MODEL: "gpt-4.1"
+          EMBEDDING_MODEL: "text-embedding-3-small"
         run: npx playwright test --shard=${{ matrix.shard }}/${{ matrix.total_shards }}
 
       - name: Collect service logs on failure

@@ -14,17 +14,37 @@ export interface ProviderConfig {
   required?: boolean; // If true, test will fail if provider not configured
 }
 
-// OpenAI Configuration (Required)
-export const OPENAI_CONFIG: ProviderConfig = {
-  provider: "OpenAI",
-  language: "gpt-5-mini",
-  embedding: "text-embedding-ada-002",
+// Azure OpenAI Configuration
+export const AZURE_CONFIG: ProviderConfig = {
+  provider: "Azure OpenAI",
+  language: "gpt-4.1",
+  embedding: "text-embedding-3-small",
   testCase: {
     url: "https://react.dev/reference/react/hooks",
     docName: "Built-in React Hooks – React",
   },
-  required: true, // OpenAI is required
+  required: true,
 };
+
+const hasAzure = Boolean(
+  process.env.AZURE_OPENAI_API_KEY ||
+    process.env.AZURE_API_KEY ||
+    process.env.LLM_PROVIDER === "azure",
+);
+
+// OpenAI / Primary Configuration
+export const OPENAI_CONFIG: ProviderConfig = hasAzure
+  ? AZURE_CONFIG
+  : {
+      provider: "OpenAI",
+      language: "gpt-5-mini",
+      embedding: "text-embedding-ada-002",
+      testCase: {
+        url: "https://react.dev/reference/react/hooks",
+        docName: "Built-in React Hooks – React",
+      },
+      required: true, // OpenAI is required
+    };
 
 // Ollama Configuration (Optional)
 export const OLLAMA_CONFIG: ProviderConfig = {
@@ -61,6 +81,7 @@ export const ANTHROPIC_CONFIG: ProviderConfig = {
 
 // All provider configurations
 export const PROVIDER_CONFIGS: ProviderConfig[] = [
+  AZURE_CONFIG,
   OPENAI_CONFIG,
   OLLAMA_CONFIG,
   WATSONX_CONFIG,

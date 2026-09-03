@@ -64,3 +64,28 @@ def test_blank_credentials_leave_an_existing_provider_untouched():
 
     assert config.providers.custom["gemini"].configured is True
     assert config.providers.credential_values("gemini") == {"api_key": "secret"}
+
+
+def test_azure_openai_env_overrides_and_defaults(monkeypatch, tmp_path):
+    from config.config_manager import ConfigManager
+
+    monkeypatch.setenv("AZURE_OPENAI_API_KEY", "test-azure-key")
+    monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://test-azure.openai.azure.com")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+    monkeypatch.delenv("EMBEDDING_PROVIDER", raising=False)
+    monkeypatch.delenv("LLM_MODEL", raising=False)
+    monkeypatch.delenv("EMBEDDING_MODEL", raising=False)
+
+    cm = ConfigManager(config_file=tmp_path / "config.yaml")
+    config = cm.load_config()
+
+    assert config.providers.custom["azure"].configured is True
+    assert config.providers.credential_values("azure") == {
+        "api_key": "test-azure-key",
+        "api_base": "https://test-azure.openai.azure.com",
+    }
+    assert config.agent.llm_provider == "azure"
+    assert config.agent.llm_model == "gpt-4.1"
+    assert config.knowledge.embedding_provider == "azure"
+    assert config.knowledge.embedding_model == "text-embedding-3-small"

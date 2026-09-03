@@ -553,11 +553,37 @@ class ConfigManager:
         if os.getenv("OLLAMA_ENDPOINT"):
             config_data["providers"]["ollama"]["endpoint"] = os.getenv("OLLAMA_ENDPOINT")
 
+        # Azure OpenAI provider settings
+        azure_key = os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("AZURE_API_KEY")
+        azure_endpoint = (
+            os.getenv("AZURE_OPENAI_ENDPOINT")
+            or os.getenv("AZURE_OPENAI_API_BASE")
+            or os.getenv("AZURE_API_BASE")
+        )
+        azure_version = os.getenv("AZURE_OPENAI_API_VERSION") or os.getenv("AZURE_API_VERSION")
+        if azure_key or azure_endpoint:
+            custom_providers = config_data.setdefault("providers", {}).setdefault("custom", {})
+            for prov_name in ("azure", "azure_ai"):
+                azure_custom = custom_providers.setdefault(prov_name, {})
+                azure_creds = azure_custom.setdefault("credentials", {})
+                if azure_key:
+                    azure_creds["api_key"] = azure_key
+                if azure_endpoint:
+                    azure_creds["api_base"] = azure_endpoint
+                if azure_version:
+                    azure_creds["api_version"] = azure_version
+                azure_custom["configured"] = bool(azure_creds.get("api_key") and azure_creds.get("api_base"))
+
         # Knowledge settings
         if os.getenv("EMBEDDING_MODEL"):
             config_data["knowledge"]["embedding_model"] = os.getenv("EMBEDDING_MODEL")
+        elif azure_key and azure_endpoint and not os.getenv("OPENAI_API_KEY") and not os.getenv("EMBEDDING_PROVIDER"):
+            config_data["knowledge"].setdefault("embedding_model", "text-embedding-3-small")
+
         if os.getenv("EMBEDDING_PROVIDER"):
             config_data["knowledge"]["embedding_provider"] = os.getenv("EMBEDDING_PROVIDER")
+        elif azure_key and azure_endpoint and not os.getenv("OPENAI_API_KEY"):
+            config_data["knowledge"].setdefault("embedding_provider", "azure")
         if os.getenv("CHUNK_SIZE"):
             config_data["knowledge"]["chunk_size"] = int(os.getenv("CHUNK_SIZE"))
         if os.getenv("CHUNK_OVERLAP"):
@@ -592,8 +618,14 @@ class ConfigManager:
         # Agent settings
         if os.getenv("LLM_MODEL"):
             config_data["agent"]["llm_model"] = os.getenv("LLM_MODEL")
+        elif azure_key and azure_endpoint and not os.getenv("OPENAI_API_KEY") and not os.getenv("LLM_PROVIDER"):
+            config_data["agent"].setdefault("llm_model", "gpt-4.1")
+
         if os.getenv("LLM_PROVIDER"):
             config_data["agent"]["llm_provider"] = os.getenv("LLM_PROVIDER")
+        elif azure_key and azure_endpoint and not os.getenv("OPENAI_API_KEY"):
+            config_data["agent"].setdefault("llm_provider", "azure")
+
         if os.getenv("SYSTEM_PROMPT"):
             config_data["agent"]["system_prompt"] = os.getenv("SYSTEM_PROMPT")
 

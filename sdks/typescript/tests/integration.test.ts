@@ -24,12 +24,38 @@ const SKIP_TESTS = process.env.SKIP_SDK_INTEGRATION_TESTS === "true";
 
 // Ensure the OpenRAG instance is onboarded before running tests
 async function ensureOnboarding(): Promise<void> {
-  const onboardingPayload = {
-    llm_provider: "openai",
-    embedding_provider: "openai",
-    embedding_model: "text-embedding-3-small",
-    llm_model: "gpt-4o-mini",
+  const azureKey = process.env.AZURE_OPENAI_API_KEY || process.env.AZURE_API_KEY;
+  const azureEndpoint =
+    process.env.AZURE_OPENAI_ENDPOINT ||
+    process.env.AZURE_OPENAI_API_BASE ||
+    process.env.AZURE_API_BASE;
+  const azureVersion =
+    process.env.AZURE_OPENAI_API_VERSION || process.env.AZURE_API_VERSION;
+  const useAzure = Boolean(azureKey || process.env.LLM_PROVIDER === "azure");
+
+  const llmProvider =
+    process.env.LLM_PROVIDER || (useAzure ? "azure" : "openai");
+  const embeddingProvider =
+    process.env.EMBEDDING_PROVIDER || (useAzure ? "azure" : "openai");
+  const llmModel =
+    process.env.LLM_MODEL ||
+    (llmProvider === "azure" ? "gpt-4.1" : "gpt-4o-mini");
+  const embeddingModel = process.env.EMBEDDING_MODEL || "text-embedding-3-small";
+
+  const onboardingPayload: Record<string, any> = {
+    llm_provider: llmProvider,
+    embedding_provider: embeddingProvider,
+    embedding_model: embeddingModel,
+    llm_model: llmModel,
   };
+  if (azureKey && azureEndpoint) {
+    const creds: Record<string, string> = {
+      api_key: azureKey,
+      api_base: azureEndpoint,
+    };
+    if (azureVersion) creds.api_version = azureVersion;
+    onboardingPayload.provider_credentials = { azure: creds };
+  }
 
   try {
     const response = await fetch(`${BASE_URL}/api/onboarding`, {

@@ -85,8 +85,13 @@ async def test_non_langflow_csv_ingestion_with_splitting(tmp_path: Path):
     """
     os.environ["DISABLE_INGEST_WITH_LANGFLOW"] = "true"
     os.environ["DISABLE_STARTUP_INGEST"] = "true"
-    os.environ["EMBEDDING_MODEL"] = "text-embedding-3-small"
-    os.environ["EMBEDDING_PROVIDER"] = "openai"
+    os.environ["EMBEDDING_MODEL"] = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
+    os.environ["EMBEDDING_PROVIDER"] = os.getenv(
+        "EMBEDDING_PROVIDER",
+        "azure"
+        if (os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("AZURE_API_KEY"))
+        else "openai",
+    )
     os.environ["GOOGLE_OAUTH_CLIENT_ID"] = ""
     os.environ["GOOGLE_OAUTH_CLIENT_SECRET"] = ""
 

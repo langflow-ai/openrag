@@ -1,14 +1,26 @@
 import { expect, type Page } from "@playwright/test";
 import path from "path";
 
-export type LLMProvider = "openai" | "anthropic" | "watsonx" | "ollama";
-export type EmbeddingProvider = "openai" | "watsonx" | "ollama";
+export type LLMProvider =
+  | "azure"
+  | "openai"
+  | "anthropic"
+  | "watsonx"
+  | "ollama";
+export type EmbeddingProvider = "azure" | "openai" | "watsonx" | "ollama";
+
+const defaultProvider: LLMProvider =
+  process.env.AZURE_OPENAI_API_KEY ||
+  process.env.AZURE_API_KEY ||
+  process.env.LLM_PROVIDER === "azure"
+    ? "azure"
+    : "openai";
 
 export async function completeOnboarding(
   page: Page,
   {
-    llmProvider = "openai",
-    embeddingProvider = "openai",
+    llmProvider = defaultProvider,
+    embeddingProvider = defaultProvider as EmbeddingProvider,
     reset = false,
   }: {
     llmProvider?: LLMProvider;
@@ -19,6 +31,16 @@ export async function completeOnboarding(
   // Fast path checks for environment variables
   const checkCredentials = (provider: string) => {
     if (provider === "ollama") return;
+    if (provider === "azure") {
+      const key = process.env.AZURE_OPENAI_API_KEY || process.env.AZURE_API_KEY;
+      const endpoint =
+        process.env.AZURE_OPENAI_ENDPOINT ||
+        process.env.AZURE_OPENAI_API_BASE ||
+        process.env.AZURE_API_BASE;
+      if (!key) throw new Error("AZURE_OPENAI_API_KEY is not set");
+      if (!endpoint) throw new Error("AZURE_OPENAI_ENDPOINT is not set");
+      return;
+    }
     const envVarName = `${provider.toUpperCase()}_API_KEY`;
     if (!process.env[envVarName]) {
       throw new Error(`${envVarName} is not set`);
@@ -62,7 +84,10 @@ export async function completeOnboarding(
   }
 
   const isCompleted = await completedLocator.isVisible();
-  const isFirstStep = await page.getByTestId("openai-llm-tab").isVisible();
+  const isFirstStep = await page
+    .getByTestId("openai-llm-tab")
+    .or(page.getByTestId("azure-llm-tab"))
+    .isVisible();
 
   if (isCompleted && !reset) {
     return;
@@ -90,7 +115,33 @@ export async function completeOnboarding(
     const tabId = `${provider}-${isEmbedding ? "embedding" : "llm"}-tab`;
     await page.getByTestId(tabId).click();
 
-    if (provider !== "ollama") {
+    if (provider === "azure") {
+      const endpoint =
+        process.env.AZURE_OPENAI_ENDPOINT ||
+        process.env.AZURE_OPENAI_API_BASE ||
+        process.env.AZURE_API_BASE ||
+        "";
+      const key =
+        process.env.AZURE_OPENAI_API_KEY || process.env.AZURE_API_KEY || "";
+      const baseInput = page.locator(
+        "#onboarding-azure-api_base, [data-testid='endpoint']",
+      );
+      if ((await baseInput.isVisible()) && (await baseInput.isEnabled())) {
+        const val = await baseInput.inputValue();
+        if (!val && endpoint) {
+          await baseInput.fill(endpoint);
+        }
+      }
+      const keyInput = page.locator(
+        "#onboarding-azure-api_key, [data-testid='api-key']",
+      );
+      if ((await keyInput.isVisible()) && (await keyInput.isEnabled())) {
+        const val = await keyInput.inputValue();
+        if (!val && key) {
+          await keyInput.fill(key);
+        }
+      }
+    } else if (provider !== "ollama") {
       const getFromEnvSwitch = page.getByTestId("get-from-env-switch");
 
       // Check if switch is visible and toggle off to enter explicit key if needed
@@ -137,12 +188,33 @@ export async function completeOnboarding(
     await expect(selector).toBeEnabled({ timeout: 30000 });
     await selector.click();
 
-    // Select the first available model
-    await expect(page.getByTestId(/^model-option-/).first()).toBeVisible();
-    await page
-      .getByTestId(/^model-option-/)
-      .first()
-      .click();
+    // Select preferred model if available, else first option
+    const preferredModel =
+      provider === "azure"
+        ? isEmbedding
+          ? "text-embedding-3-small"
+          : "gpt-4.1"
+        : undefined;
+
+    let selected = false;
+    if (preferredModel) {
+      const preferredOption = page.getByTestId(
+        `model-option-${preferredModel}`,
+      );
+      if (
+        await preferredOption.isVisible({ timeout: 2000 }).catch(() => false)
+      ) {
+        await preferredOption.click();
+        selected = true;
+      }
+    }
+    if (!selected) {
+      await expect(page.getByTestId(/^model-option-/).first()).toBeVisible();
+      await page
+        .getByTestId(/^model-option-/)
+        .first()
+        .click();
+    }
 
     // Complete this step
     await page.getByTestId("onboarding-complete-button").click();

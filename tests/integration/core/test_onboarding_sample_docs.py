@@ -65,8 +65,16 @@ async def _require_langflow_ready() -> None:
 
 @pytest_asyncio.fixture
 async def isolated_onboarding_docs_workspace(tmp_path: Path, monkeypatch):
-    if not os.getenv("OPENAI_API_KEY"):
-        pytest.skip("OPENAI_API_KEY is required for onboarding sample-doc ingestion")
+    has_azure = bool(
+        (os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("AZURE_API_KEY"))
+        and (
+            os.getenv("AZURE_OPENAI_ENDPOINT")
+            or os.getenv("AZURE_OPENAI_API_BASE")
+            or os.getenv("AZURE_API_BASE")
+        )
+    )
+    if not (has_azure or os.getenv("OPENAI_API_KEY")):
+        pytest.skip("AZURE_OPENAI_API_KEY (or OPENAI_API_KEY) is required for onboarding sample-doc ingestion")
     if not os.getenv("ANTHROPIC_API_KEY"):
         pytest.skip(
             "ANTHROPIC_API_KEY is required for onboarding sample-doc ingestion (ibm_anthropic.pdf)"
@@ -185,15 +193,35 @@ async def test_onboarding_ingests_sample_docs_and_creates_openrag_docs_filter(
 
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-            response = await _post_onboarding_when_langflow_ready(
-                client,
-                {
+            azure_key = os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("AZURE_API_KEY")
+            azure_endpoint = (
+                os.getenv("AZURE_OPENAI_ENDPOINT")
+                or os.getenv("AZURE_OPENAI_API_BASE")
+                or os.getenv("AZURE_API_BASE")
+            )
+            azure_version = os.getenv("AZURE_OPENAI_API_VERSION") or os.getenv("AZURE_API_VERSION")
+            if azure_key and azure_endpoint:
+                creds = {"api_key": azure_key, "api_base": azure_endpoint}
+                if azure_version:
+                    creds["api_version"] = azure_version
+                onboarding_body = {
+                    "llm_provider": "azure",
+                    "embedding_provider": "azure",
+                    "embedding_model": "text-embedding-3-small",
+                    "llm_model": "gpt-4.1",
+                    "provider_credentials": {"azure": creds},
+                }
+            else:
+                onboarding_body = {
                     "openai_api_key": os.environ["OPENAI_API_KEY"],
                     "llm_provider": "openai",
                     "embedding_provider": "openai",
                     "embedding_model": "text-embedding-3-small",
                     "llm_model": "gpt-4o-mini",
-                },
+                }
+            response = await _post_onboarding_when_langflow_ready(
+                client,
+                onboarding_body,
             )
 
         assert response.status_code == 200, response.text

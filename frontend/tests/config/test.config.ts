@@ -20,7 +20,20 @@ export const TEST_CONFIG = {
     projectId: process.env.WATSONX_PROJECT_ID!,
     apiKey: process.env.WATSONX_API_KEY!,
   },
-  openaiApiKey: process.env.OPENAI_API_KEY!,
+  openaiApiKey:
+    process.env.OPENAI_API_KEY || process.env.AZURE_OPENAI_API_KEY || "",
+  azure: {
+    apiKey: process.env.AZURE_OPENAI_API_KEY || process.env.AZURE_API_KEY || "",
+    endpoint:
+      process.env.AZURE_OPENAI_ENDPOINT ||
+      process.env.AZURE_OPENAI_API_BASE ||
+      process.env.AZURE_API_BASE ||
+      "",
+    apiVersion:
+      process.env.AZURE_OPENAI_API_VERSION ||
+      process.env.AZURE_API_VERSION ||
+      "",
+  },
   // Timeouts (in milliseconds)
   timeouts: {
     default: 60000, // 1 minute

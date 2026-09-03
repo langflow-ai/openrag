@@ -516,6 +516,50 @@ export class Settings {
   }
 
   /**
+   * Configure Azure OpenAI model provider
+   */
+  async configureAzureOpenAI() {
+    logger.info("Configuring Azure OpenAI settings");
+    const configureBtn = this.getConfigureButton("Azure OpenAI");
+    const editBtn = this.getEditSetupButton("Azure OpenAI");
+
+    if (await configureBtn.isVisible()) {
+      await configureBtn.click();
+      await expect(this.getSetupHeading("Azure OpenAI")).toBeVisible();
+      const apiKey = config.azure.apiKey;
+      const endpoint = config.azure.endpoint;
+      if (endpoint) {
+        const endpointInput = this.page
+          .locator('input[id*="endpoint"], input[id*="api_base"]')
+          .first();
+        if (await endpointInput.isVisible()) {
+          await endpointInput.fill(endpoint);
+        }
+      }
+      if (apiKey) {
+        const apiKeyInput = this.apiKeyInput();
+        if (await apiKeyInput.isVisible()) {
+          await apiKeyInput.fill(apiKey);
+        }
+      }
+      await this.saveModelProviderButton().click();
+      await this.awaitProviderConfigResult(
+        "Azure OpenAI",
+        "Azure OpenAI successfully configured",
+      );
+      logger.info("Azure OpenAI configuration completed");
+      await expect(editBtn).toBeEnabled();
+    } else if (await editBtn.isVisible()) {
+      logger.info("Azure OpenAI already configured. Skipping setup.");
+      await expect(editBtn).toBeEnabled();
+    } else {
+      throw new Error(
+        "Neither Configure nor Edit Setup button is visible for Azure OpenAI",
+      );
+    }
+  }
+
+  /**
    * Configure IBM watsonx.ai model provider with invalid credentials
    */
   async configureWatsonxaiInvalidCredentials(
