@@ -62,6 +62,15 @@ async def test_provider_health_accepts_configured_azure_provider(
             "api_base": "https://example.openai.azure.com",
             "api_version": "2024-10-21",
         },
+        # OCI-specific fields check_provider_health() always forwards
+        # (no-op getattr against a non-OCI provider config).
+        oci_auth_method=None,
+        oci_user=None,
+        oci_fingerprint=None,
+        oci_tenancy=None,
+        oci_compartment_id=None,
+        oci_key=None,
+        oci_key_file=None,
     )
 
 

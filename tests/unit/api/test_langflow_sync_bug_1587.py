@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from api.settings import langflow_sync
 from api.settings.langflow_sync import _update_langflow_model_values
 
 # Providers a mock config can advertise as configured. LLM supports anthropic;
@@ -151,13 +152,23 @@ async def _proxied_change_langflow_model_value(
 
 
 @pytest.mark.asyncio
-async def test_explicit_embedding_provider_oci_syncs_like_any_other_provider(mock_config):
+async def test_explicit_embedding_provider_oci_syncs_like_any_other_provider(
+    mock_config, monkeypatch
+):
     """OCI has no dedicated Langflow embedding component, but
     change_langflow_model_value() proxies every provider through the same
     OpenRAG-internal endpoint, so it's synced exactly like openai/watsonx/
     ollama - no special-casing needed."""
     mock_config.knowledge.embedding_provider = "oci"
     mock_config.knowledge.embedding_model = "cohere.embed-v4.0"
+
+    # This test pins flows_service.change_langflow_model_value() only - the
+    # SELECTED_EMBEDDING_* global variable push is a real Langflow API call,
+    # out of scope here (see test_langflow_global_variables.py).
+    async def _noop(name, value):
+        return None
+
+    monkeypatch.setattr(langflow_sync, "_upsert_selected_model_variable", _noop)
 
     flows_service = MagicMock()
     flows_service.change_langflow_model_value = AsyncMock(
@@ -178,9 +189,15 @@ async def test_explicit_embedding_provider_oci_syncs_like_any_other_provider(moc
 
 
 @pytest.mark.asyncio
-async def test_explicit_embedding_provider_openai_still_updates(mock_config):
+async def test_explicit_embedding_provider_openai_still_updates(mock_config, monkeypatch):
     """Sanity check that OCI's proxied sync does not regress the normal
     explicit-provider path for a provider that does have a Langflow component."""
+
+    async def _noop(name, value):
+        return None
+
+    monkeypatch.setattr(langflow_sync, "_upsert_selected_model_variable", _noop)
+
     flows_service = MagicMock()
     flows_service.change_langflow_model_value = AsyncMock(
         side_effect=_proxied_change_langflow_model_value
