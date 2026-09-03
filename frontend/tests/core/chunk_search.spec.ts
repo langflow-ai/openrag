@@ -1,5 +1,5 @@
 import path from "path";
-import { OPENAI_CONFIG } from "../config/provider";
+import { ACTIVE_PROVIDER_CONFIG } from "../config/provider";
 import { expect, test } from "../utils/fixtures";
 import logger from "../utils/logger";
 import { navigateToHome } from "../utils/navigation";
@@ -21,7 +21,7 @@ const TEST_TOKENS = [
   "RAG-TEST-KAPPA-010",
 ];
 
-test("Chunk Search & Ranking - OpenAI @33219236", async ({
+test(`Chunk Search & Ranking - ${ACTIVE_PROVIDER_CONFIG.provider} @33219236`, async ({
   page,
   settings,
   knowledge,
@@ -32,7 +32,9 @@ test("Chunk Search & Ranking - OpenAI @33219236", async ({
   // Navigate to the application
   await navigateToHome(page);
 
-  logger.info(`\n🧪 Testing Chunk Search & Ranking with OpenAI`);
+  logger.info(
+    `\n🧪 Testing Chunk Search & Ranking with ${ACTIVE_PROVIDER_CONFIG.provider}`,
+  );
 
   // Step 1: Cleanup test document if it exists
   logger.info(`  🧹 Cleaning up existing test document...`);
@@ -43,11 +45,18 @@ test("Chunk Search & Ranking - OpenAI @33219236", async ({
     logger.info(`  ℹ️  No existing test document to clean up`);
   }
 
-  // Step 2: Set embedding model for OpenAI
-  logger.info(`  ⚙️  Setting embedding model for OpenAI...`);
+  // Step 2: Set embedding model for active provider
+  logger.info(
+    `  ⚙️  Setting embedding model for ${ACTIVE_PROVIDER_CONFIG.provider}...`,
+  );
   await settings.clickTab("Ingestion");
-  await settings.selectModel("Embedding model", OPENAI_CONFIG.embedding);
-  logger.info(`  ✓ Embedding model set to: ${OPENAI_CONFIG.embedding}`);
+  await settings.selectModel(
+    "Embedding model",
+    ACTIVE_PROVIDER_CONFIG.embedding,
+  );
+  logger.info(
+    `  ✓ Embedding model set to: ${ACTIVE_PROVIDER_CONFIG.embedding}`,
+  );
 
   // Step 3: Ingest the test document
   logger.info(`  📄 Ingesting test document...`);
@@ -128,7 +137,7 @@ test("Chunk Search & Ranking - OpenAI @33219236", async ({
 
   if (successRate >= minSuccessRate) {
     logger.info(
-      `  ✅ SUCCESS: Chunk search ranking is working correctly for OpenAI\n`,
+      `  ✅ SUCCESS: Chunk search ranking is working correctly for Azure OpenAI\n`,
     );
   } else {
     throw new Error(
