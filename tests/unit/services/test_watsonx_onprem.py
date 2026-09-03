@@ -324,6 +324,7 @@ async def test_health_needs_no_model_selected(monkeypatch) -> None:
     async def _fake_request(method, url, **kwargs):
         called["method"] = method
         called["url"] = url
+        called["params"] = kwargs.get("params") or {}
         called["auth"] = kwargs.get("headers", {}).get("Authorization")
         return SimpleNamespace(status_code=200, text="{}", json=lambda: {"resources": []})
 
@@ -337,9 +338,12 @@ async def test_health_needs_no_model_selected(monkeypatch) -> None:
     )
 
     assert called["method"] == "GET"
-    assert called["url"] == (
-        "https://cpd.example.com/ml/v1/foundation_model_specs?version=2024-03-13"
-    )
+    # No query on the URL: httpx replaces a URL's query when it is given
+    # `params`, and a `?version=` baked into the URL is then silently dropped —
+    # the cluster answers `invalid_version_date_pattern` for the empty version
+    # that results.
+    assert called["url"] == "https://cpd.example.com/ml/v1/foundation_model_specs"
+    assert called["params"]["version"] == watsonx_onprem.API_VERSION
     assert called["auth"] == "ZenApiKey Y3BkdXNlcjpBUElLRVk="
 
 
@@ -376,14 +380,12 @@ def test_the_health_probe_uses_the_same_tls_setting_as_real_traffic(monkeypatch)
     Without this the banner could sit red on a certificate error while chat
     through the gateway works, or the reverse.
     """
-    from api.provider_validation import _cluster_ssl_verify
-
     monkeypatch.setenv("SSL_VERIFY", "false")
-    assert _cluster_ssl_verify() is False
+    assert watsonx_onprem.ssl_verify() is False
 
     monkeypatch.setenv("SSL_VERIFY", "true")
     monkeypatch.delenv("SSL_CERT_FILE", raising=False)
-    assert _cluster_ssl_verify() is True
+    assert watsonx_onprem.ssl_verify() is True
 
 
 @pytest.mark.asyncio
@@ -448,3 +450,228 @@ async def test_switching_an_embedding_model_is_probed_for_real(monkeypatch) -> N
     )
 
     assert probes == ["watsonx/ibm/slate-125m-english-rtrvr-v2"]
+
+
+@pytest.fixture
+def _forget_cluster_models():
+    watsonx_onprem.forget_models()
+    yield
+    watsonx_onprem.forget_models()
+
+
+def _specs_response(resources, status_code=200):
+    return SimpleNamespace(
+        status_code=status_code,
+        text="",
+        json=lambda: {"resources": [dict(entry) for entry in resources]},
+    )
+
+
+#: Trimmed from a real Cloud Pak for Data cluster's `foundation_model_specs`
+#: response. The shapes matter: `functions` is a list of `{"id": ...}`,
+#: `lifecycle` is a list rather than a string, and the chat model's own name
+#: begins with another provider's key.
+CLUSTER_RESOURCES = [
+    {
+        "model_id": "ibm/slate-30m-english-rtrvr",
+        "functions": [{"id": "embedding"}, {"id": "rerank"}, {"id": "similarity"}],
+        "lifecycle": [{"id": "available", "current_state": True}],
+        "input_tier": "class_c1",
+    },
+    {
+        "model_id": "openai/gpt-oss-120b",
+        "functions": [{"id": "autoai_rag"}, {"id": "text_chat"}],
+        "task_ids": ["summarization", "generation", "function_calling"],
+        "lifecycle": [{"id": "available", "current_state": True}],
+        "input_tier": "class_8",
+    },
+    {
+        "model_id": "ibm/granite-preview",
+        "functions": [{"id": "text_chat"}],
+        "input_tier": "tech_preview",
+    },
+    {
+        "model_id": "ibm/granite-retired",
+        "functions": [{"id": "text_chat"}],
+        "lifecycle": [{"id": "withdrawn", "current_state": True}],
+    },
+]
+
+
+def test_a_cluster_listing_is_split_into_the_two_pickers() -> None:
+    """Split locally rather than with the API's `filters` grammar.
+
+    The grammar is a SaaS convenience; a cluster that does not accept it would
+    answer 400 and leave both pickers empty.
+    """
+    models = watsonx_onprem.split_models(CLUSTER_RESOURCES)
+
+    assert models.chat == ("openai/gpt-oss-120b",)
+    assert models.embedding == ("ibm/slate-30m-english-rtrvr",)
+    # tech_preview is not requestable on every deployment; withdrawn is retired.
+    assert "ibm/granite-preview" not in models.chat
+    assert "ibm/granite-retired" not in models.chat
+
+
+@pytest.mark.asyncio
+async def test_the_picker_shows_what_the_cluster_serves(
+    monkeypatch, _forget_cluster_models
+) -> None:
+    """A cluster serves whatever its operator deployed.
+
+    The configured `models:` rows can only ever be a guess, so a model the
+    cluster does not have would otherwise sit in the picker waiting to be
+    chosen and fail at the first call.
+    """
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "on_prem")
+    seen: dict[str, object] = {}
+
+    class _Client:
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def get(self, url, headers=None, params=None):
+            seen["url"] = url
+            seen["params"] = dict(params or {})
+            assert headers["Authorization"].startswith("ZenApiKey ")
+            return _specs_response(CLUSTER_RESOURCES)
+
+    monkeypatch.setattr("httpx.AsyncClient", _Client)
+
+    models = await watsonx_onprem.fetch_models(
+        {"api_base": "https://cpd.example.com", "username": "u", "api_key": "k"}
+    )
+
+    # The version has to travel in `params`; httpx would drop it from the URL.
+    assert seen["url"] == "https://cpd.example.com/ml/v1/foundation_model_specs"
+    assert seen["params"]["version"] == watsonx_onprem.API_VERSION
+    # No project: a lightweight-engine install has none, and sending one 404s.
+    assert "project_id" not in seen["params"]
+
+    assert models.chat == ("openai/gpt-oss-120b",)
+    assert models.embedding == ("ibm/slate-30m-english-rtrvr",)
+
+    entry = {e["key"]: e for e in model_catalog.catalog()["providers"]}[PROVIDER]
+    assert [m["model"] for m in entry["models"]] == ["openai/gpt-oss-120b"]
+    assert [m["model"] for m in entry["embedding_models"]] == ["ibm/slate-30m-english-rtrvr"]
+
+
+@pytest.mark.asyncio
+async def test_a_next_page_is_re_based_on_the_operators_cluster_url(
+    monkeypatch, _forget_cluster_models
+) -> None:
+    """A cluster names itself internally in its own pagination links.
+
+    This one answers `https://wx-inference-proxy-upstream/ml/v1/...`, which does
+    not resolve outside the cluster. Following it verbatim strands the listing
+    on page one.
+    """
+    urls: list[str] = []
+
+    class _Client:
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def get(self, url, headers=None, params=None):
+            urls.append(url)
+            if len(urls) == 1:
+                return SimpleNamespace(
+                    status_code=200,
+                    text="",
+                    json=lambda: {
+                        "resources": [CLUSTER_RESOURCES[1]],
+                        "next": {
+                            "href": "https://wx-inference-proxy-upstream"
+                            "/ml/v1/foundation_model_specs?version=2024-03-13&start=2"
+                        },
+                    },
+                )
+            return _specs_response([CLUSTER_RESOURCES[0]])
+
+    monkeypatch.setattr("httpx.AsyncClient", _Client)
+
+    models = await watsonx_onprem.fetch_models(
+        {"api_base": "https://cpd.example.com", "username": "u", "api_key": "k"}
+    )
+
+    assert urls[1].startswith("https://cpd.example.com/ml/v1/foundation_model_specs")
+    assert "wx-inference-proxy-upstream" not in urls[1]
+    assert "start=2" in urls[1]
+    assert models.chat == ("openai/gpt-oss-120b",)
+    assert models.embedding == ("ibm/slate-30m-english-rtrvr",)
+
+
+@pytest.mark.asyncio
+async def test_an_unreachable_cluster_keeps_the_configured_fallback(
+    monkeypatch, _forget_cluster_models
+) -> None:
+    """A catalogue request must never fail because the cluster is down."""
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "on_prem")
+
+    class _Client:
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def get(self, url, headers=None, params=None):
+            raise OSError("cluster unreachable")
+
+    monkeypatch.setattr("httpx.AsyncClient", _Client)
+
+    assert (
+        await watsonx_onprem.fetch_models(
+            {"api_base": "https://cpd.example.com", "username": "u", "api_key": "k"}
+        )
+        is None
+    )
+
+    declared = {e.name: e for e in model_providers.visible_provider_entries()}[PROVIDER]
+    entry = {e["key"]: e for e in model_catalog.catalog()["providers"]}[PROVIDER]
+    assert {m["model"] for m in entry["models"]} == set(declared.models)
+
+
+@pytest.mark.asyncio
+async def test_an_empty_listing_is_treated_as_a_bad_filter_not_an_empty_cluster(
+    monkeypatch, _forget_cluster_models
+) -> None:
+    """Emptying both pickers on a guess would be worse than showing the fallback."""
+
+    class _Client:
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def get(self, url, headers=None, params=None):
+            return _specs_response([])
+
+    monkeypatch.setattr("httpx.AsyncClient", _Client)
+
+    assert (
+        await watsonx_onprem.fetch_models(
+            {"api_base": "https://cpd.example.com", "username": "u", "api_key": "k"}
+        )
+        is None
+    )
+    assert watsonx_onprem.cached_models() is None

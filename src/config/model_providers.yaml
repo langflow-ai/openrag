@@ -64,28 +64,18 @@ providers:
   # region endpoint. OpenRAG routes it through LiteLLM's `watsonx` provider —
   # see `services/watsonx_onprem.py`.
   #
-  # The models below are a starting point, not a promise: a cluster serves
-  # whatever its operator deployed, and unlike the IBM Cloud row there is no
-  # bundled table to read them from. Edit these two lists to match the cluster
-  # (`GET https://<cluster>/ml/v1/foundation_model_specs?version=2026-03-05`
-  # lists what it has), or set OPENRAG_MODEL_PROVIDERS_CONFIG to a file that
-  # does.
+  # The two lists below are a *fallback*, not the catalogue. OpenRAG asks the
+  # cluster itself what it serves (`GET /ml/v1/foundation_model_specs`) and
+  # shows that in the pickers, so a model the cluster does not have is never
+  # offered. These rows are what it falls back to while the cluster is
+  # unreachable or before any credentials are entered — keep them plausible for
+  # your fleet, but there is no need to keep them exact.
   - name: watsonx_onprem
     display_name: IBM watsonx.ai (on-prem)
     modes:
       oss: true
       on_prem: true
       saas: false # a cluster-hosted deployment has no place in multi-tenant SaaS
-    models:
-      - ibm/granite-3-3-8b-instruct
-      - ibm/granite-3-8b-instruct
-      - ibm/granite-13b-chat-v2
-      - ibm/granite-vision-3-2-2b
-      - meta-llama/llama-3-3-70b-instruct
-      - meta-llama/llama-3-2-11b-vision-instruct
-      - mistralai/mistral-large
-      - openai/gpt-oss-120b
-      
     embedding_models:
       - ibm/slate-125m-english-rtrvr-v2
       - ibm/slate-30m-english-rtrvr-v2
