@@ -108,6 +108,13 @@ export const TEST_CONFIG = {
         "What is Myasthenia Gravis explain from document from knowledge section?",
     },
   },
+
+  patterns: {
+    lacksKnowledge:
+      /no (relevant|documents|sources|results|information)|did not (return|provide|find|yield)|not found|cannot find|unable to|could not find|couldn['’]t find|didn['’]t find|no.*matching|not available|don['’]t have|no supporting/i,
+  },
 };
+
+export const LACKS_KNOWLEDGE_PATTERN = TEST_CONFIG.patterns.lacksKnowledge;
 
 export default TEST_CONFIG;
