@@ -100,6 +100,25 @@ async def _persist_error_conversation(
         logger.warning(f"Failed to claim session ownership after stream error: {e}")
 
 
+def _extract_delta_text(delta) -> str:
+    """Text carried by a streamed delta, for either shape.
+
+    Langflow's SSE wraps deltas as {"content": "..."}; the OpenAI Responses SDK
+    sends a bare string. Testing `"content" in delta` against a string is a
+    substring check that silently yields nothing, which left the langflowless
+    transcript empty even though the UI rendered the reply fine.
+
+    Never falls back to str(dict): that pollutes the transcript with
+    "{'content': ''}" prefixes on empty error chunks.
+    """
+    if isinstance(delta, dict):
+        raw = delta.get("content")
+        if raw is None:
+            raw = delta.get("text")
+        return raw if isinstance(raw, str) else ""
+    return delta if isinstance(delta, str) else ""
+
+
 def _stream_error_chunk(message: str, response_id: str | None = None) -> bytes:
     """NDJSON error event consumed by the chat streaming client."""
     import json
@@ -260,19 +279,7 @@ async def async_response_stream(
             if hasattr(chunk, "output_text") and chunk.output_text:
                 full_response += chunk.output_text
             elif hasattr(chunk, "delta") and chunk.delta:
-                # Handle delta properly - it might be a dict or string.
-                # Do not fall back to str(dict) when content is "" — that pollutes
-                # the transcript with "{'content': ''}" prefixes on error chunks.
-                if isinstance(chunk.delta, dict):
-                    raw_delta = chunk.delta.get("content")
-                    if raw_delta is None:
-                        raw_delta = chunk.delta.get("text")
-                    delta_text = raw_delta if isinstance(raw_delta, str) else ""
-                elif chunk.delta is None:
-                    delta_text = ""
-                else:
-                    delta_text = str(chunk.delta)
-                full_response += delta_text
+                full_response += _extract_delta_text(chunk.delta)
 
             # Enhanced logging for tool call detection (Granite 3.3 8b investigation)
             chunk_attrs = dir(chunk) if hasattr(chunk, "__dict__") else []
@@ -660,17 +667,23 @@ async def async_chat_stream(
                 import json
 
                 chunk_data = json.loads(chunk.decode("utf-8"))
-                if "delta" in chunk_data and "content" in chunk_data["delta"]:
-                    full_response += chunk_data["delta"]["content"]
+                full_response += _extract_delta_text(chunk_data.get("delta"))
                 # Extract response_id from chunk
                 if "id" in chunk_data:
                     response_id = chunk_data["id"]
                 elif "response_id" in chunk_data:
                     response_id = chunk_data["response_id"]
-                # Capture usage from response.completed event
+                # Capture usage and the response id from the terminal event.
+                # An OpenAI Responses stream carries no top-level id — it lives
+                # on the response object here — so without this the direct
+                # (langflowless) path never resolves one and the conversation is
+                # silently dropped instead of stored, leaving the sidebar empty.
+                # Langflow's SSE wrapper does send a top-level id, which is why
+                # only the direct path was affected.
                 if chunk_data.get("type") == "response.completed":
                     response_obj = chunk_data.get("response", {})
                     usage_data = response_obj.get("usage")
+                    response_id = response_obj.get("id") or response_id
             except Exception:
                 pass
             yield chunk
@@ -932,13 +945,17 @@ async def async_langflow_chat_stream(
                 chunk_data = json.loads(chunk.decode("utf-8"))
                 collected_chunks.append(chunk_data)  # Collect all chunk data
 
-                if "delta" in chunk_data and "content" in chunk_data["delta"]:
-                    full_response += chunk_data["delta"]["content"]
+                full_response += _extract_delta_text(chunk_data.get("delta"))
                 # Extract response_id from chunk
                 if "id" in chunk_data:
                     response_id = chunk_data["id"]
                 elif "response_id" in chunk_data:
                     response_id = chunk_data["response_id"]
+                # Langflow supplies a top-level id today, but fall back to the
+                # terminal event's response object so this path cannot break the
+                # same way if that wrapper ever changes.
+                elif chunk_data.get("type") == "response.completed":
+                    response_id = chunk_data.get("response", {}).get("id") or response_id
 
                 # Check for error status. Do not forward bare Langflow error
                 # chunks — they often lack a useful message and the client would
