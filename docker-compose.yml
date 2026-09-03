@@ -1,6 +1,29 @@
+# Canonical Docker Compose stack for OpenRAG.
+#
+# Changing image URLs
+# -------------------
+# Do NOT hard-code image tags or registry paths here.  Instead, set variables
+# in the .env file (or export them before running compose):
+#
+#   IMAGE_REGISTRY      — registry host for OpenRAG-owned images (default: docker.io)
+#   IMAGE_ORG           — organisation/namespace (default: langflowai)
+#   OPENRAG_VERSION     — image tag to use       (default: latest)
+#   OPENRAG_IMAGE_TAG   — override the full tag entirely (takes precedence over
+#                         OPENRAG_VERSION; useful to pin a specific digest).
+#   DASHBOARDS_REGISTRY — registry host for the OpenSearch Dashboards image
+#                         (default: docker.io). Use this to point at a mirror
+#                         without affecting OpenRAG-owned images via IMAGE_REGISTRY.
+#
+# Python-side source of truth for image references: src/config/image_config.py
+#
+# Multi-arch note
+# ---------------
+# All images are multi-arch fat manifests.  No IMAGE_ARCH_SUFFIX env var is
+# needed or supported — do not add it here.
+
 services:
   opensearch:
-    image: docker.io/langflowai/openrag-opensearch:${OPENRAG_VERSION:-latest}
+    image: ${IMAGE_REGISTRY:-docker.io}/${IMAGE_ORG:-langflowai}/openrag-opensearch:${OPENRAG_IMAGE_TAG:-${OPENRAG_VERSION:-latest}}
     build:
       context: .
       dockerfile: Dockerfile
@@ -35,7 +58,7 @@ services:
     restart: unless-stopped
 
   dashboards:
-    image: docker.io/opensearchproject/opensearch-dashboards:3.6.0
+    image: ${DASHBOARDS_REGISTRY:-docker.io}/opensearchproject/opensearch-dashboards:3.6.0
     container_name: ${COMPOSE_PROJECT_NAME:-openrag}-dashboards
     depends_on:
       - opensearch
@@ -47,7 +70,7 @@ services:
       - "${OPENSEARCH_DASHBOARDS_PORT:-5601}:5601"
 
   openrag-backend:
-    image: docker.io/langflowai/openrag-backend:${OPENRAG_VERSION:-latest}
+    image: ${IMAGE_REGISTRY:-docker.io}/${IMAGE_ORG:-langflowai}/openrag-backend:${OPENRAG_IMAGE_TAG:-${OPENRAG_VERSION:-latest}}
     build:
       context: .
       dockerfile: Dockerfile.backend
@@ -178,7 +201,7 @@ services:
       - "host.docker.internal:host-gateway"
 
   openrag-frontend:
-    image: docker.io/langflowai/openrag-frontend:${OPENRAG_VERSION:-latest}
+    image: ${IMAGE_REGISTRY:-docker.io}/${IMAGE_ORG:-langflowai}/openrag-frontend:${OPENRAG_IMAGE_TAG:-${OPENRAG_VERSION:-latest}}
     build:
       context: .
       dockerfile: Dockerfile.frontend
@@ -191,7 +214,7 @@ services:
       - "${FRONTEND_PORT:-3000}:3000"
 
   langflow:
-    image: docker.io/langflowai/openrag-langflow:${OPENRAG_VERSION:-latest}
+    image: ${IMAGE_REGISTRY:-docker.io}/${IMAGE_ORG:-langflowai}/openrag-langflow:${OPENRAG_IMAGE_TAG:-${OPENRAG_VERSION:-latest}}
     build:
       context: .
       dockerfile: Dockerfile.langflow
