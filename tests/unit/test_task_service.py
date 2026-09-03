@@ -330,6 +330,7 @@ def test_enhanced_keeps_completed_files_for_preview_tasks(task_service):
 # delete_task
 # ---------------------------------------------------------------------------
 
+
 def _make_terminal_task(task_id: str, status: TaskStatus) -> UploadTask:
     return UploadTask(
         task_id=task_id,
@@ -343,6 +344,7 @@ def test_delete_task_returns_deleted_for_completed(task_service):
     task = _make_terminal_task("t1", TaskStatus.COMPLETED)
     task_service.task_store["user1"] = {"t1": task}
     from models.tasks import TaskDeleteResult
+
     assert task_service.delete_task("user1", "t1") is TaskDeleteResult.DELETED
     assert "t1" not in task_service.task_store.get("user1", {})
 
@@ -351,12 +353,14 @@ def test_delete_task_returns_deleted_for_failed(task_service):
     task = _make_terminal_task("t2", TaskStatus.FAILED)
     task_service.task_store["user1"] = {"t2": task}
     from models.tasks import TaskDeleteResult
+
     assert task_service.delete_task("user1", "t2") is TaskDeleteResult.DELETED
     assert "user1" not in task_service.task_store  # store entry pruned when empty
 
 
 def test_delete_task_returns_not_found_for_absent_task(task_service):
     from models.tasks import TaskDeleteResult
+
     assert task_service.delete_task("user1", "nonexistent") is TaskDeleteResult.NOT_FOUND
 
 
@@ -364,6 +368,7 @@ def test_delete_task_returns_in_progress_for_running_task(task_service):
     task = _make_terminal_task("t3", TaskStatus.RUNNING)
     task_service.task_store["user1"] = {"t3": task}
     from models.tasks import TaskDeleteResult
+
     assert task_service.delete_task("user1", "t3") is TaskDeleteResult.IN_PROGRESS
     assert "t3" in task_service.task_store["user1"]  # must not be removed
 
@@ -372,15 +377,18 @@ def test_delete_task_returns_in_progress_for_pending_task(task_service):
     task = _make_terminal_task("t4", TaskStatus.PENDING)
     task_service.task_store["user1"] = {"t4": task}
     from models.tasks import TaskDeleteResult
+
     assert task_service.delete_task("user1", "t4") is TaskDeleteResult.IN_PROGRESS
 
 
 def test_delete_task_removes_lock(task_service):
     import asyncio
+
     task = _make_terminal_task("t5", TaskStatus.COMPLETED)
     task_service.task_store["user1"] = {"t5": task}
     task_service._task_locks["t5"] = asyncio.Lock()
     from models.tasks import TaskDeleteResult
+
     assert task_service.delete_task("user1", "t5") is TaskDeleteResult.DELETED
     assert "t5" not in task_service._task_locks
 
@@ -389,6 +397,7 @@ def test_delete_task_resolves_anonymous_shared_task(task_service):
     """delete_task must find tasks stored under the anonymous key."""
     from models.tasks import TaskDeleteResult
     from session_manager import AnonymousUser
+
     anon_id = AnonymousUser().user_id
     task = _make_terminal_task("shared1", TaskStatus.COMPLETED)
     task_service.task_store[anon_id] = {"shared1": task}
@@ -399,6 +408,7 @@ def test_delete_task_resolves_anonymous_shared_task(task_service):
 # ---------------------------------------------------------------------------
 # delete_all_terminal_tasks
 # ---------------------------------------------------------------------------
+
 
 def test_delete_all_terminal_tasks_removes_only_terminal(task_service):
     completed = _make_terminal_task("c1", TaskStatus.COMPLETED)
@@ -429,6 +439,7 @@ def test_delete_all_terminal_tasks_does_not_touch_anonymous_store(task_service):
     """Bulk clear must not remove shared anonymous tasks — they are visible to
     all authenticated users and are only aged out by cleanup_old_tasks."""
     from session_manager import AnonymousUser
+
     anon_id = AnonymousUser().user_id
     anon_task = _make_terminal_task("anon1", TaskStatus.COMPLETED)
     own_task = _make_terminal_task("own1", TaskStatus.COMPLETED)
@@ -444,6 +455,7 @@ def test_delete_all_terminal_tasks_does_not_touch_anonymous_store(task_service):
 
 def test_delete_all_terminal_tasks_removes_lock(task_service):
     import asyncio
+
     task = _make_terminal_task("c2", TaskStatus.COMPLETED)
     task_service.task_store["user1"] = {"c2": task}
     task_service._task_locks["c2"] = asyncio.Lock()
