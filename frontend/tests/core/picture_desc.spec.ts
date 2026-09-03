@@ -1,5 +1,5 @@
 import * as path from "path";
-import { AZURE_CONFIG } from "../config/provider";
+import { ACTIVE_PROVIDER_CONFIG } from "../config/provider";
 import { expect, test } from "../utils/fixtures";
 import logger from "../utils/logger";
 import { navigateToHome } from "../utils/navigation";
@@ -27,14 +27,17 @@ test("Picture Description Configuration @33219221", async ({
   // Navigate to the application
   await navigateToHome(page);
 
-  // Set Azure OpenAI models before starting
-  logger.info("\n⚙️  Configuring Azure OpenAI models...");
+  // Set models for active provider before starting
+  logger.info(`\n⚙️  Configuring ${ACTIVE_PROVIDER_CONFIG.provider} models...`);
   await settings.clickTab("Agent");
-  await settings.selectModel("Language model", AZURE_CONFIG.language);
+  await settings.selectModel("Language model", ACTIVE_PROVIDER_CONFIG.language);
   await settings.clickTab("Ingestion");
-  await settings.selectModel("Embedding model", AZURE_CONFIG.embedding);
-  logger.info(`  ✓ Language model: ${AZURE_CONFIG.language}`);
-  logger.info(`  ✓ Embedding model: ${AZURE_CONFIG.embedding}`);
+  await settings.selectModel(
+    "Embedding model",
+    ACTIVE_PROVIDER_CONFIG.embedding,
+  );
+  logger.info(`  ✓ Language model: ${ACTIVE_PROVIDER_CONFIG.language}`);
+  logger.info(`  ✓ Embedding model: ${ACTIVE_PROVIDER_CONFIG.embedding}`);
 
   // Precondition: Delete any existing test documents
   logger.info("\n🧹 Cleaning up existing test documents...");

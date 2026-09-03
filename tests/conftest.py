@@ -129,7 +129,7 @@ async def onboard_system(request):
             or os.getenv("AZURE_API_BASE")
         )
         azure_version = os.getenv("AZURE_OPENAI_API_VERSION") or os.getenv("AZURE_API_VERSION")
-        use_azure = bool(azure_key or os.getenv("LLM_PROVIDER") == "azure")
+        use_azure = bool((azure_key and azure_endpoint) or os.getenv("LLM_PROVIDER") == "azure")
 
         llm_provider = os.getenv("LLM_PROVIDER", "azure" if use_azure else "openai")
         embedding_provider = os.getenv("EMBEDDING_PROVIDER", "azure" if use_azure else "openai")

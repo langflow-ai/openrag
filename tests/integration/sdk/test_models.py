@@ -14,11 +14,10 @@ ALL_PROVIDERS = ("azure", "openai", "anthropic", "ollama", "watsonx")
 
 
 def _get_primary_provider() -> str:
-    if (
-        os.getenv("AZURE_OPENAI_API_KEY")
-        or os.getenv("AZURE_API_KEY")
-        or os.getenv("LLM_PROVIDER") == "azure"
-    ):
+    llm_provider = (os.getenv("LLM_PROVIDER") or "").strip().lower()
+    if llm_provider in ALL_PROVIDERS:
+        return llm_provider
+    if os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("AZURE_API_KEY"):
         return "azure"
     return "openai"
 

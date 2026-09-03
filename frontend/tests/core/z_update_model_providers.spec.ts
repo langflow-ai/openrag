@@ -1,4 +1,5 @@
 import path from "path";
+import { AZURE_CONFIG } from "../config/provider";
 import { expect, test } from "../utils/fixtures";
 import { navigateToSettings } from "../utils/navigation";
 
@@ -15,7 +16,7 @@ const verificationQuestion =
  * Verify user is able to switch model providers
  */
 test.describe("Update model providers to watsonx.ai and Azure OpenAI @33219219, @33219229, @33219231", () => {
-  test.beforeEach(({}) => {
+  test.beforeEach(() => {
     test.skip(
       !process.env.WATSONX_API_KEY ||
         !process.env.WATSONX_PROJECT_ID ||
@@ -67,9 +68,9 @@ test.describe("Update model providers to watsonx.ai and Azure OpenAI @33219219, 
     await settings.configureAzureOpenAI();
     await settings.removeModelProviderSetup("IBM watsonx.ai");
     await settings.clickTab("Agent");
-    await settings.selectModel("Language model", "gpt-4.1");
+    await settings.selectModel("Language model", AZURE_CONFIG.language);
     await settings.clickTab("Ingestion");
-    await settings.selectModel("Embedding model", "text-embedding-3-small");
+    await settings.selectModel("Embedding model", AZURE_CONFIG.embedding);
     await knowledge.deleteDocument(testDocumentName);
     await knowledge.ingestFile(testDocumentPath);
     await knowledge.verifyDocumentActive(testDocumentName);

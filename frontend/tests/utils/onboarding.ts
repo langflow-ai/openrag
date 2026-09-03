@@ -1,5 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import path from "path";
+import { ACTIVE_PROVIDER_CONFIG } from "../config/provider";
 
 export type LLMProvider =
   | "azure"
@@ -9,18 +10,40 @@ export type LLMProvider =
   | "ollama";
 export type EmbeddingProvider = "azure" | "openai" | "watsonx" | "ollama";
 
-const defaultProvider: LLMProvider =
-  process.env.AZURE_OPENAI_API_KEY ||
-  process.env.AZURE_API_KEY ||
-  process.env.LLM_PROVIDER === "azure"
-    ? "azure"
-    : "openai";
+function getProviderKey(providerName: string): LLMProvider {
+  switch (providerName) {
+    case "Azure OpenAI":
+      return "azure";
+    case "IBM watsonx.ai":
+      return "watsonx";
+    case "Ollama":
+      return "ollama";
+    case "Anthropic":
+      return "anthropic";
+    default:
+      return "openai";
+  }
+}
+
+const activeProviderKey = getProviderKey(ACTIVE_PROVIDER_CONFIG.provider);
+
+const defaultLlmProvider: LLMProvider =
+  ((process.env.LLM_PROVIDER || "").trim().toLowerCase() as LLMProvider) ||
+  activeProviderKey;
+
+const defaultEmbeddingProvider: EmbeddingProvider =
+  ((process.env.EMBEDDING_PROVIDER || "")
+    .trim()
+    .toLowerCase() as EmbeddingProvider) ||
+  (activeProviderKey === "anthropic"
+    ? "openai"
+    : (activeProviderKey as EmbeddingProvider));
 
 export async function completeOnboarding(
   page: Page,
   {
-    llmProvider = defaultProvider,
-    embeddingProvider = defaultProvider as EmbeddingProvider,
+    llmProvider = defaultLlmProvider,
+    embeddingProvider = defaultEmbeddingProvider,
     reset = false,
   }: {
     llmProvider?: LLMProvider;
@@ -84,10 +107,15 @@ export async function completeOnboarding(
   }
 
   const isCompleted = await completedLocator.isVisible();
-  const isFirstStep = await page
-    .getByTestId("openai-llm-tab")
-    .or(page.getByTestId("azure-llm-tab"))
-    .isVisible();
+  const isFirstStep =
+    (await page
+      .getByTestId("openai-llm-tab")
+      .isVisible()
+      .catch(() => false)) ||
+    (await page
+      .getByTestId("azure-llm-tab")
+      .isVisible()
+      .catch(() => false));
 
   if (isCompleted && !reset) {
     return;
@@ -190,13 +218,15 @@ export async function completeOnboarding(
 
     // Select preferred model if available, else first option
     const preferredModel =
-      provider === "azure"
+      provider === activeProviderKey
         ? isEmbedding
-          ? process.env.EMBEDDING_MODEL || "text-embedding-3-small"
-          : process.env.LLM_MODEL || "gpt-4.1"
+          ? ACTIVE_PROVIDER_CONFIG.embedding
+          : ACTIVE_PROVIDER_CONFIG.language
         : isEmbedding
-          ? process.env.EMBEDDING_MODEL || undefined
-          : process.env.LLM_MODEL || undefined;
+          ? process.env.EMBEDDING_MODEL ||
+            (provider === "azure" ? "text-embedding-3-small" : undefined)
+          : process.env.LLM_MODEL ||
+            (provider === "azure" ? "gpt-4.1" : undefined);
 
     let selected = false;
     if (preferredModel) {

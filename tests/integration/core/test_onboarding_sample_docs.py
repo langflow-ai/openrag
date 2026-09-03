@@ -209,8 +209,8 @@ async def test_onboarding_ingests_sample_docs_and_creates_openrag_docs_filter(
                 onboarding_body = {
                     "llm_provider": "azure",
                     "embedding_provider": "azure",
-                    "embedding_model": "text-embedding-3-small",
-                    "llm_model": "gpt-4.1",
+                    "embedding_model": os.getenv("EMBEDDING_MODEL", "text-embedding-3-small"),
+                    "llm_model": os.getenv("LLM_MODEL", "gpt-4.1"),
                     "provider_credentials": {"azure": creds},
                 }
             else:
