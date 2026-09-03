@@ -703,10 +703,14 @@ async def _test_litellm_provider(
     """Validate arbitrary providers through the same LiteLLM adapter used at runtime."""
     import litellm
 
+    from services.model_catalog import litellm_provider_key
+
     model = embedding_model or llm_model
     if not model:
         raise ValueError("A model is required to validate the provider")
-    litellm_model = f"{provider}/{model}"
+    # Same aliasing the gateway applies, so the probe hits the route the real
+    # call will: `watsonx_onprem/<model>` is not a prefix LiteLLM can resolve.
+    litellm_model = f"{litellm_provider_key(provider)}/{model}"
     if embedding_model:
         await litellm.aembedding(
             model=litellm_model,

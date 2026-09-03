@@ -22,6 +22,7 @@ export const KNOWN_PROVIDERS = [
   "anthropic",
   "ollama",
   "watsonx",
+  "watsonx_onprem",
   "azure_ai",
   "azure",
   "local",
@@ -104,6 +105,14 @@ const PROVIDER_CHROME: Record<string, ProviderChrome> = {
     logoColor: "text-white",
     logoBgColor: "bg-[#1063FE]",
   },
+  // Same product on a Cloud Pak for Data cluster, so the same mark. The two
+  // cards are told apart by the display name the API sends.
+  watsonx_onprem: {
+    name: "IBM watsonx.ai (on-prem)",
+    logo: IBMLogo,
+    logoColor: "text-white",
+    logoBgColor: "bg-[#1063FE]",
+  },
   // Microsoft draws the two Azure model services differently, and neither is
   // the generic Azure logo. Both marks paint their own gradients, so logoColor
   // does nothing for them and the tile stays white.
@@ -156,7 +165,7 @@ export function getModelLogo(modelValue: string, provider?: string) {
     return <AnthropicLogo className="w-4 h-4" />;
   } else if (provider === "ollama") {
     return <OllamaLogo className="w-4 h-4" />;
-  } else if (provider === "watsonx") {
+  } else if (provider === "watsonx" || provider === "watsonx_onprem") {
     return <IBMLogo className="w-4 h-4" />;
   } else if (provider === "azure") {
     return <AzureOpenAILogo className="w-4 h-4" />;

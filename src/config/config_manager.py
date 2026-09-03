@@ -226,8 +226,38 @@ class ProvidersConfig:
             self.ollama.endpoint = clean.get("api_base", self.ollama.endpoint)
             self.ollama.configured = bool(self.ollama.endpoint)
 
+    def pending_credentials(
+        self, provider: str, submitted: dict[str, str] | None = None
+    ) -> dict[str, str]:
+        """LiteLLM kwargs for `provider` as it would be once `submitted` is saved.
+
+        Validation runs before the write, so it has to reason about the union of
+        what is stored and what the request carries. For a provider whose stored
+        form is not already LiteLLM's — watsonx.ai on-prem keeps a username and
+        an API key, and hands LiteLLM the ZenApiKey built from them — the two
+        halves have to be merged *before* the translation, or a request that
+        changes the API key would be validated against a stale credential built
+        from the old one.
+        """
+        from services import watsonx_onprem
+
+        key = provider.strip().lower()
+        clean = {
+            str(name): str(value).strip()
+            for name, value in (submitted or {}).items()
+            if str(name).strip() and str(value).strip()
+        }
+        if key == watsonx_onprem.PROVIDER_KEY:
+            stored = self.custom.get(key, GenericProviderConfig()).credentials
+            return watsonx_onprem.litellm_credentials({**stored, **clean})
+        values = self.credential_values(key)
+        values.update(clean)
+        return values
+
     def credential_values(self, provider: str) -> dict[str, str]:
         """Return LiteLLM keyword arguments for a configured provider."""
+        from services import watsonx_onprem
+
         key = provider.strip().lower()
         custom = dict(self.custom.get(key, GenericProviderConfig()).credentials)
         if key == "openai":
@@ -254,6 +284,12 @@ class ProvidersConfig:
             if endpoint:
                 custom.setdefault("api_base", endpoint)
             return custom
+        if key == watsonx_onprem.PROVIDER_KEY:
+            # The stored form is what a Cloud Pak for Data operator has in hand
+            # (cluster URL, username, API key); LiteLLM wants a ZenApiKey. The
+            # translation lives with the provider so the gateway, the health
+            # check and the validator all issue the same call.
+            return watsonx_onprem.litellm_credentials(custom)
         return custom
 
 
