@@ -68,6 +68,10 @@ def _client(events):
     return _Client()
 
 
+async def _noop_claim(user_id, session_id):
+    return None
+
+
 @pytest.fixture(autouse=True)
 def _clean_conversations():
     agent.active_conversations.clear()
@@ -238,3 +242,75 @@ async def test_a_claim_failure_never_loses_the_reply(monkeypatch):
 
     # Stored despite the claim failing.
     assert "resp_abc" in agent.active_conversations["user-1"]
+
+
+@pytest.mark.asyncio
+async def test_a_multi_turn_thread_stays_on_one_sidebar_entry(monkeypatch):
+    """Regression: the sidebar grew one duplicate entry per message.
+
+    Conversations were stored under the per-turn provider response id, so each
+    follow-up created a second row carrying the same title (the thread's first
+    user message). conversation_id is the stable sidebar thread id.
+    """
+    monkeypatch.setattr(
+        "services.session_ownership_service.session_ownership_service.claim_session",
+        _noop_claim,
+    )
+
+    # Turn 1 opens the thread.
+    async for _ in agent.async_chat_stream(
+        _client([_delta_event("first", 1), _completed_event("resp_1", 2)]), "q1", "user-1"
+    ):
+        pass
+    thread_id = next(iter(agent.active_conversations["user-1"]))
+    assert thread_id == "resp_1"
+
+    # Turn 2 continues it, the way the client replays the ids.
+    async for _ in agent.async_chat_stream(
+        _client([_delta_event("second", 1), _completed_event("resp_2", 2)]),
+        "q2",
+        "user-1",
+        previous_response_id="resp_1",
+        conversation_id=thread_id,
+    ):
+        pass
+
+    assert list(agent.active_conversations["user-1"]) == ["resp_1"], (
+        "a follow-up must not create a second sidebar entry"
+    )
+    contents = [
+        m["content"]
+        for m in agent.active_conversations["user-1"]["resp_1"]["messages"]
+        if m["role"] in ("user", "assistant")
+    ]
+    assert contents == ["q1", "first", "q2", "second"]
+
+
+@pytest.mark.asyncio
+async def test_the_provider_response_id_is_claimed_even_when_it_is_not_the_thread_id(monkeypatch):
+    """The client replays the provider id, and _assert_owns 404s if unclaimed."""
+    claimed = []
+
+    async def _claim(user_id, session_id):
+        claimed.append(session_id)
+
+    monkeypatch.setattr(
+        "services.session_ownership_service.session_ownership_service.claim_session", _claim
+    )
+
+    async for _ in agent.async_chat_stream(
+        _client([_delta_event("first", 1), _completed_event("resp_1", 2)]), "q1", "user-1"
+    ):
+        pass
+    claimed.clear()
+
+    async for _ in agent.async_chat_stream(
+        _client([_delta_event("second", 1), _completed_event("resp_2", 2)]),
+        "q2",
+        "user-1",
+        previous_response_id="resp_1",
+        conversation_id="resp_1",
+    ):
+        pass
+
+    assert set(claimed) == {"resp_1", "resp_2"}

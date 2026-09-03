@@ -580,11 +580,15 @@ async def async_chat(
     model: str = "gpt-4.1-mini",
     previous_response_id: str = None,
     filter_id: str = None,
+    conversation_id: str = None,
 ):
     logger.debug("async_chat called", user_id=user_id, previous_response_id=previous_response_id)
 
+    # See async_chat_stream: conversation_id is the stable sidebar thread id.
+    thread_id = conversation_id or previous_response_id
+    previous_loaded_from_memory = _conversation_thread_in_memory(user_id, thread_id)
     # Get the specific conversation thread (or create new one)
-    conversation_state = get_conversation_thread(user_id, previous_response_id)
+    conversation_state = get_conversation_thread(user_id, thread_id)
     logger.debug("Got conversation state", message_count=len(conversation_state["messages"]))
 
     # Add user message to conversation with timestamp
@@ -623,9 +627,19 @@ async def async_chat(
     # Store the conversation thread with its response_id
     if response_id:
         conversation_state["last_activity"] = datetime.now()
-        await store_conversation_thread(user_id, response_id, conversation_state)
-        await _claim_session(user_id, response_id)
-        logger.debug("Stored conversation thread", user_id=user_id, response_id=response_id)
+        store_id = (
+            _resolve_conversation_store_id(
+                response_id,
+                thread_id,
+                previous_loaded_from_memory=previous_loaded_from_memory,
+            )
+            or response_id
+        )
+        await store_conversation_thread(user_id, store_id, conversation_state)
+        await _claim_session(user_id, store_id)
+        if store_id != response_id:
+            await _claim_session(user_id, response_id)
+        logger.debug("Stored conversation thread", user_id=user_id, store_id=store_id)
 
         # Debug: Check what's in user_conversations now
         conversations = await get_user_conversations(user_id)
@@ -649,10 +663,16 @@ async def async_chat_stream(
     model: str = "gpt-4.1-mini",
     previous_response_id: str = None,
     filter_id: str = None,
+    conversation_id: str = None,
 ):
-    previous_loaded_from_memory = _conversation_thread_in_memory(user_id, previous_response_id)
+    # conversation_id keeps the OpenRAG sidebar thread; previous_response_id
+    # chains the provider session. Mirrors async_langflow_chat_stream — without
+    # a stable thread id every turn is stored under its own response id and the
+    # sidebar grows one duplicate entry per message.
+    thread_id = conversation_id or previous_response_id
+    previous_loaded_from_memory = _conversation_thread_in_memory(user_id, thread_id)
     # Get the specific conversation thread (or create new one)
-    conversation_state = get_conversation_thread(user_id, previous_response_id)
+    conversation_state = get_conversation_thread(user_id, thread_id)
 
     # Add user message to conversation with timestamp
     from datetime import datetime
@@ -716,10 +736,24 @@ async def async_chat_stream(
         # Store the conversation thread with its response_id
         if response_id:
             conversation_state["last_activity"] = datetime.now()
-            await store_conversation_thread(user_id, response_id, conversation_state)
-            await _claim_session(user_id, response_id)
+            store_id = (
+                _resolve_conversation_store_id(
+                    response_id,
+                    thread_id,
+                    previous_loaded_from_memory=previous_loaded_from_memory,
+                )
+                or response_id
+            )
+            await store_conversation_thread(user_id, store_id, conversation_state)
+            await _claim_session(user_id, store_id)
+            # The provider's response id still has to be claimed: the client
+            # sends it back as previous_response_id on the next turn, and
+            # _assert_owns 404s on an unclaimed session.
+            if store_id != response_id:
+                await _claim_session(user_id, response_id)
             logger.debug(
-                f"Stored conversation thread for user {user_id} with response_id: {response_id}"
+                f"Stored conversation thread for user {user_id} under {store_id}"
+                f" (response_id: {response_id})"
             )
     except Exception as e:
         logger.error(f"Error in chat stream: {e}", exc_info=True)
@@ -737,7 +771,7 @@ async def async_chat_stream(
         )
         store_id = _resolve_conversation_store_id(
             response_id,
-            previous_response_id,
+            thread_id,
             previous_loaded_from_memory=previous_loaded_from_memory,
             mint_if_missing=True,
         )

@@ -28,6 +28,7 @@ async def test_langflow_chat_uses_direct_chat_when_disabled(monkeypatch):
         user_id="oauth-user",
         jwt_token="jwt-token",
         previous_response_id="previous-id",
+        conversation_id="thread-1",
         stream=False,
         filter_id="filter-id",
         storage_user_id="db-user",
@@ -42,6 +43,9 @@ async def test_langflow_chat_uses_direct_chat_when_disabled(monkeypatch):
         stream=False,
         filter_id="filter-id",
         storage_user_id="db-user",
+        # The sidebar thread id must survive the bypass, or a Langflow-endpoint
+        # chat routed to the direct path duplicates its conversation per turn.
+        conversation_id="thread-1",
     )
 
 

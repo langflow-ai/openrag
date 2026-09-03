@@ -31,6 +31,7 @@ class ChatService:
         stream: bool = False,
         filter_id: str = None,
         storage_user_id: str = None,
+        conversation_id: str = None,
     ):
         """Handle chat requests using the patched OpenAI client"""
         if not prompt:
@@ -48,6 +49,7 @@ class ChatService:
                 conversation_user_id,
                 previous_response_id=previous_response_id,
                 filter_id=filter_id,
+                conversation_id=conversation_id,
             )
         else:
             response_text, response_id = await async_chat(
@@ -56,6 +58,7 @@ class ChatService:
                 conversation_user_id,
                 previous_response_id=previous_response_id,
                 filter_id=filter_id,
+                conversation_id=conversation_id,
             )
             response_data = {"response": response_text}
             if response_id:
@@ -91,6 +94,7 @@ class ChatService:
                 stream=stream,
                 filter_id=filter_id,
                 storage_user_id=storage_user_id,
+                conversation_id=conversation_id,
             )
 
         if not LANGFLOW_URL or not LANGFLOW_CHAT_FLOW_ID:

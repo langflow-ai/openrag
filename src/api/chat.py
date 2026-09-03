@@ -68,6 +68,7 @@ async def chat_endpoint(
 
     storage_user_id = _openrag_user_id(user)
     await _assert_owns(body.previous_response_id, storage_user_id)
+    await _assert_owns(body.conversation_id, storage_user_id)
 
     jwt_token = user.jwt_token
 
@@ -91,6 +92,7 @@ async def chat_endpoint(
                 stream=True,
                 filter_id=body.filter_id,
                 storage_user_id=storage_user_id,
+                conversation_id=body.conversation_id,
             ),
             media_type="text/event-stream",
             headers={
@@ -107,6 +109,7 @@ async def chat_endpoint(
             stream=False,
             filter_id=body.filter_id,
             storage_user_id=storage_user_id,
+            conversation_id=body.conversation_id,
         )
         return JSONResponse(result)
 
