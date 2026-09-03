@@ -112,6 +112,61 @@ async def _persist_error_conversation(
     await _claim_session(user_id, store_id)
 
 
+# Streamed deltas that carry machine payloads rather than the visible answer.
+# `response.function_call_arguments.delta` in particular streams tool-call JSON
+# through the same `delta` field as answer text, so accumulating every delta put
+# raw `{"query": ...}` at the top of stored replies — once per tool call.
+_NON_ANSWER_DELTA_TYPES = frozenset(
+    {
+        "response.function_call_arguments.delta",
+        "response.mcp_call_arguments.delta",
+        "response.custom_tool_call_input.delta",
+        "response.code_interpreter_call_code.delta",
+        "response.reasoning_summary_text.delta",
+        "response.reasoning_text.delta",
+        "response.audio.delta",
+    }
+)
+
+
+def _answer_delta_text(chunk_type, delta) -> str:
+    """Delta text belonging to the visible answer.
+
+    A denylist, not an allowlist: Langflow's SSE wraps deltas in shapes we do
+    not control, so anything unrecognised must keep accumulating as before.
+    """
+    if chunk_type in _NON_ANSWER_DELTA_TYPES:
+        return ""
+    return _extract_delta_text(delta)
+
+
+def conversation_input_messages(conversation_state: dict) -> list[dict]:
+    """The thread as Responses-API input items.
+
+    Sending the transcript explicitly replaces two things that did not work on
+    the direct path: `previous_response_id` chaining (unsupported by some
+    providers routed through LiteLLM, and it collides with agentd's own
+    follow-up call after a tool call), and the system prompt, which was stored
+    in conversation state but never actually sent.
+
+    Only role/content survives — our messages also carry timestamps, chunks and
+    response objects that the API rejects. Failed turns are dropped so an error
+    string is never replayed back to the model as if it were an answer.
+    """
+    items: list[dict] = []
+    for message in conversation_state.get("messages") or []:
+        if message.get("error"):
+            continue
+        role = message.get("role")
+        content = message.get("content")
+        if role not in ("system", "developer", "user", "assistant"):
+            continue
+        if not isinstance(content, str) or not content.strip():
+            continue
+        items.append({"role": role, "content": content})
+    return items
+
+
 def _extract_delta_text(delta) -> str:
     """Text carried by a streamed delta, for either shape.
 
@@ -256,6 +311,7 @@ async def async_response_stream(
     extra_headers: dict = None,
     previous_response_id: str = None,
     log_prefix: str = "response",
+    input_messages: list[dict] | None = None,
 ):
     logger.info("User prompt received", prompt=prompt)
 
@@ -263,11 +319,15 @@ async def async_response_stream(
         # Build request parameters
         request_params = {
             "model": model,
-            "input": prompt,
+            "input": input_messages if input_messages else prompt,
             "stream": True,
             "include": ["tool_call.results"],
         }
-        if previous_response_id is not None:
+        # Only chain server-side when the caller did not supply the transcript.
+        # Sending both would duplicate history, and agentd's post-tool-call
+        # follow-up passes previous_response_id itself — supplying ours too
+        # raises "got multiple values for keyword argument".
+        if previous_response_id is not None and not input_messages:
             request_params["previous_response_id"] = previous_response_id
 
         if "x-api-key" not in client.default_headers:
@@ -291,7 +351,7 @@ async def async_response_stream(
             if hasattr(chunk, "output_text") and chunk.output_text:
                 full_response += chunk.output_text
             elif hasattr(chunk, "delta") and chunk.delta:
-                full_response += _extract_delta_text(chunk.delta)
+                full_response += _answer_delta_text(getattr(chunk, "type", None), chunk.delta)
 
             # Enhanced logging for tool call detection (Granite 3.3 8b investigation)
             chunk_attrs = dir(chunk) if hasattr(chunk, "__dict__") else []
@@ -451,6 +511,7 @@ async def async_response(
     extra_headers: dict = None,
     previous_response_id: str = None,
     log_prefix: str = "response",
+    input_messages: list[dict] | None = None,
 ):
     # extra_headers/request_params carry raw secrets (JWT, provider API keys,
     # x-api-key — see langflow_headers.py). Never pass them to a logger call
@@ -463,11 +524,11 @@ async def async_response(
         # Build request parameters
         request_params = {
             "model": model,
-            "input": prompt,
+            "input": input_messages if input_messages else prompt,
             "stream": False,
             "include": ["tool_call.results"],
         }
-        if previous_response_id is not None:
+        if previous_response_id is not None and not input_messages:
             request_params["previous_response_id"] = previous_response_id
         if extra_headers:
             request_params["extra_headers"] = extra_headers
@@ -512,11 +573,13 @@ async def async_stream(
     extra_headers: dict = None,
     previous_response_id: str = None,
     log_prefix: str = "response",
+    input_messages: list[dict] | None = None,
 ):
     async for chunk in async_response_stream(
         client,
         prompt,
         model,
+        input_messages=input_messages,
         extra_headers=extra_headers,
         previous_response_id=previous_response_id,
         log_prefix=log_prefix,
@@ -606,6 +669,7 @@ async def async_chat(
         async_client,
         prompt,
         model,
+        input_messages=conversation_input_messages(conversation_state),
         previous_response_id=previous_response_id,
         log_prefix="agent",
     )
@@ -692,6 +756,7 @@ async def async_chat_stream(
             async_client,
             prompt,
             model,
+            input_messages=conversation_input_messages(conversation_state),
             previous_response_id=previous_response_id,
             log_prefix="agent",
         ):
@@ -700,7 +765,7 @@ async def async_chat_stream(
                 import json
 
                 chunk_data = json.loads(chunk.decode("utf-8"))
-                full_response += _extract_delta_text(chunk_data.get("delta"))
+                full_response += _answer_delta_text(chunk_data.get("type"), chunk_data.get("delta"))
                 # Extract response_id from chunk
                 if "id" in chunk_data:
                     response_id = chunk_data["id"]
@@ -986,7 +1051,7 @@ async def async_langflow_chat_stream(
                 chunk_data = json.loads(chunk.decode("utf-8"))
                 collected_chunks.append(chunk_data)  # Collect all chunk data
 
-                full_response += _extract_delta_text(chunk_data.get("delta"))
+                full_response += _answer_delta_text(chunk_data.get("type"), chunk_data.get("delta"))
                 # Extract response_id from chunk
                 if "id" in chunk_data:
                     response_id = chunk_data["id"]

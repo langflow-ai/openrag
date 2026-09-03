@@ -10,6 +10,7 @@ import pytest
 from openai.types.responses import (
     Response,
     ResponseCompletedEvent,
+    ResponseFunctionCallArgumentsDeltaEvent,
     ResponseTextDeltaEvent,
 )
 
@@ -314,3 +315,48 @@ async def test_the_provider_response_id_is_claimed_even_when_it_is_not_the_threa
         pass
 
     assert set(claimed) == {"resp_1", "resp_2"}
+
+
+def _tool_args_delta_event(fragment: str, sequence: int):
+    """Tool-call arguments stream through the same `delta` field as answer text."""
+    return ResponseFunctionCallArgumentsDeltaEvent(
+        type="response.function_call_arguments.delta",
+        delta=fragment,
+        item_id="fc_1",
+        output_index=0,
+        sequence_number=sequence,
+    )
+
+
+@pytest.mark.asyncio
+async def test_tool_call_arguments_do_not_leak_into_the_answer():
+    """Regression: replies began with raw `{"query": ...}`, once per tool call.
+
+    `response.function_call_arguments.delta` carries a `delta` just like answer
+    text, so accumulating every delta prepended the tool payload to the stored
+    reply.
+    """
+    events = [
+        _tool_args_delta_event('{"query":"eBay earnings",', 1),
+        _tool_args_delta_event('"embedding_model":"text-embedding-3-small"}', 2),
+        _delta_event("The available document is eBay's 8-K.", 3),
+        _completed_event("resp_abc", 4),
+    ]
+    async for _ in agent.async_chat_stream(_client(events), "summarize", "user-1"):
+        pass
+
+    messages = agent.active_conversations["user-1"]["resp_abc"]["messages"]
+    assistant = [m["content"] for m in messages if m["role"] == "assistant"]
+    assert assistant == ["The available document is eBay's 8-K."]
+    assert "query" not in assistant[0]
+
+
+@pytest.mark.asyncio
+async def test_unrecognised_delta_shapes_still_accumulate():
+    """Langflow wraps deltas in shapes we do not control — do not drop those."""
+    assert agent._answer_delta_text(None, {"content": "from langflow"}) == "from langflow"
+    assert agent._answer_delta_text("response.output_text.delta", "answer") == "answer"
+    assert agent._answer_delta_text("some.future.delta", "kept") == "kept"
+    # Machine payloads are dropped regardless of shape.
+    assert agent._answer_delta_text("response.function_call_arguments.delta", '{"a":1}') == ""
+    assert agent._answer_delta_text("response.reasoning_text.delta", "thinking") == ""

@@ -226,23 +226,25 @@ def register_search_service(service: "SearchService") -> None:
 
 
 @tool
-async def search_tool(query: str, embedding_model: str = None) -> dict[str, Any]:
+async def search_tool(query: str) -> dict[str, Any]:
     """
     Use this tool to search for documents relevant to the query.
 
     Args:
         query (str): query string to search the corpus
-        embedding_model (str): Optional override for embedding model.
-                              If not provided, uses the current embedding
-                              model from configuration.
 
     Returns:
         dict (str, Any): {"results": [chunks]} on success
     """
+    # Deliberately no `embedding_model` parameter. The model cannot know which
+    # embedding space a corpus was indexed under, so exposing it invited
+    # guesses like "gpt-4" — a chat model — which then surfaced in logs and, on
+    # an empty or degraded index, built a bogus embedding space. Retrieval
+    # resolves the model from the corpus and config instead.
     if not _global_search_service:
         logger.error("SearchService tool called before initialization")
         return {"results": [], "error": "Search service not available"}
-    return await _global_search_service.search_tool(query, embedding_model=embedding_model)
+    return await _global_search_service.search_tool(query)
 
 
 class SearchService:
