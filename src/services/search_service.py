@@ -12,7 +12,6 @@ from config.embedding_constants import get_declared_default_embedding_model
 from config.settings import get_embedding_model, get_index_name, get_openrag_config
 from services.llm_gateway import LlmGatewayError
 from services.llm_gateway import embeddings as gateway_embeddings
-from services.models_service import is_cohere_embedding_model
 from utils.container_utils import transform_localhost_url
 from utils.embedding_fields import (
     INDEXED_EMBEDDING_ROUTE_PREFIX,
@@ -22,8 +21,11 @@ from utils.embedding_fields import (
     embedding_spaces_from_aggregation,
     get_embedding_field_name,
     get_embedding_space_id,
+    split_embedding_space_id,
 )
+from utils.embedding_kwargs import is_cohere_embedding_model, oci_credential_kwargs
 from utils.logging_config import get_logger
+from utils.oci_auth import get_cached_oci_signer
 
 logger = get_logger(__name__)
 
@@ -428,6 +430,18 @@ class SearchService:
                 embed_kwargs: dict[str, Any] = {}
                 if is_cohere_embedding_model(space.field_identity):
                     embed_kwargs["input_type"] = "search_query"
+
+                # OCI-routed spaces need their auth credentials passed as
+                # call-time kwargs; litellm's OCI integration does not read
+                # them from the environment. instance_principal/
+                # workload_identity additionally need a constructed SDK
+                # Signer, which credential_values() deliberately can't
+                # provide (see config.config_manager.credential_values).
+                space_provider, _ = split_embedding_space_id(space.field_identity)
+                if (space_provider or get_openrag_config().knowledge.embedding_provider) == "oci":
+                    oci_config = get_openrag_config().providers.oci
+                    oci_signer = get_cached_oci_signer(oci_config.auth_method)
+                    embed_kwargs.update(oci_credential_kwargs(oci_config, signer=oci_signer))
 
                 while attempts < MAX_EMBED_RETRIES:
                     attempts += 1
