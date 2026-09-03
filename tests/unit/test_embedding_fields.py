@@ -21,6 +21,7 @@ from utils.embedding_fields import (
     embedding_spaces_from_aggregation,
     get_embedding_field_name,
     get_embedding_space_id,
+    normalize_model_name,
     split_embedding_space_id,
 )
 
@@ -222,3 +223,40 @@ class TestBuildKnnVectorFieldCallSitesMatch:
         assert "chunk_embedding_azure_text_embedding_3_small" in properties
         assert properties["embedding_provider"] == {"type": "keyword"}
         assert properties["embedding_space_id"] == {"type": "keyword"}
+
+
+class TestNormalizeModelNameBedrockCohere:
+    """Bedrock's Cohere Embed model name must normalize to a distinct,
+    predictable field suffix - and stay distinct from other Cohere-serving
+    providers' model id variants (e.g. OCI GenAI's "...-v3.0" suffix), since
+    each embedding model gets its own knn_vector field in the index."""
+
+    def test_bedrock_multilingual_v3_normalizes_as_expected(self) -> None:
+        assert (
+            normalize_model_name("cohere.embed-multilingual-v3")
+            == "cohere_embed_multilingual_v3"
+        )
+
+    def test_bedrock_english_v3_normalizes_as_expected(self) -> None:
+        assert normalize_model_name("cohere.embed-english-v3") == "cohere_embed_english_v3"
+
+    def test_bedrock_v4_colon_suffix_normalizes_as_expected(self) -> None:
+        assert normalize_model_name("cohere.embed-v4:0") == "cohere_embed_v4_0"
+
+    def test_distinct_from_oci_style_dotted_version_suffix(self) -> None:
+        """OCI GenAI's Cohere model id ("cohere.embed-multilingual-v3.0")
+        differs from Bedrock's ("cohere.embed-multilingual-v3") only by a
+        trailing ".0" - they must not collide on the same OpenSearch field."""
+        bedrock_normalized = normalize_model_name("cohere.embed-multilingual-v3")
+        oci_style_normalized = normalize_model_name("cohere.embed-multilingual-v3.0")
+
+        assert bedrock_normalized != oci_style_normalized
+        assert bedrock_normalized == "cohere_embed_multilingual_v3"
+        assert oci_style_normalized == "cohere_embed_multilingual_v3_0"
+
+    def test_get_embedding_field_name_for_bedrock_model(self) -> None:
+        assert (
+            get_embedding_field_name("cohere.embed-multilingual-v3")
+            == "chunk_embedding_cohere_embed_multilingual_v3"
+        )
+
