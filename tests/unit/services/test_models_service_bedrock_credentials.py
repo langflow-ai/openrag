@@ -11,6 +11,14 @@ from types import SimpleNamespace
 
 import pytest
 
+from config.config_manager import (
+    AnthropicConfig,
+    BedrockConfig,
+    OllamaConfig,
+    OpenAIConfig,
+    ProvidersConfig,
+    WatsonXConfig,
+)
 from services.models_service import bedrock_credential_kwargs
 
 
@@ -23,6 +31,29 @@ def _config(*, access_key_id="", secret_access_key="", region="us-east-1") -> Si
                 secret_access_key=secret_access_key,
             )
         )
+    )
+
+
+def _openrag_config(
+    *, embedding_provider: str, access_key_id="", secret_access_key="", region="us-east-1"
+) -> SimpleNamespace:
+    """A config whose `.providers` is a real ProvidersConfig - required for
+    credential_values("bedrock") to actually run (the generic LLM gateway
+    dispatches on `hasattr(providers, "credential_values")`, and only a real
+    ProvidersConfig instance has that method)."""
+    providers = ProvidersConfig(
+        openai=OpenAIConfig(api_key="sk-test", configured=True),
+        anthropic=AnthropicConfig(),
+        watsonx=WatsonXConfig(),
+        ollama=OllamaConfig(),
+        bedrock=BedrockConfig(
+            region=region, access_key_id=access_key_id, secret_access_key=secret_access_key
+        ),
+    )
+    return SimpleNamespace(
+        providers=providers,
+        knowledge=SimpleNamespace(embedding_provider=embedding_provider, embedding_model=""),
+        agent=SimpleNamespace(llm_provider="openai", llm_model=""),
     )
 
 
@@ -93,68 +124,61 @@ class TestBedrockCredentialKwargs:
 class TestEmbeddingCallSitesAttachCredentials:
     """The kwargs are worthless if the call sites don't pass them on.
 
-    Reuses the harness style of tests/unit/test_search_service_bedrock_embedding.py:
-    the embed call happens before search_tool's auth check, so the call is
-    captured and the function then short-circuits.
+    Retrieval now routes query-time embeds through
+    `services.llm_gateway.embeddings` - the same credential-aware gateway
+    Langflow uses - which resolves Bedrock's per-call AWS kwargs from
+    `ProvidersConfig.credential_values("bedrock")` rather than
+    `bedrock_credential_kwargs()` directly. These tests drive a real
+    `SearchService.search_tool()` call end to end down to the actual
+    `litellm.aembedding()` call, proving the credentials survive the whole
+    path (search_tool -> gateway_embeddings -> resolve_call ->
+    provider_credentials -> credential_values).
     """
 
     @staticmethod
-    async def _run_search(monkeypatch, *, model_name, formatted_model):
+    async def _run_search(monkeypatch, *, config, embedding_model):
         from services.search_service import SearchService
 
         calls = []
 
-        async def create(**kwargs):
+        async def fake_aembedding(**kwargs):
             calls.append(kwargs)
             return SimpleNamespace(data=[SimpleNamespace(embedding=[0.1, 0.2, 0.3])])
 
-        monkeypatch.setattr(
-            "services.search_service.clients",
-            SimpleNamespace(
-                patched_embedding_client=SimpleNamespace(embeddings=SimpleNamespace(create=create))
-            ),
-        )
-        monkeypatch.setattr(
-            "services.search_service.get_openrag_config",
-            lambda: SimpleNamespace(providers=SimpleNamespace(ollama=SimpleNamespace(endpoint=""))),
-        )
+        monkeypatch.setattr("litellm.aembedding", fake_aembedding)
+        monkeypatch.setattr("services.search_service.get_openrag_config", lambda: config)
+        monkeypatch.setattr("config.settings.get_openrag_config", lambda: config)
         monkeypatch.setattr("services.search_service.get_index_name", lambda: "documents")
 
         class _FakeOpenSearchClient:
             async def search(self, index, body, params=None):
-                return {
-                    "aggregations": {
-                        "embedding_models": {"buckets": [{"key": model_name, "doc_count": 3}]}
-                    }
-                }
+                # Force the aggregation lookup to fail so the code falls
+                # back to a single space built from the configured
+                # embedding_model/embedding_provider - far simpler to drive
+                # than the real composite-aggregation response shape.
+                raise RuntimeError("no corpus indexed yet")
 
         class _FakeSessionManager:
             def get_user_opensearch_client(self, user_id, jwt_token):
                 return _FakeOpenSearchClient()
 
-        class _FakeModelsService:
-            async def get_litellm_model_name(self, name, strict=False):
-                return formatted_model
-
-        service = SearchService(
-            session_manager=_FakeSessionManager(), models_service=_FakeModelsService()
-        )
-        await service.search_tool("what is the refund policy?", embedding_model=model_name)
+        service = SearchService(session_manager=_FakeSessionManager())
+        await service.search_tool("what is the refund policy?", embedding_model=embedding_model)
         return calls
 
     @pytest.mark.asyncio
     async def test_query_embedding_passes_credentials(self, monkeypatch):
-        monkeypatch.setattr(
-            "config.settings.get_openrag_config",
-            lambda: _config(access_key_id="AKIAEXAMPLE", secret_access_key="supersecret"),
+        config = _openrag_config(
+            embedding_provider="bedrock",
+            access_key_id="AKIAEXAMPLE",
+            secret_access_key="supersecret",
         )
 
         calls = await self._run_search(
-            monkeypatch,
-            model_name="cohere.embed-multilingual-v3",
-            formatted_model="bedrock/cohere.embed-multilingual-v3",
+            monkeypatch, config=config, embedding_model="cohere.embed-multilingual-v3"
         )
 
+        assert calls[0]["model"] == "bedrock/cohere.embed-multilingual-v3"
         assert calls[0]["aws_access_key_id"] == "AKIAEXAMPLE"
         assert calls[0]["aws_secret_access_key"] == "supersecret"
         # The Cohere input_type contract must survive alongside them.
@@ -162,12 +186,10 @@ class TestEmbeddingCallSitesAttachCredentials:
 
     @pytest.mark.asyncio
     async def test_query_embedding_omits_credentials_in_iam_role_mode(self, monkeypatch):
-        monkeypatch.setattr("config.settings.get_openrag_config", lambda: _config())
+        config = _openrag_config(embedding_provider="bedrock")
 
         calls = await self._run_search(
-            monkeypatch,
-            model_name="cohere.embed-multilingual-v3",
-            formatted_model="bedrock/cohere.embed-multilingual-v3",
+            monkeypatch, config=config, embedding_model="cohere.embed-multilingual-v3"
         )
 
         assert "aws_access_key_id" not in calls[0]
@@ -177,15 +199,14 @@ class TestEmbeddingCallSitesAttachCredentials:
 
     @pytest.mark.asyncio
     async def test_non_bedrock_query_embedding_gets_no_aws_kwargs(self, monkeypatch):
-        monkeypatch.setattr(
-            "config.settings.get_openrag_config",
-            lambda: _config(access_key_id="AKIAEXAMPLE", secret_access_key="supersecret"),
+        config = _openrag_config(
+            embedding_provider="openai",
+            access_key_id="AKIAEXAMPLE",
+            secret_access_key="supersecret",
         )
 
         calls = await self._run_search(
-            monkeypatch,
-            model_name="text-embedding-3-small",
-            formatted_model="text-embedding-3-small",
+            monkeypatch, config=config, embedding_model="text-embedding-3-small"
         )
 
         assert "aws_access_key_id" not in calls[0]
