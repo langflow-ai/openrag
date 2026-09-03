@@ -104,7 +104,7 @@ def test_legacy_text_embedding_3_small_routes_to_openai_not_selected_provider():
     )
 
     assert provider == "openai"
-    assert model == "text-embedding-3-small"
+    assert model == "openai/text-embedding-3-small"
     assert creds["api_key"] == "sk-openai"
 
 
