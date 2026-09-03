@@ -341,6 +341,17 @@
     margin-top: 1rem !important;
   }
 
+  /* Confirmation / alert dialogs without body content: remove header bottom border and footer top margin */
+  [data-theme="ibm"]
+    [data-slot="dialog-header"]:has(+ [data-slot="dialog-footer"]) {
+    border-bottom: none !important;
+    padding-bottom: 1.5rem !important;
+  }
+
+  [data-theme="ibm"] [data-slot="dialog-header"] + [data-slot="dialog-footer"] {
+    margin-top: 0 !important;
+  }
+
   /*
    * Carbon 3-button footer (e.g. Remove + Cancel + Save): a 2-column grid
    * wraps the third action onto a new row. Use 4 columns so tertiary sits
