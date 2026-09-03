@@ -34,6 +34,7 @@ LANGFLOW_CREDENTIAL_GLOBAL_VARIABLES = frozenset(
         "JWT",
         "OPENAI_API_KEY",
         "OPENRAG_LLM_TOKEN",
+        "OPENRAG_INGEST_TOKEN",
         "OPENSEARCH_PASSWORD",
     }
 )
@@ -48,7 +49,6 @@ LANGFLOW_GENERIC_GLOBAL_VARIABLES = frozenset(
         "OPENRAG-QUERY-FILTER",
         "OPENRAG_INGEST_BATCH_SIZE",
         "OPENRAG_INGEST_RUN_ID",
-        "OPENRAG_INGEST_TOKEN",
         "OPENRAG_INGEST_URL",
         "OPENRAG_LLM_BASE_URL",
         "OPENSEARCH_INDEX_NAME",
@@ -271,6 +271,14 @@ async def ensure_required_langflow_global_variables(config=None):
                 variable_name=name,
                 error=str(e),
             )
+
+    try:
+        await _update_mcp_server_urls(config)
+    except Exception as e:
+        logger.warning(
+            "Failed to update MCP servers after ensuring global variables",
+            error=str(e),
+        )
 
 
 async def _update_langflow_global_variables(config, flows_service=None):
@@ -573,6 +581,11 @@ async def reapply_all_settings(session_manager=None):
             await _update_langflow_chunk_settings(config, flows_service)
         except Exception as e:
             logger.error(f"Failed to update Langflow chunk settings: {str(e)}")
+
+        try:
+            await flows_service.enable_mcp_none_for_url_ingest_flow()
+        except Exception as e:
+            logger.error(f"Failed to configure unauthenticated MCP for URL ingest flow: {str(e)}")
 
         logger.info("Successfully reapplied all settings to Langflow flows")
 

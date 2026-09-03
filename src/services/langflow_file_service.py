@@ -19,6 +19,7 @@ from config.settings import (
 )
 from services.document_index_writer import DocumentIndexContext
 from utils.hash_utils import hash_id
+from utils.langflow_utils import enable_mcp_none_for_project
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -825,6 +826,14 @@ class LangflowFileService:
                         "GET", f"/api/v1/flows/{configured_flow_id}"
                     )
                     if check_resp.status_code < 400:
+                        try:
+                            project_id = check_resp.json().get("folder_id")
+                            if project_id:
+                                await enable_mcp_none_for_project(project_id)
+                        except Exception as err:
+                            logger.warning(
+                                f"[LF] Failed to configure MCP project auth on check: {err}"
+                            )
                         return configured_flow_id
                     if check_resp.status_code != 404:
                         if self._is_transient_status(check_resp.status_code):
@@ -885,6 +894,14 @@ class LangflowFileService:
 
                 flow_data = create_resp.json()
                 imported_flow_id = flow_data.get("id")
+                project_id = flow_data.get("folder_id")
+                if project_id:
+                    try:
+                        await enable_mcp_none_for_project(project_id)
+                    except Exception as err:
+                        logger.warning(
+                            f"[LF] Failed to configure MCP project auth after import: {err}"
+                        )
                 if not imported_flow_id:
                     raise ValueError("Langflow flow import succeeded but no flow id was returned")
 

@@ -18,6 +18,7 @@ from config.settings import (
     clients,
     get_openrag_config,
 )
+from utils.langflow_utils import enable_mcp_none_for_project
 from utils.logging_config import get_logger
 from utils.telemetry import Category, MessageId, TelemetryClient
 
@@ -570,6 +571,15 @@ class FlowsService:
 
             if response.status_code == 200:
                 await self._lock_flow(flow_id)
+                try:
+                    res_json = response.json()
+                    project_id = res_json.get("folder_id")
+                    if project_id and (
+                        flow_type == "url_ingest" or flow_id == LANGFLOW_URL_INGEST_FLOW_ID
+                    ):
+                        await enable_mcp_none_for_project(project_id)
+                except Exception as err:
+                    logger.warning(f"Failed to enable unauthenticated MCP for {flow_type}: {err}")
                 logger.info(
                     f"Successfully reset {flow_type} flow",
                     flow_id=flow_id,
@@ -937,6 +947,12 @@ class FlowsService:
                     logger.info(
                         f"Flow {flow_type} (ID: {flow_id}) already exists, skipping creation"
                     )
+                    try:
+                        project_id = response.json().get("folder_id")
+                        if project_id and flow_type == "url_ingest":
+                            await enable_mcp_none_for_project(project_id)
+                    except Exception as err:
+                        logger.warning(f"Failed to check MCP project auth for {flow_type}: {err}")
                     return None
 
                 if response.status_code != 404:
@@ -963,6 +979,12 @@ class FlowsService:
                     logger.info(
                         f"Created {flow_type} flow (ID: {flow_id}) from {os.path.basename(flow_path)}"
                     )
+                    try:
+                        project_id = response.json().get("folder_id")
+                        if project_id and flow_type == "url_ingest":
+                            await enable_mcp_none_for_project(project_id)
+                    except Exception as err:
+                        logger.warning(f"Failed to check MCP project auth for {flow_type}: {err}")
                     return flow_type
                 else:
                     logger.warning(
@@ -993,6 +1015,23 @@ class FlowsService:
                 logger.error(f"Failed to reapply settings for newly created flows: {e}")
 
         return created_flow_types
+
+    async def enable_mcp_none_for_url_ingest_flow(self) -> bool:
+        """Configure auth_type='none' for MCP on the URL ingest flow project."""
+        flow_id = LANGFLOW_URL_INGEST_FLOW_ID
+        if not flow_id:
+            return False
+        try:
+            resp = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
+            if resp.status_code == 200:
+                project_id = resp.json().get("folder_id")
+                if project_id:
+                    return await enable_mcp_none_for_project(project_id)
+        except Exception as e:
+            logger.warning(
+                f"Error enabling MCP auth_type='none' for URL ingest flow {flow_id}: {e}"
+            )
+        return False
 
     async def change_langflow_model_value(
         self,

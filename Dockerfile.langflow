@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.4
-FROM langflowai/langflow:base-0.11.2
+FROM langflowai/langflow:base-0.11.6
 
 # Install uv and pre-create the Langflow data directory.
 # The base image already runs as uid=1000 and owns /app, so no root or chown needed.
@@ -33,16 +33,17 @@ COPY custom_components/ /app/custom_components/
 # bind-mount permissions at runtime before dropping back to uid=1000.
 COPY --chmod=755 scripts/langflow-entrypoint.py /usr/local/bin/langflow-entrypoint
 COPY scripts/patch_langflow_openrag_bundle.py /tmp/patch_langflow_openrag_bundle.py
-COPY flows/component_index.json /app/component_index.json
 USER root
-RUN rm -f /app/flows/component_index.json \
-    && python3 /tmp/patch_langflow_openrag_bundle.py
+RUN python3 /tmp/patch_langflow_openrag_bundle.py
 ENV LANGFLOW_SSRF_ALLOWED_HOSTS=localhost,127.0.0.1,host.docker.internal
 ENV LANGFLOW_LOG_TRACE_LOCALS=false
+ENV LANGFLOW_LOG_FORMAT=key_value
 ENV LANGFLOW_BLOCK_CODE_INTERPRETER_COMPONENTS=true
 ENV LANGFLOW_COMPONENTS_PATH=/app/custom_components
-ENV LANGFLOW_COMPONENTS_INDEX_PATH=/app/component_index.json
 ENV LANGFLOW_ALLOW_CUSTOM_COMPONENTS=false
+ENV LANGFLOW_DANGEROUSLY_ALLOW_MULTI_WORKER_WITHOUT_SHARED_QUEUE=true
+ENV LANGFLOW_DISABLE_TRACK_APIKEY_USAGE=true
+
 
 # CWE-426 fix: explicitly set PATH so system-owned directories are always resolved
 # first. App venv and ubi python dirs are appended last so they cannot shadow system binaries.
