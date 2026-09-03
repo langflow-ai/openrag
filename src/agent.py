@@ -79,6 +79,24 @@ def _conversation_ended_with_error(user_id: str, response_id: str | None) -> boo
     return False
 
 
+async def _claim_session(user_id: str, session_id: str) -> None:
+    """Record `user_id` as the owner of `session_id`, best effort.
+
+    Required for threading: `_assert_owns` returns 404 (session_not_found) for
+    an unclaimed session, so the next message in the thread fails. Never raise —
+    a claim failure must not lose a reply the user already saw.
+    """
+    if not session_id:
+        return
+    try:
+        from services.session_ownership_service import session_ownership_service
+
+        await session_ownership_service.claim_session(user_id, session_id)
+        logger.debug(f"Claimed session {session_id} for user {user_id}")
+    except Exception as e:
+        logger.warning(f"Failed to claim session ownership: {e}")
+
+
 async def _persist_error_conversation(
     user_id: str, store_id: str, conversation_state: dict
 ) -> None:
@@ -89,15 +107,83 @@ async def _persist_error_conversation(
     """
     from datetime import datetime
 
-    from services.session_ownership_service import session_ownership_service
-
     conversation_state["last_activity"] = datetime.now()
     await store_conversation_thread(user_id, store_id, conversation_state)
-    try:
-        await session_ownership_service.claim_session(user_id, store_id)
-        logger.debug(f"Claimed session {store_id} for user {user_id} after stream error")
-    except Exception as e:
-        logger.warning(f"Failed to claim session ownership after stream error: {e}")
+    await _claim_session(user_id, store_id)
+
+
+# Streamed deltas that carry machine payloads rather than the visible answer.
+# `response.function_call_arguments.delta` in particular streams tool-call JSON
+# through the same `delta` field as answer text, so accumulating every delta put
+# raw `{"query": ...}` at the top of stored replies — once per tool call.
+_NON_ANSWER_DELTA_TYPES = frozenset(
+    {
+        "response.function_call_arguments.delta",
+        "response.mcp_call_arguments.delta",
+        "response.custom_tool_call_input.delta",
+        "response.code_interpreter_call_code.delta",
+        "response.reasoning_summary_text.delta",
+        "response.reasoning_text.delta",
+        "response.audio.delta",
+    }
+)
+
+
+def _answer_delta_text(chunk_type, delta) -> str:
+    """Delta text belonging to the visible answer.
+
+    A denylist, not an allowlist: Langflow's SSE wraps deltas in shapes we do
+    not control, so anything unrecognised must keep accumulating as before.
+    """
+    if chunk_type in _NON_ANSWER_DELTA_TYPES:
+        return ""
+    return _extract_delta_text(delta)
+
+
+def conversation_input_messages(conversation_state: dict) -> list[dict]:
+    """The thread as Responses-API input items.
+
+    Sending the transcript explicitly replaces two things that did not work on
+    the direct path: `previous_response_id` chaining (unsupported by some
+    providers routed through LiteLLM, and it collides with agentd's own
+    follow-up call after a tool call), and the system prompt, which was stored
+    in conversation state but never actually sent.
+
+    Only role/content survives — our messages also carry timestamps, chunks and
+    response objects that the API rejects. Failed turns are dropped so an error
+    string is never replayed back to the model as if it were an answer.
+    """
+    items: list[dict] = []
+    for message in conversation_state.get("messages") or []:
+        if message.get("error"):
+            continue
+        role = message.get("role")
+        content = message.get("content")
+        if role not in ("system", "developer", "user", "assistant"):
+            continue
+        if not isinstance(content, str) or not content.strip():
+            continue
+        items.append({"role": role, "content": content})
+    return items
+
+
+def _extract_delta_text(delta) -> str:
+    """Text carried by a streamed delta, for either shape.
+
+    Langflow's SSE wraps deltas as {"content": "..."}; the OpenAI Responses SDK
+    sends a bare string. Testing `"content" in delta` against a string is a
+    substring check that silently yields nothing, which left the langflowless
+    transcript empty even though the UI rendered the reply fine.
+
+    Never falls back to str(dict): that pollutes the transcript with
+    "{'content': ''}" prefixes on empty error chunks.
+    """
+    if isinstance(delta, dict):
+        raw = delta.get("content")
+        if raw is None:
+            raw = delta.get("text")
+        return raw if isinstance(raw, str) else ""
+    return delta if isinstance(delta, str) else ""
 
 
 def _stream_error_chunk(message: str, response_id: str | None = None) -> bytes:
@@ -225,6 +311,7 @@ async def async_response_stream(
     extra_headers: dict = None,
     previous_response_id: str = None,
     log_prefix: str = "response",
+    input_messages: list[dict] | None = None,
 ):
     logger.info("User prompt received", prompt=prompt)
 
@@ -232,11 +319,15 @@ async def async_response_stream(
         # Build request parameters
         request_params = {
             "model": model,
-            "input": prompt,
+            "input": input_messages if input_messages else prompt,
             "stream": True,
             "include": ["tool_call.results"],
         }
-        if previous_response_id is not None:
+        # Only chain server-side when the caller did not supply the transcript.
+        # Sending both would duplicate history, and agentd's post-tool-call
+        # follow-up passes previous_response_id itself — supplying ours too
+        # raises "got multiple values for keyword argument".
+        if previous_response_id is not None and not input_messages:
             request_params["previous_response_id"] = previous_response_id
 
         if "x-api-key" not in client.default_headers:
@@ -260,19 +351,7 @@ async def async_response_stream(
             if hasattr(chunk, "output_text") and chunk.output_text:
                 full_response += chunk.output_text
             elif hasattr(chunk, "delta") and chunk.delta:
-                # Handle delta properly - it might be a dict or string.
-                # Do not fall back to str(dict) when content is "" — that pollutes
-                # the transcript with "{'content': ''}" prefixes on error chunks.
-                if isinstance(chunk.delta, dict):
-                    raw_delta = chunk.delta.get("content")
-                    if raw_delta is None:
-                        raw_delta = chunk.delta.get("text")
-                    delta_text = raw_delta if isinstance(raw_delta, str) else ""
-                elif chunk.delta is None:
-                    delta_text = ""
-                else:
-                    delta_text = str(chunk.delta)
-                full_response += delta_text
+                full_response += _answer_delta_text(getattr(chunk, "type", None), chunk.delta)
 
             # Enhanced logging for tool call detection (Granite 3.3 8b investigation)
             chunk_attrs = dir(chunk) if hasattr(chunk, "__dict__") else []
@@ -432,6 +511,7 @@ async def async_response(
     extra_headers: dict = None,
     previous_response_id: str = None,
     log_prefix: str = "response",
+    input_messages: list[dict] | None = None,
 ):
     # extra_headers/request_params carry raw secrets (JWT, provider API keys,
     # x-api-key — see langflow_headers.py). Never pass them to a logger call
@@ -444,11 +524,11 @@ async def async_response(
         # Build request parameters
         request_params = {
             "model": model,
-            "input": prompt,
+            "input": input_messages if input_messages else prompt,
             "stream": False,
             "include": ["tool_call.results"],
         }
-        if previous_response_id is not None:
+        if previous_response_id is not None and not input_messages:
             request_params["previous_response_id"] = previous_response_id
         if extra_headers:
             request_params["extra_headers"] = extra_headers
@@ -493,11 +573,13 @@ async def async_stream(
     extra_headers: dict = None,
     previous_response_id: str = None,
     log_prefix: str = "response",
+    input_messages: list[dict] | None = None,
 ):
     async for chunk in async_response_stream(
         client,
         prompt,
         model,
+        input_messages=input_messages,
         extra_headers=extra_headers,
         previous_response_id=previous_response_id,
         log_prefix=log_prefix,
@@ -561,11 +643,15 @@ async def async_chat(
     model: str = "gpt-4.1-mini",
     previous_response_id: str = None,
     filter_id: str = None,
+    conversation_id: str = None,
 ):
     logger.debug("async_chat called", user_id=user_id, previous_response_id=previous_response_id)
 
+    # See async_chat_stream: conversation_id is the stable sidebar thread id.
+    thread_id = conversation_id or previous_response_id
+    previous_loaded_from_memory = _conversation_thread_in_memory(user_id, thread_id)
     # Get the specific conversation thread (or create new one)
-    conversation_state = get_conversation_thread(user_id, previous_response_id)
+    conversation_state = get_conversation_thread(user_id, thread_id)
     logger.debug("Got conversation state", message_count=len(conversation_state["messages"]))
 
     # Add user message to conversation with timestamp
@@ -583,6 +669,7 @@ async def async_chat(
         async_client,
         prompt,
         model,
+        input_messages=conversation_input_messages(conversation_state),
         previous_response_id=previous_response_id,
         log_prefix="agent",
     )
@@ -604,8 +691,19 @@ async def async_chat(
     # Store the conversation thread with its response_id
     if response_id:
         conversation_state["last_activity"] = datetime.now()
-        await store_conversation_thread(user_id, response_id, conversation_state)
-        logger.debug("Stored conversation thread", user_id=user_id, response_id=response_id)
+        store_id = (
+            _resolve_conversation_store_id(
+                response_id,
+                thread_id,
+                previous_loaded_from_memory=previous_loaded_from_memory,
+            )
+            or response_id
+        )
+        await store_conversation_thread(user_id, store_id, conversation_state)
+        await _claim_session(user_id, store_id)
+        if store_id != response_id:
+            await _claim_session(user_id, response_id)
+        logger.debug("Stored conversation thread", user_id=user_id, store_id=store_id)
 
         # Debug: Check what's in user_conversations now
         conversations = await get_user_conversations(user_id)
@@ -629,10 +727,16 @@ async def async_chat_stream(
     model: str = "gpt-4.1-mini",
     previous_response_id: str = None,
     filter_id: str = None,
+    conversation_id: str = None,
 ):
-    previous_loaded_from_memory = _conversation_thread_in_memory(user_id, previous_response_id)
+    # conversation_id keeps the OpenRAG sidebar thread; previous_response_id
+    # chains the provider session. Mirrors async_langflow_chat_stream — without
+    # a stable thread id every turn is stored under its own response id and the
+    # sidebar grows one duplicate entry per message.
+    thread_id = conversation_id or previous_response_id
+    previous_loaded_from_memory = _conversation_thread_in_memory(user_id, thread_id)
     # Get the specific conversation thread (or create new one)
-    conversation_state = get_conversation_thread(user_id, previous_response_id)
+    conversation_state = get_conversation_thread(user_id, thread_id)
 
     # Add user message to conversation with timestamp
     from datetime import datetime
@@ -652,6 +756,7 @@ async def async_chat_stream(
             async_client,
             prompt,
             model,
+            input_messages=conversation_input_messages(conversation_state),
             previous_response_id=previous_response_id,
             log_prefix="agent",
         ):
@@ -660,17 +765,23 @@ async def async_chat_stream(
                 import json
 
                 chunk_data = json.loads(chunk.decode("utf-8"))
-                if "delta" in chunk_data and "content" in chunk_data["delta"]:
-                    full_response += chunk_data["delta"]["content"]
+                full_response += _answer_delta_text(chunk_data.get("type"), chunk_data.get("delta"))
                 # Extract response_id from chunk
                 if "id" in chunk_data:
                     response_id = chunk_data["id"]
                 elif "response_id" in chunk_data:
                     response_id = chunk_data["response_id"]
-                # Capture usage from response.completed event
+                # Capture usage and the response id from the terminal event.
+                # An OpenAI Responses stream carries no top-level id — it lives
+                # on the response object here — so without this the direct
+                # (langflowless) path never resolves one and the conversation is
+                # silently dropped instead of stored, leaving the sidebar empty.
+                # Langflow's SSE wrapper does send a top-level id, which is why
+                # only the direct path was affected.
                 if chunk_data.get("type") == "response.completed":
                     response_obj = chunk_data.get("response", {})
                     usage_data = response_obj.get("usage")
+                    response_id = response_obj.get("id") or response_id
             except Exception:
                 pass
             yield chunk
@@ -690,9 +801,24 @@ async def async_chat_stream(
         # Store the conversation thread with its response_id
         if response_id:
             conversation_state["last_activity"] = datetime.now()
-            await store_conversation_thread(user_id, response_id, conversation_state)
+            store_id = (
+                _resolve_conversation_store_id(
+                    response_id,
+                    thread_id,
+                    previous_loaded_from_memory=previous_loaded_from_memory,
+                )
+                or response_id
+            )
+            await store_conversation_thread(user_id, store_id, conversation_state)
+            await _claim_session(user_id, store_id)
+            # The provider's response id still has to be claimed: the client
+            # sends it back as previous_response_id on the next turn, and
+            # _assert_owns 404s on an unclaimed session.
+            if store_id != response_id:
+                await _claim_session(user_id, response_id)
             logger.debug(
-                f"Stored conversation thread for user {user_id} with response_id: {response_id}"
+                f"Stored conversation thread for user {user_id} under {store_id}"
+                f" (response_id: {response_id})"
             )
     except Exception as e:
         logger.error(f"Error in chat stream: {e}", exc_info=True)
@@ -710,7 +836,7 @@ async def async_chat_stream(
         )
         store_id = _resolve_conversation_store_id(
             response_id,
-            previous_response_id,
+            thread_id,
             previous_loaded_from_memory=previous_loaded_from_memory,
             mint_if_missing=True,
         )
@@ -853,14 +979,7 @@ async def async_langflow_chat(
         conversation_state["last_activity"] = datetime.now()
         await store_conversation_thread(user_id, response_id, conversation_state)
 
-        # Claim session ownership for this user
-        try:
-            from services.session_ownership_service import session_ownership_service
-
-            await session_ownership_service.claim_session(user_id, response_id)
-            logger.debug(f"Claimed session {response_id} for user {user_id}")
-        except Exception as e:
-            logger.warning(f"Failed to claim session ownership: {e}")
+        await _claim_session(user_id, response_id)
 
         logger.debug(
             "Stored langflow conversation thread",
@@ -932,13 +1051,17 @@ async def async_langflow_chat_stream(
                 chunk_data = json.loads(chunk.decode("utf-8"))
                 collected_chunks.append(chunk_data)  # Collect all chunk data
 
-                if "delta" in chunk_data and "content" in chunk_data["delta"]:
-                    full_response += chunk_data["delta"]["content"]
+                full_response += _answer_delta_text(chunk_data.get("type"), chunk_data.get("delta"))
                 # Extract response_id from chunk
                 if "id" in chunk_data:
                     response_id = chunk_data["id"]
                 elif "response_id" in chunk_data:
                     response_id = chunk_data["response_id"]
+                # Langflow supplies a top-level id today, but fall back to the
+                # terminal event's response object so this path cannot break the
+                # same way if that wrapper ever changes.
+                elif chunk_data.get("type") == "response.completed":
+                    response_id = chunk_data.get("response", {}).get("id") or response_id
 
                 # Check for error status. Do not forward bare Langflow error
                 # chunks — they often lack a useful message and the client would
@@ -1028,12 +1151,7 @@ async def async_langflow_chat_stream(
         if persist_id:
             conversation_state["last_activity"] = datetime.now()
             await store_conversation_thread(user_id, persist_id, conversation_state)
-            try:
-                from services.session_ownership_service import session_ownership_service
-
-                await session_ownership_service.claim_session(user_id, persist_id)
-            except Exception as e:
-                logger.warning(f"Failed to claim session ownership: {e}")
+            await _claim_session(user_id, persist_id)
     except Exception as e:
         logger.error(f"Error in langflow chat stream: {e}", exc_info=True)
         from api.provider_validation import resolve_chat_stream_error_message_async

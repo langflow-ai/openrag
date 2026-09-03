@@ -192,6 +192,17 @@ export function useChatStreaming({
                   newResponseId = chunk.id;
                 } else if (chunk.response_id) {
                   newResponseId = chunk.response_id;
+                } else if (
+                  chunk.type === "response.completed" &&
+                  chunk.response?.id
+                ) {
+                  // An OpenAI Responses stream carries no top-level id — it is
+                  // on the response object of the terminal event. Langflow's SSE
+                  // wrapper does send one, so only the direct (langflowless)
+                  // path was affected: without this the caller never learns the
+                  // id, never sends previous_response_id, and every question
+                  // starts a fresh conversation with no memory of the last turn.
+                  newResponseId = chunk.response.id;
                 }
 
                 parseOpenAIChatChunk(chunk, content, currentFunctionCalls) ||

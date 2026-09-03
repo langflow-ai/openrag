@@ -5,8 +5,8 @@ import threading
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
+import agentd.patch as agentd_patch
 import httpx
-from agentd.patch import patch_openai_with_mcp
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from opensearchpy import AsyncOpenSearch
@@ -18,14 +18,22 @@ from utils.container_utils import determine_docling_host, get_container_host
 from utils.embedding_fields import build_knn_vector_field
 from utils.env_utils import get_env_float, get_env_int, get_env_set
 from utils.logging_config import get_logger
+from utils.openai_compat import install_agentd_response_event_compat
 
 # Import configuration manager
 from .config_manager import config_manager
+from .model_providers import canonical_provider
 
 load_dotenv(override=False)
 load_dotenv("../", override=False)
 
 logger = get_logger(__name__)
+
+# agentd builds Responses stream events with a model shape older than the
+# installed OpenAI SDK expects. Patch before the first patched client is built,
+# otherwise langflowless streaming chat dies on the first tool call.
+install_agentd_response_event_compat(agentd_patch)
+patch_openai_with_mcp = agentd_patch.patch_openai_with_mcp
 
 
 def get_legacy_embedding_provider_map_json() -> str | None:
@@ -105,6 +113,37 @@ LANGFLOW_URL = os.getenv("LANGFLOW_URL", f"http://localhost:{LANGFLOW_PORT}")
 # Optional: public URL for browser links (e.g., http://localhost:7860)
 LANGFLOW_PUBLIC_URL = os.getenv("LANGFLOW_PUBLIC_URL")
 LANGFLOW_CHAT_FLOW_ID = os.getenv("LANGFLOW_CHAT_FLOW_ID") or "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
+
+
+def env_flag_enabled(name: str) -> bool:
+    """True when env var `name` is set to a truthy string."""
+    return os.getenv(name, "").strip().lower() in ("true", "1", "yes")
+
+
+def is_chat_with_langflow_disabled() -> bool:
+    """True when chat must bypass Langflow and run the in-process OpenRAG agent.
+
+    The env var is an operator kill switch and is checked first: it stays
+    effective even when config.yaml is marked `edited` (which makes
+    config_manager skip env overrides) and even if the config was already
+    cached before the var was set. Otherwise defer to the settings-UI value.
+    """
+    if env_flag_enabled("DISABLE_CHAT_WITH_LANGFLOW"):
+        return True
+    return bool(get_openrag_config().agent.disable_chat_with_langflow)
+
+
+def is_ingest_with_langflow_disabled() -> bool:
+    """True when ingestion must bypass Langflow and use the OpenRAG processor.
+
+    Same kill-switch precedence as `is_chat_with_langflow_disabled`.
+    """
+    if env_flag_enabled("DISABLE_INGEST_WITH_LANGFLOW"):
+        return True
+    return bool(get_openrag_config().knowledge.disable_ingest_with_langflow)
+
+
+DISABLE_CHAT_WITH_LANGFLOW = env_flag_enabled("DISABLE_CHAT_WITH_LANGFLOW")
 LANGFLOW_INGEST_FLOW_ID = (
     os.getenv("LANGFLOW_INGEST_FLOW_ID") or "5488df7c-b93f-4f87-a446-b67028bc0813"
 )
@@ -1005,12 +1044,56 @@ async def get_langflow_api_key(force_regenerate: bool = False):
         return None
 
 
+def provider_env_vars(config) -> dict[str, str]:
+    """Environment variables LiteLLM needs for every configured provider.
+
+    The agentd-patched OpenAI client forwards only `model`, `input` and a
+    dynamic `api_key` to LiteLLM — there is no kwargs channel for `api_base`.
+    So for providers that need more than a key (Azure requires `api_base`, and
+    raises "No API Base provided" without it), the environment is the only way
+    to reach it. `llm_gateway` passes the same credentials as explicit kwargs;
+    exporting them here keeps the two routes pointed at the same endpoint.
+
+    Names follow LiteLLM's `{PROVIDER}_{FIELD}` convention, with one wrinkle:
+    fields that already carry the provider prefix (`azure_ad_token`) must not
+    be prefixed twice.
+
+    Every stored credential is exported, not an allowlist of known field names.
+    The keys come from LiteLLM's own provider field specs, and a variable it
+    does not read is inert — whereas an allowlist silently drops `project_id`,
+    `azure_ad_token` and every field added in future, which is exactly the bug
+    this function exists to fix.
+    """
+    env: dict[str, str] = {}
+    providers = getattr(config, "providers", None)
+    custom = getattr(providers, "custom", None) or {}
+    for provider_key in custom:
+        try:
+            credentials = providers.credential_values(provider_key)
+        except Exception:  # a malformed entry must not break client creation
+            continue
+        prefix = canonical_provider(provider_key).upper().replace("-", "_")
+        if not prefix:
+            continue
+        for name, value in (credentials or {}).items():
+            text = str(value).strip()
+            if not text:
+                continue
+            suffix = str(name).upper().replace("-", "_")
+            var = suffix if suffix.startswith(f"{prefix}_") else f"{prefix}_{suffix}"
+            env[var] = text
+    return env
+
+
 class AppClients:
     def __init__(self):
         self.opensearch = None
         self.langflow_client = None
         self.langflow_http_client = None
         self._patched_async_client = None  # Private attribute - single client for all providers
+        # Names exported by provider_env_vars, so a provider that is later
+        # removed does not leave a stale variable LiteLLM would still use.
+        self._exported_provider_env: set[str] = set()
         self._client_init_lock = threading.Lock()  # Lock for thread-safe initialization
         self.docling_http_client = None
         self._docling_service = None
@@ -1210,6 +1293,23 @@ class AppClients:
                     os.environ["OLLAMA_BASE_URL"] = config.providers.ollama.endpoint
                     os.environ["OLLAMA_ENDPOINT"] = config.providers.ollama.endpoint
                     logger.debug("Loaded Ollama endpoint from config")
+
+                # Every other configured provider, generically. Runs last so it
+                # is the tiebreaker, and config wins over .env deliberately:
+                # llm_gateway already passes config credentials as explicit
+                # kwargs, which beat env inside LiteLLM. If .env won here the
+                # two routes could resolve to different endpoints.
+                provider_env = provider_env_vars(config)
+                for stale in self._exported_provider_env - provider_env.keys():
+                    os.environ.pop(stale, None)
+                os.environ.update(provider_env)
+                self._exported_provider_env = set(provider_env)
+                if provider_env:
+                    # Names only. These values are API keys.
+                    logger.debug(
+                        "Exported provider credentials for LiteLLM",
+                        variables=sorted(provider_env),
+                    )
 
                 # Determine model and provider for both probe and production client
                 model_name = config.knowledge.embedding_model or OPENAI_DEFAULT_EMBEDDING_MODEL

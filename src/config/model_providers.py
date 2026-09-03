@@ -83,6 +83,31 @@ _FALLBACK_PROVIDERS: tuple[dict[str, Any], ...] = (
 
 _TRUTHY = {"true", "1", "yes", "on"}
 
+# Names that are not LiteLLM provider keys but that users and older configs
+# write anyway. Without this map they reach `provider_credentials` and die with
+# "Provider 'x' is not configured in OpenRAG", because the credentials really
+# are stored — just under the canonical key.
+#
+# Keep this small. Every entry is a permanent compatibility obligation, and an
+# alias that is only honoured on some code paths is worse than none: the write
+# path would store under one key and the read path look under another.
+PROVIDER_ALIASES: dict[str, str] = {
+    # LiteLLM calls the Foundry catalogue `azure_ai`; the Azure console and our
+    # own early docs called it "Azure AI Foundry".
+    "azure_ai_foundry": "azure_ai",
+}
+
+
+def canonical_provider(provider: str | None) -> str:
+    """Normalize a provider name to the key OpenRAG stores and routes under.
+
+    This is the *only* sanctioned way to normalize a provider name. Call it
+    instead of a bare `.strip().lower()` so aliases resolve identically on the
+    config write path, the config load path and the request path.
+    """
+    key = (provider or "").strip().lower()
+    return PROVIDER_ALIASES.get(key, key)
+
 
 def _as_bool(value: Any) -> bool:
     """Whether a YAML `modes` value means "visible".
@@ -262,7 +287,7 @@ def visible_provider_keys(run_mode: str | None = None) -> frozenset[str]:
 
 
 def is_provider_visible(provider: str, run_mode: str | None = None) -> bool:
-    return (provider or "").strip().lower() in visible_provider_keys(run_mode)
+    return canonical_provider(provider) in visible_provider_keys(run_mode)
 
 
 def provider_visibility_payload(run_mode: str | None = None) -> dict[str, Any]:

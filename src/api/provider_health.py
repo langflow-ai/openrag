@@ -7,6 +7,7 @@ from fastapi import Depends
 from fastapi.responses import JSONResponse
 
 from api.provider_validation import sanitize_provider_error_content, validate_provider_setup
+from config.model_providers import canonical_provider
 from config.settings import get_openrag_config
 from dependencies import require_permission
 from services import provider_error_log
@@ -53,7 +54,7 @@ async def check_provider_health(
 
         # Determine which provider to check
         if check_provider:
-            provider = check_provider.lower()
+            provider = canonical_provider(check_provider)
         else:
             # Default to checking LLM provider
             provider = current_config.agent.llm_provider

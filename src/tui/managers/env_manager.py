@@ -91,6 +91,7 @@ class EnvConfig:
 
     # Ingestion settings
     disable_ingest_with_langflow: str = "False"
+    disable_chat_with_langflow: str = "False"
     nudges_flow_id: str = "ebc01d31-1976-46ce-a385-b0240327226c"
     ingest_sample_data: str = "True"
 
@@ -240,6 +241,7 @@ class EnvManager:
             "LANGFLOW_NEW_USER_IS_ACTIVE": "langflow_new_user_is_active",
             "LANGFLOW_ENABLE_SUPERUSER_CLI": "langflow_enable_superuser_cli",
             "DISABLE_INGEST_WITH_LANGFLOW": "disable_ingest_with_langflow",
+            "DISABLE_CHAT_WITH_LANGFLOW": "disable_chat_with_langflow",
             "INGEST_SAMPLE_DATA": "ingest_sample_data",
             "OPENRAG_VERSION": "openrag_version",
             "LANGFUSE_SECRET_KEY": "langfuse_secret_key",  # pragma: allowlist secret
@@ -616,6 +618,9 @@ class EnvManager:
                     f"DISABLE_INGEST_WITH_LANGFLOW={self._quote_env_value(self.config.disable_ingest_with_langflow)}\n"
                 )
                 f.write(
+                    f"DISABLE_CHAT_WITH_LANGFLOW={self._quote_env_value(self.config.disable_chat_with_langflow)}\n"
+                )
+                f.write(
                     f"INGEST_SAMPLE_DATA={self._quote_env_value(self.config.ingest_sample_data)}\n"
                 )
                 f.write("\n")
@@ -793,6 +798,12 @@ class EnvManager:
             (
                 "disable_ingest_with_langflow",
                 "Disable Langflow Ingestion (optional)",
+                "False",
+                False,
+            ),
+            (
+                "disable_chat_with_langflow",
+                "Disable Langflow Chat (optional)",
                 "False",
                 False,
             ),

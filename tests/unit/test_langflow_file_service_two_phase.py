@@ -237,33 +237,25 @@ def test_processor_accepts_injected_polling_service():
 
 @pytest.mark.asyncio
 async def test_langflow_preflight_detects_embedding_dimensions_with_probe(monkeypatch):
-    class FakeEmbeddings:
-        def __init__(self):
-            self.calls = []
+    """The probe routes through llm_gateway so it carries provider credentials.
 
-        async def create(self, model, input):
-            self.calls.append((model, input))
-            return SimpleNamespace(data=[SimpleNamespace(embedding=[0.1] * 7)])
+    The agentd-patched client forwards only a dynamic api_key, so an Azure probe
+    died on "No API Base provided" before the mapping could be created.
+    """
+    calls = []
 
-    fake_embeddings = FakeEmbeddings()
-    fake_client = SimpleNamespace(embeddings=fake_embeddings)
+    async def fake_gateway_embeddings(body):
+        calls.append(body)
+        return {"data": [{"embedding": [0.1] * 7}]}
 
-    async def fake_get_litellm_model_name(self, model_name, provider=None, strict=False):
-        assert model_name == "provider/model"
-        assert provider == "provider"
-        return "provider/provider/model"
-
-    monkeypatch.setattr("config.settings.clients._patched_async_client", fake_client)
-    monkeypatch.setattr(
-        "services.models_service.ModelsService.get_litellm_model_name",
-        fake_get_litellm_model_name,
-    )
+    monkeypatch.setattr("services.llm_gateway.embeddings", fake_gateway_embeddings)
 
     svc = LangflowFileService(docling_service=AsyncMock())
 
     assert await svc._detect_embedding_dimensions("provider/model", "provider") == 7
+    # Second call is served from the cache.
     assert await svc._detect_embedding_dimensions("provider/model", "provider") == 7
-    assert fake_embeddings.calls == [("provider/provider/model", ["dimension probe"])]
+    assert calls == [{"model": "space:provider:provider/model", "input": ["dimension probe"]}]
 
 
 @pytest.mark.asyncio

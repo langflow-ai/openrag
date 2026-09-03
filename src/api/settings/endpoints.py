@@ -62,6 +62,7 @@ from config.config_manager import (
     DEFAULT_SYSTEM_PROMPT,
     is_permitted_index_name,
 )
+from config.model_providers import canonical_provider
 from config.settings import (
     DEFAULT_DOCS_URL,
     ENVIRONMENT,
@@ -112,12 +113,12 @@ logger = get_logger(__name__)
 def _provider_key(provider: str | None) -> str:
     """Normalize a provider name the way credential storage does.
 
-    `set_credentials` and `credential_values` both key off `strip().lower()`,
+    `set_credentials` and `credential_values` both key off `canonical_provider`,
     and `llm_provider`/`embedding_provider` no longer have a fixed pattern, so a
     request carrying "Gemini" must still find the credentials submitted under
-    "gemini".
+    "gemini" — and one carrying "azure_ai_foundry" must find "azure_ai".
     """
-    return (provider or "").strip().lower()
+    return canonical_provider(provider)
 
 
 def _custom_providers_for_settings(openrag_config) -> dict[str, GenericProviderConfig]:
@@ -359,6 +360,7 @@ async def get_settings(
             agent=AgentConfig(
                 llm_model=agent_config.llm_model,
                 llm_provider=agent_config.llm_provider,
+                disable_chat_with_langflow=agent_config.disable_chat_with_langflow,
                 system_prompt=agent_config.system_prompt,
                 default_system_prompt=DEFAULT_SYSTEM_PROMPT,
             ),
@@ -458,7 +460,7 @@ async def update_settings(
                 # Validate LLM provider if being changed
                 if body.llm_provider is not None or body.llm_model is not None:
                     llm_provider = (
-                        body.llm_provider.strip().lower()
+                        canonical_provider(body.llm_provider)
                         if body.llm_provider is not None
                         else current_config.agent.llm_provider
                     )
@@ -509,7 +511,7 @@ async def update_settings(
                 # Validate embedding provider if being changed
                 if body.embedding_provider is not None or body.embedding_model is not None:
                     embedding_provider = (
-                        body.embedding_provider.strip().lower()
+                        canonical_provider(body.embedding_provider)
                         if body.embedding_provider is not None
                         else current_config.knowledge.embedding_provider
                     )
@@ -585,7 +587,7 @@ async def update_settings(
 
         if body.llm_provider is not None:
             old_provider = working_config.agent.llm_provider
-            working_config.agent.llm_provider = body.llm_provider
+            working_config.agent.llm_provider = canonical_provider(body.llm_provider)
             config_updated = True
             await TelemetryClient.send_event(
                 Category.SETTINGS_OPERATIONS, MessageId.ORB_SETTINGS_LLM_PROVIDER
@@ -621,7 +623,9 @@ async def update_settings(
 
         if body.embedding_provider is not None:
             old_provider = working_config.knowledge.embedding_provider
-            working_config.knowledge.embedding_provider = body.embedding_provider
+            working_config.knowledge.embedding_provider = canonical_provider(
+                body.embedding_provider
+            )
             config_updated = True
             await TelemetryClient.send_event(
                 Category.SETTINGS_OPERATIONS, MessageId.ORB_SETTINGS_EMBED_PROVIDER
@@ -680,6 +684,11 @@ async def update_settings(
             logger.info(
                 f"Disable Langflow ingestion changed to {body.disable_ingest_with_langflow}"
             )
+
+        if body.disable_chat_with_langflow is not None:
+            working_config.agent.disable_chat_with_langflow = body.disable_chat_with_langflow
+            config_updated = True
+            logger.info(f"Disable Langflow chat changed to {body.disable_chat_with_langflow}")
 
         if body.chunk_size is not None:
             effective_overlap = (
@@ -995,7 +1004,7 @@ async def update_settings(
             provider_updated = True
 
         if body.remove_provider_config:
-            provider = body.remove_provider_config.strip().lower()
+            provider = canonical_provider(body.remove_provider_config)
             if provider in working_config.providers.custom:
                 del working_config.providers.custom[provider]
                 if not working_config.providers.any_configured():
@@ -1129,7 +1138,7 @@ async def onboarding(
             logger.info(f"LLM model selected during onboarding: {llm_model_selected}")
 
         if body.llm_provider:
-            llm_provider_selected = body.llm_provider.strip()
+            llm_provider_selected = canonical_provider(body.llm_provider)
             current_config.agent.llm_provider = llm_provider_selected
             config_updated = True
             await TelemetryClient.send_event(
@@ -1155,7 +1164,7 @@ async def onboarding(
             logger.info(f"Embedding model selected during onboarding: {embedding_model_selected}")
 
         if body.embedding_provider:
-            embedding_provider_selected = body.embedding_provider.strip()
+            embedding_provider_selected = canonical_provider(body.embedding_provider)
             current_config.knowledge.embedding_provider = embedding_provider_selected
             config_updated = True
             await TelemetryClient.send_event(
@@ -1205,7 +1214,7 @@ async def onboarding(
         # Mark providers as configured if they were chosen during onboarding
         # Check LLM provider
         if body.llm_provider:
-            llm_provider = body.llm_provider.strip().lower()
+            llm_provider = canonical_provider(body.llm_provider)
             if llm_provider == "openai" and current_config.providers.openai.api_key:
                 current_config.providers.openai.configured = True
                 logger.info("Marked OpenAI as configured (chosen as LLM provider)")
@@ -1226,7 +1235,7 @@ async def onboarding(
 
         # Check embedding provider
         if body.embedding_provider:
-            embedding_provider = body.embedding_provider.strip().lower()
+            embedding_provider = canonical_provider(body.embedding_provider)
             if embedding_provider == "openai" and current_config.providers.openai.api_key:
                 current_config.providers.openai.configured = True
                 logger.info("Marked OpenAI as configured (chosen as embedding provider)")

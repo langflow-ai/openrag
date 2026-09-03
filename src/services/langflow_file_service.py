@@ -130,25 +130,31 @@ class LangflowFileService:
         embedding_provider: str | None,
     ) -> int:
         """Generate one probe embedding so mapping dimensions match the provider."""
-        from services.models_service import ModelsService
-
         cache_key = f"{embedding_provider or ''}:{embedding_model}"
         cached = self._embedding_dimension_cache.get(cache_key)
         if cached:
             return cached
 
-        litellm_model_name = await ModelsService().get_litellm_model_name(
-            embedding_model,
-            provider=embedding_provider,
+        # Same reason as the ingest path: the agentd-patched client drops
+        # api_base, so Azure probes die with "No API Base provided". The gateway
+        # passes stored credentials explicitly.
+        from services.llm_gateway import embeddings as gateway_embeddings
+        from utils.embedding_fields import (
+            INDEXED_EMBEDDING_ROUTE_PREFIX,
+            get_embedding_space_id,
         )
-        response = await clients.patched_embedding_client.embeddings.create(
-            model=litellm_model_name,
-            input=["dimension probe"],
+
+        embedding_route = INDEXED_EMBEDDING_ROUTE_PREFIX + get_embedding_space_id(
+            embedding_provider or "openai", embedding_model
         )
-        if not response.data:
+        response = await gateway_embeddings(
+            {"model": embedding_route, "input": ["dimension probe"]}
+        )
+        data = response.get("data") or []
+        if not data:
             raise RuntimeError("Embedding provider returned no data for dimension probe")
 
-        first = response.data[0]
+        first = data[0]
         embedding = first["embedding"] if isinstance(first, dict) else first.embedding
         dimensions = len(embedding)
         if dimensions <= 0:
