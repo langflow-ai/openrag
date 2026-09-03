@@ -1,5 +1,5 @@
 import * as path from "path";
-import { OPENAI_CONFIG } from "../config/provider";
+import { AZURE_CONFIG } from "../config/provider";
 import { expect, test } from "../utils/fixtures";
 import logger from "../utils/logger";
 import { navigateToHome } from "../utils/navigation";
@@ -27,14 +27,14 @@ test("Picture Description Configuration @33219221", async ({
   // Navigate to the application
   await navigateToHome(page);
 
-  // Set OpenAI models before starting
-  logger.info("\n⚙️  Configuring OpenAI models...");
+  // Set Azure OpenAI models before starting
+  logger.info("\n⚙️  Configuring Azure OpenAI models...");
   await settings.clickTab("Agent");
-  await settings.selectModel("Language model", OPENAI_CONFIG.language);
+  await settings.selectModel("Language model", AZURE_CONFIG.language);
   await settings.clickTab("Ingestion");
-  await settings.selectModel("Embedding model", OPENAI_CONFIG.embedding);
-  logger.info(`  ✓ Language model: ${OPENAI_CONFIG.language}`);
-  logger.info(`  ✓ Embedding model: ${OPENAI_CONFIG.embedding}`);
+  await settings.selectModel("Embedding model", AZURE_CONFIG.embedding);
+  logger.info(`  ✓ Language model: ${AZURE_CONFIG.language}`);
+  logger.info(`  ✓ Embedding model: ${AZURE_CONFIG.embedding}`);
 
   // Precondition: Delete any existing test documents
   logger.info("\n🧹 Cleaning up existing test documents...");

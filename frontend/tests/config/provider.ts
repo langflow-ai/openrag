@@ -14,38 +14,6 @@ export interface ProviderConfig {
   required?: boolean; // If true, test will fail if provider not configured
 }
 
-// Azure OpenAI Configuration
-export const AZURE_CONFIG: ProviderConfig = {
-  provider: "Azure OpenAI",
-  language: "gpt-4.1",
-  embedding: "text-embedding-3-small",
-  testCase: {
-    url: "https://react.dev/reference/react/hooks",
-    docName: "Built-in React Hooks – React",
-  },
-  required: true,
-};
-
-const hasAzure = Boolean(
-  process.env.AZURE_OPENAI_API_KEY ||
-    process.env.AZURE_API_KEY ||
-    process.env.LLM_PROVIDER === "azure",
-);
-
-// OpenAI / Primary Configuration
-export const OPENAI_CONFIG: ProviderConfig = hasAzure
-  ? AZURE_CONFIG
-  : {
-      provider: "OpenAI",
-      language: "gpt-5-mini",
-      embedding: "text-embedding-ada-002",
-      testCase: {
-        url: "https://react.dev/reference/react/hooks",
-        docName: "Built-in React Hooks – React",
-      },
-      required: true, // OpenAI is required
-    };
-
 // Ollama Configuration (Optional)
 export const OLLAMA_CONFIG: ProviderConfig = {
   provider: "Ollama",
@@ -78,6 +46,95 @@ export const ANTHROPIC_CONFIG: ProviderConfig = {
     docName: "Index | Node.js",
   },
 };
+
+// Azure OpenAI Configuration
+export const AZURE_CONFIG: ProviderConfig = {
+  provider: "Azure OpenAI",
+  language: process.env.LLM_MODEL || "gpt-4.1",
+  embedding: process.env.EMBEDDING_MODEL || "text-embedding-3-small",
+  testCase: {
+    url: "https://react.dev/reference/react/hooks",
+    docName: "Built-in React Hooks – React",
+  },
+  required: true,
+};
+
+function resolveActiveProvider(): ProviderConfig {
+  const provider = (process.env.LLM_PROVIDER || "").trim().toLowerCase();
+  const llmModel = process.env.LLM_MODEL;
+  const embeddingModel = process.env.EMBEDDING_MODEL;
+
+  if (provider === "azure" || provider === "azure_ai") {
+    return {
+      provider: "Azure OpenAI",
+      language: llmModel || "gpt-4.1",
+      embedding: embeddingModel || "text-embedding-3-small",
+      testCase: {
+        url: "https://react.dev/reference/react/hooks",
+        docName: "Built-in React Hooks – React",
+      },
+      required: true,
+    };
+  }
+
+  if (provider === "watsonx" || provider === "ibm") {
+    return {
+      ...WATSONX_CONFIG,
+      language: llmModel || WATSONX_CONFIG.language,
+      embedding: embeddingModel || WATSONX_CONFIG.embedding,
+    };
+  }
+
+  if (provider === "ollama") {
+    return {
+      ...OLLAMA_CONFIG,
+      language: llmModel || OLLAMA_CONFIG.language,
+      embedding: embeddingModel || OLLAMA_CONFIG.embedding,
+    };
+  }
+
+  if (provider === "anthropic") {
+    return {
+      ...ANTHROPIC_CONFIG,
+      language: llmModel || ANTHROPIC_CONFIG.language,
+      embedding: embeddingModel || ANTHROPIC_CONFIG.embedding,
+    };
+  }
+
+  if (provider === "openai") {
+    return {
+      provider: "OpenAI",
+      language: llmModel || "gpt-5-mini",
+      embedding: embeddingModel || "text-embedding-ada-002",
+      testCase: {
+        url: "https://react.dev/reference/react/hooks",
+        docName: "Built-in React Hooks – React",
+      },
+      required: true,
+    };
+  }
+
+  // Fallback: If Azure keys are set, use Azure OpenAI; otherwise OpenAI
+  if (process.env.AZURE_OPENAI_API_KEY || process.env.AZURE_API_KEY) {
+    return AZURE_CONFIG;
+  }
+
+  return {
+    provider: "OpenAI",
+    language: llmModel || "gpt-5-mini",
+    embedding: embeddingModel || "text-embedding-ada-002",
+    testCase: {
+      url: "https://react.dev/reference/react/hooks",
+      docName: "Built-in React Hooks – React",
+    },
+    required: true,
+  };
+}
+
+// Active provider determined generically by LLM_PROVIDER or configured credentials
+export const ACTIVE_PROVIDER_CONFIG: ProviderConfig = resolveActiveProvider();
+export const MAIN_PROVIDER_CONFIG: ProviderConfig = ACTIVE_PROVIDER_CONFIG;
+export const OPENAI_CONFIG: ProviderConfig = ACTIVE_PROVIDER_CONFIG;
 
 // All provider configurations
 export const PROVIDER_CONFIGS: ProviderConfig[] = [

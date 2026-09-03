@@ -575,15 +575,15 @@ class ConfigManager:
                 azure_custom["configured"] = bool(azure_creds.get("api_key") and azure_creds.get("api_base"))
 
         # Knowledge settings
-        if os.getenv("EMBEDDING_MODEL"):
-            config_data["knowledge"]["embedding_model"] = os.getenv("EMBEDDING_MODEL")
-        elif azure_key and azure_endpoint and not os.getenv("OPENAI_API_KEY") and not os.getenv("EMBEDDING_PROVIDER"):
-            config_data["knowledge"].setdefault("embedding_model", "text-embedding-3-small")
-
         if os.getenv("EMBEDDING_PROVIDER"):
             config_data["knowledge"]["embedding_provider"] = os.getenv("EMBEDDING_PROVIDER")
         elif azure_key and azure_endpoint and not os.getenv("OPENAI_API_KEY"):
             config_data["knowledge"].setdefault("embedding_provider", "azure")
+
+        if os.getenv("EMBEDDING_MODEL"):
+            config_data["knowledge"]["embedding_model"] = os.getenv("EMBEDDING_MODEL")
+        elif config_data["knowledge"].get("embedding_provider") == "azure":
+            config_data["knowledge"].setdefault("embedding_model", "text-embedding-3-small")
         if os.getenv("CHUNK_SIZE"):
             config_data["knowledge"]["chunk_size"] = int(os.getenv("CHUNK_SIZE"))
         if os.getenv("CHUNK_OVERLAP"):
@@ -616,15 +616,15 @@ class ConfigManager:
             ).lower() in ("true", "1", "yes")
 
         # Agent settings
-        if os.getenv("LLM_MODEL"):
-            config_data["agent"]["llm_model"] = os.getenv("LLM_MODEL")
-        elif azure_key and azure_endpoint and not os.getenv("OPENAI_API_KEY") and not os.getenv("LLM_PROVIDER"):
-            config_data["agent"].setdefault("llm_model", "gpt-4.1")
-
         if os.getenv("LLM_PROVIDER"):
             config_data["agent"]["llm_provider"] = os.getenv("LLM_PROVIDER")
         elif azure_key and azure_endpoint and not os.getenv("OPENAI_API_KEY"):
             config_data["agent"].setdefault("llm_provider", "azure")
+
+        if os.getenv("LLM_MODEL"):
+            config_data["agent"]["llm_model"] = os.getenv("LLM_MODEL")
+        elif config_data["agent"].get("llm_provider") == "azure":
+            config_data["agent"].setdefault("llm_model", "gpt-4.1")
 
         if os.getenv("SYSTEM_PROMPT"):
             config_data["agent"]["system_prompt"] = os.getenv("SYSTEM_PROMPT")

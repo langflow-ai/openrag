@@ -192,9 +192,11 @@ export async function completeOnboarding(
     const preferredModel =
       provider === "azure"
         ? isEmbedding
-          ? "text-embedding-3-small"
-          : "gpt-4.1"
-        : undefined;
+          ? process.env.EMBEDDING_MODEL || "text-embedding-3-small"
+          : process.env.LLM_MODEL || "gpt-4.1"
+        : isEmbedding
+          ? process.env.EMBEDDING_MODEL || undefined
+          : process.env.LLM_MODEL || undefined;
 
     let selected = false;
     if (preferredModel) {

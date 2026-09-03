@@ -2,7 +2,7 @@ import { expect, test } from "../utils/fixtures";
 import logger from "../utils/logger";
 import { navigateToHome } from "../utils/navigation";
 
-test("Model switching transitions (Language + Embedding) - OpenAI @33219223, @33219222", async ({
+test("Model switching transitions (Language + Embedding) - Azure OpenAI @33219223, @33219222", async ({
   page,
   settings,
 }) => {
@@ -11,16 +11,21 @@ test("Model switching transitions (Language + Embedding) - OpenAI @33219223, @33
   // Navigate to the application
   await navigateToHome(page);
 
-  logger.info("\n🧪 Testing Model Switching with OpenAI");
+  logger.info("\n🧪 Testing Model Switching with Azure OpenAI");
   await settings.clickTab("Agent");
 
-  // OpenAI model sequences for testing transitions
-  const languageSequence = ["gpt-4o", "gpt-4o-mini", "gpt-4o"]; // Circular: A→B→A
-  const embeddingSequence = [
-    "text-embedding-3-small",
-    "text-embedding-3-large",
-    "text-embedding-3-small",
-  ]; // Circular: A→B→A
+  // Azure OpenAI model sequences for testing transitions
+  const primaryLlm = process.env.LLM_MODEL || "gpt-4.1";
+  const altLlm = primaryLlm === "gpt-4.1" ? "gpt-4.1-mini" : "gpt-4.1";
+  const languageSequence = [primaryLlm, altLlm, primaryLlm]; // Circular: A→B→A
+
+  const primaryEmbedding =
+    process.env.EMBEDDING_MODEL || "text-embedding-3-small";
+  const altEmbedding =
+    primaryEmbedding === "text-embedding-3-small"
+      ? "text-embedding-3-large"
+      : "text-embedding-3-small";
+  const embeddingSequence = [primaryEmbedding, altEmbedding, primaryEmbedding]; // Circular: A→B→A
 
   logger.info(`\n📋 Transition sequence (circular):`);
   logger.info(`   Language models: ${languageSequence.join(" → ")}`);

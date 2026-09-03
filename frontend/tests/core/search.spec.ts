@@ -1,5 +1,5 @@
 import path from "path";
-import { OPENAI_CONFIG } from "../config/provider";
+import { AZURE_CONFIG } from "../config/provider";
 import { expect, test } from "../utils/fixtures";
 import logger from "../utils/logger";
 import { navigateToHome } from "../utils/navigation";
@@ -8,7 +8,7 @@ const TEST_DOCUMENT = "OpenRAG.Index.Test.Document.txt";
 const TEST_DOCUMENT_PATH = path.join(__dirname, "../test-data", TEST_DOCUMENT);
 const UNIQUE_SEARCH_TOKEN = "OPENSEARCH-7419-ZX";
 
-test("Opensearch Indexing - OpenAI @33219220", async ({
+test("Opensearch Indexing - Azure OpenAI @33219220", async ({
   page,
   settings,
   knowledge,
@@ -19,7 +19,7 @@ test("Opensearch Indexing - OpenAI @33219220", async ({
   // Navigate to the application
   await navigateToHome(page);
 
-  logger.info(`\n🧪 Testing Opensearch Indexing with OpenAI`);
+  logger.info(`\n🧪 Testing Opensearch Indexing with Azure OpenAI`);
 
   logger.info(`  🧹 Cleaning up existing test document...`);
   try {
@@ -29,11 +29,11 @@ test("Opensearch Indexing - OpenAI @33219220", async ({
     logger.info(`  ℹ️  No existing test document to clean up`);
   }
 
-  // Step 2: Set embedding model for OpenAI
-  logger.info(`  ⚙️  Setting embedding model for OpenAI...`);
+  // Step 2: Set embedding model for Azure OpenAI
+  logger.info(`  ⚙️  Setting embedding model for Azure OpenAI...`);
   await settings.clickTab("Ingestion");
-  await settings.selectModel("Embedding model", OPENAI_CONFIG.embedding);
-  logger.info(`  ✓ Embedding model set to: ${OPENAI_CONFIG.embedding}`);
+  await settings.selectModel("Embedding model", AZURE_CONFIG.embedding);
+  logger.info(`  ✓ Embedding model set to: ${AZURE_CONFIG.embedding}`);
 
   // Step 3: Ingest the test document
   logger.info(`  📄 Ingesting test document...`);
@@ -80,7 +80,7 @@ test("Opensearch Indexing - OpenAI @33219220", async ({
       `     ℹ️  Also found ${otherDocs.length} other document(s): ${otherDocs.join(", ")}`,
     );
   }
-  logger.info(`  ✓ Opensearch indexing verified for OpenAI\n`);
+  logger.info(`  ✓ Opensearch indexing verified for Azure OpenAI\n`);
 
   // Assertions for Playwright reporting
   expect(targetDocumentFound).toBe(true);

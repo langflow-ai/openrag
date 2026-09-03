@@ -61,7 +61,13 @@ export class ProviderDetector {
    * @returns Array of configured provider names
    */
   async getConfiguredProviders(): Promise<string[]> {
-    const providers = ["OpenAI", "Ollama", "IBM watsonx.ai", "Anthropic"];
+    const providers = [
+      "Azure OpenAI",
+      "OpenAI",
+      "Ollama",
+      "IBM watsonx.ai",
+      "Anthropic",
+    ];
     const configured: string[] = [];
 
     for (const provider of providers) {

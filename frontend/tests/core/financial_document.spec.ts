@@ -1,5 +1,5 @@
 import * as path from "path";
-import { OPENAI_CONFIG } from "../config/provider";
+import { AZURE_CONFIG } from "../config/provider";
 import { expect, test } from "../utils/fixtures";
 import logger from "../utils/logger";
 import { navigateToHome } from "../utils/navigation";
@@ -13,7 +13,7 @@ import { navigateToHome } from "../utils/navigation";
  * Test 2: Out-of-scope query (Tesla revenue - should not hallucinate)
  */
 
-test.describe("Financial Document - OpenAI @33219232", () => {
+test.describe("Financial Document - Azure OpenAI @33219232", () => {
   test("Table Structure ON - document Q&A", async ({
     page,
     settings,
@@ -26,16 +26,16 @@ test.describe("Financial Document - OpenAI @33219232", () => {
 
     // Navigate to the application
     await navigateToHome(page);
-    logger.info(`\n🧪 Testing Financial Document with OpenAI`);
+    logger.info(`\n🧪 Testing Financial Document with Azure OpenAI`);
 
     // Configure models
     await settings.open();
     await settings.clickTab("Agent");
-    await settings.selectModel("Language model", OPENAI_CONFIG.language);
+    await settings.selectModel("Language model", AZURE_CONFIG.language);
     await settings.clickTab("Ingestion");
-    await settings.selectModel("Embedding model", OPENAI_CONFIG.embedding);
-    logger.info(`  ✓ Language model set to: ${OPENAI_CONFIG.language}`);
-    logger.info(`  ✓ Embedding model set to: ${OPENAI_CONFIG.embedding}`);
+    await settings.selectModel("Embedding model", AZURE_CONFIG.embedding);
+    logger.info(`  ✓ Language model set to: ${AZURE_CONFIG.language}`);
+    logger.info(`  ✓ Embedding model set to: ${AZURE_CONFIG.embedding}`);
 
     await page.waitForLoadState("domcontentloaded");
 

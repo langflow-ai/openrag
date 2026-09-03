@@ -29,13 +29,19 @@ env:
   OPENSEARCH_PASSWORD: ${{ vars.OPENSEARCH_PASSWORD || secrets.OPENSEARCH_PASSWORD || 'OpenRag#2025!' }}
   LANGFLOW_SUPERUSER: "admin"
   LANGFLOW_SUPERUSER_PASSWORD: ${{ vars.LANGFLOW_SUPERUSER_PASSWORD || secrets.LANGFLOW_SUPERUSER_PASSWORD || 'OpenRag#2025!' }}
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
   AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
   AZURE_OPENAI_ENDPOINT: ${{ vars.AZURE_OPENAI_ENDPOINT || secrets.AZURE_OPENAI_ENDPOINT }}
   AZURE_OPENAI_API_VERSION: ${{ vars.AZURE_OPENAI_API_VERSION || secrets.AZURE_OPENAI_API_VERSION || '2024-02-01' }}
-  LLM_PROVIDER: "azure"
-  EMBEDDING_PROVIDER: "azure"
-  LLM_MODEL: "gpt-4.1"
-  EMBEDDING_MODEL: "text-embedding-3-small"
+  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+  WATSONX_API_KEY: ${{ secrets.WATSONX_API_KEY }}
+  WATSONX_ENDPOINT: ${{ secrets.WATSONX_ENDPOINT }}
+  WATSONX_PROJECT_ID: ${{ secrets.WATSONX_PROJECT_ID }}
+  OLLAMA_ENDPOINT: ${{ secrets.OLLAMA_ENDPOINT }}
+  LLM_PROVIDER: ${{ vars.LLM_PROVIDER || 'azure' }}
+  EMBEDDING_PROVIDER: ${{ vars.EMBEDDING_PROVIDER || 'azure' }}
+  LLM_MODEL: ${{ vars.LLM_MODEL || 'gpt-4.1' }}
+  EMBEDDING_MODEL: ${{ vars.EMBEDDING_MODEL || 'text-embedding-3-small' }}
   LANGFLOW_AUTO_LOGIN: "True"
   LANGFLOW_NEW_USER_IS_ACTIVE: "True"
   LANGFLOW_ENABLE_SUPERUSER_CLI: "True"
@@ -467,13 +473,19 @@ jobs:
           LANGFLOW_SUPERUSER_PASSWORD: ${{ env.LANGFLOW_SUPERUSER_PASSWORD }}
           GOOGLE_OAUTH_CLIENT_ID: ""
           GOOGLE_OAUTH_CLIENT_SECRET: ""
+          OPENAI_API_KEY: ${{ env.OPENAI_API_KEY }}
           AZURE_OPENAI_API_KEY: ${{ env.AZURE_OPENAI_API_KEY }}
           AZURE_OPENAI_ENDPOINT: ${{ env.AZURE_OPENAI_ENDPOINT }}
           AZURE_OPENAI_API_VERSION: ${{ env.AZURE_OPENAI_API_VERSION }}
-          LLM_PROVIDER: "azure"
-          EMBEDDING_PROVIDER: "azure"
-          LLM_MODEL: "gpt-4.1"
-          EMBEDDING_MODEL: "text-embedding-3-small"
+          ANTHROPIC_API_KEY: ${{ env.ANTHROPIC_API_KEY }}
+          WATSONX_API_KEY: ${{ env.WATSONX_API_KEY }}
+          WATSONX_ENDPOINT: ${{ env.WATSONX_ENDPOINT }}
+          WATSONX_PROJECT_ID: ${{ env.WATSONX_PROJECT_ID }}
+          OLLAMA_ENDPOINT: ${{ env.OLLAMA_ENDPOINT }}
+          LLM_PROVIDER: ${{ env.LLM_PROVIDER }}
+          EMBEDDING_PROVIDER: ${{ env.EMBEDDING_PROVIDER }}
+          LLM_MODEL: ${{ env.LLM_MODEL }}
+          EMBEDDING_MODEL: ${{ env.EMBEDDING_MODEL }}
         run: npx playwright test --shard=${{ matrix.shard }}/${{ matrix.total_shards }}
 
       - name: Collect service logs on failure

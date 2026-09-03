@@ -11,10 +11,10 @@ const verificationQuestion =
   "How many Earned Leaves are there per calendar year?";
 
 /**
- * Test: Switch model providers using watsonx.ai and openai
+ * Test: Switch model providers using watsonx.ai and Azure OpenAI
  * Verify user is able to switch model providers
  */
-test.describe("Update model providers to watsonx.ai and openai @33219219, @33219229, @33219231", () => {
+test.describe("Update model providers to watsonx.ai and Azure OpenAI @33219219, @33219229, @33219231", () => {
   test.beforeEach(({}) => {
     test.skip(
       !process.env.WATSONX_API_KEY ||
@@ -33,7 +33,7 @@ test.describe("Update model providers to watsonx.ai and openai @33219219, @33219
     await navigateToSettings(page);
     await settings.clickTab("Providers");
     await settings.configureWatsonxai();
-    await settings.removeModelProviderSetup("OpenAI");
+    await settings.removeModelProviderSetup("Azure OpenAI");
     await settings.clickTab("Agent");
     await settings.selectModel("Language model", "ibm/granite-4-h-small");
     await settings.clickTab("Ingestion");
@@ -56,7 +56,7 @@ test.describe("Update model providers to watsonx.ai and openai @33219219, @33219
     ).toBe(true);
   });
 
-  test("Restore OpenAI provider and verify functionality", async ({
+  test("Restore Azure OpenAI provider and verify functionality", async ({
     settings,
     chat,
     page,
@@ -64,10 +64,10 @@ test.describe("Update model providers to watsonx.ai and openai @33219219, @33219
   }) => {
     await navigateToSettings(page);
     await settings.clickTab("Providers");
-    await settings.configureOpenAPI();
+    await settings.configureAzureOpenAI();
     await settings.removeModelProviderSetup("IBM watsonx.ai");
     await settings.clickTab("Agent");
-    await settings.selectModel("Language model", "gpt-4o-mini");
+    await settings.selectModel("Language model", "gpt-4.1");
     await settings.clickTab("Ingestion");
     await settings.selectModel("Embedding model", "text-embedding-3-small");
     await knowledge.deleteDocument(testDocumentName);
@@ -75,10 +75,10 @@ test.describe("Update model providers to watsonx.ai and openai @33219219, @33219
     await knowledge.verifyDocumentActive(testDocumentName);
     await chat.open();
     await chat.openNewChat();
-    const responseOpenai = await chat.askQuestion(verificationQuestion, 120000);
+    const responseAzure = await chat.askQuestion(verificationQuestion, 120000);
     expect(
       ["18 days", "Leave.Policy.Test.Doc.pdf"].every((keyword) =>
-        responseOpenai.includes(keyword),
+        responseAzure.includes(keyword),
       ),
     ).toBe(true);
   });
