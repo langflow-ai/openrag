@@ -1555,6 +1555,12 @@ class TaskService:
             now = time.time()
             for file_task in upload_task.file_tasks.values():
                 if file_task.status in [TaskStatus.PENDING, TaskStatus.RUNNING]:
+                    # PENDING files cancelled before entering process_with_semaphore
+                    # need processed_files incremented here, since the finally block
+                    # won't run. RUNNING files normally cancelled are already counted
+                    # by the finally block, but incrementing here is safe (phase 3 runs
+                    # after background task completes, so no double-counting).
+                    upload_task.processed_files += 1
                     upload_task.failed_files += 1
                     file_task.status = TaskStatus.FAILED
                     file_task.error = "Task cancelled by user"

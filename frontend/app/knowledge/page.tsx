@@ -263,11 +263,17 @@ function SearchPage() {
       if (!file) return null;
       const sourceUrl = file.source_url || "";
       const filename = file.filename || "";
-      const matches = taskFiles.filter(
-        (taskFile) =>
-          (sourceUrl && taskFile.source_url === sourceUrl) ||
-          taskFile.filename === filename,
-      );
+
+      // Prioritize exact source URL match to avoid confusion with duplicate filenames
+      const matches = taskFiles.filter((taskFile) => {
+        if (sourceUrl) {
+          // If row has source URL, match only by source URL
+          return taskFile.source_url === sourceUrl;
+        }
+        // Fall back to filename matching only when no source URL
+        return taskFile.filename === filename;
+      });
+
       if (matches.length === 0) return null;
 
       const failedMatches =

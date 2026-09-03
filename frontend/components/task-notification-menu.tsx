@@ -261,15 +261,20 @@ export function TaskNotificationMenu() {
 
   // Clean up cancelling state when tasks actually transition to cancelled or disappear
   useEffect(() => {
-    const currentTaskIds = new Set(tasks.map((t) => t.task_id));
-    const cancelledTaskIds = tasks
-      .filter(
-        (task) =>
-          task.status === "cancelled" ||
-          task.status === "failed" ||
-          task.status === "completed",
-      )
-      .map((task) => task.task_id);
+    const currentTaskIds = new Set<string>();
+    const terminalTaskIds = new Set<string>();
+
+    // Single pass over tasks to build both sets
+    for (const task of tasks) {
+      currentTaskIds.add(task.task_id);
+      if (
+        task.status === "cancelled" ||
+        task.status === "failed" ||
+        task.status === "completed"
+      ) {
+        terminalTaskIds.add(task.task_id);
+      }
+    }
 
     setCancellingTaskIds((prev) => {
       const next = new Set(prev);
@@ -277,7 +282,7 @@ export function TaskNotificationMenu() {
 
       // Remove from cancelling set if task is now terminal or disappeared
       for (const id of next) {
-        if (!currentTaskIds.has(id) || cancelledTaskIds.includes(id)) {
+        if (!currentTaskIds.has(id) || terminalTaskIds.has(id)) {
           next.delete(id);
           changed = true;
         }
@@ -299,8 +304,8 @@ export function TaskNotificationMenu() {
           (task) =>
             task.status === "completed" ||
             task.status === "failed" ||
-            task.status === "cancelled" ||
-            task.status === "error",
+            task.status === "error" ||
+            task.status === "cancelled",
         )
         .sort((a, b) => {
           const aMs =
@@ -575,10 +580,12 @@ export function TaskNotificationMenu() {
                 const shouldExpandDetails = selectedTaskId === task.task_id;
 
                 // Same full card as total failure; partial only differs inside (Complete pill / amber icon).
+                // Exclude cancelled tasks from failure rendering to preserve the cancelled badge
                 if (
-                  isTerminalFailedTask(task) ||
-                  isTotalFailure ||
-                  hasFailedFiles
+                  task.status !== "cancelled" &&
+                  (isTerminalFailedTask(task) ||
+                    isTotalFailure ||
+                    hasFailedFiles)
                 ) {
                   return (
                     <TaskErrorContent
