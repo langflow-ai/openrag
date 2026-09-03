@@ -132,9 +132,7 @@ async def test_upload_and_search_endpoint(tmp_path: Path, disable_langflow_inges
     os.environ["EMBEDDING_MODEL"] = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
     os.environ["EMBEDDING_PROVIDER"] = os.getenv(
         "EMBEDDING_PROVIDER",
-        "azure"
-        if (os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("AZURE_API_KEY"))
-        else "openai",
+        "azure" if (os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("AZURE_API_KEY")) else "openai",
     )
     # Force no-auth mode so endpoints bypass authentication
     os.environ["GOOGLE_OAUTH_CLIENT_ID"] = ""

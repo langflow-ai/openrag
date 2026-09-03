@@ -572,7 +572,9 @@ class ConfigManager:
                     azure_creds["api_base"] = azure_endpoint
                 if azure_version:
                     azure_creds["api_version"] = azure_version
-                azure_custom["configured"] = bool(azure_creds.get("api_key") and azure_creds.get("api_base"))
+                azure_custom["configured"] = bool(
+                    azure_creds.get("api_key") and azure_creds.get("api_base")
+                )
 
         # Knowledge settings
         if os.getenv("EMBEDDING_PROVIDER"):

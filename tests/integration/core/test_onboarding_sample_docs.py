@@ -74,7 +74,9 @@ async def isolated_onboarding_docs_workspace(tmp_path: Path, monkeypatch):
         )
     )
     if not (has_azure or os.getenv("OPENAI_API_KEY")):
-        pytest.skip("AZURE_OPENAI_API_KEY (or OPENAI_API_KEY) is required for onboarding sample-doc ingestion")
+        pytest.skip(
+            "AZURE_OPENAI_API_KEY (or OPENAI_API_KEY) is required for onboarding sample-doc ingestion"
+        )
     if not os.getenv("ANTHROPIC_API_KEY"):
         pytest.skip(
             "ANTHROPIC_API_KEY is required for onboarding sample-doc ingestion (ibm_anthropic.pdf)"
