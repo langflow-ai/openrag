@@ -5,6 +5,7 @@ import time
 from typing import TYPE_CHECKING, Any, Literal
 
 from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
+from services.models_service import is_cohere_embedding_model
 from session_manager import AnonymousUser
 from utils.document_processing import (
     extract_relevant,
@@ -560,9 +561,18 @@ class TaskProcessor:
         text_batches = chunk_texts_for_embeddings(texts, max_tokens=max_tokens)
         embeddings = []
 
+        # Cohere embedding models (Bedrock, OCI GenAI, ...) require an
+        # explicit input_type on every call - there is no default. Passed as
+        # a plain kwarg (not extra_body): the agentd patch routes non-openai
+        # models through litellm.aembedding(**kwargs), which reads
+        # input_type straight out of kwargs.
+        embed_kwargs = {}
+        if is_cohere_embedding_model(embedding_model):
+            embed_kwargs["input_type"] = "search_document"
+
         for batch in text_batches:
             resp = await clients.patched_embedding_client.embeddings.create(
-                model=litellm_embedding_model, input=batch
+                model=litellm_embedding_model, input=batch, **embed_kwargs
             )
             embeddings.extend(
                 [d["embedding"] if isinstance(d, dict) else d.embedding for d in resp.data]
