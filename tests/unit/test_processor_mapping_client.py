@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -53,15 +54,6 @@ async def test_standard_processor_uses_shared_writer_for_embedding_mapping_and_w
             assert provider == "openai"
             return embedding_model
 
-    class EmbeddingClient:
-        class Embeddings:
-            async def create(self, model, input):
-                return SimpleNamespace(
-                    data=[SimpleNamespace(embedding=[0.1, 0.2, 0.3]) for _ in input]
-                )
-
-        embeddings = Embeddings()
-
     async def ensure_embedding_field_exists(client, model_name, index_name, dimensions):
         mapping_clients.append(client)
         assert model_name == "openai:text-embedding-3-small"
@@ -69,19 +61,23 @@ async def test_standard_processor_uses_shared_writer_for_embedding_mapping_and_w
         assert dimensions == 3
         return "chunk_embedding_openai_text_embedding_3_small"
 
+    # Ingest embeds through llm_gateway.embeddings (OpenAI dict shape). Without
+    # this the test would make a real provider call.
     monkeypatch.setattr(
-        "config.settings.clients",
-        SimpleNamespace(
-            opensearch=admin_client,
-            patched_embedding_client=EmbeddingClient(),
+        "services.llm_gateway.embeddings",
+        AsyncMock(
+            side_effect=lambda body: {
+                "data": [{"embedding": [0.1, 0.2, 0.3]} for _ in body["input"]]
+            }
         ),
     )
     monkeypatch.setattr(
+        "config.settings.clients",
+        SimpleNamespace(opensearch=admin_client),
+    )
+    monkeypatch.setattr(
         "models.processors.clients",
-        SimpleNamespace(
-            opensearch=admin_client,
-            patched_embedding_client=EmbeddingClient(),
-        ),
+        SimpleNamespace(opensearch=admin_client),
     )
     monkeypatch.setattr("config.settings.get_index_name", lambda: "documents")
     monkeypatch.setattr("models.processors.get_index_name", lambda: "documents")

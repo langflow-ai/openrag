@@ -12,6 +12,7 @@ import re
 from collections.abc import AsyncIterator, Mapping
 from typing import Any, Literal
 
+from config.model_providers import canonical_provider
 from services import provider_error_log
 from services.model_catalog import is_known_provider
 from utils.logging_config import get_logger
@@ -84,7 +85,7 @@ def split_model_id(model: str) -> tuple[str | None, str]:
 
     prefix, sep, rest = raw.partition(PROVIDER_SEPARATOR)
     if sep and rest:
-        prefix_lower = prefix.lower()
+        prefix_lower = canonical_provider(prefix)
         if is_known_provider(prefix_lower):
             return prefix_lower, rest
 
@@ -102,7 +103,7 @@ def split_model_id(model: str) -> tuple[str | None, str]:
         return owner, raw
 
     prefix, rest = raw.split("/", 1)
-    prefix_lower = prefix.lower()
+    prefix_lower = canonical_provider(prefix)
     if is_known_provider(prefix_lower):
         return prefix_lower, rest
     return None, raw
@@ -111,8 +112,8 @@ def split_model_id(model: str) -> tuple[str | None, str]:
 def default_provider(kind: Literal["chat", "embedding"], config=None) -> str:
     cfg = config or _get_config()
     if kind == "embedding":
-        return (cfg.knowledge.embedding_provider or "openai").lower()
-    return (cfg.agent.llm_provider or "openai").lower()
+        return canonical_provider(cfg.knowledge.embedding_provider or "openai")
+    return canonical_provider(cfg.agent.llm_provider or "openai")
 
 
 def default_model(kind: Literal["chat", "embedding"], config=None) -> str:
@@ -132,14 +133,14 @@ def legacy_embedding_provider(model: str, config: Any | None = None) -> str | No
     mapping = getattr(cfg.knowledge, "legacy_embedding_provider_map", {}) or {}
     if not isinstance(mapping, Mapping):
         return None
-    provider = str(mapping.get(name) or "").strip().lower()
+    provider = canonical_provider(str(mapping.get(name) or ""))
     return provider or None
 
 
 def provider_credentials(provider: str, config=None) -> dict[str, Any]:
     """LiteLLM kwargs for any configured OpenRAG provider. Never logs secrets."""
     cfg = config or _get_config()
-    key = (provider or "").strip().lower()
+    key = canonical_provider(provider)
     try:
         prov = cfg.providers
     except Exception as exc:
@@ -200,7 +201,7 @@ def resolve_call(
     if kind == "embedding" and requested.startswith(INDEXED_EMBEDDING_SPACE_PREFIX):
         space_id = requested[len(INDEXED_EMBEDDING_SPACE_PREFIX) :].strip()
         provider, separator, name = space_id.partition(PROVIDER_SEPARATOR)
-        provider = provider.strip().lower()
+        provider = canonical_provider(provider)
         name = name.strip()
         if not separator or not provider or not name:
             raise LlmGatewayError(

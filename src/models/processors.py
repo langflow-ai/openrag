@@ -560,13 +560,50 @@ class TaskProcessor:
         text_batches = chunk_texts_for_embeddings(texts, max_tokens=max_tokens)
         embeddings = []
 
-        for batch in text_batches:
-            resp = await clients.patched_embedding_client.embeddings.create(
-                model=litellm_embedding_model, input=batch
+        # Route through the gateway rather than the agentd-patched client: that
+        # client forwards only a dynamic api_key to LiteLLM, so providers that
+        # need more than a key (Azure requires api_base) fail with "No API Base
+        # provided". The gateway passes the stored credentials explicitly.
+        #
+        # `space:{provider}:{model}` is the routing form. The gateway trusts the
+        # head as the provider instead of re-deriving it from a slash-name, and
+        # it is the exact id written next to the vector by DocumentIndexWriter —
+        # so the field written and the field later queried cannot disagree.
+        from services.llm_gateway import LlmGatewayError
+        from services.llm_gateway import embeddings as gateway_embeddings
+        from utils.embedding_fields import (
+            INDEXED_EMBEDDING_ROUTE_PREFIX,
+            get_embedding_space_id,
+        )
+
+        try:
+            embedding_route = INDEXED_EMBEDDING_ROUTE_PREFIX + get_embedding_space_id(
+                embedding_provider, embedding_model
             )
-            embeddings.extend(
-                [d["embedding"] if isinstance(d, dict) else d.embedding for d in resp.data]
+        except ValueError:
+            # Degenerate config (no provider or no model). Fall back rather than
+            # failing ingestion on something the gateway may still resolve.
+            embedding_route = litellm_embedding_model
+
+        try:
+            for batch in text_batches:
+                resp = await gateway_embeddings({"model": embedding_route, "input": batch})
+                embeddings.extend(
+                    [
+                        d["embedding"] if isinstance(d, dict) else d.embedding
+                        for d in (resp.get("data") or [])
+                    ]
+                )
+        except LlmGatewayError as exc:
+            # exc.detail carries the upstream body and is for logs only.
+            logger.error(
+                "Embedding generation failed",
+                file_hash=file_hash,
+                embedding_model=embedding_model,
+                embedding_route=embedding_route,
+                error=exc.detail,
             )
+            return {"status": "error", "error": exc.message}
 
         if not embeddings or len(embeddings) == 0:
             logger.error(

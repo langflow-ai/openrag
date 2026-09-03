@@ -18,17 +18,12 @@ from models.processors import TaskProcessor
 async def test_image_only_placeholder_succeeds_but_empty_document_fails(
     monkeypatch, pictures, chunk_size, expected_result
 ):
-    embedding_create = AsyncMock(
-        return_value=SimpleNamespace(data=[{"embedding": [0.1, 0.2, 0.3]}])
-    )
+    # Ingest embeds through llm_gateway.embeddings (OpenAI dict shape).
+    gateway_embeddings = AsyncMock(return_value={"data": [{"embedding": [0.1, 0.2, 0.3]}]})
+    monkeypatch.setattr("services.llm_gateway.embeddings", gateway_embeddings)
     monkeypatch.setattr(
         "models.processors.clients",
-        SimpleNamespace(
-            opensearch=None,
-            patched_embedding_client=SimpleNamespace(
-                embeddings=SimpleNamespace(create=embedding_create)
-            ),
-        ),
+        SimpleNamespace(opensearch=None),
     )
     monkeypatch.setattr(
         "models.processors.get_openrag_config",
@@ -94,13 +89,15 @@ async def test_image_only_placeholder_succeeds_but_empty_document_fails(
             "status": "error",
             "error": "No text content could be extracted from document",
         }
-        embedding_create.assert_not_awaited()
+        gateway_embeddings.assert_not_awaited()
         assert indexed == {}
         return
 
     assert result == {"status": "indexed", "id": "image-hash"}
-    embedding_create.assert_awaited_once_with(
-        model="text-embedding-3-small", input=["<!-- image -->"]
+    # Routed by embedding space id, not the bare model name, so the vector is
+    # created with the same provider the chunk is indexed under.
+    gateway_embeddings.assert_awaited_once_with(
+        {"model": "space:openai:text-embedding-3-small", "input": ["<!-- image -->"]}
     )
     assert indexed["final"] is True
     assert len(indexed["chunks"]) == 1

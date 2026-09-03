@@ -9,6 +9,7 @@ from typing import Any, Optional, Protocol
 
 import yaml
 
+from config.model_providers import canonical_provider
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -182,7 +183,7 @@ class ProvidersConfig:
 
     def get_provider_config(self, provider: str):
         """Get configuration for a specific provider."""
-        provider_lower = provider.lower()
+        provider_lower = canonical_provider(provider)
         if provider_lower == "openai":
             return self.openai
         elif provider_lower == "anthropic":
@@ -195,7 +196,7 @@ class ProvidersConfig:
 
     def set_credentials(self, provider: str, credentials: dict[str, str]) -> None:
         """Upsert arbitrary LiteLLM credentials while preserving legacy config."""
-        key = provider.strip().lower()
+        key = canonical_provider(provider)
         clean = {
             str(name): str(value).strip()
             for name, value in credentials.items()
@@ -228,7 +229,7 @@ class ProvidersConfig:
 
     def credential_values(self, provider: str) -> dict[str, str]:
         """Return LiteLLM keyword arguments for a configured provider."""
-        key = provider.strip().lower()
+        key = canonical_provider(provider)
         custom = dict(self.custom.get(key, GenericProviderConfig()).credentials)
         if key == "openai":
             if self.openai.api_key:
@@ -367,20 +368,54 @@ class OpenRAGConfig:
 
         custom_data = providers_data.get("custom", {})
 
+        # Migrate on load: a config saved under an alias (e.g. azure_ai_foundry)
+        # resolves from here on, and is rewritten canonically on the next save.
+        canonical_custom: dict[str, GenericProviderConfig] = {}
+        for provider, value in custom_data.items():
+            if not isinstance(value, dict):
+                continue
+            raw_key = str(provider)
+            key = canonical_provider(raw_key)
+            entry = _decrypt_custom_provider(raw_key, value)
+            existing = canonical_custom.get(key)
+            if existing is None:
+                canonical_custom[key] = entry
+                continue
+            # Both the alias and the canonical key were stored. Merge rather
+            # than let one silently overwrite the other. The entry written under
+            # the canonical name wins on conflict — note which that is rather
+            # than assuming an iteration order.
+            logger.warning(
+                "Merging aliased provider credentials into canonical key",
+                stored_as=raw_key,
+                canonical=key,
+            )
+            incoming_is_canonical = raw_key.strip().lower() == key
+            winner, loser = (entry, existing) if incoming_is_canonical else (existing, entry)
+            merged = dict(loser.credentials)
+            merged.update(winner.credentials)
+            existing.credentials = merged
+            existing.configured = existing.configured or entry.configured
+
+        knowledge_data = dict(data.get("knowledge", {}))
+        if knowledge_data.get("embedding_provider"):
+            knowledge_data["embedding_provider"] = canonical_provider(
+                knowledge_data["embedding_provider"]
+            )
+        agent_data = dict(data.get("agent", {}))
+        if agent_data.get("llm_provider"):
+            agent_data["llm_provider"] = canonical_provider(agent_data["llm_provider"])
+
         return cls(
             providers=ProvidersConfig(
                 openai=OpenAIConfig(**_decrypt_provider(providers_data.get("openai", {}))),
                 anthropic=AnthropicConfig(**_decrypt_provider(providers_data.get("anthropic", {}))),
                 watsonx=WatsonXConfig(**_decrypt_provider(providers_data.get("watsonx", {}))),
                 ollama=OllamaConfig(**_decrypt_provider(providers_data.get("ollama", {}))),
-                custom={
-                    str(provider).lower(): _decrypt_custom_provider(str(provider), value)
-                    for provider, value in custom_data.items()
-                    if isinstance(value, dict)
-                },
+                custom=canonical_custom,
             ),
-            knowledge=KnowledgeConfig(**data.get("knowledge", {})),
-            agent=AgentConfig(**data.get("agent", {})),
+            knowledge=KnowledgeConfig(**knowledge_data),
+            agent=AgentConfig(**agent_data),
             onboarding=OnboardingState(**data.get("onboarding", {})),
             edited=data.get("edited", False),
         )
@@ -546,7 +581,7 @@ class ConfigManager:
                 if not isinstance(raw_mapping, dict):
                     raise TypeError("expected a JSON object")
                 config_data["knowledge"]["legacy_embedding_provider_map"] = {
-                    str(model).strip(): str(provider).strip().lower()
+                    str(model).strip(): canonical_provider(str(provider))
                     for model, provider in raw_mapping.items()
                     if str(model).strip() and str(provider).strip()
                 }

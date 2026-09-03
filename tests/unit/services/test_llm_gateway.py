@@ -1329,3 +1329,58 @@ class TestToolsBesideReasoningEffort:
             )
 
         assert len(calls) == 1
+
+
+def _azure_config():
+    """A config shaped like one produced by Azure onboarding."""
+    cfg = _config()
+    cfg.providers.custom = {
+        "azure": GenericProviderConfig(
+            credentials={
+                "api_key": "sk-azure",
+                "api_base": "https://resource.openai.azure.com",
+                "api_version": "2024-10-21",
+            },
+            configured=True,
+        )
+    }
+    cfg.providers.credential_values = lambda key: dict(
+        cfg.providers.custom[key].credentials if key in cfg.providers.custom else {}
+    )
+    return cfg
+
+
+def test_indexed_space_route_carries_azure_api_base():
+    """The ingest/search route must resolve api_base, not just api_key.
+
+    Without api_base LiteLLM raises "No API Base provided for Azure OpenAI".
+    """
+    litellm_model, provider, credentials = resolve_call(
+        "space:azure:text-embedding-3-small", kind="embedding", config=_azure_config()
+    )
+
+    assert litellm_model == "azure/text-embedding-3-small"
+    assert provider == "azure"
+    assert credentials["api_base"] == "https://resource.openai.azure.com"
+    assert credentials["api_version"] == "2024-10-21"
+
+
+def test_indexed_space_route_resolves_an_aliased_provider():
+    """Rescues chunks already indexed under a non-canonical provider string."""
+    cfg = _azure_config()
+    cfg.providers.custom["azure_ai"] = GenericProviderConfig(
+        credentials={"api_key": "foundry", "api_base": "https://x.services.ai.azure.com"},
+        configured=True,
+    )
+
+    litellm_model, provider, credentials = resolve_call(
+        "space:azure_ai_foundry:embed-v-4-0", kind="embedding", config=cfg
+    )
+
+    assert provider == "azure_ai"
+    assert litellm_model == "azure_ai/embed-v-4-0"
+    assert credentials["api_base"] == "https://x.services.ai.azure.com"
+
+
+def test_provider_credentials_accepts_the_alias():
+    assert provider_credentials("azure", _azure_config())["api_base"]

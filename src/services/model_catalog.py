@@ -30,7 +30,7 @@ from fnmatch import fnmatch
 from functools import lru_cache
 from typing import Any
 
-from config.model_providers import ProviderEntry, visible_provider_entries
+from config.model_providers import ProviderEntry, canonical_provider, visible_provider_entries
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -156,7 +156,7 @@ def _normalize_field(field: dict[str, Any]) -> dict[str, Any]:
 def credential_fields(provider: str) -> list[dict[str, Any]]:
     """The form spec for `provider`, normalized, never empty."""
     try:
-        spec = _provider_field_specs().get((provider or "").strip().lower())
+        spec = _provider_field_specs().get(canonical_provider(provider))
     except Exception:
         logger.warning("Could not read LiteLLM's provider field specs", exc_info=True)
         return [dict(field) for field in GENERIC_CREDENTIAL_FIELDS]
@@ -334,7 +334,7 @@ def _catalog_for(today: datetime.date, providers: tuple[ProviderEntry, ...]) -> 
 
 def exclusions_for(provider: str) -> tuple[str, ...]:
     """The `exclude_models` patterns configured for `provider`."""
-    key = (provider or "").strip().lower()
+    key = canonical_provider(provider)
     for entry in visible_provider_entries():
         if entry.name == key:
             return entry.exclude_models
@@ -383,7 +383,7 @@ def catalog(today: datetime.date | None = None) -> dict[str, Any]:
 
 def is_known_provider(provider: str) -> bool:
     """Whether LiteLLM recognises `provider` at all."""
-    key = (provider or "").strip().lower()
+    key = canonical_provider(provider)
     if not key:
         return False
     try:
