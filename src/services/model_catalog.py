@@ -403,6 +403,51 @@ def hide_excluded_live_models(provider: str, payload: Any) -> Any:
     return filtered
 
 
+def _catalog_entries() -> tuple[ProviderEntry, ...]:
+    """The visible providers, with a live model list swapped in where we have one.
+
+    A Cloud Pak for Data cluster serves whatever its operator deployed, so its
+    `models:` rows in `model_providers.yaml` can only ever be a guess. Once the
+    cluster has said what it actually has, that wins — a model it does not
+    serve must not sit in the picker waiting to be chosen. The configured rows
+    stay as the fallback for when it cannot be reached.
+
+    Entries are the `_catalog()` cache key, so substituting here rebuilds the
+    payload rather than serving a stale one.
+    """
+    entries = visible_provider_entries()
+    live = watsonx_onprem.cached_models()
+    if live is None:
+        return entries
+    return tuple(
+        entry._replace(models=live.chat, embedding_models=live.embedding)
+        if entry.name == watsonx_onprem.PROVIDER_KEY
+        else entry
+        for entry in entries
+    )
+
+
+async def refresh_live_models() -> None:
+    """Re-list the models on any provider that can only answer for itself.
+
+    Called by the catalogue routes before the payload is built. The provider
+    caches with a TTL, so this is a network call once every few minutes rather
+    than once per request, and a failure leaves the previous answer — or the
+    configured fallback — in place.
+    """
+    if watsonx_onprem.PROVIDER_KEY not in supported_provider_keys():
+        return
+    try:
+        from config.settings import get_openrag_config
+
+        credentials = get_openrag_config().providers.credential_values(watsonx_onprem.PROVIDER_KEY)
+    except Exception:
+        logger.debug("Could not read watsonx.ai on-prem credentials", exc_info=True)
+        return
+    if credentials:
+        await watsonx_onprem.fetch_models(credentials)
+
+
 def supported_provider_keys() -> frozenset[str]:
     """The providers this run mode publishes, per `config/model_providers.yaml`."""
     return frozenset(entry.name for entry in visible_provider_entries())
@@ -410,7 +455,7 @@ def supported_provider_keys() -> frozenset[str]:
 
 def catalog(today: datetime.date | None = None) -> dict[str, Any]:
     """Picker payload for the providers this run mode exposes, and their models."""
-    return _catalog_for(today or datetime.date.today(), visible_provider_entries())
+    return _catalog_for(today or datetime.date.today(), _catalog_entries())
 
 
 def is_known_provider(provider: str) -> bool:
@@ -469,7 +514,7 @@ def catalog_owners(model: str) -> tuple[str, ...]:
     if not name:
         return ()
     try:
-        return _model_owners(visible_provider_entries()).get(name) or ()
+        return _model_owners(_catalog_entries()).get(name) or ()
     except Exception:
         return ()
 
@@ -491,7 +536,7 @@ def PROVIDER_SEPARATOR_SAFE_CHECK() -> list[str]:
     Exposed so a test can fail loudly if a future model id breaks the property.
     """
     ambiguous = []
-    for model in _model_owners(visible_provider_entries()):
+    for model in _model_owners(_catalog_entries()):
         head, sep, rest = model.partition(":")
         if sep and rest and is_known_provider(head.lower()):
             ambiguous.append(model)

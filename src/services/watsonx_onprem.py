@@ -13,15 +13,26 @@ What differs is everything around the call:
   embeddings path, which then calls IBM Cloud IAM and fails on a cluster that
   has no route to it.
 - **Credentials are per-deployment.** A cluster URL, not a region endpoint, and
-  the SaaS provider's `project_id` may be a deployment `space_id` or absent
-  entirely — the watsonx.ai lightweight engine has neither (it "does not use
-  projects"). See `install_litellm_compatibility` for what that costs.
+  the SaaS provider's `project_id` is usually a deployment `space_id` instead.
+  Most clusters require one: verified against a Cloud Pak for Data 5.x install,
+  every `/ml/v1/text/*` call without one is refused with "Missing either
+  space_id or project_id or wml_instance_crn", and `GET /v2/spaces` is what
+  lists the ids. The watsonx.ai lightweight engine is the exception and has
+  neither — see `install_litellm_compatibility` for what supporting that costs.
 - **Models are whatever the operator deployed**, so the catalogue ids come from
   `config/model_providers.yaml` rather than LiteLLM's IBM Cloud price table.
+
+- **Models are listed from the cluster**, unfiltered, and split into the two
+  pickers here. The API's `filters` grammar is a SaaS convenience and a cluster
+  that rejects it would empty both pickers; splitting on each entry's own
+  `functions`/`task_ids` cannot fail that way.
 
 The provider key is OpenRAG's own; `LITELLM_PROVIDER` is what it routes as.
 Nothing here imports OpenRAG config — `config_manager`, `model_catalog` and
 `llm_gateway` all read this module, so it has to stay a leaf.
+
+Verified end to end against a Cloud Pak for Data 5.x cluster: ZenApiKey accepted
+on `/ml/v1`, model listing, chat, streaming chat, embeddings and tool calling.
 
 TLS: trusting a cluster's own CA
 --------------------------------
@@ -58,8 +69,10 @@ than as an outage — see ``_UPSTREAM_TLS_MESSAGE`` in ``services/llm_gateway``.
 from __future__ import annotations
 
 import base64
+import time
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, NamedTuple
+from urllib.parse import urlsplit, urlunsplit
 
 from utils.logging_config import get_logger
 
@@ -125,8 +138,10 @@ CREDENTIAL_FIELDS: list[dict[str, Any]] = [
         "key": "space_id",
         "label": "Deployment space ID",
         "placeholder": None,
-        "tooltip": "Optional. The deployment space the models are served from. Leave blank "
-        "on a lightweight-engine install, which uses neither spaces nor projects.",
+        "tooltip": "The deployment space the models are served from. Most clusters "
+        "require this (or a project ID) and reject inference without it. Find it under "
+        "Deployments in the console, or with GET /v2/spaces on the cluster. Leave blank "
+        "only on a lightweight-engine install, which uses neither spaces nor projects.",
         "required": False,
         "field_type": "text",
         "options": None,
@@ -223,8 +238,226 @@ def auth_header(stored: Mapping[str, Any]) -> str:
 
 
 def model_specs_url(api_base: str) -> str:
-    """The catalogue URL on `api_base`, however the operator typed the cluster URL."""
-    return f"{(api_base or '').rstrip('/')}{MODEL_SPECS_PATH}?version={API_VERSION}"
+    """The catalogue URL on `api_base`, however the operator typed the cluster URL.
+
+    Deliberately carries no query string. httpx *replaces* a URL's query when
+    it is given `params`, so a `?version=` baked in here is silently dropped by
+    any caller that also pages or filters — and the cluster answers
+    `invalid_version_date_pattern` for the empty version that results.
+    Everything goes through `model_specs_params` instead.
+    """
+    return f"{(api_base or '').rstrip('/')}{MODEL_SPECS_PATH}"
+
+
+def model_specs_params(**extra: Any) -> dict[str, Any]:
+    """Query parameters for the catalogue endpoint. `version` is mandatory."""
+    return {"version": API_VERSION, **extra}
+
+
+def ssl_verify() -> bool | str:
+    """The TLS setting LiteLLM will use, so our own calls agree with real traffic.
+
+    A cluster behind its own CA is reached by pointing `SSL_CERT_FILE` at a
+    bundle (or, in development, by `SSL_VERIFY=false`). Both are read by
+    LiteLLM, not by httpx, so without this a direct call here could fail on a
+    certificate that the gateway accepts, or the reverse.
+    """
+    try:
+        from litellm.llms.custom_httpx.http_handler import get_ssl_verify
+
+        return get_ssl_verify()
+    except Exception:
+        logger.debug("Could not read LiteLLM's TLS setting; verifying normally", exc_info=True)
+        return True
+
+
+#: How long a fetched model list is reused. The set of deployed models changes
+#: when an administrator deploys one, not per request.
+MODELS_TTL_SECONDS = 300
+
+#: Page size asked for. A cluster serves tens of models, not thousands, but the
+#: endpoint pages by default and a truncated list silently hides models.
+MODELS_PAGE_LIMIT = 200
+
+#: Guard against following `next` for ever if a cluster paginates oddly.
+MAX_MODEL_PAGES = 10
+
+#: `functions` / `task_ids` markers that say which picker a model belongs in.
+#: The listing is fetched unfiltered and split here rather than with the API's
+#: `filters` parameter: the filter grammar is a SaaS convenience, and a cluster
+#: that does not accept it would answer 400 and leave both pickers empty.
+_EMBEDDING_FUNCTIONS = frozenset({"embedding", "embeddings"})
+_CHAT_FUNCTIONS = frozenset({"text_chat", "text_generation", "chat", "generation"})
+
+
+class ClusterModels(NamedTuple):
+    chat: tuple[str, ...]
+    embedding: tuple[str, ...]
+
+
+_models_cache: dict[str, Any] = {"key": None, "at": 0.0, "value": None}
+
+
+def cached_models() -> ClusterModels | None:
+    """The last model list fetched from the cluster, if it is still fresh."""
+    value = _models_cache["value"]
+    if value is None or time.monotonic() - _models_cache["at"] > MODELS_TTL_SECONDS:
+        return None
+    return value
+
+
+def _cache_key(credentials: Mapping[str, Any]) -> str:
+    """Identifies the cluster and the credentials a cached list was fetched with."""
+    values = litellm_credentials(credentials)
+    return f"{values.get('api_base', '')}|{values.get('api_key', '')}"
+
+
+def _resource_markers(resource: Mapping[str, Any]) -> set[str]:
+    """Everything a listing entry says about what it can do, lowercased."""
+    markers: set[str] = set()
+    for function in resource.get("functions") or []:
+        if isinstance(function, Mapping) and function.get("id"):
+            markers.add(str(function["id"]).lower())
+        elif isinstance(function, str):
+            markers.add(function.lower())
+    for task in resource.get("task_ids") or []:
+        markers.add(str(task).lower())
+    return markers
+
+
+def _is_withdrawn(resource: Mapping[str, Any]) -> bool:
+    """Whether the cluster still lists a model it has already retired."""
+    lifecycle = resource.get("lifecycle")
+    if isinstance(lifecycle, list):
+        return any(
+            isinstance(entry, Mapping) and str(entry.get("id", "")).lower() == "withdrawn"
+            for entry in lifecycle
+        )
+    return str(lifecycle or "").lower() == "withdrawn"
+
+
+def split_models(resources: Any) -> ClusterModels:
+    """Split one `foundation_model_specs` listing into the two picker lists.
+
+    Order is preserved and duplicates dropped. A model that advertises nothing
+    useful is treated as a text model: the great majority are, and leaving it
+    out would hide something the cluster actually serves.
+    """
+    chat: list[str] = []
+    embedding: list[str] = []
+    for resource in resources or []:
+        if not isinstance(resource, Mapping):
+            continue
+        model_id = str(resource.get("model_id") or "").strip()
+        if not model_id:
+            continue
+        # `tech_preview` is not requestable on every deployment, and the SaaS
+        # listing drops it for the same reason.
+        if resource.get("input_tier") == "tech_preview" or _is_withdrawn(resource):
+            continue
+        markers = _resource_markers(resource)
+        bucket = embedding if markers & _EMBEDDING_FUNCTIONS else chat
+        if markers & _EMBEDDING_FUNCTIONS and markers & _CHAT_FUNCTIONS:
+            # A model that does both belongs in both pickers.
+            if model_id not in chat:
+                chat.append(model_id)
+        if model_id not in bucket:
+            bucket.append(model_id)
+    return ClusterModels(chat=tuple(chat), embedding=tuple(embedding))
+
+
+async def fetch_models(credentials: Mapping[str, Any]) -> ClusterModels | None:
+    """Ask the cluster which foundation models it actually serves.
+
+    A cluster serves whatever its operator deployed, so this is the only
+    truthful source for the pickers — LiteLLM's bundled table describes IBM
+    Cloud, and the `models:` rows in `model_providers.yaml` are the fallback for
+    when the cluster cannot be reached.
+
+    The listing is fetched unfiltered and split locally, which keeps this
+    working on a lightweight-engine install that has no projects and may not
+    accept the SaaS `filters` grammar. Returns None on any failure, so a
+    catalogue request never fails because the cluster is unreachable; the caller
+    keeps whatever it had.
+    """
+    import httpx
+
+    values = litellm_credentials(credentials)
+    api_base = (values.get("api_base") or "").strip()
+    header = auth_header(credentials)
+    if not api_base or not header:
+        return None
+
+    key = _cache_key(credentials)
+    fresh = cached_models()
+    if fresh is not None and _models_cache["key"] == key:
+        return fresh
+
+    headers = {"Authorization": header, "Accept": "application/json"}
+    url = model_specs_url(api_base)
+    # Only the first request needs parameters built here; a `next` link already
+    # carries its own `version` and `start` in the query it comes back with.
+    params: dict[str, Any] | None = model_specs_params(limit=MODELS_PAGE_LIMIT)
+    resources: list[Any] = []
+    try:
+        async with httpx.AsyncClient(verify=ssl_verify(), timeout=15.0) as client:
+            for _ in range(MAX_MODEL_PAGES):
+                response = await client.get(url, headers=headers, params=params)
+                if response.status_code != 200:
+                    logger.warning(
+                        "watsonx.ai cluster rejected the model listing; "
+                        "keeping the configured list",
+                        status_code=response.status_code,
+                        url=url,
+                        body=response.text[:300],
+                    )
+                    return None
+                body = response.json()
+                if not isinstance(body, dict):
+                    return None
+                resources.extend(body.get("resources") or [])
+                next_page = body.get("next")
+                href = next_page.get("href") if isinstance(next_page, Mapping) else None
+                if not href:
+                    break
+                # Only the path and query are usable. A cluster answers with
+                # its own internal hostname here — this one returns
+                # `https://wx-inference-proxy-upstream/ml/v1/...`, which does
+                # not resolve outside the cluster — so the next page is
+                # re-based on the URL the operator gave us.
+                parsed = urlsplit(href)
+                url = f"{api_base.rstrip('/')}{urlunsplit(('', '', parsed.path, parsed.query, ''))}"
+                params = None
+    except Exception as exc:
+        logger.warning(
+            "Could not list models on the watsonx.ai cluster; keeping the configured list",
+            error=str(exc),
+        )
+        return None
+
+    models = split_models(resources)
+    if not models.chat and not models.embedding:
+        # Far more likely a listing we could not interpret than a cluster with
+        # nothing deployed. Emptying both pickers on that guess would be worse
+        # than showing the fallback.
+        logger.warning(
+            "watsonx.ai cluster listed no usable models; keeping the configured list",
+            resources=len(resources),
+        )
+        return None
+
+    _models_cache.update(key=key, at=time.monotonic(), value=models)
+    logger.info(
+        "Listed models on the watsonx.ai cluster",
+        chat=len(models.chat),
+        embedding=len(models.embedding),
+    )
+    return models
+
+
+def forget_models() -> None:
+    """Drop the cached cluster list. For tests and for a credential change."""
+    _models_cache.update(key=None, at=0.0, value=None)
 
 
 # --------------------------------------------------------------------------

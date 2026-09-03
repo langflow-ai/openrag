@@ -281,7 +281,16 @@ _ANSI_PATTERN = re.compile(r"\x1b\[[0-9;]*m")
 
 
 def _call_label(provider: str, model: str) -> str:
-    """`provider/model` for humans, without repeating a prefix LiteLLM already added."""
+    """`provider/model` for humans, without repeating a prefix LiteLLM already added.
+
+    The model here is the routed id, so for an aliased provider it carries the
+    *LiteLLM* prefix rather than the OpenRAG one — naively joining them gives
+    "watsonx_onprem/watsonx/openai/gpt-oss-120b", which names two providers and
+    reads like a bug in the error it appears in.
+    """
+    route = litellm_provider_key(provider) if provider else ""
+    if route and route != provider and model.startswith(f"{route}/"):
+        model = model[len(route) + 1 :]
     if model and provider and not model.startswith(f"{provider}/"):
         return f"{provider}/{model}"
     return model or provider or "provider"

@@ -1487,23 +1487,6 @@ async def _test_anthropic_completion_with_tools(api_key: str, llm_model: str) ->
         raise
 
 
-def _cluster_ssl_verify() -> bool | str:
-    """The TLS setting LiteLLM will use, so this probe agrees with real traffic.
-
-    A cluster behind its own CA is reached by pointing `SSL_CERT_FILE` at a
-    bundle (or, in development, by `SSL_VERIFY=false`). Both are read by
-    LiteLLM, not by httpx, so without this the banner could sit red on a
-    certificate error while chat through the gateway works.
-    """
-    try:
-        from litellm.llms.custom_httpx.http_handler import get_ssl_verify
-
-        return get_ssl_verify()
-    except Exception:
-        logger.debug("Could not read LiteLLM's TLS setting; verifying normally", exc_info=True)
-        return True
-
-
 async def _test_watsonx_onprem_lightweight_health(credentials: dict[str, str]) -> None:
     """Check a Cloud Pak for Data cluster's credentials without naming a model.
 
@@ -1527,12 +1510,13 @@ async def _test_watsonx_onprem_lightweight_health(credentials: dict[str, str]) -
 
     url = watsonx_onprem.model_specs_url(api_base)
     try:
-        async with httpx.AsyncClient(verify=_cluster_ssl_verify()) as client:
+        async with httpx.AsyncClient(verify=watsonx_onprem.ssl_verify()) as client:
             response = await _http_request_with_retry(
                 "GET",
                 url,
                 client=client,
                 headers={"Authorization": header, "Accept": "application/json"},
+                params=watsonx_onprem.model_specs_params(limit=1),
                 timeout=10.0,
             )
     except httpx.TimeoutException:
