@@ -5696,7 +5696,7 @@
                 ],
                 "total_dependencies": 2
               },
-              "module": "custom_components.OpenRAG.openai_compatible_embedding.OpenAICompatibleEmbeddingComponent"
+              "module": "custom_components.openrag_embeddings"
             },
             "minimized": false,
             "output_types": [],
