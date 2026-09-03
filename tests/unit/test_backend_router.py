@@ -1,5 +1,4 @@
-"""Tests for the standalone ingestion-callback proxy router and the callback-URL
-selection helper that points Langflow at it."""
+"""Tests for the standalone allowlisted Langflow proxy router."""
 
 import pytest
 from fastapi.testclient import TestClient
@@ -44,6 +43,25 @@ def test_callback_url_uses_backend_when_disabled(monkeypatch):
     assert settings.get_ingest_callback_url() == "http://be:8000/internal/ingest/chunks"
 
 
+def test_llm_base_url_uses_router_when_enabled(monkeypatch):
+    monkeypatch.setattr(settings, "OPENRAG_BACKEND_ROUTER_ENABLE", True)
+    monkeypatch.setattr(settings, "OPENRAG_BACKEND_ROUTER_URL", "http://router:8100")
+    assert settings.get_langflow_llm_base_url() == "http://router:8100"
+
+
+def test_llm_base_url_uses_backend_when_router_disabled(monkeypatch):
+    monkeypatch.delenv("OPENRAG_LLM_PROXY_URL", raising=False)
+    monkeypatch.setattr(settings, "OPENRAG_BACKEND_ROUTER_ENABLE", False)
+    monkeypatch.setattr(settings, "OPENRAG_BACKEND_INTERNAL_URL", "http://be:8000")
+    assert settings.get_langflow_llm_base_url() == "http://be:8000/v1"
+
+
+def test_llm_base_url_override_wins_over_router(monkeypatch):
+    monkeypatch.setenv("OPENRAG_LLM_PROXY_URL", "https://llm-proxy.example/v1/")
+    monkeypatch.setattr(settings, "OPENRAG_BACKEND_ROUTER_ENABLE", True)
+    assert settings.get_langflow_llm_base_url() == "https://llm-proxy.example/v1"
+
+
 def test_router_url_derives_backend_host_on_router_port(monkeypatch):
     monkeypatch.setattr(settings, "OPENRAG_BACKEND_INTERNAL_URL", "http://openrag-be:8000")
     monkeypatch.setattr(settings, "OPENRAG_BACKEND_ROUTER_PORT", 8100)
@@ -77,6 +95,34 @@ class _FakeClient:
         self._captured["content"] = content
         self._captured["headers"] = headers
         return _FakeResponse(200, b'{"status":"ok"}', {"content-type": "application/json"})
+
+
+class _FakeStreamingResponse(_FakeResponse):
+    async def aiter_raw(self):
+        yield self.content
+
+    async def aclose(self):
+        pass
+
+
+class _FakeLlmClient:
+    def __init__(self, captured):
+        self._captured = captured
+
+    def build_request(self, method, url, content=None, headers=None, params=None):
+        self._captured.update(
+            method=method, url=url, content=content, headers=headers, params=dict(params or {})
+        )
+        return object()
+
+    async def send(self, request, stream=False):
+        self._captured["stream"] = stream
+        return _FakeStreamingResponse(
+            200, b'{"object":"list","data":[]}', {"content-type": "application/json"}
+        )
+
+    async def aclose(self):
+        pass
 
 
 def test_proxy_forwards_only_allowlisted_headers(monkeypatch):
@@ -120,10 +166,40 @@ def test_proxy_returns_502_when_upstream_unreachable(monkeypatch):
     assert resp.status_code == 502
 
 
-def test_router_exposes_only_the_callback_and_health():
+def test_llm_proxy_forwards_only_allowlisted_headers_and_maps_private_path(monkeypatch):
+    captured: dict = {}
+    monkeypatch.setattr(router_app.httpx, "AsyncClient", lambda *a, **k: _FakeLlmClient(captured))
+
+    client = TestClient(router_app.create_router_app())
+    resp = client.post(
+        "/embeddings?trace=1",
+        content=b'{"model":"text-embedding-3-small","input":"hello"}',
+        headers={
+            "Authorization": "Bearer hop-token",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "X-Evil": "should-be-dropped",
+        },
+    )
+
+    assert resp.status_code == 200
+    assert resp.json() == {"object": "list", "data": []}
+    assert captured["url"] == f"{router_app.OPENRAG_BACKEND_ROUTER_UPSTREAM_URL}/v1/embeddings"
+    assert captured["params"] == {"trace": "1"}
+    assert captured["stream"] is True
+    forwarded = {key.lower() for key in captured["headers"]}
+    assert {"authorization", "content-type", "accept"} <= forwarded
+    assert "x-evil" not in forwarded
+
+
+def test_router_exposes_only_allowlisted_paths_and_health():
     client = TestClient(router_app.create_router_app())
     assert client.get("/health").status_code == 200
-    # No other path is registered.
+    # No arbitrary proxying, and FastMCP's streamable HTTP endpoint is not
+    # exposed by this separate router app.
     assert client.get("/some/other/path").status_code == 404
+    assert client.get("/mcp").status_code == 404
+    assert client.get("/v1/embeddings").status_code == 404
+    assert client.get("/v1/anything-else").status_code == 404
     # Callback is POST-only.
     assert client.get("/internal/ingest/chunks").status_code == 405
