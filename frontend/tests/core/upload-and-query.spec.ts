@@ -1,5 +1,5 @@
 import * as path from "path";
-import { TEST_CONFIG } from "../config/test.config";
+import { LACKS_KNOWLEDGE_PATTERN, TEST_CONFIG } from "../config/test.config";
 import { TasksMenu } from "../pages/TasksMenu";
 import { expect, test } from "../utils/fixtures";
 import logger from "../utils/logger";
@@ -53,9 +53,7 @@ test.describe("Document Upload and Query @33219204 , @34548303 , @34548305 , @34
     const responseUnrelated = await chat.getLastResponse(
       TEST_CONFIG.timeouts.default,
     );
-    expect(responseUnrelated).toMatch(
-      /no (relevant|documents|sources|results|information)|did not (return|provide|find|yield)|not found|cannot find|unable to locate|could not find|couldn['’]t find/i,
-    );
+    expect(responseUnrelated).toMatch(LACKS_KNOWLEDGE_PATTERN);
 
     // //--- SCENARIO 2: Upload password protected file ---
     // await knowledge.open();
