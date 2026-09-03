@@ -31,6 +31,7 @@ from functools import lru_cache
 from typing import Any
 
 from config.model_providers import ProviderEntry, visible_provider_entries
+from services import watsonx_onprem
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -87,6 +88,27 @@ GENERIC_CREDENTIAL_FIELDS: list[dict[str, Any]] = [
 ]
 
 KNOWN_FIELD_TYPES = frozenset({"text", "password", "select", "textarea", "upload"})
+
+#: OpenRAG provider keys LiteLLM cannot route under their own name, mapped to
+#: the key it routes them as. A row here is for a deployment shape that needs
+#: its own credentials and its own model list but reaches the same API — the
+#: alternative, reusing the upstream key, would make the two share one set of
+#: stored credentials.
+PROVIDER_ROUTE_ALIASES: dict[str, str] = {
+    watsonx_onprem.PROVIDER_KEY: watsonx_onprem.LITELLM_PROVIDER,
+}
+
+#: Credential forms LiteLLM's `provider_create_fields.json` cannot supply,
+#: because the provider is one of OpenRAG's own aliases.
+_CREDENTIAL_FIELD_OVERRIDES: dict[str, list[dict[str, Any]]] = {
+    watsonx_onprem.PROVIDER_KEY: watsonx_onprem.CREDENTIAL_FIELDS,
+}
+
+
+def litellm_provider_key(provider: str) -> str:
+    """The name LiteLLM routes `provider` under, which is usually itself."""
+    key = (provider or "").strip().lower()
+    return PROVIDER_ROUTE_ALIASES.get(key, key)
 
 
 class CatalogUnavailableError(RuntimeError):
@@ -155,8 +177,12 @@ def _normalize_field(field: dict[str, Any]) -> dict[str, Any]:
 
 def credential_fields(provider: str) -> list[dict[str, Any]]:
     """The form spec for `provider`, normalized, never empty."""
+    key = (provider or "").strip().lower()
+    override = _CREDENTIAL_FIELD_OVERRIDES.get(key)
+    if override is not None:
+        return [_normalize_field(field) for field in override]
     try:
-        spec = _provider_field_specs().get((provider or "").strip().lower())
+        spec = _provider_field_specs().get(key)
     except Exception:
         logger.warning("Could not read LiteLLM's provider field specs", exc_info=True)
         return [dict(field) for field in GENERIC_CREDENTIAL_FIELDS]
@@ -241,6 +267,12 @@ def _catalog(providers: tuple[ProviderEntry, ...]) -> dict[str, Any]:
         raise CatalogUnavailableError("litellm is not installed on the server") from exc
 
     specs = _provider_field_specs()
+    # Matched on OpenRAG's own key, never the aliased LiteLLM one: a provider
+    # that routes as `watsonx` but serves whatever an operator deployed on
+    # their cluster must not inherit IBM Cloud's catalogue. Two providers
+    # sharing model ids would also leave `catalog_owner` unable to say which of
+    # them owns an id, and a legacy slash-form id would resolve to neither.
+    # An aliased provider's models come from its `models:` rows instead.
     keys = {entry.name for entry in providers}
     chat_by_provider: dict[str, list[dict[str, Any]]] = {}
     embed_by_provider: dict[str, list[dict[str, Any]]] = {}
@@ -382,10 +414,17 @@ def catalog(today: datetime.date | None = None) -> dict[str, Any]:
 
 
 def is_known_provider(provider: str) -> bool:
-    """Whether LiteLLM recognises `provider` at all."""
+    """Whether `provider` names a route the gateway can resolve.
+
+    That is LiteLLM's own provider list, plus OpenRAG's aliases — an alias is
+    routable by definition, since it is only ever a second front door onto a
+    provider LiteLLM already knows.
+    """
     key = (provider or "").strip().lower()
     if not key:
         return False
+    if key in PROVIDER_ROUTE_ALIASES:
+        return True
     try:
         import litellm
 
