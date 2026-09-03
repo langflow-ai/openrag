@@ -14,7 +14,7 @@ from config.config_manager import (
     WatsonXConfig,
 )
 from services import model_catalog, watsonx_onprem
-from services.llm_gateway import resolve_call
+from services.llm_gateway import resolve_call, split_model_id
 
 PROVIDER = watsonx_onprem.PROVIDER_KEY
 
@@ -146,13 +146,18 @@ def test_the_alias_is_routable_so_ids_are_not_billed_to_the_default_provider() -
     assert model_catalog.litellm_provider_key("openai") == "openai"
 
 
-def test_it_ships_on_prem_only(monkeypatch) -> None:
+def test_it_ships_on_prem_and_never_in_saas(monkeypatch) -> None:
+    """on_prem is the mode it exists for; SaaS is the one it must never reach.
+
+    Nothing is asserted about `oss`: that row gets flipped on for local testing
+    the way `azure_ai`'s is, and a test that pins it only breaks the next person
+    who needs the card in their dev stack.
+    """
     monkeypatch.setenv("OPENRAG_RUN_MODE", "on_prem")
     assert PROVIDER in model_providers.visible_provider_keys()
 
-    for mode in ("oss", "saas"):
-        monkeypatch.setenv("OPENRAG_RUN_MODE", mode)
-        assert PROVIDER not in model_providers.visible_provider_keys(), mode
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
+    assert PROVIDER not in model_providers.visible_provider_keys()
 
 
 def test_the_settings_form_asks_for_cluster_credentials_not_ibm_cloud_ones() -> None:
@@ -184,14 +189,24 @@ def test_its_models_come_from_config_not_ibm_clouds_price_table(monkeypatch) -> 
     )
     assert onprem["embedding_models"], "an embedding provider with no ids can never be selected"
 
-    shared = {entry["model"] for entry in entries["watsonx"]["models"]} & {
-        entry["model"] for entry in onprem["models"]
-    }
-    for model in shared:
-        assert model_catalog.catalog_owner(model) is None or model_catalog.catalog_owner(model) in {
-            "watsonx",
-            PROVIDER,
-        }
+
+def test_an_id_both_watsonx_rows_serve_is_never_handed_to_its_prefix(monkeypatch) -> None:
+    """`openai/gpt-oss-120b` is watsonx's model, not OpenAI's.
+
+    A cluster that also serves it puts the id under two providers, so
+    `catalog_owner` cannot pick one. The old fallback split on the slash and
+    routed it to OpenAI — with OpenAI's key, for a model OpenAI does not have.
+    """
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "on_prem")
+    model = "openai/gpt-oss-120b"
+
+    if len(model_catalog.catalog_owners(model)) < 2:
+        pytest.skip("this deployment's config does not list the id under both watsonx rows")
+
+    assert model_catalog.catalog_owner(model) is None
+    # Untagged, so it goes to the configured default provider whole rather than
+    # to whichever provider the prefix happens to name.
+    assert split_model_id(model) == (None, model)
 
 
 def test_a_scopeless_cluster_call_carries_no_null_space_id() -> None:
@@ -227,3 +242,145 @@ def test_a_scope_that_is_set_still_reaches_the_cluster() -> None:
     )
 
     assert payload == {"model_id": "ibm/granite-3-3-8b-instruct", "space_id": "space-1"}
+
+
+def test_a_self_signed_cluster_cert_is_reported_as_a_trust_problem() -> None:
+    """The request never leaves the process, so there is no provider error to quote.
+
+    Without this the message collapses to "could not be reached", which sends an
+    operator hunting for a network fault instead of a missing CA.
+    """
+    from services.llm_gateway import _upstream_client_message
+
+    detail = (
+        "InternalServerError: WatsonxException - Cannot connect to host "
+        "cpd.example.com:443 ssl:True [SSLCertVerificationError: (1, '[SSL: "
+        "CERTIFICATE_VERIFY_FAILED] certificate verify failed: self-signed "
+        "certificate in certificate chain (_ssl.c:1032)')]"
+    )
+
+    message = _upstream_client_message(detail, PROVIDER, "watsonx/ibm/granite-3-3-8b-instruct")
+
+    assert "TLS certificate is not trusted" in message
+    assert "CA certificate" in message
+    # Not mistaken for a bad key: rotating a working ZenApiKey fixes nothing.
+    assert "API key" not in message
+
+
+def test_a_revoked_key_still_reads_as_a_credential_problem() -> None:
+    from services.llm_gateway import _upstream_client_message
+
+    message = _upstream_client_message(
+        'InternalServerError: {"errorCode":"BXNIM0415E","errorMessage":"Provided API key '
+        'could not be found."}',
+        PROVIDER,
+        "watsonx/ibm/granite-3-3-8b-instruct",
+    )
+
+    assert "API key is invalid" in message
+
+
+def test_a_shared_id_reaches_the_cluster_under_the_selected_provider(monkeypatch) -> None:
+    """The real failure: `openai/gpt-oss-120b` picked while watsonx_onprem is selected.
+
+    Settings stores the provider and the bare model id separately, so the id
+    arrives untagged. Splitting it on the slash threw away the selected provider
+    and called OpenAI with OpenAI's key for a model OpenAI does not serve.
+    """
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "on_prem")
+    model = "openai/gpt-oss-120b"
+    if len(model_catalog.catalog_owners(model)) < 2:
+        pytest.skip("this deployment's config does not list the id under both watsonx rows")
+
+    config = SimpleNamespace(
+        providers=_providers(
+            api_base="https://cpd.example.com", username="cpduser", api_key="APIKEY"
+        ),
+        agent=SimpleNamespace(llm_model=model, llm_provider=PROVIDER),
+        knowledge=SimpleNamespace(embedding_model="", embedding_provider="openai"),
+    )
+
+    litellm_model, provider, credentials = resolve_call(None, kind="chat", config=config)
+
+    assert provider == PROVIDER
+    assert litellm_model == f"watsonx/{model}"
+    assert credentials["zen_api_key"] == "Y3BkdXNlcjpBUElLRVk="
+
+
+@pytest.mark.asyncio
+async def test_health_needs_no_model_selected(monkeypatch) -> None:
+    """The banner reported "A model is required to validate the provider".
+
+    Every generic provider is validated by making a real call, so one that is
+    configured but has no model chosen yet failed validation and surfaced as a
+    provider error — pointing at the credentials dialog for something that was
+    never a credentials problem. The cluster's catalogue endpoint needs no
+    model, no project and no space.
+    """
+    from api import provider_validation
+
+    called: dict[str, object] = {}
+
+    async def _fake_request(method, url, **kwargs):
+        called["method"] = method
+        called["url"] = url
+        called["auth"] = kwargs.get("headers", {}).get("Authorization")
+        return SimpleNamespace(status_code=200, text="{}", json=lambda: {"resources": []})
+
+    monkeypatch.setattr(provider_validation, "_http_request_with_retry", _fake_request)
+
+    credentials = watsonx_onprem.litellm_credentials(
+        {"api_base": "https://cpd.example.com/", "username": "cpduser", "api_key": "APIKEY"}
+    )
+    await provider_validation.validate_provider_setup(
+        provider=PROVIDER, credentials=credentials, llm_model=None, embedding_model=None
+    )
+
+    assert called["method"] == "GET"
+    assert called["url"] == (
+        "https://cpd.example.com/ml/v1/foundation_model_specs?version=2024-03-13"
+    )
+    assert called["auth"] == "ZenApiKey Y3BkdXNlcjpBUElLRVk="
+
+
+@pytest.mark.asyncio
+async def test_health_reports_a_rejected_zen_key_as_a_credential_problem(monkeypatch) -> None:
+    from api import provider_validation
+    from api.provider_validation import is_provider_credential_error
+
+    async def _fake_request(method, url, **kwargs):
+        return SimpleNamespace(
+            status_code=401,
+            text='{"errors":[{"message":"Failed to authenticate the request"}]}',
+            json=lambda: {"errors": [{"message": "Failed to authenticate the request"}]},
+        )
+
+    monkeypatch.setattr(provider_validation, "_http_request_with_retry", _fake_request)
+
+    credentials = watsonx_onprem.litellm_credentials(
+        {"api_base": "https://cpd.example.com", "username": "cpduser", "api_key": "APIKEY"}
+    )
+    with pytest.raises(Exception) as excinfo:
+        await provider_validation.validate_provider_setup(
+            provider=PROVIDER, credentials=credentials, llm_model=None, embedding_model=None
+        )
+
+    # Classified as a credential failure so the banner offers "update the key"
+    # rather than "the provider could not be reached".
+    assert is_provider_credential_error(str(excinfo.value))
+
+
+def test_the_health_probe_uses_the_same_tls_setting_as_real_traffic(monkeypatch) -> None:
+    """`SSL_CERT_FILE`/`SSL_VERIFY` are read by LiteLLM, not by httpx.
+
+    Without this the banner could sit red on a certificate error while chat
+    through the gateway works, or the reverse.
+    """
+    from api.provider_validation import _cluster_ssl_verify
+
+    monkeypatch.setenv("SSL_VERIFY", "false")
+    assert _cluster_ssl_verify() is False
+
+    monkeypatch.setenv("SSL_VERIFY", "true")
+    monkeypatch.delenv("SSL_CERT_FILE", raising=False)
+    assert _cluster_ssl_verify() is True
