@@ -351,8 +351,8 @@ export function AgentSettingsSection() {
                 Disable Langflow Chat
               </Label>
               <div className="text-sm text-muted-foreground">
-                Run chat in OpenRAG against the language model above instead of
-                sending it to the Langflow flow.
+                Run chat, history and prompt suggestions in OpenRAG against the
+                language model above instead of sending them to Langflow flows.
               </div>
             </div>
             <Switch

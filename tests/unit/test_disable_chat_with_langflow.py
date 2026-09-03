@@ -63,3 +63,31 @@ async def test_langflow_history_uses_direct_history_when_disabled(monkeypatch):
 
     assert result["endpoint"] == "chat"
     service.get_chat_history.assert_awaited_once_with("db-user")
+
+
+@pytest.mark.asyncio
+async def test_nudges_use_direct_generation_when_disabled(monkeypatch):
+    """The one flag covers nudges too, not just chat and history.
+
+    Without this, a deployment running without Langflow gets a chat page whose
+    suggestion buttons 500 on every request.
+    """
+    monkeypatch.setenv("DISABLE_CHAT_WITH_LANGFLOW", "true")
+    monkeypatch.setattr(
+        "config.settings.clients.ensure_langflow_client",
+        AsyncMock(side_effect=AssertionError("Langflow should not be used")),
+    )
+    monkeypatch.setattr(
+        "services.nudges_service.chat_completions",
+        AsyncMock(return_value={"choices": [{"message": {"content": "Alpha\nBeta\nGamma"}}]}),
+    )
+
+    class _Search:
+        async def search(self, query, **kwargs):
+            return {"results": [{"text": "some corpus text"}]}
+
+    service = ChatService(search_service=_Search())
+
+    result = await service.langflow_nudges_chat(user_id="oauth-user", jwt_token="jwt-token")
+
+    assert result == {"response": "Alpha\nBeta\nGamma"}

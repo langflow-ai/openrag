@@ -3,12 +3,21 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { useCallback, useRef } from "react";
 import { useChat } from "@/contexts/chat-context";
 import { useProviderHealthQuery } from "./useProviderHealthQuery";
 
 type Nudge = string;
 
 const DEFAULT_NUDGES: Nudge[] = [];
+
+// An empty result means "nothing to suggest yet" — usually a corpus still being
+// ingested — so it is worth re-asking for a while. But it is also what an empty
+// knowledge base returns forever, so the retries must be bounded: unbounded
+// polling re-POSTs every 5s for as long as the chat page is open, and each
+// request costs a real LLM completion when nudges run without Langflow.
+const MAX_EMPTY_POLLS = 5;
+const EMPTY_POLL_INTERVAL_MS = 5000;
 
 export interface NudgeFilters {
   data_sources?: string[];
@@ -42,7 +51,15 @@ export const useGetNudgesQuery = (
     health === undefined ||
     (health?.status === "healthy" && !health?.llm_error);
 
+  // Tracked per query key so changing chat/filters starts the budget over.
+  const pollKey = JSON.stringify([chatId, filters, limit, scoreThreshold]);
+  const emptyAttemptsRef = useRef({ key: pollKey, count: 0 });
+  if (emptyAttemptsRef.current.key !== pollKey) {
+    emptyAttemptsRef.current = { key: pollKey, count: 0 };
+  }
+
   function cancel() {
+    emptyAttemptsRef.current.count = 0;
     queryClient.removeQueries({
       queryKey: ["nudges", chatId, filters, limit, scoreThreshold],
     });
@@ -76,20 +93,33 @@ export const useGetNudgesQuery = (
         body: JSON.stringify(requestBody),
         signal: context.signal,
       });
-      const data = await response.json();
-
-      if (data.response && typeof data.response === "string") {
-        return data.response.split("\n").filter(Boolean);
+      // A failed request is not "no nudges". Without this check an error body
+      // parses fine, yields no `response` key, and is cached as an empty list,
+      // which then keeps the retry loop below running indefinitely.
+      if (!response.ok) {
+        throw new Error(`Nudges request failed: ${response.status}`);
       }
 
-      return DEFAULT_NUDGES;
+      const data = await response.json();
+
+      const nudges: Nudge[] =
+        data.response && typeof data.response === "string"
+          ? data.response.split("\n").filter(Boolean)
+          : DEFAULT_NUDGES;
+
+      emptyAttemptsRef.current.count =
+        nudges.length === 0 ? emptyAttemptsRef.current.count + 1 : 0;
+
+      return nudges;
     } catch (error) {
       // Ignore abort errors - these are expected when requests are cancelled
       if (error instanceof Error && error.name === "AbortError") {
         return DEFAULT_NUDGES;
       }
       console.error("Error getting nudges", error);
-      return DEFAULT_NUDGES;
+      // Rethrow so the query settles as an error rather than caching an empty
+      // list. `data` then stays undefined and the retry loop stops.
+      throw error;
     }
   }
 
@@ -107,9 +137,14 @@ export const useGetNudgesQuery = (
       refetchOnMount: false, // Don't refetch on every mount
       refetchOnWindowFocus: false, // Don't refetch when window regains focus
       refetchInterval: (query) => {
-        // If data is empty, refetch every 5 seconds
+        // Retry while the result is empty, but only a bounded number of times.
         const data = query.state.data;
-        return Array.isArray(data) && data.length === 0 ? 5000 : false;
+        if (!Array.isArray(data) || data.length > 0) {
+          return false;
+        }
+        return emptyAttemptsRef.current.count < MAX_EMPTY_POLLS
+          ? EMPTY_POLL_INTERVAL_MS
+          : false;
       },
       ...options,
       enabled, // Override enabled after spreading options to ensure onboarding check is applied
@@ -117,5 +152,24 @@ export const useGetNudgesQuery = (
     queryClient,
   );
 
-  return { data, isLoading, isError, error, refetch, isFetching, cancel };
+  // Callers refetch when the corpus changes (e.g. right after ingestion
+  // completes), which is exactly when a previously-empty result should start
+  // being worth retrying again. Re-arm the budget so the cap is not permanent.
+  const refetchNudges: typeof refetch = useCallback(
+    (...args) => {
+      emptyAttemptsRef.current.count = 0;
+      return refetch(...args);
+    },
+    [refetch],
+  );
+
+  return {
+    data,
+    isLoading,
+    isError,
+    error,
+    refetch: refetchNudges,
+    isFetching,
+    cancel,
+  };
 };

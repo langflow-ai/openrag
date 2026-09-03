@@ -8,6 +8,17 @@ import agent
 from services.chat_service import ChatService
 
 
+@pytest.fixture(autouse=True)
+def _pin_langflow_nudges_path(monkeypatch):
+    """These tests cover the Langflow branch, so pin it on.
+
+    tests/conftest.py loads .env, which may set DISABLE_CHAT_WITH_LANGFLOW=true.
+    setenv alone would not be enough: the resolver falls back to the cached
+    OpenRAG config, so patch the reference chat_service imported.
+    """
+    monkeypatch.setattr("services.chat_service.is_chat_with_langflow_disabled", lambda: False)
+
+
 @pytest.mark.asyncio
 async def test_langflow_nudges_chat_with_chunks_in_memory(monkeypatch):
     """Ensure in-memory conversation chunks are formatted into the nudges prompt."""

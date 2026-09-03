@@ -264,7 +264,13 @@ class SearchService:
         except Exception as e:
             logger.warning("[SEARCH] Could not configure Ollama endpoint from config", error=str(e))
 
-    async def search_tool(self, query: str, embedding_model: str = None) -> dict[str, Any]:
+    async def search_tool(
+        self,
+        query: str,
+        embedding_model: str = None,
+        *,
+        exclude_sample_data: bool = False,
+    ) -> dict[str, Any]:
         """
         Use this tool to search for documents relevant to the query.
 
@@ -273,6 +279,9 @@ class SearchService:
             embedding_model (str): Optional override for embedding model.
                                   If not provided, uses the current embedding
                                   model from configuration.
+            exclude_sample_data (bool): Drop chunks indexed from the bundled
+                                  sample corpus. Off by default; used by nudge
+                                  generation when no user filters are active.
 
         Returns:
             dict (str, Any): {"results": [chunks]} on success
@@ -524,6 +533,12 @@ class SearchService:
                         else:
                             # Multiple values filter
                             filter_clauses.append({"terms": {field_name: values}})
+
+        # Sample docs are onboarding filler; nudges built from them describe the
+        # demo corpus rather than the user's own. Both branches above have
+        # populated filter_clauses by now, so this covers wildcard and hybrid.
+        if exclude_sample_data:
+            filter_clauses.append({"bool": {"must_not": [{"term": {"is_sample_data": "true"}}]}})
 
         # Build query body
         if is_wildcard_match_all:
@@ -821,6 +836,7 @@ class SearchService:
         limit: int = 10,
         score_threshold: float = 0,
         embedding_model: str = None,
+        exclude_sample_data: bool = False,
     ) -> dict[str, Any]:
         """Public search method for API endpoints
 
@@ -847,4 +863,6 @@ class SearchService:
         set_search_limit(limit)
         set_score_threshold(score_threshold)
 
-        return await self.search_tool(query, embedding_model=embedding_model)
+        return await self.search_tool(
+            query, embedding_model=embedding_model, exclude_sample_data=exclude_sample_data
+        )
