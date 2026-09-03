@@ -12,6 +12,7 @@ from config.embedding_constants import get_declared_default_embedding_model
 from config.settings import get_embedding_model, get_index_name, get_openrag_config
 from services.llm_gateway import LlmGatewayError
 from services.llm_gateway import embeddings as gateway_embeddings
+from services.models_service import is_cohere_embedding_model
 from utils.container_utils import transform_localhost_url
 from utils.embedding_fields import (
     INDEXED_EMBEDDING_ROUTE_PREFIX,
@@ -424,6 +425,15 @@ class SearchService:
                 attempts = 0
                 last_exception = None
 
+                # Cohere embedding models (Bedrock, OCI GenAI, ...) require an
+                # explicit input_type on every call - there is no default.
+                # The gateway only forwards it when the resolved model is
+                # actually cohere-family, so this is a no-op for every other
+                # provider's space.
+                embed_kwargs: dict[str, Any] = {}
+                if is_cohere_embedding_model(space.field_identity):
+                    embed_kwargs["input_type"] = "search_query"
+
                 while attempts < MAX_EMBED_RETRIES:
                     attempts += 1
                     try:
@@ -432,7 +442,7 @@ class SearchService:
                         # one place and upstream credentials never leave OpenRAG.
                         # A query, so it must not queue behind bulk ingestion.
                         resp = await gateway_embeddings(
-                            {"model": space.route_model, "input": [query]},
+                            {"model": space.route_model, "input": [query], **embed_kwargs},
                             interactive=True,
                         )
                         data = resp.get("data", [])
