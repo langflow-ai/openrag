@@ -95,11 +95,22 @@ def split_model_id(model: str) -> tuple[str | None, str]:
     # also part of vendor-qualified names. When the whole string names exactly
     # one catalogue model, that provider owns it — `openai/gpt-oss-120b` is
     # watsonx's model, not OpenAI's `gpt-oss-120b`.
-    from services.model_catalog import catalog_owner
+    from services.model_catalog import catalog_owner, catalog_owners
 
     owner = catalog_owner(raw)
     if owner:
         return owner, raw
+
+    if catalog_owners(raw):
+        # More than one provider serves this exact id, so the text before the
+        # slash is part of the model's own name and not a provider tag. A
+        # deployment offering both watsonx.ai on IBM Cloud and on a cluster has
+        # `openai/gpt-oss-120b` twice; splitting it would hand the id to OpenAI
+        # — with OpenAI's key, for a model OpenAI does not serve. Leaving it
+        # untagged sends it to the configured default provider whole, which is
+        # right whenever that provider is one of the two and a clean "no such
+        # model" when it is not.
+        return None, raw
 
     prefix, rest = raw.split("/", 1)
     prefix_lower = prefix.lower()
@@ -233,6 +244,14 @@ def resolve_call(
 _UPSTREAM_FAILURE_MESSAGE = "The model provider could not be reached. Please try again."
 _UPSTREAM_CREDENTIAL_MESSAGE = (
     "The configured API key is invalid or has been revoked. Update it in Settings and retry."
+)
+#: A TLS trust failure reads as an outage otherwise — the request never left the
+#: process, so there is no provider error to quote and the text collapses to
+#: "could not be reached", which sends an operator hunting for a network fault.
+#: Nothing in Settings fixes this, so the message says who has to act.
+_UPSTREAM_TLS_MESSAGE = (
+    "The provider's TLS certificate is not trusted by this deployment. An operator needs to "
+    "add the provider's CA certificate to OpenRAG's trust store."
 )
 
 
@@ -394,9 +413,18 @@ def _upstream_client_message(
     credential failure keeps its actionable message so onboarding can tell the
     user to fix the key.
     """
-    from api.provider_validation import is_generic_upstream_error, is_provider_credential_error
+    from api.provider_validation import (
+        is_generic_upstream_error,
+        is_provider_credential_error,
+        is_provider_tls_error,
+    )
 
     label = _call_label(provider, model)
+    # Checked before the credential branch: a TLS failure often carries
+    # "unauthorized"-adjacent wording from the transport wrapper, and telling
+    # someone to rotate a working API key wastes the trip.
+    if is_provider_tls_error(detail):
+        return f"{_UPSTREAM_TLS_MESSAGE} ({label})"
     if is_provider_credential_error(detail):
         return f"{_UPSTREAM_CREDENTIAL_MESSAGE} ({label})"
     upstream = _provider_error_text(detail, exc)
