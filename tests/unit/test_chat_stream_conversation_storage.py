@@ -161,3 +161,80 @@ async def test_nothing_is_stored_when_the_stream_never_completes(monkeypatch):
         pass
 
     assert stored == {}
+
+
+@pytest.mark.asyncio
+async def test_streamed_reply_claims_session_ownership(monkeypatch):
+    """Regression: the next message in the thread 404'd.
+
+    `_assert_owns` returns 404 (session_not_found) for an unclaimed session, and
+    the langflowless paths stored conversations without ever claiming them —
+    only the Langflow variants did. Invisible until threading worked.
+    """
+    claimed = []
+
+    async def _claim(user_id, session_id):
+        claimed.append((user_id, session_id))
+
+    monkeypatch.setattr(
+        "services.session_ownership_service.session_ownership_service.claim_session", _claim
+    )
+
+    events = [_delta_event("Hello", 1), _completed_event("resp_abc", 2)]
+    async for _ in agent.async_chat_stream(_client(events), "hi", "user-1"):
+        pass
+
+    assert claimed == [("user-1", "resp_abc")]
+
+
+@pytest.mark.asyncio
+async def test_non_streaming_reply_also_claims_session_ownership(monkeypatch):
+    """The blocking path stores a conversation too, so it must claim as well."""
+    claimed = []
+
+    async def _claim(user_id, session_id):
+        claimed.append((user_id, session_id))
+
+    monkeypatch.setattr(
+        "services.session_ownership_service.session_ownership_service.claim_session", _claim
+    )
+
+    class _Response:
+        id = "resp_nonstream"
+        output_text = "Hello world"
+
+        def model_dump(self):
+            return {"id": self.id}
+
+    class _Responses:
+        async def create(self, **kwargs):
+            return _Response()
+
+    class _Client:
+        default_headers: dict = {}
+        api_key = "test-key"
+        responses = _Responses()
+
+    text, response_id = await agent.async_chat(_Client(), "hi", "user-1")
+
+    assert (text, response_id) == ("Hello world", "resp_nonstream")
+    assert claimed == [("user-1", "resp_nonstream")]
+
+
+@pytest.mark.asyncio
+async def test_a_claim_failure_never_loses_the_reply(monkeypatch):
+    """A claim is best effort: the user already saw the answer."""
+
+    async def _boom(user_id, session_id):
+        raise RuntimeError("ownership store unavailable")
+
+    monkeypatch.setattr(
+        "services.session_ownership_service.session_ownership_service.claim_session", _boom
+    )
+
+    events = [_delta_event("Hello", 1), _completed_event("resp_abc", 2)]
+    async for _ in agent.async_chat_stream(_client(events), "hi", "user-1"):
+        pass
+
+    # Stored despite the claim failing.
+    assert "resp_abc" in agent.active_conversations["user-1"]

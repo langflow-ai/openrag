@@ -79,6 +79,24 @@ def _conversation_ended_with_error(user_id: str, response_id: str | None) -> boo
     return False
 
 
+async def _claim_session(user_id: str, session_id: str) -> None:
+    """Record `user_id` as the owner of `session_id`, best effort.
+
+    Required for threading: `_assert_owns` returns 404 (session_not_found) for
+    an unclaimed session, so the next message in the thread fails. Never raise —
+    a claim failure must not lose a reply the user already saw.
+    """
+    if not session_id:
+        return
+    try:
+        from services.session_ownership_service import session_ownership_service
+
+        await session_ownership_service.claim_session(user_id, session_id)
+        logger.debug(f"Claimed session {session_id} for user {user_id}")
+    except Exception as e:
+        logger.warning(f"Failed to claim session ownership: {e}")
+
+
 async def _persist_error_conversation(
     user_id: str, store_id: str, conversation_state: dict
 ) -> None:
@@ -89,15 +107,9 @@ async def _persist_error_conversation(
     """
     from datetime import datetime
 
-    from services.session_ownership_service import session_ownership_service
-
     conversation_state["last_activity"] = datetime.now()
     await store_conversation_thread(user_id, store_id, conversation_state)
-    try:
-        await session_ownership_service.claim_session(user_id, store_id)
-        logger.debug(f"Claimed session {store_id} for user {user_id} after stream error")
-    except Exception as e:
-        logger.warning(f"Failed to claim session ownership after stream error: {e}")
+    await _claim_session(user_id, store_id)
 
 
 def _extract_delta_text(delta) -> str:
@@ -612,6 +624,7 @@ async def async_chat(
     if response_id:
         conversation_state["last_activity"] = datetime.now()
         await store_conversation_thread(user_id, response_id, conversation_state)
+        await _claim_session(user_id, response_id)
         logger.debug("Stored conversation thread", user_id=user_id, response_id=response_id)
 
         # Debug: Check what's in user_conversations now
@@ -704,6 +717,7 @@ async def async_chat_stream(
         if response_id:
             conversation_state["last_activity"] = datetime.now()
             await store_conversation_thread(user_id, response_id, conversation_state)
+            await _claim_session(user_id, response_id)
             logger.debug(
                 f"Stored conversation thread for user {user_id} with response_id: {response_id}"
             )
@@ -866,14 +880,7 @@ async def async_langflow_chat(
         conversation_state["last_activity"] = datetime.now()
         await store_conversation_thread(user_id, response_id, conversation_state)
 
-        # Claim session ownership for this user
-        try:
-            from services.session_ownership_service import session_ownership_service
-
-            await session_ownership_service.claim_session(user_id, response_id)
-            logger.debug(f"Claimed session {response_id} for user {user_id}")
-        except Exception as e:
-            logger.warning(f"Failed to claim session ownership: {e}")
+        await _claim_session(user_id, response_id)
 
         logger.debug(
             "Stored langflow conversation thread",
@@ -1045,12 +1052,7 @@ async def async_langflow_chat_stream(
         if persist_id:
             conversation_state["last_activity"] = datetime.now()
             await store_conversation_thread(user_id, persist_id, conversation_state)
-            try:
-                from services.session_ownership_service import session_ownership_service
-
-                await session_ownership_service.claim_session(user_id, persist_id)
-            except Exception as e:
-                logger.warning(f"Failed to claim session ownership: {e}")
+            await _claim_session(user_id, persist_id)
     except Exception as e:
         logger.error(f"Error in langflow chat stream: {e}", exc_info=True)
         from api.provider_validation import resolve_chat_stream_error_message_async
