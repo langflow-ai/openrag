@@ -19,6 +19,15 @@ import { useProviderHealth } from "./provider-health-banner";
 export function Header() {
   const isCloudBrand = useIsCloudBrand();
   const { tasks } = useTask();
+  const activeTaskCount = tasks.filter(
+    (t) =>
+      t.status === "pending" ||
+      t.status === "running" ||
+      t.status === "processing",
+  ).length;
+  const failedTaskCount = tasks.filter(
+    (t) => t.status === "failed" || t.status === "error",
+  ).length;
   const toggleTaskMenu = useToggleTaskMenu();
   const { runMode } = useAuth();
 
@@ -94,9 +103,14 @@ export function Header() {
                 isCloudBrand ? "text-foreground" : "text-muted-foreground"
               }
             />
-            {tasks.length > 0 && (
-              <span className="absolute -right-1 -top-1 flex min-w-[16px] h-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold leading-none text-white">
-                {tasks.length > 99 ? "99+" : tasks.length}
+            {activeTaskCount > 0 && (
+              <span className="absolute -right-1 -top-1 flex min-w-[16px] h-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground">
+                {activeTaskCount > 99 ? "99+" : activeTaskCount}
+              </span>
+            )}
+            {activeTaskCount === 0 && failedTaskCount > 0 && (
+              <span className="absolute -right-1 -top-1 flex min-w-[16px] h-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold leading-none text-destructive-foreground">
+                {failedTaskCount > 99 ? "99+" : failedTaskCount}
               </span>
             )}
           </button>

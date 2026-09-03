@@ -88,34 +88,20 @@ export function TaskErrorContent({
 
   return (
     <div
-      className={cn(
-        "w-full",
-        showHeader &&
-          cn(
-            "py-mmd px-4 transition-colors hover:bg-muted/60 cursor-pointer",
+      className={cn("w-full", showHeader && "relative", !showHeader && "pt-2")}
+    >
+      {showHeader && (
+        <button
+          type="button"
+          onClick={toggleAccordion}
+          aria-expanded={isExpanded}
+          className={cn(
+            "w-full text-left py-mmd px-4 transition-colors hover:bg-muted/60",
             isCloudBrand
               ? "border-t border-muted"
               : "rounded-mmd border border-muted",
-          ),
-        !showHeader && "pt-2",
-      )}
-      onClick={showHeader ? toggleAccordion : undefined}
-      role={showHeader ? "button" : undefined}
-      tabIndex={showHeader ? 0 : undefined}
-      onKeyDown={
-        showHeader
-          ? (e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                toggleAccordion();
-              }
-            }
-          : undefined
-      }
-      aria-expanded={showHeader ? isExpanded : undefined}
-    >
-      <div className="flex w-full min-w-0 flex-col gap-1">
-        {showHeader && (
+          )}
+        >
           <div
             className={cn("flex min-w-0 w-full", ossIconColumn && "gap-2.5")}
           >
@@ -136,22 +122,16 @@ export function TaskErrorContent({
                 <p className="text-mmd truncate">
                   Task {task.task_id.slice(0, 8)}...
                 </p>
+                {/* Spacer keeps layout consistent with the absolute-positioned
+                    task-details button that sits outside this button. */}
                 <div
-                  className="flex items-center gap-1.5 shrink-0"
-                  onClick={(e) => e.stopPropagation()}
-                  onKeyDown={(e) => e.stopPropagation()}
+                  className="flex items-center gap-1.5 shrink-0 invisible"
+                  aria-hidden
                 >
                   {!isExpanded && (
                     <p className={statusPillClassName}>{statusLabel}</p>
                   )}
-                  <button
-                    type="button"
-                    aria-label="Open task details"
-                    className="inline-flex shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
-                    onClick={() => openTaskDialog(task.task_id)}
-                  >
-                    <IncidentReporterIcon className="size-4" />
-                  </button>
+                  <span className="size-4" />
                 </div>
               </div>
               <div className="flex items-center gap-1 text-xxs text-muted-foreground">
@@ -174,7 +154,28 @@ export function TaskErrorContent({
               </div>
             </div>
           </div>
+        </button>
+      )}
+      {showHeader && (
+        <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+          {!isExpanded && <p className={statusPillClassName}>{statusLabel}</p>}
+          <button
+            type="button"
+            aria-label="Open task details"
+            className="inline-flex shrink-0 items-center justify-center text-muted-foreground hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring rounded"
+            onClick={() => openTaskDialog(task.task_id)}
+          >
+            <IncidentReporterIcon className="size-4" />
+          </button>
+        </div>
+      )}
+      <div
+        className={cn(
+          "flex w-full min-w-0 flex-col gap-1",
+          showHeader && "px-4 pb-mmd",
         )}
+      >
+        {/* header row rendered above as a standalone button when showHeader */}
 
         <Accordion
           type="single"
