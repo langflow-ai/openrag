@@ -774,7 +774,7 @@ async def update_settings(
         # intentionally NOT synced into the Langflow flow JSON.
         if body.vlm_enabled:
             effective_vlm_provider = body.vlm_provider or current_config.knowledge.vlm_provider
-            if effective_vlm_provider in ("openai", "watsonx", "anthropic"):
+            if effective_vlm_provider in ("openai", "watsonx", "anthropic", "azure"):
                 vlm_provider_config = current_config.providers.get_provider_config(
                     effective_vlm_provider
                 )
