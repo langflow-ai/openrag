@@ -47,6 +47,10 @@ class IBMBody(BaseModel):
     project_id: str | None = None
 
 
+class BedrockBody(BaseModel):
+    region: str | None = None
+
+
 def _models_error_response(exc: Exception) -> JSONResponse:
     """Map model-route failures to client (400) vs upstream (502) vs server (500).
 
@@ -262,3 +266,21 @@ async def get_model_catalog(
         # (CodeQL py/stack-trace-exposure).
         logger.error("Model catalogue unavailable", error=str(e))
         return JSONResponse({"error": CATALOG_UNAVAILABLE_MESSAGE}, status_code=503)
+
+
+async def get_bedrock_models(
+    body: BedrockBody | None = None,
+    models_service=Depends(get_models_service),
+    user: User = Depends(require_permission("providers:read")),
+):
+    """Get available AWS Bedrock embedding models.
+
+    Unlike the other providers, this list is static (no live API call, no
+    credentials required) - see ModelsService.get_bedrock_models.
+    """
+    try:
+        models = await models_service.get_bedrock_models()
+        return JSONResponse(models)
+    except Exception as e:
+        logger.error(f"Failed to get Bedrock models: {str(e)}")
+        return _models_error_response(e)

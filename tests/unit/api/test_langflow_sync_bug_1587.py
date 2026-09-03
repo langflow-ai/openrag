@@ -25,6 +25,11 @@ def mock_config():
     config = MagicMock()
     for name in _ALL_PROVIDERS:
         getattr(config.providers, name).configured = True
+    # Not one of _ALL_PROVIDERS above, but MagicMock auto-vivifies any other
+    # attribute (including .bedrock.configured) as truthy - pin it explicitly
+    # so this pre-bedrock regression test isn't affected by its addition to
+    # _EMBEDDING_PROVIDER_NAMES.
+    config.providers.bedrock.configured = False
     config.knowledge.embedding_provider = "openai"
     config.knowledge.embedding_model = "text-embedding-3-small"
     config.agent.llm_provider = "anthropic"

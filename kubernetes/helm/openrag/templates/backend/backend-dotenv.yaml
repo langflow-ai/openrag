@@ -142,6 +142,15 @@ stringData:
     {{- if .Values.llmProviders.watsonx.projectId }}
     WATSONX_PROJECT_ID={{ .Values.llmProviders.watsonx.projectId | quote }}
     {{- end }}
+    {{- if .Values.llmProviders.bedrock.region }}
+    BEDROCK_REGION={{ .Values.llmProviders.bedrock.region | quote }}
+    {{- end }}
+    {{- if .Values.llmProviders.bedrock.accessKeyId }}
+    BEDROCK_ACCESS_KEY_ID={{ .Values.llmProviders.bedrock.accessKeyId | quote }}
+    {{- end }}
+    {{- if .Values.llmProviders.bedrock.secretAccessKey }}
+    BEDROCK_SECRET_ACCESS_KEY={{ .Values.llmProviders.bedrock.secretAccessKey | quote }}
+    {{- end }}
 
     # LLM / Embedding provider configuration
     {{- if .Values.appConfig.agent.llmProvider }}

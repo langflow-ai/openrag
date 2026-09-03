@@ -369,6 +369,45 @@ async def test_embeddings_calls_litellm(monkeypatch):
     assert captured["input"] == ["hello"]
 
 
+@pytest.mark.asyncio
+async def test_embeddings_forwards_input_type_when_the_caller_supplies_it(monkeypatch):
+    """Cohere-family models (Bedrock, OCI GenAI, ...) require input_type on
+    every call - see services.search_service, which passes it explicitly for
+    query-time embeds. The gateway must forward it, not silently drop it."""
+    captured = {}
+
+    async def fake_aembedding(**kwargs):
+        captured.update(kwargs)
+        return {"object": "list", "data": [{"embedding": [0.1], "index": 0}]}
+
+    monkeypatch.setattr("litellm.aembedding", fake_aembedding)
+    await embeddings(
+        {
+            "model": "text-embedding-3-small",
+            "input": ["hello"],
+            "input_type": "search_query",
+        },
+        config=_config(),
+    )
+    assert captured["input_type"] == "search_query"
+
+
+@pytest.mark.asyncio
+async def test_embeddings_omits_input_type_when_the_caller_does_not_supply_it(monkeypatch):
+    captured = {}
+
+    async def fake_aembedding(**kwargs):
+        captured.update(kwargs)
+        return {"object": "list", "data": [{"embedding": [0.1], "index": 0}]}
+
+    monkeypatch.setattr("litellm.aembedding", fake_aembedding)
+    await embeddings(
+        {"model": "text-embedding-3-small", "input": ["hello"]},
+        config=_config(),
+    )
+    assert "input_type" not in captured
+
+
 class _RecordingLogger:
     """structlog-style logger that records calls instead of emitting them."""
 

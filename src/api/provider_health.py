@@ -29,7 +29,7 @@ async def check_provider_health(
     Check if the configured provider is healthy and properly validated.
 
     Query parameters:
-        provider (optional): Provider to check ('openai', 'ollama', 'watsonx', 'anthropic').
+        provider (optional): Provider to check ('openai', 'ollama', 'watsonx', 'anthropic', 'bedrock').
                            If not provided, checks the currently configured provider.
         test_completion (optional): If true, performs full validation with completion/embedding tests.
         model (optional): Validate against this chat model instead of the configured one.

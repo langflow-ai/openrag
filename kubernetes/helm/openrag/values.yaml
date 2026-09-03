@@ -638,6 +638,13 @@ llmProviders:
   ollama:
     enabled: false
     endpoint: ""                          # Ollama endpoint URL (e.g., "http://ollama:11434")
+  bedrock:
+    enabled: false
+    region: ""                            # AWS region serving Bedrock (e.g., "us-east-1")
+    # Leave both blank to use the pod's ambient AWS credentials (IRSA /
+    # instance role) via the default boto3 credential chain.
+    accessKeyId: ""                       # AWS access key ID (stored in secret)
+    secretAccessKey: ""                   # AWS secret access key (stored in secret)
 
 # ============================================================================
 # Application Config (config.yaml contents)

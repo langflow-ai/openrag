@@ -5,6 +5,7 @@ import time
 from typing import TYPE_CHECKING, Any, Literal
 
 from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
+from services.models_service import bedrock_credential_kwargs, is_cohere_embedding_model
 from session_manager import AnonymousUser
 from utils.document_processing import (
     extract_relevant,
@@ -546,6 +547,14 @@ class TaskProcessor:
             max_tokens = 500
         elif "ollama" in litellm_model_lower:
             max_tokens = 2000
+        elif "bedrock" in litellm_model_lower:
+            # Bedrock's Cohere Embed v3 hard-limits input to 512 tokens per
+            # text entry; litellm 1.84.0 doesn't chunk/truncate for you, so an
+            # oversized chunk reaches Bedrock as-is and gets rejected with a
+            # 400. Embed v4 (also servable via Bedrock) raises this to a much
+            # higher limit, but 512 is the safe floor for any Cohere model
+            # this provider currently serves.
+            max_tokens = 512
         else:
             max_tokens = 8000
 
@@ -560,9 +569,22 @@ class TaskProcessor:
         text_batches = chunk_texts_for_embeddings(texts, max_tokens=max_tokens)
         embeddings = []
 
+        # Cohere embedding models (Bedrock, OCI GenAI, ...) require an
+        # explicit input_type on every call - there is no default. Passed as
+        # a plain kwarg (not extra_body): the agentd patch routes non-openai
+        # models through litellm.aembedding(**kwargs), which reads
+        # input_type straight out of kwargs.
+        embed_kwargs = {}
+        if is_cohere_embedding_model(embedding_model):
+            embed_kwargs["input_type"] = "search_document"
+
+        # Bedrock credentials travel per call rather than via the process-wide
+        # AWS_* env vars the S3 connector also reads.
+        embed_kwargs.update(bedrock_credential_kwargs(litellm_embedding_model))
+
         for batch in text_batches:
             resp = await clients.patched_embedding_client.embeddings.create(
-                model=litellm_embedding_model, input=batch
+                model=litellm_embedding_model, input=batch, **embed_kwargs
             )
             embeddings.extend(
                 [d["embedding"] if isinstance(d, dict) else d.embedding for d in resp.data]

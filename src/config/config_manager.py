@@ -160,6 +160,21 @@ class GenericProviderConfig:
 
 
 @dataclass
+class BedrockConfig:
+    """AWS Bedrock provider configuration (embedding-only).
+
+    access_key_id/secret_access_key are left blank by default so that an
+    IAM role (e.g. IRSA in EKS) can be used with zero explicit credentials -
+    only region is required.
+    """
+
+    region: str = ""
+    access_key_id: str = ""
+    secret_access_key: str = ""
+    configured: bool = False
+
+
+@dataclass
 class ProvidersConfig:
     """All provider configurations."""
 
@@ -167,6 +182,7 @@ class ProvidersConfig:
     anthropic: AnthropicConfig
     watsonx: WatsonXConfig
     ollama: OllamaConfig
+    bedrock: BedrockConfig = field(default_factory=BedrockConfig)
     custom: dict[str, GenericProviderConfig] = field(default_factory=dict)
 
     def any_configured(self) -> bool:
@@ -176,6 +192,7 @@ class ProvidersConfig:
             self.anthropic,
             self.watsonx,
             self.ollama,
+            self.bedrock,
             *self.custom.values(),
         )
         return any(p.configured for p in providers)
@@ -191,6 +208,8 @@ class ProvidersConfig:
             return self.watsonx
         elif provider_lower == "ollama":
             return self.ollama
+        elif provider_lower == "bedrock":
+            return self.bedrock
         return self.custom.get(provider_lower, GenericProviderConfig())
 
     def set_credentials(self, provider: str, credentials: dict[str, str]) -> None:
@@ -225,6 +244,20 @@ class ProvidersConfig:
         elif key == "ollama":
             self.ollama.endpoint = clean.get("api_base", self.ollama.endpoint)
             self.ollama.configured = bool(self.ollama.endpoint)
+        elif key == "bedrock":
+            # Field names match litellm's own bundled credential-field spec
+            # (provider_create_fields.json) - the generic onboarding form
+            # (GenericOnboarding, driven by config/model_providers.yaml) uses
+            # those names verbatim, so this bridges its generic
+            # provider_credentials submission into the typed fields the rest
+            # of the Bedrock support (model registry gate, lightweight health
+            # check, embedding call kwargs) already reads directly.
+            self.bedrock.region = clean.get("aws_region_name", self.bedrock.region)
+            self.bedrock.access_key_id = clean.get("aws_access_key_id", self.bedrock.access_key_id)
+            self.bedrock.secret_access_key = clean.get(
+                "aws_secret_access_key", self.bedrock.secret_access_key
+            )
+            self.bedrock.configured = bool(self.bedrock.region)
 
     def credential_values(self, provider: str) -> dict[str, str]:
         """Return LiteLLM keyword arguments for a configured provider."""
@@ -254,6 +287,26 @@ class ProvidersConfig:
             if endpoint:
                 custom.setdefault("api_base", endpoint)
             return custom
+        if key == "bedrock":
+            # Bedrock's access key/secret pair is omitted when unset (IAM
+            # role / IRSA mode) - litellm's default boto3 credential chain
+            # resolves credentials on its own in that case - but the region
+            # is included whenever configured, in both modes, since it's
+            # required either way.
+            legacy = {
+                name: value
+                for name, value in {
+                    "aws_region_name": self.bedrock.region,
+                    "aws_access_key_id": self.bedrock.access_key_id,
+                    "aws_secret_access_key": self.bedrock.secret_access_key,
+                }.items()
+                if value
+            }
+            if "aws_access_key_id" in legacy and "aws_secret_access_key" not in legacy:
+                del legacy["aws_access_key_id"]
+            elif "aws_secret_access_key" in legacy and "aws_access_key_id" not in legacy:
+                del legacy["aws_secret_access_key"]
+            return {**legacy, **custom}
         return custom
 
 
@@ -345,8 +398,9 @@ class OpenRAGConfig:
 
         def _decrypt_provider(p_data: dict) -> dict:
             new_data = dict(p_data)
-            if "api_key" in new_data:
-                new_data["api_key"] = decrypt_secret(new_data["api_key"])
+            for secret_field in ("api_key", "secret_access_key"):
+                if secret_field in new_data:
+                    new_data[secret_field] = decrypt_secret(new_data[secret_field])
             return new_data
 
         def _decrypt_custom_provider(provider: str, p_data: dict) -> GenericProviderConfig:
@@ -369,6 +423,7 @@ class OpenRAGConfig:
                 anthropic=AnthropicConfig(**_decrypt_provider(providers_data.get("anthropic", {}))),
                 watsonx=WatsonXConfig(**_decrypt_provider(providers_data.get("watsonx", {}))),
                 ollama=OllamaConfig(**_decrypt_provider(providers_data.get("ollama", {}))),
+                bedrock=BedrockConfig(**_decrypt_provider(providers_data.get("bedrock", {}))),
                 custom={
                     str(provider).lower(): _decrypt_custom_provider(str(provider), value)
                     for provider, value in custom_data.items()
@@ -438,6 +493,7 @@ class ConfigManager:
                 "anthropic": {},
                 "watsonx": {},
                 "ollama": {},
+                "bedrock": {},
                 "custom": {},
             },
             "knowledge": {},
@@ -460,17 +516,25 @@ class ConfigManager:
 
                 # Merge file config
                 if "providers" in file_config:
-                    for provider in ["openai", "anthropic", "watsonx", "ollama", "custom"]:
+                    for provider in [
+                        "openai",
+                        "anthropic",
+                        "watsonx",
+                        "ollama",
+                        "bedrock",
+                        "custom",
+                    ]:
                         if provider in file_config["providers"]:
                             provider_data = file_config["providers"][provider]
-                            # Check if api_key is unencrypted and we have a key
-                            if (
-                                "api_key" in provider_data
-                                and isinstance(provider_data["api_key"], str)
-                                and provider_data["api_key"]
-                            ):
-                                if get_master_secret() is not None:
-                                    needs_encryption_upgrade = True
+                            # Check if a secret field is unencrypted and we have a key
+                            for secret_field in ("api_key", "secret_access_key"):
+                                if (
+                                    secret_field in provider_data
+                                    and isinstance(provider_data[secret_field], str)
+                                    and provider_data[secret_field]
+                                ):
+                                    if get_master_secret() is not None:
+                                        needs_encryption_upgrade = True
                             config_data["providers"][provider].update(provider_data)
                 for section in ["knowledge", "agent", "onboarding"]:
                     if section in file_config:
@@ -552,6 +616,18 @@ class ConfigManager:
         # Ollama provider settings
         if os.getenv("OLLAMA_ENDPOINT"):
             config_data["providers"]["ollama"]["endpoint"] = os.getenv("OLLAMA_ENDPOINT")
+
+        # Bedrock provider settings
+        if os.getenv("BEDROCK_REGION"):
+            config_data["providers"]["bedrock"]["region"] = os.getenv("BEDROCK_REGION")
+        if os.getenv("BEDROCK_ACCESS_KEY_ID"):
+            config_data["providers"]["bedrock"]["access_key_id"] = os.getenv(
+                "BEDROCK_ACCESS_KEY_ID"
+            )
+        if os.getenv("BEDROCK_SECRET_ACCESS_KEY"):
+            config_data["providers"]["bedrock"]["secret_access_key"] = os.getenv(
+                "BEDROCK_SECRET_ACCESS_KEY"
+            )
 
         # Knowledge settings
         if os.getenv("EMBEDDING_MODEL"):
@@ -644,8 +720,11 @@ class ConfigManager:
 
             providers = config_dict.get("providers", {})
             for _provider_name, provider_config in providers.items():
-                if "api_key" in provider_config:
-                    provider_config["api_key"] = encrypt_secret(provider_config["api_key"])
+                for secret_field in ("api_key", "secret_access_key"):
+                    if secret_field in provider_config:
+                        provider_config[secret_field] = encrypt_secret(
+                            provider_config[secret_field]
+                        )
             custom = providers.get("custom", {})
             from services.model_catalog import secret_field_keys
 
