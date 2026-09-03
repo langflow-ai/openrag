@@ -683,7 +683,15 @@ async def validate_provider_setup(
             f"Starting validation for provider: {provider_lower} (test_completion={test_completion})"
         )
 
-        if provider_lower not in _NATIVELY_VALIDATED_PROVIDERS:
+        # watsonx.ai on-prem has no bespoke model probe of its own: a real call
+        # through LiteLLM *is* its model probe, and it is what makes switching to
+        # a model the cluster does not serve fail instead of saving silently. Its
+        # catalogue check is only for the case there is no model to probe with,
+        # which is the one that used to report "A model is required".
+        probes_the_model = provider_lower not in _NATIVELY_VALIDATED_PROVIDERS or (
+            provider_lower == watsonx_onprem.PROVIDER_KEY and bool(embedding_model or llm_model)
+        )
+        if probes_the_model:
             await _test_litellm_provider(
                 provider=provider_lower,
                 credentials=supplied,
@@ -700,7 +708,6 @@ async def validate_provider_setup(
                     embedding_model=embedding_model,
                     endpoint=endpoint,
                     project_id=project_id,
-                    credentials=supplied,
                 )
             elif llm_model:
                 # Test completion with tool calling
@@ -710,7 +717,6 @@ async def validate_provider_setup(
                     llm_model=llm_model,
                     endpoint=endpoint,
                     project_id=project_id,
-                    credentials=supplied,
                 )
         else:
             # Lightweight validation (no credits consumed)
@@ -792,7 +798,6 @@ async def test_completion_with_tools(
     llm_model: str = None,
     endpoint: str = None,
     project_id: str = None,
-    credentials: dict[str, str] | None = None,
 ) -> None:
     """Test completion with tool calling for the provider."""
 
@@ -804,13 +809,6 @@ async def test_completion_with_tools(
         await _test_ollama_completion_with_tools(llm_model, endpoint)
     elif provider == "anthropic":
         await _test_anthropic_completion_with_tools(api_key, llm_model)
-    elif provider == watsonx_onprem.PROVIDER_KEY:
-        await _test_litellm_provider(
-            provider=provider,
-            credentials=credentials or {},
-            embedding_model=None,
-            llm_model=llm_model,
-        )
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -821,7 +819,6 @@ async def test_embedding(
     embedding_model: str = None,
     endpoint: str = None,
     project_id: str = None,
-    credentials: dict[str, str] | None = None,
 ) -> None:
     """Test embedding generation for the provider."""
 
@@ -831,13 +828,6 @@ async def test_embedding(
         await _test_watsonx_embedding(api_key, embedding_model, endpoint, project_id)
     elif provider == "ollama":
         await _test_ollama_embedding(embedding_model, endpoint)
-    elif provider == watsonx_onprem.PROVIDER_KEY:
-        await _test_litellm_provider(
-            provider=provider,
-            credentials=credentials or {},
-            embedding_model=embedding_model,
-            llm_model=None,
-        )
     else:
         raise ValueError(f"Unknown provider: {provider}")
 

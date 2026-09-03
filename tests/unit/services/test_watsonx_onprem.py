@@ -384,3 +384,67 @@ def test_the_health_probe_uses_the_same_tls_setting_as_real_traffic(monkeypatch)
     monkeypatch.setenv("SSL_VERIFY", "true")
     monkeypatch.delenv("SSL_CERT_FILE", raising=False)
     assert _cluster_ssl_verify() is True
+
+
+@pytest.mark.asyncio
+async def test_switching_to_a_model_the_cluster_lacks_is_still_blocked(monkeypatch) -> None:
+    """Settings validates before it writes and returns 400 on failure.
+
+    The catalogue check added for the no-model case must not become the check
+    for *every* case: with a model in hand the probe has to be a real call, or a
+    switch to a model the cluster does not serve saves silently and only fails
+    later in chat.
+    """
+    import litellm
+
+    from api import provider_validation
+
+    probes: list[str] = []
+
+    async def _unexpected_http(method, url, **kwargs):
+        probes.append("catalogue")
+        return SimpleNamespace(status_code=200, text="{}", json=lambda: {"resources": []})
+
+    async def _fake_completion(**kwargs):
+        probes.append("real-call")
+        raise Exception('{"errors":[{"message":"Model \'ibm/nope\' is not supported"}]}')
+
+    monkeypatch.setattr(provider_validation, "_http_request_with_retry", _unexpected_http)
+    monkeypatch.setattr(litellm, "acompletion", _fake_completion)
+
+    credentials = watsonx_onprem.litellm_credentials(
+        {"api_base": "https://cpd.example.com", "username": "cpduser", "api_key": "APIKEY"}
+    )
+    with pytest.raises(Exception, match="not supported"):
+        await provider_validation.validate_provider_setup(
+            provider=PROVIDER, credentials=credentials, llm_model="ibm/nope", embedding_model=None
+        )
+
+    assert probes == ["real-call"], "a model in hand must be probed for real"
+
+
+@pytest.mark.asyncio
+async def test_switching_an_embedding_model_is_probed_for_real(monkeypatch) -> None:
+    import litellm
+
+    from api import provider_validation
+
+    probes: list[str] = []
+
+    async def _fake_embedding(**kwargs):
+        probes.append(kwargs.get("model"))
+        return {"data": []}
+
+    monkeypatch.setattr(litellm, "aembedding", _fake_embedding)
+
+    credentials = watsonx_onprem.litellm_credentials(
+        {"api_base": "https://cpd.example.com", "username": "cpduser", "api_key": "APIKEY"}
+    )
+    await provider_validation.validate_provider_setup(
+        provider=PROVIDER,
+        credentials=credentials,
+        llm_model=None,
+        embedding_model="ibm/slate-125m-english-rtrvr-v2",
+    )
+
+    assert probes == ["watsonx/ibm/slate-125m-english-rtrvr-v2"]
