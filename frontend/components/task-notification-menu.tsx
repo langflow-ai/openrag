@@ -49,6 +49,8 @@ const getTaskIcon = (
     case "failed":
     case "error":
       return <XCircle className="size-4 text-destructive" />;
+    case "cancelled":
+      return <XCircle className="size-4 text-muted-foreground" />;
     case "pending":
       return <Clock className="h-4 w-4 text-yellow-500" />;
     case "running":
@@ -171,6 +173,18 @@ const getStatusBadge = (
           FAILED
         </Badge>
       );
+    case "cancelled":
+      return (
+        <Badge
+          variant="outline"
+          className={cn(
+            statusBadgeBase,
+            "bg-muted text-muted-foreground border-muted-foreground/20",
+          )}
+        >
+          CANCELLED
+        </Badge>
+      );
     case "pending":
       return (
         <Badge
@@ -226,6 +240,9 @@ export function TaskNotificationMenu() {
   } = useTask();
   const { problems, open: openConsoleStatus } = useConsoleStatus();
   const [isPastOpen, setIsPastOpen] = useState(true);
+  const [cancellingTaskIds, setCancellingTaskIds] = useState<Set<string>>(
+    new Set(),
+  );
   const lastHandledSelectionTriggerRef = useRef(0);
 
   // Reset section defaults whenever panel is opened.
@@ -241,6 +258,40 @@ export function TaskNotificationMenu() {
       setIsPastOpen(true);
     }
   }, [isRecentTasksExpanded]);
+
+  // Clean up cancelling state when tasks actually transition to cancelled or disappear
+  useEffect(() => {
+    const currentTaskIds = new Set<string>();
+    const terminalTaskIds = new Set<string>();
+
+    // Single pass over tasks to build both sets
+    for (const task of tasks) {
+      currentTaskIds.add(task.task_id);
+      if (
+        task.status === "cancelled" ||
+        task.status === "failed" ||
+        task.status === "completed" ||
+        task.status === "error"
+      ) {
+        terminalTaskIds.add(task.task_id);
+      }
+    }
+
+    setCancellingTaskIds((prev) => {
+      const next = new Set(prev);
+      let changed = false;
+
+      // Remove from cancelling set if task is now terminal or disappeared
+      for (const id of next) {
+        if (!currentTaskIds.has(id) || terminalTaskIds.has(id)) {
+          next.delete(id);
+          changed = true;
+        }
+      }
+
+      return changed ? next : prev;
+    });
+  }, [tasks]);
   const activeTasks = tasks.filter(
     (task) =>
       task.status === "pending" ||
@@ -254,7 +305,8 @@ export function TaskNotificationMenu() {
           (task) =>
             task.status === "completed" ||
             task.status === "failed" ||
-            task.status === "error",
+            task.status === "error" ||
+            task.status === "cancelled",
         )
         .sort((a, b) => {
           const aMs =
@@ -355,10 +407,14 @@ export function TaskNotificationMenu() {
                 const progress = formatTaskProgress(task);
                 const hasFailedFiles = hasIssueFileEntries(task);
                 const dur = formatDuration(task.duration_seconds);
-                const showCancel =
-                  task.status === "pending" ||
-                  task.status === "running" ||
-                  task.status === "processing";
+                const isCancelling = cancellingTaskIds.has(task.task_id);
+                const isCancelled = task.status === "cancelled";
+                const canCancel =
+                  !isCancelling &&
+                  !isCancelled &&
+                  (task.status === "pending" ||
+                    task.status === "running" ||
+                    task.status === "processing");
                 const showTaskIcon =
                   !isCloudBrand ||
                   task.status !== "completed" ||
@@ -372,13 +428,25 @@ export function TaskNotificationMenu() {
                     <CardHeader className="p-0 pb-2">
                       <div className="flex items-center justify-between gap-2">
                         <CardTitle className="text-sm flex min-w-0 flex-1 items-center gap-2">
-                          {showTaskIcon &&
-                            getTaskIcon(
-                              task.status,
-                              hasFailedFiles,
-                              isCompletedTotalFailure(task),
-                            )}
-                          Task {task.task_id.substring(0, 8)}...
+                          {isCancelling ? (
+                            <span className="text-xs text-destructive font-medium">
+                              CANCELLING...
+                            </span>
+                          ) : isCancelled ? (
+                            <span className="text-xs text-muted-foreground font-medium">
+                              CANCELLED
+                            </span>
+                          ) : (
+                            <>
+                              {showTaskIcon &&
+                                getTaskIcon(
+                                  task.status,
+                                  hasFailedFiles,
+                                  isCompletedTotalFailure(task),
+                                )}
+                              Task {task.task_id.substring(0, 8)}...
+                            </>
+                          )}
                         </CardTitle>
                         <button
                           type="button"
@@ -398,9 +466,9 @@ export function TaskNotificationMenu() {
                         )}
                       </CardDescription>
                     </CardHeader>
-                    {(progress || showCancel) && (
+                    {(progress || canCancel || isCancelling || isCancelled) && (
                       <CardContent className="p-0 pt-0">
-                        {progress && (
+                        {progress && !isCancelling && !isCancelled && (
                           <div className="space-y-2">
                             <div className="text-xs text-muted-foreground">
                               Progress: {progress.basic}
@@ -413,17 +481,57 @@ export function TaskNotificationMenu() {
                             )}
                           </div>
                         )}
-                        {showCancel && (
-                          <div className={cn(progress && "mt-3")}>
+                        {(canCancel || isCancelling || isCancelled) && (
+                          <div
+                            className={cn(
+                              progress &&
+                                !isCancelling &&
+                                !isCancelled &&
+                                "mt-3",
+                            )}
+                          >
                             <Button
                               type="button"
                               variant="ghost"
                               ignoreTitleCase
-                              onClick={() => cancelTask(task.task_id)}
-                              title="Cancel task"
-                              className={cancelTaskButtonClass}
+                              disabled={isCancelling || isCancelled}
+                              onClick={async () => {
+                                if (canCancel) {
+                                  setCancellingTaskIds((prev) =>
+                                    new Set(prev).add(task.task_id),
+                                  );
+                                  try {
+                                    await cancelTask(task.task_id);
+                                    // Don't remove from cancellingTaskIds here - let the useEffect clean it up
+                                    // when the backend actually returns "cancelled" status
+                                  } catch (error) {
+                                    // On error, remove from cancelling set immediately
+                                    setCancellingTaskIds((prev) => {
+                                      const next = new Set(prev);
+                                      next.delete(task.task_id);
+                                      return next;
+                                    });
+                                  }
+                                }
+                              }}
+                              title={
+                                isCancelled
+                                  ? "Task cancelled"
+                                  : isCancelling
+                                    ? "Cancelling..."
+                                    : "Cancel task"
+                              }
+                              className={cn(
+                                cancelTaskButtonClass,
+                                (isCancelling || isCancelled) &&
+                                  "opacity-50 cursor-not-allowed",
+                              )}
                             >
-                              Cancel task
+                              {isCancelled
+                                ? "Cancelled"
+                                : isCancelling
+                                  ? "Cancelling..."
+                                  : "Cancel task"}
                             </Button>
                           </div>
                         )}
@@ -473,10 +581,12 @@ export function TaskNotificationMenu() {
                 const shouldExpandDetails = selectedTaskId === task.task_id;
 
                 // Same full card as total failure; partial only differs inside (Complete pill / amber icon).
+                // Exclude cancelled tasks from failure rendering to preserve the cancelled badge
                 if (
-                  isTerminalFailedTask(task) ||
-                  isTotalFailure ||
-                  hasFailedFiles
+                  task.status !== "cancelled" &&
+                  (isTerminalFailedTask(task) ||
+                    isTotalFailure ||
+                    hasFailedFiles)
                 ) {
                   return (
                     <TaskErrorContent
