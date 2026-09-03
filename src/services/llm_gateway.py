@@ -1073,12 +1073,22 @@ async def embeddings(body: Mapping[str, Any], *, config=None) -> dict[str, Any]:
     try:
         import litellm
 
+        extra: dict[str, Any] = {}
+        # Cohere-family embedding models (Bedrock, OCI GenAI, ...) require an
+        # explicit input_type on every call - there is no default - so a
+        # caller that already knows it's addressing one of those spaces
+        # (see services.search_service) passes it through here rather than
+        # this generic gateway trying to infer query-vs-document intent.
+        if body.get("input_type"):
+            extra["input_type"] = body["input_type"]
+
         if not should_batch:
             result = await litellm.aembedding(
                 model=litellm_model,
                 input=embedding_input,
                 **credentials,
                 **runtime_kwargs,
+                **extra,
             )
             response = _to_openai_dict(result)
         else:
@@ -1096,6 +1106,7 @@ async def embeddings(body: Mapping[str, Any], *, config=None) -> dict[str, Any]:
                     input=batch,
                     **credentials,
                     **runtime_kwargs,
+                    **extra,
                 )
                 payload = _to_openai_dict(result)
                 if not response:

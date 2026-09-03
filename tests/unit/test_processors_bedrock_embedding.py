@@ -19,7 +19,7 @@ class _FakeModelsService:
     def __init__(self, formatted_model: str):
         self.formatted_model = formatted_model
 
-    async def get_litellm_model_name(self, embedding_model):
+    async def get_litellm_model_name(self, embedding_model, provider=None):
         return self.formatted_model
 
 
