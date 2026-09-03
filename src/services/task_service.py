@@ -1464,9 +1464,9 @@ class TaskService:
         for user_id in list(self.task_store.keys()):
             for task_id in list(self.task_store[user_id].keys()):
                 task = self.task_store[user_id][task_id]
-                # Only cleanup completed or failed tasks that are old enough
+                # Only cleanup completed, failed, or cancelled tasks that are old enough
                 if (
-                    task.status in [TaskStatus.COMPLETED, TaskStatus.FAILED]
+                    task.status in [TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED]
                     and current_time - task.updated_at > max_age_seconds
                 ):
                     # Task is leaving memory; reclaim any retained upload temps
@@ -1496,8 +1496,12 @@ class TaskService:
         """Cancel a task if it exists and is not already completed.
 
         Supports cancellation of shared default tasks stored under the anonymous user.
+        The outer task lock is held for the entire operation so that concurrent
+        cancel requests (e.g. rapid UI clicks) are serialised: only the first
+        caller performs the actual cancellation, subsequent ones see a terminal
+        status and return False immediately.
         """
-        # Check candidate user IDs first, then anonymous to find which user ID the task is mapped to
+        # Resolve which user bucket owns the task before acquiring the lock.
         candidate_user_ids = [user_id, AnonymousUser().user_id]
 
         store_user_id = None
@@ -1514,14 +1518,24 @@ class TaskService:
 
         upload_task = self.task_store[store_user_id][task_id]
 
-        # Can only cancel pending or running tasks
-        if upload_task.status in [TaskStatus.COMPLETED, TaskStatus.FAILED]:
-            return False
+        # Phase 1: idempotency check — hold the lock only long enough to read
+        # the current status and signal cancellation.  We must NOT hold the lock
+        # while awaiting the background task: the background task's CancelledError
+        # handler also acquires _get_task_lock (to increment failed_files), which
+        # would deadlock with cancel_task holding that same lock.
+        async with self._get_task_lock(task_id):
+            # Can only cancel pending or running tasks.
+            if upload_task.status in [TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED]:
+                return False
+            # Mark in-flight immediately so a concurrent cancel sees CANCELLED
+            # and returns False without repeating the work below.
+            upload_task.status = TaskStatus.CANCELLED
 
-        # Cancel the background task to stop scheduling new work
+        # Phase 2: cancel and await the background task OUTSIDE the lock so the
+        # background task's own lock acquisitions (failed_files increment, etc.)
+        # can complete without deadlocking.
         if hasattr(upload_task, "background_task") and not upload_task.background_task.done():
             upload_task.background_task.cancel()
-            # Wait for the background task to actually stop to avoid race conditions
             try:
                 await upload_task.background_task
             except asyncio.CancelledError:
@@ -1529,21 +1543,18 @@ class TaskService:
             except Exception:
                 pass  # Ignore other errors during cancellation
 
-        # Mark task as failed (cancelled)
-        upload_task.status = TaskStatus.FAILED
-        upload_task.updated_at = time.time()
-
-        # Mark all pending and running file tasks as failed
-        for file_task in upload_task.file_tasks.values():
-            # Lock the entire check-and-modify to prevent race with background tasks
-            async with self._get_task_lock(task_id):
+        # Phase 3: finalise state — background task is done, so no concurrent
+        # writer can touch the file tasks any more.  Lock is still used for
+        # safety in case a second cancel slipped through between phases.
+        async with self._get_task_lock(task_id):
+            upload_task.updated_at = time.time()
+            now = time.time()
+            for file_task in upload_task.file_tasks.values():
                 if file_task.status in [TaskStatus.PENDING, TaskStatus.RUNNING]:
-                    # Increment failed_files counter for both pending and running
-                    # (running files haven't been counted yet in either counter)
                     upload_task.failed_files += 1
                     file_task.status = TaskStatus.FAILED
                     file_task.error = "Task cancelled by user"
-                    file_task.updated_at = time.time()
+                    file_task.updated_at = now
 
         self._cleanup_upload_temp_files(upload_task, force=True)
 

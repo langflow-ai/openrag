@@ -32,6 +32,7 @@ import { useListFiles } from "../api/queries/useListFiles";
 import "@/components/AgGrid/registerAgGridModules";
 import "@/components/AgGrid/agGridStyles.css";
 import { toast } from "sonner";
+import { CancelIngestionButton } from "@/components/cancel-ingestion-button";
 import { KnowledgeActionsDropdown } from "@/components/knowledge-actions-dropdown";
 import { KnowledgeBatchActionsBar } from "@/components/knowledge-batch-actions-bar";
 import { KnowledgePaginationFooter } from "@/components/knowledge-pagination-footer";
@@ -164,6 +165,7 @@ function SearchPage() {
     refreshTasks,
     setRecentTasksExpanded,
     selectTask,
+    cancelTask,
   } = useTask();
   const openTaskMenu = useOpenTaskMenu();
   const {
@@ -451,10 +453,12 @@ function SearchPage() {
         return 2;
       case "failed":
         return 3;
-      case "unavailable":
+      case "cancelled":
         return 4;
-      case "hidden":
+      case "unavailable":
         return 5;
+      case "hidden":
+        return 6;
       default:
         return 0;
     }
@@ -789,14 +793,18 @@ function SearchPage() {
           );
         }
 
+        if (status === "cancelled") {
+          return <StatusBadge status="cancelled" />;
+        }
+
         return <StatusBadge status={status} />;
       },
     },
     {
       colId: "actions",
       headerName: "",
-      width: isCloudBrand ? 56 : 40,
-      minWidth: isCloudBrand ? 56 : 0,
+      width: 56,
+      minWidth: 56,
       ...(isCloudBrand ? { maxWidth: 56 } : { initialFlex: 0 }),
       sortable: false,
       filter: false,
@@ -804,6 +812,13 @@ function SearchPage() {
       suppressMovable: true,
       cellRenderer: ({ data }: CustomCellRendererProps<File>) => {
         const status = data?.status || "active";
+        if (status === "processing") {
+          const taskId = getTaskIdForRow(data);
+          if (!taskId) return null;
+          return (
+            <CancelIngestionButton taskId={taskId} onCancel={cancelTask} />
+          );
+        }
         if (status !== "active") return null;
         return (
           <KnowledgeActionsDropdown

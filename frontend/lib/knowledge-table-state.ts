@@ -142,6 +142,8 @@ function taskOverlayPriority(status?: string): number {
       return 3;
     case "failed":
       return 2;
+    case "cancelled":
+      return 2;
     case "active":
       return 1;
     default:
@@ -214,7 +216,9 @@ export function buildKnowledgeTableRows(
     if (taskFile) {
       const backendStatus = file.status ?? "active";
       const status =
-        taskFile.status === "processing" || taskFile.status === "failed"
+        taskFile.status === "processing" ||
+        taskFile.status === "failed" ||
+        taskFile.status === "cancelled"
           ? taskFile.status
           : backendStatus;
       return {

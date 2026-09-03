@@ -61,6 +61,7 @@ export interface File {
     | "active"
     | "unavailable"
     | "failed"
+    | "cancelled"
     | "hidden"
     | "sync";
   error?: string;

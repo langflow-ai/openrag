@@ -301,6 +301,7 @@ export function isTerminalTaskStatus(status: Task["status"]): boolean {
   return (
     status === "completed" ||
     status === "failed" ||
+    status === "cancelled" ||
     status === "error" ||
     status === "skipped"
   );
@@ -372,7 +373,7 @@ export function getEnhancedListDisappearedFilePaths(
 interface ProcessingFileOverlay {
   task_id: string;
   source_url: string;
-  status: "active" | "failed" | "processing";
+  status: "active" | "failed" | "processing" | "cancelled";
   error?: string;
 }
 

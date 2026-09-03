@@ -7,6 +7,7 @@ export type Status =
   | "hidden"
   | "sync"
   | "failed"
+  | "cancelled"
   | "ready"
   | "fallback"
   | "not-configured";
@@ -32,6 +33,10 @@ const statusConfig = {
   failed: {
     label: "Failed",
     className: "text-accent-red-foreground ",
+  },
+  cancelled: {
+    label: "Cancelled",
+    className: "text-muted-foreground ",
   },
   hidden: {
     label: "Hidden",

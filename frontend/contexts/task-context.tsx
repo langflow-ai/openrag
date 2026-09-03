@@ -51,7 +51,7 @@ export interface TaskFile {
   source_url: string;
   size: number;
   connector_type: string;
-  status: "active" | "failed" | "processing";
+  status: "active" | "failed" | "processing" | "cancelled";
   task_id: string;
   created_at: string;
   updated_at: string;
@@ -155,25 +155,42 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 
   const cancelTaskMutation = useCancelTaskMutation({
     onSuccess: (_data, variables) => {
-      // Immediately remove from React Query cache
+      // Transition the task to "cancelled" in cache rather than removing it, so
+      // the useEffect that watches `tasks` sees the pending→cancelled transition
+      // and runs the normal terminal-state cleanup (stops spinner, clears
+      // processing overlays, etc.).
       queryClient.setQueryData(
         [...TASKS_QUERY_KEY],
         (oldTasks: Task[] | undefined) => {
           if (!oldTasks) return [];
-          return oldTasks.filter((task) => task.task_id !== variables.taskId);
+          return oldTasks.map((task) => {
+            if (task.task_id !== variables.taskId) return task;
+            // Mark the task and every file in it as cancelled/failed so the existing
+            // terminal-state logic in the useEffect handles clean-up.
+            const updatedFiles = task.files
+              ? Object.fromEntries(
+                  Object.entries(task.files).map(([path, info]) => [
+                    path,
+                    info?.status === "pending" || info?.status === "running"
+                      ? {
+                          ...info,
+                          status: "failed" as const,
+                          error: "Task cancelled by user",
+                        }
+                      : info,
+                  ]),
+                )
+              : task.files;
+            // Note: the useEffect that processes tasks maps "failed" file entries
+            // to "cancelled" TaskFile status when the parent task is "cancelled",
+            // so no extra mapping is needed here.
+            return {
+              ...task,
+              status: "cancelled" as const,
+              files: updatedFiles,
+            };
+          });
         },
-      );
-
-      clearTaskMetadata(variables.taskId);
-
-      // Update file to display as cancelled
-      setFiles((prevFiles) =>
-        prevFiles.map((file) => {
-          if (file.task_id === variables.taskId) {
-            return { ...file, status: "failed" };
-          }
-          return file;
-        }),
       );
 
       toast.success("Task cancelled", {
@@ -303,7 +320,10 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
                 fileInfoEntry.filename || filePath.split("/").pop() || filePath;
               const fileStatus = fileInfoEntry.status ?? "processing";
 
-              // Map backend file status to our TaskFile status
+              // Map backend file status to our TaskFile status.
+              // When the parent task is "cancelled", failed files are shown as
+              // "cancelled" rather than "failed" so the table row reads
+              // "Cancelled" instead of "Failed".
               let mappedStatus: TaskFile["status"];
               switch (fileStatus) {
                 case "pending":
@@ -314,7 +334,8 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
                   mappedStatus = "active";
                   break;
                 case "failed":
-                  mappedStatus = "failed";
+                  mappedStatus =
+                    currentTask.status === "cancelled" ? "cancelled" : "failed";
                   break;
                 default:
                   mappedStatus = "processing";
