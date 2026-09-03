@@ -4,32 +4,25 @@ import { AlertTriangle, X } from "lucide-react";
 import { useState } from "react";
 import { useGetFlowsUpdatesQuery } from "@/app/api/queries/useGetFlowsUpdatesQuery";
 import { FlowsUpdateDialog } from "@/components/flows-update-dialog";
-import { useAuth } from "@/contexts/auth-context";
 import { useBrand } from "@/contexts/brand-context";
-import { usePermissions } from "@/hooks/use-permissions";
+import { useSettingsTabAccess } from "@/hooks/use-permissions";
+import { canViewFlowUpdates } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 
 export function LangflowUpdatesBanner() {
   const { brand } = useBrand();
   const isIbm = brand === "ibm";
-  const { runMode } = useAuth();
-  const { can } = usePermissions();
-  const canEdit = can("flows:edit") && runMode === "oss";
+  const tabAccess = useSettingsTabAccess();
+  const canView = canViewFlowUpdates(tabAccess);
   const { data: updates, isLoading } = useGetFlowsUpdatesQuery({
-    enabled: canEdit,
+    enabled: canView,
   });
   const [isDismissed, setIsDismissed] = useState(false);
   const [showModal, setShowModal] = useState(false);
 
-  const undismissedUpdates = updates?.filter((u) => !u.dismissed) ?? [];
+  const hasUpdates = (updates?.length ?? 0) > 0;
 
-  if (
-    !canEdit ||
-    isLoading ||
-    !updates ||
-    undismissedUpdates.length === 0 ||
-    isDismissed
-  ) {
+  if (!canView || isLoading || !updates || !hasUpdates || isDismissed) {
     return null;
   }
 
@@ -54,11 +47,10 @@ export function LangflowUpdatesBanner() {
             )}
             <div className="truncate">
               <span className="font-semibold text-foreground">
-                Langflow update detected
+                Langflow flow updates available
               </span>
               <span className="text-muted-foreground ml-2 hidden sm:inline text-mmd">
-                Modifications to Langflow require an update to revert any custom
-                changes.
+                New versions of one or more Langflow flows are available.
               </span>
             </div>
           </div>

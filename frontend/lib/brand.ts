@@ -165,3 +165,18 @@ export function canAccessConnectorAccessTab(
 ): boolean {
   return ctx.isSaasPolicy && hasRbacPermission("connectors:manage:access", ctx);
 }
+
+/**
+ * Policy check for whether the current user is an administrator who can
+ * manage system configuration and apply flow updates.
+ */
+export function canManageFlowUpdates(ctx: SettingsTabAccessContext): boolean {
+  return canShowRbacGatedSettingsTab("config:write", ctx);
+}
+
+/**
+ * Policy check for whether the user can view flow update notifications.
+ */
+export function canViewFlowUpdates(ctx: SettingsTabAccessContext): boolean {
+  return canShowRbacGatedSettingsTab("flows:read", ctx);
+}
