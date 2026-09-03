@@ -200,6 +200,8 @@ export async function completeOnboarding(
 
     let selected = false;
     if (preferredModel) {
+      const searchInput = page.getByPlaceholder("Search model...");
+      await searchInput.fill(preferredModel);
       const preferredOption = page.getByTestId(
         `model-option-${preferredModel}`,
       );
@@ -208,6 +210,8 @@ export async function completeOnboarding(
       ) {
         await preferredOption.click();
         selected = true;
+      } else {
+        await searchInput.clear();
       }
     }
     if (!selected) {
