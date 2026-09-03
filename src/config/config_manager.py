@@ -160,6 +160,34 @@ class GenericProviderConfig:
 
 
 @dataclass
+class OCIConfig:
+    """Oracle Cloud Infrastructure (OCI) Generative AI provider configuration.
+
+    ``auth_method`` selects how requests are signed:
+      - "api_key" (default): OCI's API Signing Key scheme. user/fingerprint/
+        tenancy identify the signer, and either ``key`` (inline PEM) or
+        ``key_file`` (path to a PEM file) supplies the private key.
+      - "instance_principal": the workload's identity as an OCI Compute
+        instance. None of user/fingerprint/tenancy/key/key_file apply.
+      - "workload_identity": the workload's identity as an OKE pod with
+        Workload Identity enabled on the cluster. None of
+        user/fingerprint/tenancy/key/key_file apply.
+    ``compartment_id`` is required on every embedText call regardless of
+    auth_method, for IAM authorization and billing/quota attribution.
+    """
+
+    user: str = ""
+    fingerprint: str = ""
+    tenancy: str = ""
+    compartment_id: str = ""
+    key_file: str = ""
+    key: str = ""
+    region: str = ""
+    auth_method: str = "api_key"
+    configured: bool = False
+
+
+@dataclass
 class ProvidersConfig:
     """All provider configurations."""
 
@@ -167,6 +195,7 @@ class ProvidersConfig:
     anthropic: AnthropicConfig
     watsonx: WatsonXConfig
     ollama: OllamaConfig
+    oci: OCIConfig = field(default_factory=OCIConfig)
     custom: dict[str, GenericProviderConfig] = field(default_factory=dict)
 
     def any_configured(self) -> bool:
@@ -176,6 +205,7 @@ class ProvidersConfig:
             self.anthropic,
             self.watsonx,
             self.ollama,
+            self.oci,
             *self.custom.values(),
         )
         return any(p.configured for p in providers)
@@ -191,6 +221,8 @@ class ProvidersConfig:
             return self.watsonx
         elif provider_lower == "ollama":
             return self.ollama
+        elif provider_lower == "oci":
+            return self.oci
         return self.custom.get(provider_lower, GenericProviderConfig())
 
     def set_credentials(self, provider: str, credentials: dict[str, str]) -> None:
@@ -225,6 +257,31 @@ class ProvidersConfig:
         elif key == "ollama":
             self.ollama.endpoint = clean.get("api_base", self.ollama.endpoint)
             self.ollama.configured = bool(self.ollama.endpoint)
+        elif key == "oci":
+            # Field names match litellm's own bundled credential-field spec
+            # (provider_create_fields.json) - the generic onboarding form
+            # (GenericOnboarding, driven by config/model_providers.yaml) uses
+            # those names verbatim, so this bridges its generic
+            # provider_credentials submission into the typed OCIConfig
+            # fields the rest of OCI support (model registry gate,
+            # provider_validation.py's signer-shape checks) already reads
+            # directly. key_file has no litellm field (it only exposes an
+            # inline PEM textarea) but is kept here for parity with the
+            # dedicated onboarding fields, which do support it.
+            self.oci.user = clean.get("oci_user", self.oci.user)
+            self.oci.fingerprint = clean.get("oci_fingerprint", self.oci.fingerprint)
+            self.oci.tenancy = clean.get("oci_tenancy", self.oci.tenancy)
+            self.oci.region = clean.get("oci_region", self.oci.region)
+            self.oci.compartment_id = clean.get("oci_compartment_id", self.oci.compartment_id)
+            self.oci.key = clean.get("oci_key", self.oci.key)
+            self.oci.key_file = clean.get("oci_key_file", self.oci.key_file)
+            self.oci.configured = bool(
+                self.oci.user
+                and self.oci.fingerprint
+                and self.oci.tenancy
+                and self.oci.compartment_id
+                and (self.oci.key or self.oci.key_file)
+            )
 
     def credential_values(self, provider: str) -> dict[str, str]:
         """Return LiteLLM keyword arguments for a configured provider."""
@@ -254,6 +311,27 @@ class ProvidersConfig:
             if endpoint:
                 custom.setdefault("api_base", endpoint)
             return custom
+        if key == "oci":
+            # api_key auth only - instance_principal/workload_identity need a
+            # constructed OCI SDK Signer object (utils.oci_auth), which this
+            # getter deliberately does not attempt: that construction can
+            # fail (not running on OCI Compute, no Workload Identity) and
+            # belongs in the dedicated call sites that already build it
+            # per-call (models/processors.py, services/search_service.py),
+            # not a passive credential-value lookup.
+            legacy = {
+                name: value
+                for name, value in {
+                    "oci_user": self.oci.user,
+                    "oci_fingerprint": self.oci.fingerprint,
+                    "oci_tenancy": self.oci.tenancy,
+                    "oci_region": self.oci.region,
+                    "oci_compartment_id": self.oci.compartment_id,
+                    "oci_key": self.oci.key,
+                }.items()
+                if value
+            }
+            return {**legacy, **custom}
         return custom
 
 
@@ -347,6 +425,9 @@ class OpenRAGConfig:
             new_data = dict(p_data)
             if "api_key" in new_data:
                 new_data["api_key"] = decrypt_secret(new_data["api_key"])
+            # OCI's inline PEM private key (key_file is a path, not a secret).
+            if "key" in new_data:
+                new_data["key"] = decrypt_secret(new_data["key"])
             return new_data
 
         def _decrypt_custom_provider(provider: str, p_data: dict) -> GenericProviderConfig:
@@ -369,6 +450,7 @@ class OpenRAGConfig:
                 anthropic=AnthropicConfig(**_decrypt_provider(providers_data.get("anthropic", {}))),
                 watsonx=WatsonXConfig(**_decrypt_provider(providers_data.get("watsonx", {}))),
                 ollama=OllamaConfig(**_decrypt_provider(providers_data.get("ollama", {}))),
+                oci=OCIConfig(**_decrypt_provider(providers_data.get("oci", {}))),
                 custom={
                     str(provider).lower(): _decrypt_custom_provider(str(provider), value)
                     for provider, value in custom_data.items()
@@ -438,6 +520,7 @@ class ConfigManager:
                 "anthropic": {},
                 "watsonx": {},
                 "ollama": {},
+                "oci": {},
                 "custom": {},
             },
             "knowledge": {},
@@ -460,7 +543,14 @@ class ConfigManager:
 
                 # Merge file config
                 if "providers" in file_config:
-                    for provider in ["openai", "anthropic", "watsonx", "ollama", "custom"]:
+                    for provider in [
+                        "openai",
+                        "anthropic",
+                        "watsonx",
+                        "ollama",
+                        "oci",
+                        "custom",
+                    ]:
                         if provider in file_config["providers"]:
                             provider_data = file_config["providers"][provider]
                             # Check if api_key is unencrypted and we have a key
@@ -552,6 +642,24 @@ class ConfigManager:
         # Ollama provider settings
         if os.getenv("OLLAMA_ENDPOINT"):
             config_data["providers"]["ollama"]["endpoint"] = os.getenv("OLLAMA_ENDPOINT")
+
+        # OCI (Oracle Cloud Infrastructure Generative AI) provider settings
+        if os.getenv("OCI_USER"):
+            config_data["providers"]["oci"]["user"] = os.getenv("OCI_USER")
+        if os.getenv("OCI_FINGERPRINT"):
+            config_data["providers"]["oci"]["fingerprint"] = os.getenv("OCI_FINGERPRINT")
+        if os.getenv("OCI_TENANCY"):
+            config_data["providers"]["oci"]["tenancy"] = os.getenv("OCI_TENANCY")
+        if os.getenv("OCI_COMPARTMENT_ID"):
+            config_data["providers"]["oci"]["compartment_id"] = os.getenv("OCI_COMPARTMENT_ID")
+        if os.getenv("OCI_KEY_FILE"):
+            config_data["providers"]["oci"]["key_file"] = os.getenv("OCI_KEY_FILE")
+        if os.getenv("OCI_KEY"):
+            config_data["providers"]["oci"]["key"] = os.getenv("OCI_KEY")
+        if os.getenv("OCI_REGION"):
+            config_data["providers"]["oci"]["region"] = os.getenv("OCI_REGION")
+        if os.getenv("OCI_AUTH_METHOD"):
+            config_data["providers"]["oci"]["auth_method"] = os.getenv("OCI_AUTH_METHOD")
 
         # Knowledge settings
         if os.getenv("EMBEDDING_MODEL"):
@@ -646,6 +754,9 @@ class ConfigManager:
             for _provider_name, provider_config in providers.items():
                 if "api_key" in provider_config:
                     provider_config["api_key"] = encrypt_secret(provider_config["api_key"])
+                # OCI's inline PEM private key (key_file is a path, not a secret).
+                if "key" in provider_config:
+                    provider_config["key"] = encrypt_secret(provider_config["key"])
             custom = providers.get("custom", {})
             from services.model_catalog import secret_field_keys
 

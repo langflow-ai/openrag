@@ -980,13 +980,21 @@ async def embeddings(body: Mapping[str, Any], *, config=None) -> dict[str, Any]:
     litellm_model, provider, credentials = resolve_call(
         body.get("model"), kind="embedding", config=cfg
     )
+    # Call-specific kwargs beyond model/input - e.g. Cohere-family models'
+    # required input_type (see services.search_service), or an OCI signer
+    # object for instance_principal/workload_identity auth (credential_values
+    # only resolves static api_key-style credentials; a Signer must be built
+    # per-call by the caller - see services.search_service.embed_with_space).
+    # Deliberately override same-named static credentials when both are set.
+    extra = {k: v for k, v in body.items() if k not in ("model", "input")}
+    call_kwargs = {**credentials, **extra}
     try:
         import litellm
 
         result = await litellm.aembedding(
             model=litellm_model,
             input=body.get("input"),
-            **credentials,
+            **call_kwargs,
         )
     except LlmGatewayError:
         raise

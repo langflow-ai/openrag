@@ -78,6 +78,16 @@ async def check_provider_health(
                 endpoint = getattr(provider_config, "endpoint", None)
                 project_id = getattr(provider_config, "project_id", None)
                 credentials = current_config.providers.credential_values(provider)
+                # OCI-specific credential fields (no-op getattr for every
+                # other provider, mirroring the api_key/endpoint/project_id
+                # pattern above).
+                oci_user = getattr(provider_config, "user", None)
+                oci_fingerprint = getattr(provider_config, "fingerprint", None)
+                oci_tenancy = getattr(provider_config, "tenancy", None)
+                oci_compartment_id = getattr(provider_config, "compartment_id", None)
+                oci_key = getattr(provider_config, "key", None)
+                oci_key_file = getattr(provider_config, "key_file", None)
+                oci_auth_method = getattr(provider_config, "auth_method", None)
 
                 # Check if this provider is used for LLM or embedding
                 llm_model = (
@@ -126,6 +136,15 @@ async def check_provider_health(
             embedding_model = current_config.knowledge.embedding_model
             credentials = current_config.providers.credential_values(provider)
             embedding_credentials = current_config.providers.credential_values(embedding_provider)
+            # OCI-specific credential fields (no-op getattr unless the
+            # embedding provider is OCI).
+            embedding_oci_user = getattr(embedding_provider_config, "user", None)
+            embedding_oci_fingerprint = getattr(embedding_provider_config, "fingerprint", None)
+            embedding_oci_tenancy = getattr(embedding_provider_config, "tenancy", None)
+            embedding_oci_compartment_id = getattr(embedding_provider_config, "compartment_id", None)
+            embedding_oci_key = getattr(embedding_provider_config, "key", None)
+            embedding_oci_key_file = getattr(embedding_provider_config, "key_file", None)
+            embedding_oci_auth_method = getattr(embedding_provider_config, "auth_method", None)
 
             # Short-circuit identical concurrent polls from the provider-health
             # banner so we don't fan out N watsonx round-trips per poll cycle.
@@ -145,6 +164,13 @@ async def check_provider_health(
                 embedding_endpoint=embedding_endpoint,
                 embedding_project_id=embedding_project_id,
                 embedding_credentials=embedding_credentials,
+                embedding_oci_user=embedding_oci_user,
+                embedding_oci_fingerprint=embedding_oci_fingerprint,
+                embedding_oci_tenancy=embedding_oci_tenancy,
+                embedding_oci_compartment_id=embedding_oci_compartment_id,
+                embedding_oci_key=embedding_oci_key,
+                embedding_oci_key_file=embedding_oci_key_file,
+                embedding_oci_auth_method=embedding_oci_auth_method,
             )
             # A cached *healthy* verdict must not outlive a real failure. The
             # cache exists to coalesce identical probes, and a recorded failure
@@ -194,6 +220,13 @@ async def check_provider_health(
                 project_id=project_id,
                 test_completion=test_completion,
                 credentials=credentials,
+                oci_auth_method=oci_auth_method,
+                oci_user=oci_user,
+                oci_fingerprint=oci_fingerprint,
+                oci_tenancy=oci_tenancy,
+                oci_compartment_id=oci_compartment_id,
+                oci_key=oci_key,
+                oci_key_file=oci_key_file,
             )
 
             return JSONResponse(
@@ -261,6 +294,13 @@ async def check_provider_health(
                     project_id=embedding_project_id,
                     test_completion=test_completion,
                     credentials=embedding_credentials,
+                    oci_auth_method=embedding_oci_auth_method,
+                    oci_user=embedding_oci_user,
+                    oci_fingerprint=embedding_oci_fingerprint,
+                    oci_tenancy=embedding_oci_tenancy,
+                    oci_compartment_id=embedding_oci_compartment_id,
+                    oci_key=embedding_oci_key,
+                    oci_key_file=embedding_oci_key_file,
                 )
             except httpx.TimeoutException as e:
                 # Timeout means provider is busy, not misconfigured

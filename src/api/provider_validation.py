@@ -3,12 +3,14 @@
 import asyncio
 import json
 import re
+from pathlib import Path
 from typing import Any
 
 import httpx
 
 from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
+from utils.oci_auth import OCISignerConstructionError  # noqa: F401 - re-exported for tests
 
 logger = get_logger(__name__)
 
@@ -618,12 +620,19 @@ async def validate_provider_setup(
     project_id: str = None,
     test_completion: bool = False,
     credentials: dict[str, str] | None = None,
+    oci_auth_method: str = "api_key",
+    oci_user: str = None,
+    oci_fingerprint: str = None,
+    oci_tenancy: str = None,
+    oci_compartment_id: str = None,
+    oci_key: str = None,
+    oci_key_file: str = None,
 ) -> None:
     """
     Validate provider setup by testing completion with tool calling and embedding.
 
     Args:
-        provider: Provider name ('openai', 'watsonx', 'ollama', 'anthropic')
+        provider: Provider name ('openai', 'watsonx', 'ollama', 'anthropic', 'oci')
         api_key: API key for the provider (optional for ollama)
         embedding_model: Embedding model to test
         llm_model: LLM model to test
@@ -631,6 +640,13 @@ async def validate_provider_setup(
         project_id: Project ID (required for watsonx)
         test_completion: If True, performs full validation with completion/embedding tests (consumes credits).
                         If False, performs lightweight validation (no credits consumed). Default: False.
+        credentials: Generic LiteLLM kwargs for a provider outside the legacy
+                        openai/watsonx/ollama/anthropic set.
+        oci_auth_method: OCI auth method ('api_key', 'instance_principal', 'workload_identity').
+                        Only used when provider == 'oci'. Default: 'api_key'.
+        oci_user, oci_fingerprint, oci_tenancy, oci_compartment_id, oci_key, oci_key_file:
+                        OCI Generative AI credential fields (only used when provider == 'oci' and
+                        oci_auth_method == 'api_key').
 
     Raises:
         Exception: If validation fails, raises the original exception with the actual error message.
@@ -649,7 +665,7 @@ async def validate_provider_setup(
             f"Starting validation for provider: {provider_lower} (test_completion={test_completion})"
         )
 
-        if provider_lower not in {"openai", "watsonx", "ollama", "anthropic"}:
+        if provider_lower not in {"openai", "watsonx", "ollama", "anthropic", "oci"}:
             await _test_litellm_provider(
                 provider=provider_lower,
                 credentials=supplied,
@@ -666,6 +682,13 @@ async def validate_provider_setup(
                     embedding_model=embedding_model,
                     endpoint=endpoint,
                     project_id=project_id,
+                    oci_auth_method=oci_auth_method,
+                    oci_user=oci_user,
+                    oci_fingerprint=oci_fingerprint,
+                    oci_tenancy=oci_tenancy,
+                    oci_compartment_id=oci_compartment_id,
+                    oci_key=oci_key,
+                    oci_key_file=oci_key_file,
                 )
             elif llm_model:
                 # Test completion with tool calling
@@ -683,6 +706,13 @@ async def validate_provider_setup(
                 api_key=api_key,
                 endpoint=endpoint,
                 project_id=project_id,
+                oci_auth_method=oci_auth_method,
+                oci_user=oci_user,
+                oci_fingerprint=oci_fingerprint,
+                oci_tenancy=oci_tenancy,
+                oci_compartment_id=oci_compartment_id,
+                oci_key=oci_key,
+                oci_key_file=oci_key_file,
             )
 
         logger.info(f"Validation successful for provider: {provider_lower}")
@@ -727,6 +757,13 @@ async def test_lightweight_health(
     api_key: str = None,
     endpoint: str = None,
     project_id: str = None,
+    oci_auth_method: str = "api_key",
+    oci_user: str = None,
+    oci_fingerprint: str = None,
+    oci_tenancy: str = None,
+    oci_compartment_id: str = None,
+    oci_key: str = None,
+    oci_key_file: str = None,
 ) -> None:
     """Test provider health with lightweight check (no credits consumed)."""
 
@@ -738,6 +775,13 @@ async def test_lightweight_health(
         await _test_ollama_lightweight_health(endpoint)
     elif provider == "anthropic":
         await _test_anthropic_lightweight_health(api_key)
+    elif provider == "oci":
+        if oci_auth_method == "api_key":
+            await _test_oci_credential_shape(
+                oci_user, oci_fingerprint, oci_tenancy, oci_compartment_id, oci_key, oci_key_file
+            )
+        else:
+            await _test_oci_signer_construction(oci_auth_method, oci_compartment_id)
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -769,6 +813,13 @@ async def test_embedding(
     embedding_model: str = None,
     endpoint: str = None,
     project_id: str = None,
+    oci_auth_method: str = "api_key",
+    oci_user: str = None,
+    oci_fingerprint: str = None,
+    oci_tenancy: str = None,
+    oci_compartment_id: str = None,
+    oci_key: str = None,
+    oci_key_file: str = None,
 ) -> None:
     """Test embedding generation for the provider."""
 
@@ -778,6 +829,18 @@ async def test_embedding(
         await _test_watsonx_embedding(api_key, embedding_model, endpoint, project_id)
     elif provider == "ollama":
         await _test_ollama_embedding(embedding_model, endpoint)
+    elif provider == "oci":
+        # No live embedText call here: OCI's request signing (RSA-SHA256
+        # over a canonical HTTP Signing Scheme string) is significantly
+        # heavier than the other providers' lightweight checks, so full
+        # credential validation for OCI is a shape check rather than a
+        # live round-trip, even under test_completion=True.
+        if oci_auth_method == "api_key":
+            await _test_oci_credential_shape(
+                oci_user, oci_fingerprint, oci_tenancy, oci_compartment_id, oci_key, oci_key_file
+            )
+        else:
+            await _test_oci_signer_construction(oci_auth_method, oci_compartment_id)
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -1435,3 +1498,99 @@ async def _test_anthropic_completion_with_tools(api_key: str, llm_model: str) ->
     except Exception as e:
         logger.error(f"Anthropic completion test failed: {str(e)}")
         raise
+
+
+# OCI (Oracle Cloud Infrastructure Generative AI) validation functions
+async def _test_oci_credential_shape(
+    oci_user: str = None,
+    oci_fingerprint: str = None,
+    oci_tenancy: str = None,
+    oci_compartment_id: str = None,
+    oci_key: str = None,
+    oci_key_file: str = None,
+) -> None:
+    """Validate OCI Generative AI credential shape (no live network call).
+
+    OCI Generative AI authenticates via a per-request RSA-SHA256 HTTP
+    Signing Scheme (see litellm's oci/chat/transformation.py), which is
+    significantly heavier to safely exercise here than the bearer-token or
+    API-key checks the other providers use. Instead this validates that the
+    credential set is *shaped* correctly -- the same fields litellm's own
+    validate_environment() requires before it will even attempt to sign a
+    request -- so obviously broken configuration (a missing field, a
+    key_file that doesn't exist, an inline key that isn't PEM-formatted) is
+    caught immediately instead of surfacing as an opaque signing failure on
+    the first real embedding call.
+    """
+    missing = [
+        name
+        for name, value in (
+            ("user", oci_user),
+            ("fingerprint", oci_fingerprint),
+            ("tenancy", oci_tenancy),
+            ("compartment_id", oci_compartment_id),
+        )
+        if not value
+    ]
+    if missing:
+        raise Exception(f"OCI configuration is missing required field(s): {', '.join(missing)}")
+
+    if not oci_key and not oci_key_file:
+        raise Exception(
+            "OCI configuration requires either an inline key (oci_key) or a key file path (oci_key_file)"
+        )
+
+    if oci_key:
+        if oci_key_file:
+            logger.warning(
+                "OCI configuration has both oci_key and oci_key_file set; "
+                "using oci_key (inline) and ignoring oci_key_file"
+            )
+        if "PRIVATE KEY" not in oci_key:
+            raise Exception(
+                "OCI oci_key does not look like a PEM private key (missing 'PRIVATE KEY' marker)"
+            )
+    else:
+        key_path = Path(oci_key_file).expanduser()
+        if not key_path.is_file():
+            raise Exception(f"OCI key_file does not exist: {oci_key_file}")
+        try:
+            content = key_path.read_text()
+        except OSError as e:
+            raise Exception(f"OCI key_file could not be read: {e}") from e
+        if "PRIVATE KEY" not in content:
+            raise Exception(f"OCI key_file does not look like a PEM private key: {oci_key_file}")
+
+    logger.info("OCI credential shape check passed")
+
+
+async def _test_oci_signer_construction(
+    oci_auth_method: str, oci_compartment_id: str = None
+) -> None:
+    """Validate OCI instance_principal / workload_identity auth by
+    attempting to construct the real signer.
+
+    Unlike ``_test_oci_credential_shape`` (a pure shape check, no I/O),
+    this makes exactly one local/in-cluster call -- to the OCI instance
+    metadata service, or the in-cluster OKE proxymux service -- never to
+    OCI's public Generative AI API. That's a deliberate, narrow exception
+    to "no live calls in validation": it's cheap, has no cost/quota
+    impact, and it's the only way to catch a missing dynamic-group policy
+    or a cluster without Workload Identity enabled before a real embedding
+    call fails with a much less obvious error.
+
+    compartment_id is checked here too, even though the signer never uses
+    it: litellm requires oci_compartment_id on every embedText call
+    regardless of auth method (see OCIEmbeddingConfig.validate_environment),
+    and ``utils.embedding_kwargs.oci_credential_kwargs`` omits the kwarg
+    entirely when it's empty. Without this check, a signer-based
+    configuration with no compartment_id passes onboarding/settings
+    validation and only fails at the first real embedding call.
+    """
+    from utils.oci_auth import build_oci_signer
+
+    if not oci_compartment_id:
+        raise Exception("OCI configuration is missing required field(s): compartment_id")
+
+    build_oci_signer(oci_auth_method)
+    logger.info(f"OCI {oci_auth_method} signer construction check passed")

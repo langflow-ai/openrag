@@ -62,6 +62,13 @@ providers:
       oss: true
       on_prem: true
       saas: true
+
+  - name: oci
+    display_name: OCI Generative AI
+    modes:
+      oss: true
+      on_prem: true
+      saas: true
   # enabled in OSS for tests only to be disbaled in OSS after tests are complete
   - name: azure_ai
     display_name: Azure AI Foundry

@@ -21,8 +21,11 @@ from utils.embedding_fields import (
     embedding_spaces_from_aggregation,
     get_embedding_field_name,
     get_embedding_space_id,
+    split_embedding_space_id,
 )
+from utils.embedding_kwargs import is_cohere_embedding_model, oci_credential_kwargs
 from utils.logging_config import get_logger
+from utils.oci_auth import get_cached_oci_signer
 
 logger = get_logger(__name__)
 
@@ -424,6 +427,22 @@ class SearchService:
                 attempts = 0
                 last_exception = None
 
+                embed_kwargs: dict[str, Any] = {}
+                if is_cohere_embedding_model(space.field_identity):
+                    embed_kwargs["input_type"] = "search_query"
+
+                # OCI-routed spaces need their auth credentials passed as
+                # call-time kwargs; litellm's OCI integration does not read
+                # them from the environment. instance_principal/
+                # workload_identity additionally need a constructed SDK
+                # Signer, which credential_values() deliberately can't
+                # provide (see config.config_manager.credential_values).
+                space_provider, _ = split_embedding_space_id(space.field_identity)
+                if (space_provider or get_openrag_config().knowledge.embedding_provider) == "oci":
+                    oci_config = get_openrag_config().providers.oci
+                    oci_signer = get_cached_oci_signer(oci_config.auth_method)
+                    embed_kwargs.update(oci_credential_kwargs(oci_config, signer=oci_signer))
+
                 while attempts < MAX_EMBED_RETRIES:
                     attempts += 1
                     try:
@@ -431,7 +450,7 @@ class SearchService:
                         # Provider-qualified and legacy routes are resolved in
                         # one place and upstream credentials never leave OpenRAG.
                         resp = await gateway_embeddings(
-                            {"model": space.route_model, "input": [query]}
+                            {"model": space.route_model, "input": [query], **embed_kwargs}
                         )
                         data = resp.get("data", [])
                         embedding = data[0].get("embedding") if data else None

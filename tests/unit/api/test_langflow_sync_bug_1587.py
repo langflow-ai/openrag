@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from api.settings import langflow_sync
 from api.settings.langflow_sync import _update_langflow_model_values
 
 # Providers a mock config can advertise as configured. LLM supports anthropic;
@@ -25,6 +26,11 @@ def mock_config():
     config = MagicMock()
     for name in _ALL_PROVIDERS:
         getattr(config.providers, name).configured = True
+    # Not one of _ALL_PROVIDERS above, but MagicMock auto-vivifies any other
+    # attribute (including .oci.configured) as truthy - pin it explicitly so
+    # this pre-OCI regression test isn't affected by its addition to
+    # _EMBEDDING_PROVIDER_NAMES.
+    config.providers.oci.configured = False
     config.knowledge.embedding_provider = "openai"
     config.knowledge.embedding_model = "text-embedding-3-small"
     config.agent.llm_provider = "anthropic"
@@ -128,3 +134,84 @@ async def test_explicit_llm_arguments_bypass_fallback(mock_config):
     assert call.args[0] == "openai"
     assert call.kwargs["llm_model"] == "gpt-4o"
     assert call.kwargs.get("force_llm_update") is True
+
+
+async def _proxied_change_langflow_model_value(
+    provider,
+    embedding_model=None,
+    llm_model=None,
+    force_embedding_update=False,
+    force_llm_update=False,
+    flow_configs=None,
+):
+    """Mirrors the real flows_service.change_langflow_model_value(): every
+    known LiteLLM provider (including oci) is proxied through the same
+    OpenRAG-internal OpenAI-compatible endpoint, so it never raises for a
+    known provider (see services/flows_service.py's `proxy_fields`)."""
+    return {"success": True}
+
+
+@pytest.mark.asyncio
+async def test_explicit_embedding_provider_oci_syncs_like_any_other_provider(
+    mock_config, monkeypatch
+):
+    """OCI has no dedicated Langflow embedding component, but
+    change_langflow_model_value() proxies every provider through the same
+    OpenRAG-internal endpoint, so it's synced exactly like openai/watsonx/
+    ollama - no special-casing needed."""
+    mock_config.knowledge.embedding_provider = "oci"
+    mock_config.knowledge.embedding_model = "cohere.embed-v4.0"
+
+    # This test pins flows_service.change_langflow_model_value() only - the
+    # SELECTED_EMBEDDING_* global variable push is a real Langflow API call,
+    # out of scope here (see test_langflow_global_variables.py).
+    async def _noop(name, value):
+        return None
+
+    monkeypatch.setattr(langflow_sync, "_upsert_selected_model_variable", _noop)
+
+    flows_service = MagicMock()
+    flows_service.change_langflow_model_value = AsyncMock(
+        side_effect=_proxied_change_langflow_model_value
+    )
+
+    await _update_langflow_model_values(
+        mock_config,
+        flows_service,
+        embedding_model=mock_config.knowledge.embedding_model,
+        embedding_provider="oci",
+    )
+
+    flows_service.change_langflow_model_value.assert_awaited_once()
+    call = flows_service.change_langflow_model_value.await_args
+    assert call.args[0] == "oci"
+    assert call.kwargs["embedding_model"] == "cohere.embed-v4.0"
+
+
+@pytest.mark.asyncio
+async def test_explicit_embedding_provider_openai_still_updates(mock_config, monkeypatch):
+    """Sanity check that OCI's proxied sync does not regress the normal
+    explicit-provider path for a provider that does have a Langflow component."""
+
+    async def _noop(name, value):
+        return None
+
+    monkeypatch.setattr(langflow_sync, "_upsert_selected_model_variable", _noop)
+
+    flows_service = MagicMock()
+    flows_service.change_langflow_model_value = AsyncMock(
+        side_effect=_proxied_change_langflow_model_value
+    )
+
+    await _update_langflow_model_values(
+        mock_config,
+        flows_service,
+        embedding_model="text-embedding-3-large",
+        embedding_provider="openai",
+    )
+
+    flows_service.change_langflow_model_value.assert_awaited_once()
+    call = flows_service.change_langflow_model_value.await_args
+    assert call.args[0] == "openai"
+    assert call.kwargs["embedding_model"] == "text-embedding-3-large"
+    assert call.kwargs.get("force_embedding_update") is True

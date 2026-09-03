@@ -638,6 +638,20 @@ llmProviders:
   ollama:
     enabled: false
     endpoint: ""                          # Ollama endpoint URL (e.g., "http://ollama:11434")
+  oci:
+    enabled: false
+    # authMethod selects how OCI Generative AI requests are signed:
+    #   "api_key" (default) - user/fingerprint/tenancy plus one of key/keyFile
+    #   "instance_principal" - the OCI Compute instance's own identity
+    #   "workload_identity" - the OKE pod's identity (Workload Identity enabled)
+    authMethod: "api_key"
+    user: ""                              # OCID of the API-signing user (api_key only)
+    fingerprint: ""                       # API signing key fingerprint (api_key only)
+    tenancy: ""                           # OCID of the tenancy (api_key only)
+    key: ""                               # Inline private key PEM (stored in secret; api_key only)
+    keyFile: ""                           # Path to a mounted private key PEM (alternative to key)
+    compartmentId: ""                     # Required for every embed call, regardless of authMethod
+    region: ""                            # OCI region (e.g., "us-ashburn-1")
 
 # ============================================================================
 # Application Config (config.yaml contents)

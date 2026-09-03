@@ -40,10 +40,19 @@ class SettingsUpdateBody(BaseModel):
     watsonx_endpoint: str | None = Field(None, min_length=1)
     watsonx_project_id: str | None = Field(None, min_length=1)
     ollama_endpoint: str | None = Field(None, min_length=1)
+    oci_user: str | None = Field(None, min_length=1)
+    oci_fingerprint: str | None = Field(None, min_length=1)
+    oci_tenancy: str | None = Field(None, min_length=1)
+    oci_compartment_id: str | None = Field(None, min_length=1)
+    oci_key_file: str | None = Field(None, min_length=1)
+    oci_key: str | None = Field(None, min_length=1)
+    oci_region: str | None = Field(None, min_length=1)
+    oci_auth_method: str | None = Field(None, pattern="^(api_key|instance_principal|workload_identity)$")
     remove_ollama_config: bool | None = None
     remove_openai_config: bool | None = None
     remove_anthropic_config: bool | None = None
     remove_watsonx_config: bool | None = None
+    remove_oci_config: bool | None = None
     provider_credentials: dict[str, dict[str, str]] | None = None
     remove_provider_config: str | None = None
     # Explicit confirmation that the caller accepts removing a provider whose
@@ -63,6 +72,14 @@ class OnboardingBody(BaseModel):
     watsonx_endpoint: str | None = Field(None, min_length=1)
     watsonx_project_id: str | None = Field(None, min_length=1)
     ollama_endpoint: str | None = Field(None, min_length=1)
+    oci_user: str | None = Field(None, min_length=1)
+    oci_fingerprint: str | None = Field(None, min_length=1)
+    oci_tenancy: str | None = Field(None, min_length=1)
+    oci_compartment_id: str | None = Field(None, min_length=1)
+    oci_key_file: str | None = Field(None, min_length=1)
+    oci_key: str | None = Field(None, min_length=1)
+    oci_region: str | None = Field(None, min_length=1)
+    oci_auth_method: str | None = Field(None, pattern="^(api_key|instance_principal|workload_identity)$")
     provider_credentials: dict[str, dict[str, str]] | None = None
 
 
@@ -177,11 +194,22 @@ class GenericProviderConfig(BaseModel):
     secret_fields: list[str] = Field(default_factory=list)
 
 
+class OCIProviderConfig(BaseModel):
+    has_key: bool
+    user: str | None
+    tenancy: str | None
+    compartment_id: str | None
+    region: str | None
+    auth_method: str = "api_key"
+    configured: bool
+
+
 class ProvidersConfig(BaseModel):
     openai: OpenAIProviderConfig
     anthropic: AnthropicProviderConfig
     watsonx: WatsonXProviderConfig
     ollama: OllamaProviderConfig
+    oci: OCIProviderConfig
     custom: dict[str, GenericProviderConfig] = Field(default_factory=dict)
 
 

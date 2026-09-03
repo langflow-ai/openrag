@@ -1205,6 +1205,33 @@ class AppClients:
                 if config.providers.watsonx.api_key:
                     logger.debug("Loaded WatsonX credentials from config")
 
+                # Set OCI (Oracle Cloud Infrastructure Generative AI) credentials.
+                # NOTE: unlike WatsonX, litellm's OCI integration does not
+                # actually read these back from the environment -- it only
+                # accepts them as call-time kwargs (see
+                # utils.embedding_kwargs.oci_credential_kwargs, which every
+                # OCI embedding call site must use). These env vars are set
+                # for consistency with the other providers and so they're
+                # available to anything that does read them directly from
+                # os.environ (e.g. config.providers.oci itself, or future
+                # OCI SDK usage).
+                if config.providers.oci.user:
+                    os.environ["OCI_USER"] = config.providers.oci.user
+                if config.providers.oci.fingerprint:
+                    os.environ["OCI_FINGERPRINT"] = config.providers.oci.fingerprint
+                if config.providers.oci.tenancy:
+                    os.environ["OCI_TENANCY"] = config.providers.oci.tenancy
+                if config.providers.oci.compartment_id:
+                    os.environ["OCI_COMPARTMENT_ID"] = config.providers.oci.compartment_id
+                if config.providers.oci.key_file:
+                    os.environ["OCI_KEY_FILE"] = config.providers.oci.key_file
+                if config.providers.oci.key:
+                    os.environ["OCI_KEY"] = config.providers.oci.key
+                if config.providers.oci.region:
+                    os.environ["OCI_REGION"] = config.providers.oci.region
+                if config.providers.oci.user:
+                    logger.debug("Loaded OCI credentials from config")
+
                 # Set Ollama endpoint
                 if config.providers.ollama.endpoint:
                     os.environ["OLLAMA_BASE_URL"] = config.providers.ollama.endpoint

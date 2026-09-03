@@ -20,8 +20,11 @@ logger = get_logger(__name__)
 
 
 # Provider names in priority order. LLM supports anthropic; embeddings do not.
+# OCI Generative AI is embedding-only in OpenRAG today (no LLM chat wiring),
+# so it's only added to the embedding list, mirroring how anthropic is
+# LLM-only and only added to the LLM list.
 _LLM_PROVIDER_NAMES = ("openai", "anthropic", "watsonx", "ollama")
-_EMBEDDING_PROVIDER_NAMES = ("openai", "watsonx", "ollama")
+_EMBEDDING_PROVIDER_NAMES = ("openai", "watsonx", "ollama", "oci")
 
 
 def _configured_provider_names(config, provider_names) -> list:

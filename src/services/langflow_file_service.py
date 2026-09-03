@@ -16,10 +16,18 @@ from config.settings import (
     OPENRAG_BACKEND_ROUTER_ENABLE,
     clients,
     get_ingest_callback_url,
+    get_openrag_config,
 )
 from services.document_index_writer import DocumentIndexContext
+from utils.embedding_kwargs import (
+    COHERE_DOCUMENT_INPUT_TYPE,
+    cohere_input_type_kwargs,
+    is_oci_litellm_model,
+    oci_credential_kwargs,
+)
 from utils.hash_utils import hash_id
 from utils.logging_config import get_logger
+from utils.oci_auth import get_cached_oci_signer
 
 logger = get_logger(__name__)
 
@@ -141,9 +149,22 @@ class LangflowFileService:
             embedding_model,
             provider=embedding_provider,
         )
+        # Same call-time kwargs the search and non-Langflow ingest paths pass
+        # (see services.search_service and models.processors): litellm's OCI
+        # integration reads every credential from kwargs and never from the
+        # environment, so without these the probe raises inside
+        # validate_environment and _ensure_langflow_ingest_index's broad
+        # except swallows it -- silently skipping index pre-creation for OCI.
+        extra_kwargs = cohere_input_type_kwargs(litellm_model_name, COHERE_DOCUMENT_INPUT_TYPE)
+        if is_oci_litellm_model(litellm_model_name):
+            oci_config = get_openrag_config().providers.oci
+            oci_signer = get_cached_oci_signer(oci_config.auth_method)
+            extra_kwargs.update(oci_credential_kwargs(oci_config, signer=oci_signer))
+
         response = await clients.patched_embedding_client.embeddings.create(
             model=litellm_model_name,
             input=["dimension probe"],
+            **extra_kwargs,
         )
         if not response.data:
             raise RuntimeError("Embedding provider returned no data for dimension probe")
