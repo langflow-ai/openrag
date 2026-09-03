@@ -13,7 +13,20 @@ from types import SimpleNamespace
 
 import pytest
 
+from api.settings import langflow_sync
 from api.settings.langflow_sync import _update_langflow_model_values
+
+
+@pytest.fixture(autouse=True)
+def _stub_langflow_global_variable_push(monkeypatch):
+    """These tests pin flows_service.change_langflow_model_value() calls
+    only - the SELECTED_EMBEDDING_* global variable push is a real Langflow
+    API call, out of scope here (see test_langflow_global_variables.py)."""
+
+    async def _noop(name, value):
+        return None
+
+    monkeypatch.setattr(langflow_sync, "_upsert_selected_model_variable", _noop)
 
 
 class _FakeFlowsService:
