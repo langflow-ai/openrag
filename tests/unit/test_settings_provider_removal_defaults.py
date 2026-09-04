@@ -354,4 +354,3 @@ class TestHasOtherConfiguredProvider:
     def test_can_remove_watsonx_when_openai_is_configured(self):
         config = _make_config(watsonx=True, openai=True)
         assert _has_other_configured_provider(config, "watsonx")
-
