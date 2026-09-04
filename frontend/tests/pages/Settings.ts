@@ -227,6 +227,8 @@ export class Settings {
   async saveIngestSettings() {
     const saveButton = this.saveIngestSettingsButton();
     await this.page.waitForTimeout(500);
+    await saveButton.scrollIntoViewIfNeeded();
+    await this.page.waitForTimeout(500);
     await expect(saveButton).toBeVisible();
     await expect(saveButton).toBeEnabled({ timeout: 10000 });
     await saveButton.click();
@@ -235,6 +237,7 @@ export class Settings {
 
   async setPictureDescriptions(enabled: boolean) {
     await this.clickTab("Ingestion");
+    await this.page.waitForTimeout(500);
     const toggle = this.pictureDescriptionsToggle();
     await toggle.scrollIntoViewIfNeeded();
     const state = await toggle.getAttribute("data-state");
@@ -248,6 +251,7 @@ export class Settings {
 
   async setTableStructure(enabled: boolean) {
     await this.clickTab("Ingestion");
+    await this.page.waitForTimeout(500);
     const toggle = this.tableStructureToggle();
     await toggle.scrollIntoViewIfNeeded();
     const state = await toggle.getAttribute("data-state");
@@ -261,6 +265,7 @@ export class Settings {
 
   async setOCR(enabled: boolean) {
     await this.clickTab("Ingestion");
+    await this.page.waitForTimeout(500);
     const toggle = this.ocrToggle();
     await toggle.scrollIntoViewIfNeeded();
     const state = await toggle.getAttribute("data-state");
@@ -274,6 +279,7 @@ export class Settings {
 
   async setDisableLangflowIngestion(enabled: boolean) {
     await this.clickTab("Ingestion");
+    await this.page.waitForTimeout(500);
     const toggle = this.disableLangflowIngestionToggle();
     await toggle.scrollIntoViewIfNeeded();
     const state = await toggle.getAttribute("data-state");
