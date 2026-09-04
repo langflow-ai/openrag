@@ -11,8 +11,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  canRemoveProvider,
   EMBEDDING_PROVIDER_ORDER,
   getProviderChrome,
+  isProviderConfigured,
   LLM_PROVIDER_ORDER,
   orderProviders,
 } from "./model-helpers";
@@ -77,5 +79,100 @@ describe("getProviderChrome", () => {
     assert.notEqual(foundry.logo, openai.logo);
     assert.notEqual(foundry.logo, placeholder);
     assert.notEqual(openai.logo, placeholder);
+  });
+});
+
+describe("isProviderConfigured", () => {
+  it("returns true when configured in custom or legacy fields", () => {
+    assert.equal(
+      isProviderConfigured({ openai: { configured: true } }, "openai"),
+      true,
+    );
+    assert.equal(
+      isProviderConfigured(
+        { custom: { azure: { configured: true } } },
+        "azure",
+      ),
+      true,
+    );
+    assert.equal(
+      isProviderConfigured({ openai: { configured: false } }, "openai"),
+      false,
+    );
+    assert.equal(isProviderConfigured(undefined, "openai"), false);
+  });
+});
+
+describe("canRemoveProvider", () => {
+  it("returns false if the provider is not configured", () => {
+    assert.equal(
+      canRemoveProvider({ openai: { configured: true } }, "watsonx"),
+      false,
+    );
+  });
+
+  it("returns false if it is the only configured provider", () => {
+    assert.equal(
+      canRemoveProvider({ watsonx: { configured: true } }, "watsonx"),
+      false,
+    );
+    assert.equal(
+      canRemoveProvider({ custom: { azure: { configured: true } } }, "azure"),
+      false,
+    );
+  });
+
+  it("returns false when the only other configured provider is anthropic (no embedding model)", () => {
+    const providers = {
+      watsonx: { configured: true },
+      anthropic: { configured: true },
+    };
+    assert.equal(canRemoveProvider(providers, "watsonx"), false);
+
+    const withCustom = {
+      custom: {
+        azure: { configured: true },
+        anthropic: { configured: true },
+      },
+    };
+    assert.equal(canRemoveProvider(withCustom, "azure"), false);
+  });
+
+  it("allows removing anthropic when another provider with an embedding model is configured", () => {
+    const providers = {
+      watsonx: { configured: true },
+      anthropic: { configured: true },
+    };
+    assert.equal(canRemoveProvider(providers, "anthropic"), true);
+
+    const withCustom = {
+      custom: {
+        azure: { configured: true },
+        anthropic: { configured: true },
+      },
+    };
+    assert.equal(canRemoveProvider(withCustom, "anthropic"), true);
+  });
+
+  it("allows removing a provider when another provider with embedding is configured", () => {
+    // Legacy fields
+    const legacy = {
+      watsonx: { configured: true },
+      openai: { configured: true },
+    };
+    assert.equal(canRemoveProvider(legacy, "watsonx"), true);
+    assert.equal(canRemoveProvider(legacy, "openai"), true);
+
+    // Custom catalog providers (like azure)
+    const custom = {
+      custom: {
+        watsonx: { configured: true },
+        azure: { configured: true },
+        anthropic: { configured: true },
+      },
+    };
+    assert.equal(canRemoveProvider(custom, "watsonx"), true);
+    assert.equal(canRemoveProvider(custom, "azure"), true);
+    assert.equal(canRemoveProvider(custom, "anthropic"), true);
   });
 });

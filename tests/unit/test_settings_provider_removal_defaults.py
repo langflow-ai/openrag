@@ -18,6 +18,7 @@ from api.settings.helpers import (
     _default_llm_model,
     _first_configured_embedding_provider,
     _first_configured_llm_provider,
+    _has_other_configured_provider,
 )
 from config.config_manager import (
     AgentConfig,
@@ -327,3 +328,29 @@ class TestProviderRemovalEmbeddingDefault:
         self._simulate_embedding_removal(config, "ollama")
         assert config.knowledge.embedding_provider == "openai"
         assert config.knowledge.embedding_model == "text-embedding-3-small"
+
+
+class TestHasOtherConfiguredProvider:
+    def test_single_provider_cannot_be_removed(self):
+        config = _make_config(watsonx=True)
+        assert not _has_other_configured_provider(config, "watsonx")
+
+    def test_cannot_remove_provider_when_only_anthropic_is_configured(self):
+        config = _make_config(watsonx=True, anthropic=True)
+        assert not _has_other_configured_provider(config, "watsonx")
+
+    def test_can_remove_anthropic_when_watsonx_is_configured(self):
+        config = _make_config(watsonx=True, anthropic=True)
+        assert _has_other_configured_provider(config, "anthropic")
+
+    def test_can_remove_watsonx_when_azure_custom_provider_is_configured(self):
+        from config.config_manager import GenericProviderConfig
+
+        config = _make_config(watsonx=True)
+        config.providers.custom["azure"] = GenericProviderConfig(configured=True)
+        assert _has_other_configured_provider(config, "watsonx")
+        assert _has_other_configured_provider(config, "azure")
+
+    def test_can_remove_watsonx_when_openai_is_configured(self):
+        config = _make_config(watsonx=True, openai=True)
+        assert _has_other_configured_provider(config, "watsonx")

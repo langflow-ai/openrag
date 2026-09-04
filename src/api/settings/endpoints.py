@@ -23,6 +23,7 @@ from api.settings.helpers import (
     _first_configured_embedding_provider,
     _first_configured_llm_provider,
     _get_flows_service,
+    _has_other_configured_provider,
 )
 from api.settings.langflow_sync import (
     _background_tasks,
@@ -774,14 +775,18 @@ async def update_settings(
         # intentionally NOT synced into the Langflow flow JSON.
         if body.vlm_enabled:
             effective_vlm_provider = body.vlm_provider or current_config.knowledge.vlm_provider
-            if effective_vlm_provider in ("openai", "watsonx", "anthropic"):
+            if effective_vlm_provider in ("openai", "watsonx", "anthropic", "azure", "azure_ai"):
                 vlm_provider_config = current_config.providers.get_provider_config(
                     effective_vlm_provider
                 )
-                vlm_provider_missing = (
-                    not getattr(vlm_provider_config, "api_key", "")
-                    or not vlm_provider_config.configured
+                credentials = current_config.providers.credential_values(effective_vlm_provider)
+                api_key = getattr(vlm_provider_config, "api_key", "") or credentials.get(
+                    "api_key", ""
                 )
+                vlm_provider_missing = not api_key or not vlm_provider_config.configured
+                if effective_vlm_provider in ("azure", "azure_ai"):
+                    endpoint = credentials.get("api_base", "")
+                    vlm_provider_missing = vlm_provider_missing or not endpoint
                 if effective_vlm_provider == "watsonx":
                     vlm_provider_missing = (
                         vlm_provider_missing
@@ -874,12 +879,7 @@ async def update_settings(
             provider_updated = True
 
         if body.remove_ollama_config:
-            other_providers_configured = (
-                working_config.providers.openai.configured
-                or working_config.providers.anthropic.configured
-                or working_config.providers.watsonx.configured
-            )
-            if not other_providers_configured:
+            if not _has_other_configured_provider(working_config, "ollama"):
                 return JSONResponse(
                     {
                         "error": "Cannot remove Ollama configuration: configure another model provider first."
@@ -906,12 +906,7 @@ async def update_settings(
             provider_updated = True
 
         if body.remove_openai_config:
-            other_providers_configured = (
-                working_config.providers.anthropic.configured
-                or working_config.providers.watsonx.configured
-                or working_config.providers.ollama.configured
-            )
-            if not other_providers_configured:
+            if not _has_other_configured_provider(working_config, "openai"):
                 return JSONResponse(
                     {
                         "error": "Cannot remove OpenAI configuration: configure another model provider first."
@@ -938,12 +933,7 @@ async def update_settings(
             provider_updated = True
 
         if body.remove_anthropic_config:
-            other_providers_configured = (
-                working_config.providers.openai.configured
-                or working_config.providers.watsonx.configured
-                or working_config.providers.ollama.configured
-            )
-            if not other_providers_configured:
+            if not _has_other_configured_provider(working_config, "anthropic"):
                 return JSONResponse(
                     {
                         "error": "Cannot remove Anthropic configuration: configure another model provider first."
@@ -961,12 +951,7 @@ async def update_settings(
             provider_updated = True
 
         if body.remove_watsonx_config:
-            other_providers_configured = (
-                working_config.providers.openai.configured
-                or working_config.providers.anthropic.configured
-                or working_config.providers.ollama.configured
-            )
-            if not other_providers_configured:
+            if not _has_other_configured_provider(working_config, "watsonx"):
                 return JSONResponse(
                     {
                         "error": "Cannot remove IBM watsonx.ai configuration: configure another model provider first."
@@ -997,8 +982,7 @@ async def update_settings(
         if body.remove_provider_config:
             provider = body.remove_provider_config.strip().lower()
             if provider in working_config.providers.custom:
-                del working_config.providers.custom[provider]
-                if not working_config.providers.any_configured():
+                if not _has_other_configured_provider(working_config, provider):
                     return JSONResponse(
                         {
                             "error": (
@@ -1008,6 +992,7 @@ async def update_settings(
                         },
                         status_code=400,
                     )
+                del working_config.providers.custom[provider]
                 if working_config.agent.llm_provider == provider:
                     fallback = _first_configured_llm_provider(working_config, provider)
                     working_config.agent.llm_provider = fallback
@@ -1223,6 +1208,12 @@ async def onboarding(
             elif llm_provider == "ollama" and current_config.providers.ollama.endpoint:
                 current_config.providers.ollama.configured = True
                 logger.info("Marked Ollama as configured (chosen as LLM provider)")
+            elif (
+                llm_provider in current_config.providers.custom
+                and current_config.providers.custom[llm_provider].credentials
+            ):
+                current_config.providers.custom[llm_provider].configured = True
+                logger.info(f"Marked {llm_provider} as configured (chosen as LLM provider)")
 
         # Check embedding provider
         if body.embedding_provider:
@@ -1241,6 +1232,14 @@ async def onboarding(
             elif embedding_provider == "ollama" and current_config.providers.ollama.endpoint:
                 current_config.providers.ollama.configured = True
                 logger.info("Marked Ollama as configured (chosen as embedding provider)")
+            elif (
+                embedding_provider in current_config.providers.custom
+                and current_config.providers.custom[embedding_provider].credentials
+            ):
+                current_config.providers.custom[embedding_provider].configured = True
+                logger.info(
+                    f"Marked {embedding_provider} as configured (chosen as embedding provider)"
+                )
 
         should_ingest_sample_data = INGEST_SAMPLE_DATA
         if should_ingest_sample_data:

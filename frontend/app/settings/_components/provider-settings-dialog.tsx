@@ -21,6 +21,7 @@ import {
 import { useAuth } from "@/contexts/auth-context";
 import type { CatalogCredentialField } from "../_helpers/catalog-models";
 import {
+  canRemoveProvider,
   getProviderChrome,
   type ModelProvider,
 } from "../_helpers/model-helpers";
@@ -79,13 +80,9 @@ const ProviderSettingsDialog = ({
   const isConfigured = saved?.configured === true;
   const savedSecretFields = saved?.secret_fields ?? [];
 
-  // Removing the last configured provider would leave the agent with nothing
-  // to call, so mirror the bespoke dialogs and require another one first.
-  const canRemove =
-    isConfigured &&
-    Object.entries(settings.providers?.custom ?? {}).some(
-      ([key, value]) => key !== provider && value?.configured === true,
-    );
+  // Removing the last configured provider with an embedding model would leave
+  // the agent with nothing to embed documents, so require another one first.
+  const canRemove = canRemoveProvider(settings.providers, provider);
 
   const methods = useForm<ProviderSettingsFormData>({
     mode: "onSubmit",
@@ -174,13 +171,16 @@ const ProviderSettingsDialog = ({
         setOpen(o);
       }}
     >
-      <DialogContent autoFocus={false} className="max-w-2xl overflow-hidden">
+      <DialogContent
+        autoFocus={false}
+        className="max-w-2xl max-h-[95vh] flex flex-col overflow-hidden"
+      >
         <FormProvider {...methods}>
           <form
             onSubmit={handleSubmit(onSubmit)}
-            className="grid min-w-0 gap-4"
+            className="flex flex-col min-h-0 flex-1"
           >
-            <DialogHeader className="mb-2">
+            <DialogHeader className="shrink-0 mb-2">
               <DialogTitle className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded flex items-center justify-center bg-white border">
                   <Logo className="w-4 h-4 text-black" />
@@ -189,66 +189,70 @@ const ProviderSettingsDialog = ({
               </DialogTitle>
             </DialogHeader>
 
-            <ProviderSettingsForm
-              providerName={chrome.name}
-              fields={fields}
-              savedSecretFields={savedSecretFields}
-              saveError={methods.formState.errors.root?.message}
-            />
+            <div className="flex-1 min-h-0 overflow-y-auto min-w-0 px-1 -mx-1 py-1 space-y-4">
+              <ProviderSettingsForm
+                providerName={chrome.name}
+                fields={fields}
+                savedSecretFields={savedSecretFields}
+                saveError={methods.formState.errors.root?.message}
+              />
 
-            <LazyMotion features={domAnimation}>
-              <AnimatePresence mode="wait">
-                {settingsMutation.isError && (
-                  <m.div
-                    key="error"
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                  >
-                    <p className="rounded-lg border border-destructive p-4 min-w-0 [overflow-wrap:anywhere]">
-                      {settingsMutation.error?.message}
-                    </p>
-                  </m.div>
-                )}
-                {removeMutation.isError &&
-                  !isEmbeddingProviderInUseError(removeMutation.error) && (
+              <LazyMotion features={domAnimation}>
+                <AnimatePresence mode="wait">
+                  {settingsMutation.isError && (
                     <m.div
-                      key="remove-error"
+                      key="error"
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -10 }}
                     >
                       <p className="rounded-lg border border-destructive p-4 min-w-0 [overflow-wrap:anywhere]">
-                        {removeMutation.error?.message}
+                        {settingsMutation.error?.message}
                       </p>
                     </m.div>
                   )}
-              </AnimatePresence>
-            </LazyMotion>
+                  {removeMutation.isError &&
+                    !isEmbeddingProviderInUseError(removeMutation.error) && (
+                      <m.div
+                        key="remove-error"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                      >
+                        <p className="rounded-lg border border-destructive p-4 min-w-0 [overflow-wrap:anywhere]">
+                          {removeMutation.error?.message}
+                        </p>
+                      </m.div>
+                    )}
+                </AnimatePresence>
+              </LazyMotion>
+            </div>
 
-            <ModelProviderDialogFooter
-              showRemoveConfirm={showRemoveConfirm}
-              onCancelRemove={() => {
-                setShowRemoveConfirm(false);
-                setAffectedModels(undefined);
-              }}
-              onConfirmRemove={() =>
-                removeMutation.mutate({
-                  remove_provider_config: provider,
-                  force_remove: !!affectedModels,
-                })
-              }
-              isRemovePending={removeMutation.isPending}
-              isConfigured={isConfigured}
-              canRemove={canRemove}
-              providerKey={provider}
-              removeDisabledTooltip={`Configure another model provider before removing ${chrome.name}`}
-              onRequestRemove={() => setShowRemoveConfirm(true)}
-              onCancel={() => setOpen(false)}
-              isSavePending={settingsMutation.isPending}
-              isValidating={false}
-              affectedModels={affectedModels}
-            />
+            <div className="shrink-0">
+              <ModelProviderDialogFooter
+                showRemoveConfirm={showRemoveConfirm}
+                onCancelRemove={() => {
+                  setShowRemoveConfirm(false);
+                  setAffectedModels(undefined);
+                }}
+                onConfirmRemove={() =>
+                  removeMutation.mutate({
+                    remove_provider_config: provider,
+                    force_remove: !!affectedModels,
+                  })
+                }
+                isRemovePending={removeMutation.isPending}
+                isConfigured={isConfigured}
+                canRemove={canRemove}
+                providerKey={provider}
+                removeDisabledTooltip={`Configure another model provider before removing ${chrome.name}`}
+                onRequestRemove={() => setShowRemoveConfirm(true)}
+                onCancel={() => setOpen(false)}
+                isSavePending={settingsMutation.isPending}
+                isValidating={false}
+                affectedModels={affectedModels}
+              />
+            </div>
           </form>
         </FormProvider>
       </DialogContent>

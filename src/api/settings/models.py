@@ -23,7 +23,13 @@ class SettingsUpdateBody(BaseModel):
     picture_descriptions: bool | None = None
     disable_ingest_with_langflow: bool | None = None
     vlm_enabled: bool | None = None
-    vlm_provider: str | None = Field(None, pattern="^(openai|watsonx|anthropic|local|ollama)$")
+    # Providers are configurable — `config/model_providers.yaml` plus the custom
+    # entries an operator adds — so this cannot be a closed list. The old enum
+    # rejected every provider introduced after it (`azure_ai` first among them)
+    # and 422'd the entire ingest-settings save, not just the VLM fields. Check
+    # the shape of a provider key here; whether it is *configured* is checked in
+    # `update_settings`, where the provider config is in hand.
+    vlm_provider: str | None = Field(None, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
     vlm_model: str | None = Field(None, min_length=1)
     vlm_prompt: str | None = None
     vlm_response_format: str | None = Field(None, pattern="^(markdown|doctags|html)$")

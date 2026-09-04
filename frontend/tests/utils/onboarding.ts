@@ -1,14 +1,59 @@
 import { expect, type Page } from "@playwright/test";
 import path from "path";
+import { ACTIVE_PROVIDER_CONFIG } from "../config/provider";
 
-export type LLMProvider = "openai" | "anthropic" | "watsonx" | "ollama";
-export type EmbeddingProvider = "openai" | "watsonx" | "ollama";
+export type LLMProvider =
+  | "azure"
+  | "openai"
+  | "anthropic"
+  | "watsonx"
+  | "ollama";
+export type EmbeddingProvider = "azure" | "openai" | "watsonx" | "ollama";
+
+/**
+ * E2E credentials use Azure OpenAI, whose onboarding tab is `azure`.
+ * `azure_ai` is Azure AI Foundry and has separate credentials, but older CI
+ * configuration used that provider name for the shared Azure OpenAI secret.
+ */
+function normalizeProviderKey(provider: string): string {
+  return provider === "azure_ai" ? "azure" : provider;
+}
+
+function getProviderKey(providerName: string): LLMProvider {
+  switch (providerName) {
+    case "Azure OpenAI":
+      return "azure";
+    case "IBM watsonx.ai":
+      return "watsonx";
+    case "Ollama":
+      return "ollama";
+    case "Anthropic":
+      return "anthropic";
+    default:
+      return "openai";
+  }
+}
+
+const activeProviderKey = getProviderKey(ACTIVE_PROVIDER_CONFIG.provider);
+
+const defaultLlmProvider: LLMProvider =
+  (normalizeProviderKey(
+    (process.env.LLM_PROVIDER || "").trim().toLowerCase(),
+  ) as LLMProvider) || activeProviderKey;
+
+const defaultEmbeddingProvider: EmbeddingProvider =
+  (normalizeProviderKey(
+    (process.env.EMBEDDING_PROVIDER || "").trim().toLowerCase(),
+  ) as EmbeddingProvider) ||
+  (activeProviderKey === "anthropic"
+    ? "openai"
+    : (activeProviderKey as EmbeddingProvider));
 
 export async function completeOnboarding(
   page: Page,
   {
-    llmProvider = "openai",
-    embeddingProvider = "openai",
+    llmProvider = defaultLlmProvider,
+    embeddingProvider = defaultEmbeddingProvider,
     reset = false,
   }: {
     llmProvider?: LLMProvider;
@@ -19,6 +64,16 @@ export async function completeOnboarding(
   // Fast path checks for environment variables
   const checkCredentials = (provider: string) => {
     if (provider === "ollama") return;
+    if (provider === "azure") {
+      const key = process.env.AZURE_OPENAI_API_KEY || process.env.AZURE_API_KEY;
+      const endpoint =
+        process.env.AZURE_OPENAI_ENDPOINT ||
+        process.env.AZURE_OPENAI_API_BASE ||
+        process.env.AZURE_API_BASE;
+      if (!key) throw new Error("AZURE_OPENAI_API_KEY is not set");
+      if (!endpoint) throw new Error("AZURE_OPENAI_ENDPOINT is not set");
+      return;
+    }
     const envVarName = `${provider.toUpperCase()}_API_KEY`;
     if (!process.env[envVarName]) {
       throw new Error(`${envVarName} is not set`);
@@ -62,7 +117,15 @@ export async function completeOnboarding(
   }
 
   const isCompleted = await completedLocator.isVisible();
-  const isFirstStep = await page.getByTestId("openai-llm-tab").isVisible();
+  const isFirstStep =
+    (await page
+      .getByTestId("openai-llm-tab")
+      .isVisible()
+      .catch(() => false)) ||
+    (await page
+      .getByTestId("azure-llm-tab")
+      .isVisible()
+      .catch(() => false));
 
   if (isCompleted && !reset) {
     return;
@@ -90,7 +153,33 @@ export async function completeOnboarding(
     const tabId = `${provider}-${isEmbedding ? "embedding" : "llm"}-tab`;
     await page.getByTestId(tabId).click();
 
-    if (provider !== "ollama") {
+    if (provider === "azure") {
+      const endpoint =
+        process.env.AZURE_OPENAI_ENDPOINT ||
+        process.env.AZURE_OPENAI_API_BASE ||
+        process.env.AZURE_API_BASE ||
+        "";
+      const key =
+        process.env.AZURE_OPENAI_API_KEY || process.env.AZURE_API_KEY || "";
+      const baseInput = page.locator(
+        "#onboarding-azure-api_base, [data-testid='endpoint']",
+      );
+      if ((await baseInput.isVisible()) && (await baseInput.isEnabled())) {
+        const val = await baseInput.inputValue();
+        if (!val && endpoint) {
+          await baseInput.fill(endpoint);
+        }
+      }
+      const keyInput = page.locator(
+        "#onboarding-azure-api_key, [data-testid='api-key']",
+      );
+      if ((await keyInput.isVisible()) && (await keyInput.isEnabled())) {
+        const val = await keyInput.inputValue();
+        if (!val && key) {
+          await keyInput.fill(key);
+        }
+      }
+    } else if (provider !== "ollama") {
       const getFromEnvSwitch = page.getByTestId("get-from-env-switch");
 
       // Check if switch is visible and toggle off to enter explicit key if needed
@@ -137,12 +226,43 @@ export async function completeOnboarding(
     await expect(selector).toBeEnabled({ timeout: 30000 });
     await selector.click();
 
-    // Select the first available model
-    await expect(page.getByTestId(/^model-option-/).first()).toBeVisible();
-    await page
-      .getByTestId(/^model-option-/)
-      .first()
-      .click();
+    // Select preferred model if available, else first option
+    const preferredModel =
+      provider === activeProviderKey
+        ? isEmbedding
+          ? ACTIVE_PROVIDER_CONFIG.embedding
+          : ACTIVE_PROVIDER_CONFIG.language
+        : isEmbedding
+          ? process.env.EMBEDDING_MODEL ||
+            (provider === "azure" ? "text-embedding-3-small" : undefined)
+          : process.env.LLM_MODEL ||
+            (provider === "azure" ? "gpt-4.1" : undefined);
+
+    await page.waitForTimeout(2000);
+    let selected = false;
+    if (preferredModel) {
+      const searchInput = page.getByTestId("model-search-input");
+      await searchInput.fill(preferredModel, { timeout: 2000 });
+      await page.waitForTimeout(2000);
+      const preferredOption = page.getByTestId(
+        `model-option-${preferredModel}`,
+      );
+      if (
+        await preferredOption.isVisible({ timeout: 2000 }).catch(() => false)
+      ) {
+        await preferredOption.click();
+        selected = true;
+      } else {
+        await searchInput.clear();
+      }
+    }
+    if (!selected) {
+      await expect(page.getByTestId(/^model-option-/).first()).toBeVisible();
+      await page
+        .getByTestId(/^model-option-/)
+        .first()
+        .click();
+    }
 
     // Complete this step
     await page.getByTestId("onboarding-complete-button").click();

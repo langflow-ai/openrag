@@ -24,10 +24,11 @@ export class ProviderDetector {
       .getByText("Providers")
       .waitFor({ state: "visible", timeout: 10000 });
 
-    // Find the heading that contains the provider name
-    const providerHeading = this.page
-      .locator("h3")
-      .filter({ hasText: providerName });
+    // Find the heading that matches the provider name exactly
+    const providerHeading = this.page.getByRole("heading", {
+      name: providerName,
+      exact: true,
+    });
 
     try {
       await providerHeading.waitFor({ state: "visible", timeout: 10000 });
@@ -61,7 +62,13 @@ export class ProviderDetector {
    * @returns Array of configured provider names
    */
   async getConfiguredProviders(): Promise<string[]> {
-    const providers = ["OpenAI", "Ollama", "IBM watsonx.ai", "Anthropic"];
+    const providers = [
+      "Azure OpenAI",
+      "OpenAI",
+      "Ollama",
+      "IBM watsonx.ai",
+      "Anthropic",
+    ];
     const configured: string[] = [];
 
     for (const provider of providers) {

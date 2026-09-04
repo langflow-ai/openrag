@@ -226,6 +226,9 @@ export class Settings {
 
   async saveIngestSettings() {
     const saveButton = this.saveIngestSettingsButton();
+    await this.page.waitForTimeout(500);
+    await saveButton.scrollIntoViewIfNeeded();
+    await this.page.waitForTimeout(500);
     await expect(saveButton).toBeVisible();
     await expect(saveButton).toBeEnabled({ timeout: 10000 });
     await saveButton.click();
@@ -234,10 +237,12 @@ export class Settings {
 
   async setPictureDescriptions(enabled: boolean) {
     await this.clickTab("Ingestion");
+    await this.page.waitForTimeout(500);
     const toggle = this.pictureDescriptionsToggle();
     await toggle.scrollIntoViewIfNeeded();
     const state = await toggle.getAttribute("data-state");
     const isChecked = state === "checked";
+    await this.page.waitForTimeout(500);
     if (isChecked !== enabled) {
       await toggle.click();
       await this.saveIngestSettings();
@@ -246,10 +251,12 @@ export class Settings {
 
   async setTableStructure(enabled: boolean) {
     await this.clickTab("Ingestion");
+    await this.page.waitForTimeout(500);
     const toggle = this.tableStructureToggle();
     await toggle.scrollIntoViewIfNeeded();
     const state = await toggle.getAttribute("data-state");
     const isChecked = state === "checked";
+    await this.page.waitForTimeout(500);
     if (isChecked !== enabled) {
       await toggle.click();
       await this.saveIngestSettings();
@@ -258,10 +265,12 @@ export class Settings {
 
   async setOCR(enabled: boolean) {
     await this.clickTab("Ingestion");
+    await this.page.waitForTimeout(500);
     const toggle = this.ocrToggle();
     await toggle.scrollIntoViewIfNeeded();
     const state = await toggle.getAttribute("data-state");
     const isChecked = state === "checked";
+    await this.page.waitForTimeout(500);
     if (isChecked !== enabled) {
       await toggle.click();
       await this.saveIngestSettings();
@@ -270,10 +279,12 @@ export class Settings {
 
   async setDisableLangflowIngestion(enabled: boolean) {
     await this.clickTab("Ingestion");
+    await this.page.waitForTimeout(500);
     const toggle = this.disableLangflowIngestionToggle();
     await toggle.scrollIntoViewIfNeeded();
     const state = await toggle.getAttribute("data-state");
     const isChecked = state === "checked";
+    await this.page.waitForTimeout(500);
     if (isChecked !== enabled) {
       await toggle.click();
       await this.saveIngestSettings();
@@ -298,6 +309,7 @@ export class Settings {
     }
     await expect(search).toBeVisible({ timeout: 5000 });
     await search.fill(model);
+    await this.page.waitForTimeout(2000);
     const option = this.getModelOption(model);
     await expect(option).toBeVisible({ timeout: 10000 });
     await option.waitFor({ state: "visible" });
@@ -341,15 +353,20 @@ export class Settings {
     }
 
     // Update chunk size
+    await chunkSizeInp.scrollIntoViewIfNeeded();
     await chunkSizeInp.click();
+    await this.page.waitForTimeout(500);
     await chunkSizeInp.fill(chunkSize);
+    await this.page.waitForTimeout(500);
     await chunkSizeInp.blur();
 
     // Find and update chunk overlap input
     const chunkOverlapInp = this.chunkOverlapInput();
     await chunkOverlapInp.scrollIntoViewIfNeeded();
     await chunkOverlapInp.click();
+    await this.page.waitForTimeout(500);
     await chunkOverlapInp.fill(chunkOverlap);
+    await this.page.waitForTimeout(500);
     await chunkOverlapInp.blur();
 
     // Wait a moment for the form to detect changes
@@ -512,6 +529,50 @@ export class Settings {
     // Neither found
     else {
       throw new Error("Neither Configure nor Edit Setup button is visible");
+    }
+  }
+
+  /**
+   * Configure Azure OpenAI model provider
+   */
+  async configureAzureOpenAI() {
+    logger.info("Configuring Azure OpenAI settings");
+    const configureBtn = this.getConfigureButton("Azure OpenAI");
+    const editBtn = this.getEditSetupButton("Azure OpenAI");
+
+    if (await configureBtn.isVisible()) {
+      await configureBtn.click();
+      await expect(this.getSetupHeading("Azure OpenAI")).toBeVisible();
+      const apiKey = config.azure.apiKey;
+      const endpoint = config.azure.endpoint;
+      if (endpoint) {
+        const endpointInput = this.page
+          .locator('input[id*="endpoint"], input[id*="api_base"]')
+          .first();
+        if (await endpointInput.isVisible()) {
+          await endpointInput.fill(endpoint);
+        }
+      }
+      if (apiKey) {
+        const apiKeyInput = this.apiKeyInput();
+        if (await apiKeyInput.isVisible()) {
+          await apiKeyInput.fill(apiKey);
+        }
+      }
+      await this.saveModelProviderButton().click();
+      await this.awaitProviderConfigResult(
+        "Azure OpenAI",
+        "Azure OpenAI successfully configured",
+      );
+      logger.info("Azure OpenAI configuration completed");
+      await expect(editBtn).toBeEnabled();
+    } else if (await editBtn.isVisible()) {
+      logger.info("Azure OpenAI already configured. Skipping setup.");
+      await expect(editBtn).toBeEnabled();
+    } else {
+      throw new Error(
+        "Neither Configure nor Edit Setup button is visible for Azure OpenAI",
+      );
     }
   }
 
