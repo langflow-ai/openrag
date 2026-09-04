@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 from pydantic import BaseModel
@@ -274,6 +275,9 @@ class DoclingService:
                         "Docling VLM is enabled but the Azure provider is not configured "
                         "(api key and endpoint are required)"
                     )
+                parsed = urlparse(endpoint)
+                if parsed.scheme.lower() != "https" or not parsed.netloc:
+                    raise DoclingServeError("Azure VLM endpoint must use HTTPS")
                 deployment = vlm_model.removeprefix("azure/")
                 url = (
                     f"{endpoint.rstrip('/')}/openai/deployments/{deployment}/chat/completions"

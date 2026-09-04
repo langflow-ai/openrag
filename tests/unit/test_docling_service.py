@@ -362,6 +362,20 @@ async def test_build_vlm_options_azure(docling_service):
 
 
 @pytest.mark.asyncio
+async def test_build_vlm_options_azure_rejects_non_https(docling_service):
+    """Azure VLM options reject plain HTTP endpoints."""
+    mock_config = _vlm_mock_config("azure")
+    mock_config.knowledge.vlm_model = "azure/gpt-4.1"
+    mock_config.providers.credential_values = lambda provider: {
+        "api_key": "azure-key",
+        "api_base": "http://example.openai.azure.com",
+    }
+    with patch("services.docling_service.get_openrag_config", return_value=mock_config):
+        with pytest.raises(DoclingServeError, match="Azure VLM endpoint must use HTTPS"):
+            await docling_service._build_docling_options_async()
+
+
+@pytest.mark.asyncio
 async def test_upload_vlm_enabled_sends_vlm_form_fields(docling_service, mock_httpx_client):
     """VLM upload sends custom picture description parameters."""
     import json as json_lib

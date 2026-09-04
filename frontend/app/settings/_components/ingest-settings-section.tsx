@@ -233,25 +233,25 @@ export function IngestSettingsSection() {
     [groupedVlmModels],
   );
 
+  const knownProvider = vlmProvider || settings.knowledge?.vlm_provider;
+  const targetModel = vlmModel || settings.knowledge?.vlm_model;
+  const selectedVlmMatch = findGroupedSelection(
+    groupedVlmModels,
+    targetModel,
+    knownProvider,
+  );
   const selectedVlmOption =
-    allVlmOptions.find((o) => o.value === vlmModel) ||
-    allVlmOptions.find((o) => o.value === settings.knowledge?.vlm_model) ||
+    selectedVlmMatch?.option ||
+    (targetModel
+      ? allVlmOptions.find((o) => o.value === targetModel)
+      : undefined) ||
     allVlmOptions[0];
 
   const effectiveVlmProvider =
+    selectedVlmMatch?.group?.provider ||
     selectedVlmOption?.provider ||
-    vlmProvider ||
-    settings.knowledge?.vlm_provider ||
+    knownProvider ||
     "";
-
-  useEffect(() => {
-    if (
-      selectedVlmOption?.provider &&
-      vlmProvider !== selectedVlmOption.provider
-    ) {
-      setVlmProvider(selectedVlmOption.provider);
-    }
-  }, [selectedVlmOption?.provider, vlmProvider]);
 
   const updateSettingsMutation = useUpdateSettingsMutation({
     onSuccess: () => {
