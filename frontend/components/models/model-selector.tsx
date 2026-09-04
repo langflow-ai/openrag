@@ -3,7 +3,7 @@
 import { CheckIcon, ChevronsUpDownIcon } from "lucide-react";
 import { useDeferredValue, useEffect, useId, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import { Button, type ButtonProps } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import {
   Command,
   CommandGroup,
@@ -18,41 +18,20 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { CapabilityStrip } from "./capability-strip";
-import type { CatalogModel } from "./catalog-models";
 import { MODELS_PER_PROVIDER } from "./model-info";
+import type {
+  GroupedModelOption,
+  ModelOption,
+  ModelSelectorProps,
+} from "./types";
 
-export type ModelOption = {
-  value: string;
-  label: string;
-  default?: boolean;
-  provider?: string;
-  model?: CatalogModel;
-  icon?: React.ReactNode;
-};
-
-export type GroupedModelOption = {
-  group: string;
-  /** Provider key for custom entries typed under this group. */
-  provider?: string;
-  options: ModelOption[];
-  icon?: React.ReactNode;
-};
-
-export interface ModelSelectorProps extends ButtonProps {
-  options?: ModelOption[];
-  groupedOptions?: GroupedModelOption[];
-  value: string;
-  /** Disambiguates the same model id hosted by more than one vendor. */
-  selectedProvider?: string;
-  icon?: React.ReactNode;
-  placeholder?: string;
-  searchPlaceholder?: string;
-  noOptionsPlaceholder?: string;
-  custom?: boolean;
-  onValueChange: (value: string, provider?: string) => void;
-  hasError?: boolean;
-  defaultOpen?: boolean;
-}
+// Re-exported so existing `from "@/components/models/model-selector"` imports
+// keep working; the definitions themselves live in `./types` now.
+export type {
+  GroupedModelOption,
+  ModelOption,
+  ModelSelectorProps,
+} from "./types";
 
 function optionProvider(
   option: ModelOption,
