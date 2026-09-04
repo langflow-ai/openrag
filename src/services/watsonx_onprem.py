@@ -106,8 +106,10 @@ CREDENTIAL_FIELDS: list[dict[str, Any]] = [
         "key": "username",
         "label": "Username",
         "placeholder": None,
-        "tooltip": "Your Cloud Pak for Data username. Combined with the API key below "
-        "into the ZenApiKey the cluster authenticates with.",
+        "tooltip": "Your Cloud Pak for Data username. Required alongside the API key: "
+        "the two are combined into the ZenApiKey the cluster authenticates with, and an "
+        "API key on its own cannot authenticate to a cluster. Not needed if you paste a "
+        "Zen API key below instead.",
         "required": False,
         "field_type": "text",
         "options": None,
@@ -232,8 +234,13 @@ def auth_header(stored: Mapping[str, Any]) -> str:
     credentials = litellm_credentials(stored)
     if credentials.get("zen_api_key"):
         return f"ZenApiKey {credentials['zen_api_key']}"
-    if credentials.get("api_key"):
-        return f"Bearer {credentials['api_key']}"
+    # Deliberately no `Bearer <api_key>` fallback. A Cloud Pak for Data API key
+    # is not a bearer token — the cluster issues one from `/icp4d-api/v1/authorize`
+    # in exchange for a *username and* an API key. Sending the raw key gets a
+    # 401 that looks like bad credentials rather than incomplete ones, and the
+    # caller quietly falls back to the configured model list with nothing on
+    # screen to say why. Returning nothing lets the health check say what is
+    # missing.
     return ""
 
 
@@ -386,6 +393,13 @@ async def fetch_models(credentials: Mapping[str, Any]) -> ClusterModels | None:
     api_base = (values.get("api_base") or "").strip()
     header = auth_header(credentials)
     if not api_base or not header:
+        logger.warning(
+            "Not listing models on the watsonx.ai cluster: credentials are incomplete. "
+            "A cluster URL plus either a username and API key, or a Zen API key, is "
+            "needed; the configured model list is used until then.",
+            has_cluster_url=bool(api_base),
+            has_credentials=bool(header),
+        )
         return None
 
     key = _cache_key(credentials)
