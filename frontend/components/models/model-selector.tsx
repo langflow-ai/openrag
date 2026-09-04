@@ -1,7 +1,7 @@
 "use client";
 
 import { CheckIcon, ChevronsUpDownIcon } from "lucide-react";
-import { useDeferredValue, useEffect, useId, useMemo, useState } from "react";
+import { useDeferredValue, useId, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -235,18 +235,6 @@ export function ModelSelector({
   const hasVisibleRows = groupedOptions
     ? (visibleGroups?.length ?? 0) > 0 || showUngroupedCustomEntry
     : visibleOptions.length > 0 || showFlatCustomEntry;
-
-  useEffect(() => {
-    if (
-      allOptions.length > 0 &&
-      value &&
-      value !== "" &&
-      !allOptions.some((option) => option.value === value) &&
-      !custom
-    ) {
-      onValueChange("");
-    }
-  }, [allOptions, value, custom, onValueChange]);
 
   return (
     <Popover open={open} onOpenChange={setOpen} modal={false}>
