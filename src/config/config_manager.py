@@ -500,6 +500,26 @@ class ConfigManager:
         logger.debug("[CONFIG] Configuration loaded successfully")
         return self._config
 
+    @staticmethod
+    def _seed_custom_provider(
+        config_data: dict[str, Any],
+        provider: str,
+        api_key: str | None,
+        api_base: str | None,
+        api_version: str | None,
+    ) -> None:
+        """Fill a custom provider's credentials from the environment."""
+        custom_providers = config_data.setdefault("providers", {}).setdefault("custom", {})
+        entry = custom_providers.setdefault(provider, {})
+        credentials = entry.setdefault("credentials", {})
+        if api_key:
+            credentials["api_key"] = api_key
+        if api_base:
+            credentials["api_base"] = api_base
+        if api_version:
+            credentials["api_version"] = api_version
+        entry["configured"] = bool(credentials.get("api_key") and credentials.get("api_base"))
+
     def _load_env_overrides(
         self, config_data: dict[str, Any], temp_config: Optional["OpenRAGConfig"] = None
     ) -> None:
@@ -562,19 +582,23 @@ class ConfigManager:
         )
         azure_version = os.getenv("AZURE_OPENAI_API_VERSION") or os.getenv("AZURE_API_VERSION")
         if azure_key or azure_endpoint:
-            custom_providers = config_data.setdefault("providers", {}).setdefault("custom", {})
-            for prov_name in ("azure", "azure_ai"):
-                azure_custom = custom_providers.setdefault(prov_name, {})
-                azure_creds = azure_custom.setdefault("credentials", {})
-                if azure_key:
-                    azure_creds["api_key"] = azure_key
-                if azure_endpoint:
-                    azure_creds["api_base"] = azure_endpoint
-                if azure_version:
-                    azure_creds["api_version"] = azure_version
-                azure_custom["configured"] = bool(
-                    azure_creds.get("api_key") and azure_creds.get("api_base")
-                )
+            self._seed_custom_provider(
+                config_data, "azure", azure_key, azure_endpoint, azure_version
+            )
+
+        # Azure AI Foundry is a separate resource with its own endpoint and key,
+        # and LiteLLM keys it separately (`azure_ai`). Seeding it from the Azure
+        # OpenAI variables made Foundry look configured whenever Azure OpenAI
+        # was, so its catalogue (Mistral, Llama, Phi …) was offered — and
+        # auto-selected for picture descriptions — against a resource that
+        # serves none of those models.
+        azure_ai_key = os.getenv("AZURE_AI_API_KEY")
+        azure_ai_endpoint = os.getenv("AZURE_AI_API_BASE") or os.getenv("AZURE_AI_ENDPOINT")
+        azure_ai_version = os.getenv("AZURE_AI_API_VERSION")
+        if azure_ai_key or azure_ai_endpoint:
+            self._seed_custom_provider(
+                config_data, "azure_ai", azure_ai_key, azure_ai_endpoint, azure_ai_version
+            )
 
         # Knowledge settings
         if os.getenv("EMBEDDING_PROVIDER"):

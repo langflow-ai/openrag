@@ -89,3 +89,50 @@ def test_azure_openai_env_overrides_and_defaults(monkeypatch, tmp_path):
     assert config.agent.llm_model == "gpt-4.1"
     assert config.knowledge.embedding_provider == "azure"
     assert config.knowledge.embedding_model == "text-embedding-3-small"
+
+
+def test_azure_openai_env_does_not_configure_azure_ai_foundry(monkeypatch, tmp_path):
+    """Foundry is a separate resource, so Azure OpenAI's keys must not claim it.
+
+    Seeding both from `AZURE_OPENAI_*` made Foundry look configured whenever
+    Azure OpenAI was, which put its catalogue (Mistral, Llama, Phi …) in the
+    model pickers — and auto-selected one of those for picture descriptions —
+    against an endpoint that serves none of them.
+    """
+    from config.config_manager import ConfigManager
+
+    monkeypatch.setenv("AZURE_OPENAI_API_KEY", "test-azure-key")
+    monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://test-azure.openai.azure.com")
+    for name in ("AZURE_AI_API_KEY", "AZURE_AI_API_BASE", "AZURE_AI_ENDPOINT"):
+        monkeypatch.delenv(name, raising=False)
+
+    cm = ConfigManager(config_file=tmp_path / "config.yaml")
+    config = cm.load_config()
+
+    assert config.providers.custom["azure"].configured is True
+    assert "azure_ai" not in config.providers.custom
+
+
+def test_azure_ai_foundry_env_configures_only_foundry(monkeypatch, tmp_path):
+    from config.config_manager import ConfigManager
+
+    monkeypatch.setenv("AZURE_AI_API_KEY", "foundry-key")
+    monkeypatch.setenv("AZURE_AI_API_BASE", "https://test.services.ai.azure.com/models")
+    for name in (
+        "AZURE_OPENAI_API_KEY",
+        "AZURE_OPENAI_ENDPOINT",
+        "AZURE_OPENAI_API_BASE",
+        "AZURE_API_KEY",
+        "AZURE_API_BASE",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    cm = ConfigManager(config_file=tmp_path / "config.yaml")
+    config = cm.load_config()
+
+    assert config.providers.custom["azure_ai"].configured is True
+    assert config.providers.credential_values("azure_ai") == {
+        "api_key": "foundry-key",
+        "api_base": "https://test.services.ai.azure.com/models",
+    }
+    assert "azure" not in config.providers.custom
