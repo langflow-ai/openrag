@@ -71,14 +71,23 @@ def test_a_pasted_zen_key_is_used_as_given() -> None:
     assert credentials["api_key"] == "cHJlOmVuY29kZWQ="
 
 
-def test_an_api_key_with_no_username_is_still_offered_to_litellm() -> None:
-    """A cluster fronted by IBM Cloud IAM has no username half. Don't drop the secret."""
-    credentials = watsonx_onprem.litellm_credentials(
-        {"api_base": "https://cpd.example.com", "api_key": "APIKEY"}
-    )
+def test_an_api_key_with_no_username_authenticates_to_nothing() -> None:
+    """Username is optional on the form, and leaving it blank used to fail silently.
 
-    assert credentials["api_key"] == "APIKEY"
-    assert "zen_api_key" not in credentials
+    A Cloud Pak for Data API key is not a bearer token — the cluster trades a
+    username *and* a key for one. Sending the raw key got a 401 that read as bad
+    credentials rather than incomplete ones, and the model listing then fell
+    back to the configured list with nothing on screen to say why.
+    """
+    stored = {"api_base": "https://cpd.example.com", "api_key": "APIKEY"}
+
+    # Still handed to LiteLLM, which is free to make its own attempt with it.
+    assert watsonx_onprem.litellm_credentials(stored)["api_key"] == "APIKEY"
+    assert "zen_api_key" not in watsonx_onprem.litellm_credentials(stored)
+    # But OpenRAG's own calls send no header, so the health check reports
+    # missing credentials instead of the cluster reporting bad ones.
+    assert watsonx_onprem.auth_header(stored) == ""
+    assert watsonx_onprem.auth_header({**stored, "username": "cpduser"}).startswith("ZenApiKey ")
 
 
 def test_a_deployment_scope_is_passed_through_untouched() -> None:
