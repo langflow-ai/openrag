@@ -166,9 +166,12 @@ export function ModelSelector({
       return next;
     });
 
-  // Flatten grouped options or use regular options
-  const allOptions =
-    groupedOptions?.flatMap((group) => group.options) || options || [];
+  // Flatten grouped options or use regular options. Memoized so the effect
+  // below (which depends on allOptions) doesn't re-run on every render.
+  const allOptions = useMemo(
+    () => groupedOptions?.flatMap((group) => group.options) || options || [],
+    [groupedOptions, options],
+  );
   const allowCustomEntry = !!custom;
 
   const selectedOptionGroup = groupedOptions?.find((group) =>
