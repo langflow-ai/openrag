@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException
+from pydantic import ValidationError
 
 from api.settings import DoclingPresetBody, update_docling_preset
 from api.settings.models import (
@@ -184,3 +185,24 @@ async def test_update_settings_vlm_azure_configured():
         saved_config = mock_save.call_args[0][0]
         assert saved_config.knowledge.vlm_provider == "azure"
         assert saved_config.knowledge.vlm_model == "azure/gpt-4.1"
+
+
+@pytest.mark.parametrize(
+    "provider",
+    ["openai", "watsonx", "anthropic", "local", "ollama", "azure", "azure_ai", "openai_like"],
+)
+def test_settings_update_body_accepts_configurable_vlm_providers(provider):
+    """Any provider key the catalogue can publish must validate.
+
+    `vlm_provider` used to carry a closed enum of the six original providers.
+    Every provider added since — `azure_ai` first — 422'd the whole
+    ingest-settings save, taking chunk size, OCR and the toggles down with it,
+    because the frontend always sends the VLM fields alongside them.
+    """
+    assert SettingsUpdateBody(vlm_provider=provider).vlm_provider == provider
+
+
+@pytest.mark.parametrize("provider", ["", "has space", "../etc", "semi;colon"])
+def test_settings_update_body_rejects_malformed_vlm_provider(provider):
+    with pytest.raises(ValidationError):
+        SettingsUpdateBody(vlm_provider=provider)

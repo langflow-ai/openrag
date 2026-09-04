@@ -391,3 +391,39 @@ async def test_upload_vlm_enabled_sends_vlm_form_fields(docling_service, mock_ht
     assert data["do_picture_description"] == "true"
     api = json_lib.loads(data["picture_description_api"])
     assert api["params"]["model"] == "gpt-4o"
+
+
+@pytest.mark.asyncio
+async def test_build_vlm_options_azure_ai_foundry(docling_service):
+    """Foundry keeps its own endpoint shape instead of falling back to OpenAI.
+
+    `azure_ai` is Azure AI Foundry, not the Azure OpenAI Service: its api_base
+    already points at the `/models` route, so chat completions hang directly
+    off it rather than under `/openai/deployments/<name>`.
+    """
+    mock_config = _vlm_mock_config("azure_ai")
+    mock_config.knowledge.vlm_model = "azure_ai/mistral-small-2503"
+    mock_config.providers.credential_values = lambda provider: {
+        "api_key": "foundry-key",
+        "api_base": "https://example.services.ai.azure.com/models",
+        "api_version": "2024-05-01-preview",
+    }
+    with patch("services.docling_service.get_openrag_config", return_value=mock_config):
+        options = await docling_service._build_docling_options_async()
+
+    api = options["picture_description_api"]
+    assert api["url"] == (
+        "https://example.services.ai.azure.com/models/chat/completions"
+        "?api-version=2024-05-01-preview"
+    )
+    assert api["headers"] == {"api-key": "foundry-key"}
+    assert api["params"] == {"model": "mistral-small-2503", "max_completion_tokens": 5000}
+
+
+@pytest.mark.asyncio
+async def test_build_vlm_options_azure_ai_requires_credentials(docling_service):
+    mock_config = _vlm_mock_config("azure_ai")
+    mock_config.providers.credential_values = lambda provider: {}
+    with patch("services.docling_service.get_openrag_config", return_value=mock_config):
+        with pytest.raises(DoclingServeError, match="Azure AI Foundry provider is not"):
+            await docling_service._build_docling_options_async()

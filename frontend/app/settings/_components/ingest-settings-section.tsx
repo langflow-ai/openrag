@@ -340,18 +340,44 @@ export function IngestSettingsSection() {
   const autoSelectedVlm = useRef(false);
   useEffect(() => {
     if (!showVlmSettings) return;
-    if (settings.knowledge?.vlm_model) {
+    // The catalogue query can resolve before the settings query. Picking a
+    // model then would lock in a choice made without knowing what the agent
+    // runs — and the ref below makes that choice permanent.
+    if (!settings.knowledge) return;
+    if (settings.knowledge.vlm_model) {
       autoSelectedVlm.current = false;
       return;
     }
     if (autoSelectedVlm.current) return;
     if (allVlmOptions.length > 0) {
-      const fallback = allVlmOptions.find((o) => o.default) || allVlmOptions[0];
+      // Prefer the model the agent already runs on, when it can see. The
+      // catalogue is ranked by how recent an id looks, so its first vision row
+      // is whatever the provider published most recently — which for Azure is a
+      // deployment name the operator very likely does not have, since Azure
+      // serves only the deployments they created. The agent's model is one that
+      // demonstrably resolves on this account.
+      const agentModel = settings.agent?.llm_model;
+      const agentProvider = settings.agent?.llm_provider;
+      const agentVisionOption = agentModel
+        ? (allVlmOptions.find(
+            (o) => o.value === agentModel && o.provider === agentProvider,
+          ) ?? allVlmOptions.find((o) => o.value === agentModel))
+        : undefined;
+      const fallback =
+        agentVisionOption ||
+        allVlmOptions.find((o) => o.default) ||
+        allVlmOptions[0];
       setVlmModel(fallback.value);
       setVlmProvider(fallback.provider || "");
       autoSelectedVlm.current = true;
     }
-  }, [showVlmSettings, settings.knowledge?.vlm_model, allVlmOptions]);
+  }, [
+    showVlmSettings,
+    settings.knowledge,
+    settings.agent?.llm_model,
+    settings.agent?.llm_provider,
+    allVlmOptions,
+  ]);
 
   const handleVlmModelChange = (value: string, provider?: string) => {
     setUserEdited(true);
