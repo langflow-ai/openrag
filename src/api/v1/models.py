@@ -8,9 +8,11 @@ Uses API key authentication. Uses stored credentials from config.
 from fastapi import Depends
 from fastapi.responses import JSONResponse
 
+from config.model_constants import OPENAI_DEFAULT_LANGUAGE_MODEL
 from config.settings import get_openrag_config
 from dependencies import get_models_service, require_api_key_permission
 from services.model_catalog import catalog, is_known_provider
+from services.models_service import resolve_preferred_model
 from session_manager import User
 from utils.logging_config import get_logger
 
@@ -82,24 +84,40 @@ async def _fetch_models(provider, config, models_service):
     )
     if entry is None:
         return {"language_models": [], "embedding_models": []}, None
+
+    preferred_language = OPENAI_DEFAULT_LANGUAGE_MODEL if provider in ("azure", "azure_ai") else ""
+    language_models = [
+        {
+            "value": model["model"],
+            "label": model["model"],
+            "default": False,
+            "supports_images": "vision" in model.get("capabilities", []),
+        }
+        for model in entry["models"]
+    ]
+    if language_models:
+        chosen = resolve_preferred_model(preferred_language, language_models)
+        for model in language_models:
+            model["default"] = model["value"] == chosen
+        language_models.sort(key=lambda x: (not x.get("default", False), x["value"]))
+
+    embedding_models = [
+        {
+            "value": model["model"],
+            "label": model["model"],
+            "default": False,
+        }
+        for model in entry["embedding_models"]
+    ]
+    if embedding_models:
+        chosen_embed = resolve_preferred_model("", embedding_models)
+        for model in embedding_models:
+            model["default"] = model["value"] == chosen_embed
+        embedding_models.sort(key=lambda x: (not x.get("default", False), x["value"]))
+
     return {
-        "language_models": [
-            {
-                "value": model["model"],
-                "label": model["model"],
-                "default": False,
-                "supports_images": "vision" in model.get("capabilities", []),
-            }
-            for model in entry["models"]
-        ],
-        "embedding_models": [
-            {
-                "value": model["model"],
-                "label": model["model"],
-                "default": False,
-            }
-            for model in entry["embedding_models"]
-        ],
+        "language_models": language_models,
+        "embedding_models": embedding_models,
     }, None
 
 
