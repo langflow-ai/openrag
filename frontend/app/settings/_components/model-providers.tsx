@@ -4,12 +4,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useGetModelProvidersQuery } from "@/app/api/queries/useGetModelProvidersQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
-import { useProviderHealth } from "@/components/provider-health-banner";
-import { useAuth } from "@/contexts/auth-context";
 import {
   getProviderChrome,
   type ModelProvider,
-} from "../_helpers/model-helpers";
+} from "@/components/models/model-helpers";
+import { useProviderHealth } from "@/components/provider-health-banner";
+import { useAuth } from "@/contexts/auth-context";
 import AnthropicSettingsDialog from "./anthropic-settings-dialog";
 import ModelProviderCard from "./model-provider-card";
 import OllamaSettingsDialog from "./ollama-settings-dialog";

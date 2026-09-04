@@ -3,7 +3,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import type { CatalogModel } from "@/app/settings/_helpers/catalog-models";
+import type { CatalogModel } from "@/components/models/catalog-models";
 import { formatProviderErrorMessage } from "@/lib/chat-stream-errors";
 import { useGetSettingsQuery } from "./useGetSettingsQuery";
 

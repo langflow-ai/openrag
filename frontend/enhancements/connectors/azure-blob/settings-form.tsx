@@ -80,8 +80,8 @@ export function AzureBlobSettingsForm({
                 onAuthModeChange?.();
               }}
             >
-              <TabsList className="w-full">
-                <TabsTrigger value="connection_string">
+              <TabsList className="w-full flex-nowrap">
+                <TabsTrigger value="connection_string" className="flex-1">
                   <span className="font-semibold text-sm">
                     Connection String
                   </span>
@@ -89,7 +89,7 @@ export function AzureBlobSettingsForm({
                     Single paste-in string
                   </span>
                 </TabsTrigger>
-                <TabsTrigger value="account_key">
+                <TabsTrigger value="account_key" className="flex-1">
                   <span className="font-semibold text-sm">Account Key</span>
                   <span className="text-xs text-muted-foreground font-normal">
                     Account name + key

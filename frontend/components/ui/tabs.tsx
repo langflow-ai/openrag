@@ -15,7 +15,7 @@ function TabsList({
     <TabsPrimitive.List
       ref={ref}
       className={cn(
-        "inline-flex h-fit gap-3 items-center justify-center p-0 text-muted-foreground w-full",
+        "flex h-fit w-full flex-wrap items-stretch gap-3 p-0 text-muted-foreground",
         className,
       )}
       {...props}

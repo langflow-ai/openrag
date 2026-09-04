@@ -1,6 +1,6 @@
 import { useFormContext } from "react-hook-form";
-import type { CatalogCredentialField } from "@/app/settings/_helpers/catalog-models";
 import { LabelWrapper } from "@/components/label-wrapper";
+import type { CatalogCredentialField } from "@/components/models/catalog-models";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 

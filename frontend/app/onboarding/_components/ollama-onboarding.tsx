@@ -3,12 +3,12 @@ import { useEffect, useState } from "react";
 import OllamaLogo from "@/components/icons/ollama-logo";
 import { LabelInput } from "@/components/label-input";
 import { LabelWrapper } from "@/components/label-wrapper";
+import { ModelSelector } from "@/components/models/model-selector";
 import { useDebouncedValue } from "@/lib/debounce";
 import type { OnboardingVariables } from "../../api/mutations/useOnboardingMutation";
 import { useGetOllamaModelsQuery } from "../../api/queries/useGetModelsQuery";
 import { useModelSelection } from "../_hooks/useModelSelection";
 import { useUpdateSettings } from "../_hooks/useUpdateSettings";
-import { ModelSelector } from "./model-selector";
 
 export function OllamaOnboarding({
   setSettings,
