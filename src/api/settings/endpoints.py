@@ -779,9 +779,8 @@ async def update_settings(
                     effective_vlm_provider
                 )
                 credentials = current_config.providers.credential_values(effective_vlm_provider)
-                api_key = (
-                    getattr(vlm_provider_config, "api_key", "")
-                    or credentials.get("api_key", "")
+                api_key = getattr(vlm_provider_config, "api_key", "") or credentials.get(
+                    "api_key", ""
                 )
                 vlm_provider_missing = not api_key or not vlm_provider_config.configured
                 if effective_vlm_provider == "azure":
