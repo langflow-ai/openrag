@@ -136,3 +136,47 @@ def test_custom_provider_payload_keeps_legacy_openai_secret():
     payload = _custom_providers_for_settings(config)
     assert payload["openai"].secret_fields == ["api_key"]
     assert payload["openai"].credential_values["organization"] == "org-1"
+
+
+@pytest.mark.asyncio
+async def test_update_settings_vlm_azure_configured():
+    """Test that update_settings allows enabling VLM with azure when azure credentials are configured."""
+    from unittest.mock import patch
+    from api.settings.endpoints import update_settings
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.edited = True
+    config.providers.set_credentials("azure", {"api_key": "az-key", "api_base": "https://example.openai.azure.com"})
+
+    body = SettingsUpdateBody(
+        vlm_enabled=True,
+        vlm_provider="azure",
+        vlm_model="azure/gpt-4.1",
+    )
+
+    user = MagicMock(spec=User)
+    session_manager = AsyncMock()
+    models_service = MagicMock()
+    models_service.validate_model_configured = AsyncMock(return_value=True)
+    rbac = MagicMock()
+    rbac.has_permission = AsyncMock(return_value=True)
+
+    with (
+        patch("api.settings.endpoints.get_openrag_config", return_value=config),
+        patch("api.settings.endpoints.config_manager.save_config_file", return_value=True) as mock_save,
+        patch("api.settings.endpoints.clients.refresh_patched_client", new_callable=AsyncMock),
+    ):
+        response = await update_settings(
+            body=body,
+            session_manager=session_manager,
+            user=user,
+            models_service=models_service,
+            rbac=rbac,
+        )
+        assert getattr(response, "status_code", 200) == 200
+        mock_save.assert_called_once()
+        saved_config = mock_save.call_args[0][0]
+        assert saved_config.knowledge.vlm_provider == "azure"
+        assert saved_config.knowledge.vlm_model == "azure/gpt-4.1"
+

@@ -264,6 +264,30 @@ class DoclingService:
                     },
                     "prompt": prompt,
                 }
+            elif provider == "azure":
+                creds = config.providers.credential_values("azure")
+                api_key = creds.get("api_key")
+                endpoint = creds.get("api_base")
+                api_version = creds.get("api_version") or "2024-02-01"
+                if not (api_key and endpoint):
+                    raise DoclingServeError(
+                        "Docling VLM is enabled but the Azure provider is not configured "
+                        "(api key and endpoint are required)"
+                    )
+                deployment = vlm_model.removeprefix("azure/")
+                url = (
+                    f"{endpoint.rstrip('/')}/openai/deployments/{deployment}/chat/completions"
+                    f"?api-version={api_version}"
+                )
+                options["picture_description_api"] = {
+                    "url": url,
+                    "headers": {"api-key": api_key},
+                    "params": {
+                        "model": deployment,
+                        "max_completion_tokens": knowledge_config.vlm_max_tokens,
+                    },
+                    "prompt": prompt,
+                }
             else:  # openai or default
                 openai = config.providers.openai
                 if not openai.api_key:

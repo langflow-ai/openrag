@@ -778,10 +778,15 @@ async def update_settings(
                 vlm_provider_config = current_config.providers.get_provider_config(
                     effective_vlm_provider
                 )
-                vlm_provider_missing = (
-                    not getattr(vlm_provider_config, "api_key", "")
-                    or not vlm_provider_config.configured
+                credentials = current_config.providers.credential_values(effective_vlm_provider)
+                api_key = (
+                    getattr(vlm_provider_config, "api_key", "")
+                    or credentials.get("api_key", "")
                 )
+                vlm_provider_missing = not api_key or not vlm_provider_config.configured
+                if effective_vlm_provider == "azure":
+                    endpoint = credentials.get("api_base", "")
+                    vlm_provider_missing = vlm_provider_missing or not endpoint
                 if effective_vlm_provider == "watsonx":
                     vlm_provider_missing = (
                         vlm_provider_missing

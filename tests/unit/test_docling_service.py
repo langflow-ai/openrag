@@ -338,6 +338,30 @@ async def test_build_vlm_options_ollama(docling_service):
 
 
 @pytest.mark.asyncio
+async def test_build_vlm_options_azure(docling_service):
+    """Azure VLM options carry the deployment URL, api-key header, and completion params."""
+    mock_config = _vlm_mock_config("azure")
+    mock_config.knowledge.vlm_model = "azure/gpt-4.1"
+    mock_config.providers.credential_values = lambda provider: {
+        "api_key": "azure-key",
+        "api_base": "https://example.openai.azure.com",
+        "api_version": "2024-02-01",
+    }
+    with patch("services.docling_service.get_openrag_config", return_value=mock_config):
+        options = await docling_service._build_docling_options_async()
+
+    assert options["do_picture_description"] is True
+    api = options["picture_description_api"]
+    assert (
+        api["url"]
+        == "https://example.openai.azure.com/openai/deployments/gpt-4.1/chat/completions?api-version=2024-02-01"
+    )
+    assert api["headers"] == {"api-key": "azure-key"}
+    assert api["params"] == {"model": "gpt-4.1", "max_completion_tokens": 5000}
+    assert api["prompt"] == "Extract all text."
+
+
+@pytest.mark.asyncio
 async def test_upload_vlm_enabled_sends_vlm_form_fields(docling_service, mock_httpx_client):
     """VLM upload sends custom picture description parameters."""
     import json as json_lib
