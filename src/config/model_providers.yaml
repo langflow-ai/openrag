@@ -76,10 +76,14 @@ providers:
       oss: true
       on_prem: true
       saas: false # a cluster-hosted deployment has no place in multi-tenant SaaS
+    # Checked against a Cloud Pak for Data 5.x cluster, which serves exactly
+    # these two. Note the embedding id has no `-v2` suffix: `slate-30m-
+    # english-rtrvr-v2` is an IBM Cloud id and 404s here, which is the kind of
+    # near-miss that makes a guessed fallback worse than none.
+    models:
+      - openai/gpt-oss-120b
     embedding_models:
-      - ibm/slate-125m-english-rtrvr-v2
-      - ibm/slate-30m-english-rtrvr-v2
-      - intfloat/multilingual-e5-large
+      - ibm/slate-30m-english-rtrvr
 
   - name: anthropic
     display_name: Anthropic
