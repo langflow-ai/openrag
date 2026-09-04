@@ -192,6 +192,8 @@ langflow:
   langfuse:
     secretKey: ""
     publicKey: ""
+    baseUrl: ""
+    # Deprecated: use baseUrl. Retained as a fallback for existing configurations.
     host: "https://cloud.langfuse.com"
 
   # Variables to expose to flows
