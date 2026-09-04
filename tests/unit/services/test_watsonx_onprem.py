@@ -684,3 +684,79 @@ async def test_an_empty_listing_is_treated_as_a_bad_filter_not_an_empty_cluster(
         is None
     )
     assert watsonx_onprem.cached_models() is None
+
+
+@pytest.mark.asyncio
+async def test_validating_an_embedding_model_sends_a_list_not_a_string(monkeypatch) -> None:
+    """watsonx.ai takes `inputs` only as an array.
+
+    OpenAI accepts a bare string, so the validator sent one and LiteLLM
+    forwarded it verbatim. The cluster answered "Mismatch type []string with
+    value string", which failed the pre-save check for *every* embedding model
+    and left a wrongly-chosen one impossible to change.
+    """
+    import litellm
+
+    from api import provider_validation
+
+    sent: dict[str, object] = {}
+
+    async def _fake_embedding(**kwargs):
+        sent.update(kwargs)
+        return {"data": [{"embedding": [0.1]}]}
+
+    monkeypatch.setattr(litellm, "aembedding", _fake_embedding)
+
+    await provider_validation.validate_provider_setup(
+        provider=PROVIDER,
+        credentials=watsonx_onprem.litellm_credentials(
+            {"api_base": "https://cpd.example.com", "username": "u", "api_key": "k"}
+        ),
+        llm_model=None,
+        embedding_model="ibm/slate-30m-english-rtrvr",
+    )
+
+    assert isinstance(sent["input"], list), sent["input"]
+
+
+@pytest.mark.asyncio
+async def test_a_client_sending_a_bare_string_input_still_embeds(monkeypatch) -> None:
+    """OpenAI's own contract allows a string, so clients send one."""
+    import litellm
+
+    from services.llm_gateway import embeddings
+
+    sent: dict[str, object] = {}
+
+    async def _fake_embedding(**kwargs):
+        sent.update(kwargs)
+        return {"data": [{"embedding": [0.1]}], "model": "m", "object": "list"}
+
+    monkeypatch.setattr(litellm, "aembedding", _fake_embedding)
+
+    config = SimpleNamespace(
+        providers=_providers(
+            api_base="https://cpd.example.com", username="cpduser", api_key="APIKEY"
+        ),
+        agent=SimpleNamespace(llm_model="", llm_provider=PROVIDER),
+        knowledge=SimpleNamespace(
+            embedding_model="ibm/slate-30m-english-rtrvr",
+            embedding_provider=PROVIDER,
+            legacy_embedding_provider_map={},
+        ),
+    )
+    await embeddings(
+        {"model": f"{PROVIDER}:ibm/slate-30m-english-rtrvr", "input": "hello"}, config=config
+    )
+
+    assert sent["input"] == ["hello"]
+
+
+def test_a_token_array_input_is_left_alone() -> None:
+    """Only a string is wrapped; OpenAI's token-array forms pass through."""
+    from services.llm_gateway import _embedding_input
+
+    assert _embedding_input("hello") == ["hello"]
+    assert _embedding_input(["a", "b"]) == ["a", "b"]
+    assert _embedding_input([[1, 2], [3]]) == [[1, 2], [3]]
+    assert _embedding_input([1, 2, 3]) == [1, 2, 3]

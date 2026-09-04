@@ -757,7 +757,13 @@ async def _test_litellm_provider(
     if embedding_model:
         await litellm.aembedding(
             model=litellm_model,
-            input="OpenRAG provider validation",
+            # A list, never a bare string. OpenAI accepts either and LiteLLM
+            # forwards whatever it is given, so a string reaches watsonx.ai as
+            # `"inputs": "..."` where it requires `[]string` — the cluster then
+            # answers "Mismatch type []string with value string" and the
+            # pre-save check fails for every embedding model, which leaves a
+            # wrongly-chosen one impossible to change.
+            input=["OpenRAG provider validation"],
             **credentials,
         )
         return
