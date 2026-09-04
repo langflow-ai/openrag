@@ -1015,6 +1015,19 @@ def _log_stream_shape(tally: _StreamTally, provider: str, model: str) -> None:
         logger.debug("Could not summarise stream shape", exc_info=True)
 
 
+def _embedding_input(value: Any) -> Any:
+    """OpenAI's `input`, in the shape every provider behind us accepts.
+
+    OpenAI takes a bare string as well as an array, so its clients send both —
+    and LiteLLM forwards whichever it is given. watsonx.ai takes only an array
+    and rejects a string with "Mismatch type []string with value string", so a
+    client that sends one gets a failure that reads like a bug in its own
+    request. Wrapping is a no-op for a provider that already accepted the
+    string, and token-array inputs are left exactly as they are.
+    """
+    return [value] if isinstance(value, str) else value
+
+
 async def embeddings(body: Mapping[str, Any], *, config=None) -> dict[str, Any]:
     """OpenAI `POST /v1/embeddings`."""
     cfg = config or _get_config()
@@ -1026,7 +1039,7 @@ async def embeddings(body: Mapping[str, Any], *, config=None) -> dict[str, Any]:
 
         result = await litellm.aembedding(
             model=litellm_model,
-            input=body.get("input"),
+            input=_embedding_input(body.get("input")),
             **credentials,
         )
     except LlmGatewayError:
