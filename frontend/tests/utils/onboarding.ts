@@ -228,10 +228,12 @@ export async function completeOnboarding(
           : process.env.LLM_MODEL ||
             (provider === "azure" ? "gpt-4.1" : undefined);
 
+    await page.waitForTimeout(2000);
     let selected = false;
     if (preferredModel) {
-      const searchInput = page.getByPlaceholder("Search model...");
-      await searchInput.fill(preferredModel);
+      const searchInput = page.getByTestId("model-search-input");
+      await searchInput.fill(preferredModel, { timeout: 2000 });
+      await page.waitForTimeout(2000);
       const preferredOption = page.getByTestId(
         `model-option-${preferredModel}`,
       );

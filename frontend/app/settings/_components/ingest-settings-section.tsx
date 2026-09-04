@@ -87,7 +87,7 @@ export function IngestSettingsSection() {
   const [disableIngestWithLangflow, setDisableIngestWithLangflow] =
     useState<boolean>(false);
 
-  const [vlmProvider, setVlmProvider] = useState<string>("openai");
+  const [vlmProvider, setVlmProvider] = useState<string>("");
   const [vlmModel, setVlmModel] = useState<string>("");
   const [vlmPrompt, setVlmPrompt] = useState<string>("");
   const [vlmResponseFormat, setVlmResponseFormat] =
@@ -233,6 +233,26 @@ export function IngestSettingsSection() {
     [groupedVlmModels],
   );
 
+  const selectedVlmOption =
+    allVlmOptions.find((o) => o.value === vlmModel) ||
+    allVlmOptions.find((o) => o.value === settings.knowledge?.vlm_model) ||
+    allVlmOptions[0];
+
+  const effectiveVlmProvider =
+    selectedVlmOption?.provider ||
+    vlmProvider ||
+    settings.knowledge?.vlm_provider ||
+    "";
+
+  useEffect(() => {
+    if (
+      selectedVlmOption?.provider &&
+      vlmProvider !== selectedVlmOption.provider
+    ) {
+      setVlmProvider(selectedVlmOption.provider);
+    }
+  }, [selectedVlmOption?.provider, vlmProvider]);
+
   const updateSettingsMutation = useUpdateSettingsMutation({
     onSuccess: () => {
       toast.success("Settings updated successfully");
@@ -298,10 +318,13 @@ export function IngestSettingsSection() {
       setPictureDescriptions(k.picture_descriptions);
     if (k.disable_ingest_with_langflow !== undefined)
       setDisableIngestWithLangflow(k.disable_ingest_with_langflow);
-    if (k.vlm_provider !== undefined) setVlmProvider(k.vlm_provider);
-    // Backend defaults vlm_model to ""; an empty value means "not configured",
-    // so don't clobber a locally auto-selected model with it.
-    if (k.vlm_model) setVlmModel(k.vlm_model);
+    // Backend defaults vlm_model to "" and vlm_provider to "openai".
+    // Only adopt backend's vlm_provider if backend also has a configured vlm_model,
+    // so the static backend default does not clobber the locally auto-selected model's provider.
+    if (k.vlm_model) {
+      setVlmModel(k.vlm_model);
+      if (k.vlm_provider !== undefined) setVlmProvider(k.vlm_provider);
+    }
     if (k.vlm_prompt !== undefined) setVlmPrompt(k.vlm_prompt);
     if (k.vlm_response_format !== undefined)
       setVlmResponseFormat(k.vlm_response_format);
@@ -322,27 +345,23 @@ export function IngestSettingsSection() {
       return;
     }
     if (autoSelectedVlm.current) return;
-    if (settings.local_vlm_models && settings.local_vlm_models.length > 0) {
-      setVlmModel(settings.local_vlm_models[0]);
-      setVlmProvider("local");
-      autoSelectedVlm.current = true;
-    } else if (allVlmOptions.length > 0) {
+    if (allVlmOptions.length > 0) {
       const fallback = allVlmOptions.find((o) => o.default) || allVlmOptions[0];
       setVlmModel(fallback.value);
-      setVlmProvider(fallback.provider || "openai");
+      setVlmProvider(fallback.provider || "");
       autoSelectedVlm.current = true;
     }
-  }, [
-    showVlmSettings,
-    settings.knowledge?.vlm_model,
-    settings.local_vlm_models,
-    allVlmOptions,
-  ]);
+  }, [showVlmSettings, settings.knowledge?.vlm_model, allVlmOptions]);
 
   const handleVlmModelChange = (value: string, provider?: string) => {
     setUserEdited(true);
     setVlmModel(value);
-    if (provider) setVlmProvider(provider);
+    const resolvedProvider =
+      provider ||
+      allVlmOptions.find((o) => o.value === value)?.provider ||
+      allVlmOptions[0]?.provider ||
+      "";
+    if (resolvedProvider) setVlmProvider(resolvedProvider);
     setValidationError(null);
   };
 
@@ -353,7 +372,7 @@ export function IngestSettingsSection() {
   const vlmDirty =
     showVlmSettings &&
     (pictureDescriptions !== (k?.vlm_enabled ?? pictureDescriptions) ||
-      vlmProvider !== (k?.vlm_provider ?? vlmProvider) ||
+      effectiveVlmProvider !== (k?.vlm_provider ?? effectiveVlmProvider) ||
       vlmModel !== (k?.vlm_model ?? vlmModel) ||
       vlmPrompt !== (k?.vlm_prompt ?? vlmPrompt) ||
       vlmResponseFormat !== (k?.vlm_response_format ?? vlmResponseFormat) ||
@@ -381,10 +400,10 @@ export function IngestSettingsSection() {
   const providerConfigured =
     settings.providers === undefined || settings.providers === null
       ? undefined
-      : vlmProvider === "local"
+      : effectiveVlmProvider === "local"
         ? true
         : configuredProviders[
-            vlmProvider as keyof typeof configuredProviders
+            effectiveVlmProvider as keyof typeof configuredProviders
           ] === true;
 
   const providerWarning = pictureDescriptions && providerConfigured === false;
@@ -407,8 +426,9 @@ export function IngestSettingsSection() {
     const vlmPayload = showVlmSettings
       ? {
           vlm_enabled: pictureDescriptions,
-          vlm_provider: vlmProvider,
-          vlm_model: vlmModel.trim() || undefined,
+          vlm_provider: effectiveVlmProvider,
+          vlm_model:
+            (vlmModel || allVlmOptions[0]?.value || "").trim() || undefined,
           vlm_prompt: vlmPrompt,
           vlm_response_format: vlmResponseFormat,
           vlm_max_tokens: vlmMaxTokens,
@@ -872,7 +892,7 @@ export function IngestSettingsSection() {
                                 : "No models detected. Configure OpenAI, Anthropic, Ollama, or IBM watsonx.ai first."
                           }
                           value={vlmModel}
-                          selectedProvider={vlmProvider}
+                          selectedProvider={effectiveVlmProvider}
                           onValueChange={handleVlmModelChange}
                           hasError={!!validationError}
                           disabled={!pictureDescriptions}
@@ -886,7 +906,7 @@ export function IngestSettingsSection() {
                       )}
                     </div>
 
-                    {vlmProvider === "watsonx" && (
+                    {effectiveVlmProvider === "watsonx" && (
                       <div className="space-y-2">
                         <LabelWrapper
                           id="vlm-watsonx-api-version"
