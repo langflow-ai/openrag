@@ -291,7 +291,7 @@ export class Knowledge {
 
   async open() {
     // If already on the knowledge page, nothing to do
-    if (this.page.url().includes("/knowledge")) {
+    if (this.page.url().endsWith("/knowledge")) {
       await expect(this.projectKnowledgeHeading()).toBeVisible({
         timeout: 15000,
       });
