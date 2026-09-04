@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 from pydantic import BaseModel
@@ -260,6 +261,64 @@ class DoclingService:
                     "headers": {},
                     "params": {
                         "model": vlm_model,
+                        "max_completion_tokens": knowledge_config.vlm_max_tokens,
+                    },
+                    "prompt": prompt,
+                }
+            elif provider == "azure":
+                creds = config.providers.credential_values("azure")
+                api_key = creds.get("api_key")
+                endpoint = creds.get("api_base")
+                api_version = creds.get("api_version") or "2024-02-01"
+                if not (api_key and endpoint):
+                    raise DoclingServeError(
+                        "Docling VLM is enabled but the Azure provider is not configured "
+                        "(api key and endpoint are required)"
+                    )
+                parsed = urlparse(endpoint)
+                if parsed.scheme.lower() != "https" or not parsed.netloc:
+                    raise DoclingServeError("Azure VLM endpoint must use HTTPS")
+                deployment = vlm_model.removeprefix("azure/")
+                url = (
+                    f"{endpoint.rstrip('/')}/openai/deployments/{deployment}/chat/completions"
+                    f"?api-version={api_version}"
+                )
+                options["picture_description_api"] = {
+                    "url": url,
+                    "headers": {"api-key": api_key},
+                    "params": {
+                        "model": deployment,
+                        "max_completion_tokens": knowledge_config.vlm_max_tokens,
+                    },
+                    "prompt": prompt,
+                }
+            elif provider == "azure_ai":
+                # Azure AI Foundry, not the Azure OpenAI Service above: its
+                # api_base already points at the `/models` route and the chat
+                # endpoint hangs directly off it. Without this branch a Foundry
+                # VLM fell through to the OpenAI default and was called with
+                # OpenAI credentials it does not have.
+                creds = config.providers.credential_values("azure_ai")
+                api_key = creds.get("api_key")
+                endpoint = creds.get("api_base")
+                api_version = creds.get("api_version")
+                if not (api_key and endpoint):
+                    raise DoclingServeError(
+                        "Docling VLM is enabled but the Azure AI Foundry provider is not "
+                        "configured (api key and endpoint are required)"
+                    )
+                parsed = urlparse(endpoint)
+                if parsed.scheme.lower() != "https" or not parsed.netloc:
+                    raise DoclingServeError("Azure AI Foundry VLM endpoint must use HTTPS")
+                model_id = vlm_model.removeprefix("azure_ai/")
+                url = f"{endpoint.rstrip('/')}/chat/completions"
+                if api_version:
+                    url = f"{url}?api-version={api_version}"
+                options["picture_description_api"] = {
+                    "url": url,
+                    "headers": {"api-key": api_key},
+                    "params": {
+                        "model": model_id,
                         "max_completion_tokens": knowledge_config.vlm_max_tokens,
                     },
                     "prompt": prompt,

@@ -87,7 +87,7 @@ export function IngestSettingsSection() {
   const [disableIngestWithLangflow, setDisableIngestWithLangflow] =
     useState<boolean>(false);
 
-  const [vlmProvider, setVlmProvider] = useState<string>("openai");
+  const [vlmProvider, setVlmProvider] = useState<string>("");
   const [vlmModel, setVlmModel] = useState<string>("");
   const [vlmPrompt, setVlmPrompt] = useState<string>("");
   const [vlmResponseFormat, setVlmResponseFormat] =
@@ -233,6 +233,26 @@ export function IngestSettingsSection() {
     [groupedVlmModels],
   );
 
+  const knownProvider = vlmProvider || settings.knowledge?.vlm_provider;
+  const targetModel = vlmModel || settings.knowledge?.vlm_model;
+  const selectedVlmMatch = findGroupedSelection(
+    groupedVlmModels,
+    targetModel,
+    knownProvider,
+  );
+  const selectedVlmOption =
+    selectedVlmMatch?.option ||
+    (targetModel
+      ? allVlmOptions.find((o) => o.value === targetModel)
+      : undefined) ||
+    allVlmOptions[0];
+
+  const effectiveVlmProvider =
+    selectedVlmMatch?.group?.provider ||
+    selectedVlmOption?.provider ||
+    knownProvider ||
+    "";
+
   const updateSettingsMutation = useUpdateSettingsMutation({
     onSuccess: () => {
       toast.success("Settings updated successfully");
@@ -298,10 +318,13 @@ export function IngestSettingsSection() {
       setPictureDescriptions(k.picture_descriptions);
     if (k.disable_ingest_with_langflow !== undefined)
       setDisableIngestWithLangflow(k.disable_ingest_with_langflow);
-    if (k.vlm_provider !== undefined) setVlmProvider(k.vlm_provider);
-    // Backend defaults vlm_model to ""; an empty value means "not configured",
-    // so don't clobber a locally auto-selected model with it.
-    if (k.vlm_model) setVlmModel(k.vlm_model);
+    // Backend defaults vlm_model to "" and vlm_provider to "openai".
+    // Only adopt backend's vlm_provider if backend also has a configured vlm_model,
+    // so the static backend default does not clobber the locally auto-selected model's provider.
+    if (k.vlm_model) {
+      setVlmModel(k.vlm_model);
+      if (k.vlm_provider !== undefined) setVlmProvider(k.vlm_provider);
+    }
     if (k.vlm_prompt !== undefined) setVlmPrompt(k.vlm_prompt);
     if (k.vlm_response_format !== undefined)
       setVlmResponseFormat(k.vlm_response_format);
@@ -317,32 +340,54 @@ export function IngestSettingsSection() {
   const autoSelectedVlm = useRef(false);
   useEffect(() => {
     if (!showVlmSettings) return;
-    if (settings.knowledge?.vlm_model) {
+    // The catalogue query can resolve before the settings query. Picking a
+    // model then would lock in a choice made without knowing what the agent
+    // runs — and the ref below makes that choice permanent.
+    if (!settings.knowledge) return;
+    if (settings.knowledge.vlm_model) {
       autoSelectedVlm.current = false;
       return;
     }
     if (autoSelectedVlm.current) return;
-    if (settings.local_vlm_models && settings.local_vlm_models.length > 0) {
-      setVlmModel(settings.local_vlm_models[0]);
-      setVlmProvider("local");
-      autoSelectedVlm.current = true;
-    } else if (allVlmOptions.length > 0) {
-      const fallback = allVlmOptions.find((o) => o.default) || allVlmOptions[0];
+    if (allVlmOptions.length > 0) {
+      // Prefer the model the agent already runs on, when it can see. The
+      // catalogue is ranked by how recent an id looks, so its first vision row
+      // is whatever the provider published most recently — which for Azure is a
+      // deployment name the operator very likely does not have, since Azure
+      // serves only the deployments they created. The agent's model is one that
+      // demonstrably resolves on this account.
+      const agentModel = settings.agent?.llm_model;
+      const agentProvider = settings.agent?.llm_provider;
+      const agentVisionOption = agentModel
+        ? (allVlmOptions.find(
+            (o) => o.value === agentModel && o.provider === agentProvider,
+          ) ?? allVlmOptions.find((o) => o.value === agentModel))
+        : undefined;
+      const fallback =
+        agentVisionOption ||
+        allVlmOptions.find((o) => o.default) ||
+        allVlmOptions[0];
       setVlmModel(fallback.value);
-      setVlmProvider(fallback.provider || "openai");
+      setVlmProvider(fallback.provider || "");
       autoSelectedVlm.current = true;
     }
   }, [
     showVlmSettings,
-    settings.knowledge?.vlm_model,
-    settings.local_vlm_models,
+    settings.knowledge,
+    settings.agent?.llm_model,
+    settings.agent?.llm_provider,
     allVlmOptions,
   ]);
 
   const handleVlmModelChange = (value: string, provider?: string) => {
     setUserEdited(true);
     setVlmModel(value);
-    if (provider) setVlmProvider(provider);
+    const resolvedProvider =
+      provider ||
+      allVlmOptions.find((o) => o.value === value)?.provider ||
+      allVlmOptions[0]?.provider ||
+      "";
+    if (resolvedProvider) setVlmProvider(resolvedProvider);
     setValidationError(null);
   };
 
@@ -353,7 +398,7 @@ export function IngestSettingsSection() {
   const vlmDirty =
     showVlmSettings &&
     (pictureDescriptions !== (k?.vlm_enabled ?? pictureDescriptions) ||
-      vlmProvider !== (k?.vlm_provider ?? vlmProvider) ||
+      effectiveVlmProvider !== (k?.vlm_provider ?? effectiveVlmProvider) ||
       vlmModel !== (k?.vlm_model ?? vlmModel) ||
       vlmPrompt !== (k?.vlm_prompt ?? vlmPrompt) ||
       vlmResponseFormat !== (k?.vlm_response_format ?? vlmResponseFormat) ||
@@ -381,10 +426,10 @@ export function IngestSettingsSection() {
   const providerConfigured =
     settings.providers === undefined || settings.providers === null
       ? undefined
-      : vlmProvider === "local"
+      : effectiveVlmProvider === "local"
         ? true
         : configuredProviders[
-            vlmProvider as keyof typeof configuredProviders
+            effectiveVlmProvider as keyof typeof configuredProviders
           ] === true;
 
   const providerWarning = pictureDescriptions && providerConfigured === false;
@@ -407,8 +452,9 @@ export function IngestSettingsSection() {
     const vlmPayload = showVlmSettings
       ? {
           vlm_enabled: pictureDescriptions,
-          vlm_provider: vlmProvider,
-          vlm_model: vlmModel.trim() || undefined,
+          vlm_provider: effectiveVlmProvider,
+          vlm_model:
+            (vlmModel || allVlmOptions[0]?.value || "").trim() || undefined,
           vlm_prompt: vlmPrompt,
           vlm_response_format: vlmResponseFormat,
           vlm_max_tokens: vlmMaxTokens,
@@ -872,7 +918,7 @@ export function IngestSettingsSection() {
                                 : "No models detected. Configure OpenAI, Anthropic, Ollama, or IBM watsonx.ai first."
                           }
                           value={vlmModel}
-                          selectedProvider={vlmProvider}
+                          selectedProvider={effectiveVlmProvider}
                           onValueChange={handleVlmModelChange}
                           hasError={!!validationError}
                           disabled={!pictureDescriptions}
@@ -886,7 +932,7 @@ export function IngestSettingsSection() {
                       )}
                     </div>
 
-                    {vlmProvider === "watsonx" && (
+                    {effectiveVlmProvider === "watsonx" && (
                       <div className="space-y-2">
                         <LabelWrapper
                           id="vlm-watsonx-api-version"
