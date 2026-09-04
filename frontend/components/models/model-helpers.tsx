@@ -105,8 +105,8 @@ const PROVIDER_CHROME: Record<string, ProviderChrome> = {
     logoBgColor: "bg-[#1063FE]",
   },
   // Microsoft draws the two Azure model services differently, and neither is
-  // the generic Azure logo. Both marks paint their own gradients, so logoColor
-  // does nothing for them and the tile stays white.
+  // the generic Azure logo. AiFoundryLogo paints its own gradient, so
+  // logoColor does nothing for it and the tile stays white.
   azure_ai: {
     name: "Azure AI Foundry",
     logo: AiFoundryLogo,
@@ -116,7 +116,7 @@ const PROVIDER_CHROME: Record<string, ProviderChrome> = {
   azure: {
     name: "Azure OpenAI",
     logo: AzureOpenAILogo,
-    logoColor: "text-black",
+    logoColor: "text-[#0078D4]",
     logoBgColor: "bg-white",
   },
   local: {

@@ -12,6 +12,11 @@ import {
 } from "@/app/api/mutations/useUpdateSettingsMutation";
 import { useGetModelCatalogQuery } from "@/app/api/queries/useGetModelsQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
+import type { CatalogCredentialField } from "@/components/models/catalog-models";
+import {
+  getProviderChrome,
+  type ModelProvider,
+} from "@/components/models/model-helpers";
 import {
   Dialog,
   DialogContent,
@@ -19,11 +24,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/auth-context";
-import type { CatalogCredentialField } from "../_helpers/catalog-models";
-import {
-  getProviderChrome,
-  type ModelProvider,
-} from "../_helpers/model-helpers";
 import ModelProviderDialogFooter from "./model-provider-dialog-footer";
 import {
   ProviderSettingsForm,

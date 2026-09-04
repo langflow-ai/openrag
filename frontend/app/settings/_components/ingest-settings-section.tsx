@@ -11,6 +11,19 @@ import {
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { LabelWrapper } from "@/components/label-wrapper";
+import {
+  findGroupedSelection,
+  groupedCatalogOptions,
+  LIVE_INVENTORY_PROVIDERS,
+  liveModelOption,
+  mergeLiveCatalogOptions,
+} from "@/components/models/catalog-models";
+import { ModelFeatures } from "@/components/models/model-features";
+import { getModelLogo } from "@/components/models/model-helpers";
+import {
+  type GroupedModelOption,
+  ModelSelector,
+} from "@/components/models/model-selector";
 import { RequirePermission } from "@/components/require-permission";
 import { Button } from "@/components/ui/button";
 import {
@@ -45,19 +58,6 @@ import { DEFAULT_KNOWLEDGE_SETTINGS } from "@/lib/constants";
 import { resolveLangflowEditUrl } from "@/lib/url-utils";
 import { cn } from "@/lib/utils";
 import { useUpdateSettingsMutation } from "../../api/mutations/useUpdateSettingsMutation";
-import { ModelFeatures } from "../../onboarding/_components/model-features";
-import {
-  type GroupedModelOption,
-  ModelSelector,
-} from "../../onboarding/_components/model-selector";
-import {
-  findGroupedSelection,
-  groupedCatalogOptions,
-  LIVE_INVENTORY_PROVIDERS,
-  liveModelOption,
-  mergeLiveCatalogOptions,
-} from "../_helpers/catalog-models";
-import { getModelLogo } from "../_helpers/model-helpers";
 import { LangflowIcon } from "./langflow-icon";
 
 const DEFAULT_WATSONX_API_VERSION = "2023-05-29";

@@ -2,8 +2,6 @@
 
 import { CheckIcon, ChevronsUpDownIcon } from "lucide-react";
 import { useDeferredValue, useEffect, useId, useMemo, useState } from "react";
-import type { CatalogModel } from "@/app/settings/_helpers/catalog-models";
-import { MODELS_PER_PROVIDER } from "@/app/settings/_helpers/model-info";
 import { Badge } from "@/components/ui/badge";
 import { Button, type ButtonProps } from "@/components/ui/button";
 import {
@@ -19,7 +17,9 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { CapabilityStrip } from "./model-features";
+import { CapabilityStrip } from "./capability-strip";
+import type { CatalogModel } from "./catalog-models";
+import { MODELS_PER_PROVIDER } from "./model-info";
 
 export type ModelOption = {
   value: string;

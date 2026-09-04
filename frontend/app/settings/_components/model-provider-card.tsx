@@ -1,11 +1,11 @@
 "use client";
 
+import type { ModelProvider } from "@/components/models/model-helpers";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { trackButton } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
-import type { ModelProvider } from "../_helpers/model-helpers";
 import CardIcon from "./card-icon";
 
 export interface ModelProviderCardData {

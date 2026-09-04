@@ -1,14 +1,14 @@
 import type { Dispatch, SetStateAction } from "react";
 import { useMemo, useState } from "react";
 import { useGetModelCatalogQuery } from "@/app/api/queries/useGetModelsQuery";
+import { LabelInput } from "@/components/label-input";
 import {
   onboardingCredentialFields,
   type SavedProvidersSnapshot,
   savedCredentialValuesForProvider,
   savedSecretFieldsForProvider,
-} from "@/app/settings/_helpers/catalog-models";
-import { getProviderChrome } from "@/app/settings/_helpers/model-helpers";
-import { LabelInput } from "@/components/label-input";
+} from "@/components/models/catalog-models";
+import { getProviderChrome } from "@/components/models/model-helpers";
 import type { OnboardingVariables } from "../../api/mutations/useOnboardingMutation";
 import { AdvancedOnboarding } from "./advanced";
 
