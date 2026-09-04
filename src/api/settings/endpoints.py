@@ -23,6 +23,7 @@ from api.settings.helpers import (
     _first_configured_embedding_provider,
     _first_configured_llm_provider,
     _get_flows_service,
+    _has_other_configured_provider,
 )
 from api.settings.langflow_sync import (
     _background_tasks,
@@ -878,12 +879,7 @@ async def update_settings(
             provider_updated = True
 
         if body.remove_ollama_config:
-            other_providers_configured = (
-                working_config.providers.openai.configured
-                or working_config.providers.anthropic.configured
-                or working_config.providers.watsonx.configured
-            )
-            if not other_providers_configured:
+            if not _has_other_configured_provider(working_config, "ollama"):
                 return JSONResponse(
                     {
                         "error": "Cannot remove Ollama configuration: configure another model provider first."
@@ -910,12 +906,7 @@ async def update_settings(
             provider_updated = True
 
         if body.remove_openai_config:
-            other_providers_configured = (
-                working_config.providers.anthropic.configured
-                or working_config.providers.watsonx.configured
-                or working_config.providers.ollama.configured
-            )
-            if not other_providers_configured:
+            if not _has_other_configured_provider(working_config, "openai"):
                 return JSONResponse(
                     {
                         "error": "Cannot remove OpenAI configuration: configure another model provider first."
@@ -942,12 +933,7 @@ async def update_settings(
             provider_updated = True
 
         if body.remove_anthropic_config:
-            other_providers_configured = (
-                working_config.providers.openai.configured
-                or working_config.providers.watsonx.configured
-                or working_config.providers.ollama.configured
-            )
-            if not other_providers_configured:
+            if not _has_other_configured_provider(working_config, "anthropic"):
                 return JSONResponse(
                     {
                         "error": "Cannot remove Anthropic configuration: configure another model provider first."
@@ -965,12 +951,7 @@ async def update_settings(
             provider_updated = True
 
         if body.remove_watsonx_config:
-            other_providers_configured = (
-                working_config.providers.openai.configured
-                or working_config.providers.anthropic.configured
-                or working_config.providers.ollama.configured
-            )
-            if not other_providers_configured:
+            if not _has_other_configured_provider(working_config, "watsonx"):
                 return JSONResponse(
                     {
                         "error": "Cannot remove IBM watsonx.ai configuration: configure another model provider first."
@@ -1001,8 +982,7 @@ async def update_settings(
         if body.remove_provider_config:
             provider = body.remove_provider_config.strip().lower()
             if provider in working_config.providers.custom:
-                del working_config.providers.custom[provider]
-                if not working_config.providers.any_configured():
+                if not _has_other_configured_provider(working_config, provider):
                     return JSONResponse(
                         {
                             "error": (
@@ -1012,6 +992,7 @@ async def update_settings(
                         },
                         status_code=400,
                     )
+                del working_config.providers.custom[provider]
                 if working_config.agent.llm_provider == provider:
                     fallback = _first_configured_llm_provider(working_config, provider)
                     working_config.agent.llm_provider = fallback

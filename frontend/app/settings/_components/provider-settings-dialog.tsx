@@ -21,6 +21,7 @@ import {
 import { useAuth } from "@/contexts/auth-context";
 import type { CatalogCredentialField } from "../_helpers/catalog-models";
 import {
+  canRemoveProvider,
   getProviderChrome,
   type ModelProvider,
 } from "../_helpers/model-helpers";
@@ -79,13 +80,9 @@ const ProviderSettingsDialog = ({
   const isConfigured = saved?.configured === true;
   const savedSecretFields = saved?.secret_fields ?? [];
 
-  // Removing the last configured provider would leave the agent with nothing
-  // to call, so mirror the bespoke dialogs and require another one first.
-  const canRemove =
-    isConfigured &&
-    Object.entries(settings.providers?.custom ?? {}).some(
-      ([key, value]) => key !== provider && value?.configured === true,
-    );
+  // Removing the last configured provider with an embedding model would leave
+  // the agent with nothing to embed documents, so require another one first.
+  const canRemove = canRemoveProvider(settings.providers, provider);
 
   const methods = useForm<ProviderSettingsFormData>({
     mode: "onSubmit",
