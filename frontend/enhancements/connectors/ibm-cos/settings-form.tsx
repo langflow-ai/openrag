@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
 
 export interface IBMCOSFormData {
   auth_mode: "iam" | "hmac";
@@ -82,8 +83,8 @@ export function IBMCOSSettingsForm({
                 field.onChange(v);
               }}
             >
-              <TabsList className="w-full">
-                <TabsTrigger value="hmac">
+              <TabsList className="w-full flex-nowrap">
+                <TabsTrigger value="hmac" className="flex-1">
                   <span className="font-semibold text-sm">HMAC</span>
                   <span className="text-xs text-muted-foreground font-normal">
                     Access Key + Secret Key
@@ -92,7 +93,10 @@ export function IBMCOSSettingsForm({
                 <TabsTrigger
                   value="iam"
                   disabled={disableIam}
-                  className={disableIam ? "opacity-40 cursor-not-allowed" : ""}
+                  className={cn(
+                    "flex-1",
+                    disableIam && "opacity-40 cursor-not-allowed",
+                  )}
                   title={
                     disableIam
                       ? "IAM mode is disabled. Set OPENRAG_IBM_COS_IAM_UI=true to enable."
