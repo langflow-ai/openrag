@@ -1,6 +1,11 @@
 import { Page } from "@playwright/test";
 import { Settings } from "../pages/Settings";
 
+/** Escape a provider name so it can anchor a whole-string heading match. */
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 /**
  * Utility to detect which model providers are configured
  */
@@ -24,10 +29,13 @@ export class ProviderDetector {
       .getByText("Providers")
       .waitFor({ state: "visible", timeout: 10000 });
 
-    // Find the heading that contains the provider name
+    // Match the heading exactly, the way Settings.getProviderCard does. A
+    // substring match picks up every card whose name starts with this one —
+    // "IBM watsonx.ai" would also match "IBM watsonx.ai (on-prem)" wherever
+    // both are offered, and the ambiguous locator fails strict mode.
     const providerHeading = this.page
       .locator("h3")
-      .filter({ hasText: providerName });
+      .filter({ hasText: new RegExp(`^${escapeRegExp(providerName)}$`) });
 
     try {
       await providerHeading.waitFor({ state: "visible", timeout: 10000 });

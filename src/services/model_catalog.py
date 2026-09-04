@@ -31,6 +31,7 @@ from functools import lru_cache
 from typing import Any
 
 from config.model_providers import ProviderEntry, visible_provider_entries
+from services import watsonx_onprem
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -87,6 +88,27 @@ GENERIC_CREDENTIAL_FIELDS: list[dict[str, Any]] = [
 ]
 
 KNOWN_FIELD_TYPES = frozenset({"text", "password", "select", "textarea", "upload"})
+
+#: OpenRAG provider keys LiteLLM cannot route under their own name, mapped to
+#: the key it routes them as. A row here is for a deployment shape that needs
+#: its own credentials and its own model list but reaches the same API — the
+#: alternative, reusing the upstream key, would make the two share one set of
+#: stored credentials.
+PROVIDER_ROUTE_ALIASES: dict[str, str] = {
+    watsonx_onprem.PROVIDER_KEY: watsonx_onprem.LITELLM_PROVIDER,
+}
+
+#: Credential forms LiteLLM's `provider_create_fields.json` cannot supply,
+#: because the provider is one of OpenRAG's own aliases.
+_CREDENTIAL_FIELD_OVERRIDES: dict[str, list[dict[str, Any]]] = {
+    watsonx_onprem.PROVIDER_KEY: watsonx_onprem.CREDENTIAL_FIELDS,
+}
+
+
+def litellm_provider_key(provider: str) -> str:
+    """The name LiteLLM routes `provider` under, which is usually itself."""
+    key = (provider or "").strip().lower()
+    return PROVIDER_ROUTE_ALIASES.get(key, key)
 
 
 class CatalogUnavailableError(RuntimeError):
@@ -155,8 +177,12 @@ def _normalize_field(field: dict[str, Any]) -> dict[str, Any]:
 
 def credential_fields(provider: str) -> list[dict[str, Any]]:
     """The form spec for `provider`, normalized, never empty."""
+    key = (provider or "").strip().lower()
+    override = _CREDENTIAL_FIELD_OVERRIDES.get(key)
+    if override is not None:
+        return [_normalize_field(field) for field in override]
     try:
-        spec = _provider_field_specs().get((provider or "").strip().lower())
+        spec = _provider_field_specs().get(key)
     except Exception:
         logger.warning("Could not read LiteLLM's provider field specs", exc_info=True)
         return [dict(field) for field in GENERIC_CREDENTIAL_FIELDS]
@@ -241,6 +267,12 @@ def _catalog(providers: tuple[ProviderEntry, ...]) -> dict[str, Any]:
         raise CatalogUnavailableError("litellm is not installed on the server") from exc
 
     specs = _provider_field_specs()
+    # Matched on OpenRAG's own key, never the aliased LiteLLM one: a provider
+    # that routes as `watsonx` but serves whatever an operator deployed on
+    # their cluster must not inherit IBM Cloud's catalogue. Two providers
+    # sharing model ids would also leave `catalog_owner` unable to say which of
+    # them owns an id, and a legacy slash-form id would resolve to neither.
+    # An aliased provider's models come from its `models:` rows instead.
     keys = {entry.name for entry in providers}
     chat_by_provider: dict[str, list[dict[str, Any]]] = {}
     embed_by_provider: dict[str, list[dict[str, Any]]] = {}
@@ -371,6 +403,51 @@ def hide_excluded_live_models(provider: str, payload: Any) -> Any:
     return filtered
 
 
+def _catalog_entries() -> tuple[ProviderEntry, ...]:
+    """The visible providers, with a live model list swapped in where we have one.
+
+    A Cloud Pak for Data cluster serves whatever its operator deployed, so its
+    `models:` rows in `model_providers.yaml` can only ever be a guess. Once the
+    cluster has said what it actually has, that wins — a model it does not
+    serve must not sit in the picker waiting to be chosen. The configured rows
+    stay as the fallback for when it cannot be reached.
+
+    Entries are the `_catalog()` cache key, so substituting here rebuilds the
+    payload rather than serving a stale one.
+    """
+    entries = visible_provider_entries()
+    live = watsonx_onprem.cached_models()
+    if live is None:
+        return entries
+    return tuple(
+        entry._replace(models=live.chat, embedding_models=live.embedding)
+        if entry.name == watsonx_onprem.PROVIDER_KEY
+        else entry
+        for entry in entries
+    )
+
+
+async def refresh_live_models() -> None:
+    """Re-list the models on any provider that can only answer for itself.
+
+    Called by the catalogue routes before the payload is built. The provider
+    caches with a TTL, so this is a network call once every few minutes rather
+    than once per request, and a failure leaves the previous answer — or the
+    configured fallback — in place.
+    """
+    if watsonx_onprem.PROVIDER_KEY not in supported_provider_keys():
+        return
+    try:
+        from config.settings import get_openrag_config
+
+        credentials = get_openrag_config().providers.credential_values(watsonx_onprem.PROVIDER_KEY)
+    except Exception:
+        logger.debug("Could not read watsonx.ai on-prem credentials", exc_info=True)
+        return
+    if credentials:
+        await watsonx_onprem.fetch_models(credentials)
+
+
 def supported_provider_keys() -> frozenset[str]:
     """The providers this run mode publishes, per `config/model_providers.yaml`."""
     return frozenset(entry.name for entry in visible_provider_entries())
@@ -378,14 +455,21 @@ def supported_provider_keys() -> frozenset[str]:
 
 def catalog(today: datetime.date | None = None) -> dict[str, Any]:
     """Picker payload for the providers this run mode exposes, and their models."""
-    return _catalog_for(today or datetime.date.today(), visible_provider_entries())
+    return _catalog_for(today or datetime.date.today(), _catalog_entries())
 
 
 def is_known_provider(provider: str) -> bool:
-    """Whether LiteLLM recognises `provider` at all."""
+    """Whether `provider` names a route the gateway can resolve.
+
+    That is LiteLLM's own provider list, plus OpenRAG's aliases — an alias is
+    routable by definition, since it is only ever a second front door onto a
+    provider LiteLLM already knows.
+    """
     key = (provider or "").strip().lower()
     if not key:
         return False
+    if key in PROVIDER_ROUTE_ALIASES:
+        return True
     try:
         import litellm
 
@@ -424,20 +508,25 @@ def _model_owners(providers: tuple[ProviderEntry, ...]) -> dict[str, tuple[str, 
     return {model: tuple(sorted(keys)) for model, keys in owners.items()}
 
 
+def catalog_owners(model: str) -> tuple[str, ...]:
+    """Every provider in this run mode whose catalogue lists `model`."""
+    name = (model or "").strip()
+    if not name:
+        return ()
+    try:
+        return _model_owners(_catalog_entries()).get(name) or ()
+    except Exception:
+        return ()
+
+
 def catalog_owner(model: str) -> str | None:
     """The single provider that serves `model`, if exactly one does.
 
     Used to disambiguate vendor-qualified names such as `openai/gpt-oss-120b`,
     which watsonx serves and whose own prefix names a different provider.
     """
-    name = (model or "").strip()
-    if not name:
-        return None
-    try:
-        owners = _model_owners(visible_provider_entries()).get(name)
-    except Exception:
-        return None
-    return owners[0] if owners and len(owners) == 1 else None
+    owners = catalog_owners(model)
+    return owners[0] if len(owners) == 1 else None
 
 
 def PROVIDER_SEPARATOR_SAFE_CHECK() -> list[str]:
@@ -447,7 +536,7 @@ def PROVIDER_SEPARATOR_SAFE_CHECK() -> list[str]:
     Exposed so a test can fail loudly if a future model id breaks the property.
     """
     ambiguous = []
-    for model in _model_owners(visible_provider_entries()):
+    for model in _model_owners(_catalog_entries()):
         head, sep, rest = model.partition(":")
         if sep and rest and is_known_provider(head.lower()):
             ambiguous.append(model)

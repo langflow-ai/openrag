@@ -7,6 +7,7 @@ from typing import Any
 
 import httpx
 
+from services import watsonx_onprem
 from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 
@@ -125,6 +126,31 @@ def is_provider_credential_error(text: str | BaseException | None) -> bool:
         return False
     lowered = (str(text) if not isinstance(text, str) else text).lower()
     return any(marker in lowered for marker in _PROVIDER_CREDENTIAL_ERROR_MARKERS)
+
+
+#: Markers for a TLS trust failure, which is neither a bad credential nor an
+#: unreachable host: the request never left because this deployment does not
+#: trust the certificate the provider presented. Common on an on-prem cluster
+#: fronted by an internal or self-signed CA.
+_PROVIDER_TLS_ERROR_MARKERS = (
+    "certificate_verify_failed",
+    "certificate verify failed",
+    "sslcertverificationerror",
+    "ssl: certificate",
+    "self-signed certificate",
+    "self signed certificate",
+    "unable to get local issuer certificate",
+    "certificate has expired",
+    "hostname mismatch",
+)
+
+
+def is_provider_tls_error(text: str | BaseException | None) -> bool:
+    """True when the call failed because the provider's certificate is not trusted."""
+    if text is None:
+        return False
+    lowered = (str(text) if not isinstance(text, str) else text).lower()
+    return any(marker in lowered for marker in _PROVIDER_TLS_ERROR_MARKERS)
 
 
 _GENERIC_UPSTREAM_ERROR_MARKERS = (
@@ -609,6 +635,14 @@ def _extract_error_details(response: httpx.Response) -> str:
         return response_text
 
 
+#: Providers with a validation path of their own, so they are never handed to
+#: the generic LiteLLM probe. Everything else is validated by making a real call,
+#: which needs a model name.
+_NATIVELY_VALIDATED_PROVIDERS = frozenset(
+    {"openai", "watsonx", "ollama", "anthropic", watsonx_onprem.PROVIDER_KEY}
+)
+
+
 async def validate_provider_setup(
     provider: str,
     api_key: str = None,
@@ -649,7 +683,15 @@ async def validate_provider_setup(
             f"Starting validation for provider: {provider_lower} (test_completion={test_completion})"
         )
 
-        if provider_lower not in {"openai", "watsonx", "ollama", "anthropic"}:
+        # watsonx.ai on-prem has no bespoke model probe of its own: a real call
+        # through LiteLLM *is* its model probe, and it is what makes switching to
+        # a model the cluster does not serve fail instead of saving silently. Its
+        # catalogue check is only for the case there is no model to probe with,
+        # which is the one that used to report "A model is required".
+        probes_the_model = provider_lower not in _NATIVELY_VALIDATED_PROVIDERS or (
+            provider_lower == watsonx_onprem.PROVIDER_KEY and bool(embedding_model or llm_model)
+        )
+        if probes_the_model:
             await _test_litellm_provider(
                 provider=provider_lower,
                 credentials=supplied,
@@ -683,6 +725,7 @@ async def validate_provider_setup(
                 api_key=api_key,
                 endpoint=endpoint,
                 project_id=project_id,
+                credentials=supplied,
             )
 
         logger.info(f"Validation successful for provider: {provider_lower}")
@@ -703,14 +746,24 @@ async def _test_litellm_provider(
     """Validate arbitrary providers through the same LiteLLM adapter used at runtime."""
     import litellm
 
+    from services.model_catalog import litellm_provider_key
+
     model = embedding_model or llm_model
     if not model:
         raise ValueError("A model is required to validate the provider")
-    litellm_model = f"{provider}/{model}"
+    # Same aliasing the gateway applies, so the probe hits the route the real
+    # call will: `watsonx_onprem/<model>` is not a prefix LiteLLM can resolve.
+    litellm_model = f"{litellm_provider_key(provider)}/{model}"
     if embedding_model:
         await litellm.aembedding(
             model=litellm_model,
-            input="OpenRAG provider validation",
+            # A list, never a bare string. OpenAI accepts either and LiteLLM
+            # forwards whatever it is given, so a string reaches watsonx.ai as
+            # `"inputs": "..."` where it requires `[]string` — the cluster then
+            # answers "Mismatch type []string with value string" and the
+            # pre-save check fails for every embedding model, which leaves a
+            # wrongly-chosen one impossible to change.
+            input=["OpenRAG provider validation"],
             **credentials,
         )
         return
@@ -727,6 +780,7 @@ async def test_lightweight_health(
     api_key: str = None,
     endpoint: str = None,
     project_id: str = None,
+    credentials: dict[str, str] | None = None,
 ) -> None:
     """Test provider health with lightweight check (no credits consumed)."""
 
@@ -738,6 +792,8 @@ async def test_lightweight_health(
         await _test_ollama_lightweight_health(endpoint)
     elif provider == "anthropic":
         await _test_anthropic_lightweight_health(api_key)
+    elif provider == watsonx_onprem.PROVIDER_KEY:
+        await _test_watsonx_onprem_lightweight_health(credentials or {})
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -1435,3 +1491,56 @@ async def _test_anthropic_completion_with_tools(api_key: str, llm_model: str) ->
     except Exception as e:
         logger.error(f"Anthropic completion test failed: {str(e)}")
         raise
+
+
+async def _test_watsonx_onprem_lightweight_health(credentials: dict[str, str]) -> None:
+    """Check a Cloud Pak for Data cluster's credentials without naming a model.
+
+    Every other generic provider is validated by making a real call, which needs
+    a model — so a provider that is configured but has no model selected yet
+    reported "A model is required to validate the provider" in the health
+    banner, as though the credentials were bad. The cluster's catalogue endpoint
+    needs no model, no project and no space, so it answers the question that was
+    actually being asked: are these credentials good and is the cluster
+    reachable? It consumes no inference.
+    """
+    api_base = (credentials.get("api_base") or "").strip()
+    if not api_base:
+        raise Exception("No cluster URL is configured for watsonx.ai on-prem")
+    header = watsonx_onprem.auth_header(credentials)
+    if not header:
+        raise Exception(
+            "No credentials are configured for watsonx.ai on-prem. "
+            "Enter a username and API key, or a Zen API key."
+        )
+
+    url = watsonx_onprem.model_specs_url(api_base)
+    try:
+        async with httpx.AsyncClient(verify=watsonx_onprem.ssl_verify()) as client:
+            response = await _http_request_with_retry(
+                "GET",
+                url,
+                client=client,
+                headers={"Authorization": header, "Accept": "application/json"},
+                params=watsonx_onprem.model_specs_params(limit=1),
+                timeout=10.0,
+            )
+    except httpx.TimeoutException:
+        logger.error("watsonx.ai on-prem health check timed out")
+        raise Exception("The watsonx.ai cluster did not respond in time") from None
+    except Exception as e:
+        logger.error(f"watsonx.ai on-prem health check could not reach the cluster: {str(e)}")
+        raise
+
+    if response.status_code == 200:
+        logger.info("watsonx.ai on-prem health check passed")
+        return
+    error_details = _extract_error_details(response)
+    logger.error(
+        f"watsonx.ai on-prem health check failed: {response.status_code} - {error_details}"
+    )
+    if response.status_code in (401, 403):
+        # Worded so `is_provider_credential_error` classifies it, which is what
+        # makes the banner offer "update the key" rather than "try again".
+        raise Exception(f"Invalid credentials for the watsonx.ai cluster: {error_details}")
+    raise Exception(error_details)

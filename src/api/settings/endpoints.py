@@ -480,8 +480,9 @@ async def update_settings(
                         _provider_key(name): values
                         for name, values in (body.provider_credentials or {}).items()
                     }
-                    credentials = current_config.providers.credential_values(llm_provider_key)
-                    credentials.update(submitted_credentials.get(llm_provider_key, {}))
+                    credentials = current_config.providers.pending_credentials(
+                        llm_provider_key, submitted_credentials.get(llm_provider_key, {})
+                    )
                     api_key = credentials.get("api_key", api_key)
                     endpoint = credentials.get("api_base", endpoint)
                     project_id = credentials.get("project_id", project_id)
@@ -533,8 +534,10 @@ async def update_settings(
                         _provider_key(name): values
                         for name, values in (body.provider_credentials or {}).items()
                     }
-                    credentials = current_config.providers.credential_values(embedding_provider_key)
-                    credentials.update(submitted_credentials.get(embedding_provider_key, {}))
+                    credentials = current_config.providers.pending_credentials(
+                        embedding_provider_key,
+                        submitted_credentials.get(embedding_provider_key, {}),
+                    )
                     api_key = credentials.get("api_key", api_key)
                     endpoint = credentials.get("api_base", endpoint)
                     project_id = credentials.get("project_id", project_id)

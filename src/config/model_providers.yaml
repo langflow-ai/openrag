@@ -56,6 +56,35 @@ providers:
       on_prem: true
       saas: true
 
+  # watsonx.ai running on a Cloud Pak for Data / IBM Software Hub cluster. It
+  # is a second front door onto the same `/ml/v1` API as the row above, kept
+  # separate because the two need their own credentials: the cluster
+  # authenticates with a ZenApiKey built from a CPD username and API key, not
+  # with an IBM Cloud IAM key, and it is reached at a cluster URL rather than a
+  # region endpoint. OpenRAG routes it through LiteLLM's `watsonx` provider —
+  # see `services/watsonx_onprem.py`.
+  #
+  # The two lists below are a *fallback*, not the catalogue. OpenRAG asks the
+  # cluster itself what it serves (`GET /ml/v1/foundation_model_specs`) and
+  # shows that in the pickers, so a model the cluster does not have is never
+  # offered. These rows are what it falls back to while the cluster is
+  # unreachable or before any credentials are entered — keep them plausible for
+  # your fleet, but there is no need to keep them exact.
+  - name: watsonx_onprem
+    display_name: IBM watsonx.ai (on-prem)
+    modes:
+      oss: true
+      on_prem: true
+      saas: false # a cluster-hosted deployment has no place in multi-tenant SaaS
+    # Checked against a Cloud Pak for Data 5.x cluster, which serves exactly
+    # these two. Note the embedding id has no `-v2` suffix: `slate-30m-
+    # english-rtrvr-v2` is an IBM Cloud id and 404s here, which is the kind of
+    # near-miss that makes a guessed fallback worse than none.
+    models:
+      - openai/gpt-oss-120b
+    embedding_models:
+      - ibm/slate-30m-english-rtrvr
+
   - name: anthropic
     display_name: Anthropic
     modes:
@@ -96,10 +125,12 @@ providers:
   # A self-hosted OpenAI-compatible endpoint (vLLM, LM Studio, an internal
   # gateway). Use one of LiteLLM's passthrough provider keys — `openai_like`,
   # `hosted_vllm`, `lm_studio`, `llamafile`, `custom_openai` — rather than
-  # inventing a name: the key has to be one LiteLLM can route, or the
+  # inventing a name: the key has to be one the gateway can route, or the
   # `provider:model` ids it publishes resolve to the default provider and get
-  # called with the wrong credentials. The endpoint and key are entered in
-  # Settings; only the model ids belong here.
+  # called with the wrong credentials. (A name of OpenRAG's own works only if
+  # it is registered in `PROVIDER_ROUTE_ALIASES` in `services/model_catalog.py`
+  # alongside the LiteLLM key it routes as, the way `watsonx_onprem` is.) The
+  # endpoint and key are entered in Settings; only the model ids belong here.
   #
   # - name: openai_like
   #   display_name: Internal LLM Gateway
