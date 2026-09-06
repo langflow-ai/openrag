@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/langflow-ai-openrag-badge.png)](https://mseep.ai/app/langflow-ai-openrag)
+
 <div align="center">
 
 <img src="./docs/static/img/openrag-logo-dog.svg" alt="" width="120"/>
