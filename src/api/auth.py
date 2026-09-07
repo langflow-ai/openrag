@@ -65,9 +65,9 @@ async def auth_init(
         )
         return JSONResponse(result)
 
-    except Exception as e:
+    except Exception:
         logger.exception("[AUTH] OAuth init failed")
-        return JSONResponse({"error": f"Failed to initialize OAuth: {str(e)}"}, status_code=500)
+        return JSONResponse({"error": "Failed to initialize OAuth"}, status_code=500)
 
 
 async def auth_callback(
@@ -104,10 +104,10 @@ async def auth_callback(
         else:
             return JSONResponse(result)
 
-    except Exception as e:
+    except Exception:
         logger.exception("[AUTH] OAuth callback failed")
         await TelemetryClient.send_event(Category.AUTHENTICATION, MessageId.ORB_AUTH_OAUTH_FAILED)
-        return JSONResponse({"error": f"Callback failed: {str(e)}"}, status_code=500)
+        return JSONResponse({"error": "Callback failed"}, status_code=500)
 
 
 async def auth_me(

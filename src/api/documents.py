@@ -247,7 +247,7 @@ async def check_filename_exists(
         if is_opensearch_auth_error(e):
             return JSONResponse({"error": AUTH_ERROR_MESSAGE}, status_code=401)
         else:
-            return JSONResponse({"error": str(e)}, status_code=500)
+            return JSONResponse({"error": "Failed to check filename existence"}, status_code=500)
 
 
 async def delete_documents_by_filename(

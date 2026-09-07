@@ -128,4 +128,4 @@ async def list_models_endpoint(
         return JSONResponse(models)
     except Exception as e:
         logger.error("Failed to list models for provider %s: %s", provider, str(e))
-        return JSONResponse({"error": f"Failed to retrieve models: {str(e)}"}, status_code=500)
+        return JSONResponse({"error": "Failed to retrieve models"}, status_code=500)

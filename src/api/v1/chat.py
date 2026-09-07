@@ -243,7 +243,7 @@ async def chat_list_endpoint(
         return JSONResponse({"conversations": conversations})
     except Exception as e:
         logger.error("Failed to list conversations", error=str(e), user_id=user.user_id)
-        return JSONResponse({"error": f"Failed to list conversations: {str(e)}"}, status_code=500)
+        return JSONResponse({"error": "Failed to list conversations"}, status_code=500)
 
 
 async def chat_get_endpoint(
@@ -295,7 +295,7 @@ async def chat_get_endpoint(
         logger.error(
             "Failed to get conversation", error=str(e), user_id=user.user_id, chat_id=chat_id
         )
-        return JSONResponse({"error": f"Failed to get conversation: {str(e)}"}, status_code=500)
+        return JSONResponse({"error": "Failed to get conversation"}, status_code=500)
 
 
 async def chat_delete_endpoint(
@@ -325,4 +325,4 @@ async def chat_delete_endpoint(
         logger.error(
             "Failed to delete conversation", error=str(e), user_id=user.user_id, chat_id=chat_id
         )
-        return JSONResponse({"error": f"Failed to delete conversation: {str(e)}"}, status_code=500)
+        return JSONResponse({"error": "Failed to delete conversation"}, status_code=500)

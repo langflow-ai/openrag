@@ -115,7 +115,7 @@ async def create_knowledge_filter(
         normalized_query_data = normalize_query_data(body.queryData)
     except Exception as e:
         logger.error(f"Failed to normalize query_data: {e}")
-        return JSONResponse({"error": f"Invalid queryData format: {str(e)}"}, status_code=400)
+        return JSONResponse({"error": "Invalid queryData format"}, status_code=400)
 
     jwt_token = user.jwt_token
 
@@ -208,7 +208,7 @@ async def update_knowledge_filter(
         normalized_query_data = normalize_query_data(query_data)
     except Exception as e:
         logger.error(f"Failed to normalize query_data: {e}")
-        return JSONResponse({"error": f"Invalid queryData format: {str(e)}"}, status_code=400)
+        return JSONResponse({"error": "Invalid queryData format"}, status_code=400)
 
     updated_filter = {
         "id": filter_id,
@@ -424,10 +424,10 @@ async def knowledge_filter_webhook(
             }
         )
 
-    except Exception as e:
+    except Exception:
         logger.exception(
             "[API] Knowledge filter webhook failed",
             filter_id=filter_id,
             subscription_id=subscription_id,
         )
-        return JSONResponse({"error": f"Webhook processing failed: {str(e)}"}, status_code=500)
+        return JSONResponse({"error": "Webhook processing failed"}, status_code=500)

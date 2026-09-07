@@ -1604,7 +1604,7 @@ async def connector_sync(
         await TelemetryClient.send_event(
             Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_SYNC_FAILED
         )
-        return JSONResponse({"error": f"Sync failed: {str(e)}"}, status_code=500)
+        return JSONResponse({"error": "Sync failed"}, status_code=500)
 
 
 async def connector_status(
@@ -1898,7 +1898,7 @@ async def connector_webhook(
                 }
             )
 
-        except Exception as e:
+        except Exception:
             logger.exception(
                 "[CONNECTOR] Failed to process webhook",
                 connection_id=connection.connection_id,
@@ -1908,7 +1908,7 @@ async def connector_webhook(
                     "status": "error",
                     "connector_type": connector_type,
                     "channel_id": channel_id,
-                    "error": str(e),
+                    "error": "Webhook processing failed",
                 },
                 status_code=500,
             )
@@ -1918,7 +1918,7 @@ async def connector_webhook(
         await TelemetryClient.send_event(
             Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_WEBHOOK_FAILED
         )
-        return JSONResponse({"error": f"Webhook processing failed: {str(e)}"}, status_code=500)
+        return JSONResponse({"error": "Webhook processing failed"}, status_code=500)
 
 
 async def connector_disconnect(
@@ -1997,7 +1997,7 @@ async def connector_disconnect(
             error=str(e),
         )
         return JSONResponse(
-            {"error": f"Disconnect failed: {str(e)}"},
+            {"error": "Disconnect failed"},
             status_code=500,
         )
 
@@ -2125,7 +2125,7 @@ async def sync_all_connectors(
                     connector_type=connector_type,
                     error=str(e),
                 )
-                errors.append({"connector_type": connector_type, "error": str(e)})
+                errors.append({"connector_type": connector_type, "error": "Sync failed"})
 
         if not all_task_ids and not errors:
             if deleted_only_connectors:
@@ -2172,7 +2172,7 @@ async def sync_all_connectors(
         await TelemetryClient.send_event(
             Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_SYNC_FAILED
         )
-        return JSONResponse({"error": f"Sync failed: {str(e)}"}, status_code=500)
+        return JSONResponse({"error": "Sync failed"}, status_code=500)
 
 
 def _cloud_connector_types() -> list[str]:
@@ -2261,7 +2261,7 @@ async def connector_sync_preview(
         )
     except Exception as e:
         logger.error("Sync preview failed", connector_type=connector_type, error=str(e))
-        return JSONResponse({"error": f"Sync preview failed: {str(e)}"}, status_code=500)
+        return JSONResponse({"error": "Sync preview failed"}, status_code=500)
 
 
 async def connectors_sync_all_preview(
@@ -2318,7 +2318,7 @@ async def connectors_sync_all_preview(
         )
     except Exception as e:
         logger.error("Sync-all preview failed", error=str(e))
-        return JSONResponse({"error": f"Sync-all preview failed: {str(e)}"}, status_code=500)
+        return JSONResponse({"error": "Sync-all preview failed"}, status_code=500)
 
 
 async def connector_token(
@@ -2427,21 +2427,21 @@ async def connector_token(
                     access_token = connector.oauth.get_access_token()
                 # MSAL result has expiry, but we’re returning a raw token; keep expires_in None for simplicity
                 return JSONResponse({"access_token": access_token, "expires_in": None})
-            except ValueError as e:
+            except ValueError:
                 # Typical when acquire_token_silent fails (e.g., needs re-auth)
-                return JSONResponse(
-                    {"error": f"Failed to get access token: {str(e)}"}, status_code=401
-                )
-            except Exception as e:
-                return JSONResponse({"error": f"Authentication error: {str(e)}"}, status_code=500)
+                logger.warning("Failed to acquire connector access token", exc_info=True)
+                return JSONResponse({"error": "Failed to get access token"}, status_code=401)
+            except Exception:
+                logger.exception("Connector authentication error")
+                return JSONResponse({"error": "Authentication error"}, status_code=500)
 
         return JSONResponse(
             {"error": "Token not available for this connector type"}, status_code=400
         )
 
-    except Exception as e:
+    except Exception:
         logger.error("Error getting connector token", exc_info=True)
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return JSONResponse({"error": "Failed to get connector token"}, status_code=500)
 
 
 async def browse_connection_files(
@@ -2556,6 +2556,6 @@ async def browse_connection_files(
             error=str(e),
         )
         return JSONResponse(
-            {"error": f"Failed to browse files: {str(e)}"},
+            {"error": "Failed to browse files"},
             status_code=500,
         )

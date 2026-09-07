@@ -59,7 +59,7 @@ async def upload_user_file(
         import traceback
 
         logger.error("Full traceback", traceback=traceback.format_exc())
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return JSONResponse({"error": "Failed to upload file"}, status_code=500)
 
 
 async def run_ingestion(
@@ -109,8 +109,9 @@ async def run_ingestion(
             selected_embedding_model=settings.get("embeddingModel"),
         )
         return JSONResponse(result)
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+    except Exception:
+        logger.exception("Failed to ingest user files")
+        return JSONResponse({"error": "Failed to ingest files"}, status_code=500)
 
 
 async def upload_and_ingest_user_file(
@@ -180,7 +181,7 @@ async def upload_and_ingest_user_file(
 
     except Exception as e:
         logger.error("upload_and_ingest_user_file endpoint failed", error=str(e))
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return JSONResponse({"error": "Failed to upload and ingest file"}, status_code=500)
 
 
 async def delete_user_files(
@@ -194,7 +195,8 @@ async def delete_user_files(
         try:
             await langflow_file_service.delete_user_file(fid)
         except Exception as e:
-            errors.append({"file_id": fid, "error": str(e)})
+            logger.error("Failed to delete user file", file_id=fid, error=str(e))
+            errors.append({"file_id": fid, "error": "Delete failed"})
 
     status = 207 if errors else 200
     return JSONResponse(
