@@ -1,7 +1,8 @@
 """OpenRAG SDK chat client with streaming support."""
 
 import json
-from typing import TYPE_CHECKING, Any, AsyncIterator, Literal, overload
+from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING, Any, Literal, overload
 
 import httpx
 
@@ -452,9 +453,7 @@ class ChatClient:
         response = await self._client._request("GET", "/api/v1/chat")
         data = response.json()
 
-        conversations = [
-            Conversation(**c) for c in data.get("conversations", [])
-        ]
+        conversations = [Conversation(**c) for c in data.get("conversations", [])]
 
         return ConversationListResponse(conversations=conversations)
 
@@ -500,7 +499,3 @@ class ChatClient:
             return data.get("success", False)
         except NotFoundError:
             return False
-
-
-# Import Literal for type hints
-from typing import Literal
