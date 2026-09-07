@@ -51,6 +51,7 @@ import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
 import {
   buildKnowledgeTableRows,
   getKnowledgeFileIdentity,
+  isBomaragDocsUrl,
 } from "@/lib/knowledge-table-state";
 import { parseTimestampMs } from "@/lib/time-utils";
 import { cn } from "@/lib/utils";
@@ -471,9 +472,7 @@ function SearchPage() {
 
     return Object.entries(task.files).some(([fileKey, fileInfo]) => {
       const filename = (fileInfo as { filename?: string })?.filename ?? "";
-      return (
-        filename === "BomaRAG docs refresh" || fileKey.includes("bomarag.com")
-      );
+      return filename === "BomaRAG docs refresh" || isBomaragDocsUrl(fileKey);
     });
   });
   const hasBomaragRefreshCue =

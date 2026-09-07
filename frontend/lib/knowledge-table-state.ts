@@ -32,6 +32,34 @@ function looksLikeHttpUrl(value: string): boolean {
   return /^https?:\/\//i.test(value.trim());
 }
 
+/** Host the bundled product documentation is served from. */
+const BOMARAG_DOCS_HOST = "bomarag.com";
+
+/**
+ * True when `value` is an http(s) URL served by the BomaRAG docs site.
+ *
+ * Compares the parsed hostname rather than substring-matching the whole URL:
+ * `https://evil.example/?ref=bomarag.com` contains the host but is not ours,
+ * and treating it as ours would mis-bucket and hide a user's own ingested page.
+ */
+export function isBomaragDocsUrl(value?: string): boolean {
+  const normalized = value?.trim();
+  if (!normalized || !looksLikeHttpUrl(normalized)) {
+    return false;
+  }
+
+  let hostname: string;
+  try {
+    hostname = new URL(normalized).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+
+  return (
+    hostname === BOMARAG_DOCS_HOST || hostname.endsWith(`.${BOMARAG_DOCS_HOST}`)
+  );
+}
+
 /** Filename variants for overlay matching (mirrors backend `get_filename_aliases`). */
 function getKnowledgeFilenameAliases(filename?: string): string[] {
   const normalized = filename?.trim() ?? "";
@@ -96,7 +124,7 @@ export function inferTaskFileConnectorType(
       continue;
     }
     if (looksLikeHttpUrl(normalized)) {
-      return normalized.includes("bomarag.com") ? "bomarag_docs" : "url";
+      return isBomaragDocsUrl(normalized) ? "bomarag_docs" : "url";
     }
   }
 
@@ -249,7 +277,7 @@ export function buildKnowledgeTableRows(
   const filteredTaskFiles = taskFilesAsFiles.filter((taskFile) => {
     if (
       taskFile.filename === "BomaRAG docs refresh" ||
-      (taskFile.source_url ?? "").includes("bomarag.com")
+      isBomaragDocsUrl(taskFile.source_url)
     ) {
       return false;
     }
