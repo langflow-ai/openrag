@@ -291,7 +291,10 @@ async def _langflow_upload_ingest_task(
         import traceback
 
         logger.error("Full traceback", traceback=traceback.format_exc())
+        # Classify on the exception text, but never return it: the traceback is
+        # already logged above, and the message can carry OpenSearch hosts,
+        # temp-file paths or bucket names.
         error_msg = str(e)
         if "AuthenticationException" in error_msg or "access denied" in error_msg.lower():
-            return JSONResponse({"error": error_msg}, status_code=403)
-        return JSONResponse({"error": error_msg}, status_code=500)
+            return JSONResponse({"error": "Access denied"}, status_code=403)
+        return JSONResponse({"error": "Ingestion failed"}, status_code=500)
