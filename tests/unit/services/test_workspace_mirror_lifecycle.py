@@ -6,7 +6,6 @@ These tests pin the fix for the fire-and-forget hazards in
 writes on rapid double-save, races on the DB upsert.
 """
 
-import asyncio
 import sys
 import tempfile
 from pathlib import Path

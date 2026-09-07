@@ -8,7 +8,7 @@ This module provides helpers for:
 - Ensuring embedding fields exist in the OpenSearch index
 """
 
-from typing import Any, Dict
+from typing import Any
 
 from utils.logging_config import get_logger
 

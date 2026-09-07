@@ -21,7 +21,7 @@ import os
 import threading
 from collections.abc import Callable
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any
 
 from config.paths import get_data_file
 from config.storage_mode import (
@@ -190,7 +190,10 @@ class ConversationPersistenceService:
                 return {"total_users": 0, "total_conversations": 0}
             async with sess_factory() as session:
                 total = (
-                    await session.execute(select(func.count(Conversation.response_id)))
+                    # SQLModel types columns as their Python type, so mypy sees str here.
+                    await session.execute(
+                        select(func.count(Conversation.response_id))  # type: ignore[arg-type]
+                    )
                 ).scalar_one()
                 users = (
                     await session.execute(select(func.count(func.distinct(Conversation.user_id))))

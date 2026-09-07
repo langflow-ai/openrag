@@ -5,7 +5,6 @@ import inspect
 import os
 import webbrowser
 from collections.abc import AsyncIterator, Callable
-from typing import Optional
 
 from rich.text import Text
 from textual.app import ComposeResult
@@ -176,7 +175,7 @@ class CommandOutputModal(ModalScreen):
     def __init__(
         self,
         title: str,
-        command_generator: AsyncIterator[tuple[bool, str]],
+        command_generator: AsyncIterator[tuple[bool, str] | tuple[bool, str, bool]],
         on_complete: Callable | None = None,
         show_launch_button: bool = False,
     ):
@@ -298,8 +297,6 @@ class CommandOutputModal(ModalScreen):
                 output.move_cursor((len(self._output_lines), 0))
 
                 # Detect error patterns in messages
-                import re
-
                 lower_msg = message.lower() if message else ""
                 if not self._error_detected and any(
                     pattern in lower_msg
@@ -338,7 +335,7 @@ class CommandOutputModal(ModalScreen):
                         def _invoke_callback() -> None:
                             callback_result = self.on_complete()
                             if inspect.isawaitable(callback_result):
-                                asyncio.create_task(callback_result)
+                                asyncio.ensure_future(callback_result)
 
                         self.call_after_refresh(_invoke_callback)
         except asyncio.CancelledError:

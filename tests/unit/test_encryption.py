@@ -37,7 +37,7 @@ def test_encryption_utility():
     # Spoofing the identity dynamically rejects the AES-GCM tags!
     try:
         decrypt_secret(payload, expected_tenant_id="wrong-tenant-id")
-        assert False, "Should have thrown ValueError from AESGCM AAD mismatch"
+        raise AssertionError("Should have thrown ValueError from AESGCM AAD mismatch")
     except ValueError:
         pass
     print("OK")

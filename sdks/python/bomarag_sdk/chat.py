@@ -499,7 +499,3 @@ class ChatClient:
             return data.get("success", False)
         except NotFoundError:
             return False
-
-
-# Import Literal for type hints
-from typing import Literal

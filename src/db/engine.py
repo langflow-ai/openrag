@@ -5,7 +5,6 @@ DATABASE_URL is the single switch between SQLite (default) and Postgres.
 
 import os
 from collections.abc import AsyncIterator
-from typing import Optional
 
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,

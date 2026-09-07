@@ -2,7 +2,7 @@ import base64
 import json
 import os
 import secrets
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any
 
 import aiofiles
 from cryptography.hazmat.primitives import hashes
@@ -160,7 +160,7 @@ def decrypt_secret(payload: dict[str, Any] | str, expected_tenant_id: str | None
         return plaintext_bytes.decode("utf-8")
     except Exception as e:
         logger.error(f"Failed to decrypt secret: {e}")
-        raise ValueError(f"Failed to decrypt secret: {e}")
+        raise ValueError(f"Failed to decrypt secret: {e}") from e
 
 
 async def read_encrypted_file(file_path: str) -> tuple[str | None, bool]:

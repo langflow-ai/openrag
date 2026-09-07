@@ -97,7 +97,9 @@ class BomaRAGClient:
             response = await client.chat.create(message="Hello")
 
         # Using explicit arguments
-        async with BomaRAGClient(api_key="orag_...", base_url="https://api.example.com") as client:
+        async with BomaRAGClient(
+            api_key="orag_...", base_url="https://api.example.com"
+        ) as client:
             response = await client.chat.create(message="Hello")
 
         # Without context manager
@@ -124,10 +126,12 @@ class BomaRAGClient:
 
         Args:
             api_key: API key for authentication. Falls back to BOMARAG_API_KEY env var.
-                Optional when using IBM auth — pass credentials via extra_headers instead.
+                Optional when using IBM auth — pass credentials via
+                extra_headers instead.
             extra_headers: Additional headers forwarded on every request. Used in IBM
                 auth mode to pass X-Username and X-Api-Key from the user's MCP config.
-            base_url: Base URL for the API. Falls back to BOMARAG_URL env var, then default.
+            base_url: Base URL for the API. Falls back to BOMARAG_URL env var,
+                then default.
             timeout: Request timeout in seconds (default 30).
             http_client: Optional custom httpx.AsyncClient instance.
         """

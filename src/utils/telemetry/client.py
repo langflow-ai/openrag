@@ -3,8 +3,8 @@
 import asyncio
 import os
 import platform
-from datetime import UTC, datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
+from typing import Any
 from urllib.parse import urlencode
 
 import httpx
@@ -115,7 +115,7 @@ def _get_os_version() -> str:
 
 def _get_gpu_info() -> dict:
     """Get GPU information for telemetry."""
-    gpu_info = {
+    gpu_info: dict[str, Any] = {
         "gpu_available": False,
         "gpu_count": 0,
         "cuda_available": False,

@@ -1,7 +1,5 @@
 """Version checking utilities for BomaRAG TUI."""
 
-from typing import Optional, Tuple
-
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -23,7 +21,10 @@ async def get_latest_docker_version(image_name: str = "bomalogic/bomarag-backend
         async with httpx.AsyncClient(timeout=10.0) as client:
             # Docker Hub API v2 endpoint for tags
             url = f"https://hub.docker.com/v2/repositories/{image_name}/tags/"
-            params = {"page_size": 100, "ordering": "-last_updated"}
+            params: dict[str, str | int] = {
+                "page_size": 100,
+                "ordering": "-last_updated",
+            }
 
             response = await client.get(url, params=params)
             if response.status_code == 200:

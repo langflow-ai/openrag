@@ -6,11 +6,8 @@ from typing import TYPE_CHECKING, Any
 from .models import (
     CreateKnowledgeFilterOptions,
     CreateKnowledgeFilterResponse,
-    DeleteKnowledgeFilterResponse,
-    GetKnowledgeFilterResponse,
     KnowledgeFilter,
     KnowledgeFilterQueryData,
-    KnowledgeFilterSearchResponse,
     UpdateKnowledgeFilterOptions,
 )
 

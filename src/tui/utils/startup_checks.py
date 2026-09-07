@@ -10,7 +10,6 @@ import shutil
 import subprocess
 import time
 from pathlib import Path
-from typing import Optional, Tuple
 
 MIN_PODMAN_MEMORY_MB = 8192  # 8 GB minimum
 BOMARAG_IMAGE_REPOS = {
@@ -79,7 +78,7 @@ def get_platform() -> str:
             with open("/proc/version") as f:
                 if "microsoft" in f.read().lower():
                     return "WSL"
-        except:
+        except Exception:
             pass
         return "Linux"
     elif system == "Windows":
@@ -173,7 +172,7 @@ def docker_daemon_ready() -> bool:
     try:
         result = subprocess.run(["docker", "info"], capture_output=True, text=True, timeout=10)
         return result.returncode == 0
-    except:
+    except Exception:
         return False
 
 
@@ -182,7 +181,7 @@ def podman_ready() -> bool:
     try:
         result = subprocess.run(["podman", "info"], capture_output=True, text=True, timeout=10)
         return result.returncode == 0
-    except:
+    except Exception:
         return False
 
 
@@ -193,7 +192,7 @@ def compose_available() -> bool:
         result = subprocess.run(["docker", "compose", "version"], capture_output=True, timeout=5)
         if result.returncode == 0:
             return True
-    except:
+    except Exception:
         pass
     # Try docker-compose (v1)
     return has_cmd("docker-compose")
@@ -300,7 +299,7 @@ def install_docker_linux() -> bool:
         try:
             subprocess.run(["sudo", "usermod", "-aG", "docker", os.environ["USER"]], check=True)
             say("Added user to docker group. You may need to log out and back in.")
-        except:
+        except Exception:
             pass
         return True
     except Exception as e:
@@ -357,7 +356,7 @@ def setup_podman_machine() -> bool:
             timeout=10,
         )
         machine_exists = bool(result.stdout.strip())
-    except:
+    except Exception:
         machine_exists = False
 
     if not machine_exists:
@@ -419,7 +418,7 @@ def check_podman_machine_memory() -> tuple[bool, int]:
         if result.returncode == 0 and result.stdout.strip():
             current_mb = int(result.stdout.strip())
             return current_mb >= MIN_PODMAN_MEMORY_MB, current_mb
-    except:
+    except Exception:
         pass
     return True, 0
 
@@ -497,7 +496,7 @@ def check_storage_corruption(runtime: str) -> tuple[bool, str | None]:
         for pattern in corruption_patterns:
             if re.search(pattern, stderr, re.IGNORECASE):
                 return True, stderr
-    except:
+    except Exception:
         pass
     return False, None
 
@@ -651,12 +650,12 @@ def run_startup_checks() -> bool:
     # Get version
     try:
         cmd = ["podman", "--version"] if runtime == "podman" else ["docker", "--version"]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
         # Extract version number (e.g., "podman version 5.7.1" -> "5.7.1")
-        match = re.search(r"(\d+\.\d+\.\d+)", result.stdout)
+        match = re.search(r"(\d+\.\d+\.\d+)", proc.stdout)
         if match:
             runtime_version = match.group(1)
-    except:
+    except Exception:
         pass
 
     say(f"Using {runtime}" + (f" {runtime_version}" if runtime_version else ""))

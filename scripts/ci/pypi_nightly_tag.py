@@ -3,7 +3,6 @@ import re
 import sys
 import tomllib
 from pathlib import Path
-from typing import Optional
 
 import requests
 from packaging.version import InvalidVersion, Version

@@ -12,11 +12,9 @@ Permissions are cached per-process for `BOMARAG_PERM_CACHE_TTL` seconds
 from __future__ import annotations
 
 import os
-from typing import Optional
 
 from cachetools import TTLCache
 from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.repositories import AuditRepo, RoleRepo
 from session_manager import User
