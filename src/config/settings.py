@@ -1211,6 +1211,27 @@ class AppClients:
                     os.environ["OLLAMA_ENDPOINT"] = config.providers.ollama.endpoint
                     logger.debug("Loaded Ollama endpoint from config")
 
+                # Set Azure credentials
+                azure_creds = config.providers.credential_values("azure")
+                if azure_creds.get("api_key"):
+                    os.environ["AZURE_API_KEY"] = azure_creds["api_key"]
+                if azure_creds.get("api_base"):
+                    os.environ["AZURE_API_BASE"] = azure_creds["api_base"]
+                if azure_creds.get("api_version"):
+                    os.environ["AZURE_API_VERSION"] = azure_creds["api_version"]
+                if azure_creds:
+                    logger.debug("Loaded Azure OpenAI credentials from config")
+
+                azure_ai_creds = config.providers.credential_values("azure_ai")
+                if azure_ai_creds.get("api_key"):
+                    os.environ["AZURE_AI_API_KEY"] = azure_ai_creds["api_key"]
+                if azure_ai_creds.get("api_base"):
+                    os.environ["AZURE_AI_API_BASE"] = azure_ai_creds["api_base"]
+                if azure_ai_creds.get("api_version"):
+                    os.environ["AZURE_AI_API_VERSION"] = azure_ai_creds["api_version"]
+                if azure_ai_creds:
+                    logger.debug("Loaded Azure AI Foundry credentials from config")
+
                 # Determine model and provider for both probe and production client
                 model_name = config.knowledge.embedding_model or OPENAI_DEFAULT_EMBEDDING_MODEL
                 provider = config.knowledge.embedding_provider or "openai"
