@@ -54,6 +54,12 @@ Two suites live in `frontend/`, and **the file extension names the runner**:
 - Never `vi.mock` a module in `app/api/queries/` or `app/api/mutations/`. Mock the network instead, so the URL, `response.ok` handling, payload shape, and react-query wiring stay under test.
 - Use `renderWithProviders` from `test-utils/render.tsx`, not `app/providers.tsx`. The latter monkey-patches `window.fetch` for 401 redirects, and `app/api/get-query-client.ts` memoizes one client per browser process, which leaks cache between tests.
 
+**Diff coverage gate.** PRs must cover the lines they change: `npm run test:diff-coverage` runs the suite and then `scripts/check-diff-coverage.mjs`, which fails when under 80% of *changed executable lines* are covered. Enforced by the `diff-coverage` job in `test-frontend-unit.yml`.
+
+The gate is on changed **lines**, not changed files — a one-line fix to an untested legacy file is not blocked, but new logic must come with tests. It diffs the merge base against the working tree, so it also reports on uncommitted work locally. Tune with `--threshold` / `--base` or `DIFF_COVERAGE_THRESHOLD` / `DIFF_COVERAGE_BASE`.
+
+There is deliberately **no global coverage threshold** (overall is ~5%). A global floor rewards writing the cheapest tests; the diff gate makes new code carry its own weight, and existing gaps get closed by churn priority instead — target the files git history shows are repeatedly fixed, not the ones that look most complex.
+
 **What does not belong in Vitest.** jsdom has no CSS engine and no layout: `getBoundingClientRect()` returns zeros, and `pointer-events`, `opacity`, and other style-driven guards are never applied. Anything whose behaviour depends on real geometry or real CSS — ag-grid virtualization, `use-stick-to-bottom`, `disabled:pointer-events-none` on a Radix trigger — belongs in Playwright. A component's *disabled attribute* is testable in Vitest; the *click being blocked by CSS* is not.
 
 Design notes and phased rollout: `local/plans/frontend-testing-foundation.md`.

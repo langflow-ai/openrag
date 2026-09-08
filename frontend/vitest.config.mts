@@ -31,5 +31,33 @@ export default defineConfig({
       "playwright-report/**",
       "test-results/**",
     ],
+    coverage: {
+      provider: "v8",
+      // "json" emits coverage-final.json, which scripts/check-diff-coverage.mjs
+      // needs for per-line hit counts.
+      reporter: ["text", "json", "json-summary", "html"],
+      reportsDirectory: "coverage",
+      // `include` is what makes the number honest: without it, coverage is
+      // reported only for files some test already imports, which reads as a
+      // high percentage of a tiny denominator.
+      include: [
+        "app/**/*.{ts,tsx}",
+        "components/**/*.{ts,tsx}",
+        "contexts/**/*.{ts,tsx}",
+        "hooks/**/*.{ts,tsx}",
+        "lib/**/*.{ts,tsx}",
+        "enhancements/**/*.{ts,tsx}",
+      ],
+      exclude: [
+        "**/*.test.{ts,tsx}",
+        "**/*.d.ts",
+        // Next.js route/layout plumbing, not logic worth a coverage target.
+        "app/**/layout.tsx",
+        "app/**/error.tsx",
+        "app/**/global-error.tsx",
+        "app/**/loading.tsx",
+        "app/**/route.ts",
+      ],
+    },
   },
 });
