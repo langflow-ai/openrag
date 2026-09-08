@@ -10,16 +10,7 @@ pytestmark = pytest.mark.skipif(
     reason="SDK integration tests skipped",
 )
 
-ALL_PROVIDERS = ("azure", "openai", "anthropic", "ollama", "watsonx")
-
-
-def _get_primary_provider() -> str:
-    llm_provider = (os.getenv("LLM_PROVIDER") or "").strip().lower()
-    if llm_provider in ALL_PROVIDERS:
-        return llm_provider
-    if os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("AZURE_API_KEY"):
-        return "azure"
-    return "openai"
+ALL_PROVIDERS = ("openai", "anthropic", "ollama", "watsonx")
 
 
 class TestModels:
@@ -29,12 +20,14 @@ class TestModels:
     async def test_list_models(self, client):
         """Listing models for a provider must return language and embedding model lists.
 
-        The primary configured provider (azure or openai) is guaranteed to be
-        configured by the test onboarding fixture (conftest.ensure_onboarding).
-        The other providers are covered defensively in test_list_models_all_providers below.
+        Only `openai` is guaranteed to be configured by the test onboarding
+        fixture (conftest.ensure_onboarding). The other providers are covered
+        defensively in test_list_models_all_providers below, since a typical
+        local dev instance may not have anthropic/ollama/watsonx configured —
+        the server responds with a 400 (ValidationError) in that case, not an
+        empty list.
         """
-        primary = _get_primary_provider()
-        models = await client.models.list(primary)
+        models = await client.models.list("openai")
 
         assert models.language_models is not None
         assert isinstance(models.language_models, list)
@@ -46,15 +39,17 @@ class TestModels:
     async def test_list_models_per_provider(self, client, provider):
         """List models for each supported provider.
 
-        The primary provider is required to be configured. Any other provider
-        that isn't configured on this instance raises ValidationError (HTTP 400)
-        and is marked as explicitly skipped.
+        Only `openai` is required to be configured (it's the provider set up
+        by the test onboarding fixture, conftest.ensure_onboarding) — its
+        assertions must pass. Any other provider that isn't configured on
+        this instance raises ValidationError (HTTP 400); those are marked as
+        explicitly skipped (visible per-provider in the pytest report) rather
+        than silently passed over or required to succeed.
         """
-        primary = _get_primary_provider()
         try:
             models = await client.models.list(provider)
         except ValidationError:
-            if provider == primary:
+            if provider == "openai":
                 raise
             pytest.skip(f"provider '{provider}' is not configured on this instance")
 

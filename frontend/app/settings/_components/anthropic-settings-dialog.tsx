@@ -18,10 +18,6 @@ import {
 } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/auth-context";
 import {
-  canRemoveProvider,
-  isProviderConfigured,
-} from "../_helpers/model-helpers";
-import {
   AnthropicSettingsForm,
   type AnthropicSettingsFormData,
 } from "./anthropic-settings-form";
@@ -45,12 +41,14 @@ const AnthropicSettingsDialog = ({
     enabled: isAuthenticated || isNoAuthMode,
   });
 
-  const isAnthropicConfigured = isProviderConfigured(
-    settings.providers,
-    "anthropic",
-  );
+  const isAnthropicConfigured =
+    settings.providers?.anthropic?.configured === true;
 
-  const canRemoveAnthropic = canRemoveProvider(settings.providers, "anthropic");
+  const canRemoveAnthropic =
+    isAnthropicConfigured &&
+    (settings.providers?.openai?.configured === true ||
+      settings.providers?.watsonx?.configured === true ||
+      settings.providers?.ollama?.configured === true);
 
   const methods = useForm<AnthropicSettingsFormData>({
     mode: "onSubmit",

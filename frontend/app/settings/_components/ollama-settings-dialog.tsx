@@ -21,10 +21,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/auth-context";
-import {
-  canRemoveProvider,
-  isProviderConfigured,
-} from "../_helpers/model-helpers";
 import ModelProviderDialogFooter from "./model-provider-dialog-footer";
 import {
   OllamaSettingsForm,
@@ -52,9 +48,14 @@ const OllamaSettingsDialog = ({
     enabled: isAuthenticated || isNoAuthMode,
   });
 
-  const isOllamaConfigured = isProviderConfigured(settings.providers, "ollama");
+  const isOllamaConfigured = settings.providers?.ollama?.configured === true;
 
-  const canRemoveOllama = canRemoveProvider(settings.providers, "ollama");
+  const otherProviderConfigured =
+    settings.providers?.openai?.configured === true ||
+    settings.providers?.anthropic?.configured === true ||
+    settings.providers?.watsonx?.configured === true;
+
+  const canRemoveOllama = isOllamaConfigured && otherProviderConfigured;
 
   const methods = useForm<OllamaSettingsFormData>({
     mode: "onSubmit",

@@ -21,10 +21,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/auth-context";
-import {
-  canRemoveProvider,
-  isProviderConfigured,
-} from "../_helpers/model-helpers";
 import ModelProviderDialogFooter from "./model-provider-dialog-footer";
 import {
   OpenAISettingsForm,
@@ -52,9 +48,13 @@ const OpenAISettingsDialog = ({
     enabled: isAuthenticated || isNoAuthMode,
   });
 
-  const isOpenAIConfigured = isProviderConfigured(settings.providers, "openai");
+  const isOpenAIConfigured = settings.providers?.openai?.configured === true;
 
-  const canRemoveOpenAI = canRemoveProvider(settings.providers, "openai");
+  const canRemoveOpenAI =
+    isOpenAIConfigured &&
+    (settings.providers?.anthropic?.configured === true ||
+      settings.providers?.watsonx?.configured === true ||
+      settings.providers?.ollama?.configured === true);
 
   const methods = useForm<OpenAISettingsFormData>({
     mode: "onSubmit",
