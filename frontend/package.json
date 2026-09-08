@@ -87,6 +87,7 @@
     "jsdom": "^30.0.1",
     "knip": "^6.23.0",
     "lint-staged": "^17.0.8",
+    "msw": "^2.15.0",
     "postcss": "8.5.26",
     "tailwindcss": "^3.4.19",
     "typescript": "^6.0.3",
@@ -110,6 +111,9 @@
     "svgo": "4.0.1",
     "node-forge": "1.4.0",
     "path-to-regexp": "0.1.13",
+    "msw": {
+      "path-to-regexp": "^6.3.0"
+    },
     "@xmldom/xmldom": "0.9.10"
   },
   "lint-staged": {

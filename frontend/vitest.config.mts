@@ -14,7 +14,13 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
+    // Pinned so relative MSW handler paths ("/api/...") have a stable origin to
+    // resolve against, and so tests never depend on a jsdom default changing.
+    environmentOptions: {
+      jsdom: { url: "http://localhost:3000" },
+    },
     globals: true,
+    setupFiles: ["./test-utils/setup.ts"],
     include: ["**/*.test.ts", "**/*.test.tsx"],
     // tests/ is Playwright's testDir. Both suites use describe/it, so without
     // this exclude Vitest would try to run the 24 E2E specs.

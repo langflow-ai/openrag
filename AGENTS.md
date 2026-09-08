@@ -39,6 +39,25 @@ Read the `SKILL.md` files directly. The frontmatter `description` tells you when
 - Claude-Code-specific plumbing belongs in `plugin.json` or `.claude/`, not in `SKILL.md`.
 - See `plugins/README.md` for the full layout and distribution model.
 
+## Frontend tests
+
+Two suites live in `frontend/`, and **the file extension names the runner**:
+
+| Pattern | Runner | Command | Needs a backend? |
+|---|---|---|---|
+| `**/*.test.ts(x)` | Vitest | `npm test` (`test:watch`) | No |
+| `tests/**/*.spec.ts` | Playwright | `npx playwright test` | Yes — full Docker stack |
+
+- **Co-locate** Vitest files with their source: `lib/metrics.ts` → `lib/metrics.test.ts`, `components/task-dialog/filters.tsx` → `components/task-dialog/filters.test.tsx`.
+- `tests/` is Playwright's `testDir` and holds only `.spec.ts`. Shared Vitest infrastructure lives in `test-utils/`, never in `tests/`.
+- Query by accessible role/label/text. Do not assert on class names or add test-only ids — tests should fail on user-visible behaviour changes, not markup refactors.
+- Never `vi.mock` a module in `app/api/queries/` or `app/api/mutations/`. Mock the network instead, so the URL, `response.ok` handling, payload shape, and react-query wiring stay under test.
+- Use `renderWithProviders` from `test-utils/render.tsx`, not `app/providers.tsx`. The latter monkey-patches `window.fetch` for 401 redirects, and `app/api/get-query-client.ts` memoizes one client per browser process, which leaks cache between tests.
+
+**What does not belong in Vitest.** jsdom has no CSS engine and no layout: `getBoundingClientRect()` returns zeros, and `pointer-events`, `opacity`, and other style-driven guards are never applied. Anything whose behaviour depends on real geometry or real CSS — ag-grid virtualization, `use-stick-to-bottom`, `disabled:pointer-events-none` on a Radix trigger — belongs in Playwright. A component's *disabled attribute* is testable in Vitest; the *click being blocked by CSS* is not.
+
+Design notes and phased rollout: `local/plans/frontend-testing-foundation.md`.
+
 ## Operational constraints
 
 **Single-worker only (until Redis cache lands).** The RBAC permission cache and OAuth-subject→DB-id cache are both per-process (`cachetools.TTLCache`). Running with multiple uvicorn workers or multiple helm replicas means a role grant or revoke takes effect in only one process; the others serve stale permissions for up to `OPENRAG_PERM_CACHE_TTL` seconds (default 60). The startup event in `src/main.py` enforces `UVICORN_WORKERS<=1` and `CACHE_BACKEND=memory` and hard-fails otherwise. To horizontally scale, swap the cache to Redis first.
