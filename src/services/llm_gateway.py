@@ -66,6 +66,11 @@ def _get_config():
 #: prefix before a colon, so `provider:model` stays unambiguous even for ids
 #: that use colons themselves (`ollama:gpt-oss:120b-cloud`, `openai:ft:gpt-4`).
 PROVIDER_SEPARATOR = ":"
+LEGACY_EMBEDDING_MODEL_PREFIX = "legacy:"
+INDEXED_EMBEDDING_SPACE_PREFIX = "space:"
+_BUILTIN_LEGACY_EMBEDDING_PROVIDERS = {
+    "text-embedding-3-small": "openai",
+}
 
 
 def split_model_id(model: str) -> tuple[str | None, str]:
@@ -115,6 +120,20 @@ def default_model(kind: Literal["chat", "embedding"], config=None) -> str:
     if kind == "embedding":
         return cfg.knowledge.embedding_model or ""
     return cfg.agent.llm_model or ""
+
+
+def legacy_embedding_provider(model: str, config: Any | None = None) -> str | None:
+    """Resolve provenance for a model-only embedding space from before provider tracking."""
+    name = (model or "").strip()
+    if name in _BUILTIN_LEGACY_EMBEDDING_PROVIDERS:
+        return _BUILTIN_LEGACY_EMBEDDING_PROVIDERS[name]
+
+    cfg = config or _get_config()
+    mapping = getattr(cfg.knowledge, "legacy_embedding_provider_map", {}) or {}
+    if not isinstance(mapping, Mapping):
+        return None
+    provider = str(mapping.get(name) or "").strip().lower()
+    return provider or None
 
 
 def provider_credentials(provider: str, config=None) -> dict[str, Any]:
@@ -178,7 +197,27 @@ def resolve_call(
     if not requested:
         raise LlmGatewayError("model is required", 400)
 
-    provider, name = split_model_id(requested)
+    if kind == "embedding" and requested.startswith(INDEXED_EMBEDDING_SPACE_PREFIX):
+        space_id = requested[len(INDEXED_EMBEDDING_SPACE_PREFIX) :].strip()
+        provider, separator, name = space_id.partition(PROVIDER_SEPARATOR)
+        provider = provider.strip().lower()
+        name = name.strip()
+        if not separator or not provider or not name:
+            raise LlmGatewayError(
+                f"Indexed embedding space {space_id!r} has no exact provider route.",
+                400,
+            )
+    elif kind == "embedding" and requested.startswith(LEGACY_EMBEDDING_MODEL_PREFIX):
+        name = requested[len(LEGACY_EMBEDDING_MODEL_PREFIX) :].strip()
+        provider = legacy_embedding_provider(name, cfg)
+        if not provider:
+            raise LlmGatewayError(
+                f"Legacy embedding model {name!r} has no provider mapping. "
+                "Set knowledge.legacy_embedding_provider_map for this model.",
+                400,
+            )
+    else:
+        provider, name = split_model_id(requested)
     if provider is None:
         provider = default_provider(kind, cfg)
         name = requested

@@ -166,27 +166,38 @@ class LangflowFileService:
         try:
             from config.embedding_constants import get_declared_default_embedding_model
             from config.settings import get_index_name, get_openrag_config
-            from utils.embedding_fields import ensure_embedding_field_exists
+            from utils.embedding_fields import (
+                ensure_embedding_field_exists,
+                get_embedding_space_id,
+            )
             from utils.embeddings import create_index_body
 
             config = get_openrag_config()
             index_name = get_index_name()
-            model_name = embedding_model or get_declared_default_embedding_model(
-                config.knowledge.embedding_provider
-            )
+            embedding_provider = config.knowledge.embedding_provider or "openai"
+            model_name = embedding_model or get_declared_default_embedding_model(embedding_provider)
             embedding_dimensions = await self._detect_embedding_dimensions(
                 model_name,
-                config.knowledge.embedding_provider,
+                embedding_provider,
+            )
+            embedding_space_id = get_embedding_space_id(
+                embedding_provider,
+                model_name,
             )
             if not await clients.opensearch.indices.exists(index=index_name):
                 await clients.opensearch.indices.create(
                     index=index_name,
-                    body=await create_index_body(model_name, embedding_dimensions),
+                    body=await create_index_body(
+                        model_name,
+                        embedding_dimensions,
+                        embedding_provider=embedding_provider,
+                        embedding_space_id=embedding_space_id,
+                    ),
                 )
 
             await ensure_embedding_field_exists(
                 clients.opensearch,
-                model_name,
+                embedding_space_id,
                 index_name,
                 embedding_dimensions,
             )
@@ -253,7 +264,11 @@ class LangflowFileService:
             )
             return None, None
 
-        from config.settings import get_index_name
+        from config.settings import get_index_name, get_openrag_config
+
+        embedding_provider = (
+            getattr(get_openrag_config().knowledge, "embedding_provider", None) or "openai"
+        )
 
         ingest_run_id = f"{document_id}-{uuid.uuid4().hex}"
         context = DocumentIndexContext(
@@ -261,6 +276,7 @@ class LangflowFileService:
             filename=filename,
             mimetype=mimetype,
             embedding_model=embedding_model,
+            embedding_provider=embedding_provider,
             owner=owner,
             owner_name=owner_name,
             owner_email=owner_email,
