@@ -71,7 +71,7 @@ from __future__ import annotations
 import base64
 import time
 from collections.abc import Mapping
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, cast
 from urllib.parse import urlsplit, urlunsplit
 
 from utils.logging_config import get_logger
@@ -545,7 +545,7 @@ def install_litellm_compatibility() -> None:
     patched = []
     for module_name in _API_PARAM_CALL_SITES:
         try:
-            module = __import__(module_name, fromlist=["_get_api_params"])
+            module = cast(Any, __import__(module_name, fromlist=["_get_api_params"]))
         except Exception:
             continue
         current = getattr(module, "_get_api_params", None)
@@ -554,7 +554,7 @@ def install_litellm_compatibility() -> None:
         module._get_api_params = _get_api_params_allowing_no_scope
         patched.append(module_name)
 
-    mixin = common_utils.IBMWatsonXMixin
+    mixin = cast(Any, common_utils.IBMWatsonXMixin)
     if not getattr(mixin._prepare_payload, _PATCH_MARKER, False):
         original_prepare_payload = mixin._prepare_payload
 
