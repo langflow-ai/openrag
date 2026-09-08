@@ -639,7 +639,7 @@ def _extract_error_details(response: httpx.Response) -> str:
 #: the generic LiteLLM probe. Everything else is validated by making a real call,
 #: which needs a model name.
 _NATIVELY_VALIDATED_PROVIDERS = frozenset(
-    {"openai", "azure", "watsonx", "ollama", "anthropic", watsonx_onprem.PROVIDER_KEY}
+    {"openai", "azure", "watsonx", "ollama", "anthropic"}
 )
 
 
