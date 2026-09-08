@@ -1,4 +1,5 @@
 import path from "path";
+import { LACKS_KNOWLEDGE_PATTERN } from "../config/test.config";
 import { expect, test } from "../utils/fixtures";
 import logger from "../utils/logger";
 import { navigateToHome } from "../utils/navigation";
@@ -57,10 +58,7 @@ test("@smoke Knowledge filter functionality @33219234", async ({
   await chat.applyKnowledgeFilter(filterName);
   const response2 = await chat.askQuestion(testQuestion);
 
-  const lacksKnowledge =
-    /no relevant.*sources|cannot find|no information|not available|unable to|don't have|no supporting/i.test(
-      response2,
-    );
+  const lacksKnowledge = LACKS_KNOWLEDGE_PATTERN.test(response2);
   const hasDocumentSpecifics =
     /earned leave|casual leave|sick leave|18 days|6 days|12 days|26 weeks|source.*leave\.policy\.test\.doc/i.test(
       response2,
@@ -168,10 +166,7 @@ test("Knowledge filter scope restriction - Negative test", async ({
   logger.info(`  ✓ Asked: "${leaveQuestion}"`);
 
   // Verify filter restricts retrieval (document not found in filtered scope)
-  const indicatesNotFound =
-    /no relevant.*sources|cannot find|didn't find|couldn't find|not available|unable to|don't have|no supporting|no.*matching/i.test(
-      response,
-    );
+  const indicatesNotFound = LACKS_KNOWLEDGE_PATTERN.test(response);
 
   expect(indicatesNotFound).toBe(true);
   logger.info(

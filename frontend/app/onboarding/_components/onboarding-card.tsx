@@ -44,6 +44,7 @@ import { AnthropicOnboarding } from "./anthropic-onboarding";
 import { GenericOnboarding } from "./generic-onboarding";
 import { IBMOnboarding } from "./ibm-onboarding";
 import { OllamaOnboarding } from "./ollama-onboarding";
+import { canCompleteOnboarding } from "./onboarding-completion";
 import { OpenAIOnboarding } from "./openai-onboarding";
 import { TabTrigger } from "./tab-trigger";
 
@@ -75,8 +76,6 @@ const OnboardingCard = ({
   isEmbedding = false,
   isCompleted = false,
 }: OnboardingCardProps) => {
-  const { isHealthy: isDoclingHealthy } = useDoclingHealth();
-
   // Which providers this deployment offers comes from the backend, filtered by
   // OPENRAG_RUN_MODE (config/model_providers.yaml). Onboarding renders that
   // list; it does not decide availability from the UI brand.
@@ -560,9 +559,11 @@ const OnboardingCard = ({
     setCurrentStep(0);
   };
 
-  const isComplete =
-    (isEmbedding && !!settings.embedding_model) ||
-    (!isEmbedding && !!settings.llm_model && isDoclingHealthy);
+  const isComplete = canCompleteOnboarding({
+    isEmbedding,
+    llmModel: settings.llm_model ?? "",
+    embeddingModel: settings.embedding_model ?? "",
+  });
 
   return (
     <AnimatePresence mode="wait">
@@ -734,11 +735,7 @@ const OnboardingCard = ({
                   <TooltipContent>
                     {isLoadingModels
                       ? "Loading models..."
-                      : settings.llm_model &&
-                          settings.embedding_model &&
-                          !isDoclingHealthy
-                        ? "docling-serve must be running to continue"
-                        : "Please fill in all required fields"}
+                      : "Please fill in all required fields"}
                   </TooltipContent>
                 )}
               </Tooltip>
