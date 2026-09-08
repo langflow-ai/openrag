@@ -128,14 +128,20 @@ OPENRAG_BACKEND_INTERNAL_URL = os.getenv(
 
 
 def get_langflow_llm_base_url() -> str:
-    """OpenAI-compatible base URL Langflow should call (must end with /v1).
+    """OpenAI-compatible base URL Langflow should call.
 
-    Override with OPENRAG_LLM_PROXY_URL when Langflow cannot reach
-    OPENRAG_BACKEND_INTERNAL_URL (rare; same cases as a custom ingest router).
+    When the narrowed backend router is enabled, Langflow uses its private,
+    unversioned LLM paths; the router maps them onto the backend's public /v1
+    API. SaaS network policy exposes that port rather than the full backend.
+
+    OPENRAG_LLM_PROXY_URL remains an explicit escape hatch for deployments
+    with a separate proxy or Service.
     """
     override = os.getenv("OPENRAG_LLM_PROXY_URL")
     if override:
         return override.rstrip("/")
+    if OPENRAG_BACKEND_ROUTER_ENABLE:
+        return OPENRAG_BACKEND_ROUTER_URL
     return f"{OPENRAG_BACKEND_INTERNAL_URL}/v1"
 
 

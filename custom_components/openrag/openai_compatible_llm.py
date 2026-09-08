@@ -1,9 +1,10 @@
-"""OpenAI-compatible chat model that talks to the OpenRAG `/v1` proxy.
+"""OpenAI-compatible chat model that talks to the OpenRAG LLM proxy.
 
 Langflow never holds upstream vendor keys. At runtime OpenRAG injects:
 
 - ``OPENRAG_LLM_TOKEN`` — short-lived hop token (Authorization Bearer)
-- ``OPENRAG_LLM_BASE_URL`` — ``http://<backend>/v1``
+- ``OPENRAG_LLM_BASE_URL`` — the backend's ``/v1`` base or the router's
+  private unversioned base
 - ``SELECTED_LANGUAGE_MODEL`` — configured chat model id
 
 ``ChatOpenAI`` posts to ``{base_url}/chat/completions``. The backend gateway
@@ -42,7 +43,7 @@ def _as_str(value: object) -> str | None:
 class OpenAICompatibleLLMComponent(LCModelComponent):
     display_name = "OpenRAG LLM"
     description = (
-        "Chat model via OpenRAG's OpenAI-compatible /v1 proxy. "
+        "Chat model via OpenRAG's OpenAI-compatible proxy. "
         "Base URL and hop token come from global variables at runtime."
     )
     icon = "OpenRAG"
@@ -86,8 +87,8 @@ class OpenAICompatibleLLMComponent(LCModelComponent):
             name="api_base",
             display_name="OpenAI API Base",
             info=(
-                "Must end with /v1 (for example http://openrag-backend:8000/v1). "
-                "Bound to OPENRAG_LLM_BASE_URL at runtime. Same URL as embeddings."
+                "Bound to OPENRAG_LLM_BASE_URL at runtime. It is either the public "
+                "/v1 base or the private router base. Same URL as embeddings."
             ),
             value=OPENRAG_LLM_BASE_URL_VAR,
             load_from_db=True,
