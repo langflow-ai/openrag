@@ -1,5 +1,11 @@
-import type { Dispatch, SetStateAction } from "react";
-import { useMemo, useState } from "react";
+import {
+  type Dispatch,
+  type SetStateAction,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useGetModelCatalogQuery } from "@/app/api/queries/useGetModelsQuery";
 import {
   onboardingCredentialFields,
@@ -54,6 +60,12 @@ export function GenericOnboarding({
   const [credentials, setCredentials] = useState<Record<string, string>>({});
   const [model, setModel] = useState("");
 
+  // Stable ref so syncParentSettings can be called from effects without
+  // needing to be listed in deps (it only reads provider/isEmbedding which
+  // are stable within a single render of this component).
+  const setSettingsRef = useRef(setSettings);
+  setSettingsRef.current = setSettings;
+
   const syncParentSettings = (
     nextCredentials: Record<string, string>,
     nextModel: string,
@@ -65,8 +77,7 @@ export function GenericOnboarding({
         submitted[key] = trimmed;
       }
     }
-
-    setSettings((prev) => ({
+    setSettingsRef.current((prev) => ({
       ...prev,
       ...(isEmbedding
         ? { embedding_provider: provider, embedding_model: nextModel }
@@ -77,13 +88,16 @@ export function GenericOnboarding({
     }));
   };
 
-  // Seed the non-secret fields from what is already saved, once per provider.
-  const [seededFor, setSeededFor] = useState<string | undefined>();
-  if (seededFor !== provider) {
-    setSeededFor(provider);
+  // Seed credentials and parent settings when provider changes.
+  // useEffect ensures this runs after render, not during it.
+  const seededForRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (seededForRef.current === provider) return;
+    seededForRef.current = provider;
     setCredentials(savedValues);
     syncParentSettings(savedValues, model);
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provider, savedValues]);
 
   const catalogEntry = catalog?.providers?.find(
     (entry) => entry.key === provider,
@@ -98,16 +112,18 @@ export function GenericOnboarding({
     }));
   }, [catalogEntry, isEmbedding]);
 
-  // Default to the first model the catalogue lists for this provider.
-  const [prevModels, setPrevModels] = useState<typeof models | undefined>();
-  if (models !== prevModels) {
-    setPrevModels(models);
-    if (!model && models.length > 0) {
-      const defaultModel = models[0].value;
-      setModel(defaultModel);
-      syncParentSettings(credentials, defaultModel);
-    }
-  }
+  // Default to the first model when the catalogue loads or provider changes.
+  const defaultedModelRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (model || models.length === 0) return;
+    const defaultModel = models[0].value;
+    // Only set once per provider so switching back doesn't re-default.
+    if (defaultedModelRef.current === `${provider}:${defaultModel}`) return;
+    defaultedModelRef.current = `${provider}:${defaultModel}`;
+    setModel(defaultModel);
+    syncParentSettings(credentials, defaultModel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [models, model, provider]);
 
   const handleCredentialChange = (fieldKey: string, newValue: string) => {
     const nextCredentials = { ...credentials, [fieldKey]: newValue };

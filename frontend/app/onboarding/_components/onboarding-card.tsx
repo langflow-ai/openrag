@@ -1,5 +1,6 @@
 "use client";
 
+import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import { useIsFetching, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
@@ -608,41 +609,60 @@ const OnboardingCard = ({
                     const Logo = chrome.logo;
                     const selected = modelProvider === providerKey;
                     return (
-                      <TabsTrigger
-                        key={providerKey}
-                        value={providerKey}
-                        data-testid={`${providerKey}-${isEmbedding ? "embedding" : "llm"}-tab`}
-                        className={cn(
-                          error &&
-                            selected &&
-                            "data-[state=active]:border-destructive",
-                          "min-w-40",
-                        )}
-                      >
-                        <TabTrigger
-                          selected={selected}
-                          isLoading={isLoadingModels}
-                        >
-                          <div
+                      <Tooltip key={providerKey}>
+                        <TooltipTrigger asChild>
+                          <TabsTrigger
+                            value={providerKey}
+                            data-testid={`${providerKey}-${isEmbedding ? "embedding" : "llm"}-tab`}
                             className={cn(
-                              "flex items-center justify-center gap-2 w-8 h-8 rounded-none border",
-                              selected
-                                ? (chrome.tabLogoBgColor ?? chrome.logoBgColor)
-                                : "bg-muted",
+                              error &&
+                                selected &&
+                                "data-[state=active]:border-destructive",
+                              "min-w-24 sm:min-w-40",
                             )}
                           >
-                            <Logo
-                              className={cn(
-                                "w-4 h-4 shrink-0",
-                                selected
-                                  ? (chrome.tabLogoColor ?? chrome.logoColor)
-                                  : "text-muted-foreground",
-                              )}
-                            />
-                          </div>
+                            <TabTrigger
+                              selected={selected}
+                              isLoading={isLoadingModels}
+                            >
+                              <div
+                                className={cn(
+                                  "flex items-center justify-center gap-2 w-8 h-8 rounded-none border",
+                                  selected
+                                    ? (chrome.tabLogoBgColor ??
+                                        chrome.logoBgColor)
+                                    : "bg-muted",
+                                )}
+                              >
+                                <Logo
+                                  className={cn(
+                                    "w-4 h-4 shrink-0",
+                                    selected
+                                      ? (chrome.tabLogoColor ??
+                                          chrome.logoColor)
+                                      : "text-muted-foreground",
+                                  )}
+                                />
+                              </div>
+                              <span className="w-full truncate text-left text-xs leading-tight">
+                                {chrome.name}
+                              </span>
+                            </TabTrigger>
+                          </TabsTrigger>
+                        </TooltipTrigger>
+                        <TooltipContent
+                          side="bottom"
+                          sideOffset={6}
+                          className="bg-black text-white border-none rounded-md px-2.5 py-1.5 text-xs shadow-lg [&>svg]:fill-black"
+                        >
                           {chrome.name}
-                        </TabTrigger>
-                      </TabsTrigger>
+                          <TooltipPrimitive.Arrow
+                            className="fill-black"
+                            width={10}
+                            height={5}
+                          />
+                        </TooltipContent>
+                      </Tooltip>
                     );
                   })}
                 </TabsList>

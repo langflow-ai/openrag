@@ -280,11 +280,6 @@ export function ChatRenderer({
     pathname.startsWith(path),
   );
 
-  const x = showLayout ? "0px" : `calc(-${SIDEBAR_WIDTH / 2}px + 50vw)`;
-  const y = showLayout ? "0px" : `calc(-${HEADER_HEIGHT / 2}px + 50vh)`;
-  const translateY = showLayout ? "0px" : `-50vh`;
-  const translateX = showLayout ? "0px" : `-50vw`;
-
   // Onboarding is admin-only. When the workspace still needs onboarding
   // (!showLayout) and RBAC is enforced, a non-admin must not see the wizard —
   // they get a "contact your administrator" screen instead. It renders inside
@@ -330,7 +325,7 @@ export function ChatRenderer({
       {/* Main Content */}
       <main
         className={cn(
-          "overflow-hidden flex-1 flex items-center justify-center relative",
+          "overflow-hidden flex-1 min-w-0 flex items-center justify-center relative",
           isSelectingChats && "relative",
         )}
       >
@@ -378,38 +373,33 @@ export function ChatRenderer({
           </div>
         )}
         <motion.div
-          initial={{
-            width: showLayout ? "100%" : "100vw",
-            height: showLayout ? "100%" : "100vh",
-            x: x,
-            y: y,
-            translateX: translateX,
-            translateY: translateY,
-          }}
-          animate={{
-            width: showLayout ? "100%" : "850px",
-            border: showLayout ? "0" : "1px solid hsl(var(--border))",
-            borderRadius: showLayout || isCloudBrand ? "0" : "16px",
-            height: showLayout ? "100%" : "800px",
-            x: x,
-            y: y,
-            translateX: translateX,
-            translateY: translateY,
-          }}
+          animate={
+            showLayout
+              ? { border: "0", borderRadius: "0" }
+              : {
+                  border: "1px solid hsl(var(--border))",
+                  borderRadius: isCloudBrand ? "0" : "16px",
+                }
+          }
           transition={{
             duration: ANIMATION_DURATION,
             ease: "easeOut",
           }}
+          style={
+            showLayout
+              ? { width: undefined, height: undefined }
+              : { width: "min(850px, 100vw)", height: "800px" }
+          }
           className={cn(
-            "flex h-full w-full max-w-full max-h-full items-center justify-center overflow-y-auto",
+            "flex h-full w-full max-w-full max-h-full items-center justify-center overflow-y-auto overflow-x-hidden",
             !showLayout &&
-              "absolute max-h-[calc(100vh-190px)] shadow-[0px_2px_4px_-2px_#0000001A,0px_4px_6px_-1px_#0000001A]",
+              "max-h-[calc(100vh-190px)] shadow-[0px_2px_4px_-2px_#0000001A,0px_4px_6px_-1px_#0000001A]",
             showLayout && !isOnChatPage && "bg-background",
           )}
         >
           <div
             className={cn(
-              "h-full bg-background w-full",
+              "h-full bg-background w-full min-w-0 overflow-x-hidden",
               showLayout && !isOnChatPage && "p-6 container",
               showLayout && isSmallWidthPath && "max-w-content mx-auto",
               !showLayout && "p-0 py-2",
