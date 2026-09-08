@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { useDismissFlowsUpdateMutation } from "@/app/api/mutations/useDismissFlowsUpdateMutation";
 import { useUpdateFlowsMutation } from "@/app/api/mutations/useUpdateFlowsMutation";
@@ -48,7 +48,7 @@ export function FlowsUpdateDialog({
   });
   const updateMutation = useUpdateFlowsMutation();
   const dismissMutation = useDismissFlowsUpdateMutation();
-  const [internalIsOpen, setInternalIsOpen] = useState(false);
+  const [closedUpdateKey, setClosedUpdateKey] = useState<string | null>(null);
   const [isSessionDismissed, setIsSessionDismissed] = useState(
     hasDismissedFlowsUpdateInSession,
   );
@@ -65,24 +65,22 @@ export function FlowsUpdateDialog({
   const targetUpdates =
     undismissedUpdates.length > 0 ? undismissedUpdates : allUpdates;
   const hasUndismissed = undismissedUpdates.length > 0;
-
-  useEffect(() => {
-    if (overrideOpen === undefined) {
-      if (!isLoading && hasUndismissed) {
-        setInternalIsOpen(true);
-      } else if (!isLoading) {
-        setInternalIsOpen(false);
-      }
-    }
-  }, [hasUndismissed, isLoading, overrideOpen]);
+  const currentUpdateKey = targetUpdates
+    .map((update) => `${update.flow_type}:${update.flow_id}`)
+    .sort()
+    .join("|");
+  const isAutoOpen =
+    !isLoading && hasUndismissed && closedUpdateKey !== currentUpdateKey;
 
   const isMainOpen =
     !showSkipConfirm &&
     !showUpdateConfirm &&
-    (overrideOpen ?? (internalIsOpen && !(!isAdmin && isSessionDismissed)));
+    (overrideOpen ?? (isAutoOpen && !(!isAdmin && isSessionDismissed)));
 
   const handleClose = () => {
-    setInternalIsOpen(false);
+    if (currentUpdateKey) {
+      setClosedUpdateKey(currentUpdateKey);
+    }
     setShowSkipConfirm(false);
     setShowUpdateConfirm(false);
     setIsUpdatingWithBackup(null);
@@ -161,7 +159,7 @@ export function FlowsUpdateDialog({
         setErrorMessage(errorText);
         toast.error(`Flow update failed: ${errorText}`);
         setShowUpdateConfirm(false);
-        setInternalIsOpen(true);
+        setClosedUpdateKey(null);
       } else {
         toast.success("Flows updated successfully");
         handleClose();
@@ -171,7 +169,7 @@ export function FlowsUpdateDialog({
       setErrorMessage(msg);
       toast.error(msg);
       setShowUpdateConfirm(false);
-      setInternalIsOpen(true);
+      setClosedUpdateKey(null);
     } finally {
       setIsUpdatingWithBackup(null);
     }
