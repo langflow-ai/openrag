@@ -585,6 +585,19 @@ class ModelsService:
                 language_models = list({m["value"]: m for m in language_models}.values())
                 embedding_models = list({m["value"]: m for m in embedding_models}.values())
 
+                if language_models:
+                    has_default = any(m.get("default") for m in language_models)
+                    if not has_default:
+                        language_models[0]["default"] = True
+                    else:
+                        first_default_seen = False
+                        for m in language_models:
+                            if m.get("default"):
+                                if not first_default_seen:
+                                    first_default_seen = True
+                                else:
+                                    m["default"] = False
+
                 language_models.sort(key=lambda x: (not x.get("default", False), x["value"]))
                 embedding_models.sort(key=lambda x: x["value"])
 
