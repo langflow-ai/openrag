@@ -1,10 +1,11 @@
 """watsonx.ai on a Cloud Pak for Data cluster, routed through LiteLLM's watsonx provider."""
 
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
-from config import model_providers
+import config.model_providers as model_providers
 from config.config_manager import (
     AnthropicConfig,
     GenericProviderConfig,
@@ -328,7 +329,7 @@ async def test_health_needs_no_model_selected(monkeypatch) -> None:
     """
     from api import provider_validation
 
-    called: dict[str, object] = {}
+    called: dict[str, Any] = {}
 
     async def _fake_request(method, url, **kwargs):
         called["method"] = method
@@ -533,7 +534,7 @@ async def test_the_picker_shows_what_the_cluster_serves(
     chosen and fail at the first call.
     """
     monkeypatch.setenv("OPENRAG_RUN_MODE", "on_prem")
-    seen: dict[str, object] = {}
+    seen: dict[str, Any] = {}
 
     class _Client:
         def __init__(self, **kwargs):
