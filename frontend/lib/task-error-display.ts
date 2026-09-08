@@ -210,7 +210,13 @@ export function analyzeTaskFileIngestionFailure(
   taskError?: string,
 ): TaskFileIngestionFailureAnalysis {
   const resolvedError = resolveTaskFileError(fileInfo, taskError);
-  const failedStep = normalizeFailurePhase(fileInfo.failure_phase) ?? "unknown";
+
+  // Check if file was cancelled by user
+  const isCancelled = fileInfo.error === "File cancelled by user";
+  const failedStep = isCancelled
+    ? "cancelled"
+    : (normalizeFailurePhase(fileInfo.failure_phase) ?? "unknown");
+
   const pipelineSteps = buildPipelineStepsFromFailurePhase(failedStep);
   const componentCause = formatApiComponent(fileInfo.component);
   const componentTags = componentCause ? [componentCause] : [];
