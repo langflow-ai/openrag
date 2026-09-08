@@ -476,7 +476,9 @@ async def update_settings(
                         required = required_by_method.get(auth_method or "")
                         if required is None:
                             raise ValueError("Choose an Azure authentication method")
-                        missing = sorted(name for name in required | {"api_base"} if not credentials.get(name))
+                        missing = sorted(
+                            name for name in required | {"api_base"} if not credentials.get(name)
+                        )
                         if missing:
                             raise ValueError(f"{', '.join(missing)} is required for Azure OpenAI")
                         await validate_provider_setup(
