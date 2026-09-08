@@ -51,6 +51,7 @@ class SettingsUpdateBody(BaseModel):
     remove_anthropic_config: bool | None = None
     remove_watsonx_config: bool | None = None
     provider_credentials: dict[str, dict[str, str]] | None = None
+    provider_auth_methods: dict[str, str] | None = None
     remove_provider_config: str | None = None
     # Explicit confirmation that the caller accepts removing a provider whose
     # embedding models are still in use by indexed documents. Without this,
@@ -179,6 +180,7 @@ class OllamaProviderConfig(BaseModel):
 
 class GenericProviderConfig(BaseModel):
     configured: bool
+    auth_method: str | None = None
     credential_values: dict[str, str] = Field(default_factory=dict)
     secret_fields: list[str] = Field(default_factory=list)
 
