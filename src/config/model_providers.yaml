@@ -71,7 +71,8 @@ providers:
   # unreachable or before any credentials are entered — keep them plausible for
   # your fleet, but there is no need to keep them exact.
   - name: watsonx_onprem
-    display_name: IBM watsonx.ai (on-prem)
+    display_name: IBM watsonx.ai
+    badge: On-prem
     modes:
       oss: true
       on_prem: true

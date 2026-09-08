@@ -100,7 +100,7 @@ export const ModelProviders = () => {
   return (
     <>
       <div className="grid gap-6 xs:grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
-        {providers.map(({ name: providerKey, display_name }) => {
+        {providers.map(({ name: providerKey, display_name, badge }) => {
           const isLlmProvider = providerKey === currentLlmProvider;
           const isEmbeddingProvider = providerKey === currentEmbeddingProvider;
           const isProviderUnhealthy =
@@ -113,6 +113,7 @@ export const ModelProviders = () => {
               provider={{
                 providerKey,
                 ...getProviderChrome(providerKey, display_name),
+                badge,
               }}
               // `providers.custom` carries every provider the backend knows,
               // legacy four included, so one lookup covers config-added ones.
