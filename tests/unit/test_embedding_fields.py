@@ -14,7 +14,75 @@ from typing import Any
 
 import pytest
 
-from utils.embedding_fields import build_knn_vector_field, get_embedding_field_name
+from utils.embedding_fields import (
+    build_embedding_space_aggregation,
+    build_knn_vector_field,
+    embedding_space_after_keys,
+    embedding_spaces_from_aggregation,
+    get_embedding_field_name,
+    get_embedding_space_id,
+    split_embedding_space_id,
+)
+
+
+def test_embedding_space_identity_qualifies_model_with_exact_provider() -> None:
+    space_id = get_embedding_space_id("Azure", "text-embedding-3-small")
+
+    assert space_id == "azure:text-embedding-3-small"
+    assert split_embedding_space_id(space_id) == ("azure", "text-embedding-3-small")
+    assert get_embedding_field_name(space_id) == "chunk_embedding_azure_text_embedding_3_small"
+    assert get_embedding_field_name("text-embedding-3-small") == (
+        "chunk_embedding_text_embedding_3_small"
+    )
+
+
+def test_embedding_space_aggregation_preserves_exact_and_legacy_routes() -> None:
+    aggregation = build_embedding_space_aggregation(size=10)
+
+    assert aggregation["embedding_spaces"]["composite"]["sources"] == [
+        {"space_id": {"terms": {"field": "embedding_space_id"}}}
+    ]
+    assert aggregation["legacy_embedding_models"]["composite"]["sources"] == [
+        {"model": {"terms": {"field": "embedding_model"}}}
+    ]
+
+    result = {
+        "aggregations": {
+            "embedding_spaces": {
+                "buckets": [{"key": {"space_id": "azure:text-embedding-3-small"}, "doc_count": 2}],
+                "after_key": {"space_id": "azure:text-embedding-3-small"},
+            },
+            "legacy_embedding_models": {
+                "buckets": [{"key": {"model": "text-embedding-3-small"}, "doc_count": 3}],
+                "after_key": {"model": "text-embedding-3-small"},
+            },
+        }
+    }
+    spaces = embedding_spaces_from_aggregation(result)
+
+    assert [space.route_model for space in spaces] == [
+        "space:azure:text-embedding-3-small",
+        "legacy:text-embedding-3-small",
+    ]
+    assert [space.field_identity for space in spaces] == [
+        "azure:text-embedding-3-small",
+        "text-embedding-3-small",
+    ]
+    assert embedding_space_after_keys(result) == (
+        {"space_id": "azure:text-embedding-3-small"},
+        {"model": "text-embedding-3-small"},
+    )
+
+
+def test_embedding_space_aggregation_ignores_missing_bucket_keys() -> None:
+    result = {
+        "aggregations": {
+            "embedding_spaces": {"buckets": [{"key": {}}, {"key": None}]},
+            "legacy_embedding_models": {"buckets": [{"key": {}}, {"key": None}]},
+        }
+    }
+
+    assert embedding_spaces_from_aggregation(result) == []
 
 
 class TestBuildKnnVectorFieldStructure:
@@ -138,3 +206,19 @@ class TestBuildKnnVectorFieldCallSitesMatch:
 
         assert body["settings"]["number_of_shards"] == 3
         assert body["settings"]["number_of_replicas"] == 2
+
+    @pytest.mark.asyncio
+    async def test_create_index_body_uses_provider_qualified_vector_field(self) -> None:
+        from utils.embeddings import create_index_body
+
+        body = await create_index_body(
+            "text-embedding-3-small",
+            1536,
+            embedding_provider="azure",
+            embedding_space_id="azure:text-embedding-3-small",
+        )
+        properties = body["mappings"]["properties"]
+
+        assert "chunk_embedding_azure_text_embedding_3_small" in properties
+        assert properties["embedding_provider"] == {"type": "keyword"}
+        assert properties["embedding_space_id"] == {"type": "keyword"}

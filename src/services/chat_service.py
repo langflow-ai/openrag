@@ -95,6 +95,7 @@ class ChatService:
 
         config = get_openrag_config()
         embedding_model = config.knowledge.embedding_model
+        embedding_provider = config.knowledge.embedding_provider or "openai"
         chunk_size = getattr(config.knowledge, "chunk_size", 1000)
         chunk_overlap = getattr(config.knowledge, "chunk_overlap", 200)
         extra_headers.update(build_model_provider_headers(config))
@@ -117,6 +118,7 @@ class ChatService:
             filename="",
             mimetype="",
             embedding_model=embedding_model,
+            embedding_provider=embedding_provider,
             owner=owner,
             owner_name=owner_name,
             owner_email=owner_email,
@@ -535,6 +537,7 @@ class ChatService:
 
             config = get_openrag_config()
             embedding_model = config.knowledge.embedding_model
+            embedding_provider = config.knowledge.embedding_provider or "openai"
             chunk_size = getattr(config.knowledge, "chunk_size", 1000)
             chunk_overlap = getattr(config.knowledge, "chunk_overlap", 200)
             extra_headers.update(build_model_provider_headers(config))
@@ -557,6 +560,7 @@ class ChatService:
                 filename="",
                 mimetype="",
                 embedding_model=embedding_model,
+                embedding_provider=embedding_provider,
                 owner=owner,
                 owner_name=owner_name,
                 owner_email=owner_email,
