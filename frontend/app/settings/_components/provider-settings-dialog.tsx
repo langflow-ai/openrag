@@ -14,6 +14,7 @@ import { useGetModelCatalogQuery } from "@/app/api/queries/useGetModelsQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import type { CatalogCredentialField } from "@/components/models/catalog-models";
 import {
+  canRemoveProvider,
   getProviderChrome,
   type ModelProvider,
 } from "@/components/models/model-helpers";
