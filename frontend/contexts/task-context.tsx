@@ -11,6 +11,7 @@ import {
   useState,
 } from "react";
 import { toast } from "sonner";
+import { useCancelFileMutation } from "@/app/api/mutations/useCancelFileMutation";
 import { useCancelTaskMutation } from "@/app/api/mutations/useCancelTaskMutation";
 import type { SearchResult } from "@/app/api/queries/useGetSearchQuery";
 import {
@@ -71,6 +72,7 @@ interface TaskContextType {
   markTaskFilesProcessing: (taskId: string, sourceUrls: string[]) => void;
   refreshTasks: () => Promise<void>;
   cancelTask: (taskId: string) => Promise<void>;
+  cancelFile: (taskId: string, filePath: string) => Promise<void>;
   isPolling: boolean;
   isFetching: boolean;
   isMenuOpen: boolean;
@@ -199,6 +201,47 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     },
     onError: (error) => {
       toast.error("Failed to cancel task", {
+        description: error.message,
+      });
+    },
+  });
+
+  const cancelFileMutation = useCancelFileMutation({
+    onSuccess: (_data, variables) => {
+      queryClient.setQueryData(
+        [...TASKS_QUERY_KEY],
+        (oldTasks: Task[] | undefined) => {
+          if (!oldTasks) return [];
+          return oldTasks.map((task) => {
+            if (task.task_id !== variables.taskId) return task;
+            const updatedFiles = task.files
+              ? Object.fromEntries(
+                  Object.entries(task.files).map(([path, info]) => {
+                    if (path === variables.filePath) {
+                      return [
+                        path,
+                        {
+                          ...info,
+                          status: "failed" as const,
+                          error: "File cancelled by user",
+                        },
+                      ];
+                    }
+                    return [path, info];
+                  }),
+                )
+              : task.files;
+            return { ...task, files: updatedFiles };
+          });
+        },
+      );
+
+      toast.success("File cancelled", {
+        description: "File has been cancelled successfully",
+      });
+    },
+    onError: (error) => {
+      toast.error("Failed to cancel file", {
         description: error.message,
       });
     },
@@ -720,6 +763,13 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     [cancelTaskMutation],
   );
 
+  const cancelFile = useCallback(
+    async (taskId: string, filePath: string) => {
+      cancelFileMutation.mutate({ taskId, filePath });
+    },
+    [cancelFileMutation],
+  );
+
   const toggleMenu = useCallback(() => {
     setIsMenuOpen((prev) => !prev);
   }, []);
@@ -751,6 +801,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     markTaskFilesProcessing,
     refreshTasks,
     cancelTask,
+    cancelFile,
     isPolling,
     isFetching,
     isMenuOpen,

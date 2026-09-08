@@ -650,13 +650,15 @@ class LangflowFileService:
 
                 raise
             return resp_json
-        except BaseException as e:
+        except asyncio.CancelledError:
+            # Re-raise cancellation immediately without cleanup to propagate task cancellation
+            raise
+        except Exception as e:
+            # Handle ordinary ingestion failures with cleanup
             await self._cleanup_failed_callback_ingest(
                 ingest_token=ingest_token,
                 ingest_run_id=ingest_run_id,
             )
-            if isinstance(e, asyncio.CancelledError):
-                raise
             await self._raise_resolved_ingest_error(e)
 
     async def run_url_ingestion_flow(
@@ -794,13 +796,15 @@ class LangflowFileService:
                 )
 
             return resp.json()
-        except BaseException as e:
+        except asyncio.CancelledError:
+            # Re-raise cancellation immediately without cleanup to propagate task cancellation
+            raise
+        except Exception as e:
+            # Handle ordinary ingestion failures with cleanup
             await self._cleanup_failed_callback_ingest(
                 ingest_token=ingest_token,
                 ingest_run_id=ingest_run_id,
             )
-            if isinstance(e, asyncio.CancelledError):
-                raise
             await self._raise_resolved_ingest_error(e)
 
     async def _ensure_url_ingest_flow_id(self) -> str:

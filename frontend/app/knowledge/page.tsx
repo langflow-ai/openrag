@@ -165,7 +165,7 @@ function SearchPage() {
     refreshTasks,
     setRecentTasksExpanded,
     selectTask,
-    cancelTask,
+    cancelFile,
   } = useTask();
   const openTaskMenu = useOpenTaskMenu();
   const {
@@ -753,7 +753,12 @@ function SearchPage() {
       comparator: (valueA?: File["status"], valueB?: File["status"]) =>
         getStatusSortRank(valueA) - getStatusSortRank(valueB),
       cellRenderer: ({ data }: CustomCellRendererProps<File>) => {
-        const status = data?.status || "active";
+        const rawStatus = data?.status || "active";
+        // If file was cancelled by user, show it as cancelled instead of failed
+        const status =
+          rawStatus === "failed" && data?.error === "File cancelled by user"
+            ? "cancelled"
+            : rawStatus;
         const showOpenragRefreshCue =
           isOpenragDocsRow(data) && hasOpenragRefreshCue;
 
@@ -820,9 +825,18 @@ function SearchPage() {
         const status = data?.status || "active";
         if (status === "processing") {
           const taskId = getTaskIdForRow(data);
-          if (!taskId) return null;
+          if (!taskId || !data) return null;
+
+          // Get file path for this row - use source_url or filename
+          const filePath = data.source_url || data.filename || "";
+          if (!filePath) return null;
+
           return (
-            <CancelIngestionButton taskId={taskId} onCancel={cancelTask} />
+            <CancelIngestionButton
+              taskId={taskId}
+              filePath={filePath}
+              onCancel={cancelFile}
+            />
           );
         }
         if (status !== "active") return null;

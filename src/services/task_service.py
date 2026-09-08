@@ -198,6 +198,8 @@ class TaskService:
         # Locks for task counter updates, keyed by task_id
         # Kept separate from UploadTask to maintain serialization compatibility
         self._task_locks: dict[str, asyncio.Lock] = {}
+        # Track individual file processing tasks for cancellation: (task_id, file_path) -> asyncio.Task
+        self._file_tasks: dict[tuple[str, str], asyncio.Task] = {}
         # Global semaphore to limit concurrent file processing across all tasks.
         # TaskService is a singleton, so this limits concurrency system-wide.
         self._worker_count = get_worker_count()
@@ -569,6 +571,35 @@ class TaskService:
             async def process_with_semaphore(item, item_key: str):
                 async with self._processing_semaphore:
                     file_task = upload_task.file_tasks[item_key]
+
+                    # Skip files that were already cancelled or failed before reaching the worker
+                    if file_task.status in [TaskStatus.FAILED, TaskStatus.COMPLETED, TaskStatus.SKIPPED]:
+                        logger.info(
+                            "File processing task skipped (already terminal)",
+                            task_number=upload_task.sequence_number,
+                            task_id=task_id,
+                            file_path=file_task.file_path,
+                            status=file_task.status.value,
+                        )
+                        # Increment processed_files for cancelled files so task can complete
+                        async with self._get_task_lock(task_id):
+                            upload_task.processed_files += 1
+                        return
+
+                    # Check again after acquiring semaphore - file may have been cancelled while waiting
+                    if file_task.status in [TaskStatus.FAILED, TaskStatus.COMPLETED, TaskStatus.SKIPPED]:
+                        logger.info(
+                            "File processing task skipped (cancelled while waiting for semaphore)",
+                            task_number=upload_task.sequence_number,
+                            task_id=task_id,
+                            file_path=file_task.file_path,
+                            status=file_task.status.value,
+                        )
+                        # Increment processed_files for cancelled files so task can complete
+                        async with self._get_task_lock(task_id):
+                            upload_task.processed_files += 1
+                        return
+
                     file_task.status = TaskStatus.RUNNING
                     file_task.updated_at = time.time()
 
@@ -636,8 +667,10 @@ class TaskService:
                         # Only update timestamp if processor didn't already set it
                         if file_task.status == TaskStatus.RUNNING:
                             file_task.status = TaskStatus.FAILED
-                        if not file_task.error:
-                            file_task.error = str(e) or repr(e)
+                        # Don't overwrite cancellation errors - preserve user cancellation message
+                        if file_task.error != "File cancelled by user":
+                            if not file_task.error:
+                                file_task.error = str(e) or repr(e)
 
                         logger.error(
                             "File processing task exception encountered",
@@ -666,9 +699,25 @@ class TaskService:
                                 upload_task.processed_files += 1
                         upload_task.updated_at = time.time()
 
-            tasks = [process_with_semaphore(item, str(item)) for item in items]
+            # Create tasks and track them for file-level cancellation
+            tasks = []
+            for item in items:
+                item_key = str(item)
+                task = asyncio.create_task(process_with_semaphore(item, item_key))
+                tasks.append(task)
+                # Track file task for cancellation (will be cleaned up in finally block)
+                file_task = upload_task.file_tasks.get(item_key)
+                if file_task:
+                    self._file_tasks[(task_id, file_task.file_path)] = task
 
             await asyncio.gather(*tasks, return_exceptions=True)
+
+            # Clean up file task references
+            for item in items:
+                item_key = str(item)
+                file_task = upload_task.file_tasks.get(item_key)
+                if file_task:
+                    self._file_tasks.pop((task_id, file_task.file_path), None)
 
             # Mark task as completed if all files (including appended ones) are done
             if upload_task.processed_files >= upload_task.total_files:
@@ -1567,6 +1616,70 @@ class TaskService:
                     file_task.updated_at = now
 
         self._cleanup_upload_temp_files(upload_task, force=True)
+
+        return True
+
+    async def cancel_file(self, user_id: str, task_id: str, file_path: str) -> bool:
+        """Cancel a single file within a task.
+
+        Marks the file as FAILED with "cancelled by user" error. The file will be
+        skipped if it's still PENDING, or marked as cancelled if already RUNNING.
+        """
+        # Check candidate user IDs first, then anonymous to find which user ID the task is mapped to
+        candidate_user_ids = [user_id, AnonymousUser().user_id]
+
+        store_user_id = None
+        for candidate_user_id in candidate_user_ids:
+            if (
+                candidate_user_id in self.task_store
+                and task_id in self.task_store[candidate_user_id]
+            ):
+                store_user_id = candidate_user_id
+                break
+
+        if store_user_id is None:
+            return False
+
+        upload_task = self.task_store[store_user_id][task_id]
+
+        # Find the file task
+        file_task = upload_task.file_tasks.get(file_path)
+        if not file_task:
+            return False
+
+        # Lock to prevent race conditions
+        async with self._get_task_lock(task_id):
+            # Can only cancel pending or running files
+            if file_task.status not in [TaskStatus.PENDING, TaskStatus.RUNNING]:
+                return False
+
+            # Mark file as failed (cancelled)
+            was_running = file_task.status == TaskStatus.RUNNING
+            file_task.status = TaskStatus.FAILED
+            file_task.error = "File cancelled by user"
+            file_task.updated_at = time.time()
+
+            # Increment failed counter
+            upload_task.failed_files += 1
+
+            # If it was running, it will be counted in processed_files by the worker's finally block
+            # If it was pending, we need to count it now since it will never enter the worker
+            if not was_running:
+                upload_task.processed_files += 1
+
+            upload_task.updated_at = time.time()
+
+        # Cancel the running asyncio task if it exists (outside the lock to avoid deadlock)
+        file_task_key = (task_id, file_path)
+        if file_task_key in self._file_tasks:
+            asyncio_task = self._file_tasks[file_task_key]
+            if not asyncio_task.done():
+                asyncio_task.cancel()
+                logger.info(
+                    "Cancelled asyncio task for file",
+                    task_id=task_id,
+                    file_path=file_path,
+                )
 
         return True
 

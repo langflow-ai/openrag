@@ -12,11 +12,13 @@ import {
 
 interface CancelIngestionButtonProps {
   taskId: string;
-  onCancel: (taskId: string) => Promise<void>;
+  filePath: string;
+  onCancel: (taskId: string, filePath: string) => Promise<void>;
 }
 
 export function CancelIngestionButton({
   taskId,
+  filePath,
   onCancel,
 }: CancelIngestionButtonProps) {
   const [loading, setLoading] = useState(false);
@@ -24,7 +26,7 @@ export function CancelIngestionButton({
   const handleClick = async () => {
     setLoading(true);
     try {
-      await onCancel(taskId);
+      await onCancel(taskId, filePath);
     } finally {
       setLoading(false);
     }
@@ -40,7 +42,7 @@ export function CancelIngestionButton({
             className="hover:bg-transparent text-muted-foreground hover:text-destructive"
             disabled={loading}
             onClick={handleClick}
-            aria-label="Cancel ingestion"
+            aria-label="Cancel file ingestion"
             data-testid="cancel-ingestion-button"
           >
             {loading ? (
@@ -50,7 +52,7 @@ export function CancelIngestionButton({
             )}
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="left">Cancel ingestion</TooltipContent>
+        <TooltipContent side="left">Cancel this file</TooltipContent>
       </Tooltip>
     </TooltipProvider>
   );
