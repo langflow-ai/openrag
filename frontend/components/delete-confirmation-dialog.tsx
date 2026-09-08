@@ -93,7 +93,9 @@ export const DeleteConfirmationDialog = ({
           </div>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
-        <div className="text-sm text-muted-foreground">{children}</div>
+        {children ? (
+          <div className="text-sm text-muted-foreground">{children}</div>
+        ) : null}
         <DialogFooter>
           <Button
             type="button"
