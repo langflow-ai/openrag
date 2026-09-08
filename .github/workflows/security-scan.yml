@@ -59,7 +59,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=security-${{ matrix.image.name }}
 
       - name: Run Trivy Vulnerability Scan (Image)
-        uses: aquasecurity/trivy-action@v0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: openrag-${{ matrix.image.name }}:local
           format: json
@@ -107,7 +107,7 @@ jobs:
           (cd sdks/typescript && npm audit --json > ../reports/npm-audit-sdk-ts.json || true)
 
       - name: Run Trivy Filesystem Scan
-        uses: aquasecurity/trivy-action@v0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: .
