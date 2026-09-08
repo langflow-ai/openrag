@@ -1,5 +1,7 @@
 from typing import Any
 
+from opensearchpy.exceptions import NotFoundError
+
 from config.settings import get_index_name
 from utils.file_utils import clean_connector_filename
 from utils.logging_config import get_logger
@@ -185,7 +187,11 @@ class ConnectorService:
             # document is already indexed; metadata enrichment is best-effort
             # and re-runs on the next sync, so don't fail the file over it —
             # matching get_synced_file_ids_for_connector / should_update_acl.
-            if "index_not_found_exception" in str(e):
+            if (
+                isinstance(e, NotFoundError)
+                and e.status_code == 404
+                and e.error == "index_not_found_exception"
+            ):
                 logger.warning(
                     "Skipping connector metadata enrichment — index not found",
                     document_id=document.id,

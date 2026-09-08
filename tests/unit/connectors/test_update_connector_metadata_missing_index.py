@@ -63,11 +63,16 @@ def _noop_acl(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_missing_index_does_not_raise(_noop_acl):
+async def test_missing_index_does_not_raise(_noop_acl, monkeypatch):
     service, opensearch_client = _make_service()
     opensearch_client.update_by_query.side_effect = NotFoundError(
         404, "index_not_found_exception", "no such index [documents]"
     )
+
+    import connectors.service as service_module
+
+    logger_mock = MagicMock()
+    monkeypatch.setattr(service_module, "logger", logger_mock)
 
     # Must return normally rather than propagate — the caller marks the file
     # FAILED on any exception here.
@@ -75,12 +80,37 @@ async def test_missing_index_does_not_raise(_noop_acl):
         _make_document(), owner_user_id="alice", connector_type="ibm_cos"
     )
 
+    # The missing index is swallowed with a warning, not an error.
+    logger_mock.error.assert_not_called()
+    logger_mock.warning.assert_called_once()
+    _, warning_kwargs = logger_mock.warning.call_args
+    assert warning_kwargs["document_id"] == "stable-connector-id"
+    assert "index_not_found_exception" in warning_kwargs["error"]
+
 
 @pytest.mark.asyncio
 async def test_other_opensearch_errors_still_raise(_noop_acl):
     service, opensearch_client = _make_service()
     opensearch_client.update_by_query.side_effect = RequestError(
         400, "mapper_parsing_exception", "bad script"
+    )
+
+    with pytest.raises(RequestError):
+        await service._update_connector_metadata(
+            _make_document(), owner_user_id="alice", connector_type="ibm_cos"
+        )
+
+
+@pytest.mark.asyncio
+async def test_non_index_error_mentioning_token_still_raises(_noop_acl):
+    """A non-index failure whose message merely contains the
+    'index_not_found_exception' token must not be swallowed — only a real
+    404 NotFoundError with that structured error type is best-effort."""
+    service, opensearch_client = _make_service()
+    opensearch_client.update_by_query.side_effect = RequestError(
+        400,
+        "search_phase_execution_exception",
+        "shard failure caused by index_not_found_exception downstream",
     )
 
     with pytest.raises(RequestError):

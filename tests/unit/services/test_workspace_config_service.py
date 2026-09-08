@@ -137,7 +137,9 @@ async def test_yaml_write_hooks_mirror_to_db(
 ):
     """Legacy callers that hit config_manager.save_config_file directly
     should auto-mirror to the DB via the installed monkey-patch."""
-    svc = WorkspaceConfigService(
+    # Constructed only for its side effect: the constructor installs the yaml
+    # write hooks on tmp_config_manager that mirror direct saves to the DB.
+    WorkspaceConfigService(
         config_manager=tmp_config_manager, session_factory=session_factory
     )
     # Direct legacy-style call (no service, no await)

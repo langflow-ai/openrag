@@ -92,7 +92,9 @@ def apply_index_name_env_override(knowledge: dict[str, Any]) -> None:
     An env value outside the security role's index patterns is rejected and the
     prior value kept, since applying it would break search/write with a 403.
     """
-    env_index_name = os.getenv("OPENSEARCH_INDEX_NAME")
+    from config.settings import get_opensearch_index_name_override
+
+    env_index_name = get_opensearch_index_name_override()
     if not env_index_name:
         return
     if not is_permitted_index_name(env_index_name):
