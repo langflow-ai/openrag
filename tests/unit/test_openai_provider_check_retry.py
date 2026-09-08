@@ -142,7 +142,11 @@ async def test_azure_lightweight_health_checks_endpoint_and_key(monkeypatch):
     monkeypatch.setattr("api.provider_validation._http_request_with_retry", fake_retry)
 
     await _test_azure_lightweight_health(
-        {"api_key": "azure-key", "api_base": "https://example.openai.azure.com/", "api_version": "2024-10-21"}
+        {
+            "api_key": "azure-key",
+            "api_base": "https://example.openai.azure.com/",
+            "api_version": "2024-10-21",
+        }
     )
 
     assert captured["method"] == "GET"

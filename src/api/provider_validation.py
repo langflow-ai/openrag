@@ -638,9 +638,7 @@ def _extract_error_details(response: httpx.Response) -> str:
 #: Providers with a validation path of their own, so they are never handed to
 #: the generic LiteLLM probe. Everything else is validated by making a real call,
 #: which needs a model name.
-_NATIVELY_VALIDATED_PROVIDERS = frozenset(
-    {"openai", "azure", "watsonx", "ollama", "anthropic"}
-)
+_NATIVELY_VALIDATED_PROVIDERS = frozenset({"openai", "azure", "watsonx", "ollama", "anthropic"})
 
 
 async def validate_provider_setup(
@@ -802,7 +800,9 @@ async def test_lightweight_health(
     if provider == "openai":
         await _test_openai_lightweight_health(api_key)
     elif provider == "azure":
-        await _test_azure_lightweight_health(credentials or {"api_key": api_key, "api_base": endpoint})
+        await _test_azure_lightweight_health(
+            credentials or {"api_key": api_key, "api_base": endpoint}
+        )
     elif provider == "watsonx":
         await _test_watsonx_lightweight_health(api_key, endpoint, project_id)
     elif provider == "ollama":
