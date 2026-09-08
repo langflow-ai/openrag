@@ -104,7 +104,7 @@ PROVIDER_ROUTE_ALIASES: dict[str, str] = route_aliases()
 
 #: Credential forms LiteLLM's `provider_create_fields.json` cannot supply,
 #: because the provider is one of OpenRAG's own aliases.
-_CREDENTIAL_FIELD_OVERRIDES: dict[str, list[dict[str, Any]]] = credential_field_overrides()  # type: ignore[assignment]
+_CREDENTIAL_FIELD_OVERRIDES: dict[str, list[dict[str, Any]]] = credential_field_overrides()
 
 
 def litellm_provider_key(provider: str) -> str:
@@ -442,15 +442,16 @@ async def refresh_live_models() -> None:
     from config.settings import get_openrag_config
 
     for enhancement in provider_enhancements():
-        if (
-            enhancement.PROVIDER_KEY not in supported_provider_keys()
-            or not hasattr(enhancement, "fetch_models")
+        if enhancement.PROVIDER_KEY not in supported_provider_keys() or not hasattr(
+            enhancement, "fetch_models"
         ):
             continue
         try:
             credentials = get_openrag_config().providers.credential_values(enhancement.PROVIDER_KEY)
         except Exception:
-            logger.debug("Could not read credentials for %s", enhancement.PROVIDER_KEY, exc_info=True)
+            logger.debug(
+                "Could not read credentials for %s", enhancement.PROVIDER_KEY, exc_info=True
+            )
             continue
         if credentials:
             await enhancement.fetch_models(credentials)
