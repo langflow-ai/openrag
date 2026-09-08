@@ -6,6 +6,7 @@ async function makeAgentSettingsDirty(page: Page) {
   const instructions = page.getByLabel("Agent Instructions");
   await expect(instructions).toBeVisible({ timeout: 60000 });
   await instructions.fill(`${await instructions.inputValue()} unsaved`);
+  await page.waitForTimeout(1000);
 }
 
 test.describe("unsaved settings navigation", () => {

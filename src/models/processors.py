@@ -462,6 +462,7 @@ class TaskProcessor:
         # but OpenRAG processors still need a concrete embedding model.
         config = get_openrag_config()
         configured_embedding_model = config.knowledge.embedding_model
+        embedding_provider = getattr(config.knowledge, "embedding_provider", None) or "openai"
         embedding_model = embedding_model or configured_embedding_model or get_embedding_model()
 
         if chunk_size is None:
@@ -532,7 +533,10 @@ class TaskProcessor:
         slim_doc["chunks"] = [c for c in slim_doc["chunks"] if c.get("text") and c["text"].strip()]
 
         litellm_embedding_model = (
-            await self.models_service.get_litellm_model_name(embedding_model)
+            await self.models_service.get_litellm_model_name(
+                embedding_model,
+                provider=embedding_provider,
+            )
             if self.models_service is not None
             else embedding_model
         )
@@ -638,6 +642,7 @@ class TaskProcessor:
             filename=filename,
             mimetype=slim_doc["mimetype"],
             embedding_model=embedding_model,
+            embedding_provider=embedding_provider,
             owner=owner,
             owner_name=owner_name,
             owner_email=owner_email,

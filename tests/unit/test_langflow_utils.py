@@ -305,3 +305,53 @@ def test_parse_knowledge_chunks_malformed_json_returns_empty():
     input_data = "{malformed json"
     result = parse_knowledge_chunks(input_data)
     assert result == []
+
+
+# ── enable_mcp_none_for_project tests ────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_enable_mcp_none_for_project():
+    from utils.langflow_utils import enable_mcp_none_for_project
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+
+    with patch(
+        "config.settings.clients.langflow_request", AsyncMock(return_value=mock_resp)
+    ) as mock_req:
+        res = await enable_mcp_none_for_project("proj-456")
+        assert res is True
+        mock_req.assert_called_once_with(
+            "PATCH",
+            "/api/v1/mcp/project/proj-456",
+            json={"settings": [], "auth_settings": {"auth_type": "none"}},
+        )
+
+
+@pytest.mark.asyncio
+async def test_enable_mcp_none_for_project_failure():
+    from utils.langflow_utils import enable_mcp_none_for_project
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 500
+    mock_resp.text = "Internal Server Error"
+
+    with patch(
+        "config.settings.clients.langflow_request", AsyncMock(return_value=mock_resp)
+    ) as mock_req:
+        res = await enable_mcp_none_for_project("proj-456")
+        assert res is False
+        mock_req.assert_called_once_with(
+            "PATCH",
+            "/api/v1/mcp/project/proj-456",
+            json={"settings": [], "auth_settings": {"auth_type": "none"}},
+        )
+
+
+@pytest.mark.asyncio
+async def test_enable_mcp_none_for_project_empty():
+    from utils.langflow_utils import enable_mcp_none_for_project
+
+    assert await enable_mcp_none_for_project(None) is False
+    assert await enable_mcp_none_for_project("") is False
