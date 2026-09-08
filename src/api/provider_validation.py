@@ -1,7 +1,9 @@
 """Provider validation utilities for testing API keys and models during onboarding."""
 
+import asyncio
 import json
 import re
+from typing import Any
 
 import httpx
 
@@ -216,6 +218,7 @@ async def _probe_provider_credential_error(
     project_id: str | None = None,
     embedding_model: str | None = None,
     llm_model: str | None = None,
+    credentials: dict[str, str] | None = None,
 ) -> str | None:
     """Run a lightweight provider check; return a cleaned credential error if auth fails."""
     if not provider:
@@ -229,12 +232,43 @@ async def _probe_provider_credential_error(
             endpoint=endpoint,
             project_id=project_id,
             test_completion=False,
+            credentials=credentials,
         )
     except Exception as probe_exc:
         cleaned = sanitize_provider_error_content(probe_exc)
         if is_provider_credential_error(probe_exc) or is_provider_credential_error(cleaned):
             return cleaned
     return None
+
+
+def _provider_probe_inputs(
+    config: Any,
+    provider: str,
+    provider_config: Any,
+) -> tuple[str | None, str | None, str | None, dict[str, str]]:
+    """Return legacy fields plus the complete LiteLLM credential map.
+
+    The original four providers expose attributes such as ``api_key`` and
+    ``endpoint``. Generic providers (Azure, Bedrock, Gemini, and others) keep
+    every LiteLLM keyword argument in ``ProvidersConfig.credentials`` instead.
+    Recovery probes must use both representations because they run specifically
+    when Langflow has hidden the provider's real failure.
+    """
+    credentials: dict[str, str] = {}
+    credential_values = getattr(getattr(config, "providers", None), "credential_values", None)
+    if callable(credential_values):
+        values = credential_values(provider)
+        if isinstance(values, dict):
+            credentials = dict(values)
+
+    api_key = getattr(provider_config, "api_key", None) or credentials.get("api_key")
+    endpoint = (
+        getattr(provider_config, "resolved_endpoint", None)
+        or getattr(provider_config, "endpoint", None)
+        or credentials.get("api_base")
+    )
+    project_id = getattr(provider_config, "project_id", None) or credentials.get("project_id")
+    return api_key, endpoint, project_id, credentials
 
 
 async def probe_provider_credential_error() -> str | None:
@@ -269,28 +303,28 @@ async def probe_provider_credential_error() -> str | None:
         if not provider or provider in checked or provider_config is None:
             continue
         checked.add(provider)
-        api_key = getattr(provider_config, "api_key", None)
-        endpoint = getattr(provider_config, "endpoint", None)
+        api_key, endpoint, project_id, credentials = _provider_probe_inputs(
+            config,
+            provider,
+            provider_config,
+        )
         if provider == "ollama":
             if not endpoint:
                 continue
-        elif (
-            provider
-            not in (
-                config.knowledge.embedding_provider,
-                config.agent.llm_provider,
-            )
-            and not api_key
-        ):
+        elif provider not in (
+            config.knowledge.embedding_provider,
+            config.agent.llm_provider,
+        ) and not (api_key or credentials):
             continue
 
         error = await _probe_provider_credential_error(
             provider=provider,
             api_key=api_key,
             endpoint=endpoint,
-            project_id=getattr(provider_config, "project_id", None),
+            project_id=project_id,
             embedding_model=embedding_model,
             llm_model=llm_model,
+            credentials=credentials,
         )
         if error:
             return error
@@ -317,12 +351,15 @@ async def probe_chat_llm_error() -> str | None:
     if provider_config is None:
         return None
 
-    api_key = getattr(provider_config, "api_key", None)
-    endpoint = getattr(provider_config, "endpoint", None)
+    api_key, endpoint, project_id, credentials = _provider_probe_inputs(
+        config,
+        provider,
+        provider_config,
+    )
     if provider == "ollama":
         if not endpoint:
             return None
-    elif not api_key:
+    elif not (api_key or credentials):
         return None
 
     try:
@@ -333,8 +370,9 @@ async def probe_chat_llm_error() -> str | None:
             api_key=api_key,
             llm_model=llm_model,
             endpoint=endpoint,
-            project_id=getattr(provider_config, "project_id", None),
+            project_id=project_id,
             test_completion=True,
+            credentials=credentials,
         )
     except Exception as probe_exc:
         return sanitize_provider_error_content(probe_exc)
@@ -355,12 +393,15 @@ async def probe_embedding_error() -> str | None:
     if provider_config is None:
         return None
 
-    api_key = getattr(provider_config, "api_key", None)
-    endpoint = getattr(provider_config, "endpoint", None)
+    api_key, endpoint, project_id, credentials = _provider_probe_inputs(
+        config,
+        provider,
+        provider_config,
+    )
     if provider == "ollama":
         if not endpoint:
             return None
-    elif not api_key:
+    elif not (api_key or credentials):
         return None
 
     try:
@@ -369,8 +410,9 @@ async def probe_embedding_error() -> str | None:
             api_key=api_key,
             embedding_model=embedding_model,
             endpoint=endpoint,
-            project_id=getattr(provider_config, "project_id", None),
+            project_id=project_id,
             test_completion=True,
+            credentials=credentials,
         )
     except Exception as probe_exc:
         return sanitize_provider_error_content(probe_exc)
@@ -575,6 +617,7 @@ async def validate_provider_setup(
     endpoint: str = None,
     project_id: str = None,
     test_completion: bool = False,
+    credentials: dict[str, str] | None = None,
 ) -> None:
     """
     Validate provider setup by testing completion with tool calling and embedding.
@@ -593,13 +636,27 @@ async def validate_provider_setup(
         Exception: If validation fails, raises the original exception with the actual error message.
     """
     provider_lower = provider.lower()
+    supplied = dict(credentials or {})
+    if api_key:
+        supplied.setdefault("api_key", api_key)
+    if endpoint:
+        supplied.setdefault("api_base", endpoint)
+    if project_id:
+        supplied.setdefault("project_id", project_id)
 
     try:
         logger.info(
             f"Starting validation for provider: {provider_lower} (test_completion={test_completion})"
         )
 
-        if test_completion:
+        if provider_lower not in {"openai", "watsonx", "ollama", "anthropic"}:
+            await _test_litellm_provider(
+                provider=provider_lower,
+                credentials=supplied,
+                embedding_model=embedding_model,
+                llm_model=llm_model,
+            )
+        elif test_completion:
             # Full validation with completion/embedding tests (consumes credits)
             if embedding_model:
                 # Test embedding
@@ -634,6 +691,35 @@ async def validate_provider_setup(
         logger.error(f"Validation failed for provider {provider_lower}: {str(e)}")
         # Preserve the original error message instead of replacing it with a generic one
         raise
+
+
+async def _test_litellm_provider(
+    *,
+    provider: str,
+    credentials: dict[str, str],
+    embedding_model: str | None,
+    llm_model: str | None,
+) -> None:
+    """Validate arbitrary providers through the same LiteLLM adapter used at runtime."""
+    import litellm
+
+    model = embedding_model or llm_model
+    if not model:
+        raise ValueError("A model is required to validate the provider")
+    litellm_model = f"{provider}/{model}"
+    if embedding_model:
+        await litellm.aembedding(
+            model=litellm_model,
+            input="OpenRAG provider validation",
+            **credentials,
+        )
+        return
+    await litellm.acompletion(
+        model=litellm_model,
+        messages=[{"role": "user", "content": "Reply with OK."}],
+        max_tokens=4,
+        **credentials,
+    )
 
 
 async def test_lightweight_health(
@@ -696,6 +782,80 @@ async def test_embedding(
         raise ValueError(f"Unknown provider: {provider}")
 
 
+async def _http_request_with_retry(
+    method: str,
+    url: str,
+    *,
+    max_retries: int = 2,
+    backoff_factor: float = 0.5,
+    retryable_status_codes: tuple[int, ...] = (429, 500, 502, 503, 504),
+    retry_timeout_on_post: bool = False,
+    client: httpx.AsyncClient | None = None,
+    **kwargs,
+) -> httpx.Response:
+    """Execute an HTTP request with retries for transient network/timeout/server errors.
+
+    Retries GET requests on network timeouts and 429/5xx status codes.
+    For POST requests, retries status codes (429/5xx) by default, and only retries
+    network timeouts if `retry_timeout_on_post=True` is explicitly set (e.g. for test probes).
+    """
+    last_exc: Exception | None = None
+    is_post = method.upper() == "POST"
+    for attempt in range(max_retries + 1):
+        try:
+            if client is not None:
+                if method.upper() == "GET":
+                    response = await client.get(url, **kwargs)
+                elif is_post:
+                    response = await client.post(url, **kwargs)
+                else:
+                    response = await client.request(method, url, **kwargs)
+            else:
+                async with httpx.AsyncClient() as ac:
+                    if method.upper() == "GET":
+                        response = await ac.get(url, **kwargs)
+                    elif is_post:
+                        response = await ac.post(url, **kwargs)
+                    else:
+                        response = await ac.request(method, url, **kwargs)
+
+            if attempt < max_retries and response.status_code in retryable_status_codes:
+                logger.warning(
+                    "Transient HTTP %d from %s (attempt %d/%d), retrying in %.2fs...",
+                    response.status_code,
+                    url,
+                    attempt + 1,
+                    max_retries + 1,
+                    backoff_factor * (2**attempt),
+                )
+                await asyncio.sleep(backoff_factor * (2**attempt))
+                continue
+            return response
+        except (
+            httpx.TimeoutException,
+            httpx.NetworkError,
+            httpx.RemoteProtocolError,
+            httpx.ConnectError,
+        ) as exc:
+            last_exc = exc
+            if attempt < max_retries and (not is_post or retry_timeout_on_post):
+                logger.warning(
+                    "Transient %s requesting %s (attempt %d/%d), retrying in %.2fs...",
+                    type(exc).__name__,
+                    url,
+                    attempt + 1,
+                    max_retries + 1,
+                    backoff_factor * (2**attempt),
+                )
+                await asyncio.sleep(backoff_factor * (2**attempt))
+            else:
+                raise
+
+    if last_exc:
+        raise last_exc from None
+    raise RuntimeError(f"HTTP request to {url} failed after retries")
+
+
 # OpenAI validation functions
 async def _test_openai_lightweight_health(api_key: str) -> None:
     """Test OpenAI API key validity with lightweight check.
@@ -709,22 +869,22 @@ async def _test_openai_lightweight_health(api_key: str) -> None:
             "Content-Type": "application/json",
         }
 
-        async with httpx.AsyncClient() as client:
-            # Use /v1/models endpoint which validates the key without consuming credits
-            response = await client.get(
-                "https://api.openai.com/v1/models",
-                headers=headers,
-                timeout=10.0,  # Short timeout for lightweight check
+        # Use /v1/models endpoint which validates the key without consuming credits
+        response = await _http_request_with_retry(
+            "GET",
+            "https://api.openai.com/v1/models",
+            headers=headers,
+            timeout=30.0,
+        )
+
+        if response.status_code != 200:
+            error_details = _extract_error_details(response)
+            logger.error(
+                f"OpenAI lightweight health check failed: {response.status_code} - {error_details}"
             )
+            raise Exception(error_details)
 
-            if response.status_code != 200:
-                error_details = _extract_error_details(response)
-                logger.error(
-                    f"OpenAI lightweight health check failed: {response.status_code} - {error_details}"
-                )
-                raise Exception(error_details)
-
-            logger.info("OpenAI lightweight health check passed")
+        logger.info("OpenAI lightweight health check passed")
 
     except httpx.TimeoutException:
         logger.error("OpenAI lightweight health check timed out")
@@ -764,37 +924,38 @@ async def _test_openai_completion_with_tools(api_key: str, llm_model: str) -> No
             ],
         }
 
-        async with httpx.AsyncClient() as client:
-            # Try with max_tokens first
-            payload = {**base_payload, "max_tokens": 50}
-            response = await client.post(
+        # Try with max_tokens first
+        payload = {**base_payload, "max_tokens": 50}
+        response = await _http_request_with_retry(
+            "POST",
+            "https://api.openai.com/v1/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=45.0,
+            retry_timeout_on_post=True,
+        )
+
+        # If max_tokens doesn't work, try with max_completion_tokens
+        if response.status_code != 200:
+            logger.warning(
+                "[API] max_tokens parameter failed, trying max_completion_tokens instead"
+            )
+            payload = {**base_payload, "max_completion_tokens": 50}
+            response = await _http_request_with_retry(
+                "POST",
                 "https://api.openai.com/v1/chat/completions",
                 headers=headers,
                 json=payload,
-                timeout=30.0,
+                timeout=45.0,
+                retry_timeout_on_post=True,
             )
 
-            # If max_tokens doesn't work, try with max_completion_tokens
-            if response.status_code != 200:
-                logger.warning(
-                    "[API] max_tokens parameter failed, trying max_completion_tokens instead"
-                )
-                payload = {**base_payload, "max_completion_tokens": 50}
-                response = await client.post(
-                    "https://api.openai.com/v1/chat/completions",
-                    headers=headers,
-                    json=payload,
-                    timeout=30.0,
-                )
+        if response.status_code != 200:
+            error_details = _extract_error_details(response)
+            logger.error(f"OpenAI completion test failed: {response.status_code} - {error_details}")
+            raise Exception(error_details)
 
-            if response.status_code != 200:
-                error_details = _extract_error_details(response)
-                logger.error(
-                    f"OpenAI completion test failed: {response.status_code} - {error_details}"
-                )
-                raise Exception(error_details)
-
-            logger.info("OpenAI completion with tool calling test passed")
+        logger.info("OpenAI completion with tool calling test passed")
 
     except httpx.TimeoutException:
         logger.error("OpenAI completion test timed out")
@@ -817,26 +978,25 @@ async def _test_openai_embedding(api_key: str, embedding_model: str) -> None:
             "input": "test embedding",
         }
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                "https://api.openai.com/v1/embeddings",
-                headers=headers,
-                json=payload,
-                timeout=30.0,
-            )
+        response = await _http_request_with_retry(
+            "POST",
+            "https://api.openai.com/v1/embeddings",
+            headers=headers,
+            json=payload,
+            timeout=45.0,
+            retry_timeout_on_post=True,
+        )
 
-            if response.status_code != 200:
-                error_details = _extract_error_details(response)
-                logger.error(
-                    f"OpenAI embedding test failed: {response.status_code} - {error_details}"
-                )
-                raise Exception(error_details)
+        if response.status_code != 200:
+            error_details = _extract_error_details(response)
+            logger.error(f"OpenAI embedding test failed: {response.status_code} - {error_details}")
+            raise Exception(error_details)
 
-            data = response.json()
-            if not data.get("data") or len(data["data"]) == 0:
-                raise Exception("No embedding data returned")
+        data = response.json()
+        if not data.get("data") or len(data["data"]) == 0:
+            raise Exception("No embedding data returned")
 
-            logger.info("OpenAI embedding test passed")
+        logger.info("OpenAI embedding test passed")
 
     except httpx.TimeoutException:
         logger.error("OpenAI embedding test timed out")
@@ -1199,21 +1359,21 @@ async def _test_anthropic_lightweight_health(api_key: str) -> None:
             "Content-Type": "application/json",
         }
 
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                "https://api.anthropic.com/v1/models",
-                headers=headers,
-                timeout=10.0,  # Short timeout for lightweight check
+        response = await _http_request_with_retry(
+            "GET",
+            "https://api.anthropic.com/v1/models",
+            headers=headers,
+            timeout=30.0,
+        )
+
+        if response.status_code != 200:
+            error_details = _extract_error_details(response)
+            logger.error(
+                f"Anthropic lightweight health check failed: {response.status_code} - {error_details}"
             )
+            raise Exception(error_details)
 
-            if response.status_code != 200:
-                error_details = _extract_error_details(response)
-                logger.error(
-                    f"Anthropic lightweight health check failed: {response.status_code} - {error_details}"
-                )
-                raise Exception(error_details)
-
-            logger.info("Anthropic lightweight health check passed")
+        logger.info("Anthropic lightweight health check passed")
 
     except httpx.TimeoutException:
         logger.error("Anthropic lightweight health check timed out")

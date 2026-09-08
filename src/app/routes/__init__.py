@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from app.routes.internal import register_internal_routes
 from app.routes.mcp import mount_mcp
 from app.routes.public_v1 import register_public_v1_routes
+from app.routes.public_v2 import register_public_v2_routes
 
 
 def register_all_routes(app: FastAPI):
@@ -19,5 +20,6 @@ def register_all_routes(app: FastAPI):
     """
     register_internal_routes(app)
     register_public_v1_routes(app)
+    register_public_v2_routes(app)
     mcp_lifespan_ctx = mount_mcp(app)
     return mcp_lifespan_ctx

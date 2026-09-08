@@ -32,6 +32,10 @@ _SENSITIVE_HEADER_RE = re.compile(
 # reference the same chain that configure_logging() assembled.
 _shared_processors: list = []
 
+# Minimum stdlib level integer that gets mirrored into the component buffer.
+# WARNING=30, ERROR=40, CRITICAL=50.
+_MIRROR_MIN_LEVEL = logging.WARNING
+
 
 # ---------------------------------------------------------------------------
 # Standalone processors (module-level so they can be reused in stdlib bridge)
@@ -92,6 +96,46 @@ def add_global_fields_factory(service: str, env: str, version: str):
     return processor
 
 
+def mirror_to_component_buffer(_, __, event_dict: dict[str, Any]) -> dict[str, Any]:
+    """Structlog processor: mirror WARNING+ backend events into the 'openrag' buffer.
+
+    Runs after add_log_level so event_dict["level"] is always present.
+    Uses lazy import to avoid circular imports at module load time.
+    Reuses _SENSITIVE_HEADER_RE for key redaction; also strips Bearer tokens.
+    This processor is a pass-through — it never drops or modifies the event.
+    """
+    try:
+        level_str = event_dict.get("level", "info")
+        level_int = getattr(logging, level_str.upper(), logging.INFO)
+        if level_int < _MIRROR_MIN_LEVEL:
+            return event_dict
+
+        from services.component_logs import _redact_dict, record  # noqa: PLC0415
+
+        safe = _redact_dict(dict(event_dict))
+        message = str(safe.pop("event", ""))
+        # Build a compact detail string from remaining context keys (skip
+        # structlog internals and the fields already in message/level).
+        skip = {
+            "level",
+            "service",
+            "env",
+            "version",
+            "timestamp",
+            "func_name",
+            "filename",
+            "lineno",
+            "pathname",
+        }
+        detail_parts = [f"{k}={v}" for k, v in safe.items() if k not in skip and v is not None]
+        detail = "; ".join(detail_parts) if detail_parts else None
+
+        record("openrag", level_str.lower(), message, detail=detail)
+    except Exception:  # pragma: no cover — never let logging crash the app
+        pass
+    return event_dict
+
+
 # ---------------------------------------------------------------------------
 # Security helper
 # ---------------------------------------------------------------------------
@@ -130,6 +174,9 @@ def configure_logging(
         clean_log_location,
         add_global_fields_factory(service_name, app_env, app_version),
         structlog.processors.add_log_level,
+        # Mirror WARNING+ to the per-component ring buffer (must come after
+        # add_log_level so event_dict["level"] is populated).
+        mirror_to_component_buffer,
         structlog.processors.StackInfoRenderer(),
         drop_color_message_key,
     ]

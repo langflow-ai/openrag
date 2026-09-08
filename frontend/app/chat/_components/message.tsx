@@ -16,13 +16,13 @@ export function Message({
   unstyledContent = false,
 }: MessageProps) {
   return (
-    <div className="flex gap-3">
+    <div className="flex gap-3 overflow-hidden">
       {icon}
       <div
         className={
           isAssistant && !unstyledContent
             ? "px-5 py-4 bg-secondary/20 rounded-2xl flex-1"
-            : "flex-1"
+            : "flex-1 flex w-full overflow-hidden"
         }
       >
         <div className="flex-1 min-w-0">{children}</div>

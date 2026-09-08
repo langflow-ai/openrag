@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 from pydantic import BaseModel
@@ -153,6 +154,7 @@ class DoclingService:
         *,
         ocr_override: bool | None = None,
         picture_descriptions_override: bool | None = None,
+        preview_mode: bool = False,
     ) -> dict[str, Any]:
         """Build the options payload for docling from OpenRAG configs, incorporating VLM settings if enabled."""
         from services.watsonx_iam import WatsonxIamError, get_iam_token
@@ -173,7 +175,18 @@ class DoclingService:
             picture_descriptions=is_pic_desc_enabled,
         )
 
-        options = {"to_formats": "json", "image_export_mode": "placeholder", **preset}
+        image_export_mode = "embedded" if preview_mode else "placeholder"
+        options = {"to_formats": "json", "image_export_mode": image_export_mode, **preset}
+        if preview_mode:
+            # The live preview renders full-page screenshots with bounding-box
+            # overlays (docling-img). docling-serve only produces those when
+            # include_page_images is enabled (it defaults to false), so request
+            # both page renderings and picture images explicitly. Without this
+            # the preview shows neither the page image nor the parsed boxes.
+            # Non-paged formats (docx/pptx/…) still parse to JSON texts/tables,
+            # which the preview renders directly as labeled blocks.
+            options["include_page_images"] = True
+            options["include_images"] = True
 
         # If picture descriptions are enabled, configure custom/local VLM model
         if is_pic_desc_enabled and knowledge_config.vlm_enabled:
@@ -252,6 +265,64 @@ class DoclingService:
                     },
                     "prompt": prompt,
                 }
+            elif provider == "azure":
+                creds = config.providers.credential_values("azure")
+                api_key = creds.get("api_key")
+                endpoint = creds.get("api_base")
+                api_version = creds.get("api_version") or "2024-02-01"
+                if not (api_key and endpoint):
+                    raise DoclingServeError(
+                        "Docling VLM is enabled but the Azure provider is not configured "
+                        "(api key and endpoint are required)"
+                    )
+                parsed = urlparse(endpoint)
+                if parsed.scheme.lower() != "https" or not parsed.netloc:
+                    raise DoclingServeError("Azure VLM endpoint must use HTTPS")
+                deployment = vlm_model.removeprefix("azure/")
+                url = (
+                    f"{endpoint.rstrip('/')}/openai/deployments/{deployment}/chat/completions"
+                    f"?api-version={api_version}"
+                )
+                options["picture_description_api"] = {
+                    "url": url,
+                    "headers": {"api-key": api_key},
+                    "params": {
+                        "model": deployment,
+                        "max_completion_tokens": knowledge_config.vlm_max_tokens,
+                    },
+                    "prompt": prompt,
+                }
+            elif provider == "azure_ai":
+                # Azure AI Foundry, not the Azure OpenAI Service above: its
+                # api_base already points at the `/models` route and the chat
+                # endpoint hangs directly off it. Without this branch a Foundry
+                # VLM fell through to the OpenAI default and was called with
+                # OpenAI credentials it does not have.
+                creds = config.providers.credential_values("azure_ai")
+                api_key = creds.get("api_key")
+                endpoint = creds.get("api_base")
+                api_version = creds.get("api_version")
+                if not (api_key and endpoint):
+                    raise DoclingServeError(
+                        "Docling VLM is enabled but the Azure AI Foundry provider is not "
+                        "configured (api key and endpoint are required)"
+                    )
+                parsed = urlparse(endpoint)
+                if parsed.scheme.lower() != "https" or not parsed.netloc:
+                    raise DoclingServeError("Azure AI Foundry VLM endpoint must use HTTPS")
+                model_id = vlm_model.removeprefix("azure_ai/")
+                url = f"{endpoint.rstrip('/')}/chat/completions"
+                if api_version:
+                    url = f"{url}?api-version={api_version}"
+                options["picture_description_api"] = {
+                    "url": url,
+                    "headers": {"api-key": api_key},
+                    "params": {
+                        "model": model_id,
+                        "max_completion_tokens": knowledge_config.vlm_max_tokens,
+                    },
+                    "prompt": prompt,
+                }
             else:  # openai or default
                 openai = config.providers.openai
                 if not openai.api_key:
@@ -289,6 +360,7 @@ class DoclingService:
         *,
         ocr: bool | None = None,
         picture_descriptions: bool | None = None,
+        preview_mode: bool = False,
     ) -> str:
         """
         Upload a file to Docling Serve asynchronously using direct multipart/form-data upload.
@@ -296,6 +368,7 @@ class DoclingService:
         options = await self._build_docling_options_async(
             ocr_override=ocr,
             picture_descriptions_override=picture_descriptions,
+            preview_mode=preview_mode,
         )
 
         headers = self._get_auth_headers(user_id, auth_header)

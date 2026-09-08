@@ -766,7 +766,8 @@ class ConnectorSyncBody(BaseModel):
     # rather than failing. Set by the provider upload UI after the user confirms
     # overwrite in the duplicate dialog.
     replace_duplicates: bool = False
-    # When True (OSS/SaaS), run the ingest in preview mode (same as direct upload).
+    # When True (OSS only for now; SaaS deferred), run the ingest in preview mode
+    # (same as direct upload). Honored only when is_ingest_preview_enabled().
     preview: bool = False
     # When True (COS only), index chunks without an owner field so OpenSearch DLS
     # makes them visible to all users in the instance. Temporary CIO mechanism;
@@ -1267,8 +1268,9 @@ async def connector_sync(
             selected_files = [f.get("id") for f in selected_files_raw if f.get("id")]
             file_infos = selected_files_raw
 
-    # Preview mode is opt-in from the connector upload UI (OSS/SaaS). It applies
-    # to user-initiated ingests (explicit file selection), not automated re-sync.
+    # Preview mode is opt-in from the connector upload UI (OSS only for now;
+    # SaaS deferred pending product approval). It applies to user-initiated
+    # ingests (explicit file selection), not automated re-sync.
     preview_mode = body.preview and is_ingest_preview_enabled()
 
     try:

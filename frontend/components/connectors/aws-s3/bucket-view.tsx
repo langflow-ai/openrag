@@ -39,6 +39,8 @@ export function S3BucketView({
       addTask={addTask}
       onBack={onBack}
       onDone={onDone}
+      resourceLabel="bucket"
+      resourceLabelPlural="buckets"
       initialSelectedBuckets={
         defaults?.connection_id === connector.connectionId
           ? defaults?.bucket_names

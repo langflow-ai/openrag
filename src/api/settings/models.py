@@ -14,7 +14,7 @@ from services.docling_service import DoclingConfig
 
 class SettingsUpdateBody(BaseModel):
     llm_model: str | None = Field(None, min_length=1)
-    llm_provider: str | None = Field(None, pattern="^(openai|anthropic|watsonx|ollama)$")
+    llm_provider: str | None = Field(None, min_length=1)
     system_prompt: str | None = None
     chunk_size: int | None = Field(None, gt=0)
     chunk_overlap: int | None = Field(None, ge=0)
@@ -23,7 +23,13 @@ class SettingsUpdateBody(BaseModel):
     picture_descriptions: bool | None = None
     disable_ingest_with_langflow: bool | None = None
     vlm_enabled: bool | None = None
-    vlm_provider: str | None = Field(None, pattern="^(openai|watsonx|anthropic|local|ollama)$")
+    # Providers are configurable — `config/model_providers.yaml` plus the custom
+    # entries an operator adds — so this cannot be a closed list. The old enum
+    # rejected every provider introduced after it (`azure_ai` first among them)
+    # and 422'd the entire ingest-settings save, not just the VLM fields. Check
+    # the shape of a provider key here; whether it is *configured* is checked in
+    # `update_settings`, where the provider config is in hand.
+    vlm_provider: str | None = Field(None, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
     vlm_model: str | None = Field(None, min_length=1)
     vlm_prompt: str | None = None
     vlm_response_format: str | None = Field(None, pattern="^(markdown|doctags|html)$")
@@ -32,7 +38,7 @@ class SettingsUpdateBody(BaseModel):
     vlm_timeout: int | None = Field(None, gt=0)
     vlm_watsonx_api_version: str | None = Field(None, min_length=1)
     embedding_model: str | None = Field(None, min_length=1)
-    embedding_provider: str | None = Field(None, pattern="^(openai|watsonx|ollama)$")
+    embedding_provider: str | None = Field(None, min_length=1)
     index_name: str | None = Field(None, min_length=1)
     openai_api_key: str | None = Field(None, min_length=1)
     anthropic_api_key: str | None = Field(None, min_length=1)
@@ -44,6 +50,8 @@ class SettingsUpdateBody(BaseModel):
     remove_openai_config: bool | None = None
     remove_anthropic_config: bool | None = None
     remove_watsonx_config: bool | None = None
+    provider_credentials: dict[str, dict[str, str]] | None = None
+    remove_provider_config: str | None = None
     # Explicit confirmation that the caller accepts removing a provider whose
     # embedding models are still in use by indexed documents. Without this,
     # the backend returns 409 and the frontend prompts the user.
@@ -51,9 +59,9 @@ class SettingsUpdateBody(BaseModel):
 
 
 class OnboardingBody(BaseModel):
-    llm_provider: str | None = Field(None, pattern="^(openai|anthropic|watsonx|ollama)$")
+    llm_provider: str | None = Field(None, min_length=1)
     llm_model: str | None = Field(None, min_length=1)
-    embedding_provider: str | None = Field(None, pattern="^(openai|watsonx|ollama)$")
+    embedding_provider: str | None = Field(None, min_length=1)
     embedding_model: str | None = Field(None, min_length=1)
     openai_api_key: str | None = Field(None, min_length=1)
     anthropic_api_key: str | None = Field(None, min_length=1)
@@ -61,6 +69,7 @@ class OnboardingBody(BaseModel):
     watsonx_endpoint: str | None = Field(None, min_length=1)
     watsonx_project_id: str | None = Field(None, min_length=1)
     ollama_endpoint: str | None = Field(None, min_length=1)
+    provider_credentials: dict[str, dict[str, str]] | None = None
 
 
 class CitationDisplayData(BaseModel):
@@ -168,11 +177,18 @@ class OllamaProviderConfig(BaseModel):
     configured: bool
 
 
+class GenericProviderConfig(BaseModel):
+    configured: bool
+    credential_values: dict[str, str] = Field(default_factory=dict)
+    secret_fields: list[str] = Field(default_factory=list)
+
+
 class ProvidersConfig(BaseModel):
     openai: OpenAIProviderConfig
     anthropic: AnthropicProviderConfig
     watsonx: WatsonXProviderConfig
     ollama: OllamaProviderConfig
+    custom: dict[str, GenericProviderConfig] = Field(default_factory=dict)
 
 
 class KnowledgeConfig(BaseModel):
@@ -200,6 +216,7 @@ class AgentConfig(BaseModel):
     llm_model: str | None
     llm_provider: str | None
     system_prompt: str | None
+    default_system_prompt: str | None = None
 
 
 class IngestionDefaultsConfig(BaseModel):

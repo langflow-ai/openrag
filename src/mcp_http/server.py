@@ -155,13 +155,27 @@ COMPONENT_CUSTOMIZATIONS: dict[tuple[str, str], dict[str, str]] = {
             "system prompt, and document processing options."
         ),
     },
-    # Models endpoint
+    # Models
+    ("/v1/model-catalog", "GET"): {
+        "name": "openrag_model_catalog",
+        "description": (
+            "LiteLLM provider/model catalogue used by the settings picker: "
+            "grouped models, capability flags, and credential field specs."
+        ),
+    },
+    ("/v1/model-providers", "GET"): {
+        "name": "openrag_model_providers",
+        "description": (
+            "Model providers this deployment exposes for its run mode "
+            "(oss / on_prem / saas), with their display names."
+        ),
+    },
     ("/v1/models/{provider}", "GET"): {
         "name": "openrag_list_models",
         "description": (
             "List available language models and embedding models for a provider. "
             "Use this before updating settings to see which model values are valid. "
-            "Provider must be one of: openai, anthropic, ollama, watsonx."
+            "Provider must be a configured LiteLLM provider key (e.g. openai, anthropic, ollama, watsonx)."
         ),
     },
     # Knowledge filters endpoints
@@ -188,6 +202,23 @@ COMPONENT_CUSTOMIZATIONS: dict[tuple[str, str], dict[str, str]] = {
         "name": "openrag_delete_knowledge_filter",
         "description": "Delete a knowledge filter by ID.",
     },
+    # files endpoints (v1 — offset pagination)
+    ("/v1/files/get_all", "GET"): {
+        "name": "openrag_get_all_files",
+        "description": (
+            "Return all ingested files from the knowledge base. "
+            "No parameters — use GET /v2/files for filtering, sorting, or pagination."
+        ),
+    },
+    # files endpoints (v2 — composite-agg cursor pagination)
+    ("/v2/files", "GET"): {
+        "name": "openrag_list_files_v2",
+        "description": "List all ingested files with cursor-based composite-aggregation pagination.",
+    },
+    ("/v2/files/search", "GET"): {
+        "name": "openrag_search_files_v2",
+        "description": "Search ingested files by file name (case-insensitive).",
+    },
 }
 
 
@@ -213,14 +244,16 @@ def _customize_mcp_component(
 
 def create_mcp_server(app: FastAPI) -> FastMCP:
     """
-    Build a FastMCP server from the FastAPI app, exposing only /v1/ routes as tools.
+    Build a FastMCP server from the FastAPI app.
 
     Must be called AFTER all routes are registered on `app` so that
     FastMCP.from_fastapi() can discover them.
 
     Route mapping:
+    - Langflow-only LLM proxy endpoints and POST /v1/documents/ingest → excluded
     - /v1/* routes → MCP tools (GET, POST, PUT, DELETE, PATCH)
-    - All other routes → excluded
+    - GET /v2/files, GET /v2/files/search → MCP tools
+    - all other routes → excluded
 
     Note: GET endpoints are exposed as TOOLS, not resources/resource templates.
     The MCP convention is "GET = resource," but most LLM clients in agent mode
@@ -229,6 +262,19 @@ def create_mcp_server(app: FastAPI) -> FastMCP:
     operations like `openrag_get_knowledge_filter` callable in agent loops.
     """
     route_maps = [
+        # Exclude Langflow-only LLM proxy endpoints. They accept the short-lived
+        # Langflow hop token and are transport plumbing, not agent capabilities.
+        # Keep these exact patterns ahead of the /v1 catch-all.
+        RouteMap(
+            methods=["GET"],
+            pattern=r"^/v1/models$",
+            mcp_type=MCPType.EXCLUDE,
+        ),
+        RouteMap(
+            methods=["POST"],
+            pattern=r"^/v1/chat/completions$|^/v1/embeddings$",
+            mcp_type=MCPType.EXCLUDE,
+        ),
         # Exclude /v1/documents/ingest: multipart/form-data file uploads are
         # not supported through FastMCP's from_fastapi proxy (the LLM-facing
         # base64-array schema does not get marshaled back into multipart on
@@ -241,10 +287,16 @@ def create_mcp_server(app: FastAPI) -> FastMCP:
             pattern=r"^/v1/documents/ingest$",
             mcp_type=MCPType.EXCLUDE,
         ),
-        # Expose all /v1/ routes (read + write) as MCP tools.
+        # expose all /v1/ routes as tools
         RouteMap(
             methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
             pattern=r"^/v1/",
+            mcp_type=MCPType.TOOL,
+        ),
+        # Expose v2 file listing/search endpoints as MCP tools.
+        RouteMap(
+            methods=["GET"],
+            pattern=r"^/v2/files",
             mcp_type=MCPType.TOOL,
         ),
         # Exclude everything else

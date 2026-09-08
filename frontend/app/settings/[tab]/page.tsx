@@ -11,18 +11,23 @@ import { AgentSettingsSection } from "../_components/agent-settings-section";
 import { ApiKeysSection } from "../_components/api-keys-section";
 import { ConnectorAccessSection } from "../_components/connector-access-section";
 import { ConnectorsTab } from "../_components/connectors-tab";
-import { IngestSettingsSection } from "../_components/ingest-settings-section";
+import { IngestionTab } from "../_components/ingestion-tab";
 import ModelProviders from "../_components/model-providers";
 
 const VALID_TABS = [
   "connectors",
   "providers",
-  "langflow",
+  "ingestion",
+  "agent",
   "api-keys",
   "connector-access",
 ] as const;
 
 type Tab = (typeof VALID_TABS)[number];
+
+function isValidTab(tab: string): tab is Tab {
+  return (VALID_TABS as readonly string[]).includes(tab);
+}
 
 async function getTabAuthContext() {
   const [authRes, meRes] = await Promise.allSettled([
@@ -64,7 +69,7 @@ export default async function SettingsTabPage({
 }) {
   const { tab } = await params;
 
-  if (!VALID_TABS.includes(tab as Tab)) {
+  if (!isValidTab(tab)) {
     redirect("/settings/connectors");
   }
 
@@ -102,7 +107,7 @@ export default async function SettingsTabPage({
     redirect("/settings/connectors");
   }
   if (
-    tab === "langflow" &&
+    (tab === "agent" || tab === "ingestion") &&
     !canShowRbacGatedSettingsTab("config:write", tabAccess)
   ) {
     redirect("/settings/connectors");
@@ -141,12 +146,8 @@ export default async function SettingsTabPage({
     <HydrationBoundary state={dehydrate(queryClient)}>
       {tab === "connectors" && <ConnectorsTab />}
       {tab === "providers" && <ModelProviders />}
-      {tab === "langflow" && (
-        <div className="space-y-6">
-          <AgentSettingsSection />
-          <IngestSettingsSection />
-        </div>
-      )}
+      {tab === "ingestion" && <IngestionTab />}
+      {tab === "agent" && <AgentSettingsSection />}
       {tab === "api-keys" && <ApiKeysSection />}
       {tab === "connector-access" && <ConnectorAccessSection />}
     </HydrationBoundary>

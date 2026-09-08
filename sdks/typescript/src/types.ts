@@ -88,6 +88,67 @@ export interface DeleteDocumentOptions {
   filterId?: string;
 }
 
+/** A principal label entry in a file's ACL (connector-ingested files only). */
+export interface PrincipalLabel {
+  principal: string;
+  kind: string;
+  provider: string;
+  display_name?: string;
+  email?: string;
+  external_id?: string;
+}
+
+// File structure type
+export interface FileRecord {
+  filename: string;
+  document_id: string;
+  mimetype: string;
+  file_size: number;
+  source_url: string;
+  owner: string;
+  owner_name: string;
+  owner_email: string;
+  connector_type: string;
+  embedding_model: string;
+  embedding_dimensions: number | null;
+  indexed_time: string;
+  chunk_count: number;
+  allowed_users: string[];
+  allowed_groups: string[];
+  allowed_principal_labels: PrincipalLabel[];
+}
+
+/** Response from GET /v1/files/get_all (original v1 offset pagination) */
+export interface GetAllFilesResponse {
+  files: FileRecord[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+/** Response from GET /v2/files (cursor-based composite-aggregation pagination) */
+export interface ListFilesResponse {
+  files: FileRecord[];
+  total: number;
+  is_approximate: boolean;
+  page: number;
+  page_size: number;
+  after_key: Record<string, unknown> | null;
+}
+
+/** Options for GET /v2/files (cursor-based pagination). */
+export interface ListFilesOptions {
+  page?: number;
+  page_size?: number;
+  sort_by?: string;
+  sort_order?: "asc" | "desc";
+  connector_type?: string;
+  mimetype?: string;
+  owner?: string;
+  search?: string;
+  after_key?: string;
+}
+
 // Chat history types
 export interface Message {
   role: string;
@@ -115,6 +176,7 @@ export interface ConversationListResponse {
 export interface AgentSettings {
   llm_provider?: string | null;
   llm_model?: string | null;
+  system_prompt?: string | null;
 }
 
 export interface KnowledgeSettings {
@@ -122,6 +184,9 @@ export interface KnowledgeSettings {
   embedding_model?: string | null;
   chunk_size?: number | null;
   chunk_overlap?: number | null;
+  table_structure?: boolean | null;
+  ocr?: boolean | null;
+  picture_descriptions?: boolean | null;
 }
 
 export interface SettingsResponse {

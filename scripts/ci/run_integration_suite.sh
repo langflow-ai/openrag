@@ -122,16 +122,20 @@ clean_infra() {
     exit_status=1
   fi
   
+  # NOTE: flows/*.json are git-tracked flow definitions, not runtime state -- only
+  # flows/backup is generated at runtime. Deleting the top-level flows/ directory here
+  # would remove those tracked files for the remainder of this job (no re-checkout
+  # happens before a retry), breaking every flow-dependent request afterwards.
   if command -v sudo >/dev/null 2>&1; then
-    if ! sudo rm -rf langflow-data config data keys opensearch-data openrag-documents flows; then
+    if ! sudo rm -rf langflow-data config data keys opensearch-data openrag-documents flows/backup; then
       echo "${red}ERROR: sudo rm -rf failed${nc}"
       exit_status=1
     fi
   else
-    if ! rm -rf langflow-data config data keys opensearch-data openrag-documents flows 2>/dev/null; then
+    if ! rm -rf langflow-data config data keys opensearch-data openrag-documents flows/backup 2>/dev/null; then
       local docker_rm_success=false
       for i in 1 2 3; do
-        if docker run --rm -v "$(pwd):/work" alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows /work/openrag-documents"; then
+        if docker run --rm -v "$(pwd):/work" alpine sh -c "rm -rf /work/opensearch-data /work/config /work/langflow-data /work/keys /work/data /work/flows/backup /work/openrag-documents"; then
           docker_rm_success=true
           break
         fi

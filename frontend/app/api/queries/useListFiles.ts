@@ -10,17 +10,21 @@ export interface ListFilesParams {
   pageSize?: number;
   sortBy?: string;
   sortOrder?: "asc" | "desc";
-  connectorType?: string;
-  mimetype?: string;
-  owner?: string;
+  connectorType?: string[];
+  mimetype?: string[];
+  owner?: string[];
+  dataSources?: string[];
   search?: string;
+  afterKey?: Record<string, unknown> | null; //composite pagination cursor, could be undefined in the beginning
 }
 
 export interface ListFilesResponse {
   files: File[];
   total: number;
+  is_approximate: boolean;
   page: number;
   page_size: number;
+  after_key: Record<string, unknown> | null;
 }
 
 export const useListFiles = (
@@ -36,13 +40,18 @@ export const useListFiles = (
     if (params.pageSize) searchParams.set("page_size", String(params.pageSize));
     if (params.sortBy) searchParams.set("sort_by", params.sortBy);
     if (params.sortOrder) searchParams.set("sort_order", params.sortOrder);
-    if (params.connectorType)
-      searchParams.set("connector_type", params.connectorType);
-    if (params.mimetype) searchParams.set("mimetype", params.mimetype);
-    if (params.owner) searchParams.set("owner", params.owner);
+    for (const v of params.connectorType ?? [])
+      searchParams.append("connector_type", v);
+    for (const v of params.mimetype ?? []) searchParams.append("mimetype", v);
+    for (const v of params.owner ?? []) searchParams.append("owner", v);
+    for (const v of params.dataSources ?? [])
+      searchParams.append("data_sources", v);
     if (params.search) searchParams.set("search", params.search);
+    if (params.afterKey)
+      searchParams.set("after_key", JSON.stringify(params.afterKey));
 
-    const url = `/api/files?${searchParams.toString()}`;
+    const url = `/api/files?${searchParams.toString()}`; //internal (cookie auth)
+
     const response = await fetch(url, { redirect: "manual" });
 
     if (!response.ok) {
@@ -56,7 +65,6 @@ export const useListFiles = (
 
     const data = await response.json();
 
-    // Map server response to File interface
     const files: File[] = (data.files || []).map(
       (f: Record<string, unknown>) => ({
         filename: (f.filename as string) || "",
@@ -76,12 +84,16 @@ export const useListFiles = (
       }),
     );
 
-    return {
+    const result: ListFilesResponse = {
       files,
       total: data.total || 0,
+      is_approximate: data.is_approximate ?? true,
       page: data.page || 1,
       page_size: data.page_size || 25,
+      after_key: data.after_key ?? null,
     };
+
+    return result;
   }
 
   return useQuery(

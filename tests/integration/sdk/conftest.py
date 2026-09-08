@@ -30,12 +30,31 @@ async def ensure_onboarding():
     if _onboarding_done:
         return
 
+    azure_key = os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("AZURE_API_KEY")
+    azure_endpoint = (
+        os.getenv("AZURE_OPENAI_ENDPOINT")
+        or os.getenv("AZURE_OPENAI_API_BASE")
+        or os.getenv("AZURE_API_BASE")
+    )
+    azure_version = os.getenv("AZURE_OPENAI_API_VERSION") or os.getenv("AZURE_API_VERSION")
+    use_azure = bool((azure_key and azure_endpoint) or os.getenv("LLM_PROVIDER") == "azure")
+
+    llm_provider = os.getenv("LLM_PROVIDER", "azure" if use_azure else "openai")
+    embedding_provider = os.getenv("EMBEDDING_PROVIDER", "azure" if use_azure else "openai")
+    llm_model = os.getenv("LLM_MODEL", "gpt-4.1" if llm_provider == "azure" else "gpt-4o-mini")
+    embedding_model = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
+
     onboarding_payload = {
-        "llm_provider": "openai",
-        "embedding_provider": "openai",
-        "embedding_model": "text-embedding-3-small",
-        "llm_model": "gpt-4o-mini",
+        "llm_provider": llm_provider,
+        "embedding_provider": embedding_provider,
+        "embedding_model": embedding_model,
+        "llm_model": llm_model,
     }
+    if azure_key and azure_endpoint:
+        creds = {"api_key": azure_key, "api_base": azure_endpoint}
+        if azure_version:
+            creds["api_version"] = azure_version
+        onboarding_payload["provider_credentials"] = {"azure": creds}
 
     try:
         async with httpx.AsyncClient(timeout=30.0) as ac:

@@ -9,6 +9,7 @@ export interface AgentSettings {
   llm_model?: string;
   llm_provider?: string;
   system_prompt?: string;
+  default_system_prompt?: string;
 }
 
 export interface KnowledgeSettings {
@@ -53,6 +54,14 @@ export interface ProviderSettings {
   local?: {
     configured?: boolean;
   };
+  custom?: Record<
+    string,
+    {
+      configured?: boolean;
+      credential_values?: Record<string, string>;
+      secret_fields?: string[];
+    }
+  >;
 }
 
 export interface OnboardingState {

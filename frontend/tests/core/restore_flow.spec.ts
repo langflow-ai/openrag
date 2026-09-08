@@ -15,7 +15,7 @@ test.describe("Restore Flow", () => {
     // Make sure we start with a clean default state
     await navigateToHome(page);
     await settings.open();
-    await settings.clickTab("Langflow");
+    await settings.clickTab("Ingestion");
 
     const pictureDescToggle = page.getByRole("switch", {
       name: /picture descriptions/i,
@@ -77,7 +77,7 @@ test.describe("Restore Flow", () => {
     // Navigate to the application
     await navigateToHome(page);
     await settings.open();
-    await settings.clickTab("Langflow");
+    await settings.clickTab("Ingestion");
 
     // Get references to settings elements
     const pictureDescToggle = page.getByRole("switch", {
@@ -217,7 +217,7 @@ test.describe("Restore Flow", () => {
     // Navigate to the application
     await navigateToHome(page);
     await settings.open();
-    await settings.clickTab("Langflow");
+    await settings.clickTab("Ingestion");
 
     // Get references to settings elements
     const pictureDescToggle = page.getByRole("switch", {

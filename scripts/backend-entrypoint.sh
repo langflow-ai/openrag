@@ -22,7 +22,7 @@ if [ "$(id -u)" = "0" ]; then
         2>/dev/null || true
     exec runuser -u appuser -- env \
         VIRTUAL_ENV=/app/.venv \
-        PATH="/app/.venv/bin:$PATH" \
+        PATH="$PATH" \
         "$@"
 else
     exec "$@"

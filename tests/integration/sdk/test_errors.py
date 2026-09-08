@@ -4,6 +4,7 @@ import io
 import os
 import uuid
 
+import httpx
 import pytest
 
 from .conftest import _base_url
@@ -28,7 +29,7 @@ class TestErrorHandling:
             timeout=3.0,
         )
         try:
-            with pytest.raises(Exception):
+            with pytest.raises(Exception):  # noqa: B017 - any network exception is acceptable here
                 await dead_client.settings.get()
         finally:
             await dead_client.close()
@@ -38,8 +39,9 @@ class TestErrorHandling:
         """Fetching a conversation with a random UUID must raise NotFoundError."""
         from openrag_sdk.exceptions import NotFoundError
 
-        with pytest.raises(NotFoundError):
+        with pytest.raises(NotFoundError) as exc_info:
             await client.chat.get(str(uuid.uuid4()))
+        assert exc_info.value.status_code == 404
 
     @pytest.mark.asyncio
     async def test_delete_nonexistent_conversation_returns_false(self, client):
@@ -66,3 +68,46 @@ class TestErrorHandling:
         """Providing a file object without a filename must raise ValueError."""
         with pytest.raises(ValueError):
             await client.documents.ingest(file=io.BytesIO(b"content"))
+
+    @pytest.mark.asyncio
+    async def test_reiterating_consumed_stream_raises_runtime_error(self, client):
+        """Iterating a ChatStream a second time after full consumption must raise RuntimeError."""
+        chat_id = None
+        async with client.chat.stream(message="Say one word.") as stream:
+            async for _ in stream:
+                pass
+            chat_id = stream.chat_id
+
+        try:
+            with pytest.raises(RuntimeError):
+                async for _ in stream:
+                    pass
+        finally:
+            if chat_id:
+                await client.chat.delete(chat_id)
+
+    @pytest.mark.asyncio
+    async def test_close_does_not_close_external_http_client(self):
+        """The SDK must not close a caller-supplied httpx.AsyncClient on client.close()."""
+        from openrag_sdk import OpenRAGClient
+
+        ext_client = httpx.AsyncClient()
+        try:
+            sdk_client = OpenRAGClient(
+                api_key="orag_test", base_url=_base_url, http_client=ext_client
+            )
+            await sdk_client.close()
+            assert not ext_client.is_closed
+        finally:
+            await ext_client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_client_closed_after_context_manager_exit(self):
+        """An SDK-owned http client is closed on __aexit__; later calls must fail."""
+        from openrag_sdk import OpenRAGClient
+
+        async with OpenRAGClient(api_key="orag_test", base_url=_base_url) as c:
+            pass
+
+        with pytest.raises(RuntimeError):
+            await c.settings.get()

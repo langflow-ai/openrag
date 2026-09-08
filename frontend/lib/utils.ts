@@ -20,3 +20,8 @@ export function encodeBase64(str: string): string {
 export function decodeBase64(str: string): string {
   return Buffer.from(str, "base64").toString("utf-8");
 }
+
+export function formatFlowName(type: string): string {
+  if (type === "url_ingest") return "URL Ingest";
+  return type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, " ");
+}

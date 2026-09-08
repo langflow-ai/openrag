@@ -60,6 +60,8 @@ export interface UploadFileResult {
   createFilter?: boolean;
   filename?: string;
   taskId?: string;
+  /** Whether the backend honored preview=true (flag + run-mode gated). */
+  previewMode?: boolean;
 }
 
 export async function duplicateCheck(
@@ -82,12 +84,16 @@ export async function duplicateCheck(
 export async function uploadFiles(
   files: File[],
   replace = false,
-): Promise<{ taskId: string; fileCount: number }> {
+  preview = false,
+): Promise<{ taskId: string; fileCount: number; previewMode: boolean }> {
   const formData = new FormData();
   for (const file of files) {
     formData.append("file", file);
   }
   formData.append("replace_duplicates", replace.toString());
+  if (preview) {
+    formData.append("preview", "true");
+  }
 
   const uploadResponse = await fetch("/api/router/upload_ingest", {
     method: "POST",
@@ -111,12 +117,15 @@ export async function uploadFiles(
   const taskId = (json as { task_id?: string }).task_id;
   const fileCount =
     (json as { file_count?: number }).file_count ?? files.length;
+  const previewMode = Boolean(
+    (json as { preview_mode?: boolean }).preview_mode,
+  );
 
   if (!taskId) {
     throw new Error("Upload successful but no task ID returned");
   }
 
-  return { taskId, fileCount };
+  return { taskId, fileCount, previewMode };
 }
 
 export interface UploadFileCallbacks {
@@ -129,6 +138,7 @@ export async function uploadFile(
   replace = false,
   createFilter = false,
   callbacks?: UploadFileCallbacks,
+  preview = false,
 ): Promise<UploadFileResult> {
   try {
     const formData = new FormData();
@@ -136,6 +146,9 @@ export async function uploadFile(
     formData.append("replace_duplicates", replace.toString());
     if (createFilter) {
       formData.append("create_filter", "true");
+    }
+    if (preview) {
+      formData.append("preview", "true");
     }
 
     const uploadResponse = await fetch("/api/router/upload_ingest", {
@@ -193,6 +206,9 @@ export async function uploadFile(
     const shouldCreateFilter = (uploadIngestJson as { create_filter?: boolean })
       .create_filter;
     const filename = (uploadIngestJson as { filename?: string }).filename;
+    const previewMode = Boolean(
+      (uploadIngestJson as { preview_mode?: boolean }).preview_mode,
+    );
 
     const result: UploadFileResult = {
       fileId,
@@ -204,6 +220,7 @@ export async function uploadFile(
       createFilter: shouldCreateFilter,
       filename,
       taskId,
+      previewMode,
     };
 
     return result;

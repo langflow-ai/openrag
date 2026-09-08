@@ -338,6 +338,7 @@ class TaskService:
             replace_duplicates=replace_duplicates,
             connector_type=connector_type,
             docling_polling_service=self.docling_polling_service,
+            preview_mode=preview_mode,
         )
         return await self.create_custom_task(
             user_id,
@@ -347,6 +348,37 @@ class TaskService:
             existing_task_id=existing_task_id,
             temp_file_paths=temp_file_paths if temp_file_paths is not None else file_paths,
             preview_mode=preview_mode,
+        )
+
+    async def create_url_upload_task(
+        self,
+        owner_user_id: str,
+        docs_url: str,
+        crawl_depth: int,
+        jwt_token: str = None,
+        owner_name: str = None,
+        owner_email: str = None,
+        connector_type: str = "openrag_docs",
+        is_sample_data: bool = False,
+        existing_task_id: str = None,
+    ) -> str:
+        """Create a new upload task for traditional (non-Langflow) URL ingestion."""
+        from models.url import UrlProcessor
+
+        processor = UrlProcessor(
+            document_service=self.document_service,
+            models_service=self.models_service,
+            docs_url=docs_url,
+            crawl_depth=crawl_depth,
+            owner_user_id=owner_user_id,
+            jwt_token=jwt_token,
+            owner_name=owner_name,
+            owner_email=owner_email,
+            connector_type=connector_type,
+            is_sample_data=is_sample_data,
+        )
+        return await self.create_custom_task(
+            owner_user_id, [docs_url], processor, existing_task_id=existing_task_id
         )
 
     async def create_langflow_url_upload_task(
@@ -988,6 +1020,14 @@ class TaskService:
                 "actionable_by": "USER_ACTIONABLE",
             }
 
+        if "incorrect password" in error.lower():  # for password protected pdf cases
+            return {
+                "component": "docling",
+                "failure_phase": "parsing",
+                "user_facing_message": "This PDF is password-protected. Password-protected PDFs are not supported. Remove the password and upload the PDF again.",
+                "actionable_by": "USER_ACTIONABLE",
+            }
+
         if docling_status == DoclingPhaseStatus.EXPIRED:
             return {
                 "component": "docling",
@@ -1157,19 +1197,26 @@ class TaskService:
                 and "}" not in cleaned
             ):
                 lowered = cleaned.lower()
-                user_actionable = is_provider_credential_error(cleaned) or any(
-                    marker in lowered
-                    for marker in (
-                        "model",
-                        "project",
-                        "not found",
-                        "not properly configured",
-                        "no models",
-                        "unauthorized",
-                        "forbidden",
-                        "permission",
-                        "quota",
-                        "rate limit",
+                missing_deployment = "deployment" in lowered and any(
+                    marker in lowered for marker in ("not found", "does not exist")
+                )
+                user_actionable = (
+                    is_provider_credential_error(cleaned)
+                    or missing_deployment
+                    or any(
+                        marker in lowered
+                        for marker in (
+                            "model",
+                            "project",
+                            "not found",
+                            "not properly configured",
+                            "no models",
+                            "unauthorized",
+                            "forbidden",
+                            "permission",
+                            "quota",
+                            "rate limit",
+                        )
                     )
                 )
                 return {

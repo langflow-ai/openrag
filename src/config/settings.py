@@ -27,10 +27,18 @@ load_dotenv("../", override=False)
 
 logger = get_logger(__name__)
 
+
+def get_legacy_embedding_provider_map_json() -> str | None:
+    """Return the operator-supplied legacy embedding provider mapping JSON."""
+    return os.getenv("OPENRAG_LEGACY_EMBEDDING_PROVIDER_MAP")
+
+
 # Environment variables
 OPENSEARCH_HOST = os.getenv("OPENSEARCH_HOST", "localhost")
 OPENSEARCH_PORT = get_env_int("OPENSEARCH_PORT", 9200)
 OPENSEARCH_URL = f"https://{OPENSEARCH_HOST}:{OPENSEARCH_PORT}"
+_os_pool_maxsize = get_env_int("OPENSEARCH_POOL_MAXSIZE")
+OPENSEARCH_POOL_MAXSIZE: int = max(10 if _os_pool_maxsize is None else _os_pool_maxsize, 1)
 
 # Optional: Langflow-specific OpenSearch endpoint
 LANGFLOW_OPENSEARCH_HOST = os.getenv("LANGFLOW_OPENSEARCH_HOST")
@@ -103,11 +111,39 @@ LANGFLOW_INGEST_FLOW_ID = (
 LANGFLOW_URL_INGEST_FLOW_ID = (
     os.getenv("LANGFLOW_URL_INGEST_FLOW_ID") or "72c3d17c-2dac-4a73-b48a-6518473d7830"
 )
+DEFAULT_CHUNK_SIZE = 1000
+DEFAULT_CHUNK_OVERLAP = 200
 OPENRAG_BACKEND_PORT = get_env_int("OPENRAG_BACKEND_PORT", 8000)
+
+# CORS – comma-separated list of allowed origins (e.g. "https://app.example.com,https://admin.example.com").
+# Unset → defaults to http://localhost:3000.  Set to "" to disable CORS entirely.
+_raw_cors_origins = os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000")
+CORS_ALLOWED_ORIGINS: list[str] = [
+    o.strip() for o in _raw_cors_origins.split(",") if o.strip() and o.strip() != "*"
+]
 OPENRAG_BACKEND_INTERNAL_URL = os.getenv(
     "OPENRAG_BACKEND_INTERNAL_URL",
     f"http://openrag-backend:{OPENRAG_BACKEND_PORT}",
 ).rstrip("/")
+
+
+def get_langflow_llm_base_url() -> str:
+    """OpenAI-compatible base URL Langflow should call.
+
+    When the narrowed backend router is enabled, Langflow uses its private,
+    unversioned LLM paths; the router maps them onto the backend's public /v1
+    API. SaaS network policy exposes that port rather than the full backend.
+
+    OPENRAG_LLM_PROXY_URL remains an explicit escape hatch for deployments
+    with a separate proxy or Service.
+    """
+    override = os.getenv("OPENRAG_LLM_PROXY_URL")
+    if override:
+        return override.rstrip("/")
+    if OPENRAG_BACKEND_ROUTER_ENABLE:
+        return OPENRAG_BACKEND_ROUTER_URL
+    return f"{OPENRAG_BACKEND_INTERNAL_URL}/v1"
+
 
 # --- Backend ingestion-callback proxy router ------------------------------
 # A standalone, minimal uvicorn app (spun up in the same process as the main
@@ -650,6 +686,19 @@ LANGFLOW_INGEST_CALLBACK_TTL_SECONDS = get_env_int(
 )
 LANGFLOW_INGEST_CALLBACK_BATCH_SIZE = get_env_int("LANGFLOW_INGEST_CALLBACK_BATCH_SIZE", 100)
 
+
+def get_langflow_llm_proxy_ttl_seconds() -> int:
+    """TTL for the Langflow → OpenRAG LLM hop token.
+
+    Defaults to the ingest-callback TTL so one Langflow ingest run can call
+    embeddings for the whole document. Override with LANGFLOW_LLM_PROXY_TTL_SECONDS.
+    """
+    return get_env_int(
+        "LANGFLOW_LLM_PROXY_TTL_SECONDS",
+        LANGFLOW_INGEST_CALLBACK_TTL_SECONDS,
+    )
+
+
 OPENSEARCH_JWT_TTL_BUFFER_SECONDS = 300
 
 
@@ -1009,6 +1058,7 @@ class AppClients:
                 ssl_assert_fingerprint=None,
                 http_auth=os_auth,
                 http_compress=True,
+                pool_maxsize=OPENSEARCH_POOL_MAXSIZE,
             )
 
         # Initialize patched OpenAI client if API key is available
@@ -1026,16 +1076,7 @@ class AppClients:
             )
 
         # Initialize docling-serve HTTP client for document conversion
-        self.docling_http_client = httpx.AsyncClient(
-            verify=DOCLING_SERVE_VERIFY_SSL,
-            timeout=httpx.Timeout(
-                timeout=INGESTION_TIMEOUT,
-                connect=30.0,
-                read=INGESTION_TIMEOUT,
-                write=30.0,
-                pool=30.0,
-            ),
-        )
+        self._create_docling_http_client()
 
         # Eagerly initialize DoclingService to ensure thread-safety
         from services.docling_service import DoclingService
@@ -1045,21 +1086,7 @@ class AppClients:
         # Initialize Langflow HTTP client with extended timeouts for large documents
         # Must be created before wait_for_langflow / get_langflow_api_key
         # Use explicit timeout configuration to handle large PDF ingestion (300+ pages)
-        self.langflow_http_client = httpx.AsyncClient(
-            base_url=LANGFLOW_URL,
-            timeout=httpx.Timeout(
-                timeout=LANGFLOW_TIMEOUT,  # Total timeout
-                connect=LANGFLOW_CONNECT_TIMEOUT,  # Connection timeout
-                read=LANGFLOW_TIMEOUT,  # Read timeout (most important for large PDFs)
-                write=LANGFLOW_CONNECT_TIMEOUT,  # Write timeout
-                pool=LANGFLOW_CONNECT_TIMEOUT,  # Pool timeout
-            ),
-        )
-        logger.info(
-            "Initialized Langflow HTTP client with extended timeouts",
-            timeout_seconds=LANGFLOW_TIMEOUT,
-            connect_timeout_seconds=LANGFLOW_CONNECT_TIMEOUT,
-        )
+        self._create_langflow_http_client()
 
         # Wait for Langflow to be healthy before generating API key
         from utils.langflow_utils import wait_for_langflow
@@ -1088,6 +1115,51 @@ class AppClients:
             logger.warning("No Langflow client initialized yet, will attempt later on first use")
 
         return self
+
+    def _create_docling_http_client(self):
+        """Create a new AsyncClient for Docling bound to the currently running event loop."""
+        self.docling_http_client = httpx.AsyncClient(
+            verify=DOCLING_SERVE_VERIFY_SSL,
+            timeout=httpx.Timeout(
+                timeout=INGESTION_TIMEOUT,
+                connect=30.0,
+                read=INGESTION_TIMEOUT,
+                write=30.0,
+                pool=30.0,
+            ),
+        )
+        return self.docling_http_client
+
+    def _ensure_docling_http_client(self):
+        """Ensure docling_http_client is initialized and not closed."""
+        if self.docling_http_client is None or self.docling_http_client.is_closed:
+            return self._create_docling_http_client()
+        return self.docling_http_client
+
+    def _create_langflow_http_client(self):
+        """Create a new AsyncClient for Langflow bound to the currently running event loop."""
+        self.langflow_http_client = httpx.AsyncClient(
+            base_url=LANGFLOW_URL,
+            timeout=httpx.Timeout(
+                timeout=LANGFLOW_TIMEOUT,  # Total timeout
+                connect=LANGFLOW_CONNECT_TIMEOUT,  # Connection timeout
+                read=LANGFLOW_TIMEOUT,  # Read timeout (most important for large PDFs)
+                write=LANGFLOW_CONNECT_TIMEOUT,  # Write timeout
+                pool=LANGFLOW_CONNECT_TIMEOUT,  # Pool timeout
+            ),
+        )
+        logger.info(
+            "Initialized Langflow HTTP client with extended timeouts",
+            timeout_seconds=LANGFLOW_TIMEOUT,
+            connect_timeout_seconds=LANGFLOW_CONNECT_TIMEOUT,
+        )
+        return self.langflow_http_client
+
+    def _ensure_langflow_http_client(self):
+        """Ensure langflow_http_client is initialized and not closed."""
+        if self.langflow_http_client is None or self.langflow_http_client.is_closed:
+            return self._create_langflow_http_client()
+        return self.langflow_http_client
 
     async def ensure_langflow_client(self):
         """Ensure Langflow client exists; try to generate key and create client lazily."""
@@ -1166,6 +1238,27 @@ class AppClients:
                     os.environ["OLLAMA_BASE_URL"] = config.providers.ollama.endpoint
                     os.environ["OLLAMA_ENDPOINT"] = config.providers.ollama.endpoint
                     logger.debug("Loaded Ollama endpoint from config")
+
+                # Set Azure credentials
+                azure_creds = config.providers.credential_values("azure")
+                if azure_creds.get("api_key"):
+                    os.environ["AZURE_API_KEY"] = azure_creds["api_key"]
+                if azure_creds.get("api_base"):
+                    os.environ["AZURE_API_BASE"] = azure_creds["api_base"]
+                if azure_creds.get("api_version"):
+                    os.environ["AZURE_API_VERSION"] = azure_creds["api_version"]
+                if azure_creds:
+                    logger.debug("Loaded Azure OpenAI credentials from config")
+
+                azure_ai_creds = config.providers.credential_values("azure_ai")
+                if azure_ai_creds.get("api_key"):
+                    os.environ["AZURE_AI_API_KEY"] = azure_ai_creds["api_key"]
+                if azure_ai_creds.get("api_base"):
+                    os.environ["AZURE_AI_API_BASE"] = azure_ai_creds["api_base"]
+                if azure_ai_creds.get("api_version"):
+                    os.environ["AZURE_AI_API_VERSION"] = azure_ai_creds["api_version"]
+                if azure_ai_creds:
+                    logger.debug("Loaded Azure AI Foundry credentials from config")
 
                 # Determine model and provider for both probe and production client
                 model_name = config.knowledge.embedding_model or OPENAI_DEFAULT_EMBEDDING_MODEL
@@ -1399,10 +1492,24 @@ class AppClients:
 
             url = f"{LANGFLOW_URL}{endpoint}"
 
+            client = self._ensure_langflow_http_client()
+
             try:
-                response = await self.langflow_http_client.request(
+                response = await client.request(
                     method=method, url=url, headers=headers, **request_kwargs
                 )
+            except RuntimeError as exc:
+                if "Event loop is closed" in str(exc) or "event loop" in str(exc).lower():
+                    logger.warning(
+                        "Langflow HTTP client event loop was closed, recreating client for active event loop",
+                        endpoint=endpoint,
+                    )
+                    client = self._create_langflow_http_client()
+                    response = await client.request(
+                        method=method, url=url, headers=headers, **request_kwargs
+                    )
+                else:
+                    raise
             except httpx.RequestError as exc:
                 last_error = exc
                 if attempt + 1 < max_attempts:
@@ -1431,9 +1538,22 @@ class AppClients:
                 if api_key:
                     headers["x-api-key"] = api_key
                     try:
-                        response = await self.langflow_http_client.request(
+                        client = self._ensure_langflow_http_client()
+                        response = await client.request(
                             method=method, url=url, headers=headers, **request_kwargs
                         )
+                    except RuntimeError as exc:
+                        if "Event loop is closed" in str(exc) or "event loop" in str(exc).lower():
+                            logger.warning(
+                                "Langflow auth retry HTTP client event loop was closed, recreating client for active event loop",
+                                endpoint=endpoint,
+                            )
+                            client = self._create_langflow_http_client()
+                            response = await client.request(
+                                method=method, url=url, headers=headers, **request_kwargs
+                            )
+                        else:
+                            raise
                     except httpx.RequestError as exc:
                         last_error = exc
                         if attempt + 1 < max_attempts:
@@ -1538,28 +1658,26 @@ class AppClients:
         name: str,
         value: str,
         variable_type: str = "Credential",
+        target_variable: dict | None = None,
     ):
         """Update an existing global variable in Langflow via API"""
         try:
-            # First, get all variables to find the one with the matching name
-            get_response = await self.langflow_request("GET", "/api/v1/variables/")
+            if not target_variable:
+                get_response = await self.langflow_request("GET", "/api/v1/variables/")
 
-            if get_response.status_code != 200:
-                logger.error(
-                    "Failed to retrieve variables for update",
-                    variable_name=name,
-                    status_code=get_response.status_code,
-                )
-                return
+                if get_response.status_code != 200:
+                    logger.error(
+                        "Failed to retrieve variables for update",
+                        variable_name=name,
+                        status_code=get_response.status_code,
+                    )
+                    return
 
-            variables = get_response.json()
-            target_variable = None
-
-            # Find the variable with matching name
-            for variable in variables:
-                if variable.get("name") == name:
-                    target_variable = variable
-                    break
+                variables = get_response.json()
+                for variable in variables:
+                    if variable.get("name") == name:
+                        target_variable = variable
+                        break
 
             if not target_variable:
                 logger.error("Variable not found for update", variable_name=name)
@@ -1590,7 +1708,7 @@ class AppClients:
                 recreate_payload = {
                     "name": name,
                     "value": value,
-                    "default_fields": target_variable.get("default_fields", []),
+                    "default_fields": [],
                     "type": variable_type,
                 }
                 recreate_response = await self.langflow_request(
@@ -1616,7 +1734,16 @@ class AppClients:
                 return
 
             current_value = target_variable.get("value")
-            if current_value == value:
+            current_default_fields = target_variable.get("default_fields", [])
+            # Langflow redacts Credential values on GET (null) and treats an
+            # empty stored value as "{name} variable not found." Always write
+            # when the visible value is missing so placeholders can heal, and
+            # rewrite whenever stale Apply To (default_fields) entries linger.
+            if (
+                current_value not in (None, "")
+                and current_value == value
+                and not current_default_fields
+            ):
                 logger.debug(
                     "Langflow global variable already up to date, skipping update",
                     variable_name=name,
@@ -1629,7 +1756,7 @@ class AppClients:
                 "id": variable_id,
                 "name": name,
                 "value": value,
-                "default_fields": target_variable.get("default_fields", []),
+                "default_fields": [],
                 "type": variable_type,
             }
 
@@ -1685,6 +1812,7 @@ class AppClients:
             timeout=30,  # 30 second timeout
             max_retries=3,
             retry_on_timeout=True,
+            pool_maxsize=OPENSEARCH_POOL_MAXSIZE,
         )
 
     def create_basic_opensearch_client(self, username: str, password: str):
@@ -1701,6 +1829,7 @@ class AppClients:
             timeout=30,
             max_retries=3,
             retry_on_timeout=True,
+            pool_maxsize=OPENSEARCH_POOL_MAXSIZE,
         )
 
     def create_user_opensearch_client(self, jwt_token: str):

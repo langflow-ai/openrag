@@ -134,3 +134,44 @@ async def test_get_ibm_models_returns_project_configuration_error():
     assert response.status_code == 400
     payload = json.loads(response.body)
     assert payload["error"] == msg
+
+
+@pytest.mark.asyncio
+async def test_get_model_catalog_returns_only_supported_providers():
+    """The catalogue publishes exactly what this run mode's config exposes.
+
+    Not a fixed four: `config/model_providers.yaml` decides, so pinning a
+    literal set here would only re-hardcode the list the config replaced.
+    """
+    from services.model_catalog import supported_provider_keys
+
+    response = await models_api.get_model_catalog(user=SimpleNamespace())
+    assert isinstance(response, JSONResponse)
+    assert response.status_code == 200
+    payload = json.loads(response.body)
+    keys = {provider["key"] for provider in payload["providers"]}
+    assert keys == supported_provider_keys()
+    openai = next(p for p in payload["providers"] if p["key"] == "openai")
+    assert openai["models"]
+    assert openai["embedding_models"]
+    cache_control = response.headers.get("cache-control") or response.headers.get("Cache-Control")
+    # Never `max-age`: a cached copy outlives the restart that applies a
+    # config edit, so the picker keeps showing the previous model list.
+    assert cache_control == "no-store"
+
+
+@pytest.mark.asyncio
+async def test_get_model_catalog_hides_catalog_exception_text(monkeypatch):
+    """CodeQL py/stack-trace-exposure: log the cause, return a fixed message."""
+    from services import model_catalog
+
+    def boom(*args, **kwargs):
+        raise model_catalog.CatalogUnavailableError("litellm is not installed on the server")
+
+    monkeypatch.setattr(model_catalog, "catalog", boom)
+
+    response = await models_api.get_model_catalog(user=SimpleNamespace())
+    assert response.status_code == 503
+    body = response.body.decode()
+    assert json.loads(body)["error"] == model_catalog.CATALOG_UNAVAILABLE_MESSAGE
+    assert "litellm" not in body

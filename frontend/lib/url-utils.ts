@@ -1,3 +1,5 @@
+import { RUN_MODE, type RunMode } from "@/lib/constants";
+
 export interface LangflowEditUrlParams {
   /** Flow ID to open directly (e.g. settings.ingest_flow_id). */
   flowId?: string | null;
@@ -9,8 +11,8 @@ export interface LangflowEditUrlParams {
   langflowPort?: number | string | null;
   /** Whether the deployment is in IBM auth mode. */
   isIbmAuthMode: boolean;
-  /** Backend run mode ("oss" | "saas" | "on_prem"), used to pick the IBM URL derivation. */
-  runMode: string | null;
+  /** Backend run mode, used to pick the IBM URL derivation. */
+  runMode: RunMode | null;
   /** Current origin; defaults to window.location.origin in the browser. */
   locationOrigin?: string;
 }
@@ -35,7 +37,7 @@ export function resolveLangflowEditUrl({
 }: LangflowEditUrlParams): string {
   const ibmLangflowUrl =
     isIbmAuthMode && locationOrigin
-      ? runMode === "on_prem"
+      ? runMode === RUN_MODE.ON_PREM
         ? deriveOnPremLangflowUrl(locationOrigin)
         : deriveCloudLangflowUrl(locationOrigin)
       : null;

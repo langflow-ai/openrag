@@ -18,6 +18,10 @@ import {
 } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/auth-context";
 import {
+  canRemoveProvider,
+  isProviderConfigured,
+} from "../_helpers/model-helpers";
+import {
   AnthropicSettingsForm,
   type AnthropicSettingsFormData,
 } from "./anthropic-settings-form";
@@ -41,14 +45,12 @@ const AnthropicSettingsDialog = ({
     enabled: isAuthenticated || isNoAuthMode,
   });
 
-  const isAnthropicConfigured =
-    settings.providers?.anthropic?.configured === true;
+  const isAnthropicConfigured = isProviderConfigured(
+    settings.providers,
+    "anthropic",
+  );
 
-  const canRemoveAnthropic =
-    isAnthropicConfigured &&
-    (settings.providers?.openai?.configured === true ||
-      settings.providers?.watsonx?.configured === true ||
-      settings.providers?.ollama?.configured === true);
+  const canRemoveAnthropic = canRemoveProvider(settings.providers, "anthropic");
 
   const methods = useForm<AnthropicSettingsFormData>({
     mode: "onSubmit",
@@ -92,7 +94,7 @@ const AnthropicSettingsDialog = ({
         action: {
           label: "Settings",
           onClick: () => {
-            router.push("/settings/langflow?focusLlmModel=true");
+            router.push("/settings/agent?focusLlmModel=true");
           },
         },
       });

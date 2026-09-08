@@ -5,5 +5,6 @@
 package tools
 
 import (
+	_ "github.com/traefik/traefik/v3/pkg/version"
 	_ "k8s.io/code-generator"
 )

@@ -125,6 +125,22 @@ def test_ingest_token_round_trips_connector_file_id():
     assert restored_context.connector_file_id == "my-bucket::報告書.pdf"
 
 
+def test_ingest_token_round_trips_embedding_provider() -> None:
+    token_service = LangflowIngestTokenService(secret="test-secret" * 4, ttl_seconds=60)
+    context = DocumentIndexContext(
+        document_id="doc-1",
+        filename="report.pdf",
+        mimetype="application/pdf",
+        embedding_model="text-embedding-3-small",
+        embedding_provider="azure",
+        ingest_run_id="run-1",
+    )
+
+    restored_context, _jti = token_service.validate_token(token_service.create_token(context))
+
+    assert restored_context.embedding_provider == "azure"
+
+
 @pytest.mark.asyncio
 async def test_langflow_ingest_callback_rewrites_langflow_chunk_ids():
     token_service = LangflowIngestTokenService(secret="test-secret" * 4, ttl_seconds=60)
@@ -321,7 +337,7 @@ def test_ingest_flows_resolve_callback_config_from_global_vars(flow_path, compon
     assert template["openrag_ingest_url"]["input_types"] == ["Text", "Message"]
     assert template["openrag_ingest_token"]["input_types"] == ["Text", "Message"]
     assert template["openrag_ingest_run_id"]["input_types"] == ["Text", "Message"]
-    assert template["openrag_ingest_token"]["_input_type"] == "StrInput"
+    assert template["openrag_ingest_token"]["_input_type"] == "SecretStrInput"
     assert "OPENRAG_INGEST_URL" in template["code"]["value"]
     assert "_openrag_ingest_global_placeholders" in template["code"]["value"]
     assert 'url = self._openrag_callback_value("openrag_ingest_url")' in template["code"]["value"]

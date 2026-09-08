@@ -84,32 +84,48 @@ class TestKnowledgeFilters:
         )
         assert create_result.success is True
         assert create_result.id is not None
+        assert create_result.error is None
         filter_id = create_result.id
 
-        # Search
-        filters = await client.knowledge_filters.search("Python SDK Test")
-        assert isinstance(filters, list)
-        assert any(f.name == "Python SDK Test Filter" for f in filters)
+        try:
+            # Search
+            filters = await client.knowledge_filters.search("Python SDK Test")
+            assert isinstance(filters, list)
+            assert any(f.name == "Python SDK Test Filter" for f in filters)
 
-        # Get
-        filter_obj = await client.knowledge_filters.get(filter_id)
-        assert filter_obj is not None
-        assert filter_obj.id == filter_id
-        assert filter_obj.name == "Python SDK Test Filter"
+            # Search: a query guaranteed not to match anything returns [].
+            no_match = await client.knowledge_filters.search(
+                f"zzz_no_such_filter_{uuid.uuid4().hex}"
+            )
+            assert no_match == []
 
-        # Update
-        update_success = await client.knowledge_filters.update(
-            filter_id,
-            {"description": "Updated description from Python SDK test"},
-        )
-        assert update_success is True
+            # Search: limit constrains the number of returned filters.
+            limited = await client.knowledge_filters.search("Python SDK Test", limit=1)
+            assert len(limited) <= 1
 
-        updated_filter = await client.knowledge_filters.get(filter_id)
-        assert updated_filter.description == "Updated description from Python SDK test"
+            # Get
+            filter_obj = await client.knowledge_filters.get(filter_id)
+            assert filter_obj is not None
+            assert filter_obj.id == filter_id
+            assert filter_obj.name == "Python SDK Test Filter"
+            assert filter_obj.query_data is not None
+            assert filter_obj.owner is not None
+            assert filter_obj.created_at is not None
+            assert filter_obj.updated_at is not None
 
-        # Delete
-        delete_success = await client.knowledge_filters.delete(filter_id)
-        assert delete_success is True
+            # Update
+            update_success = await client.knowledge_filters.update(
+                filter_id,
+                {"description": "Updated description from Python SDK test"},
+            )
+            assert update_success is True
+
+            updated_filter = await client.knowledge_filters.get(filter_id)
+            assert updated_filter.description == "Updated description from Python SDK test"
+        finally:
+            # Delete
+            delete_success = await client.knowledge_filters.delete(filter_id)
+            assert delete_success is True
 
         deleted_filter = await client.knowledge_filters.get(filter_id)
         assert deleted_filter is None

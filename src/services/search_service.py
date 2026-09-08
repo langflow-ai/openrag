@@ -9,8 +9,19 @@ from agentd.tool_decorator import tool
 
 from auth_context import get_auth_context
 from config.embedding_constants import get_declared_default_embedding_model
-from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
+from config.settings import get_embedding_model, get_index_name, get_openrag_config
+from services.llm_gateway import LlmGatewayError
+from services.llm_gateway import embeddings as gateway_embeddings
 from utils.container_utils import transform_localhost_url
+from utils.embedding_fields import (
+    INDEXED_EMBEDDING_ROUTE_PREFIX,
+    EmbeddingSpace,
+    build_embedding_space_aggregation,
+    embedding_space_after_keys,
+    embedding_spaces_from_aggregation,
+    get_embedding_field_name,
+    get_embedding_space_id,
+)
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -18,6 +29,7 @@ logger = get_logger(__name__)
 MAX_EMBED_RETRIES = 3
 EMBED_RETRY_INITIAL_DELAY = 1.0
 EMBED_RETRY_MAX_DELAY = 8.0
+EMBEDDING_SPACE_PAGE_SIZE = 100
 
 
 # Variable used to store the active instance for the tool wrapper
@@ -35,6 +47,87 @@ def _is_exact_token_query(query: str) -> bool:
         return True
 
     return bool(re.search(r"[a-zA-Z]", query) and re.search(r"\d", query))
+
+
+def _build_file_facet_aggregations(size_overrides: dict[str, int] | None = None) -> dict[str, Any]:
+    size_overrides = size_overrides or {}
+    facet_fields = {
+        "data_sources": "filename",
+        "document_types": "mimetype",
+        "owners": "owner",
+        "connector_types": "connector_type",
+        "embedding_models": "embedding_model",
+    }
+
+    aggregations: dict[str, Any] = {}
+    for facet_name, field_name in facet_fields.items():
+        agg: dict[str, Any] = {
+            "terms": {
+                "field": field_name,
+                "size": size_overrides.get(facet_name, 1000),
+            },
+        }
+        if facet_name == "owners":
+            agg["aggs"] = {
+                "files": {"cardinality": {"field": "filename"}},
+                "owner_metadata": {
+                    "top_hits": {
+                        "size": 1,
+                        "_source": {
+                            "includes": ["owner_name", "owner_email", "owner"],
+                        },
+                    }
+                },
+            }
+        elif facet_name != "data_sources":
+            agg["aggs"] = {"files": {"cardinality": {"field": "filename"}}}
+        aggregations[facet_name] = agg
+    return aggregations
+
+
+def _normalize_file_facet_aggregations(aggregations: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(aggregations)
+    for facet_name in (
+        "data_sources",
+        "document_types",
+        "owners",
+        "connector_types",
+        "embedding_models",
+    ):
+        facet = aggregations.get(facet_name)
+        if not isinstance(facet, dict):
+            normalized[facet_name] = {"buckets": []}
+            continue
+
+        raw_buckets = facet.get("buckets", [])
+        buckets = raw_buckets if isinstance(raw_buckets, list) else []
+        normalized_buckets: list[dict[str, Any]] = []
+        for bucket in buckets:
+            if not isinstance(bucket, dict) or not bucket.get("key"):
+                continue
+
+            normalized_bucket = {"key": bucket.get("key")}
+            if facet_name == "owners":
+                owner_hits = bucket.get("owner_metadata", {}).get("hits", {}).get("hits", [])
+                owner_source = owner_hits[0].get("_source", {}) if owner_hits else {}
+                normalized_bucket["label"] = (
+                    owner_source.get("owner_name")
+                    or owner_source.get("owner_email")
+                    or bucket.get("key")
+                )
+
+            if facet_name != "data_sources":
+                normalized_bucket["doc_count"] = bucket.get("files", {}).get(
+                    "value", bucket.get("doc_count", 0)
+                )
+
+            normalized_buckets.append(normalized_bucket)
+
+        normalized[facet_name] = {
+            **facet,
+            "buckets": normalized_buckets,
+        }
+    return normalized
 
 
 def _apply_exact_match_file_filter(
@@ -81,17 +174,34 @@ def _apply_exact_match_file_filter(
     # Filter to only chunks from files with exact matches
     chunks = [chunk for chunk in chunks if chunk.get("filename") in exact_files]
 
-    def _build_terms_agg(field: str) -> dict[str, Any]:
-        counts = Counter(
-            value
-            for chunk in chunks
-            for value in [chunk.get(field)]
-            if isinstance(value, str) and value
-        )
+    def _build_terms_agg(field: str, label_field: str | None = None) -> dict[str, Any]:
+        file_counts: Counter[Any] = Counter()
+        labels_by_value: dict[str, str] = {}
+        for chunk in chunks:
+            value = chunk.get(field)
+            filename = chunk.get("filename")
+            if not isinstance(value, str) or not value:
+                continue
+            if not isinstance(filename, str) or not filename:
+                continue
+            file_counts[(value, filename)] += 1
+            if label_field and value not in labels_by_value:
+                label = chunk.get(label_field)
+                if isinstance(label, str) and label:
+                    labels_by_value[value] = label
+
+        counts = Counter(value for value, _filename in file_counts)
         return {
             "doc_count_error_upper_bound": 0,
             "sum_other_doc_count": 0,
-            "buckets": [{"key": key, "doc_count": count} for key, count in counts.most_common()],
+            "buckets": [
+                {
+                    "key": key,
+                    "doc_count": count,
+                    **({"label": labels_by_value.get(key, key)} if label_field else {}),
+                }
+                for key, count in counts.most_common()
+            ],
         }
 
     # Keep aggregations consistent with the post-filtered result set.
@@ -99,7 +209,7 @@ def _apply_exact_match_file_filter(
         **aggregations,
         "data_sources": _build_terms_agg("filename"),
         "document_types": _build_terms_agg("mimetype"),
-        "owners": _build_terms_agg("owner"),
+        "owners": _build_terms_agg("owner", label_field="owner_name"),
         "connector_types": _build_terms_agg("connector_type"),
         "embedding_models": _build_terms_agg("embedding_model"),
     }
@@ -167,8 +277,6 @@ class SearchService:
         Returns:
             dict (str, Any): {"results": [chunks]} on success
         """
-        from utils.embedding_fields import get_embedding_field_name
-
         # Strategy: Use provided model, or default to the configured embedding
         # model. This assumes documents are embedded with that model by default.
         # Future enhancement: Could auto-detect available models in corpus.
@@ -205,7 +313,7 @@ class SearchService:
 
         # Get available embedding models from corpus
         query_embeddings = {}
-        available_models = []
+        available_spaces: list[EmbeddingSpace] = []
         failed_models: list = []
 
         opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
@@ -238,88 +346,118 @@ class SearchService:
                             filter_clauses.append({"terms": {field_name: values}})
 
             try:
-                # Build aggregation query with filters applied
-                agg_query = {
-                    "size": 0,
-                    "aggs": {
-                        "embedding_models": {"terms": {"field": "embedding_model", "size": 10}}
-                    },
-                }
+                seen_spaces: set[str] = set()
+                for legacy in (False, True):
+                    after = None
+                    while True:
+                        agg_query = {
+                            "size": 0,
+                            "aggs": build_embedding_space_aggregation(
+                                size=EMBEDDING_SPACE_PAGE_SIZE,
+                                qualified_after=None if legacy else after,
+                                legacy_after=after if legacy else None,
+                                include_qualified=not legacy,
+                                include_legacy=legacy,
+                            ),
+                        }
+                        bool_query: dict[str, Any] = {}
+                        if filter_clauses:
+                            bool_query["filter"] = filter_clauses
+                        if legacy:
+                            bool_query["must_not"] = [{"exists": {"field": "embedding_space_id"}}]
+                        if bool_query:
+                            agg_query["query"] = {"bool": bool_query}
 
-                # Apply filters to model detection if any exist
-                if filter_clauses:
-                    agg_query["query"] = {"bool": {"filter": filter_clauses}}
+                        agg_result = await opensearch_client.search(
+                            index=get_index_name(), body=agg_query, params={"terminate_after": 0}
+                        )
+                        for space in embedding_spaces_from_aggregation(agg_result):
+                            if space.space_id not in seen_spaces:
+                                seen_spaces.add(space.space_id)
+                                available_spaces.append(space)
 
-                agg_result = await opensearch_client.search(
-                    index=get_index_name(), body=agg_query, params={"terminate_after": 0}
-                )
-                buckets = (
-                    agg_result.get("aggregations", {})
-                    .get("embedding_models", {})
-                    .get("buckets", [])
-                )
-                available_models = [b["key"] for b in buckets if b["key"]]
+                        qualified_after, legacy_after = embedding_space_after_keys(agg_result)
+                        next_after = legacy_after if legacy else qualified_after
+                        if not next_after or next_after == after:
+                            break
+                        after = next_after
 
-                if not available_models:
+                if not available_spaces:
                     # Fallback to configured model if no documents indexed yet
-                    available_models = [embedding_model]
+                    provider = get_openrag_config().knowledge.embedding_provider or "openai"
+                    if embedding_model:
+                        space_id = get_embedding_space_id(provider, embedding_model)
+                        available_spaces = [
+                            EmbeddingSpace(
+                                space_id=space_id,
+                                route_model=f"{INDEXED_EMBEDDING_ROUTE_PREFIX}{space_id}",
+                                field_identity=space_id,
+                            )
+                        ]
 
                 logger.info(
-                    "Detected embedding models in corpus",
-                    available_models=available_models,
-                    model_counts={b["key"]: b["doc_count"] for b in buckets},
+                    "Detected embedding spaces in corpus",
+                    available_spaces=[space.space_id for space in available_spaces],
                     with_filters=len(filter_clauses) > 0,
                 )
             except Exception as e:
                 logger.warning(
-                    "Failed to detect embedding models, using configured model", error=str(e)
+                    "Failed to detect embedding spaces, using configured model", error=str(e)
                 )
-                available_models = [embedding_model]
+                provider = get_openrag_config().knowledge.embedding_provider or "openai"
+                if embedding_model:
+                    space_id = get_embedding_space_id(provider, embedding_model)
+                    available_spaces = [
+                        EmbeddingSpace(
+                            space_id=space_id,
+                            route_model=f"{INDEXED_EMBEDDING_ROUTE_PREFIX}{space_id}",
+                            field_identity=space_id,
+                        )
+                    ]
 
             # Parallelize embedding generation for all models
-            async def embed_with_model(model_name):
+            async def embed_with_space(
+                space: EmbeddingSpace,
+            ) -> tuple[EmbeddingSpace, list[float]]:
+                """Generate one query vector through its exact gateway route."""
                 delay = EMBED_RETRY_INITIAL_DELAY
                 attempts = 0
                 last_exception = None
 
-                # Use centralized utility for LiteLLM model formatting.
-                # strict=True: if no configured provider claims this model
-                # (e.g. the provider was removed after ingest), raise
-                # immediately rather than entering a ~3s retry loop on an
-                # unroutable model name.
-                if self.models_service:
-                    formatted_model = await self.models_service.get_litellm_model_name(
-                        model_name, strict=True
-                    )
-                else:
-                    # Fallback if service not injected (tests/etc)
-                    formatted_model = model_name
-
                 while attempts < MAX_EMBED_RETRIES:
                     attempts += 1
                     try:
-                        resp = await clients.patched_embedding_client.embeddings.create(
-                            model=formatted_model, input=[query]
+                        # Use the same credential-aware gateway as Langflow.
+                        # Provider-qualified and legacy routes are resolved in
+                        # one place and upstream credentials never leave OpenRAG.
+                        resp = await gateway_embeddings(
+                            {"model": space.route_model, "input": [query]}
                         )
-                        # Try to get embedding - some providers return .embedding, others return ['embedding']
-                        embedding = getattr(resp.data[0], "embedding", None)
+                        data = resp.get("data", [])
+                        embedding = data[0].get("embedding") if data else None
                         if embedding is None:
-                            embedding = resp.data[0]["embedding"]
-                        return model_name, embedding
+                            raise RuntimeError("Embedding provider returned no vector")
+                        return space, embedding
+                    except LlmGatewayError:
+                        # Configuration/provenance errors are deterministic;
+                        # skip this space immediately and retain keyword search.
+                        raise
                     except Exception as e:
                         last_exception = e
                         if attempts >= MAX_EMBED_RETRIES:
                             logger.error(
                                 "Failed to embed with model after retries",
-                                model=model_name,
+                                model=space.space_id,
                                 attempts=attempts,
                                 error=str(e),
                             )
-                            raise RuntimeError(f"Failed to embed with model {model_name}") from e
+                            raise RuntimeError(
+                                f"Failed to embed with model {space.space_id}"
+                            ) from e
 
                         logger.warning(
                             "Retrying embedding generation",
-                            model=model_name,
+                            model=space.space_id,
                             attempt=attempts,
                             max_attempts=MAX_EMBED_RETRIES,
                             error=str(e),
@@ -328,29 +466,31 @@ class SearchService:
                         delay = min(delay * 2, EMBED_RETRY_MAX_DELAY)
 
                 # Should not reach here, but guard in case
-                raise RuntimeError(f"Failed to embed with model {model_name}") from last_exception
+                raise RuntimeError(
+                    f"Failed to embed with model {space.space_id}"
+                ) from last_exception
 
             # Run all embeddings in parallel, tolerating per-model failures so
             # one broken model (e.g. provider credentials removed after ingest)
             # doesn't take down the entire search. If all models fail we fall
             # back to keyword-only search below.
             embedding_results = await asyncio.gather(
-                *[embed_with_model(model) for model in available_models],
+                *[embed_with_space(space) for space in available_spaces],
                 return_exceptions=True,
             )
 
-            for model_name, result in zip(available_models, embedding_results, strict=False):
+            for space, result in zip(available_spaces, embedding_results, strict=False):
                 if isinstance(result, BaseException):
-                    failed_models.append(model_name)
+                    failed_models.append(space.space_id)
                     logger.warning(
                         "Skipping model with failed embedding; continuing with others",
-                        model=model_name,
+                        model=space.space_id,
                         error=str(result),
                     )
                     continue
                 if isinstance(result, tuple) and result[1] is not None:
-                    successful_model, embedding = result
-                    query_embeddings[successful_model] = embedding
+                    successful_space, embedding = result
+                    query_embeddings[successful_space.field_identity] = embedding
 
             logger.info(
                 "Generated query embeddings",
@@ -396,11 +536,8 @@ class SearchService:
             # Build multi-model KNN queries (only for models that successfully
             # produced query embeddings)
             knn_queries = []
-            embedding_fields_to_check = []
-
-            for model_name, embedding_vector in query_embeddings.items():
-                field_name = get_embedding_field_name(model_name)
-                embedding_fields_to_check.append(field_name)
+            for field_identity, embedding_vector in query_embeddings.items():
+                field_name = get_embedding_field_name(field_identity)
                 knn_queries.append(
                     {
                         "knn": {
@@ -413,27 +550,10 @@ class SearchService:
                     }
                 )
 
-            # Only require an embedding field when we actually have embeddings
-            # to match against — otherwise we'd filter out every doc in keyword
-            # fallback mode.
+            # KNN clauses naturally apply only to documents carrying their
+            # vector field. Keep all other documents eligible for keyword
+            # matching, including unresolved legacy provider spaces.
             all_filters = list(filter_clauses)
-            if knn_queries:
-                exists_should: list[dict[str, Any]] = [
-                    {"exists": {"field": f}} for f in embedding_fields_to_check
-                ]
-                # Docs indexed under a failed provider have none of the successful
-                # embedding fields, but keyword matching should still surface them.
-                # Allow them through by matching on their embedding_model value.
-                if failed_models:
-                    exists_should.append({"terms": {"embedding_model": failed_models}})
-                all_filters.append(
-                    {
-                        "bool": {
-                            "should": exists_should,
-                            "minimum_should_match": 1,
-                        }
-                    }
-                )
 
             logger.debug(
                 "Building hybrid query with filters",
@@ -496,13 +616,7 @@ class SearchService:
 
         search_body: dict[str, Any] = {
             "query": query_block,
-            "aggs": {
-                "data_sources": {"terms": {"field": "filename", "size": 20}},
-                "document_types": {"terms": {"field": "mimetype", "size": 10}},
-                "owners": {"terms": {"field": "owner", "size": 10}},
-                "connector_types": {"terms": {"field": "connector_type", "size": 10}},
-                "embedding_models": {"terms": {"field": "embedding_model", "size": 10}},
-            },
+            "aggs": _build_file_facet_aggregations(),
             "_source": [
                 "filename",
                 "mimetype",
@@ -515,6 +629,8 @@ class SearchService:
                 "file_size",
                 "connector_type",
                 "embedding_model",  # Include embedding model in results
+                "embedding_provider",
+                "embedding_space_id",
                 "embedding_dimensions",
                 "parser",
                 "chunk_size",
@@ -647,6 +763,8 @@ class SearchService:
                     "file_size": source.get("file_size"),
                     "connector_type": source.get("connector_type"),
                     "embedding_model": source.get("embedding_model"),  # Include in results
+                    "embedding_provider": source.get("embedding_provider"),
+                    "embedding_space_id": source.get("embedding_space_id"),
                     "embedding_dimensions": source.get("embedding_dimensions"),
                     "parser": source.get("parser"),
                     "chunk_size": source.get("chunk_size"),
@@ -665,7 +783,7 @@ class SearchService:
         chunks, aggregations = _apply_exact_match_file_filter(
             query,
             chunks,
-            results.get("aggregations", {}),
+            _normalize_file_facet_aggregations(results.get("aggregations", {})),
             is_wildcard_match_all=is_wildcard_match_all,
         )
 

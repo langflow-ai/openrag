@@ -132,7 +132,11 @@ RUN chmod +x /usr/share/opensearch/opensearch-entrypoint-wrapper.sh && \
 USER opensearch
 WORKDIR $OPENSEARCH_HOME
 ENV JAVA_HOME=$OPENSEARCH_HOME/jdk
-ENV PATH=$PATH:$JAVA_HOME/bin:$OPENSEARCH_HOME/bin
+# CWE-426 fix: explicitly set PATH so system-owned directories are always resolved
+# first. App venv dirs are appended last so they cannot shadow system binaries.
+# Matches the ordering used by the upstream image but with system dirs promoted
+# to the front.
+ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/app-root/bin:/opt/app-root/src/bin:/opt/app-root/src/.local/bin:$JAVA_HOME/bin:$OPENSEARCH_HOME/bin
 
 # Expose ports
 EXPOSE 9200 9300 9600 9650

@@ -502,6 +502,20 @@ async def resolve_api_key_user(request: Request, api_key_service, session_manage
     )
     if raw_jwt and raw_jwt.strip():
         token = raw_jwt[7:].strip() if raw_jwt.startswith("Bearer ") else raw_jwt.strip()
+        from services.langflow_llm_token_service import langflow_hop_audience
+
+        hop_aud = langflow_hop_audience(token)
+        if hop_aud:
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "error": "langflow_hop_token",
+                    "message": (
+                        "This token is only valid for the Langflow callback it "
+                        "was issued for, not for the rest of /v1."
+                    ),
+                },
+            )
         claims = resolve_jwt_claims(token)
         sub = claims.get("sub") if claims else None
         if sub:

@@ -50,13 +50,7 @@ class FileService:
             )
         except Exception as e:
             logger.error("Failed to list files", error=str(e))
-            # An auth failure (OpenSearch rejected the credential) must not be
-            # masked as an empty result — surface it so the route returns 401.
-            from utils.opensearch_utils import is_opensearch_auth_error
-
-            if is_opensearch_auth_error(e):
-                raise
-            return {"files": [], "total": 0, "page": page, "page_size": page_size}
+            raise
 
         files = self._parse_aggregation_buckets(result)
         files = self._sort_files(files, sort_by, sort_order)
@@ -123,13 +117,23 @@ class FileService:
             filter_clauses.append({"term": {"owner": owner}})
 
         if search:
-            # Combine wildcard (partial), prefix, and fuzzy for flexible matching
             must.append(
                 {
                     "bool": {
                         "should": [
-                            {"wildcard": {"filename": {"value": f"*{search.lower()}*"}}},
-                            {"prefix": {"filename": search.lower()}},
+                            {
+                                "wildcard": {
+                                    "filename": {
+                                        "value": f"*{search.lower()}*",
+                                        "case_insensitive": True,
+                                    }
+                                }
+                            },
+                            {
+                                "prefix": {
+                                    "filename": {"value": search.lower(), "case_insensitive": True}
+                                }
+                            },
                         ],
                         "minimum_should_match": 1,
                     }
@@ -238,8 +242,9 @@ class FileService:
 
         reverse = sort_order.lower() == "desc"
 
-        return sorted(
-            files,
-            key=lambda f: f.get(sort_by) or "",
-            reverse=reverse,
-        )
+        _numeric_sort_fields = {"file_size", "chunk_count"}
+
+        def _sort_key(f):
+            return f.get(sort_by) or (0 if sort_by in _numeric_sort_fields else "")
+
+        return sorted(files, key=_sort_key, reverse=reverse)

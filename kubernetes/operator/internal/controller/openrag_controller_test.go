@@ -1283,7 +1283,7 @@ func TestEnvHash_StableAcrossReconciles(t *testing.T) {
 	// Reconcile multiple times
 	var hashes []string
 	for i := 0; i < 5; i++ {
-		backendEnvContent, err := r.buildBackendEnv(context.Background(), cr, "test-ns")
+		backendEnvContent, _, err := r.buildBackendEnv(context.Background(), cr, "test-ns")
 		require.NoError(t, err)
 		hash := calculateHash(backendEnvContent)
 		hashes = append(hashes, hash)
@@ -1306,7 +1306,7 @@ func TestEnvHash_ChangesWhenEnvChanges(t *testing.T) {
 	r, _ := reconciler(s, cr)
 
 	// Get hash with original env
-	backendEnvContent1, err := r.buildBackendEnv(context.Background(), cr, "test-ns")
+	backendEnvContent1, _, err := r.buildBackendEnv(context.Background(), cr, "test-ns")
 	require.NoError(t, err)
 	hash1 := calculateHash(backendEnvContent1)
 
@@ -1316,7 +1316,7 @@ func TestEnvHash_ChangesWhenEnvChanges(t *testing.T) {
 	}
 
 	// Get hash with changed env
-	backendEnvContent2, err := r.buildBackendEnv(context.Background(), cr, "test-ns")
+	backendEnvContent2, _, err := r.buildBackendEnv(context.Background(), cr, "test-ns")
 	require.NoError(t, err)
 	hash2 := calculateHash(backendEnvContent2)
 

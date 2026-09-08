@@ -14,11 +14,17 @@ def test_disabled_by_default(monkeypatch, run_mode):
 
 
 @pytest.mark.parametrize("flag", ["true", "1", "yes", "on", "TRUE"])
-@pytest.mark.parametrize("run_mode", ["oss", "saas"])
-def test_enabled_when_flag_and_supported_run_mode(monkeypatch, flag, run_mode):
-    monkeypatch.setenv("OPENRAG_RUN_MODE", run_mode)
+def test_enabled_when_flag_and_oss(monkeypatch, flag):
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
     monkeypatch.setenv("OPENRAG_INGEST_PREVIEW_ENABLED", flag)
     assert is_ingest_preview_enabled() is True
+
+
+def test_flag_does_not_enable_saas(monkeypatch):
+    """SaaS is temporarily off the allowlist pending product approval."""
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
+    monkeypatch.setenv("OPENRAG_INGEST_PREVIEW_ENABLED", "true")
+    assert is_ingest_preview_enabled() is False
 
 
 def test_flag_does_not_enable_on_prem(monkeypatch):

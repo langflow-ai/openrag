@@ -2,7 +2,9 @@
 
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { cn } from "@/lib/utils";
+import { LangflowUpdatesBanner } from "./langflow-updates-banner";
 import { SettingsNav } from "./settings-nav";
+import { UnsavedChangesDialog } from "./unsaved-changes-dialog";
 
 export function SettingsShell({ children }: { children: React.ReactNode }) {
   const isCloudBrand = useIsCloudBrand();
@@ -21,8 +23,10 @@ export function SettingsShell({ children }: { children: React.ReactNode }) {
       >
         Settings
       </h2>
+      <LangflowUpdatesBanner />
       <SettingsNav />
       {children}
+      <UnsavedChangesDialog />
     </div>
   );
 }

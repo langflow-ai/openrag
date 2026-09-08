@@ -1,8 +1,13 @@
 import asyncio
+import re
 
 import httpx
 
-from api.provider_validation import _extract_error_details, format_provider_error_message
+from api.provider_validation import (
+    _extract_error_details,
+    _http_request_with_retry,
+    format_provider_error_message,
+)
 from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL, OPENAI_EMBEDDING_MODEL_PREFIX
 from config.model_constants import (
     ANTHROPIC_DEFAULT_LANGUAGE_MODEL,
@@ -14,7 +19,92 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-KNOWN_PREFIXES = ["openai", "ollama", "watsonx", "anthropic"]
+
+def _watsonx_rate_limited(failures: list[tuple[str, int, str]]) -> bool:
+    """Whether a watsonx model-list failure was really throttling.
+
+    watsonx wraps a throttled project-membership lookup in a 403
+    ``user_authorization_failed`` whose message embeds the original
+    ``{"code":429,"error":"Too Many Requests"}``, so the status code alone does
+    not identify it.
+    """
+    for _kind, status, body in failures:
+        if status == 429:
+            return True
+        text = (body or "").lower()
+        if '"code":429' in text or "too many requests" in text:
+            return True
+    return False
+
+
+# OpenAI /v1/models is a flat inventory. These IDs are real products but not
+# usable as OpenRAG agent LLMs (wrong modality / API surface).
+_OPENAI_NON_CHAT_PREFIXES = (
+    "whisper",
+    "dall-e",
+    "tts-",
+    "davinci",
+    "babbage",
+    "curie",
+    "sora-",
+    "computer-use",
+    "omni-moderation",
+    "text-moderation",
+    "gpt-image",
+    "gpt-audio",
+    "gpt-realtime",
+    "chatgpt-image",
+)
+_OPENAI_REASONING_MODEL_RE = re.compile(r"^o\d")
+
+
+def is_openai_embedding_model(model_id: str) -> bool:
+    """True if the OpenAI model ID is an embedding model."""
+    return OPENAI_EMBEDDING_MODEL_PREFIX in model_id or "text-similarity-" in model_id
+
+
+def is_openai_non_chat_model(model_id: str) -> bool:
+    """True if the ID is a known non-chat OpenAI product (junk for LLM/embedding pickers)."""
+    lower = model_id.lower()
+    if "-moderation" in lower:
+        return True
+    # Mid-string modality markers (e.g. gpt-4o-realtime-preview, gpt-4o-mini-tts)
+    # that prefix checks alone miss.
+    if any(marker in lower for marker in ("-realtime", "-transcribe", "-tts")):
+        return True
+    return any(lower.startswith(prefix) for prefix in _OPENAI_NON_CHAT_PREFIXES)
+
+
+def is_openai_language_model(model_id: str) -> bool:
+    """True if the OpenAI model ID is usable as a chat/agent language model.
+
+    Classifies the live /v1/models inventory: embeddings and non-chat junk are
+    excluded; gpt-*, chatgpt-*, ft:gpt-* fine-tunes, and o<digit>* reasoning
+    models are included so new chat families appear without a curated allowlist.
+    """
+    if not model_id or is_openai_embedding_model(model_id) or is_openai_non_chat_model(model_id):
+        return False
+    if model_id.startswith(("gpt-", "chatgpt-", "ft:gpt-")):
+        return True
+    return bool(_OPENAI_REASONING_MODEL_RE.match(model_id))
+
+
+def resolve_preferred_model(preferred: str, live_models: list[dict]) -> str:
+    """Pick a model from a live provider list.
+
+    Prefer ``preferred`` when it appears in the live list; otherwise the entry
+    marked ``default``, otherwise the first live model. If the live list is
+    empty, return ``preferred`` (may be empty).
+    """
+    if not live_models:
+        return preferred or ""
+    values = {m.get("value") for m in live_models}
+    if preferred and preferred in values:
+        return preferred
+    for model in live_models:
+        if model.get("default"):
+            return model.get("value") or preferred or ""
+    return live_models[0].get("value") or preferred or ""
 
 
 class UnknownEmbeddingProvider(Exception):
@@ -113,6 +203,28 @@ class ModelsService:
                     except Exception as e:
                         logger.debug(f"Could not fetch WatsonX models for registry: {str(e)}")
 
+                from services.model_catalog import catalog
+
+                catalog_by_provider = {entry["key"]: entry for entry in catalog()["providers"]}
+                for provider, provider_config in config.providers.custom.items():
+                    if not provider_config.configured:
+                        continue
+                    entry = catalog_by_provider.get(provider)
+                    if entry is None:
+                        continue
+                    self.add_models(
+                        {
+                            "language_models": [
+                                {"value": model["model"]} for model in entry["models"]
+                            ],
+                            "embedding_models": [
+                                {"value": model["model"]} for model in entry["embedding_models"]
+                            ],
+                        },
+                        provider,
+                        new_registry,
+                    )
+
                 ModelsService._model_provider_registry = new_registry
                 logger.info(
                     f"Model registry updated: {len(ModelsService._model_provider_registry)} models registered"
@@ -139,9 +251,13 @@ class ModelsService:
         if not model_name:
             return ""
 
-        # Skip formatting if already has a known provider prefix
-        if any(model_name.startswith(p + "/") for p in KNOWN_PREFIXES):
-            return model_name
+        # Skip formatting if already has a known LiteLLM provider prefix.
+        if "/" in model_name:
+            from services.model_catalog import is_known_provider
+
+            prefix = model_name.split("/", 1)[0].lower()
+            if is_known_provider(prefix):
+                return model_name
 
         # Check if provider is explicitly given and not "openai"
         provider_lower = provider.lower() if provider else None
@@ -219,46 +335,56 @@ class ModelsService:
                 "Content-Type": "application/json",
             }
 
-            async with httpx.AsyncClient() as client:
-                # Lightweight validation: just check if API key is valid
-                # This doesn't consume credits, only validates the key
-                response = await client.get(
-                    "https://api.openai.com/v1/models", headers=headers, timeout=10.0
-                )
+            # Lightweight validation: check if API key is valid with retry logic
+            response = await _http_request_with_retry(
+                "GET",
+                "https://api.openai.com/v1/models",
+                headers=headers,
+                timeout=30.0,
+            )
 
             if response.status_code == 200:
                 data = response.json()
                 models = data.get("data", [])
 
-                # Filter for relevant models
+                # Classify live inventory into embedding vs chat; drop non-chat junk.
                 language_models = []
                 embedding_models = []
 
                 for model in models:
                     model_id = model.get("id", "")
+                    if not model_id:
+                        continue
 
-                    # Embedding models
-                    if OPENAI_EMBEDDING_MODEL_PREFIX in model_id or "text-similarity-" in model_id:
+                    if is_openai_embedding_model(model_id):
                         embedding_models.append(
                             {
                                 "value": model_id,
                                 "label": model_id,
-                                "default": model_id == OPENAI_DEFAULT_EMBEDDING_MODEL,
+                                "default": False,
                             }
                         )
-                    # Language models (GPT and o1/o3/chatgpt models)
-                    elif (
-                        model_id.startswith(("gpt-", "o1-", "o3-", "chatgpt-"))
-                        and "-moderation" not in model_id
-                    ):
+                    elif is_openai_language_model(model_id):
                         language_models.append(
                             {
                                 "value": model_id,
                                 "label": model_id,
-                                "default": model_id == OPENAI_DEFAULT_LANGUAGE_MODEL,
+                                "default": False,
                                 "supports_images": self._openai_supports_images(model_id),
                             }
                         )
+
+                chosen_language = resolve_preferred_model(
+                    OPENAI_DEFAULT_LANGUAGE_MODEL, language_models
+                )
+                for entry in language_models:
+                    entry["default"] = entry["value"] == chosen_language
+
+                chosen_embedding = resolve_preferred_model(
+                    OPENAI_DEFAULT_EMBEDDING_MODEL, embedding_models
+                )
+                for entry in embedding_models:
+                    entry["default"] = entry["value"] == chosen_embedding
 
                 # Sort by name and ensure defaults are first
                 language_models.sort(key=lambda x: (not x.get("default", False), x["value"]))
@@ -302,31 +428,39 @@ class ModelsService:
                 "Content-Type": "application/json",
             }
 
-            # Validate API key with lightweight models endpoint and return curated models
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    "https://api.anthropic.com/v1/models",
-                    headers=headers,
-                    timeout=10.0,
-                )
+            # Validate API key and return all models from Anthropic's chat-oriented list API
+            response = await _http_request_with_retry(
+                "GET",
+                "https://api.anthropic.com/v1/models",
+                headers=headers,
+                timeout=30.0,
+            )
 
             if response.status_code == 200:
                 data = response.json()
                 models = data.get("data", [])
 
-                # Filter for curated Anthropic models (same pattern as OpenAI validation list)
+                # Anthropic /v1/models is already chat-oriented; pass through live list.
                 language_models = []
 
                 for model in models:
                     model_id = model.get("id", "")
+                    if not model_id:
+                        continue
                     language_models.append(
                         {
                             "value": model_id,
                             "label": model.get("display_name", model_id),
-                            "default": model_id == ANTHROPIC_DEFAULT_LANGUAGE_MODEL,
+                            "default": False,
                             "supports_images": self._anthropic_supports_images(model),
                         }
                     )
+
+                chosen_language = resolve_preferred_model(
+                    ANTHROPIC_DEFAULT_LANGUAGE_MODEL, language_models
+                )
+                for entry in language_models:
+                    entry["default"] = entry["value"] == chosen_language
 
                 # Sort by default first, then by name
                 language_models.sort(key=lambda x: (not x.get("default", False), x["value"]))
@@ -451,6 +585,19 @@ class ModelsService:
                 language_models = list({m["value"]: m for m in language_models}.values())
                 embedding_models = list({m["value"]: m for m in embedding_models}.values())
 
+                if language_models:
+                    has_default = any(m.get("default") for m in language_models)
+                    if not has_default:
+                        language_models[0]["default"] = True
+                    else:
+                        first_default_seen = False
+                        for m in language_models:
+                            if m.get("default"):
+                                if not first_default_seen:
+                                    first_default_seen = True
+                                else:
+                                    m["default"] = False
+
                 language_models.sort(key=lambda x: (not x.get("default", False), x["value"]))
                 embedding_models.sort(key=lambda x: x["value"])
 
@@ -523,6 +670,8 @@ class ModelsService:
 
             language_models = []
             embedding_models = []
+            # (kind, status, body) for each model-list call that did not return 200.
+            fetch_failures: list[tuple[str, int, str]] = []
 
             async with httpx.AsyncClient() as client:
                 # Fetch text chat models
@@ -558,6 +707,9 @@ class ModelsService:
                             }
                         )
                 else:
+                    fetch_failures.append(
+                        ("text chat", text_response.status_code, text_response.text)
+                    )
                     logger.warning(
                         f"Failed to retrieve text chat models. Status: {text_response.status_code}, "
                         f"Response: {text_response.text[:200]}"
@@ -595,6 +747,9 @@ class ModelsService:
                             }
                         )
                 else:
+                    fetch_failures.append(
+                        ("embedding", embed_response.status_code, embed_response.text)
+                    )
                     logger.warning(
                         f"Failed to retrieve embedding models. Status: {embed_response.status_code}, "
                         f"Response: {embed_response.text[:200]}"
@@ -608,14 +763,31 @@ class ModelsService:
                 logger.warning("No bearer token available - API key validation may have failed")
 
             if not language_models and not embedding_models:
-                # Provide more specific error message about missing models
-                error_msg = (
-                    "API key is valid, but no models are available. "
-                    "This usually means your Watson Machine Learning (WML) project is not properly configured. "
-                    "Please ensure: (1) Your watsonx.ai project is associated with a WML service instance, "
-                    "and (2) The project has access to foundation models. "
-                    "Visit your watsonx.ai project settings to configure the WML service association."
-                )
+                # An empty list means "misconfigured project" only when the calls
+                # actually succeeded. watsonx reports throttling as a 403 whose
+                # body carries the real {"code":429,"error":"Too Many Requests"},
+                # and blaming WML setup for that sends operators to the wrong page.
+                if _watsonx_rate_limited(fetch_failures):
+                    error_msg = (
+                        "watsonx.ai is rate limiting this account, so its model list "
+                        "could not be retrieved. Wait a few minutes and try again."
+                    )
+                elif fetch_failures:
+                    statuses = ", ".join(
+                        f"{kind} models: HTTP {status}" for kind, status, _ in fetch_failures
+                    )
+                    error_msg = (
+                        f"watsonx.ai did not return a model list ({statuses}). "
+                        "Check that the API key is authorized for the configured project."
+                    )
+                else:
+                    error_msg = (
+                        "API key is valid, but no models are available. "
+                        "This usually means your Watson Machine Learning (WML) project is not properly configured. "
+                        "Please ensure: (1) Your watsonx.ai project is associated with a WML service instance, "
+                        "and (2) The project has access to foundation models. "
+                        "Visit your watsonx.ai project settings to configure the WML service association."
+                    )
                 raise Exception(error_msg)
 
             result = {

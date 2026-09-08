@@ -1,6 +1,6 @@
 """Tests for resplit_chunks_character_windows."""
 
-from src.utils.document_processing import resplit_chunks_character_windows
+from src.utils.document_processing import IMAGE_PLACEHOLDER, resplit_chunks_character_windows
 
 
 def test_invalid_returns_original():
@@ -23,6 +23,14 @@ def test_short_text_unchanged_count():
     assert len(out) == 1
     assert out[0]["text"] == "short"
     assert out[0]["page"] == 2
+
+
+def test_image_placeholder_is_not_split():
+    chunks = [{"page": 1, "type": "picture", "text": IMAGE_PLACEHOLDER}]
+
+    out = resplit_chunks_character_windows(chunks, 1, 0)
+
+    assert out == chunks
 
 
 def test_long_text_windows_with_overlap():

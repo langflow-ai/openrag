@@ -123,6 +123,32 @@ class TestInferFailureMetadata:
         assert meta is not None
         assert meta["actionable_by"] == "USER_ACTIONABLE"
 
+    def test_password_protected_pdf_maps_to_clean_message(self, task_service):
+        ft = _make_file_task(
+            docling_status=DoclingPhaseStatus.FAILED,
+            error=(
+                "Docling conversion did not complete (failed): "
+                "Docling result unavailable after SUCCESS status: Docling processing "
+                "failed: docling-parse could not load document "
+                "cbfc231c73e85df69b34cfa56b4bb0696dc0f10d0536bcca821f92c324041bac: "
+                "Failed to load document (PDFium: Incorrect password error)."
+            ),
+        )
+        meta = task_service._infer_failure_metadata(ft)
+        assert meta is not None
+        assert meta["actionable_by"] == "USER_ACTIONABLE"
+        assert meta["component"] == "docling"
+        assert meta["failure_phase"] == "parsing"
+        msg = meta["user_facing_message"]
+        assert "password-protected" in msg.lower()
+        assert "not supported" in msg.lower()
+        assert "remove the password" in msg.lower()
+        assert "upload the pdf again" in msg.lower()
+        # no internals leaked
+        assert "pdfium" not in msg.lower()
+        assert "docling-parse" not in msg.lower()
+        assert "cbfc231c" not in msg
+
     def test_langflow_empty_content_not_retryable(self, task_service):
         ft = _make_file_task(
             phase=IngestionPhase.LANGFLOW,
@@ -132,6 +158,22 @@ class TestInferFailureMetadata:
         meta = task_service._infer_failure_metadata(ft)
         assert meta is not None
         assert meta["actionable_by"] == "USER_ACTIONABLE"
+
+    def test_image_without_text_prompts_user_to_enable_ocr(self, task_service):
+        ft = _make_file_task(
+            file_path="scan.png",
+            filename="scan.png",
+            error="No text content could be extracted from document",
+        )
+
+        meta = task_service._infer_failure_metadata(ft)
+
+        assert meta is not None
+        assert meta["actionable_by"] == "RETRYABLE"
+        assert meta["user_facing_message"] == (
+            "No text content could be extracted from this image file. "
+            "Enable OCR in Settings > Knowledge Base and retry ingestion."
+        )
 
     def test_docling_phase_still_processing(self, task_service):
         ft = _make_file_task(
@@ -185,6 +227,20 @@ class TestInferFailureMetadata:
         assert meta["actionable_by"] == "USER_ACTIONABLE"
         assert "granite-4-h-small" in meta["user_facing_message"]
         assert "unexpectedly" not in meta["user_facing_message"].lower()
+
+    def test_langflow_azure_deployment_missing_is_user_actionable(self, task_service):
+        ft = _make_file_task(
+            phase=IngestionPhase.LANGFLOW,
+            docling_status=DoclingPhaseStatus.SUCCESS,
+            error="The API deployment for this resource does not exist.",
+        )
+        meta = task_service._infer_failure_metadata(ft)
+        assert meta is not None
+        assert meta["component"] == "langflow"
+        assert meta["actionable_by"] == "USER_ACTIONABLE"
+        assert meta["user_facing_message"] == (
+            "The API deployment for this resource does not exist."
+        )
 
     def test_langflow_revoked_api_key_failure(self, task_service):
         ft = _make_file_task(

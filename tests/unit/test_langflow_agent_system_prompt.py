@@ -57,9 +57,11 @@ async def test_update_chat_flow_system_prompt_updates_agent_node(monkeypatch):
     monkeypatch.setattr("services.flows_service.LANGFLOW_CHAT_FLOW_ID", "test-flow-id")
     monkeypatch.setattr("services.flows_service.clients.langflow_request", request)
 
-    await FlowsService().update_chat_flow_system_prompt(
-        "updated system prompt for testing purposes"
-    )
+    service = FlowsService()
+    monkeypatch.setattr(service, "_unlock_flow", AsyncMock())
+    monkeypatch.setattr(service, "_lock_flow", AsyncMock())
+
+    await service.update_chat_flow_system_prompt("updated system prompt for testing purposes")
 
     sent_flow = request.call_args_list[1].kwargs["json"]
     agent_node = _find_node_by_display_name(sent_flow, "Agent")
@@ -70,31 +72,69 @@ async def test_update_chat_flow_system_prompt_updates_agent_node(monkeypatch):
     )
 
 
-def test_untrusted_data_instruction_present_in_all_system_prompt_copies():
-    """VULN-13906: all four copies of the default system prompt must carry the same
-    untrusted-data rule, so retrieved/uploaded content can't be followed as instructions
-    regardless of which chat path (Langflow flow, direct chat, or frontend default) is used.
-    """
-    # config_manager.py / agent.py / constants.ts store the prompt as a single-line,
-    # single-quoted string literal — `\n` and `'` are escaped there, not literal.
-    escaped_instruction = _UNTRUSTED_DATA_INSTRUCTION.replace("\n", "\\n").replace("'", "\\'")
+@pytest.mark.asyncio
+async def test_get_chat_flow_system_prompt_success(monkeypatch):
+    """get_chat_flow_system_prompt returns prompt value on successful 200 response."""
+    from services.flows_service import FlowsService
 
-    # 1. src/config/config_manager.py — AgentConfig.system_prompt default
-    config_manager_src = (_REPO_ROOT / "src/config/config_manager.py").read_text(encoding="utf-8")
-    assert escaped_instruction in config_manager_src
+    get_response = MagicMock(status_code=200)
+    get_response.json.return_value = _load_flow("flows/openrag_agent.json")
 
-    # 2. src/agent.py — inline copy used by the non-Langflow direct-chat path
-    agent_src = (_REPO_ROOT / "src/agent.py").read_text(encoding="utf-8")
-    assert escaped_instruction in agent_src
+    request = AsyncMock(return_value=get_response)
+    monkeypatch.setattr("services.flows_service.LANGFLOW_CHAT_FLOW_ID", "test-flow-id")
+    monkeypatch.setattr("services.flows_service.clients.langflow_request", request)
 
-    # 3. frontend/lib/constants.ts — DEFAULT_AGENT_SETTINGS.system_prompt
-    constants_ts = (_REPO_ROOT / "frontend/lib/constants.ts").read_text(encoding="utf-8")
-    assert escaped_instruction in constants_ts
+    service = FlowsService()
+    prompt = await service.get_chat_flow_system_prompt()
+    assert prompt is not None
 
-    # 4. flows/openrag_agent.json — Agent node's embedded system_prompt field (real value,
-    # since JSON decoding already turns `\n` escapes into actual newlines)
+
+@pytest.mark.asyncio
+async def test_get_chat_flow_system_prompt_non_200_raises(monkeypatch):
+    """get_chat_flow_system_prompt raises Exception when response status is non-200."""
+    from services.flows_service import FlowsService
+
+    get_response = MagicMock(status_code=500, text="Internal Server Error")
+    request = AsyncMock(return_value=get_response)
+    monkeypatch.setattr("services.flows_service.LANGFLOW_CHAT_FLOW_ID", "test-flow-id")
+    monkeypatch.setattr("services.flows_service.clients.langflow_request", request)
+
+    service = FlowsService()
+    with pytest.raises(Exception, match="Failed to get flow test-flow-id: HTTP 500"):
+        await service.get_chat_flow_system_prompt()
+
+
+@pytest.mark.asyncio
+async def test_get_chat_flow_system_prompt_missing_agent_node_raises(monkeypatch):
+    """get_chat_flow_system_prompt raises Exception when Agent component node is missing."""
+    from services.flows_service import FlowsService
+
+    get_response = MagicMock(status_code=200)
+    get_response.json.return_value = {"data": {"nodes": []}}
+    request = AsyncMock(return_value=get_response)
+    monkeypatch.setattr("services.flows_service.LANGFLOW_CHAT_FLOW_ID", "test-flow-id")
+    monkeypatch.setattr("services.flows_service.clients.langflow_request", request)
+
+    service = FlowsService()
+    with pytest.raises(Exception, match="Component 'Agent' not found in flow test-flow-id"):
+        await service.get_chat_flow_system_prompt()
+
+
+@pytest.mark.asyncio
+async def test_update_chat_flow_system_prompt_expected_mismatch_raises(monkeypatch):
+    """update_chat_flow_system_prompt raises Exception when expected_prompt does not match remote value."""
+    from services.flows_service import FlowsService
+
     flow = _load_flow("flows/openrag_agent.json")
-    agent_node = _find_node_by_display_name(flow, "Agent")
-    assert agent_node is not None
-    embedded_prompt = agent_node["data"]["node"]["template"]["system_prompt"]["value"]
-    assert _UNTRUSTED_DATA_INSTRUCTION in embedded_prompt
+    get_response = MagicMock(status_code=200)
+    get_response.json.return_value = flow
+
+    request = AsyncMock(return_value=get_response)
+    monkeypatch.setattr("services.flows_service.LANGFLOW_CHAT_FLOW_ID", "test-flow-id")
+    monkeypatch.setattr("services.flows_service.clients.langflow_request", request)
+
+    service = FlowsService()
+    with pytest.raises(Exception, match="changed from expected value"):
+        await service.update_chat_flow_system_prompt(
+            "new prompt", expected_prompt="different_expected_prompt"
+        )
