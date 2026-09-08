@@ -13,7 +13,11 @@ import json
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from api.provider_validation import sanitize_provider_error_content, validate_provider_setup
+from api.provider_validation import (
+    is_azure_ai_foundry_endpoint,
+    sanitize_provider_error_content,
+    validate_provider_setup,
+)
 from api.settings.helpers import (
     _affected_embedding_models,
     _create_openrag_docs_filter,
@@ -143,6 +147,7 @@ def _custom_providers_for_settings(openrag_config) -> dict[str, GenericProviderC
             configured = configured or stored.configured
         return GenericProviderConfig(
             configured=configured,
+            auth_method=getattr(stored, "auth_method", None),
             credential_values={key: value for key, value in values.items() if value},
             secret_fields=list(dict.fromkeys(secrets)),
         )
@@ -455,6 +460,40 @@ async def update_settings(
         if should_validate:
             try:
                 logger.info("Running provider validation before modifying config")
+
+                # A generic provider save normally has no selected model to
+                # probe. Native Azure OpenAI is the exception: its models route
+                # validates the endpoint and API key without consuming tokens.
+                # Foundry resource URLs instead follow LiteLLM's model route,
+                # preserving the behavior they had on main.
+                for provider, submitted in (body.provider_credentials or {}).items():
+                    provider_key = _provider_key(provider)
+                    credentials = current_config.providers.pending_credentials(
+                        provider_key, submitted
+                    )
+                    if provider_key == "azure":
+                        auth_method = (body.provider_auth_methods or {}).get(provider_key)
+                        required_by_method = {
+                            "api_key": {"api_key"},
+                            "entra_token": {"azure_ad_token"},
+                            "service_principal": {"tenant_id", "client_id", "client_secret"},
+                        }
+                        required = required_by_method.get(auth_method or "")
+                        if required is None:
+                            raise ValueError("Choose an Azure authentication method")
+                        missing = sorted(
+                            name for name in required | {"api_base"} if not credentials.get(name)
+                        )
+                        if missing:
+                            raise ValueError(f"{', '.join(missing)} is required for Azure OpenAI")
+                        if not is_azure_ai_foundry_endpoint(credentials.get("api_base")):
+                            await validate_provider_setup(
+                                provider=provider_key,
+                                api_key=credentials.get("api_key")
+                                or credentials.get("azure_ad_token"),
+                                endpoint=credentials.get("api_base"),
+                                credentials=credentials,
+                            )
 
                 # Validate LLM provider if being changed
                 if body.llm_provider is not None or body.llm_model is not None:
@@ -841,7 +880,11 @@ async def update_settings(
         # Update provider-specific settings
         provider_updated = False
         for provider, credentials in (body.provider_credentials or {}).items():
-            working_config.providers.set_credentials(provider, credentials)
+            working_config.providers.set_credentials(
+                provider,
+                credentials,
+                auth_method=(body.provider_auth_methods or {}).get(_provider_key(provider)),
+            )
             config_updated = True
             provider_updated = True
 
@@ -1187,7 +1230,11 @@ async def onboarding(
             config_updated = True
 
         for provider, credentials in (body.provider_credentials or {}).items():
-            current_config.providers.set_credentials(provider, credentials)
+            current_config.providers.set_credentials(
+                provider,
+                credentials,
+                auth_method=(body.provider_auth_methods or {}).get(_provider_key(provider)),
+            )
             config_updated = True
 
         # Mark providers as configured if they were chosen during onboarding

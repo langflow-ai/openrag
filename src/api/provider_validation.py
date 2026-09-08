@@ -4,6 +4,7 @@ import asyncio
 import json
 import re
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -638,7 +639,18 @@ def _extract_error_details(response: httpx.Response) -> str:
 #: Providers with a validation path of their own, so they are never handed to
 #: the generic LiteLLM probe. Everything else is validated by making a real call,
 #: which needs a model name.
-_NATIVELY_VALIDATED_PROVIDERS = frozenset({"openai", "watsonx", "ollama", "anthropic"})
+_NATIVELY_VALIDATED_PROVIDERS = frozenset({"openai", "azure", "watsonx", "ollama", "anthropic"})
+
+
+def is_azure_ai_foundry_endpoint(api_base: str | None) -> bool:
+    """Whether ``api_base`` is an Azure AI Foundry resource endpoint.
+
+    LiteLLM accepts the resource root and appends its own Foundry request path.
+    Such an endpoint must not use the Azure OpenAI-specific HTTP health check.
+    """
+    if not api_base:
+        return False
+    return (urlparse(api_base).hostname or "").endswith(".services.ai.azure.com")
 
 
 async def validate_provider_setup(
@@ -687,10 +699,17 @@ async def validate_provider_setup(
         # catalogue check is only for the case there is no model to probe with,
         # which is the one that used to report "A model is required".
         enhancement = get_provider_enhancement(provider_lower)
+        azure_ai_foundry_endpoint = provider_lower == "azure" and is_azure_ai_foundry_endpoint(
+            supplied.get("api_base")
+        )
         probes_the_model = (
             bool(embedding_model or llm_model)
             if enhancement is not None
-            else provider_lower not in _NATIVELY_VALIDATED_PROVIDERS
+            else (
+                provider_lower not in _NATIVELY_VALIDATED_PROVIDERS
+                # Preserve main's Azure/LiteLLM route for Foundry resource URLs.
+                or (azure_ai_foundry_endpoint and bool(embedding_model or llm_model))
+            )
         )
         if probes_the_model:
             await _test_litellm_provider(
@@ -700,6 +719,18 @@ async def validate_provider_setup(
                 llm_model=llm_model,
             )
         elif test_completion:
+            if provider_lower == "azure":
+                # Azure deployments are user-defined, so a model completion is
+                # not a safe generic probe during onboarding. The deployments
+                # request still verifies the selected authentication method.
+                await test_lightweight_health(
+                    provider=provider_lower,
+                    api_key=api_key,
+                    endpoint=endpoint,
+                    project_id=project_id,
+                    credentials=supplied,
+                )
+                return
             # Full validation with completion/embedding tests (consumes credits)
             if embedding_model:
                 # Test embedding
@@ -787,6 +818,10 @@ async def test_lightweight_health(
 
     if provider == "openai":
         await _test_openai_lightweight_health(api_key)
+    elif provider == "azure":
+        await _test_azure_lightweight_health(
+            credentials or {"api_key": api_key, "api_base": endpoint}
+        )
     elif provider == "watsonx":
         await _test_watsonx_lightweight_health(api_key, endpoint, project_id)
     elif provider == "ollama":
@@ -949,6 +984,61 @@ async def _test_openai_lightweight_health(api_key: str) -> None:
     except Exception as e:
         logger.error(f"OpenAI lightweight health check failed: {str(e)}")
         raise
+
+
+async def _test_azure_lightweight_health(credentials: dict[str, str]) -> None:
+    """Validate Azure OpenAI credentials without selecting or billing a deployment.
+
+    Azure deployment enumeration is an Azure Resource Manager operation, not an
+    Azure OpenAI data-plane operation.  The data plane does provide ``models``;
+    use that endpoint so a valid resource is not rejected with ResourceNotFound.
+    """
+    api_base = credentials.get("api_base")
+    api_version = credentials.get("api_version")
+    api_key = credentials.get("api_key")
+    access_token = credentials.get("azure_ad_token")
+    if not (api_key or access_token or credentials.get("client_secret")):
+        raise ValueError("Azure credentials are required")
+    if not api_base:
+        raise ValueError("API Base is required")
+
+    if not access_token and credentials.get("client_secret"):
+        tenant_id = credentials.get("tenant_id")
+        client_id = credentials.get("client_id")
+        if not tenant_id or not client_id:
+            raise ValueError("tenant_id and client_id are required for Azure service principal")
+        token_response = await _http_request_with_retry(
+            "POST",
+            f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token",
+            data={
+                "client_id": client_id,
+                "client_secret": credentials["client_secret"],
+                "grant_type": "client_credentials",
+                "scope": "https://cognitiveservices.azure.com/.default",
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            timeout=30.0,
+        )
+        if token_response.status_code != 200:
+            raise Exception(_extract_error_details(token_response))
+        access_token = token_response.json().get("access_token")
+        if not access_token:
+            raise ValueError("Azure service principal did not return an access token")
+
+    headers = {"Content-Type": "application/json"}
+    if access_token:
+        headers["Authorization"] = f"Bearer {access_token}"
+    else:
+        headers["api-key"] = api_key or ""
+    response = await _http_request_with_retry(
+        "GET",
+        f"{api_base.rstrip('/')}/openai/models",
+        headers=headers,
+        params={"api-version": api_version or "2024-10-21"},
+        timeout=30.0,
+    )
+    if response.status_code != 200:
+        raise Exception(_extract_error_details(response))
 
 
 async def _test_openai_completion_with_tools(api_key: str, llm_model: str) -> None:
