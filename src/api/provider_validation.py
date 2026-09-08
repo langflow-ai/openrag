@@ -7,7 +7,7 @@ from typing import Any
 
 import httpx
 
-from services import watsonx_onprem
+from enhancements.providers.registry import get as get_provider_enhancement
 from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 
@@ -638,9 +638,7 @@ def _extract_error_details(response: httpx.Response) -> str:
 #: Providers with a validation path of their own, so they are never handed to
 #: the generic LiteLLM probe. Everything else is validated by making a real call,
 #: which needs a model name.
-_NATIVELY_VALIDATED_PROVIDERS = frozenset(
-    {"openai", "watsonx", "ollama", "anthropic", watsonx_onprem.PROVIDER_KEY}
-)
+_NATIVELY_VALIDATED_PROVIDERS = frozenset({"openai", "watsonx", "ollama", "anthropic"})
 
 
 async def validate_provider_setup(
@@ -688,8 +686,11 @@ async def validate_provider_setup(
         # a model the cluster does not serve fail instead of saving silently. Its
         # catalogue check is only for the case there is no model to probe with,
         # which is the one that used to report "A model is required".
-        probes_the_model = provider_lower not in _NATIVELY_VALIDATED_PROVIDERS or (
-            provider_lower == watsonx_onprem.PROVIDER_KEY and bool(embedding_model or llm_model)
+        enhancement = get_provider_enhancement(provider_lower)
+        probes_the_model = (
+            bool(embedding_model or llm_model)
+            if enhancement is not None
+            else provider_lower not in _NATIVELY_VALIDATED_PROVIDERS
         )
         if probes_the_model:
             await _test_litellm_provider(
@@ -792,8 +793,8 @@ async def test_lightweight_health(
         await _test_ollama_lightweight_health(endpoint)
     elif provider == "anthropic":
         await _test_anthropic_lightweight_health(api_key)
-    elif provider == watsonx_onprem.PROVIDER_KEY:
-        await _test_watsonx_onprem_lightweight_health(credentials or {})
+    elif enhancement := get_provider_enhancement(provider):
+        await enhancement.lightweight_health_check(credentials or {})
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -1491,56 +1492,3 @@ async def _test_anthropic_completion_with_tools(api_key: str, llm_model: str) ->
     except Exception as e:
         logger.error(f"Anthropic completion test failed: {str(e)}")
         raise
-
-
-async def _test_watsonx_onprem_lightweight_health(credentials: dict[str, str]) -> None:
-    """Check a Cloud Pak for Data cluster's credentials without naming a model.
-
-    Every other generic provider is validated by making a real call, which needs
-    a model — so a provider that is configured but has no model selected yet
-    reported "A model is required to validate the provider" in the health
-    banner, as though the credentials were bad. The cluster's catalogue endpoint
-    needs no model, no project and no space, so it answers the question that was
-    actually being asked: are these credentials good and is the cluster
-    reachable? It consumes no inference.
-    """
-    api_base = (credentials.get("api_base") or "").strip()
-    if not api_base:
-        raise Exception("No cluster URL is configured for watsonx.ai on-prem")
-    header = watsonx_onprem.auth_header(credentials)
-    if not header:
-        raise Exception(
-            "No credentials are configured for watsonx.ai on-prem. "
-            "Enter a username and API key, or a Zen API key."
-        )
-
-    url = watsonx_onprem.model_specs_url(api_base)
-    try:
-        async with httpx.AsyncClient(verify=watsonx_onprem.ssl_verify()) as client:
-            response = await _http_request_with_retry(
-                "GET",
-                url,
-                client=client,
-                headers={"Authorization": header, "Accept": "application/json"},
-                params=watsonx_onprem.model_specs_params(limit=1),
-                timeout=10.0,
-            )
-    except httpx.TimeoutException:
-        logger.error("watsonx.ai on-prem health check timed out")
-        raise Exception("The watsonx.ai cluster did not respond in time") from None
-    except Exception as e:
-        logger.error(f"watsonx.ai on-prem health check could not reach the cluster: {str(e)}")
-        raise
-
-    if response.status_code == 200:
-        logger.info("watsonx.ai on-prem health check passed")
-        return
-    error_details = _extract_error_details(response)
-    logger.error(
-        f"watsonx.ai on-prem health check failed: {response.status_code} - {error_details}"
-    )
-    if response.status_code in (401, 403):
-        # Worded so `is_provider_credential_error` classifies it, which is what
-        # makes the banner offer "update the key" rather than "try again".
-        raise Exception(f"Invalid credentials for the watsonx.ai cluster: {error_details}")
-    raise Exception(error_details)

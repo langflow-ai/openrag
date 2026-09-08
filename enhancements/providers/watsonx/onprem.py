@@ -68,6 +68,7 @@ than as an outage — see ``_UPSTREAM_TLS_MESSAGE`` in ``services/llm_gateway``.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import time
 from collections.abc import Mapping
@@ -259,6 +260,91 @@ def model_specs_url(api_base: str) -> str:
 def model_specs_params(**extra: Any) -> dict[str, Any]:
     """Query parameters for the catalogue endpoint. `version` is mandatory."""
     return {"version": API_VERSION, **extra}
+
+
+def _error_details(response: Any) -> str:
+    """Extract the concise error that Cloud Pak for Data returned."""
+    try:
+        body = response.json()
+    except (ValueError, TypeError):
+        return str(getattr(response, "text", ""))[:500]
+    if isinstance(body, dict):
+        errors = body.get("errors")
+        if isinstance(errors, list) and errors and isinstance(errors[0], dict):
+            return str(errors[0].get("message") or errors[0].get("code") or response.text[:500])
+        return str(
+            body.get("errorMessage")
+            or body.get("message")
+            or body.get("detail")
+            or response.text[:500]
+        )
+    return str(getattr(response, "text", ""))[:500]
+
+
+async def _http_request_with_retry(
+    method: str,
+    url: str,
+    *,
+    client: Any,
+    max_retries: int = 2,
+    backoff_factor: float = 0.5,
+    **kwargs: Any,
+) -> Any:
+    """Retry CPD catalogue reads without depending on API validation helpers."""
+    import httpx
+
+    for attempt in range(max_retries + 1):
+        try:
+            response = await client.request(method, url, **kwargs)
+            if response.status_code not in (429, 500, 502, 503, 504) or attempt == max_retries:
+                return response
+        except (httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError) as exc:
+            if attempt == max_retries:
+                raise exc
+        await asyncio.sleep(backoff_factor * (2**attempt))
+    raise RuntimeError(f"CPD request to {url} failed after retries")
+
+
+async def lightweight_health_check(credentials: Mapping[str, Any]) -> None:
+    """Validate CPD connectivity and Zen credentials without selecting a model."""
+    import httpx
+
+    api_base = str(credentials.get("api_base") or "").strip()
+    if not api_base:
+        raise Exception("No cluster URL is configured for watsonx.ai on-prem")
+    header = auth_header(credentials)
+    if not header:
+        raise Exception(
+            "No credentials are configured for watsonx.ai on-prem. "
+            "Enter a username and API key, or a Zen API key."
+        )
+
+    url = model_specs_url(api_base)
+    try:
+        async with httpx.AsyncClient(verify=ssl_verify()) as client:
+            response = await _http_request_with_retry(
+                "GET",
+                url,
+                client=client,
+                headers={"Authorization": header, "Accept": "application/json"},
+                params=model_specs_params(limit=1),
+                timeout=10.0,
+            )
+    except httpx.TimeoutException:
+        logger.error("watsonx.ai on-prem health check timed out")
+        raise Exception("The watsonx.ai cluster did not respond in time") from None
+    except Exception:
+        logger.error("watsonx.ai on-prem health check could not reach the cluster", exc_info=True)
+        raise
+
+    if response.status_code == 200:
+        logger.info("watsonx.ai on-prem health check passed")
+        return
+    details = _error_details(response)
+    logger.error("watsonx.ai on-prem health check failed: %s - %s", response.status_code, details)
+    if response.status_code in (401, 403):
+        raise Exception(f"Invalid credentials for the watsonx.ai cluster: {details}")
+    raise Exception(details)
 
 
 def ssl_verify() -> bool | str:

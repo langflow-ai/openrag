@@ -62,7 +62,7 @@ providers:
   # authenticates with a ZenApiKey built from a CPD username and API key, not
   # with an IBM Cloud IAM key, and it is reached at a cluster URL rather than a
   # region endpoint. OpenRAG routes it through LiteLLM's `watsonx` provider —
-  # see `services/watsonx_onprem.py`.
+  # see `enhancements/providers/watsonx/onprem.py`.
   #
   # The two lists below are a *fallback*, not the catalogue. OpenRAG asks the
   # cluster itself what it serves (`GET /ml/v1/foundation_model_specs`) and

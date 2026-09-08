@@ -239,7 +239,7 @@ class ProvidersConfig:
         changes the API key would be validated against a stale credential built
         from the old one.
         """
-        from services import watsonx_onprem
+        from enhancements.providers.registry import get as get_provider_enhancement
 
         key = provider.strip().lower()
         clean = {
@@ -247,16 +247,17 @@ class ProvidersConfig:
             for name, value in (submitted or {}).items()
             if str(name).strip() and str(value).strip()
         }
-        if key == watsonx_onprem.PROVIDER_KEY:
+        enhancement = get_provider_enhancement(key)
+        if enhancement:
             stored = self.custom.get(key, GenericProviderConfig()).credentials
-            return watsonx_onprem.litellm_credentials({**stored, **clean})
+            return enhancement.litellm_credentials({**stored, **clean})
         values = self.credential_values(key)
         values.update(clean)
         return values
 
     def credential_values(self, provider: str) -> dict[str, str]:
         """Return LiteLLM keyword arguments for a configured provider."""
-        from services import watsonx_onprem
+        from enhancements.providers.registry import get as get_provider_enhancement
 
         key = provider.strip().lower()
         custom = dict(self.custom.get(key, GenericProviderConfig()).credentials)
@@ -284,12 +285,13 @@ class ProvidersConfig:
             if endpoint:
                 custom.setdefault("api_base", endpoint)
             return custom
-        if key == watsonx_onprem.PROVIDER_KEY:
+        enhancement = get_provider_enhancement(key)
+        if enhancement:
             # The stored form is what a Cloud Pak for Data operator has in hand
             # (cluster URL, username, API key); LiteLLM wants a ZenApiKey. The
             # translation lives with the provider so the gateway, the health
             # check and the validator all issue the same call.
-            return watsonx_onprem.litellm_credentials(custom)
+            return enhancement.litellm_credentials(custom)
         return custom
 
 
