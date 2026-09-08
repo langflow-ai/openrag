@@ -68,6 +68,57 @@ def test_router_url_derives_backend_host_on_router_port(monkeypatch):
     assert settings._derive_router_url() == "http://openrag-be:8100"
 
 
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("https://backend.example", "https://backend.example"),
+        ("https://backend.example/", "https://backend.example"),
+        ("http://localhost:8000", "http://localhost:8000"),
+        ("http://127.0.0.1:8000", "http://127.0.0.1:8000"),
+        ("http://[::1]:8000", "http://[::1]:8000"),
+    ],
+)
+def test_router_accepts_and_normalizes_safe_upstream_urls(monkeypatch, value, expected):
+    monkeypatch.setattr(router_app, "OPENRAG_BACKEND_ROUTER_UPSTREAM_URL", value)
+
+    app = router_app.create_router_app()
+
+    assert app.state.upstream_base_url == expected
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "http://backend.example",
+        "ftp://backend.example",
+        "backend.example",
+        "https://backend.example invalid",
+        "https://",
+        "https://[::1",
+        "https://user@backend.example",
+        "https://user:password@backend.example",
+        "https://backend.example/v1",
+        "https://backend.example?target=internal",
+        "https://backend.example#fragment",
+    ],
+)
+def test_router_rejects_unsafe_upstream_urls_before_proxying(monkeypatch, value):
+    proxy_client_created = False
+
+    def create_proxy_client(*args, **kwargs):
+        nonlocal proxy_client_created
+        proxy_client_created = True
+        return _FakeClient({})
+
+    monkeypatch.setattr(router_app, "OPENRAG_BACKEND_ROUTER_UPSTREAM_URL", value)
+    monkeypatch.setattr(router_app.httpx, "AsyncClient", create_proxy_client)
+
+    with pytest.raises(ValueError, match="OPENRAG_BACKEND_ROUTER_UPSTREAM_URL"):
+        router_app.create_router_app()
+
+    assert proxy_client_created is False
+
+
 # --- proxy behaviour --------------------------------------------------------
 
 
