@@ -4,6 +4,7 @@ import asyncio
 import json
 import re
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -641,6 +642,17 @@ def _extract_error_details(response: httpx.Response) -> str:
 _NATIVELY_VALIDATED_PROVIDERS = frozenset({"openai", "azure", "watsonx", "ollama", "anthropic"})
 
 
+def is_azure_ai_foundry_endpoint(api_base: str | None) -> bool:
+    """Whether ``api_base`` is an Azure AI Foundry resource endpoint.
+
+    LiteLLM accepts the resource root and appends its own Foundry request path.
+    Such an endpoint must not use the Azure OpenAI-specific HTTP health check.
+    """
+    if not api_base:
+        return False
+    return (urlparse(api_base).hostname or "").endswith(".services.ai.azure.com")
+
+
 async def validate_provider_setup(
     provider: str,
     api_key: str = None,
@@ -687,10 +699,17 @@ async def validate_provider_setup(
         # catalogue check is only for the case there is no model to probe with,
         # which is the one that used to report "A model is required".
         enhancement = get_provider_enhancement(provider_lower)
+        azure_ai_foundry_endpoint = provider_lower == "azure" and is_azure_ai_foundry_endpoint(
+            supplied.get("api_base")
+        )
         probes_the_model = (
             bool(embedding_model or llm_model)
             if enhancement is not None
-            else provider_lower not in _NATIVELY_VALIDATED_PROVIDERS
+            else (
+                provider_lower not in _NATIVELY_VALIDATED_PROVIDERS
+                # Preserve main's Azure/LiteLLM route for Foundry resource URLs.
+                or (azure_ai_foundry_endpoint and bool(embedding_model or llm_model))
+            )
         )
         if probes_the_model:
             await _test_litellm_provider(
@@ -968,7 +987,12 @@ async def _test_openai_lightweight_health(api_key: str) -> None:
 
 
 async def _test_azure_lightweight_health(credentials: dict[str, str]) -> None:
-    """Validate Azure OpenAI credentials without selecting or billing a deployment."""
+    """Validate Azure OpenAI credentials without selecting or billing a deployment.
+
+    Azure deployment enumeration is an Azure Resource Manager operation, not an
+    Azure OpenAI data-plane operation.  The data plane does provide ``models``;
+    use that endpoint so a valid resource is not rejected with ResourceNotFound.
+    """
     api_base = credentials.get("api_base")
     api_version = credentials.get("api_version")
     api_key = credentials.get("api_key")
@@ -1008,7 +1032,7 @@ async def _test_azure_lightweight_health(credentials: dict[str, str]) -> None:
         headers["api-key"] = api_key or ""
     response = await _http_request_with_retry(
         "GET",
-        f"{api_base.rstrip('/')}/openai/deployments",
+        f"{api_base.rstrip('/')}/openai/models",
         headers=headers,
         params={"api-version": api_version or "2024-10-21"},
         timeout=30.0,

@@ -13,7 +13,11 @@ import json
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from api.provider_validation import sanitize_provider_error_content, validate_provider_setup
+from api.provider_validation import (
+    is_azure_ai_foundry_endpoint,
+    sanitize_provider_error_content,
+    validate_provider_setup,
+)
 from api.settings.helpers import (
     _affected_embedding_models,
     _create_openrag_docs_filter,
@@ -458,9 +462,10 @@ async def update_settings(
                 logger.info("Running provider validation before modifying config")
 
                 # A generic provider save normally has no selected model to
-                # probe. Azure OpenAI is the exception: its deployments route
-                # validates the endpoint and API key without consuming tokens,
-                # so reject bad credentials before they are persisted.
+                # probe. Native Azure OpenAI is the exception: its models route
+                # validates the endpoint and API key without consuming tokens.
+                # Foundry resource URLs instead follow LiteLLM's model route,
+                # preserving the behavior they had on main.
                 for provider, submitted in (body.provider_credentials or {}).items():
                     provider_key = _provider_key(provider)
                     credentials = current_config.providers.pending_credentials(
@@ -481,12 +486,14 @@ async def update_settings(
                         )
                         if missing:
                             raise ValueError(f"{', '.join(missing)} is required for Azure OpenAI")
-                        await validate_provider_setup(
-                            provider=provider_key,
-                            api_key=credentials.get("api_key") or credentials.get("azure_ad_token"),
-                            endpoint=credentials.get("api_base"),
-                            credentials=credentials,
-                        )
+                        if not is_azure_ai_foundry_endpoint(credentials.get("api_base")):
+                            await validate_provider_setup(
+                                provider=provider_key,
+                                api_key=credentials.get("api_key")
+                                or credentials.get("azure_ad_token"),
+                                endpoint=credentials.get("api_base"),
+                                credentials=credentials,
+                            )
 
                 # Validate LLM provider if being changed
                 if body.llm_provider is not None or body.llm_model is not None:
