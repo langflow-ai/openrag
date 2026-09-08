@@ -31,7 +31,13 @@ from functools import lru_cache
 from typing import Any
 
 from config.model_providers import ProviderEntry, visible_provider_entries
-from services import watsonx_onprem
+from enhancements.providers.registry import (
+    credential_field_overrides,
+    route_aliases,
+)
+from enhancements.providers.registry import (
+    enhancements as provider_enhancements,
+)
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -94,15 +100,11 @@ KNOWN_FIELD_TYPES = frozenset({"text", "password", "select", "textarea", "upload
 #: its own credentials and its own model list but reaches the same API — the
 #: alternative, reusing the upstream key, would make the two share one set of
 #: stored credentials.
-PROVIDER_ROUTE_ALIASES: dict[str, str] = {
-    watsonx_onprem.PROVIDER_KEY: watsonx_onprem.LITELLM_PROVIDER,
-}
+PROVIDER_ROUTE_ALIASES: dict[str, str] = route_aliases()
 
 #: Credential forms LiteLLM's `provider_create_fields.json` cannot supply,
 #: because the provider is one of OpenRAG's own aliases.
-_CREDENTIAL_FIELD_OVERRIDES: dict[str, list[dict[str, Any]]] = {
-    watsonx_onprem.PROVIDER_KEY: watsonx_onprem.CREDENTIAL_FIELDS,
-}
+_CREDENTIAL_FIELD_OVERRIDES: dict[str, list[dict[str, Any]]] = credential_field_overrides()  # type: ignore[assignment]
 
 
 def litellm_provider_key(provider: str) -> str:
@@ -416,12 +418,14 @@ def _catalog_entries() -> tuple[ProviderEntry, ...]:
     payload rather than serving a stale one.
     """
     entries = visible_provider_entries()
-    live = watsonx_onprem.cached_models()
-    if live is None:
-        return entries
+    live_models = {
+        enhancement.PROVIDER_KEY: enhancement.cached_models()
+        for enhancement in provider_enhancements()
+        if hasattr(enhancement, "cached_models")
+    }
     return tuple(
         entry._replace(models=live.chat, embedding_models=live.embedding)
-        if entry.name == watsonx_onprem.PROVIDER_KEY
+        if (live := live_models.get(entry.name)) is not None
         else entry
         for entry in entries
     )
@@ -435,17 +439,21 @@ async def refresh_live_models() -> None:
     than once per request, and a failure leaves the previous answer — or the
     configured fallback — in place.
     """
-    if watsonx_onprem.PROVIDER_KEY not in supported_provider_keys():
-        return
-    try:
-        from config.settings import get_openrag_config
+    from config.settings import get_openrag_config
 
-        credentials = get_openrag_config().providers.credential_values(watsonx_onprem.PROVIDER_KEY)
-    except Exception:
-        logger.debug("Could not read watsonx.ai on-prem credentials", exc_info=True)
-        return
-    if credentials:
-        await watsonx_onprem.fetch_models(credentials)
+    for enhancement in provider_enhancements():
+        if (
+            enhancement.PROVIDER_KEY not in supported_provider_keys()
+            or not hasattr(enhancement, "fetch_models")
+        ):
+            continue
+        try:
+            credentials = get_openrag_config().providers.credential_values(enhancement.PROVIDER_KEY)
+        except Exception:
+            logger.debug("Could not read credentials for %s", enhancement.PROVIDER_KEY, exc_info=True)
+            continue
+        if credentials:
+            await enhancement.fetch_models(credentials)
 
 
 def supported_provider_keys() -> frozenset[str]:

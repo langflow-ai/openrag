@@ -14,7 +14,8 @@ from config.config_manager import (
     ProvidersConfig,
     WatsonXConfig,
 )
-from services import model_catalog, watsonx_onprem
+from enhancements.providers.watsonx import onprem as watsonx_onprem
+from services import model_catalog
 from services.llm_gateway import resolve_call, split_model_id
 
 PROVIDER = watsonx_onprem.PROVIDER_KEY
@@ -338,7 +339,7 @@ async def test_health_needs_no_model_selected(monkeypatch) -> None:
         called["auth"] = kwargs.get("headers", {}).get("Authorization")
         return SimpleNamespace(status_code=200, text="{}", json=lambda: {"resources": []})
 
-    monkeypatch.setattr(provider_validation, "_http_request_with_retry", _fake_request)
+    monkeypatch.setattr(watsonx_onprem, "_http_request_with_retry", _fake_request)
 
     credentials = watsonx_onprem.litellm_credentials(
         {"api_base": "https://cpd.example.com/", "username": "cpduser", "api_key": "APIKEY"}
@@ -369,7 +370,7 @@ async def test_health_reports_a_rejected_zen_key_as_a_credential_problem(monkeyp
             json=lambda: {"errors": [{"message": "Failed to authenticate the request"}]},
         )
 
-    monkeypatch.setattr(provider_validation, "_http_request_with_retry", _fake_request)
+    monkeypatch.setattr(watsonx_onprem, "_http_request_with_retry", _fake_request)
 
     credentials = watsonx_onprem.litellm_credentials(
         {"api_base": "https://cpd.example.com", "username": "cpduser", "api_key": "APIKEY"}
@@ -421,7 +422,7 @@ async def test_switching_to_a_model_the_cluster_lacks_is_still_blocked(monkeypat
         probes.append("real-call")
         raise Exception('{"errors":[{"message":"Model \'ibm/nope\' is not supported"}]}')
 
-    monkeypatch.setattr(provider_validation, "_http_request_with_retry", _unexpected_http)
+    monkeypatch.setattr(watsonx_onprem, "_http_request_with_retry", _unexpected_http)
     monkeypatch.setattr(litellm, "acompletion", _fake_completion)
 
     credentials = watsonx_onprem.litellm_credentials(
