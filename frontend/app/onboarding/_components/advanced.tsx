@@ -1,5 +1,5 @@
 import { LabelWrapper } from "@/components/label-wrapper";
-import { ModelSelector } from "./model-selector";
+import { ModelSelector } from "@/components/models/model-selector";
 
 export function AdvancedOnboarding({
   icon,

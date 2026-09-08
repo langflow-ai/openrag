@@ -3,7 +3,7 @@
 import { AlertTriangle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useProviderHealthQuery } from "@/app/api/queries/useProviderHealthQuery";
-import { getProviderChrome } from "@/app/settings/_helpers/model-helpers";
+import { getProviderChrome } from "@/components/models/model-helpers";
 import { Banner, BannerIcon, BannerTitle } from "@/components/ui/banner";
 import { useChat } from "@/contexts/chat-context";
 import { cn } from "@/lib/utils";
