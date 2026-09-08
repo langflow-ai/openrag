@@ -230,6 +230,20 @@ class ProvidersConfig:
                 if name in shared or name in active
             }
             previous.auth_method = auth_method
+        if key == "watsonx_onprem" and auth_method:
+            methods = {
+                "username_api_key": {"username", "api_key"},
+                "zen_api_key": {"zen_api_key"},
+            }
+            active = methods.get(auth_method)
+            if active is None:
+                raise ValueError(f"Unknown watsonx.ai on-prem authentication method: {auth_method}")
+            previous.credentials = {
+                name: value
+                for name, value in previous.credentials.items()
+                if name in {"api_base", "space_id", "project_id"} or name in active
+            }
+            previous.auth_method = auth_method
         previous.credentials.update(clean)
         previous.configured = True
         self.custom[key] = previous

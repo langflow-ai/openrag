@@ -1221,7 +1221,11 @@ async def onboarding(
             config_updated = True
 
         for provider, credentials in (body.provider_credentials or {}).items():
-            current_config.providers.set_credentials(provider, credentials)
+            current_config.providers.set_credentials(
+                provider,
+                credentials,
+                auth_method=(body.provider_auth_methods or {}).get(_provider_key(provider)),
+            )
             config_updated = True
 
         # Mark providers as configured if they were chosen during onboarding

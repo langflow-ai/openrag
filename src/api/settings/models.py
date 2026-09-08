@@ -71,6 +71,7 @@ class OnboardingBody(BaseModel):
     watsonx_project_id: str | None = Field(None, min_length=1)
     ollama_endpoint: str | None = Field(None, min_length=1)
     provider_credentials: dict[str, dict[str, str]] | None = None
+    provider_auth_methods: dict[str, str] | None = None
 
 
 class CitationDisplayData(BaseModel):

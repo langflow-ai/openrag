@@ -62,6 +62,7 @@ const ProviderSettingsDialog = ({
     AffectedEmbeddingModel[] | undefined
   >(undefined);
   const [azureAuthMethod, setAzureAuthMethod] = useState("api_key");
+  const [onPremAuthMethod, setOnPremAuthMethod] = useState("username_api_key");
   const router = useRouter();
 
   const { data: settings = {} } = useGetSettingsQuery({
@@ -107,6 +108,9 @@ const ProviderSettingsDialog = ({
     });
     if (provider === "azure") {
       setAzureAuthMethod(saved?.auth_method ?? "api_key");
+    }
+    if (provider === "watsonx_onprem") {
+      setOnPremAuthMethod(saved?.auth_method ?? "username_api_key");
     }
   }, [open, fields, saved, methods, provider]);
 
@@ -155,13 +159,22 @@ const ProviderSettingsDialog = ({
     const allowedAzureFields = new Set([
       "api_base",
       "api_version",
-      "base_model",
       ...(azureAuthFields[azureAuthMethod] ?? []),
+    ]);
+    const allowedOnPremFields = new Set([
+      "api_base",
+      "space_id",
+      "project_id",
+      ...(onPremAuthMethod === "zen_api_key"
+        ? ["zen_api_key"]
+        : ["username", "api_key"]),
     ]);
     for (const [key, value] of Object.entries(data.credentials ?? {})) {
       if (provider === "azure" && !allowedAzureFields.has(key)) {
         continue;
       }
+      if (provider === "watsonx_onprem" && !allowedOnPremFields.has(key))
+        continue;
       const trimmed = (value ?? "").trim();
       if (trimmed !== "") {
         credentials[key] = trimmed;
@@ -177,7 +190,9 @@ const ProviderSettingsDialog = ({
       provider_credentials: { [provider]: credentials },
       ...(provider === "azure"
         ? { provider_auth_methods: { azure: azureAuthMethod } }
-        : {}),
+        : provider === "watsonx_onprem"
+          ? { provider_auth_methods: { watsonx_onprem: onPremAuthMethod } }
+          : {}),
     });
   };
 
@@ -219,6 +234,8 @@ const ProviderSettingsDialog = ({
                 saveError={methods.formState.errors.root?.message}
                 azureAuthMethod={azureAuthMethod}
                 onAzureAuthMethodChange={setAzureAuthMethod}
+                onPremAuthMethod={onPremAuthMethod}
+                onOnPremAuthMethodChange={setOnPremAuthMethod}
               />
 
               <LazyMotion features={domAnimation}>

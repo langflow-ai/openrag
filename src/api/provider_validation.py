@@ -702,6 +702,18 @@ async def validate_provider_setup(
                 llm_model=llm_model,
             )
         elif test_completion:
+            if provider_lower == "azure":
+                # Azure deployments are user-defined, so a model completion is
+                # not a safe generic probe during onboarding. The deployments
+                # request still verifies the selected authentication method.
+                await test_lightweight_health(
+                    provider=provider_lower,
+                    api_key=api_key,
+                    endpoint=endpoint,
+                    project_id=project_id,
+                    credentials=supplied,
+                )
+                return
             # Full validation with completion/embedding tests (consumes credits)
             if embedding_model:
                 # Test embedding

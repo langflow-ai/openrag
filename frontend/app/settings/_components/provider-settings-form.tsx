@@ -28,6 +28,8 @@ export function ProviderSettingsForm({
   saveError,
   azureAuthMethod,
   onAzureAuthMethodChange,
+  onPremAuthMethod,
+  onOnPremAuthMethodChange,
 }: {
   provider: string;
   providerName: string;
@@ -36,6 +38,8 @@ export function ProviderSettingsForm({
   saveError?: string | null;
   azureAuthMethod?: string;
   onAzureAuthMethodChange?: (method: string) => void;
+  onPremAuthMethod?: string;
+  onOnPremAuthMethodChange?: (method: string) => void;
 }) {
   const {
     register,
@@ -120,16 +124,32 @@ export function ProviderSettingsForm({
       fields: ["tenant_id", "client_id", "client_secret"],
     },
   ];
-  const commonAzureFields = fields.filter(
-    (field) =>
-      !azureAuthGroups.some((group) => group.fields.includes(field.key)),
+  const azureConnectionFields = fields.filter(
+    (field) => field.key === "api_base",
+  );
+  const azureAdvancedFields = fields.filter(
+    (field) => field.key === "api_version",
+  );
+  const onPremAuthGroups = [
+    {
+      key: "username_api_key",
+      label: "Username + API key",
+      fields: ["username", "api_key"],
+    },
+    { key: "zen_api_key", label: "Zen API key", fields: ["zen_api_key"] },
+  ];
+  const onPremConnectionFields = fields.filter(
+    (field) => field.key === "api_base",
+  );
+  const onPremAdvancedFields = fields.filter((field) =>
+    ["space_id", "project_id"].includes(field.key),
   );
 
   return (
     <div className="min-w-0 space-y-4">
       {provider === "azure" ? (
         <>
-          {commonAzureFields.map(renderField)}
+          {azureConnectionFields.map(renderField)}
           <Accordion
             type="single"
             value={azureAuthMethod ?? "api_key"}
@@ -158,6 +178,55 @@ export function ProviderSettingsForm({
                 </AccordionContent>
               </AccordionItem>
             ))}
+          </Accordion>
+          <Accordion type="single" collapsible className="space-y-2">
+            <AccordionItem value="advanced">
+              <AccordionTrigger>Advanced settings</AccordionTrigger>
+              <AccordionContent className="space-y-4">
+                {azureAdvancedFields.map(renderField)}
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        </>
+      ) : provider === "watsonx_onprem" ? (
+        <>
+          {onPremConnectionFields.map(renderField)}
+          <Accordion
+            type="single"
+            value={onPremAuthMethod ?? "username_api_key"}
+            onValueChange={(method) =>
+              method && onOnPremAuthMethodChange?.(method)
+            }
+            className="space-y-2"
+          >
+            {onPremAuthGroups.map((group) => (
+              <AccordionItem key={group.key} value={group.key}>
+                <AccordionTrigger>
+                  {group.label}
+                  {group.key === "username_api_key" && (
+                    <span className="ml-2 rounded bg-muted px-2 py-0.5 text-xs">
+                      Recommended
+                    </span>
+                  )}
+                </AccordionTrigger>
+                <AccordionContent className="space-y-4">
+                  {group.fields
+                    .map((key) => fields.find((field) => field.key === key))
+                    .filter((field): field is CatalogCredentialField =>
+                      Boolean(field),
+                    )
+                    .map(renderField)}
+                </AccordionContent>
+              </AccordionItem>
+            ))}
+          </Accordion>
+          <Accordion type="single" collapsible className="space-y-2">
+            <AccordionItem value="advanced">
+              <AccordionTrigger>Advanced settings</AccordionTrigger>
+              <AccordionContent className="space-y-4">
+                {onPremAdvancedFields.map(renderField)}
+              </AccordionContent>
+            </AccordionItem>
           </Accordion>
         </>
       ) : (
