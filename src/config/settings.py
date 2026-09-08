@@ -1076,16 +1076,7 @@ class AppClients:
             )
 
         # Initialize docling-serve HTTP client for document conversion
-        self.docling_http_client = httpx.AsyncClient(
-            verify=DOCLING_SERVE_VERIFY_SSL,
-            timeout=httpx.Timeout(
-                timeout=INGESTION_TIMEOUT,
-                connect=30.0,
-                read=INGESTION_TIMEOUT,
-                write=30.0,
-                pool=30.0,
-            ),
-        )
+        self._create_docling_http_client()
 
         # Eagerly initialize DoclingService to ensure thread-safety
         from services.docling_service import DoclingService
@@ -1095,21 +1086,7 @@ class AppClients:
         # Initialize Langflow HTTP client with extended timeouts for large documents
         # Must be created before wait_for_langflow / get_langflow_api_key
         # Use explicit timeout configuration to handle large PDF ingestion (300+ pages)
-        self.langflow_http_client = httpx.AsyncClient(
-            base_url=LANGFLOW_URL,
-            timeout=httpx.Timeout(
-                timeout=LANGFLOW_TIMEOUT,  # Total timeout
-                connect=LANGFLOW_CONNECT_TIMEOUT,  # Connection timeout
-                read=LANGFLOW_TIMEOUT,  # Read timeout (most important for large PDFs)
-                write=LANGFLOW_CONNECT_TIMEOUT,  # Write timeout
-                pool=LANGFLOW_CONNECT_TIMEOUT,  # Pool timeout
-            ),
-        )
-        logger.info(
-            "Initialized Langflow HTTP client with extended timeouts",
-            timeout_seconds=LANGFLOW_TIMEOUT,
-            connect_timeout_seconds=LANGFLOW_CONNECT_TIMEOUT,
-        )
+        self._create_langflow_http_client()
 
         # Wait for Langflow to be healthy before generating API key
         from utils.langflow_utils import wait_for_langflow
@@ -1138,6 +1115,51 @@ class AppClients:
             logger.warning("No Langflow client initialized yet, will attempt later on first use")
 
         return self
+
+    def _create_docling_http_client(self):
+        """Create a new AsyncClient for Docling bound to the currently running event loop."""
+        self.docling_http_client = httpx.AsyncClient(
+            verify=DOCLING_SERVE_VERIFY_SSL,
+            timeout=httpx.Timeout(
+                timeout=INGESTION_TIMEOUT,
+                connect=30.0,
+                read=INGESTION_TIMEOUT,
+                write=30.0,
+                pool=30.0,
+            ),
+        )
+        return self.docling_http_client
+
+    def _ensure_docling_http_client(self):
+        """Ensure docling_http_client is initialized and not closed."""
+        if self.docling_http_client is None or self.docling_http_client.is_closed:
+            return self._create_docling_http_client()
+        return self.docling_http_client
+
+    def _create_langflow_http_client(self):
+        """Create a new AsyncClient for Langflow bound to the currently running event loop."""
+        self.langflow_http_client = httpx.AsyncClient(
+            base_url=LANGFLOW_URL,
+            timeout=httpx.Timeout(
+                timeout=LANGFLOW_TIMEOUT,  # Total timeout
+                connect=LANGFLOW_CONNECT_TIMEOUT,  # Connection timeout
+                read=LANGFLOW_TIMEOUT,  # Read timeout (most important for large PDFs)
+                write=LANGFLOW_CONNECT_TIMEOUT,  # Write timeout
+                pool=LANGFLOW_CONNECT_TIMEOUT,  # Pool timeout
+            ),
+        )
+        logger.info(
+            "Initialized Langflow HTTP client with extended timeouts",
+            timeout_seconds=LANGFLOW_TIMEOUT,
+            connect_timeout_seconds=LANGFLOW_CONNECT_TIMEOUT,
+        )
+        return self.langflow_http_client
+
+    def _ensure_langflow_http_client(self):
+        """Ensure langflow_http_client is initialized and not closed."""
+        if self.langflow_http_client is None or self.langflow_http_client.is_closed:
+            return self._create_langflow_http_client()
+        return self.langflow_http_client
 
     async def ensure_langflow_client(self):
         """Ensure Langflow client exists; try to generate key and create client lazily."""
@@ -1216,6 +1238,27 @@ class AppClients:
                     os.environ["OLLAMA_BASE_URL"] = config.providers.ollama.endpoint
                     os.environ["OLLAMA_ENDPOINT"] = config.providers.ollama.endpoint
                     logger.debug("Loaded Ollama endpoint from config")
+
+                # Set Azure credentials
+                azure_creds = config.providers.credential_values("azure")
+                if azure_creds.get("api_key"):
+                    os.environ["AZURE_API_KEY"] = azure_creds["api_key"]
+                if azure_creds.get("api_base"):
+                    os.environ["AZURE_API_BASE"] = azure_creds["api_base"]
+                if azure_creds.get("api_version"):
+                    os.environ["AZURE_API_VERSION"] = azure_creds["api_version"]
+                if azure_creds:
+                    logger.debug("Loaded Azure OpenAI credentials from config")
+
+                azure_ai_creds = config.providers.credential_values("azure_ai")
+                if azure_ai_creds.get("api_key"):
+                    os.environ["AZURE_AI_API_KEY"] = azure_ai_creds["api_key"]
+                if azure_ai_creds.get("api_base"):
+                    os.environ["AZURE_AI_API_BASE"] = azure_ai_creds["api_base"]
+                if azure_ai_creds.get("api_version"):
+                    os.environ["AZURE_AI_API_VERSION"] = azure_ai_creds["api_version"]
+                if azure_ai_creds:
+                    logger.debug("Loaded Azure AI Foundry credentials from config")
 
                 # Determine model and provider for both probe and production client
                 model_name = config.knowledge.embedding_model or OPENAI_DEFAULT_EMBEDDING_MODEL
@@ -1449,10 +1492,24 @@ class AppClients:
 
             url = f"{LANGFLOW_URL}{endpoint}"
 
+            client = self._ensure_langflow_http_client()
+
             try:
-                response = await self.langflow_http_client.request(
+                response = await client.request(
                     method=method, url=url, headers=headers, **request_kwargs
                 )
+            except RuntimeError as exc:
+                if "Event loop is closed" in str(exc) or "event loop" in str(exc).lower():
+                    logger.warning(
+                        "Langflow HTTP client event loop was closed, recreating client for active event loop",
+                        endpoint=endpoint,
+                    )
+                    client = self._create_langflow_http_client()
+                    response = await client.request(
+                        method=method, url=url, headers=headers, **request_kwargs
+                    )
+                else:
+                    raise
             except httpx.RequestError as exc:
                 last_error = exc
                 if attempt + 1 < max_attempts:
@@ -1481,9 +1538,22 @@ class AppClients:
                 if api_key:
                     headers["x-api-key"] = api_key
                     try:
-                        response = await self.langflow_http_client.request(
+                        client = self._ensure_langflow_http_client()
+                        response = await client.request(
                             method=method, url=url, headers=headers, **request_kwargs
                         )
+                    except RuntimeError as exc:
+                        if "Event loop is closed" in str(exc) or "event loop" in str(exc).lower():
+                            logger.warning(
+                                "Langflow auth retry HTTP client event loop was closed, recreating client for active event loop",
+                                endpoint=endpoint,
+                            )
+                            client = self._create_langflow_http_client()
+                            response = await client.request(
+                                method=method, url=url, headers=headers, **request_kwargs
+                            )
+                        else:
+                            raise
                     except httpx.RequestError as exc:
                         last_error = exc
                         if attempt + 1 < max_attempts:

@@ -24,6 +24,21 @@ _LLM_PROVIDER_NAMES = ("openai", "anthropic", "watsonx", "ollama")
 _EMBEDDING_PROVIDER_NAMES = ("openai", "watsonx", "ollama")
 
 
+def _has_other_configured_provider(config, excluding: str) -> bool:
+    """Return True if at least one other provider with embedding support is configured (excluding Anthropic)."""
+    providers = config.providers
+    for key, value in providers.custom.items():
+        if key != excluding and key != "anthropic" and getattr(value, "configured", False):
+            return True
+    if excluding != "openai" and providers.openai.configured:
+        return True
+    if excluding != "watsonx" and providers.watsonx.configured:
+        return True
+    if excluding != "ollama" and providers.ollama.configured:
+        return True
+    return False
+
+
 def _configured_provider_names(config, provider_names) -> list:
     """Return the provider names from `provider_names` marked configured in the OpenRAG config."""
     providers = config.providers
