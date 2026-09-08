@@ -72,7 +72,7 @@ jobs:
       - name: Upload Trivy Image Scan Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: trivy-image-${{ matrix.image.name }}
+          name: scan-trivy-image-${{ matrix.image.name }}
           path: trivy-image-${{ matrix.image.name }}.json
           retention-days: 14
 
@@ -119,7 +119,7 @@ jobs:
       - name: Upload OSS Audit Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: oss-scan-results
+          name: scan-oss-results
           path: reports/*.json
           retention-days: 14
 
@@ -155,7 +155,7 @@ jobs:
       - name: Upload SAST Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: static-scan-results
+          name: scan-static-results
           path: sast-reports/*.json
           retention-days: 14
 
@@ -176,6 +176,7 @@ jobs:
       - name: Download all scan artifacts
         uses: actions/download-artifact@v4
         with:
+          pattern: 'scan-*'
           path: security-reports
           merge-multiple: true
 
