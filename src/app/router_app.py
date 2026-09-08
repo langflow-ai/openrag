@@ -14,6 +14,7 @@ backend still does. Its sole job is network-surface isolation.
 from __future__ import annotations
 
 import threading
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 import uvicorn
@@ -53,9 +54,39 @@ _FORWARDED_HEADERS = ("authorization", "x-openrag-ingest-token", "content-type",
 _UPSTREAM_TIMEOUT = httpx.Timeout(60.0)
 
 
+def _validate_upstream_base_url(value: str) -> str:
+    """Validate and normalize OPENRAG_BACKEND_ROUTER_UPSTREAM_URL."""
+    setting = "OPENRAG_BACKEND_ROUTER_UPSTREAM_URL"
+    if not isinstance(value, str) or not value or any(character.isspace() for character in value):
+        raise ValueError(f"Invalid {setting}: malformed URL")
+    try:
+        parsed = urlsplit(value)
+        hostname = parsed.hostname
+        port = parsed.port
+    except (TypeError, ValueError) as e:
+        raise ValueError(f"Invalid {setting}: malformed URL") from e
+
+    if parsed.scheme not in {"http", "https"}:
+        raise ValueError(f"Invalid {setting}: scheme must be https or loopback http")
+    if not hostname:
+        raise ValueError(f"Invalid {setting}: hostname is required")
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError(f"Invalid {setting}: embedded credentials are not allowed")
+    if parsed.query or parsed.fragment:
+        raise ValueError(f"Invalid {setting}: query strings and fragments are not allowed")
+    if parsed.path not in {"", "/"}:
+        raise ValueError(f"Invalid {setting}: path must be empty or /")
+    if parsed.scheme == "http" and hostname not in {"localhost", "127.0.0.1", "::1"}:
+        raise ValueError(f"Invalid {setting}: http is allowed only for loopback hosts")
+
+    normalized_host = f"[{hostname}]" if ":" in hostname else hostname
+    netloc = normalized_host if port is None else f"{normalized_host}:{port}"
+    return urlunsplit((parsed.scheme, netloc, "", "", ""))
+
+
 async def _proxy_ingest_chunks(request: Request) -> Response:
     """Forward the ingest callback to the real backend and relay its response."""
-    upstream_url = _UPSTREAM_URL
+    upstream_url = f"{request.app.state.upstream_base_url}{INGEST_CALLBACK_PATH}"
     body = await request.body()
     headers = {
         key: value for key, value in request.headers.items() if key.lower() in _FORWARDED_HEADERS
@@ -97,7 +128,7 @@ async def _proxy_llm_request(request: Request) -> Response:
     if upstream_path is None:  # Defensive guard if a route is changed.
         return Response(status_code=404)
 
-    upstream_url = f"{OPENRAG_BACKEND_ROUTER_UPSTREAM_URL}{upstream_path}"
+    upstream_url = f"{request.app.state.upstream_base_url}{upstream_path}"
     body = await request.body()
     headers = {
         key: value for key, value in request.headers.items() if key.lower() in _FORWARDED_HEADERS
@@ -156,12 +187,14 @@ def create_router_app() -> FastAPI:
     No other paths are registered, so MCP and every non-allowlisted path return
     404 on this port.
     """
+    upstream_base_url = _validate_upstream_base_url(OPENRAG_BACKEND_ROUTER_UPSTREAM_URL)
     app = FastAPI(
         title="OpenRAG Ingest Router",
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
     )
+    app.state.upstream_base_url = upstream_base_url
     # Reuse the backend's structured access logging so every forwarded callback
     # emits an "[API] Request" line (method/path/status/duration) to the same
     # stdout as the backend. Without this, uvicorn.access is globally silenced.
