@@ -61,6 +61,7 @@ const ProviderSettingsDialog = ({
   const [affectedModels, setAffectedModels] = useState<
     AffectedEmbeddingModel[] | undefined
   >(undefined);
+  const [azureAuthMethod, setAzureAuthMethod] = useState("api_key");
   const router = useRouter();
 
   const { data: settings = {} } = useGetSettingsQuery({
@@ -104,7 +105,10 @@ const ProviderSettingsDialog = ({
         ]),
       ),
     });
-  }, [open, fields, saved, methods]);
+    if (provider === "azure") {
+      setAzureAuthMethod(saved?.auth_method ?? "api_key");
+    }
+  }, [open, fields, saved, methods, provider]);
 
   const { handleSubmit } = methods;
 
@@ -143,7 +147,21 @@ const ProviderSettingsDialog = ({
     // Blank means "leave the stored value alone": the backend ignores empty
     // values, and secrets are never echoed back for us to resubmit.
     const credentials: Record<string, string> = {};
+    const azureAuthFields: Record<string, Set<string>> = {
+      api_key: new Set(["api_key"]),
+      entra_token: new Set(["azure_ad_token"]),
+      service_principal: new Set(["tenant_id", "client_id", "client_secret"]),
+    };
+    const allowedAzureFields = new Set([
+      "api_base",
+      "api_version",
+      "base_model",
+      ...(azureAuthFields[azureAuthMethod] ?? []),
+    ]);
     for (const [key, value] of Object.entries(data.credentials ?? {})) {
+      if (provider === "azure" && !allowedAzureFields.has(key)) {
+        continue;
+      }
       const trimmed = (value ?? "").trim();
       if (trimmed !== "") {
         credentials[key] = trimmed;
@@ -157,6 +175,9 @@ const ProviderSettingsDialog = ({
 
     settingsMutation.mutate({
       provider_credentials: { [provider]: credentials },
+      ...(provider === "azure"
+        ? { provider_auth_methods: { azure: azureAuthMethod } }
+        : {}),
     });
   };
 
@@ -191,10 +212,13 @@ const ProviderSettingsDialog = ({
 
             <div className="flex-1 min-h-0 overflow-y-auto min-w-0 px-1 -mx-1 py-1 space-y-4">
               <ProviderSettingsForm
+                provider={provider}
                 providerName={chrome.name}
                 fields={fields}
                 savedSecretFields={savedSecretFields}
                 saveError={methods.formState.errors.root?.message}
+                azureAuthMethod={azureAuthMethod}
+                onAzureAuthMethodChange={setAzureAuthMethod}
               />
 
               <LazyMotion features={domAnimation}>

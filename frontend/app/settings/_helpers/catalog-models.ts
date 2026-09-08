@@ -329,6 +329,7 @@ export interface SavedProviderSnapshot {
   project_id?: string;
   credential_values?: Record<string, string>;
   secret_fields?: string[];
+  auth_method?: string | null;
 }
 
 export interface SavedProvidersSnapshot {
