@@ -18,6 +18,7 @@ from config.settings import (
     clients,
     get_openrag_config,
 )
+from utils.langflow_utils import enable_mcp_none_for_project
 from utils.logging_config import get_logger
 from utils.telemetry import Category, MessageId, TelemetryClient
 
@@ -570,6 +571,15 @@ class FlowsService:
 
             if response.status_code == 200:
                 await self._lock_flow(flow_id)
+                try:
+                    res_json = response.json()
+                    project_id = res_json.get("folder_id")
+                    if project_id and (
+                        flow_type == "url_ingest" or flow_id == LANGFLOW_URL_INGEST_FLOW_ID
+                    ):
+                        await enable_mcp_none_for_project(project_id)
+                except Exception as err:
+                    logger.warning(f"Failed to enable unauthenticated MCP for {flow_type}: {err}")
                 logger.info(
                     f"Successfully reset {flow_type} flow",
                     flow_id=flow_id,
@@ -937,6 +947,12 @@ class FlowsService:
                     logger.info(
                         f"Flow {flow_type} (ID: {flow_id}) already exists, skipping creation"
                     )
+                    try:
+                        project_id = response.json().get("folder_id")
+                        if project_id and flow_type == "url_ingest":
+                            await enable_mcp_none_for_project(project_id)
+                    except Exception as err:
+                        logger.warning(f"Failed to check MCP project auth for {flow_type}: {err}")
                     return None
 
                 if response.status_code != 404:
@@ -963,6 +979,12 @@ class FlowsService:
                     logger.info(
                         f"Created {flow_type} flow (ID: {flow_id}) from {os.path.basename(flow_path)}"
                     )
+                    try:
+                        project_id = response.json().get("folder_id")
+                        if project_id and flow_type == "url_ingest":
+                            await enable_mcp_none_for_project(project_id)
+                    except Exception as err:
+                        logger.warning(f"Failed to check MCP project auth for {flow_type}: {err}")
                     return flow_type
                 else:
                     logger.warning(
@@ -994,6 +1016,23 @@ class FlowsService:
 
         return created_flow_types
 
+    async def enable_mcp_none_for_url_ingest_flow(self) -> bool:
+        """Configure auth_type='none' for MCP on the URL ingest flow project."""
+        flow_id = LANGFLOW_URL_INGEST_FLOW_ID
+        if not flow_id:
+            return False
+        try:
+            resp = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
+            if resp.status_code == 200:
+                project_id = resp.json().get("folder_id")
+                if project_id:
+                    return await enable_mcp_none_for_project(project_id)
+        except Exception as e:
+            logger.warning(
+                f"Error enabling MCP auth_type='none' for URL ingest flow {flow_id}: {e}"
+            )
+        return False
+
     async def change_langflow_model_value(
         self,
         provider: str,
@@ -1007,15 +1046,21 @@ class FlowsService:
         Change dropdown values for provider-specific components across flows
 
         Args:
-            provider: The provider ("watsonx", "ollama", "openai", "anthropic")
+            provider: Any LiteLLM provider. Non-legacy providers use Langflow's
+                OpenAI-compatible component, which points at the OpenRAG proxy.
             embedding_model: The embedding model name to set
             llm_model: The LLM model name to set
             force_embedding_update: If True, update embeddings even if model is None
             force_llm_update: If True, update LLM even if model is None
             flow_configs: Optional list of flow configs to update
         """
-        if provider not in ["watsonx", "ollama", "openai", "anthropic"]:
-            raise ValueError("provider must be 'watsonx', 'ollama', 'openai', or 'anthropic'")
+        from services.model_catalog import is_known_provider
+
+        if not is_known_provider(provider):
+            raise ValueError(f"Unknown LiteLLM provider: {provider}")
+        flow_provider = (
+            provider if provider in {"watsonx", "ollama", "openai", "anthropic"} else "openai"
+        )
 
         try:
             # Use provided flow_configs or default to all flows
@@ -1032,7 +1077,7 @@ class FlowsService:
                 tasks.append(
                     self._update_provider_components(
                         config,
-                        provider,
+                        flow_provider,
                         embedding_model=embedding_model,
                         llm_model=llm_model,
                         force_embedding_update=force_embedding_update,
@@ -1386,38 +1431,18 @@ class FlowsService:
 
             updated = True
 
-        # Update provider-specific fields using Langflow global variable names.
-        # "api_base" is the Ollama URL field on the Embedding Model component;
-        # "ollama_base_url" is the equivalent field on the Language Model / Agent component.
-        field_mappings = {
-            "api_key": {
-                "openai": "OPENAI_API_KEY",
-                "watsonx": "WATSONX_APIKEY",
-                "anthropic": "ANTHROPIC_API_KEY",
-            },
-            "api_base": {
-                "ollama": "OLLAMA_BASE_URL",
-            },
-            "ollama_base_url": {
-                "ollama": "OLLAMA_BASE_URL",
-            },
-            "base_url_ibm_watsonx": {
-                "watsonx": "WATSONX_URL",
-            },
-            "project_id": {
-                "watsonx": "WATSONX_PROJECT_ID",
-            },
+        # Point every model component at the OpenRAG OpenAI-compatible proxy.
+        # Real provider secrets never leave OpenRAG; Langflow sends the caller JWT.
+        proxy_fields = {
+            "api_key": "OPENRAG_LLM_TOKEN",
+            "openai_api_key": "OPENRAG_LLM_TOKEN",
+            "api_base": "OPENRAG_LLM_BASE_URL",
+            "openai_api_base": "OPENRAG_LLM_BASE_URL",
         }
-
-        for field, mapping in field_mappings.items():
+        for field, global_name in proxy_fields.items():
             if field in template:
-                target_value = mapping.get(provider)
-                if target_value:
-                    template[field]["value"] = target_value
-                    template[field]["load_from_db"] = True
-                else:
-                    template[field]["value"] = ""
-                    template[field]["load_from_db"] = False
+                template[field]["value"] = global_name
+                template[field]["load_from_db"] = True
                 updated = True
 
         return updated

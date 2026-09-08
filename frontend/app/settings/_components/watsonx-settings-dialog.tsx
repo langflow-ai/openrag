@@ -21,6 +21,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/auth-context";
+import {
+  canRemoveProvider,
+  isProviderConfigured,
+} from "../_helpers/model-helpers";
 import ModelProviderDialogFooter from "./model-provider-dialog-footer";
 import {
   WatsonxSettingsForm,
@@ -48,13 +52,12 @@ const WatsonxSettingsDialog = ({
     enabled: isAuthenticated || isNoAuthMode,
   });
 
-  const isWatsonxConfigured = settings.providers?.watsonx?.configured === true;
+  const isWatsonxConfigured = isProviderConfigured(
+    settings.providers,
+    "watsonx",
+  );
 
-  const canRemoveWatsonx =
-    isWatsonxConfigured &&
-    (settings.providers?.openai?.configured === true ||
-      settings.providers?.anthropic?.configured === true ||
-      settings.providers?.ollama?.configured === true);
+  const canRemoveWatsonx = canRemoveProvider(settings.providers, "watsonx");
 
   const methods = useForm<WatsonxSettingsFormData>({
     mode: "onSubmit",

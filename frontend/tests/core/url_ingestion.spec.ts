@@ -1,9 +1,9 @@
-import { OPENAI_CONFIG } from "../config/provider";
+import { ACTIVE_PROVIDER_CONFIG } from "../config/provider";
 import { expect, test } from "../utils/fixtures";
 import logger from "../utils/logger";
 import { navigateToHome } from "../utils/navigation";
 
-test("@smoke URL connector ingestion reliability - OpenAI @33219228", async ({
+test(`@smoke URL connector ingestion reliability - ${ACTIVE_PROVIDER_CONFIG.provider} @33219228`, async ({
   page,
   settings,
   knowledge,
@@ -15,11 +15,13 @@ test("@smoke URL connector ingestion reliability - OpenAI @33219228", async ({
   // Navigate to the application
   await navigateToHome(page);
 
-  logger.info(`\n🧪 Testing URL Ingestion with OpenAI`);
+  logger.info(
+    `\n🧪 Testing URL Ingestion with ${ACTIVE_PROVIDER_CONFIG.provider}`,
+  );
 
   // Step 1: Cleanup test document if it exists
   logger.info(`  🧹 Cleaning up existing test document...`);
-  const docName = OPENAI_CONFIG.testCase.docName;
+  const docName = ACTIVE_PROVIDER_CONFIG.testCase.docName;
   try {
     await knowledge.deleteDocument(docName);
     logger.info(`  ✓ Test document cleaned up`);
@@ -30,20 +32,25 @@ test("@smoke URL connector ingestion reliability - OpenAI @33219228", async ({
   // Register document for cleanup after test
   await cleanupDocuments([docName]);
 
-  // Step 2: Set models for OpenAI
-  logger.info(`  ⚙️  Setting models for OpenAI...`);
+  // Step 2: Set models for active provider
+  logger.info(`  ⚙️  Setting models for ${ACTIVE_PROVIDER_CONFIG.provider}...`);
   await settings.clickTab("Agent");
-  await settings.selectModel("Language model", OPENAI_CONFIG.language);
+  await settings.selectModel("Language model", ACTIVE_PROVIDER_CONFIG.language);
   await settings.clickTab("Ingestion");
-  await settings.selectModel("Embedding model", OPENAI_CONFIG.embedding);
-  logger.info(`  ✓ Language model set to: ${OPENAI_CONFIG.language}`);
-  logger.info(`  ✓ Embedding model set to: ${OPENAI_CONFIG.embedding}`);
+  await settings.selectModel(
+    "Embedding model",
+    ACTIVE_PROVIDER_CONFIG.embedding,
+  );
+  logger.info(`  ✓ Language model set to: ${ACTIVE_PROVIDER_CONFIG.language}`);
+  logger.info(
+    `  ✓ Embedding model set to: ${ACTIVE_PROVIDER_CONFIG.embedding}`,
+  );
 
   // Step 3: Ingest URL via chat
-  logger.info(`  🌐 Ingesting URL: ${OPENAI_CONFIG.testCase.url}`);
+  logger.info(`  🌐 Ingesting URL: ${ACTIVE_PROVIDER_CONFIG.testCase.url}`);
   await chat.open();
   const { toolCall, toolData } = await chat.ingestUrl(
-    OPENAI_CONFIG.testCase.url,
+    ACTIVE_PROVIDER_CONFIG.testCase.url,
   );
   logger.info(`  ✓ URL ingestion initiated`);
 
@@ -51,7 +58,7 @@ test("@smoke URL connector ingestion reliability - OpenAI @33219228", async ({
   logger.info(`  🔍 Verifying tool call arguments...`);
   expect(toolData).toBeDefined();
   expect(toolData.tool_name).toBe("opensearch_url_ingestion_flow");
-  expect(toolData.inputs.input_value).toBe(OPENAI_CONFIG.testCase.url);
+  expect(toolData.inputs.input_value).toBe(ACTIVE_PROVIDER_CONFIG.testCase.url);
   logger.info(
     `  ✓ Tool called with correct URL: ${toolData.inputs.input_value}`,
   );
@@ -86,9 +93,12 @@ test("URL connector ingestion - Invalid URL handling @34581217", async ({
 
   // Set models
   await settings.clickTab("Agent");
-  await settings.selectModel("Language model", OPENAI_CONFIG.language);
+  await settings.selectModel("Language model", ACTIVE_PROVIDER_CONFIG.language);
   await settings.clickTab("Ingestion");
-  await settings.selectModel("Embedding model", OPENAI_CONFIG.embedding);
+  await settings.selectModel(
+    "Embedding model",
+    ACTIVE_PROVIDER_CONFIG.embedding,
+  );
 
   // Attempt to ingest invalid URL
   const invalidUrl = "http://www.invalid-url.com";
@@ -141,9 +151,12 @@ test("URL connector ingestion - Authentication-blocked URL handling @34581218", 
 
   // Set models
   await settings.clickTab("Agent");
-  await settings.selectModel("Language model", OPENAI_CONFIG.language);
+  await settings.selectModel("Language model", ACTIVE_PROVIDER_CONFIG.language);
   await settings.clickTab("Ingestion");
-  await settings.selectModel("Embedding model", OPENAI_CONFIG.embedding);
+  await settings.selectModel(
+    "Embedding model",
+    ACTIVE_PROVIDER_CONFIG.embedding,
+  );
 
   // Attempt to ingest authentication-blocked URL
   const authBlockedUrl = "https://github.com/settings/profile";
@@ -204,14 +217,19 @@ test("URL ingestion persists after conversation deletion @34581222", async ({
   // Register document for cleanup after test
   await cleanupDocuments([docName]);
 
-  // Step 2: Set models for OpenAI
-  logger.info(`  ⚙️  Setting models for OpenAI...`);
+  // Step 2: Set models for active provider
+  logger.info(`  ⚙️  Setting models for ${ACTIVE_PROVIDER_CONFIG.provider}...`);
   await settings.clickTab("Agent");
-  await settings.selectModel("Language model", OPENAI_CONFIG.language);
+  await settings.selectModel("Language model", ACTIVE_PROVIDER_CONFIG.language);
   await settings.clickTab("Ingestion");
-  await settings.selectModel("Embedding model", OPENAI_CONFIG.embedding);
-  logger.info(`  ✓ Language model set to: ${OPENAI_CONFIG.language}`);
-  logger.info(`  ✓ Embedding model set to: ${OPENAI_CONFIG.embedding}`);
+  await settings.selectModel(
+    "Embedding model",
+    ACTIVE_PROVIDER_CONFIG.embedding,
+  );
+  logger.info(`  ✓ Language model set to: ${ACTIVE_PROVIDER_CONFIG.language}`);
+  logger.info(
+    `  ✓ Embedding model set to: ${ACTIVE_PROVIDER_CONFIG.embedding}`,
+  );
 
   // Step 3: Ingest URL via chat
   logger.info(`  🌐 Ingesting URL: ${testUrl}`);

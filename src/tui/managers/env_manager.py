@@ -43,7 +43,7 @@ class EnvConfig:
     langflow_port: str = "7860"
     opensearch_index_name: str = "documents"
     langflow_secret_key: str = ""
-    langflow_superuser: str = "admin"
+    langflow_superuser: str = "langflow"
     langflow_superuser_password: str = ""
     langflow_chat_flow_id: str = "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
     langflow_ingest_flow_id: str = "5488df7c-b93f-4f87-a446-b67028bc0813"
@@ -481,7 +481,7 @@ class EnvManager:
                     f"LANGFLOW_SECRET_KEY={self._quote_env_value(self.config.langflow_secret_key)}\n"
                 )
                 f.write(
-                    f"LANGFLOW_SUPERUSER={self._quote_env_value(self.config.langflow_superuser or 'admin')}\n"
+                    f"LANGFLOW_SUPERUSER={self._quote_env_value(self.config.langflow_superuser or 'langflow')}\n"
                 )
                 f.write(
                     f"LANGFLOW_SUPERUSER_PASSWORD={self._quote_env_value(self.config.langflow_superuser_password)}\n"

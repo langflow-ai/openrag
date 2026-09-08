@@ -95,6 +95,7 @@ class ChatService:
 
         config = get_openrag_config()
         embedding_model = config.knowledge.embedding_model
+        embedding_provider = config.knowledge.embedding_provider or "openai"
         chunk_size = getattr(config.knowledge, "chunk_size", 1000)
         chunk_overlap = getattr(config.knowledge, "chunk_overlap", 200)
         extra_headers.update(build_model_provider_headers(config))
@@ -117,6 +118,7 @@ class ChatService:
             filename="",
             mimetype="",
             embedding_model=embedding_model,
+            embedding_provider=embedding_provider,
             owner=owner,
             owner_name=owner_name,
             owner_email=owner_email,
@@ -147,7 +149,11 @@ class ChatService:
 
         # Add provider credentials to headers
         await add_provider_credentials_to_headers(
-            extra_headers, config, flows_service=self.flows_service, jwt_token=jwt_token
+            extra_headers,
+            config,
+            flows_service=self.flows_service,
+            jwt_token=jwt_token,
+            user_id=user_id,
         )
         # Get context variables for filters, limit, and threshold
         from auth_context import (
@@ -278,7 +284,11 @@ class ChatService:
 
         # Add provider credentials to headers
         await add_provider_credentials_to_headers(
-            extra_headers, config, flows_service=self.flows_service, jwt_token=jwt_token
+            extra_headers,
+            config,
+            flows_service=self.flows_service,
+            jwt_token=jwt_token,
+            user_id=user_id,
         )
 
         # Build the complete filter expression like the chat service does
@@ -527,6 +537,7 @@ class ChatService:
 
             config = get_openrag_config()
             embedding_model = config.knowledge.embedding_model
+            embedding_provider = config.knowledge.embedding_provider or "openai"
             chunk_size = getattr(config.knowledge, "chunk_size", 1000)
             chunk_overlap = getattr(config.knowledge, "chunk_overlap", 200)
             extra_headers.update(build_model_provider_headers(config))
@@ -549,6 +560,7 @@ class ChatService:
                 filename="",
                 mimetype="",
                 embedding_model=embedding_model,
+                embedding_provider=embedding_provider,
                 owner=owner,
                 owner_name=owner_name,
                 owner_email=owner_email,
@@ -579,7 +591,11 @@ class ChatService:
 
             # Add provider credentials to headers
             await add_provider_credentials_to_headers(
-                extra_headers, config, flows_service=self.flows_service, jwt_token=jwt_token
+                extra_headers,
+                config,
+                flows_service=self.flows_service,
+                jwt_token=jwt_token,
+                user_id=user_id,
             )
 
             # Ensure the Langflow client exists; try lazy init if needed

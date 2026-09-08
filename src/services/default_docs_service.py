@@ -28,7 +28,6 @@ from config.settings import (
 )
 from utils.logging_config import get_logger
 from utils.telemetry import Category, MessageId, TelemetryClient
-from utils.url_content_fetcher import materialize_url_as_text_file
 from utils.version_utils import OPENRAG_VERSION
 
 logger = get_logger(__name__)
@@ -68,8 +67,7 @@ async def ingest_openrag_docs_when_ready(
             )
             if get_openrag_config().knowledge.disable_ingest_with_langflow:
                 task_id = await _ingest_default_documents_url(
-                    document_service=document_service,
-                    models_service=models_service,
+                    task_service=task_service,
                     docs_url=DEFAULT_DOCS_URL,
                     crawl_depth=DEFAULT_DOCS_CRAWL_DEPTH,
                     jwt_token=jwt_token,
@@ -149,7 +147,6 @@ async def ingest_default_documents_when_ready(
                 models_service,
                 task_service,
                 file_paths,
-                existing_task_id=task_id,
                 connector_type="local",
                 jwt_token=jwt_token,
             )
@@ -160,7 +157,6 @@ async def ingest_default_documents_when_ready(
                 session_manager,
                 task_service,
                 file_paths,
-                existing_task_id=task_id,
                 connector_type="local",
                 jwt_token=jwt_token,
             )
@@ -185,7 +181,6 @@ async def _ingest_default_documents_langflow(
     session_manager,
     task_service,
     file_paths,
-    existing_task_id: str = None,
     connector_type: str = "openrag_docs",
     jwt_token=None,
 ):
@@ -205,7 +200,7 @@ async def _ingest_default_documents_langflow(
         effective_jwt = session_manager.get_effective_jwt_token(anonymous_user.user_id, None)
 
     default_tweaks = {
-        "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4": {
+        "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-WaE28": {
             "docs_metadata": [
                 {"key": "owner", "value": None},
                 {"key": "owner_name", "value": anonymous_user.name},
@@ -229,7 +224,6 @@ async def _ingest_default_documents_langflow(
         settings=None,
         replace_duplicates=True,
         connector_type=connector_type,
-        existing_task_id=existing_task_id,
         temp_file_paths=[],
     )
 
@@ -268,7 +262,7 @@ async def _ingest_default_documents_url_langflow(
         effective_jwt = session_manager.get_effective_jwt_token(anonymous_user.user_id, None)
 
     default_tweaks = {
-        "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4": {
+        "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-dihKf": {
             "docs_metadata": [
                 {"key": "owner", "value": None},
                 {"key": "owner_name", "value": anonymous_user.name},
@@ -301,8 +295,7 @@ async def _ingest_default_documents_url_langflow(
 
 
 async def _ingest_default_documents_url(
-    document_service,
-    models_service,
+    task_service,
     docs_url: str,
     crawl_depth: int,
     jwt_token=None,
@@ -311,55 +304,33 @@ async def _ingest_default_documents_url(
     if not docs_url:
         raise ValueError("DEFAULT_DOCS_URL is not configured")
 
+    from session_manager import AnonymousUser
+
+    anonymous_user = AnonymousUser()
+
     logger.info(
         "Running default URL docs ingestion with OpenRAG processor",
         docs_url=docs_url,
         crawl_depth=crawl_depth,
     )
-    temp_file_path, title = await materialize_url_as_text_file(
+
+    task_id = await task_service.create_url_upload_task(
+        owner_user_id=None,
         docs_url=docs_url,
         crawl_depth=crawl_depth,
+        jwt_token=jwt_token,
+        owner_name=anonymous_user.name,
+        owner_email=anonymous_user.email,
+        connector_type="openrag_docs",
+        is_sample_data=True,
     )
-    try:
-        from models.processors import DocumentFileProcessor
-        from session_manager import AnonymousUser
-        from utils.hash_utils import hash_id
 
-        anonymous_user = AnonymousUser()
-
-        processor = DocumentFileProcessor(
-            document_service,
-            models_service=models_service,
-            owner_user_id=None,
-            jwt_token=jwt_token,
-            owner_name=anonymous_user.name,
-            owner_email=anonymous_user.email,
-            is_sample_data=True,
-            connector_type="openrag_docs",
-        )
-        await processor.process_document_standard(
-            file_path=temp_file_path,
-            file_hash=hash_id(temp_file_path),
-            owner_user_id=None,
-            original_filename=title,
-            jwt_token=jwt_token,
-            owner_name=anonymous_user.name,
-            owner_email=anonymous_user.email,
-            file_size=os.path.getsize(temp_file_path),
-            connector_type="openrag_docs",
-            is_sample_data=True,
-        )
-    finally:
-        try:
-            os.unlink(temp_file_path)
-        except FileNotFoundError:
-            pass
-        except Exception as e:
-            logger.error(
-                "Failed to clean temporary default URL docs file",
-                path=temp_file_path,
-                error=str(e),
-            )
+    logger.info(
+        "Started URL ingestion task for default documents",
+        task_id=task_id,
+        docs_url=docs_url,
+    )
+    return task_id
 
 
 async def _delete_existing_default_docs(session_manager, connector_type: str, jwt_token=None):
@@ -660,7 +631,6 @@ async def _ingest_default_documents_openrag(
     task_service,
     file_paths,
     connector_type: str = "openrag_docs",
-    existing_task_id: str = None,
     jwt_token=None,
 ):
     """Ingest default documents using traditional OpenRAG processor."""
@@ -685,9 +655,7 @@ async def _ingest_default_documents_openrag(
         connector_type=connector_type,
     )
 
-    task_id = await task_service.create_custom_task(
-        "anonymous", file_paths, processor, existing_task_id=existing_task_id
-    )
+    task_id = await task_service.create_custom_task("anonymous", file_paths, processor)
     logger.info(
         "Started traditional OpenRAG ingestion task",
         task_id=task_id,

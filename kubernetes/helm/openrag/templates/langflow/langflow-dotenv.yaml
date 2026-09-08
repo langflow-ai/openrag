@@ -52,11 +52,10 @@ stringData:
     {{- end }}
 
     # Model Provider API Keys / Endpoints
-    {{- if .Values.llmProviders.openai.apiKey }}
-    OPENAI_API_KEY={{ .Values.llmProviders.openai.apiKey | quote }}
-    {{- else }}
+    # OPENAI_API_KEY stays empty in Langflow. OpenRAG injects a hop token at runtime.
     OPENAI_API_KEY="None"
-    {{- end }}
+    OPENRAG_LLM_TOKEN="None"
+    OPENRAG_LLM_BASE_URL="None"
     {{- if .Values.llmProviders.anthropic.apiKey }}
     ANTHROPIC_API_KEY={{ .Values.llmProviders.anthropic.apiKey | quote }}
     {{- else }}

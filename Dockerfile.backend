@@ -47,9 +47,12 @@ RUN microdnf install -y \
 WORKDIR /app
 
 # Dependency layer: reuse as long as lockfile and pyproject don't change
+# --extra apm bakes in the Instana tracer so the published image can turn APM on
+# with INSTANA_ENABLED alone. The extra exists so source installs that will never
+# enable it don't pay for the tracer; images ship with the capability present.
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv,uid=0,gid=0 \
-    uv sync
+    uv sync --extra apm
 
 # Application (invalidates after deps only when src/flows change)
 COPY src/ ./src/

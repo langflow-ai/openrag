@@ -1,33 +1,48 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useGetModelProvidersQuery } from "@/app/api/queries/useGetModelProvidersQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
-import AnthropicLogo from "@/components/icons/anthropic-logo";
-import IBMLogo from "@/components/icons/ibm-logo";
-import OllamaLogo from "@/components/icons/ollama-logo";
-import OpenAILogo from "@/components/icons/openai-logo";
 import { useProviderHealth } from "@/components/provider-health-banner";
 import { useAuth } from "@/contexts/auth-context";
-import { useIsCloudBrand } from "@/contexts/brand-context";
 import {
-  ALL_PROVIDERS,
-  CLOUD_EXCLUDED_PROVIDERS,
+  getProviderChrome,
   type ModelProvider,
 } from "../_helpers/model-helpers";
 import AnthropicSettingsDialog from "./anthropic-settings-dialog";
 import ModelProviderCard from "./model-provider-card";
 import OllamaSettingsDialog from "./ollama-settings-dialog";
 import OpenAISettingsDialog from "./openai-settings-dialog";
+import ProviderSettingsDialog from "./provider-settings-dialog";
 import WatsonxSettingsDialog from "./watsonx-settings-dialog";
+
+// Providers with a hand-built credential dialog. Everything else the backend
+// offers is configured through the catalogue-driven ProviderSettingsDialog.
+const BESPOKE_DIALOG_PROVIDERS = new Set<ModelProvider>([
+  "openai",
+  "anthropic",
+  "ollama",
+  "watsonx",
+]);
 
 export const ModelProviders = () => {
   const { isAuthenticated, isNoAuthMode } = useAuth();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const isCloudBrand = useIsCloudBrand();
 
   const { data: settings = {} } = useGetSettingsQuery({
+    enabled: isAuthenticated || isNoAuthMode,
+  });
+
+  // The backend filters this list by OPENRAG_RUN_MODE (see
+  // config/model_providers.yaml). The UI keeps no denylist of its own, and the
+  // IBM theme no longer decides what is available.
+  const {
+    data: providerData,
+    isLoading: isLoadingProviders,
+    isError: providersFailed,
+  } = useGetModelProvidersQuery({
     enabled: isAuthenticated || isNoAuthMode,
   });
 
@@ -35,17 +50,20 @@ export const ModelProviders = () => {
 
   const [dialogOpen, setDialogOpen] = useState<ModelProvider | undefined>();
 
-  const allProviderKeys = useMemo(() => {
-    return isCloudBrand
-      ? ALL_PROVIDERS.filter((p) => !CLOUD_EXCLUDED_PROVIDERS.includes(p))
-      : ALL_PROVIDERS;
-  }, [isCloudBrand]);
+  const providers = useMemo(
+    () => providerData?.providers ?? [],
+    [providerData],
+  );
+  const allProviderKeys = useMemo(
+    () => providers.map((provider) => provider.name),
+    [providers],
+  );
 
   // Handle URL search param to open dialogs
   useEffect(() => {
     const searchParam = searchParams.get("setup");
-    if (searchParam && allProviderKeys.includes(searchParam as ModelProvider)) {
-      setDialogOpen(searchParam as ModelProvider);
+    if (searchParam && allProviderKeys.includes(searchParam)) {
+      setDialogOpen(searchParam);
     }
   }, [searchParams, allProviderKeys]);
 
@@ -61,78 +79,28 @@ export const ModelProviders = () => {
     router.replace(newUrl);
   };
 
-  const modelProvidersMap: Record<
-    ModelProvider,
-    {
-      name: string;
-      logo: (props: React.SVGProps<SVGSVGElement>) => ReactNode;
-      logoColor: string;
-      logoBgColor: string;
-    }
-  > = {
-    openai: {
-      name: "OpenAI",
-      logo: OpenAILogo,
-      logoColor: "text-black",
-      logoBgColor: "bg-white",
-    },
-    anthropic: {
-      name: "Anthropic",
-      logo: AnthropicLogo,
-      logoColor: "text-[#D97757]",
-      logoBgColor: "bg-white",
-    },
-    ollama: {
-      name: "Ollama",
-      logo: OllamaLogo,
-      logoColor: "text-black",
-      logoBgColor: "bg-white",
-    },
-    watsonx: {
-      name: "IBM watsonx.ai",
-      logo: IBMLogo,
-      logoColor: "text-white",
-      logoBgColor: "bg-[#1063FE]",
-    },
-    local: {
-      name: "Local",
-      logo: (props) => (
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          {...props}
-        >
-          <rect x="4" y="4" width="16" height="16" rx="2" />
-          <rect x="9" y="9" width="6" height="6" />
-          <path d="M9 1v3" />
-          <path d="M15 1v3" />
-          <path d="M9 20v3" />
-          <path d="M15 20v3" />
-          <path d="M20 9h3" />
-          <path d="M20 15h3" />
-          <path d="M1 9h3" />
-          <path d="M1 15h3" />
-        </svg>
-      ),
-      logoColor: "text-muted-foreground",
-      logoBgColor: "bg-white",
-    },
-  };
-
   const currentLlmProvider =
     (settings.agent?.llm_provider as ModelProvider) || "openai";
   const currentEmbeddingProvider =
     (settings.knowledge?.embedding_provider as ModelProvider) || "openai";
 
+  const genericDialogProvider =
+    dialogOpen && !BESPOKE_DIALOG_PROVIDERS.has(dialogOpen)
+      ? dialogOpen
+      : undefined;
+
+  if (providersFailed) {
+    return (
+      <p className="text-sm text-destructive">
+        The list of model providers could not be loaded. Refresh to try again.
+      </p>
+    );
+  }
+
   return (
     <>
       <div className="grid gap-6 xs:grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
-        {allProviderKeys.map((providerKey) => {
+        {providers.map(({ name: providerKey, display_name }) => {
           const isLlmProvider = providerKey === currentLlmProvider;
           const isEmbeddingProvider = providerKey === currentEmbeddingProvider;
           const isProviderUnhealthy =
@@ -142,30 +110,62 @@ export const ModelProviders = () => {
           return (
             <ModelProviderCard
               key={providerKey}
-              provider={{ providerKey, ...modelProvidersMap[providerKey] }}
-              isConfigured={!!settings.providers?.[providerKey]?.configured}
+              provider={{
+                providerKey,
+                ...getProviderChrome(providerKey, display_name),
+              }}
+              // `providers.custom` carries every provider the backend knows,
+              // legacy four included, so one lookup covers config-added ones.
+              isConfigured={
+                settings.providers?.custom?.[providerKey]?.configured === true
+              }
               isUnhealthy={!!isProviderUnhealthy}
               onConfigure={setDialogOpen}
             />
           );
         })}
       </div>
-      <AnthropicSettingsDialog
-        open={dialogOpen === "anthropic"}
-        setOpen={handleCloseDialog}
-      />
-      <OpenAISettingsDialog
-        open={dialogOpen === "openai"}
-        setOpen={handleCloseDialog}
-      />
-      <OllamaSettingsDialog
-        open={dialogOpen === "ollama"}
-        setOpen={handleCloseDialog}
-      />
-      <WatsonxSettingsDialog
-        open={dialogOpen === "watsonx"}
-        setOpen={handleCloseDialog}
-      />
+      {!isLoadingProviders && providers.length === 0 && (
+        <p className="text-sm text-muted-foreground">
+          No model providers are enabled for this deployment.
+        </p>
+      )}
+      {allProviderKeys.includes("anthropic") && (
+        <AnthropicSettingsDialog
+          open={dialogOpen === "anthropic"}
+          setOpen={handleCloseDialog}
+        />
+      )}
+      {allProviderKeys.includes("openai") && (
+        <OpenAISettingsDialog
+          open={dialogOpen === "openai"}
+          setOpen={handleCloseDialog}
+        />
+      )}
+      {allProviderKeys.includes("ollama") && (
+        <OllamaSettingsDialog
+          open={dialogOpen === "ollama"}
+          setOpen={handleCloseDialog}
+        />
+      )}
+      {allProviderKeys.includes("watsonx") && (
+        <WatsonxSettingsDialog
+          open={dialogOpen === "watsonx"}
+          setOpen={handleCloseDialog}
+        />
+      )}
+      {genericDialogProvider && (
+        <ProviderSettingsDialog
+          provider={genericDialogProvider}
+          displayName={
+            providers.find(
+              (provider) => provider.name === genericDialogProvider,
+            )?.display_name
+          }
+          open
+          setOpen={handleCloseDialog}
+        />
+      )}
     </>
   );
 };

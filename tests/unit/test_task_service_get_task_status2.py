@@ -159,6 +159,22 @@ class TestInferFailureMetadata:
         assert meta is not None
         assert meta["actionable_by"] == "USER_ACTIONABLE"
 
+    def test_image_without_text_prompts_user_to_enable_ocr(self, task_service):
+        ft = _make_file_task(
+            file_path="scan.png",
+            filename="scan.png",
+            error="No text content could be extracted from document",
+        )
+
+        meta = task_service._infer_failure_metadata(ft)
+
+        assert meta is not None
+        assert meta["actionable_by"] == "RETRYABLE"
+        assert meta["user_facing_message"] == (
+            "No text content could be extracted from this image file. "
+            "Enable OCR in Settings > Knowledge Base and retry ingestion."
+        )
+
     def test_docling_phase_still_processing(self, task_service):
         ft = _make_file_task(
             phase=IngestionPhase.DOCLING,
@@ -211,6 +227,20 @@ class TestInferFailureMetadata:
         assert meta["actionable_by"] == "USER_ACTIONABLE"
         assert "granite-4-h-small" in meta["user_facing_message"]
         assert "unexpectedly" not in meta["user_facing_message"].lower()
+
+    def test_langflow_azure_deployment_missing_is_user_actionable(self, task_service):
+        ft = _make_file_task(
+            phase=IngestionPhase.LANGFLOW,
+            docling_status=DoclingPhaseStatus.SUCCESS,
+            error="The API deployment for this resource does not exist.",
+        )
+        meta = task_service._infer_failure_metadata(ft)
+        assert meta is not None
+        assert meta["component"] == "langflow"
+        assert meta["actionable_by"] == "USER_ACTIONABLE"
+        assert meta["user_facing_message"] == (
+            "The API deployment for this resource does not exist."
+        )
 
     def test_langflow_revoked_api_key_failure(self, task_service):
         ft = _make_file_task(

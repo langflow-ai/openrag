@@ -162,6 +162,24 @@ async def test_invalid_jwt_rbac_on_401(monkeypatch, _patch_attach):
 
 
 @pytest.mark.asyncio
+async def test_langflow_llm_hop_token_is_rejected_on_v1_identity_path(monkeypatch, _patch_attach):
+    """A Langflow LLM hop token must not authenticate as the user on /v1/search etc."""
+    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "true")
+    from services.langflow_llm_token_service import LangflowLlmTokenService
+
+    token = LangflowLlmTokenService(
+        secret="llm-hop-test-secret-with-32-bytes!!", ttl_seconds=60
+    ).create_token(user_id="alice")
+    req = _FakeRequest({"X-OpenRAG-JWT": f"Bearer {token}"})
+
+    with pytest.raises(HTTPException) as exc:
+        await get_api_key_user_async(req, api_key_service=None, session_manager=None)
+    assert exc.value.status_code == 401
+    assert exc.value.detail["error"] == "langflow_hop_token"
+    assert "user" not in _patch_attach
+
+
+@pytest.mark.asyncio
 async def test_invalid_jwt_rbac_off_falls_through_to_api_key(monkeypatch):
     """RBAC off + bad JWT -> ignore the JWT and require an API key (terminal 401)."""
     monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "false")

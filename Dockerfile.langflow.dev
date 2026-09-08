@@ -34,6 +34,9 @@ RUN pip install --no-cache-dir --upgrade "pip>=26.1.2" \
 RUN echo "Cloning ${GIT_REPO} branch ${GIT_BRANCH}..." && \
     git clone --depth 1 --branch ${GIT_BRANCH} ${GIT_REPO} /app
 
+COPY scripts/patch_langflow_openrag_bundle.py /tmp/patch_langflow_openrag_bundle.py
+RUN python3 /tmp/patch_langflow_openrag_bundle.py /app/src/frontend/src/utils/styleUtils.ts
+
 # Install backend dependencies
 RUN uv sync --frozen --no-install-project --no-editable --extra postgresql
 
@@ -53,7 +56,6 @@ WORKDIR /app
 RUN uv sync --frozen --no-dev --no-editable --extra postgresql
 RUN uv pip uninstall litellm ragstack-ai-knowledge-store
 
-COPY flows/component_index.json /app/component_index.json
 COPY custom_components/ /app/custom_components/
 
 # Expose ports
@@ -61,10 +63,12 @@ EXPOSE 7860
 
 ENV LANGFLOW_SSRF_ALLOWED_HOSTS=localhost,127.0.0.1,host.docker.internal
 ENV LANGFLOW_LOG_TRACE_LOCALS=false
+ENV LANGFLOW_LOG_FORMAT=key_value
 ENV LANGFLOW_BLOCK_CODE_INTERPRETER_COMPONENTS=true
 ENV LANGFLOW_COMPONENTS_PATH=/app/custom_components
-ENV LANGFLOW_COMPONENTS_INDEX_PATH=/app/component_index.json
 ENV LANGFLOW_ALLOW_CUSTOM_COMPONENTS=false
+ENV LANGFLOW_DANGEROUSLY_ALLOW_MULTI_WORKER_WITHOUT_SHARED_QUEUE=true
+ENV LANGFLOW_DISABLE_TRACK_APIKEY_USAGE=true
 
 # CWE-426 fix: explicitly set PATH so system-owned directories are always resolved
 # first. App venv and ubi python dirs are appended last so they cannot shadow system binaries.

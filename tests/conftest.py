@@ -17,6 +17,25 @@ if str(SRC) not in sys.path:
 # Load environment variables
 load_dotenv()
 
+# Keep the Instana tracer out of the test process unless a developer opted in
+# explicitly with OPENRAG_TEST_INSTANA=true. INSTANA_ENABLED alone can't be used
+# for this: `make test` / `make test-unit` export every key in .env (including
+# INSTANA_ENABLED, if a developer has it set there for local app development)
+# into the pytest process before it starts, making it indistinguishable from an
+# explicit shell override.
+#
+# `from main import ...` below pulls in `bootstrap`, which boots the tracer at
+# import time, so leaving INSTANA_ENABLED alone here would run the entire suite
+# instrumented. That costs ~1.1s of extra import time per process and
+# monkey-patches logging, asyncio.create_task, httpx, urllib3 and sqlalchemy
+# underneath every test — and in instana 3.17.0 each WARNING/ERROR logged
+# inside a trace leaks an event into a process-global list that every later
+# log span re-walks. None of that belongs in a test run.
+from observability.instana_boot import is_instana_test_opt_in  # noqa: E402
+
+if not is_instana_test_opt_in():
+    os.environ["INSTANA_ENABLED"] = "false"
+
 # Force no-auth mode for testing by setting OAuth credentials to empty strings
 # This ensures anonymous JWT tokens are created automatically
 os.environ["GOOGLE_OAUTH_CLIENT_ID"] = ""
@@ -103,12 +122,31 @@ async def onboard_system(request):
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        azure_key = os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("AZURE_API_KEY")
+        azure_endpoint = (
+            os.getenv("AZURE_OPENAI_ENDPOINT")
+            or os.getenv("AZURE_OPENAI_API_BASE")
+            or os.getenv("AZURE_API_BASE")
+        )
+        azure_version = os.getenv("AZURE_OPENAI_API_VERSION") or os.getenv("AZURE_API_VERSION")
+        use_azure = bool((azure_key and azure_endpoint) or os.getenv("LLM_PROVIDER") == "azure")
+
+        llm_provider = os.getenv("LLM_PROVIDER", "azure" if use_azure else "openai")
+        embedding_provider = os.getenv("EMBEDDING_PROVIDER", "azure" if use_azure else "openai")
+        llm_model = os.getenv("LLM_MODEL", "gpt-4.1" if llm_provider == "azure" else "gpt-4o-mini")
+        embedding_model = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
+
         onboarding_payload = {
-            "llm_provider": "openai",
-            "embedding_provider": "openai",
-            "embedding_model": "text-embedding-3-small",
-            "llm_model": "gpt-4o-mini",
+            "llm_provider": llm_provider,
+            "embedding_provider": embedding_provider,
+            "embedding_model": embedding_model,
+            "llm_model": llm_model,
         }
+        if azure_key and azure_endpoint:
+            creds = {"api_key": azure_key, "api_base": azure_endpoint}
+            if azure_version:
+                creds["api_version"] = azure_version
+            onboarding_payload["provider_credentials"] = {"azure": creds}
         resp = await client.post("/onboarding", json=onboarding_payload)
         if resp.status_code not in (200, 204):
             # If it fails, it might already be onboarded, which is fine

@@ -167,9 +167,6 @@ async def startup_tasks(services) -> None:
         except Exception as e:
             logger.error("OpenRAG docs startup refresh failed", error=str(e))
 
-    # Update MCP server URLs (patch localhost and convert to streamable HTTP)
-    await _update_mcp_server_urls(services["langflow_mcp_service"])
-
     # Ensure all configured flows exist in Langflow (create-only, never overwrites existing).
     # If a flow does not exist, it is created and active configuration settings are reapplied.
     try:
@@ -223,3 +220,6 @@ async def startup_tasks(services) -> None:
             "Failed to ensure required Langflow global variables at startup",
             error=str(e),
         )
+
+    # Update MCP server URLs and required global-var headers after flows and variables exist
+    await _update_mcp_server_urls(services["langflow_mcp_service"])

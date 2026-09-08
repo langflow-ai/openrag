@@ -155,13 +155,27 @@ COMPONENT_CUSTOMIZATIONS: dict[tuple[str, str], dict[str, str]] = {
             "system prompt, and document processing options."
         ),
     },
-    # Models endpoint
+    # Models
+    ("/v1/model-catalog", "GET"): {
+        "name": "openrag_model_catalog",
+        "description": (
+            "LiteLLM provider/model catalogue used by the settings picker: "
+            "grouped models, capability flags, and credential field specs."
+        ),
+    },
+    ("/v1/model-providers", "GET"): {
+        "name": "openrag_model_providers",
+        "description": (
+            "Model providers this deployment exposes for its run mode "
+            "(oss / on_prem / saas), with their display names."
+        ),
+    },
     ("/v1/models/{provider}", "GET"): {
         "name": "openrag_list_models",
         "description": (
             "List available language models and embedding models for a provider. "
             "Use this before updating settings to see which model values are valid. "
-            "Provider must be one of: openai, anthropic, ollama, watsonx."
+            "Provider must be a configured LiteLLM provider key (e.g. openai, anthropic, ollama, watsonx)."
         ),
     },
     # Knowledge filters endpoints
@@ -236,7 +250,7 @@ def create_mcp_server(app: FastAPI) -> FastMCP:
     FastMCP.from_fastapi() can discover them.
 
     Route mapping:
-    - POST /v1/documents/ingest → excluded (multipart not supported by FastMCP proxy)
+    - Langflow-only LLM proxy endpoints and POST /v1/documents/ingest → excluded
     - /v1/* routes → MCP tools (GET, POST, PUT, DELETE, PATCH)
     - GET /v2/files, GET /v2/files/search → MCP tools
     - all other routes → excluded
@@ -248,6 +262,19 @@ def create_mcp_server(app: FastAPI) -> FastMCP:
     operations like `openrag_get_knowledge_filter` callable in agent loops.
     """
     route_maps = [
+        # Exclude Langflow-only LLM proxy endpoints. They accept the short-lived
+        # Langflow hop token and are transport plumbing, not agent capabilities.
+        # Keep these exact patterns ahead of the /v1 catch-all.
+        RouteMap(
+            methods=["GET"],
+            pattern=r"^/v1/models$",
+            mcp_type=MCPType.EXCLUDE,
+        ),
+        RouteMap(
+            methods=["POST"],
+            pattern=r"^/v1/chat/completions$|^/v1/embeddings$",
+            mcp_type=MCPType.EXCLUDE,
+        ),
         # Exclude /v1/documents/ingest: multipart/form-data file uploads are
         # not supported through FastMCP's from_fastapi proxy (the LLM-facing
         # base64-array schema does not get marshaled back into multipart on

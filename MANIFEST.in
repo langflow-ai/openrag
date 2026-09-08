@@ -1,1 +1,2 @@
 recursive-include src/tui/_assets *
+recursive-include src/config *.yaml

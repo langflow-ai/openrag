@@ -43,10 +43,33 @@ export class Settings {
     this.page.getByRole("button", { name: "Remove" });
   private readonly removeAnywayButton = () =>
     this.page.getByRole("button", { name: "Remove Anyway" });
-  private readonly watsonxConnectionErrorMessage = () =>
-    this.page.locator('[role="dialog"] .text-destructive').first();
-  private readonly openaiConnectionErrorMessage = () =>
-    this.page.locator('[role="dialog"] .text-destructive').first();
+  // The dialog's Remove button is also styled `.text-destructive`, so the old
+  // selector matched it and made `successToast.or(errorMsg)` ambiguous under
+  // Playwright strict mode. Target the error element itself.
+  private readonly providerConnectionErrorMessage = () =>
+    this.page
+      .locator('[role="dialog"]')
+      .getByTestId("provider-connection-error")
+      .first();
+
+  /**
+   * Get locator for a provider's card.
+   *
+   * `hasText` matches substrings, so filtering on "OpenAI" also selected the
+   * "Azure OpenAI" tile once both providers shipped, and any button lookup
+   * inside it blew up under strict mode. Anchor on the card heading, which
+   * carries the provider name exactly.
+   * @param providerName - Name of the model provider
+   * @returns Locator for the provider card
+   */
+  private getProviderCard(providerName: string) {
+    return this.page.locator("div.rounded-xl, div.border-border.group").filter({
+      has: this.page.getByRole("heading", {
+        name: providerName,
+        exact: true,
+      }),
+    });
+  }
 
   /**
    * Get locator for configure button by provider name
@@ -54,10 +77,9 @@ export class Settings {
    * @returns Locator for the configure button
    */
   private getConfigureButton(providerName: string) {
-    return this.page
-      .locator("div.rounded-xl, div.border-border.group")
-      .filter({ hasText: providerName })
-      .getByRole("button", { name: "Configure" });
+    return this.getProviderCard(providerName).getByRole("button", {
+      name: "Configure",
+    });
   }
 
   /**
@@ -96,10 +118,9 @@ export class Settings {
    * @returns Locator for the edit setup button
    */
   private getEditSetupButton(providerName: string) {
-    return this.page
-      .locator("div.rounded-xl, div.border-border.group")
-      .filter({ hasText: providerName })
-      .getByRole("button", { name: "Edit Setup" });
+    return this.getProviderCard(providerName).getByRole("button", {
+      name: "Edit Setup",
+    });
   }
 
   /**
@@ -139,9 +160,7 @@ export class Settings {
    * @returns Locator for the search input
    */
   private getSearchModelInput() {
-    let search = this.page.locator(
-      'input[placeholder="Search model..."]:focus',
-    );
+    let search = this.page.locator('[data-testid="model-search-input"]:focus');
     return search;
   }
 
@@ -150,7 +169,7 @@ export class Settings {
    * @returns Locator for the search input
    */
   private getSearchModelInputFallback() {
-    return this.page.locator('input[placeholder="Search model..."]').first();
+    return this.page.locator('[data-testid="model-search-input"]').first();
   }
 
   /**
@@ -207,6 +226,9 @@ export class Settings {
 
   async saveIngestSettings() {
     const saveButton = this.saveIngestSettingsButton();
+    await this.page.waitForTimeout(500);
+    await saveButton.scrollIntoViewIfNeeded();
+    await this.page.waitForTimeout(500);
     await expect(saveButton).toBeVisible();
     await expect(saveButton).toBeEnabled({ timeout: 10000 });
     await saveButton.click();
@@ -215,10 +237,12 @@ export class Settings {
 
   async setPictureDescriptions(enabled: boolean) {
     await this.clickTab("Ingestion");
+    await this.page.waitForTimeout(500);
     const toggle = this.pictureDescriptionsToggle();
     await toggle.scrollIntoViewIfNeeded();
     const state = await toggle.getAttribute("data-state");
     const isChecked = state === "checked";
+    await this.page.waitForTimeout(500);
     if (isChecked !== enabled) {
       await toggle.click();
       await this.saveIngestSettings();
@@ -227,10 +251,12 @@ export class Settings {
 
   async setTableStructure(enabled: boolean) {
     await this.clickTab("Ingestion");
+    await this.page.waitForTimeout(500);
     const toggle = this.tableStructureToggle();
     await toggle.scrollIntoViewIfNeeded();
     const state = await toggle.getAttribute("data-state");
     const isChecked = state === "checked";
+    await this.page.waitForTimeout(500);
     if (isChecked !== enabled) {
       await toggle.click();
       await this.saveIngestSettings();
@@ -239,10 +265,12 @@ export class Settings {
 
   async setOCR(enabled: boolean) {
     await this.clickTab("Ingestion");
+    await this.page.waitForTimeout(500);
     const toggle = this.ocrToggle();
     await toggle.scrollIntoViewIfNeeded();
     const state = await toggle.getAttribute("data-state");
     const isChecked = state === "checked";
+    await this.page.waitForTimeout(500);
     if (isChecked !== enabled) {
       await toggle.click();
       await this.saveIngestSettings();
@@ -251,10 +279,12 @@ export class Settings {
 
   async setDisableLangflowIngestion(enabled: boolean) {
     await this.clickTab("Ingestion");
+    await this.page.waitForTimeout(500);
     const toggle = this.disableLangflowIngestionToggle();
     await toggle.scrollIntoViewIfNeeded();
     const state = await toggle.getAttribute("data-state");
     const isChecked = state === "checked";
+    await this.page.waitForTimeout(500);
     if (isChecked !== enabled) {
       await toggle.click();
       await this.saveIngestSettings();
@@ -279,6 +309,7 @@ export class Settings {
     }
     await expect(search).toBeVisible({ timeout: 5000 });
     await search.fill(model);
+    await this.page.waitForTimeout(2000);
     const option = this.getModelOption(model);
     await expect(option).toBeVisible({ timeout: 10000 });
     await option.waitFor({ state: "visible" });
@@ -322,15 +353,20 @@ export class Settings {
     }
 
     // Update chunk size
+    await chunkSizeInp.scrollIntoViewIfNeeded();
     await chunkSizeInp.click();
+    await this.page.waitForTimeout(500);
     await chunkSizeInp.fill(chunkSize);
+    await this.page.waitForTimeout(500);
     await chunkSizeInp.blur();
 
     // Find and update chunk overlap input
     const chunkOverlapInp = this.chunkOverlapInput();
     await chunkOverlapInp.scrollIntoViewIfNeeded();
     await chunkOverlapInp.click();
+    await this.page.waitForTimeout(500);
     await chunkOverlapInp.fill(chunkOverlap);
+    await this.page.waitForTimeout(500);
     await chunkOverlapInp.blur();
 
     // Wait a moment for the form to detect changes
@@ -364,16 +400,10 @@ export class Settings {
       await this.watsonxProjectIDInput().fill(projectId);
       await this.apiKeyInput().fill(apiKey);
       await this.saveModelProviderButton().click();
-      const successToast = this.getToastByText(
+      await this.awaitProviderConfigResult(
+        "Watsonx.ai",
         "IBM watsonx.ai successfully configured",
       );
-      const errorMsg = this.watsonxConnectionErrorMessage();
-      await expect(successToast.or(errorMsg)).toBeVisible({ timeout: 30000 });
-      if (await errorMsg.isVisible()) {
-        throw new Error(
-          `Watsonx.ai configuration failed: ${await errorMsg.textContent()}`,
-        );
-      }
       logger.info("Watsonx.ai configuration completed");
       await expect(editBtn).toBeEnabled();
     }
@@ -385,6 +415,38 @@ export class Settings {
     // Neither found
     else {
       throw new Error("Neither Configure nor Edit Setup button is visible");
+    }
+  }
+
+  /**
+   * Wait for a provider dialog to report success or a connection error.
+   *
+   * Racing two locators with `.or()` fails under strict mode as soon as either
+   * side matches more than one node, so poll the two outcomes explicitly.
+   */
+  private async awaitProviderConfigResult(
+    provider: string,
+    successText: string,
+  ) {
+    const successToast = this.getToastByText(successText);
+    const errorMsg = this.providerConnectionErrorMessage();
+
+    await expect
+      .poll(
+        async () => {
+          if (await errorMsg.isVisible().catch(() => false)) return "error";
+          if (await successToast.isVisible().catch(() => false))
+            return "success";
+          return "pending";
+        },
+        { timeout: 30000 },
+      )
+      .not.toBe("pending");
+
+    if (await errorMsg.isVisible().catch(() => false)) {
+      throw new Error(
+        `${provider} configuration failed: ${await errorMsg.textContent()}`,
+      );
     }
   }
 
@@ -452,16 +514,10 @@ export class Settings {
       const apiKey = config.openaiApiKey;
       await this.apiKeyInput().fill(apiKey);
       await this.saveModelProviderButton().click();
-      const successToast = this.getToastByText(
+      await this.awaitProviderConfigResult(
+        "OpenAI",
         "OpenAI successfully configured",
       );
-      const errorMsg = this.openaiConnectionErrorMessage();
-      await expect(successToast.or(errorMsg)).toBeVisible({ timeout: 30000 });
-      if (await errorMsg.isVisible()) {
-        throw new Error(
-          `OpenAI configuration failed: ${await errorMsg.textContent()}`,
-        );
-      }
       logger.info("OpenAI configuration completed");
       await expect(editBtn).toBeEnabled();
     }
@@ -473,6 +529,50 @@ export class Settings {
     // Neither found
     else {
       throw new Error("Neither Configure nor Edit Setup button is visible");
+    }
+  }
+
+  /**
+   * Configure Azure OpenAI model provider
+   */
+  async configureAzureOpenAI() {
+    logger.info("Configuring Azure OpenAI settings");
+    const configureBtn = this.getConfigureButton("Azure OpenAI");
+    const editBtn = this.getEditSetupButton("Azure OpenAI");
+
+    if (await configureBtn.isVisible()) {
+      await configureBtn.click();
+      await expect(this.getSetupHeading("Azure OpenAI")).toBeVisible();
+      const apiKey = config.azure.apiKey;
+      const endpoint = config.azure.endpoint;
+      if (endpoint) {
+        const endpointInput = this.page
+          .locator('input[id*="endpoint"], input[id*="api_base"]')
+          .first();
+        if (await endpointInput.isVisible()) {
+          await endpointInput.fill(endpoint);
+        }
+      }
+      if (apiKey) {
+        const apiKeyInput = this.apiKeyInput();
+        if (await apiKeyInput.isVisible()) {
+          await apiKeyInput.fill(apiKey);
+        }
+      }
+      await this.saveModelProviderButton().click();
+      await this.awaitProviderConfigResult(
+        "Azure OpenAI",
+        "Azure OpenAI successfully configured",
+      );
+      logger.info("Azure OpenAI configuration completed");
+      await expect(editBtn).toBeEnabled();
+    } else if (await editBtn.isVisible()) {
+      logger.info("Azure OpenAI already configured. Skipping setup.");
+      await expect(editBtn).toBeEnabled();
+    } else {
+      throw new Error(
+        "Neither Configure nor Edit Setup button is visible for Azure OpenAI",
+      );
     }
   }
 
@@ -505,7 +605,9 @@ export class Settings {
       logger.info(
         "Verify that watsonx.ai configuration failed due to invalid credentials",
       );
-      await expect(this.watsonxConnectionErrorMessage()).toBeVisible();
+      await expect(this.providerConnectionErrorMessage()).toBeVisible({
+        timeout: 30000,
+      });
     }
   }
 }

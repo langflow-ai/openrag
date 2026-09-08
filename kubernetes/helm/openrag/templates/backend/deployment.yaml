@@ -214,6 +214,23 @@ spec:
               containerPort: {{ .Values.backend.ingestRouter.port }}
               protocol: TCP
             {{- end }}
+          {{- if .Values.backend.instana.enabled }}
+          # The backend otherwise takes its whole configuration from the mounted
+          # .env file. Instana is the one exception: its agent runs as a
+          # per-node DaemonSet behind a hostPort, so the address is the pod's
+          # own node IP — a value that does not exist when the .env Secret is
+          # rendered. bootstrap.py loads .env with override=False, so this
+          # container env var takes precedence.
+          env:
+            - name: INSTANA_AGENT_HOST
+              {{- if .Values.backend.instana.agentHost }}
+              value: {{ .Values.backend.instana.agentHost | quote }}
+              {{- else }}
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+              {{- end }}
+          {{- end }}
           volumeMounts:
             - name: openrag-dotenv
               mountPath: /app/.env
