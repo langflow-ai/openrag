@@ -507,7 +507,7 @@ export function TaskNotificationMenu() {
                           "text-left w-full pr-8",
                         )}
                       >
-                        <div className="flex items-start gap-3">
+                        <div className="flex items-center gap-3">
                           {!isCloudBrand && getTaskIcon(task.status)}
                           <div className="flex-1 min-w-0">
                             <div className="text-xs font-medium truncate">

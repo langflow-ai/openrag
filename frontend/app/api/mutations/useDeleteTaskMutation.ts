@@ -23,7 +23,15 @@ export function useDeleteAllTerminalTasksMutation() {
       const res = await fetch("/api/tasks", { method: "DELETE" });
       if (!res.ok) throw new Error("Failed to delete tasks");
       const body = await res.json();
-      return (body.deleted_ids as string[]) ?? [];
+      if (
+        !Array.isArray(body.deleted_ids) ||
+        !body.deleted_ids.every((id: unknown) => typeof id === "string")
+      ) {
+        throw new Error(
+          `Unexpected response shape: deleted_ids=${JSON.stringify(body.deleted_ids)}`,
+        );
+      }
+      return body.deleted_ids;
     },
     onSuccess: (deletedIds) => {
       const deleted = new Set(deletedIds);

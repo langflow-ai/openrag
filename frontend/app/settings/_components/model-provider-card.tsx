@@ -73,7 +73,6 @@ export default function ModelProviderCard({
       <CardContent className="flex-1 flex flex-col justify-end space-y-4">
         <Button
           className={cn(
-            !isCloudBrand && "group-hover:bg-background",
             isConfigured && !isCloudBrand && "border-primary",
             isCloudBrand &&
               isEditSetup &&

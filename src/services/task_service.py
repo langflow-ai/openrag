@@ -1559,22 +1559,27 @@ class TaskService:
     def delete_task(self, user_id: str, task_id: str) -> TaskDeleteResult:
         """Remove a terminal (completed/failed) task from memory.
 
+        Only deletes tasks owned by the calling user.  Tasks stored under a
+        different bucket (e.g. the anonymous key) are not visible here; callers
+        that need cross-user lookup should use _resolve_upload_task_store
+        directly.
+
         Returns:
             TaskDeleteResult.DELETED      – task found and removed.
-            TaskDeleteResult.NOT_FOUND    – task ID does not exist.
+            TaskDeleteResult.NOT_FOUND    – task ID does not exist for this user.
             TaskDeleteResult.IN_PROGRESS  – task exists but is not yet terminal.
         """
-        resolved = self._resolve_upload_task_store(user_id, task_id)
-        if resolved is None:
+        user_store = self.task_store.get(user_id)
+        if user_store is None or task_id not in user_store:
             return TaskDeleteResult.NOT_FOUND
-        store_user_id, upload_task = resolved
+        upload_task = user_store[task_id]
         if upload_task.status not in [TaskStatus.COMPLETED, TaskStatus.FAILED]:
             return TaskDeleteResult.IN_PROGRESS
         self._cleanup_upload_temp_files(upload_task, force=True)
-        del self.task_store[store_user_id][task_id]
+        del user_store[task_id]
         self._task_locks.pop(task_id, None)
-        if not self.task_store[store_user_id]:
-            del self.task_store[store_user_id]
+        if not user_store:
+            del self.task_store[user_id]
         return TaskDeleteResult.DELETED
 
     def delete_all_terminal_tasks(self, user_id: str) -> list[str]:
