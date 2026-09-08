@@ -573,7 +573,11 @@ class TaskService:
                     file_task = upload_task.file_tasks[item_key]
 
                     # Skip files that were already cancelled or failed before reaching the worker
-                    if file_task.status in [TaskStatus.FAILED, TaskStatus.COMPLETED, TaskStatus.SKIPPED]:
+                    if file_task.status in [
+                        TaskStatus.FAILED,
+                        TaskStatus.COMPLETED,
+                        TaskStatus.SKIPPED,
+                    ]:
                         logger.info(
                             "File processing task skipped (already terminal)",
                             task_number=upload_task.sequence_number,
@@ -587,7 +591,11 @@ class TaskService:
                         return
 
                     # Check again after acquiring semaphore - file may have been cancelled while waiting
-                    if file_task.status in [TaskStatus.FAILED, TaskStatus.COMPLETED, TaskStatus.SKIPPED]:
+                    if file_task.status in [
+                        TaskStatus.FAILED,
+                        TaskStatus.COMPLETED,
+                        TaskStatus.SKIPPED,
+                    ]:
                         logger.info(
                             "File processing task skipped (cancelled while waiting for semaphore)",
                             task_number=upload_task.sequence_number,

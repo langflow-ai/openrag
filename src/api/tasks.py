@@ -115,11 +115,7 @@ async def cancel_file(
     success = await task_service.cancel_file(user.user_id, task_id, body.file_path)
     if not success:
         await TelemetryClient.send_event(Category.TASK_OPERATIONS, MessageId.ORB_TASK_CANCEL_FAILED)
-        return JSONResponse(
-            {"error": "File not found or cannot be cancelled"}, status_code=400
-        )
+        return JSONResponse({"error": "File not found or cannot be cancelled"}, status_code=400)
 
     await TelemetryClient.send_event(Category.TASK_OPERATIONS, MessageId.ORB_TASK_CANCELLED)
     return JSONResponse({"status": "cancelled", "task_id": task_id, "file_path": body.file_path})
-
-
