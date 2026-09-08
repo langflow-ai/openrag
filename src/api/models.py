@@ -176,10 +176,17 @@ async def get_ibm_models(
         endpoint = (body.endpoint if body else None) or endpoint
         project_id = (body.project_id if body else None) or project_id
 
-        config = get_openrag_config()
+        # Load configuration lazily, only when a value is still missing.
+        _config_cache = {}
+
+        def _watsonx_config():
+            if "config" not in _config_cache:
+                _config_cache["config"] = get_openrag_config()
+            return _config_cache["config"]
+
         if not api_key:
             try:
-                api_key = config.providers.watsonx.api_key
+                api_key = _watsonx_config().providers.watsonx.api_key
             except Exception as e:
                 logger.error(f"Failed to get config: {e}")
 
@@ -191,7 +198,7 @@ async def get_ibm_models(
 
         if not endpoint:
             try:
-                endpoint = config.providers.watsonx.endpoint
+                endpoint = _watsonx_config().providers.watsonx.endpoint
             except Exception as e:
                 logger.error(f"Failed to get config: {e}")
 
@@ -203,7 +210,7 @@ async def get_ibm_models(
 
         if not project_id:
             try:
-                project_id = config.providers.watsonx.project_id
+                project_id = _watsonx_config().providers.watsonx.project_id
             except Exception as e:
                 logger.error(f"Failed to get config: {e}")
 
