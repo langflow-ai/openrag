@@ -758,14 +758,14 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 
   const cancelTask = useCallback(
     async (taskId: string) => {
-      cancelTaskMutation.mutate({ taskId });
+      await cancelTaskMutation.mutateAsync({ taskId });
     },
     [cancelTaskMutation],
   );
 
   const cancelFile = useCallback(
     async (taskId: string, filePath: string) => {
-      cancelFileMutation.mutate({ taskId, filePath });
+      await cancelFileMutation.mutateAsync({ taskId, filePath });
     },
     [cancelFileMutation],
   );

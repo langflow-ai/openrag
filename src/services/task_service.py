@@ -718,14 +718,15 @@ class TaskService:
                 if file_task:
                     self._file_tasks[(task_id, file_task.file_path)] = task
 
-            await asyncio.gather(*tasks, return_exceptions=True)
-
-            # Clean up file task references
-            for item in items:
-                item_key = str(item)
-                file_task = upload_task.file_tasks.get(item_key)
-                if file_task:
-                    self._file_tasks.pop((task_id, file_task.file_path), None)
+            try:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            finally:
+                # Clean up file task references even if parent task is cancelled
+                for item in items:
+                    item_key = str(item)
+                    file_task = upload_task.file_tasks.get(item_key)
+                    if file_task:
+                        self._file_tasks.pop((task_id, file_task.file_path), None)
 
             # Mark task as completed if all files (including appended ones) are done
             if upload_task.processed_files >= upload_task.total_files:
