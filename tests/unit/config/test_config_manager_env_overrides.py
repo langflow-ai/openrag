@@ -57,9 +57,7 @@ def test_env_index_name_absent_keeps_stored_value(monkeypatch, cfg_file):
 def test_env_index_name_not_permitted_is_ignored(monkeypatch, cfg_file):
     """A value outside the OpenSearch security role's index patterns is
     rejected, keeping the prior value rather than breaking access."""
-    cfg_file.write_text(
-        yaml.safe_dump({"edited": True, "knowledge": {"index_name": "documents"}})
-    )
+    cfg_file.write_text(yaml.safe_dump({"edited": True, "knowledge": {"index_name": "documents"}}))
     monkeypatch.setenv("OPENSEARCH_INDEX_NAME", "totally-different-name")
 
     cm = ConfigManager(config_file=str(cfg_file))
