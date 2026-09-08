@@ -19,5 +19,7 @@ def test_langflow_llm_proxy_routes_are_excluded_before_the_v1_tool_catch_all(mon
     assert r"^/v1/models$" in patterns
     assert r"^/v1/chat/completions$|^/v1/embeddings$" in patterns
 
-    catch_all_index = next(index for index, route_map in enumerate(route_maps) if route_map.pattern == r"^/v1/")
+    catch_all_index = next(
+        index for index, route_map in enumerate(route_maps) if route_map.pattern == r"^/v1/"
+    )
     assert all(route_maps.index(route_map) < catch_all_index for route_map in excluded[:3])

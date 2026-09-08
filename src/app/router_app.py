@@ -116,7 +116,9 @@ async def _proxy_llm_request(request: Request) -> Response:
         )
     except httpx.HTTPError as e:
         await client.aclose()
-        logger.error("[Router] LLM proxy failed to reach backend", upstream=upstream_url, error=str(e))
+        logger.error(
+            "[Router] LLM proxy failed to reach backend", upstream=upstream_url, error=str(e)
+        )
         return Response(
             content=b'{"error":{"message":"LLM proxy upstream unreachable","type":"api_error"}}',
             status_code=502,
@@ -136,8 +138,12 @@ async def _proxy_llm_request(request: Request) -> Response:
         for key, value in upstream.headers.items()
         if key.lower() in {"content-type", "cache-control", "x-accel-buffering"}
     }
-    logger.info("[Router] Forwarding LLM proxy request", upstream=upstream_url, method=request.method)
-    return StreamingResponse(stream_body(), status_code=upstream.status_code, headers=response_headers)
+    logger.info(
+        "[Router] Forwarding LLM proxy request", upstream=upstream_url, method=request.method
+    )
+    return StreamingResponse(
+        stream_body(), status_code=upstream.status_code, headers=response_headers
+    )
 
 
 async def _health() -> dict[str, str]:
