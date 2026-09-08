@@ -10,6 +10,15 @@ export type LLMProvider =
   | "ollama";
 export type EmbeddingProvider = "azure" | "openai" | "watsonx" | "ollama";
 
+/**
+ * E2E credentials use Azure OpenAI, whose onboarding tab is `azure`.
+ * `azure_ai` is Azure AI Foundry and has separate credentials, but older CI
+ * configuration used that provider name for the shared Azure OpenAI secret.
+ */
+function normalizeProviderKey(provider: string): string {
+  return provider === "azure_ai" ? "azure" : provider;
+}
+
 function getProviderKey(providerName: string): LLMProvider {
   switch (providerName) {
     case "Azure OpenAI":
@@ -28,13 +37,14 @@ function getProviderKey(providerName: string): LLMProvider {
 const activeProviderKey = getProviderKey(ACTIVE_PROVIDER_CONFIG.provider);
 
 const defaultLlmProvider: LLMProvider =
-  ((process.env.LLM_PROVIDER || "").trim().toLowerCase() as LLMProvider) ||
-  activeProviderKey;
+  (normalizeProviderKey(
+    (process.env.LLM_PROVIDER || "").trim().toLowerCase(),
+  ) as LLMProvider) || activeProviderKey;
 
 const defaultEmbeddingProvider: EmbeddingProvider =
-  ((process.env.EMBEDDING_PROVIDER || "")
-    .trim()
-    .toLowerCase() as EmbeddingProvider) ||
+  (normalizeProviderKey(
+    (process.env.EMBEDDING_PROVIDER || "").trim().toLowerCase(),
+  ) as EmbeddingProvider) ||
   (activeProviderKey === "anthropic"
     ? "openai"
     : (activeProviderKey as EmbeddingProvider));

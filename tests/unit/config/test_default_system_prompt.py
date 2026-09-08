@@ -37,3 +37,19 @@ def test_the_previous_default_stays_in_the_legacy_list():
         if "You are the OpenRAG Agent." in prompt and "bare URL" not in prompt
     ]
     assert superseded, "the prompt replaced by the current default must remain listed"
+
+
+def test_no_evidence_rule_spares_general_knowledge():
+    """An empty retrieval must not turn into a refusal for any question.
+
+    The rule used to say "no supporting evidence" → emit the canned sentence,
+    full stop. gpt-4.1 followed that literally and answered "What is the
+    capital of France?" with "No relevant supporting sources were found for
+    that request" — the knowledge base was never meant to cover France.
+    """
+    assert "general knowledge the documents were never expected to cover" in DEFAULT_SYSTEM_PROMPT
+
+
+def test_no_evidence_rule_keeps_the_exact_refusal_sentence():
+    """Three E2E tests match on this wording when the documents really are the subject."""
+    assert '"No relevant supporting sources were found for that request."' in DEFAULT_SYSTEM_PROMPT
