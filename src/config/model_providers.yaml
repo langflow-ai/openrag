@@ -46,7 +46,7 @@ providers:
     display_name: Ollama
     modes:
       oss: true
-      on_prem: true
+      on_prem: false
       saas: false # local inference is not offered in SaaS
 
   - name: watsonx
