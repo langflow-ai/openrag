@@ -9,6 +9,10 @@ import { useGetAnthropicModelsQuery } from "@/app/api/queries/useGetModelsQuery"
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import type { ProviderHealthResponse } from "@/app/api/queries/useProviderHealthQuery";
 import AnthropicLogo from "@/components/icons/anthropic-logo";
+import {
+  canRemoveProvider,
+  isProviderConfigured,
+} from "@/components/models/model-helpers";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -17,10 +21,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/auth-context";
-import {
-  canRemoveProvider,
-  isProviderConfigured,
-} from "../_helpers/model-helpers";
 import {
   AnthropicSettingsForm,
   type AnthropicSettingsFormData,
