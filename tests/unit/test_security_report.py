@@ -1,17 +1,18 @@
 import csv
 import json
 from pathlib import Path
+
 import pytest
 
 from scripts.ci.generate_security_report import (
-    parse_trivy_json,
-    parse_pip_audit_json,
-    parse_npm_audit_json,
+    collect_scan_results,
+    format_markdown_report,
+    generate_csv_report,
     parse_bandit_json,
     parse_gosec_json,
-    collect_scan_results,
-    generate_csv_report,
-    format_markdown_report,
+    parse_npm_audit_json,
+    parse_pip_audit_json,
+    parse_trivy_json,
 )
 
 
@@ -123,7 +124,9 @@ def test_collect_and_generate_reports(tmp_path):
         assert "Fixed Version" in reader[0]
 
     # Test Markdown formatting
-    md_content = format_markdown_report(component_rows, all_findings, totals, csv_filename="security-report.csv")
+    md_content = format_markdown_report(
+        component_rows, all_findings, totals, csv_filename="security-report.csv"
+    )
     assert "Executive Summary" in md_content
     assert "| **Total** | **All Scans** |" in md_content
     assert "security-report-csv" in md_content

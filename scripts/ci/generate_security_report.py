@@ -11,12 +11,12 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Dict, List, Any, Tuple, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 SEVERITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "UNKNOWN": 4}
 
 
-def parse_trivy_json(path: Path) -> Dict[str, Any]:
+def parse_trivy_json(path: Path) -> dict[str, Any]:
     """Parse Trivy JSON output for image or filesystem scan."""
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -24,7 +24,7 @@ def parse_trivy_json(path: Path) -> Dict[str, Any]:
         return {"error": f"Failed to parse {path.name}: {exc}"}
 
     counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "UNKNOWN": 0}
-    findings: List[Dict[str, str]] = []
+    findings: list[dict[str, str]] = []
 
     results = data.get("Results", []) or []
     for res in results:
@@ -52,7 +52,7 @@ def parse_trivy_json(path: Path) -> Dict[str, Any]:
     return {"counts": counts, "findings": findings, "total": sum(counts.values())}
 
 
-def parse_pip_audit_json(path: Path) -> Dict[str, Any]:
+def parse_pip_audit_json(path: Path) -> dict[str, Any]:
     """Parse pip-audit JSON output."""
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -60,7 +60,7 @@ def parse_pip_audit_json(path: Path) -> Dict[str, Any]:
         return {"error": f"Failed to parse {path.name}: {exc}"}
 
     counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "UNKNOWN": 0}
-    findings: List[Dict[str, str]] = []
+    findings: list[dict[str, str]] = []
 
     # pip-audit outputs array of package results or dict with 'dependencies'
     packages = data if isinstance(data, list) else data.get("dependencies", [])
@@ -85,7 +85,7 @@ def parse_pip_audit_json(path: Path) -> Dict[str, Any]:
     return {"counts": counts, "findings": findings, "total": len(findings)}
 
 
-def parse_npm_audit_json(path: Path) -> Dict[str, Any]:
+def parse_npm_audit_json(path: Path) -> dict[str, Any]:
     """Parse npm audit JSON output."""
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -93,7 +93,7 @@ def parse_npm_audit_json(path: Path) -> Dict[str, Any]:
         return {"error": f"Failed to parse {path.name}: {exc}"}
 
     counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "UNKNOWN": 0}
-    findings: List[Dict[str, str]] = []
+    findings: list[dict[str, str]] = []
 
     metadata_counts = data.get("metadata", {}).get("vulnerabilities", {})
     if metadata_counts:
@@ -122,7 +122,7 @@ def parse_npm_audit_json(path: Path) -> Dict[str, Any]:
     return {"counts": counts, "findings": findings, "total": sum(counts.values())}
 
 
-def parse_bandit_json(path: Path) -> Dict[str, Any]:
+def parse_bandit_json(path: Path) -> dict[str, Any]:
     """Parse Bandit SAST JSON output."""
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -130,7 +130,7 @@ def parse_bandit_json(path: Path) -> Dict[str, Any]:
         return {"error": f"Failed to parse {path.name}: {exc}"}
 
     counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "UNKNOWN": 0}
-    findings: List[Dict[str, str]] = []
+    findings: list[dict[str, str]] = []
 
     results = data.get("results", []) or []
     for r in results:
@@ -157,7 +157,7 @@ def parse_bandit_json(path: Path) -> Dict[str, Any]:
     return {"counts": counts, "findings": findings, "total": sum(counts.values())}
 
 
-def parse_gosec_json(path: Path) -> Dict[str, Any]:
+def parse_gosec_json(path: Path) -> dict[str, Any]:
     """Parse Gosec SAST JSON output."""
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -165,7 +165,7 @@ def parse_gosec_json(path: Path) -> Dict[str, Any]:
         return {"error": f"Failed to parse {path.name}: {exc}"}
 
     counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "UNKNOWN": 0}
-    findings: List[Dict[str, str]] = []
+    findings: list[dict[str, str]] = []
 
     issues = data.get("Issues", []) or []
     for issue in issues:
@@ -194,17 +194,17 @@ def parse_gosec_json(path: Path) -> Dict[str, Any]:
 
 def collect_scan_results(
     report_dir: Path,
-) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], Dict[str, int]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, int]]:
     """Scan directory for JSON results and return structured scan data.
 
     Returns:
         (component_rows, all_findings, total_counts)
     """
-    component_rows: List[Dict[str, Any]] = []
-    all_findings: List[Dict[str, Any]] = []
+    component_rows: list[dict[str, Any]] = []
+    all_findings: list[dict[str, Any]] = []
     total_counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "UNKNOWN": 0, "TOTAL": 0}
 
-    def _record_component(name: str, target: str, res: Dict[str, Any]):
+    def _record_component(name: str, target: str, res: dict[str, Any]):
         if "error" in res:
             component_rows.append({"component": name, "target": target, "error": res["error"]})
             return
@@ -243,12 +243,12 @@ def collect_scan_results(
     for json_file in sorted(report_dir.glob("pip-audit-*.json")):
         target_name = json_file.stem.replace("pip-audit-", "")
         res = parse_pip_audit_json(json_file)
-        _record_component(f"Python Dependencies (`pip-audit`)", target_name, res)
+        _record_component("Python Dependencies (`pip-audit`)", target_name, res)
 
     for json_file in sorted(report_dir.glob("npm-audit-*.json")):
         target_name = json_file.stem.replace("npm-audit-", "")
         res = parse_npm_audit_json(json_file)
-        _record_component(f"Node.js Dependencies (`npm audit`)", target_name, res)
+        _record_component("Node.js Dependencies (`npm audit`)", target_name, res)
 
     # 3. SAST Scans
     bandit_file = report_dir / "bandit.json"
@@ -274,7 +274,7 @@ def collect_scan_results(
     return component_rows, all_findings, total_counts
 
 
-def generate_csv_report(findings: List[Dict[str, Any]], output_path: Path) -> None:
+def generate_csv_report(findings: list[dict[str, Any]], output_path: Path) -> None:
     """Generate a comprehensive CSV report of all detected security findings."""
     fieldnames = [
         "Scanner",
@@ -306,13 +306,13 @@ def generate_csv_report(findings: List[Dict[str, Any]], output_path: Path) -> No
 
 
 def format_markdown_report(
-    component_rows: List[Dict[str, Any]],
-    all_findings: List[Dict[str, Any]],
-    total_counts: Dict[str, int],
-    csv_filename: Optional[str] = "security-report.csv",
+    component_rows: list[dict[str, Any]],
+    all_findings: list[dict[str, Any]],
+    total_counts: dict[str, int],
+    csv_filename: str | None = "security-report.csv",
 ) -> str:
     """Format Markdown report from collected scan results."""
-    lines: List[str] = [
+    lines: list[str] = [
         "# 🛡️ OpenRAG Security Scan Report",
         "",
         "Consolidated security report generated across container images, OSS dependencies, and repo source code.",
@@ -329,7 +329,9 @@ def format_markdown_report(
 
     for row in component_rows:
         if "error" in row:
-            lines.append(f"| {row['component']} | `{row['target']}` | Parse Error | - | - | - | - |")
+            lines.append(
+                f"| {row['component']} | `{row['target']}` | Parse Error | - | - | - | - |"
+            )
         else:
             c = row["counts"]
             lines.append(
@@ -358,7 +360,9 @@ def format_markdown_report(
     if not critical_high:
         lines.append("🎉 **No Critical or High severity vulnerabilities detected!**")
     else:
-        lines.append("| Severity | Scanner | Target | Vulnerability ID | Package / Module | Fixed Version | Title |")
+        lines.append(
+            "| Severity | Scanner | Target | Vulnerability ID | Package / Module | Fixed Version | Title |"
+        )
         lines.append("| :--- | :--- | :--- | :--- | :--- | :--- | :--- |")
         for item in critical_high[:50]:  # Limit top 50 in summary
             sev_icon = "🔴 CRITICAL" if item["severity"] == "CRITICAL" else "🟠 HIGH"
@@ -370,7 +374,9 @@ def format_markdown_report(
 
         if len(critical_high) > 50:
             lines.append("")
-            lines.append(f"*Showing top 50 of {len(critical_high)} Critical & High findings. Download `{csv_filename}` for all {len(all_findings)} findings.*")
+            lines.append(
+                f"*Showing top 50 of {len(critical_high)} Critical & High findings. Download `{csv_filename}` for all {len(all_findings)} findings.*"
+            )
 
     return "\n".join(lines) + "\n"
 
@@ -378,7 +384,9 @@ def format_markdown_report(
 def generate_markdown_report(report_dir: Path, csv_filename: str = "security-report.csv") -> str:
     """Scan directory for JSON results and generate unified Markdown report."""
     component_rows, all_findings, total_counts = collect_scan_results(report_dir)
-    return format_markdown_report(component_rows, all_findings, total_counts, csv_filename=csv_filename)
+    return format_markdown_report(
+        component_rows, all_findings, total_counts, csv_filename=csv_filename
+    )
 
 
 def main():
@@ -407,7 +415,9 @@ def main():
     output_csv = Path(args.csv_output) if args.csv_output else report_dir / "security-report.csv"
 
     component_rows, all_findings, total_counts = collect_scan_results(report_dir)
-    report_md = format_markdown_report(component_rows, all_findings, total_counts, csv_filename=output_csv.name)
+    report_md = format_markdown_report(
+        component_rows, all_findings, total_counts, csv_filename=output_csv.name
+    )
 
     output_md.parent.mkdir(parents=True, exist_ok=True)
     output_md.write_text(report_md, encoding="utf-8")
