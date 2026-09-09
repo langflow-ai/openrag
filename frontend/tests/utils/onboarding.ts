@@ -131,7 +131,7 @@ export async function completeOnboarding(
     return;
   }
 
-  const needsRollback = reset && (isCompleted || !isFirstStep);
+  const needsRollback = (reset && isCompleted) || !isFirstStep;
 
   if (needsRollback) {
     const response = await page.request.post("/api/onboarding/rollback");
@@ -151,6 +151,8 @@ export async function completeOnboarding(
 
   const setupProvider = async (provider: string, isEmbedding: boolean) => {
     const tabId = `${provider}-${isEmbedding ? "embedding" : "llm"}-tab`;
+    await page.getByTestId(tabId).scrollIntoViewIfNeeded();
+    await page.waitForTimeout(500);
     await page.getByTestId(tabId).click();
 
     if (provider === "azure") {

@@ -192,9 +192,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         runMode === "oss" && (
           <ConsoleStatusPanel isOpen={isStatusOpen} onClose={closeStatus} />
         )}
-      {(isAuthenticated || isNoAuthMode) && runMode === "oss" && (
-        <FlowsUpdateDialog />
-      )}
+      {(isAuthenticated || isNoAuthMode) && <FlowsUpdateDialog />}
     </div>
   );
 }
