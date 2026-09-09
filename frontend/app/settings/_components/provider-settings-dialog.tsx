@@ -2,7 +2,7 @@
 
 import { AnimatePresence, domAnimation, LazyMotion, m } from "motion/react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { FormProvider, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import {
@@ -81,6 +81,20 @@ const ProviderSettingsDialog = ({
   const saved = settings.providers?.custom?.[provider];
   const isConfigured = saved?.configured === true;
   const savedSecretFields = saved?.secret_fields ?? [];
+  const formValues = useMemo(
+    () =>
+      open
+        ? {
+            credentials: Object.fromEntries(
+              fields.map((field) => [
+                field.key,
+                saved?.credential_values?.[field.key] ?? "",
+              ]),
+            ),
+          }
+        : { credentials: {} },
+    [fields, open, saved],
+  );
 
   // Removing the last configured provider with an embedding model would leave
   // the agent with nothing to embed documents, so require another one first.
@@ -88,31 +102,20 @@ const ProviderSettingsDialog = ({
 
   const methods = useForm<ProviderSettingsFormData>({
     mode: "onSubmit",
-    defaultValues: { credentials: {} },
+    values: formValues,
   });
 
-  // Seed on open, and again if the catalogue or the saved settings land after
-  // it. Both are react-query results, so their identity is stable while the
-  // dialog is open and this cannot stomp on what the user is typing.
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    methods.reset({
-      credentials: Object.fromEntries(
-        fields.map((field) => [
-          field.key,
-          saved?.credential_values?.[field.key] ?? "",
-        ]),
-      ),
-    });
-    if (provider === "azure") {
-      setAzureAuthMethod(saved?.auth_method ?? "api_key");
-    }
+  const savedAuthMethod = saved?.auth_method;
+  const authMethodSeed = `${open}:${provider}:${savedAuthMethod ?? ""}`;
+  const [previousAuthMethodSeed, setPreviousAuthMethodSeed] =
+    useState(authMethodSeed);
+  if (authMethodSeed !== previousAuthMethodSeed) {
+    setPreviousAuthMethodSeed(authMethodSeed);
+    if (provider === "azure") setAzureAuthMethod(savedAuthMethod ?? "api_key");
     if (provider === "watsonx_onprem") {
-      setOnPremAuthMethod(saved?.auth_method ?? "username_api_key");
+      setOnPremAuthMethod(savedAuthMethod ?? "username_api_key");
     }
-  }, [open, fields, saved, methods, provider]);
+  }
 
   const { handleSubmit } = methods;
 

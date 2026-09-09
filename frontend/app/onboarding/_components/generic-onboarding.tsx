@@ -9,14 +9,12 @@ import {
   savedSecretFieldsForProvider,
 } from "@/components/models/catalog-models";
 import { getProviderChrome } from "@/components/models/model-helpers";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
 import type { OnboardingVariables } from "../../api/mutations/useOnboardingMutation";
 import { AdvancedOnboarding } from "./advanced";
+import {
+  AZURE_AUTH_GROUPS,
+  GenericProviderCredentialFields,
+} from "./generic-provider-credential-fields";
 
 /**
  * Onboarding step for a provider with no hand-built component.
@@ -66,28 +64,6 @@ export function GenericOnboarding({
     providers?.custom?.[provider]?.auth_method ?? "username_api_key",
   );
 
-  const azureAuthGroups = [
-    { key: "api_key", label: "API key", fields: ["api_key"] },
-    {
-      key: "entra_token",
-      label: "Microsoft Entra access token",
-      fields: ["azure_ad_token"],
-    },
-    {
-      key: "service_principal",
-      label: "Microsoft Entra service principal",
-      fields: ["tenant_id", "client_id", "client_secret"],
-    },
-  ];
-  const onPremAuthGroups = [
-    {
-      key: "username_api_key",
-      label: "Username + API key",
-      fields: ["username", "api_key"],
-    },
-    { key: "zen_api_key", label: "Zen API key", fields: ["zen_api_key"] },
-  ];
-
   const syncParentSettings = (
     nextCredentials: Record<string, string>,
     nextModel: string,
@@ -96,7 +72,7 @@ export function GenericOnboarding({
     const activeAzureFields = new Set([
       "api_base",
       "api_version",
-      ...(azureAuthGroups.find((group) => group.key === azureAuthMethod)
+      ...(AZURE_AUTH_GROUPS.find((group) => group.key === azureAuthMethod)
         ?.fields ?? []),
     ]);
     const activeOnPremFields = new Set([
@@ -194,7 +170,8 @@ export function GenericOnboarding({
     const active = new Set([
       "api_base",
       "api_version",
-      ...(azureAuthGroups.find((group) => group.key === method)?.fields ?? []),
+      ...(AZURE_AUTH_GROUPS.find((group) => group.key === method)?.fields ??
+        []),
     ]);
     const selected = Object.fromEntries(
       Object.entries(credentials).filter(([key]) => active.has(key)),
@@ -260,101 +237,15 @@ export function GenericOnboarding({
   return (
     <>
       <div className="space-y-5">
-        {provider === "azure" ? (
-          <>
-            {fields
-              .filter((field) => field.key === "api_base")
-              .map(renderField)}
-            <Accordion
-              type="single"
-              value={azureAuthMethod}
-              onValueChange={(method) =>
-                method && handleAzureAuthMethodChange(method)
-              }
-              className="space-y-2"
-            >
-              {azureAuthGroups.map((group) => (
-                <AccordionItem key={group.key} value={group.key}>
-                  <AccordionTrigger>
-                    {group.label}
-                    {group.key === "api_key" && (
-                      <span className="ml-2 rounded bg-muted px-2 py-0.5 text-xs">
-                        Recommended
-                      </span>
-                    )}
-                  </AccordionTrigger>
-                  <AccordionContent className="space-y-4">
-                    {group.fields
-                      .map((key) => fields.find((field) => field.key === key))
-                      .filter((field): field is (typeof fields)[number] =>
-                        Boolean(field),
-                      )
-                      .map(renderField)}
-                  </AccordionContent>
-                </AccordionItem>
-              ))}
-            </Accordion>
-            <Accordion type="single" collapsible className="space-y-2">
-              <AccordionItem value="advanced">
-                <AccordionTrigger>Advanced settings</AccordionTrigger>
-                <AccordionContent className="space-y-4">
-                  {fields
-                    .filter((field) => field.key === "api_version")
-                    .map(renderField)}
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
-          </>
-        ) : provider === "watsonx_onprem" ? (
-          <>
-            {fields
-              .filter((field) => field.key === "api_base")
-              .map(renderField)}
-            <Accordion
-              type="single"
-              value={onPremAuthMethod}
-              onValueChange={(method) =>
-                method && handleOnPremAuthMethodChange(method)
-              }
-              className="space-y-2"
-            >
-              {onPremAuthGroups.map((group) => (
-                <AccordionItem key={group.key} value={group.key}>
-                  <AccordionTrigger>
-                    {group.label}
-                    {group.key === "username_api_key" && (
-                      <span className="ml-2 rounded bg-muted px-2 py-0.5 text-xs">
-                        Recommended
-                      </span>
-                    )}
-                  </AccordionTrigger>
-                  <AccordionContent className="space-y-4">
-                    {group.fields
-                      .map((key) => fields.find((field) => field.key === key))
-                      .filter((field): field is (typeof fields)[number] =>
-                        Boolean(field),
-                      )
-                      .map(renderField)}
-                  </AccordionContent>
-                </AccordionItem>
-              ))}
-            </Accordion>
-            <Accordion type="single" collapsible className="space-y-2">
-              <AccordionItem value="advanced">
-                <AccordionTrigger>Advanced settings</AccordionTrigger>
-                <AccordionContent className="space-y-4">
-                  {fields
-                    .filter((field) =>
-                      ["space_id", "project_id"].includes(field.key),
-                    )
-                    .map(renderField)}
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
-          </>
-        ) : (
-          fields.map(renderField)
-        )}
+        <GenericProviderCredentialFields
+          provider={provider}
+          fields={fields}
+          azureAuthMethod={azureAuthMethod}
+          onPremAuthMethod={onPremAuthMethod}
+          onAzureAuthMethodChange={handleAzureAuthMethodChange}
+          onOnPremAuthMethodChange={handleOnPremAuthMethodChange}
+          renderField={renderField}
+        />
         {models.length === 0 && (
           <p className="text-mmd text-muted-foreground">
             {chrome.name} publishes no {isEmbedding ? "embedding" : "language"}{" "}
