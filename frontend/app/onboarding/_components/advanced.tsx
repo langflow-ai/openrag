@@ -1,11 +1,11 @@
 import { LabelWrapper } from "@/components/label-wrapper";
+import { ModelSelector } from "@/components/models/model-selector";
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { ModelSelector } from "./model-selector";
 
 export function AdvancedOnboarding({
   icon,
