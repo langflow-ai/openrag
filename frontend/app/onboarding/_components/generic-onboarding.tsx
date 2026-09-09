@@ -11,10 +11,8 @@ import {
 import { getProviderChrome } from "@/components/models/model-helpers";
 import type { OnboardingVariables } from "../../api/mutations/useOnboardingMutation";
 import { AdvancedOnboarding } from "./advanced";
-import {
-  AZURE_AUTH_GROUPS,
-  GenericProviderCredentialFields,
-} from "./generic-provider-credential-fields";
+import { GenericProviderCredentialFields } from "./generic-provider-credential-fields";
+import { AZURE_AUTH_GROUPS } from "./generic-provider-credential-fields.helpers";
 
 /**
  * Onboarding step for a provider with no hand-built component.
