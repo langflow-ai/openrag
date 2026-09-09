@@ -108,7 +108,7 @@ providers:
     modes:
       oss: true
       on_prem: false
-      saas: false
+      saas: true
     # Azure serves the same OpenAI models, so it needs the same exclusions.
     # The plain name covers the regional ids (`eu/`, `us/`, `global/`) too.
     exclude_models:
