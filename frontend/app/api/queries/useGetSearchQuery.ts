@@ -65,6 +65,7 @@ export interface File {
     | "hidden"
     | "sync";
   error?: string;
+  task_id?: string; // Task ID for file-level cancellation
   chunks?: ChunkResult[];
   allowed_users?: string[];
   allowed_groups?: string[];

@@ -505,6 +505,15 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
           const failedFiles = getFailedFileCount(currentTask);
           const isTotalFailure = failedFiles > 0 && successfulFiles === 0;
 
+          // Check if all failures are user cancellations
+          const allFailuresAreCancellations = currentTask.files
+            ? Object.values(currentTask.files).every(
+                (file) =>
+                  file.status !== "failed" ||
+                  file.error === "File cancelled by user",
+              )
+            : false;
+
           const firstFile = currentTask.files
             ? Object.values(currentTask.files)[0]
             : undefined;
@@ -515,7 +524,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
             taskSourcesRef.current.get(currentTask.task_id) ||
             (connectorType === "local" ? "file" : "connector");
 
-          if (isTotalFailure) {
+          if (isTotalFailure && !allFailuresAreCancellations) {
             trackProcessFailure({
               processType: "Ingestion",
               process: "Document Upload",
@@ -546,11 +555,17 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 
           let description = "";
           if (failedFiles > 0) {
-            description = `${successfulFiles} file${
-              successfulFiles !== 1 ? "s" : ""
-            } uploaded successfully, ${failedFiles} file${
-              failedFiles !== 1 ? "s" : ""
-            } failed`;
+            if (allFailuresAreCancellations) {
+              description = `${failedFiles} file${
+                failedFiles !== 1 ? "s" : ""
+              } cancelled`;
+            } else {
+              description = `${successfulFiles} file${
+                successfulFiles !== 1 ? "s" : ""
+              } uploaded successfully, ${failedFiles} file${
+                failedFiles !== 1 ? "s" : ""
+              } failed`;
+            }
           } else {
             description = `${successfulFiles} file${
               successfulFiles !== 1 ? "s" : ""
@@ -565,9 +580,14 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
                 setIsRecentTasksExpanded(true);
               },
             };
-            if (isTotalFailure) {
+            if (isTotalFailure && !allFailuresAreCancellations) {
               toast.error("Task failed", {
                 description: getTaskFailureToastDescription(currentTask),
+                action: toastAction,
+              });
+            } else if (allFailuresAreCancellations && failedFiles > 0) {
+              toast.info("File ingestion cancelled", {
+                description,
                 action: toastAction,
               });
             } else {

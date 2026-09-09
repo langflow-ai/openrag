@@ -238,6 +238,8 @@ export function buildKnowledgeTableRows(
         embedding_model: taskFile.embedding_model ?? file.embedding_model,
         embedding_dimensions:
           taskFile.embedding_dimensions ?? file.embedding_dimensions,
+        // Preserve task_id so getTaskIdForRow can match correctly for cancellation
+        task_id: taskFile.task_id,
       };
     }
     return file;
