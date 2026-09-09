@@ -13,6 +13,9 @@ export function useDeleteTaskMutation() {
         (old ?? []).filter((t) => t.task_id !== taskId),
       );
     },
+    onError: (error) => {
+      console.error("Delete task failed:", error);
+    },
   });
 }
 
@@ -38,6 +41,9 @@ export function useDeleteAllTerminalTasksMutation() {
       queryClient.setQueryData<Task[]>([...TASKS_QUERY_KEY], (old) =>
         (old ?? []).filter((t) => !deleted.has(t.task_id)),
       );
+    },
+    onError: (error) => {
+      console.error("Delete all tasks failed:", error);
     },
   });
 }

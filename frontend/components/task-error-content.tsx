@@ -87,16 +87,14 @@ export function TaskErrorContent({
     setAccordionValue((v) => (v === "failed-files" ? "" : "failed-files"));
 
   return (
-    <div
-      className={cn("w-full", showHeader && "relative", !showHeader && "pt-2")}
-    >
+    <div className={cn("w-full", !showHeader && "pt-2")}>
       {showHeader && (
         <button
           type="button"
           onClick={toggleAccordion}
           aria-expanded={isExpanded}
           className={cn(
-            "w-full text-left py-mmd px-4 transition-colors hover:bg-muted/60",
+            "relative w-full text-left py-mmd px-4 transition-colors hover:bg-muted/60",
             isCloudBrand
               ? "border-t border-muted"
               : "rounded-mmd border border-muted",
@@ -157,16 +155,20 @@ export function TaskErrorContent({
         </button>
       )}
       {showHeader && (
-        <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
-          {!isExpanded && <p className={statusPillClassName}>{statusLabel}</p>}
-          <button
-            type="button"
-            aria-label="Open task details"
-            className="inline-flex shrink-0 items-center justify-center text-muted-foreground hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring rounded"
-            onClick={() => openTaskDialog(task.task_id)}
-          >
-            <IncidentReporterIcon className="size-4" />
-          </button>
+        <div className="absolute right-4 top-0 h-full flex items-center gap-1.5 pointer-events-none">
+          <div className="flex items-center gap-1.5 pointer-events-auto">
+            {!isExpanded && (
+              <p className={statusPillClassName}>{statusLabel}</p>
+            )}
+            <button
+              type="button"
+              aria-label="Open task details"
+              className="inline-flex shrink-0 items-center justify-center text-muted-foreground hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring rounded"
+              onClick={() => openTaskDialog(task.task_id)}
+            >
+              <IncidentReporterIcon className="size-4" />
+            </button>
+          </div>
         </div>
       )}
       <div
