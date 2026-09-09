@@ -671,3 +671,62 @@ class TestGetTaskStatusRegression:
         for key in v1_file:
             assert key in v2_file, f"get_task_status2 file entry missing key: {key}"
             assert v1_file[key] == v2_file[key], f"file entry key '{key}' differs"
+
+
+# ---------------------------------------------------------------------------
+# OpenSearch transport failures
+# ---------------------------------------------------------------------------
+
+
+class TestOpenSearchFailureMetadata:
+    def test_by_query_conflict_is_classified_as_retryable_opensearch_failure(self, task_service):
+        # opensearch-py puts the entire by-query response body into the message,
+        # because that response has no top-level "error" key to use instead.
+        ft = _make_file_task(
+            filename="logo.png",
+            phase=IngestionPhase.LANGFLOW,
+            error=(
+                'ConflictError(409, \'{"took":2719,"timed_out":false,"total":300,'
+                '"updated":19,"version_conflicts":1,"failures":[{"index":"documents",'
+                '"id":"20","cause":{"type":"version_conflict_engine_exception"}}]}\')'
+            ),
+        )
+        meta = task_service._infer_failure_metadata(ft)
+        assert meta is not None
+        assert meta["component"] == "opensearch"
+        assert meta["failure_phase"] == "indexing"
+        assert meta["actionable_by"] == "RETRYABLE"
+        msg = meta["user_facing_message"]
+        assert "retry ingestion" in msg.lower()
+        # The raw payload must not reach the UI.
+        assert "version_conflict_engine_exception" not in msg
+        assert "{" not in msg
+
+    def test_mapper_parsing_body_is_not_read_as_a_corrupt_file(self, task_service):
+        # A 400 body contains the substring "failed to parse", which
+        # _is_non_retryable_file_error would otherwise classify as a corrupt file.
+        ft = _make_file_task(
+            error="RequestError(400, 'mapper_parsing_exception', 'failed to parse field [x]')"
+        )
+        meta = task_service._infer_failure_metadata(ft)
+        assert meta is not None
+        assert meta["component"] == "opensearch"
+        assert "corrupt" not in meta["user_facing_message"].lower()
+
+    def test_image_without_text_still_gets_the_ocr_guidance(self, task_service):
+        ft = _make_file_task(
+            filename="scan.png",
+            phase=IngestionPhase.LANGFLOW,
+            docling_status=DoclingPhaseStatus.SUCCESS,
+            error="No text content could be extracted from document",
+        )
+        meta = task_service._infer_failure_metadata(ft)
+        assert meta is not None
+        assert meta["component"] == "docling"
+        assert "ocr" in meta["user_facing_message"].lower()
+
+    def test_plain_errors_are_left_to_the_existing_branches(self, task_service):
+        ft = _make_file_task(error="Docling conversion did not complete (timeout): 300s")
+        meta = task_service._infer_failure_metadata(ft)
+        assert meta is not None
+        assert meta["component"] == "docling"
