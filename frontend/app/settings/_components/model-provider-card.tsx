@@ -43,6 +43,7 @@ export default function ModelProviderCard({
 
   return (
     <Card
+      data-testid={`model-provider-card-${providerKey}`}
       className={cn(
         "group relative flex flex-col transition-colors",
         isCloudBrand
