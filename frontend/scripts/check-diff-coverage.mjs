@@ -15,7 +15,7 @@
  *   DIFF_COVERAGE_BASE       base ref (default: origin/main)
  *   DIFF_COVERAGE_THRESHOLD  minimum percent (default: 80)
  *
- * Requires `vitest run --coverage` to have produced coverage/coverage-final.json.
+ * Requires `vitest run --coverage` to have produced coverage/lcov.info.
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
@@ -31,7 +31,7 @@ const BASE = arg("base", process.env.DIFF_COVERAGE_BASE || "origin/main");
 const THRESHOLD = Number(
   arg("threshold", process.env.DIFF_COVERAGE_THRESHOLD || "80"),
 );
-const COVERAGE_FILE = path.resolve("coverage/coverage-final.json");
+const COVERAGE_FILE = path.resolve("coverage/lcov.info");
 
 /** Source files we gate on. Mirrors coverage.include in vitest.config.mts. */
 const INCLUDED =
@@ -97,7 +97,7 @@ function changedLines(baseSha) {
   return files;
 }
 
-/** Maps absolute coverage paths to Map<relPath, Map<line, hitCount>>. */
+/** Maps LCOV source paths to Map<relPath, Map<line, hitCount>>. */
 function lineHitsByFile() {
   if (!existsSync(COVERAGE_FILE)) {
     console.error(
@@ -106,20 +106,31 @@ function lineHitsByFile() {
     );
     process.exit(2);
   }
-  const raw = JSON.parse(readFileSync(COVERAGE_FILE, "utf8"));
+  const raw = readFileSync(COVERAGE_FILE, "utf8");
   const byFile = new Map();
+  let hits = null;
 
-  for (const entry of Object.values(raw)) {
-    const rel = path.relative(process.cwd(), entry.path);
-    const hits = new Map();
-    for (const [id, loc] of Object.entries(entry.statementMap ?? {})) {
-      const count = entry.s?.[id] ?? 0;
-      const ln = loc?.start?.line;
-      if (!ln) continue;
-      // A line counts as covered if any statement starting on it ran.
-      hits.set(ln, Math.max(hits.get(ln) ?? 0, count));
+  for (const line of raw.split(/\r?\n/)) {
+    if (line.startsWith("SF:")) {
+      const source = line.slice(3);
+      const absolute = path.isAbsolute(source)
+        ? source
+        : path.resolve(process.cwd(), source);
+      const rel = path.relative(process.cwd(), absolute);
+      hits = byFile.get(rel) ?? new Map();
+      byFile.set(rel, hits);
+      continue;
     }
-    byFile.set(rel, hits);
+    if (line === "end_of_record") {
+      hits = null;
+      continue;
+    }
+    if (!hits) continue;
+    const match = /^DA:(\d+),(\d+)/.exec(line);
+    if (!match) continue;
+    const lineNumber = Number(match[1]);
+    const count = Number(match[2]);
+    hits.set(lineNumber, Math.max(hits.get(lineNumber) ?? 0, count));
   }
   return byFile;
 }
@@ -150,7 +161,7 @@ for (const [file, lines] of changed) {
   let covered = 0;
   const missed = [];
   for (const ln of lines) {
-    if (!hits.has(ln)) continue; // not an executable statement (blank, comment, type)
+    if (!hits.has(ln)) continue; // not an executable line (blank, comment, type)
     relevant++;
     if (hits.get(ln) > 0) covered++;
     else missed.push(ln);

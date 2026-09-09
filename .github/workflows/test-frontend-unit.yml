@@ -16,6 +16,9 @@ on:
       - 'frontend/**'
       - '.github/workflows/test-frontend-unit.yml'
 
+permissions:
+  contents: read
+
 jobs:
   vitest:
     name: Vitest

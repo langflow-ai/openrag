@@ -33,9 +33,9 @@ export default defineConfig({
     ],
     coverage: {
       provider: "v8",
-      // "json" emits coverage-final.json, which scripts/check-diff-coverage.mjs
-      // needs for per-line hit counts.
-      reporter: ["text", "json", "json-summary", "html"],
+      // "lcov" emits DA records, which scripts/check-diff-coverage.mjs uses for
+      // per-line hit counts (including executable multiline continuations).
+      reporter: ["text", "json", "json-summary", "html", "lcov"],
       reportsDirectory: "coverage",
       // `include` is what makes the number honest: without it, coverage is
       // reported only for files some test already imports, which reads as a
