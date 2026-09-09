@@ -108,7 +108,7 @@ const ProviderSettingsDialog = ({
   const savedAuthMethod = saved?.auth_method;
   const authMethodSeed = `${open}:${provider}:${savedAuthMethod ?? ""}`;
   const [previousAuthMethodSeed, setPreviousAuthMethodSeed] =
-    useState(authMethodSeed);
+    useState<string>();
   if (authMethodSeed !== previousAuthMethodSeed) {
     setPreviousAuthMethodSeed(authMethodSeed);
     if (provider === "azure") setAzureAuthMethod(savedAuthMethod ?? "api_key");
