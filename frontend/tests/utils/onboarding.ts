@@ -131,7 +131,7 @@ export async function completeOnboarding(
     return;
   }
 
-  const needsRollback = reset && (isCompleted || !isFirstStep);
+  const needsRollback = (reset && isCompleted) || !isFirstStep;
 
   if (needsRollback) {
     const response = await page.request.post("/api/onboarding/rollback");
