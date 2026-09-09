@@ -241,9 +241,16 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       });
     },
     onError: (error) => {
-      toast.error("Failed to cancel file", {
-        description: error.message,
-      });
+      // Handle the case where the file already finished processing
+      if (error.message.includes("File not found or cannot be cancelled")) {
+        toast.info("File already completed", {
+          description: "This file has already finished processing",
+        });
+      } else {
+        toast.error("Failed to cancel file", {
+          description: error.message,
+        });
+      }
     },
   });
 

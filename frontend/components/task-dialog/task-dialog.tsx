@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { useIsCloudBrand } from "@/contexts/brand-context";
+import { useTask } from "@/contexts/task-context";
 import { cn } from "@/lib/utils";
 import { TaskDialogFileList } from "./file-list";
 import { TaskDialogHeader } from "./header";
@@ -21,6 +22,7 @@ function TaskDialogContent({
   onClose,
 }: Pick<TaskDialogProps, "open" | "task_id" | "onClose">) {
   const isCloudBrand = useIsCloudBrand();
+  const { cancelFile } = useTask();
   const {
     task,
     isLoading,
@@ -122,6 +124,7 @@ function TaskDialogContent({
             selectedCount={selectedCount}
             retryIngestionSelectedCount={retryIngestionSelectedCount}
             retryingTarget={retryingTarget}
+            onCancelFile={cancelFile}
           />
         )}
       </div>
