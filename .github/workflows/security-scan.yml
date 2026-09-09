@@ -180,15 +180,25 @@ jobs:
           path: security-reports
           merge-multiple: true
 
-      - name: Generate Consolidated Security Markdown Report
+      - name: Generate Consolidated Security Markdown & CSV Reports
         run: |
-          python3 scripts/ci/generate_security_report.py security-reports/ -o security-reports/security-report.md
+          python3 scripts/ci/generate_security_report.py security-reports/ \
+            -o security-reports/security-report.md \
+            --csv-output security-reports/security-report.csv
 
-      - name: Upload Consolidated Security Report Artifact
+      - name: Upload Security Report CSV Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-report-csv
+          path: security-reports/security-report.csv
+          retention-days: 30
+
+      - name: Upload Consolidated Security Report Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: security-report-summary
           path: |
             security-reports/security-report.md
+            security-reports/security-report.csv
             security-reports/*.json
           retention-days: 30

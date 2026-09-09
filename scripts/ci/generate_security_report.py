@@ -6,11 +6,14 @@ and bandit, writing a unified Markdown report and summary table for GitHub Actio
 """
 
 import argparse
+import csv
 import json
 import os
 import sys
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Tuple, Optional
+
+SEVERITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "UNKNOWN": 4}
 
 
 def parse_trivy_json(path: Path) -> Dict[str, Any]:
@@ -189,8 +192,126 @@ def parse_gosec_json(path: Path) -> Dict[str, Any]:
     return {"counts": counts, "findings": findings, "total": sum(counts.values())}
 
 
-def generate_markdown_report(report_dir: Path) -> str:
-    """Scan directory for JSON results and generate unified Markdown report."""
+def collect_scan_results(
+    report_dir: Path,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], Dict[str, int]]:
+    """Scan directory for JSON results and return structured scan data.
+
+    Returns:
+        (component_rows, all_findings, total_counts)
+    """
+    component_rows: List[Dict[str, Any]] = []
+    all_findings: List[Dict[str, Any]] = []
+    total_counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "UNKNOWN": 0, "TOTAL": 0}
+
+    def _record_component(name: str, target: str, res: Dict[str, Any]):
+        if "error" in res:
+            component_rows.append({"component": name, "target": target, "error": res["error"]})
+            return
+
+        c = res["counts"]
+        tot = res["total"]
+        component_rows.append(
+            {
+                "component": name,
+                "target": target,
+                "total": tot,
+                "counts": c,
+            }
+        )
+        for k in ("CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN"):
+            total_counts[k] += c.get(k, 0)
+        total_counts["TOTAL"] += tot
+
+        for item in res.get("findings", []):
+            item_copy = dict(item)
+            item_copy["scanner"] = name
+            all_findings.append(item_copy)
+
+    # 1. Container Image Scans (Trivy)
+    for json_file in sorted(report_dir.glob("trivy-image-*.json")):
+        image_name = json_file.stem.replace("trivy-image-", "")
+        res = parse_trivy_json(json_file)
+        _record_component(f"Container Image ({image_name})", image_name, res)
+
+    # 2. Filesystem / OSS Scans
+    trivy_fs = report_dir / "trivy-fs.json"
+    if trivy_fs.exists():
+        res = parse_trivy_json(trivy_fs)
+        _record_component("Repo Filesystem (Trivy FS)", "Repository", res)
+
+    for json_file in sorted(report_dir.glob("pip-audit-*.json")):
+        target_name = json_file.stem.replace("pip-audit-", "")
+        res = parse_pip_audit_json(json_file)
+        _record_component(f"Python Dependencies (`pip-audit`)", target_name, res)
+
+    for json_file in sorted(report_dir.glob("npm-audit-*.json")):
+        target_name = json_file.stem.replace("npm-audit-", "")
+        res = parse_npm_audit_json(json_file)
+        _record_component(f"Node.js Dependencies (`npm audit`)", target_name, res)
+
+    # 3. SAST Scans
+    bandit_file = report_dir / "bandit.json"
+    if bandit_file.exists():
+        res = parse_bandit_json(bandit_file)
+        _record_component("Python SAST (`Bandit`)", "src/", res)
+
+    gosec_file = report_dir / "gosec.json"
+    if gosec_file.exists():
+        res = parse_gosec_json(gosec_file)
+        _record_component("Go SAST (`Gosec`)", "kubernetes/operator", res)
+
+    # Sort all findings: CRITICAL -> HIGH -> MEDIUM -> LOW -> UNKNOWN
+    all_findings.sort(
+        key=lambda x: (
+            SEVERITY_ORDER.get(x.get("severity", "UNKNOWN"), 5),
+            x.get("scanner", ""),
+            x.get("target", ""),
+            x.get("id", ""),
+        )
+    )
+
+    return component_rows, all_findings, total_counts
+
+
+def generate_csv_report(findings: List[Dict[str, Any]], output_path: Path) -> None:
+    """Generate a comprehensive CSV report of all detected security findings."""
+    fieldnames = [
+        "Scanner",
+        "Target",
+        "Severity",
+        "Vulnerability ID",
+        "Package / Module",
+        "Installed Version",
+        "Fixed Version",
+        "Title",
+    ]
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for item in findings:
+            writer.writerow(
+                {
+                    "Scanner": item.get("scanner", "N/A"),
+                    "Target": item.get("target", "N/A"),
+                    "Severity": item.get("severity", "UNKNOWN"),
+                    "Vulnerability ID": item.get("id", "N/A"),
+                    "Package / Module": item.get("pkg", "N/A"),
+                    "Installed Version": item.get("installed", "N/A"),
+                    "Fixed Version": item.get("fixed", "None"),
+                    "Title": item.get("title", ""),
+                }
+            )
+
+
+def format_markdown_report(
+    component_rows: List[Dict[str, Any]],
+    all_findings: List[Dict[str, Any]],
+    total_counts: Dict[str, int],
+    csv_filename: Optional[str] = "security-report.csv",
+) -> str:
+    """Format Markdown report from collected scan results."""
     lines: List[str] = [
         "# 🛡️ OpenRAG Security Scan Report",
         "",
@@ -202,94 +323,62 @@ def generate_markdown_report(report_dir: Path) -> str:
         "| :--- | :--- | :---: | :---: | :---: | :---: | :---: |",
     ]
 
-    all_findings: List[Dict[str, str]] = []
-    has_scans = False
-
-    # Process Container Image Scans (Trivy)
-    for json_file in sorted(report_dir.glob("trivy-image-*.json")):
-        has_scans = True
-        image_name = json_file.stem.replace("trivy-image-", "")
-        res = parse_trivy_json(json_file)
-        if "error" in res:
-            lines.append(f"| Container Image ({image_name}) | `{image_name}` | Parse Error | - | - | - | - |")
-            continue
-        c = res["counts"]
-        lines.append(
-            f"| Container Image (`{image_name}`) | `{image_name}` | {res['total']} | {c['CRITICAL']} | {c['HIGH']} | {c['MEDIUM']} | {c['LOW']} |"
-        )
-        all_findings.extend(res.get("findings", []))
-
-    # Process Filesystem / OSS Scans
-    trivy_fs = report_dir / "trivy-fs.json"
-    if trivy_fs.exists():
-        has_scans = True
-        res = parse_trivy_json(trivy_fs)
-        if "counts" in res:
-            c = res["counts"]
-            lines.append(f"| Repo Filesystem (Trivy FS) | Repository | {res['total']} | {c['CRITICAL']} | {c['HIGH']} | {c['MEDIUM']} | {c['LOW']} |")
-            all_findings.extend(res.get("findings", []))
-
-    for json_file in sorted(report_dir.glob("pip-audit-*.json")):
-        has_scans = True
-        target_name = json_file.stem.replace("pip-audit-", "")
-        res = parse_pip_audit_json(json_file)
-        if "counts" in res:
-            c = res["counts"]
-            lines.append(f"| Python Dependencies (`pip-audit`) | `{target_name}` | {res['total']} | {c['CRITICAL']} | {c['HIGH']} | {c['MEDIUM']} | {c['LOW']} |")
-            all_findings.extend(res.get("findings", []))
-
-    for json_file in sorted(report_dir.glob("npm-audit-*.json")):
-        has_scans = True
-        target_name = json_file.stem.replace("npm-audit-", "")
-        res = parse_npm_audit_json(json_file)
-        if "counts" in res:
-            c = res["counts"]
-            lines.append(f"| Node.js Dependencies (`npm audit`) | `{target_name}` | {res['total']} | {c['CRITICAL']} | {c['HIGH']} | {c['MEDIUM']} | {c['LOW']} |")
-            all_findings.extend(res.get("findings", []))
-
-    # Process SAST Scans
-    bandit_file = report_dir / "bandit.json"
-    if bandit_file.exists():
-        has_scans = True
-        res = parse_bandit_json(bandit_file)
-        if "counts" in res:
-            c = res["counts"]
-            lines.append(f"| Python SAST (`Bandit`) | `src/` | {res['total']} | {c['CRITICAL']} | {c['HIGH']} | {c['MEDIUM']} | {c['LOW']} |")
-            all_findings.extend(res.get("findings", []))
-
-    gosec_file = report_dir / "gosec.json"
-    if gosec_file.exists():
-        has_scans = True
-        res = parse_gosec_json(gosec_file)
-        if "counts" in res:
-            c = res["counts"]
-            lines.append(f"| Go SAST (`Gosec`) | `kubernetes/operator` | {res['total']} | {c['CRITICAL']} | {c['HIGH']} | {c['MEDIUM']} | {c['LOW']} |")
-            all_findings.extend(res.get("findings", []))
-
-    if not has_scans:
+    if not component_rows:
         lines.append("\n> [!NOTE]\n> No JSON scan results found in report directory.")
         return "\n".join(lines) + "\n"
+
+    for row in component_rows:
+        if "error" in row:
+            lines.append(f"| {row['component']} | `{row['target']}` | Parse Error | - | - | - | - |")
+        else:
+            c = row["counts"]
+            lines.append(
+                f"| {row['component']} | `{row['target']}` | {row['total']} | {c['CRITICAL']} | {c['HIGH']} | {c['MEDIUM']} | {c['LOW']} |"
+            )
+
+    # Total row
+    lines.append(
+        f"| **Total** | **All Scans** | **{total_counts['TOTAL']}** | **{total_counts['CRITICAL']}** | **{total_counts['HIGH']}** | **{total_counts['MEDIUM']}** | **{total_counts['LOW']}** |"
+    )
+
+    # CSV download callout
+    lines.append("")
+    if csv_filename:
+        lines.append(
+            f"> 📥 **Full Security Findings Export (CSV):** A comprehensive CSV report containing all **{len(all_findings)}** findings across all severities is available for download in the workflow **Artifacts** section (`security-report-csv` / `{csv_filename}`)."
+        )
+    lines.append("")
 
     # Filter critical and high findings for display table
     critical_high = [f for f in all_findings if f.get("severity") in ("CRITICAL", "HIGH")]
 
-    lines.append("")
     lines.append("## 🚨 Top Vulnerabilities (Critical & High)")
     lines.append("")
 
     if not critical_high:
         lines.append("🎉 **No Critical or High severity vulnerabilities detected!**")
     else:
-        lines.append("| Severity | Target | Vulnerability ID | Package / Module | Fixed Version | Title |")
-        lines.append("| :--- | :--- | :--- | :--- | :--- | :--- |")
-        for item in critical_high[:50]:  # Limit top 50
+        lines.append("| Severity | Scanner | Target | Vulnerability ID | Package / Module | Fixed Version | Title |")
+        lines.append("| :--- | :--- | :--- | :--- | :--- | :--- | :--- |")
+        for item in critical_high[:50]:  # Limit top 50 in summary
             sev_icon = "🔴 CRITICAL" if item["severity"] == "CRITICAL" else "🟠 HIGH"
-            title = item["title"].replace("|", "\\|")
+            title = (item.get("title") or "").replace("|", "\\|")
+            scanner = item.get("scanner", "N/A")
             lines.append(
-                f"| {sev_icon} | `{item['target']}` | `{item['id']}` | `{item['pkg']}` | `{item['fixed']}` | {title} |"
+                f"| {sev_icon} | {scanner} | `{item['target']}` | `{item['id']}` | `{item['pkg']}` | `{item['fixed']}` | {title} |"
             )
 
+        if len(critical_high) > 50:
+            lines.append("")
+            lines.append(f"*Showing top 50 of {len(critical_high)} Critical & High findings. Download `{csv_filename}` for all {len(all_findings)} findings.*")
+
     return "\n".join(lines) + "\n"
+
+
+def generate_markdown_report(report_dir: Path, csv_filename: str = "security-report.csv") -> str:
+    """Scan directory for JSON results and generate unified Markdown report."""
+    component_rows, all_findings, total_counts = collect_scan_results(report_dir)
+    return format_markdown_report(component_rows, all_findings, total_counts, csv_filename=csv_filename)
 
 
 def main():
@@ -306,15 +395,24 @@ def main():
         default=None,
         help="Output path for the Markdown report (default: <directory>/security-report.md)",
     )
+    parser.add_argument(
+        "--csv-output",
+        default=None,
+        help="Output path for the CSV report (default: <directory>/security-report.csv)",
+    )
     args = parser.parse_args()
 
     report_dir = Path(args.directory)
-    output_path = Path(args.output) if args.output else report_dir / "security-report.md"
+    output_md = Path(args.output) if args.output else report_dir / "security-report.md"
+    output_csv = Path(args.csv_output) if args.csv_output else report_dir / "security-report.csv"
 
-    report_md = generate_markdown_report(report_dir)
+    component_rows, all_findings, total_counts = collect_scan_results(report_dir)
+    report_md = format_markdown_report(component_rows, all_findings, total_counts, csv_filename=output_csv.name)
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(report_md, encoding="utf-8")
+    output_md.parent.mkdir(parents=True, exist_ok=True)
+    output_md.write_text(report_md, encoding="utf-8")
+
+    generate_csv_report(all_findings, output_csv)
 
     # Append to GitHub Step Summary if environment variable present
     step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
@@ -322,7 +420,8 @@ def main():
         with open(step_summary, "a", encoding="utf-8") as f:
             f.write(report_md)
 
-    print(f"Security report successfully generated at: {output_path}")
+    print(f"Security Markdown report generated at: {output_md}")
+    print(f"Security CSV report generated ({len(all_findings)} findings) at: {output_csv}")
 
 
 if __name__ == "__main__":
