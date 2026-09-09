@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.4
-FROM langflowai/langflow:base-1.12.0
+FROM langflowai/langflow:base-1.12.1
 
 # Install uv, then pre-create the Langflow data directory as root.
 # Langflow 1.12's base image runs as uid=1000, but /app itself is not writable.
