@@ -46,7 +46,7 @@ providers:
     display_name: Ollama
     modes:
       oss: true
-      on_prem: true
+      on_prem: false
       saas: false # local inference is not offered in SaaS
 
   - name: watsonx
@@ -66,8 +66,8 @@ providers:
     display_name: Azure AI Foundry
     modes:
       oss: true
-      on_prem: true
-      saas: true
+      on_prem: false
+      saas: false # local inference is not offered in SaaS
 
   # Azure OpenAI Service, which LiteLLM keys separately from Foundry above:
   # `azure_ai` is the Foundry catalogue (Llama, Phi, Mistral, Cohere, and the
@@ -77,8 +77,8 @@ providers:
     display_name: Azure OpenAI
     modes:
       oss: true
-      on_prem: true
-      saas: true
+      on_prem: false
+      saas: false
     # Azure serves the same OpenAI models, so it needs the same exclusions.
     # The plain name covers the regional ids (`eu/`, `us/`, `global/`) too.
     exclude_models:
