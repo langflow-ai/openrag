@@ -537,6 +537,7 @@ export class Settings {
     logger.info("Configuring Azure OpenAI settings");
     const configureBtn = this.getConfigureButton("azure");
     const editBtn = this.getEditSetupButton("azure");
+    await this.page.waitForTimeout(500);
 
     if (await configureBtn.isVisible()) {
       await configureBtn.click();
