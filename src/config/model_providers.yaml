@@ -106,7 +106,7 @@ providers:
   - name: azure
     display_name: Azure OpenAI
     modes:
-      oss: false
+      oss: true
       on_prem: false
       saas: false
     # Azure serves the same OpenAI models, so it needs the same exclusions.
