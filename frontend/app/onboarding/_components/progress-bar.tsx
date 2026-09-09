@@ -16,9 +16,9 @@ export function ProgressBar({
   const progressPercentage = ((currentStep + 1) / totalSteps) * 100;
 
   return (
-    <div className="w-full flex items-center justify-center px-6 gap-4">
-      <div className="flex items-center gap-3">
-        <div className="w-48 h-1 bg-background dark:bg-muted rounded-full overflow-hidden">
+    <div className="w-full flex flex-wrap items-center justify-center px-6 gap-4">
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="w-32 sm:w-48 h-1 bg-background dark:bg-muted rounded-full overflow-hidden">
           <div
             className="h-full transition-all duration-300 ease-in-out"
             data-testid={`progress-bar-${currentStep}`}

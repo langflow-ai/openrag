@@ -5,6 +5,7 @@ import {
   type ReactNode,
   use,
   useCallback,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -29,11 +30,20 @@ export function SidebarOverlayProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const hide = useCallback(() => {
-    hideTimerRef.current = setTimeout(() => setIsVisible(false), 200);
+    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    hideTimerRef.current = setTimeout(() => {
+      hideTimerRef.current = null;
+      setIsVisible(false);
+    }, 200);
   }, []);
 
+  const value = useMemo(
+    () => ({ isVisible, show, hide }),
+    [isVisible, show, hide],
+  );
+
   return (
-    <SidebarOverlayContext.Provider value={{ isVisible, show, hide }}>
+    <SidebarOverlayContext.Provider value={value}>
       {children}
     </SidebarOverlayContext.Provider>
   );

@@ -39,7 +39,7 @@ export default function Nudges({
                     onboarding || isCloudBrand
                       ? "text-foreground"
                       : "text-placeholder-foreground hover:text-foreground",
-                    "ibm-chat-bubble bg-background border hover:bg-background/50 px-2 py-1.5 rounded-lg text-sm transition-colors whitespace-nowrap",
+                    "ibm-chat-bubble bg-background border hover:bg-background/50 px-2 py-1.5 rounded-lg text-sm transition-colors max-w-full break-words",
                   )}
                 >
                   {suggestion}
