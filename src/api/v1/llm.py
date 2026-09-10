@@ -16,6 +16,7 @@ from services.model_catalog import (
     CatalogUnavailableError,
     catalog,
     openai_models_list,
+    refresh_live_models,
 )
 from session_manager import User
 from utils.logging_config import get_logger
@@ -46,6 +47,8 @@ async def list_openai_models_endpoint(
 ):
     """OpenAI-compatible model inventory. GET /v1/models"""
     try:
+        # A cluster-hosted provider is the only source for its own model list.
+        await refresh_live_models()
         return JSONResponse(openai_models_list())
     except CatalogUnavailableError as exc:
         # Log the cause, but never echo exception text back to the caller
@@ -63,6 +66,7 @@ async def model_catalog_endpoint(
     # was supposed to apply the edit. LiteLLM's table is cached in-process, so
     # rebuilding this response is cheap.
     try:
+        await refresh_live_models()
         return JSONResponse(catalog(), headers={"Cache-Control": "no-store"})
     except CatalogUnavailableError as exc:
         logger.error("Model catalogue unavailable", error=str(exc))

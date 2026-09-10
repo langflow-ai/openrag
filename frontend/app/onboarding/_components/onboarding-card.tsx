@@ -95,6 +95,13 @@ const OnboardingCard = ({
       ),
     [availableProviders],
   );
+  const providerBadges = useMemo(
+    () =>
+      Object.fromEntries(
+        availableProviders.map(({ name, badge }) => [name, badge]),
+      ),
+    [availableProviders],
+  );
   const providerKeys = useMemo(
     () =>
       orderProviders(
@@ -541,6 +548,10 @@ const OnboardingCard = ({
     if (generic && Object.keys(generic).length > 0) {
       onboardingData.provider_credentials = { [currentProvider]: generic };
     }
+    const authMethod = settings.provider_auth_methods?.[currentProvider];
+    if (authMethod) {
+      onboardingData.provider_auth_methods = { [currentProvider]: authMethod };
+    }
 
     trackButton({
       CTA: isEmbedding ? "Complete - Embedding Setup" : "Complete - LLM Setup",
@@ -682,6 +693,13 @@ const OnboardingCard = ({
                           />
                         </TooltipContent>
                       </Tooltip>
+                          {providerBadges[providerKey] && (
+                            <span className="absolute right-0 top-0 rounded border border-muted-foreground/40 bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
+                              {providerBadges[providerKey]}
+                            </span>
+                          )}
+                        </TabTrigger>
+                      </TabsTrigger>
                     );
                   })}
                 </TabsList>
