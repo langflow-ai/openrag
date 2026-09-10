@@ -1,17 +1,10 @@
 import csv
 import json
-from pathlib import Path
-
-import pytest
 
 from scripts.ci.generate_security_report import (
     collect_scan_results,
     format_markdown_report,
     generate_csv_report,
-    parse_bandit_json,
-    parse_gosec_json,
-    parse_npm_audit_json,
-    parse_pip_audit_json,
     parse_trivy_json,
 )
 
