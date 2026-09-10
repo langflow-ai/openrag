@@ -320,6 +320,11 @@ export function ModelSelector({
                             <div className="w-4 h-4">{group.icon}</div>
                           )}
                           <span>{group.group}</span>
+                          {groupProvider === "watsonx_onprem" && (
+                            <Badge variant="secondary" className="text-xs">
+                              On-prem
+                            </Badge>
+                          )}
                         </div>
                       }
                     >
@@ -371,8 +376,10 @@ export function ModelSelector({
                                 )}
                               />
                               <div className="flex items-center gap-2">
-                                {option.icon && (
-                                  <span className="h-4 w-4">{option.icon}</span>
+                                {(option.icon ?? group.icon) && (
+                                  <span className="h-4 w-4">
+                                    {option.icon ?? group.icon}
+                                  </span>
                                 )}
                                 {option.label}
                               </div>

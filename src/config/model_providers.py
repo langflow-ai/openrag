@@ -138,9 +138,11 @@ def _normalize(entry: Any, seen: set[str]) -> dict[str, Any] | None:
     if not isinstance(raw_modes, dict):
         raw_modes = {}
     display_name = str(entry.get("display_name") or "").strip() or name
+    badge = str(entry.get("badge") or "").strip()
     return {
         "name": name,
         "display_name": display_name,
+        "badge": badge,
         # Missing keys stay missing here; `is_visible` reads them as False.
         "modes": {str(mode).strip().lower(): _as_bool(value) for mode, value in raw_modes.items()},
         # Optional: ids the catalogue cannot learn from LiteLLM's static table.
@@ -271,7 +273,11 @@ def provider_visibility_payload(run_mode: str | None = None) -> dict[str, Any]:
     return {
         "run_mode": mode,
         "providers": [
-            {"name": entry["name"], "display_name": entry["display_name"]}
+            {
+                "name": entry["name"],
+                "display_name": entry["display_name"],
+                "badge": entry["badge"],
+            }
             for entry in visible_providers(mode)
         ],
     }
