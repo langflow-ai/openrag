@@ -53,6 +53,14 @@ class UserRepo:
             self.session.add(user)
             await self.session.flush()
 
+    async def update_display_name(self, user_id: str, display_name: str | None) -> None:
+        user = await self.get_by_id(user_id)
+        if user:
+            user.display_name = display_name
+            user.updated_at = datetime.now(UTC)
+            self.session.add(user)
+            await self.session.flush()
+
     async def merge_legacy(
         self, legacy: User, real_provider: str, real_subject: str,
         email: Optional[str], display_name: Optional[str],

@@ -11,10 +11,12 @@ import { AgentSettingsSection } from "../_components/agent-settings-section";
 import { ApiKeysSection } from "../_components/api-keys-section";
 import { ConnectorAccessSection } from "../_components/connector-access-section";
 import { ConnectorsTab } from "../_components/connectors-tab";
+import { GeneralTab } from "../_components/general-tab";
 import { IngestionTab } from "../_components/ingestion-tab";
 import ModelProviders from "../_components/model-providers";
 
 const VALID_TABS = [
+  "general",
   "connectors",
   "providers",
   "ingestion",
@@ -70,7 +72,7 @@ export default async function SettingsTabPage({
   const { tab } = await params;
 
   if (!isValidTab(tab)) {
-    redirect("/settings/connectors");
+    redirect("/settings/general");
   }
 
   const {
@@ -144,6 +146,7 @@ export default async function SettingsTabPage({
 
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>
+      {tab === "general" && <GeneralTab />}
       {tab === "connectors" && <ConnectorsTab />}
       {tab === "providers" && <ModelProviders />}
       {tab === "ingestion" && <IngestionTab />}

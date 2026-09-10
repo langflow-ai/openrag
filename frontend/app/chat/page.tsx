@@ -1,14 +1,18 @@
 "use client";
 
-import { Loader2, Zap } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Loader2, Upload, Zap } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { type EndpointType, useChat } from "@/contexts/chat-context";
 import { useTask } from "@/contexts/task-context";
+import { useFileDrag } from "@/hooks/use-file-drag";
 import { useOnboardingState } from "@/hooks/use-onboarding-state";
+import { useSupportedFileTypes } from "@/hooks/use-supported-file-types";
 import { useChatStreaming } from "@/hooks/useChatStreaming";
 import { trackLLMCall } from "@/lib/analytics";
 import {
@@ -35,7 +39,7 @@ import type {
   RequestBody,
   ToolCallResult,
 } from "./_types/types";
-import { INITIAL_ASSISTANT_MESSAGE } from "./_types/types";
+import { makeInitialMessage } from "./_types/types";
 
 function ChatPage() {
   const isDebugMode = process.env.NEXT_PUBLIC_OPENRAG_DEBUG === "true";
@@ -58,12 +62,32 @@ function ChatPage() {
     setConversationFilter,
     loading,
     setLoading,
+    setChatError,
   } = useChat();
-  const [messages, setMessages] = useState<Message[]>([
-    INITIAL_ASSISTANT_MESSAGE,
+  const { user } = useAuth();
+  const displayName =
+    user?.display_name ||
+    (user?.name && user.name !== "Anonymous User" ? user.name : null);
+  const [messages, setMessages] = useState<Message[]>(() => [
+    makeInitialMessage(displayName),
   ]);
+
+  // Re-generate the greeting once the name is available (auth loads async,
+  // so the lazy initialiser above runs before user is populated).
+  // Only replace if the chat is still at the single greeting message — never
+  // clobber an active conversation.
+  const prevDisplayNameRef = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (prevDisplayNameRef.current === displayName) return;
+    prevDisplayNameRef.current = displayName;
+    setMessages((prev) => {
+      if (prev.length === 1 && prev[0].role === "assistant") {
+        return [makeInitialMessage(displayName)];
+      }
+      return prev;
+    });
+  }, [displayName]);
   const [input, setInput] = useState("");
-  const { setChatError } = useChat();
   const [asyncMode, setAsyncMode] = useState(true);
   const [expandedFunctionCalls, setExpandedFunctionCalls] = useState<
     Set<string>
@@ -77,6 +101,36 @@ function ChatPage() {
   const [waitingTooLong, setWaitingTooLong] = useState(false);
 
   const chatInputRef = useRef<ChatInputHandle>(null);
+
+  const { supportedFileTypes } = useSupportedFileTypes();
+
+  const handleFileDrop = useCallback(
+    (file: File) => {
+      const acceptedMimeTypes = Object.keys(supportedFileTypes);
+      const acceptedExtensions = Object.values(supportedFileTypes).flat();
+      const ext = `.${file.name.split(".").pop()?.toLowerCase() ?? ""}`;
+      const isAccepted =
+        acceptedMimeTypes.includes(file.type) ||
+        acceptedExtensions.includes(ext);
+
+      if (!isAccepted) {
+        const isImage = file.type.startsWith("image/");
+        const message = isImage
+          ? "Enable OCR in Settings to attach images"
+          : "Unsupported file type";
+        toast.error(message, {
+          duration: 1500,
+          className: "animate-toast-shake",
+        });
+        return;
+      }
+      setUploadedFile(file);
+    },
+    [supportedFileTypes],
+  );
+
+  // useFileDrag listens at the window level — fires on a drop anywhere on screen.
+  const isDraggingFile = useFileDrag(handleFileDrop);
 
   const { scrollToBottom } = useStickToBottomContext();
 
@@ -315,7 +369,7 @@ function ChatPage() {
       // Abort any in-flight streaming so it doesn't bleed into new chat
       abortStream();
       // Reset chat UI even if context state was already 'new'
-      setMessages([INITIAL_ASSISTANT_MESSAGE]);
+      setMessages([makeInitialMessage(displayName)]);
       setInput("");
       setExpandedFunctionCalls(new Set());
       setIsFilterHighlighted(false);
@@ -595,7 +649,7 @@ function ChatPage() {
   useEffect(() => {
     let focusTimeoutId: NodeJS.Timeout;
     if (placeholderConversation && currentConversationId === null) {
-      setMessages([INITIAL_ASSISTANT_MESSAGE]);
+      setMessages([makeInitialMessage(displayName)]);
       lastLoadedConversationRef.current = null;
 
       // Focus input when starting a new conversation
@@ -909,6 +963,33 @@ function ChatPage() {
 
   return (
     <>
+      {/* Full-screen drag & drop overlay */}
+      <div
+        className={cn(
+          "fixed inset-0 z-50 pointer-events-none transition-[opacity,visibility] duration-200",
+          isDraggingFile ? "opacity-100 visible" : "opacity-0 invisible",
+        )}
+      >
+        {/* Blur + blue tint over page content */}
+        <div className="absolute inset-0 backdrop-blur-md bg-blue-500/10" />
+        {/* Blue glowing border ring */}
+        <div
+          className="absolute inset-0 border-[3px] border-blue-500 rounded-sm"
+          style={{
+            boxShadow:
+              "inset 0 0 0 1px rgb(59 130 246 / 0.4), 0 0 0 1px rgb(59 130 246 / 0.4)",
+          }}
+        />
+        {/* Drop label */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="flex flex-col items-center gap-3">
+            <Upload className="h-8 w-8 text-blue-400 drop-shadow-md" />
+            <p className="text-sm text-blue-300 font-semibold tracking-widest uppercase">
+              Drop to attach file
+            </p>
+          </div>
+        </div>
+      </div>
       {/* Debug header - only show in debug mode */}
       {isDebugMode && (
         <div className="flex items-center justify-between p-6">
@@ -1038,10 +1119,7 @@ function ChatPage() {
                             animate={false}
                             isInactive={index < messages.length - 1}
                             isInitialGreeting={
-                              index === 0 &&
-                              messages.length === 1 &&
-                              message.content ===
-                                INITIAL_ASSISTANT_MESSAGE.content
+                              index === 0 && messages.length === 1
                             }
                             usage={message.usage}
                             timestamp={message.timestamp}

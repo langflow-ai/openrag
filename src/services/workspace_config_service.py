@@ -409,16 +409,22 @@ class WorkspaceConfigService:
                     if credentials.get(key):
                         credentials[key] = encrypt_secret(credentials[key])
 
-        sections = {
-            "providers": providers,
-            "knowledge": config_dict.get("knowledge", {}),
-            "agent": config_dict.get("agent", {}),
-            "onboarding": config_dict.get("onboarding", {}),
-            "meta": {"edited": bool(config_dict.get("edited", False))},
-        }
-
         async with self._session_factory() as session:
             repo = WorkspaceConfigRepo(session)
+
+            # Preserve any user-set keys in meta (e.g. no_auth_display_name)
+            # that are not owned by the config model — only overwrite "edited".
+            existing_meta = await repo.get_section("meta") or {}
+            merged_meta = {**existing_meta, "edited": bool(config_dict.get("edited", False))}
+
+            sections = {
+                "providers": providers,
+                "knowledge": config_dict.get("knowledge", {}),
+                "agent": config_dict.get("agent", {}),
+                "onboarding": config_dict.get("onboarding", {}),
+                "meta": merged_meta,
+            }
+
             for section, value in sections.items():
                 await repo.upsert(section, value, actor_user_id=actor_user_id)
             await session.commit()
