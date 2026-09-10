@@ -55,6 +55,18 @@ providers:
       oss: true
       on_prem: true
       saas: true
+    exclude_models:
+      # LiteLLM ids that do not match the API ids in IBM's model documentation.
+      - bigscience/mt0-xxl-13b
+      - google/flan-t5-xl-3b
+      - ibm/granite-guardian-3-2-2b
+      - ibm/granite-guardian-3-3-8b
+      - meta-llama/llama-4-maverick-17b
+      - mistralai/mistral-small-2503
+      - mistralai/pixtral-12b-2409
+      # Models reported unusable against watsonx.ai in tracker issue 82237.
+      - mistralai/mistral-medium-2505 # fails during streamed chat responses
+      - ibm/granite-3-3-8b-instruct # unsupported or removed by watsonx.ai
 
   - name: anthropic
     display_name: Anthropic
