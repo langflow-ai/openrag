@@ -1,0 +1,74 @@
+name: Frontend Unit Tests
+
+# Fast Vitest layer: jsdom + Testing Library + MSW, no Docker and no services.
+# The Playwright E2E suite is unchanged and still runs in test-ci.yml.
+# See local/plans/frontend-testing-foundation.md.
+
+on:
+  pull_request:
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/test-frontend-unit.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/test-frontend-unit.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  vitest:
+    name: Vitest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Vitest
+        working-directory: frontend
+        run: npm test
+
+  diff-coverage:
+    name: Diff coverage
+    # PRs only: there is no meaningful base to diff against on a push to main.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          # Full history so the merge base with the target branch is reachable.
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Check coverage of changed lines
+        working-directory: frontend
+        env:
+          DIFF_COVERAGE_BASE: origin/${{ github.base_ref }}
+          DIFF_COVERAGE_THRESHOLD: '80'
+        run: npm run test:diff-coverage
