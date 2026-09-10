@@ -626,29 +626,13 @@ const OnboardingCard = ({
                           <TabsTrigger
                             value={providerKey}
                             data-testid={`${providerKey}-${isEmbedding ? "embedding" : "llm"}-tab`}
-                      <TabsTrigger
-                        key={providerKey}
-                        value={providerKey}
-                        data-testid={`${providerKey}-${isEmbedding ? "embedding" : "llm"}-tab`}
-                        className={cn(
-                          error &&
-                            selected &&
-                            "data-[state=active]:border-destructive",
-                          // Fixed 3-up basis so every card is the same width
-                          // (like a grid) while flex still fills the row.
-                          "min-w-52 grow-0 basis-[calc((100%_-_1.5rem)/3)]",
-                        )}
-                      >
-                        <TabTrigger
-                          selected={selected}
-                          isLoading={isLoadingModels}
-                        >
-                          <div
                             className={cn(
                               error &&
                                 selected &&
                                 "data-[state=active]:border-destructive",
-                              "min-w-24 sm:min-w-40",
+                              // Fixed 3-up basis so every card is the same width
+                              // (like a grid) while flex still fills the row.
+                              "min-w-52 grow-0 basis-[calc((100%_-_1.5rem)/3)]",
                             )}
                           >
                             <TabTrigger
@@ -674,9 +658,12 @@ const OnboardingCard = ({
                                   )}
                                 />
                               </div>
-                              <span className="w-full truncate text-left text-xs leading-tight">
-                                {chrome.name}
-                              </span>
+                              {chrome.name}
+                              {providerBadges[providerKey] && (
+                                <span className="absolute right-0 top-0 rounded border border-muted-foreground/40 bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
+                                  {providerBadges[providerKey]}
+                                </span>
+                              )}
                             </TabTrigger>
                           </TabsTrigger>
                         </TooltipTrigger>
@@ -693,13 +680,6 @@ const OnboardingCard = ({
                           />
                         </TooltipContent>
                       </Tooltip>
-                          {providerBadges[providerKey] && (
-                            <span className="absolute right-0 top-0 rounded border border-muted-foreground/40 bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
-                              {providerBadges[providerKey]}
-                            </span>
-                          )}
-                        </TabTrigger>
-                      </TabsTrigger>
                     );
                   })}
                 </TabsList>

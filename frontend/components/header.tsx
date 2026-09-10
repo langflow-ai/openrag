@@ -24,7 +24,15 @@ export function Header() {
   const toggleTaskMenu = useToggleTaskMenu();
   const { runMode } = useAuth();
   const isNarrow = useNarrowLayout();
-  const { show: showSidebar, hide: hideSidebar } = useSidebarOverlay();
+  const {
+    show: showSidebar,
+    hide: hideSidebar,
+    isPinned,
+    isCollapsed,
+    pin: pinSidebar,
+    unpin: unpinSidebar,
+    expand: expandSidebar,
+  } = useSidebarOverlay();
 
   const {
     hasProblem,
@@ -52,19 +60,29 @@ export function Header() {
     <header className={cn(`flex w-full h-full items-center justify-between`)}>
       <div className="header-start-display px-[16px]">
         <div className="flex items-center gap-2">
-          {/* Sidebar toggle — narrow screens only */}
-          {isNarrow && (
+          {isNarrow ? (
+            <button
+              type="button"
+              aria-label={isPinned ? "Close navigation" : "Open navigation"}
+              onMouseEnter={showSidebar}
+              onMouseLeave={hideSidebar}
+              onClick={isPinned ? unpinSidebar : pinSidebar}
+              className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            >
+              <PanelLeft className="size-5" />
+            </button>
+          ) : isCollapsed ? (
             <button
               type="button"
               aria-label="Open navigation"
               onMouseEnter={showSidebar}
               onMouseLeave={hideSidebar}
+              onClick={expandSidebar}
               className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             >
               <PanelLeft className="size-5" />
             </button>
-          )}
-          {/* Logo/Title */}
+          ) : null}
           <div className="flex items-center">
             <Logo className="fill-foreground" width={24} height={22} />
             <span

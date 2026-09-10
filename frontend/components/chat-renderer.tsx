@@ -21,7 +21,6 @@ import type { Settings } from "@/app/api/queries/useGetSettingsQuery";
 import { OnboardingBlocked } from "@/app/onboarding/_components/onboarding-blocked";
 import { OnboardingContent } from "@/app/onboarding/_components/onboarding-content";
 import { ProgressBar } from "@/app/onboarding/_components/progress-bar";
-import { AnimatedConditional } from "@/components/animated-conditional";
 import { Navigation } from "@/components/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
@@ -33,6 +32,8 @@ import { page } from "@/lib/analytics";
 import {
   ANIMATION_DURATION,
   HEADER_HEIGHT,
+  SIDEBAR_HIDE_THRESHOLD,
+  SIDEBAR_MIN_WIDTH,
   SIDEBAR_WIDTH,
   TOTAL_ONBOARDING_STEPS,
 } from "@/lib/constants";
@@ -54,9 +55,63 @@ export function ChatRenderer({
   const isNarrow = useNarrowLayout();
   const {
     isVisible: sidebarOverlayVisible,
+    isPinned: sidebarPinned,
+    isCollapsed: sidebarCollapsed,
     show: handleSidebarMouseEnter,
     hide: handleSidebarMouseLeave,
+    hideNow,
+    unpin: unpinSidebar,
+    collapse: collapseSidebar,
+    expand: expandSidebar,
   } = useSidebarOverlay();
+
+  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_WIDTH);
+  const [isResizeDragging, setIsResizeDragging] = useState(false);
+  const isDraggingRef = useRef(false);
+  const dragStartXRef = useRef(0);
+  const dragStartWidthRef = useRef(SIDEBAR_WIDTH);
+  const prevCollapsedRef = useRef(false);
+  if (prevCollapsedRef.current && !sidebarCollapsed && !isDraggingRef.current) {
+    setSidebarWidth(SIDEBAR_WIDTH);
+  }
+  prevCollapsedRef.current = sidebarCollapsed;
+
+  const handleResizeMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      isDraggingRef.current = true;
+      setIsResizeDragging(true);
+      hideNow();
+      dragStartXRef.current = e.clientX;
+      dragStartWidthRef.current = sidebarCollapsed ? 0 : sidebarWidth;
+
+      const onMouseMove = (ev: MouseEvent) => {
+        if (!isDraggingRef.current) return;
+        const delta = ev.clientX - dragStartXRef.current;
+        const next = dragStartWidthRef.current + delta;
+        if (next < SIDEBAR_HIDE_THRESHOLD) {
+          collapseSidebar();
+        } else {
+          expandSidebar();
+          setSidebarWidth(
+            Math.min(SIDEBAR_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, next)),
+          );
+        }
+      };
+
+      const onMouseUp = () => {
+        isDraggingRef.current = false;
+        setIsResizeDragging(false);
+        document.removeEventListener("mousemove", onMouseMove);
+        document.removeEventListener("mouseup", onMouseUp);
+      };
+
+      document.addEventListener("mousemove", onMouseMove);
+      document.addEventListener("mouseup", onMouseUp);
+    },
+    [sidebarWidth, sidebarCollapsed, collapseSidebar, expandSidebar, hideNow],
+  );
+
   const [topChromeHeight, setTopChromeHeight] = useState(0);
 
   useLayoutEffect(() => {
@@ -296,56 +351,19 @@ export function ChatRenderer({
   }
   const isOnboardingBlocked = needsOnboardingGate && !can("config:write");
 
-  // For all other pages, render with Langflow-styled navigation and task menu
   return (
     <>
-      {/* Sidebar Navigation */}
-      {!isNarrow && (
+      {!isNarrow && showLayout && (
         <div
-          className="shrink-0 overflow-hidden"
-          style={{ width: showLayout ? SIDEBAR_WIDTH : 0 }}
+          className="shrink-0 overflow-hidden relative flex border-r bg-background"
+          style={{
+            width: sidebarCollapsed ? 0 : sidebarWidth,
+            transition: isDraggingRef.current ? "none" : "width 200ms ease",
+          }}
         >
-          <AnimatedConditional
-            isOpen={showLayout}
-            slide
-            className="border-r bg-background overflow-hidden h-full w-full"
-          >
-            {showLayout && (
-              <Navigation
-                conversations={conversations}
-                isConversationsLoading={isConversationsLoading}
-                onNewConversation={handleNewConversation}
-                onSelectionChange={setIsSelectingChats}
-              />
-            )}
-          </AnimatedConditional>
-        </div>
-      )}
-
-      {/* Main Content */}
-      <main
-        className={cn(
-          "overflow-hidden flex-1 min-w-0 flex items-center justify-center relative",
-          isSelectingChats && "relative",
-        )}
-      >
-        {/* Narrow: overlay sidebar triggered from header PanelLeft button */}
-        {isNarrow && showLayout && (
-          <div
-            className="fixed left-0 bottom-0 z-40 pointer-events-none"
-            style={{ width: SIDEBAR_WIDTH, top: topChromeHeight }}
-          >
-            <div
-              className="h-full w-full pointer-events-auto"
-              style={{
-                opacity: sidebarOverlayVisible ? 1 : 0,
-                transition: "opacity 200ms ease",
-                visibility: sidebarOverlayVisible ? "visible" : "hidden",
-              }}
-              onMouseEnter={handleSidebarMouseEnter}
-              onMouseLeave={handleSidebarMouseLeave}
-            >
-              <div className="h-full w-full border-r bg-background shadow-xl">
+          {!sidebarCollapsed && (
+            <>
+              <div className="h-full w-full overflow-hidden">
                 <Navigation
                   conversations={conversations}
                   isConversationsLoading={isConversationsLoading}
@@ -353,8 +371,92 @@ export function ChatRenderer({
                   onSelectionChange={setIsSelectingChats}
                 />
               </div>
+              <div
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize sidebar"
+                className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/20 active:bg-primary/30 transition-colors z-10"
+                onMouseDown={handleResizeMouseDown}
+              >
+                <div className="absolute inset-y-0 -left-1 -right-1" />
+              </div>
+            </>
+          )}
+        </div>
+      )}
+      {!isNarrow && showLayout && sidebarCollapsed && !isResizeDragging && (
+        <div
+          className="fixed left-0 bottom-0 z-40 pointer-events-none"
+          style={{ width: SIDEBAR_WIDTH, top: topChromeHeight }}
+        >
+          <div
+            role="navigation"
+            className="h-full w-full pointer-events-auto"
+            style={{
+              opacity: sidebarOverlayVisible ? 1 : 0,
+              transition: "opacity 150ms ease",
+              visibility: sidebarOverlayVisible ? "visible" : "hidden",
+            }}
+            onMouseEnter={handleSidebarMouseEnter}
+            onMouseLeave={handleSidebarMouseLeave}
+          >
+            <div className="h-full w-full border-r bg-background shadow-xl">
+              <Navigation
+                conversations={conversations}
+                isConversationsLoading={isConversationsLoading}
+                onNewConversation={handleNewConversation}
+                onSelectionChange={setIsSelectingChats}
+              />
             </div>
           </div>
+        </div>
+      )}
+
+      <main
+        className={cn(
+          "overflow-hidden flex-1 min-w-0 flex items-center justify-center relative",
+          isSelectingChats && "relative",
+        )}
+      >
+        {isNarrow && showLayout && (
+          <>
+            {sidebarPinned && (
+              <button
+                type="button"
+                aria-label="Close navigation"
+                className="fixed inset-0 z-30 bg-black/40 cursor-default border-0"
+                style={{ top: topChromeHeight }}
+                onClick={unpinSidebar}
+              />
+            )}
+            <div
+              className="fixed left-0 bottom-0 z-40 pointer-events-none"
+              style={{ width: SIDEBAR_WIDTH, top: topChromeHeight }}
+            >
+              <div
+                role="navigation"
+                className="h-full w-full pointer-events-auto"
+                style={{
+                  opacity: sidebarOverlayVisible ? 1 : 0,
+                  transition: "opacity 200ms ease",
+                  visibility: sidebarOverlayVisible ? "visible" : "hidden",
+                }}
+                onMouseEnter={handleSidebarMouseEnter}
+                onMouseLeave={handleSidebarMouseLeave}
+              >
+                <div className="h-full w-full border-r bg-background shadow-xl flex flex-col">
+                  <div className="flex-1 min-h-0">
+                    <Navigation
+                      conversations={conversations}
+                      isConversationsLoading={isConversationsLoading}
+                      onNewConversation={handleNewConversation}
+                      onSelectionChange={setIsSelectingChats}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
         )}
         {isSelectingChats && (
           <div className="absolute inset-0 z-10 backdrop-blur-sm bg-background/60 flex items-center justify-center">
