@@ -36,6 +36,8 @@ export class Settings {
   private readonly watsonxProjectIDInput = () =>
     this.page.locator("#project-id");
   private readonly apiKeyInput = () => this.page.locator("#api-key");
+  private readonly providerApiKeyInput = () =>
+    this.page.locator("#provider-field-api_key");
   private readonly watsonxEndPointCombobox = () =>
     this.page.getByRole("combobox");
   private readonly saveModelProviderButton = () =>
@@ -553,10 +555,9 @@ export class Settings {
         }
       }
       if (apiKey) {
-        const apiKeyInput = this.apiKeyInput();
-        if (await apiKeyInput.isVisible()) {
-          await apiKeyInput.fill(apiKey);
-        }
+        const apiKeyInput = this.providerApiKeyInput();
+        await expect(apiKeyInput).toBeVisible();
+        await apiKeyInput.fill(apiKey);
       }
       await this.saveModelProviderButton().click();
       await this.awaitProviderConfigResult(

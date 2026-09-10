@@ -250,7 +250,10 @@ const ProviderSettingsDialog = ({
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -10 }}
                     >
-                      <p className="rounded-lg border border-destructive p-4 min-w-0 [overflow-wrap:anywhere]">
+                      <p
+                        data-testid="provider-connection-error"
+                        className="rounded-lg border border-destructive p-4 min-w-0 [overflow-wrap:anywhere]"
+                      >
                         {settingsMutation.error?.message}
                       </p>
                     </m.div>
