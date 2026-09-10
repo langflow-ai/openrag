@@ -28,7 +28,10 @@ import {
   getKnowledgeFileIdentity,
   inferTaskFileConnectorType,
 } from "@/lib/knowledge-table-state";
-import { getTaskFailureToastDescription } from "@/lib/task-error-display";
+import {
+  getTaskFailureToastDescription,
+  resolveTaskFileError,
+} from "@/lib/task-error-display";
 import {
   didTaskReachCompleted,
   didTaskReachTerminalState,
@@ -321,26 +324,11 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
               }
 
               const fileError = (() => {
-                if (
-                  typeof fileInfoEntry.user_facing_message === "string" &&
-                  fileInfoEntry.user_facing_message.trim().length > 0
-                ) {
-                  return fileInfoEntry.user_facing_message.trim();
-                }
-                if (
-                  typeof fileInfoEntry.error === "string" &&
-                  fileInfoEntry.error.trim().length > 0
-                ) {
-                  return fileInfoEntry.error.trim();
-                }
-                if (
-                  mappedStatus === "failed" &&
-                  typeof currentTask.error === "string" &&
-                  currentTask.error.trim().length > 0
-                ) {
-                  return currentTask.error.trim();
-                }
-                return undefined;
+                const resolved = resolveTaskFileError(
+                  fileInfoEntry,
+                  mappedStatus === "failed" ? currentTask.error : undefined,
+                );
+                return resolved === "Unknown error" ? undefined : resolved;
               })();
 
               setFiles((prevFiles) => {
