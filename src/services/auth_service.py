@@ -18,6 +18,7 @@ from session_manager import SessionManager
 
 logger = logging.getLogger(__name__)
 
+
 async def _get_display_name(user, session) -> str | None:
     """Return the persisted display_name for *user* using the provided session.
 

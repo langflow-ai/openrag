@@ -191,6 +191,7 @@ async def update_my_display_name(
 
     if is_no_auth_mode():
         from db.repositories import WorkspaceConfigRepo
+
         repo = WorkspaceConfigRepo(session)
         meta = await repo.get_section("meta") or {}
         if name is None:
