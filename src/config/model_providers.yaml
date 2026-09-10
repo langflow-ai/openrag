@@ -67,6 +67,22 @@ providers:
       # Models reported unusable against watsonx.ai in tracker issue 82237.
       - mistralai/mistral-medium-2505 # fails during streamed chat responses
       - ibm/granite-3-3-8b-instruct # unsupported or removed by watsonx.ai
+      - ibm/granite-3-8b-instruct
+      - meta-llama/llama-3-2-90b-vision-instruct
+      - meta-llama/llama-3-2-11b-vision-instruct
+      - meta-llama/llama-3-2-3b-instruct
+      - meta-llama/llama-3-2-1b-instruct
+      - mistralai/mistral-large
+      - meta-llama/llama-guard-3-11b-vision
+      - ibm/granite-vision-3-2-2b
+      - ibm/granite-ttm-1536-96-r2
+      - ibm/granite-ttm-1024-96-r2
+      - ibm/granite-ttm-512-96-r2
+      - core42/jais-13b-chat
+      - ibm/granite-13b-chat-v2
+      - ibm/granite-13b-instruct-v2
+      - sdaia/allam-1-13b-instruct
+      - bigscience/mt0-xxl
 
   - name: anthropic
     display_name: Anthropic
