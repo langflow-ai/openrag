@@ -156,6 +156,8 @@ class GenericProviderConfig:
     """Credentials for any LiteLLM provider not covered by legacy fields."""
 
     credentials: dict[str, str] = field(default_factory=dict)
+    # Provider-specific metadata which must not be forwarded to LiteLLM.
+    auth_method: str | None = None
     configured: bool = False
 
 
@@ -193,7 +195,9 @@ class ProvidersConfig:
             return self.ollama
         return self.custom.get(provider_lower, GenericProviderConfig())
 
-    def set_credentials(self, provider: str, credentials: dict[str, str]) -> None:
+    def set_credentials(
+        self, provider: str, credentials: dict[str, str], *, auth_method: str | None = None
+    ) -> None:
         """Upsert arbitrary LiteLLM credentials while preserving legacy config."""
         key = provider.strip().lower()
         clean = {
@@ -208,6 +212,38 @@ class ProvidersConfig:
             # picked as a fallback provider and called with no key at all.
             return
         previous = self.custom.get(key, GenericProviderConfig())
+        if key == "azure" and auth_method:
+            methods = {
+                "api_key": {"api_key"},
+                "entra_token": {"azure_ad_token"},
+                "service_principal": {"tenant_id", "client_id", "client_secret"},
+            }
+            active = methods.get(auth_method)
+            if active is None:
+                raise ValueError(f"Unknown Azure authentication method: {auth_method}")
+            shared = {"api_base", "api_version", "base_model"}
+            # Credentials for another authentication method must not leak into
+            # LiteLLM's call kwargs after the user switches methods.
+            previous.credentials = {
+                name: value
+                for name, value in previous.credentials.items()
+                if name in shared or name in active
+            }
+            previous.auth_method = auth_method
+        if key == "watsonx_onprem" and auth_method:
+            methods = {
+                "username_api_key": {"username", "api_key"},
+                "zen_api_key": {"zen_api_key"},
+            }
+            active = methods.get(auth_method)
+            if active is None:
+                raise ValueError(f"Unknown watsonx.ai on-prem authentication method: {auth_method}")
+            previous.credentials = {
+                name: value
+                for name, value in previous.credentials.items()
+                if name in {"api_base", "space_id", "project_id"} or name in active
+            }
+            previous.auth_method = auth_method
         previous.credentials.update(clean)
         previous.configured = True
         self.custom[key] = previous
@@ -226,8 +262,39 @@ class ProvidersConfig:
             self.ollama.endpoint = clean.get("api_base", self.ollama.endpoint)
             self.ollama.configured = bool(self.ollama.endpoint)
 
+    def pending_credentials(
+        self, provider: str, submitted: dict[str, str] | None = None
+    ) -> dict[str, str]:
+        """LiteLLM kwargs for `provider` as it would be once `submitted` is saved.
+
+        Validation runs before the write, so it has to reason about the union of
+        what is stored and what the request carries. For a provider whose stored
+        form is not already LiteLLM's — watsonx.ai on-prem keeps a username and
+        an API key, and hands LiteLLM the ZenApiKey built from them — the two
+        halves have to be merged *before* the translation, or a request that
+        changes the API key would be validated against a stale credential built
+        from the old one.
+        """
+        from enhancements.providers.registry import get as get_provider_enhancement
+
+        key = provider.strip().lower()
+        clean = {
+            str(name): str(value).strip()
+            for name, value in (submitted or {}).items()
+            if str(name).strip() and str(value).strip()
+        }
+        enhancement = get_provider_enhancement(key)
+        if enhancement:
+            stored = self.custom.get(key, GenericProviderConfig()).credentials
+            return enhancement.litellm_credentials({**stored, **clean})
+        values = self.credential_values(key)
+        values.update(clean)
+        return values
+
     def credential_values(self, provider: str) -> dict[str, str]:
         """Return LiteLLM keyword arguments for a configured provider."""
+        from enhancements.providers.registry import get as get_provider_enhancement
+
         key = provider.strip().lower()
         custom = dict(self.custom.get(key, GenericProviderConfig()).credentials)
         if key == "openai":
@@ -254,6 +321,13 @@ class ProvidersConfig:
             if endpoint:
                 custom.setdefault("api_base", endpoint)
             return custom
+        enhancement = get_provider_enhancement(key)
+        if enhancement:
+            # The stored form is what a Cloud Pak for Data operator has in hand
+            # (cluster URL, username, API key); LiteLLM wants a ZenApiKey. The
+            # translation lives with the provider so the gateway, the health
+            # check and the validator all issue the same call.
+            return enhancement.litellm_credentials(custom)
         return custom
 
 
@@ -358,6 +432,7 @@ class OpenRAGConfig:
                     credentials[key] = decrypt_secret(credentials[key])
             return GenericProviderConfig(
                 credentials=credentials,
+                auth_method=p_data.get("auth_method"),
                 configured=bool(p_data.get("configured", credentials)),
             )
 
