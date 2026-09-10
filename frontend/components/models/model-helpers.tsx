@@ -1,3 +1,4 @@
+import type { ProviderSettings } from "@/app/api/queries/useGetSettingsQuery";
 import AiFoundryLogo from "@/components/icons/ai-foundry-logo";
 import AnthropicLogo from "@/components/icons/anthropic-logo";
 import AzureOpenAILogo from "@/components/icons/azure-openai-logo";
@@ -60,6 +61,55 @@ export function orderProviders(
   return [...ranked, ...available.filter((provider) => !seen.has(provider))];
 }
 
+export function isProviderConfigured(
+  providers: ProviderSettings | undefined,
+  provider: string,
+): boolean {
+  if (!providers) return false;
+  if (providers.custom?.[provider]?.configured === true) {
+    return true;
+  }
+  const legacy = providers as Record<
+    string,
+    { configured?: boolean } | undefined
+  >;
+  return legacy[provider]?.configured === true;
+}
+
+/**
+ * A model provider can only be removed if it is currently configured and
+ * there is at least one other configured provider that has an embedding model
+ * (which excludes Anthropic, as it does not provide embeddings).
+ */
+export function canRemoveProvider(
+  providers: ProviderSettings | undefined,
+  provider: string,
+): boolean {
+  if (!isProviderConfigured(providers, provider)) {
+    return false;
+  }
+
+  // Check custom providers (includes configured catalog providers and legacy mirrors)
+  for (const [key, value] of Object.entries(providers?.custom ?? {})) {
+    if (key !== provider && key !== "anthropic" && value?.configured === true) {
+      return true;
+    }
+  }
+
+  // Check top-level legacy providers as fallback
+  if (provider !== "openai" && providers?.openai?.configured === true) {
+    return true;
+  }
+  if (provider !== "watsonx" && providers?.watsonx?.configured === true) {
+    return true;
+  }
+  if (provider !== "ollama" && providers?.ollama?.configured === true) {
+    return true;
+  }
+
+  return false;
+}
+
 export interface ModelOption {
   value: string;
   label: string;
@@ -105,8 +155,8 @@ const PROVIDER_CHROME: Record<string, ProviderChrome> = {
     logoBgColor: "bg-[#1063FE]",
   },
   // Microsoft draws the two Azure model services differently, and neither is
-  // the generic Azure logo. Both marks paint their own gradients, so logoColor
-  // does nothing for them and the tile stays white.
+  // the generic Azure logo. AiFoundryLogo paints its own gradient, so
+  // logoColor does nothing for it and the tile stays white.
   azure_ai: {
     name: "Azure AI Foundry",
     logo: AiFoundryLogo,
@@ -116,7 +166,7 @@ const PROVIDER_CHROME: Record<string, ProviderChrome> = {
   azure: {
     name: "Azure OpenAI",
     logo: AzureOpenAILogo,
-    logoColor: "text-black",
+    logoColor: "text-[#0078D4]",
     logoBgColor: "bg-white",
   },
   local: {

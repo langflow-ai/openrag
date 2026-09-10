@@ -9,6 +9,10 @@ import { useGetAnthropicModelsQuery } from "@/app/api/queries/useGetModelsQuery"
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import type { ProviderHealthResponse } from "@/app/api/queries/useProviderHealthQuery";
 import AnthropicLogo from "@/components/icons/anthropic-logo";
+import {
+  canRemoveProvider,
+  isProviderConfigured,
+} from "@/components/models/model-helpers";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -41,14 +45,12 @@ const AnthropicSettingsDialog = ({
     enabled: isAuthenticated || isNoAuthMode,
   });
 
-  const isAnthropicConfigured =
-    settings.providers?.anthropic?.configured === true;
+  const isAnthropicConfigured = isProviderConfigured(
+    settings.providers,
+    "anthropic",
+  );
 
-  const canRemoveAnthropic =
-    isAnthropicConfigured &&
-    (settings.providers?.openai?.configured === true ||
-      settings.providers?.watsonx?.configured === true ||
-      settings.providers?.ollama?.configured === true);
+  const canRemoveAnthropic = canRemoveProvider(settings.providers, "anthropic");
 
   const methods = useForm<AnthropicSettingsFormData>({
     mode: "onSubmit",

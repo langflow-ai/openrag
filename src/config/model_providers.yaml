@@ -46,7 +46,7 @@ providers:
     display_name: Ollama
     modes:
       oss: true
-      on_prem: true
+      on_prem: false
       saas: false # local inference is not offered in SaaS
 
   - name: watsonx
@@ -62,14 +62,12 @@ providers:
       oss: true
       on_prem: true
       saas: true
-  # enabled in OSS for tests only to be disbaled in OSS after tests are complete
   - name: azure_ai
     display_name: Azure AI Foundry
     modes:
-      oss: false
+      oss: true
       on_prem: false
-      saas: false
-  # enabled in OSS for tests only to be disbaled in OSS after tests are complete
+      saas: false # local inference is not offered in SaaS
 
   # Azure OpenAI Service, which LiteLLM keys separately from Foundry above:
   # `azure_ai` is the Foundry catalogue (Llama, Phi, Mistral, Cohere, and the
@@ -79,12 +77,13 @@ providers:
     display_name: Azure OpenAI
     modes:
       oss: true
-      on_prem: true
-      saas: true
+      on_prem: false
+      saas: false
     # Azure serves the same OpenAI models, so it needs the same exclusions.
     # The plain name covers the regional ids (`eu/`, `us/`, `global/`) too.
     exclude_models:
       - gpt-3.5-*
+      - gpt-5.6-luna
     # Azure lets you name a deployment anything, so LiteLLM's table cannot know
     # yours. Declare them here and they appear in the pickers for everyone;
     # otherwise each user has to type the name into the model box by hand.

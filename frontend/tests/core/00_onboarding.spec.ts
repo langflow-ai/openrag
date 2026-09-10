@@ -1,10 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { completeOnboarding } from "../utils/onboarding";
 
-test("can configure OpenAI provider", async ({ page }) => {
+test("can complete onboarding with configured provider", async ({ page }) => {
   await completeOnboarding(page, {
-    llmProvider: "openai",
-    embeddingProvider: "openai",
     reset: true,
   });
 

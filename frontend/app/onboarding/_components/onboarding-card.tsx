@@ -18,13 +18,13 @@ import {
 } from "@/app/api/queries/useGetSettingsQuery";
 import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import type { ProviderHealthResponse } from "@/app/api/queries/useProviderHealthQuery";
+import { useDoclingHealth } from "@/components/docling-health-banner";
 import {
   EMBEDDING_PROVIDER_ORDER,
   getProviderChrome,
   LLM_PROVIDER_ORDER,
   orderProviders,
-} from "@/app/settings/_helpers/model-helpers";
-import { useDoclingHealth } from "@/components/docling-health-banner";
+} from "@/components/models/model-helpers";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -44,6 +44,7 @@ import { AnthropicOnboarding } from "./anthropic-onboarding";
 import { GenericOnboarding } from "./generic-onboarding";
 import { IBMOnboarding } from "./ibm-onboarding";
 import { OllamaOnboarding } from "./ollama-onboarding";
+import { canCompleteOnboarding } from "./onboarding-completion";
 import { OpenAIOnboarding } from "./openai-onboarding";
 import { TabTrigger } from "./tab-trigger";
 
@@ -75,8 +76,6 @@ const OnboardingCard = ({
   isEmbedding = false,
   isCompleted = false,
 }: OnboardingCardProps) => {
-  const { isHealthy: isDoclingHealthy } = useDoclingHealth();
-
   // Which providers this deployment offers comes from the backend, filtered by
   // OPENRAG_RUN_MODE (config/model_providers.yaml). Onboarding renders that
   // list; it does not decide availability from the UI brand.
@@ -560,9 +559,11 @@ const OnboardingCard = ({
     setCurrentStep(0);
   };
 
-  const isComplete =
-    (isEmbedding && !!settings.embedding_model) ||
-    (!isEmbedding && !!settings.llm_model && isDoclingHealthy);
+  const isComplete = canCompleteOnboarding({
+    isEmbedding,
+    llmModel: settings.llm_model ?? "",
+    embeddingModel: settings.embedding_model ?? "",
+  });
 
   return (
     <AnimatePresence mode="wait">
@@ -599,7 +600,7 @@ const OnboardingCard = ({
                 value={modelProvider}
                 onValueChange={handleSetModelProvider}
               >
-                <TabsList className="mb-1 pb-3 w-full justify-start gap-1 overflow-x-auto">
+                <TabsList className="mb-1">
                   {tabProviders.map((providerKey) => {
                     const chrome = getProviderChrome(
                       providerKey,
@@ -616,7 +617,9 @@ const OnboardingCard = ({
                           error &&
                             selected &&
                             "data-[state=active]:border-destructive",
-                          "min-w-40",
+                          // Fixed 3-up basis so every card is the same width
+                          // (like a grid) while flex still fills the row.
+                          "min-w-52 grow-0 basis-[calc((100%_-_1.5rem)/3)]",
                         )}
                       >
                         <TabTrigger
@@ -732,11 +735,7 @@ const OnboardingCard = ({
                   <TooltipContent>
                     {isLoadingModels
                       ? "Loading models..."
-                      : settings.llm_model &&
-                          settings.embedding_model &&
-                          !isDoclingHealthy
-                        ? "docling-serve must be running to continue"
-                        : "Please fill in all required fields"}
+                      : "Please fill in all required fields"}
                   </TooltipContent>
                 )}
               </Tooltip>

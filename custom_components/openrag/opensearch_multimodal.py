@@ -4,6 +4,7 @@ import copy
 import json
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -22,12 +23,108 @@ from lfx.io import (
 )
 from lfx.log import logger
 from lfx.schema.data import Data
-from lfx.schema.dataframe import Table
 from opensearchpy import OpenSearch, helpers
 from opensearchpy.exceptions import OpenSearchException, RequestError
 
 REQUEST_TIMEOUT = 60
 MAX_RETRIES = 5
+EMBEDDING_SPACE_PAGE_SIZE = 100
+SELECTED_EMBEDDING_PROVIDER_VAR = "SELECTED_EMBEDDING_PROVIDER"
+LEGACY_EMBEDDING_ROUTE_PREFIX = "legacy:"
+INDEXED_EMBEDDING_ROUTE_PREFIX = "space:"
+
+
+@dataclass(frozen=True)
+class EmbeddingSpace:
+    """One indexed vector space and the model route needed to query it."""
+
+    space_id: str
+    route_model: str
+    field_identity: str
+    legacy: bool = False
+
+
+def build_embedding_space_aggregation(
+    *,
+    size: int,
+    qualified_after: dict[str, Any] | None = None,
+    legacy_after: dict[str, Any] | None = None,
+    include_qualified: bool = True,
+    include_legacy: bool = True,
+) -> dict[str, Any]:
+    """Build pageable discovery aggregations for exact and legacy vector spaces."""
+    aggregations: dict[str, Any] = {}
+    if include_qualified:
+        composite: dict[str, Any] = {
+            "size": size,
+            "sources": [{"space_id": {"terms": {"field": "embedding_space_id"}}}],
+        }
+        if qualified_after:
+            composite["after"] = qualified_after
+        aggregations["embedding_spaces"] = {"composite": composite}
+
+    if include_legacy:
+        composite = {
+            "size": size,
+            "sources": [{"model": {"terms": {"field": "embedding_model"}}}],
+        }
+        if legacy_after:
+            composite["after"] = legacy_after
+        aggregations["legacy_embedding_models"] = {"composite": composite}
+    return aggregations
+
+
+def embedding_space_after_keys(
+    result: dict[str, Any],
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Return composite pagination cursors for exact and legacy aggregations."""
+    aggregations = result.get("aggregations", {})
+    qualified_after = aggregations.get("embedding_spaces", {}).get("after_key")
+    legacy_after = aggregations.get("legacy_embedding_models", {}).get("after_key")
+    return qualified_after, legacy_after
+
+
+def embedding_spaces_from_aggregation(result: dict[str, Any]) -> list[EmbeddingSpace]:
+    """Convert an OpenSearch aggregation response into stable retrieval identities."""
+    aggregations = result.get("aggregations", {})
+    qualified_buckets = aggregations.get("embedding_spaces", {}).get("buckets", [])
+    legacy_buckets = aggregations.get("legacy_embedding_models", {}).get("buckets", [])
+
+    spaces: list[EmbeddingSpace] = []
+    seen: set[str] = set()
+    for bucket in qualified_buckets:
+        key = bucket.get("key")
+        raw_space_id = key.get("space_id") if isinstance(key, dict) else key
+        space_id = str(raw_space_id or "").strip()
+        if not space_id or space_id in seen:
+            continue
+        seen.add(space_id)
+        spaces.append(
+            EmbeddingSpace(
+                space_id=space_id,
+                route_model=f"{INDEXED_EMBEDDING_ROUTE_PREFIX}{space_id}",
+                field_identity=space_id,
+            )
+        )
+
+    for bucket in legacy_buckets:
+        key = bucket.get("key")
+        raw_model = key.get("model") if isinstance(key, dict) else key
+        model = str(raw_model or "").strip()
+        space_id = f"{LEGACY_EMBEDDING_ROUTE_PREFIX}{model}"
+        if not model or space_id in seen:
+            continue
+        seen.add(space_id)
+        spaces.append(
+            EmbeddingSpace(
+                space_id=space_id,
+                route_model=space_id,
+                field_identity=model,
+                legacy=True,
+            )
+        )
+    return spaces
+
 
 # watsonx.ai surfaces rate-limit state via these (mostly non-standard) response
 # headers. The IBM SDK acts on the x-requests-limit-* family directly; we log
@@ -53,7 +150,9 @@ def _log_watsonx_rate_limit_headers(error: Exception) -> None:
         if not headers:
             return
         status = getattr(response, "status_code", "unknown")
-        observed = {h: headers.get(h) for h in _WATSONX_RATE_LIMIT_HEADERS if headers.get(h) is not None}
+        observed = {
+            h: headers.get(h) for h in _WATSONX_RATE_LIMIT_HEADERS if headers.get(h) is not None
+        }
         if str(status) == "429" or observed:
             logger.warning(f"watsonx rate-limit response (status={status}): {observed}")
     except Exception as log_error:  # never let diagnostics mask the real error
@@ -114,9 +213,9 @@ def fence_untrusted_text(text: str) -> str:
     """
     if not text:
         return text
-    escaped = text.replace(
-        UNTRUSTED_CHUNK_FENCE_START, "\\" + UNTRUSTED_CHUNK_FENCE_START
-    ).replace(UNTRUSTED_CHUNK_FENCE_END, "\\" + UNTRUSTED_CHUNK_FENCE_END)
+    escaped = text.replace(UNTRUSTED_CHUNK_FENCE_START, "\\" + UNTRUSTED_CHUNK_FENCE_START).replace(
+        UNTRUSTED_CHUNK_FENCE_END, "\\" + UNTRUSTED_CHUNK_FENCE_END
+    )
     return f"{UNTRUSTED_CHUNK_FENCE_START}\n{escaped}\n{UNTRUSTED_CHUNK_FENCE_END}"
 
 
@@ -164,6 +263,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         *[i.name for i in LCVectorStoreComponent.inputs],  # search_query, add_documents, etc.
         "embedding",
         "embedding_model_name",
+        "embedding_provider_name",
         "vector_field",
         "number_of_results",
         "auth_mode",
@@ -308,6 +408,17 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             advanced=False,
         ),
         StrInput(
+            name="embedding_provider_name",
+            display_name="Embedding Provider",
+            value=SELECTED_EMBEDDING_PROVIDER_VAR,
+            info=(
+                "Exact OpenRAG provider key used for new ingestion metadata and vector fields. "
+                "Bound to SELECTED_EMBEDDING_PROVIDER in managed OpenRAG flows."
+            ),
+            load_from_db=True,
+            advanced=True,
+        ),
+        StrInput(
             name="vector_field",
             display_name="Legacy Vector Field Name",
             value="chunk_embedding",
@@ -379,7 +490,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                 "Valid JSON Web Token for authentication. "
                 "Will be sent in the Authorization header (with optional 'Bearer ' prefix)."
             ),
-            required=False
+            required=False,
         ),
         StrInput(
             name="jwt_header",
@@ -544,10 +655,8 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
 
             # Apply score_threshold / scoreThreshold as min_score if not already set
             if "min_score" not in query_body:
-
                 score_threshold = self._resolve_score_threshold(filter_obj)
                 if score_threshold is not None:
-
                     query_body["min_score"] = score_threshold
 
         client = self.build_client()
@@ -688,6 +797,8 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                         },
                     },
                     "embedding_model": {"type": "keyword"},  # Track which model was used
+                    "embedding_provider": {"type": "keyword"},
+                    "embedding_space_id": {"type": "keyword"},
                     "embedding_dimensions": {"type": "integer"},
                 }
             },
@@ -757,6 +868,8 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                     },
                     # Also ensure the embedding_model tracking field exists as keyword
                     "embedding_model": {"type": "keyword"},
+                    "embedding_provider": {"type": "keyword"},
+                    "embedding_space_id": {"type": "keyword"},
                     "embedding_dimensions": {"type": "integer"},
                 }
             }
@@ -910,7 +1023,9 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                     f"chunks={len(payload['chunks'])} final={final}"
                 )
                 response = client.post(url, json=payload, headers=headers)
-                logger.debug(f"[OpenRAG ingest POST resp] batch={batch_number} status={response.status_code}")
+                logger.debug(
+                    f"[OpenRAG ingest POST resp] batch={batch_number} status={response.status_code}"
+                )
                 if response.status_code >= 400:
                     msg = (
                         "OpenRAG ingest callback failed "
@@ -955,6 +1070,8 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         vector_field: str = "vector_field",
         text_field: str = "text",
         embedding_model: str = "unknown",
+        embedding_provider: str | None = None,
+        embedding_space_id: str | None = None,
         mapping: dict | None = None,
         max_chunk_bytes: int | None = 1 * 1024 * 1024,
         *,
@@ -976,6 +1093,8 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             vector_field: Field name for storing vector embeddings
             text_field: Field name for storing document text
             embedding_model: Name of the embedding model used
+            embedding_provider: Exact provider key, when known
+            embedding_space_id: Provider-qualified vector-space identity
             mapping: Optional index mapping configuration
             max_chunk_bytes: Maximum size per bulk request chunk
             is_aoss: Whether using Amazon OpenSearch Serverless
@@ -1022,6 +1141,10 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                 "embedding_model": embedding_model,  # Track which model was used
                 **metadata,
             }
+            if embedding_provider:
+                request["embedding_provider"] = embedding_provider
+            if embedding_space_id:
+                request["embedding_space_id"] = embedding_space_id
             if is_aoss:
                 request["id"] = _id
             else:
@@ -1140,6 +1263,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         pwd = (self._openrag_input_to_str(self.password) or "").strip()
         if pwd == "OPENSEARCH_PASSWORD" or not pwd:
             from config.settings import get_opensearch_password
+
             pwd = get_opensearch_password() or ""
         if not user or not pwd:
             msg = "Auth Mode is 'basic' but username/password are missing."
@@ -1356,7 +1480,15 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             embedding_model = self._get_embedding_model_name(selected_embedding)
             self.log(f"No embedding_model_name specified, using first embedding: {embedding_model}")
 
-        dynamic_field_name = get_embedding_field_name(embedding_model)
+        embedding_provider = self._openrag_input_to_str(
+            getattr(self, "embedding_provider_name", "")
+        ).lower()
+        if embedding_provider == SELECTED_EMBEDDING_PROVIDER_VAR.lower():
+            embedding_provider = ""
+        embedding_space_id = (
+            f"{embedding_provider}:{embedding_model}" if embedding_provider else None
+        )
+        dynamic_field_name = get_embedding_field_name(embedding_space_id or embedding_model)
 
         logger.info(f"Selected embedding model for ingestion: '{embedding_model}'")
         self.log(f"Using embedding model for ingestion: {embedding_model}")
@@ -1425,7 +1557,6 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         logger.debug(f"Is IBM/watsonx embedding: {is_ibm}")
 
         if is_ibm:
-
             # Hand the full batch to the SDK and let it batch/throttle/retry.
             # Retry attempts and base backoff are tunable via the SDK's own
             # WATSONX_MAX_RETRIES / WATSONX_DELAY_TIME environment variables.
@@ -1615,6 +1746,8 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             vector_field=dynamic_field_name,  # Use dynamic field name
             text_field="text",
             embedding_model=embedding_model,  # Track the model
+            embedding_provider=embedding_provider or None,
+            embedding_space_id=embedding_space_id,
             mapping=mapping,
             is_aoss=is_aoss,
         )
@@ -1701,7 +1834,6 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                 context_clauses.append({"terms": {field: values}})
         return context_clauses
 
-
     def _parse_filter_expression(self) -> dict | None:
         """Parse and validate optional filter_expression JSON.
 
@@ -1756,8 +1888,9 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             return None
         return float(score_threshold)
 
-    def _detect_available_models(self, client: OpenSearch, filter_clauses: list[dict] | None = None) -> list[str]:
-
+    def _detect_available_models(
+        self, client: OpenSearch, filter_clauses: list[dict] | None = None
+    ) -> list[EmbeddingSpace]:
         """Detect which embedding models have documents in the index.
 
         Uses aggregation to find all unique embedding_model values, optionally
@@ -1771,30 +1904,57 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             List of embedding model names found in the index
         """
         try:
-            agg_query = {
-                "size": 0,
-                "aggs": {"embedding_models": {"terms": {"field": "embedding_model", "size": 10}}},
-            }
+            spaces: list[EmbeddingSpace] = []
+            seen: set[str] = set()
+            result: dict[str, Any] = {}
 
-            # Apply filters to model detection if any exist
-            if filter_clauses:
-                agg_query["query"] = {"bool": {"filter": filter_clauses}}
+            # Composite aggregations must be top-level. Exact and legacy
+            # spaces use different document filters, so paginate them in two
+            # independent passes rather than nesting composite under filter.
+            for legacy in (False, True):
+                after = None
+                while True:
+                    agg_query = {
+                        "size": 0,
+                        "aggs": build_embedding_space_aggregation(
+                            size=EMBEDDING_SPACE_PAGE_SIZE,
+                            qualified_after=None if legacy else after,
+                            legacy_after=after if legacy else None,
+                            include_qualified=not legacy,
+                            include_legacy=legacy,
+                        ),
+                    }
+                    bool_query: dict[str, Any] = {}
+                    if filter_clauses:
+                        bool_query["filter"] = filter_clauses
+                    if legacy:
+                        bool_query["must_not"] = [{"exists": {"field": "embedding_space_id"}}]
+                    if bool_query:
+                        agg_query["query"] = {"bool": bool_query}
 
-            logger.debug(f"Model detection query: {agg_query}")
-            result = client.search(
-                index=self.index_name,
-                body=agg_query,
-                params={"terminate_after": 0},
-            )
-            buckets = result.get("aggregations", {}).get("embedding_models", {}).get("buckets", [])
-            models = [b["key"] for b in buckets if b["key"]]
+                    logger.debug(f"Model detection query: {agg_query}")
+                    result = client.search(
+                        index=self.index_name,
+                        body=agg_query,
+                        params={"terminate_after": 0},
+                    )
+                    for space in embedding_spaces_from_aggregation(result):
+                        if space.space_id not in seen:
+                            seen.add(space.space_id)
+                            spaces.append(space)
+
+                    qualified_after, legacy_after = embedding_space_after_keys(result)
+                    next_after = legacy_after if legacy else qualified_after
+                    if not next_after or next_after == after:
+                        break
+                    after = next_after
 
             # Log detailed bucket info for debugging
             logger.info(
-                f"Detected embedding models in corpus: {models}"
+                f"Detected embedding spaces in corpus: {[space.space_id for space in spaces]}"
                 + (f" (with {len(filter_clauses)} filters)" if filter_clauses else "")
             )
-            if not models:
+            if not spaces:
                 total_hits = result.get("hits", {}).get("total", {})
                 total_count = (
                     total_hits.get("value", 0) if isinstance(total_hits, dict) else total_hits
@@ -1806,12 +1966,11 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                 )
         except (OpenSearchException, KeyError, ValueError) as e:
             logger.warning(f"Failed to detect embedding models: {e}")
-            # Fallback to current model
-            fallback_model = self._get_embedding_model_name()
-            logger.info(f"Using fallback model: {fallback_model}")
-            return [fallback_model]
+            # Provider provenance cannot be inferred safely after discovery
+            # fails. Keyword search remains available without guessing.
+            return []
         else:
-            return models
+            return spaces
 
     def _get_index_properties(self, client: OpenSearch) -> dict[str, Any] | None:
         """Retrieve flattened mapping properties for the current index."""
@@ -1924,7 +2083,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             List of search results with page_content, metadata, and relevance scores
 
         Raises:
-            ValueError: If embedding component is not provided or filter JSON is invalid
+            ValueError: If filter JSON is invalid
         """
         logger.info(self.ingest_data)
         client = self.build_client()
@@ -1933,26 +2092,14 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         # Parse optional filter expression
         filter_obj = self._parse_filter_expression()
 
-        if not self.embedding:
-            msg = "Embedding is required to run hybrid search (KNN + keyword)."
-            raise ValueError(msg)
-
-        # Check if embedding is None (fail-safe mode)
-        if self.embedding is None or (
-            isinstance(self.embedding, list) and all(e is None for e in self.embedding)
-        ):
-            logger.error("Embedding returned None (fail-safe mode enabled). Cannot perform search.")
-            return []
-
         # Build filter clauses first so we can use them in model detection
         filter_clauses = self._coerce_filter_clauses(filter_obj)
 
         # Detect available embedding models in the index (scoped by filters)
-        available_models = self._detect_available_models(client, filter_clauses)
+        available_spaces = self._detect_available_models(client, filter_clauses)
 
-        if not available_models:
-            logger.warning("No embedding models found in index, using current model")
-            available_models = [self._get_embedding_model_name()]
+        if not available_spaces:
+            logger.warning("No embedding spaces found in index; using keyword-only search")
 
         # Generate embeddings for ALL detected models
         query_embeddings = {}
@@ -1963,10 +2110,9 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         embeddings_list = [e for e in embeddings_list if e is not None]
 
         if not embeddings_list:
-            logger.error(
-                "No valid embeddings available after filtering None values (fail-safe mode). Cannot perform search."
+            logger.warning(
+                "No valid embedding adapter is available; continuing with keyword-only search."
             )
-            return []
 
         # Create a comprehensive map of model names to embedding objects
         # Check all possible identifiers (deployment, model, model_id, model_name)
@@ -2059,21 +2205,42 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                     f"  Conflict on '{conflict_id}': {len(emb_list)} embeddings use this identifier"
                 )
 
-        logger.info(f"Generating embeddings for {len(available_models)} models in index")
+        logger.info(f"Generating embeddings for {len(available_spaces)} spaces in index")
         logger.info(f"Available embedding identifiers: {list(embedding_by_model.keys())}")
-        self.log(f"[SEARCH] Models detected in index: {available_models}")
+        self.log(
+            f"[SEARCH] Embedding spaces detected in index: "
+            f"{[space.space_id for space in available_spaces]}"
+        )
         self.log(f"[SEARCH] Available embedding identifiers: {list(embedding_by_model.keys())}")
 
         # Track matching status for debugging
         matched_models = []
         unmatched_models = []
 
-        for model_name in available_models:
+        for space in available_spaces:
+            model_name = space.space_id
             try:
-                # Check if we have an embedding object for this model
-                if model_name in embedding_by_model:
-                    # Use the matching embedding object directly
-                    emb_obj = embedding_by_model[model_name]
+                emb_obj = None
+
+                # The OpenRAG proxy adapter can create an immutable child for
+                # any provider-qualified or legacy route. Resolve through it
+                # first so a legacy OpenAI vector is never queried through the
+                # currently selected Azure/Watsonx provider by accident.
+                for candidate in embeddings_list:
+                    resolver = getattr(candidate, "for_model", None)
+                    if callable(resolver):
+                        emb_obj = resolver(space.route_model)
+                        break
+
+                # Backward compatibility for custom flows that still wire one
+                # concrete embedding adapter per model.
+                if emb_obj is None:
+                    for identifier in (space.space_id, space.field_identity):
+                        if identifier in embedding_by_model:
+                            emb_obj = embedding_by_model[identifier]
+                            break
+
+                if emb_obj is not None:
                     emb_deployment = getattr(emb_obj, "deployment", None)
                     emb_model = getattr(emb_obj, "model", None)
                     emb_model_id = getattr(emb_obj, "model_id", None)
@@ -2095,7 +2262,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
 
                     # Use the embedding instance directly - no model switching needed!
                     vec = emb_obj.embed_query(q)
-                    query_embeddings[model_name] = vec
+                    query_embeddings[space.field_identity] = vec
                     matched_models.append(model_name)
                     logger.info(
                         f"Generated embedding for model: {model_name} (actual dimensions: {len(vec)})"
@@ -2111,14 +2278,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                     self.log(
                         f"[NO MATCH] Model '{model_name}' - available: {list(embedding_by_model.keys())}"
                     )
-            except (
-                RuntimeError,
-                ValueError,
-                ConnectionError,
-                TimeoutError,
-                AttributeError,
-                KeyError,
-            ) as e:
+            except Exception as e:  # provider clients expose different exception families
                 logger.warning(f"Failed to generate embedding for {model_name}: {e}")
                 self.log(f"[ERROR] Embedding generation failed for '{model_name}': {e}")
 
@@ -2133,17 +2293,12 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             self.log(f"[WARN] Unmatched models in index: {unmatched_models}")
 
         if not query_embeddings:
-            msg = (
-                f"Failed to generate embeddings for any model. "
-                f"Index has models: {available_models}, but no matching embedding objects found. "
-                f"Available embedding identifiers: {list(embedding_by_model.keys())}"
+            self.log(
+                "[WARN] No indexed embedding space could be resolved; "
+                "continuing with keyword-only search"
             )
-            self.log(f"[FAIL] Search failed: {msg}")
-            raise ValueError(msg)
 
         index_properties = self._get_index_properties(client)
-        legacy_vector_field = getattr(self, "vector_field", "chunk_embedding")
-
         # Build KNN queries for each model
         embedding_fields: list[str] = []
         knn_queries_with_candidates = []
@@ -2191,7 +2346,6 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                 f"query_dims={vector_dim}, field_dims={field_dim or 'unknown'}"
             )
             embedding_fields.append(selected_field)
-
             base_query = {
                 "knn": {
                     selected_field: {
@@ -2211,32 +2365,16 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             knn_queries_without_candidates.append(base_query)
 
         if not knn_queries_with_candidates:
-            # No valid fields found - this can happen when:
-            # 1. Index is empty (no documents yet)
-            # 2. Embedding model has changed and field doesn't exist yet
-            # Return empty results instead of failing
             logger.warning(
                 "No valid knn_vector fields found for embedding models. "
                 "This may indicate an empty index or missing field mappings. "
-                "Returning empty search results."
+                "Continuing with keyword-only search."
             )
             self.log(
                 f"[WARN] No valid KNN queries could be built. "
                 f"Query embeddings generated: {list(query_embeddings.keys())}, "
-                f"but no matching knn_vector fields found in index."
+                f"but no matching knn_vector fields found in index; using keyword search."
             )
-            return []
-
-        # Build exists filter - document must have at least one embedding field
-        exists_any_embedding = {
-            "bool": {
-                "should": [{"exists": {"field": f}} for f in set(embedding_fields)],
-                "minimum_should_match": 1,
-            }
-        }
-
-        # Combine user filters with exists filter
-        all_filters = [*filter_clauses, exists_any_embedding]
 
         # Get limit and score threshold
         limit = self._resolve_limit(filter_obj, default_limit=self.number_of_results)
@@ -2245,30 +2383,36 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         # Determine the best aggregation field for filename based on index mapping
         filename_agg_field = self._get_filename_agg_field(index_properties)
 
-        # Build multi-model hybrid query
+        keyword_query = {
+            "multi_match": {
+                "query": q,
+                "fields": ["text^2", "filename^1.5"],
+                "type": "best_fields",
+                "fuzziness": "AUTO",
+                "boost": 0.3 if knn_queries_with_candidates else 1.0,
+            }
+        }
+        should_queries: list[dict[str, Any]] = [keyword_query]
+        if knn_queries_with_candidates:
+            should_queries.insert(
+                0,
+                {
+                    "dis_max": {
+                        "tie_breaker": 0.0,
+                        "boost": 0.7,
+                        "queries": knn_queries_with_candidates,
+                    }
+                },
+            )
+
+        # Keyword search intentionally has no embedding-field existence filter:
+        # documents in an unresolved legacy space must remain discoverable.
         body = {
             "query": {
                 "bool": {
-                    "should": [
-                        {
-                            "dis_max": {
-                                "tie_breaker": 0.0,  # Take only the best match, no blending
-                                "boost": 0.7,  # 70% weight for semantic search
-                                "queries": knn_queries_with_candidates,
-                            }
-                        },
-                        {
-                            "multi_match": {
-                                "query": q,
-                                "fields": ["text^2", "filename^1.5"],
-                                "type": "best_fields",
-                                "fuzziness": "AUTO",
-                                "boost": 0.3,  # 30% weight for keyword search
-                            }
-                        },
-                    ],
+                    "should": should_queries,
                     "minimum_should_match": 1,
-                    "filter": all_filters,
+                    "filter": filter_clauses,
                 }
             },
             "aggs": {
@@ -2285,6 +2429,8 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                 "source_url",
                 "owner",
                 "embedding_model",
+                "embedding_provider",
+                "embedding_space_id",
                 "parser",
                 "chunk_size",
                 "chunk_overlap",
@@ -2299,7 +2445,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             body["min_score"] = score_threshold
 
         logger.info(
-            f"Executing multi-model hybrid search with {len(knn_queries_with_candidates)} embedding models: "
+            f"Executing hybrid search with {len(knn_queries_with_candidates)} resolved embedding spaces: "
             f"{list(query_embeddings.keys())}"
         )
         self.log(
@@ -2313,7 +2459,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         except RequestError as e:
             error_message = str(e)
             lowered = error_message.lower()
-            if use_num_candidates and "num_candidates" in lowered:
+            if knn_queries_with_candidates and use_num_candidates and "num_candidates" in lowered:
                 logger.warning(
                     "Retrying search without num_candidates parameter due to cluster capabilities",
                     error=error_message,
@@ -2330,28 +2476,15 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                     body=fallback_body,
                     params={"terminate_after": 0},
                 )
-            elif "knn_vector" in lowered or ("field" in lowered and "knn" in lowered):
-                fallback_vector = next(iter(query_embeddings.values()), None)
-                if fallback_vector is None:
-                    raise
-                fallback_field = legacy_vector_field or "chunk_embedding"
+            elif knn_queries_with_candidates and (
+                "knn_vector" in lowered or ("field" in lowered and "knn" in lowered)
+            ):
                 logger.warning(
-                    "KNN search failed for dynamic fields; falling back to legacy field '%s'.",
-                    fallback_field,
+                    "KNN search failed for an indexed embedding field; retrying keyword-only",
+                    error=error_message,
                 )
                 fallback_body = copy.deepcopy(body)
-                fallback_body["query"]["bool"]["filter"] = filter_clauses
-                knn_fallback = {
-                    "knn": {
-                        fallback_field: {
-                            "vector": fallback_vector,
-                            "k": 50,
-                        }
-                    }
-                }
-                if use_num_candidates:
-                    knn_fallback["knn"][fallback_field]["num_candidates"] = num_candidates
-                fallback_body["query"]["bool"]["should"][0]["dis_max"]["queries"] = [knn_fallback]
+                fallback_body["query"]["bool"]["should"] = [keyword_query]
                 resp = client.search(
                     index=self.index_name,
                     body=fallback_body,
@@ -2367,7 +2500,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         if len(hits) == 0:
             self.log(
                 f"[EMPTY] Debug info: "
-                f"models_in_index={available_models}, "
+                f"spaces_in_index={[space.space_id for space in available_spaces]}, "
                 f"matched_models={matched_models}, "
                 f"knn_fields={embedding_fields}, "
                 f"filters={len(filter_clauses)} clauses"
@@ -2388,7 +2521,6 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         ]
 
     def search_documents(self) -> list[Data]:
-
         """Search documents and return results as a list of Data objects.
 
         This is the main interface method that performs the multi-model search using the

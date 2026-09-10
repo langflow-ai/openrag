@@ -250,7 +250,28 @@
 
   [data-theme="ibm"] [data-slot="dialog-content"] > button[class*="absolute"],
   [data-theme="ibm"] [role="dialog"] > button[class*="absolute"] {
-    display: none !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    top: 0.75rem !important;
+    right: 0.75rem !important;
+    width: 1.5rem !important;
+    height: 1.5rem !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    color: hsl(var(--foreground)) !important;
+    opacity: 0.75 !important;
+    transition:
+      background-color 0.1s ease,
+      opacity 0.1s ease !important;
+  }
+
+  [data-theme="ibm"]
+    [data-slot="dialog-content"]
+    > button[class*="absolute"]:hover,
+  [data-theme="ibm"] [role="dialog"] > button[class*="absolute"]:hover {
+    opacity: 1 !important;
+    background-color: hsl(var(--muted)) !important;
   }
 
   [data-theme="ibm"] [data-slot="dialog-content"] form {
@@ -318,6 +339,17 @@
     margin-right: 0 !important;
     margin-bottom: 0 !important;
     margin-top: 1rem !important;
+  }
+
+  /* Confirmation / alert dialogs without body content: remove header bottom border and footer top margin */
+  [data-theme="ibm"]
+    [data-slot="dialog-header"]:has(+ [data-slot="dialog-footer"]) {
+    border-bottom: none !important;
+    padding-bottom: 1.5rem !important;
+  }
+
+  [data-theme="ibm"] [data-slot="dialog-header"] + [data-slot="dialog-footer"] {
+    margin-top: 0 !important;
   }
 
   /*
@@ -424,6 +456,30 @@
     [data-slot="dialog-footer"]
     > button:last-of-type:hover:not(:focus-visible) {
     box-shadow: none !important;
+  }
+
+  /* Single-button footer: primary action sits on the right side (column 2). */
+  [data-theme="ibm"] [data-slot="dialog-footer"] > button:only-child,
+  [data-theme="ibm"] [data-slot="dialog-footer"] > span:only-child,
+  [data-theme="ibm"]
+    [data-slot="dialog-footer"]:has(> :only-child)
+    > :only-child {
+    grid-column: 2 !important;
+    background-color: #0f62fe !important;
+    color: #ffffff !important;
+  }
+
+  [data-theme="ibm"] [data-slot="dialog-footer"] > button:only-child:hover,
+  [data-theme="ibm"]
+    [data-slot="dialog-footer"]:has(> :only-child)
+    > :only-child:hover,
+  [data-theme="ibm"]
+    [data-slot="dialog-footer"]
+    > span:only-child
+    button:hover {
+    background-color: #0353e9 !important;
+    border: 0 !important;
+    outline: none !important;
   }
 
   /* After hover resets: restore a visible focus ring (matches Button focus-visible:ring). */

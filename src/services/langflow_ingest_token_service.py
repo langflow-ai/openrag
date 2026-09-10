@@ -151,6 +151,7 @@ class LangflowIngestTokenService:
             "filename": context.filename,
             "mimetype": context.mimetype,
             "embedding_model": context.embedding_model,
+            "embedding_provider": context.embedding_provider,
             "owner": context.owner,
             "owner_name": context.owner_name,
             "owner_email": context.owner_email,
@@ -183,6 +184,11 @@ class LangflowIngestTokenService:
             filename=str(payload.get("filename") or ""),
             mimetype=str(payload.get("mimetype") or ""),
             embedding_model=str(payload.get("embedding_model") or ""),
+            embedding_provider=(
+                str(payload["embedding_provider"]).strip().lower()
+                if payload.get("embedding_provider")
+                else None
+            ),
             owner=payload.get("owner"),
             owner_name=payload.get("owner_name"),
             owner_email=payload.get("owner_email"),

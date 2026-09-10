@@ -13,6 +13,10 @@ import { useGetIBMModelsQuery } from "@/app/api/queries/useGetModelsQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import type { ProviderHealthResponse } from "@/app/api/queries/useProviderHealthQuery";
 import IBMLogo from "@/components/icons/ibm-logo";
+import {
+  canRemoveProvider,
+  isProviderConfigured,
+} from "@/components/models/model-helpers";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -48,13 +52,12 @@ const WatsonxSettingsDialog = ({
     enabled: isAuthenticated || isNoAuthMode,
   });
 
-  const isWatsonxConfigured = settings.providers?.watsonx?.configured === true;
+  const isWatsonxConfigured = isProviderConfigured(
+    settings.providers,
+    "watsonx",
+  );
 
-  const canRemoveWatsonx =
-    isWatsonxConfigured &&
-    (settings.providers?.openai?.configured === true ||
-      settings.providers?.anthropic?.configured === true ||
-      settings.providers?.ollama?.configured === true);
+  const canRemoveWatsonx = canRemoveProvider(settings.providers, "watsonx");
 
   const methods = useForm<WatsonxSettingsFormData>({
     mode: "onSubmit",
