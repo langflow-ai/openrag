@@ -1,10 +1,8 @@
 """WorkspaceConfigService — yaml/DB dual-write contract."""
 
-import os
 import sys
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 import pytest_asyncio
