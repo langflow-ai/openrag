@@ -1,5 +1,7 @@
 from typing import Any
 
+from opensearchpy.exceptions import NotFoundError
+
 from config.settings import get_index_name
 from utils.file_utils import clean_connector_filename
 from utils.logging_config import get_logger
@@ -180,6 +182,23 @@ class ConnectorService:
             )
             logger.debug(f"Updated metadata for document {document.id}")
         except Exception as e:
+            # A missing index means the chunks aren't where this write expects
+            # them (e.g. a residual index-name mismatch, issue 81583). The
+            # document is already indexed; metadata enrichment is best-effort
+            # and re-runs on the next sync, so don't fail the file over it —
+            # matching get_synced_file_ids_for_connector / should_update_acl.
+            if (
+                isinstance(e, NotFoundError)
+                and e.status_code == 404
+                and e.error == "index_not_found_exception"
+            ):
+                logger.warning(
+                    "Skipping connector metadata enrichment — index not found",
+                    document_id=document.id,
+                    index=get_index_name(),
+                    error=str(e),
+                )
+                return
             logger.error(
                 "OpenSearch metadata update failed",
                 document_id=document.id,
