@@ -1,6 +1,7 @@
 import asyncio
 import os
 import random
+import re
 import time
 import traceback
 import uuid
@@ -89,6 +90,60 @@ _TASK_CANCELLATION_ERROR_MARKERS = (
 def _is_task_cancellation_error(error: str) -> bool:
     lowered = error.lower()
     return any(marker in lowered for marker in _TASK_CANCELLATION_ERROR_MARKERS)
+
+
+# opensearch-py renders transport failures as "ClassName(<status>, ...)". For the
+# by-query APIs (_update_by_query / _delete_by_query) the response carries no
+# top-level "error" key, so Connection._raise_error falls back to using the whole
+# JSON response body as the exception message — several hundred characters of
+# payload where a reason string would normally be.
+#
+# Classifying these early matters twice over: an infrastructure fault never
+# reaches the UI as a raw exception repr, and the JSON body cannot trip the
+# substring heuristics further down (a mapper_parsing_exception body contains
+# "failed to parse", which would otherwise read as a corrupted file).
+#
+# ConnectionError / ConnectionTimeout are deliberately excluded: they render with
+# a different __str__ and are already covered by _is_transient_connectivity_error.
+_OPENSEARCH_TRANSPORT_ERROR_RE = re.compile(
+    r"\b(?:ConflictError|NotFoundError|RequestError|TransportError"
+    r"|AuthenticationException|AuthorizationException)\((\d{3})[,)]"
+)
+
+
+def _opensearch_failure_metadata(error: str) -> dict | None:
+    """Classify an opensearch-py transport failure surfaced as a task error.
+
+    Returns None when the error is not an OpenSearch transport failure, so the
+    caller falls through to the existing classification branches.
+    """
+    if not error:
+        return None
+    match = _OPENSEARCH_TRANSPORT_ERROR_RE.search(error)
+    if not match:
+        return None
+
+    status = match.group(1)
+    if status == "409":
+        message = (
+            "The search index was busy and this change conflicted with another "
+            "update. Nothing is wrong with the file — retry ingestion."
+        )
+    else:
+        message = (
+            f"The search index rejected this document (OpenSearch error {status}). "
+            "This is an infrastructure problem, not a problem with the file. "
+            "Retry ingestion, and check the backend logs if it persists."
+        )
+    # RETRYABLE across the board: of the two available values, USER_ACTIONABLE
+    # would be actively wrong — there is nothing the uploader can change about
+    # their file to fix a search-index fault.
+    return {
+        "component": "opensearch",
+        "failure_phase": "indexing",
+        "user_facing_message": message,
+        "actionable_by": "RETRYABLE",
+    }
 
 
 def _provider_credential_failure_metadata(error: str) -> dict | None:
@@ -1019,6 +1074,13 @@ class TaskService:
                 "user_facing_message": "Ingestion was cancelled.",
                 "actionable_by": "USER_ACTIONABLE",
             }
+
+        # Before any substring heuristic: an OpenSearch transport failure carries a
+        # JSON payload whose contents would otherwise match the file-corruption and
+        # "already exists" markers below.
+        opensearch_meta = _opensearch_failure_metadata(error)
+        if opensearch_meta:
+            return opensearch_meta
 
         if "incorrect password" in error.lower():  # for password protected pdf cases
             return {
