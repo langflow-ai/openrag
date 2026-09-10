@@ -11,6 +11,8 @@ import {
 import { getProviderChrome } from "@/components/models/model-helpers";
 import type { OnboardingVariables } from "../../api/mutations/useOnboardingMutation";
 import { AdvancedOnboarding } from "./advanced";
+import { GenericProviderCredentialFields } from "./generic-provider-credential-fields";
+import { AZURE_AUTH_GROUPS } from "./generic-provider-credential-fields.helpers";
 
 /**
  * Onboarding step for a provider with no hand-built component.
@@ -53,13 +55,36 @@ export function GenericOnboarding({
 
   const [credentials, setCredentials] = useState<Record<string, string>>({});
   const [model, setModel] = useState("");
+  const [azureAuthMethod, setAzureAuthMethod] = useState(
+    providers?.custom?.[provider]?.auth_method ?? "api_key",
+  );
+  const [onPremAuthMethod, setOnPremAuthMethod] = useState(
+    providers?.custom?.[provider]?.auth_method ?? "username_api_key",
+  );
 
   const syncParentSettings = (
     nextCredentials: Record<string, string>,
     nextModel: string,
   ) => {
     const submitted: Record<string, string> = {};
+    const activeAzureFields = new Set([
+      "api_base",
+      "api_version",
+      ...(AZURE_AUTH_GROUPS.find((group) => group.key === azureAuthMethod)
+        ?.fields ?? []),
+    ]);
+    const activeOnPremFields = new Set([
+      "api_base",
+      "space_id",
+      "project_id",
+      ...(onPremAuthMethod === "zen_api_key"
+        ? ["zen_api_key"]
+        : ["username", "api_key"]),
+    ]);
     for (const [key, value] of Object.entries(nextCredentials)) {
+      if (provider === "azure" && !activeAzureFields.has(key)) continue;
+      if (provider === "watsonx_onprem" && !activeOnPremFields.has(key))
+        continue;
       const trimmed = (value ?? "").trim();
       if (trimmed !== "") {
         submitted[key] = trimmed;
@@ -74,6 +99,22 @@ export function GenericOnboarding({
       provider_credentials: Object.keys(submitted).length
         ? { ...prev.provider_credentials, [provider]: submitted }
         : prev.provider_credentials,
+      ...(provider === "azure"
+        ? {
+            provider_auth_methods: {
+              ...prev.provider_auth_methods,
+              azure: azureAuthMethod,
+            },
+          }
+        : {}),
+      ...(provider === "watsonx_onprem"
+        ? {
+            provider_auth_methods: {
+              ...prev.provider_auth_methods,
+              watsonx_onprem: onPremAuthMethod,
+            },
+          }
+        : {}),
     }));
   };
 
@@ -120,37 +161,89 @@ export function GenericOnboarding({
     syncParentSettings(credentials, newModel);
   };
 
+  const handleAzureAuthMethodChange = (method: string) => {
+    setAzureAuthMethod(method);
+    // The closure still holds the previous method during this event; submit
+    // just the new method's fields explicitly so inactive values stay local.
+    const active = new Set([
+      "api_base",
+      "api_version",
+      ...(AZURE_AUTH_GROUPS.find((group) => group.key === method)?.fields ??
+        []),
+    ]);
+    const selected = Object.fromEntries(
+      Object.entries(credentials).filter(([key]) => active.has(key)),
+    );
+    setSettings((prev) => ({
+      ...prev,
+      provider_credentials: { ...prev.provider_credentials, azure: selected },
+      provider_auth_methods: { ...prev.provider_auth_methods, azure: method },
+    }));
+  };
+
+  const handleOnPremAuthMethodChange = (method: string) => {
+    setOnPremAuthMethod(method);
+    const active = new Set([
+      "api_base",
+      "space_id",
+      "project_id",
+      ...(method === "zen_api_key" ? ["zen_api_key"] : ["username", "api_key"]),
+    ]);
+    const selected = Object.fromEntries(
+      Object.entries(credentials).filter(([key]) => active.has(key)),
+    );
+    setSettings((prev) => ({
+      ...prev,
+      provider_credentials: {
+        ...prev.provider_credentials,
+        watsonx_onprem: selected,
+      },
+      provider_auth_methods: {
+        ...prev.provider_auth_methods,
+        watsonx_onprem: method,
+      },
+    }));
+  };
+
+  const renderField = (field: (typeof fields)[number]) => {
+    const isSecret =
+      field.field_type === "password" || field.field_type === "textarea";
+    const hasSaved = isSecret && savedSecrets.has(field.key);
+    return (
+      <div key={field.key} className="space-y-1">
+        <LabelInput
+          label={field.label}
+          helperText={field.tooltip ?? ""}
+          id={`onboarding-${provider}-${field.key}`}
+          type={field.field_type === "password" ? "password" : "text"}
+          required={field.required && !hasSaved}
+          placeholder={
+            hasSaved ? "•••••••••" : (field.placeholder ?? undefined)
+          }
+          value={credentials[field.key] ?? ""}
+          onChange={(e) => handleCredentialChange(field.key, e.target.value)}
+        />
+        {hasSaved && (
+          <p className="text-mmd text-muted-foreground">
+            A value is already saved. Leave this blank to keep it.
+          </p>
+        )}
+      </div>
+    );
+  };
+
   return (
     <>
       <div className="space-y-5">
-        {fields.map((field) => {
-          const isSecret =
-            field.field_type === "password" || field.field_type === "textarea";
-          const hasSaved = isSecret && savedSecrets.has(field.key);
-          return (
-            <div key={field.key} className="space-y-1">
-              <LabelInput
-                label={field.label}
-                helperText={field.tooltip ?? ""}
-                id={`onboarding-${provider}-${field.key}`}
-                type={field.field_type === "password" ? "password" : "text"}
-                required={field.required && !hasSaved}
-                placeholder={
-                  hasSaved ? "•••••••••" : (field.placeholder ?? undefined)
-                }
-                value={credentials[field.key] ?? ""}
-                onChange={(e) =>
-                  handleCredentialChange(field.key, e.target.value)
-                }
-              />
-              {hasSaved && (
-                <p className="text-mmd text-muted-foreground">
-                  A value is already saved. Leave this blank to keep it.
-                </p>
-              )}
-            </div>
-          );
-        })}
+        <GenericProviderCredentialFields
+          provider={provider}
+          fields={fields}
+          azureAuthMethod={azureAuthMethod}
+          onPremAuthMethod={onPremAuthMethod}
+          onAzureAuthMethodChange={handleAzureAuthMethodChange}
+          onOnPremAuthMethodChange={handleOnPremAuthMethodChange}
+          renderField={renderField}
+        />
         {models.length === 0 && (
           <p className="text-mmd text-muted-foreground">
             {chrome.name} publishes no {isEmbedding ? "embedding" : "language"}{" "}

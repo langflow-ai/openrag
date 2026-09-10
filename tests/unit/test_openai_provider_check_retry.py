@@ -7,7 +7,12 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 
-from api.provider_validation import _http_request_with_retry, _test_openai_lightweight_health
+from api.provider_validation import (
+    _http_request_with_retry,
+    _test_azure_lightweight_health,
+    _test_openai_lightweight_health,
+    validate_provider_setup,
+)
 
 
 @pytest.mark.asyncio
@@ -125,3 +130,54 @@ async def test_openai_lightweight_health_succeeds_with_retry(monkeypatch):
     # Should run cleanly without raising exception
     await _test_openai_lightweight_health("sk-test-key")
     assert attempts == 1
+
+
+@pytest.mark.asyncio
+async def test_azure_lightweight_health_checks_endpoint_and_key(monkeypatch):
+    captured = {}
+
+    async def fake_retry(method, url, **kwargs):
+        captured.update(method=method, url=url, **kwargs)
+        return httpx.Response(200, json={"data": []})
+
+    monkeypatch.setattr("api.provider_validation._http_request_with_retry", fake_retry)
+
+    await _test_azure_lightweight_health(
+        {
+            "api_key": "azure-key",
+            "api_base": "https://example.openai.azure.com/",
+            "api_version": "2024-10-21",
+        }
+    )
+
+    assert captured["method"] == "GET"
+    assert captured["url"] == "https://example.openai.azure.com/openai/models"
+    assert captured["headers"]["api-key"] == "azure-key"
+    assert captured["params"] == {"api-version": "2024-10-21"}
+
+
+@pytest.mark.asyncio
+async def test_azure_lightweight_health_rejects_missing_credentials():
+    with pytest.raises(ValueError, match="Azure credentials are required"):
+        await _test_azure_lightweight_health({"api_base": "https://example.openai.azure.com"})
+
+
+@pytest.mark.asyncio
+async def test_azure_foundry_endpoint_uses_the_litellm_route(monkeypatch):
+    """Foundry resource roots must retain main's Azure/LiteLLM behavior."""
+    litellm_probe = AsyncMock()
+    health_check = AsyncMock()
+    monkeypatch.setattr("api.provider_validation._test_litellm_provider", litellm_probe)
+    monkeypatch.setattr("api.provider_validation.test_lightweight_health", health_check)
+
+    await validate_provider_setup(
+        provider="azure",
+        llm_model="gpt-4.1",
+        credentials={
+            "api_key": "azure-key",
+            "api_base": "https://example.services.ai.azure.com/",
+        },
+    )
+
+    litellm_probe.assert_awaited_once()
+    health_check.assert_not_awaited()

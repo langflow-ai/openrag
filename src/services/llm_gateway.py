@@ -13,7 +13,7 @@ from collections.abc import AsyncIterator, Mapping
 from typing import Any, Literal
 
 from services import provider_error_log
-from services.model_catalog import is_known_provider
+from services.model_catalog import is_known_provider, litellm_provider_key
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -95,11 +95,22 @@ def split_model_id(model: str) -> tuple[str | None, str]:
     # also part of vendor-qualified names. When the whole string names exactly
     # one catalogue model, that provider owns it — `openai/gpt-oss-120b` is
     # watsonx's model, not OpenAI's `gpt-oss-120b`.
-    from services.model_catalog import catalog_owner
+    from services.model_catalog import catalog_owner, catalog_owners
 
     owner = catalog_owner(raw)
     if owner:
         return owner, raw
+
+    if catalog_owners(raw):
+        # More than one provider serves this exact id, so the text before the
+        # slash is part of the model's own name and not a provider tag. A
+        # deployment offering both watsonx.ai on IBM Cloud and on a cluster has
+        # `openai/gpt-oss-120b` twice; splitting it would hand the id to OpenAI
+        # — with OpenAI's key, for a model OpenAI does not serve. Leaving it
+        # untagged sends it to the configured default provider whole, which is
+        # right whenever that provider is one of the two and a clean "no such
+        # model" when it is not.
+        return None, raw
 
     prefix, rest = raw.split("/", 1)
     prefix_lower = prefix.lower()
@@ -222,13 +233,25 @@ def resolve_call(
         provider = default_provider(kind, cfg)
         name = requested
     credentials = provider_credentials(provider, cfg)
-    litellm_model = f"{provider}/{name}" if provider != "openai" else name
+    # An OpenRAG provider that LiteLLM does not know by that name is routed
+    # under the key it aliases (`watsonx_onprem` -> `watsonx`). The OpenRAG key
+    # is still what the caller sees and what credentials are stored under.
+    route = litellm_provider_key(provider)
+    litellm_model = f"{route}/{name}" if route != "openai" else name
     return litellm_model, provider, credentials
 
 
 _UPSTREAM_FAILURE_MESSAGE = "The model provider could not be reached. Please try again."
 _UPSTREAM_CREDENTIAL_MESSAGE = (
     "The configured API key is invalid or has been revoked. Update it in Settings and retry."
+)
+#: A TLS trust failure reads as an outage otherwise — the request never left the
+#: process, so there is no provider error to quote and the text collapses to
+#: "could not be reached", which sends an operator hunting for a network fault.
+#: Nothing in Settings fixes this, so the message says who has to act.
+_UPSTREAM_TLS_MESSAGE = (
+    "The provider's TLS certificate is not trusted by this deployment. An operator needs to "
+    "add the provider's CA certificate to OpenRAG's trust store."
 )
 
 
@@ -258,7 +281,16 @@ _ANSI_PATTERN = re.compile(r"\x1b\[[0-9;]*m")
 
 
 def _call_label(provider: str, model: str) -> str:
-    """`provider/model` for humans, without repeating a prefix LiteLLM already added."""
+    """`provider/model` for humans, without repeating a prefix LiteLLM already added.
+
+    The model here is the routed id, so for an aliased provider it carries the
+    *LiteLLM* prefix rather than the OpenRAG one — naively joining them gives
+    "watsonx_onprem/watsonx/openai/gpt-oss-120b", which names two providers and
+    reads like a bug in the error it appears in.
+    """
+    route = litellm_provider_key(provider) if provider else ""
+    if route and route != provider and model.startswith(f"{route}/"):
+        model = model[len(route) + 1 :]
     if model and provider and not model.startswith(f"{provider}/"):
         return f"{provider}/{model}"
     return model or provider or "provider"
@@ -390,9 +422,18 @@ def _upstream_client_message(
     credential failure keeps its actionable message so onboarding can tell the
     user to fix the key.
     """
-    from api.provider_validation import is_generic_upstream_error, is_provider_credential_error
+    from api.provider_validation import (
+        is_generic_upstream_error,
+        is_provider_credential_error,
+        is_provider_tls_error,
+    )
 
     label = _call_label(provider, model)
+    # Checked before the credential branch: a TLS failure often carries
+    # "unauthorized"-adjacent wording from the transport wrapper, and telling
+    # someone to rotate a working API key wastes the trip.
+    if is_provider_tls_error(detail):
+        return f"{_UPSTREAM_TLS_MESSAGE} ({label})"
     if is_provider_credential_error(detail):
         return f"{_UPSTREAM_CREDENTIAL_MESSAGE} ({label})"
     upstream = _provider_error_text(detail, exc)
@@ -974,6 +1015,19 @@ def _log_stream_shape(tally: _StreamTally, provider: str, model: str) -> None:
         logger.debug("Could not summarise stream shape", exc_info=True)
 
 
+def _embedding_input(value: Any) -> Any:
+    """OpenAI's `input`, in the shape every provider behind us accepts.
+
+    OpenAI takes a bare string as well as an array, so its clients send both —
+    and LiteLLM forwards whichever it is given. watsonx.ai takes only an array
+    and rejects a string with "Mismatch type []string with value string", so a
+    client that sends one gets a failure that reads like a bug in its own
+    request. Wrapping is a no-op for a provider that already accepted the
+    string, and token-array inputs are left exactly as they are.
+    """
+    return [value] if isinstance(value, str) else value
+
+
 async def embeddings(body: Mapping[str, Any], *, config=None) -> dict[str, Any]:
     """OpenAI `POST /v1/embeddings`."""
     cfg = config or _get_config()
@@ -985,7 +1039,7 @@ async def embeddings(body: Mapping[str, Any], *, config=None) -> dict[str, Any]:
 
         result = await litellm.aembedding(
             model=litellm_model,
-            input=body.get("input"),
+            input=_embedding_input(body.get("input")),
             **credentials,
         )
     except LlmGatewayError:
