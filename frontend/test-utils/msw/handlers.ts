@@ -1,5 +1,9 @@
 import { HttpResponse, http } from "msw";
+import type { Settings } from "@/app/api/queries/useGetSettingsQuery";
 import type { TasksResponse } from "@/app/api/queries/useGetTasksQuery";
+import { authPresets } from "@/test-utils/fixtures/auth";
+import { makeSettings } from "@/test-utils/fixtures/settings";
+import { authHandlers } from "./auth";
 
 /**
  * Default handlers, shared by every test.
@@ -10,9 +14,17 @@ import type { TasksResponse } from "@/app/api/queries/useGetTasksQuery";
  * `location.origin`, which vitest.config.mts pins to http://localhost:3000 via
  * `environmentOptions.jsdom.url`.
  *
- * Keep this list minimal: only endpoints many tests need in a boring happy-path
- * shape. Anything test-specific belongs in that test via `server.use(...)`,
- * which setup.ts resets after every test.
+ * ── What belongs here ───────────────────────────────────────────────────────
+ * Only the endpoints a *provider* hits on mount. Because `renderWithProviders`
+ * mounts the real providers, every one of these is fetched by tests that never
+ * mention auth or tasks, and an unmocked one fails the test under
+ * `onUnhandledRequest: "error"` (or, for `/api/auth/me`, hangs — see
+ * `./auth.ts`). Anything a *component* fetches belongs in that component's
+ * test via `server.use(...)`, which setup.ts resets after every test.
+ *
+ * The default scenario is deliberately the boring one: an admin, RBAC on,
+ * onboarding finished, nothing in flight. Tests that care select another via
+ * `renderWithProviders({ auth: authPresets.viewer })`.
  *
  * ── On typing (see R4 in local/plans/frontend-testing-foundation.md) ─────────
  * Handler bodies are annotated with the frontend's own exported response
@@ -32,5 +44,12 @@ import type { TasksResponse } from "@/app/api/queries/useGetTasksQuery";
 const emptyTasks: TasksResponse = { tasks: [] };
 
 export const handlers = [
+  // AuthProvider: /api/auth/me, /api/users/me, /api/onboarding-status.
+  ...authHandlers(authPresets.admin),
+
+  // TaskProvider.
   http.get("/api/tasks/enhanced", () => HttpResponse.json(emptyTasks)),
+
+  // useOnboardingState(), reached through both TaskProvider and ChatProvider.
+  http.get("/api/settings", () => HttpResponse.json<Settings>(makeSettings())),
 ];
