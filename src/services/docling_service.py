@@ -157,7 +157,7 @@ class DoclingService:
         preview_mode: bool = False,
     ) -> dict[str, Any]:
         """Build the options payload for docling from OpenRAG configs, incorporating VLM settings if enabled."""
-        from services.watsonx_iam import WatsonxIamError, get_iam_token
+        from enhancements.providers.watsonx.iam import WatsonxIamError, get_iam_token
 
         config = get_openrag_config()
         knowledge_config = config.knowledge

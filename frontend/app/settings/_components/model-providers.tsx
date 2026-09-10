@@ -4,12 +4,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useGetModelProvidersQuery } from "@/app/api/queries/useGetModelProvidersQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
-import { useProviderHealth } from "@/components/provider-health-banner";
-import { useAuth } from "@/contexts/auth-context";
 import {
   getProviderChrome,
   type ModelProvider,
-} from "../_helpers/model-helpers";
+} from "@/components/models/model-helpers";
+import { useProviderHealth } from "@/components/provider-health-banner";
+import { useAuth } from "@/contexts/auth-context";
 import AnthropicSettingsDialog from "./anthropic-settings-dialog";
 import ModelProviderCard from "./model-provider-card";
 import OllamaSettingsDialog from "./ollama-settings-dialog";
@@ -100,7 +100,7 @@ export const ModelProviders = () => {
   return (
     <>
       <div className="grid gap-6 xs:grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
-        {providers.map(({ name: providerKey, display_name }) => {
+        {providers.map(({ name: providerKey, display_name, badge }) => {
           const isLlmProvider = providerKey === currentLlmProvider;
           const isEmbeddingProvider = providerKey === currentEmbeddingProvider;
           const isProviderUnhealthy =
@@ -113,6 +113,7 @@ export const ModelProviders = () => {
               provider={{
                 providerKey,
                 ...getProviderChrome(providerKey, display_name),
+                badge,
               }}
               // `providers.custom` carries every provider the backend knows,
               // legacy four included, so one lookup covers config-added ones.

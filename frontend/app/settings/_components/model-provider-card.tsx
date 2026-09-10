@@ -1,11 +1,11 @@
 "use client";
 
+import type { ModelProvider } from "@/components/models/model-helpers";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { trackButton } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
-import type { ModelProvider } from "../_helpers/model-helpers";
 import CardIcon from "./card-icon";
 
 export interface ModelProviderCardData {
@@ -14,6 +14,7 @@ export interface ModelProviderCardData {
   logo: (props: React.SVGProps<SVGSVGElement>) => React.ReactNode;
   logoColor: string;
   logoBgColor: string;
+  badge?: string;
 }
 
 interface ModelProviderCardProps {
@@ -30,11 +31,19 @@ export default function ModelProviderCard({
   onConfigure,
 }: ModelProviderCardProps) {
   const isCloudBrand = useIsCloudBrand();
-  const { providerKey, name, logo: Logo, logoColor, logoBgColor } = provider;
+  const {
+    providerKey,
+    name,
+    logo: Logo,
+    logoColor,
+    logoBgColor,
+    badge,
+  } = provider;
   const isEditSetup = isConfigured && !isUnhealthy;
 
   return (
     <Card
+      data-testid={`model-provider-card-${providerKey}`}
       className={cn(
         "group relative flex flex-col transition-colors",
         isCloudBrand
@@ -46,6 +55,11 @@ export default function ModelProviderCard({
           (isCloudBrand ? "ring-2 ring-destructive" : "border-destructive"),
       )}
     >
+      {badge && (
+        <span className="absolute right-4 top-4 rounded border border-muted-foreground/40 bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+          {badge}
+        </span>
+      )}
       <CardHeader>
         <div className="flex flex-col items-start justify-between">
           <div className="flex flex-col gap-3">

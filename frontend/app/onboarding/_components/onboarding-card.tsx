@@ -18,12 +18,13 @@ import {
 } from "@/app/api/queries/useGetSettingsQuery";
 import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import type { ProviderHealthResponse } from "@/app/api/queries/useProviderHealthQuery";
+import { useDoclingHealth } from "@/components/docling-health-banner";
 import {
   EMBEDDING_PROVIDER_ORDER,
   getProviderChrome,
   LLM_PROVIDER_ORDER,
   orderProviders,
-} from "@/app/settings/_helpers/model-helpers";
+} from "@/components/models/model-helpers";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -90,6 +91,13 @@ const OnboardingCard = ({
           name,
           display_name,
         ]),
+      ),
+    [availableProviders],
+  );
+  const providerBadges = useMemo(
+    () =>
+      Object.fromEntries(
+        availableProviders.map(({ name, badge }) => [name, badge]),
       ),
     [availableProviders],
   );
@@ -539,6 +547,10 @@ const OnboardingCard = ({
     if (generic && Object.keys(generic).length > 0) {
       onboardingData.provider_credentials = { [currentProvider]: generic };
     }
+    const authMethod = settings.provider_auth_methods?.[currentProvider];
+    if (authMethod) {
+      onboardingData.provider_auth_methods = { [currentProvider]: authMethod };
+    }
 
     trackButton({
       CTA: isEmbedding ? "Complete - Embedding Setup" : "Complete - LLM Setup",
@@ -599,7 +611,7 @@ const OnboardingCard = ({
                 value={modelProvider}
                 onValueChange={handleSetModelProvider}
               >
-                <TabsList className="mb-1 pb-3 w-full justify-start gap-1 overflow-x-auto">
+                <TabsList className="mb-1">
                   {tabProviders.map((providerKey) => {
                     const chrome = getProviderChrome(
                       providerKey,
@@ -616,7 +628,9 @@ const OnboardingCard = ({
                           error &&
                             selected &&
                             "data-[state=active]:border-destructive",
-                          "min-w-40",
+                          // Fixed 3-up basis so every card is the same width
+                          // (like a grid) while flex still fills the row.
+                          "min-w-52 grow-0 basis-[calc((100%_-_1.5rem)/3)]",
                         )}
                       >
                         <TabTrigger
@@ -641,6 +655,11 @@ const OnboardingCard = ({
                             />
                           </div>
                           {chrome.name}
+                          {providerBadges[providerKey] && (
+                            <span className="absolute right-0 top-0 rounded border border-muted-foreground/40 bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
+                              {providerBadges[providerKey]}
+                            </span>
+                          )}
                         </TabTrigger>
                       </TabsTrigger>
                     );

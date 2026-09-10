@@ -72,6 +72,11 @@ def test_openai_form_is_the_plain_one_not_the_compatible_variant() -> None:
     assert required == ["api_key"]
 
 
+def test_azure_openai_leaves_auth_fields_optional_for_method_selection() -> None:
+    """The UI selects one complete Azure auth method over LiteLLM's flat form."""
+    assert model_catalog.required_field_keys("azure") == ["api_base"]
+
+
 def test_an_unknown_provider_still_gets_a_usable_form() -> None:
     fields = model_catalog.credential_fields("some-private-gateway")
     assert [field["key"] for field in fields] == ["api_key", "api_base"]

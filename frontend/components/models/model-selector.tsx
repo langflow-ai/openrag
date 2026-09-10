@@ -1,11 +1,9 @@
 "use client";
 
 import { CheckIcon, ChevronsUpDownIcon } from "lucide-react";
-import { useDeferredValue, useEffect, useId, useMemo, useState } from "react";
-import type { CatalogModel } from "@/app/settings/_helpers/catalog-models";
-import { MODELS_PER_PROVIDER } from "@/app/settings/_helpers/model-info";
+import { useDeferredValue, useId, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import { Button, type ButtonProps } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import {
   Command,
   CommandGroup,
@@ -19,40 +17,21 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { CapabilityStrip } from "./model-features";
+import { CapabilityStrip } from "./capability-strip";
+import { MODELS_PER_PROVIDER } from "./model-info";
+import type {
+  GroupedModelOption,
+  ModelOption,
+  ModelSelectorProps,
+} from "./types";
 
-export type ModelOption = {
-  value: string;
-  label: string;
-  default?: boolean;
-  provider?: string;
-  model?: CatalogModel;
-  icon?: React.ReactNode;
-};
-
-export type GroupedModelOption = {
-  group: string;
-  /** Provider key for custom entries typed under this group. */
-  provider?: string;
-  options: ModelOption[];
-  icon?: React.ReactNode;
-};
-
-export interface ModelSelectorProps extends ButtonProps {
-  options?: ModelOption[];
-  groupedOptions?: GroupedModelOption[];
-  value: string;
-  /** Disambiguates the same model id hosted by more than one vendor. */
-  selectedProvider?: string;
-  icon?: React.ReactNode;
-  placeholder?: string;
-  searchPlaceholder?: string;
-  noOptionsPlaceholder?: string;
-  custom?: boolean;
-  onValueChange: (value: string, provider?: string) => void;
-  hasError?: boolean;
-  defaultOpen?: boolean;
-}
+// Re-exported so existing `from "@/components/models/model-selector"` imports
+// keep working; the definitions themselves live in `./types` now.
+export type {
+  GroupedModelOption,
+  ModelOption,
+  ModelSelectorProps,
+} from "./types";
 
 function optionProvider(
   option: ModelOption,
@@ -166,9 +145,12 @@ export function ModelSelector({
       return next;
     });
 
-  // Flatten grouped options or use regular options
-  const allOptions =
-    groupedOptions?.flatMap((group) => group.options) || options || [];
+  // Flatten grouped options or use regular options. Memoized so the effect
+  // below (which depends on allOptions) doesn't re-run on every render.
+  const allOptions = useMemo(
+    () => groupedOptions?.flatMap((group) => group.options) || options || [],
+    [groupedOptions, options],
+  );
   const allowCustomEntry = !!custom;
 
   const selectedOptionGroup = groupedOptions?.find((group) =>
@@ -254,18 +236,6 @@ export function ModelSelector({
     ? (visibleGroups?.length ?? 0) > 0 || showUngroupedCustomEntry
     : visibleOptions.length > 0 || showFlatCustomEntry;
 
-  useEffect(() => {
-    if (
-      allOptions.length > 0 &&
-      value &&
-      value !== "" &&
-      !allOptions.some((option) => option.value === value) &&
-      !custom
-    ) {
-      onValueChange("");
-    }
-  }, [allOptions, value, custom, onValueChange]);
-
   return (
     <Popover open={open} onOpenChange={setOpen} modal={false}>
       <PopoverTrigger asChild>
@@ -350,6 +320,11 @@ export function ModelSelector({
                             <div className="w-4 h-4">{group.icon}</div>
                           )}
                           <span>{group.group}</span>
+                          {groupProvider === "watsonx_onprem" && (
+                            <Badge variant="secondary" className="text-xs">
+                              On-prem
+                            </Badge>
+                          )}
                         </div>
                       }
                     >
@@ -401,8 +376,10 @@ export function ModelSelector({
                                 )}
                               />
                               <div className="flex items-center gap-2">
-                                {option.icon && (
-                                  <span className="h-4 w-4">{option.icon}</span>
+                                {(option.icon ?? group.icon) && (
+                                  <span className="h-4 w-4">
+                                    {option.icon ?? group.icon}
+                                  </span>
                                 )}
                                 {option.label}
                               </div>

@@ -1,10 +1,11 @@
-"""OpenAI-compatible embeddings that talk to the OpenRAG `/v1` proxy.
+"""OpenAI-compatible embeddings that talk to the OpenRAG LLM proxy.
 
 Embeddings work the same way as chat: Langflow never holds upstream vendor
 keys. At runtime OpenRAG injects:
 
 - ``OPENRAG_LLM_TOKEN`` — the same short-lived hop token as chat
-- ``OPENRAG_LLM_BASE_URL`` — the same ``http://<backend>/v1`` base URL
+- ``OPENRAG_LLM_BASE_URL`` — the backend's ``/v1`` base or the router's
+  private unversioned base
 - ``SELECTED_EMBEDDING_MODEL`` — configured embedding model id
 
 ``OpenAIEmbeddings`` posts to ``{base_url}/embeddings``. The backend gateway
@@ -126,7 +127,7 @@ class OpenRAGEmbeddings(Embeddings):
 class OpenAICompatibleEmbeddingComponent(LCEmbeddingsModel):
     display_name = "OpenRAG Embeddings"
     description = (
-        "Embeddings via OpenRAG's OpenAI-compatible /v1 proxy. "
+        "Embeddings via OpenRAG's OpenAI-compatible proxy. "
         "Uses the same base URL and hop token as the chat component."
     )
     icon = "OpenRAG"
@@ -159,8 +160,8 @@ class OpenAICompatibleEmbeddingComponent(LCEmbeddingsModel):
             name="api_base",
             display_name="OpenAI API Base",
             info=(
-                "Must end with /v1 (for example http://openrag-backend:8000/v1). "
-                "Bound to OPENRAG_LLM_BASE_URL at runtime. Same URL as chat."
+                "Bound to OPENRAG_LLM_BASE_URL at runtime. It is either the public "
+                "/v1 base or the private router base. Same URL as chat."
             ),
             value=OPENRAG_LLM_BASE_URL_VAR,
             load_from_db=True,

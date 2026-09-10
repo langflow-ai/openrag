@@ -1,4 +1,5 @@
 import { expect, Page } from "@playwright/test";
+import type { ModelProvider } from "@/components/models/model-helpers";
 import config from "../config/test.config";
 import logger from "../utils/logger";
 
@@ -35,6 +36,8 @@ export class Settings {
   private readonly watsonxProjectIDInput = () =>
     this.page.locator("#project-id");
   private readonly apiKeyInput = () => this.page.locator("#api-key");
+  private readonly providerApiKeyInput = () =>
+    this.page.locator("#provider-field-api_key");
   private readonly watsonxEndPointCombobox = () =>
     this.page.getByRole("combobox");
   private readonly saveModelProviderButton = () =>
@@ -55,36 +58,30 @@ export class Settings {
   /**
    * Get locator for a provider's card.
    *
-   * `hasText` matches substrings, so filtering on "OpenAI" also selected the
-   * "Azure OpenAI" tile once both providers shipped, and any button lookup
-   * inside it blew up under strict mode. Anchor on the card heading, which
-   * carries the provider name exactly.
-   * @param providerName - Name of the model provider
+   * Card headings are not unique: IBM watsonx.ai and its on-prem variant use
+   * the same visible name. The provider key is stable and uniquely identifies
+   * the card without depending on presentation copy.
+   * @param providerKey - Backend model-provider key
    * @returns Locator for the provider card
    */
-  private getProviderCard(providerName: string) {
-    return this.page.locator("div.rounded-xl, div.border-border.group").filter({
-      has: this.page.getByRole("heading", {
-        name: providerName,
-        exact: true,
-      }),
-    });
+  private getProviderCard(providerKey: ModelProvider) {
+    return this.page.getByTestId(`model-provider-card-${providerKey}`);
   }
 
   /**
    * Get locator for configure button by provider name
-   * @param providerName - Name of the model provider
+   * @param providerKey - Backend model-provider key
    * @returns Locator for the configure button
    */
-  private getConfigureButton(providerName: string) {
-    return this.getProviderCard(providerName).getByRole("button", {
+  private getConfigureButton(providerKey: ModelProvider) {
+    return this.getProviderCard(providerKey).getByRole("button", {
       name: "Configure",
     });
   }
 
   /**
    * Get locator for setup heading by provider name
-   * @param providerName - Name of the model provider
+   * @param providerKey - Backend model-provider key
    * @returns Locator for the setup heading
    */
   private getSetupHeading(providerName: string) {
@@ -117,8 +114,8 @@ export class Settings {
    * @param providerName - Name of the model provider
    * @returns Locator for the edit setup button
    */
-  private getEditSetupButton(providerName: string) {
-    return this.getProviderCard(providerName).getByRole("button", {
+  private getEditSetupButton(providerKey: ModelProvider) {
+    return this.getProviderCard(providerKey).getByRole("button", {
       name: "Edit Setup",
     });
   }
@@ -381,8 +378,8 @@ export class Settings {
    */
   async configureWatsonxai() {
     logger.info("Configuring watsonx.ai settings");
-    const configureBtn = this.getConfigureButton("IBM watsonx.ai");
-    const editBtn = this.getEditSetupButton("IBM watsonx.ai");
+    const configureBtn = this.getConfigureButton("watsonx");
+    const editBtn = this.getEditSetupButton("watsonx");
     // If Configure button is visible -> do setup
     if (await configureBtn.isVisible()) {
       await configureBtn.click();
@@ -453,29 +450,32 @@ export class Settings {
   /**
    * Remove model provider configuration
    */
-  async removeModelProviderSetup(modelProvider: string) {
-    const editButton = this.getEditSetupButton(modelProvider);
-    const configureButton = this.getConfigureButton(modelProvider);
+  async removeModelProviderSetup(
+    providerKey: ModelProvider,
+    providerName: string,
+  ) {
+    const editButton = this.getEditSetupButton(providerKey);
+    const configureButton = this.getConfigureButton(providerKey);
     // If already configured (Edit Setup visible)
     if (await editButton.isVisible()) {
-      logger.info(`${modelProvider} is configured. Removing setup...`);
+      logger.info(`${providerName} is configured. Removing setup...`);
       await editButton.click();
       await this.removeModelProviderButton().click();
       await this.getRemoveConfigButton().click();
       await this.clickRemoveAnywayIfDisplayed();
       await expect(
-        this.getToastByText(`${modelProvider} configuration removed`),
+        this.getToastByText(`${providerName} configuration removed`),
       ).toBeVisible({ timeout: 15000 });
       await this.page.waitForTimeout(10000);
     }
     // If not configured
     else if (await configureButton.isVisible()) {
-      logger.info(`${modelProvider} is not configured. Skipping removal.`);
+      logger.info(`${providerName} is not configured. Skipping removal.`);
     }
     // Unexpected state
     else {
       throw new Error(
-        `No Configure/Edit Setup button found for ${modelProvider}`,
+        `No Configure/Edit Setup button found for ${providerName}`,
       );
     }
   }
@@ -504,8 +504,8 @@ export class Settings {
    */
   async configureOpenAPI() {
     logger.info("Configuring Openai settings");
-    const configureBtn = this.getConfigureButton("OpenAI");
-    const editBtn = this.getEditSetupButton("OpenAI");
+    const configureBtn = this.getConfigureButton("openai");
+    const editBtn = this.getEditSetupButton("openai");
 
     // If Configure button is visible -> do setup
     if (await configureBtn.isVisible()) {
@@ -537,8 +537,9 @@ export class Settings {
    */
   async configureAzureOpenAI() {
     logger.info("Configuring Azure OpenAI settings");
-    const configureBtn = this.getConfigureButton("Azure OpenAI");
-    const editBtn = this.getEditSetupButton("Azure OpenAI");
+    const configureBtn = this.getConfigureButton("azure");
+    const editBtn = this.getEditSetupButton("azure");
+    await this.page.waitForTimeout(500);
 
     if (await configureBtn.isVisible()) {
       await configureBtn.click();
@@ -554,10 +555,9 @@ export class Settings {
         }
       }
       if (apiKey) {
-        const apiKeyInput = this.apiKeyInput();
-        if (await apiKeyInput.isVisible()) {
-          await apiKeyInput.fill(apiKey);
-        }
+        const apiKeyInput = this.providerApiKeyInput();
+        await expect(apiKeyInput).toBeVisible();
+        await apiKeyInput.fill(apiKey);
       }
       await this.saveModelProviderButton().click();
       await this.awaitProviderConfigResult(
@@ -585,7 +585,7 @@ export class Settings {
     apiKey: string,
   ) {
     logger.info("Configuring watsonx.ai settings with invalid credentials");
-    const configureBtn = this.getConfigureButton("IBM watsonx.ai");
+    const configureBtn = this.getConfigureButton("watsonx");
     // If Configure button is visible -> do setup
     if (await configureBtn.isVisible()) {
       await configureBtn.click();

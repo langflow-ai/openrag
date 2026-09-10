@@ -1,10 +1,11 @@
-"""Standalone ingestion-callback proxy router.
+"""Standalone Langflow proxy router.
 
 A deliberately tiny FastAPI/uvicorn app that exposes ONLY the Langflow ingest
-callback endpoint (``POST /internal/ingest/chunks``) and forwards it to the real
-backend. It runs in the same process as the main backend (a daemon thread on its
-own port) when ``OPENRAG_BACKEND_ROUTER_ENABLE`` is set, so Langflow's reachable
-surface narrows to this single route instead of the full backend internal API.
+callback endpoint and the OpenAI-compatible LLM paths Langflow needs, then
+forwards them to the real backend. It runs in the same process as the main
+backend (a daemon thread on its own port) when ``OPENRAG_BACKEND_ROUTER_ENABLE``
+is set, so Langflow's reachable surface is an explicit allowlist rather than
+the full backend internal API.
 
 It is a thin reverse proxy only — it does NOT validate the ingest JWT; the real
 backend still does. Its sole job is network-surface isolation.
@@ -17,6 +18,7 @@ import threading
 import httpx
 import uvicorn
 from fastapi import FastAPI, Request, Response
+from fastapi.responses import StreamingResponse
 
 from app.middleware import RequestLoggingMiddleware
 from config.settings import (
@@ -34,10 +36,20 @@ logger = get_logger(__name__)
 # advertised service name, which may not resolve from where the router runs).
 _UPSTREAM_URL = f"{OPENRAG_BACKEND_ROUTER_UPSTREAM_URL}{INGEST_CALLBACK_PATH}"
 
+# Deliberately exact private paths: Langflow gets an unversioned internal
+# interface, while the router maps each one to the backend's public /v1 API.
+# Do not proxy arbitrary paths. This app runs on a separate port from FastMCP;
+# the mapping ensures neither /mcp nor any public /v1 path is exposed here.
+_LLM_PROXY_UPSTREAM_PATHS = {
+    "/models": "/v1/models",
+    "/chat/completions": "/v1/chat/completions",
+    "/embeddings": "/v1/embeddings",
+}
+
 # Only these request headers are forwarded upstream; everything else (Host,
 # hop-by-hop headers, etc.) is dropped so the router cannot be abused as an open
 # proxy. The ingest token travels in either Authorization or the custom header.
-_FORWARDED_HEADERS = ("authorization", "x-openrag-ingest-token", "content-type")
+_FORWARDED_HEADERS = ("authorization", "x-openrag-ingest-token", "content-type", "accept")
 _UPSTREAM_TIMEOUT = httpx.Timeout(60.0)
 
 
@@ -75,14 +87,74 @@ async def _proxy_ingest_chunks(request: Request) -> Response:
     )
 
 
+async def _proxy_llm_request(request: Request) -> Response:
+    """Proxy one allowlisted OpenAI-compatible request to the main backend.
+
+    The response is streamed so chat-completion SSE responses retain their
+    streaming behaviour. Authentication is still verified by the real backend.
+    """
+    upstream_path = _LLM_PROXY_UPSTREAM_PATHS.get(request.url.path)
+    if upstream_path is None:  # Defensive guard if a route is changed.
+        return Response(status_code=404)
+
+    upstream_url = f"{OPENRAG_BACKEND_ROUTER_UPSTREAM_URL}{upstream_path}"
+    body = await request.body()
+    headers = {
+        key: value for key, value in request.headers.items() if key.lower() in _FORWARDED_HEADERS
+    }
+    client = httpx.AsyncClient(timeout=_UPSTREAM_TIMEOUT)
+    try:
+        upstream = await client.send(
+            client.build_request(
+                request.method,
+                upstream_url,
+                content=body,
+                headers=headers,
+                params=request.query_params,
+            ),
+            stream=True,
+        )
+    except httpx.HTTPError as e:
+        await client.aclose()
+        logger.error(
+            "[Router] LLM proxy failed to reach backend", upstream=upstream_url, error=str(e)
+        )
+        return Response(
+            content=b'{"error":{"message":"LLM proxy upstream unreachable","type":"api_error"}}',
+            status_code=502,
+            media_type="application/json",
+        )
+
+    async def stream_body():
+        try:
+            async for chunk in upstream.aiter_raw():
+                yield chunk
+        finally:
+            await upstream.aclose()
+            await client.aclose()
+
+    response_headers = {
+        key: value
+        for key, value in upstream.headers.items()
+        if key.lower() in {"content-type", "cache-control", "x-accel-buffering"}
+    }
+    logger.info(
+        "[Router] Forwarding LLM proxy request", upstream=upstream_url, method=request.method
+    )
+    return StreamingResponse(
+        stream_body(), status_code=upstream.status_code, headers=response_headers
+    )
+
+
 async def _health() -> dict[str, str]:
     return {"status": "ok"}
 
 
 def create_router_app() -> FastAPI:
-    """Build the minimal proxy app: only the ingest callback + a health probe.
+    """Build the allowlisted Langflow proxy app and a health probe.
 
-    No other paths are registered, so every other request returns 404.
+    No other paths are registered, so MCP and every non-allowlisted path return
+    404 on this port.
     """
     app = FastAPI(
         title="OpenRAG Ingest Router",
@@ -95,6 +167,9 @@ def create_router_app() -> FastAPI:
     # stdout as the backend. Without this, uvicorn.access is globally silenced.
     app.add_middleware(RequestLoggingMiddleware)
     app.add_api_route(INGEST_CALLBACK_PATH, _proxy_ingest_chunks, methods=["POST"])
+    app.add_api_route("/models", _proxy_llm_request, methods=["GET"])
+    app.add_api_route("/chat/completions", _proxy_llm_request, methods=["POST"])
+    app.add_api_route("/embeddings", _proxy_llm_request, methods=["POST"])
     app.add_api_route("/health", _health, methods=["GET"])
     return app
 

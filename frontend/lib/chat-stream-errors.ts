@@ -175,6 +175,19 @@ function humanizeProviderErrorMessage(message: string): string {
 }
 
 /**
+ * A prefix ending on an unclosed delimiter is a syntactic fragment, not a message.
+ * `ConflictError(409, '` is the whole of what precedes the JSON in an opensearch-py
+ * transport error, and the payload after that quote is the entire diagnosis — so
+ * keeping only the prefix discards everything useful. A real prefix ("Invalid API
+ * key {...") ends on a word character and is still preferred.
+ */
+const SYNTACTIC_FRAGMENT_TAIL = /[([{'"`,=:]$/;
+
+function isReadablePrefix(prefix: string): boolean {
+  return prefix.length > 0 && !SYNTACTIC_FRAGMENT_TAIL.test(prefix);
+}
+
+/**
  * Strip embedded provider JSON payloads so chat never shows raw error objects.
  */
 export function formatProviderErrorMessage(text: string): string {
@@ -202,7 +215,7 @@ export function formatProviderErrorMessage(text: string): string {
         .replace(/[:\s]+$/, "")
         .trim(),
     );
-    if (prefix) {
+    if (isReadablePrefix(prefix)) {
       return humanizeProviderErrorMessage(prefix);
     }
   }
@@ -216,7 +229,7 @@ export function formatProviderErrorMessage(text: string): string {
         .replace(/[:\s]+$/, "")
         .trim(),
     );
-    if (prefix) {
+    if (isReadablePrefix(prefix)) {
       return humanizeProviderErrorMessage(prefix);
     }
   }
