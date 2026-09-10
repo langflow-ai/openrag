@@ -20,7 +20,9 @@ import { authHandlers } from "./auth";
  * mention auth or tasks, and an unmocked one fails the test under
  * `onUnhandledRequest: "error"` (or, for `/api/auth/me`, hangs — see
  * `./auth.ts`). Anything a *component* fetches belongs in that component's
- * test via `server.use(...)`, which setup.ts resets after every test.
+ * test via `renderWithProviders(ui, { handlers })`, which applies them after
+ * the auth scenario so they win over it; setup.ts resets them after every
+ * test.
  *
  * The default scenario is deliberately the boring one: an admin, RBAC on,
  * onboarding finished, nothing in flight. Tests that care select another via

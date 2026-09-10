@@ -58,9 +58,40 @@ export function setMockLocation(location: MockLocation) {
 
 export function resetMockRouter() {
   for (const fn of Object.values(mockRouter)) fn.mockClear();
+  // `redirect` and `notFound` live on `navigationMock`, not `mockRouter`, and
+  // would otherwise carry call history across tests.
+  navigationMock.redirect.mockClear();
+  navigationMock.notFound.mockClear();
   pathname = DEFAULT_PATHNAME;
   searchParams = new URLSearchParams();
   params = {};
+}
+
+/**
+ * `redirect()` and `notFound()` are typed `never` in Next: they throw a
+ * control-flow error the framework catches, so nothing after the call runs. A
+ * bare `vi.fn()` returns `undefined` instead, and code under test would sail
+ * past a guard that should have bailed out — every branch below a `redirect()`
+ * would execute. These sentinels restore the terminating behaviour, and are
+ * distinct so a test can tell which one fired:
+ *
+ *   await expect(SettingsTabPage({ params })).rejects.toBeInstanceOf(
+ *     MockRedirectError,
+ *   );
+ *   expect(navigationMock.redirect).toHaveBeenCalledWith("/settings/connectors");
+ */
+export class MockRedirectError extends Error {
+  constructor(readonly url: string) {
+    super(`NEXT_REDIRECT: ${url}`);
+    this.name = "MockRedirectError";
+  }
+}
+
+export class MockNotFoundError extends Error {
+  constructor() {
+    super("NEXT_NOT_FOUND");
+    this.name = "MockNotFoundError";
+  }
 }
 
 /**
@@ -74,6 +105,10 @@ export const navigationMock = {
   usePathname: () => pathname,
   useSearchParams: () => searchParams,
   useParams: () => params,
-  redirect: vi.fn(),
-  notFound: vi.fn(),
+  redirect: vi.fn((url: string): never => {
+    throw new MockRedirectError(url);
+  }),
+  notFound: vi.fn((): never => {
+    throw new MockNotFoundError();
+  }),
 };
