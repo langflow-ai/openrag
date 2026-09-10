@@ -20,7 +20,10 @@ class TestCancellationErrorDetection:
 
     def test_file_processing_task_cancelled(self):
         """Test that 'file processing task cancelled' is recognized as cancellation."""
-        assert _is_task_cancellation_error("File processing task cancelled during docling parse") is True
+        assert (
+            _is_task_cancellation_error("File processing task cancelled during docling parse")
+            is True
+        )
 
     def test_cancelled_during_parsing(self):
         """Test that cancellation during parsing is detected."""
