@@ -172,4 +172,20 @@ describe("formatProviderErrorMessage", () => {
     );
     assert.equal(formatProviderErrorMessage("Error: boom"), "Error: boom");
   });
+
+  it("keeps the whole string when the prefix is only a syntactic fragment", () => {
+    const body =
+      '{"took":2719,"timed_out":false,"total":300,"updated":19,' +
+      '"version_conflicts":1,"failures":[{"index":"documents","id":"20",' +
+      '"cause":{"type":"version_conflict_engine_exception"}}]}';
+    const raw = `ConflictError(409, '${body}')`;
+    assert.equal(formatProviderErrorMessage(raw), raw);
+  });
+
+  it("still keeps a readable prefix that is a real sentence", () => {
+    assert.equal(
+      formatProviderErrorMessage("Invalid API key {not-valid-json"),
+      "Invalid API key",
+    );
+  });
 });

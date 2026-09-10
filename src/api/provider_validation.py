@@ -4,9 +4,11 @@ import asyncio
 import json
 import re
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
+from enhancements.providers.registry import get as get_provider_enhancement
 from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 
@@ -125,6 +127,31 @@ def is_provider_credential_error(text: str | BaseException | None) -> bool:
         return False
     lowered = (str(text) if not isinstance(text, str) else text).lower()
     return any(marker in lowered for marker in _PROVIDER_CREDENTIAL_ERROR_MARKERS)
+
+
+#: Markers for a TLS trust failure, which is neither a bad credential nor an
+#: unreachable host: the request never left because this deployment does not
+#: trust the certificate the provider presented. Common on an on-prem cluster
+#: fronted by an internal or self-signed CA.
+_PROVIDER_TLS_ERROR_MARKERS = (
+    "certificate_verify_failed",
+    "certificate verify failed",
+    "sslcertverificationerror",
+    "ssl: certificate",
+    "self-signed certificate",
+    "self signed certificate",
+    "unable to get local issuer certificate",
+    "certificate has expired",
+    "hostname mismatch",
+)
+
+
+def is_provider_tls_error(text: str | BaseException | None) -> bool:
+    """True when the call failed because the provider's certificate is not trusted."""
+    if text is None:
+        return False
+    lowered = (str(text) if not isinstance(text, str) else text).lower()
+    return any(marker in lowered for marker in _PROVIDER_TLS_ERROR_MARKERS)
 
 
 _GENERIC_UPSTREAM_ERROR_MARKERS = (
@@ -609,6 +636,23 @@ def _extract_error_details(response: httpx.Response) -> str:
         return response_text
 
 
+#: Providers with a validation path of their own, so they are never handed to
+#: the generic LiteLLM probe. Everything else is validated by making a real call,
+#: which needs a model name.
+_NATIVELY_VALIDATED_PROVIDERS = frozenset({"openai", "azure", "watsonx", "ollama", "anthropic"})
+
+
+def is_azure_ai_foundry_endpoint(api_base: str | None) -> bool:
+    """Whether ``api_base`` is an Azure AI Foundry resource endpoint.
+
+    LiteLLM accepts the resource root and appends its own Foundry request path.
+    Such an endpoint must not use the Azure OpenAI-specific HTTP health check.
+    """
+    if not api_base:
+        return False
+    return (urlparse(api_base).hostname or "").endswith(".services.ai.azure.com")
+
+
 async def validate_provider_setup(
     provider: str,
     api_key: str = None,
@@ -649,7 +693,25 @@ async def validate_provider_setup(
             f"Starting validation for provider: {provider_lower} (test_completion={test_completion})"
         )
 
-        if provider_lower not in {"openai", "watsonx", "ollama", "anthropic"}:
+        # watsonx.ai on-prem has no bespoke model probe of its own: a real call
+        # through LiteLLM *is* its model probe, and it is what makes switching to
+        # a model the cluster does not serve fail instead of saving silently. Its
+        # catalogue check is only for the case there is no model to probe with,
+        # which is the one that used to report "A model is required".
+        enhancement = get_provider_enhancement(provider_lower)
+        azure_ai_foundry_endpoint = provider_lower == "azure" and is_azure_ai_foundry_endpoint(
+            supplied.get("api_base")
+        )
+        probes_the_model = (
+            bool(embedding_model or llm_model)
+            if enhancement is not None
+            else (
+                provider_lower not in _NATIVELY_VALIDATED_PROVIDERS
+                # Preserve main's Azure/LiteLLM route for Foundry resource URLs.
+                or (azure_ai_foundry_endpoint and bool(embedding_model or llm_model))
+            )
+        )
+        if probes_the_model:
             await _test_litellm_provider(
                 provider=provider_lower,
                 credentials=supplied,
@@ -657,6 +719,18 @@ async def validate_provider_setup(
                 llm_model=llm_model,
             )
         elif test_completion:
+            if provider_lower == "azure":
+                # Azure deployments are user-defined, so a model completion is
+                # not a safe generic probe during onboarding. The deployments
+                # request still verifies the selected authentication method.
+                await test_lightweight_health(
+                    provider=provider_lower,
+                    api_key=api_key,
+                    endpoint=endpoint,
+                    project_id=project_id,
+                    credentials=supplied,
+                )
+                return
             # Full validation with completion/embedding tests (consumes credits)
             if embedding_model:
                 # Test embedding
@@ -683,6 +757,7 @@ async def validate_provider_setup(
                 api_key=api_key,
                 endpoint=endpoint,
                 project_id=project_id,
+                credentials=supplied,
             )
 
         logger.info(f"Validation successful for provider: {provider_lower}")
@@ -703,14 +778,24 @@ async def _test_litellm_provider(
     """Validate arbitrary providers through the same LiteLLM adapter used at runtime."""
     import litellm
 
+    from services.model_catalog import litellm_provider_key
+
     model = embedding_model or llm_model
     if not model:
         raise ValueError("A model is required to validate the provider")
-    litellm_model = f"{provider}/{model}"
+    # Same aliasing the gateway applies, so the probe hits the route the real
+    # call will: `watsonx_onprem/<model>` is not a prefix LiteLLM can resolve.
+    litellm_model = f"{litellm_provider_key(provider)}/{model}"
     if embedding_model:
         await litellm.aembedding(
             model=litellm_model,
-            input="OpenRAG provider validation",
+            # A list, never a bare string. OpenAI accepts either and LiteLLM
+            # forwards whatever it is given, so a string reaches watsonx.ai as
+            # `"inputs": "..."` where it requires `[]string` — the cluster then
+            # answers "Mismatch type []string with value string" and the
+            # pre-save check fails for every embedding model, which leaves a
+            # wrongly-chosen one impossible to change.
+            input=["OpenRAG provider validation"],
             **credentials,
         )
         return
@@ -727,17 +812,24 @@ async def test_lightweight_health(
     api_key: str = None,
     endpoint: str = None,
     project_id: str = None,
+    credentials: dict[str, str] | None = None,
 ) -> None:
     """Test provider health with lightweight check (no credits consumed)."""
 
     if provider == "openai":
         await _test_openai_lightweight_health(api_key)
+    elif provider == "azure":
+        await _test_azure_lightweight_health(
+            credentials or {"api_key": api_key, "api_base": endpoint}
+        )
     elif provider == "watsonx":
         await _test_watsonx_lightweight_health(api_key, endpoint, project_id)
     elif provider == "ollama":
         await _test_ollama_lightweight_health(endpoint)
     elif provider == "anthropic":
         await _test_anthropic_lightweight_health(api_key)
+    elif enhancement := get_provider_enhancement(provider):
+        await enhancement.lightweight_health_check(credentials or {})
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -892,6 +984,61 @@ async def _test_openai_lightweight_health(api_key: str) -> None:
     except Exception as e:
         logger.error(f"OpenAI lightweight health check failed: {str(e)}")
         raise
+
+
+async def _test_azure_lightweight_health(credentials: dict[str, str]) -> None:
+    """Validate Azure OpenAI credentials without selecting or billing a deployment.
+
+    Azure deployment enumeration is an Azure Resource Manager operation, not an
+    Azure OpenAI data-plane operation.  The data plane does provide ``models``;
+    use that endpoint so a valid resource is not rejected with ResourceNotFound.
+    """
+    api_base = credentials.get("api_base")
+    api_version = credentials.get("api_version")
+    api_key = credentials.get("api_key")
+    access_token = credentials.get("azure_ad_token")
+    if not (api_key or access_token or credentials.get("client_secret")):
+        raise ValueError("Azure credentials are required")
+    if not api_base:
+        raise ValueError("API Base is required")
+
+    if not access_token and credentials.get("client_secret"):
+        tenant_id = credentials.get("tenant_id")
+        client_id = credentials.get("client_id")
+        if not tenant_id or not client_id:
+            raise ValueError("tenant_id and client_id are required for Azure service principal")
+        token_response = await _http_request_with_retry(
+            "POST",
+            f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token",
+            data={
+                "client_id": client_id,
+                "client_secret": credentials["client_secret"],
+                "grant_type": "client_credentials",
+                "scope": "https://cognitiveservices.azure.com/.default",
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            timeout=30.0,
+        )
+        if token_response.status_code != 200:
+            raise Exception(_extract_error_details(token_response))
+        access_token = token_response.json().get("access_token")
+        if not access_token:
+            raise ValueError("Azure service principal did not return an access token")
+
+    headers = {"Content-Type": "application/json"}
+    if access_token:
+        headers["Authorization"] = f"Bearer {access_token}"
+    else:
+        headers["api-key"] = api_key or ""
+    response = await _http_request_with_retry(
+        "GET",
+        f"{api_base.rstrip('/')}/openai/models",
+        headers=headers,
+        params={"api-version": api_version or "2024-10-21"},
+        timeout=30.0,
+    )
+    if response.status_code != 200:
+        raise Exception(_extract_error_details(response))
 
 
 async def _test_openai_completion_with_tools(api_key: str, llm_model: str) -> None:

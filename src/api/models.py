@@ -249,6 +249,7 @@ async def get_model_catalog(
         CATALOG_UNAVAILABLE_MESSAGE,
         CatalogUnavailableError,
         catalog,
+        refresh_live_models,
     )
 
     # `no-store` for the same reason as /models/providers: the catalogue is
@@ -256,6 +257,9 @@ async def get_model_catalog(
     # was supposed to apply the edit. LiteLLM's table is cached in-process, so
     # rebuilding this response is cheap.
     try:
+        # A cluster-hosted provider is the only source for its own model list,
+        # so ask it before building the payload the pickers read.
+        await refresh_live_models()
         return JSONResponse(catalog(), headers={"Cache-Control": "no-store"})
     except CatalogUnavailableError as e:
         # Log the cause, but never echo exception text back to the caller

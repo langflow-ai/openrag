@@ -29,6 +29,18 @@ function entry(overrides: Partial<TaskFileEntry> = {}): TaskFileEntry {
   return { status: "failed", ...overrides };
 }
 
+// A real _update_by_query 409 as opensearch-py renders it: the whole response
+// body becomes the exception message, because that response carries no
+// top-level "error" key for the client to use instead (#2349).
+const OPENSEARCH_CONFLICT_ERROR =
+  'ConflictError(409, \'{"took":2719,"timed_out":false,"total":300,' +
+  '"updated":19,"version_conflicts":1,"failures":[{"index":"documents",' +
+  '"id":"20","cause":{"type":"version_conflict_engine_exception"}}]}\')';
+
+const BACKEND_CLASSIFIED_MESSAGE =
+  "The search index was busy and this change conflicted with another " +
+  "update. Nothing is wrong with the file — retry ingestion.";
+
 describe("formatApiComponent", () => {
   it("maps every known component to its display label", () => {
     expect(formatApiComponent("docling")).toBe("Docling");
@@ -141,6 +153,42 @@ describe("resolveTaskFileError", () => {
 
     expect(message).not.toContain("{");
     expect(message).toContain("Rate limit exceeded");
+  });
+
+  it("prefers the backend's classified message over a raw payload (#2349)", () => {
+    // This precedence is what makes the backend classifier work at all. If these
+    // checks are ever reordered, a classified OpenSearch failure would fall back
+    // to the raw payload and be mangled again.
+    expect(
+      resolveTaskFileError(
+        entry({
+          error: OPENSEARCH_CONFLICT_ERROR,
+          user_facing_message: BACKEND_CLASSIFIED_MESSAGE,
+        }),
+      ),
+    ).toBe(BACKEND_CLASSIFIED_MESSAGE);
+  });
+
+  it("passes a clean sentence through the provider parser unchanged (#2349)", () => {
+    // The message contains no JSON, so the chat provider-error parser must not
+    // rewrite or truncate it.
+    expect(
+      resolveTaskFileError(
+        entry({ user_facing_message: BACKEND_CLASSIFIED_MESSAGE }),
+      ),
+    ).toBe(BACKEND_CLASSIFIED_MESSAGE);
+  });
+
+  it("keeps the whole raw error when the backend did not classify it (#2349)", () => {
+    // Regression guard: this used to collapse to the 20-character fragment
+    // "ConflictError(409, '", discarding the failures[] array that names the
+    // index, shard and document — the only way to diagnose the failure.
+    const resolved = resolveTaskFileError(
+      entry({ error: OPENSEARCH_CONFLICT_ERROR }),
+    );
+
+    expect(resolved).toBe(OPENSEARCH_CONFLICT_ERROR);
+    expect(resolved).toContain("version_conflict_engine_exception");
   });
 });
 

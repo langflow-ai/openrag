@@ -34,6 +34,7 @@ const PROVIDER_LOGOS: Record<
   openai: OpenAILogo,
   anthropic: AnthropicLogo,
   watsonx: IBMLogo,
+  watsonx_onprem: IBMLogo,
   ollama: OllamaLogo,
   // Both Azure rows: `azure_ai` is Foundry, `azure` is Azure OpenAI Service,
   // and Microsoft draws the two differently.
