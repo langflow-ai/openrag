@@ -106,7 +106,7 @@ endef
        azurite-up azurite-down \
        instana-agent-up instana-agent-down \
        shell-backend shell-frontend install \
-       test test-unit test-integration test-ci test-ci-local test-ci-suite test-sdk test-os-jwt lint \
+       test test-unit test-integration test-ci test-ci-local test-ci-suite test-sdk test-provider-live test-os-jwt lint \
        ci-build-images ci-save-images \
        backend frontend docling docling-stop install-be install-fe build-be build-fe build-os build-lf logs-be logs-fe logs-lf logs-os \
        shell-be shell-lf shell-os restart status health db-reset clear-os-data flow-upload setup factory-reset \
@@ -337,6 +337,10 @@ help_test: ## Show testing commands
 	@echo "$(PURPLE)SDK Tests:$(NC)"
 	@echo "  $(PURPLE)make test-sdk$(NC)        - Run SDK integration tests"
 	@echo "                         (requires running OpenRAG at localhost:3000)"
+	@echo ''
+	@echo "$(PURPLE)Live Provider Tests:$(NC)"
+	@echo "  $(PURPLE)make test-provider-live$(NC) - Smoke-test chat + embeddings against a real provider"
+	@echo "                         (needs credentials in .env; skips without them)"
 	@echo ''
 	@echo "$(PURPLE)Diagnostic Tests:$(NC)"
 	@echo "  $(PURPLE)make test-os-jwt$(NC)     - Test JWT authentication against OpenSearch"
@@ -1308,6 +1312,14 @@ test-sdk: ## Run SDK integration tests (requires running OpenRAG at localhost:30
 	@echo "$(PURPLE)Running TypeScript SDK tests...$(NC)"
 	cd sdks/typescript && npm install && npm run build && OPENRAG_URL=http://localhost:3000 npm test
 	@echo "$(PURPLE)SDK tests complete.$(NC)"
+
+test-provider-live: ## Run live provider smoke tests (needs real provider credentials)
+	@echo "$(CYAN)════════════════════════════════════════$(NC)"
+	@echo "$(PURPLE) Live Provider Smoke Tests$(NC)"
+	@echo "$(CYAN)════════════════════════════════════════$(NC)"
+	@echo "$(YELLOW)Calls a real provider. Tests without credentials skip; see .env.example$(NC)"
+	OPENRAG_LIVE_PROVIDER_TESTS=true uv run pytest tests/integration/providers/ -v
+	@echo "$(PURPLE)Live provider smoke tests complete.$(NC)"
 
 lint: ## Run linting checks
 	@echo "$(YELLOW)Running linting checks...$(NC)"

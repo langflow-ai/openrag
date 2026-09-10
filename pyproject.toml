@@ -101,6 +101,7 @@ filterwarnings = [
 ]
 markers = [
     "openrag_skip_app_onboard: selected tests manage their own infrastructure clients and do not need the session app onboarding fixture",
+    "live_provider: calls a real model provider over the network; needs credentials and OPENRAG_LIVE_PROVIDER_TESTS=true, and skips without them",
 ]
 
 [tool.uv]
