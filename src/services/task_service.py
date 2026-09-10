@@ -83,6 +83,7 @@ def _is_ocr_required_file(filename: str) -> bool:
 
 _TASK_CANCELLATION_ERROR_MARKERS = (
     "task cancelled by user",
+    "file cancelled by user",
     "file processing task cancelled",
 )
 

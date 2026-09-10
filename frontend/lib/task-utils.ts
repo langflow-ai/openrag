@@ -1,6 +1,7 @@
 import type { Task, TaskFileEntry } from "@/app/api/queries/useGetTasksQuery";
 import {
   buildRowStatusLabel,
+  isFileCancelled,
   normalizeFailurePhase,
 } from "@/lib/task-error-display";
 
@@ -40,8 +41,8 @@ export function getTaskFileDialogStatusLabel(
   taskError?: string,
 ): string {
   if (isTaskFileFailed(fileInfo)) {
-    // Check if this is a cancelled file
-    if (fileInfo.error === "File cancelled by user") {
+    // Use centralized cancellation detection
+    if (isFileCancelled(fileInfo)) {
       return "Cancelled";
     }
     const failurePhase = normalizeFailurePhase(fileInfo.failure_phase);
@@ -137,8 +138,8 @@ function getTaskFileStatusCategory(
   fileInfo: TaskFileEntry,
 ): TaskFileStatusCategory {
   if (isTaskFileFailed(fileInfo)) {
-    // Check if this is a cancelled file
-    if (fileInfo.error === "File cancelled by user") {
+    // Use centralized cancellation detection
+    if (isFileCancelled(fileInfo)) {
       return "cancelled";
     }
     return "system_error";

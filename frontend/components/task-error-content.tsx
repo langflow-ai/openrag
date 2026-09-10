@@ -13,6 +13,7 @@ import { useIsCloudBrand } from "@/contexts/brand-context";
 import { type Task, useTask } from "@/contexts/task-context";
 import {
   formatApiComponent,
+  isFileCancelled,
   resolveTaskFileError,
 } from "@/lib/task-error-display";
 import {
@@ -53,12 +54,12 @@ export function TaskErrorContent({
   const issueEntries = useMemo(() => getTaskIssueFileEntries(task), [task]);
 
   const totalFailedCount = getFailedFileCount(task);
-  // Count cancelled files separately
+  // Count cancelled files separately using centralized detection
   const cancelledCount = task.files
     ? Object.values(task.files).filter(
         (file) =>
           (file.status === "failed" || file.status === "error") &&
-          file.error === "File cancelled by user",
+          isFileCancelled(file),
       ).length
     : 0;
   const failedCount = totalFailedCount - cancelledCount;
@@ -212,8 +213,7 @@ export function TaskErrorContent({
                   const line = resolveTaskFileError(fileInfo, task.error);
                   const componentCause = formatApiComponent(fileInfo.component);
                   const isWarning = isTaskFileWarning(fileInfo);
-                  const isCancelled =
-                    fileInfo.error === "File cancelled by user";
+                  const isCancelled = isFileCancelled(fileInfo);
 
                   return (
                     <div

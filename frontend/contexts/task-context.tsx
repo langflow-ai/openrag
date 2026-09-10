@@ -29,7 +29,10 @@ import {
   getKnowledgeFileIdentity,
   inferTaskFileConnectorType,
 } from "@/lib/knowledge-table-state";
-import { getTaskFailureToastDescription } from "@/lib/task-error-display";
+import {
+  getTaskFailureToastDescription,
+  isFileCancelled,
+} from "@/lib/task-error-display";
 import {
   didTaskReachCompleted,
   didTaskReachTerminalState,
@@ -515,9 +518,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
           // Check if all failures are user cancellations
           const allFailuresAreCancellations = currentTask.files
             ? Object.values(currentTask.files).every(
-                (file) =>
-                  file.status !== "failed" ||
-                  file.error === "File cancelled by user",
+                (file) => file.status !== "failed" || isFileCancelled(file),
               )
             : false;
 

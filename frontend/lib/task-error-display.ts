@@ -7,6 +7,30 @@ import { formatProviderErrorMessage } from "@/lib/chat-stream-errors";
 
 export const FILE_ERROR_MAX_LINE_LENGTH = 80;
 
+/**
+ * Centralized detection for cancelled files.
+ *
+ * Checks failure_phase first (structured data), then falls back to error message strings.
+ * This ensures consistent detection across whole-task cancellation ("Task cancelled by user"),
+ * file-level cancellation ("File cancelled by user"), and API-provided phase markers.
+ */
+export function isFileCancelled(
+  fileInfo: Pick<TaskFileEntry, "failure_phase" | "error">,
+): boolean {
+  // 1. Check structured failure_phase first (most reliable)
+  if (fileInfo.failure_phase === "cancelled") {
+    return true;
+  }
+
+  // 2. Fall back to error message detection for legacy cases
+  const error = fileInfo.error?.toLowerCase() || "";
+  return (
+    error.includes("file cancelled by user") ||
+    error.includes("task cancelled by user") ||
+    error.includes("file processing task cancelled")
+  );
+}
+
 export type TaskErrorComponentCause =
   | "OpenSearch"
   | "Docling"
@@ -211,8 +235,8 @@ export function analyzeTaskFileIngestionFailure(
 ): TaskFileIngestionFailureAnalysis {
   const resolvedError = resolveTaskFileError(fileInfo, taskError);
 
-  // Check if file was cancelled by user
-  const isCancelled = fileInfo.error === "File cancelled by user";
+  // Use centralized cancellation detection
+  const isCancelled = isFileCancelled(fileInfo);
   const failedStep = isCancelled
     ? "cancelled"
     : (normalizeFailurePhase(fileInfo.failure_phase) ?? "unknown");

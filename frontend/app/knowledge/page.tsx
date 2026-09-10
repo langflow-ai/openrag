@@ -22,6 +22,7 @@ import { useOpenTaskMenu } from "@/contexts/console-status-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
 import { trackButton } from "@/lib/analytics";
+import { isFileCancelled } from "@/lib/task-error-display";
 import {
   EMPTY_SEARCH_RESULT,
   type File,
@@ -754,9 +755,9 @@ function SearchPage() {
         getStatusSortRank(valueA) - getStatusSortRank(valueB),
       cellRenderer: ({ data }: CustomCellRendererProps<File>) => {
         const rawStatus = data?.status || "active";
-        // If file was cancelled by user, show it as cancelled instead of failed
+        // Use centralized cancellation detection
         const status =
-          rawStatus === "failed" && data?.error === "File cancelled by user"
+          rawStatus === "failed" && data && isFileCancelled(data)
             ? "cancelled"
             : rawStatus;
         const showOpenragRefreshCue =
