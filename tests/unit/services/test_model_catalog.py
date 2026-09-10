@@ -401,6 +401,50 @@ def test_the_shipped_config_keeps_the_legacy_openai_generation_out(monkeypatch) 
     assert any(name.startswith("gpt-5.6") for name in models)
 
 
+def test_the_shipped_config_keeps_broken_watsonx_models_out_of_live_inventory(
+    monkeypatch,
+) -> None:
+    """Undocumented or broken watsonx.ai ids must not be offered in its picker."""
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+    excluded = [
+        "bigscience/mt0-xxl-13b",
+        "google/flan-t5-xl-3b",
+        "ibm/granite-guardian-3-2-2b",
+        "ibm/granite-guardian-3-3-8b",
+        "meta-llama/llama-4-maverick-17b",
+        "mistralai/mistral-small-2503",
+        "mistralai/pixtral-12b-2409",
+        "mistralai/mistral-medium-2505",
+        "ibm/granite-3-3-8b-instruct",
+    ]
+    retained = [
+        "bigscience/mt0-xxl",
+        "google/flan-t5-xl",
+        "ibm/granite-guardian-3-2b",
+        "ibm/granite-guardian-3-8b",
+        "meta-llama/llama-4-maverick-17b-128e-instruct-fp8",
+        "mistralai/mistral-small-3-1-24b-instruct-2503",
+        "mistralai/pixtral-12b",
+        "ibm/granite-4-h-small",
+    ]
+    payload = {
+        "language_models": [{"value": model} for model in excluded + retained],
+        "embedding_models": [{"value": "ibm/slate-125m-english-rtrvr"}],
+    }
+
+    filtered = model_catalog.hide_excluded_live_models("watsonx", payload)
+
+    assert [entry["value"] for entry in filtered["language_models"]] == retained
+    assert filtered["embedding_models"] == payload["embedding_models"]
+    catalogued = {
+        entry["model"]
+        for provider in model_catalog.catalog()["providers"]
+        if provider["key"] == "watsonx"
+        for entry in provider["models"]
+    }
+    assert not catalogued.intersection(excluded)
+
+
 def test_a_plain_name_also_excludes_its_regional_listings(monkeypatch, tmp_path) -> None:
     """Azure lists the same model per region; suppressing it means all of them."""
     monkeypatch.setenv(
