@@ -334,6 +334,15 @@ MODELS_TIMEOUT_SECONDS = 10.0
 #: Same, for the pre-save health check, which a human is waiting on.
 HEALTH_TIMEOUT_SECONDS = 10.0
 
+#: Retries for the health check. Fewer than the catalogue path: one retry still
+#: rides out a pod mid-rollout, and a human is waiting on the answer.
+HEALTH_MAX_RETRIES = 1
+
+#: Upper bound on the whole pre-save check, both endpoints, retries and backoff
+#: included. Without it two unreachable endpoints × attempts × timeout adds up
+#: to a minute during which the settings save just hangs.
+HEALTH_TOTAL_BUDGET_SECONDS = 25.0
+
 #: The listing path, relative to an `api_base` that already ends in `/v1`.
 MODELS_PATH = "/models"
 
@@ -592,10 +601,15 @@ async def lightweight_health_check(credentials: Mapping[str, Any]) -> None:
 
     logger.info("Checking the OpenShift AI endpoints", endpoints=len(targets))
     try:
-        async with httpx.AsyncClient(verify=ssl_verify_for(values)) as client:
+        # `asyncio.timeout` raises the builtin `TimeoutError`, not httpx's, so
+        # both are caught below.
+        async with (
+            httpx.AsyncClient(verify=ssl_verify_for(values)) as client,
+            asyncio.timeout(HEALTH_TOTAL_BUDGET_SECONDS),
+        ):
             for label, api_base in targets:
                 await _check_endpoint(client, label, api_base, api_key)
-    except httpx.TimeoutException:
+    except (httpx.TimeoutException, TimeoutError):
         logger.error("OpenShift AI health check timed out")
         raise Exception("The OpenShift AI endpoint did not respond in time") from None
     logger.info("OpenShift AI health check passed", endpoints=len(targets))
@@ -611,10 +625,11 @@ async def _check_endpoint(client: Any, label: str, api_base: str, api_key: str) 
             "GET",
             url,
             client=client,
+            max_retries=HEALTH_MAX_RETRIES,
             headers=_auth_headers(api_key),
             timeout=HEALTH_TIMEOUT_SECONDS,
         )
-    except httpx.TimeoutException:
+    except (httpx.TimeoutException, TimeoutError):
         raise
     except Exception as error:
         logger.error(
