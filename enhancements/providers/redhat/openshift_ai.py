@@ -188,6 +188,7 @@ def forget_tls_warnings() -> None:
     """Allow the TLS warnings to be emitted again. For tests."""
     _reported_tls_settings.clear()
 
+
 #: The path segment every vLLM OpenAI endpoint is served under. Appended when an
 #: operator pastes the Service URL without it — the single most common cause of
 #: "works with curl, fails from OpenRAG", because curl was given the full path.
@@ -287,9 +288,7 @@ def ssl_verify_for(stored: Mapping[str, Any] | None) -> bool | str:
     return resolve_ssl_verify(_values(stored).get("ssl_verify"))
 
 
-def litellm_credentials(
-    stored: Mapping[str, Any], *, kind: CallKind = "chat"
-) -> dict[str, Any]:
+def litellm_credentials(stored: Mapping[str, Any], *, kind: CallKind = "chat") -> dict[str, Any]:
     """Stored form values as LiteLLM kwargs for `hosted_vllm`, for one call kind.
 
     This is the only place the two-endpoint shape collapses into the single
@@ -386,9 +385,10 @@ def _error_details(response: Any) -> str:
         error = body.get("error")
         if isinstance(error, Mapping):
             return str(error.get("message") or error.get("code") or "")[:500]
-        return str(body.get("message") or body.get("detail") or "")[:500] or str(
-            getattr(response, "text", "")
-        )[:500]
+        return (
+            str(body.get("message") or body.get("detail") or "")[:500]
+            or str(getattr(response, "text", ""))[:500]
+        )
     return str(getattr(response, "text", ""))[:500]
 
 

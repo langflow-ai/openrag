@@ -439,16 +439,16 @@ def test_a_config_object_that_predates_kinds_is_still_callable() -> None:
         def credential_values(self, provider):
             return {"api_key": "legacy"}
 
-    assert credential_values_for_kind(_OldConfig(), "openai", "embedding") == {
-        "api_key": "legacy"
-    }
+    assert credential_values_for_kind(_OldConfig(), "openai", "embedding") == {"api_key": "legacy"}
 
 
 def test_a_kindless_enhancement_is_still_callable() -> None:
     """watsonx.ai on-prem reaches one API and takes the one-argument form."""
     onprem = registry.get("watsonx_onprem")
     credentials = registry.credentials_for(
-        onprem, {"api_base": "https://cpd.example.com", "username": "u", "api_key": "k"}, "embedding"
+        onprem,
+        {"api_base": "https://cpd.example.com", "username": "u", "api_key": "k"},
+        "embedding",
     )
 
     assert credentials["api_base"] == "https://cpd.example.com"
