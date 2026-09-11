@@ -19,6 +19,31 @@ from session_manager import SessionManager
 logger = logging.getLogger(__name__)
 
 
+async def _get_display_name(user, session) -> str | None:
+    """Return the persisted display_name for *user* using the provided session.
+
+    For authenticated users, look up the DB row by (provider, user_id).
+    For no-auth mode (user is None), read from the workspace 'meta' section
+    so the anonymous user's chosen name survives restarts.
+    """
+    try:
+        from db.repositories import UserRepo, WorkspaceConfigRepo
+
+        if user is None:
+            # No-auth mode — stored in workspace meta section
+            meta = await WorkspaceConfigRepo(session).get_section("meta") or {}
+            return meta.get("no_auth_display_name") or None
+        repo = UserRepo(session)
+        db_user = await repo.get_by_oauth(user.provider or "unknown", user.user_id)
+        if db_user is None:
+            db_user = await repo.get_by_id(user.user_id)
+        if db_user and db_user.display_name:
+            return db_user.display_name
+    except Exception:
+        logger.debug("_get_display_name: could not fetch display name", exc_info=True)
+    return None
+
+
 def _direct_auth_connector_types() -> set:
     """Bucket-kind connectors authenticate directly (no OAuth redirect)."""
     return {cls.CONNECTOR_TYPE for cls in get_connector_classes() if cls.CONNECTOR_KIND == "bucket"}
@@ -497,14 +522,19 @@ class AuthService:
 
         return result
 
-    async def get_user_info(self, request) -> dict | None:
-        """Get current user information from request"""
+    async def get_user_info(self, request, session) -> dict | None:
+        """Get current user information from request.
+
+        ``session`` is the request-scoped AsyncSession injected by FastAPI —
+        reusing it avoids opening a second DB connection per /auth/me call.
+        """
         from config.settings import IBM_AUTH_ENABLED
 
         # IBM auth mode: user is set by get_optional_user from IBM cookie
         if IBM_AUTH_ENABLED:
             user = getattr(request.state, "user", None)
             if user and user.provider in ("ibm_ams", "ibm_ams_basic"):
+                display_name = await _get_display_name(user, session)
                 return {
                     "authenticated": True,
                     "ibm_auth_mode": True,
@@ -512,6 +542,7 @@ class AuthService:
                         "user_id": user.user_id,
                         "email": user.email,
                         "name": user.name,
+                        "display_name": display_name,
                         "picture": user.picture,
                         "provider": user.provider,
                         "last_login": user.last_login.isoformat() if user.last_login else None,
@@ -519,13 +550,19 @@ class AuthService:
                 }
             return {"authenticated": False, "ibm_auth_mode": True, "user": None}
 
-        # In no-auth mode, return a consistent response
+        # In no-auth mode, return a consistent response with any saved display name
         if is_no_auth_mode():
-            return {"authenticated": False, "user": None, "no_auth_mode": True}
+            display_name = await _get_display_name(None, session)
+            return {
+                "authenticated": False,
+                "user": {"display_name": display_name},
+                "no_auth_mode": True,
+            }
 
         user = getattr(request.state, "user", None)
 
         if user:
+            display_name = await _get_display_name(user, session)
             user_data = {
                 "authenticated": True,
                 "ibm_auth_mode": IBM_AUTH_ENABLED,
@@ -533,6 +570,7 @@ class AuthService:
                     "user_id": user.user_id,
                     "email": user.email,
                     "name": user.name,
+                    "display_name": display_name,
                     "picture": user.picture,
                     "provider": user.provider,
                     "last_login": user.last_login.isoformat() if user.last_login else None,

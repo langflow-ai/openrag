@@ -13,6 +13,7 @@ import {
 import { cn } from "@/lib/utils";
 
 const TABS = [
+  { value: "general", label: "General" },
   { value: "connectors", label: "Connectors" },
   { value: "providers", label: "Providers", perm: "providers:write" },
   { value: "ingestion", label: "Ingestion", perm: "config:write" },
@@ -31,7 +32,7 @@ export function SettingsNav() {
   const isCloudBrand = useIsCloudBrand();
   const tabAccess = useSettingsTabAccess();
 
-  const currentTab = pathname.split("/").pop() ?? "connectors";
+  const currentTab = pathname.split("/").pop() ?? "general";
 
   const visibleTabs = TABS.filter((tab) => {
     if (tab.value === "connector-access") {

@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { use, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useBulkDeleteSessionsMutation } from "@/app/api/mutations/useBulkDeleteSessionsMutation";
 import { useDeleteSessionMutation } from "@/app/api/queries/useDeleteSessionMutation";
@@ -25,12 +25,29 @@ import { useIsCloudBrand } from "@/contexts/brand-context";
 import { type EndpointType, useChat } from "@/contexts/chat-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { usePermissions } from "@/hooks/use-permissions";
+import { useTypewriter } from "@/hooks/use-typewriter";
 import { useChatSelection } from "@/hooks/useChatSelection";
 import { FILES_REGEX } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { BulkDeleteButton } from "./bulk-delete-button";
 import { DeleteSessionModal } from "./delete-session-modal";
 import { KnowledgeFilterList } from "./knowledge-filter-list";
+
+/** Renders a conversation title, typewriting it in when isFresh=true.
+ * Calls onDone once the animation completes so the parent can clear
+ * the fresh flag and prevent re-animation on revisit. */
+function ConversationTitle({
+  title,
+  isFresh,
+  onDone,
+}: {
+  title: string;
+  isFresh: boolean;
+  onDone?: () => void;
+}) {
+  const displayed = useTypewriter(title, isFresh, onDone);
+  return <>{displayed}</>;
+}
 
 // Re-export the types for backward compatibility
 export interface RawConversation {
@@ -109,7 +126,14 @@ export function Navigation({
   const [conversationToDelete, setConversationToDelete] =
     useState<ChatConversation | null>(null);
   const hasCompletedInitialLoad = useRef(false);
-  const mountTimeRef = useRef<number | null>(null);
+  // Stable key for the loading-state fallback placeholder (prevents React
+  // from remounting the button on every render while loading=true).
+  const loadingPlaceholderKey = useRef(`loading-placeholder-${Date.now()}`);
+  // Tracks the response_id of the most recently created conversation so we
+  // can typewrite its title when it first appears in the list.
+  const [freshConversationId, setFreshConversationId] = useState<string | null>(
+    null,
+  );
 
   const { selectedFilter, setSelectedFilter } = useKnowledgeFilter();
 
@@ -266,13 +290,6 @@ export function Navigation({
   const isOnChatPage = pathname === "/" || pathname === "/chat";
   const isOnKnowledgePage = pathname.startsWith("/knowledge");
 
-  // Track mount time to prevent auto-selection right after component mounts (e.g., after onboarding)
-  useEffect(() => {
-    if (mountTimeRef.current === null) {
-      mountTimeRef.current = Date.now();
-    }
-  }, []);
-
   // Track when initial load completes
   useEffect(() => {
     if (!isConversationsLoading && !hasCompletedInitialLoad.current) {
@@ -284,23 +301,19 @@ export function Navigation({
   // Clear placeholder when conversation count increases (new conversation was created)
   useEffect(() => {
     const currentCount = conversations.length;
-    const timeSinceMount = mountTimeRef.current
-      ? Date.now() - mountTimeRef.current
-      : Infinity;
-    const MIN_TIME_AFTER_MOUNT = 2000; // 2 seconds - prevents selection right after onboarding
-
     if (
       placeholderConversation &&
       hasCompletedInitialLoad.current &&
       currentCount > previousConversationCountRef.current &&
       conversations.length > 0 &&
-      !isConversationsLoading &&
-      timeSinceMount >= MIN_TIME_AFTER_MOUNT
+      !isConversationsLoading
     ) {
       setPlaceholderConversation(null);
       const newestConversation = conversations[0];
       if (newestConversation) {
         setCurrentConversationId(newestConversation.response_id);
+        // Mark this ID as fresh so we typewrite its title
+        setFreshConversationId(newestConversation.response_id);
       }
     }
 
@@ -327,7 +340,8 @@ export function Navigation({
 
     if (isOnChatPage && !isConversationsLoading) {
       if (conversations.length === 0 && !placeholderConversation) {
-        handleNewConversation();
+        // Auto-load: no conversations — reset state without showing a placeholder
+        startNewConversation({ showPlaceholder: false });
       } else if (activeConvo) {
         loadConversation(activeConvo);
         // Don't call refreshConversations here - it causes unnecessary refetches
@@ -336,9 +350,13 @@ export function Navigation({
         currentConversationId === null &&
         !placeholderConversation
       ) {
-        handleNewConversation();
+        // Auto-load: has conversations but none selected — reset without placeholder
+        startNewConversation({ showPlaceholder: false });
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- startNewConversation and loadConversation
+    // are stable useCallback refs; placeholderConversation and currentConversationId are read inside
+    // the effect but intentionally omitted to avoid re-running on every state change.
   }, [isOnChatPage, conversations, conversationLoaded]);
 
   const newConversationFiles = conversationData?.messages
@@ -477,7 +495,9 @@ export function Navigation({
               ) : (
                 <>
                   {/* Show regular conversations */}
-                  {conversations.length === 0 && !isConversationsLoading ? (
+                  {conversations.length === 0 &&
+                  !isConversationsLoading &&
+                  !placeholderConversation ? (
                     <div className="text-[13px] text-muted-foreground py-2 pl-3">
                       No conversations yet
                     </div>
@@ -486,8 +506,9 @@ export function Navigation({
                       {/* Optimistic rendering: Show placeholder conversation button while loading */}
                       {(() => {
                         // Show placeholder when:
-                        // 1. Loading is true AND conversation doesn't exist yet (creating new conversation), OR
-                        // 2. currentConversationId exists but isn't in conversations yet (gap between response and list update)
+                        // 1. placeholderConversation is set (e.g. immediately after clicking +), OR
+                        // 2. Loading is true AND conversation doesn't exist yet (mid-stream), OR
+                        // 3. currentConversationId exists but isn't in conversations yet
                         const conversationExists = currentConversationId
                           ? conversations.some(
                               (conv) =>
@@ -496,10 +517,11 @@ export function Navigation({
                           : false;
 
                         const shouldShowPlaceholder =
-                          !conversationExists &&
-                          (loading ||
-                            (currentConversationId !== null &&
-                              currentConversationId !== undefined));
+                          placeholderConversation !== null ||
+                          (!conversationExists &&
+                            (loading ||
+                              (currentConversationId !== null &&
+                                currentConversationId !== undefined)));
 
                         // Use placeholderConversation if available
                         // Otherwise create a placeholder with currentConversationId if it exists
@@ -516,7 +538,7 @@ export function Navigation({
                               }
                             : loading
                               ? {
-                                  response_id: `loading-${Date.now()}`,
+                                  response_id: loadingPlaceholderKey.current,
                                   title: "",
                                   endpoint: endpoint,
                                   messages: [],
@@ -535,8 +557,8 @@ export function Navigation({
                             >
                               <div className="flex items-center justify-between">
                                 <div className="flex-1 min-w-0">
-                                  <div className="text-sm font-medium text-muted-foreground truncate">
-                                    <span className="thinking-dots"></span>
+                                  <div className="text-sm font-medium text-foreground truncate">
+                                    New chat...
                                   </div>
                                 </div>
                               </div>
@@ -606,7 +628,19 @@ export function Navigation({
                                 />
                               )}
                               <div className="text-sm font-medium text-foreground truncate">
-                                {conversation.title}
+                                <ConversationTitle
+                                  title={conversation.title}
+                                  isFresh={
+                                    freshConversationId ===
+                                    conversation.response_id
+                                  }
+                                  onDone={
+                                    freshConversationId ===
+                                    conversation.response_id
+                                      ? () => setFreshConversationId(null)
+                                      : undefined
+                                  }
+                                />
                               </div>
                             </div>
                             {!selection.isSelecting && (

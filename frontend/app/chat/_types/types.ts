@@ -1,3 +1,5 @@
+import { getGreetingMessage } from "@/lib/greeting";
+
 export interface TokenUsage {
   input_tokens: number;
   output_tokens: number;
@@ -21,11 +23,15 @@ export interface Message {
   usage?: TokenUsage;
 }
 
-export const INITIAL_ASSISTANT_MESSAGE: Message = {
-  role: "assistant",
-  content: "How can I assist?",
-  timestamp: new Date(),
-};
+/* initial greeting message - uses displayName
+ */
+export function makeInitialMessage(displayName?: string | null): Message {
+  return {
+    role: "assistant",
+    content: getGreetingMessage(displayName),
+    timestamp: new Date(),
+  };
+}
 
 export interface FunctionCall {
   name: string;

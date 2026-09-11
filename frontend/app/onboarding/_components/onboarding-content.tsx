@@ -20,6 +20,7 @@ import { trackButton, trackLLMCall } from "@/lib/analytics";
 import type { FilterInput } from "@/lib/filter-normalization";
 import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
 
+import { OnboardingPersonalization } from "./onboarding-personalization";
 import { OnboardingStep } from "./onboarding-step";
 import OnboardingUpload from "./onboarding-upload";
 
@@ -370,14 +371,27 @@ export function OnboardingContent({
               />
             )}
 
-          {/* Step 4 */}
+          {/* Step 4 — data upload */}
           <OnboardingStep
             isVisible={currentStep >= 3 && !isLoading && !!displayMessage}
             isCompleted={currentStep > 3}
-            text="Lastly, let's add your data."
+            text="Let's try adding your data."
             hideIcon={true}
           >
             <OnboardingUpload onComplete={handleStepComplete} />
+          </OnboardingStep>
+
+          {/* Step 5 — optional personalization */}
+          <OnboardingStep
+            isVisible={currentStep >= 4}
+            isCompleted={currentStep > 4}
+            text="One last thing — let's personalize your experience."
+            hideIcon={true}
+          >
+            <OnboardingPersonalization
+              onComplete={handleStepComplete}
+              onSkip={handleStepComplete}
+            />
           </OnboardingStep>
         </div>
       </StickToBottom.Content>

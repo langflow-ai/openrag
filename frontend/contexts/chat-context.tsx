@@ -10,7 +10,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { INITIAL_ASSISTANT_MESSAGE } from "@/app/chat/_types/types";
 import { useOnboardingState } from "@/hooks/use-onboarding-state";
 
 export type EndpointType = "chat" | "langflow";
@@ -68,7 +67,7 @@ interface ChatContextType {
   refreshTrigger: number;
   refreshTriggerSilent: number;
   loadConversation: (conversation: ConversationData) => Promise<void>;
-  startNewConversation: () => void;
+  startNewConversation: (opts?: { showPlaceholder?: boolean }) => void;
   conversationData: ConversationData | null;
   forkFromResponse: (responseId: string) => void;
   conversationDocs: ConversationDocument[];
@@ -116,6 +115,12 @@ export function ChatProvider({ children }: ChatProviderProps) {
   >([]);
   const [placeholderConversation, setPlaceholderConversation] =
     useState<ConversationData | null>(null);
+  // Refs so startNewConversation can read current values without re-creating
+  // the callback every time conversationData or placeholderConversation changes.
+  const conversationDataRef = useRef<ConversationData | null>(null);
+  conversationDataRef.current = conversationData;
+  const placeholderConversationRef = useRef<ConversationData | null>(null);
+  placeholderConversationRef.current = placeholderConversation;
   const [conversationLoaded, setConversationLoaded] = useState(false);
   const [conversationFilter, setConversationFilterState] =
     useState<KnowledgeFilter | null>(null);
@@ -232,80 +237,87 @@ export function ChatProvider({ children }: ChatProviderProps) {
     [conversationData?.response_id],
   );
 
-  const startNewConversation = useCallback(async () => {
-    // Check if there's existing conversation data - if so, this is a manual "new conversation" action
-    // Check state values before clearing them
-    const hasExistingConversation =
-      conversationData !== null || placeholderConversation !== null;
+  const startNewConversation = useCallback(
+    async (opts?: { showPlaceholder?: boolean }) => {
+      const showPlaceholder = opts?.showPlaceholder ?? true;
+      // Read current values via refs so this callback doesn't need them as deps.
+      const hasExistingConversation =
+        conversationDataRef.current !== null ||
+        placeholderConversationRef.current !== null;
 
-    // Clear current conversation data and reset state
-    setCurrentConversationId(null);
-    setPreviousResponseIds({ chat: null, langflow: null });
-    setConversationData(null);
-    setConversationDocs([]);
-    setConversationLoaded(false);
+      // Clear current conversation data and reset state
+      setCurrentConversationId(null);
+      setPreviousResponseIds({ chat: null, langflow: null });
+      setConversationData(null);
+      setConversationDocs([]);
+      setConversationLoaded(false);
 
-    // Load default filter if available (and clear it after first use)
-    if (typeof window !== "undefined") {
-      const defaultFilterId = localStorage.getItem(
-        "default_conversation_filter_id",
-      );
+      // Load default filter if available (and clear it after first use)
+      if (typeof window !== "undefined") {
+        const defaultFilterId = localStorage.getItem(
+          "default_conversation_filter_id",
+        );
 
-      if (defaultFilterId) {
-        // Clear the default filter now so it's only used once
-        localStorage.removeItem("default_conversation_filter_id");
+        if (defaultFilterId) {
+          // Clear the default filter now so it's only used once
+          localStorage.removeItem("default_conversation_filter_id");
 
-        try {
-          const { getFilterById } = await import(
-            "@/app/api/queries/useGetFilterByIdQuery"
-          );
-          const filter = await getFilterById(defaultFilterId);
+          try {
+            const { getFilterById } = await import(
+              "@/app/api/queries/useGetFilterByIdQuery"
+            );
+            const filter = await getFilterById(defaultFilterId);
 
-          if (filter) {
-            setConversationFilterState(filter);
-          } else {
-            // Default filter was deleted
+            if (filter) {
+              setConversationFilterState(filter);
+            } else {
+              // Default filter was deleted
+              setConversationFilterState(null);
+            }
+          } catch (error) {
+            console.error(
+              "[CONVERSATION] Failed to load default filter:",
+              error,
+            );
             setConversationFilterState(null);
           }
-        } catch (error) {
-          console.error("[CONVERSATION] Failed to load default filter:", error);
-          setConversationFilterState(null);
-        }
-      } else {
-        // No default filter in localStorage
-        if (hasExistingConversation) {
-          setConversationFilterState(null);
         } else {
-          // Don't clear the filter - it may have been set by storeDefaultFilterForNewConversations
+          // No default filter in localStorage
+          if (hasExistingConversation) {
+            setConversationFilterState(null);
+          } else {
+            // Don't clear the filter - it may have been set by storeDefaultFilterForNewConversations
+          }
         }
       }
-    }
 
-    // Create a temporary placeholder conversation to show in sidebar
-    const newPlaceholderConversation: ConversationData = {
-      response_id: "new-conversation-" + Date.now(),
-      title: "New conversation",
-      endpoint: endpoint,
-      messages: [
-        {
-          role: "assistant",
-          content: INITIAL_ASSISTANT_MESSAGE.content,
-          timestamp: new Date().toISOString(),
-        },
-      ],
-      created_at: new Date().toISOString(),
-      last_activity: new Date().toISOString(),
-    };
+      // Create a temporary placeholder conversation to show in sidebar
+      const newPlaceholderConversation: ConversationData = {
+        response_id: "new-conversation-" + Date.now(),
+        title: "New chat...",
+        endpoint: endpoint,
+        messages: [
+          {
+            role: "assistant",
+            content: "How can I assist?",
+            timestamp: new Date().toISOString(),
+          },
+        ],
+        created_at: new Date().toISOString(),
+        last_activity: new Date().toISOString(),
+      };
 
-    setPlaceholderConversation(newPlaceholderConversation);
-    // Force immediate refresh to ensure sidebar shows correct state
-    refreshConversations(true);
-  }, [
-    endpoint,
-    refreshConversations,
-    conversationData,
-    placeholderConversation,
-  ]);
+      if (showPlaceholder) {
+        setPlaceholderConversation(newPlaceholderConversation);
+        // Force refresh so the sidebar shows the new placeholder immediately
+        refreshConversations(true);
+      }
+      // When showPlaceholder=false (auto-load) we do NOT refresh — the caller
+      // already has fresh conversation data and calling refreshConversations here
+      // would mutate the query key, re-trigger this effect, and cause an infinite loop.
+    },
+    [endpoint, refreshConversations],
+  );
 
   const addConversationDoc = useCallback((filename: string) => {
     setConversationDocs((prev) => [

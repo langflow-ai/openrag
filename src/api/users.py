@@ -164,3 +164,54 @@ async def set_my_dev_role(
             "permissions": sorted(perms),
         }
     )
+
+
+class DisplayNameBody(BaseModel):
+    display_name: str | None = None
+
+
+class DisplayNameResponse(BaseModel):
+    display_name: str | None = None
+
+
+@router.patch("/me/display-name", response_model=DisplayNameResponse)
+async def update_my_display_name(
+    body: DisplayNameBody,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> DisplayNameResponse:
+    """Persist a custom display name for the current user.
+
+    Accepts a ``display_name`` string (max 80 chars) or null to clear.
+    Works for all auth modes:
+    - Authenticated (Google / IBM): updates the ``users`` table row.
+    - No-auth: stores in the workspace ``meta`` config section.
+    """
+    from config.settings import is_no_auth_mode
+
+    name = body.display_name
+    if name is not None:
+        name = name.strip()[:80] or None  # empty string → None
+
+    if is_no_auth_mode():
+        from db.repositories import WorkspaceConfigRepo
+
+        repo = WorkspaceConfigRepo(session)
+        await repo.merge_section_keys(
+            "meta",
+            updates={} if name is None else {"no_auth_display_name": name},
+            deletions={"no_auth_display_name"} if name is None else None,
+        )
+        await session.commit()
+        return DisplayNameResponse(display_name=name)
+
+    user_repo = UserRepo(session)
+    db_user = await user_repo.get_by_oauth(user.provider or "unknown", user.user_id)
+    if db_user is None:
+        db_user = await user_repo.get_by_id(user.user_id)
+    if db_user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    await user_repo.update_display_name(db_user.id, name)
+    await session.commit()
+    return DisplayNameResponse(display_name=name)

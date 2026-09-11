@@ -114,9 +114,10 @@ async def auth_me(
     request: Request,
     auth_service=Depends(get_auth_service),
     user: User | None = Depends(get_optional_user),
+    session: AsyncSession = Depends(get_db_session),
 ):
     """Get current user information"""
-    result = await auth_service.get_user_info(request)
+    result = await auth_service.get_user_info(request, session)
     result["version"] = OPENRAG_VERSION
     from utils.run_mode_utils import get_run_mode
 

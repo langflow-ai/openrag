@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useRef, useState } from "react";
 import DogIcon from "@/components/icons/dog-icon";
 import { preprocessCitations } from "@/components/markdown-citations";
+import { useTypewriter } from "@/hooks/use-typewriter";
 import { ChunkPopup } from "./chunk-popup";
 import { CitationCards } from "./citation-cards";
 
@@ -157,12 +158,25 @@ export function AssistantMessage({
     retrievalSources,
   );
 
+  const [greetingDone, setGreetingDone] = useState(false);
+  const typedGreeting = useTypewriter(
+    processedContent,
+    !!(isInitialGreeting && !isStreaming),
+    () => setGreetingDone(true),
+    35,
+  );
+
   const displayMessageText = isStreaming
     ? processedContent.trim()
       ? processedContent +
         ' <span class="inline-block w-1 h-4 bg-primary ml-1 animate-pulse"></span>'
       : '<span class="text-muted-foreground italic">Thinking<span class="thinking-dots"></span></span>'
-    : processedContent;
+    : isInitialGreeting
+      ? typedGreeting +
+        (!greetingDone
+          ? ' <span class="inline-block w-0.5 h-3.5 bg-foreground/70 ml-0.5 animate-pulse align-middle"></span>'
+          : "")
+      : processedContent;
 
   const activeCitedSource = citedSources.find(
     (s) => s.index === activeChunkIndex,
