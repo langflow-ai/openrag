@@ -783,8 +783,9 @@ class ConfigManager:
         # Red Hat OpenShift AI. Two endpoints rather than one, because vLLM
         # serves a single model per InferenceService — see
         # enhancements/providers/redhat/openshift_ai.py. Seeding these is what
-        # lets a Helm/operator install come up configured with no human clicking
-        # through Settings, which is the point on an air-gapped cluster.
+        # lets a Helm (`llmProviders.rhoai.*`) or operator (`spec.rhoai`) install
+        # come up configured with no human clicking through Settings, which is
+        # the point on an air-gapped cluster.
         rhoai_endpoint = os.getenv("RHOAI_ENDPOINT")
         rhoai_embeddings_endpoint = os.getenv("RHOAI_EMBEDDINGS_ENDPOINT")
         rhoai_api_key = os.getenv("RHOAI_API_KEY")

@@ -638,6 +638,18 @@ llmProviders:
   ollama:
     enabled: false
     endpoint: ""                          # Ollama endpoint URL (e.g., "http://ollama:11434")
+  # Red Hat OpenShift AI: models served by KServe + vLLM inside the cluster.
+  # vLLM serves one model per InferenceService, so chat and embeddings are two
+  # endpoints. Hidden in every run mode as shipped; the deployment also needs
+  # OPENRAG_MODEL_PROVIDERS_CONFIG pointing at a model_providers.yaml that
+  # turns `rhoai` on (see docs/reference/configuration). These values seed the
+  # credentials on first boot only; afterwards change them through Settings.
+  rhoai:
+    enabled: false
+    endpoint: ""                          # Chat predictor Service, ending in /v1 (e.g., "https://openrag-chat-predictor.openrag-models.svc.cluster.local:8443/v1")
+    embeddingsEndpoint: ""                # Embeddings predictor Service, ending in /v1; blank if one endpoint serves both
+    apiKey: ""                            # Kubernetes bearer token used for both endpoints (stored in secret)
+    tlsVerify: ""                         # CA bundle path (e.g., "/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt"); blank = system trust
 
 # ============================================================================
 # Application Config (config.yaml contents)
