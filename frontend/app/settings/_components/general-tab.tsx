@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { useUpdateDisplayNameMutation } from "@/app/api/mutations/useUpdateDisplayNameMutation";
 import { Button } from "@/components/ui/button";
@@ -24,13 +24,19 @@ export function GeneralTab() {
   const updateDisplayName = useUpdateDisplayNameMutation();
 
   const [value, setValue] = useState(user?.display_name ?? "");
-  const [touched, setTouched] = useState(false);
+  const touchedRef = useRef(false);
+  const prevDisplayNameRef = useRef(user?.display_name);
 
-  useEffect(() => {
-    if (!touched && user?.display_name !== undefined) {
-      setValue(user.display_name ?? "");
-    }
-  }, [user?.display_name, touched]);
+  // Sync external value into the input during render (no useEffect needed).
+  // Only backfills while the field is untouched and the external value changes.
+  if (
+    !touchedRef.current &&
+    user?.display_name !== undefined &&
+    user.display_name !== prevDisplayNameRef.current
+  ) {
+    prevDisplayNameRef.current = user.display_name;
+    setValue(user.display_name ?? "");
+  }
 
   const isDirty = value !== (user?.display_name ?? "");
 
@@ -58,7 +64,7 @@ export function GeneralTab() {
                 id="display-name"
                 value={value}
                 onChange={(e) => {
-                  setTouched(true);
+                  touchedRef.current = true;
                   setValue(e.target.value);
                 }}
                 onKeyDown={(e) => {

@@ -1,7 +1,7 @@
 "use client";
 
 import { UserRound } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useUpdateDisplayNameMutation } from "@/app/api/mutations/useUpdateDisplayNameMutation";
 import { Button } from "@/components/ui/button";
@@ -24,14 +24,16 @@ export function OnboardingPersonalization({
 
   const initialName = (resolveDisplayName(user) ?? "").split(/\s+/)[0];
   const [value, setValue] = useState(initialName);
-  const [touched, setTouched] = useState(false);
+  const touchedRef = useRef(false);
 
+  // Backfill the input once auth resolves, but only if the user has not
+  // typed anything yet. Using a ref avoids the extra render that
+  // useState(touched) + useEffect would cause.
   useEffect(() => {
-    if (!touched) {
-      const resolved = (resolveDisplayName(user) ?? "").split(/\s+/)[0];
-      setValue(resolved);
+    if (!touchedRef.current) {
+      setValue((resolveDisplayName(user) ?? "").split(/\s+/)[0]);
     }
-  }, [user, touched]);
+  }, [user]);
 
   const handleSave = () =>
     saveDisplayName(value, {
@@ -51,7 +53,7 @@ export function OnboardingPersonalization({
         <Input
           value={value}
           onChange={(e) => {
-            setTouched(true);
+            touchedRef.current = true;
             setValue(e.target.value);
           }}
           onKeyDown={(e) => {
