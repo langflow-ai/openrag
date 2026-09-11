@@ -63,6 +63,17 @@ spec:
   #     name: my-watsonx-secret
   #     key: WATSONX_API_KEY
 
+  # Red Hat OpenShift AI — models served by KServe + vLLM in this cluster.
+  # Hidden as shipped: also set OPENRAG_MODEL_PROVIDERS_CONFIG in backend.env to
+  # a model_providers.yaml that turns `rhoai` on. Seeds credentials on first boot only.
+  # rhoai:
+  #   endpoint: https://openrag-chat-predictor.openrag-models.svc.cluster.local:8443/v1
+  #   embeddingsEndpoint: https://openrag-embed-predictor.openrag-models.svc.cluster.local:8443/v1
+  #   tlsVerify: /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
+  #   apiKeySecret:
+  #     name: my-rhoai-token
+  #     key: RHOAI_API_KEY
+
   # External OpenSearch — required unless credentials are in backend envSecret
   # opensearch:
   #   host: opensearch-coordinating.opensearch.svc.cluster.local

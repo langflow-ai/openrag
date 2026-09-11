@@ -414,6 +414,32 @@ func (r *OpenRAGReconciler) buildBackendEnv(ctx context.Context, o *openragv1alp
 		}
 	}
 
+	// Red Hat OpenShift AI configuration from CR spec. Backend only: every
+	// model call goes through the backend's LLM gateway, so Langflow never
+	// holds these credentials.
+	if rh := o.Spec.RHOAI; rh != nil {
+		if rh.Endpoint != "" {
+			envVars["RHOAI_ENDPOINT"] = rh.Endpoint
+		}
+		if rh.EmbeddingsEndpoint != "" {
+			envVars["RHOAI_EMBEDDINGS_ENDPOINT"] = rh.EmbeddingsEndpoint
+		}
+		if rh.TLSVerify != "" {
+			envVars["RHOAI_TLS_VERIFY"] = rh.TLSVerify
+		}
+
+		// Read the bearer token from user-provided secret
+		if rh.APIKeySecret != nil {
+			apiKey, err := r.readSecretValue(ctx, targetNS, rh.APIKeySecret)
+			if err != nil {
+				return "", nil, fmt.Errorf("failed to read RHOAI API key: %w", err)
+			}
+			if apiKey != "" {
+				envVars["RHOAI_API_KEY"] = apiKey
+			}
+		}
+	}
+
 	// LLM configuration from CR spec
 	if l := o.Spec.LLM; l != nil {
 		if l.Provider != "" {

@@ -142,6 +142,18 @@ stringData:
     {{- if .Values.llmProviders.watsonx.projectId }}
     WATSONX_PROJECT_ID={{ .Values.llmProviders.watsonx.projectId | quote }}
     {{- end }}
+    {{- if .Values.llmProviders.rhoai.endpoint }}
+    RHOAI_ENDPOINT={{ .Values.llmProviders.rhoai.endpoint | quote }}
+    {{- end }}
+    {{- if .Values.llmProviders.rhoai.embeddingsEndpoint }}
+    RHOAI_EMBEDDINGS_ENDPOINT={{ .Values.llmProviders.rhoai.embeddingsEndpoint | quote }}
+    {{- end }}
+    {{- if .Values.llmProviders.rhoai.apiKey }}
+    RHOAI_API_KEY={{ .Values.llmProviders.rhoai.apiKey | quote }}
+    {{- end }}
+    {{- if .Values.llmProviders.rhoai.tlsVerify }}
+    RHOAI_TLS_VERIFY={{ .Values.llmProviders.rhoai.tlsVerify | quote }}
+    {{- end }}
 
     # LLM / Embedding provider configuration
     {{- if .Values.appConfig.agent.llmProvider }}
