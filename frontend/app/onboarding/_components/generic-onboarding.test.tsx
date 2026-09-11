@@ -48,8 +48,11 @@ describe("GenericOnboarding", () => {
           provider="openai"
           isEmbedding={false}
           setSettings={mockSetSettings}
-          savedValues={{ api_key: "sk-test" }}
-          providers={{ custom: {} } as any}
+          providers={
+            {
+              custom: { openai: { credential_values: { api_key: "sk-test" } } },
+            } as any
+          }
         />
       </TooltipProvider>,
     );
@@ -74,7 +77,6 @@ describe("GenericOnboarding", () => {
           provider="openai"
           isEmbedding={true}
           setSettings={mockSetSettings}
-          savedValues={{}}
           providers={{ custom: {} } as any}
         />
       </TooltipProvider>,
