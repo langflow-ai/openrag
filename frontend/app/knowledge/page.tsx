@@ -783,7 +783,7 @@ function SearchPage() {
         }
 
         if (status === "failed") {
-          return (
+          const button = (
             <button
               type="button"
               className={cn(
@@ -792,7 +792,11 @@ function SearchPage() {
                   ? "text-destructive hover:opacity-80"
                   : "w-full text-red-500 hover:text-red-400",
               )}
-              aria-label="View ingestion error"
+              aria-label={
+                data?.error
+                  ? `View ingestion error: ${data.error}`
+                  : "View ingestion error"
+              }
               data-testid="failed-status-cell-trigger"
               onClick={() => {
                 selectTask(getTaskIdForRow(data));
@@ -802,6 +806,23 @@ function SearchPage() {
             >
               <StatusBadge status={status} className="pointer-events-none" />
             </button>
+          );
+
+          if (!data?.error) {
+            return button;
+          }
+
+          return (
+            <Tooltip>
+              <TooltipTrigger asChild>{button}</TooltipTrigger>
+              <TooltipContent
+                side="top"
+                align="end"
+                className="max-w-80 whitespace-pre-wrap break-words"
+              >
+                {data.error}
+              </TooltipContent>
+            </Tooltip>
           );
         }
 
