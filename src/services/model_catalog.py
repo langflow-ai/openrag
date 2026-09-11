@@ -447,7 +447,15 @@ async def refresh_live_models() -> None:
         ):
             continue
         try:
-            credentials = get_openrag_config().providers.credential_values(enhancement.PROVIDER_KEY)
+            # The stored form, not the LiteLLM one: a provider whose chat and
+            # embedding endpoints differ has its credentials narrowed to one of
+            # them by `credential_values()`, and listing models needs both.
+            providers = get_openrag_config().providers
+            credentials = (
+                providers.stored_credentials(enhancement.PROVIDER_KEY)
+                if hasattr(providers, "stored_credentials")
+                else providers.credential_values(enhancement.PROVIDER_KEY)
+            )
         except Exception:
             logger.debug(
                 "Could not read credentials for %s", enhancement.PROVIDER_KEY, exc_info=True

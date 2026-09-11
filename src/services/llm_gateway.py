@@ -147,7 +147,9 @@ def legacy_embedding_provider(model: str, config: Any | None = None) -> str | No
     return provider or None
 
 
-def provider_credentials(provider: str, config=None) -> dict[str, Any]:
+def provider_credentials(
+    provider: str, config=None, *, kind: Literal["chat", "embedding"] = "chat"
+) -> dict[str, Any]:
     """LiteLLM kwargs for any configured OpenRAG provider. Never logs secrets."""
     cfg = config or _get_config()
     key = (provider or "").strip().lower()
@@ -157,7 +159,9 @@ def provider_credentials(provider: str, config=None) -> dict[str, Any]:
         raise LlmGatewayError("LLM providers are not configured", 400) from exc
 
     if hasattr(prov, "credential_values"):
-        credentials = prov.credential_values(key)
+        from config.config_manager import credential_values_for_kind
+
+        credentials = credential_values_for_kind(prov, key, kind)
     else:
         provider_config = getattr(prov, key, None)
         if provider_config is None:
@@ -232,7 +236,7 @@ def resolve_call(
     if provider is None:
         provider = default_provider(kind, cfg)
         name = requested
-    credentials = provider_credentials(provider, cfg)
+    credentials = provider_credentials(provider, cfg, kind=kind)
     # An OpenRAG provider that LiteLLM does not know by that name is routed
     # under the key it aliases (`watsonx_onprem` -> `watsonx`). The OpenRAG key
     # is still what the caller sees and what credentials are stored under.

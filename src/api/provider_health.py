@@ -7,6 +7,7 @@ from fastapi import Depends
 from fastapi.responses import JSONResponse
 
 from api.provider_validation import sanitize_provider_error_content, validate_provider_setup
+from config.config_manager import credential_values_for_kind
 from config.settings import get_openrag_config
 from dependencies import require_permission
 from services import provider_error_log
@@ -77,7 +78,6 @@ async def check_provider_health(
                 api_key = getattr(provider_config, "api_key", None)
                 endpoint = getattr(provider_config, "endpoint", None)
                 project_id = getattr(provider_config, "project_id", None)
-                credentials = current_config.providers.credential_values(provider)
 
                 # Check if this provider is used for LLM or embedding
                 llm_model = (
@@ -98,6 +98,15 @@ async def check_provider_health(
                 if model or embedding_model_override:
                     llm_model = model or None
                     embedding_model = embedding_model_override or None
+
+                # Resolved after the model, because the endpoint a provider is
+                # checked against depends on which kind of call it is being
+                # checked for. `validate_provider_setup` probes the embedding
+                # model first when it has one, so the credentials have to follow
+                # that same precedence or the probe hits the wrong endpoint.
+                credentials = credential_values_for_kind(
+                    current_config.providers, provider, "embedding" if embedding_model else "chat"
+                )
             except ValueError:
                 # Provider not found in configuration
                 return JSONResponse(
@@ -124,8 +133,10 @@ async def check_provider_health(
             embedding_endpoint = getattr(embedding_provider_config, "endpoint", None)
             embedding_project_id = getattr(embedding_provider_config, "project_id", None)
             embedding_model = current_config.knowledge.embedding_model
-            credentials = current_config.providers.credential_values(provider)
-            embedding_credentials = current_config.providers.credential_values(embedding_provider)
+            credentials = credential_values_for_kind(current_config.providers, provider, "chat")
+            embedding_credentials = credential_values_for_kind(
+                current_config.providers, embedding_provider, "embedding"
+            )
 
             # Short-circuit identical concurrent polls from the provider-health
             # banner so we don't fan out N watsonx round-trips per poll cycle.

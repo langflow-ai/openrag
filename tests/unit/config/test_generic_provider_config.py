@@ -136,3 +136,74 @@ def test_azure_ai_foundry_env_configures_only_foundry(monkeypatch, tmp_path):
         "api_base": "https://test.services.ai.azure.com/models",
     }
     assert "azure" not in config.providers.custom
+
+
+def _clear_rhoai_env(monkeypatch):
+    """`.env` is loaded by the root conftest, so competing values must be dropped."""
+    for name in (
+        "RHOAI_ENDPOINT",
+        "RHOAI_EMBEDDINGS_ENDPOINT",
+        "RHOAI_API_KEY",
+        "RHOAI_TLS_VERIFY",
+        "OPENAI_API_KEY",
+        "LLM_PROVIDER",
+        "EMBEDDING_PROVIDER",
+        "LLM_MODEL",
+        "EMBEDDING_MODEL",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
+def test_rhoai_env_seeds_both_endpoints_and_the_token(monkeypatch, tmp_path):
+    """A Helm/operator install has to come up configured without a human clicking
+    through Settings, which is the point on an air-gapped cluster."""
+    from config.config_manager import ConfigManager
+
+    _clear_rhoai_env(monkeypatch)
+    monkeypatch.setenv("RHOAI_ENDPOINT", "https://chat.svc:8443/v1")
+    monkeypatch.setenv("RHOAI_EMBEDDINGS_ENDPOINT", "https://embed.svc:8443/v1")
+    monkeypatch.setenv("RHOAI_API_KEY", "sha256~token")
+    monkeypatch.setenv("RHOAI_TLS_VERIFY", "/var/run/secrets/service-ca.crt")
+
+    config = ConfigManager(config_file=tmp_path / "config.yaml").load_config()
+
+    assert config.providers.custom["rhoai"].configured is True
+    assert config.providers.stored_credentials("rhoai") == {
+        "api_base": "https://chat.svc:8443/v1",
+        "embedding_api_base": "https://embed.svc:8443/v1",
+        "api_key": "sha256~token",
+        "ssl_verify": "/var/run/secrets/service-ca.crt",
+    }
+
+
+def test_rhoai_env_without_a_token_stays_unconfigured(monkeypatch, tmp_path):
+    """A provider that reports configured with half a credential set satisfies
+    `any_configured()` and can then be picked as a fallback and called with
+    nothing useful."""
+    from config.config_manager import ConfigManager
+
+    _clear_rhoai_env(monkeypatch)
+    monkeypatch.setenv("RHOAI_ENDPOINT", "https://chat.svc:8443/v1")
+
+    config = ConfigManager(config_file=tmp_path / "config.yaml").load_config()
+
+    assert config.providers.custom["rhoai"].configured is False
+
+
+def test_rhoai_env_is_ignored_once_settings_have_been_edited(monkeypatch, tmp_path):
+    """The trap worth an explicit test: the first Settings save sets
+    `config.edited` and silently freezes every environment override, which on a
+    declaratively seeded cluster looks like the variables stopped working."""
+    import yaml
+
+    from config.config_manager import ConfigManager
+
+    _clear_rhoai_env(monkeypatch)
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(yaml.safe_dump({"edited": True}), encoding="utf-8")
+    monkeypatch.setenv("RHOAI_ENDPOINT", "https://chat.svc:8443/v1")
+    monkeypatch.setenv("RHOAI_API_KEY", "sha256~token")
+
+    config = ConfigManager(config_file=config_file).load_config()
+
+    assert "rhoai" not in config.providers.custom
