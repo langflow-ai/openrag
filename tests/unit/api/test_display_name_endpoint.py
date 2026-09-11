@@ -25,7 +25,6 @@ from api.users import DisplayNameBody, update_my_display_name  # noqa: E402
 from db.repositories import WorkspaceConfigRepo  # noqa: E402
 from session_manager import User  # noqa: E402
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -86,9 +85,7 @@ async def test_no_auth_clears_display_name(session_factory):
     async with session_factory() as session:
         with patch("config.settings.is_no_auth_mode", return_value=True):
             body = DisplayNameBody(display_name=None)
-            response = await update_my_display_name(
-                body=body, user=_make_user(), session=session
-            )
+            response = await update_my_display_name(body=body, user=_make_user(), session=session)
 
     assert response.display_name is None
     async with session_factory() as s:
@@ -103,9 +100,7 @@ async def test_no_auth_strips_and_truncates_name(session_factory):
     async with session_factory() as session:
         with patch("config.settings.is_no_auth_mode", return_value=True):
             body = DisplayNameBody(display_name=f"  {long_name}  ")
-            response = await update_my_display_name(
-                body=body, user=_make_user(), session=session
-            )
+            response = await update_my_display_name(body=body, user=_make_user(), session=session)
 
     assert len(response.display_name) == 80
 
@@ -122,9 +117,7 @@ async def test_no_auth_empty_string_treated_as_null(session_factory):
     async with session_factory() as session:
         with patch("config.settings.is_no_auth_mode", return_value=True):
             body = DisplayNameBody(display_name="   ")
-            response = await update_my_display_name(
-                body=body, user=_make_user(), session=session
-            )
+            response = await update_my_display_name(body=body, user=_make_user(), session=session)
 
     assert response.display_name is None
 
@@ -156,9 +149,7 @@ async def test_authenticated_sets_display_name():
         patch("api.users.UserRepo", return_value=mock_user_repo),
     ):
         body = DisplayNameBody(display_name="  Charlie  ")
-        response = await update_my_display_name(
-            body=body, user=_make_user(), session=mock_session
-        )
+        response = await update_my_display_name(body=body, user=_make_user(), session=mock_session)
 
     assert response.display_name == "Charlie"
     mock_user_repo.update_display_name.assert_awaited_once_with("db-u1", "Charlie")
@@ -183,9 +174,7 @@ async def test_authenticated_clears_display_name():
         patch("api.users.UserRepo", return_value=mock_user_repo),
     ):
         body = DisplayNameBody(display_name=None)
-        response = await update_my_display_name(
-            body=body, user=_make_user(), session=mock_session
-        )
+        response = await update_my_display_name(body=body, user=_make_user(), session=mock_session)
 
     assert response.display_name is None
     mock_user_repo.update_display_name.assert_awaited_once_with("db-u1", None)
@@ -206,8 +195,6 @@ async def test_authenticated_404_when_user_not_found():
     ):
         body = DisplayNameBody(display_name="Ghost")
         with pytest.raises(HTTPException) as exc_info:
-            await update_my_display_name(
-                body=body, user=_make_user(), session=mock_session
-            )
+            await update_my_display_name(body=body, user=_make_user(), session=mock_session)
 
     assert exc_info.value.status_code == 404
