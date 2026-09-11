@@ -274,6 +274,18 @@ class ProvidersConfig:
         """
         return dict(self.custom.get(provider.strip().lower(), GenericProviderConfig()).credentials)
 
+    def pending_stored_credentials(
+        self, provider: str, submitted: dict[str, str] | None = None
+    ) -> dict[str, str]:
+        """`stored_credentials()` as it would read once `submitted` is saved.
+
+        The untranslated counterpart of `pending_credentials()`, for the pre-save
+        health check of a provider whose check needs every field — both of an
+        OpenShift AI deployment's endpoints — rather than the one LiteLLM call
+        the translated form is narrowed to.
+        """
+        return {**self.stored_credentials(provider), **_clean_submitted(submitted)}
+
     def pending_credentials(
         self,
         provider: str,
@@ -298,11 +310,7 @@ class ProvidersConfig:
         from enhancements.providers.registry import get as get_provider_enhancement
 
         key = provider.strip().lower()
-        clean = {
-            str(name): str(value).strip()
-            for name, value in (submitted or {}).items()
-            if str(name).strip() and str(value).strip()
-        }
+        clean = _clean_submitted(submitted)
         enhancement = get_provider_enhancement(key)
         if enhancement:
             stored = self.custom.get(key, GenericProviderConfig()).credentials
@@ -357,6 +365,15 @@ class ProvidersConfig:
             # check and the validator all issue the same call.
             return credentials_for(enhancement, custom, kind)
         return custom
+
+
+def _clean_submitted(submitted: dict[str, str] | None) -> dict[str, str]:
+    """Submitted credential fields, trimmed, with blank names and values dropped."""
+    return {
+        str(name): str(value).strip()
+        for name, value in (submitted or {}).items()
+        if str(name).strip() and str(value).strip()
+    }
 
 
 def credential_values_for_kind(providers: Any, provider: str, kind: str) -> dict[str, Any]:

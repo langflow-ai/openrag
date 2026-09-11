@@ -256,12 +256,26 @@ def resolve_ssl_verify(value: Any) -> bool | str:
 
 
 def _values(stored: Mapping[str, Any] | None) -> dict[str, str]:
-    """Stored form values, trimmed, with blanks dropped."""
-    return {
-        str(name): str(value).strip()
-        for name, value in (stored or {}).items()
-        if str(value or "").strip()
-    }
+    """Credential values as trimmed strings, with blanks dropped.
+
+    Accepts either the stored form or the LiteLLM one `litellm_credentials`
+    builds from it — the health check and model discovery are handed both by
+    different callers. That is why a bool is spelled out rather than tested for
+    truth: a translated `ssl_verify=False` must come back as `"false"`, not
+    vanish as a blank, or verification is quietly switched back on. Lists
+    (`additional_drop_params`) are not credentials and are skipped.
+    """
+    values: dict[str, str] = {}
+    for name, value in (stored or {}).items():
+        if isinstance(value, bool):
+            text = "true" if value else "false"
+        elif value is None or isinstance(value, (list, tuple, dict, set)):
+            continue
+        else:
+            text = str(value).strip()
+        if text:
+            values[str(name)] = text
+    return values
 
 
 def endpoints(stored: Mapping[str, Any] | None) -> tuple[str, str]:
@@ -581,6 +595,11 @@ async def lightweight_health_check(credentials: Mapping[str, Any]) -> None:
     what makes it a check the provider can pass before anything has been chosen
     in Settings. Both endpoints are checked when they differ — an operator who
     got the embedding URL wrong should find out here, not on the first ingest.
+
+    For that to happen the caller has to pass the *stored* form, which still
+    carries `embedding_api_base`; `validate_provider_setup(stored_credentials=...)`
+    is how it gets here. Given only the LiteLLM form, the one endpoint it was
+    narrowed to is checked.
     """
     import httpx
 

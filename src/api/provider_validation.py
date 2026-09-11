@@ -3,6 +3,7 @@
 import asyncio
 import json
 import re
+from collections.abc import Mapping
 from typing import Any
 from urllib.parse import urlparse
 
@@ -662,6 +663,7 @@ async def validate_provider_setup(
     project_id: str = None,
     test_completion: bool = False,
     credentials: dict[str, str] | None = None,
+    stored_credentials: Mapping[str, Any] | None = None,
 ) -> None:
     """
     Validate provider setup by testing completion with tool calling and embedding.
@@ -675,6 +677,11 @@ async def validate_provider_setup(
         project_id: Project ID (required for watsonx)
         test_completion: If True, performs full validation with completion/embedding tests (consumes credits).
                         If False, performs lightweight validation (no credits consumed). Default: False.
+        credentials: LiteLLM kwargs for the provider, as the real call will be made.
+        stored_credentials: The provider's credentials as the operator entered them, untranslated.
+                        Only a provider enhancement's lightweight check reads it: a provider with
+                        separate chat and embedding endpoints has ``credentials`` narrowed to one
+                        of them, and the check has to see both to probe both.
 
     Raises:
         Exception: If validation fails, raises the original exception with the actual error message.
@@ -729,6 +736,7 @@ async def validate_provider_setup(
                     endpoint=endpoint,
                     project_id=project_id,
                     credentials=supplied,
+                    stored_credentials=stored_credentials,
                 )
                 return
             # Full validation with completion/embedding tests (consumes credits)
@@ -758,6 +766,7 @@ async def validate_provider_setup(
                 endpoint=endpoint,
                 project_id=project_id,
                 credentials=supplied,
+                stored_credentials=stored_credentials,
             )
 
         logger.info(f"Validation successful for provider: {provider_lower}")
@@ -813,8 +822,14 @@ async def test_lightweight_health(
     endpoint: str = None,
     project_id: str = None,
     credentials: dict[str, str] | None = None,
+    stored_credentials: Mapping[str, Any] | None = None,
 ) -> None:
-    """Test provider health with lightweight check (no credits consumed)."""
+    """Test provider health with lightweight check (no credits consumed).
+
+    ``stored_credentials`` is the untranslated form and is what a provider
+    enhancement's check is given when the caller has it; ``credentials`` is the
+    LiteLLM form and the fallback. See ``validate_provider_setup``.
+    """
 
     if provider == "openai":
         await _test_openai_lightweight_health(api_key)
@@ -829,7 +844,9 @@ async def test_lightweight_health(
     elif provider == "anthropic":
         await _test_anthropic_lightweight_health(api_key)
     elif enhancement := get_provider_enhancement(provider):
-        await enhancement.lightweight_health_check(credentials or {})
+        await enhancement.lightweight_health_check(
+            stored_credentials if stored_credentials is not None else (credentials or {})
+        )
     else:
         raise ValueError(f"Unknown provider: {provider}")
 

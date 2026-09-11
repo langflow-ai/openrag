@@ -20,13 +20,15 @@ async def test_provider_health_accepts_configured_azure_provider(
         endpoint=None,
         project_id=None,
     )
+    stored = {
+        "api_key": "azure-secret",
+        "api_base": "https://example.openai.azure.com",
+        "api_version": "2024-10-21",
+    }
     providers = SimpleNamespace(
         get_provider_config=lambda provider: azure,
-        credential_values=lambda provider: {
-            "api_key": "azure-secret",
-            "api_base": "https://example.openai.azure.com",
-            "api_version": "2024-10-21",
-        },
+        credential_values=lambda provider: dict(stored),
+        stored_credentials=lambda provider: dict(stored),
     )
     config = SimpleNamespace(
         providers=providers,
@@ -57,12 +59,48 @@ async def test_provider_health_accepts_configured_azure_provider(
         endpoint=None,
         project_id=None,
         test_completion=True,
-        credentials={
-            "api_key": "azure-secret",
-            "api_base": "https://example.openai.azure.com",
-            "api_version": "2024-10-21",
-        },
+        credentials=stored,
+        stored_credentials=stored,
     )
+
+
+@pytest.mark.asyncio
+async def test_provider_health_forwards_the_stored_form_for_multi_endpoint_providers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OpenShift AI keeps two endpoints; `credential_values` narrows to one of
+    them for the LiteLLM probe, so the enhancement's health check is handed the
+    stored form separately, or the embedding endpoint is never checked."""
+    stored = {
+        "api_base": "https://chat.svc:8443/v1",
+        "embedding_api_base": "https://embed.svc:8443/v1",
+        "api_key": "sha256~token",
+        "ssl_verify": "false",
+    }
+    translated = {"api_key": "sha256~token", "api_base": stored["api_base"], "ssl_verify": False}
+    providers = SimpleNamespace(
+        get_provider_config=lambda provider: SimpleNamespace(
+            api_key=None, endpoint=None, project_id=None
+        ),
+        credential_values=lambda provider, kind="chat": dict(translated),
+        stored_credentials=lambda provider: dict(stored),
+    )
+    config = SimpleNamespace(
+        providers=providers,
+        agent=SimpleNamespace(llm_provider="openai", llm_model="gpt-4o-mini"),
+        knowledge=SimpleNamespace(embedding_provider="openai", embedding_model="ada"),
+    )
+    validate = AsyncMock()
+    monkeypatch.setattr("api.provider_health.get_openrag_config", lambda: config)
+    monkeypatch.setattr("api.provider_health.validate_provider_setup", validate)
+    monkeypatch.setattr("api.provider_health.is_known_provider", lambda provider: True)
+
+    response = await check_provider_health(provider="rhoai", user=None)
+
+    assert response.status_code == 200
+    kwargs = validate.await_args.kwargs
+    assert kwargs["credentials"] == translated
+    assert kwargs["stored_credentials"] == stored
 
 
 @pytest.mark.asyncio
