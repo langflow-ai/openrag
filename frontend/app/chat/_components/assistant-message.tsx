@@ -1,9 +1,10 @@
 import { GitBranch } from "lucide-react";
 import { motion } from "motion/react";
 import dynamic from "next/dynamic";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import DogIcon from "@/components/icons/dog-icon";
 import { preprocessCitations } from "@/components/markdown-citations";
+import { useTypewriter } from "@/hooks/use-typewriter";
 import { ChunkPopup } from "./chunk-popup";
 import { CitationCards } from "./citation-cards";
 
@@ -157,28 +158,13 @@ export function AssistantMessage({
     retrievalSources,
   );
 
-  const [typedGreeting, setTypedGreeting] = useState("");
   const [greetingDone, setGreetingDone] = useState(false);
-
-  useEffect(() => {
-    if (!isInitialGreeting || isStreaming) {
-      setTypedGreeting(processedContent);
-      setGreetingDone(true);
-      return;
-    }
-    setTypedGreeting("");
-    setGreetingDone(false);
-    let i = 0;
-    const interval = setInterval(() => {
-      i++;
-      setTypedGreeting(processedContent.slice(0, i));
-      if (i >= processedContent.length) {
-        clearInterval(interval);
-        setGreetingDone(true);
-      }
-    }, 35);
-    return () => clearInterval(interval);
-  }, [isInitialGreeting, processedContent]);
+  const typedGreeting = useTypewriter(
+    processedContent,
+    !!(isInitialGreeting && !isStreaming),
+    () => setGreetingDone(true),
+    35,
+  );
 
   const displayMessageText = isStreaming
     ? processedContent.trim()

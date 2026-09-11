@@ -1,4 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
+import { patchDisplayName } from "./useUpdateDisplayNameMutation.helpers";
 
 interface UpdateDisplayNameVariables {
   display_name: string | null;
@@ -6,19 +7,7 @@ interface UpdateDisplayNameVariables {
 
 export function useUpdateDisplayNameMutation() {
   return useMutation({
-    mutationFn: async ({ display_name }: UpdateDisplayNameVariables) => {
-      const response = await fetch("/api/users/me/display-name", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ display_name }),
-      });
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(
-          (err as { detail?: string }).detail ?? "Failed to save display name",
-        );
-      }
-      return response.json() as Promise<{ display_name: string | null }>;
-    },
+    mutationFn: ({ display_name }: UpdateDisplayNameVariables) =>
+      patchDisplayName(display_name),
   });
 }

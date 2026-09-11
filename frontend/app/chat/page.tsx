@@ -23,6 +23,7 @@ import {
 import { FILE_CONFIRMATION, FILES_REGEX } from "@/lib/constants";
 import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
 import { uploadFileForContext } from "@/lib/upload-utils";
+import { resolveDisplayName } from "@/lib/user";
 import { cn } from "@/lib/utils";
 import { useGetConversationsQuery } from "../api/queries/useGetConversationsQuery";
 import { useGetNudgesQuery } from "../api/queries/useGetNudgesQuery";
@@ -65,9 +66,7 @@ function ChatPage() {
     setChatError,
   } = useChat();
   const { user } = useAuth();
-  const displayName =
-    user?.display_name ||
-    (user?.name && user.name !== "Anonymous User" ? user.name : null);
+  const displayName = resolveDisplayName(user);
   const [messages, setMessages] = useState<Message[]>(() => [
     makeInitialMessage(displayName),
   ]);
@@ -393,7 +392,7 @@ function ChatPage() {
       window.removeEventListener("newConversation", handleNewConversation);
       window.removeEventListener("focusInput", handleFocusInput);
     };
-  }, [abortStream, setLoading]);
+  }, [abortStream, setLoading, displayName]);
 
   // Load conversation data from context
   useEffect(() => {

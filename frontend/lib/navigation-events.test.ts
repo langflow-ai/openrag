@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
-import { describe, it } from "vitest";
-// Node's built-in TypeScript runner requires the extension; tsc resolves the same source.
-// @ts-expect-error TS5097
+import { describe, it } from "node:test";
 import { getInterceptedNavigationHref } from "./navigation-events.ts";
 
 const currentHref = "http://localhost:3000/settings/agent";

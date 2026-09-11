@@ -170,12 +170,16 @@ class DisplayNameBody(BaseModel):
     display_name: str | None = None
 
 
-@router.patch("/me/display-name")
+class DisplayNameResponse(BaseModel):
+    display_name: str | None = None
+
+
+@router.patch("/me/display-name", response_model=DisplayNameResponse)
 async def update_my_display_name(
     body: DisplayNameBody,
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
-):
+) -> DisplayNameResponse:
     """Persist a custom display name for the current user.
 
     Accepts a ``display_name`` string (max 80 chars) or null to clear.
@@ -193,14 +197,13 @@ async def update_my_display_name(
         from db.repositories import WorkspaceConfigRepo
 
         repo = WorkspaceConfigRepo(session)
-        meta = await repo.get_section("meta") or {}
-        if name is None:
-            meta.pop("no_auth_display_name", None)
-        else:
-            meta["no_auth_display_name"] = name
-        await repo.upsert("meta", meta)
+        await repo.merge_section_keys(
+            "meta",
+            updates={} if name is None else {"no_auth_display_name": name},
+            deletions={"no_auth_display_name"} if name is None else None,
+        )
         await session.commit()
-        return JSONResponse({"display_name": name})
+        return DisplayNameResponse(display_name=name)
 
     user_repo = UserRepo(session)
     db_user = await user_repo.get_by_oauth(user.provider or "unknown", user.user_id)
@@ -211,4 +214,4 @@ async def update_my_display_name(
 
     await user_repo.update_display_name(db_user.id, name)
     await session.commit()
-    return JSONResponse({"display_name": name})
+    return DisplayNameResponse(display_name=name)

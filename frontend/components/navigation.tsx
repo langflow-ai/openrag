@@ -25,58 +25,13 @@ import { useIsCloudBrand } from "@/contexts/brand-context";
 import { type EndpointType, useChat } from "@/contexts/chat-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { usePermissions } from "@/hooks/use-permissions";
+import { useTypewriter } from "@/hooks/use-typewriter";
 import { useChatSelection } from "@/hooks/useChatSelection";
 import { FILES_REGEX } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { BulkDeleteButton } from "./bulk-delete-button";
 import { DeleteSessionModal } from "./delete-session-modal";
 import { KnowledgeFilterList } from "./knowledge-filter-list";
-
-/** Typewrite a string one character at a time.
- * `text` and `speed` are captured at animation start.
- * `onDone` fires once when the full string has been displayed. */
-function useTypewriter(
-  text: string,
-  active: boolean,
-  onDone?: () => void,
-  speed = 28,
-) {
-  const [displayed, setDisplayed] = useState(active ? "" : text);
-  const frameRef = useRef<NodeJS.Timeout | null>(null);
-  const onDoneRef = useRef(onDone);
-  onDoneRef.current = onDone;
-
-  useEffect(() => {
-    if (frameRef.current) {
-      clearTimeout(frameRef.current);
-      frameRef.current = null;
-    }
-    if (!active) {
-      setDisplayed(text);
-      return;
-    }
-    setDisplayed("");
-    let i = 0;
-    const tick = () => {
-      i++;
-      setDisplayed(text.slice(0, i));
-      if (i < text.length) {
-        frameRef.current = setTimeout(tick, speed);
-      } else {
-        onDoneRef.current?.();
-      }
-    };
-    frameRef.current = setTimeout(tick, speed);
-    return () => {
-      if (frameRef.current) {
-        clearTimeout(frameRef.current);
-        frameRef.current = null;
-      }
-    };
-  }, [text, active, speed]);
-
-  return displayed;
-}
 
 /** Renders a conversation title, typewriting it in when isFresh=true.
  * Calls onDone once the animation completes so the parent can clear
@@ -171,7 +126,6 @@ export function Navigation({
   const [conversationToDelete, setConversationToDelete] =
     useState<ChatConversation | null>(null);
   const hasCompletedInitialLoad = useRef(false);
-  const mountTimeRef = useRef<number | null>(null);
   // Stable key for the loading-state fallback placeholder (prevents React
   // from remounting the button on every render while loading=true).
   const loadingPlaceholderKey = useRef(`loading-placeholder-${Date.now()}`);
@@ -336,13 +290,6 @@ export function Navigation({
   const isOnChatPage = pathname === "/" || pathname === "/chat";
   const isOnKnowledgePage = pathname.startsWith("/knowledge");
 
-  // Track mount time to prevent auto-selection right after component mounts (e.g., after onboarding)
-  useEffect(() => {
-    if (mountTimeRef.current === null) {
-      mountTimeRef.current = Date.now();
-    }
-  }, []);
-
   // Track when initial load completes
   useEffect(() => {
     if (!isConversationsLoading && !hasCompletedInitialLoad.current) {
@@ -354,18 +301,12 @@ export function Navigation({
   // Clear placeholder when conversation count increases (new conversation was created)
   useEffect(() => {
     const currentCount = conversations.length;
-    const timeSinceMount = mountTimeRef.current
-      ? Date.now() - mountTimeRef.current
-      : Infinity;
-    const MIN_TIME_AFTER_MOUNT = 2000; // 2 seconds - prevents selection right after onboarding
-
     if (
       placeholderConversation &&
       hasCompletedInitialLoad.current &&
       currentCount > previousConversationCountRef.current &&
       conversations.length > 0 &&
-      !isConversationsLoading &&
-      timeSinceMount >= MIN_TIME_AFTER_MOUNT
+      !isConversationsLoading
     ) {
       setPlaceholderConversation(null);
       const newestConversation = conversations[0];

@@ -1,11 +1,14 @@
 "use client";
 
 import { UserRound } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { useUpdateDisplayNameMutation } from "@/app/api/mutations/useUpdateDisplayNameMutation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/auth-context";
+import { resolveDisplayName } from "@/lib/user";
+import { saveDisplayName } from "./onboarding-personalization.helpers";
 
 interface OnboardingPersonalizationProps {
   onComplete: () => void;
@@ -19,20 +22,24 @@ export function OnboardingPersonalization({
   const { user, refreshAuth } = useAuth();
   const updateDisplayName = useUpdateDisplayNameMutation();
 
-  // Prefill from display_name, then OAuth name (skip "Anonymous User" default)
-  const rawName =
-    user?.display_name ||
-    (user?.name !== "Anonymous User" ? user?.name : "") ||
-    "";
-  const initialName = rawName.split(/\s+/)[0] ?? "";
+  const initialName = (resolveDisplayName(user) ?? "").split(/\s+/)[0];
   const [value, setValue] = useState(initialName);
+  const [touched, setTouched] = useState(false);
 
-  const handleSave = async () => {
-    const trimmed = value.trim();
-    await updateDisplayName.mutateAsync({ display_name: trimmed || null });
-    await refreshAuth();
-    onComplete();
-  };
+  useEffect(() => {
+    if (!touched) {
+      const resolved = (resolveDisplayName(user) ?? "").split(/\s+/)[0];
+      setValue(resolved);
+    }
+  }, [user, touched]);
+
+  const handleSave = () =>
+    saveDisplayName(value, {
+      mutateAsync: updateDisplayName.mutateAsync,
+      refreshAuth,
+      onComplete,
+      onError: toast.error,
+    });
 
   return (
     <div className="flex flex-col gap-5 w-full max-w-sm">
@@ -43,7 +50,10 @@ export function OnboardingPersonalization({
         </div>
         <Input
           value={value}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={(e) => {
+            setTouched(true);
+            setValue(e.target.value);
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter") handleSave();
           }}

@@ -10,7 +10,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { INITIAL_ASSISTANT_MESSAGE } from "@/app/chat/_types/types";
 import { useOnboardingState } from "@/hooks/use-onboarding-state";
 
 export type EndpointType = "chat" | "langflow";
@@ -300,7 +299,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
         messages: [
           {
             role: "assistant",
-            content: INITIAL_ASSISTANT_MESSAGE.content,
+            content: "How can I assist?",
             timestamp: new Date().toISOString(),
           },
         ],
