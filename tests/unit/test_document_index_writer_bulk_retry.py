@@ -51,7 +51,10 @@ async def test_retries_transient_error_and_recovers(monkeypatch):
                         "index": {
                             "_id": "chunk-2",
                             "status": 429,
-                            "error": {"type": "es_rejected_execution_exception", "reason": "queue full"},
+                            "error": {
+                                "type": "es_rejected_execution_exception",
+                                "reason": "queue full",
+                            },
                         }
                     },
                 ],
