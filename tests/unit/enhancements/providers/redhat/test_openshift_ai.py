@@ -1,5 +1,6 @@
 """Red Hat OpenShift AI: KServe + vLLM endpoints, routed through LiteLLM's hosted_vllm."""
 
+import time
 from typing import Any
 
 import pytest
@@ -600,7 +601,68 @@ async def test_one_dead_endpoint_does_not_empty_the_other_picker(monkeypatch) ->
     models = await rhoai.fetch_models(_stored())
 
     assert models.chat == (CHAT_MODEL,)
-    assert models.embedding == ()
+    assert models.embedding is None  # that half keeps its configured fallback
+
+
+@pytest.mark.asyncio
+async def test_a_dead_endpoint_does_not_empty_its_own_picker_either(monkeypatch) -> None:
+    """The failed half is None, not an empty list, so the catalogue keeps the
+    configured rows for it rather than showing nothing for five minutes."""
+    responses = {
+        f"{CHAT_BASE}/models": _Response(200, _models_body(CHAT_MODEL)),
+        f"{EMBED_BASE}/models": _Response(503, None, "Service Unavailable"),
+    }
+    monkeypatch.setattr("httpx.AsyncClient", _client_returning(responses))
+    monkeypatch.setattr(rhoai, "_http_request_with_retry", _no_retry)
+
+    await rhoai.fetch_models(_stored())
+
+    assert rhoai.cached_models() == rhoai.ClusterModels(chat=(CHAT_MODEL,), embedding=None)
+
+
+@pytest.mark.asyncio
+async def test_a_failed_listing_keeps_the_previous_answer_for_that_half(monkeypatch) -> None:
+    """An endpoint mid-rollout answered fine a minute ago; that answer is
+    better than the configured guess, so it stays until it ages out."""
+    seen: dict[str, Any] = {}
+    responses = {
+        f"{CHAT_BASE}/models": _Response(200, _models_body(CHAT_MODEL)),
+        f"{EMBED_BASE}/models": _Response(200, _models_body(EMBED_MODEL)),
+    }
+    monkeypatch.setattr("httpx.AsyncClient", _client_returning(responses, seen))
+    monkeypatch.setattr(rhoai, "_http_request_with_retry", _no_retry)
+    await rhoai.fetch_models(_stored())
+
+    # The embedding answer ages out; the endpoint is then down.
+    rhoai._models_cache["embedding"] = rhoai._models_cache["embedding"]._replace(
+        at=time.monotonic() - rhoai.MODELS_TTL_SECONDS - 1
+    )
+    responses[f"{EMBED_BASE}/models"] = _Response(503, None, "Service Unavailable")
+    models = await rhoai.fetch_models(_stored())
+
+    assert models == rhoai.ClusterModels(chat=(CHAT_MODEL,), embedding=None)
+    # Only the stale half was asked again; the fresh chat answer was reused.
+    assert seen["urls"] == [f"{CHAT_BASE}/models", f"{EMBED_BASE}/models", f"{EMBED_BASE}/models"]
+
+
+@pytest.mark.asyncio
+async def test_a_failed_half_is_asked_again_next_time(monkeypatch) -> None:
+    """A failure must not be parked behind a fresh timestamp: the next refresh
+    tries that endpoint again, and a recovered answer fills the picker."""
+    seen: dict[str, Any] = {}
+    responses = {
+        f"{CHAT_BASE}/models": _Response(200, _models_body(CHAT_MODEL)),
+        f"{EMBED_BASE}/models": _Response(503, None, "Service Unavailable"),
+    }
+    monkeypatch.setattr("httpx.AsyncClient", _client_returning(responses, seen))
+    monkeypatch.setattr(rhoai, "_http_request_with_retry", _no_retry)
+    await rhoai.fetch_models(_stored())
+
+    responses[f"{EMBED_BASE}/models"] = _Response(200, _models_body(EMBED_MODEL))
+    models = await rhoai.fetch_models(_stored())
+
+    assert models == rhoai.ClusterModels(chat=(CHAT_MODEL,), embedding=(EMBED_MODEL,))
+    assert seen["urls"] == [f"{CHAT_BASE}/models", f"{EMBED_BASE}/models", f"{EMBED_BASE}/models"]
 
 
 async def _no_retry(method, url, *, client, **kwargs):
@@ -986,6 +1048,31 @@ async def test_what_the_cluster_serves_wins_over_the_configured_fallback(
 
     assert [m["model"] for m in entry["models"]] == ["deployed-chat"]
     assert [m["model"] for m in entry["embedding_models"]] == ["deployed-embed"]
+
+
+@pytest.mark.asyncio
+async def test_the_picker_for_a_dead_endpoint_keeps_the_configured_fallback(
+    tmp_path, monkeypatch
+) -> None:
+    """One endpoint down empties neither picker: the live answer wins where
+    there is one, and the configured rows stand in for the half without."""
+    _enable_in_oss(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        "httpx.AsyncClient",
+        _client_returning(
+            {
+                f"{CHAT_BASE}/models": _Response(200, _models_body("deployed-chat")),
+                f"{EMBED_BASE}/models": _Response(503, None, "Service Unavailable"),
+            }
+        ),
+    )
+    monkeypatch.setattr(rhoai, "_http_request_with_retry", _no_retry)
+    await rhoai.fetch_models(_stored())
+
+    entry = {e["key"]: e for e in model_catalog.catalog()["providers"]}[PROVIDER]
+
+    assert [m["model"] for m in entry["models"]] == ["deployed-chat"]
+    assert [m["model"] for m in entry["embedding_models"]] == [EMBED_MODEL]
 
 
 @pytest.mark.asyncio
