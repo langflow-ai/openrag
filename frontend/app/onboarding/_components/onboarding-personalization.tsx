@@ -26,9 +26,6 @@ export function OnboardingPersonalization({
   const [value, setValue] = useState(initialName);
   const touchedRef = useRef(false);
 
-  // Backfill the input once auth resolves, but only if the user has not
-  // typed anything yet. Using a ref avoids the extra render that
-  // useState(touched) + useEffect would cause.
   useEffect(() => {
     if (!touchedRef.current) {
       setValue((resolveDisplayName(user) ?? "").split(/\s+/)[0]);

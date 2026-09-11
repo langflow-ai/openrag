@@ -27,8 +27,6 @@ export function GeneralTab() {
   const touchedRef = useRef(false);
   const prevDisplayNameRef = useRef(user?.display_name);
 
-  // Sync external value into the input during render (no useEffect needed).
-  // Only backfills while the field is untouched and the external value changes.
   if (
     !touchedRef.current &&
     user?.display_name !== undefined &&
