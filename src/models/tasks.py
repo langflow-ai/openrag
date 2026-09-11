@@ -19,6 +19,14 @@ class TaskStatus(Enum):
     SKIPPED = "skipped"
 
 
+class TaskDeleteResult(Enum):
+    """Outcome of a single-task delete attempt."""
+
+    DELETED = "deleted"
+    NOT_FOUND = "not_found"
+    IN_PROGRESS = "in_progress"
+
+
 class DoclingPhaseStatus(Enum):
     """Tracks the state of the Docling conversion sub-phase for a single file."""
 

@@ -19,11 +19,19 @@ import { useProviderHealth } from "./provider-health-banner";
 export function Header() {
   const isCloudBrand = useIsCloudBrand();
   const { tasks } = useTask();
+  const activeTaskCount = tasks.filter(
+    (t) =>
+      t.status === "pending" ||
+      t.status === "running" ||
+      t.status === "processing",
+  ).length;
+  const failedTaskCount = tasks.filter(
+    (t) => t.status === "failed" || t.status === "error",
+  ).length;
   const toggleTaskMenu = useToggleTaskMenu();
   const { runMode } = useAuth();
 
   const {
-    hasProblem,
     toggle,
     isOpen,
     overallStatus: consoleOverallStatus,
@@ -32,17 +40,6 @@ export function Header() {
   const overallStatus = isProviderUnhealthy
     ? "unhealthy"
     : consoleOverallStatus;
-
-  // Calculate active tasks for the bell icon
-  const activeTasks = tasks.filter(
-    (task) =>
-      task.status === "pending" ||
-      task.status === "running" ||
-      task.status === "processing",
-  );
-
-  // The bell dot lights for in-flight tasks OR a degraded/down component.
-  const showNotificationDot = activeTasks.length > 0 || hasProblem;
 
   return (
     <header className={cn(`flex w-full h-full items-center justify-between`)}>
@@ -106,7 +103,16 @@ export function Header() {
                 isCloudBrand ? "text-foreground" : "text-muted-foreground"
               }
             />
-            {showNotificationDot && <div className="header-notifications" />}
+            {activeTaskCount > 0 && (
+              <span className="absolute -right-1 -top-1 flex min-w-[16px] h-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground">
+                {activeTaskCount > 99 ? "99+" : activeTaskCount}
+              </span>
+            )}
+            {activeTaskCount === 0 && failedTaskCount > 0 && (
+              <span className="absolute -right-1 -top-1 flex min-w-[16px] h-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold leading-none text-destructive-foreground">
+                {failedTaskCount > 99 ? "99+" : failedTaskCount}
+              </span>
+            )}
           </button>
 
           {/* Separator */}
