@@ -22,6 +22,7 @@ import { useOpenTaskMenu } from "@/contexts/console-status-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
 import { trackButton } from "@/lib/analytics";
+import { isFileCancelled } from "@/lib/task-error-display";
 import {
   EMPTY_SEARCH_RESULT,
   type File,
@@ -32,6 +33,7 @@ import { useListFiles } from "../api/queries/useListFiles";
 import "@/components/AgGrid/registerAgGridModules";
 import "@/components/AgGrid/agGridStyles.css";
 import { toast } from "sonner";
+import { CancelIngestionButton } from "@/components/cancel-ingestion-button";
 import { KnowledgeActionsDropdown } from "@/components/knowledge-actions-dropdown";
 import { KnowledgeBatchActionsBar } from "@/components/knowledge-batch-actions-bar";
 import { KnowledgePaginationFooter } from "@/components/knowledge-pagination-footer";
@@ -164,6 +166,7 @@ function SearchPage() {
     refreshTasks,
     setRecentTasksExpanded,
     selectTask,
+    cancelFile,
   } = useTask();
   const openTaskMenu = useOpenTaskMenu();
   const {
@@ -261,11 +264,17 @@ function SearchPage() {
       if (!file) return null;
       const sourceUrl = file.source_url || "";
       const filename = file.filename || "";
-      const matches = taskFiles.filter(
-        (taskFile) =>
-          (sourceUrl && taskFile.source_url === sourceUrl) ||
-          taskFile.filename === filename,
-      );
+
+      // Prioritize exact source URL match to avoid confusion with duplicate filenames
+      const matches = taskFiles.filter((taskFile) => {
+        if (sourceUrl) {
+          // If row has source URL, match only by source URL
+          return taskFile.source_url === sourceUrl;
+        }
+        // Fall back to filename matching only when no source URL
+        return taskFile.filename === filename;
+      });
+
       if (matches.length === 0) return null;
 
       const failedMatches =
@@ -451,10 +460,12 @@ function SearchPage() {
         return 2;
       case "failed":
         return 3;
-      case "unavailable":
+      case "cancelled":
         return 4;
-      case "hidden":
+      case "unavailable":
         return 5;
+      case "hidden":
+        return 6;
       default:
         return 0;
     }
@@ -743,7 +754,12 @@ function SearchPage() {
       comparator: (valueA?: File["status"], valueB?: File["status"]) =>
         getStatusSortRank(valueA) - getStatusSortRank(valueB),
       cellRenderer: ({ data }: CustomCellRendererProps<File>) => {
-        const status = data?.status || "active";
+        const rawStatus = data?.status || "active";
+        // Use centralized cancellation detection
+        const status =
+          rawStatus === "failed" && data && isFileCancelled(data)
+            ? "cancelled"
+            : rawStatus;
         const showOpenragRefreshCue =
           isOpenragDocsRow(data) && hasOpenragRefreshCue;
 
@@ -789,14 +805,18 @@ function SearchPage() {
           );
         }
 
+        if (status === "cancelled") {
+          return <StatusBadge status="cancelled" />;
+        }
+
         return <StatusBadge status={status} />;
       },
     },
     {
       colId: "actions",
       headerName: "",
-      width: isCloudBrand ? 56 : 40,
-      minWidth: isCloudBrand ? 56 : 0,
+      width: 56,
+      minWidth: 56,
       ...(isCloudBrand ? { maxWidth: 56 } : { initialFlex: 0 }),
       sortable: false,
       filter: false,
@@ -804,6 +824,22 @@ function SearchPage() {
       suppressMovable: true,
       cellRenderer: ({ data }: CustomCellRendererProps<File>) => {
         const status = data?.status || "active";
+        if (status === "processing") {
+          const taskId = getTaskIdForRow(data);
+          if (!taskId || !data) return null;
+
+          // Get file path for this row - use source_url or filename
+          const filePath = data.source_url || data.filename || "";
+          if (!filePath) return null;
+
+          return (
+            <CancelIngestionButton
+              taskId={taskId}
+              filePath={filePath}
+              onCancel={cancelFile}
+            />
+          );
+        }
         if (status !== "active") return null;
         return (
           <KnowledgeActionsDropdown
