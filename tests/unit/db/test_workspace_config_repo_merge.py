@@ -44,9 +44,7 @@ async def test_merge_creates_row_when_section_missing(session_factory):
     """First call inserts the row with only the supplied keys."""
     async with session_factory() as s:
         repo = WorkspaceConfigRepo(s)
-        row = await repo.merge_section_keys(
-            "meta", updates={"no_auth_display_name": "Alice"}
-        )
+        row = await repo.merge_section_keys("meta", updates={"no_auth_display_name": "Alice"})
         await s.commit()
 
     assert row.value == {"no_auth_display_name": "Alice"}
@@ -122,9 +120,7 @@ async def test_merge_update_overwrites_existing_key(session_factory):
 
     async with session_factory() as s:
         repo = WorkspaceConfigRepo(s)
-        row = await repo.merge_section_keys(
-            "meta", updates={"no_auth_display_name": "New"}
-        )
+        row = await repo.merge_section_keys("meta", updates={"no_auth_display_name": "New"})
         await s.commit()
 
     assert row.value["no_auth_display_name"] == "New"
