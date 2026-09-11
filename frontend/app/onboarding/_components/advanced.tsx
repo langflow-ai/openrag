@@ -38,6 +38,7 @@ export function AdvancedOnboarding({
         >
           <ModelSelector
             options={embeddingModels}
+            custom
             data-testid="embedding-model-selector"
             icon={icon}
             value={embeddingModel}
@@ -54,6 +55,7 @@ export function AdvancedOnboarding({
         >
           <ModelSelector
             options={languageModels}
+            custom
             data-testid="language-model-selector"
             icon={icon}
             value={languageModel}
