@@ -1,5 +1,6 @@
 """Configuration management for OpenRAG."""
 
+import inspect
 import json
 import os
 import re
@@ -262,9 +263,36 @@ class ProvidersConfig:
             self.ollama.endpoint = clean.get("api_base", self.ollama.endpoint)
             self.ollama.configured = bool(self.ollama.endpoint)
 
-    def pending_credentials(
+    def stored_credentials(self, provider: str) -> dict[str, str]:
+        """The provider's credentials exactly as the operator entered them.
+
+        Untranslated, and therefore complete: `credential_values()` narrows a
+        multi-endpoint provider down to the one endpoint a given call needs, so
+        anything that has to see *all* of them — model discovery across an
+        OpenShift AI deployment's chat and embedding `InferenceService`s — has
+        to read the stored form instead.
+        """
+        return dict(self.custom.get(provider.strip().lower(), GenericProviderConfig()).credentials)
+
+    def pending_stored_credentials(
         self, provider: str, submitted: dict[str, str] | None = None
     ) -> dict[str, str]:
+        """`stored_credentials()` as it would read once `submitted` is saved.
+
+        The untranslated counterpart of `pending_credentials()`, for the pre-save
+        health check of a provider whose check needs every field — both of an
+        OpenShift AI deployment's endpoints — rather than the one LiteLLM call
+        the translated form is narrowed to.
+        """
+        return {**self.stored_credentials(provider), **_clean_submitted(submitted)}
+
+    def pending_credentials(
+        self,
+        provider: str,
+        submitted: dict[str, str] | None = None,
+        *,
+        kind: str = "chat",
+    ) -> dict[str, Any]:
         """LiteLLM kwargs for `provider` as it would be once `submitted` is saved.
 
         Validation runs before the write, so it has to reason about the union of
@@ -274,29 +302,37 @@ class ProvidersConfig:
         halves have to be merged *before* the translation, or a request that
         changes the API key would be validated against a stale credential built
         from the old one.
+
+        `kind` selects which endpoint a multi-endpoint provider is validated
+        against, so the pre-save probe hits the same one the real call will.
         """
+        from enhancements.providers.registry import credentials_for
         from enhancements.providers.registry import get as get_provider_enhancement
 
         key = provider.strip().lower()
-        clean = {
-            str(name): str(value).strip()
-            for name, value in (submitted or {}).items()
-            if str(name).strip() and str(value).strip()
-        }
+        clean = _clean_submitted(submitted)
         enhancement = get_provider_enhancement(key)
         if enhancement:
             stored = self.custom.get(key, GenericProviderConfig()).credentials
-            return enhancement.litellm_credentials({**stored, **clean})
-        values = self.credential_values(key)
+            return credentials_for(enhancement, {**stored, **clean}, kind)
+        values = self.credential_values(key, kind=kind)
         values.update(clean)
         return values
 
-    def credential_values(self, provider: str) -> dict[str, str]:
-        """Return LiteLLM keyword arguments for a configured provider."""
+    def credential_values(self, provider: str, *, kind: str = "chat") -> dict[str, Any]:
+        """Return LiteLLM keyword arguments for a configured provider.
+
+        `kind` is `"chat"` or `"embedding"`. It matters only to a provider whose
+        two kinds of call go to different endpoints — Red Hat OpenShift AI, where
+        `vLLM` serves one model per `InferenceService` — and is ignored by every
+        other provider. Callers that need the untranslated form should use
+        `stored_credentials()`.
+        """
+        from enhancements.providers.registry import credentials_for
         from enhancements.providers.registry import get as get_provider_enhancement
 
         key = provider.strip().lower()
-        custom = dict(self.custom.get(key, GenericProviderConfig()).credentials)
+        custom: dict[str, Any] = dict(self.custom.get(key, GenericProviderConfig()).credentials)
         if key == "openai":
             if self.openai.api_key:
                 custom.setdefault("api_key", self.openai.api_key)
@@ -306,7 +342,7 @@ class ProvidersConfig:
                 custom.setdefault("api_key", self.anthropic.api_key)
             return custom
         if key == "watsonx":
-            legacy = {
+            legacy: dict[str, Any] = {
                 name: value
                 for name, value in {
                     "api_key": self.watsonx.api_key,
@@ -327,8 +363,37 @@ class ProvidersConfig:
             # (cluster URL, username, API key); LiteLLM wants a ZenApiKey. The
             # translation lives with the provider so the gateway, the health
             # check and the validator all issue the same call.
-            return enhancement.litellm_credentials(custom)
+            return credentials_for(enhancement, custom, kind)
         return custom
+
+
+def _clean_submitted(submitted: dict[str, str] | None) -> dict[str, str]:
+    """Submitted credential fields, trimmed, with blank names and values dropped."""
+    return {
+        str(name): str(value).strip()
+        for name, value in (submitted or {}).items()
+        if str(name).strip() and str(value).strip()
+    }
+
+
+def credential_values_for_kind(providers: Any, provider: str, kind: str) -> dict[str, Any]:
+    """`providers.credential_values(provider)`, passing `kind` when it is accepted.
+
+    `kind` reached `ProvidersConfig` late, and the providers object is not always
+    a `ProvidersConfig`: the gateway and the health endpoint both accept any
+    object exposing `credential_values`, which is how tests supply a stub and how
+    an embedded deployment can substitute its own. Calling those with a keyword
+    they do not declare is a `TypeError` that surfaces as an unhealthy provider,
+    so the keyword is offered rather than assumed.
+    """
+    values = providers.credential_values
+    try:
+        accepts_kind = "kind" in inspect.signature(values).parameters
+    except (TypeError, ValueError):
+        accepts_kind = False
+    if accepts_kind:
+        return values(provider, kind=kind)
+    return values(provider)
 
 
 @dataclass
@@ -595,6 +660,46 @@ class ConfigManager:
             credentials["api_version"] = api_version
         entry["configured"] = bool(credentials.get("api_key") and credentials.get("api_base"))
 
+    @staticmethod
+    def _seed_custom_provider_credentials(
+        config_data: dict[str, Any],
+        provider: str,
+        credentials: dict[str, str | None],
+        *,
+        required: tuple[str, ...],
+    ) -> None:
+        """Fill a custom provider's credentials from an arbitrary field map.
+
+        The sibling `_seed_custom_provider` understands exactly `api_key` /
+        `api_base` / `api_version`, which is all Azure needs. A provider with its
+        own form — OpenShift AI carries a second endpoint URL and a TLS setting —
+        needs every field it declares, so this takes the map instead.
+
+        `required` names the fields without which the provider cannot be called
+        at all. It gates `configured`, because a provider that reports configured
+        with a partial credential set satisfies `any_configured()` and can then
+        be picked as a fallback and called with nothing useful.
+        """
+        supplied = {
+            name: str(value).strip()
+            for name, value in credentials.items()
+            if str(value or "").strip()
+        }
+        if not supplied:
+            return
+        custom_providers = config_data.setdefault("providers", {}).setdefault("custom", {})
+        entry = custom_providers.setdefault(provider, {})
+        stored = entry.setdefault("credentials", {})
+        stored.update(supplied)
+        entry["configured"] = all(stored.get(name) for name in required)
+        if not entry["configured"]:
+            logger.warning(
+                "Environment variables for a model provider are incomplete; it is left "
+                "unconfigured until every required field is set",
+                provider=provider,
+                missing=[name for name in required if not stored.get(name)],
+            )
+
     def _load_env_overrides(
         self, config_data: dict[str, Any], temp_config: Optional["OpenRAGConfig"] = None
     ) -> None:
@@ -673,6 +778,29 @@ class ConfigManager:
         if azure_ai_key or azure_ai_endpoint:
             self._seed_custom_provider(
                 config_data, "azure_ai", azure_ai_key, azure_ai_endpoint, azure_ai_version
+            )
+
+        # Red Hat OpenShift AI. Two endpoints rather than one, because vLLM
+        # serves a single model per InferenceService — see
+        # enhancements/providers/redhat/openshift_ai.py. Seeding these is what
+        # lets a Helm (`llmProviders.rhoai.*`) or operator (`spec.rhoai`) install
+        # come up configured with no human clicking through Settings, which is
+        # the point on an air-gapped cluster.
+        rhoai_endpoint = os.getenv("RHOAI_ENDPOINT")
+        rhoai_embeddings_endpoint = os.getenv("RHOAI_EMBEDDINGS_ENDPOINT")
+        rhoai_api_key = os.getenv("RHOAI_API_KEY")
+        rhoai_tls_verify = os.getenv("RHOAI_TLS_VERIFY")
+        if rhoai_endpoint or rhoai_embeddings_endpoint or rhoai_api_key:
+            self._seed_custom_provider_credentials(
+                config_data,
+                "rhoai",
+                {
+                    "api_base": rhoai_endpoint,
+                    "embedding_api_base": rhoai_embeddings_endpoint,
+                    "api_key": rhoai_api_key,
+                    "ssl_verify": rhoai_tls_verify,
+                },
+                required=("api_base", "api_key"),
             )
 
         # Knowledge settings

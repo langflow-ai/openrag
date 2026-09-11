@@ -311,6 +311,36 @@ type WatsonXSpec struct {
 	APIKeySecret *corev1.SecretKeySelector `json:"apiKeySecret,omitempty"`
 }
 
+// RHOAISpec holds Red Hat OpenShift AI connection details: models served by
+// KServe + vLLM inside the cluster over the OpenAI-compatible API. vLLM serves
+// one model per InferenceService, so chat and embeddings are two endpoints.
+//
+// The provider is hidden in every run mode as shipped; the backend also needs
+// OPENRAG_MODEL_PROVIDERS_CONFIG (via spec.backend.env) pointing at a
+// model_providers.yaml that turns `rhoai` on. These values seed the stored
+// credentials on first boot only.
+type RHOAISpec struct {
+	// Endpoint is the chat InferenceService's predictor Service, ending in /v1
+	// (RHOAI_ENDPOINT).
+	// +optional
+	Endpoint string `json:"endpoint,omitempty"`
+	// EmbeddingsEndpoint is the embeddings InferenceService's predictor Service,
+	// ending in /v1 (RHOAI_EMBEDDINGS_ENDPOINT). Leave unset only if one
+	// endpoint serves both chat and embeddings.
+	// +optional
+	EmbeddingsEndpoint string `json:"embeddingsEndpoint,omitempty"`
+	// TLSVerify is a CA bundle path for the endpoints' certificates, such as the
+	// service-serving CA OpenShift projects into every pod
+	// (/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt), or "false"
+	// to skip verification (RHOAI_TLS_VERIFY). Unset means system trust.
+	// +optional
+	TLSVerify string `json:"tlsVerify,omitempty"`
+	// APIKeySecret references the Secret key holding the Kubernetes bearer token
+	// used for both endpoints (RHOAI_API_KEY).
+	// +optional
+	APIKeySecret *corev1.SecretKeySelector `json:"apiKeySecret,omitempty"`
+}
+
 // PersistenceSpec describes a PVC to be created or reused for a component.
 type PersistenceSpec struct {
 	// +optional
@@ -746,6 +776,10 @@ type OpenRAGSpec struct {
 	// WatsonX configures IBM WatsonX credentials.
 	// +optional
 	WatsonX *WatsonXSpec `json:"watsonx,omitempty"`
+
+	// RHOAI configures Red Hat OpenShift AI endpoints and credentials.
+	// +optional
+	RHOAI *RHOAISpec `json:"rhoai,omitempty"`
 
 	// OpenSearch configures the external OpenSearch connection.
 	// +optional

@@ -13988,6 +13988,54 @@ spec:
                 required:
                 - host
                 type: object
+              rhoai:
+                description: RHOAI configures Red Hat OpenShift AI endpoints and credentials.
+                properties:
+                  apiKeySecret:
+                    description: |-
+                      APIKeySecret references the Secret key holding the Kubernetes bearer token
+                      used for both endpoints (RHOAI_API_KEY).
+                    properties:
+                      key:
+                        description: The key of the secret to select from.  Must be
+                          a valid secret key.
+                        type: string
+                      name:
+                        default: ""
+                        description: |-
+                          Name of the referent.
+                          This field is effectively required, but due to backwards compatibility is
+                          allowed to be empty. Instances of this type with an empty value here are
+                          almost certainly wrong.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                      optional:
+                        description: Specify whether the Secret or its key must be
+                          defined
+                        type: boolean
+                    required:
+                    - key
+                    type: object
+                    x-kubernetes-map-type: atomic
+                  embeddingsEndpoint:
+                    description: |-
+                      EmbeddingsEndpoint is the embeddings InferenceService's predictor Service,
+                      ending in /v1 (RHOAI_EMBEDDINGS_ENDPOINT). Leave unset only if one
+                      endpoint serves both chat and embeddings.
+                    type: string
+                  endpoint:
+                    description: |-
+                      Endpoint is the chat InferenceService's predictor Service, ending in /v1
+                      (RHOAI_ENDPOINT).
+                    type: string
+                  tlsVerify:
+                    description: |-
+                      TLSVerify is a CA bundle path for the endpoints' certificates, such as the
+                      service-serving CA OpenShift projects into every pod
+                      (/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt), or "false"
+                      to skip verification (RHOAI_TLS_VERIFY). Unset means system trust.
+                    type: string
+                type: object
               targetNamespace:
                 description: |-
                   TargetNamespace is the namespace where all OpenRAG resources are created.
