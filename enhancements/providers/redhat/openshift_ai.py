@@ -362,24 +362,54 @@ MODELS_PATH = "/models"
 
 
 class ClusterModels(NamedTuple):
-    chat: tuple[str, ...]
-    embedding: tuple[str, ...]
+    """What the cluster is known to serve, one list per endpoint.
+
+    A half is None when that endpoint could not be asked and nothing fresh is
+    remembered for it. The catalogue then keeps its configured fallback for
+    that half alone — a rolling embedding deployment must not empty the
+    embedding picker, let alone for the whole cache TTL.
+    """
+
+    chat: tuple[str, ...] | None
+    embedding: tuple[str, ...] | None
 
 
-_models_cache: dict[str, Any] = {"key": None, "at": 0.0, "value": None}
+class _Listing(NamedTuple):
+    """One endpoint's answer and when it was fetched."""
+
+    models: tuple[str, ...]
+    at: float
+
+
+#: Each endpoint is remembered on its own clock, so a failed listing leaves
+#: that half on its previous answer (until it ages out) instead of stamping
+#: an empty list with a fresh timestamp.
+_models_cache: dict[str, Any] = {"key": None, "chat": None, "embedding": None}
+
+
+def _fresh(listing: _Listing | None) -> tuple[str, ...] | None:
+    if listing is None or time.monotonic() - listing.at > MODELS_TTL_SECONDS:
+        return None
+    return listing.models
 
 
 def cached_models() -> ClusterModels | None:
-    """The last model list fetched from the cluster, if it is still fresh."""
-    value = _models_cache["value"]
-    if value is None or time.monotonic() - float(_models_cache["at"]) > MODELS_TTL_SECONDS:
+    """The last model lists fetched from the cluster, where still fresh.
+
+    None when neither endpoint has a fresh answer; otherwise a half that has
+    aged out is None on its own, and the caller falls back for just that one.
+    """
+    models = ClusterModels(
+        chat=_fresh(_models_cache["chat"]), embedding=_fresh(_models_cache["embedding"])
+    )
+    if models.chat is None and models.embedding is None:
         return None
-    return value
+    return models
 
 
 def forget_models() -> None:
-    """Drop the cached list. For tests and for a credential change."""
-    _models_cache.update(key=None, at=0.0, value=None)
+    """Drop the cached lists. For tests and for a credential change."""
+    _models_cache.update(key=None, chat=None, embedding=None)
 
 
 def _cache_key(stored: Mapping[str, Any] | None) -> str:
@@ -521,8 +551,11 @@ async def fetch_models(credentials: Mapping[str, Any]) -> ClusterModels | None:
     does not say what a model is for, and emptying a picker on a guess is worse
     than offering an id that fails loudly if it is picked for the wrong job.
 
-    Returns None on any failure, so a catalogue request never fails because the
-    cluster is unreachable; the caller keeps whatever it had.
+    Each endpoint is listed and remembered on its own: only a half whose cached
+    answer has aged out is asked again, and a half that fails to answer keeps
+    the answer it had, or is None so the caller falls back for that half only.
+    Returns None when nothing is known at all, so a catalogue request never
+    fails because the cluster is unreachable; the caller keeps whatever it had.
     """
     import httpx
 
@@ -540,9 +573,12 @@ async def fetch_models(credentials: Mapping[str, Any]) -> ClusterModels | None:
         return None
 
     key = _cache_key(values)
-    fresh = cached_models()
-    if fresh is not None and _models_cache["key"] == key:
-        return fresh
+    if _models_cache["key"] != key:
+        # Remembered for other endpoints or another token: none of it applies.
+        forget_models()
+    known = cached_models() or ClusterModels(chat=None, embedding=None)
+    if known.chat is not None and known.embedding is not None:
+        return known
 
     logger.info(
         "Listing models on OpenShift AI",
@@ -550,37 +586,52 @@ async def fetch_models(credentials: Mapping[str, Any]) -> ClusterModels | None:
         embedding_endpoint=embedding_base,
         shared_endpoint=chat_base == embedding_base,
     )
+    listed: dict[str, tuple[str, ...] | None] = {}
     try:
         async with httpx.AsyncClient(
             verify=ssl_verify_for(values), timeout=MODELS_TIMEOUT_SECONDS
         ) as client:
-            chat_models = await _list_models(client, chat_base, api_key)
             if chat_base == embedding_base:
-                embedding_models = chat_models
+                shared = await _list_models(client, chat_base, api_key)
+                listed = {"chat": shared, "embedding": shared}
             else:
-                embedding_models = await _list_models(client, embedding_base, api_key)
+                if known.chat is None:
+                    listed["chat"] = await _list_models(client, chat_base, api_key)
+                if known.embedding is None:
+                    listed["embedding"] = await _list_models(client, embedding_base, api_key)
     except Exception as error:
         logger.warning(
             "Could not list models on OpenShift AI; keeping the configured list",
             error=str(error),
         )
+        return cached_models()
+
+    if not any(listed.values()) and not any(known):
+        # Nothing usable from any endpoint, and nothing remembered. An empty
+        # listing is far more likely one we could not interpret than an
+        # endpoint serving nothing; emptying both pickers on that guess would
+        # be worse than showing the fallback, so nothing is cached.
+        if any(models is not None for models in listed.values()):
+            logger.warning("OpenShift AI listed no usable models; keeping the configured list")
+        else:
+            logger.warning("Could not list models on OpenShift AI; keeping the configured list")
         return None
 
-    models = ClusterModels(chat=chat_models or (), embedding=embedding_models or ())
-    if not models.chat and not models.embedding:
-        # Far more likely a listing we could not interpret than two endpoints
-        # serving nothing. Emptying both pickers on that guess would be worse
-        # than showing the fallback.
-        logger.warning("OpenShift AI listed no usable models; keeping the configured list")
-        return None
+    now = time.monotonic()
+    for half, models in listed.items():
+        # A half that failed keeps its previous answer and its older timestamp,
+        # so it is asked again next time rather than parked for a whole TTL.
+        if models is not None:
+            _models_cache[half] = _Listing(models=models, at=now)
+    _models_cache["key"] = key
 
-    _models_cache.update(key=key, at=time.monotonic(), value=models)
+    result = cached_models() or ClusterModels(chat=None, embedding=None)
     logger.info(
         "Listed models on OpenShift AI",
-        chat=len(models.chat),
-        embedding=len(models.embedding),
+        chat=len(result.chat) if result.chat is not None else "fallback",
+        embedding=len(result.embedding) if result.embedding is not None else "fallback",
     )
-    return models
+    return result
 
 
 # --------------------------------------------------------------------------
