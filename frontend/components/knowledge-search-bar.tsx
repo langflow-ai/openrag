@@ -135,7 +135,7 @@ export const KnowledgeSearchBar = () => {
             }
             className="h-full w-full bg-transparent text-sm text-[hsl(var(--placeholder))] placeholder:text-[hsl(var(--placeholder))] focus:outline-none focus:ring-0"
           />
-          {queryOverride && (
+          {searchQueryInput && (
             <button
               type="button"
               aria-label="Clear search"
@@ -147,7 +147,10 @@ export const KnowledgeSearchBar = () => {
           )}
           <Button
             variant="ghost"
-            className="h-auto rounded-none hover:bg-accent hover:text-foreground p-2 hidden group-focus-within/input:block"
+            className={cn(
+              "h-auto rounded-none hover:bg-accent hover:text-foreground p-2 hidden group-focus-within/input:block",
+              searchQueryInput && "block",
+            )}
             type="submit"
           >
             <ArrowRight className="h-4 w-4 text-[var(--icon-primary)]" />
