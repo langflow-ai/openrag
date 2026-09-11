@@ -1236,6 +1236,13 @@ class TaskService:
             }
 
         if phase == IngestionPhase.DOCLING and docling_status == DoclingPhaseStatus.PROCESSING:
+            # Check if this was actually a cancellation before assuming timeout
+            if _is_task_cancellation_error(error):
+                return {
+                    "failure_phase": "cancelled",
+                    "user_facing_message": "Ingestion was cancelled.",
+                    "actionable_by": "USER_ACTIONABLE",
+                }
             return {
                 "component": "docling",
                 "failure_phase": "parsing",
