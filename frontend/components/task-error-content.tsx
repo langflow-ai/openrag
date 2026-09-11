@@ -13,6 +13,7 @@ import { useIsCloudBrand } from "@/contexts/brand-context";
 import { type Task, useTask } from "@/contexts/task-context";
 import {
   formatApiComponent,
+  isFileCancelled,
   resolveTaskFileError,
 } from "@/lib/task-error-display";
 import {
@@ -52,32 +53,49 @@ export function TaskErrorContent({
 
   const issueEntries = useMemo(() => getTaskIssueFileEntries(task), [task]);
 
-  const failedCount = getFailedFileCount(task);
+  const totalFailedCount = getFailedFileCount(task);
+  // Count cancelled files separately using centralized detection
+  const cancelledCount = task.files
+    ? Object.values(task.files).filter(
+        (file) =>
+          (file.status === "failed" || file.status === "error") &&
+          isFileCancelled(file),
+      ).length
+    : 0;
+  const failedCount = totalFailedCount - cancelledCount;
   const warningCount = getWarningFileEntries(task).length;
   const successCount = getSuccessfulFileCount(task);
   const ingestedSuccessCount = Math.max(0, successCount - warningCount);
   const timestamp =
     parseTimestamp(task.created_at) ?? parseTimestamp(task.updated_at);
+
+  // Determine if this is a cancellation-only task (no actual failures)
+  const isCancelledOnly = cancelledCount > 0 && failedCount === 0;
   const isFailedStatus =
-    isTerminalFailedTask(task) || isCompletedTotalFailure(task);
-  const statusLabel = isFailedStatus
-    ? "Failed"
-    : warningCount > 0
-      ? "Warning"
-      : "Complete";
-  // Pill colors: failed (red) vs partial success (amber/orange), each with IBM tokens or OSS borders.
+    !isCancelledOnly &&
+    (isTerminalFailedTask(task) || isCompletedTotalFailure(task));
+  const statusLabel = isCancelledOnly
+    ? "Cancelled"
+    : isFailedStatus
+      ? "Failed"
+      : warningCount > 0
+        ? "Warning"
+        : "Complete";
+  // Pill colors: failed (red) vs partial success (amber/orange) vs cancelled (gray), each with IBM tokens or OSS borders.
   const statusPillClassName = cn(
     "shrink-0 rounded-full px-2 py-1 text-xs",
-    isFailedStatus
-      ? isCloudBrand
-        ? "border-0 bg-task-status-failed text-task-status-failed-foreground"
-        : "border border-failure-pill bg-failure-soft text-destructive"
-      : isCloudBrand
-        ? "border-0 bg-task-status-partial text-task-status-partial-foreground"
-        : "border border-brand-amber-30 bg-brand-amber-10 text-brand-amber",
+    isCancelledOnly
+      ? "border border-muted bg-muted/50 text-muted-foreground"
+      : isFailedStatus
+        ? isCloudBrand
+          ? "border-0 bg-task-status-failed text-task-status-failed-foreground"
+          : "border border-failure-pill bg-failure-soft text-destructive"
+        : isCloudBrand
+          ? "border-0 bg-task-status-partial text-task-status-partial-foreground"
+          : "border border-brand-amber-30 bg-brand-amber-10 text-brand-amber",
   );
 
-  if (failedCount <= 0 && issueEntries.length === 0) {
+  if (failedCount <= 0 && cancelledCount <= 0 && issueEntries.length === 0) {
     return null;
   }
 
@@ -89,6 +107,7 @@ export function TaskErrorContent({
         {ingestedSuccessCount} success
         {warningCount > 0 ? ` · ${warningCount} warning` : ""}
         {failedCount > 0 ? ` · ${failedCount} failed` : ""}
+        {cancelledCount > 0 ? ` · ${cancelledCount} cancelled` : ""}
       </span>
       <ChevronDown className="size-4 shrink-0 transition-transform group-data-[state=open]:rotate-180" />
     </div>
@@ -144,7 +163,12 @@ export function TaskErrorContent({
             className={cn("flex min-w-0 w-full", ossIconColumn && "gap-2.5")}
           >
             {ossIconColumn &&
-              (isFailedStatus ? (
+              (isCancelledOnly ? (
+                <XCircle
+                  className="size-5 shrink-0 text-muted-foreground"
+                  aria-hidden
+                />
+              ) : isFailedStatus ? (
                 <XCircle
                   className="size-5 shrink-0 text-destructive"
                   aria-hidden
@@ -189,6 +213,7 @@ export function TaskErrorContent({
                   const line = resolveTaskFileError(fileInfo, task.error);
                   const componentCause = formatApiComponent(fileInfo.component);
                   const isWarning = isTaskFileWarning(fileInfo);
+                  const isCancelled = isFileCancelled(fileInfo);
 
                   return (
                     <div
@@ -198,24 +223,30 @@ export function TaskErrorContent({
                         isCloudBrand
                           ? cn(
                               "flex flex-col items-start gap-2 self-stretch rounded-none rounded-r border-l-[1.5px] bg-border p-2",
-                              isWarning
-                                ? "border-l-brand-amber"
-                                : "border-l-destructive",
+                              isCancelled
+                                ? "border-l-muted-foreground"
+                                : isWarning
+                                  ? "border-l-brand-amber"
+                                  : "border-l-destructive",
                             )
                           : cn(
                               "flex flex-col gap-1 rounded py-mmd px-4",
-                              isWarning
-                                ? "border border-brand-amber-30 bg-brand-amber-10"
-                                : "border-destructive/20 bg-failure-soft",
+                              isCancelled
+                                ? "border border-muted bg-muted/50"
+                                : isWarning
+                                  ? "border border-brand-amber-30 bg-brand-amber-10"
+                                  : "border-destructive/20 bg-failure-soft",
                             ),
                       )}
                     >
                       <p
                         className={cn(
                           "w-full truncate text-xs",
-                          isCloudBrand
-                            ? "font-normal text-foreground"
-                            : "font-semibold text-failure-file",
+                          isCancelled
+                            ? "font-normal text-muted-foreground"
+                            : isCloudBrand
+                              ? "font-normal text-foreground"
+                              : "font-semibold text-failure-file",
                         )}
                       >
                         {fileName}
@@ -223,9 +254,11 @@ export function TaskErrorContent({
                       <p
                         className={cn(
                           "w-full truncate text-xs",
-                          isCloudBrand
+                          isCancelled
                             ? "text-muted-foreground"
-                            : "text-failure-message",
+                            : isCloudBrand
+                              ? "text-muted-foreground"
+                              : "text-failure-message",
                         )}
                         title={line}
                       >
@@ -234,15 +267,22 @@ export function TaskErrorContent({
                       {componentCause ? (
                         <div className="flex min-w-0 items-center gap-1">
                           <Flag
-                            className="size-3 shrink-0 text-destructive"
+                            className={cn(
+                              "size-3 shrink-0",
+                              isCancelled
+                                ? "text-muted-foreground"
+                                : "text-destructive",
+                            )}
                             aria-hidden
                           />
                           <span
                             className={cn(
                               "truncate text-xs",
-                              isCloudBrand
+                              isCancelled
                                 ? "text-muted-foreground"
-                                : "text-failure-component-cause",
+                                : isCloudBrand
+                                  ? "text-muted-foreground"
+                                  : "text-failure-component-cause",
                             )}
                           >
                             {componentCause}
