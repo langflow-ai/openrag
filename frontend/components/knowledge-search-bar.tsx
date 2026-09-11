@@ -1,4 +1,4 @@
-import { ArrowRight, RefreshCw, Search, X } from "lucide-react";
+import { ArrowRight, Download, RefreshCw, Search, X } from "lucide-react";
 import { type ChangeEvent, type FormEvent, useCallback, useState } from "react";
 import { toast } from "sonner";
 import { useRefreshOpenragDocs } from "@/app/api/mutations/useRefreshOpenragDocs";
@@ -133,7 +133,7 @@ export const KnowledgeSearchBar = () => {
             onChange={(e: ChangeEvent<HTMLInputElement>) =>
               setSearchQueryInput(e.target.value)
             }
-            className="h-full w-full bg-transparent text-sm text-[hsl(var(--placeholder))] placeholder:text-[hsl(var(--placeholder))] focus:outline-none focus:ring-0"
+            className="h-full w-full bg-transparent text-sm text-foreground placeholder:text-[hsl(var(--placeholder))] focus:outline-none focus:ring-0"
           />
           {searchQueryInput && (
             <button
@@ -175,7 +175,12 @@ export const KnowledgeSearchBar = () => {
             type="button"
             variant="ghost"
             disabled={refreshOpenragDocsMutation.isPending}
-            className="h-auto flex-shrink-0 rounded-none px-3 text-sm hover:bg-accent hover:text-foreground"
+            aria-label={
+              refreshOpenragDocsMutation.isPending
+                ? "Refreshing docs..."
+                : "Fetch latest docs"
+            }
+            className="h-auto flex-shrink-0 rounded-none px-3 text-sm hover:bg-accent hover:text-foreground gap-2"
             onClick={async () => {
               try {
                 toast.info("Refreshing OpenRAG docs...");
@@ -190,9 +195,12 @@ export const KnowledgeSearchBar = () => {
               }
             }}
           >
-            {refreshOpenragDocsMutation.isPending
-              ? "Refreshing docs..."
-              : "Fetch latest docs"}
+            <Download className="h-4 w-4 flex-shrink-0" />
+            <span className="hidden lg:inline">
+              {refreshOpenragDocsMutation.isPending
+                ? "Refreshing docs..."
+                : "Fetch latest docs"}
+            </span>
           </Button>
         </RequirePermission>
         <div className="ml-auto">
