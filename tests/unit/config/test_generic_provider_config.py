@@ -207,3 +207,32 @@ def test_rhoai_env_is_ignored_once_settings_have_been_edited(monkeypatch, tmp_pa
     config = ConfigManager(config_file=config_file).load_config()
 
     assert "rhoai" not in config.providers.custom
+
+
+def test_pending_stored_credentials_overlays_the_submission_on_the_stored_form(
+    monkeypatch, tmp_path
+):
+    """The pre-save health check of a two-endpoint provider needs the raw form
+    as it will read once saved: what is stored, with the request's non-blank
+    fields on top, and nothing translated away."""
+    from config.config_manager import ConfigManager
+
+    _clear_rhoai_env(monkeypatch)
+    monkeypatch.setenv("RHOAI_ENDPOINT", "https://chat.svc:8443/v1")
+    monkeypatch.setenv("RHOAI_EMBEDDINGS_ENDPOINT", "https://embed.svc:8443/v1")
+    monkeypatch.setenv("RHOAI_API_KEY", "sha256~token")
+    config = ConfigManager(config_file=tmp_path / "config.yaml").load_config()
+
+    pending = config.providers.pending_stored_credentials(
+        "rhoai", {"embedding_api_base": " https://new-embed.svc:8443/v1 ", "ssl_verify": "  "}
+    )
+
+    assert pending == {
+        "api_base": "https://chat.svc:8443/v1",
+        "embedding_api_base": "https://new-embed.svc:8443/v1",
+        "api_key": "sha256~token",
+    }
+    # Pending, not saved.
+    assert config.providers.stored_credentials("rhoai")["embedding_api_base"] == (
+        "https://embed.svc:8443/v1"
+    )

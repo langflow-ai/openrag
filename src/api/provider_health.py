@@ -107,6 +107,10 @@ async def check_provider_health(
                 credentials = credential_values_for_kind(
                     current_config.providers, provider, "embedding" if embedding_model else "chat"
                 )
+                # The untranslated form as well: a provider enhancement's
+                # lightweight check needs every endpoint the operator entered,
+                # and `credentials` has just been narrowed to one of them.
+                stored_credentials = current_config.providers.stored_credentials(provider)
             except ValueError:
                 # Provider not found in configuration
                 return JSONResponse(
@@ -136,6 +140,10 @@ async def check_provider_health(
             credentials = credential_values_for_kind(current_config.providers, provider, "chat")
             embedding_credentials = credential_values_for_kind(
                 current_config.providers, embedding_provider, "embedding"
+            )
+            stored_credentials = current_config.providers.stored_credentials(provider)
+            embedding_stored_credentials = current_config.providers.stored_credentials(
+                embedding_provider
             )
 
             # Short-circuit identical concurrent polls from the provider-health
@@ -205,6 +213,7 @@ async def check_provider_health(
                 project_id=project_id,
                 test_completion=test_completion,
                 credentials=credentials,
+                stored_credentials=stored_credentials,
             )
 
             return JSONResponse(
@@ -237,6 +246,7 @@ async def check_provider_health(
                     project_id=project_id,
                     test_completion=test_completion,
                     credentials=credentials,
+                    stored_credentials=stored_credentials,
                 )
             except httpx.TimeoutException as e:
                 # Timeout means provider is busy, not misconfigured
@@ -272,6 +282,7 @@ async def check_provider_health(
                     project_id=embedding_project_id,
                     test_completion=test_completion,
                     credentials=embedding_credentials,
+                    stored_credentials=embedding_stored_credentials,
                 )
             except httpx.TimeoutException as e:
                 # Timeout means provider is busy, not misconfigured

@@ -352,6 +352,26 @@ def test_the_tls_setting_rides_in_the_credential_bag(tmp_path) -> None:
     assert rhoai.litellm_credentials(_stored(ssl_verify="false"))["ssl_verify"] is False
 
 
+def test_a_translated_false_is_not_mistaken_for_a_blank() -> None:
+    """The health check and model discovery are handed the LiteLLM form by some
+    callers, where `ssl_verify` is already a bool. `False` is falsy, and a
+    truth-test on the value used to drop it — turning "do not verify" back
+    into "verify" for the one setting where that inverts the operator's intent."""
+    assert rhoai._values({"ssl_verify": False})["ssl_verify"] == "false"
+    assert rhoai._values({"ssl_verify": True})["ssl_verify"] == "true"
+    # Not a credential; must not be stringified into one.
+    assert "additional_drop_params" not in rhoai._values({"additional_drop_params": ["x"]})
+
+
+def test_verification_stays_off_when_the_health_check_gets_the_litellm_form() -> None:
+    """The regression: `RHOAI_TLS_VERIFY=false` for a port-forward, and the
+    pre-save check verifying anyway while real traffic did not."""
+    translated = rhoai.litellm_credentials(_stored(ssl_verify="false"), kind="chat")
+
+    assert translated["ssl_verify"] is False
+    assert rhoai.ssl_verify_for(translated) is False
+
+
 # ---------------------------------------------------------------------------
 # Routing
 # ---------------------------------------------------------------------------
@@ -741,6 +761,48 @@ async def test_a_healthy_deployment_passes_with_no_model_selected(monkeypatch) -
     await rhoai.lightweight_health_check(_stored())
 
     assert seen["urls"] == [f"{CHAT_BASE}/models", f"{EMBED_BASE}/models"]
+
+
+@pytest.mark.asyncio
+async def test_the_litellm_form_still_checks_with_the_configured_tls_setting(monkeypatch) -> None:
+    """Handed the narrowed bag, the check covers the one endpoint in it — but
+    with the TLS setting the operator chose, not verification switched back on."""
+    seen: dict[str, Any] = {}
+    monkeypatch.setattr(
+        "httpx.AsyncClient",
+        _client_returning({f"{CHAT_BASE}/models": _Response(200, _models_body(CHAT_MODEL))}, seen),
+    )
+    translated = rhoai.litellm_credentials(_stored(ssl_verify="false"), kind="chat")
+
+    await rhoai.lightweight_health_check(translated)
+
+    assert seen["verify"] is False
+    assert seen["urls"] == [f"{CHAT_BASE}/models"]
+
+
+@pytest.mark.asyncio
+async def test_validation_hands_the_check_the_stored_form(monkeypatch) -> None:
+    """`validate_provider_setup` gets the LiteLLM form for the probe and the
+    stored form for the enhancement check; the check must get the latter, or
+    the embedding endpoint is never looked at before the first ingest."""
+    from api import provider_validation
+
+    received: list[dict[str, Any]] = []
+
+    async def _capture(credentials):
+        received.append(dict(credentials))
+
+    monkeypatch.setattr(rhoai, "lightweight_health_check", _capture)
+    stored = _stored()
+    translated = rhoai.litellm_credentials(stored, kind="chat")
+
+    await provider_validation.validate_provider_setup(
+        provider=PROVIDER, credentials=translated, stored_credentials=stored
+    )
+    await provider_validation.validate_provider_setup(provider=PROVIDER, credentials=translated)
+
+    assert received[0]["embedding_api_base"] == EMBED_BASE
+    assert "embedding_api_base" not in received[1]  # no stored form given: falls back
 
 
 @pytest.mark.asyncio

@@ -539,6 +539,9 @@ async def update_settings(
                         endpoint=endpoint,
                         project_id=project_id,
                         credentials=credentials,
+                        stored_credentials=current_config.providers.pending_stored_credentials(
+                            llm_provider_key, submitted_credentials.get(llm_provider_key, {})
+                        ),
                     )
                     logger.info(f"LLM provider validation successful for {llm_provider}")
 
@@ -595,6 +598,10 @@ async def update_settings(
                         endpoint=endpoint,
                         project_id=project_id,
                         credentials=credentials,
+                        stored_credentials=current_config.providers.pending_stored_credentials(
+                            embedding_provider_key,
+                            submitted_credentials.get(embedding_provider_key, {}),
+                        ),
                     )
                     logger.info(
                         f"Embedding provider validation successful for {embedding_provider}"
