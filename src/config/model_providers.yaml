@@ -55,6 +55,34 @@ providers:
       oss: true
       on_prem: true
       saas: true
+    exclude_models:
+      # LiteLLM ids that do not match the API ids in IBM's model documentation.
+      - bigscience/mt0-xxl-13b
+      - google/flan-t5-xl-3b
+      - ibm/granite-guardian-3-2-2b
+      - ibm/granite-guardian-3-3-8b
+      - meta-llama/llama-4-maverick-17b
+      - mistralai/mistral-small-2503
+      - mistralai/pixtral-12b-2409
+      # Models reported unusable against watsonx.ai in tracker issue 82237.
+      - mistralai/mistral-medium-2505 # fails during streamed chat responses
+      - ibm/granite-3-3-8b-instruct # unsupported or removed by watsonx.ai
+      - ibm/granite-3-8b-instruct
+      - meta-llama/llama-3-2-90b-vision-instruct
+      - meta-llama/llama-3-2-11b-vision-instruct
+      - meta-llama/llama-3-2-3b-instruct
+      - meta-llama/llama-3-2-1b-instruct
+      - mistralai/mistral-large
+      - meta-llama/llama-guard-3-11b-vision
+      - ibm/granite-vision-3-2-2b
+      - ibm/granite-ttm-1536-96-r2
+      - ibm/granite-ttm-1024-96-r2
+      - ibm/granite-ttm-512-96-r2
+      - core42/jais-13b-chat
+      - ibm/granite-13b-chat-v2
+      - ibm/granite-13b-instruct-v2
+      - sdaia/allam-1-13b-instruct
+      - bigscience/mt0-xxl
 
   # watsonx.ai running on a Cloud Pak for Data / IBM Software Hub cluster. It
   # is a second front door onto the same `/ml/v1` API as the row above, kept
