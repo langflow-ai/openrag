@@ -6,6 +6,7 @@ import { useProviderHealthQuery } from "@/app/api/queries/useProviderHealthQuery
 import { getProviderChrome } from "@/components/models/model-helpers";
 import { Banner, BannerIcon, BannerTitle } from "@/components/ui/banner";
 import { useChat } from "@/contexts/chat-context";
+import { useNarrowLayout } from "@/hooks/use-narrow-layout";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 
@@ -51,6 +52,7 @@ export function useProviderHealth() {
 export function ProviderHealthBanner({ className }: ProviderHealthBannerProps) {
   const { isLoading, isHealthy, isUnhealthy, health } = useProviderHealth();
   const router = useRouter();
+  const isNarrow = useNarrowLayout();
 
   // Only show banner when provider is unhealthy (not when backend is unavailable)
   if (isLoading || isHealthy) {
@@ -110,17 +112,27 @@ export function ProviderHealthBanner({ className }: ProviderHealthBannerProps) {
       <Banner
         className={cn(
           "bg-red-50 dark:bg-red-950 text-foreground border-accent-red border-b w-full",
+          isNarrow && "flex-wrap gap-y-1 py-2",
           className,
         )}
       >
         <BannerIcon
-          className="text-accent-red-foreground"
+          className="text-accent-red-foreground shrink-0"
           icon={AlertTriangle}
         />
-        <BannerTitle className="font-medium flex items-center gap-2">
+        <BannerTitle
+          className={cn(
+            "font-medium flex items-center gap-2",
+            isNarrow && "text-xs",
+          )}
+        >
           {bannerLabel}
         </BannerTitle>
-        <Button size="sm" onClick={() => router.push(settingsUrl)}>
+        <Button
+          size="sm"
+          className="shrink-0"
+          onClick={() => router.push(settingsUrl)}
+        >
           Fix Setup
         </Button>
       </Banner>

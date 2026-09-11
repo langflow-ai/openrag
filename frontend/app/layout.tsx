@@ -11,6 +11,7 @@ import { BrandProvider } from "@/contexts/brand-context";
 import { ChatProvider } from "@/contexts/chat-context";
 import { ConsoleStatusProvider } from "@/contexts/console-status-context";
 import { KnowledgeFilterProvider } from "@/contexts/knowledge-filter-context";
+import { SidebarOverlayProvider } from "@/contexts/sidebar-overlay-context";
 import { TaskProvider } from "@/contexts/task-context";
 import { UnsavedChangesProvider } from "@/contexts/unsaved-changes-context";
 import Providers from "./providers";
@@ -66,7 +67,9 @@ export default function RootLayout({
                       <ConsoleStatusProvider>
                         <ChatProvider>
                           <UnsavedChangesProvider>
-                            <LayoutWrapper>{children}</LayoutWrapper>
+                            <SidebarOverlayProvider>
+                              <LayoutWrapper>{children}</LayoutWrapper>
+                            </SidebarOverlayProvider>
                           </UnsavedChangesProvider>
                         </ChatProvider>
                       </ConsoleStatusProvider>

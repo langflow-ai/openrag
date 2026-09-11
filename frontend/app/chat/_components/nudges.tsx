@@ -16,7 +16,7 @@ export default function Nudges({
   const isCloudBrand = useIsCloudBrand();
 
   return (
-    <div className="flex-shrink-0 h-12 w-full overflow-hidden">
+    <div className="flex-shrink-0 w-full">
       <AnimatePresence>
         {nudges.length > 0 && (
           <motion.div
@@ -28,27 +28,23 @@ export default function Nudges({
               ease: "easeInOut",
             }}
           >
-            <div className="relative flex">
-              <div className="w-full">
-                <div className="flex gap-3 justify-start overflow-x-auto scrollbar-hide">
-                  {nudges.map((suggestion: string, index: number) => (
-                    <button
-                      type="button"
-                      key={index}
-                      data-testid={`suggestion-${index}`}
-                      onClick={() => handleSuggestionClick(suggestion)}
-                      className={cn(
-                        onboarding || isCloudBrand
-                          ? "text-foreground"
-                          : "text-placeholder-foreground hover:text-foreground",
-                        "ibm-chat-bubble bg-background border hover:bg-background/50 px-2 py-1.5 rounded-lg text-sm transition-colors whitespace-nowrap",
-                      )}
-                    >
-                      {suggestion}
-                    </button>
-                  ))}
-                </div>
-              </div>
+            <div className="flex flex-wrap gap-2 justify-start">
+              {nudges.map((suggestion: string, index: number) => (
+                <button
+                  type="button"
+                  key={index}
+                  data-testid={`suggestion-${index}`}
+                  onClick={() => handleSuggestionClick(suggestion)}
+                  className={cn(
+                    onboarding || isCloudBrand
+                      ? "text-foreground"
+                      : "text-placeholder-foreground hover:text-foreground",
+                    "ibm-chat-bubble bg-background border hover:bg-background/50 px-2 py-1.5 rounded-lg text-sm transition-colors max-w-full break-words",
+                  )}
+                >
+                  {suggestion}
+                </button>
+              ))}
             </div>
           </motion.div>
         )}
