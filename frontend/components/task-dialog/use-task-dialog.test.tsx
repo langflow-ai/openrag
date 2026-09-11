@@ -1,4 +1,5 @@
 import { HttpResponse, http } from "msw";
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { RetryTaskResponse } from "@/app/api/mutations/useRetryTaskMutation";
 import type { Task, TaskFileEntry } from "@/app/api/queries/useGetTasksQuery";
@@ -28,8 +29,14 @@ import { useTaskDialog } from "./use-task-dialog";
 const markTaskFilesProcessing = vi.fn();
 const refreshTasks = vi.fn().mockResolvedValue(undefined);
 
+// `TaskProvider` is stubbed as a passthrough only because
+// `test-utils/render.tsx` imports it from this module to build its provider
+// stack. This test never mounts it, so a passthrough is honest — and cheaper
+// than `importOriginal`, whose async factory resolves after the module graph
+// has already bound the real export here.
 vi.mock("@/contexts/task-context", () => ({
   useTask: () => ({ markTaskFilesProcessing, refreshTasks }),
+  TaskProvider: ({ children }: { children: ReactNode }) => children,
 }));
 
 const toast = vi.hoisted(() => ({

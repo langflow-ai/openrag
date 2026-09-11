@@ -1,4 +1,5 @@
 import { HttpResponse, http } from "msw";
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/test-utils/msw/server";
 import { act, renderHook, waitFor } from "@/test-utils/render";
@@ -20,8 +21,14 @@ import { useChatStreaming } from "./useChatStreaming";
  */
 
 const refreshConversations = vi.fn();
+// `ChatProvider` is stubbed as a passthrough only because
+// `test-utils/render.tsx` imports it from this module to build its provider
+// stack. This test never mounts it, so a passthrough is honest — and cheaper
+// than `importOriginal`, whose async factory resolves after the module graph
+// has already bound the real export here.
 vi.mock("@/contexts/chat-context", () => ({
   useChat: () => ({ refreshConversations }),
+  ChatProvider: ({ children }: { children: ReactNode }) => children,
 }));
 
 const ENDPOINT = "/api/langflow";

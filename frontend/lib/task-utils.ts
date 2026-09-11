@@ -1,6 +1,7 @@
 import type { Task, TaskFileEntry } from "@/app/api/queries/useGetTasksQuery";
 import {
   buildRowStatusLabel,
+  isFileCancelled,
   normalizeFailurePhase,
 } from "@/lib/task-error-display";
 
@@ -11,6 +12,7 @@ export type TaskFileStatusCategory =
   | "completed"
   | "warning"
   | "system_error"
+  | "cancelled"
   | "indexing";
 
 export type TaskFileNameSort = "asc" | "desc";
@@ -39,6 +41,10 @@ export function getTaskFileDialogStatusLabel(
   taskError?: string,
 ): string {
   if (isTaskFileFailed(fileInfo)) {
+    // Use centralized cancellation detection
+    if (isFileCancelled(fileInfo)) {
+      return "Cancelled";
+    }
     const failurePhase = normalizeFailurePhase(fileInfo.failure_phase);
     if (failurePhase) {
       return buildRowStatusLabel(failurePhase);
@@ -132,6 +138,10 @@ function getTaskFileStatusCategory(
   fileInfo: TaskFileEntry,
 ): TaskFileStatusCategory {
   if (isTaskFileFailed(fileInfo)) {
+    // Use centralized cancellation detection
+    if (isFileCancelled(fileInfo)) {
+      return "cancelled";
+    }
     return "system_error";
   }
   if (isTaskFileWarning(fileInfo)) {
@@ -157,6 +167,7 @@ export function countTaskFileEntriesByCategory(
     completed: 0,
     warning: 0,
     system_error: 0,
+    cancelled: 0,
     indexing: 0,
   };
 
@@ -301,6 +312,7 @@ export function isTerminalTaskStatus(status: Task["status"]): boolean {
   return (
     status === "completed" ||
     status === "failed" ||
+    status === "cancelled" ||
     status === "error" ||
     status === "skipped"
   );
@@ -372,7 +384,7 @@ export function getEnhancedListDisappearedFilePaths(
 interface ProcessingFileOverlay {
   task_id: string;
   source_url: string;
-  status: "active" | "failed" | "processing";
+  status: "active" | "failed" | "processing" | "cancelled";
   error?: string;
 }
 
