@@ -42,6 +42,11 @@ export function GeneralTab() {
     saveDisplayName(value, {
       mutateAsync: updateDisplayName.mutateAsync,
       refreshAuth,
+      onSaved: (canonical) => {
+        setValue(canonical ?? "");
+        touchedRef.current = false;
+        prevDisplayNameRef.current = canonical ?? undefined;
+      },
       onSuccess: toast.success,
       onError: toast.error,
     });

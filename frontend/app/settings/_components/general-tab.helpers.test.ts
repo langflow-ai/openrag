@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 import { saveDisplayName } from "./general-tab.helpers.ts";
 
 // ---------------------------------------------------------------------------
@@ -147,5 +147,90 @@ describe("general-tab saveDisplayName — failure path", () => {
       0,
       "onSuccess must not fire when refreshAuth throws",
     );
+  });
+});
+
+describe("general-tab saveDisplayName — onSaved callback", () => {
+  it("calls onSaved with trimmed canonical before refreshAuth", async () => {
+    const order: string[] = [];
+    const mut = makeResolvedMutate();
+    const { refreshAuth } = makeRefresh();
+    const onSuccess = makeTracker();
+    const onError = makeTracker();
+
+    const deps = {
+      mutateAsync: mut.mutateAsync,
+      refreshAuth: async () => {
+        order.push("refresh");
+      },
+      onSaved: (canonical: string | null) => {
+        order.push(`saved:${canonical}`);
+      },
+      onSuccess: onSuccess.fn,
+      onError: onError.fn,
+    };
+
+    await saveDisplayName("  Bob  ", deps);
+
+    assert.deepEqual(
+      order,
+      ["saved:Bob", "refresh"],
+      "onSaved must fire after mutate and before refreshAuth",
+    );
+    assert.equal(onError.calls.length, 0);
+  });
+
+  it("calls onSaved with null for whitespace-only input", async () => {
+    const mut = makeResolvedMutate();
+    const { refreshAuth } = makeRefresh();
+    const saved: Array<string | null> = [];
+
+    await saveDisplayName("   ", {
+      mutateAsync: mut.mutateAsync,
+      refreshAuth,
+      onSaved: (c) => saved.push(c),
+      onSuccess: makeTracker().fn,
+      onError: makeTracker().fn,
+    });
+
+    assert.deepEqual(saved, [null]);
+  });
+
+  it("does not call onSaved when mutateAsync rejects", async () => {
+    const { refreshAuth } = makeRefresh();
+    const saved: Array<string | null> = [];
+
+    await saveDisplayName("Bob", {
+      mutateAsync: makeRejectedMutate(),
+      refreshAuth,
+      onSaved: (c) => saved.push(c),
+      onSuccess: makeTracker().fn,
+      onError: makeTracker().fn,
+    });
+
+    assert.equal(saved.length, 0, "onSaved must not fire on failure");
+  });
+
+  it("does not call onSaved when refreshAuth rejects", async () => {
+    // onSaved fires before refreshAuth, so a refreshAuth failure should
+    // still have called onSaved — but onSuccess must NOT fire.
+    const mut = makeResolvedMutate();
+    const saved: Array<string | null> = [];
+    const onSuccess = makeTracker();
+    const onError = makeTracker();
+
+    await saveDisplayName("Bob", {
+      mutateAsync: mut.mutateAsync,
+      refreshAuth: async () => {
+        throw new Error("refresh failed");
+      },
+      onSaved: (c) => saved.push(c),
+      onSuccess: onSuccess.fn,
+      onError: onError.fn,
+    });
+
+    assert.deepEqual(saved, ["Bob"], "onSaved fires before refreshAuth throws");
+    assert.equal(onSuccess.calls.length, 0, "onSuccess must not fire");
+    assert.equal(onError.calls.length, 1, "onError must fire");
   });
 });

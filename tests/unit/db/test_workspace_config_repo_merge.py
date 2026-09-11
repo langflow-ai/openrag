@@ -162,3 +162,51 @@ async def test_upsert_still_replaces_section_wholesale(session_factory):
 
     assert row.value == {"a": 99}
     assert "b" not in row.value
+
+
+# ---------------------------------------------------------------------------
+# Concurrent-style coverage: two sequential merges into the same section
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_sequential_merges_into_absent_section_preserve_all_keys(session_factory):
+    """Two callers writing different keys into a previously absent section.
+
+    Within the single-worker asyncio model (AGENTS.md) these interleave only
+    at await points; the SELECT FOR UPDATE + flush sequence is atomic per
+    caller.  Both keys must survive.
+    """
+    async with session_factory() as s:
+        repo = WorkspaceConfigRepo(s)
+        # First caller inserts the row
+        await repo.merge_section_keys("meta", updates={"key_a": "alpha"})
+        # Second caller (same session, as would happen in practice under
+        # asyncio cooperative scheduling) merges a different key
+        await repo.merge_section_keys("meta", updates={"key_b": "beta"})
+        await s.commit()
+
+    async with session_factory() as s:
+        value = await WorkspaceConfigRepo(s).get_section("meta")
+
+    assert value == {"key_a": "alpha", "key_b": "beta"}
+
+
+@pytest.mark.asyncio
+async def test_sequential_merges_into_existing_section_preserve_all_keys(session_factory):
+    """Two callers writing different keys into an already-existing section."""
+    async with session_factory() as s:
+        repo = WorkspaceConfigRepo(s)
+        await repo.merge_section_keys("meta", updates={"existing": True})
+        await s.commit()
+
+    async with session_factory() as s:
+        repo = WorkspaceConfigRepo(s)
+        await repo.merge_section_keys("meta", updates={"caller_a": 1})
+        await repo.merge_section_keys("meta", updates={"caller_b": 2})
+        await s.commit()
+
+    async with session_factory() as s:
+        value = await WorkspaceConfigRepo(s).get_section("meta")
+
+    assert value == {"existing": True, "caller_a": 1, "caller_b": 2}
