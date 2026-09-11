@@ -455,14 +455,13 @@ export function TaskNotificationMenu() {
                   const dur = formatDuration(task.duration_seconds);
                   const shouldExpandDetails = selectedTaskId === task.task_id;
 
-                  // Same full card as total failure; partial only differs inside (Complete pill / amber icon).
                   if (
                     isTerminalFailedTask(task) ||
                     isTotalFailure ||
                     hasFailedFiles
                   ) {
                     return (
-                      <div key={task.task_id} className="relative group/row">
+                      <div key={task.task_id} className="group/row">
                         <TaskErrorContent
                           key={
                             shouldExpandDetails
@@ -472,18 +471,20 @@ export function TaskNotificationMenu() {
                           task={task}
                           mode="past"
                           defaultExpanded={shouldExpandDetails}
+                          headerEnd={
+                            <button
+                              type="button"
+                              aria-label="Delete task"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteTaskMutation.mutate(task.task_id);
+                              }}
+                              className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground opacity-0 group-hover/row:opacity-100 hover:bg-muted hover:text-foreground transition-opacity focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-ring"
+                            >
+                              <X className="size-3" />
+                            </button>
+                          }
                         />
-                        <button
-                          type="button"
-                          aria-label="Delete task"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            deleteTaskMutation.mutate(task.task_id);
-                          }}
-                          className="absolute top-2 right-10 flex h-5 w-5 items-center justify-center rounded text-muted-foreground opacity-0 group-hover/row:opacity-100 hover:bg-muted hover:text-foreground transition-opacity focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-ring"
-                        >
-                          <X className="size-3" />
-                        </button>
                       </div>
                     );
                   }
@@ -498,65 +499,65 @@ export function TaskNotificationMenu() {
                     });
 
                   return (
-                    <div key={task.task_id} className="relative group/row">
-                      <button
-                        type="button"
-                        onClick={toggleExpand}
+                    <div key={task.task_id} className="group/row">
+                      <div
                         className={cn(
                           pastTaskRowClass,
-                          "text-left w-full pr-8",
+                          "flex items-center gap-3",
                         )}
                       >
-                        <div className="flex items-center gap-3">
-                          {!isCloudBrand && getTaskIcon(task.status)}
-                          <div className="flex-1 min-w-0">
-                            <div className="text-xs font-medium truncate">
-                              Task {task.task_id.substring(0, 8)}...
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              {formatRelative(task.updated_at)}
-                              {dur && <span className="ml-2">• {dur}</span>}
-                            </div>
-                            {isExpanded && progress?.detailed && (
-                              <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
-                                <div>
-                                  {progress.detailed.successful} success,{" "}
-                                  {progress.detailed.failed} failed
-                                  {(progress.detailed.running || 0) > 0 && (
-                                    <span>
-                                      , {progress.detailed.running} running
-                                    </span>
-                                  )}
-                                </div>
-                                {task.status === "completed" &&
-                                  progress.detailed.total > 0 && (
-                                    <div>{progress.basic}</div>
-                                  )}
+                        {!isCloudBrand && getTaskIcon(task.status)}
+                        <button
+                          type="button"
+                          onClick={toggleExpand}
+                          className="flex-1 min-w-0 text-left"
+                        >
+                          <div className="text-xs font-medium truncate">
+                            Task {task.task_id.substring(0, 8)}...
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {formatRelative(task.updated_at)}
+                            {dur && <span className="ml-2">• {dur}</span>}
+                          </div>
+                          {isExpanded && progress?.detailed && (
+                            <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+                              <div>
+                                {progress.detailed.successful} success,{" "}
+                                {progress.detailed.failed} failed
+                                {(progress.detailed.running || 0) > 0 && (
+                                  <span>
+                                    , {progress.detailed.running} running
+                                  </span>
+                                )}
                               </div>
+                              {task.status === "completed" &&
+                                progress.detailed.total > 0 && (
+                                  <div>{progress.basic}</div>
+                                )}
+                            </div>
+                          )}
+                        </button>
+                        <div className="self-start pt-0.5 flex items-center gap-1.5 shrink-0">
+                          {getStatusBadge(task.status, isCloudBrand)}
+                          <button
+                            type="button"
+                            aria-label="Delete task"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteTaskMutation.mutate(task.task_id);
+                            }}
+                            className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground opacity-0 group-hover/row:opacity-100 hover:bg-muted hover:text-foreground transition-opacity focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-ring"
+                          >
+                            <X className="size-3" />
+                          </button>
+                          <ChevronDown
+                            className={cn(
+                              "size-3.5 text-muted-foreground transition-transform",
+                              isExpanded && "rotate-180",
                             )}
-                          </div>
-                          <div className="self-start pt-0.5 flex items-center gap-2">
-                            {getStatusBadge(task.status, isCloudBrand)}
-                            <ChevronDown
-                              className={cn(
-                                "size-3.5 text-muted-foreground transition-transform",
-                                isExpanded && "rotate-180",
-                              )}
-                            />
-                          </div>
+                          />
                         </div>
-                      </button>
-                      <button
-                        type="button"
-                        aria-label="Delete task"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          deleteTaskMutation.mutate(task.task_id);
-                        }}
-                        className="absolute top-2 right-10 flex h-5 w-5 items-center justify-center rounded text-muted-foreground opacity-0 group-hover/row:opacity-100 hover:bg-muted hover:text-foreground transition-opacity focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-ring"
-                      >
-                        <X className="size-3" />
-                      </button>
+                      </div>
                     </div>
                   );
                 }}
