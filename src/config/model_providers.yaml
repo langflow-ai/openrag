@@ -114,6 +114,36 @@ providers:
     embedding_models:
       - ibm/slate-30m-english-rtrvr
 
+  # Red Hat OpenShift AI: models served by KServe + vLLM inside the customer's
+  # own OpenShift cluster. vLLM speaks the OpenAI API, so OpenRAG routes this
+  # through LiteLLM's `hosted_vllm` provider — see
+  # `enhancements/providers/redhat/openshift_ai.py`, which also explains why it
+  # is not `openai_like` (that key silently drops the per-provider TLS setting a
+  # cluster CA needs).
+  #
+  # Off in every mode as shipped. It needs two endpoint URLs and a cluster token
+  # that only the deployment knows, so it is enabled per deployment with
+  # OPENRAG_MODEL_PROVIDERS_CONFIG rather than offered to everyone.
+  #
+  # The two lists below are a *fallback*, not the catalogue. OpenRAG asks each
+  # InferenceService what it serves (`GET /v1/models`) and shows that in the
+  # pickers, so a model the cluster does not have is never offered. These rows
+  # are what it falls back to while the endpoints are unreachable or before any
+  # credentials are entered.
+  - name: rhoai
+    display_name: Red Hat OpenShift AI
+    modes:
+      oss: false
+      on_prem: false
+      saas: false
+    # Verified on an RHOAI 3.5.0 cluster running the x86 CPU vLLM runtime.
+    # These are `--served-model-name` values, not image tags: whatever the
+    # InferenceService was started with is the id that has to be sent.
+    models:
+      - granite-3.3-2b-instruct
+    embedding_models:
+      - granite-embedding-english-r2
+
   - name: anthropic
     display_name: Anthropic
     modes:

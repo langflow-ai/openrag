@@ -2,6 +2,7 @@
 
 import { CheckIcon, ChevronsUpDownIcon } from "lucide-react";
 import { useDeferredValue, useId, useMemo, useState } from "react";
+import { useGetModelProvidersQuery } from "@/app/api/queries/useGetModelProvidersQuery";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -99,6 +100,20 @@ export function ModelSelector({
   variant = "outline",
   ...props
 }: ModelSelectorProps) {
+  // Badges come from `config/model_providers.yaml` via the providers API, so a
+  // provider that declares one gets it in the picker heading without a
+  // frontend change — the same list Settings and Onboarding already read.
+  const { data: modelProviders } = useGetModelProvidersQuery();
+  const providerBadges = useMemo(() => {
+    const badges: Record<string, string> = {};
+    for (const provider of modelProviders?.providers ?? []) {
+      if (provider.badge) {
+        badges[provider.name] = provider.badge;
+      }
+    }
+    return badges;
+  }, [modelProviders]);
+
   const [open, setOpen] = useState(defaultOpen);
   const [prevDefaultOpen, setPrevDefaultOpen] = useState(defaultOpen);
   if (defaultOpen !== prevDefaultOpen) {
@@ -320,9 +335,9 @@ export function ModelSelector({
                             <div className="w-4 h-4">{group.icon}</div>
                           )}
                           <span>{group.group}</span>
-                          {groupProvider === "watsonx_onprem" && (
+                          {groupProvider && providerBadges[groupProvider] && (
                             <Badge variant="secondary" className="text-xs">
-                              On-prem
+                              {providerBadges[groupProvider]}
                             </Badge>
                           )}
                         </div>

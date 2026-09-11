@@ -577,6 +577,7 @@ async def update_settings(
                     credentials = current_config.providers.pending_credentials(
                         embedding_provider_key,
                         submitted_credentials.get(embedding_provider_key, {}),
+                        kind="embedding",
                     )
                     api_key = credentials.get("api_key", api_key)
                     endpoint = credentials.get("api_base", endpoint)
@@ -1338,7 +1339,9 @@ async def onboarding(
                     endpoint=getattr(embedding_provider_config, "endpoint", None),
                     project_id=getattr(embedding_provider_config, "project_id", None),
                     test_completion=True,  # Full validation with completion test - ensures provider health
-                    credentials=current_config.providers.credential_values(embedding_provider),
+                    credentials=current_config.providers.credential_values(
+                        embedding_provider, kind="embedding"
+                    ),
                 )
                 logger.info(
                     f"Embedding provider setup validation completed successfully for {embedding_provider}"
