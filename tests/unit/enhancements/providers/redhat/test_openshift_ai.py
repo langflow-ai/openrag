@@ -807,6 +807,51 @@ async def test_a_slow_endpoint_is_reported_as_a_timeout(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_the_whole_check_is_bounded_however_slow_the_endpoints_are(monkeypatch) -> None:
+    """Per-request timeouts, retries and backoff across two endpoints add up to
+    about a minute; a human is waiting on the settings save, so the check as a
+    whole has a deadline of its own."""
+    import asyncio
+
+    class _Hanging:
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def request(self, method, url, **kwargs):
+            await asyncio.sleep(60)
+
+    monkeypatch.setattr("httpx.AsyncClient", _Hanging)
+    monkeypatch.setattr(rhoai, "HEALTH_TOTAL_BUDGET_SECONDS", 0.05)
+
+    with pytest.raises(Exception, match="did not respond in time"):
+        await asyncio.wait_for(rhoai.lightweight_health_check(_stored()), timeout=5)
+
+
+@pytest.mark.asyncio
+async def test_the_health_check_retries_less_than_discovery(monkeypatch) -> None:
+    """Discovery can afford to wait out a rollout; the pre-save check cannot."""
+    calls: list[int] = []
+
+    async def _count(method, url, *, client, max_retries=2, **kwargs):
+        calls.append(max_retries)
+        return _Response(200, _models_body(CHAT_MODEL))
+
+    monkeypatch.setattr("httpx.AsyncClient", _client_returning({}))
+    monkeypatch.setattr(rhoai, "_http_request_with_retry", _count)
+
+    await rhoai.lightweight_health_check(_stored(embedding_api_base=""))
+
+    assert calls == [rhoai.HEALTH_MAX_RETRIES]
+    assert rhoai.HEALTH_MAX_RETRIES < 2
+
+
+@pytest.mark.asyncio
 async def test_missing_credentials_say_what_is_missing(monkeypatch) -> None:
     """Distinct messages, because the fix is different: one is a URL, the other
     is an `oc create token`."""
