@@ -72,6 +72,7 @@ interface NavigationProps {
   isConversationsLoading?: boolean;
   onNewConversation?: () => void;
   onSelectionChange?: (isSelecting: boolean) => void;
+  onNavigate?: () => void;
 }
 
 export function Navigation({
@@ -79,6 +80,7 @@ export function Navigation({
   isConversationsLoading = false,
   onNewConversation,
   onSelectionChange,
+  onNavigate,
 }: NavigationProps = {}) {
   const isCloudBrand = useIsCloudBrand();
   const pathname = usePathname();
@@ -396,7 +398,11 @@ export function Navigation({
                 {isDisabled ? (
                   <div className={tabClassName}>{tabContent}</div>
                 ) : (
-                  <Link href={route.href} className={tabClassName}>
+                  <Link
+                    href={route.href}
+                    className={tabClassName}
+                    onClick={onNavigate}
+                  >
                     {tabContent}
                   </Link>
                 )}
@@ -584,6 +590,7 @@ export function Navigation({
                             }
                             if (loading || isConversationsLoading) return;
                             loadConversation(conversation);
+                            onNavigate?.();
                             // Don't refresh - just loading an existing conversation
                           }}
                           disabled={loading || isConversationsLoading}

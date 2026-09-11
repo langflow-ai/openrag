@@ -375,8 +375,41 @@ export function ChatRenderer({
                 role="separator"
                 aria-orientation="vertical"
                 aria-label="Resize sidebar"
-                className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/20 active:bg-primary/30 transition-colors z-10"
+                tabIndex={0}
+                className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/20 active:bg-primary/30 focus-visible:bg-primary/40 transition-colors z-10"
                 onMouseDown={handleResizeMouseDown}
+                onKeyDown={(e) => {
+                  const STEP = 20;
+                  if (e.key === "ArrowRight") {
+                    e.preventDefault();
+                    const next = (sidebarCollapsed ? 0 : sidebarWidth) + STEP;
+                    if (next < SIDEBAR_HIDE_THRESHOLD) {
+                      collapseSidebar();
+                    } else {
+                      expandSidebar();
+                      setSidebarWidth(
+                        Math.min(
+                          SIDEBAR_WIDTH,
+                          Math.max(SIDEBAR_MIN_WIDTH, next),
+                        ),
+                      );
+                    }
+                  } else if (e.key === "ArrowLeft") {
+                    e.preventDefault();
+                    const next = (sidebarCollapsed ? 0 : sidebarWidth) - STEP;
+                    if (next < SIDEBAR_HIDE_THRESHOLD) {
+                      collapseSidebar();
+                    } else {
+                      expandSidebar();
+                      setSidebarWidth(
+                        Math.min(
+                          SIDEBAR_WIDTH,
+                          Math.max(SIDEBAR_MIN_WIDTH, next),
+                        ),
+                      );
+                    }
+                  }
+                }}
               >
                 <div className="absolute inset-y-0 -left-1 -right-1" />
               </div>
@@ -389,8 +422,7 @@ export function ChatRenderer({
           className="fixed left-0 bottom-0 z-40 pointer-events-none"
           style={{ width: SIDEBAR_WIDTH, top: topChromeHeight }}
         >
-          <div
-            role="navigation"
+          <nav
             className="h-full w-full pointer-events-auto"
             style={{
               opacity: sidebarOverlayVisible ? 1 : 0,
@@ -408,7 +440,7 @@ export function ChatRenderer({
                 onSelectionChange={setIsSelectingChats}
               />
             </div>
-          </div>
+          </nav>
         </div>
       )}
 
@@ -433,8 +465,7 @@ export function ChatRenderer({
               className="fixed left-0 bottom-0 z-40 pointer-events-none"
               style={{ width: SIDEBAR_WIDTH, top: topChromeHeight }}
             >
-              <div
-                role="navigation"
+              <nav
                 className="h-full w-full pointer-events-auto"
                 style={{
                   opacity: sidebarOverlayVisible ? 1 : 0,
@@ -451,10 +482,11 @@ export function ChatRenderer({
                       isConversationsLoading={isConversationsLoading}
                       onNewConversation={handleNewConversation}
                       onSelectionChange={setIsSelectingChats}
+                      onNavigate={unpinSidebar}
                     />
                   </div>
                 </div>
-              </div>
+              </nav>
             </div>
           </>
         )}
