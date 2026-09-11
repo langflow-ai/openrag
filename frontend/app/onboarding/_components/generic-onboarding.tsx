@@ -54,12 +54,10 @@ export function GenericOnboarding({
     () => new Set(savedSecretFieldsForProvider(providers, provider)),
     [providers, provider],
   );
-  const savedValues = useMemo(
-    () => savedCredentialValuesForProvider(providers, provider),
-    [providers, provider],
-  );
 
-  const [credentials, setCredentials] = useState<Record<string, string>>({});
+  const [credentials, setCredentials] = useState<Record<string, string>>(() =>
+    savedCredentialValuesForProvider(providers, provider),
+  );
   const [model, setModel] = useState("");
   const [azureAuthMethod, setAzureAuthMethod] = useState(
     providers?.custom?.[provider]?.auth_method ?? "api_key",
@@ -128,17 +126,6 @@ export function GenericOnboarding({
         : {}),
     }));
   };
-
-  // Seed credentials and parent settings when provider changes.
-  // useEffect ensures this runs after render, not during it.
-  const seededForRef = useRef<string | undefined>(undefined);
-  useEffect(() => {
-    if (seededForRef.current === provider) return;
-    seededForRef.current = provider;
-    setCredentials(savedValues);
-    syncParentSettings(savedValues, model);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [provider, savedValues]);
 
   const catalogEntry = catalog?.providers?.find(
     (entry) => entry.key === provider,
