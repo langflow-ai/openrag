@@ -5,6 +5,7 @@ Scans a directory for `junit-*.xml` files (produced by `pytest --junitxml`
 or `vitest --reporter=junit`) and writes a short Markdown summary listing
 which tests failed and why, without dumping full service logs.
 """
+
 import argparse
 import os
 import re
@@ -73,7 +74,7 @@ def build_report(directory: Path) -> str:
 
     any_failures = False
     for junit_file in junit_files:
-        suite_name = junit_file.stem[len("junit-"):]
+        suite_name = junit_file.stem[len("junit-") :]
         lines.append(f"## {suite_name}")
         try:
             totals, cases = parse_junit_file(junit_file)

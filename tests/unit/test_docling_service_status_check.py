@@ -4,12 +4,14 @@ These are the single-poll primitives that the backend's polling coordinator
 uses instead of the legacy in-method polling loop.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
 import httpx
+import pytest
+
 from services.docling_service import (
-    DoclingService,
     DoclingServeError,
+    DoclingService,
     DoclingTaskState,
 )
 
