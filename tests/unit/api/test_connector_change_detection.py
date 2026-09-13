@@ -3,7 +3,7 @@
 Covers:
 - the pure timestamp/classification helpers (`_parse_iso_to_epoch_ms`,
   `remote_is_newer_than_synced`, `classify_remote_file_change`),
-- the `get_synced_id_to_modified_time_map` aggregation helper,
+- the `get_synced_file_state_map` aggregation helper,
 - the whole-container (`bucket_filter`) reconciliation in `connector_sync`: only
   new + changed blobs are ingested (new as a plain batch, changed with
   replace_duplicates=True), unchanged blobs are skipped.
@@ -49,17 +49,23 @@ def test_parse_iso_to_epoch_ms_returns_none_for_bad_input():
     assert _parse_iso_to_epoch_ms("not-a-date") is None
 
 
+def _stored(modified_ms=None, etag=None):
+    from api.connectors import SyncedFileState
+
+    return SyncedFileState(modified_time_ms=modified_ms, content_etag=etag)
+
+
 def test_remote_is_newer_than_synced_true_when_strictly_newer():
     from api.connectors import remote_is_newer_than_synced
 
-    stored = {"c::a": 1704067200000.0}  # 2024-01-01
+    stored = {"c::a": _stored(1704067200000.0)}  # 2024-01-01
     assert remote_is_newer_than_synced("c::a", "2024-06-01T00:00:00Z", stored) is True
 
 
 def test_remote_is_newer_than_synced_false_when_same_or_older():
     from api.connectors import remote_is_newer_than_synced
 
-    stored = {"c::a": 1704067200000.0}
+    stored = {"c::a": _stored(1704067200000.0)}
     assert remote_is_newer_than_synced("c::a", "2024-01-01T00:00:00Z", stored) is False
     assert remote_is_newer_than_synced("c::a", "2023-01-01T00:00:00Z", stored) is False
 
@@ -67,7 +73,7 @@ def test_remote_is_newer_than_synced_false_when_same_or_older():
 def test_remote_is_newer_than_synced_tolerance_absorbs_subsecond_jitter():
     from api.connectors import remote_is_newer_than_synced
 
-    stored = {"c::a": 1704067200000.0}
+    stored = {"c::a": _stored(1704067200000.0)}
     # 500ms newer is within tolerance → not "changed".
     assert remote_is_newer_than_synced("c::a", "2024-01-01T00:00:00.500Z", stored) is False
     # 2s newer exceeds tolerance → changed.
@@ -79,13 +85,13 @@ def test_remote_is_newer_than_synced_false_when_no_stored_token():
 
     # Missing id, or ingested-but-no-token (None) → backfill-safe False.
     assert remote_is_newer_than_synced("c::missing", "2024-06-01T00:00:00Z", {}) is False
-    assert remote_is_newer_than_synced("c::a", "2024-06-01T00:00:00Z", {"c::a": None}) is False
+    assert remote_is_newer_than_synced("c::a", "2024-06-01T00:00:00Z", {"c::a": _stored()}) is False
 
 
 def test_classify_remote_file_change():
     from api.connectors import classify_remote_file_change
 
-    stored = {"c::a": 1704067200000.0}
+    stored = {"c::a": _stored(1704067200000.0)}
     # Not ingested → new (regardless of timestamps).
     assert classify_remote_file_change("c::new", "2024-06-01T00:00:00Z", False, stored) == "new"
     # Ingested + newer → changed.
@@ -97,12 +103,112 @@ def test_classify_remote_file_change():
 
 
 # ---------------------------------------------------------------------------
-# get_synced_id_to_modified_time_map
+# Entity-tag change detection
+# ---------------------------------------------------------------------------
+
+
+def test_classify_uses_etag_when_both_sides_have_one():
+    """A differing etag is "changed" even when the timestamps say otherwise."""
+    from api.connectors import classify_remote_file_change
+
+    stored = {"c::a": _stored(1704067200000.0, "abc123")}
+    # Same (stale) timestamp, different bytes → changed.
+    assert (
+        classify_remote_file_change("c::a", "2024-01-01T00:00:00Z", True, stored, "def456")
+        == "changed"
+    )
+    # No timestamp stored at all, but the tags disagree → still changed. This is
+    # the case the timestamp-only check could never see.
+    assert (
+        classify_remote_file_change("c::a", None, True, {"c::a": _stored(None, "abc123")}, "def456")
+        == "changed"
+    )
+
+
+def test_classify_equal_etags_beat_a_newer_timestamp():
+    """Identical bytes are unchanged even if the object's timestamp moved.
+
+    A copy or a re-upload of the same file bumps LastModified without changing
+    the content; re-ingesting it is pure waste.
+    """
+    from api.connectors import classify_remote_file_change
+
+    stored = {"c::a": _stored(1704067200000.0, "abc123")}
+    assert (
+        classify_remote_file_change("c::a", "2024-06-01T00:00:00Z", True, stored, "abc123")
+        == "unchanged"
+    )
+
+
+def test_classify_etag_comparison_ignores_quoting_and_weak_prefix():
+    """S3 quotes its tags and HTTP may mark them weak; neither is a content change."""
+    from api.connectors import classify_remote_file_change
+
+    stored = {"c::a": _stored(1704067200000.0, "abc123")}
+    assert (
+        classify_remote_file_change("c::a", "2024-06-01T00:00:00Z", True, stored, '"abc123"')
+        == "unchanged"
+    )
+    assert (
+        classify_remote_file_change("c::a", "2024-06-01T00:00:00Z", True, stored, 'W/"abc123"')
+        == "unchanged"
+    )
+
+
+def test_classify_falls_back_to_timestamp_when_an_etag_is_missing():
+    """One-sided tags prove nothing, so the timestamp still decides."""
+    from api.connectors import classify_remote_file_change
+
+    stored_without_etag = {"c::a": _stored(1704067200000.0)}
+    assert (
+        classify_remote_file_change("c::a", "2024-06-01T00:00:00Z", True, stored_without_etag, "x")
+        == "changed"
+    )
+    stored_with_etag = {"c::a": _stored(1704067200000.0, "abc123")}
+    assert (
+        classify_remote_file_change("c::a", "2024-06-01T00:00:00Z", True, stored_with_etag, None)
+        == "changed"
+    )
+
+
+def test_has_comparable_change_signal():
+    """Whether a modification could be noticed at all — what the warning counts."""
+    from api.connectors import has_comparable_change_signal
+
+    # Nothing ingested for this id.
+    assert has_comparable_change_signal("c::missing", "2024-06-01T00:00:00Z", {}) is False
+    # Ingested with neither signal → undetectable.
+    assert (
+        has_comparable_change_signal("c::a", "2024-06-01T00:00:00Z", {"c::a": _stored()}) is False
+    )
+    # Stored etag but the listing reports none → falls back to timestamps, and
+    # there is no stored timestamp either.
+    assert (
+        has_comparable_change_signal("c::a", "2024-06-01T00:00:00Z", {"c::a": _stored(None, "e1")})
+        is False
+    )
+    # Either signal comparable on both sides → detectable.
+    assert (
+        has_comparable_change_signal(
+            "c::a", "2024-06-01T00:00:00Z", {"c::a": _stored(None, "e1")}, "e2"
+        )
+        is True
+    )
+    assert (
+        has_comparable_change_signal(
+            "c::a", "2024-06-01T00:00:00Z", {"c::a": _stored(1704067200000.0)}
+        )
+        is True
+    )
+
+
+# ---------------------------------------------------------------------------
+# get_synced_file_state_map
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_modified_time_map_prefers_connector_file_id_over_document_id(monkeypatch):
+async def test_state_map_prefers_connector_file_id_over_document_id(monkeypatch):
     from api import connectors as connectors_api
 
     monkeypatch.setattr(connectors_api, "get_index_name", lambda: "idx")
@@ -113,9 +219,18 @@ async def test_modified_time_map_prefers_connector_file_id_over_document_id(monk
             "aggregations": {
                 "by_connector_file_id": {
                     "buckets": [
-                        {"key": "c::a", "latest_modified": {"value": 1704067200000.0}},
-                        # connector_file_id present but no modified_time → None
-                        {"key": "c::b", "latest_modified": {"value": None}},
+                        {
+                            "key": "c::a",
+                            "latest_modified": {"value": 1704067200000.0},
+                            # S3 hands back quoted tags; the helper normalizes.
+                            "etag": {"buckets": [{"key": '"abc123"'}]},
+                        },
+                        # connector_file_id present but neither signal stored → both None
+                        {
+                            "key": "c::b",
+                            "latest_modified": {"value": None},
+                            "etag": {"buckets": []},
+                        },
                     ]
                 },
                 "by_document_id": {
@@ -133,7 +248,7 @@ async def test_modified_time_map_prefers_connector_file_id_over_document_id(monk
     sm = MagicMock()
     sm.get_user_opensearch_client = MagicMock(return_value=opensearch_client)
 
-    result = await connectors_api.get_synced_id_to_modified_time_map(
+    result = await connectors_api.get_synced_file_state_map(
         connector_type="azure_blob",
         user_id="alice",
         session_manager=sm,
@@ -141,13 +256,15 @@ async def test_modified_time_map_prefers_connector_file_id_over_document_id(monk
     )
 
     # connector_file_id wins for c::a (1704067200000, not the 999 from document_id).
-    assert result["c::a"] == 1704067200000.0
-    assert result["c::b"] is None
-    assert result["c::lf"] == 1704153600000.0
+    assert result["c::a"].modified_time_ms == 1704067200000.0
+    assert result["c::a"].content_etag == "abc123"
+    assert result["c::b"].modified_time_ms is None
+    assert result["c::b"].content_etag is None
+    assert result["c::lf"].modified_time_ms == 1704153600000.0
 
 
 @pytest.mark.asyncio
-async def test_modified_time_map_falls_back_to_keyword_subfield_on_text_field_error(
+async def test_state_map_falls_back_to_keyword_subfield_on_text_field_error(
     monkeypatch,
 ):
     """Indices that predate connector_file_id's addition to the explicit
@@ -185,19 +302,19 @@ async def test_modified_time_map_falls_back_to_keyword_subfield_on_text_field_er
     sm = MagicMock()
     sm.get_user_opensearch_client = MagicMock(return_value=opensearch_client)
 
-    result = await connectors_api.get_synced_id_to_modified_time_map(
+    result = await connectors_api.get_synced_file_state_map(
         connector_type="azure_blob",
         user_id="alice",
         session_manager=sm,
         jwt_token=None,
     )
 
-    assert result == {"c::a": 1704067200000.0}
+    assert result["c::a"].modified_time_ms == 1704067200000.0
     assert called_fields == ["connector_file_id", "connector_file_id.keyword"]
 
 
 @pytest.mark.asyncio
-async def test_modified_time_map_returns_empty_on_error(monkeypatch):
+async def test_state_map_returns_empty_on_error(monkeypatch):
     from api import connectors as connectors_api
 
     monkeypatch.setattr(connectors_api, "get_index_name", lambda: "idx")
@@ -206,7 +323,7 @@ async def test_modified_time_map_returns_empty_on_error(monkeypatch):
     sm = MagicMock()
     sm.get_user_opensearch_client = MagicMock(return_value=opensearch_client)
 
-    result = await connectors_api.get_synced_id_to_modified_time_map(
+    result = await connectors_api.get_synced_file_state_map(
         connector_type="azure_blob",
         user_id="alice",
         session_manager=sm,
@@ -224,7 +341,7 @@ async def test_modified_time_map_returns_empty_on_error(monkeypatch):
 async def test_synced_file_ids_falls_back_to_keyword_subfield_on_text_field_error(
     monkeypatch,
 ):
-    """Same text-field mapping-drift issue as get_synced_id_to_modified_time_map,
+    """Same text-field mapping-drift issue as get_synced_file_state_map,
     but here a fatal (uncaught) error would make orphan detection and bucket
     reconciliation treat every connector file as never-synced."""
     from api import connectors as connectors_api
@@ -302,11 +419,11 @@ async def test_bucket_filter_ingests_only_new_and_changed(monkeypatch):
     )
     monkeypatch.setattr(
         connectors_api,
-        "get_synced_id_to_modified_time_map",
+        "get_synced_file_state_map",
         AsyncMock(
             return_value={
-                "c::ingested_unchanged": 1704067200000.0,  # 2024-01-01
-                "c::ingested_changed": 1704067200000.0,  # 2024-01-01
+                "c::ingested_unchanged": _stored(1704067200000.0),  # 2024-01-01
+                "c::ingested_changed": _stored(1704067200000.0),  # 2024-01-01
             }
         ),
     )
@@ -353,8 +470,10 @@ async def test_bucket_filter_all_unchanged_returns_no_files(monkeypatch):
     )
     monkeypatch.setattr(
         connectors_api,
-        "get_synced_id_to_modified_time_map",
-        AsyncMock(return_value={"c::a": 1704067200000.0, "c::b": 1704067200000.0}),
+        "get_synced_file_state_map",
+        AsyncMock(
+            return_value={"c::a": _stored(1704067200000.0), "c::b": _stored(1704067200000.0)}
+        ),
     )
 
     remote_files = [
@@ -393,7 +512,7 @@ async def test_bucket_filter_only_new_files_single_batch(monkeypatch):
     )
     monkeypatch.setattr(
         connectors_api,
-        "get_synced_id_to_modified_time_map",
+        "get_synced_file_state_map",
         AsyncMock(return_value={}),
     )
 
@@ -433,9 +552,12 @@ async def test_bucket_changed_file_ids_filters_to_changed_ingested(monkeypatch):
 
     monkeypatch.setattr(
         connectors_api,
-        "get_synced_id_to_modified_time_map",
+        "get_synced_file_state_map",
         AsyncMock(
-            return_value={"c::a": 1704067200000.0, "c::b": 1704067200000.0}  # 2024-01-01
+            return_value={
+                "c::a": _stored(1704067200000.0),
+                "c::b": _stored(1704067200000.0),
+            }  # 2024-01-01
         ),
     )
 
@@ -460,6 +582,90 @@ async def test_bucket_changed_file_ids_filters_to_changed_ingested(monkeypatch):
         ["c::a", "c::b"],
     )
     assert changed == ["c::b"]
+
+
+@pytest.mark.asyncio
+async def test_bucket_changed_file_ids_detects_overwrite_by_etag(monkeypatch):
+    """An overwritten object is caught by its entity tag alone.
+
+    This is the case the timestamp check cannot see: nothing was stored to
+    compare against (the file predates change detection, or an ingest path
+    didn't persist the timestamp), so the file would report "unchanged" forever.
+    """
+    from api import connectors as connectors_api
+
+    monkeypatch.setattr(
+        connectors_api,
+        "get_synced_file_state_map",
+        AsyncMock(
+            return_value={
+                "c::a": _stored(None, "etag-a"),
+                "c::b": _stored(None, "etag-b"),
+            }
+        ),
+    )
+
+    connector = MagicMock()
+    connector.list_files = AsyncMock(
+        return_value={
+            "files": [
+                {"id": "c::a", "modified_time": None, "etag": "etag-a"},  # untouched
+                {"id": "c::b", "modified_time": None, "etag": "etag-b-v2"},  # overwritten
+            ],
+            "next_page_token": None,
+        }
+    )
+
+    changed = await connectors_api.bucket_changed_file_ids(
+        connector, "ibm_cos", "alice", MagicMock(), "token", ["c::a", "c::b"]
+    )
+    assert changed == ["c::b"]
+
+
+@pytest.mark.asyncio
+async def test_bucket_changed_file_ids_warns_about_undetectable_files(monkeypatch):
+    """Files with nothing to compare are reported, not silently called up to date."""
+    from api import connectors as connectors_api
+
+    monkeypatch.setattr(
+        connectors_api,
+        "get_synced_file_state_map",
+        AsyncMock(return_value={"c::a": _stored(), "c::b": _stored(1704067200000.0)}),
+    )
+
+    connector = MagicMock()
+    connector.list_files = AsyncMock(
+        return_value={
+            "files": [
+                # Ingested before any signal was recorded, and the listing has
+                # no etag either — a modification here is unknowable.
+                {"id": "c::a", "modified_time": "2024-06-01T00:00:00Z"},
+                {"id": "c::b", "modified_time": "2024-01-01T00:00:00Z"},
+            ],
+            "next_page_token": None,
+        }
+    )
+
+    # The project logger writes straight to stderr rather than propagating to the
+    # stdlib root logger, so assert on the call instead of on caplog.
+    warnings = []
+    monkeypatch.setattr(
+        connectors_api.logger,
+        "warning",
+        lambda msg, **kw: warnings.append((msg, kw)),
+    )
+
+    changed = await connectors_api.bucket_changed_file_ids(
+        connector, "ibm_cos", "alice", MagicMock(), "token", ["c::a", "c::b"]
+    )
+
+    assert changed == []
+    assert len(warnings) == 1
+    msg, fields = warnings[0]
+    assert "no stored change-detection signal" in msg
+    assert fields["count"] == 1
+    # c::b has a comparable timestamp — it is genuinely unchanged, not unknowable.
+    assert fields["sample"] == ["c::a"]
 
 
 @pytest.mark.asyncio
@@ -499,8 +705,10 @@ async def test_sync_button_bucket_reingests_only_changed(monkeypatch):
     )
     monkeypatch.setattr(
         connectors_api,
-        "get_synced_id_to_modified_time_map",
-        AsyncMock(return_value={"c::a": 1704067200000.0, "c::b": 1704067200000.0}),
+        "get_synced_file_state_map",
+        AsyncMock(
+            return_value={"c::a": _stored(1704067200000.0), "c::b": _stored(1704067200000.0)}
+        ),
     )
 
     remote_files = [
@@ -544,8 +752,10 @@ async def test_sync_button_bucket_all_unchanged_returns_no_files(monkeypatch):
     )
     monkeypatch.setattr(
         connectors_api,
-        "get_synced_id_to_modified_time_map",
-        AsyncMock(return_value={"c::a": 1704067200000.0, "c::b": 1704067200000.0}),
+        "get_synced_file_state_map",
+        AsyncMock(
+            return_value={"c::a": _stored(1704067200000.0), "c::b": _stored(1704067200000.0)}
+        ),
     )
 
     remote_files = [
@@ -598,8 +808,10 @@ async def test_sync_all_bucket_reingests_only_changed(monkeypatch):
     )
     monkeypatch.setattr(
         connectors_api,
-        "get_synced_id_to_modified_time_map",
-        AsyncMock(return_value={"c::a": 1704067200000.0, "c::b": 1704067200000.0}),
+        "get_synced_file_state_map",
+        AsyncMock(
+            return_value={"c::a": _stored(1704067200000.0), "c::b": _stored(1704067200000.0)}
+        ),
     )
 
     remote_files = [
