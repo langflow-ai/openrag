@@ -1,6 +1,6 @@
 import copy
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, NamedTuple
 
 from fastapi import Depends, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config.settings import get_index_name, is_workspace_oauth_overrides_enabled
+from connectors.base import normalize_etag
 from connectors.sharepoint.utils import is_valid_sharepoint_url
 from dependencies import (
     get_connector_service,
@@ -88,9 +89,10 @@ def _connector_sync_should_replace(connector_type: str) -> bool:
 
 
 def _connector_uses_timestamp_change_detection(connector_type: str) -> bool:
-    """True when sync should re-ingest only files whose remote modified_time is
-    newer than the stored one (see bucket_changed_file_ids), instead of
-    replacing every indexed file.
+    """True when sync should re-ingest only the files that actually differ at
+    source — by entity tag, or by a newer remote modified_time where there are
+    no tags to compare (see bucket_changed_file_ids) — instead of replacing
+    every indexed file.
 
     Declared per connector via ``BaseConnector.CHANGE_DETECTION`` — the bucket
     connectors set ``"timestamp"``; the default is ``"replace_always"``.
@@ -275,21 +277,35 @@ async def get_synced_id_to_filename_map(
         return {}
 
 
-async def get_synced_id_to_modified_time_map(
+class SyncedFileState(NamedTuple):
+    """What the index knows about an already-ingested connector file.
+
+    ``modified_time_ms`` is the stored source timestamp; ``content_etag`` is the
+    object's stored entity tag. Either can be None for a file ingested before
+    that signal was recorded, or by a path that didn't persist it.
+    """
+
+    modified_time_ms: float | None = None
+    content_etag: str | None = None
+
+
+async def get_synced_file_state_map(
     connector_type: str,
     user_id: str,
     session_manager,
     jwt_token: str | None = None,
-) -> dict[str, float | None]:
-    """Map each ingested connector source id → its stored ``modified_time`` (epoch ms).
+) -> dict[str, SyncedFileState]:
+    """Map each ingested connector source id → the change-detection state stored for it.
 
-    Powers change detection for bucket connectors: callers compare a blob's remote
-    ``modified_time`` against the stored value to decide whether a re-ingest is needed.
+    Powers change detection for bucket connectors: callers compare a blob's
+    remote entity tag and ``modified_time`` against the stored ones to decide
+    whether a re-ingest is needed.
 
     A key being **present** means the source id is already ingested under this
-    ``connector_type``. A value of **None** means it was ingested but no
-    ``modified_time`` was persisted (pre-change-detection docs, or an ingest path that
-    didn't enrich it) — callers treat that as *unchanged* to avoid a mass re-ingest.
+    ``connector_type``. Its fields may still be None — ingested before change
+    detection recorded that signal, or by a path that didn't enrich it — and
+    callers treat a file with no comparable signal at all as *unchanged*, to
+    avoid a mass re-ingest.
 
     Keys cover both ingest layouts (mirrors ``get_synced_file_ids_for_connector``):
     the non-Langflow path stores the connector id in ``connector_file_id`` (where
@@ -299,35 +315,46 @@ async def get_synced_id_to_modified_time_map(
     try:
         opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
 
-        query_body: dict[str, Any] = {
-            "size": 0,
-            "query": {"term": {"connector_type": connector_type}},
-            "aggs": {
-                "by_connector_file_id": {
-                    "terms": {"field": "connector_file_id", "size": 10000},
-                    "aggs": {"latest_modified": {"max": {"field": "modified_time"}}},
-                },
-                "by_document_id": {
-                    "terms": {"field": "document_id", "size": 10000},
-                    "aggs": {"latest_modified": {"max": {"field": "modified_time"}}},
-                },
-            },
-        }
+        def _sub_aggs(etag_field: str) -> dict[str, Any]:
+            return {
+                "latest_modified": {"max": {"field": "modified_time"}},
+                # All chunks of one file carry the same etag, so one bucket is enough.
+                "etag": {"terms": {"field": etag_field, "size": 1}},
+            }
 
+        def _build_body(id_field: str, etag_field: str) -> dict[str, Any]:
+            return {
+                "size": 0,
+                "query": {"term": {"connector_type": connector_type}},
+                "aggs": {
+                    "by_connector_file_id": {
+                        "terms": {"field": id_field, "size": 10000},
+                        "aggs": _sub_aggs(etag_field),
+                    },
+                    "by_document_id": {
+                        "terms": {"field": "document_id", "size": 10000},
+                        "aggs": _sub_aggs(etag_field),
+                    },
+                },
+            }
+
+        query_body = _build_body("connector_file_id", "content_etag")
         try:
             result = await opensearch_client.search(index=get_index_name(), body=query_body)
         except Exception as agg_err:
             if not _is_unmapped_keyword_agg_error(agg_err):
                 raise
             # See get_synced_file_ids_for_connector: some indices predate the
-            # explicit keyword mapping for connector_file_id.
-            query_body["aggs"]["by_connector_file_id"]["terms"]["field"] = (
-                "connector_file_id.keyword"
+            # explicit keyword mapping for these fields, so they were dynamically
+            # mapped as analyzed text with a `.keyword` multi-field. content_etag
+            # is newer than connector_file_id, so retry both together.
+            result = await opensearch_client.search(
+                index=get_index_name(),
+                body=_build_body("connector_file_id.keyword", "content_etag.keyword"),
             )
-            result = await opensearch_client.search(index=get_index_name(), body=query_body)
         aggs = result.get("aggregations", {})
 
-        mapping: dict[str, float | None] = {}
+        mapping: dict[str, SyncedFileState] = {}
         # document_id first; connector_file_id overlays it (connector_file_id wins).
         # The content-hash document_ids from the non-Langflow path are harmless noise —
         # they never match an enumerated connector source id.
@@ -336,11 +363,15 @@ async def get_synced_id_to_modified_time_map(
                 key = bucket.get("key")
                 if not key:
                     continue
-                mapping[key] = bucket.get("latest_modified", {}).get("value")
+                etag_buckets = bucket.get("etag", {}).get("buckets", [])
+                mapping[key] = SyncedFileState(
+                    modified_time_ms=bucket.get("latest_modified", {}).get("value"),
+                    content_etag=normalize_etag(etag_buckets[0]["key"]) if etag_buckets else None,
+                )
         return mapping
     except Exception as e:
         logger.error(
-            "Failed to build id→modified_time map",
+            "Failed to build connector file state map",
             connector_type=connector_type,
             error=str(e),
         )
@@ -371,14 +402,15 @@ def _parse_iso_to_epoch_ms(value: str | None) -> float | None:
 def remote_is_newer_than_synced(
     file_id: str,
     remote_modified_time: str | None,
-    synced_modified_map: dict[str, float | None],
+    synced_state_map: dict[str, SyncedFileState],
 ) -> bool:
     """True only when a stored ``modified_time`` exists and the remote is strictly newer.
 
     Missing/unparseable timestamps (remote or stored) → False, so we never re-ingest
     on ambiguity (backfill-safe).
     """
-    stored_ms = synced_modified_map.get(file_id)
+    stored = synced_state_map.get(file_id)
+    stored_ms = stored.modified_time_ms if stored else None
     if stored_ms is None:
         return False
     remote_ms = _parse_iso_to_epoch_ms(remote_modified_time)
@@ -391,20 +423,58 @@ def classify_remote_file_change(
     file_id: str,
     remote_modified_time: str | None,
     is_ingested: bool,
-    synced_modified_map: dict[str, float | None],
+    synced_state_map: dict[str, SyncedFileState],
+    remote_etag: str | None = None,
 ) -> str:
     """Classify a remote blob as ``"new"`` / ``"changed"`` / ``"unchanged"``.
 
     - ``new``       — not yet ingested.
-    - ``changed``   — ingested and the remote version is strictly newer than stored.
-    - ``unchanged`` — ingested and same-age/older, or the change can't be proven
-                      (no stored token, e.g. backfill).
+    - ``changed``   — ingested, and either the entity tags differ or (with no
+                      tags to compare) the remote version is strictly newer.
+    - ``unchanged`` — ingested and provably identical, same-age/older, or the
+                      change can't be proven at all (no stored signal, e.g. a
+                      file ingested before change detection existed).
+
+    The entity tag is checked first and is decisive in both directions. Object
+    stores change it on every overwrite, so it catches a modification whose
+    timestamp we can't compare — and equal tags mean identical bytes, so a
+    timestamp that moved without the content changing (a copy, a re-upload of
+    the same file) no longer triggers a pointless re-ingest.
     """
     if not is_ingested:
         return "new"
-    if remote_is_newer_than_synced(file_id, remote_modified_time, synced_modified_map):
+    stored = synced_state_map.get(file_id)
+    stored_etag = stored.content_etag if stored else None
+    remote_etag = normalize_etag(remote_etag)
+    if stored_etag and remote_etag:
+        return "unchanged" if stored_etag == remote_etag else "changed"
+    if remote_is_newer_than_synced(file_id, remote_modified_time, synced_state_map):
         return "changed"
     return "unchanged"
+
+
+def has_comparable_change_signal(
+    file_id: str,
+    remote_modified_time: str | None,
+    synced_state_map: dict[str, SyncedFileState],
+    remote_etag: str | None = None,
+) -> bool:
+    """Whether a modification to this file could be detected at all.
+
+    False means no stored etag matching a remote one AND no stored timestamp to
+    compare — so the file is reported "unchanged" no matter what happened to it
+    at the source. Callers log the count: silently classifying an unknowable
+    file as up to date is exactly how a stale copy goes unnoticed.
+    """
+    stored = synced_state_map.get(file_id)
+    if stored is None:
+        return False
+    if stored.content_etag and normalize_etag(remote_etag):
+        return True
+    return (
+        stored.modified_time_ms is not None
+        and _parse_iso_to_epoch_ms(remote_modified_time) is not None
+    )
 
 
 async def bucket_changed_file_ids(
@@ -415,20 +485,21 @@ async def bucket_changed_file_ids(
     jwt_token: str | None,
     existing_file_ids: list[str],
 ) -> list[str]:
-    """Return the already-ingested bucket file ids whose remote copy is newer.
+    """Return the already-ingested bucket file ids whose remote copy has changed.
 
     Updates-only change detection for the Sync path: list the connector's blobs
-    once and keep the ids that are (a) already ingested and (b) strictly newer at
-    source than the stored ``modified_time``. New blobs that aren't ingested yet
-    are intentionally ignored — Sync reconciles existing files; new files are
-    added via the connector's "Add from" panel. Listing exceptions propagate to
-    the caller (same as the bucket_filter sync path).
+    once and keep the ids that are (a) already ingested and (b) differ at source
+    — by entity tag where both sides have one, otherwise by a strictly newer
+    ``modified_time``. New blobs that aren't ingested yet are intentionally
+    ignored — Sync reconciles existing files; new files are added via the
+    connector's "Add from" panel. Listing exceptions propagate to the caller
+    (same as the bucket_filter sync path).
     """
     existing_set = set(existing_file_ids)
     if not existing_set:
         return []
 
-    modified_map = await get_synced_id_to_modified_time_map(
+    state_map = await get_synced_file_state_map(
         connector_type=connector_type,
         user_id=user_id,
         session_manager=session_manager,
@@ -436,6 +507,7 @@ async def bucket_changed_file_ids(
     )
 
     changed_ids: list[str] = []
+    undetectable: list[str] = []
     page_token = None
     while True:
         result = await connector.list_files(page_token=page_token)
@@ -443,14 +515,32 @@ async def bucket_changed_file_ids(
             fid = f.get("id")
             if not fid or fid not in existing_set:
                 continue
+            remote_modified_time = f.get("modified_time")
+            remote_etag = f.get("etag")
             if (
-                classify_remote_file_change(fid, f.get("modified_time"), True, modified_map)
+                classify_remote_file_change(fid, remote_modified_time, True, state_map, remote_etag)
                 == "changed"
             ):
                 changed_ids.append(fid)
+            elif not has_comparable_change_signal(
+                fid, remote_modified_time, state_map, remote_etag
+            ):
+                undetectable.append(fid)
         page_token = result.get("next_page_token")
         if not page_token:
             break
+
+    if undetectable:
+        # These report "unchanged" whatever happened to them at the source —
+        # nothing stored to compare against. Say so, rather than letting a stale
+        # copy look up to date. Re-ingesting them once (via the connector's
+        # "Add from" panel, overwriting) records a signal and fixes it for good.
+        logger.warning(
+            "Files have no stored change-detection signal and cannot be checked for updates",
+            connector_type=connector_type,
+            count=len(undetectable),
+            sample=undetectable[:5],
+        )
 
     return changed_ids
 
@@ -1461,7 +1551,7 @@ async def connector_sync(
                     jwt_token=jwt_token,
                 )
                 existing_set = set(existing_ids)
-                modified_map = await get_synced_id_to_modified_time_map(
+                state_map = await get_synced_file_state_map(
                     connector_type=connector_type,
                     user_id=user.user_id,
                     session_manager=session_manager,
@@ -1478,7 +1568,8 @@ async def connector_sync(
                         fid,
                         f.get("modified_time"),
                         fid in existing_set,
-                        modified_map,
+                        state_map,
+                        f.get("etag"),
                     )
                     if status == "new":
                         new_ids.append(fid)
@@ -2529,8 +2620,9 @@ async def browse_connection_files(
         )
         ingested_set = set(ingested_ids) | set(ingested_filenames)
 
-        # Stored modified_time per ingested source id, for "update available" detection.
-        modified_map = await get_synced_id_to_modified_time_map(
+        # Stored change-detection state per ingested source id, for "update
+        # available" detection.
+        state_map = await get_synced_file_state_map(
             connector_type=connector_type,
             user_id=user.user_id,
             session_manager=session_manager,
@@ -2542,11 +2634,15 @@ async def browse_connection_files(
         for f in remote_files:
             file_id = f.get("id", "")
             is_ingested = file_id in ingested_set or f.get("name", "") in ingested_set
-            # "Update available": ingested, but the source version is newer than what
-            # we indexed. The frontend keeps unchanged files disabled but lets the user
-            # re-ingest stale ones (with replace_duplicates).
-            is_stale = is_ingested and remote_is_newer_than_synced(
-                file_id, f.get("modified_time"), modified_map
+            # "Update available": ingested, but the source copy differs from what we
+            # indexed. Uses the same classification as sync so the browser and the
+            # sync agree. The frontend keeps unchanged files disabled but lets the
+            # user re-ingest stale ones (with replace_duplicates).
+            is_stale = (
+                classify_remote_file_change(
+                    file_id, f.get("modified_time"), is_ingested, state_map, f.get("etag")
+                )
+                == "changed"
             )
             enriched_files.append(
                 {
