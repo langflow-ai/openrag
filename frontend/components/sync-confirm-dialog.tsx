@@ -4,6 +4,7 @@ import { AlertTriangle, Check, Loader2, RefreshCw, Trash2 } from "lucide-react";
 import type React from "react";
 import type { OrphanFile } from "@/app/api/mutations/useSyncConnector";
 import { getConnectorLabel } from "@/lib/connectors/registry";
+import { summarizeSyncPreview } from "./sync-confirm-dialog-data";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -44,88 +45,23 @@ interface SyncConfirmDialogProps {
   /** Per-connector availability flag — false means orphan detection couldn't
    * complete safely (e.g. unauthenticated connection). */
   orphansAvailableByType?: Record<string, boolean>;
-  /** Single-connector mode: total files that will be updated. */
+  /** Single-connector mode: files whose source copy changed and will be re-ingested. */
+  updates?: OrphanFile[];
+  /** Sync-all mode: changed files grouped by connector_type. */
+  updatesByType?: Record<string, OrphanFile[]>;
+  /** Per-connector flag — false means the connector can't predict updates (it
+   * decides per file while ingesting), NOT that nothing will be updated. Those
+   * connectors are reported as "re-checked" using their synced count. */
+  updatesAvailableByType?: Record<string, boolean>;
+  /** Single-connector mode: total files currently synced for this connector. */
   syncedCount?: number;
-  /** Sync-all mode: per-connector update counts. */
+  /** Sync-all mode: per-connector synced totals. */
   syncedCountByType?: Record<string, number>;
   /** Single-connector mode: connector type for the title (e.g. "sharepoint"). */
   connectorType?: string;
   /** When true, render the sync-all view (groups by connector_type). */
   isSyncAll?: boolean;
 }
-
-interface NormalizedData {
-  /** Deletions grouped by connector_type (single-mode collapses to one entry). */
-  orphansByType: Record<string, OrphanFile[]>;
-  /** Update counts grouped by connector_type. */
-  updatesByType: Record<string, number>;
-  /** Connectors whose orphan detection couldn't complete. */
-  unavailableConnectors: string[];
-  totalOrphans: number;
-  totalUpdates: number;
-}
-
-const normalize = (
-  props: Pick<
-    SyncConfirmDialogProps,
-    | "orphans"
-    | "orphansByType"
-    | "orphansAvailableByType"
-    | "syncedCount"
-    | "syncedCountByType"
-    | "connectorType"
-    | "isSyncAll"
-  >,
-): NormalizedData => {
-  const {
-    orphans,
-    orphansByType,
-    orphansAvailableByType,
-    syncedCount,
-    syncedCountByType,
-    connectorType,
-    isSyncAll,
-  } = props;
-
-  const normalizedOrphans: Record<string, OrphanFile[]> = isSyncAll
-    ? Object.fromEntries(
-        Object.entries(orphansByType ?? {}).filter(
-          ([, list]) => list.length > 0,
-        ),
-      )
-    : orphans && orphans.length > 0 && connectorType
-      ? { [connectorType]: orphans }
-      : {};
-
-  const normalizedUpdates: Record<string, number> = isSyncAll
-    ? Object.fromEntries(
-        Object.entries(syncedCountByType ?? {}).filter(([, n]) => n > 0),
-      )
-    : syncedCount && syncedCount > 0 && connectorType
-      ? { [connectorType]: syncedCount }
-      : {};
-
-  const unavailableConnectors = Object.entries(orphansAvailableByType ?? {})
-    .filter(([, available]) => !available)
-    .map(([type]) => type);
-
-  const totalOrphans = Object.values(normalizedOrphans).reduce(
-    (sum, list) => sum + list.length,
-    0,
-  );
-  const totalUpdates = Object.values(normalizedUpdates).reduce(
-    (sum, n) => sum + n,
-    0,
-  );
-
-  return {
-    orphansByType: normalizedOrphans,
-    updatesByType: normalizedUpdates,
-    unavailableConnectors,
-    totalOrphans,
-    totalUpdates,
-  };
-};
 
 const OrphanList = ({ list }: { list: OrphanFile[] }) => (
   <ul className="space-y-1 text-sm">
@@ -219,7 +155,7 @@ const UpdatesAlert = ({
   totalUpdates,
   isSyncAll,
 }: {
-  updatesByType: Record<string, number>;
+  updatesByType: Record<string, OrphanFile[]>;
   totalUpdates: number;
   isSyncAll: boolean;
 }) => {
@@ -229,9 +165,63 @@ const UpdatesAlert = ({
     <Alert>
       <RefreshCw className="size-5" />
       <AlertTitle>{pluralize(totalUpdates, "file")} will be updated</AlertTitle>
-      {isSyncAll && entries.length > 1 ? (
-        <AlertDescription className="col-start-2 block min-w-0">
-          <ul className="mt-1 space-y-0.5">
+      <AlertDescription className="col-start-2 block min-w-0">
+        <p>These files changed at the source since they were last ingested.</p>
+        <ScrollArea className="mt-2 max-h-60 w-full">
+          {isSyncAll && entries.length > 1 ? (
+            <div className="space-y-3 pr-2">
+              {entries.map(([type, list], index) => (
+                <div key={type}>
+                  <div className="text-xs font-semibold uppercase tracking-wide mb-1">
+                    {formatConnectorLabel(type)} ({list.length})
+                  </div>
+                  <OrphanList list={list} />
+                  {index < entries.length - 1 ? (
+                    <Separator className="mt-3" />
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="pr-2">
+              <OrphanList list={entries[0]?.[1] ?? []} />
+            </div>
+          )}
+        </ScrollArea>
+        {totalUpdates > SCROLL_HINT_THRESHOLD ? (
+          <p className="mt-2 text-xs italic opacity-80">
+            Scroll to review all {totalUpdates} files.
+          </p>
+        ) : null}
+      </AlertDescription>
+    </Alert>
+  );
+};
+
+/** Connectors that re-read every file during sync and update the ones whose
+ * content actually changed. The count can't be known before the sync runs, so
+ * say that rather than showing a number that looks like a prediction. */
+const RecheckAlert = ({
+  recheckedByType,
+  totalRechecked,
+}: {
+  recheckedByType: Record<string, number>;
+  totalRechecked: number;
+}) => {
+  const entries = Object.entries(recheckedByType);
+
+  return (
+    <Alert>
+      <RefreshCw className="size-5" />
+      <AlertTitle>
+        {pluralize(totalRechecked, "file")} will be re-checked
+      </AlertTitle>
+      <AlertDescription className="col-start-2 block min-w-0 [text-wrap:pretty]">
+        <p>
+          Sync re-reads these files and updates the ones whose content changed.
+        </p>
+        {entries.length > 1 ? (
+          <ul className="mt-2 space-y-0.5">
             {entries.map(([type, count]) => (
               <li key={type} className="flex justify-between gap-4">
                 <span>{formatConnectorLabel(type)}</span>
@@ -239,8 +229,8 @@ const UpdatesAlert = ({
               </li>
             ))}
           </ul>
-        </AlertDescription>
-      ) : null}
+        ) : null}
+      </AlertDescription>
     </Alert>
   );
 };
@@ -254,6 +244,9 @@ export const SyncConfirmDialog = ({
   orphans,
   orphansByType,
   orphansAvailableByType,
+  updates,
+  updatesByType,
+  updatesAvailableByType,
   syncedCount,
   syncedCountByType,
   connectorType,
@@ -264,10 +257,13 @@ export const SyncConfirmDialog = ({
     onOpenChange(false);
   };
 
-  const data = normalize({
+  const data = summarizeSyncPreview({
     orphans,
     orphansByType,
     orphansAvailableByType,
+    updates,
+    updatesByType,
+    updatesAvailableByType,
     syncedCount,
     syncedCountByType,
     connectorType,
@@ -276,15 +272,18 @@ export const SyncConfirmDialog = ({
 
   const {
     orphansByType: normOrphans,
-    updatesByType,
+    updatesByType: normUpdates,
+    recheckedByType,
     unavailableConnectors,
     totalOrphans,
     totalUpdates,
+    totalRechecked,
   } = data;
 
   const hasDeletes = totalOrphans > 0;
   const hasUnavailable = unavailableConnectors.length > 0;
   const hasUpdates = totalUpdates > 0;
+  const hasRechecks = totalRechecked > 0;
   const busy = isLoading || isSyncing;
 
   const title = isSyncAll ? "Sync all connectors" : "Confirm sync";
@@ -296,8 +295,12 @@ export const SyncConfirmDialog = ({
     description = `Sync will remove ${pluralize(totalOrphans, "file")}.`;
   } else if (hasUnavailable) {
     description = "Some connectors couldn't be checked for deletions.";
-  } else {
+  } else if (hasUpdates) {
     description = `Sync will update ${pluralize(totalUpdates, "file")}.`;
+  } else if (hasRechecks) {
+    description = `Sync will re-check ${pluralize(totalRechecked, "file")}.`;
+  } else {
+    description = "Everything is already up to date.";
   }
 
   // CTA variant + copy follows the most-severe state present.
@@ -353,13 +356,31 @@ export const SyncConfirmDialog = ({
                 renames as a distinct category. Insert between Unavailable
                 and Updates when the preview endpoint returns rename data. */}
 
-            {/* Updates — informational, count only */}
+            {/* Updates — informational: the files that actually changed */}
             {hasUpdates ? (
               <UpdatesAlert
-                updatesByType={updatesByType}
+                updatesByType={normUpdates}
                 totalUpdates={totalUpdates}
                 isSyncAll={isSyncAll}
               />
+            ) : null}
+
+            {/* Re-checks — connectors that can't predict what will change */}
+            {hasRechecks ? (
+              <RecheckAlert
+                recheckedByType={recheckedByType}
+                totalRechecked={totalRechecked}
+              />
+            ) : null}
+
+            {!hasDeletes && !hasUnavailable && !hasUpdates && !hasRechecks ? (
+              <Alert>
+                <Check className="size-5" />
+                <AlertTitle>Nothing to change</AlertTitle>
+                <AlertDescription className="col-start-2 block min-w-0">
+                  <p>No files were added, changed, or removed at the source.</p>
+                </AlertDescription>
+              </Alert>
             ) : null}
           </div>
         )}

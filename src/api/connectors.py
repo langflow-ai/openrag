@@ -545,43 +545,41 @@ async def bucket_changed_file_ids(
     return changed_ids
 
 
-async def compute_orphans_for_connector_type(
+async def list_remote_files_for_connector_type(
     connector_type: str,
     user_id: str,
     connector_service,
-    session_manager,
-    jwt_token: str | None,
     existing_file_ids: list[str],
-    id_to_filename: dict[str, str] | None = None,
-) -> list[dict[str, str]] | None:
-    """Compute orphan documents (ingested but no longer present at the source)
-    for this connector_type without deleting them.
+) -> dict[str, dict[str, Any]] | None:
+    """Enumerate what currently exists at the source, as {file_id: record}.
 
-    Returns a list of {"document_id", "filename"} dicts. Returns None when strict
-    gating aborts the pass (unauthenticated connection or listing exception) so
-    callers can distinguish "no orphans" from "could not determine safely".
+    One listing pass shared by everything that needs to diff the index against
+    the source — orphan detection and sync preview both read it, so a preview
+    doesn't enumerate the whole bucket twice.
+
+    Returns None (not {}) when strict gating aborts the pass: no active
+    connection, an unauthenticated one, or a listing that raised. Callers must
+    treat that as "could not determine safely" rather than "nothing there" —
+    the difference between leaving the index alone and deleting all of it.
     """
-    if not existing_file_ids:
-        return []
-
     connections = await connector_service.connection_manager.list_connections(
         user_id=user_id, connector_type=connector_type
     )
     active = [c for c in connections if c.is_active]
     if not active:
         logger.info(
-            "Skipping orphan compute — no active connections",
+            "Skipping remote listing — no active connections",
             connector_type=connector_type,
         )
         return None
 
-    remote_ids: set = set()
+    remote_files: dict[str, dict[str, Any]] = {}
     for conn in active:
         try:
             connector = await connector_service.get_connector(conn.connection_id)
             if not connector or not connector.is_authenticated:
                 logger.info(
-                    "Skipping orphan compute — connection unauthenticated",
+                    "Skipping remote listing — connection unauthenticated",
                     connector_type=connector_type,
                     connection_id=conn.connection_id,
                 )
@@ -592,11 +590,11 @@ async def compute_orphans_for_connector_type(
             # The flat default of list_files() only returns the *root* listing
             # (e.g. /drive/root/children for SharePoint, files-only, no folder
             # traversal), so any folder-internal file in OpenSearch would be
-            # absent from remote_ids and wrongly flagged as an orphan.
+            # absent from the result and wrongly flagged as an orphan.
             # list_selected_files iterates each id via _get_file_metadata_by_id
-            # and silently drops missing ids, so the resulting `remote_ids` is
-            # exactly "the subset of existing_file_ids that still exists at
-            # source" — which is what orphan detection actually needs.
+            # and silently drops missing ids, so the result is exactly "the
+            # subset of existing_file_ids that still exists at source" — which
+            # is what orphan detection actually needs.
             # cfg is None on bucket connectors (BaseConnector declares it as a
             # class default), so guard on cfg-is-not-None rather than hasattr:
             # otherwise bucket connectors route through list_selected_files ->
@@ -608,7 +606,7 @@ async def compute_orphans_for_connector_type(
                 for f in page.get("files", []):
                     fid = f.get("id")
                     if fid:
-                        remote_ids.add(fid)
+                        remote_files[fid] = f
             else:
                 page_token = None
                 while True:
@@ -616,20 +614,56 @@ async def compute_orphans_for_connector_type(
                     for f in page.get("files", []):
                         fid = f.get("id")
                         if fid:
-                            remote_ids.add(fid)
+                            remote_files[fid] = f
                     page_token = page.get("nextPageToken") or page.get("next_page_token")
                     if not page_token:
                         break
         except Exception as e:
             logger.warning(
-                "Skipping orphan compute — listing failed",
+                "Skipping remote listing — listing failed",
                 connector_type=connector_type,
                 connection_id=conn.connection_id,
                 error=str(e),
             )
             return None
 
-    orphan_ids = [fid for fid in existing_file_ids if fid not in remote_ids]
+    return remote_files
+
+
+async def compute_orphans_for_connector_type(
+    connector_type: str,
+    user_id: str,
+    connector_service,
+    session_manager,
+    jwt_token: str | None,
+    existing_file_ids: list[str],
+    id_to_filename: dict[str, str] | None = None,
+    remote_files: dict[str, dict[str, Any]] | None = None,
+) -> list[dict[str, str]] | None:
+    """Compute orphan documents (ingested but no longer present at the source)
+    for this connector_type without deleting them.
+
+    Returns a list of {"document_id", "filename"} dicts. Returns None when strict
+    gating aborts the pass (unauthenticated connection or listing exception) so
+    callers can distinguish "no orphans" from "could not determine safely".
+
+    ``remote_files`` lets a caller that has already enumerated the source pass
+    the listing in instead of paying for a second pass.
+    """
+    if not existing_file_ids:
+        return []
+
+    if remote_files is None:
+        remote_files = await list_remote_files_for_connector_type(
+            connector_type=connector_type,
+            user_id=user_id,
+            connector_service=connector_service,
+            existing_file_ids=existing_file_ids,
+        )
+    if remote_files is None:
+        return None
+
+    orphan_ids = [fid for fid in existing_file_ids if fid not in remote_files]
     if not orphan_ids:
         return []
 
@@ -2294,17 +2328,36 @@ def _cloud_connector_types() -> list[str]:
     return [cls.CONNECTOR_TYPE for cls in get_connector_classes()]
 
 
-async def _preview_orphans_for_connector_type(
+class ConnectorSyncPreview(NamedTuple):
+    """What a sync would do to one connector type, without doing any of it.
+
+    ``orphans`` is None when strict gating aborted the pass (so the caller can
+    say "couldn't determine" rather than "nothing to delete"). ``updates`` is
+    None when this connector can't answer the question ahead of time — see
+    ``_preview_for_connector_type``.
+    """
+
+    orphans: list[dict[str, str]] | None
+    updates: list[dict[str, str]] | None
+    synced_count: int
+
+
+async def _preview_for_connector_type(
     connector_type: str,
     user_id: str,
     connector_service,
     session_manager,
     jwt_token: str | None,
-) -> tuple[list[dict[str, str]] | None, int]:
-    """Helper: compute orphans (no deletion) + return total synced count.
+) -> ConnectorSyncPreview:
+    """Compute what a sync would delete and re-ingest, without touching anything.
 
-    Returns (orphans, synced_count). `orphans` is None when strict gating aborts
-    (so the caller can surface a "couldn't determine" state); [] when no orphans.
+    Deletions and updates come out of a single remote listing, so previewing
+    costs the same as the orphan pass used to.
+
+    Updates are only knowable for connectors that declare timestamp change
+    detection: they compare a listing against stored signals. ``replace_always``
+    connectors decide per file after downloading it, so their update count is
+    reported as unavailable rather than guessed at.
     """
     existing_file_ids, existing_filenames, _ = await get_synced_file_ids_for_connector(
         connector_type=connector_type,
@@ -2317,13 +2370,20 @@ async def _preview_orphans_for_connector_type(
     if not existing_file_ids:
         # No document_ids to diff against (e.g. Langflow-only ingest). Filename-only
         # fallback can't detect orphans safely — surface empty list.
-        return [], synced_count
+        return ConnectorSyncPreview(orphans=[], updates=None, synced_count=synced_count)
 
     id_to_filename = await get_synced_id_to_filename_map(
         connector_type=connector_type,
         user_id=user_id,
         session_manager=session_manager,
         jwt_token=jwt_token,
+    )
+
+    remote_files = await list_remote_files_for_connector_type(
+        connector_type=connector_type,
+        user_id=user_id,
+        connector_service=connector_service,
+        existing_file_ids=existing_file_ids,
     )
 
     orphans = await compute_orphans_for_connector_type(
@@ -2334,10 +2394,34 @@ async def _preview_orphans_for_connector_type(
         jwt_token=jwt_token,
         existing_file_ids=existing_file_ids,
         id_to_filename=id_to_filename,
+        remote_files=remote_files,
     )
     if orphans is not None:
         synced_count = max(0, synced_count - len(orphans))
-    return orphans, synced_count
+
+    updates = None
+    if remote_files is not None and _connector_uses_timestamp_change_detection(connector_type):
+        state_map = await get_synced_file_state_map(
+            connector_type=connector_type,
+            user_id=user_id,
+            session_manager=session_manager,
+            jwt_token=jwt_token,
+        )
+        updates = [
+            {"document_id": fid, "filename": id_to_filename.get(fid, "")}
+            for fid in existing_file_ids
+            if fid in remote_files
+            and classify_remote_file_change(
+                fid,
+                remote_files[fid].get("modified_time"),
+                True,
+                state_map,
+                remote_files[fid].get("etag"),
+            )
+            == "changed"
+        ]
+
+    return ConnectorSyncPreview(orphans=orphans, updates=updates, synced_count=synced_count)
 
 
 async def connector_sync_preview(
@@ -2349,14 +2433,15 @@ async def connector_sync_preview(
     session: AsyncSession = Depends(get_db_session),
 ):
     """Preview the impact of syncing a connector type without performing any
-    deletion or ingest. Returns the list of orphan files (present in OpenSearch
-    but no longer at the source) by filename, plus the total synced count.
+    deletion or ingest. Returns the orphan files (present in OpenSearch but no
+    longer at the source) and the files whose source copy has changed, both by
+    filename, plus the total synced count.
     """
     if denied := await _connector_access_denied(request, session, connector_type):
         return denied
 
     try:
-        orphans, synced_count = await _preview_orphans_for_connector_type(
+        preview = await _preview_for_connector_type(
             connector_type=connector_type,
             user_id=user.user_id,
             connector_service=connector_service,
@@ -2366,9 +2451,13 @@ async def connector_sync_preview(
         return JSONResponse(
             {
                 "connector_type": connector_type,
-                "synced_count": synced_count,
-                "orphans": orphans or [],
-                "orphans_available": orphans is not None,
+                "synced_count": preview.synced_count,
+                "orphans": preview.orphans or [],
+                "orphans_available": preview.orphans is not None,
+                "updates": preview.updates or [],
+                # False means this connector can't tell ahead of time (it decides
+                # per file during ingest), not that nothing will be updated.
+                "updates_available": preview.updates is not None,
             },
             status_code=200,
         )
@@ -2385,20 +2474,22 @@ async def connectors_sync_all_preview(
     session: AsyncSession = Depends(get_db_session),
 ):
     """Preview the impact of sync-all-connectors across every cloud connector
-    type. Returns orphan filenames grouped by connector_type plus a per-type
-    synced count.
+    type. Returns orphan and changed filenames grouped by connector_type plus a
+    per-type synced count.
     """
     try:
         orphans_by_type: dict[str, list[dict[str, str]]] = {}
         synced_count_by_type: dict[str, int] = {}
         orphans_available_by_type: dict[str, bool] = {}
+        updates_by_type: dict[str, list[dict[str, str]]] = {}
+        updates_available_by_type: dict[str, bool] = {}
 
         connector_types = await _allowed_connector_types_for_request(
             request, session, _cloud_connector_types()
         )
         for connector_type in connector_types:
             try:
-                orphans, synced_count = await _preview_orphans_for_connector_type(
+                preview = await _preview_for_connector_type(
                     connector_type=connector_type,
                     user_id=user.user_id,
                     connector_service=connector_service,
@@ -2411,21 +2502,25 @@ async def connectors_sync_all_preview(
                     connector_type=connector_type,
                     error=str(e),
                 )
-                orphans, synced_count = None, 0
+                preview = ConnectorSyncPreview(orphans=None, updates=None, synced_count=0)
 
             # Only include connector types that have something synced.
-            if synced_count == 0 and not orphans:
+            if preview.synced_count == 0 and not preview.orphans:
                 continue
 
-            synced_count_by_type[connector_type] = synced_count
-            orphans_by_type[connector_type] = orphans or []
-            orphans_available_by_type[connector_type] = orphans is not None
+            synced_count_by_type[connector_type] = preview.synced_count
+            orphans_by_type[connector_type] = preview.orphans or []
+            orphans_available_by_type[connector_type] = preview.orphans is not None
+            updates_by_type[connector_type] = preview.updates or []
+            updates_available_by_type[connector_type] = preview.updates is not None
 
         return JSONResponse(
             {
                 "orphans_by_type": orphans_by_type,
                 "synced_count_by_type": synced_count_by_type,
                 "orphans_available_by_type": orphans_available_by_type,
+                "updates_by_type": updates_by_type,
+                "updates_available_by_type": updates_available_by_type,
             },
             status_code=200,
         )

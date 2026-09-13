@@ -205,6 +205,8 @@ export const KnowledgeSearchBar = () => {
         isSyncAll
         orphansByType={syncPreview?.orphans_by_type}
         orphansAvailableByType={syncPreview?.orphans_available_by_type}
+        updatesByType={syncPreview?.updates_by_type}
+        updatesAvailableByType={syncPreview?.updates_available_by_type}
         syncedCountByType={syncPreview?.synced_count_by_type}
       />
     </form>
