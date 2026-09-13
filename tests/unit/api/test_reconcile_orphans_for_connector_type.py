@@ -238,8 +238,14 @@ async def test_happy_path_deletes_orphans(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_happy_path_private_scopes_to_owner(monkeypatch):
-    """Private orphan cleanup must filter by connector_type and owner."""
+async def test_happy_path_private_scopes_to_owner_or_ownerless(monkeypatch):
+    """Orphan cleanup filters by connector_type and "owned by me OR ownerless".
+
+    The ownerless branch matters for COS: a file ingested with the share-all
+    toggle has no owner field, and sync has no record of that, so an owner-only
+    filter would leave its chunks behind after the object is deleted at source.
+    Another user's private document stays out of scope via the owner term.
+    """
     from api.connectors import reconcile_orphans_for_connector_type
 
     conn = _make_connection("c1")
@@ -261,7 +267,15 @@ async def test_happy_path_private_scopes_to_owner(monkeypatch):
     search_body = opensearch_client.search.await_args.kwargs["body"]
     filters = search_body["query"]["bool"]["filter"]
     assert {"term": {"connector_type": "google_drive"}} in filters
-    assert {"term": {"owner": "alice"}} in filters
+    assert {
+        "bool": {
+            "should": [
+                {"term": {"owner": "alice"}},
+                {"bool": {"must_not": {"exists": {"field": "owner"}}}},
+            ],
+            "minimum_should_match": 1,
+        }
+    } in filters
 
 
 @pytest.mark.asyncio
