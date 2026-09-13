@@ -459,7 +459,7 @@ async def test_orphan_delete_matches_both_id_layouts(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_preview_subtracts_orphans_from_resync_count(monkeypatch):
-    from api.connectors import _preview_orphans_for_connector_type
+    from api.connectors import _preview_for_connector_type
 
     monkeypatch.setattr(
         "api.connectors.get_synced_file_ids_for_connector",
@@ -468,6 +468,10 @@ async def test_preview_subtracts_orphans_from_resync_count(monkeypatch):
     monkeypatch.setattr(
         "api.connectors.get_synced_id_to_filename_map",
         AsyncMock(return_value={"b": "b.pdf", "e": "e.pdf"}),
+    )
+    monkeypatch.setattr(
+        "api.connectors.list_remote_files_for_connector_type",
+        AsyncMock(return_value={"a": {"id": "a"}, "c": {"id": "c"}, "d": {"id": "d"}}),
     )
     monkeypatch.setattr(
         "api.connectors.compute_orphans_for_connector_type",
@@ -479,7 +483,7 @@ async def test_preview_subtracts_orphans_from_resync_count(monkeypatch):
         ),
     )
 
-    orphans, synced_count = await _preview_orphans_for_connector_type(
+    preview = await _preview_for_connector_type(
         connector_type="google_drive",
         user_id="alice",
         connector_service=MagicMock(),
@@ -487,11 +491,88 @@ async def test_preview_subtracts_orphans_from_resync_count(monkeypatch):
         jwt_token="token",
     )
 
-    assert synced_count == 4
-    assert orphans == [
+    assert preview.synced_count == 4
+    assert preview.orphans == [
         {"document_id": "b", "filename": "b.pdf"},
         {"document_id": "e", "filename": "e.pdf"},
     ]
+    # google_drive re-processes every file on sync and decides per file after
+    # downloading it, so the update count cannot be known in advance.
+    assert preview.updates is None
+
+
+@pytest.mark.asyncio
+async def test_preview_reports_updates_for_timestamp_connectors(monkeypatch):
+    """Bucket connectors can say which files a sync will re-ingest, and the
+    preview reuses the orphan pass's listing rather than enumerating twice."""
+    from api.connectors import SyncedFileState, _preview_for_connector_type
+
+    monkeypatch.setattr(
+        "api.connectors.get_synced_file_ids_for_connector",
+        AsyncMock(return_value=(["c::a", "c::b", "c::gone"], [], "connector_file_id")),
+    )
+    monkeypatch.setattr(
+        "api.connectors.get_synced_id_to_filename_map",
+        AsyncMock(return_value={"c::a": "a.pdf", "c::b": "b.pdf", "c::gone": "gone.pdf"}),
+    )
+    listing = AsyncMock(
+        return_value={
+            "c::a": {"id": "c::a", "etag": "etag-a"},  # untouched
+            "c::b": {"id": "c::b", "etag": "etag-b-v2"},  # overwritten
+        }
+    )
+    monkeypatch.setattr("api.connectors.list_remote_files_for_connector_type", listing)
+    monkeypatch.setattr(
+        "api.connectors.get_synced_file_state_map",
+        AsyncMock(
+            return_value={
+                "c::a": SyncedFileState(content_etag="etag-a"),
+                "c::b": SyncedFileState(content_etag="etag-b"),
+            }
+        ),
+    )
+
+    preview = await _preview_for_connector_type(
+        connector_type="ibm_cos",
+        user_id="alice",
+        connector_service=MagicMock(),
+        session_manager=MagicMock(),
+        jwt_token="token",
+    )
+
+    assert preview.updates == [{"document_id": "c::b", "filename": "b.pdf"}]
+    # Deleted at source, so it is an orphan — not an update.
+    assert preview.orphans == [{"document_id": "c::gone", "filename": "gone.pdf"}]
+    assert preview.synced_count == 2
+    listing.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_preview_reports_updates_unavailable_when_listing_aborts(monkeypatch):
+    """Strict gating: an unreachable source means unknown, not "no updates"."""
+    from api.connectors import _preview_for_connector_type
+
+    monkeypatch.setattr(
+        "api.connectors.get_synced_file_ids_for_connector",
+        AsyncMock(return_value=(["c::a"], [], "connector_file_id")),
+    )
+    monkeypatch.setattr(
+        "api.connectors.get_synced_id_to_filename_map", AsyncMock(return_value={"c::a": "a.pdf"})
+    )
+    monkeypatch.setattr(
+        "api.connectors.list_remote_files_for_connector_type", AsyncMock(return_value=None)
+    )
+
+    preview = await _preview_for_connector_type(
+        connector_type="ibm_cos",
+        user_id="alice",
+        connector_service=MagicMock(),
+        session_manager=MagicMock(),
+        jwt_token="token",
+    )
+
+    assert preview.orphans is None
+    assert preview.updates is None
 
 
 @pytest.mark.asyncio
