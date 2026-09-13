@@ -554,7 +554,7 @@ async def delete_orphan_documents(
     jwt_token: str | None,
     *,
     connector_type: str | None = None,
-    shared: bool = False,
+    shared: bool | None = False,
 ) -> int:
     """Delete OpenSearch chunks for the given orphan IDs. Returns the number of
     chunks deleted (0 on failure).
@@ -563,6 +563,13 @@ async def delete_orphan_documents(
     ingest path, ``document_id`` for the Langflow path) via
     ``connectors.chunk_cleanup``, so callers no longer need to track which
     field the ids came from.
+
+    ``shared`` is the caller's explicit intent and is None on the re-sync paths,
+    which have no record of how each file was ingested. Anything but an explicit
+    True therefore deletes across both layouts (owned by this user *or*
+    ownerless) rather than owner-only: a COS file ingested with the share-all
+    toggle has no ``owner``, and an owner-scoped delete would leave its chunks
+    in the index after the object was removed at the source.
     """
     if not orphan_ids:
         return 0
@@ -575,7 +582,8 @@ async def delete_orphan_documents(
             opensearch_client,
             connector_type=connector_type,
             owner_user_id=None if shared else user_id,
-            shared=shared,
+            shared=bool(shared),
+            include_shared=not shared,
             refresh=True,
         )
     except Exception as e:
@@ -595,7 +603,7 @@ async def reconcile_orphans_for_connector_type(
     jwt_token: str | None,
     existing_file_ids: list[str],
     *,
-    shared: bool = False,
+    shared: bool | None = False,
 ) -> list[str]:
     """Compute and delete orphans for a connector type. Thin wrapper around
     compute_orphans_for_connector_type + delete_orphan_documents preserved for
@@ -646,7 +654,7 @@ async def _sync_existing_connector_files(
     id_field: str,
     *,
     ingest_settings: dict[str, Any] | None = None,
-    shared: bool = False,
+    shared: bool | None = None,
     reconcile: bool = True,
     max_files: int | None = None,
 ) -> dict[str, Any]:
@@ -658,6 +666,13 @@ async def _sync_existing_connector_files(
     True, then either timestamp change detection (updates-only re-ingest) or a
     full re-sync runs depending on the connector's ``CHANGE_DETECTION``
     capability; connectors with no stored ids fall back to filename filtering.
+
+    ``shared`` defaults to None — "inherit". This flow re-syncs files that are
+    already indexed, and nothing records whether each was ingested with the COS
+    share-all toggle, so each file's current indexed state decides (see
+    ``ConnectorFileProcessor._resolve_shared``). Passing False here instead
+    would make sync treat every shared COS file as private, skip it as an
+    unreplaceable duplicate, and leave the stale content in the index.
 
     Returns an outcome dict the caller maps onto its own response shape:
       * ``{"outcome": "synced", "task_id": ...}``
@@ -771,8 +786,11 @@ class ConnectorSyncBody(BaseModel):
     preview: bool = False
     # When True (COS only), index chunks without an owner field so OpenSearch DLS
     # makes them visible to all users in the instance. Temporary CIO mechanism;
-    # not a full ACL feature. Defaults to False (private).
-    shared: bool = False
+    # not a full ACL feature.
+    # Omitted/None means "no explicit intent": new files are indexed private,
+    # and files already in the index keep the sharing state they have. The
+    # connector UI already sends the flag only when the toggle is on screen.
+    shared: bool | None = None
 
 
 class ConnectorCheckDuplicatesBody(BaseModel):
@@ -1848,12 +1866,16 @@ async def connector_webhook(
                 # Trigger incremental sync for affected files. The webhook fires
                 # because the file changed, so replace the indexed copy instead of
                 # tripping the duplicate-filename guard meant for manual uploads.
+                # shared=None like the other re-sync paths: no user is in the
+                # loop to express an intent, so each file keeps the sharing state
+                # it already has.
                 task_id = await connector_service.sync_specific_files(
                     connection.connection_id,
                     connection.user_id,
                     in_scope,
                     jwt_token=jwt_token,
                     replace_duplicates=_connector_sync_should_replace(connector_type),
+                    shared=None,
                 )
 
                 result = {

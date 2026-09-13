@@ -196,7 +196,7 @@ class ConnectorService:
         filename_filter: set = None,
         ingest_settings: dict[str, Any] | None = None,
         replace_duplicates: bool = False,
-        shared: bool = False,
+        shared: bool | None = False,
     ) -> str:
         """
         Sync files from a connector connection using existing task tracking system.
@@ -335,7 +335,7 @@ class ConnectorService:
         ingest_settings: dict[str, Any] | None = None,
         replace_duplicates: bool = False,
         preview_mode: bool = False,
-        shared: bool = False,
+        shared: bool | None = False,
     ) -> str:
         """
         Sync specific files by their IDs (used for webhook-triggered syncs or manual selection).
