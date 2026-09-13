@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">Secure model request flow</title>
+  <desc id="desc">A request moves from a user through Langflow and the OpenRAG gateway to LiteLLM and the selected provider. Provider API keys remain within OpenRAG.</desc>
+  <defs>
+    <linearGradient id="header" x1="0" x2="1"><stop offset="0" stop-color="#0f172a"/><stop offset="1" stop-color="#172554"/></linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="7" stdDeviation="8" flood-color="#0f172a" flood-opacity=".12"/></filter>
+    <marker id="arrow" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto"><path d="M0,0 L11,5.5 L0,11 Z" fill="#2563eb"/></marker>
+    <marker id="return" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto"><path d="M0,0 L11,5.5 L0,11 Z" fill="#64748b"/></marker>
+    <style>
+      .heading{font-family:Inter,Arial,sans-serif;font-weight:700;fill:#fff}.label{font-family:Inter,Arial,sans-serif;font-weight:700;fill:#0f172a}.body{font-family:Inter,Arial,sans-serif;fill:#475569}.small{font-family:Inter,Arial,sans-serif;fill:#64748b}.request{stroke:#2563eb;stroke-width:4;fill:none;marker-end:url(#arrow)}.response{stroke:#64748b;stroke-width:3;fill:none;stroke-dasharray:9 8;marker-end:url(#return)}
+    </style>
+  </defs>
+  <rect width="1600" height="900" fill="#f8fafc"/>
+  <rect width="1600" height="156" fill="url(#header)"/>
+  <text x="80" y="76" class="heading" font-size="38">Secure Model Request Flow</text>
+  <text x="80" y="116" font-family="Inter,Arial,sans-serif" font-size="21" fill="#cbd5e1">One OpenAI-compatible request path; provider credentials never leave OpenRAG.</text>
+
+  <!-- Security callout -->
+  <rect x="80" y="190" width="1440" height="92" rx="17" fill="#ecfdf5" stroke="#86efac" stroke-width="2"/>
+  <circle cx="126" cy="236" r="22" fill="#bbf7d0"/>
+  <path d="M116 237l7 8 15-18" fill="none" stroke="#15803d" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="168" y="230" class="label" font-size="21">Security boundary</text>
+  <text x="168" y="258" class="body" font-size="18">Langflow receives a short-lived OpenRAG hop token—not an upstream OpenAI, Azure, Anthropic, or other provider API key.</text>
+
+  <!-- Actors -->
+  <g filter="url(#shadow)">
+    <rect x="88" y="352" width="220" height="112" rx="18" fill="#fff" stroke="#cbd5e1"/>
+    <rect x="380" y="352" width="220" height="112" rx="18" fill="#fff" stroke="#cbd5e1"/>
+    <rect x="672" y="332" width="260" height="152" rx="18" fill="#eff6ff" stroke="#60a5fa" stroke-width="2"/>
+    <rect x="1004" y="352" width="220" height="112" rx="18" fill="#fff" stroke="#c4b5fd"/>
+    <rect x="1296" y="352" width="220" height="112" rx="18" fill="#fff" stroke="#cbd5e1"/>
+  </g>
+  <text x="198" y="398" text-anchor="middle" class="label" font-size="21">User / OpenRAG UI</text>
+  <text x="198" y="428" text-anchor="middle" class="body" font-size="16">Starts an agent or ingest run</text>
+  <text x="490" y="398" text-anchor="middle" class="label" font-size="21">Langflow flow</text>
+  <text x="490" y="428" text-anchor="middle" class="body" font-size="16">Uses the OpenRAG LLM component</text>
+  <text x="802" y="382" text-anchor="middle" class="label" font-size="22">OpenRAG /v1 gateway</text>
+  <text x="802" y="414" text-anchor="middle" class="body" font-size="16">Resolves provider + model</text>
+  <text x="802" y="440" text-anchor="middle" class="body" font-size="16">Loads credentials server-side</text>
+  <text x="1114" y="398" text-anchor="middle" class="label" font-size="21">LiteLLM</text>
+  <text x="1114" y="428" text-anchor="middle" class="body" font-size="16">Normalizes the provider call</text>
+  <text x="1406" y="398" text-anchor="middle" class="label" font-size="21">Model provider</text>
+  <text x="1406" y="428" text-anchor="middle" class="body" font-size="16">Azure, OpenAI, or another vendor</text>
+
+  <!-- Lifelines -->
+  <g stroke="#cbd5e1" stroke-width="2" stroke-dasharray="8 9">
+    <path d="M198 465V810"/><path d="M490 465V810"/><path d="M802 485V810"/><path d="M1114 465V810"/><path d="M1406 465V810"/>
+  </g>
+
+  <!-- Request arrows -->
+  <path d="M210 530H474" class="request"/>
+  <rect x="268" y="494" width="151" height="28" rx="8" fill="#dbeafe"/>
+  <text x="344" y="514" text-anchor="middle" class="small" font-size="14" font-weight="700">1. Run flow</text>
+
+  <path d="M502 594H786" class="request"/>
+  <rect x="562" y="549" width="166" height="36" rx="8" fill="#dbeafe"/>
+  <text x="645" y="570" text-anchor="middle" class="small" font-size="14" font-weight="700">2. Model + hop token</text>
+
+  <path d="M818 658H1098" class="request"/>
+  <rect x="866" y="613" width="183" height="36" rx="8" fill="#dbeafe"/>
+  <text x="958" y="634" text-anchor="middle" class="small" font-size="14" font-weight="700">3. Resolved provider call</text>
+
+  <path d="M1130 722H1390" class="request"/>
+  <rect x="1190" y="677" width="140" height="36" rx="8" fill="#dbeafe"/>
+  <text x="1260" y="698" text-anchor="middle" class="small" font-size="14" font-weight="700">4. Native API call</text>
+
+  <!-- Return arrows -->
+  <path d="M1390 767H1130" class="response"/>
+  <path d="M1098 785H818" class="response"/>
+  <path d="M786 803H502" class="response"/>
+  <path d="M474 821H210" class="response"/>
+  <text x="802" y="862" text-anchor="middle" class="body" font-size="19">Normalized response returns through the same path.</text>
+
+  <!-- Credential store -->
+  <g filter="url(#shadow)">
+    <rect x="664" y="520" width="276" height="68" rx="14" fill="#fff7ed" stroke="#fdba74"/>
+  </g>
+  <path d="M699 546v-8a13 13 0 0 1 26 0v8m-30 0h34v25h-34z" fill="none" stroke="#c2410c" stroke-width="3" stroke-linejoin="round"/>
+  <text x="750" y="552" class="label" font-size="17">Credential store</text>
+  <text x="750" y="574" class="small" font-size="14">Only the gateway can use it</text>
+  <path d="M802 520V495" stroke="#c2410c" stroke-width="3" marker-end="url(#arrow)"/>
+</svg>

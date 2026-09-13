@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">Azure provider distinction in OpenRAG</title>
+  <desc id="desc">Azure OpenAI Service and Azure AI Foundry use separate provider keys and routes through LiteLLM.</desc>
+  <defs>
+    <linearGradient id="header" x1="0" x2="1"><stop offset="0" stop-color="#0f172a"/><stop offset="1" stop-color="#172554"/></linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="7" stdDeviation="8" flood-color="#0f172a" flood-opacity=".12"/></filter>
+    <marker id="arrow" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto"><path d="M0,0 L11,5.5 L0,11 Z" fill="#64748b"/></marker>
+    <style>.heading{font-family:Inter,Arial,sans-serif;font-weight:700;fill:#fff}.label{font-family:Inter,Arial,sans-serif;font-weight:700;fill:#0f172a}.body{font-family:Inter,Arial,sans-serif;fill:#475569}.small{font-family:Inter,Arial,sans-serif;fill:#64748b}.line{stroke:#64748b;stroke-width:3;fill:none;marker-end:url(#arrow)}</style>
+  </defs>
+  <rect width="1600" height="900" fill="#f8fafc"/>
+  <rect width="1600" height="156" fill="url(#header)"/>
+  <text x="80" y="76" class="heading" font-size="38">Azure Is Two Provider Paths, Not One</text>
+  <text x="80" y="116" font-family="Inter,Arial,sans-serif" font-size="21" fill="#cbd5e1">Separate LiteLLM keys preserve the right catalogue, deployment model, credentials, and request routing.</text>
+
+  <!-- Selection -->
+  <g filter="url(#shadow)"><rect x="570" y="200" width="460" height="100" rx="20" fill="#fff" stroke="#93c5fd" stroke-width="2"/></g>
+  <text x="800" y="242" text-anchor="middle" class="label" font-size="24">User selects a model</text>
+  <text x="800" y="272" text-anchor="middle" class="body" font-size="17">The provider tag determines the correct route.</text>
+  <path d="M800 301V365" class="line"/>
+
+  <!-- Azure OpenAI -->
+  <g filter="url(#shadow)"><rect x="120" y="398" width="610" height="320" rx="24" fill="#eff6ff" stroke="#60a5fa" stroke-width="2"/></g>
+  <rect x="160" y="434" width="96" height="34" rx="17" fill="#0284c7"/>
+  <text x="208" y="457" text-anchor="middle" font-family="Inter,Arial,sans-serif" font-size="16" font-weight="700" fill="#fff">azure</text>
+  <text x="280" y="460" class="label" font-size="27">Azure OpenAI Service</text>
+  <text x="160" y="514" class="body" font-size="19">Best for Azure OpenAI resource deployments.</text>
+  <g>
+    <rect x="160" y="550" width="530" height="53" rx="12" fill="#fff"/>
+    <text x="184" y="583" class="label" font-size="17">Customer-defined deployment names</text>
+    <rect x="160" y="620" width="530" height="53" rx="12" fill="#fff"/>
+    <text x="184" y="653" class="label" font-size="17">Includes Azure OpenAI catalogue entries such as GPT-4.1</text>
+  </g>
+
+  <!-- Foundry -->
+  <g filter="url(#shadow)"><rect x="870" y="398" width="610" height="320" rx="24" fill="#faf5ff" stroke="#c4b5fd" stroke-width="2"/></g>
+  <rect x="910" y="434" width="112" height="34" rx="17" fill="#7c3aed"/>
+  <text x="966" y="457" text-anchor="middle" font-family="Inter,Arial,sans-serif" font-size="16" font-weight="700" fill="#fff">azure_ai</text>
+  <text x="1046" y="460" class="label" font-size="27">Azure AI Foundry</text>
+  <text x="910" y="514" class="body" font-size="19">Best for the broader Azure AI Foundry catalogue.</text>
+  <g>
+    <rect x="910" y="550" width="530" height="53" rx="12" fill="#fff"/>
+    <text x="934" y="583" class="label" font-size="17">Foundry-specific endpoint and credential configuration</text>
+    <rect x="910" y="620" width="530" height="53" rx="12" fill="#fff"/>
+    <text x="934" y="653" class="label" font-size="17">Catalogue can include Phi, Llama, Mistral, Cohere, and more</text>
+  </g>
+
+  <!-- Branch connector -->
+  <path d="M800 365H425V383" class="line"/>
+  <path d="M800 365H1175V383" class="line"/>
+
+  <!-- Shared adapter -->
+  <g filter="url(#shadow)"><rect x="440" y="774" width="720" height="74" rx="18" fill="#0f172a"/></g>
+  <text x="800" y="806" text-anchor="middle" font-family="Inter,Arial,sans-serif" font-size="22" font-weight="700" fill="#fff">Both routes use OpenRAG + LiteLLM</text>
+  <text x="800" y="832" text-anchor="middle" font-family="Inter,Arial,sans-serif" font-size="16" fill="#cbd5e1">One OpenAI-compatible client experience; correct provider-specific execution underneath.</text>
+  <path d="M425 719V758H650" class="line"/>
+  <path d="M1175 719V758H950" class="line"/>
+</svg>

@@ -1,0 +1,114 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">OpenRAG model provider architecture</title>
+  <desc id="desc">OpenRAG owns provider policy, credentials and routing. LiteLLM provides the common adapter to model providers.</desc>
+  <defs>
+    <linearGradient id="header" x1="0" x2="1">
+      <stop offset="0" stop-color="#0f172a"/><stop offset="1" stop-color="#172554"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="7" stdDeviation="8" flood-color="#0f172a" flood-opacity=".12"/>
+    </filter>
+    <marker id="arrow" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto">
+      <path d="M0,0 L11,5.5 L0,11 Z" fill="#64748b"/>
+    </marker>
+    <style>
+      .heading { font-family: Inter, Arial, sans-serif; font-weight: 700; fill: #ffffff; }
+      .label { font-family: Inter, Arial, sans-serif; font-weight: 700; fill: #0f172a; }
+      .body { font-family: Inter, Arial, sans-serif; fill: #475569; }
+      .small { font-family: Inter, Arial, sans-serif; fill: #64748b; }
+      .line { stroke: #64748b; stroke-width: 3; fill: none; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <rect width="1600" height="900" fill="#f8fafc"/>
+  <rect width="1600" height="156" fill="url(#header)"/>
+  <text x="80" y="76" class="heading" font-size="38">Model Provider Architecture</text>
+  <text x="80" y="116" font-family="Inter, Arial, sans-serif" font-size="21" fill="#cbd5e1">OpenRAG centralizes provider policy, credentials, and routing behind one consistent experience.</text>
+
+  <!-- Section labels -->
+  <text x="115" y="214" class="small" font-size="16" font-weight="700" letter-spacing="1.5">CONTROL PLANE</text>
+  <text x="610" y="214" class="small" font-size="16" font-weight="700" letter-spacing="1.5">OPENRAG RUNTIME</text>
+  <text x="1230" y="214" class="small" font-size="16" font-weight="700" letter-spacing="1.5">MODEL ECOSYSTEM</text>
+
+  <!-- Inputs -->
+  <g filter="url(#shadow)">
+    <rect x="80" y="246" width="330" height="132" rx="18" fill="#ffffff" stroke="#cbd5e1"/>
+  </g>
+  <circle cx="124" cy="292" r="21" fill="#e0f2fe"/>
+  <path d="M124 279a11 11 0 1 0 0 22a11 11 0 0 0 0-22m-19 45c1-12 9-19 19-19s18 7 19 19" fill="none" stroke="#0284c7" stroke-width="4" stroke-linecap="round"/>
+  <text x="162" y="291" class="label" font-size="22">Platform administrator</text>
+  <text x="162" y="323" class="body" font-size="17">Controls which providers and</text>
+  <text x="162" y="347" class="body" font-size="17">models the deployment offers</text>
+
+  <g filter="url(#shadow)">
+    <rect x="80" y="478" width="330" height="166" rx="18" fill="#ffffff" stroke="#cbd5e1"/>
+  </g>
+  <rect x="106" y="508" width="45" height="55" rx="7" fill="#ede9fe"/>
+  <path d="M117 524h23m-23 12h23m-23 12h15" stroke="#7c3aed" stroke-width="3" stroke-linecap="round"/>
+  <text x="172" y="526" class="label" font-size="22">model_providers.yaml</text>
+  <text x="172" y="556" class="body" font-size="17">Visibility by run mode</text>
+  <text x="172" y="582" class="body" font-size="17">Custom models and exclusions</text>
+  <text x="172" y="608" class="body" font-size="17">Deployment-specific policy</text>
+
+  <!-- Control arrows -->
+  <path d="M245 379 V455" class="line"/>
+  <text x="263" y="425" class="small" font-size="15">configures</text>
+
+  <!-- OpenRAG panel -->
+  <rect x="510" y="246" width="580" height="520" rx="26" fill="#eff6ff" stroke="#93c5fd" stroke-width="2"/>
+  <text x="548" y="293" class="label" font-size="22">OpenRAG</text>
+  <text x="548" y="320" class="body" font-size="17">The secure control point for every model request</text>
+
+  <g filter="url(#shadow)">
+    <rect x="548" y="359" width="504" height="133" rx="16" fill="#ffffff"/>
+  </g>
+  <text x="580" y="404" class="label" font-size="23">Settings and onboarding</text>
+  <text x="580" y="436" class="body" font-size="17">Dynamic provider cards, credential forms,</text>
+  <text x="580" y="460" class="body" font-size="17">and chat / embedding model pickers</text>
+
+  <g filter="url(#shadow)">
+    <rect x="548" y="549" width="504" height="172" rx="16" fill="#0f172a"/>
+  </g>
+  <text x="580" y="598" font-family="Inter, Arial, sans-serif" font-size="23" font-weight="700" fill="#ffffff">OpenAI-compatible /v1 gateway</text>
+  <text x="580" y="632" font-family="Inter, Arial, sans-serif" font-size="17" fill="#cbd5e1">Resolves provider + model</text>
+  <text x="580" y="658" font-family="Inter, Arial, sans-serif" font-size="17" fill="#cbd5e1">Retrieves credentials server-side</text>
+  <text x="580" y="684" font-family="Inter, Arial, sans-serif" font-size="17" fill="#cbd5e1">Normalizes chat completions and embeddings</text>
+
+  <path d="M800 493 V535" class="line"/>
+
+  <!-- LiteLLM -->
+  <g filter="url(#shadow)">
+    <rect x="1160" y="315" width="335" height="188" rx="20" fill="#ffffff" stroke="#c4b5fd" stroke-width="2"/>
+  </g>
+  <circle cx="1206" cy="364" r="22" fill="#ede9fe"/>
+  <path d="M1194 370l12-21 12 21m-18-9h12" fill="none" stroke="#7c3aed" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="1244" y="370" class="label" font-size="25">LiteLLM</text>
+  <text x="1190" y="414" class="body" font-size="17">Common provider adapter</text>
+  <text x="1190" y="441" class="body" font-size="17">Model and capability catalogue</text>
+  <text x="1190" y="468" class="body" font-size="17">Provider credential metadata</text>
+
+  <path d="M1054 635 C1122 635 1120 503 1150 474" class="line"/>
+  <text x="1092" y="581" class="small" font-size="15">routes requests</text>
+
+  <!-- Providers -->
+  <g filter="url(#shadow)">
+    <rect x="1160" y="558" width="335" height="74" rx="14" fill="#ffffff" stroke="#cbd5e1"/>
+    <rect x="1160" y="650" width="335" height="74" rx="14" fill="#ffffff" stroke="#cbd5e1"/>
+    <rect x="1160" y="742" width="335" height="74" rx="14" fill="#ffffff" stroke="#cbd5e1"/>
+  </g>
+  <rect x="1182" y="577" width="10" height="36" rx="5" fill="#10b981"/>
+  <text x="1212" y="604" class="label" font-size="20">OpenAI</text>
+  <rect x="1182" y="669" width="10" height="36" rx="5" fill="#0284c7"/>
+  <text x="1212" y="688" class="label" font-size="20">Azure OpenAI Service</text>
+  <rect x="1182" y="761" width="10" height="36" rx="5" fill="#7c3aed"/>
+  <text x="1212" y="780" class="label" font-size="20">Azure AI Foundry + others</text>
+  <text x="1212" y="802" class="small" font-size="14">Anthropic · watsonx · Ollama · private gateways</text>
+
+  <path d="M1327 505 V542" class="line"/>
+  <path d="M1327 505 V635" class="line"/>
+  <path d="M1327 505 V727" class="line"/>
+
+  <!-- Footer takeaway -->
+  <rect x="80" y="808" width="1015" height="52" rx="12" fill="#dbeafe"/>
+  <text x="106" y="842" class="label" font-size="19">Outcome: adding a supported provider becomes configuration and policy work—not a bespoke integration project.</text>
+</svg>
