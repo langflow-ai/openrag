@@ -190,6 +190,46 @@ def test_rhoai_env_without_a_token_stays_unconfigured(monkeypatch, tmp_path):
     assert config.providers.custom["rhoai"].configured is False
 
 
+def test_rhoai_tls_env_alone_reaches_a_stored_config(monkeypatch, tmp_path):
+    """A CA path mounted in a later rollout arrives as `RHOAI_TLS_VERIFY` on its
+    own, against a config that already holds the endpoint and token. It has to
+    land, and it must not disturb `configured`."""
+    import yaml
+
+    from config.config_manager import ConfigManager
+
+    _clear_rhoai_env(monkeypatch)
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        yaml.safe_dump(
+            {
+                "providers": {
+                    "custom": {
+                        "rhoai": {
+                            "credentials": {
+                                "api_base": "https://chat.svc:8443/v1",
+                                "api_key": "sha256~token",
+                            },
+                            "configured": True,
+                        }
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("RHOAI_TLS_VERIFY", "/var/run/secrets/service-ca.crt")
+
+    config = ConfigManager(config_file=config_file).load_config()
+
+    assert config.providers.custom["rhoai"].configured is True
+    assert config.providers.stored_credentials("rhoai") == {
+        "api_base": "https://chat.svc:8443/v1",
+        "api_key": "sha256~token",
+        "ssl_verify": "/var/run/secrets/service-ca.crt",
+    }
+
+
 def test_rhoai_env_is_ignored_once_settings_have_been_edited(monkeypatch, tmp_path):
     """The trap worth an explicit test: the first Settings save sets
     `config.edited` and silently freezes every environment override, which on a

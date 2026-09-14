@@ -817,7 +817,7 @@ class ConfigManager:
         rhoai_embeddings_endpoint = os.getenv("RHOAI_EMBEDDINGS_ENDPOINT")
         rhoai_api_key = os.getenv("RHOAI_API_KEY")
         rhoai_tls_verify = os.getenv("RHOAI_TLS_VERIFY")
-        if rhoai_endpoint or rhoai_embeddings_endpoint or rhoai_api_key:
+        if rhoai_endpoint or rhoai_embeddings_endpoint or rhoai_api_key or rhoai_tls_verify:
             self._seed_custom_provider_credentials(
                 config_data,
                 "rhoai",
