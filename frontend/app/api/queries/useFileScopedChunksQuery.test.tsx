@@ -122,7 +122,7 @@ describe("useFileScopedChunksQuery", () => {
 
     await waitFor(() => expect(result.current.isFetching).toBe(false));
     expect(result.current.file?.filename).toBe("test.pdf");
-    expect(result.current.file?.chunks[0].highlights).toBeDefined();
+    expect(result.current.file?.chunks?.[0]?.highlights).toBeDefined();
   });
 
   it("finds the matching file from multiple files in response", async () => {

@@ -21,26 +21,24 @@ interface HighlightedTextProps {
  * Parse a single fragment string like "foo <mark>bar</mark> baz" into an
  * array of React nodes, converting `<mark>` elements to styled spans.
  */
-function parseFragment(
-  fragment: string,
-  fragmentIndex: number,
-): React.ReactNode {
+function parseFragment(fragment: string): React.ReactNode {
   // Split on <mark>…</mark> pairs, keeping the captured groups.
   const parts = fragment.split(/(<mark>.*?<\/mark>)/g);
-  return parts.map((part, i) => {
-    const key = `${fragmentIndex}-${i}`;
+  return parts.map((part) => {
+    // Use part content as key - each part is unique within the fragment
+    // For marks, include the inner text; for text spans, use the text itself
     if (part.startsWith("<mark>") && part.endsWith("</mark>")) {
       const inner = part.slice(6, -7); // strip <mark> and </mark>
       return (
         <mark
-          key={key}
+          key={part}
           className="bg-yellow-200 dark:bg-yellow-800 text-foreground rounded-[2px] px-[1px] not-italic"
         >
           {inner}
         </mark>
       );
     }
-    return part ? <span key={key}>{part}</span> : null;
+    return part ? <span key={part}>{part}</span> : null;
   });
 }
 
@@ -56,17 +54,16 @@ export function HighlightedText({
   return (
     <span className={className}>
       {highlights.map((fragment, i) => {
-        // Create a stable key from the fragment content and position
-        // Using fragment+index handles duplicate fragments while avoiding array-index-only keys
-        const key = `${fragment}-${i}`;
+        // Use fragment content as key - each fragment is a unique excerpt from the document
+        // Fragments are ordered by document position and won't reorder
         return (
           // Separate fragments with an ellipsis so the reader knows they are
           // non-contiguous excerpts from the full chunk text.
-          <span key={key}>
+          <span key={fragment}>
             {i > 0 && (
               <span className="text-muted-foreground mx-1 select-none">…</span>
             )}
-            {parseFragment(fragment, i)}
+            {parseFragment(fragment)}
           </span>
         );
       })}

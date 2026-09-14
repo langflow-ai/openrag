@@ -1,42 +1,4 @@
-import { fireEvent } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
-import { authPresets } from "@/test-utils/fixtures/auth";
-import { renderWithProviders, waitFor } from "@/test-utils/render";
-import { mockRouter } from "@/test-utils/router";
-
-// Mock all the dependencies
-vi.mock("@/contexts/knowledge-filter-context", () => ({
-  useKnowledgeFilter: () => ({
-    queryOverride: "",
-    parsedFilterData: { query: "filter query" },
-  }),
-}));
-
-vi.mock("@/contexts/console-status-context", () => ({
-  useOpenTaskMenu: () => vi.fn(),
-}));
-
-vi.mock("@/contexts/task-context", () => ({
-  useTask: () => ({
-    tasks: [],
-    isTaskInProgress: () => false,
-  }),
-}));
-
-vi.mock("../api/queries/useGetSearchQuery", () => ({
-  useGetSearchQuery: () => ({
-    data: { files: [], warnings: [] },
-    isFetching: false,
-  }),
-  EMPTY_SEARCH_RESULT: { files: [], warnings: [] },
-}));
-
-vi.mock("../api/queries/useListFiles", () => ({
-  useListFiles: () => ({
-    data: { items: [], total: 0 },
-    isFetching: false,
-  }),
-}));
+import { describe, expect, it } from "vitest";
 
 /**
  * Tests the effectiveSearchText URL param building logic (lines 630-643).
@@ -45,7 +7,9 @@ vi.mock("../api/queries/useListFiles", () => ({
 describe("KnowledgePage - effectiveSearchText in URL params (lines 630-643)", () => {
   it("includes effectiveSearchText in URL when it has a value", () => {
     // Simulate the logic from lines 630-643
-    const effectiveSearchText = "filter query"; // from parsedFilterData
+    // Use a function to return the value so TS doesn't narrow the type to a literal
+    const getSearchText = () => "filter query";
+    const effectiveSearchText = getSearchText();
     const filename = "test.pdf";
 
     const params = new URLSearchParams({ filename });
@@ -98,7 +62,8 @@ describe("KnowledgePage - effectiveSearchText in URL params (lines 630-643)", ()
   });
 
   it("includes query from queryOverride when available", () => {
-    const effectiveSearchText = "query override text";
+    const getSearchText = () => "query override text";
+    const effectiveSearchText = getSearchText();
     const filename = "test.pdf";
 
     const params = new URLSearchParams({ filename });
