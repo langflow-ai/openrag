@@ -188,7 +188,10 @@ def test_group_acl_service_invalidation_drops_cache_and_locks():
 def test_security_roles_include_acl_dls_queries():
     for rel_path in ("securityconfig/roles.yml", "cloud_securityconfig/roles.yml"):
         roles = yaml.safe_load((ROOT / rel_path).read_text())
-        index_permissions = roles["openrag_user_role"]["index_permissions"]
+        user_roles = [roles["openrag_user_role"]]
+        if "openrag_user_acl_role" in roles:
+            user_roles.append(roles["openrag_user_acl_role"])
+        index_permissions = [p for r in user_roles for p in r.get("index_permissions", [])]
         cluster_permissions = roles["openrag_user_role"]["cluster_permissions"]
         assert "indices:data/write/bulk" not in cluster_permissions
         assert "indices:data/write/index" not in cluster_permissions

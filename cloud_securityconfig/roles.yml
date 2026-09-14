@@ -3,7 +3,7 @@ _meta:
   config_version: 2
 
 openrag_user_role:
-  description: "DLS: user can read docs they own or are allowed on"
+  description: "DLS: user can read docs they own or unowned docs"
   cluster_permissions:
     - "indices:data/read/scroll"
     - "indices:data/read/scroll/clear"
@@ -18,15 +18,6 @@ openrag_user_role:
           {"term":{"owner":"${user.name}"}},
           {"term":{"owner":"${attr.jwt.email}"}},
           {"bool":{"must_not":{"exists":{"field":"owner"}}}}
-        ],"minimum_should_match":1}}
-    - index_patterns: ["documents", "documents*", "knowledge_filters", "knowledge_filters*", "orag-*", "orag*"]
-      allowed_actions:
-        - read
-      dls: >
-        {"bool":{"should":[
-          {"term":{"allowed_users":"${user.name}"}},
-          {"term":{"allowed_users":"${attr.jwt.email}"}},
-          {"terms":{"allowed_principals":{"index":"openrag_dls_principals","id":"${user.name}","path":"principals"}}}
         ],"minimum_should_match":1}}
     - index_patterns: ["documents", "documents*", "knowledge_filters", "knowledge_filters*", "orag-*", "orag*"]
       allowed_actions:
@@ -56,3 +47,19 @@ openrag_user_role:
         - indices:admin/mappings/get
         - indices:admin/exists
         - indices:admin/get
+
+openrag_user_acl_role:
+  description: "DLS: user can read docs they are allowed on via ACL"
+  cluster_permissions:
+    - "cluster_composite_ops_ro"
+
+  index_permissions:
+    - index_patterns: ["documents", "documents*", "knowledge_filters", "knowledge_filters*", "orag-*", "orag*"]
+      allowed_actions:
+        - read
+      dls: >
+        {"bool":{"should":[
+          {"term":{"allowed_users":"${user.name}"}},
+          {"term":{"allowed_users":"${attr.jwt.email}"}},
+          {"terms":{"allowed_principals":{"index":"openrag_dls_principals","id":"${user.name}","path":"principals"}}}
+        ],"minimum_should_match":1}}
