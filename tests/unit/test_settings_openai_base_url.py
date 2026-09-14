@@ -128,8 +128,11 @@ async def test_remove_openai_config_clears_base_url(monkeypatch):
             api_key="sk-test", base_url="https://gateway.example.com/v1", configured=True
         )
     )
-    # remove_openai_config requires another provider to be configured.
-    config.providers.anthropic.configured = True
+    # remove_openai_config requires another provider with embedding support
+    # to be configured; Anthropic doesn't count (see
+    # _has_other_configured_provider).
+    config.providers.ollama.endpoint = "http://localhost:11434"
+    config.providers.ollama.configured = True
     _, saved_configs = _patch_update_settings_deps(monkeypatch, config)
 
     response = await settings_api.update_settings(
