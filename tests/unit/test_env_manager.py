@@ -31,6 +31,13 @@ def env_manager(tmp_path):
     return EnvManager(env_file=tmp_path / ".env")
 
 
+@pytest.fixture
+def clean_langfuse_env(monkeypatch):
+    """Ensure Langfuse endpoint variables do not leak between tests."""
+    monkeypatch.delenv("LANGFUSE_BASE_URL", raising=False)
+    monkeypatch.delenv("LANGFUSE_HOST", raising=False)
+
+
 # ---------------------------------------------------------------------------
 # save_env_file
 # ---------------------------------------------------------------------------
@@ -137,6 +144,62 @@ class TestSaveEnvFilePermissions:
         # Managed password should be updated, not duplicated.
         assert "OPENSEARCH_PASSWORD='AnotherNewPass!789'" in content
         assert 'OPENSEARCH_PASSWORD="old-password"' not in content
+
+
+class TestLangfuseBaseURL:
+    """Langfuse endpoint loading and saving preserves legacy configurations."""
+
+    def test_loads_langfuse_base_url(self, env_manager, tmp_path, clean_langfuse_env):
+        (tmp_path / ".env").write_text("LANGFUSE_BASE_URL='https://base.example.com'\n")
+
+        assert env_manager.load_existing_env() is True
+        assert env_manager.config.langfuse_base_url == "https://base.example.com"
+
+    def test_loads_legacy_langfuse_host(self, env_manager, tmp_path, clean_langfuse_env):
+        (tmp_path / ".env").write_text("LANGFUSE_HOST='https://legacy.example.com'\n")
+
+        assert env_manager.load_existing_env() is True
+        assert env_manager.config.langfuse_base_url == "https://legacy.example.com"
+
+    def test_langfuse_base_url_takes_precedence(self, env_manager, tmp_path, clean_langfuse_env):
+        (tmp_path / ".env").write_text(
+            "LANGFUSE_HOST='https://legacy.example.com'\n"
+            "LANGFUSE_BASE_URL='https://base.example.com'\n"
+        )
+
+        assert env_manager.load_existing_env() is True
+        assert env_manager.config.langfuse_base_url == "https://base.example.com"
+
+    def test_saving_legacy_host_writes_only_canonical_variable(
+        self, env_manager, tmp_path, clean_langfuse_env
+    ):
+        env_file = tmp_path / ".env"
+        env_file.write_text("LANGFUSE_HOST='https://legacy.example.com'\n")
+        assert env_manager.load_existing_env() is True
+
+        with patch("tui.utils.version_check.get_current_version", return_value="1.0.0"):
+            assert env_manager.save_env_file() is True
+
+        content = env_file.read_text()
+        assert "LANGFUSE_BASE_URL='https://legacy.example.com'" in content
+        assert "LANGFUSE_HOST=" not in content
+        assert content.count("LANGFUSE_BASE_URL=") == 1
+
+    def test_saving_preserves_unmanaged_variables(self, env_manager, tmp_path, clean_langfuse_env):
+        env_file = tmp_path / ".env"
+        env_file.write_text(
+            "LANGFUSE_HOST='https://legacy.example.com'\nCUSTOM_SETTING='keep-me'\n"
+        )
+        assert env_manager.load_existing_env() is True
+
+        with patch("tui.utils.version_check.get_current_version", return_value="1.0.0"):
+            assert env_manager.save_env_file() is True
+
+        content = env_file.read_text()
+        assert "LANGFUSE_BASE_URL='https://legacy.example.com'" in content
+        assert "LANGFUSE_HOST=" not in content
+        assert "CUSTOM_SETTING='keep-me'" in content
+        assert content.count("CUSTOM_SETTING=") == 1
 
 
 # ---------------------------------------------------------------------------

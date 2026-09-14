@@ -383,9 +383,9 @@ CONFIG_SECTIONS: list[ConfigSection] = [
                 secret=True,
             ),
             ConfigField(
-                "langfuse_host",
-                "LANGFUSE_HOST",
-                "Host",
+                "langfuse_base_url",
+                "LANGFUSE_BASE_URL",
+                "Base URL",
                 placeholder="https://cloud.langfuse.com",
                 helper_text="Leave empty for Langfuse Cloud, or set for self-hosted",
             ),
