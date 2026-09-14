@@ -71,6 +71,11 @@ def _make_config(*, oci_configured: bool, embedding_provider: str = "openai"):
     # doesn't use this path (it has its own oci_* fields), so an empty dict
     # is enough for this fake.
     providers.credential_values = lambda _provider: {}
+    # Same for pending_credentials(...) - the pre-write validation path
+    # merges request-submitted credentials with the stored ones before
+    # validating (see ProvidersConfig.pending_credentials). OCI's own
+    # oci_* fields bypass this too, so an empty dict is enough here.
+    providers.pending_credentials = lambda _provider, _submitted=None: {}
     return SimpleNamespace(
         edited=True,
         agent=SimpleNamespace(llm_provider="openai", llm_model="gpt-5.4-mini"),
