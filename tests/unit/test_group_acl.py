@@ -195,7 +195,8 @@ def test_security_roles_include_acl_dls_queries():
         assert not any("alerting" in permission for permission in cluster_permissions)
 
         document_permissions = [
-            p for p in index_permissions
+            p
+            for p in index_permissions
             if any("documents" in pattern for pattern in p.get("index_patterns", []))
             and "read" in p.get("allowed_actions", [])
         ]
