@@ -137,11 +137,13 @@ export function GenericOnboarding({
     [catalog, provider, isEmbedding],
   );
 
-  // Default to the highest-ranked model, consistent with the Settings picker.
+  // Azure's catalogue lists model families, not this customer's deployment
+  // names. Require an explicit choice instead of submitting the first family
+  // as though it were known to be deployed. Other providers keep their default.
   const [prevModels, setPrevModels] = useState<typeof models | undefined>();
   if (models !== prevModels) {
     setPrevModels(models);
-    if (!model && models.length > 0) {
+    if (provider !== "azure" && !model && models.length > 0) {
       const defaultModel = models[0].value;
       setModel(defaultModel);
       syncParentSettings(credentials, defaultModel);

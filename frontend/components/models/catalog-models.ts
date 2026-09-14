@@ -101,6 +101,15 @@ const PREFERRED_EMBEDDING_MODELS = [
   "text-embedding-3-large",
 ];
 
+// These older Azure entries sort ahead of current GPT models because the
+// generic version parser reads "2402" and "35" as larger model versions.
+// Keep them searchable, but do not feature them in the collapsed preview.
+const LOWER_PRIORITY_AZURE_MODELS = new Set([
+  "mistral-large-2402",
+  "gpt-35-turbo-16k-0613",
+  "gpt-35-turbo",
+]);
+
 /** A YYYY-MM-DD or YYYYMMDD snapshot stamp inside a model id. */
 const SNAPSHOT_DATE = /(20\d{2})-?(\d{2})-?(\d{2})(?!\d)/;
 
@@ -148,6 +157,9 @@ function optionRank(
       : PREFERRED_LANGUAGE_MODELS;
   const preferredIndex = preferred.indexOf(name);
   return [
+    option.provider === "azure" && LOWER_PRIORITY_AZURE_MODELS.has(name)
+      ? 1
+      : 0,
     // The catalogue no longer carries LiteLLM's `ft:` pricing templates, but a
     // live `/models/openai` fetch returns the operator's real fine-tunes. Those
     // are callable and stay listed — just never above a base model.
