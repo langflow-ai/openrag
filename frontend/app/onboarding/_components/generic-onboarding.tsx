@@ -10,6 +10,7 @@ import { useGetModelCatalogQuery } from "@/app/api/queries/useGetModelsQuery";
 import { LabelInput } from "@/components/label-input";
 import {
   onboardingCredentialFields,
+  providerCatalogOptions,
   type SavedProvidersSnapshot,
   savedCredentialValuesForProvider,
   savedSecretFieldsForProvider,
@@ -127,23 +128,22 @@ export function GenericOnboarding({
     }));
   };
 
-  const catalogEntry = catalog?.providers?.find(
-    (entry) => entry.key === provider,
+  const models = useMemo(
+    () =>
+      providerCatalogOptions(
+        catalog,
+        provider,
+        isEmbedding ? "embedding" : "language",
+      ),
+    [catalog, provider, isEmbedding],
   );
-  const models = useMemo(() => {
-    const entries = isEmbedding
-      ? (catalogEntry?.embedding_models ?? [])
-      : (catalogEntry?.models ?? []);
-    return entries.map((entry) => ({
-      value: entry.model,
-      label: entry.model,
-    }));
-  }, [catalogEntry, isEmbedding]);
 
-  // Default to the first model when the catalogue loads or provider changes.
+  // Azure's catalogue lists model families, not this customer's deployments,
+  // so require an explicit choice. Other providers still default to the
+  // highest-ranked model when the catalogue loads or provider changes.
   const defaultedModelRef = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (model || models.length === 0) return;
+    if (provider === "azure" || model || models.length === 0) return;
     const defaultModel = models[0].value;
     // Only set once per provider so switching back doesn't re-default.
     if (defaultedModelRef.current === `${provider}:${defaultModel}`) return;
@@ -256,6 +256,11 @@ export function GenericOnboarding({
       </div>
       <AdvancedOnboarding
         icon={<Logo className="w-4 h-4" />}
+        searchPlaceholder={
+          provider === "azure"
+            ? "Search models or type Azure deployment name"
+            : undefined
+        }
         languageModels={isEmbedding ? undefined : models}
         embeddingModels={isEmbedding ? models : undefined}
         languageModel={isEmbedding ? undefined : model}
