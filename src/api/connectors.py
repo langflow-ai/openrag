@@ -338,20 +338,45 @@ async def get_synced_file_state_map(
                 },
             }
 
-        query_body = _build_body("connector_file_id", "content_etag")
-        try:
-            result = await opensearch_client.search(index=get_index_name(), body=query_body)
-        except Exception as agg_err:
-            if not _is_unmapped_keyword_agg_error(agg_err):
-                raise
-            # See get_synced_file_ids_for_connector: some indices predate the
-            # explicit keyword mapping for these fields, so they were dynamically
-            # mapped as analyzed text with a `.keyword` multi-field. content_etag
-            # is newer than connector_file_id, so retry both together.
-            result = await opensearch_client.search(
-                index=get_index_name(),
-                body=_build_body("connector_file_id.keyword", "content_etag.keyword"),
-            )
+        # See get_synced_file_ids_for_connector: some indices predate the explicit
+        # keyword mapping for these fields, so they were dynamically mapped as
+        # analyzed text with a `.keyword` multi-field and must be aggregated via
+        # that sub-field instead.
+        #
+        # A field may only be switched once a failure has PROVEN the drift: a
+        # terms agg on an analyzed text field raises, but one on a field that
+        # does not exist returns no buckets and no error. Switching speculatively
+        # therefore empties that aggregation silently.
+        #
+        # The two fields drift independently — connector_file_id predates the
+        # explicit mapping by far longer than content_etag, and an index can have
+        # either one stale — so each candidate switches only what the previous
+        # failure proved and leaves the other in the form that resolves. Retrying
+        # both together would silently drop every etag on a legacy index (whose
+        # content_etag, being newer, is correctly mapped and has no `.keyword`
+        # sub-field) or, worse, drop every connector source id from the map,
+        # leaving change detection to report every file as unchanged.
+        field_candidates = (
+            ("connector_file_id", "content_etag"),
+            ("connector_file_id.keyword", "content_etag"),
+            ("connector_file_id", "content_etag.keyword"),
+            ("connector_file_id.keyword", "content_etag.keyword"),
+        )
+
+        async def _search_through_mapping_drift() -> dict[str, Any]:
+            agg_err: Exception | None = None
+            for id_field, etag_field in field_candidates:
+                try:
+                    return await opensearch_client.search(
+                        index=get_index_name(), body=_build_body(id_field, etag_field)
+                    )
+                except Exception as err:
+                    if not _is_unmapped_keyword_agg_error(err):
+                        raise
+                    agg_err = err
+            raise agg_err  # type: ignore[misc]  # field_candidates is never empty
+
+        result = await _search_through_mapping_drift()
         aggs = result.get("aggregations", {})
 
         mapping: dict[str, SyncedFileState] = {}

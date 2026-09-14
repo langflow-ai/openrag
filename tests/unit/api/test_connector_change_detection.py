@@ -263,54 +263,167 @@ async def test_state_map_prefers_connector_file_id_over_document_id(monkeypatch)
     assert result["c::lf"].modified_time_ms == 1704153600000.0
 
 
-@pytest.mark.asyncio
-async def test_state_map_falls_back_to_keyword_subfield_on_text_field_error(
-    monkeypatch,
-):
-    """Indices that predate connector_file_id's addition to the explicit
-    mapping (config/settings.py) have it dynamically mapped as analyzed text,
-    and OpenSearch rejects a terms agg on that field outright. The helper
-    must retry the aggregation against connector_file_id.keyword instead of
-    treating this as a fatal error (which would make every blob look "new")."""
-    from api import connectors as connectors_api
+# A terms agg on an analyzed `text` field raises; one on a field the index does
+# not have returns no buckets and no error. So a field may only be switched to
+# its `.keyword` sub-field once an error has proven the drift, and the two
+# fields have to be retried independently — switching both together silently
+# empties whichever aggregation was fine.
 
-    monkeypatch.setattr(connectors_api, "get_index_name", lambda: "idx")
 
-    opensearch_client = AsyncMock()
-    called_fields = []
+def _text_field_error(field: str) -> Exception:
+    """The error OpenSearch raises for a terms agg on an analyzed text field."""
+    return Exception(
+        "RequestError(400, 'search_phase_execution_exception', 'Text fields "
+        "are not optimised for operations that require per-document field "
+        "data like aggregations and sorting, so these operations are "
+        "disabled by default. Please use a keyword field instead. "
+        f"Alternatively, set fielddata=true on [{field}]...')"
+    )
+
+
+def _mapping_drift_client(text_mapped: set[str]):
+    """Fake OpenSearch whose aggregations behave like a real index's mappings.
+
+    Fields in ``text_mapped`` raise when aggregated directly (they are analyzed
+    text). A `.keyword` sub-field only resolves for those; asking for it on a
+    properly mapped field returns no buckets, exactly as OpenSearch does for a
+    field that does not exist — which is what makes a speculative switch silent.
+
+    Records every (id_field, etag_field) pair attempted.
+    """
+    attempts: list[tuple[str, str]] = []
+    client = AsyncMock()
 
     async def fake_search(*, index, body):
-        called_fields.append(body["aggs"]["by_connector_file_id"]["terms"]["field"])
-        if len(called_fields) == 1:
-            raise Exception(
-                "RequestError(400, 'search_phase_execution_exception', 'Text fields "
-                "are not optimised for operations that require per-document field "
-                "data like aggregations and sorting, so these operations are "
-                "disabled by default. Please use a keyword field instead. "
-                "Alternatively, set fielddata=true on [connector_file_id]...')"
-            )
+        id_field = body["aggs"]["by_connector_file_id"]["terms"]["field"]
+        etag_field = body["aggs"]["by_connector_file_id"]["aggs"]["etag"]["terms"]["field"]
+        attempts.append((id_field, etag_field))
+        for field in (id_field, etag_field):
+            base = field.removesuffix(".keyword")
+            if base in text_mapped and field == base:
+                raise _text_field_error(base)
+        etag_resolves = etag_field.removesuffix(".keyword") in text_mapped or (
+            not etag_field.endswith(".keyword")
+        )
+        id_resolves = id_field.removesuffix(".keyword") in text_mapped or (
+            not id_field.endswith(".keyword")
+        )
+        etag_buckets = [{"key": '"abc123"'}] if etag_resolves else []
         return {
             "aggregations": {
                 "by_connector_file_id": {
-                    "buckets": [{"key": "c::a", "latest_modified": {"value": 1704067200000.0}}]
+                    "buckets": [
+                        {
+                            "key": "c::a",
+                            "latest_modified": {"value": 1704067200000.0},
+                            "etag": {"buckets": etag_buckets},
+                        }
+                    ]
+                    if id_resolves
+                    else []
                 },
                 "by_document_id": {"buckets": []},
             }
         }
 
-    opensearch_client.search = AsyncMock(side_effect=fake_search)
+    client.search = AsyncMock(side_effect=fake_search)
+    return client, attempts
+
+
+async def _state_map_with(monkeypatch, text_mapped: set[str]):
+    from api import connectors as connectors_api
+
+    monkeypatch.setattr(connectors_api, "get_index_name", lambda: "idx")
+    client, attempts = _mapping_drift_client(text_mapped)
     sm = MagicMock()
-    sm.get_user_opensearch_client = MagicMock(return_value=opensearch_client)
+    sm.get_user_opensearch_client = MagicMock(return_value=client)
 
     result = await connectors_api.get_synced_file_state_map(
-        connector_type="azure_blob",
+        connector_type="ibm_cos",
         user_id="alice",
         session_manager=sm,
         jwt_token=None,
     )
+    return result, attempts
 
+
+@pytest.mark.asyncio
+async def test_state_map_uses_plain_fields_when_nothing_has_drifted(monkeypatch):
+    result, attempts = await _state_map_with(monkeypatch, text_mapped=set())
+
+    assert attempts == [("connector_file_id", "content_etag")]
+    assert result["c::a"].content_etag == "abc123"
+
+
+@pytest.mark.asyncio
+async def test_state_map_keeps_etags_on_an_index_predating_content_etag(monkeypatch):
+    """The legacy case: connector_file_id drifted, content_etag did not.
+
+    content_etag was added to the explicit mapping long after connector_file_id,
+    so an index old enough to have the text-mapped id has a correctly mapped (or
+    absent) content_etag with no `.keyword` sub-field. Retrying both fields
+    together asks for content_etag.keyword, which resolves to nothing and drops
+    every stored etag — silently regressing change detection to timestamps on
+    exactly the indices that need it most.
+    """
+    result, attempts = await _state_map_with(monkeypatch, text_mapped={"connector_file_id"})
+
+    assert attempts == [
+        ("connector_file_id", "content_etag"),
+        ("connector_file_id.keyword", "content_etag"),
+    ]
     assert result["c::a"].modified_time_ms == 1704067200000.0
-    assert called_fields == ["connector_file_id", "connector_file_id.keyword"]
+    assert result["c::a"].content_etag == "abc123"
+
+
+@pytest.mark.asyncio
+async def test_state_map_keeps_source_ids_when_only_content_etag_drifted(monkeypatch):
+    """The inverse: switching connector_file_id too would empty the id buckets.
+
+    With no source ids in the map every file classifies as unchanged, which is
+    the original "overwrite in COS is not reflected" defect all over again.
+    """
+    result, attempts = await _state_map_with(monkeypatch, text_mapped={"content_etag"})
+
+    assert attempts == [
+        ("connector_file_id", "content_etag"),
+        ("connector_file_id.keyword", "content_etag"),
+        ("connector_file_id", "content_etag.keyword"),
+    ]
+    assert "c::a" in result
+    assert result["c::a"].content_etag == "abc123"
+
+
+@pytest.mark.asyncio
+async def test_state_map_switches_both_fields_only_when_both_drifted(monkeypatch):
+    result, attempts = await _state_map_with(
+        monkeypatch, text_mapped={"connector_file_id", "content_etag"}
+    )
+
+    assert attempts[-1] == ("connector_file_id.keyword", "content_etag.keyword")
+    assert result["c::a"].content_etag == "abc123"
+
+
+@pytest.mark.asyncio
+async def test_state_map_gives_up_after_exhausting_field_forms(monkeypatch):
+    """An unmapped-keyword error no candidate can fix must surface, not hang."""
+    from api import connectors as connectors_api
+
+    monkeypatch.setattr(connectors_api, "get_index_name", lambda: "idx")
+    client = AsyncMock()
+    client.search = AsyncMock(side_effect=_text_field_error("connector_file_id"))
+    sm = MagicMock()
+    sm.get_user_opensearch_client = MagicMock(return_value=client)
+
+    # The outer handler converts a failed lookup into an empty map (backfill-safe).
+    result = await connectors_api.get_synced_file_state_map(
+        connector_type="ibm_cos",
+        user_id="alice",
+        session_manager=sm,
+        jwt_token=None,
+    )
+    assert result == {}
+    assert client.search.await_count == 4
 
 
 @pytest.mark.asyncio
