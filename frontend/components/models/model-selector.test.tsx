@@ -109,18 +109,22 @@ describe("ModelSelector flat previews", () => {
  * renders no badge at all.
  */
 
-const badgeGroupedOptions: GroupedModelOption[] = [
-  {
-    group: "OpenShift AI Models",
-    provider: "rhoai",
-    options: [{ value: "granite-3.1-8b-instruct", label: "Granite 3.1 8B" }],
-  },
-];
+const rhoaiGroup: GroupedModelOption = {
+  group: "OpenShift AI Models",
+  provider: "rhoai",
+  options: [{ value: "granite-3.1-8b-instruct", label: "Granite 3.1 8B" }],
+};
 
-function setupBadges() {
+const onpremGroup: GroupedModelOption = {
+  group: "watsonx.ai On-Prem Models",
+  provider: "watsonx_onprem",
+  options: [{ value: "ibm/granite-3-8b-instruct", label: "Granite 3 8B" }],
+};
+
+function setupBadges(groupedOptions: GroupedModelOption[]) {
   return renderWithProviders(
     <ModelSelector
-      groupedOptions={badgeGroupedOptions}
+      groupedOptions={groupedOptions}
       value=""
       onValueChange={vi.fn()}
       defaultOpen
@@ -148,18 +152,28 @@ describe("ModelSelector provider badges", () => {
       },
     ]);
 
-    setupBadges();
+    setupBadges([rhoaiGroup]);
 
     expect(await screen.findByText("Tech Preview")).toBeInTheDocument();
   });
 
   it("renders no badge when the provider declares none", async () => {
-    mockProviders([{ name: "rhoai", display_name: "Red Hat OpenShift AI" }]);
+    // A second provider that *does* declare a badge is the proof the providers
+    // response has landed: group headings render synchronously from
+    // `groupedOptions`, so waiting on one of those would resolve before the
+    // query does and the negative assertion below could never fail.
+    mockProviders([
+      { name: "rhoai", display_name: "Red Hat OpenShift AI" },
+      {
+        name: "watsonx_onprem",
+        display_name: "watsonx.ai On-Prem",
+        badge: "On-prem",
+      },
+    ]);
 
-    setupBadges();
+    setupBadges([rhoaiGroup, onpremGroup]);
 
-    // Wait for the providers response to land, then confirm nothing appeared.
-    await screen.findByText("OpenShift AI Models");
+    expect(await screen.findByText("On-prem")).toBeInTheDocument();
     expect(screen.queryByText("Tech Preview")).not.toBeInTheDocument();
   });
 });
