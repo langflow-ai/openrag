@@ -292,9 +292,9 @@ export function OnboardingContent({
       initial="instant"
       mass={1}
     >
-      <StickToBottom.Content className="flex flex-col min-h-full overflow-x-hidden px-8 py-6">
+      <StickToBottom.Content className="flex flex-col min-h-full w-full px-4 py-6 sm:px-8">
         <div
-          className="flex flex-col place-self-center w-full space-y-6"
+          className="flex flex-col w-full max-w-full space-y-6"
           data-testid="onboarding-content"
         >
           {/* Step 1 - LLM Provider */}

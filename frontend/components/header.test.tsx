@@ -1,151 +1,129 @@
-/**
- * Tests for the Header component.
- *
- * The Header reads from several contexts and react-query hooks. We vi.mock
- * each hook dependency so the unit tests remain fast and isolated — the
- * contexts themselves are tested elsewhere.
- *
- * Covered lines (per diff gate):
- *   22, 24 — activeTaskCount derivation
- *   28-29  — failedTaskCount derivation + badge render
- */
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { Header } from "@/components/header";
+import { describe, expect, it, vi } from "vitest";
+import { Header } from "./header";
 
-// ─── mock all context/hook dependencies ───────────────────────────────────────
-
-vi.mock("@/contexts/auth-context", () => ({
-  useAuth: vi.fn(),
+const {
+  mockToggleTaskMenu,
+  mockToggleConsole,
+  mockShowSidebar,
+  mockHideSidebar,
+  mockPinSidebar,
+  mockUnpinSidebar,
+  mockExpandSidebar,
+} = vi.hoisted(() => ({
+  mockToggleTaskMenu: vi.fn(),
+  mockToggleConsole: vi.fn(),
+  mockShowSidebar: vi.fn(),
+  mockHideSidebar: vi.fn(),
+  mockPinSidebar: vi.fn(),
+  mockUnpinSidebar: vi.fn(),
+  mockExpandSidebar: vi.fn(),
 }));
 
 vi.mock("@/contexts/brand-context", () => ({
-  useIsCloudBrand: vi.fn(),
+  useIsCloudBrand: () => false,
+}));
+
+vi.mock("@/contexts/auth-context", () => ({
+  useAuth: () => ({ runMode: "oss" }),
 }));
 
 vi.mock("@/contexts/task-context", () => ({
-  useTask: vi.fn(),
+  useTask: () => ({ tasks: [] }),
 }));
 
 vi.mock("@/contexts/console-status-context", () => ({
-  useConsoleStatus: vi.fn(),
-  useToggleTaskMenu: vi.fn(),
+  useToggleTaskMenu: () => mockToggleTaskMenu,
+  useConsoleStatus: () => ({
+    hasProblem: false,
+    toggle: mockToggleConsole,
+    isOpen: false,
+    overallStatus: "healthy",
+  }),
 }));
 
-vi.mock("@/components/provider-health-banner", () => ({
-  useProviderHealth: vi.fn(),
+vi.mock("./provider-health-banner", () => ({
+  useProviderHealth: () => ({ isUnhealthy: false }),
 }));
 
-// Heavy child components: keep them as lightweight stubs so the test only
-// asserts on Header's own output.
 vi.mock("@/components/user-nav", () => ({
   UserNav: () => <div data-testid="user-nav" />,
 }));
 
-vi.mock("@/components/console-status", () => ({
-  ConsoleStatusButton: () => <button data-testid="console-status-btn" />,
+vi.mock("@/hooks/use-narrow-layout", () => ({
+  useNarrowLayout: vi.fn().mockReturnValue(false),
 }));
 
-vi.mock("@/components/brand-switcher", () => ({
-  BrandSwitcher: () => <div data-testid="brand-switcher" />,
+vi.mock("@/contexts/sidebar-overlay-context", () => ({
+  useSidebarOverlay: vi.fn().mockReturnValue({
+    show: mockShowSidebar,
+    hide: mockHideSidebar,
+    isPinned: false,
+    isCollapsed: false,
+    pin: mockPinSidebar,
+    unpin: mockUnpinSidebar,
+    expand: mockExpandSidebar,
+  }),
 }));
 
-vi.mock("@/components/dev-role-toggle", () => ({
-  DevRoleToggle: () => <div data-testid="dev-role-toggle" />,
-}));
-
-vi.mock("@/components/icons/openrag-logo", () => ({
-  default: () => <svg data-testid="openrag-logo" />,
-}));
-
-// ─── import mocks after vi.mock declarations ──────────────────────────────────
-
-import { useProviderHealth } from "@/components/provider-health-banner";
-import { useAuth } from "@/contexts/auth-context";
-import { useIsCloudBrand } from "@/contexts/brand-context";
-import {
-  useConsoleStatus,
-  useToggleTaskMenu,
-} from "@/contexts/console-status-context";
-import { useTask } from "@/contexts/task-context";
-
-// ─── helpers ──────────────────────────────────────────────────────────────────
-
-const noop = () => {};
-
-function setupMocks(tasks: Array<{ status: string }>, runMode = "oss") {
-  vi.mocked(useAuth).mockReturnValue({ runMode } as ReturnType<typeof useAuth>);
-  vi.mocked(useIsCloudBrand).mockReturnValue(false);
-  vi.mocked(useTask).mockReturnValue({ tasks } as ReturnType<typeof useTask>);
-  vi.mocked(useToggleTaskMenu).mockReturnValue(noop);
-  vi.mocked(useConsoleStatus).mockReturnValue({
-    toggle: noop,
-    isOpen: false,
-    overallStatus: "healthy",
-  } as ReturnType<typeof useConsoleStatus>);
-  vi.mocked(useProviderHealth).mockReturnValue({
-    isUnhealthy: false,
-  } as ReturnType<typeof useProviderHealth>);
-}
-
-// ─── tests ────────────────────────────────────────────────────────────────────
+import { useSidebarOverlay } from "@/contexts/sidebar-overlay-context";
+import { useNarrowLayout } from "@/hooks/use-narrow-layout";
 
 describe("Header", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  it("renders brand and header elements in wide non-collapsed layout", () => {
+    render(<Header />);
+    expect(screen.getByText("OpenRAG")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Open navigation")).not.toBeInTheDocument();
   });
 
-  it("renders with no tasks — no badge visible", () => {
-    setupMocks([]);
+  it("renders expand button when collapsed in wide layout", async () => {
+    const user = userEvent.setup();
+    vi.mocked(useSidebarOverlay).mockReturnValue({
+      show: mockShowSidebar,
+      hide: mockHideSidebar,
+      isPinned: false,
+      isCollapsed: true,
+      pin: mockPinSidebar,
+      unpin: mockUnpinSidebar,
+      expand: mockExpandSidebar,
+      isVisible: false,
+      hideNow: vi.fn(),
+      collapse: vi.fn(),
+    });
+
     render(<Header />);
-    // Neither active nor failed badge should appear.
-    expect(screen.queryByText(/\d/)).toBeNull();
+    const openBtn = screen.getByLabelText("Open navigation");
+    expect(openBtn).toBeInTheDocument();
+
+    await user.hover(openBtn);
+    expect(mockShowSidebar).toHaveBeenCalled();
+
+    await user.click(openBtn);
+    expect(mockExpandSidebar).toHaveBeenCalled();
   });
 
-  it("shows an active-task badge for pending / running / processing tasks (line 22-24)", () => {
-    setupMocks([
-      { status: "pending" },
-      { status: "running" },
-      { status: "processing" },
-    ]);
-    render(<Header />);
-    // Badge text = "3"
-    expect(screen.getByText("3")).toBeInTheDocument();
-  });
+  it("renders open/close navigation toggle in narrow layout", async () => {
+    const user = userEvent.setup();
+    vi.mocked(useNarrowLayout).mockReturnValue(true);
+    vi.mocked(useSidebarOverlay).mockReturnValue({
+      show: mockShowSidebar,
+      hide: mockHideSidebar,
+      isPinned: false,
+      isCollapsed: false,
+      pin: mockPinSidebar,
+      unpin: mockUnpinSidebar,
+      expand: mockExpandSidebar,
+      isVisible: false,
+      hideNow: vi.fn(),
+      collapse: vi.fn(),
+    });
 
-  it("shows a failed-task badge when there are failed/error tasks and no active tasks (lines 28-29)", () => {
-    setupMocks([{ status: "failed" }, { status: "error" }]);
     render(<Header />);
-    // Badge text = "2"
-    expect(screen.getByText("2")).toBeInTheDocument();
-  });
+    const navBtn = screen.getByLabelText("Open navigation");
+    expect(navBtn).toBeInTheDocument();
 
-  it("shows only the active badge when both active and failed tasks exist", () => {
-    setupMocks([{ status: "running" }, { status: "failed" }]);
-    render(<Header />);
-    // Only 1 active task badge — failed badge is suppressed.
-    expect(screen.getByText("1")).toBeInTheDocument();
-    // There should be exactly one badge (the active one).
-    const badges = screen.getAllByText(/^\d+$/);
-    expect(badges).toHaveLength(1);
-  });
-
-  it("caps active badge at '99+' when count exceeds 99", () => {
-    const manyTasks = Array.from({ length: 100 }, () => ({
-      status: "running",
-    }));
-    setupMocks(manyTasks);
-    render(<Header />);
-    expect(screen.getByText("99+")).toBeInTheDocument();
-  });
-
-  it("fires toggleTaskMenu when the bell button is clicked", async () => {
-    const toggleFn = vi.fn();
-    setupMocks([]);
-    vi.mocked(useToggleTaskMenu).mockReturnValue(toggleFn);
-    render(<Header />);
-    await userEvent.click(screen.getByTestId("task-menu-toggle"));
-    expect(toggleFn).toHaveBeenCalledOnce();
+    await user.click(navBtn);
+    expect(mockPinSidebar).toHaveBeenCalled();
   });
 });

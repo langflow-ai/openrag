@@ -316,6 +316,22 @@ describe("buildKnowledgeTableRows", () => {
       );
       expect(rows[0].status).toBe("processing");
     });
+
+    it("treats a cancelled overlay with the same priority as failed (#cancel)", () => {
+      // cancelled and failed both have priority 2. When a second overlay arrives
+      // with the same key, taskOverlayPriority is called for both — passing a
+      // `cancelled` overlay through the switch exercises line 146.
+      const rows = buildKnowledgeTableRows(
+        [searchFile({ filename: "a.pdf", status: "active" })],
+        [
+          // First overlay: active (priority 1)
+          taskFile({ filename: "a.pdf", status: "active" }),
+          // Second overlay: cancelled (priority 2) — should win over active
+          taskFile({ filename: "a.pdf", status: "cancelled", error: "done" }),
+        ],
+      );
+      expect(rows[0].status).toBe("cancelled");
+    });
   });
 });
 

@@ -13,6 +13,7 @@ import { useIsCloudBrand } from "@/contexts/brand-context";
 import { type Task, useTask } from "@/contexts/task-context";
 import {
   formatApiComponent,
+  isFileCancelled,
   resolveTaskFileError,
 } from "@/lib/task-error-display";
 import {
@@ -34,7 +35,6 @@ interface TaskErrorContentProps {
   nowMs?: number;
   showHeader?: boolean;
   defaultExpanded?: boolean;
-  headerEnd?: React.ReactNode;
 }
 
 export function TaskErrorContent({
@@ -43,7 +43,6 @@ export function TaskErrorContent({
   nowMs = Date.now(),
   showHeader = true,
   defaultExpanded = false,
-  headerEnd,
 }: TaskErrorContentProps) {
   const isCloudBrand = useIsCloudBrand();
   const { openTaskDialog } = useTask();
@@ -54,59 +53,122 @@ export function TaskErrorContent({
 
   const issueEntries = useMemo(() => getTaskIssueFileEntries(task), [task]);
 
-  const failedCount = getFailedFileCount(task);
+  const totalFailedCount = getFailedFileCount(task);
+  // Count cancelled files separately using centralized detection
+  const cancelledCount = task.files
+    ? Object.values(task.files).filter(
+        (file) =>
+          (file.status === "failed" || file.status === "error") &&
+          isFileCancelled(file),
+      ).length
+    : 0;
+  const failedCount = totalFailedCount - cancelledCount;
   const warningCount = getWarningFileEntries(task).length;
   const successCount = getSuccessfulFileCount(task);
   const ingestedSuccessCount = Math.max(0, successCount - warningCount);
   const timestamp =
     parseTimestamp(task.created_at) ?? parseTimestamp(task.updated_at);
+
+  // Determine if this is a cancellation-only task (no actual failures)
+  const isCancelledOnly = cancelledCount > 0 && failedCount === 0;
   const isFailedStatus =
-    isTerminalFailedTask(task) || isCompletedTotalFailure(task);
-  const statusLabel = isFailedStatus
-    ? "Failed"
-    : warningCount > 0
-      ? "Warning"
-      : "Complete";
-  // Pill colors: failed (red) vs partial success (amber/orange), each with IBM tokens or OSS borders.
+    !isCancelledOnly &&
+    (isTerminalFailedTask(task) || isCompletedTotalFailure(task));
+  const statusLabel = isCancelledOnly
+    ? "Cancelled"
+    : isFailedStatus
+      ? "Failed"
+      : warningCount > 0
+        ? "Warning"
+        : "Complete";
+  // Pill colors: failed (red) vs partial success (amber/orange) vs cancelled (gray), each with IBM tokens or OSS borders.
   const statusPillClassName = cn(
     "shrink-0 rounded-full px-2 py-1 text-xs",
-    isFailedStatus
-      ? isCloudBrand
-        ? "border-0 bg-task-status-failed text-task-status-failed-foreground"
-        : "border border-failure-pill bg-failure-soft text-destructive"
-      : isCloudBrand
-        ? "border-0 bg-task-status-partial text-task-status-partial-foreground"
-        : "border border-brand-amber-30 bg-brand-amber-10 text-brand-amber",
+    isCancelledOnly
+      ? "border border-muted bg-muted/50 text-muted-foreground"
+      : isFailedStatus
+        ? isCloudBrand
+          ? "border-0 bg-task-status-failed text-task-status-failed-foreground"
+          : "border border-failure-pill bg-failure-soft text-destructive"
+        : isCloudBrand
+          ? "border-0 bg-task-status-partial text-task-status-partial-foreground"
+          : "border border-brand-amber-30 bg-brand-amber-10 text-brand-amber",
   );
 
-  if (failedCount <= 0 && issueEntries.length === 0) {
+  if (failedCount <= 0 && cancelledCount <= 0 && issueEntries.length === 0) {
     return null;
   }
 
   const ossIconColumn = showHeader && !isCloudBrand;
 
-  const toggleAccordion = () =>
-    setAccordionValue((v) => (v === "failed-files" ? "" : "failed-files"));
+  const accordionSummary = (
+    <div className="flex min-w-0 flex-1 items-center gap-1">
+      <span className="text-xs">
+        {ingestedSuccessCount} success
+        {warningCount > 0 ? ` · ${warningCount} warning` : ""}
+        {failedCount > 0 ? ` · ${failedCount} failed` : ""}
+        {cancelledCount > 0 ? ` · ${cancelledCount} cancelled` : ""}
+      </span>
+      <ChevronDown className="size-4 shrink-0 transition-transform group-data-[state=open]:rotate-180" />
+    </div>
+  );
 
-  return (
-    <div className={cn("w-full", !showHeader && "pt-2")}>
-      <div
+  const openTaskDialogButton = (
+    <button
+      type="button"
+      aria-label="Open task details"
+      className="inline-flex shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
+      onClick={() => openTaskDialog(task.task_id)}
+    >
+      <IncidentReporterIcon className="size-4" />
+    </button>
+  );
+
+  const accordionHeader = (
+    <AccordionPrimitive.Header
+      className={cn(
+        "flex w-full min-w-0 items-center gap-2",
+        ossIconColumn && "gap-2.5",
+      )}
+    >
+      {ossIconColumn ? <div className="size-5 shrink-0" aria-hidden /> : null}
+      <AccordionPrimitive.Trigger
         className={cn(
-          showHeader &&
-            (isCloudBrand
-              ? "border-t border-muted"
-              : "rounded-mmd border border-muted"),
+          "group inline-flex min-w-0 flex-1 items-center justify-start gap-1 px-0 py-0 text-sm text-muted-foreground transition-colors hover:text-foreground",
         )}
       >
+        {accordionSummary}
+      </AccordionPrimitive.Trigger>
+      {openTaskDialogButton}
+    </AccordionPrimitive.Header>
+  );
+
+  return (
+    <div
+      className={cn(
+        "w-full",
+        showHeader &&
+          cn(
+            "py-mmd px-4 transition-colors hover:bg-muted/60",
+            isCloudBrand
+              ? "border-t border-muted"
+              : "rounded-mmd border border-muted",
+          ),
+        !showHeader && "pt-2",
+      )}
+    >
+      <div className="flex w-full min-w-0 flex-col gap-1">
         {showHeader && (
-          <button
-            type="button"
-            onClick={toggleAccordion}
-            aria-expanded={isExpanded}
-            className="flex min-w-0 w-full items-center gap-2.5 text-left py-mmd px-4 transition-colors hover:bg-muted/60"
+          <div
+            className={cn("flex min-w-0 w-full", ossIconColumn && "gap-2.5")}
           >
             {ossIconColumn &&
-              (isFailedStatus ? (
+              (isCancelledOnly ? (
+                <XCircle
+                  className="size-5 shrink-0 text-muted-foreground"
+                  aria-hidden
+                />
+              ) : isFailedStatus ? (
                 <XCircle
                   className="size-5 shrink-0 text-destructive"
                   aria-hidden
@@ -118,173 +180,122 @@ export function TaskErrorContent({
                 />
               ))}
             <div className="flex min-w-0 flex-1 flex-col gap-1">
-              <p className="text-mmd truncate">
-                Task {task.task_id.slice(0, 8)}...
-              </p>
-              <div className="flex items-center gap-1 text-xxs text-muted-foreground">
-                <span className="min-h-4 leading-4 whitespace-nowrap">
-                  {formatTaskTimestamp(timestamp, mode, nowMs)}
-                </span>
-                {(ingestedSuccessCount > 0 || warningCount > 0) && (
-                  <span className="ml-auto">
-                    {ingestedSuccessCount > 0
-                      ? `${ingestedSuccessCount} success`
-                      : ""}
-                    {warningCount > 0
-                      ? `${ingestedSuccessCount > 0 ? " · " : ""}${warningCount} warning`
-                      : ""}
-                  </span>
+              <div className="flex min-w-0 items-center justify-between gap-1.5">
+                <p className="text-mmd truncate">
+                  Task {task.task_id.slice(0, 8)}...
+                </p>
+                {!isExpanded && (
+                  <p className={statusPillClassName}>{statusLabel}</p>
                 )}
               </div>
+              <p className="min-h-4 text-xxs leading-4 text-muted-foreground whitespace-nowrap">
+                {formatTaskTimestamp(timestamp, mode, nowMs)}
+              </p>
             </div>
-            <div className="flex items-center gap-1.5 shrink-0">
-              {!isExpanded && (
-                <p className={statusPillClassName}>{statusLabel}</p>
-              )}
-              {headerEnd}
-              <ChevronDown
-                className={cn(
-                  "size-3.5 shrink-0 transition-transform",
-                  isExpanded && "rotate-180",
-                )}
-              />
-            </div>
-          </button>
+          </div>
         )}
-        <div
-          className={cn(
-            "flex w-full min-w-0 flex-col gap-1",
-            showHeader && "px-4 pb-mmd",
-          )}
-        >
-          <Accordion
-            type="single"
-            collapsible
-            className="w-full rounded-mmd border-0"
-            value={accordionValue}
-            onValueChange={(value) =>
-              setAccordionValue(value === "failed-files" ? "failed-files" : "")
-            }
-          >
-            <AccordionItem
-              value="failed-files"
-              className="border-0 rounded-none"
-            >
-              {!showHeader && (
-                <AccordionPrimitive.Header className="flex w-full min-w-0 items-center gap-2">
-                  {ossIconColumn ? (
-                    <div className="size-5 shrink-0" aria-hidden />
-                  ) : null}
-                  <AccordionPrimitive.Trigger className="group inline-flex min-w-0 flex-1 items-center justify-start gap-1 px-0 py-0 text-sm text-muted-foreground transition-colors hover:text-foreground">
-                    <div className="flex min-w-0 flex-1 items-center gap-1">
-                      <span className="text-xs">
-                        {ingestedSuccessCount} success
-                        {warningCount > 0 ? ` · ${warningCount} warning` : ""}
-                        {failedCount > 0 ? ` · ${failedCount} failed` : ""}
-                      </span>
-                      <ChevronDown className="size-4 shrink-0 transition-transform group-data-[state=open]:rotate-180" />
-                    </div>
-                  </AccordionPrimitive.Trigger>
-                  <button
-                    type="button"
-                    aria-label="Open task details"
-                    className="inline-flex shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
-                    onClick={() => openTaskDialog(task.task_id)}
-                  >
-                    <IncidentReporterIcon className="size-4" />
-                  </button>
-                </AccordionPrimitive.Header>
-              )}
-              <AccordionContent className="w-full p-0 pt-2">
-                <div className="flex w-full flex-col gap-2">
-                  {issueEntries.map(([filePath, fileInfo], index) => {
-                    const fileName = getTaskFileName(filePath, fileInfo);
-                    const line = resolveTaskFileError(fileInfo, task.error);
-                    const componentCause = formatApiComponent(
-                      fileInfo.component,
-                    );
-                    const isWarning = isTaskFileWarning(fileInfo);
-                    const isFirst = index === 0;
 
-                    return (
-                      <div
-                        key={`${task.task_id}-${filePath}-${index}`}
-                        className={cn(
-                          "task-failed-file-card min-w-0",
-                          isCloudBrand
-                            ? cn(
-                                "flex flex-col items-start gap-2 self-stretch rounded-none rounded-r border-l-[1.5px] bg-border p-2",
-                                isWarning
+        <Accordion
+          type="single"
+          collapsible
+          className="w-full rounded-mmd border-0"
+          value={accordionValue}
+          onValueChange={(value) =>
+            setAccordionValue(value === "failed-files" ? "failed-files" : "")
+          }
+        >
+          <AccordionItem value="failed-files" className="border-0 rounded-none">
+            {accordionHeader}
+            <AccordionContent className="w-full p-0 pt-2">
+              <div className="flex w-full flex-col gap-2">
+                {issueEntries.map(([filePath, fileInfo], index) => {
+                  const fileName = getTaskFileName(filePath, fileInfo);
+                  const line = resolveTaskFileError(fileInfo, task.error);
+                  const componentCause = formatApiComponent(fileInfo.component);
+                  const isWarning = isTaskFileWarning(fileInfo);
+                  const isCancelled = isFileCancelled(fileInfo);
+
+                  return (
+                    <div
+                      key={`${task.task_id}-${filePath}-${index}`}
+                      className={cn(
+                        "task-failed-file-card min-w-0",
+                        isCloudBrand
+                          ? cn(
+                              "flex flex-col items-start gap-2 self-stretch rounded-none rounded-r border-l-[1.5px] bg-border p-2",
+                              isCancelled
+                                ? "border-l-muted-foreground"
+                                : isWarning
                                   ? "border-l-brand-amber"
                                   : "border-l-destructive",
-                              )
-                            : cn(
-                                "flex flex-col gap-1 rounded py-mmd px-4",
-                                isWarning
+                            )
+                          : cn(
+                              "flex flex-col gap-1 rounded py-mmd px-4",
+                              isCancelled
+                                ? "border border-muted bg-muted/50"
+                                : isWarning
                                   ? "border border-brand-amber-30 bg-brand-amber-10"
                                   : "border-destructive/20 bg-failure-soft",
-                              ),
+                            ),
+                      )}
+                    >
+                      <p
+                        className={cn(
+                          "w-full truncate text-xs",
+                          isCancelled
+                            ? "font-normal text-muted-foreground"
+                            : isCloudBrand
+                              ? "font-normal text-foreground"
+                              : "font-semibold text-failure-file",
                         )}
                       >
-                        <div className="flex min-w-0 w-full items-center gap-1">
-                          <p
-                            className={cn(
-                              "min-w-0 flex-1 truncate text-xs",
-                              isCloudBrand
-                                ? "font-normal text-foreground"
-                                : "font-semibold text-failure-file",
-                            )}
-                          >
-                            {fileName}
-                          </p>
-                          {showHeader && isFirst && (
-                            <button
-                              type="button"
-                              aria-label="Open task details"
-                              className="inline-flex shrink-0 items-center justify-center text-muted-foreground hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring rounded"
-                              onClick={() => openTaskDialog(task.task_id)}
-                            >
-                              <IncidentReporterIcon className="size-4" />
-                            </button>
-                          )}
-                        </div>
-                        <p
-                          className={cn(
-                            "w-full truncate text-xs",
-                            isCloudBrand
+                        {fileName}
+                      </p>
+                      <p
+                        className={cn(
+                          "w-full truncate text-xs",
+                          isCancelled
+                            ? "text-muted-foreground"
+                            : isCloudBrand
                               ? "text-muted-foreground"
                               : "text-failure-message",
-                          )}
-                          title={line}
-                        >
-                          {line}
-                        </p>
-                        {componentCause ? (
-                          <div className="flex min-w-0 items-center gap-1">
-                            <Flag
-                              className="size-3 shrink-0 text-destructive"
-                              aria-hidden
-                            />
-                            <span
-                              className={cn(
-                                "truncate text-xs",
-                                isCloudBrand
+                        )}
+                        title={line}
+                      >
+                        {line}
+                      </p>
+                      {componentCause ? (
+                        <div className="flex min-w-0 items-center gap-1">
+                          <Flag
+                            className={cn(
+                              "size-3 shrink-0",
+                              isCancelled
+                                ? "text-muted-foreground"
+                                : "text-destructive",
+                            )}
+                            aria-hidden
+                          />
+                          <span
+                            className={cn(
+                              "truncate text-xs",
+                              isCancelled
+                                ? "text-muted-foreground"
+                                : isCloudBrand
                                   ? "text-muted-foreground"
                                   : "text-failure-component-cause",
-                              )}
-                            >
-                              {componentCause}
-                            </span>
-                          </div>
-                        ) : null}
-                      </div>
-                    );
-                  })}
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
-        </div>
+                            )}
+                          >
+                            {componentCause}
+                          </span>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
       </div>
     </div>
   );

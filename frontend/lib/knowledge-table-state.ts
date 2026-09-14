@@ -142,6 +142,8 @@ function taskOverlayPriority(status?: string): number {
       return 3;
     case "failed":
       return 2;
+    case "cancelled":
+      return 2;
     case "active":
       return 1;
     default:
@@ -214,7 +216,9 @@ export function buildKnowledgeTableRows(
     if (taskFile) {
       const backendStatus = file.status ?? "active";
       const status =
-        taskFile.status === "processing" || taskFile.status === "failed"
+        taskFile.status === "processing" ||
+        taskFile.status === "failed" ||
+        taskFile.status === "cancelled"
           ? taskFile.status
           : backendStatus;
       return {
@@ -234,6 +238,8 @@ export function buildKnowledgeTableRows(
         embedding_model: taskFile.embedding_model ?? file.embedding_model,
         embedding_dimensions:
           taskFile.embedding_dimensions ?? file.embedding_dimensions,
+        // Preserve task_id so getTaskIdForRow can match correctly for cancellation
+        task_id: taskFile.task_id,
       };
     }
     return file;
