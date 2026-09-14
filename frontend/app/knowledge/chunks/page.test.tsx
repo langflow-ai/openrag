@@ -30,7 +30,7 @@ describe("ChunksPage - Search Query Parameter Handling", () => {
     const { default: ProtectedChunksPage } = await import("./page");
 
     renderWithProviders(<ProtectedChunksPage />, {
-      providers: ["auth"],
+      providers: ["auth", "knowledgeFilter"],
       auth: authPresets.admin,
     });
 
@@ -57,7 +57,7 @@ describe("ChunksPage - Search Query Parameter Handling", () => {
     const { default: ProtectedChunksPage } = await import("./page");
 
     renderWithProviders(<ProtectedChunksPage />, {
-      providers: ["auth"],
+      providers: ["auth", "knowledgeFilter"],
       auth: authPresets.admin,
     });
 
@@ -83,7 +83,7 @@ describe("ChunksPage - Search Query Parameter Handling", () => {
     const { default: ProtectedChunksPage } = await import("./page");
 
     renderWithProviders(<ProtectedChunksPage />, {
-      providers: ["auth"],
+      providers: ["auth", "knowledgeFilter"],
       auth: authPresets.admin,
     });
 
