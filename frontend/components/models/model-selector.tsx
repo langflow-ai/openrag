@@ -188,7 +188,16 @@ export function ModelSelector({
               !isRetiringSoon(option) ||
               isSelectedRow(option, value, selectedProvider, group),
           );
-      if (deferredSearch && matches.length === 0 && deprecatedCount === 0) {
+      // A custom name still needs one action per configured provider. Keeping
+      // otherwise-empty groups visible makes provider selection deterministic
+      // instead of falling back to a single provider-less row whenever the
+      // typed name has no catalogue match.
+      if (
+        deferredSearch &&
+        matches.length === 0 &&
+        deprecatedCount === 0 &&
+        !allowCustomEntry
+      ) {
         return [];
       }
       // Collapsed groups show a preview; the trailing row expands them. The cap
@@ -209,6 +218,7 @@ export function ModelSelector({
     deprecatedGroups,
     value,
     selectedProvider,
+    allowCustomEntry,
   ]);
   const visibleOptions = useMemo(() => {
     if (groupedOptions) return [];
@@ -435,8 +445,12 @@ export function ModelSelector({
                       {showCustom && (
                         <CommandItem
                           value={`${group.group}-${customValue}`}
-                          aria-label={customValue}
-                          data-testid={`model-custom-option-${customValue}`}
+                          aria-label={
+                            groupProvider
+                              ? `Use ${groupProvider}:${customValue}`
+                              : `Use ${customValue}`
+                          }
+                          data-testid={`model-custom-option-${groupProvider ?? "unknown"}-${customValue}`}
                           onSelect={() => {
                             if (
                               customValue !== value ||

@@ -54,6 +54,25 @@ Two suites live in `frontend/`, and **the file extension names the runner**:
 - Never `vi.mock` a module in `app/api/queries/` or `app/api/mutations/`. Mock the network instead, so the URL, `response.ok` handling, payload shape, and react-query wiring stay under test.
 - Use `renderWithProviders` from `test-utils/render.tsx`, not `app/providers.tsx`. The latter monkey-patches `window.fetch` for 401 redirects, and `app/api/get-query-client.ts` memoizes one client per browser process, which leaks cache between tests.
 
+**The provider harness.** `app/layout.tsx` nests eight contexts and 69 of the 124 client components consume at least one of them, so `renderWithProviders` mounts the **real** providers on request and drives their state through MSW:
+
+```tsx
+renderWithProviders(<ConnectorCard />, {
+  providers: ["auth", "brand", "task"],  // dependencies are added automatically
+  auth: authPresets.viewer,              // installs the /api/auth/* handlers
+  brand: "ibm",                          // seeds localStorage before mount
+  handlers: [http.get("/api/connectors", ...)],  // wins over the auth scenario
+});
+```
+
+- **Name the contexts the component uses, not the whole tree.** `providers: ["consoleStatus"]` pulls in auth, task, and knowledgeFilter on its own. `providers: "all"` mounts the full layout stack — for page-level tests. Naming two or three keeps failures readable.
+- **Auth scenarios live in `test-utils/fixtures/auth.ts`**, one per branch of `checkAuth`: `admin`, `viewer`, `noAuthMode`, `ibmAuthMode`, `unauthenticated`, `rbacDisabled`. Vary one field with `withAuth(preset, {...})` rather than adding a preset per permutation. The three cases that break gates are the ones where "signed in", "allowed", and "has permissions" come apart — no-auth mode grants everything while holding no user, and RBAC-disabled grants everything while holding no permissions.
+- **Per-test handlers go in the `handlers` option, not `server.use()`.** The harness installs the auth scenario at render time, which would be prepended over an override set earlier in the test body.
+- **Provider state is async** — auth alone is three fetches, so the first paint is always the loading state. Assert with `await screen.findBy…`, never a bare `getBy…` on the first tick (except when you are deliberately asserting the loading state).
+- **Fixtures** for `Task`, `TaskFileEntry`, and `Settings` are in `test-utils/fixtures/`. `makeTask()` derives its file counts from the `files` map so they agree; pass counts explicitly only when testing an inconsistent payload.
+- **`next/navigation` is mocked globally** in `test-utils/setup.ts` — the one place the "mock the network, not the module" rule does not apply, because it is framework plumbing with no network beneath it. Drive and assert it through `test-utils/router.ts` (`setMockLocation`, `mockRouter.push`). Navigation that must actually re-render a route belongs in Playwright.
+- **Default handlers in `test-utils/msw/handlers.ts` cover only what a provider fetches on mount** (`/api/auth/me`, `/api/users/me`, `/api/onboarding-status`, `/api/tasks/enhanced`, `/api/settings`). Anything a *component* fetches belongs in that component's test. Note `/api/auth/me` must always answer: `checkAuth` reschedules itself via `setTimeout` on a 5xx, so an unmocked call does not fail the test — it retries until the test times out.
+
 **Diff coverage gate.** PRs must cover the lines they change: `npm run test:diff-coverage` runs the suite and then `scripts/check-diff-coverage.mjs`, which fails when under 80% of *changed executable lines* are covered. Enforced by the `diff-coverage` job in `test-frontend-unit.yml`.
 
 The gate is on changed **lines**, not changed files — a one-line fix to an untested legacy file is not blocked, but new logic must come with tests. It diffs the merge base against the working tree, so it also reports on uncommitted work locally. Tune with `--threshold` / `--base` or `DIFF_COVERAGE_THRESHOLD` / `DIFF_COVERAGE_BASE`.

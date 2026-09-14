@@ -61,6 +61,7 @@ export interface Task {
     | "completed"
     | "skipped"
     | "failed"
+    | "cancelled"
     | "error";
   total_files?: number;
   processed_files?: number;
