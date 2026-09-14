@@ -1,5 +1,4 @@
 import { LabelInput } from "@/components/label-input";
-import { LabelInput } from "@/components/label-input";
 import { LabelWrapper } from "@/components/label-wrapper";
 import { ModelSelector } from "@/components/models/model-selector";
 
