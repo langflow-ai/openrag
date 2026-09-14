@@ -12,13 +12,15 @@ export function IngestionTab() {
   const showPreview = isIngestPreviewEnabled(runMode, { isCloudBrand });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <IngestSettingsSection />
       {showPreview ? (
-        <div className="space-y-4">
-          <h2 className="text-lg font-medium">Ingest preview</h2>
+        <section className="space-y-4 border-t border-border pt-8">
+          <h3 className="text-lg font-semibold leading-tight tracking-tight">
+            Ingest preview
+          </h3>
           <IngestPreviewSettingsSection />
-        </div>
+        </section>
       ) : null}
     </div>
   );
