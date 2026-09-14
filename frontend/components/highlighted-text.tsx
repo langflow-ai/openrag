@@ -21,23 +21,25 @@ interface HighlightedTextProps {
  * Parse a single fragment string like "foo <mark>bar</mark> baz" into an
  * array of React nodes, converting `<mark>` elements to styled spans.
  */
-function parseFragment(fragment: string): React.ReactNode {
+function parseFragment(fragment: string, keyPrefix: string): React.ReactNode {
   // Split on <mark>…</mark> pairs, keeping the captured groups.
   const parts = fragment.split(/(<mark>.*?<\/mark>)/g);
-  return parts.map((part, index) => {
-    // Use content + index for unique keys (handles duplicate content)
+  let partId = 0;
+  return parts.map((part) => {
+    // Use prefix + counter for unique keys (no array index)
+    const key = `${keyPrefix}-p${partId++}`;
     if (part.startsWith("<mark>") && part.endsWith("</mark>")) {
       const inner = part.slice(6, -7); // strip <mark> and </mark>
       return (
         <mark
-          key={`${part}-${index}`}
+          key={key}
           className="bg-yellow-200 dark:bg-yellow-800 text-foreground rounded-[2px] px-[1px] not-italic"
         >
           {inner}
         </mark>
       );
     }
-    return part ? <span key={`${part}-${index}`}>{part}</span> : null;
+    return part ? <span key={key}>{part}</span> : null;
   });
 }
 
@@ -50,18 +52,20 @@ export function HighlightedText({
     return <span className={className}>{fallbackText}</span>;
   }
 
+  // Generate unique keys using a counter instead of array index
+  let fragmentId = 0;
   return (
     <span className={className}>
       {highlights.map((fragment, i) => {
-        // Use content + index for unique keys (handles repeated excerpts)
+        const key = `f${fragmentId++}`;
         return (
           // Separate fragments with an ellipsis so the reader knows they are
           // non-contiguous excerpts from the full chunk text.
-          <span key={`${fragment}-${i}`}>
+          <span key={key}>
             {i > 0 && (
               <span className="text-muted-foreground mx-1 select-none">…</span>
             )}
-            {parseFragment(fragment)}
+            {parseFragment(fragment, key)}
           </span>
         );
       })}
