@@ -42,8 +42,12 @@ class _OpenSearch:
     async def search(self, *, index, body, params):
         # Agg-only probes (embedding space detection, wildcard facets)
         if body.get("size") == 0:
-            return {"aggregations": {"embedding_spaces": {"buckets": []},
-                                     "legacy_embedding_models": {"buckets": []}}}
+            return {
+                "aggregations": {
+                    "embedding_spaces": {"buckets": []},
+                    "legacy_embedding_models": {"buckets": []},
+                }
+            }
         self.captured_body = body
         return {
             "hits": {"hits": self._hits},
@@ -63,7 +67,9 @@ def _make_service(opensearch: _OpenSearch, monkeypatch) -> SearchService:
 
     monkeypatch.setattr("services.search_service.gateway_embeddings", _no_embed)
     monkeypatch.setattr("services.search_service.get_index_name", lambda: "documents")
-    monkeypatch.setattr("services.search_service.get_embedding_model", lambda: "text-embedding-3-small")
+    monkeypatch.setattr(
+        "services.search_service.get_embedding_model", lambda: "text-embedding-3-small"
+    )
     monkeypatch.setattr(
         "services.search_service.get_openrag_config",
         lambda: SimpleNamespace(

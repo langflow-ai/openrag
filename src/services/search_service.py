@@ -769,9 +769,7 @@ class SearchService:
             # OpenSearch returns highlight fragments as lists of strings.
             # Flatten to a single list; absent when the field had no keyword match
             # (e.g. pure KNN hit) or when this was a wildcard query.
-            raw_highlights: list[str] = (
-                hit.get("highlight", {}).get("text") or []
-            )
+            raw_highlights: list[str] = hit.get("highlight", {}).get("text") or []
             chunks.append(
                 {
                     "filename": source.get("filename"),
