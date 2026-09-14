@@ -1782,7 +1782,10 @@ async def connector_sync(
                 return JSONResponse(
                     {
                         "status": "no_files",
-                        "message": f"All {connector_type} files are already up to date.",
+                        # Scoped to indexed files. Unlike the bucket_filter branch
+                        # above, this path never enumerates new remote files, so
+                        # it cannot claim the whole connector is up to date.
+                        "message": (f"All indexed {connector_type} files are up to date."),
                     },
                     status_code=200,
                 )

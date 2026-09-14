@@ -300,7 +300,8 @@ export const SyncConfirmDialog = ({
   } else if (hasRechecks) {
     description = `Sync will re-check ${pluralize(totalRechecked, "file")}.`;
   } else {
-    description = "Everything is already up to date.";
+    // Scoped to indexed files: the preview never looked for new remote ones.
+    description = "No indexed files need updating or removing.";
   }
 
   // CTA variant + copy follows the most-severe state present.
@@ -377,8 +378,16 @@ export const SyncConfirmDialog = ({
               <Alert>
                 <Check className="size-5" />
                 <AlertTitle>Nothing to change</AlertTitle>
-                <AlertDescription className="col-start-2 block min-w-0">
-                  <p>No files were added, changed, or removed at the source.</p>
+                <AlertDescription className="col-start-2 block min-w-0 [text-wrap:pretty]">
+                  {/* Only claim what the preview checked. It diffs the files
+                      already in Knowledge against the source and never
+                      enumerates new remote files — and sync would not ingest
+                      them anyway (see bucket_changed_file_ids), so promising
+                      "nothing was added" is doubly unverifiable. */}
+                  <p>
+                    Sync reconciles files already in Knowledge; it does not add
+                    new ones from the source.
+                  </p>
                 </AlertDescription>
               </Alert>
             ) : null}

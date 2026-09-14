@@ -137,10 +137,14 @@ describe("SyncConfirmDialog — nothing to do", () => {
     expect(await screen.findByText("Nothing to change")).toBeVisible();
     expect(
       screen.getByText(
-        "No files were added, changed, or removed at the source.",
+        "Sync reconciles files already in Knowledge; it does not add new ones from the source.",
       ),
     ).toBeVisible();
     expect(screen.queryByText("0 files will be updated")).toBeNull();
+    // The preview only diffs already-indexed files against the source; it never
+    // enumerates new remote files, so the empty state must not imply it did.
+    expect(screen.queryByText(/were added/i)).toBeNull();
+    expect(screen.queryByText(/everything is already up to date/i)).toBeNull();
   });
 });
 
