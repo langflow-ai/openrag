@@ -80,8 +80,14 @@ export const summarizeSyncPreview = (
     : connectorType && syncedCount
       ? { [connectorType]: syncedCount }
       : {};
+  // `!== true` rather than `=== false`: a connector that did not report its
+  // availability is one whose updates we cannot predict, which is the same
+  // situation as an explicit false. Requiring the explicit false made a caller
+  // that forgot to pass the field render as "nothing to change" — telling the
+  // user there is no work when files are in fact pending. Unknown must fail
+  // towards "re-checked", which is true in every case.
   for (const [type, count] of Object.entries(syncedTotals)) {
-    if (count > 0 && (updatesAvailableByType ?? {})[type] === false) {
+    if (count > 0 && (updatesAvailableByType ?? {})[type] !== true) {
       recheckedByType[type] = count;
     }
   }

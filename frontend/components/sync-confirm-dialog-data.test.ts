@@ -118,6 +118,19 @@ describe("summarizeSyncPreview — sync all", () => {
     expect(summary.totalOrphans).toBe(0);
   });
 
+  it("treats a missing availability flag as unpredictable, not as no work", () => {
+    // A call site that forgets updatesAvailableByType must not make the dialog
+    // claim there is nothing to do: it understates to zero and the user skips a
+    // sync that had pending changes. Unknown fails towards "re-checked".
+    const summary = summarizeSyncPreview({
+      connectorType: "google_drive",
+      syncedCount: 7,
+    });
+
+    expect(summary.totalUpdates).toBe(0);
+    expect(summary.totalRechecked).toBe(7);
+  });
+
   it("is empty for an empty preview", () => {
     const summary = summarizeSyncPreview({ isSyncAll: true });
 

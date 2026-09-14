@@ -103,6 +103,27 @@ describe("SyncConfirmDialog — re-checks", () => {
   });
 });
 
+describe("SyncConfirmDialog — per-file sync call shape", () => {
+  it("reports re-checks for a replace_always connector, not 'up to date'", async () => {
+    // The shape knowledge-actions-dropdown passes: a single-connector preview
+    // for google_drive / onedrive / sharepoint, which cannot predict updates.
+    // Dropping updatesAvailableByType here made the dialog say nothing would
+    // change while files were pending — worse than the overstated count it
+    // replaced, because the user skips the sync entirely.
+    renderDialog({
+      connectorType: "google_drive",
+      orphans: [],
+      orphansAvailableByType: { google_drive: true },
+      updates: [],
+      updatesAvailableByType: { google_drive: false },
+      syncedCount: 7,
+    });
+
+    expect(await screen.findByText("7 files will be re-checked")).toBeVisible();
+    expect(screen.queryByText("Nothing to change")).toBeNull();
+  });
+});
+
 describe("SyncConfirmDialog — nothing to do", () => {
   it("says so rather than showing a zero count", async () => {
     renderDialog({
