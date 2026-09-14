@@ -24,7 +24,10 @@ import { TaskProvider, useTask } from "./task-context";
  * the test does not spin up the full auth flow.
  */
 
-vi.mock("@/contexts/auth-context", () => ({
+// Spreads the real module: `@/test-utils/render` imports `AuthProvider` from
+// it, and vitest throws at import time if a factory mock drops that export.
+vi.mock("@/contexts/auth-context", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/contexts/auth-context")>()),
   useAuth: () => ({ isAuthenticated: true, isNoAuthMode: false }),
 }));
 

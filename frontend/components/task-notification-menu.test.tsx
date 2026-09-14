@@ -18,9 +18,14 @@ const cancelTask = vi.fn().mockResolvedValue(undefined);
 const openTaskDialog = vi.fn();
 const closeMenu = vi.fn();
 
+// Each mock spreads the real module: `@/test-utils/render` imports every
+// `*Provider` from these contexts, and vitest throws at import time if a
+// factory mock drops an export it needs.
+
 // Shared task context mock — individual tests mutate `mockTasks`.
 let mockTasks: Task[] = [];
-vi.mock("@/contexts/task-context", () => ({
+vi.mock("@/contexts/task-context", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/contexts/task-context")>()),
   useTask: () => ({
     tasks: mockTasks,
     isFetching: false,
@@ -34,11 +39,15 @@ vi.mock("@/contexts/task-context", () => ({
   }),
 }));
 
-vi.mock("@/contexts/brand-context", () => ({
+vi.mock("@/contexts/brand-context", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/contexts/brand-context")>()),
   useIsCloudBrand: () => false,
 }));
 
-vi.mock("@/contexts/console-status-context", () => ({
+vi.mock("@/contexts/console-status-context", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/contexts/console-status-context")
+  >()),
   useConsoleStatus: () => ({ problems: [], open: vi.fn() }),
 }));
 

@@ -13,13 +13,19 @@ import { TaskErrorContent } from "./task-error-content";
  * TaskErrorContent depends on useTask (for openTaskDialog) and useIsCloudBrand.
  * Both are mocked at the module level — the context providers are not needed
  * because we are testing component logic, not the context wiring.
+ *
+ * Each mock spreads the real module: `@/test-utils/render` imports every
+ * `*Provider` from these contexts, and vitest throws at import time if a
+ * factory mock drops an export it needs.
  */
 
-vi.mock("@/contexts/task-context", () => ({
+vi.mock("@/contexts/task-context", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/contexts/task-context")>()),
   useTask: () => ({ openTaskDialog: vi.fn() }),
 }));
 
-vi.mock("@/contexts/brand-context", () => ({
+vi.mock("@/contexts/brand-context", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/contexts/brand-context")>()),
   useIsCloudBrand: () => false,
 }));
 
