@@ -958,9 +958,11 @@ function ChatPage() {
       )}
 
       <StickToBottom.Content
-        className={cn("flex flex-col min-h-full overflow-x-hidden p-6")}
+        className={cn(
+          "flex flex-col min-h-full overflow-x-hidden px-3 py-6 sm:p-6",
+        )}
       >
-        <div className="flex flex-col place-self-center space-y-6 max-w-content w-full mx-auto">
+        <div className="flex flex-col space-y-6 max-w-content w-full sm:mx-auto">
           {messages.length === 0 && !streamingMessage ? (
             <div className="flex items-center justify-center h-full text-muted-foreground">
               <div className="text-center">
@@ -1081,7 +1083,7 @@ function ChatPage() {
             </>
           )}
           {!streamingMessage && (
-            <div className="pl-10">
+            <div className="pl-0 sm:pl-10">
               <Nudges
                 nudges={loading ? [] : (nudges as string[])}
                 handleSuggestionClick={handleSuggestionClick}
@@ -1090,7 +1092,7 @@ function ChatPage() {
           )}
         </div>
       </StickToBottom.Content>
-      <div className="p-6 pt-0 max-w-content mx-auto w-full">
+      <div className="px-3 pb-6 pt-0 max-w-content w-full sm:px-6 sm:mx-auto">
         {/* Input Area - Fixed at bottom */}
         <ChatInput
           ref={chatInputRef}
