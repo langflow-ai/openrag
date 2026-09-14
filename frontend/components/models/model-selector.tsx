@@ -90,6 +90,7 @@ export function ModelSelector({
   icon,
   placeholder = "Select model...",
   searchPlaceholder,
+  previewLimit,
   noOptionsPlaceholder = "No models available",
   custom = false,
   hasError = false,
@@ -117,6 +118,7 @@ export function ModelSelector({
     (custom ? "Search or type a model name" : "Search model...");
 
   const [searchValue, setSearchValue] = useState("");
+  const [showAllFlatOptions, setShowAllFlatOptions] = useState(false);
   // The option filter runs on the trimmed, lowercased search text, so the
   // custom entry has to use the trimmed text too — otherwise typing trailing
   // whitespace both defeats the duplicate check and stores a model id with
@@ -223,11 +225,29 @@ export function ModelSelector({
   const visibleOptions = useMemo(() => {
     if (groupedOptions) return [];
     const source = options ?? [];
-    if (!deferredSearch) return source.slice(0, 40);
-    return source
-      .filter((option) => option.label.toLowerCase().includes(deferredSearch))
-      .slice(0, 100);
-  }, [deferredSearch, groupedOptions, options]);
+    if (!deferredSearch) {
+      if (previewLimit !== undefined) {
+        return showAllFlatOptions ? source : source.slice(0, previewLimit);
+      }
+      return source.slice(0, 40);
+    }
+    const matches = source.filter((option) =>
+      option.label.toLowerCase().includes(deferredSearch),
+    );
+    return previewLimit !== undefined ? matches : matches.slice(0, 100);
+  }, [
+    deferredSearch,
+    groupedOptions,
+    options,
+    previewLimit,
+    showAllFlatOptions,
+  ]);
+  const showFlatPreviewHint =
+    previewLimit !== undefined &&
+    !groupedOptions &&
+    !deferredSearch &&
+    !showAllFlatOptions &&
+    (options?.length ?? 0) > previewLimit;
 
   // `shouldFilter={false}` means cmdk's own item count no longer reflects the
   // manual filtering above, so `CommandEmpty` cannot be trusted to appear.
@@ -296,6 +316,12 @@ export function ModelSelector({
             value={searchValue}
             onValueChange={setSearchValue}
           />
+          {showFlatPreviewHint && (
+            <p className="px-3 py-2 text-xs text-muted-foreground">
+              Showing {previewLimit} of {options?.length} models. Search all
+              models or choose Show all.
+            </p>
+          )}
           <CommandList
             id={listboxId}
             className="max-h-[300px] overflow-y-auto"
@@ -561,6 +587,17 @@ export function ModelSelector({
                     </div>
                   </CommandItem>
                 ))}
+                {showFlatPreviewHint && (
+                  <CommandItem
+                    value="__show-all-models"
+                    aria-label={`Show all ${options?.length} models`}
+                    data-testid="model-show-all-options"
+                    className="text-xs text-muted-foreground"
+                    onSelect={() => setShowAllFlatOptions(true)}
+                  >
+                    Show all {options?.length} models
+                  </CommandItem>
+                )}
                 {showFlatCustomEntry && (
                   <CommandItem
                     value={customValue}
