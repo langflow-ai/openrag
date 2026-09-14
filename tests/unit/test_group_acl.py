@@ -194,15 +194,21 @@ def test_security_roles_include_acl_dls_queries():
         assert "indices:data/write/index" not in cluster_permissions
         assert not any("alerting" in permission for permission in cluster_permissions)
 
-        document_permission = index_permissions[0]
-        document_actions = document_permission["allowed_actions"]
-        assert "read" in document_actions
-        assert "crud" not in document_actions
-        assert "indices:data/write/index" not in document_actions
-        assert "indices:data/write/update/byquery" not in document_actions
-        assert "indices:admin/mappings/put" not in document_actions
+        document_permissions = [
+            p for p in index_permissions
+            if any("documents" in pattern for pattern in p.get("index_patterns", []))
+            and "read" in p.get("allowed_actions", [])
+        ]
+        assert len(document_permissions) >= 1
+        for document_permission in document_permissions:
+            document_actions = document_permission["allowed_actions"]
+            assert "read" in document_actions
+            assert "crud" not in document_actions
+            assert "indices:data/write/index" not in document_actions
+            assert "indices:data/write/update/byquery" not in document_actions
+            assert "indices:admin/mappings/put" not in document_actions
 
-        dls = index_permissions[0]["dls"]
+        dls = "".join(p.get("dls", "") for p in document_permissions)
         assert '{"term":{"owner":"${user.name}"}}' in dls
         assert '{"term":{"owner":"${attr.jwt.email}"}}' in dls
         assert '{"term":{"allowed_users":"${user.name}"}}' in dls

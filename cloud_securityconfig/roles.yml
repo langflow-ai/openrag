@@ -17,10 +17,16 @@ openrag_user_role:
         {"bool":{"should":[
           {"term":{"owner":"${user.name}"}},
           {"term":{"owner":"${attr.jwt.email}"}},
+          {"bool":{"must_not":{"exists":{"field":"owner"}}}}
+        ],"minimum_should_match":1}}
+    - index_patterns: ["documents", "documents*", "knowledge_filters", "knowledge_filters*", "orag-*", "orag*"]
+      allowed_actions:
+        - read
+      dls: >
+        {"bool":{"should":[
           {"term":{"allowed_users":"${user.name}"}},
           {"term":{"allowed_users":"${attr.jwt.email}"}},
-          {"terms":{"allowed_principals":{"index":"openrag_dls_principals","id":"${user.name}","path":"principals"}}},
-          {"bool":{"must_not":{"exists":{"field":"owner"}}}}
+          {"terms":{"allowed_principals":{"index":"openrag_dls_principals","id":"${user.name}","path":"principals"}}}
         ],"minimum_should_match":1}}
     - index_patterns: ["documents", "documents*", "knowledge_filters", "knowledge_filters*", "orag-*", "orag*"]
       allowed_actions:
