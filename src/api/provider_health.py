@@ -98,17 +98,17 @@ async def check_provider_health(
                     llm_model = model or None
                     embedding_model = embedding_model_override or None
 
-                # Resolved after the model, because the endpoint a provider is
-                # checked against depends on which kind of call it is being
-                # checked for. `validate_provider_setup` probes the embedding
-                # model first when it has one, so the credentials have to follow
-                # that same precedence or the probe hits the wrong endpoint.
-                credentials = current_config.providers.credential_values(
-                    provider, kind="embedding" if embedding_model else "chat"
-                )
+                # One credential set per role, because the endpoint a provider
+                # is checked against depends on which kind of call it is being
+                # checked for (Red Hat OpenShift AI serves the two from
+                # different endpoints). Each role is probed on its own below.
+                role_credentials = {
+                    kind: current_config.providers.credential_values(provider, kind=kind)
+                    for kind in ("chat", "embedding")
+                }
                 # The untranslated form as well: a provider enhancement's
                 # lightweight check needs every endpoint the operator entered,
-                # and `credentials` has just been narrowed to one of them.
+                # and each entry above has been narrowed to one of them.
                 stored_credentials = current_config.providers.stored_credentials(provider)
             except ValueError:
                 # Provider not found in configuration
@@ -203,17 +203,35 @@ async def check_provider_health(
             # rather than the dedicated api_key/endpoint/project_id fields, so
             # this must be forwarded or validating one from the providers page
             # runs with no credentials at all.
-            await validate_provider_setup(
-                provider=provider,
-                api_key=api_key,
-                embedding_model=embedding_model,
-                llm_model=llm_model,
-                endpoint=endpoint,
-                project_id=project_id,
-                test_completion=test_completion,
-                credentials=credentials,
-                stored_credentials=stored_credentials,
-            )
+            #
+            # One probe per role the provider is selected for. The validator
+            # tests a single model per call, so a provider that is both the
+            # LLM and the embedding provider needs two calls, each with the
+            # credentials for that role — otherwise the chat model is never
+            # checked and the response below claims it was. With no model at
+            # all, one lightweight check runs.
+            probes = [
+                (kind, model_name)
+                for kind, model_name in (("chat", llm_model), ("embedding", embedding_model))
+                if model_name
+            ] or [("chat", None)]
+            for index, (kind, model_name) in enumerate(probes):
+                # Same spacing the polled branch applies between the two
+                # watsonx tests, so back-to-back calls don't trip its rate limit.
+                if index and test_completion and provider == "watsonx":
+                    logger.info("Waiting 2 seconds before WatsonX embedding test")
+                    await asyncio.sleep(2)
+                await validate_provider_setup(
+                    provider=provider,
+                    api_key=api_key,
+                    embedding_model=model_name if kind == "embedding" else None,
+                    llm_model=model_name if kind == "chat" else None,
+                    endpoint=endpoint,
+                    project_id=project_id,
+                    test_completion=test_completion,
+                    credentials=role_credentials[kind],
+                    stored_credentials=stored_credentials,
+                )
 
             return JSONResponse(
                 {

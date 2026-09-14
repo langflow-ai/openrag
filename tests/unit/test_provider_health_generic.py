@@ -98,9 +98,71 @@ async def test_provider_health_forwards_the_stored_form_for_multi_endpoint_provi
     response = await check_provider_health(provider="rhoai", user=None)
 
     assert response.status_code == 200
+    # Not selected for either role, so there is no model to probe with: one
+    # lightweight check, handed both forms.
+    validate.assert_awaited_once()
     kwargs = validate.await_args.kwargs
+    assert kwargs["llm_model"] is None
+    assert kwargs["embedding_model"] is None
     assert kwargs["credentials"] == translated
     assert kwargs["stored_credentials"] == stored
+
+
+@pytest.mark.asyncio
+async def test_provider_health_probes_each_role_of_a_dual_role_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A provider selected for both roles is probed once per role, each with
+    that role's credentials. The validator tests one model per call, so a single
+    call would probe the embedding model only and report the chat model as
+    validated without ever touching its endpoint."""
+    by_kind = {
+        "chat": {"api_key": "sha256~token", "api_base": "https://chat.svc:8443/v1"},
+        "embedding": {"api_key": "sha256~token", "api_base": "https://embed.svc:8443/v1"},
+    }
+    stored = {
+        "api_key": "sha256~token",
+        "api_base": by_kind["chat"]["api_base"],
+        "embedding_api_base": by_kind["embedding"]["api_base"],
+    }
+    providers = SimpleNamespace(
+        get_provider_config=lambda provider: SimpleNamespace(
+            api_key=None, endpoint=None, project_id=None
+        ),
+        credential_values=lambda provider, kind="chat": dict(by_kind[kind]),
+        stored_credentials=lambda provider: dict(stored),
+    )
+    config = SimpleNamespace(
+        providers=providers,
+        agent=SimpleNamespace(llm_provider="rhoai", llm_model="granite-3.3-2b-instruct"),
+        knowledge=SimpleNamespace(
+            embedding_provider="rhoai", embedding_model="granite-embedding-english-r2"
+        ),
+    )
+    validate = AsyncMock()
+    monkeypatch.setattr("api.provider_health.get_openrag_config", lambda: config)
+    monkeypatch.setattr("api.provider_health.validate_provider_setup", validate)
+    monkeypatch.setattr("api.provider_health.is_known_provider", lambda provider: True)
+
+    response = await check_provider_health(provider="rhoai", user=None)
+
+    assert response.status_code == 200
+    body = json.loads(response.body)
+    assert body["details"] == {
+        "llm_model": "granite-3.3-2b-instruct",
+        "embedding_model": "granite-embedding-english-r2",
+        "endpoint": None,
+    }
+    assert validate.await_count == 2
+    chat, embedding = (call.kwargs for call in validate.await_args_list)
+    assert (chat["llm_model"], chat["embedding_model"]) == ("granite-3.3-2b-instruct", None)
+    assert chat["credentials"] == by_kind["chat"]
+    assert (embedding["llm_model"], embedding["embedding_model"]) == (
+        None,
+        "granite-embedding-english-r2",
+    )
+    assert embedding["credentials"] == by_kind["embedding"]
+    assert all(call.kwargs["stored_credentials"] == stored for call in validate.await_args_list)
 
 
 @pytest.mark.asyncio
