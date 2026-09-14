@@ -55,16 +55,21 @@ export function HighlightedText({
 
   return (
     <span className={className}>
-      {highlights.map((fragment, i) => (
-        // Separate fragments with an ellipsis so the reader knows they are
-        // non-contiguous excerpts from the full chunk text.
-        <span key={fragment}>
-          {i > 0 && (
-            <span className="text-muted-foreground mx-1 select-none">…</span>
-          )}
-          {parseFragment(fragment, i)}
-        </span>
-      ))}
+      {highlights.map((fragment, i) => {
+        // Create a stable key from the fragment content and position
+        // Using fragment+index handles duplicate fragments while avoiding array-index-only keys
+        const key = `${fragment}-${i}`;
+        return (
+          // Separate fragments with an ellipsis so the reader knows they are
+          // non-contiguous excerpts from the full chunk text.
+          <span key={key}>
+            {i > 0 && (
+              <span className="text-muted-foreground mx-1 select-none">…</span>
+            )}
+            {parseFragment(fragment, i)}
+          </span>
+        );
+      })}
     </span>
   );
 }

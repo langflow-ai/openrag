@@ -630,12 +630,14 @@ function SearchPage() {
                 const params = new URLSearchParams({
                   filename: data?.filename ?? "",
                 });
+                // Use effectiveSearchText to include both queryOverride and parsedFilterData.query
+                // so the chunks page can fetch highlight fragments for the active search
                 if (
-                  queryOverride &&
-                  queryOverride.trim() !== "*" &&
-                  queryOverride.trim() !== ""
+                  effectiveSearchText &&
+                  effectiveSearchText !== "*" &&
+                  effectiveSearchText !== ""
                 ) {
-                  params.set("q", queryOverride.trim());
+                  params.set("q", effectiveSearchText);
                 }
                 router.push(`/knowledge/chunks?${params.toString()}`);
               }}
