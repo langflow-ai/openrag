@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell } from "lucide-react";
+import { Bell, PanelLeft } from "lucide-react";
 import { BrandSwitcher } from "@/components/brand-switcher";
 import { ConsoleStatusButton } from "@/components/console-status";
 import { DevRoleToggle } from "@/components/dev-role-toggle";
@@ -12,7 +12,9 @@ import {
   useConsoleStatus,
   useToggleTaskMenu,
 } from "@/contexts/console-status-context";
+import { useSidebarOverlay } from "@/contexts/sidebar-overlay-context";
 import { useTask } from "@/contexts/task-context";
+import { useNarrowLayout } from "@/hooks/use-narrow-layout";
 import { cn } from "@/lib/utils";
 import { useProviderHealth } from "./provider-health-banner";
 
@@ -21,6 +23,16 @@ export function Header() {
   const { tasks } = useTask();
   const toggleTaskMenu = useToggleTaskMenu();
   const { runMode } = useAuth();
+  const isNarrow = useNarrowLayout();
+  const {
+    show: showSidebar,
+    hide: hideSidebar,
+    isPinned,
+    isCollapsed,
+    pin: pinSidebar,
+    unpin: unpinSidebar,
+    expand: expandSidebar,
+  } = useSidebarOverlay();
 
   const {
     hasProblem,
@@ -47,15 +59,39 @@ export function Header() {
   return (
     <header className={cn(`flex w-full h-full items-center justify-between`)}>
       <div className="header-start-display px-[16px]">
-        {/* Logo/Title */}
-        <div className="flex items-center">
-          <Logo className="fill-foreground" width={24} height={22} />
-          <span
-            className="text-lg font-semibold pl-2.5"
-            style={{ fontFamily: '"IBM Plex Mono", monospace' }}
-          >
-            OpenRAG
-          </span>
+        <div className="flex items-center gap-2">
+          {isNarrow ? (
+            <button
+              type="button"
+              aria-label={isPinned ? "Close navigation" : "Open navigation"}
+              onMouseEnter={showSidebar}
+              onMouseLeave={hideSidebar}
+              onClick={isPinned ? unpinSidebar : pinSidebar}
+              className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            >
+              <PanelLeft className="size-5" />
+            </button>
+          ) : isCollapsed ? (
+            <button
+              type="button"
+              aria-label="Open navigation"
+              onMouseEnter={showSidebar}
+              onMouseLeave={hideSidebar}
+              onClick={expandSidebar}
+              className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            >
+              <PanelLeft className="size-5" />
+            </button>
+          ) : null}
+          <div className="flex items-center">
+            <Logo className="fill-foreground" width={24} height={22} />
+            <span
+              className="text-lg font-semibold pl-2.5"
+              style={{ fontFamily: '"IBM Plex Mono", monospace' }}
+            >
+              OpenRAG
+            </span>
+          </div>
         </div>
       </div>
       <div className="header-end-division">
