@@ -419,7 +419,9 @@ async def setup_opensearch_security(
                 body=mapping_body,
                 headers={"Content-Type": "application/json"},
             )
-            logger.info(f"[OPENSEARCH] Role mapping '{mapping_name}' update response", response=resp)
+            logger.info(
+                f"[OPENSEARCH] Role mapping '{mapping_name}' update response", response=resp
+            )
 
         # 5. Update all_access mapping — merge with existing to preserve
         # IBM-managed entries, but ensure backend_roles never contains
