@@ -341,6 +341,42 @@ def test_the_disabled_tls_warning_is_not_repeated_per_request(monkeypatch) -> No
     assert len(disabled) == 1
 
 
+def test_a_plain_http_endpoint_is_warned_about_but_still_used(monkeypatch) -> None:
+    """The token goes out in the clear, which deserves the same treatment as
+    disabled verification — a warning, not a rejection, since a port-forward
+    and a cluster-local raw deployment are legitimately plain HTTP."""
+    warnings = _recorded_warnings(monkeypatch)
+
+    chat, embedding = rhoai.endpoints(
+        _stored(api_base="http://chat.svc:8080/v1", embedding_api_base="http://embed.svc:8080")
+    )
+
+    assert chat == "http://chat.svc:8080/v1"
+    assert embedding == "http://embed.svc:8080/v1"
+    cleartext = [m for m in warnings if "plain HTTP" in m]
+    assert len(cleartext) == 2  # one per distinct endpoint
+
+
+def test_the_cleartext_warning_is_not_repeated_per_request(monkeypatch) -> None:
+    """`endpoints()` runs inside `litellm_credentials`, i.e. on every chat
+    message and every embedded chunk."""
+    warnings = _recorded_warnings(monkeypatch)
+
+    for _ in range(5):
+        rhoai.litellm_credentials(_stored(api_base="http://chat.svc:8080/v1"))
+
+    cleartext = [m for m in warnings if "plain HTTP" in m]
+    assert len(cleartext) == 1
+
+
+def test_https_endpoints_draw_no_cleartext_warning(monkeypatch) -> None:
+    warnings = _recorded_warnings(monkeypatch)
+
+    rhoai.endpoints(_stored())
+
+    assert not [m for m in warnings if "plain HTTP" in m]
+
+
 def test_the_tls_setting_rides_in_the_credential_bag(tmp_path) -> None:
     """Per-provider, unlike SSL_CERT_FILE, which would replace certifi's roots
     process-wide and break every public provider in the same deployment."""

@@ -177,7 +177,7 @@ _reported_tls_settings: set[str] = set()
 
 
 def _warn_once(setting: str, message: str, **fields: Any) -> None:
-    """Report a TLS setting the first time this process sees it."""
+    """Report a TLS (or plain-HTTP) setting the first time this process sees it."""
     if setting in _reported_tls_settings:
         return
     _reported_tls_settings.add(setting)
@@ -278,6 +278,31 @@ def _values(stored: Mapping[str, Any] | None) -> dict[str, str]:
     return values
 
 
+def _warn_if_cleartext(label: str, api_base: str) -> None:
+    """Flag an `http://` endpoint once: the ServiceAccount token goes out in
+    the clear on every call to it.
+
+    A warning, not a rejection. A raw-deployment predictor on the cluster
+    network with auth disabled, or an `oc port-forward` to localhost, are
+    legitimately plain HTTP — but pasting the wrong scheme for a real Service
+    is silent otherwise, and it is the strictly weaker cousin of the disabled
+    TLS verification this module already warns about.
+    """
+    if not api_base:
+        return
+    parts = urlsplit(api_base)
+    if parts.scheme.lower() != "http":
+        return
+    _warn_once(
+        f"http:{parts.netloc}",
+        "The OpenShift AI endpoint uses plain HTTP; the ServiceAccount token will be "
+        "sent in cleartext on every request. Use https:// for anything beyond a "
+        "port-forward to localhost or a cluster-local endpoint with auth disabled.",
+        endpoint=label,
+        host=parts.netloc,
+    )
+
+
 def endpoints(stored: Mapping[str, Any] | None) -> tuple[str, str]:
     """`(chat_base, embedding_base)`, both normalized, either possibly empty.
 
@@ -289,6 +314,9 @@ def endpoints(stored: Mapping[str, Any] | None) -> tuple[str, str]:
     values = _values(stored)
     chat = normalized_api_base(values.get("api_base"))
     embedding = normalized_api_base(values.get("embedding_api_base")) or chat
+    _warn_if_cleartext("chat", chat)
+    if embedding != chat:
+        _warn_if_cleartext("embedding", embedding)
     return chat, embedding
 
 
