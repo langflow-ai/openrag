@@ -5,6 +5,7 @@ Validates error handling in update_docling_preset endpoint.
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
@@ -255,6 +256,51 @@ async def test_update_settings_validates_azure_credentials_before_saving():
     assert response.status_code == 400
     assert b"invalid subscription key" in response.body
     validate.assert_awaited_once()
+    save.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_settings_rejects_invalid_azure_foundry_key_before_saving():
+    """The Azure OpenAI form must probe Foundry resource keys on Save too."""
+    from api.settings.endpoints import update_settings
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.edited = True
+    body = SettingsUpdateBody(
+        provider_credentials={
+            "azure": {
+                "api_key": "wrong-key",
+                "api_base": "https://example.services.ai.azure.com",
+            }
+        },
+        provider_auth_methods={"azure": "api_key"},
+    )
+    rbac = MagicMock()
+    rbac.has_permission = AsyncMock(return_value=True)
+
+    with (
+        patch("api.settings.endpoints.get_openrag_config", return_value=config),
+        patch(
+            "api.provider_validation._http_request_with_retry",
+            new_callable=AsyncMock,
+            return_value=httpx.Response(
+                401, json={"error": {"message": "Invalid subscription key"}}
+            ),
+        ) as request,
+        patch("api.settings.endpoints.config_manager.save_config_file") as save,
+    ):
+        response = await update_settings(
+            body=body,
+            session_manager=AsyncMock(),
+            user=MagicMock(spec=User),
+            models_service=MagicMock(),
+            rbac=rbac,
+        )
+
+    assert response.status_code == 400
+    assert b"Invalid subscription key" in response.body
+    request.assert_awaited_once()
     save.assert_not_called()
 
 
