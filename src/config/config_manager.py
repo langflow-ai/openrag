@@ -4,6 +4,7 @@ import inspect
 import json
 import os
 import re
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Optional, Protocol
@@ -246,7 +247,18 @@ class ProvidersConfig:
             }
             previous.auth_method = auth_method
         previous.credentials.update(clean)
-        previous.configured = True
+        # Complete against the form's required fields, not merely non-empty:
+        # a submission of just `ssl_verify` must not make a provider look
+        # callable. Same gate as the environment seed.
+        required = _required_credential_keys(key)
+        previous.configured = _credentials_complete(previous.credentials, required)
+        if not previous.configured:
+            logger.warning(
+                "Model provider credentials are incomplete; it is left unconfigured "
+                "until every required field is set",
+                provider=key,
+                missing=[name for name in required if not previous.credentials.get(name)],
+            )
         self.custom[key] = previous
         if key == "openai":
             self.openai.api_key = clean.get("api_key", self.openai.api_key)
@@ -374,6 +386,41 @@ def _clean_submitted(submitted: dict[str, str] | None) -> dict[str, str]:
         for name, value in (submitted or {}).items()
         if str(name).strip() and str(value).strip()
     }
+
+
+def _required_credential_keys(provider: str) -> tuple[str, ...]:
+    """The fields `provider`'s form marks required, per the catalogue's spec.
+
+    Empty for a provider without a spec, or when the catalogue cannot be read
+    (LiteLLM absent, or a context where `services` is not importable): callers
+    then fall back to "any credential at all", which is what `set_credentials`
+    always did.
+    """
+    try:
+        from services.model_catalog import required_field_keys
+
+        return tuple(required_field_keys(provider))
+    except Exception:
+        logger.debug(
+            "Could not read the required credential fields for a provider",
+            provider=provider,
+            exc_info=True,
+        )
+        return ()
+
+
+def _credentials_complete(stored: Mapping[str, Any], required: Sequence[str]) -> bool:
+    """Whether a stored credential set is enough to call the provider at all.
+
+    This is what `configured` means for both write paths — the environment
+    seed and a settings save — so a provider that got half its fields cannot
+    satisfy `any_configured()`, be picked as a fallback, and then be called with
+    nothing useful (or, for `hosted_vllm`, with LiteLLM falling back to an
+    `HOSTED_VLLM_API_BASE` from the environment that points somewhere else).
+    """
+    if not required:
+        return any(str(value or "").strip() for value in stored.values())
+    return all(str(stored.get(name) or "").strip() for name in required)
 
 
 def credential_values_for_kind(providers: Any, provider: str, kind: str) -> dict[str, Any]:
@@ -676,9 +723,10 @@ class ConfigManager:
         needs every field it declares, so this takes the map instead.
 
         `required` names the fields without which the provider cannot be called
-        at all. It gates `configured`, because a provider that reports configured
-        with a partial credential set satisfies `any_configured()` and can then
-        be picked as a fallback and called with nothing useful.
+        at all. It gates `configured` through the same `_credentials_complete`
+        check `set_credentials` applies to a settings save, so a provider that
+        got half its fields on either path cannot satisfy `any_configured()`,
+        be picked as a fallback, and be called with nothing useful.
         """
         supplied = {
             name: str(value).strip()
@@ -691,7 +739,7 @@ class ConfigManager:
         entry = custom_providers.setdefault(provider, {})
         stored = entry.setdefault("credentials", {})
         stored.update(supplied)
-        entry["configured"] = all(stored.get(name) for name in required)
+        entry["configured"] = _credentials_complete(stored, required)
         if not entry["configured"]:
             logger.warning(
                 "Environment variables for a model provider are incomplete; it is left "

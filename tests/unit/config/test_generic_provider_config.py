@@ -236,3 +236,57 @@ def test_pending_stored_credentials_overlays_the_submission_on_the_stored_form(
     assert config.providers.stored_credentials("rhoai")["embedding_api_base"] == (
         "https://embed.svc:8443/v1"
     )
+
+
+def test_a_partial_save_does_not_mark_a_provider_configured():
+    """`configured` gates `any_configured()` and the fallback-provider pick, so
+    a direct API save of just `ssl_verify` must not make `rhoai` look callable:
+    `litellm_credentials()` would return `{}` for it and LiteLLM would fall back
+    to whatever `HOSTED_VLLM_API_BASE` is in the environment."""
+    config = OpenRAGConfig.from_dict({})
+
+    config.providers.set_credentials("rhoai", {"ssl_verify": "false"})
+
+    assert config.providers.custom["rhoai"].configured is False
+    assert config.providers.any_configured() is False
+    # The value is kept, so a later save that completes the set builds on it.
+    assert config.providers.stored_credentials("rhoai") == {"ssl_verify": "false"}
+
+
+def test_a_save_that_completes_the_required_fields_configures_the_provider():
+    """The check is against the merged credentials, not the one submission, so
+    a form saved in two steps ends up configured once every required field is in."""
+    config = OpenRAGConfig.from_dict({})
+
+    config.providers.set_credentials("rhoai", {"api_base": "https://chat.svc:8443/v1"})
+    assert config.providers.custom["rhoai"].configured is False
+
+    config.providers.set_credentials("rhoai", {"api_key": "sha256~token"})
+    assert config.providers.custom["rhoai"].configured is True
+
+
+def test_a_provider_without_required_fields_is_configured_by_any_credential():
+    """Providers whose spec marks nothing required keep the old "any non-empty
+    credential" rule — Anthropic's form, for one, marks neither field."""
+    config = OpenRAGConfig.from_dict({})
+
+    config.providers.set_credentials("anthropic", {"api_base": "https://proxy.example"})
+
+    assert config.providers.custom["anthropic"].configured is True
+
+
+def test_the_settings_save_and_the_env_seed_agree_on_configured(monkeypatch, tmp_path):
+    """Both write paths run the same completeness check, so a provider cannot
+    be unconfigured from the environment yet configured from the same fields
+    entered in Settings, or the reverse."""
+    from config.config_manager import ConfigManager
+
+    _clear_rhoai_env(monkeypatch)
+    monkeypatch.setenv("RHOAI_ENDPOINT", "https://chat.svc:8443/v1")
+    seeded = ConfigManager(config_file=tmp_path / "config.yaml").load_config()
+
+    saved = OpenRAGConfig.from_dict({})
+    saved.providers.set_credentials("rhoai", {"api_base": "https://chat.svc:8443/v1"})
+
+    assert seeded.providers.custom["rhoai"].configured is False
+    assert saved.providers.custom["rhoai"].configured is False
