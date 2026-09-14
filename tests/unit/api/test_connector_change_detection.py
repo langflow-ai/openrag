@@ -216,6 +216,163 @@ async def test_modified_time_map_returns_empty_on_error(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# get_synced_id_to_filename_map
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_filename_map_includes_connector_file_id_only_buckets(monkeypatch):
+    """Regression test: filenames for ids that only exist under connector_file_id
+    (the standard ConnectorFileProcessor path used by OAuth connectors, S3, etc.)
+    must not be dropped just because document_id holds an unrelated content hash."""
+    from api import connectors as connectors_api
+
+    monkeypatch.setattr(connectors_api, "get_index_name", lambda: "idx")
+
+    opensearch_client = AsyncMock()
+    opensearch_client.search = AsyncMock(
+        return_value={
+            "aggregations": {
+                "by_connector_file_id": {
+                    "buckets": [
+                        {
+                            "key": "gdrive-file-guid",
+                            "top_filename": {"buckets": [{"key": "report.pdf"}]},
+                        },
+                    ]
+                },
+                "by_document_id": {
+                    "buckets": [
+                        # Content-hash document_id from the standard ingest path —
+                        # unrelated to any enumerated source id.
+                        {
+                            "key": "content-hash-abc",
+                            "top_filename": {"buckets": [{"key": "report.pdf"}]},
+                        },
+                    ]
+                },
+            }
+        }
+    )
+    sm = MagicMock()
+    sm.get_user_opensearch_client = MagicMock(return_value=opensearch_client)
+
+    result = await connectors_api.get_synced_id_to_filename_map(
+        connector_type="google_drive",
+        user_id="alice",
+        session_manager=sm,
+        jwt_token=None,
+    )
+
+    assert result["gdrive-file-guid"] == "report.pdf"
+    assert result["content-hash-abc"] == "report.pdf"
+
+
+@pytest.mark.asyncio
+async def test_filename_map_prefers_connector_file_id_over_document_id(monkeypatch):
+    from api import connectors as connectors_api
+
+    monkeypatch.setattr(connectors_api, "get_index_name", lambda: "idx")
+
+    opensearch_client = AsyncMock()
+    opensearch_client.search = AsyncMock(
+        return_value={
+            "aggregations": {
+                "by_connector_file_id": {
+                    "buckets": [
+                        {"key": "c::a", "top_filename": {"buckets": [{"key": "real-name.txt"}]}},
+                    ]
+                },
+                "by_document_id": {
+                    "buckets": [
+                        # Same key from the content-hash side, stale/wrong filename —
+                        # connector_file_id must win.
+                        {"key": "c::a", "top_filename": {"buckets": [{"key": "stale-name.txt"}]}},
+                    ]
+                },
+            }
+        }
+    )
+    sm = MagicMock()
+    sm.get_user_opensearch_client = MagicMock(return_value=opensearch_client)
+
+    result = await connectors_api.get_synced_id_to_filename_map(
+        connector_type="azure_blob",
+        user_id="alice",
+        session_manager=sm,
+        jwt_token=None,
+    )
+
+    assert result["c::a"] == "real-name.txt"
+
+
+@pytest.mark.asyncio
+async def test_filename_map_falls_back_to_keyword_subfield_on_text_field_error(
+    monkeypatch,
+):
+    from api import connectors as connectors_api
+
+    monkeypatch.setattr(connectors_api, "get_index_name", lambda: "idx")
+
+    opensearch_client = AsyncMock()
+    called_fields = []
+
+    async def fake_search(*, index, body):
+        called_fields.append(body["aggs"]["by_connector_file_id"]["terms"]["field"])
+        if len(called_fields) == 1:
+            raise Exception(
+                "RequestError(400, 'search_phase_execution_exception', 'Text fields "
+                "are not optimised for operations that require per-document field "
+                "data like aggregations and sorting, so these operations are "
+                "disabled by default. Please use a keyword field instead. "
+                "Alternatively, set fielddata=true on [connector_file_id]...')"
+            )
+        return {
+            "aggregations": {
+                "by_connector_file_id": {
+                    "buckets": [
+                        {"key": "c::a", "top_filename": {"buckets": [{"key": "real-name.txt"}]}},
+                    ]
+                },
+                "by_document_id": {"buckets": []},
+            }
+        }
+
+    opensearch_client.search = AsyncMock(side_effect=fake_search)
+    sm = MagicMock()
+    sm.get_user_opensearch_client = MagicMock(return_value=opensearch_client)
+
+    result = await connectors_api.get_synced_id_to_filename_map(
+        connector_type="azure_blob",
+        user_id="alice",
+        session_manager=sm,
+        jwt_token=None,
+    )
+
+    assert result == {"c::a": "real-name.txt"}
+    assert called_fields == ["connector_file_id", "connector_file_id.keyword"]
+
+
+@pytest.mark.asyncio
+async def test_filename_map_returns_empty_on_error(monkeypatch):
+    from api import connectors as connectors_api
+
+    monkeypatch.setattr(connectors_api, "get_index_name", lambda: "idx")
+    opensearch_client = AsyncMock()
+    opensearch_client.search = AsyncMock(side_effect=RuntimeError("boom"))
+    sm = MagicMock()
+    sm.get_user_opensearch_client = MagicMock(return_value=opensearch_client)
+
+    result = await connectors_api.get_synced_id_to_filename_map(
+        connector_type="azure_blob",
+        user_id="alice",
+        session_manager=sm,
+        jwt_token=None,
+    )
+    assert result == {}
+
+
+# ---------------------------------------------------------------------------
 # get_synced_file_ids_for_connector
 # ---------------------------------------------------------------------------
 

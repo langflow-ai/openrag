@@ -228,10 +228,15 @@ async def get_synced_id_to_filename_map(
     session_manager,
     jwt_token: str | None = None,
 ) -> dict[str, str]:
-    """Return a {document_id: filename} map for files ingested under this connector_type.
+    """Return an {id: filename} map for files ingested under this connector_type.
 
-    Uses a sub-aggregation so each document_id is paired with its top filename in
-    a single OpenSearch round trip.
+    Keys cover both ingest layouts (mirrors ``get_synced_file_ids_for_connector``):
+    the non-Langflow path stores the connector id in ``connector_file_id`` (where
+    ``document_id`` is a content hash), while the Langflow path stores it in
+    ``document_id``. ``connector_file_id`` wins when both are present for the same id.
+
+    Uses a sub-aggregation so each id is paired with its top filename in a single
+    OpenSearch round trip.
     """
     try:
         opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
@@ -240,31 +245,53 @@ async def get_synced_id_to_filename_map(
             "size": 0,
             "query": {"term": {"connector_type": connector_type}},
             "aggs": {
+                "by_connector_file_id": {
+                    "terms": {"field": "connector_file_id", "size": OPENSEARCH_TERMS_AGG_LIMIT},
+                    "aggs": {
+                        "top_filename": {"terms": {"field": "filename", "size": 1}},
+                    },
+                },
                 "by_document_id": {
                     "terms": {"field": "document_id", "size": OPENSEARCH_TERMS_AGG_LIMIT},
                     "aggs": {
                         "top_filename": {"terms": {"field": "filename", "size": 1}},
                     },
-                }
+                },
             },
         }
 
-        result = await opensearch_client.search(index=get_index_name(), body=query_body)
-        buckets = result.get("aggregations", {}).get("by_document_id", {}).get("buckets", [])
-        if len(buckets) == OPENSEARCH_TERMS_AGG_LIMIT:
-            logger.warning(
-                "Document ID to filename mapping hit 10k limit - results may be truncated",
-                connector_type=connector_type,
-                returned_count=len(buckets),
+        try:
+            result = await opensearch_client.search(index=get_index_name(), body=query_body)
+        except Exception as agg_err:
+            if not _is_unmapped_keyword_agg_error(agg_err):
+                raise
+            # See get_synced_file_ids_for_connector: some indices predate the
+            # explicit keyword mapping for connector_file_id.
+            query_body["aggs"]["by_connector_file_id"]["terms"]["field"] = (
+                "connector_file_id.keyword"
             )
+            result = await opensearch_client.search(index=get_index_name(), body=query_body)
+
+        aggs = result.get("aggregations", {})
 
         mapping: dict[str, str] = {}
-        for bucket in buckets:
-            doc_id = bucket.get("key")
-            if not doc_id:
-                continue
-            fn_buckets = bucket.get("top_filename", {}).get("buckets", [])
-            mapping[doc_id] = fn_buckets[0]["key"] if fn_buckets else ""
+        # document_id first; connector_file_id overlays it (connector_file_id wins),
+        # matching get_synced_id_to_modified_time_map's precedence.
+        for agg_name in ("by_document_id", "by_connector_file_id"):
+            buckets = aggs.get(agg_name, {}).get("buckets", [])
+            if len(buckets) == OPENSEARCH_TERMS_AGG_LIMIT:
+                logger.warning(
+                    "ID to filename mapping hit 10k limit - results may be truncated",
+                    connector_type=connector_type,
+                    agg=agg_name,
+                    returned_count=len(buckets),
+                )
+            for bucket in buckets:
+                key = bucket.get("key")
+                if not key:
+                    continue
+                fn_buckets = bucket.get("top_filename", {}).get("buckets", [])
+                mapping[key] = fn_buckets[0]["key"] if fn_buckets else ""
         return mapping
     except Exception as e:
         logger.error(
