@@ -27,6 +27,8 @@ export interface ModelSelectorProps extends ButtonProps {
   icon?: React.ReactNode;
   placeholder?: string;
   searchPlaceholder?: string;
+  /** Initial flat-list size; when set, a Show all action exposes the rest. */
+  previewLimit?: number;
   noOptionsPlaceholder?: string;
   custom?: boolean;
   onValueChange: (value: string, provider?: string) => void;

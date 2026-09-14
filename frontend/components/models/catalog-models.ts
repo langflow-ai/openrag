@@ -78,6 +78,15 @@ function toOption(entry: CatalogModel, provider: string): CatalogSelectOption {
   };
 }
 
+function sortedProviderOptions(
+  provider: CatalogProvider,
+  kind: CatalogModelKind,
+): CatalogSelectOption[] {
+  return modelsForKind(provider, kind)
+    .map((entry) => toOption(entry, provider.key))
+    .sort((left, right) => compareCatalogOptions(left, right, kind));
+}
+
 /** Models onboarding actually validates (chat + tools / a real embedding). */
 const PREFERRED_LANGUAGE_MODELS = [
   "gpt-4o-mini",
@@ -238,9 +247,7 @@ export function groupedCatalogOptions(
     if (configured && !configured[key]) {
       continue;
     }
-    const modelOptions = modelsForKind(provider, kind)
-      .map((entry) => toOption(entry, key))
-      .sort((left, right) => compareCatalogOptions(left, right, kind));
+    const modelOptions = sortedProviderOptions(provider, kind);
     if (modelOptions.length === 0 && !options?.includeEmpty) {
       continue;
     }
@@ -251,6 +258,16 @@ export function groupedCatalogOptions(
     });
   }
   return groups;
+}
+
+/** One provider's models, ordered by the same ranking used in Settings. */
+export function providerCatalogOptions(
+  catalog: ModelCatalogResponse | undefined,
+  provider: string,
+  kind: CatalogModelKind,
+): CatalogSelectOption[] {
+  const entry = catalog?.providers?.find((item) => item.key === provider);
+  return entry ? sortedProviderOptions(entry, kind) : [];
 }
 
 /**

@@ -4,6 +4,7 @@ import { useGetModelCatalogQuery } from "@/app/api/queries/useGetModelsQuery";
 import { LabelInput } from "@/components/label-input";
 import {
   onboardingCredentialFields,
+  providerCatalogOptions,
   type SavedProvidersSnapshot,
   savedCredentialValuesForProvider,
   savedSecretFieldsForProvider,
@@ -126,20 +127,17 @@ export function GenericOnboarding({
     syncParentSettings(savedValues, model);
   }
 
-  const catalogEntry = catalog?.providers?.find(
-    (entry) => entry.key === provider,
+  const models = useMemo(
+    () =>
+      providerCatalogOptions(
+        catalog,
+        provider,
+        isEmbedding ? "embedding" : "language",
+      ),
+    [catalog, provider, isEmbedding],
   );
-  const models = useMemo(() => {
-    const entries = isEmbedding
-      ? (catalogEntry?.embedding_models ?? [])
-      : (catalogEntry?.models ?? []);
-    return entries.map((entry) => ({
-      value: entry.model,
-      label: entry.model,
-    }));
-  }, [catalogEntry, isEmbedding]);
 
-  // Default to the first model the catalogue lists for this provider.
+  // Default to the highest-ranked model, consistent with the Settings picker.
   const [prevModels, setPrevModels] = useState<typeof models | undefined>();
   if (models !== prevModels) {
     setPrevModels(models);
@@ -253,6 +251,11 @@ export function GenericOnboarding({
       </div>
       <AdvancedOnboarding
         icon={<Logo className="w-4 h-4" />}
+        searchPlaceholder={
+          provider === "azure"
+            ? "Search models or type Azure deployment name"
+            : undefined
+        }
         languageModels={isEmbedding ? undefined : models}
         embeddingModels={isEmbedding ? models : undefined}
         languageModel={isEmbedding ? undefined : model}
