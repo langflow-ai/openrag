@@ -138,7 +138,6 @@ async def cancel_file(
     return JSONResponse({"status": "cancelled", "task_id": task_id, "file_path": body.file_path})
 
 
-
 async def delete_task(
     task_id: str,
     task_service=Depends(get_task_service),
