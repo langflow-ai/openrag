@@ -18,6 +18,25 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+
+def _rbac_allowing(*perms: str):
+    """RBAC stub granting exactly `perms`.
+
+    Unit tests run with OPENRAG_RBAC_ENFORCE=true (tests/unit/conftest.py), so
+    permission checks are live and every sync now resolves
+    knowledge:delete:anonymous to decide whether ownerless chunks may be
+    deleted — see delete_orphan_documents.
+    """
+    rbac = MagicMock()
+    granted = set(perms)
+
+    async def has_permission(user_id, perm, role_override=None):
+        return perm in granted
+
+    rbac.has_permission = AsyncMock(side_effect=has_permission)
+    return rbac
+
+
 ROOT = Path(__file__).resolve().parent.parent.parent.parent
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
@@ -239,7 +258,7 @@ async def test_happy_path_deletes_orphans(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_happy_path_private_scopes_to_owner_or_ownerless(monkeypatch):
-    """Orphan cleanup filters by connector_type and "owned by me OR ownerless".
+    """With knowledge:delete:anonymous, cleanup covers "owned by me OR ownerless".
 
     The ownerless branch matters for COS: a file ingested with the share-all
     toggle has no owner field, and sync has no record of that, so an owner-only
@@ -262,6 +281,7 @@ async def test_happy_path_private_scopes_to_owner_or_ownerless(monkeypatch):
         session_manager=sm,
         jwt_token=None,
         existing_file_ids=["a", "b"],
+        allow_anonymous_delete=True,
     )
 
     search_body = opensearch_client.search.await_args.kwargs["body"]
@@ -298,6 +318,7 @@ async def test_happy_path_shared_scopes_to_ownerless(monkeypatch):
         jwt_token=None,
         existing_file_ids=["a", "b"],
         shared=True,
+        allow_anonymous_delete=True,
     )
 
     search_body = opensearch_client.search.await_args.kwargs["body"]
@@ -608,8 +629,9 @@ async def test_connector_sync_filters_orphan_ids_before_resync(monkeypatch):
         request=MagicMock(),
         connector_service=service,
         session_manager=MagicMock(),
-        user=SimpleNamespace(user_id="alice", jwt_token="token"),
+        user=SimpleNamespace(user_id="alice", jwt_token="token", db_user_id="alice"),
         session=MagicMock(),
+        rbac=_rbac_allowing("knowledge:delete:anonymous"),
     )
 
     assert response.status_code == 201
@@ -651,8 +673,9 @@ async def test_connector_sync_returns_no_files_when_all_ids_are_orphans(monkeypa
         request=MagicMock(),
         connector_service=service,
         session_manager=MagicMock(),
-        user=SimpleNamespace(user_id="alice", jwt_token="token"),
+        user=SimpleNamespace(user_id="alice", jwt_token="token", db_user_id="alice"),
         session=MagicMock(),
+        rbac=_rbac_allowing("knowledge:delete:anonymous"),
     )
 
     assert response.status_code == 200
@@ -693,8 +716,9 @@ async def test_sync_all_returns_deleted_only_without_error(monkeypatch):
         request=MagicMock(),
         connector_service=service,
         session_manager=MagicMock(),
-        user=SimpleNamespace(user_id="alice", jwt_token="token"),
+        user=SimpleNamespace(user_id="alice", jwt_token="token", db_user_id="alice"),
         session=MagicMock(),
+        rbac=_rbac_allowing("knowledge:delete:anonymous"),
     )
 
     body = _json(response)
@@ -704,3 +728,69 @@ async def test_sync_all_returns_deleted_only_without_error(monkeypatch):
     assert body["deleted_only_connectors"] == ["google_drive"]
     assert "Deleted stale cloud files" in body["message"]
     service.sync_specific_files.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# knowledge:delete:anonymous gates every path that can reach ownerless chunks
+#
+# Ownerless (share-all) chunks are visible to EVERY authenticated user under
+# DLS (securityconfig/roles.yml), and the orphan candidate set is filtered only
+# by connector_type — so it can contain shared files another user's connection
+# ingested. This user's own remote listing will not contain them, orphan
+# detection will call them deleted-at-source, and without this gate an ordinary
+# sync would erase another connection's shared documents.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_private_sync_without_permission_never_widens_to_ownerless(monkeypatch):
+    from api.connectors import reconcile_orphans_for_connector_type
+
+    conn = _make_connection("c1")
+    connector = _make_connector(remote_file_ids=["a"])
+    service = _make_service([conn], connector_lookup={"c1": connector})
+    opensearch_client = _make_opensearch_client(chunk_ids=["chunk-b-1"])
+    _patch_write_client(monkeypatch)
+    sm = _make_session_manager(opensearch_client)
+
+    await reconcile_orphans_for_connector_type(
+        connector_type="ibm_cos",
+        user_id="alice",
+        connector_service=service,
+        session_manager=sm,
+        jwt_token=None,
+        existing_file_ids=["a", "b"],
+        # No knowledge:delete:anonymous — the default for an ordinary sync.
+    )
+
+    filters = opensearch_client.search.await_args.kwargs["body"]["query"]["bool"]["filter"]
+    # Owner-scoped only: an ownerless chunk cannot match this.
+    assert {"term": {"owner": "alice"}} in filters
+    assert not any("should" in str(f) and "owner" in str(f) for f in filters)
+
+
+@pytest.mark.asyncio
+async def test_shared_reconcile_without_permission_deletes_nothing(monkeypatch):
+    """An explicitly shared reconcile is refused outright, not silently narrowed."""
+    from api.connectors import reconcile_orphans_for_connector_type
+
+    conn = _make_connection("c1")
+    connector = _make_connector(remote_file_ids=["a"])
+    service = _make_service([conn], connector_lookup={"c1": connector})
+    opensearch_client = _make_opensearch_client(chunk_ids=["chunk-b-1"])
+    write_client = _patch_write_client(monkeypatch)
+    sm = _make_session_manager(opensearch_client)
+
+    deleted_ids = await reconcile_orphans_for_connector_type(
+        connector_type="ibm_cos",
+        user_id="alice",
+        connector_service=service,
+        session_manager=sm,
+        jwt_token=None,
+        existing_file_ids=["a", "b"],
+        shared=True,
+        allow_anonymous_delete=False,
+    )
+
+    assert deleted_ids == []
+    write_client.delete.assert_not_called()

@@ -17,6 +17,25 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+
+def _rbac_allowing(*perms: str):
+    """RBAC stub granting exactly `perms`.
+
+    Unit tests run with OPENRAG_RBAC_ENFORCE=true (tests/unit/conftest.py), so
+    permission checks are live and every sync now resolves
+    knowledge:delete:anonymous to decide whether ownerless chunks may be
+    deleted — see delete_orphan_documents.
+    """
+    rbac = MagicMock()
+    granted = set(perms)
+
+    async def has_permission(user_id, perm, role_override=None):
+        return perm in granted
+
+    rbac.has_permission = AsyncMock(side_effect=has_permission)
+    return rbac
+
+
 ROOT = Path(__file__).resolve().parent.parent.parent.parent
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
@@ -554,8 +573,9 @@ async def test_bucket_filter_ingests_only_new_and_changed(monkeypatch):
         request=MagicMock(),
         connector_service=service,
         session_manager=MagicMock(),
-        user=SimpleNamespace(user_id="alice", jwt_token="token"),
+        user=SimpleNamespace(user_id="alice", jwt_token="token", db_user_id="alice"),
         session=MagicMock(),
+        rbac=_rbac_allowing("knowledge:delete:anonymous"),
     )
 
     assert response.status_code == 201
@@ -601,8 +621,9 @@ async def test_bucket_filter_all_unchanged_returns_no_files(monkeypatch):
         request=MagicMock(),
         connector_service=service,
         session_manager=MagicMock(),
-        user=SimpleNamespace(user_id="alice", jwt_token="token"),
+        user=SimpleNamespace(user_id="alice", jwt_token="token", db_user_id="alice"),
         session=MagicMock(),
+        rbac=_rbac_allowing("knowledge:delete:anonymous"),
     )
 
     assert response.status_code == 200
@@ -641,8 +662,9 @@ async def test_bucket_filter_only_new_files_single_batch(monkeypatch):
         request=MagicMock(),
         connector_service=service,
         session_manager=MagicMock(),
-        user=SimpleNamespace(user_id="alice", jwt_token="token"),
+        user=SimpleNamespace(user_id="alice", jwt_token="token", db_user_id="alice"),
         session=MagicMock(),
+        rbac=_rbac_allowing("knowledge:delete:anonymous"),
     )
 
     assert response.status_code == 201
@@ -836,8 +858,9 @@ async def test_sync_button_bucket_reingests_only_changed(monkeypatch):
         request=MagicMock(),
         connector_service=service,
         session_manager=MagicMock(),
-        user=SimpleNamespace(user_id="alice", jwt_token="token"),
+        user=SimpleNamespace(user_id="alice", jwt_token="token", db_user_id="alice"),
         session=MagicMock(),
+        rbac=_rbac_allowing("knowledge:delete:anonymous"),
     )
 
     assert response.status_code == 201
@@ -883,8 +906,9 @@ async def test_sync_button_bucket_all_unchanged_returns_no_files(monkeypatch):
         request=MagicMock(),
         connector_service=service,
         session_manager=MagicMock(),
-        user=SimpleNamespace(user_id="alice", jwt_token="token"),
+        user=SimpleNamespace(user_id="alice", jwt_token="token", db_user_id="alice"),
         session=MagicMock(),
+        rbac=_rbac_allowing("knowledge:delete:anonymous"),
     )
 
     assert response.status_code == 200
@@ -937,8 +961,9 @@ async def test_sync_all_bucket_reingests_only_changed(monkeypatch):
         request=MagicMock(),
         connector_service=service,
         session_manager=MagicMock(),
-        user=SimpleNamespace(user_id="alice", jwt_token="token"),
+        user=SimpleNamespace(user_id="alice", jwt_token="token", db_user_id="alice"),
         session=MagicMock(),
+        rbac=_rbac_allowing("knowledge:delete:anonymous"),
     )
 
     assert response.status_code == 201

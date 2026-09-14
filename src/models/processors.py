@@ -407,9 +407,14 @@ class TaskProcessor:
         value the chunks were indexed under — so an id that collides with a
         different connector's id can't take its chunks down with it.
 
-        The private scope is widened to "owned by this user OR ownerless": the
-        file id already pins the document down, and a COS file ingested with the
-        share-all toggle carries no ``owner`` for a plain owner term to match.
+        Callers pass the sharing mode resolved from what is actually indexed
+        (``_resolve_shared``), so this deletes under exactly that layout —
+        ownerless chunks for a share-all file, owner-scoped ones otherwise.
+        It must NOT widen to "owned OR ownerless" on top of that: the resolved
+        mode already matches the file, and widening would let a sync of an owned
+        file reach ownerless chunks that another user's connection ingested,
+        with none of the ``knowledge:delete:anonymous`` gating that deliberate
+        shared deletion goes through.
         """
         from connectors.chunk_cleanup import delete_connector_file_chunks
 
@@ -422,7 +427,6 @@ class TaskProcessor:
                 connector_type=connector_type,
                 owner_user_id=owner_user_id,
                 shared=shared,
-                include_shared=not shared,
                 keep_filenames=keep_filenames,
             )
         except Exception as e:

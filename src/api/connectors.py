@@ -704,6 +704,7 @@ async def delete_orphan_documents(
     *,
     connector_type: str | None = None,
     shared: bool | None = False,
+    allow_anonymous_delete: bool = False,
 ) -> int:
     """Delete OpenSearch chunks for the given orphan IDs. Returns the number of
     chunks deleted (0 on failure).
@@ -714,15 +715,36 @@ async def delete_orphan_documents(
     field the ids came from.
 
     ``shared`` is the caller's explicit intent and is None on the re-sync paths,
-    which have no record of how each file was ingested. Anything but an explicit
-    True therefore deletes across both layouts (owned by this user *or*
-    ownerless) rather than owner-only: a COS file ingested with the share-all
-    toggle has no ``owner``, and an owner-scoped delete would leave its chunks
-    in the index after the object was removed at the source.
+    which have no record of how each file was ingested.
+
+    ``allow_anonymous_delete`` is the resolved ``knowledge:delete:anonymous``
+    permission and is what puts ownerless (share-all) chunks in scope at all.
+    Without it this stays owner-scoped, even on a re-sync that would otherwise
+    widen to "owned by me OR ownerless".
+
+    That gate is not paranoia about the caller's own files. The orphan id set
+    comes from ``get_synced_file_ids_for_connector``, which filters only on
+    ``connector_type`` and reads through the user-scoped client — and DLS makes
+    every ownerless chunk visible to every authenticated user
+    (securityconfig/roles.yml). So the set can include shared files ingested by
+    a *different* user's connection, which this user's own remote listing will
+    not contain and orphan detection will therefore classify as deleted at
+    source. Widening the delete scope without the permission would let any
+    authenticated user erase another connection's shared documents by running
+    an ordinary sync.
     """
     if not orphan_ids:
         return 0
     from connectors.chunk_cleanup import delete_connector_file_chunks
+
+    include_shared = allow_anonymous_delete and not shared
+    if shared and not allow_anonymous_delete:
+        logger.warning(
+            "Skipping shared orphan cleanup — caller lacks knowledge:delete:anonymous",
+            connector_type=connector_type,
+            orphan_count=len(orphan_ids),
+        )
+        return 0
 
     try:
         opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
@@ -732,7 +754,7 @@ async def delete_orphan_documents(
             connector_type=connector_type,
             owner_user_id=None if shared else user_id,
             shared=bool(shared),
-            include_shared=not shared,
+            include_shared=include_shared,
             refresh=True,
         )
     except Exception as e:
@@ -753,10 +775,15 @@ async def reconcile_orphans_for_connector_type(
     existing_file_ids: list[str],
     *,
     shared: bool | None = False,
+    allow_anonymous_delete: bool = False,
 ) -> list[str]:
     """Compute and delete orphans for a connector type. Thin wrapper around
     compute_orphans_for_connector_type + delete_orphan_documents preserved for
     callers that perform sync immediately after reconcile.
+
+    ``allow_anonymous_delete`` (the resolved ``knowledge:delete:anonymous``
+    permission) is forwarded to the deletion; see delete_orphan_documents for
+    why ownerless chunks must not be in scope without it.
 
     Returns the list of orphan file IDs that were deleted (or []).
     """
@@ -773,6 +800,7 @@ async def reconcile_orphans_for_connector_type(
 
     orphan_ids = [o["document_id"] for o in orphans]
     deleted = await delete_orphan_documents(
+        allow_anonymous_delete=allow_anonymous_delete,
         orphan_ids=orphan_ids,
         user_id=user_id,
         session_manager=session_manager,
@@ -804,6 +832,7 @@ async def _sync_existing_connector_files(
     *,
     ingest_settings: dict[str, Any] | None = None,
     shared: bool | None = None,
+    allow_anonymous_delete: bool = False,
     reconcile: bool = True,
     max_files: int | None = None,
 ) -> dict[str, Any]:
@@ -850,6 +879,7 @@ async def _sync_existing_connector_files(
                 jwt_token=jwt_token,
                 existing_file_ids=existing_file_ids,
                 shared=shared,
+                allow_anonymous_delete=allow_anonymous_delete,
             )
             if orphan_ids:
                 orphan_id_set = set(orphan_ids)
@@ -1457,9 +1487,15 @@ async def connector_sync(
                 status_code=400,
             )
 
-        if body.shared and not await has_effective_permission(
+        # Resolved for every sync, not just an explicitly shared one: orphan
+        # cleanup on a plain re-sync can also reach ownerless chunks (see
+        # delete_orphan_documents), and those are visible to every authenticated
+        # user under DLS regardless of who ingested them.
+        allow_anonymous_delete = await has_effective_permission(
             request, user, rbac, "knowledge:delete:anonymous"
-        ):
+        )
+
+        if body.shared and not allow_anonymous_delete:
             return JSONResponse(
                 {"error": "Shared sync requires the knowledge:delete:anonymous permission"},
                 status_code=403,
@@ -1728,6 +1764,7 @@ async def connector_sync(
                 id_field=id_field,
                 ingest_settings=body.settings,
                 shared=body.shared,
+                allow_anonymous_delete=allow_anonymous_delete,
                 # Strict gating: skip orphan reconcile when sync is capped — we'd
                 # see a partial remote listing and delete legitimate files.
                 reconcile=body.max_files is None,
@@ -2183,6 +2220,7 @@ async def sync_all_connectors(
     session_manager=Depends(get_session_manager),
     user: User = Depends(require_permission("connectors:use")),
     session: AsyncSession = Depends(get_db_session),
+    rbac=Depends(get_rbac_service),
 ):
     """
     Sync files from all active cloud connector connections.
@@ -2192,6 +2230,11 @@ async def sync_all_connectors(
             Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_SYNC_START
         )
         jwt_token = user.jwt_token
+        # Sync-all reconciles orphans across every connector type, so it can
+        # reach ownerless chunks too — same gate as the per-connector endpoint.
+        allow_anonymous_delete = await has_effective_permission(
+            request, user, rbac, "knowledge:delete:anonymous"
+        )
 
         all_task_ids = []
         synced_connectors = []
@@ -2270,6 +2313,7 @@ async def sync_all_connectors(
                     existing_file_ids=existing_file_ids,
                     existing_filenames=existing_filenames,
                     id_field=id_field,
+                    allow_anonymous_delete=allow_anonymous_delete,
                 )
                 if sync_result["outcome"] == "deleted_only":
                     deleted_only_connectors.append(connector_type)
