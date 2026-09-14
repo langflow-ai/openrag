@@ -747,6 +747,48 @@ async def test_a_listing_that_cannot_be_read_keeps_the_fallback(monkeypatch) -> 
 
 
 @pytest.mark.asyncio
+async def test_an_empty_listing_on_one_half_keeps_that_fallback(monkeypatch) -> None:
+    """An endpoint that answers `{"data": []}` while the other half is fine must
+    not have an empty tuple cached for it: that would swap the configured rows
+    for a blank picker until the TTL expires."""
+    monkeypatch.setattr(
+        "httpx.AsyncClient",
+        _client_returning(
+            {
+                f"{CHAT_BASE}/models": _Response(200, _models_body(CHAT_MODEL)),
+                f"{EMBED_BASE}/models": _Response(200, {"object": "list", "data": []}),
+            }
+        ),
+    )
+    monkeypatch.setattr(rhoai, "_http_request_with_retry", _no_retry)
+
+    models = await rhoai.fetch_models(_stored())
+
+    assert models == rhoai.ClusterModels(chat=(CHAT_MODEL,), embedding=None)
+    assert rhoai.cached_models() == rhoai.ClusterModels(chat=(CHAT_MODEL,), embedding=None)
+
+
+@pytest.mark.asyncio
+async def test_an_unreadable_listing_on_one_half_keeps_that_fallback(monkeypatch) -> None:
+    """Same for a JSON body of the wrong shape: it is no answer for that half,
+    not an answer of "nothing"."""
+    monkeypatch.setattr(
+        "httpx.AsyncClient",
+        _client_returning(
+            {
+                f"{CHAT_BASE}/models": _Response(200, _models_body(CHAT_MODEL)),
+                f"{EMBED_BASE}/models": _Response(200, {"unexpected": "shape"}),
+            }
+        ),
+    )
+    monkeypatch.setattr(rhoai, "_http_request_with_retry", _no_retry)
+
+    await rhoai.fetch_models(_stored())
+
+    assert rhoai.cached_models() == rhoai.ClusterModels(chat=(CHAT_MODEL,), embedding=None)
+
+
+@pytest.mark.asyncio
 async def test_incomplete_credentials_are_not_taken_to_the_network(monkeypatch) -> None:
     def _explode(**kwargs):
         raise AssertionError("no HTTP call should be made")

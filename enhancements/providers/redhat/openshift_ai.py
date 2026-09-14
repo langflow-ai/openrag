@@ -507,7 +507,8 @@ def model_ids(body: Any) -> tuple[str, ...]:
 
     Order is preserved and duplicates dropped. Anything that is not a list of
     objects with an `id` yields nothing, so a proxy answering with an error page
-    empties this endpoint rather than putting garbage in a picker.
+    leaves that half on its configured fallback rather than putting garbage in
+    a picker.
     """
     if not isinstance(body, Mapping):
         return ()
@@ -647,9 +648,11 @@ async def fetch_models(credentials: Mapping[str, Any]) -> ClusterModels | None:
 
     now = time.monotonic()
     for half, models in listed.items():
-        # A half that failed keeps its previous answer and its older timestamp,
-        # so it is asked again next time rather than parked for a whole TTL.
-        if models is not None:
+        # A half that failed or listed nothing keeps its previous answer and its
+        # older timestamp, so it is asked again next time rather than parked for
+        # a whole TTL — and an empty answer never replaces the configured
+        # fallback for that half.
+        if models:
             _models_cache[half] = _Listing(models=models, at=now)
     _models_cache["key"] = key
 
