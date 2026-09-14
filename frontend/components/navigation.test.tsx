@@ -10,15 +10,18 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
 }));
 
-vi.mock("@/contexts/brand-context", () => ({
+vi.mock("@/contexts/brand-context", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/contexts/brand-context")>()),
   useIsCloudBrand: () => false,
 }));
 
-vi.mock("@/contexts/auth-context", () => ({
+vi.mock("@/contexts/auth-context", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/contexts/auth-context")>()),
   useAuth: () => ({ isNoAuthMode: false }),
 }));
 
-vi.mock("@/contexts/chat-context", () => ({
+vi.mock("@/contexts/chat-context", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/contexts/chat-context")>()),
   useChat: () => ({
     currentConversationId: "conv-1",
     loadConversation: vi.fn(),

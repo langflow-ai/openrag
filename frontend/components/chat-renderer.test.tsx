@@ -44,18 +44,21 @@ vi.mock("@/app/api/mutations/useUpdateOnboardingStateMutation", () => ({
   }),
 }));
 
-vi.mock("@/contexts/auth-context", () => ({
+vi.mock("@/contexts/auth-context", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/contexts/auth-context")>()),
   useAuth: () => ({
     isAuthenticated: true,
     isNoAuthMode: false,
   }),
 }));
 
-vi.mock("@/contexts/brand-context", () => ({
+vi.mock("@/contexts/brand-context", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/contexts/brand-context")>()),
   useIsCloudBrand: () => false,
 }));
 
-vi.mock("@/contexts/chat-context", () => ({
+vi.mock("@/contexts/chat-context", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/contexts/chat-context")>()),
   useChat: () => ({
     endpoint: "http://localhost",
     refreshTrigger: 0,
