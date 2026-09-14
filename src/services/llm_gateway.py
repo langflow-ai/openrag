@@ -237,7 +237,26 @@ def resolve_call(
     # under the key it aliases (`watsonx_onprem` -> `watsonx`). The OpenRAG key
     # is still what the caller sees and what credentials are stored under.
     route = litellm_provider_key(provider)
-    litellm_model = f"{route}/{name}" if route != "openai" else name
+    if route == "openai":
+        litellm_model = name
+    elif provider == "ollama" and kind == "chat":
+        # LiteLLM's "ollama/" prefix routes chat calls to Ollama's legacy
+        # /api/generate completion endpoint, which has no native tool-calling
+        # support: LiteLLM hand-rolls the tool schemas into the prompt as text
+        # and parses the model's free-form response for a JSON-shaped tool
+        # call. Against small local models this reliably produces malformed
+        # tool-call JSON, and - observed directly via a request trace - the
+        # model echoing a prior tool result back verbatim as its "final
+        # answer" once the conversation gets long. "ollama_chat/" routes to
+        # /api/chat with LiteLLM's native `tools`/`tool_calls` support, which
+        # Ollama itself has supported for a long time and which this gateway
+        # already forwards `tools`/`tool_choice` for (see
+        # _LITELLM_FORWARDED_PARAMS above) - they were simply never reaching
+        # a code path that used them for Ollama. LiteLLM's embedding routing
+        # has no "ollama_chat" provider, so this is chat-only.
+        litellm_model = "ollama_chat/" + name
+    else:
+        litellm_model = f"{route}/{name}"
     return litellm_model, provider, credentials
 
 
@@ -291,6 +310,11 @@ def _call_label(provider: str, model: str) -> str:
     route = litellm_provider_key(provider) if provider else ""
     if route and route != provider and model.startswith(f"{route}/"):
         model = model[len(route) + 1 :]
+    elif provider == "ollama" and model.startswith("ollama_chat/"):
+        # Not caught by the alias branch above: "ollama" has no registered
+        # route alias, so route == provider here even though resolve_call()
+        # routed this specific (chat) call under "ollama_chat/" directly.
+        model = model[len("ollama_chat/") :]
     if model and provider and not model.startswith(f"{provider}/"):
         return f"{provider}/{model}"
     return model or provider or "provider"
