@@ -241,7 +241,7 @@ async def test_resolve_ingest_error_message_probes_generic_embedding_with_creden
         watsonx = None
         ollama = None
 
-        def credential_values(self, provider):
+        def credential_values(self, provider, *, kind="chat"):
             assert provider == "azure"
             return dict(credentials)
 
@@ -295,7 +295,7 @@ async def test_probe_chat_llm_error_uses_generic_provider_credentials(monkeypatc
     class FakeProviders:
         custom = {"azure": GenericProvider()}
 
-        def credential_values(self, provider):
+        def credential_values(self, provider, *, kind="chat"):
             assert provider == "azure"
             return dict(credentials)
 

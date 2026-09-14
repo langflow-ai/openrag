@@ -27,7 +27,7 @@ async def test_provider_health_accepts_configured_azure_provider(
     }
     providers = SimpleNamespace(
         get_provider_config=lambda provider: azure,
-        credential_values=lambda provider: dict(stored),
+        credential_values=lambda provider, kind="chat": dict(stored),
         stored_credentials=lambda provider: dict(stored),
     )
     config = SimpleNamespace(

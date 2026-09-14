@@ -7,7 +7,6 @@ from fastapi import Depends
 from fastapi.responses import JSONResponse
 
 from api.provider_validation import sanitize_provider_error_content, validate_provider_setup
-from config.config_manager import credential_values_for_kind
 from config.settings import get_openrag_config
 from dependencies import require_permission
 from services import provider_error_log
@@ -104,8 +103,8 @@ async def check_provider_health(
                 # checked for. `validate_provider_setup` probes the embedding
                 # model first when it has one, so the credentials have to follow
                 # that same precedence or the probe hits the wrong endpoint.
-                credentials = credential_values_for_kind(
-                    current_config.providers, provider, "embedding" if embedding_model else "chat"
+                credentials = current_config.providers.credential_values(
+                    provider, kind="embedding" if embedding_model else "chat"
                 )
                 # The untranslated form as well: a provider enhancement's
                 # lightweight check needs every endpoint the operator entered,
@@ -137,9 +136,9 @@ async def check_provider_health(
             embedding_endpoint = getattr(embedding_provider_config, "endpoint", None)
             embedding_project_id = getattr(embedding_provider_config, "project_id", None)
             embedding_model = current_config.knowledge.embedding_model
-            credentials = credential_values_for_kind(current_config.providers, provider, "chat")
-            embedding_credentials = credential_values_for_kind(
-                current_config.providers, embedding_provider, "embedding"
+            credentials = current_config.providers.credential_values(provider, kind="chat")
+            embedding_credentials = current_config.providers.credential_values(
+                embedding_provider, kind="embedding"
             )
             stored_credentials = current_config.providers.stored_credentials(provider)
             embedding_stored_credentials = current_config.providers.stored_credentials(

@@ -7,6 +7,7 @@ or validation protocol.
 
 from __future__ import annotations
 
+import functools
 import inspect
 from collections.abc import Mapping
 from types import ModuleType
@@ -61,23 +62,33 @@ def credentials_for(
     Red Hat OpenShift AI serves chat and embeddings from two separate
     `InferenceService`s, so it has to know which endpoint the caller wants.
 
-    Passing `kind` only to a module that declares it keeps every other
-    enhancement — and any future one written against the simpler signature —
-    working unchanged, and it fails loudly (rather than silently ignoring the
-    argument) if a module's signature is ever narrowed by mistake.
+    `kind` is passed only to a module whose `litellm_credentials` declares it,
+    so every other enhancement — and any future one written against the simpler
+    signature — keeps working unchanged. The flip side is that a module which
+    *needs* `kind` but drops it from its signature is called without it and
+    silently answers for chat; that is a contract error the module's own tests
+    have to catch, not something this function can detect.
     """
     translate = enhancement.litellm_credentials
+    if _accepts_kind(enhancement):
+        return dict(translate(stored, kind=kind))
+    return dict(translate(stored))
+
+
+@functools.cache
+def _accepts_kind(enhancement: ModuleType) -> bool:
+    """Whether the module's `litellm_credentials` takes a `kind` keyword.
+
+    Cached per module: the answer is fixed for the life of the process, and
+    this sits on the path of every gateway request.
+    """
     try:
-        accepts_kind = "kind" in inspect.signature(translate).parameters
+        return "kind" in inspect.signature(enhancement.litellm_credentials).parameters
     except (TypeError, ValueError):
         # A C-implemented or otherwise unintrospectable callable. Assume the
         # base contract rather than risk a TypeError on a real call.
-        logger_warning = getattr(enhancement, "__name__", str(enhancement))
-        _log_signature_fallback(logger_warning)
-        accepts_kind = False
-    if accepts_kind:
-        return dict(translate(stored, kind=kind))
-    return dict(translate(stored))
+        _log_signature_fallback(getattr(enhancement, "__name__", str(enhancement)))
+        return False
 
 
 def _log_signature_fallback(module_name: str) -> None:

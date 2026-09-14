@@ -159,9 +159,7 @@ def provider_credentials(
         raise LlmGatewayError("LLM providers are not configured", 400) from exc
 
     if hasattr(prov, "credential_values"):
-        from config.config_manager import credential_values_for_kind
-
-        credentials = credential_values_for_kind(prov, key, kind)
+        credentials = prov.credential_values(key, kind=kind)
     else:
         provider_config = getattr(prov, key, None)
         if provider_config is None:

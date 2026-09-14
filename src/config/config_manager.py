@@ -1,6 +1,5 @@
 """Configuration management for OpenRAG."""
 
-import inspect
 import json
 import os
 import re
@@ -421,26 +420,6 @@ def _credentials_complete(stored: Mapping[str, Any], required: Sequence[str]) ->
     if not required:
         return any(str(value or "").strip() for value in stored.values())
     return all(str(stored.get(name) or "").strip() for name in required)
-
-
-def credential_values_for_kind(providers: Any, provider: str, kind: str) -> dict[str, Any]:
-    """`providers.credential_values(provider)`, passing `kind` when it is accepted.
-
-    `kind` reached `ProvidersConfig` late, and the providers object is not always
-    a `ProvidersConfig`: the gateway and the health endpoint both accept any
-    object exposing `credential_values`, which is how tests supply a stub and how
-    an embedded deployment can substitute its own. Calling those with a keyword
-    they do not declare is a `TypeError` that surfaces as an unhealthy provider,
-    so the keyword is offered rather than assumed.
-    """
-    values = providers.credential_values
-    try:
-        accepts_kind = "kind" in inspect.signature(values).parameters
-    except (TypeError, ValueError):
-        accepts_kind = False
-    if accepts_kind:
-        return values(provider, kind=kind)
-    return values(provider)
 
 
 @dataclass

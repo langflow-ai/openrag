@@ -13,12 +13,11 @@ from config.config_manager import (
     OpenAIConfig,
     ProvidersConfig,
     WatsonXConfig,
-    credential_values_for_kind,
 )
 from enhancements.providers import registry
 from enhancements.providers.redhat import openshift_ai as rhoai
 from services import model_catalog
-from services.llm_gateway import resolve_call, split_model_id
+from services.llm_gateway import provider_credentials, resolve_call, split_model_id
 
 PROVIDER = rhoai.PROVIDER_KEY
 
@@ -487,16 +486,21 @@ def test_stored_credentials_keeps_both_endpoints() -> None:
     assert stored["embedding_api_base"] == EMBED_BASE
 
 
-def test_a_config_object_that_predates_kinds_is_still_callable() -> None:
-    """The gateway and the health endpoint accept any object exposing
-    `credential_values`; passing a keyword it does not declare is a TypeError
-    that would surface as an unhealthy provider."""
+def test_the_gateway_asks_the_config_for_the_kind_it_needs() -> None:
+    """`credential_values(provider, kind=...)` is the contract: the gateway
+    passes the keyword outright, so a config object has to declare it."""
 
-    class _OldConfig:
-        def credential_values(self, provider):
-            return {"api_key": "legacy"}
+    from types import SimpleNamespace
 
-    assert credential_values_for_kind(_OldConfig(), "openai", "embedding") == {"api_key": "legacy"}
+    class _Config:
+        def credential_values(self, provider, *, kind="chat"):
+            return {"api_key": "legacy", "kind": kind}
+
+    credentials = provider_credentials(
+        "openai", SimpleNamespace(providers=_Config()), kind="embedding"
+    )
+
+    assert credentials == {"api_key": "legacy", "kind": "embedding"}
 
 
 def test_a_kindless_enhancement_is_still_callable() -> None:
