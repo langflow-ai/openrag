@@ -24,21 +24,20 @@ interface HighlightedTextProps {
 function parseFragment(fragment: string): React.ReactNode {
   // Split on <mark>…</mark> pairs, keeping the captured groups.
   const parts = fragment.split(/(<mark>.*?<\/mark>)/g);
-  return parts.map((part) => {
-    // Use part content as key - each part is unique within the fragment
-    // For marks, include the inner text; for text spans, use the text itself
+  return parts.map((part, index) => {
+    // Use content + index for unique keys (handles duplicate content)
     if (part.startsWith("<mark>") && part.endsWith("</mark>")) {
       const inner = part.slice(6, -7); // strip <mark> and </mark>
       return (
         <mark
-          key={part}
+          key={`${part}-${index}`}
           className="bg-yellow-200 dark:bg-yellow-800 text-foreground rounded-[2px] px-[1px] not-italic"
         >
           {inner}
         </mark>
       );
     }
-    return part ? <span key={part}>{part}</span> : null;
+    return part ? <span key={`${part}-${index}`}>{part}</span> : null;
   });
 }
 
@@ -54,12 +53,11 @@ export function HighlightedText({
   return (
     <span className={className}>
       {highlights.map((fragment, i) => {
-        // Use fragment content as key - each fragment is a unique excerpt from the document
-        // Fragments are ordered by document position and won't reorder
+        // Use content + index for unique keys (handles repeated excerpts)
         return (
           // Separate fragments with an ellipsis so the reader knows they are
           // non-contiguous excerpts from the full chunk text.
-          <span key={fragment}>
+          <span key={`${fragment}-${i}`}>
             {i > 0 && (
               <span className="text-muted-foreground mx-1 select-none">…</span>
             )}
