@@ -627,11 +627,17 @@ function SearchPage() {
               )}
               onClick={() => {
                 if (!isActive) return;
-                router.push(
-                  `/knowledge/chunks?filename=${encodeURIComponent(
-                    data?.filename ?? "",
-                  )}`,
-                );
+                const params = new URLSearchParams({
+                  filename: data?.filename ?? "",
+                });
+                if (
+                  queryOverride &&
+                  queryOverride.trim() !== "*" &&
+                  queryOverride.trim() !== ""
+                ) {
+                  params.set("q", queryOverride.trim());
+                }
+                router.push(`/knowledge/chunks?${params.toString()}`);
               }}
             >
               {getSourceIcon(data?.connector_type)}
