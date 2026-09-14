@@ -3,6 +3,7 @@ import { useState } from "react";
 import IBMLogo from "@/components/icons/ibm-logo";
 import { LabelInput } from "@/components/label-input";
 import { LabelWrapper } from "@/components/label-wrapper";
+import { ModelSelector } from "@/components/models/model-selector";
 import { Switch } from "@/components/ui/switch";
 import {
   Tooltip,
@@ -15,7 +16,6 @@ import { useGetIBMModelsQuery } from "../../api/queries/useGetModelsQuery";
 import { useModelSelection } from "../_hooks/useModelSelection";
 import { useUpdateSettings } from "../_hooks/useUpdateSettings";
 import { AdvancedOnboarding } from "./advanced";
-import { ModelSelector } from "./model-selector";
 
 export function IBMOnboarding({
   isEmbedding = false,

@@ -101,7 +101,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   return (
     <div
       className={cn(
-        "h-screen w-screen flex flex-col relative",
+        "h-screen w-full max-w-full flex flex-col relative overflow-x-hidden",
         isCloudBrand ? "bg-background" : "bg-muted dark:bg-black",
       )}
     >
@@ -192,9 +192,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         runMode === "oss" && (
           <ConsoleStatusPanel isOpen={isStatusOpen} onClose={closeStatus} />
         )}
-      {(isAuthenticated || isNoAuthMode) && runMode === "oss" && (
-        <FlowsUpdateDialog />
-      )}
+      {(isAuthenticated || isNoAuthMode) && <FlowsUpdateDialog />}
     </div>
   );
 }

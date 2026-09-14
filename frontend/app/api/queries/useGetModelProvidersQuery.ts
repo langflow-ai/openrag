@@ -7,6 +7,7 @@ import {
 export interface ModelProviderEntry {
   name: string;
   display_name: string;
+  badge?: string;
 }
 
 export interface ModelProvidersResponse {
@@ -32,7 +33,10 @@ export const useGetModelProvidersQuery = (
 
   return useQuery(
     {
-      queryKey: ["models", "providers"] as const,
+      // The response now carries display metadata (for example provider
+      // badges). Version the cache key so an HMR session that cached the old
+      // two-field shape fetches the enriched response immediately.
+      queryKey: ["models", "providers", "v2"] as const,
       queryFn: async (): Promise<ModelProvidersResponse> => {
         const response = await fetch("/api/models/providers");
         if (!response.ok) {

@@ -8,6 +8,13 @@ import { useGetModelCatalogQuery } from "@/app/api/queries/useGetModelsQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { LabelWrapper } from "@/components/label-wrapper";
+import {
+  findGroupedSelection,
+  groupedCatalogOptions,
+} from "@/components/models/catalog-models";
+import { ModelFeatures } from "@/components/models/model-features";
+import { getModelLogo } from "@/components/models/model-helpers";
+import { ModelSelector } from "@/components/models/model-selector";
 import { RequirePermission } from "@/components/require-permission";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,13 +33,6 @@ import { DEFAULT_AGENT_SETTINGS, UI_CONSTANTS } from "@/lib/constants";
 import { resolveLangflowEditUrl } from "@/lib/url-utils";
 import { cn } from "@/lib/utils";
 import { useUpdateSettingsMutation } from "../../api/mutations/useUpdateSettingsMutation";
-import { ModelFeatures } from "../../onboarding/_components/model-features";
-import { ModelSelector } from "../../onboarding/_components/model-selector";
-import {
-  findGroupedSelection,
-  groupedCatalogOptions,
-} from "../_helpers/catalog-models";
-import { getModelLogo } from "../_helpers/model-helpers";
 import { LangflowIcon } from "./langflow-icon";
 
 const { MAX_SYSTEM_PROMPT_CHARS } = UI_CONSTANTS;
@@ -301,7 +301,7 @@ export function AgentSettingsSection() {
       </CardHeader>
       <CardContent>
         <div className="space-y-6">
-          <div className="space-y-2">
+          <div className="space-y-6">
             <LabelWrapper
               label="Language model"
               helperText="Model used for chat"
@@ -325,15 +325,13 @@ export function AgentSettingsSection() {
               />
             </LabelWrapper>
             {settings.agent?.llm_model && selectedLlmGroup && (
-              <div className="mt-3">
-                <ModelFeatures
-                  model={
-                    selectedLlm?.model ?? { model: settings.agent.llm_model }
-                  }
-                  providerName={selectedLlmGroup.group}
-                  provider={selectedLlmGroup.provider}
-                />
-              </div>
+              <ModelFeatures
+                model={
+                  selectedLlm?.model ?? { model: settings.agent.llm_model }
+                }
+                providerName={selectedLlmGroup.group}
+                provider={selectedLlmGroup.provider}
+              />
             )}
           </div>
           <div className="space-y-2">

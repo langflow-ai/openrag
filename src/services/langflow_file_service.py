@@ -650,7 +650,20 @@ class LangflowFileService:
 
                 raise
             return resp_json
+        except asyncio.CancelledError:
+            # Clean up partial ingestion before propagating cancellation
+            try:
+                await asyncio.shield(
+                    self._cleanup_failed_callback_ingest(
+                        ingest_token=ingest_token,
+                        ingest_run_id=ingest_run_id,
+                    )
+                )
+            except Exception:
+                pass  # Best-effort cleanup; don't block cancellation
+            raise
         except Exception as e:
+            # Handle ordinary ingestion failures with cleanup
             await self._cleanup_failed_callback_ingest(
                 ingest_token=ingest_token,
                 ingest_run_id=ingest_run_id,
@@ -792,7 +805,20 @@ class LangflowFileService:
                 )
 
             return resp.json()
+        except asyncio.CancelledError:
+            # Clean up partial ingestion before propagating cancellation
+            try:
+                await asyncio.shield(
+                    self._cleanup_failed_callback_ingest(
+                        ingest_token=ingest_token,
+                        ingest_run_id=ingest_run_id,
+                    )
+                )
+            except Exception:
+                pass  # Best-effort cleanup; don't block cancellation
+            raise
         except Exception as e:
+            # Handle ordinary ingestion failures with cleanup
             await self._cleanup_failed_callback_ingest(
                 ingest_token=ingest_token,
                 ingest_run_id=ingest_run_id,

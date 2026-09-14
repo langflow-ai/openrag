@@ -30,7 +30,7 @@ export const DEFAULT_KNOWLEDGE_SETTINGS = {
  * UI Constants
  */
 export const UI_CONSTANTS = {
-  MAX_SYSTEM_PROMPT_CHARS: 5000,
+  MAX_SYSTEM_PROMPT_CHARS: 5500,
 } as const;
 
 /**
@@ -43,6 +43,10 @@ export const SEARCH_CONSTANTS = {
 
 export const ANIMATION_DURATION = 0.4;
 export const SIDEBAR_WIDTH = 280;
+/** Minimum width before the resizable sidebar auto-hides (px) */
+export const SIDEBAR_HIDE_THRESHOLD = 120;
+/** Minimum visible width for a resized sidebar (px) */
+export const SIDEBAR_MIN_WIDTH = 180;
 export const HEADER_HEIGHT = 54;
 export const TOTAL_ONBOARDING_STEPS = 4;
 

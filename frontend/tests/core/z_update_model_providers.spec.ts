@@ -34,7 +34,7 @@ test.describe("Update model providers to watsonx.ai and Azure OpenAI @33219219, 
     await navigateToSettings(page);
     await settings.clickTab("Providers");
     await settings.configureWatsonxai();
-    await settings.removeModelProviderSetup("Azure OpenAI");
+    await settings.removeModelProviderSetup("azure", "Azure OpenAI");
     await settings.clickTab("Agent");
     await settings.selectModel("Language model", "ibm/granite-4-h-small");
     await settings.clickTab("Ingestion");
@@ -66,7 +66,7 @@ test.describe("Update model providers to watsonx.ai and Azure OpenAI @33219219, 
     await navigateToSettings(page);
     await settings.clickTab("Providers");
     await settings.configureAzureOpenAI();
-    await settings.removeModelProviderSetup("IBM watsonx.ai");
+    await settings.removeModelProviderSetup("watsonx", "IBM watsonx.ai");
     await settings.clickTab("Agent");
     await settings.selectModel("Language model", AZURE_CONFIG.language);
     await settings.clickTab("Ingestion");
@@ -96,7 +96,7 @@ test.describe("Verify invalid credentials are not accepted for watsonx.ai @34581
     await navigateToSettings(page);
     await settings.clickTab("Providers");
     //Remove existing watsonx.ai setup if present
-    await settings.removeModelProviderSetup("IBM watsonx.ai");
+    await settings.removeModelProviderSetup("watsonx", "IBM watsonx.ai");
     await settings.configureWatsonxaiInvalidCredentials(
       "https://us-south.ml.cloud.ibm.com",
       "4865-b94f-d0a80ad0f62a",

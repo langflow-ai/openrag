@@ -4,14 +4,14 @@ import { ChevronRight } from "lucide-react";
 import { useMemo } from "react";
 import { useGetModelCatalogQuery } from "@/app/api/queries/useGetModelsQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
-import type { ModelOption } from "@/app/onboarding/_components/model-selector";
-import { groupedCatalogOptions } from "@/app/settings/_helpers/catalog-models";
+import { LabelWrapper } from "@/components/label-wrapper";
+import { groupedCatalogOptions } from "@/components/models/catalog-models";
 import {
   getFallbackModels,
   type ModelProvider,
-} from "@/app/settings/_helpers/model-helpers";
-import { ModelSelectItems } from "@/app/settings/_helpers/model-select-item";
-import { LabelWrapper } from "@/components/label-wrapper";
+} from "@/components/models/model-helpers";
+import { ModelSelectItems } from "@/components/models/model-select-item";
+import type { ModelOption } from "@/components/models/model-selector";
 import {
   Collapsible,
   CollapsibleContent,

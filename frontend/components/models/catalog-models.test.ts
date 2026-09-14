@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 import {
   findGroupedSelection,
   groupedCatalogOptions,
@@ -7,6 +7,7 @@ import {
   mergeLiveCatalogOptions,
   onboardingCatalogConfigured,
   onboardingCredentialFields,
+  providerCatalogOptions,
   providerCredentialsSatisfied,
   savedSecretFieldsForProvider,
 } from "./catalog-models";
@@ -154,6 +155,75 @@ describe("groupedCatalogOptions", () => {
     assert.deepEqual(
       groupedCatalogOptions(undefined, { openai: true }, "language"),
       [],
+    );
+  });
+});
+
+describe("providerCatalogOptions", () => {
+  it("uses the settings ordering for one onboarding provider", () => {
+    const azureCatalog = {
+      providers: [
+        {
+          key: "azure",
+          name: "Azure OpenAI",
+          models: [
+            { model: "gpt-4.1", capabilities: ["function_calling"] },
+            { model: "gpt-5", capabilities: ["function_calling"] },
+            { model: "gpt-4o", capabilities: ["function_calling"] },
+          ],
+        },
+        {
+          key: "openai",
+          name: "OpenAI",
+          models: [{ model: "gpt-5.1" }],
+        },
+      ],
+    };
+
+    assert.deepEqual(
+      providerCatalogOptions(azureCatalog, "azure", "language").map(
+        (option) => option.value,
+      ),
+      ["gpt-5", "gpt-4.1", "gpt-4o"],
+    );
+  });
+
+  it("puts the three legacy Azure rows after current models without removing them", () => {
+    const azureCatalog = {
+      providers: [
+        {
+          key: "azure",
+          models: [
+            { model: "mistral-large-2402", capabilities: ["function_calling"] },
+            {
+              model: "gpt-35-turbo-16k-0613",
+              capabilities: ["function_calling"],
+            },
+            { model: "gpt-35-turbo", capabilities: ["function_calling"] },
+            { model: "gpt-5.5", capabilities: ["function_calling"] },
+            { model: "gpt-4.1", capabilities: ["function_calling"] },
+          ],
+        },
+      ],
+    };
+    const names = providerCatalogOptions(azureCatalog, "azure", "language").map(
+      (option) => option.value,
+    );
+
+    assert.deepEqual(names, [
+      "gpt-5.5",
+      "gpt-4.1",
+      "mistral-large-2402",
+      "gpt-35-turbo-16k-0613",
+      "gpt-35-turbo",
+    ]);
+    assert.deepEqual(
+      groupedCatalogOptions(
+        azureCatalog,
+        { azure: true },
+        "language",
+      )[0].options.map((option) => option.value),
+      names,
     );
   });
 });

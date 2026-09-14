@@ -593,10 +593,25 @@ def test_a_vendor_qualified_name_is_not_mistaken_for_a_provider_tag():
     Splitting on the slash routed it to OpenAI as a bare `gpt-oss-120b`, which
     LiteLLM rejects with "LLM Provider NOT provided", surfacing to the user as
     "The model provider could not be reached."
+
+    Whether the id names one owner or several depends on the deployment's
+    provider config — a cluster row that also lists it makes two — so what is
+    asserted here is the part that must hold either way: the id is never handed
+    to the provider its prefix happens to name.
     """
     from services.llm_gateway import split_model_id
+    from services.model_catalog import catalog_owners
 
-    assert split_model_id("openai/gpt-oss-120b") == ("watsonx", "openai/gpt-oss-120b")
+    provider, name = split_model_id("openai/gpt-oss-120b")
+
+    assert name == "openai/gpt-oss-120b"
+    owners = catalog_owners("openai/gpt-oss-120b")
+    if len(owners) == 1:
+        assert provider == owners[0]
+    else:
+        # Untagged; `resolve_call` picks between the owners with the config in
+        # hand. Either way it is not "openai".
+        assert provider is None
 
 
 def test_model_ids_served_by_v1_models_round_trip():

@@ -78,6 +78,15 @@ function toOption(entry: CatalogModel, provider: string): CatalogSelectOption {
   };
 }
 
+function sortedProviderOptions(
+  provider: CatalogProvider,
+  kind: CatalogModelKind,
+): CatalogSelectOption[] {
+  return modelsForKind(provider, kind)
+    .map((entry) => toOption(entry, provider.key))
+    .sort((left, right) => compareCatalogOptions(left, right, kind));
+}
+
 /** Models onboarding actually validates (chat + tools / a real embedding). */
 const PREFERRED_LANGUAGE_MODELS = [
   "gpt-4o-mini",
@@ -91,6 +100,15 @@ const PREFERRED_EMBEDDING_MODELS = [
   "text-embedding-3-small",
   "text-embedding-3-large",
 ];
+
+// These older Azure entries sort ahead of current GPT models because the
+// generic version parser reads "2402" and "35" as larger model versions.
+// Keep them searchable, but do not feature them in the collapsed preview.
+const LOWER_PRIORITY_AZURE_MODELS = new Set([
+  "mistral-large-2402",
+  "gpt-35-turbo-16k-0613",
+  "gpt-35-turbo",
+]);
 
 /** A YYYY-MM-DD or YYYYMMDD snapshot stamp inside a model id. */
 const SNAPSHOT_DATE = /(20\d{2})-?(\d{2})-?(\d{2})(?!\d)/;
@@ -139,6 +157,9 @@ function optionRank(
       : PREFERRED_LANGUAGE_MODELS;
   const preferredIndex = preferred.indexOf(name);
   return [
+    option.provider === "azure" && LOWER_PRIORITY_AZURE_MODELS.has(name)
+      ? 1
+      : 0,
     // The catalogue no longer carries LiteLLM's `ft:` pricing templates, but a
     // live `/models/openai` fetch returns the operator's real fine-tunes. Those
     // are callable and stay listed — just never above a base model.
@@ -238,9 +259,7 @@ export function groupedCatalogOptions(
     if (configured && !configured[key]) {
       continue;
     }
-    const modelOptions = modelsForKind(provider, kind)
-      .map((entry) => toOption(entry, key))
-      .sort((left, right) => compareCatalogOptions(left, right, kind));
+    const modelOptions = sortedProviderOptions(provider, kind);
     if (modelOptions.length === 0 && !options?.includeEmpty) {
       continue;
     }
@@ -251,6 +270,16 @@ export function groupedCatalogOptions(
     });
   }
   return groups;
+}
+
+/** One provider's models, ordered by the same ranking used in Settings. */
+export function providerCatalogOptions(
+  catalog: ModelCatalogResponse | undefined,
+  provider: string,
+  kind: CatalogModelKind,
+): CatalogSelectOption[] {
+  const entry = catalog?.providers?.find((item) => item.key === provider);
+  return entry ? sortedProviderOptions(entry, kind) : [];
 }
 
 /**
@@ -329,6 +358,7 @@ export interface SavedProviderSnapshot {
   project_id?: string;
   credential_values?: Record<string, string>;
   secret_fields?: string[];
+  auth_method?: string | null;
 }
 
 export interface SavedProvidersSnapshot {

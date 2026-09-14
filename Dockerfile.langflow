@@ -14,8 +14,9 @@ USER 1000
 
 RUN pip install --no-cache-dir \
     --extra-index-url https://download.pytorch.org/whl/cpu \
-    torch==2.10.0 \
-    torchvision==0.25.0 \
+    torch==2.13.0 \
+    torchvision==0.28.0 \
+    "transformers>=5.10.1,<6.0.0" \
     docling \
     openai \
     langchain-openai \

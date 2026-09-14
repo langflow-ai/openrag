@@ -3,7 +3,7 @@ Unit tests for api.settings.endpoints
 Validates error handling in update_docling_preset endpoint.
 """
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -185,6 +185,77 @@ async def test_update_settings_vlm_azure_configured():
         saved_config = mock_save.call_args[0][0]
         assert saved_config.knowledge.vlm_provider == "azure"
         assert saved_config.knowledge.vlm_model == "azure/gpt-4.1"
+
+
+@pytest.mark.asyncio
+async def test_update_settings_rejects_azure_without_an_api_key():
+    """The API must enforce the Azure form requirement, not only the browser."""
+    from api.settings.endpoints import update_settings
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.edited = True
+    body = SettingsUpdateBody(
+        provider_credentials={"azure": {"api_base": "https://example.openai.azure.com"}},
+        provider_auth_methods={"azure": "api_key"},
+    )
+    rbac = MagicMock()
+    rbac.has_permission = AsyncMock(return_value=True)
+
+    with patch("api.settings.endpoints.get_openrag_config", return_value=config):
+        response = await update_settings(
+            body=body,
+            session_manager=AsyncMock(),
+            user=MagicMock(spec=User),
+            models_service=MagicMock(),
+            rbac=rbac,
+        )
+
+    assert response.status_code == 400
+    assert b"api_key" in response.body
+
+
+@pytest.mark.asyncio
+async def test_update_settings_validates_azure_credentials_before_saving():
+    """A bad Azure endpoint/key must not become a configured provider."""
+    from api.settings.endpoints import update_settings
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.edited = True
+    body = SettingsUpdateBody(
+        provider_credentials={
+            "azure": {
+                "api_key": "wrong-key",
+                "api_base": "https://example.openai.azure.com",
+            }
+        },
+        provider_auth_methods={"azure": "api_key"},
+    )
+    rbac = MagicMock()
+    rbac.has_permission = AsyncMock(return_value=True)
+
+    with (
+        patch("api.settings.endpoints.get_openrag_config", return_value=config),
+        patch(
+            "api.settings.endpoints.validate_provider_setup",
+            new_callable=AsyncMock,
+            side_effect=Exception("Access denied due to invalid subscription key"),
+        ) as validate,
+        patch("api.settings.endpoints.config_manager.save_config_file") as save,
+    ):
+        response = await update_settings(
+            body=body,
+            session_manager=AsyncMock(),
+            user=MagicMock(spec=User),
+            models_service=MagicMock(),
+            rbac=rbac,
+        )
+
+    assert response.status_code == 400
+    assert b"invalid subscription key" in response.body
+    validate.assert_awaited_once()
+    save.assert_not_called()
 
 
 @pytest.mark.parametrize(

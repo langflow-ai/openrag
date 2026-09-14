@@ -2,7 +2,7 @@
 
 import { AnimatePresence, domAnimation, LazyMotion, m } from "motion/react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { FormProvider, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import {
@@ -12,6 +12,12 @@ import {
 } from "@/app/api/mutations/useUpdateSettingsMutation";
 import { useGetModelCatalogQuery } from "@/app/api/queries/useGetModelsQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
+import type { CatalogCredentialField } from "@/components/models/catalog-models";
+import {
+  canRemoveProvider,
+  getProviderChrome,
+  type ModelProvider,
+} from "@/components/models/model-helpers";
 import {
   Dialog,
   DialogContent,
@@ -19,12 +25,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/auth-context";
-import type { CatalogCredentialField } from "../_helpers/catalog-models";
-import {
-  canRemoveProvider,
-  getProviderChrome,
-  type ModelProvider,
-} from "../_helpers/model-helpers";
 import ModelProviderDialogFooter from "./model-provider-dialog-footer";
 import {
   ProviderSettingsForm,
@@ -61,6 +61,8 @@ const ProviderSettingsDialog = ({
   const [affectedModels, setAffectedModels] = useState<
     AffectedEmbeddingModel[] | undefined
   >(undefined);
+  const [azureAuthMethod, setAzureAuthMethod] = useState("api_key");
+  const [onPremAuthMethod, setOnPremAuthMethod] = useState("username_api_key");
   const router = useRouter();
 
   const { data: settings = {} } = useGetSettingsQuery({
@@ -79,6 +81,20 @@ const ProviderSettingsDialog = ({
   const saved = settings.providers?.custom?.[provider];
   const isConfigured = saved?.configured === true;
   const savedSecretFields = saved?.secret_fields ?? [];
+  const formValues = useMemo(
+    () =>
+      open
+        ? {
+            credentials: Object.fromEntries(
+              fields.map((field) => [
+                field.key,
+                saved?.credential_values?.[field.key] ?? "",
+              ]),
+            ),
+          }
+        : { credentials: {} },
+    [fields, open, saved],
+  );
 
   // Removing the last configured provider with an embedding model would leave
   // the agent with nothing to embed documents, so require another one first.
@@ -86,25 +102,20 @@ const ProviderSettingsDialog = ({
 
   const methods = useForm<ProviderSettingsFormData>({
     mode: "onSubmit",
-    defaultValues: { credentials: {} },
+    values: formValues,
   });
 
-  // Seed on open, and again if the catalogue or the saved settings land after
-  // it. Both are react-query results, so their identity is stable while the
-  // dialog is open and this cannot stomp on what the user is typing.
-  useEffect(() => {
-    if (!open) {
-      return;
+  const savedAuthMethod = saved?.auth_method;
+  const authMethodSeed = `${open}:${provider}:${savedAuthMethod ?? ""}`;
+  const [previousAuthMethodSeed, setPreviousAuthMethodSeed] =
+    useState<string>();
+  if (authMethodSeed !== previousAuthMethodSeed) {
+    setPreviousAuthMethodSeed(authMethodSeed);
+    if (provider === "azure") setAzureAuthMethod(savedAuthMethod ?? "api_key");
+    if (provider === "watsonx_onprem") {
+      setOnPremAuthMethod(savedAuthMethod ?? "username_api_key");
     }
-    methods.reset({
-      credentials: Object.fromEntries(
-        fields.map((field) => [
-          field.key,
-          saved?.credential_values?.[field.key] ?? "",
-        ]),
-      ),
-    });
-  }, [open, fields, saved, methods]);
+  }
 
   const { handleSubmit } = methods;
 
@@ -143,7 +154,30 @@ const ProviderSettingsDialog = ({
     // Blank means "leave the stored value alone": the backend ignores empty
     // values, and secrets are never echoed back for us to resubmit.
     const credentials: Record<string, string> = {};
+    const azureAuthFields: Record<string, Set<string>> = {
+      api_key: new Set(["api_key"]),
+      entra_token: new Set(["azure_ad_token"]),
+      service_principal: new Set(["tenant_id", "client_id", "client_secret"]),
+    };
+    const allowedAzureFields = new Set([
+      "api_base",
+      "api_version",
+      ...(azureAuthFields[azureAuthMethod] ?? []),
+    ]);
+    const allowedOnPremFields = new Set([
+      "api_base",
+      "space_id",
+      "project_id",
+      ...(onPremAuthMethod === "zen_api_key"
+        ? ["zen_api_key"]
+        : ["username", "api_key"]),
+    ]);
     for (const [key, value] of Object.entries(data.credentials ?? {})) {
+      if (provider === "azure" && !allowedAzureFields.has(key)) {
+        continue;
+      }
+      if (provider === "watsonx_onprem" && !allowedOnPremFields.has(key))
+        continue;
       const trimmed = (value ?? "").trim();
       if (trimmed !== "") {
         credentials[key] = trimmed;
@@ -157,6 +191,11 @@ const ProviderSettingsDialog = ({
 
     settingsMutation.mutate({
       provider_credentials: { [provider]: credentials },
+      ...(provider === "azure"
+        ? { provider_auth_methods: { azure: azureAuthMethod } }
+        : provider === "watsonx_onprem"
+          ? { provider_auth_methods: { watsonx_onprem: onPremAuthMethod } }
+          : {}),
     });
   };
 
@@ -191,10 +230,15 @@ const ProviderSettingsDialog = ({
 
             <div className="flex-1 min-h-0 overflow-y-auto min-w-0 px-1 -mx-1 py-1 space-y-4">
               <ProviderSettingsForm
+                provider={provider}
                 providerName={chrome.name}
                 fields={fields}
                 savedSecretFields={savedSecretFields}
                 saveError={methods.formState.errors.root?.message}
+                azureAuthMethod={azureAuthMethod}
+                onAzureAuthMethodChange={setAzureAuthMethod}
+                onPremAuthMethod={onPremAuthMethod}
+                onOnPremAuthMethodChange={setOnPremAuthMethod}
               />
 
               <LazyMotion features={domAnimation}>
@@ -206,7 +250,10 @@ const ProviderSettingsDialog = ({
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -10 }}
                     >
-                      <p className="rounded-lg border border-destructive p-4 min-w-0 [overflow-wrap:anywhere]">
+                      <p
+                        data-testid="provider-connection-error"
+                        className="rounded-lg border border-destructive p-4 min-w-0 [overflow-wrap:anywhere]"
+                      >
                         {settingsMutation.error?.message}
                       </p>
                     </m.div>

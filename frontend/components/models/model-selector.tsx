@@ -1,11 +1,9 @@
 "use client";
 
 import { CheckIcon, ChevronsUpDownIcon } from "lucide-react";
-import { useDeferredValue, useEffect, useId, useMemo, useState } from "react";
-import type { CatalogModel } from "@/app/settings/_helpers/catalog-models";
-import { MODELS_PER_PROVIDER } from "@/app/settings/_helpers/model-info";
+import { useDeferredValue, useId, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import { Button, type ButtonProps } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import {
   Command,
   CommandGroup,
@@ -19,40 +17,21 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { CapabilityStrip } from "./model-features";
+import { CapabilityStrip } from "./capability-strip";
+import { MODELS_PER_PROVIDER } from "./model-info";
+import type {
+  GroupedModelOption,
+  ModelOption,
+  ModelSelectorProps,
+} from "./types";
 
-export type ModelOption = {
-  value: string;
-  label: string;
-  default?: boolean;
-  provider?: string;
-  model?: CatalogModel;
-  icon?: React.ReactNode;
-};
-
-export type GroupedModelOption = {
-  group: string;
-  /** Provider key for custom entries typed under this group. */
-  provider?: string;
-  options: ModelOption[];
-  icon?: React.ReactNode;
-};
-
-export interface ModelSelectorProps extends ButtonProps {
-  options?: ModelOption[];
-  groupedOptions?: GroupedModelOption[];
-  value: string;
-  /** Disambiguates the same model id hosted by more than one vendor. */
-  selectedProvider?: string;
-  icon?: React.ReactNode;
-  placeholder?: string;
-  searchPlaceholder?: string;
-  noOptionsPlaceholder?: string;
-  custom?: boolean;
-  onValueChange: (value: string, provider?: string) => void;
-  hasError?: boolean;
-  defaultOpen?: boolean;
-}
+// Re-exported so existing `from "@/components/models/model-selector"` imports
+// keep working; the definitions themselves live in `./types` now.
+export type {
+  GroupedModelOption,
+  ModelOption,
+  ModelSelectorProps,
+} from "./types";
 
 function optionProvider(
   option: ModelOption,
@@ -111,6 +90,7 @@ export function ModelSelector({
   icon,
   placeholder = "Select model...",
   searchPlaceholder,
+  previewLimit,
   noOptionsPlaceholder = "No models available",
   custom = false,
   hasError = false,
@@ -138,6 +118,7 @@ export function ModelSelector({
     (custom ? "Search or type a model name" : "Search model...");
 
   const [searchValue, setSearchValue] = useState("");
+  const [showAllFlatOptions, setShowAllFlatOptions] = useState(false);
   // The option filter runs on the trimmed, lowercased search text, so the
   // custom entry has to use the trimmed text too — otherwise typing trailing
   // whitespace both defeats the duplicate check and stores a model id with
@@ -166,9 +147,12 @@ export function ModelSelector({
       return next;
     });
 
-  // Flatten grouped options or use regular options
-  const allOptions =
-    groupedOptions?.flatMap((group) => group.options) || options || [];
+  // Flatten grouped options or use regular options. Memoized so the effect
+  // below (which depends on allOptions) doesn't re-run on every render.
+  const allOptions = useMemo(
+    () => groupedOptions?.flatMap((group) => group.options) || options || [],
+    [groupedOptions, options],
+  );
   const allowCustomEntry = !!custom;
 
   const selectedOptionGroup = groupedOptions?.find((group) =>
@@ -206,7 +190,16 @@ export function ModelSelector({
               !isRetiringSoon(option) ||
               isSelectedRow(option, value, selectedProvider, group),
           );
-      if (deferredSearch && matches.length === 0 && deprecatedCount === 0) {
+      // A custom name still needs one action per configured provider. Keeping
+      // otherwise-empty groups visible makes provider selection deterministic
+      // instead of falling back to a single provider-less row whenever the
+      // typed name has no catalogue match.
+      if (
+        deferredSearch &&
+        matches.length === 0 &&
+        deprecatedCount === 0 &&
+        !allowCustomEntry
+      ) {
         return [];
       }
       // Collapsed groups show a preview; the trailing row expands them. The cap
@@ -227,15 +220,34 @@ export function ModelSelector({
     deprecatedGroups,
     value,
     selectedProvider,
+    allowCustomEntry,
   ]);
   const visibleOptions = useMemo(() => {
     if (groupedOptions) return [];
     const source = options ?? [];
-    if (!deferredSearch) return source.slice(0, 40);
-    return source
-      .filter((option) => option.label.toLowerCase().includes(deferredSearch))
-      .slice(0, 100);
-  }, [deferredSearch, groupedOptions, options]);
+    if (!deferredSearch) {
+      if (previewLimit !== undefined) {
+        return showAllFlatOptions ? source : source.slice(0, previewLimit);
+      }
+      return source.slice(0, 40);
+    }
+    const matches = source.filter((option) =>
+      option.label.toLowerCase().includes(deferredSearch),
+    );
+    return previewLimit !== undefined ? matches : matches.slice(0, 100);
+  }, [
+    deferredSearch,
+    groupedOptions,
+    options,
+    previewLimit,
+    showAllFlatOptions,
+  ]);
+  const showFlatPreviewHint =
+    previewLimit !== undefined &&
+    !groupedOptions &&
+    !deferredSearch &&
+    !showAllFlatOptions &&
+    (options?.length ?? 0) > previewLimit;
 
   // `shouldFilter={false}` means cmdk's own item count no longer reflects the
   // manual filtering above, so `CommandEmpty` cannot be trusted to appear.
@@ -253,18 +265,6 @@ export function ModelSelector({
   const hasVisibleRows = groupedOptions
     ? (visibleGroups?.length ?? 0) > 0 || showUngroupedCustomEntry
     : visibleOptions.length > 0 || showFlatCustomEntry;
-
-  useEffect(() => {
-    if (
-      allOptions.length > 0 &&
-      value &&
-      value !== "" &&
-      !allOptions.some((option) => option.value === value) &&
-      !custom
-    ) {
-      onValueChange("");
-    }
-  }, [allOptions, value, custom, onValueChange]);
 
   return (
     <Popover open={open} onOpenChange={setOpen} modal={false}>
@@ -316,6 +316,12 @@ export function ModelSelector({
             value={searchValue}
             onValueChange={setSearchValue}
           />
+          {showFlatPreviewHint && (
+            <p className="px-3 py-2 text-xs text-muted-foreground">
+              Showing {previewLimit} of {options?.length} models. Search all
+              models or choose Show all.
+            </p>
+          )}
           <CommandList
             id={listboxId}
             className="max-h-[300px] overflow-y-auto"
@@ -350,6 +356,11 @@ export function ModelSelector({
                             <div className="w-4 h-4">{group.icon}</div>
                           )}
                           <span>{group.group}</span>
+                          {groupProvider === "watsonx_onprem" && (
+                            <Badge variant="secondary" className="text-xs">
+                              On-prem
+                            </Badge>
+                          )}
                         </div>
                       }
                     >
@@ -401,8 +412,10 @@ export function ModelSelector({
                                 )}
                               />
                               <div className="flex items-center gap-2">
-                                {option.icon && (
-                                  <span className="h-4 w-4">{option.icon}</span>
+                                {(option.icon ?? group.icon) && (
+                                  <span className="h-4 w-4">
+                                    {option.icon ?? group.icon}
+                                  </span>
                                 )}
                                 {option.label}
                               </div>
@@ -458,8 +471,12 @@ export function ModelSelector({
                       {showCustom && (
                         <CommandItem
                           value={`${group.group}-${customValue}`}
-                          aria-label={customValue}
-                          data-testid={`model-custom-option-${customValue}`}
+                          aria-label={
+                            groupProvider
+                              ? `Use ${groupProvider}:${customValue}`
+                              : `Use ${customValue}`
+                          }
+                          data-testid={`model-custom-option-${groupProvider ?? "unknown"}-${customValue}`}
                           onSelect={() => {
                             if (
                               customValue !== value ||
@@ -570,6 +587,17 @@ export function ModelSelector({
                     </div>
                   </CommandItem>
                 ))}
+                {showFlatPreviewHint && (
+                  <CommandItem
+                    value="__show-all-models"
+                    aria-label={`Show all ${options?.length} models`}
+                    data-testid="model-show-all-options"
+                    className="text-xs text-muted-foreground"
+                    onSelect={() => setShowAllFlatOptions(true)}
+                  >
+                    Show all {options?.length} models
+                  </CommandItem>
+                )}
                 {showFlatCustomEntry && (
                   <CommandItem
                     value={customValue}

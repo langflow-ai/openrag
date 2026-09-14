@@ -189,7 +189,12 @@ export function AssistantMessage({
           isAssistant
           unstyledContent={unstyledMessageContent}
           icon={
-            <div className="w-8 h-8 flex items-center justify-center flex-shrink-0 select-none">
+            <div
+              className={cn(
+                "w-8 h-8 flex items-center justify-center flex-shrink-0 select-none",
+                isInitialGreeting && "mt-4",
+              )}
+            >
               {/* Dog icon with bark animation when greeting */}
               <motion.div
                 initial={isInitialGreeting ? { rotate: -5, y: -1 } : false}

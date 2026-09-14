@@ -293,7 +293,9 @@ async def test_build_vlm_options_watsonx(docling_service):
     mock_config = _vlm_mock_config("watsonx")
     with (
         patch("services.docling_service.get_openrag_config", return_value=mock_config),
-        patch("services.watsonx_iam.get_iam_token", new_callable=AsyncMock) as mock_token,
+        patch(
+            "enhancements.providers.watsonx.iam.get_iam_token", new_callable=AsyncMock
+        ) as mock_token,
     ):
         mock_token.return_value = "iam-token"
         options = await docling_service._build_docling_options_async()
