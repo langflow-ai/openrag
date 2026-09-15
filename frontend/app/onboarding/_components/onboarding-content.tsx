@@ -374,7 +374,7 @@ export function OnboardingContent({
           <OnboardingStep
             isVisible={currentStep >= 3 && !isLoading && !!displayMessage}
             isCompleted={currentStep > 3}
-            text="Let's try adding your data."
+            text="Lastly, let's add your data."
             hideIcon={true}
           >
             <OnboardingUpload onComplete={handleStepComplete} />
