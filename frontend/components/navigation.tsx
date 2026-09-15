@@ -136,6 +136,12 @@ export function Navigation({
   const [freshConversationId, setFreshConversationId] = useState<string | null>(
     null,
   );
+  // Mirror of placeholderConversation used to detect the transition from
+  // truthy → null during render (setState-during-render pattern) so we can
+  // derive freshConversationId without an effect setter.
+  const [prevPlaceholder, setPrevPlaceholder] = useState(
+    placeholderConversation,
+  );
 
   const { selectedFilter, setSelectedFilter } = useKnowledgeFilter();
 
@@ -300,6 +306,18 @@ export function Navigation({
     }
   }, [isConversationsLoading, conversations.length]);
 
+  // Derive freshConversationId during render: when the placeholder transitions
+  // from truthy to null (cleared by the effect below) and a new conversation
+  // has just landed as currentConversationId, mark it fresh here rather than
+  // in an effect setter. React re-renders immediately without an extra commit.
+  // See https://react.dev/reference/react/useState#storing-information-from-previous-renders
+  if (prevPlaceholder !== placeholderConversation) {
+    setPrevPlaceholder(placeholderConversation);
+    if (prevPlaceholder && !placeholderConversation && currentConversationId) {
+      setFreshConversationId(currentConversationId);
+    }
+  }
+
   // Clear placeholder when conversation count increases (new conversation was created)
   useEffect(() => {
     const currentCount = conversations.length;
@@ -314,8 +332,6 @@ export function Navigation({
       const newestConversation = conversations[0];
       if (newestConversation) {
         setCurrentConversationId(newestConversation.response_id);
-        // Mark this ID as fresh so we typewrite its title
-        setFreshConversationId(newestConversation.response_id);
       }
     }
 
