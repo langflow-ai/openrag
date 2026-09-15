@@ -368,7 +368,7 @@ export function TaskNotificationMenu() {
       <div className="flex flex-col h-full">
         <TaskPanelHeader
           activeCount={activeTasks.length}
-          terminalCount={terminalTasks.length}
+          terminalCount={terminalTasks.filter((t) => !t.is_shared).length}
           isFetching={isFetching}
           onClose={closeMenu}
           onClearAll={() => deleteAllMutation.mutate()}

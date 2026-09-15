@@ -87,17 +87,39 @@ describe("TaskNotificationMenu — cancelled task display", () => {
 });
 
 describe("TaskNotificationMenu — task deletion controls", () => {
-  it("shows delete buttons for terminal tasks", () => {
+  it("shows delete buttons for completed, failed, and cancelled tasks", () => {
     mockTasks = [
       makeTask({ task_id: "completed-task", status: "completed" }),
       makeTask({ task_id: "failed-task", status: "failed" }),
+      makeTask({ task_id: "cancelled-task", status: "cancelled" }),
     ];
 
     renderWithProviders(<TaskNotificationMenu />);
 
     expect(screen.getAllByRole("button", { name: "Delete task" })).toHaveLength(
-      2,
+      3,
     );
+  });
+
+  it("calls DELETE /api/tasks/:id for a cancelled task", async () => {
+    const user = userEvent.setup();
+    let deletedId: string | undefined;
+    server.use(
+      http.delete("/api/tasks/:taskId", ({ params }) => {
+        deletedId = params.taskId as string;
+        return HttpResponse.json({});
+      }),
+    );
+
+    mockTasks = [makeTask({ task_id: "t-cancelled", status: "cancelled" })];
+    renderWithProviders(<TaskNotificationMenu />);
+
+    const deleteBtn = screen.getByRole("button", { name: "Delete task" });
+    await user.click(deleteBtn);
+
+    await waitFor(() => {
+      expect(deletedId).toBe("t-cancelled");
+    });
   });
 });
 
@@ -155,7 +177,8 @@ describe("TaskNotificationMenu — delete mutations", () => {
       }),
     );
 
-    // Need at least one terminal task so the "Clear all" button is rendered.
+    // The "Clear all" button appears only when there is at least one owned
+    // (non-shared) terminal task.
     mockTasks = [makeTask({ task_id: "t-done", status: "completed" })];
     renderWithProviders(<TaskNotificationMenu />);
 
@@ -221,5 +244,35 @@ describe("TaskNotificationMenu — delete mutations", () => {
     await waitFor(() => {
       expect(deletedId).toBe("t-failed");
     });
+  });
+
+  it("hides 'Clear all' when every terminal task is shared", () => {
+    // Only shared tasks — "Clear all" must not appear because the backend
+    // bulk-delete only removes tasks owned by the calling user.
+    mockTasks = [
+      makeTask({ task_id: "shared-1", status: "completed", is_shared: true }),
+      makeTask({ task_id: "shared-2", status: "failed", is_shared: true }),
+    ];
+
+    renderWithProviders(<TaskNotificationMenu />);
+
+    expect(
+      screen.queryByRole("button", { name: "Clear all past tasks" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows 'Clear all' when at least one owned terminal task exists alongside shared ones", () => {
+    // Mix of owned and shared — "Clear all" should be present because there
+    // is at least one task the bulk-delete will actually remove.
+    mockTasks = [
+      makeTask({ task_id: "shared-1", status: "completed", is_shared: true }),
+      makeTask({ task_id: "owned-1", status: "completed", is_shared: false }),
+    ];
+
+    renderWithProviders(<TaskNotificationMenu />);
+
+    expect(
+      screen.getByRole("button", { name: "Clear all past tasks" }),
+    ).toBeInTheDocument();
   });
 });
