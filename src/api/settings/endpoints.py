@@ -1068,6 +1068,13 @@ async def update_settings(
                 working_config.providers.bedrock.access_key_id = ""
                 working_config.providers.bedrock.secret_access_key = ""
                 working_config.providers.bedrock.configured = False
+                # set_credentials() unconditionally upserts a shadow entry in
+                # providers.custom["bedrock"] (with its own configured=True
+                # and live credentials) before bridging into the typed fields
+                # above - the generic onboarding form submits through that
+                # path, so it must be cleared too or credential_values()/
+                # any_configured() keep seeing Bedrock as fully configured.
+                working_config.providers.custom.pop("bedrock", None)
                 if working_config.agent.llm_provider == "bedrock":
                     fallback = _first_configured_llm_provider(working_config, "bedrock")
                     working_config.agent.llm_provider = fallback

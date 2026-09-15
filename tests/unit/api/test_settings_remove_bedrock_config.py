@@ -102,6 +102,42 @@ async def test_remove_provider_config_bedrock_clears_typed_fields(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_remove_provider_config_bedrock_clears_custom_shadow_entry(monkeypatch):
+    """`set_credentials()` (the generic onboarding form's write path) upserts
+    a `providers.custom["bedrock"]` shadow entry - with its own
+    `configured=True` and the full AWS credential dict - before bridging into
+    the typed fields. Clearing only the typed fields leaves that shadow entry
+    live, so `credential_values("bedrock")`/`any_configured()`/`GET /settings`
+    all keep reporting Bedrock as configured after "removal"."""
+    config = _make_config()
+    config.providers.custom["bedrock"] = SimpleNamespace(
+        configured=True,
+        credentials={
+            "aws_region_name": "eu-central-1",
+            "aws_access_key_id": "AKIAEXAMPLE",
+            "aws_secret_access_key": "supersecret",
+        },
+    )
+    monkeypatch.setattr(settings_endpoints, "get_openrag_config", lambda: config, raising=True)
+
+    saved_configs = []
+    monkeypatch.setattr(
+        settings_endpoints.config_manager,
+        "save_config_file",
+        lambda updated_config: saved_configs.append(updated_config) or True,
+    )
+
+    await settings_api.update_settings(
+        settings_api.SettingsUpdateBody(remove_provider_config="bedrock"),
+        session_manager=object(),
+        user=None,
+    )
+
+    saved = saved_configs[0]
+    assert "bedrock" not in saved.providers.custom
+
+
+@pytest.mark.asyncio
 async def test_remove_provider_config_bedrock_rejected_when_sole_provider(monkeypatch):
     """Mirrors remove_openai_config/remove_watsonx_config: removal must be
     refused when Bedrock is the only configured provider."""
