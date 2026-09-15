@@ -186,6 +186,31 @@ def provider_credentials(
         from utils.container_utils import transform_localhost_url
 
         credentials["api_base"] = transform_localhost_url(str(credentials["api_base"]))
+    if key == "oci":
+        oci_config = getattr(prov, "oci", None)
+        auth_method = getattr(oci_config, "auth_method", "api_key") or "api_key"
+        if auth_method != "api_key":
+            # instance_principal / workload_identity sign every call via a
+            # constructed OCI SDK Signer, never via the manual
+            # user/fingerprint/tenancy/key fields - credential_values()
+            # deliberately never builds one (see its own docstring), so
+            # this is the one place that does, for every caller. This is
+            # what makes Langflow's own embedding component work: it POSTs
+            # a bare JSON body to /v1/embeddings, which can never carry a
+            # non-serializable Signer object, so without this the embed
+            # call hard-fails for these two auth methods the moment
+            # Langflow tries to embed anything.
+            from utils.oci_auth import get_cached_oci_signer
+
+            for stale in (
+                "oci_user",
+                "oci_fingerprint",
+                "oci_tenancy",
+                "oci_key",
+                "oci_key_file",
+            ):
+                credentials.pop(stale, None)
+            credentials["oci_signer"] = get_cached_oci_signer(auth_method)
     custom = getattr(prov, "custom", {})
     custom_config = custom.get(key) if isinstance(custom, dict) else None
     configured = bool(getattr(custom_config, "configured", False))
