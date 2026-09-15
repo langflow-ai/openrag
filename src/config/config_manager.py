@@ -392,8 +392,11 @@ class ProvidersConfig:
             # getter deliberately does not attempt: that construction can
             # fail (not running on OCI Compute, no Workload Identity) and
             # belongs in the dedicated call sites that already build it
-            # per-call (models/processors.py, services/search_service.py),
-            # not a passive credential-value lookup.
+            # per-call (models/processors.py, services/search_service.py,
+            # services/llm_gateway.py's provider_credentials()), not a
+            # passive credential-value lookup. oci_key_file has no such
+            # construction cost - it's a plain configured path, so unlike
+            # the signer it belongs here alongside every other static field.
             legacy = {
                 name: value
                 for name, value in {
@@ -403,6 +406,7 @@ class ProvidersConfig:
                     "oci_region": self.oci.region,
                     "oci_compartment_id": self.oci.compartment_id,
                     "oci_key": self.oci.key,
+                    "oci_key_file": self.oci.key_file,
                 }.items()
                 if value
             }

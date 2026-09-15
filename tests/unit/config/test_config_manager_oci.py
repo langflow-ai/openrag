@@ -344,6 +344,25 @@ class TestOCIGenericCredentialsBridge:
             "oci_key": "pem-content",
         }
 
+    def test_credential_values_includes_key_file_when_configured(self):
+        providers = self._providers()
+
+        providers.set_credentials(
+            "oci",
+            {
+                "oci_user": "ocid1.user.oc1..a",
+                "oci_fingerprint": "aa:bb:cc",
+                "oci_tenancy": "ocid1.tenancy.oc1..a",
+                "oci_region": "eu-frankfurt-1",
+                "oci_compartment_id": "ocid1.compartment.oc1..a",
+                "oci_key_file": "/etc/oci/api_key.pem",
+            },
+        )
+
+        assert providers.credential_values("oci")["oci_key_file"] == (
+            "/etc/oci/api_key.pem"
+        )
+
     def test_set_credentials_honors_instance_principal_auth_method(self):
         """A generic provider_credentials submission carrying only
         compartment_id/region (no manual key fields) plus
