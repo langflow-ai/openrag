@@ -18,6 +18,7 @@ from config.settings import (
     get_ingest_callback_url,
 )
 from services.document_index_writer import DocumentIndexContext
+from services.models_service import bedrock_credential_kwargs, is_cohere_embedding_model
 from utils.hash_utils import hash_id
 from utils.langflow_utils import enable_mcp_none_for_project
 from utils.logging_config import get_logger
@@ -142,9 +143,22 @@ class LangflowFileService:
             embedding_model,
             provider=embedding_provider,
         )
+        # Same call-time kwargs the search and non-Langflow ingest paths pass
+        # (see services.search_service and models.processors): Cohere-family
+        # models require input_type on every call (no default), and Bedrock's
+        # AWS credentials travel per-call rather than via env vars. Without
+        # these the probe raises inside litellm, and
+        # _ensure_langflow_ingest_index's broad except swallows it --
+        # silently skipping index pre-creation for Bedrock.
+        embed_kwargs: dict[str, str] = {}
+        if is_cohere_embedding_model(embedding_model):
+            embed_kwargs["input_type"] = "search_document"
+        embed_kwargs.update(bedrock_credential_kwargs(litellm_model_name))
+
         response = await clients.patched_embedding_client.embeddings.create(
             model=litellm_model_name,
             input=["dimension probe"],
+            **embed_kwargs,
         )
         if not response.data:
             raise RuntimeError("Embedding provider returned no data for dimension probe")
