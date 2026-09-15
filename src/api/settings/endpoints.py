@@ -1027,7 +1027,36 @@ async def update_settings(
 
         if body.remove_provider_config:
             provider = body.remove_provider_config.strip().lower()
-            if provider in working_config.providers.custom:
+            # Bedrock has its own typed `providers.bedrock` field rather than
+            # a `.custom` entry, so it needs its own removal branch here -
+            # otherwise its region/access keys and `configured` flag are left
+            # untouched and it stays fully live after "removal".
+            if provider == "bedrock":
+                if not _has_other_configured_provider(working_config, "bedrock"):
+                    return JSONResponse(
+                        {
+                            "error": (
+                                "Cannot remove provider configuration: "
+                                "configure another model provider first."
+                            )
+                        },
+                        status_code=400,
+                    )
+                working_config.providers.bedrock.region = ""
+                working_config.providers.bedrock.access_key_id = ""
+                working_config.providers.bedrock.secret_access_key = ""
+                working_config.providers.bedrock.configured = False
+                if working_config.agent.llm_provider == "bedrock":
+                    fallback = _first_configured_llm_provider(working_config, "bedrock")
+                    working_config.agent.llm_provider = fallback
+                    working_config.agent.llm_model = _default_llm_model(fallback)
+                if working_config.knowledge.embedding_provider == "bedrock":
+                    fallback = _first_configured_embedding_provider(working_config, "bedrock")
+                    working_config.knowledge.embedding_provider = fallback
+                    working_config.knowledge.embedding_model = _default_embedding_model(fallback)
+                config_updated = True
+                provider_updated = True
+            elif provider in working_config.providers.custom:
                 if not _has_other_configured_provider(working_config, provider):
                     return JSONResponse(
                         {
