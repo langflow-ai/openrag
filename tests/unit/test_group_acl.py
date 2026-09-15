@@ -188,21 +188,31 @@ def test_group_acl_service_invalidation_drops_cache_and_locks():
 def test_security_roles_include_acl_dls_queries():
     for rel_path in ("securityconfig/roles.yml", "cloud_securityconfig/roles.yml"):
         roles = yaml.safe_load((ROOT / rel_path).read_text())
-        index_permissions = roles["openrag_user_role"]["index_permissions"]
+        user_roles = [roles["openrag_user_role"]]
+        if "openrag_user_acl_role" in roles:
+            user_roles.append(roles["openrag_user_acl_role"])
+        index_permissions = [p for r in user_roles for p in r.get("index_permissions", [])]
         cluster_permissions = roles["openrag_user_role"]["cluster_permissions"]
         assert "indices:data/write/bulk" not in cluster_permissions
         assert "indices:data/write/index" not in cluster_permissions
         assert not any("alerting" in permission for permission in cluster_permissions)
 
-        document_permission = index_permissions[0]
-        document_actions = document_permission["allowed_actions"]
-        assert "read" in document_actions
-        assert "crud" not in document_actions
-        assert "indices:data/write/index" not in document_actions
-        assert "indices:data/write/update/byquery" not in document_actions
-        assert "indices:admin/mappings/put" not in document_actions
+        document_permissions = [
+            p
+            for p in index_permissions
+            if any("documents" in pattern for pattern in p.get("index_patterns", []))
+            and "read" in p.get("allowed_actions", [])
+        ]
+        assert len(document_permissions) >= 1
+        for document_permission in document_permissions:
+            document_actions = document_permission["allowed_actions"]
+            assert "read" in document_actions
+            assert "crud" not in document_actions
+            assert "indices:data/write/index" not in document_actions
+            assert "indices:data/write/update/byquery" not in document_actions
+            assert "indices:admin/mappings/put" not in document_actions
 
-        dls = index_permissions[0]["dls"]
+        dls = "".join(p.get("dls", "") for p in document_permissions)
         assert '{"term":{"owner":"${user.name}"}}' in dls
         assert '{"term":{"owner":"${attr.jwt.email}"}}' in dls
         assert '{"term":{"allowed_users":"${user.name}"}}' in dls

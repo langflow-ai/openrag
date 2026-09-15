@@ -368,12 +368,13 @@ async def setup_opensearch_security(
             roles=list(roles_config.keys()) if roles_config else [],
         )
 
-        # 3. Create openrag_user_role
-        if "openrag_user_role" in roles_config:
-            role_body = roles_config["openrag_user_role"]
+        # 3. Create roles from roles_config
+        for role_name, role_body in roles_config.items():
+            if role_name.startswith("_"):
+                continue
 
             logger.info(
-                "[OPENSEARCH] Creating 'openrag_user_role' role",
+                f"[OPENSEARCH] Creating/updating '{role_name}' role",
                 patterns=role_body["index_permissions"][0]["index_patterns"]
                 if "index_permissions" in role_body
                 else "default",
@@ -384,13 +385,11 @@ async def setup_opensearch_security(
 
             resp = await opensearch_client.transport.perform_request(
                 "PUT",
-                "/_plugins/_security/api/roles/openrag_user_role",
+                f"/_plugins/_security/api/roles/{role_name}",
                 body=role_body,
                 headers={"Content-Type": "application/json"},
             )
-            logger.info("[OPENSEARCH] Role creation response", response=resp)
-        else:
-            logger.warning("[OPENSEARCH] 'openrag_user_role' not found in roles.yml")
+            logger.info(f"[OPENSEARCH] Role '{role_name}' creation response", response=resp)
 
         # Load roles mapping from YAML
         if not os.path.exists(roles_mapping_file):
@@ -405,21 +404,24 @@ async def setup_opensearch_security(
             mappings=list(mapping_config.keys()) if mapping_config else [],
         )
 
-        # 4. Create openrag_user_role mapping
-        if "openrag_user_role" in mapping_config:
-            mapping_body = mapping_config["openrag_user_role"]
+        # 4. Create role mappings from mapping_config
+        for mapping_name, mapping_body in mapping_config.items():
+            if mapping_name.startswith("_") or mapping_name == "all_access":
+                continue
             logger.info(
-                "[OPENSEARCH] Creating 'openrag_user_role' mapping",
+                f"[OPENSEARCH] Creating/updating '{mapping_name}' mapping",
                 backend_roles=mapping_body.get("backend_roles", []),
                 users=mapping_body.get("users", []),
             )
             resp = await opensearch_client.transport.perform_request(
                 "PUT",
-                "/_plugins/_security/api/rolesmapping/openrag_user_role",
+                f"/_plugins/_security/api/rolesmapping/{mapping_name}",
                 body=mapping_body,
                 headers={"Content-Type": "application/json"},
             )
-            logger.info("[OPENSEARCH] Role mapping update response", response=resp)
+            logger.info(
+                f"[OPENSEARCH] Role mapping '{mapping_name}' update response", response=resp
+            )
 
         # 5. Update all_access mapping — merge with existing to preserve
         # IBM-managed entries, but ensure backend_roles never contains
