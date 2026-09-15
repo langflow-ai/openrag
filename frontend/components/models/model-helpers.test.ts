@@ -9,10 +9,13 @@
  */
 
 import assert from "node:assert/strict";
+import type { ReactElement } from "react";
 import { describe, it } from "vitest";
+import OpenShiftAILogo from "@/components/icons/openshift-ai-logo";
 import {
   canRemoveProvider,
   EMBEDDING_PROVIDER_ORDER,
+  getModelLogo,
   getProviderChrome,
   isProviderConfigured,
   LLM_PROVIDER_ORDER,
@@ -79,6 +82,19 @@ describe("getProviderChrome", () => {
     assert.notEqual(foundry.logo, openai.logo);
     assert.notEqual(foundry.logo, placeholder);
     assert.notEqual(openai.logo, placeholder);
+  });
+});
+
+describe("getModelLogo", () => {
+  it("draws the OpenShift AI mark for the rhoai provider", () => {
+    // RHOAI (KServe + vLLM, PROVIDER_CHROME's `rhoai` row) is a distinct
+    // branch from the watsonx/azure/local ones above and below it, so it
+    // needs its own pin rather than relying on the neighbors.
+    const icon = getModelLogo(
+      "granite-3.1-8b-instruct",
+      "rhoai",
+    ) as ReactElement;
+    assert.equal(icon.type, OpenShiftAILogo);
   });
 });
 
