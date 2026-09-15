@@ -14,6 +14,7 @@ from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from api.provider_validation import (
+    get_provider_enhancement,
     sanitize_provider_error_content,
     validate_provider_setup,
 )
@@ -463,6 +464,10 @@ async def update_settings(
                 # A generic provider save normally has no selected model to
                 # probe. Azure is the exception: both OpenAI Service and
                 # Foundry resource endpoints have a read-only auth probe.
+                # Provider enhancements are the other exception: each carries
+                # a model-free `lightweight_health_check`, so a bad URL or
+                # token is rejected here rather than on the first chat or
+                # ingest.
                 for provider, submitted in (body.provider_credentials or {}).items():
                     provider_key = _provider_key(provider)
                     credentials = current_config.providers.pending_credentials(
@@ -488,6 +493,20 @@ async def update_settings(
                             api_key=credentials.get("api_key") or credentials.get("azure_ad_token"),
                             endpoint=credentials.get("api_base"),
                             credentials=credentials,
+                        )
+                    elif get_provider_enhancement(provider_key) is not None:
+                        # No model is passed, so the validator runs the
+                        # enhancement's lightweight check. It is given the
+                        # untranslated pending form because that is the only
+                        # one carrying every endpoint the operator entered —
+                        # both OpenShift AI `InferenceService` URLs, not the
+                        # single one `credentials` was narrowed to.
+                        await validate_provider_setup(
+                            provider=provider_key,
+                            credentials=credentials,
+                            stored_credentials=current_config.providers.pending_stored_credentials(
+                                provider_key, submitted
+                            ),
                         )
 
                 # Validate LLM provider if being changed
