@@ -374,7 +374,7 @@ async def get_synced_file_state_map(
                     if not _is_unmapped_keyword_agg_error(err):
                         raise
                     agg_err = err
-            raise agg_err  # type: ignore[misc]  # field_candidates is never empty
+            raise agg_err  # field_candidates is never empty
 
         result = await _search_through_mapping_drift()
         aggs = result.get("aggregations", {})
