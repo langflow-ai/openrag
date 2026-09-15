@@ -210,7 +210,16 @@ def provider_credentials(
                 "oci_key_file",
             ):
                 credentials.pop(stale, None)
-            credentials["oci_signer"] = get_cached_oci_signer(auth_method)
+            try:
+                credentials["oci_signer"] = get_cached_oci_signer(auth_method)
+            except Exception as exc:
+                # Signer construction fails outside this function's try/except
+                # in embeddings() (resolve_call() runs before that block), so
+                # left unwrapped this reaches the caller as a raw, unsanitized
+                # 500 - losing get_cached_oci_signer's actionable message
+                # (which auth prerequisite is missing) and never recording a
+                # provider failure for the health banner.
+                raise LlmGatewayError(str(exc), 503) from exc
     custom = getattr(prov, "custom", {})
     custom_config = custom.get(key) if isinstance(custom, dict) else None
     configured = bool(getattr(custom_config, "configured", False))

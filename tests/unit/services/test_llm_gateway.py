@@ -22,6 +22,7 @@ from services.llm_gateway import (
     resolve_call,
     split_model_id,
 )
+from utils.oci_auth import OCISignerConstructionError
 
 
 def _config(**overrides):
@@ -200,9 +201,7 @@ def test_indexed_space_routes_through_its_configured_generic_provider():
 
 def test_provider_credentials_oci_builds_signer_for_instance_principal(monkeypatch):
     sentinel_signer = object()
-    monkeypatch.setattr(
-        "utils.oci_auth.get_cached_oci_signer", lambda auth_method: sentinel_signer
-    )
+    monkeypatch.setattr("utils.oci_auth.get_cached_oci_signer", lambda auth_method: sentinel_signer)
     providers = ProvidersConfig(
         openai=OpenAIConfig(),
         anthropic=AnthropicConfig(),
@@ -233,11 +232,38 @@ def test_provider_credentials_oci_builds_signer_for_instance_principal(monkeypat
         assert stale not in creds
 
 
+def test_provider_credentials_oci_signer_failure_becomes_llm_gateway_error(monkeypatch):
+    """get_cached_oci_signer() raises a plain OCISignerConstructionError (not
+    an LlmGatewayError) when e.g. instance_principal is configured off OCI
+    Compute. Left unwrapped, that reaches embeddings_endpoint's caller as a
+    raw, unsanitized 500 instead of a proper gateway error - and losing the
+    actionable "which prerequisite is missing" message the exception carries."""
+
+    def _boom(auth_method):
+        raise OCISignerConstructionError("not running on an OCI Compute instance")
+
+    monkeypatch.setattr("utils.oci_auth.get_cached_oci_signer", _boom)
+    providers = ProvidersConfig(
+        openai=OpenAIConfig(),
+        anthropic=AnthropicConfig(),
+        watsonx=WatsonXConfig(),
+        ollama=OllamaConfig(),
+        oci=OCIConfig(
+            auth_method="instance_principal",
+            compartment_id="ocid1.compartment.oc1..a",
+            region="us-ashburn-1",
+            configured=True,
+        ),
+    )
+    cfg = SimpleNamespace(providers=providers)
+
+    with pytest.raises(LlmGatewayError, match="not running on an OCI Compute instance"):
+        provider_credentials("oci", cfg)
+
+
 def test_provider_credentials_oci_builds_signer_for_workload_identity(monkeypatch):
     sentinel_signer = object()
-    monkeypatch.setattr(
-        "utils.oci_auth.get_cached_oci_signer", lambda auth_method: sentinel_signer
-    )
+    monkeypatch.setattr("utils.oci_auth.get_cached_oci_signer", lambda auth_method: sentinel_signer)
     providers = ProvidersConfig(
         openai=OpenAIConfig(),
         anthropic=AnthropicConfig(),
@@ -471,9 +497,7 @@ async def test_embeddings_langflow_bare_body_gets_oci_signer_for_instance_princi
     all. Before this fix, this exact call would reach litellm.aembedding()
     with no OCI credentials whatsoever under instance_principal auth."""
     sentinel_signer = object()
-    monkeypatch.setattr(
-        "utils.oci_auth.get_cached_oci_signer", lambda auth_method: sentinel_signer
-    )
+    monkeypatch.setattr("utils.oci_auth.get_cached_oci_signer", lambda auth_method: sentinel_signer)
     providers = ProvidersConfig(
         openai=OpenAIConfig(),
         anthropic=AnthropicConfig(),
