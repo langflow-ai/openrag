@@ -18,7 +18,8 @@ function ChunksPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const filename = searchParams.get("filename");
-  const { file: fileData } = useFileScopedChunksQuery(filename);
+  const searchQuery = searchParams.get("q") ?? undefined;
+  const { file: fileData } = useFileScopedChunksQuery(filename, searchQuery);
 
   if (!filename) {
     return (
@@ -66,7 +67,7 @@ function ChunksPageContent() {
 
       <div className="grid gap-6 grid-cols-1 lg:grid-cols-[3fr_1fr]">
         <div className="row-start-2 lg:row-start-1">
-          <FileChunksPanel filename={filename} />
+          <FileChunksPanel filename={filename} searchQuery={searchQuery} />
         </div>
 
         {chunkCount > 0 && (

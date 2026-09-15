@@ -627,11 +627,19 @@ function SearchPage() {
               )}
               onClick={() => {
                 if (!isActive) return;
-                router.push(
-                  `/knowledge/chunks?filename=${encodeURIComponent(
-                    data?.filename ?? "",
-                  )}`,
-                );
+                const params = new URLSearchParams({
+                  filename: data?.filename ?? "",
+                });
+                // Use effectiveSearchText to include both queryOverride and parsedFilterData.query
+                // so the chunks page can fetch highlight fragments for the active search
+                if (
+                  effectiveSearchText &&
+                  effectiveSearchText !== "*" &&
+                  effectiveSearchText !== ""
+                ) {
+                  params.set("q", effectiveSearchText);
+                }
+                router.push(`/knowledge/chunks?${params.toString()}`);
               }}
             >
               {getSourceIcon(data?.connector_type)}
