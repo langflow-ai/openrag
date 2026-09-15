@@ -359,9 +359,7 @@ class TestOCIGenericCredentialsBridge:
             },
         )
 
-        assert providers.credential_values("oci")["oci_key_file"] == (
-            "/etc/oci/api_key.pem"
-        )
+        assert providers.credential_values("oci")["oci_key_file"] == ("/etc/oci/api_key.pem")
 
     def test_set_credentials_honors_instance_principal_auth_method(self):
         """A generic provider_credentials submission carrying only
