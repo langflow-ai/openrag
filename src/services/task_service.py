@@ -1792,7 +1792,11 @@ class TaskService:
         if resolved is None:
             return TaskDeleteResult.NOT_FOUND
         store_user_id, upload_task = resolved
-        if upload_task.status not in [TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED]:
+        if upload_task.status not in [
+            TaskStatus.COMPLETED,
+            TaskStatus.FAILED,
+            TaskStatus.CANCELLED,
+        ]:
             return TaskDeleteResult.IN_PROGRESS
         self._cleanup_upload_temp_files(upload_task, force=True)
         del self.task_store[store_user_id][task_id]
