@@ -40,10 +40,9 @@ const EMPTY_FIELDS: CatalogCredentialField[] = [];
  * generic `provider_credentials` payload, so adding a provider row to
  * `config/model_providers.yaml` is enough to make it configurable here.
  *
- * There is no live key check on save — OpenRAG has no generic
- * "list this provider's models" endpoint to probe with. The credentials are
- * validated the first time a model from this provider is selected in Agent or
- * Ingestion settings, which reports the provider's own error.
+ * Most generic providers have no credential-only check on save; they are
+ * validated when a model is selected in Agent or Ingestion settings. Azure
+ * OpenAI is an exception: the backend probes its key before persisting it.
  */
 const ProviderSettingsDialog = ({
   provider,

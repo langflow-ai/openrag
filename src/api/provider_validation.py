@@ -990,8 +990,8 @@ async def _test_azure_lightweight_health(credentials: dict[str, str]) -> None:
     """Validate Azure OpenAI credentials without selecting or billing a deployment.
 
     Azure deployment enumeration is an Azure Resource Manager operation, not an
-    Azure OpenAI data-plane operation.  The data plane does provide ``models``;
-    use that endpoint so a valid resource is not rejected with ResourceNotFound.
+    Azure OpenAI data-plane operation. Both Azure OpenAI Service and Foundry
+    resource roots expose authenticated, read-only model listing routes.
     """
     api_base = credentials.get("api_base")
     api_version = credentials.get("api_version")
@@ -1030,11 +1030,19 @@ async def _test_azure_lightweight_health(credentials: dict[str, str]) -> None:
         headers["Authorization"] = f"Bearer {access_token}"
     else:
         headers["api-key"] = api_key or ""
+    if is_azure_ai_foundry_endpoint(api_base):
+        # Azure OpenAI deployments on Foundry resource roots use the OpenAI v1
+        # route. The older /models/info route excludes Azure OpenAI endpoints.
+        url = f"{api_base.rstrip('/')}/openai/v1/models"
+        params = None
+    else:
+        url = f"{api_base.rstrip('/')}/openai/models"
+        params = {"api-version": api_version or "2024-10-21"}
     response = await _http_request_with_retry(
         "GET",
-        f"{api_base.rstrip('/')}/openai/models",
+        url,
         headers=headers,
-        params={"api-version": api_version or "2024-10-21"},
+        params=params,
         timeout=30.0,
     )
     if response.status_code != 200:

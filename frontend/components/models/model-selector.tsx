@@ -90,6 +90,7 @@ export function ModelSelector({
   icon,
   placeholder = "Select model...",
   searchPlaceholder,
+  previewLimit,
   noOptionsPlaceholder = "No models available",
   custom = false,
   hasError = false,
@@ -117,6 +118,7 @@ export function ModelSelector({
     (custom ? "Search or type a model name" : "Search model...");
 
   const [searchValue, setSearchValue] = useState("");
+  const [showAllFlatOptions, setShowAllFlatOptions] = useState(false);
   // The option filter runs on the trimmed, lowercased search text, so the
   // custom entry has to use the trimmed text too — otherwise typing trailing
   // whitespace both defeats the duplicate check and stores a model id with
@@ -188,7 +190,16 @@ export function ModelSelector({
               !isRetiringSoon(option) ||
               isSelectedRow(option, value, selectedProvider, group),
           );
-      if (deferredSearch && matches.length === 0 && deprecatedCount === 0) {
+      // A custom name still needs one action per configured provider. Keeping
+      // otherwise-empty groups visible makes provider selection deterministic
+      // instead of falling back to a single provider-less row whenever the
+      // typed name has no catalogue match.
+      if (
+        deferredSearch &&
+        matches.length === 0 &&
+        deprecatedCount === 0 &&
+        !allowCustomEntry
+      ) {
         return [];
       }
       // Collapsed groups show a preview; the trailing row expands them. The cap
@@ -209,15 +220,34 @@ export function ModelSelector({
     deprecatedGroups,
     value,
     selectedProvider,
+    allowCustomEntry,
   ]);
   const visibleOptions = useMemo(() => {
     if (groupedOptions) return [];
     const source = options ?? [];
-    if (!deferredSearch) return source.slice(0, 40);
-    return source
-      .filter((option) => option.label.toLowerCase().includes(deferredSearch))
-      .slice(0, 100);
-  }, [deferredSearch, groupedOptions, options]);
+    if (!deferredSearch) {
+      if (previewLimit !== undefined) {
+        return showAllFlatOptions ? source : source.slice(0, previewLimit);
+      }
+      return source.slice(0, 40);
+    }
+    const matches = source.filter((option) =>
+      option.label.toLowerCase().includes(deferredSearch),
+    );
+    return previewLimit !== undefined ? matches : matches.slice(0, 100);
+  }, [
+    deferredSearch,
+    groupedOptions,
+    options,
+    previewLimit,
+    showAllFlatOptions,
+  ]);
+  const showFlatPreviewHint =
+    previewLimit !== undefined &&
+    !groupedOptions &&
+    !deferredSearch &&
+    !showAllFlatOptions &&
+    (options?.length ?? 0) > previewLimit;
 
   // `shouldFilter={false}` means cmdk's own item count no longer reflects the
   // manual filtering above, so `CommandEmpty` cannot be trusted to appear.
@@ -286,6 +316,12 @@ export function ModelSelector({
             value={searchValue}
             onValueChange={setSearchValue}
           />
+          {showFlatPreviewHint && (
+            <p className="px-3 py-2 text-xs text-muted-foreground">
+              Showing {previewLimit} of {options?.length} models. Search all
+              models or choose Show all.
+            </p>
+          )}
           <CommandList
             id={listboxId}
             className="max-h-[300px] overflow-y-auto"
@@ -435,8 +471,12 @@ export function ModelSelector({
                       {showCustom && (
                         <CommandItem
                           value={`${group.group}-${customValue}`}
-                          aria-label={customValue}
-                          data-testid={`model-custom-option-${customValue}`}
+                          aria-label={
+                            groupProvider
+                              ? `Use ${groupProvider}:${customValue}`
+                              : `Use ${customValue}`
+                          }
+                          data-testid={`model-custom-option-${groupProvider ?? "unknown"}-${customValue}`}
                           onSelect={() => {
                             if (
                               customValue !== value ||
@@ -547,6 +587,17 @@ export function ModelSelector({
                     </div>
                   </CommandItem>
                 ))}
+                {showFlatPreviewHint && (
+                  <CommandItem
+                    value="__show-all-models"
+                    aria-label={`Show all ${options?.length} models`}
+                    data-testid="model-show-all-options"
+                    className="text-xs text-muted-foreground"
+                    onSelect={() => setShowAllFlatOptions(true)}
+                  >
+                    Show all {options?.length} models
+                  </CommandItem>
+                )}
                 {showFlatCustomEntry && (
                   <CommandItem
                     value={customValue}

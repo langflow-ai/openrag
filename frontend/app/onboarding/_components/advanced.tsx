@@ -7,6 +7,7 @@ export function AdvancedOnboarding({
   embeddingModels,
   languageModel,
   embeddingModel,
+  searchPlaceholder,
   setLanguageModel,
   setEmbeddingModel,
 }: {
@@ -15,6 +16,7 @@ export function AdvancedOnboarding({
   embeddingModels?: { value: string; label: string }[];
   languageModel?: string;
   embeddingModel?: string;
+  searchPlaceholder?: string;
   setLanguageModel?: (model: string) => void;
   setEmbeddingModel?: (model: string) => void;
 }) {
@@ -38,6 +40,9 @@ export function AdvancedOnboarding({
         >
           <ModelSelector
             options={embeddingModels}
+            custom
+            previewLimit={5}
+            searchPlaceholder={searchPlaceholder}
             data-testid="embedding-model-selector"
             icon={icon}
             value={embeddingModel}
@@ -54,6 +59,9 @@ export function AdvancedOnboarding({
         >
           <ModelSelector
             options={languageModels}
+            custom
+            previewLimit={5}
+            searchPlaceholder={searchPlaceholder}
             data-testid="language-model-selector"
             icon={icon}
             value={languageModel}

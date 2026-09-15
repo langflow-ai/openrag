@@ -12,7 +12,7 @@ import { hasRbacPermission } from "@/lib/brand";
 import type { RunMode } from "@/lib/constants";
 import { encodeBase64 } from "@/lib/utils";
 
-interface User {
+export interface User {
   user_id: string;
   email: string;
   name: string;
