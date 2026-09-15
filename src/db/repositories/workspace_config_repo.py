@@ -10,6 +10,7 @@ from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import col
 
 from db.models import WorkspaceConfig
 
@@ -47,6 +48,51 @@ class WorkspaceConfigRepo:
             await self.session.flush()
             return row
         existing.value = value
+        existing.updated_at = datetime.now(UTC)
+        if actor_user_id is not None:
+            existing.updated_by = actor_user_id
+        self.session.add(existing)
+        await self.session.flush()
+        return existing
+
+    async def merge_section_keys(
+        self,
+        section: str,
+        updates: dict[str, Any],
+        deletions: set[str] | None = None,
+        actor_user_id: str | None = None,
+    ) -> WorkspaceConfig:
+        """Atomically merge *updates* into a section, removing *deletions*.
+
+        Acquires a ``SELECT FOR UPDATE`` row lock (PostgreSQL) before reading
+        so that concurrent callers cannot interleave their read-modify-write
+        cycles and silently overwrite each other's keys.  On SQLite the lock
+        clause is a no-op, which is safe because the deployment constraint
+        enforces a single uvicorn worker (see AGENTS.md).
+        """
+        stmt = (
+            select(WorkspaceConfig).where(col(WorkspaceConfig.section) == section).with_for_update()
+        )
+        result = await self.session.execute(stmt)
+        existing = result.scalar_one_or_none()
+
+        merged = dict(existing.value or {}) if existing is not None else {}
+        merged.update(updates)
+        for key in deletions or set():
+            merged.pop(key, None)
+
+        if existing is None:
+            row = WorkspaceConfig(
+                section=section,
+                value=merged,
+                updated_at=datetime.now(UTC),
+                updated_by=actor_user_id,
+            )
+            self.session.add(row)
+            await self.session.flush()
+            return row
+
+        existing.value = merged
         existing.updated_at = datetime.now(UTC)
         if actor_user_id is not None:
             existing.updated_by = actor_user_id
