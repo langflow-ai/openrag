@@ -1311,6 +1311,15 @@ async def onboarding(
             elif embedding_provider == "ollama" and current_config.providers.ollama.endpoint:
                 current_config.providers.ollama.configured = True
                 logger.info("Marked Ollama as configured (chosen as embedding provider)")
+            elif embedding_provider == "bedrock" and current_config.providers.bedrock.region:
+                # Bedrock is commonly configured purely via env vars/IAM role
+                # (BEDROCK_REGION with no explicit keys) rather than through
+                # provider_credentials, so it never goes through
+                # set_credentials()'s `configured = bool(region)` bridge.
+                # Region is required either way (see credential_values()), so
+                # that's the same signal used here.
+                current_config.providers.bedrock.configured = True
+                logger.info("Marked Bedrock as configured (chosen as embedding provider)")
             elif (
                 embedding_provider in current_config.providers.custom
                 and current_config.providers.custom[embedding_provider].credentials
