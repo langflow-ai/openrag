@@ -19,7 +19,7 @@ import asyncio
 import json
 import os
 import threading
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Callable, Dict, Optional
 
 from config.paths import get_data_file
@@ -175,6 +175,38 @@ class ConversationPersistenceService:
         if db_writes_enabled():
             await self._db_delete_all(user_id)
 
+    async def prune_stale_conversations(self, ttl_days: int) -> int:
+        """Hard-delete conversations whose last activity is older than the TTL."""
+        cutoff = datetime.now(UTC) - timedelta(days=ttl_days)
+        deleted = 0
+
+        if file_writes_enabled():
+            for user_id in list(self._conversations):
+                conversations = self._conversations[user_id]
+                for response_id, payload in list(conversations.items()):
+                    raw_last_activity = payload.get("last_activity") or payload.get("created_at")
+                    if not raw_last_activity:
+                        continue
+                    try:
+                        last_activity = datetime.fromisoformat(
+                            str(raw_last_activity).replace("Z", "+00:00")
+                        )
+                        if last_activity.tzinfo is None:
+                            last_activity = last_activity.replace(tzinfo=UTC)
+                    except (TypeError, ValueError):
+                        continue
+                    if last_activity < cutoff:
+                        del conversations[response_id]
+                        deleted += 1
+                if not conversations:
+                    del self._conversations[user_id]
+            await self._save_conversations()
+
+        if db_writes_enabled():
+            deleted += await self._db_delete_older_than(cutoff)
+
+        return deleted
+
     async def get_storage_stats(self) -> Dict[str, Any]:
         # Snapshot — uses whichever storage the mode prioritizes.
         mode = get_storage_mode()
@@ -308,6 +340,21 @@ class ConversationPersistenceService:
         except Exception as exc:  # noqa: BLE001
             logger.error("DB delete failed", error=str(exc))
             return False
+
+    async def _db_delete_older_than(self, cutoff: datetime) -> int:
+        from db.repositories import ConversationRepo
+
+        sess_factory = self._resolve_session_factory()
+        if sess_factory is None:
+            return 0
+        try:
+            async with sess_factory() as session:
+                deleted = await ConversationRepo(session).delete_older_than(cutoff)
+                await session.commit()
+                return deleted
+        except Exception as exc:  # noqa: BLE001
+            logger.error("DB stale conversation pruning failed", error=str(exc))
+            return 0
 
     async def _db_delete_all(self, user_id: str) -> int:
         from db.repositories import ConversationRepo

@@ -77,6 +77,7 @@ from config.settings import (
     LANGFLOW_PUBLIC_URL,
     LANGFLOW_URL,
     LOCALHOST_URL,
+    OPENRAG_CONVERSATION_TTL_DAYS,
     OPENRAG_INGEST_VIA_CHAT,
     OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS,
     OPENRAG_SHOW_SHARED_UPLOAD_TOGGLE,
@@ -380,6 +381,10 @@ async def get_settings(
             segment_write_key=SEGMENT_WRITE_KEY or None,
             environment=ENVIRONMENT or None,
             langflow_port=str(LANGFLOW_PORT),
+            conversation_pruning_enabled=openrag_config.conversation.pruning_enabled,
+            conversation_ttl_days=OPENRAG_CONVERSATION_TTL_DAYS
+            if OPENRAG_CONVERSATION_TTL_DAYS > 0
+            else None,
         )
 
     except Exception:
@@ -610,6 +615,10 @@ async def update_settings(
         # leave the live cached config half-updated and unsaved.
         working_config = copy.deepcopy(current_config)
         config_updated = False
+
+        if body.conversation_pruning_enabled is not None:
+            working_config.conversation.pruning_enabled = body.conversation_pruning_enabled
+            config_updated = True
 
         # Update agent settings
         if body.llm_model is not None:

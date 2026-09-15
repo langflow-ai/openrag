@@ -385,6 +385,13 @@ class AgentConfig:
 
 
 @dataclass
+class ConversationConfig:
+    """Conversation history retention configuration."""
+
+    pruning_enabled: bool = True
+
+
+@dataclass
 class OnboardingState:
     """Onboarding state configuration."""
 
@@ -407,6 +414,7 @@ class OpenRAGConfig:
     knowledge: KnowledgeConfig
     agent: AgentConfig
     onboarding: OnboardingState
+    conversation: ConversationConfig = field(default_factory=ConversationConfig)
     edited: bool = False  # Track if manually edited
 
     @classmethod
@@ -452,6 +460,7 @@ class OpenRAGConfig:
             ),
             knowledge=KnowledgeConfig(**data.get("knowledge", {})),
             agent=AgentConfig(**data.get("agent", {})),
+            conversation=ConversationConfig(**data.get("conversation", {})),
             onboarding=OnboardingState(**data.get("onboarding", {})),
             edited=data.get("edited", False),
         )
@@ -517,6 +526,7 @@ class ConfigManager:
             },
             "knowledge": {},
             "agent": {},
+            "conversation": {},
             "onboarding": {},
         }
 
@@ -547,7 +557,7 @@ class ConfigManager:
                                 if get_master_secret() is not None:
                                     needs_encryption_upgrade = True
                             config_data["providers"][provider].update(provider_data)
-                for section in ["knowledge", "agent", "onboarding"]:
+                for section in ["knowledge", "agent", "conversation", "onboarding"]:
                     if section in file_config:
                         config_data[section].update(file_config[section])
 

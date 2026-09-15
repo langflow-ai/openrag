@@ -2,6 +2,7 @@
 
 import json
 import sys
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -174,3 +175,48 @@ async def test_clear_user_removes_all_their_threads(
     assert convs == {}
     bob_convs = await svc.get_user_conversations("bob")
     assert "r-3" in bob_convs
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode, expected_deleted", [("db", 1), ("files", 1), ("hybrid", 2)])
+async def test_prune_stale_conversations_honors_storage_mode(
+    monkeypatch, storage_path, session_factory, mode, expected_deleted
+):
+    old = datetime.now(UTC) - timedelta(days=91)
+    recent = datetime.now(UTC) - timedelta(days=89)
+    storage_path.write_text(
+        json.dumps(
+            {
+                "alice": {
+                    "old-file": {"title": "old", "last_activity": old.isoformat()},
+                    "recent-file": {"title": "recent", "last_activity": recent.isoformat()},
+                }
+            }
+        )
+    )
+    monkeypatch.setenv("OPENRAG_STORAGE_MODE", mode)
+    svc = _svc(storage_path, session_factory)
+
+    async with session_factory() as session:
+        repo = ConversationRepo(session)
+        await repo.upsert(
+            response_id="old-db", user_id="alice", last_activity=old, created_at=old
+        )
+        await repo.upsert(
+            response_id="recent-db", user_id="alice", last_activity=recent, created_at=recent
+        )
+        await session.commit()
+
+    assert await svc.prune_stale_conversations(90) == expected_deleted
+
+    file_conversations = json.loads(storage_path.read_text())["alice"]
+    if mode == "db":
+        assert set(file_conversations) == {"old-file", "recent-file"}
+    else:
+        assert set(file_conversations) == {"recent-file"}
+
+    async with session_factory() as session:
+        old_row = await ConversationRepo(session).get("old-db")
+        recent_row = await ConversationRepo(session).get("recent-db")
+    assert (old_row is None) is (mode != "files")
+    assert recent_row is not None
