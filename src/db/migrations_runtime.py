@@ -301,6 +301,7 @@ async def run(session: AsyncSession) -> None:
             f"sessions={stats['sessions_inserted']},conversations={stats['conversations_inserted']}"
         )
         await _mark_done(session, CHAT_HISTORY_JSON_TO_DB_V1, notes=notes)
+        await session.flush()  # Ensure conversation records are flushed before proceeding
         logger.info("chat_history_json_to_db_v1 completed", **stats)
 
     try:
