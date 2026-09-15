@@ -15,6 +15,18 @@ from .connection_manager import ConnectionManager
 logger = get_logger(__name__)
 
 
+def _next_page_token(file_list: dict[str, Any]) -> str | None:
+    """Read the continuation token out of a ``list_files`` result.
+
+    Every connector in this repo returns ``next_page_token``; SharePoint is the
+    one that populates it with a real value (a Graph ``$skiptoken``). This used
+    to read ``nextPageToken`` only — a key no connector emits — so the token was
+    always None and paging stopped after the first call. Both spellings are
+    accepted now so a connector written against either convention still pages.
+    """
+    return file_list.get("next_page_token") or file_list.get("nextPageToken")
+
+
 class ConnectorService:
     """Service to manage document connectors and process files"""
 
@@ -256,13 +268,15 @@ class ConnectorService:
         files_to_process: list[dict[str, Any]] = []
         page_token = None
 
-        # Calculate page size to minimize API calls
-        page_size = min(max_files or 100, 1000) if max_files else 100
-
         while True:
-            # List files from connector with limit
-            logger.debug("Calling list_files", page_size=page_size, page_token=page_token)
-            file_list = await connector.list_files(page_token, max_files=page_size)
+            # Pass max_files straight through — None means "no cap". Asking for a
+            # synthetic page size instead silently truncated every sync: the
+            # connectors that paginate internally (all three bucket ones, and
+            # Google Drive) honour the cap and then report next_page_token=None,
+            # so there was no token to continue with and everything past the
+            # first page was simply dropped.
+            logger.debug("Calling list_files", max_files=max_files, page_token=page_token)
+            file_list = await connector.list_files(page_token, max_files=max_files)
             logger.debug("Got files from connector", file_count=len(file_list.get("files", [])))
             files = file_list["files"]
 
@@ -283,13 +297,11 @@ class ConnectorService:
                         continue
                 files_to_process.append(file_info)
 
-            # Stop if we have enough files or no more pages
-            if (max_files and len(files_to_process) >= max_files) or not file_list.get(
-                "nextPageToken"
-            ):
-                break
+            page_token = _next_page_token(file_list)
 
-            page_token = file_list.get("nextPageToken")
+            # Stop if we have enough files or no more pages
+            if (max_files and len(files_to_process) >= max_files) or not page_token:
+                break
 
         # Get user information
         user = self.session_manager.get_user(user_id) if self.session_manager else None
