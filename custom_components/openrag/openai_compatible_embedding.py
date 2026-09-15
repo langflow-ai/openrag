@@ -54,6 +54,25 @@ def _embedding_route_identity(route: str) -> tuple[str | None, str]:
     return None, route
 
 
+def _is_cohere_embedding_model(model_name: str) -> bool:
+    """Return True if `model_name` looks like a Cohere-family embedding model.
+
+    Cohere's Embed models (served via Bedrock, OCI Generative AI, ...)
+    require an explicit `input_type` ("search_document" for ingest,
+    "search_query" for retrieval) on every call - litellm silently defaults
+    to "search_document" when it's omitted, which would quietly degrade
+    retrieval quality for every live chat query if applied unconditionally,
+    so this stays a per-model check rather than a blanket default.
+
+    Duplicated from the backend's `services.models_service
+    .is_cohere_embedding_model` rather than imported: this file ships
+    standalone into the Langflow container (Dockerfile.langflow copies
+    only custom_components/ and flows/, never src/), which never has the
+    backend package on its import path.
+    """
+    return bool(model_name) and "cohere" in model_name.lower()
+
+
 class OpenRAGEmbeddings(Embeddings):
     """One immutable model route plus a factory for other retrieval routes."""
 
@@ -112,15 +131,38 @@ class OpenRAGEmbeddings(Embeddings):
         )
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        if _is_cohere_embedding_model(self.model):
+            # `extra_body` forwards straight into the OpenAI SDK's
+            # `.create(..., extra_body=...)`, a real, documented per-call
+            # mechanism for adding top-level JSON body fields. This sidesteps
+            # `OpenAIEmbeddings`'s constructor-time `model_kwargs`, whose
+            # merge-into-the-request-body behavior is separate and disputed
+            # upstream - `extra_body` is the reliable way to get `input_type`
+            # onto every call without depending on that.
+            return self._delegate.embed_documents(
+                texts, extra_body={"input_type": "search_document"}
+            )
         return self._delegate.embed_documents(texts)
 
     def embed_query(self, text: str) -> list[float]:
+        if _is_cohere_embedding_model(self.model):
+            return self._delegate.embed_query(
+                text, extra_body={"input_type": "search_query"}
+            )
         return self._delegate.embed_query(text)
 
     async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
+        if _is_cohere_embedding_model(self.model):
+            return await self._delegate.aembed_documents(
+                texts, extra_body={"input_type": "search_document"}
+            )
         return await self._delegate.aembed_documents(texts)
 
     async def aembed_query(self, text: str) -> list[float]:
+        if _is_cohere_embedding_model(self.model):
+            return await self._delegate.aembed_query(
+                text, extra_body={"input_type": "search_query"}
+            )
         return await self._delegate.aembed_query(text)
 
 
