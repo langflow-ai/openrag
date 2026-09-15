@@ -136,3 +136,28 @@ def test_azure_ai_foundry_env_configures_only_foundry(monkeypatch, tmp_path):
         "api_base": "https://test.services.ai.azure.com/models",
     }
     assert "azure" not in config.providers.custom
+
+
+def test_openai_base_url_reaches_llm_gateway_credentials():
+    """The dedicated openai.base_url field (set via the onboarding/settings
+    openai_base_url field, not the generic provider_credentials path) must
+    surface as `api_base` so the internal LLM gateway actually dials a
+    configured self-hosted gateway instead of the real OpenAI API."""
+    config = OpenRAGConfig.from_dict({})
+    config.providers.openai.api_key = "sk-test"
+    config.providers.openai.base_url = "https://gateway.example/v1"
+
+    assert config.providers.credential_values("openai") == {
+        "api_key": "sk-test",
+        "api_base": "https://gateway.example/v1",
+    }
+
+
+def test_generic_credentials_take_precedence_over_openai_base_url_field():
+    config = OpenRAGConfig.from_dict({})
+    config.providers.openai.base_url = "https://gateway.example/v1"
+    config.providers.set_credentials("openai", {"api_base": "https://other-gateway.example/v1"})
+
+    assert config.providers.credential_values("openai")["api_base"] == (
+        "https://other-gateway.example/v1"
+    )

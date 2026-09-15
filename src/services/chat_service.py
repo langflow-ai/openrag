@@ -33,6 +33,10 @@ class ChatService:
         if user_id and jwt_token:
             set_auth_context(user_id, jwt_token)
 
+        from config.settings import get_openrag_config
+
+        llm_model = get_openrag_config().agent.llm_model
+
         if stream:
             return async_chat_stream(
                 clients.patched_llm_client,
@@ -40,6 +44,7 @@ class ChatService:
                 conversation_user_id,
                 previous_response_id=previous_response_id,
                 filter_id=filter_id,
+                model=llm_model,
             )
         else:
             response_text, response_id = await async_chat(
@@ -48,6 +53,7 @@ class ChatService:
                 conversation_user_id,
                 previous_response_id=previous_response_id,
                 filter_id=filter_id,
+                model=llm_model,
             )
             response_data = {"response": response_text}
             if response_id:
@@ -616,11 +622,15 @@ class ChatService:
             # Set auth context for chat tools and provide user_id
             if user_id and jwt_token:
                 set_auth_context(user_id, jwt_token)
+
+            from config.settings import get_openrag_config
+
             response_text, response_id = await async_chat(
                 clients.patched_llm_client,
                 document_prompt,
                 conversation_user_id,
                 previous_response_id=previous_response_id,
+                model=get_openrag_config().agent.llm_model,
             )
 
         return response_text, response_id
