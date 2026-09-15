@@ -63,6 +63,10 @@ These variables are initially set during the [application onboarding process](/i
 | `WATSONX_API_KEY` | Not set | API key for the IBM watsonx.ai model provider. |
 | `WATSONX_ENDPOINT` | Not set | Custom provider endpoint for the IBM watsonx.ai model provider. |
 | `WATSONX_PROJECT_ID` | Not set | Project ID for the IBM watsonx.ai model provider. |
+| `RHOAI_ENDPOINT` | Not set | Chat endpoint for the Red Hat OpenShift AI model provider: the predictor Service of the chat `InferenceService`, ending in `/v1`. |
+| `RHOAI_EMBEDDINGS_ENDPOINT` | Not set | Embeddings endpoint for the Red Hat OpenShift AI model provider, a second `InferenceService`. Leave unset only if one endpoint serves both chat and embeddings. |
+| `RHOAI_API_KEY` | Not set | Kubernetes bearer token for the Red Hat OpenShift AI model provider, sent to both endpoints. Its subject needs `get` on `inferenceservices` in the model namespace. |
+| `RHOAI_TLS_VERIFY` | Not set | TLS trust for the Red Hat OpenShift AI endpoints. Set to a CA bundle path, such as the service-serving CA OpenShift projects into every pod (`/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt`), or `false` to skip verification for a local `oc port-forward` only. Scoped to this provider, so it does not affect other providers. |
 
 Newly indexed chunks keep the model name in `embedding_model` for compatibility and also store
 `embedding_provider` plus the unambiguous `embedding_space_id` (`provider:model`). Retrieval queries
@@ -104,12 +108,21 @@ The shipped defaults are:
 | `anthropic` | Yes | Yes | Yes |
 | `azure_ai` | Yes | Yes | Yes |
 | `azure` | Yes | Yes | Yes |
+| `rhoai` | No | No | No |
 
 LiteLLM keys Azure twice, and the two are not interchangeable: `azure_ai` is
 the Azure AI Foundry catalogue (Llama, Phi, Mistral, Cohere, and the gpt-5.x
 entries Foundry serves), while `azure` is Azure OpenAI Service — the only one
 of the two that carries the gpt-4.1 family. Offer both unless a deployment
 uses just one.
+
+`rhoai` (Red Hat OpenShift AI) is hidden in every run mode as shipped, because
+its endpoints and token are specific to one OpenShift cluster. To offer it,
+copy `model_providers.yaml`, set `rhoai` to `true` for your run mode, point
+`OPENRAG_MODEL_PROVIDERS_CONFIG` at the copy, and restart the backend. The
+`RHOAI_*` variables above seed its credentials on first boot; the `models` and
+`embedding_models` rows on that entry are the fallback pickers until the
+cluster's own `/v1/models` listing has been read.
 
 To change what a deployment offers, edit the `modes` values and restart, or
 point `OPENRAG_MODEL_PROVIDERS_CONFIG` at your own YAML file. The file is read
