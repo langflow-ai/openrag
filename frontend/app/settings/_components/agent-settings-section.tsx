@@ -17,6 +17,7 @@ import { getModelLogo } from "@/components/models/model-helpers";
 import { ModelSelector } from "@/components/models/model-selector";
 import { RequirePermission } from "@/components/require-permission";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
@@ -324,56 +325,60 @@ export function AgentSettingsSection() {
           )}
         </div>
         <div className="space-y-2">
-          <LabelWrapper label="Agent Instructions" id="system-prompt">
-            <Textarea
-              id="system-prompt"
-              placeholder="Enter your agent instructions here..."
-              value={systemPrompt}
-              onChange={(e) => {
-                setUserEdited(true);
-                setSystemPrompt(e.target.value);
-              }}
-              rows={6}
-              className={`resize-none ${
+          <div className="flex items-center justify-between gap-4">
+            <Label htmlFor="system-prompt" className="font-medium !text-mmd">
+              Agent instructions
+            </Label>
+            <span
+              aria-live="polite"
+              className={cn(
+                "text-xs tabular-nums",
                 systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS
-                  ? "!border-destructive focus:border-destructive"
-                  : ""
-              }`}
-            />
-          </LabelWrapper>
-          <span
-            className={`text-xs ${
-              systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS
-                ? "text-destructive"
-                : "text-muted-foreground"
-            }`}
-          >
-            {systemPrompt.length}/{MAX_SYSTEM_PROMPT_CHARS} characters
-          </span>
+                  ? "text-destructive"
+                  : "text-muted-foreground",
+              )}
+            >
+              {systemPrompt.length}/{MAX_SYSTEM_PROMPT_CHARS}
+            </span>
+          </div>
+          <Textarea
+            id="system-prompt"
+            placeholder="Enter your agent instructions here..."
+            value={systemPrompt}
+            onChange={(e) => {
+              setUserEdited(true);
+              setSystemPrompt(e.target.value);
+            }}
+            rows={14}
+            className={cn(
+              "resize-y",
+              systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS &&
+                "!border-destructive focus:border-destructive",
+            )}
+          />
         </div>
-        <div className="flex justify-end pt-2 gap-2">
+        <div className="flex justify-end gap-4 pt-2">
           {settings.agent?.default_system_prompt && (
             <Button
+              ignoreTitleCase={true}
               onClick={() => {
                 setUserEdited(true);
                 setSystemPrompt(settings.agent?.default_system_prompt || "");
               }}
-              variant="outline"
-              size="sm"
+              variant="ghost"
               disabled={systemPrompt === settings.agent.default_system_prompt}
             >
-              Restore Default
+              Restore default
             </Button>
           )}
           <Button
+            ignoreTitleCase={true}
             onClick={handleSystemPromptSave}
             disabled={
               updateSettingsMutation.isPending ||
               systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS
             }
             className="min-w-[120px]"
-            size="sm"
-            variant="outline"
           >
             {updateSettingsMutation.isPending ? (
               <>
@@ -381,7 +386,7 @@ export function AgentSettingsSection() {
                 Saving...
               </>
             ) : (
-              "Save Agent Instructions"
+              "Save agent instructions"
             )}
           </Button>
         </div>
