@@ -30,17 +30,13 @@ async def test_periodic_conversation_pruning_runs_immediately(monkeypatch):
     ("ttl_days", "setting_enabled"),
     [(0, True), (90, False)],
 )
-async def test_periodic_conversation_pruning_honors_opt_out(
-    monkeypatch, ttl_days, setting_enabled
-):
+async def test_periodic_conversation_pruning_honors_opt_out(monkeypatch, ttl_days, setting_enabled):
     prune = AsyncMock()
     monkeypatch.setattr(conversation_persistence, "prune_stale_conversations", prune)
     monkeypatch.setattr(
         lifespan,
         "get_openrag_config",
-        lambda: SimpleNamespace(
-            conversation=SimpleNamespace(pruning_enabled=setting_enabled)
-        ),
+        lambda: SimpleNamespace(conversation=SimpleNamespace(pruning_enabled=setting_enabled)),
     )
     monkeypatch.setattr(lifespan, "OPENRAG_CONVERSATION_TTL_DAYS", ttl_days)
     monkeypatch.setattr(lifespan.asyncio, "sleep", AsyncMock(side_effect=asyncio.CancelledError))

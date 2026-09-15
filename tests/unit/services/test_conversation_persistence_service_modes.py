@@ -106,14 +106,10 @@ async def test_hybrid_mode_dual_writes(monkeypatch, storage_path, session_factor
 
 
 @pytest.mark.asyncio
-async def test_db_mode_ignores_pre_existing_json(
-    monkeypatch, storage_path, session_factory
-):
-    storage_path.write_text(json.dumps({
-        "alice": {
-            "ghost-r": {"title": "leak", "total_messages": 1}
-        }
-    }))
+async def test_db_mode_ignores_pre_existing_json(monkeypatch, storage_path, session_factory):
+    storage_path.write_text(
+        json.dumps({"alice": {"ghost-r": {"title": "leak", "total_messages": 1}}})
+    )
 
     monkeypatch.setenv("OPENRAG_STORAGE_MODE", "db")
     svc = _svc(storage_path, session_factory)
@@ -123,15 +119,13 @@ async def test_db_mode_ignores_pre_existing_json(
 
 
 @pytest.mark.asyncio
-async def test_hybrid_merges_db_and_json_on_read(
-    monkeypatch, storage_path, session_factory
-):
+async def test_hybrid_merges_db_and_json_on_read(monkeypatch, storage_path, session_factory):
     monkeypatch.setenv("OPENRAG_STORAGE_MODE", "hybrid")
 
     # Seed JSON with one entry
-    storage_path.write_text(json.dumps({
-        "alice": {"r-json": {"title": "from-json", "total_messages": 0}}
-    }))
+    storage_path.write_text(
+        json.dumps({"alice": {"r-json": {"title": "from-json", "total_messages": 0}}})
+    )
 
     svc = _svc(storage_path, session_factory)
     # Add a DB-only entry
@@ -157,9 +151,7 @@ async def test_delete_only_owner_can_delete(monkeypatch, storage_path, session_f
 
 
 @pytest.mark.asyncio
-async def test_clear_user_removes_all_their_threads(
-    monkeypatch, storage_path, session_factory
-):
+async def test_clear_user_removes_all_their_threads(monkeypatch, storage_path, session_factory):
     monkeypatch.setenv("OPENRAG_STORAGE_MODE", "db")
     svc = _svc(storage_path, session_factory)
 
@@ -199,9 +191,7 @@ async def test_prune_stale_conversations_honors_storage_mode(
 
     async with session_factory() as session:
         repo = ConversationRepo(session)
-        await repo.upsert(
-            response_id="old-db", user_id="alice", last_activity=old, created_at=old
-        )
+        await repo.upsert(response_id="old-db", user_id="alice", last_activity=old, created_at=old)
         await repo.upsert(
             response_id="recent-db", user_id="alice", last_activity=recent, created_at=recent
         )
