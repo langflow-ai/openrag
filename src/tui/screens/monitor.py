@@ -427,7 +427,11 @@ class MonitorScreen(Screen):
             # Check if current version is latest
             is_latest, latest_version, current_version = await check_if_latest()
 
-            if is_latest:
+            if is_latest is None:
+                # Version check was skipped (e.g. non-Docker Hub registry) or
+                # failed — silently do nothing rather than showing a false positive.
+                pass
+            elif is_latest:
                 # Show "this is the latest version" toast
                 self.notify(
                     f"You are running the latest version ({current_version}).",

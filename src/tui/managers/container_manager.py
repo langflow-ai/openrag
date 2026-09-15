@@ -1,6 +1,7 @@
 """Container lifecycle manager for OpenRAG TUI."""
 
 import asyncio
+import functools
 import json
 import os
 import re
@@ -10,6 +11,14 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 
+from config.image_config import (
+    ImageNotFoundError,
+    MalformedImageRefError,
+    RegistryAuthError,
+    RegistryUnreachableError,
+    all_openrag_repos,
+    validate_image_reachable,
+)
 from utils.gpu_detection import detect_gpu_devices
 from utils.logging_config import get_logger
 
@@ -79,17 +88,6 @@ def format_port_conflict_message(conflicts: list[tuple[str, int, str]], max_show
 class ContainerManager:
     """Manages Docker/Podman container lifecycle for OpenRAG."""
 
-    OPENRAG_IMAGE_REPOS = {
-        "langflowai/openrag-backend",
-        "langflowai/openrag-frontend",
-        "langflowai/openrag-langflow",
-        "langflowai/openrag-opensearch",
-        "langflowai/openrag-dashboards",
-        "langflow/langflow",
-        "opensearchproject/opensearch",
-        "opensearchproject/opensearch-dashboards",
-    }
-
     def __init__(self, compose_file: Path | None = None):
         self.platform_detector = PlatformDetector()
         self.runtime_info = self.platform_detector.detect_runtime()
@@ -113,7 +111,11 @@ class ContainerManager:
             "langflow",
         ]
 
-        # Get compose project name from env or default to "openrag"
+        # Get compose project name from env or default to "openrag".
+        # _get_env_from_file() calls load_dotenv(override=True), which writes
+        # IMAGE_REGISTRY / IMAGE_ORG into os.environ before we build the
+        # allow-list — so all_openrag_repos() picks up private-registry
+        # overrides correctly here.
         env = self._get_env_from_file()
         project_name = env.get("COMPOSE_PROJECT_NAME", "openrag")
 
@@ -131,11 +133,21 @@ class ContainerManager:
         """Extract repository name from <repository>:<tag> image reference."""
         return image_tag.rsplit(":", 1)[0] if ":" in image_tag else image_tag
 
+    @functools.cached_property
+    def _openrag_image_repos(self) -> set[str]:
+        """Allow-list of OpenRAG image repositories, resolved on first use.
+
+        Resolved lazily rather than in ``__init__`` so it picks up the
+        private-registry overrides (``IMAGE_REGISTRY``, ``IMAGE_ORG``) that
+        ``.env`` loading installs.
+        """
+        return set(all_openrag_repos())
+
     def _is_openrag_repository(self, repository: str) -> bool:
         """Check whether repository is OpenRAG-related, with optional registry prefix."""
         repo = repository.lower()
         return any(
-            repo == known or repo.endswith(f"/{known}") for known in self.OPENRAG_IMAGE_REPOS
+            repo == known or repo.endswith(f"/{known}") for known in self._openrag_image_repos
         )
 
     def _find_compose_file(self, filename: str) -> Path:
@@ -1152,6 +1164,43 @@ class ContainerManager:
             missing_images = []
 
         if missing_images:
+            # Validate that each OpenRAG-owned image is reachable before pulling.
+            runtime_cmd = (
+                self.runtime_info.runtime_command[0]
+                if self.runtime_info.runtime_command
+                else "docker"
+            )
+            for image in missing_images:
+                # Only validate images owned by OpenRAG (skip third-party images).
+                repo = self._extract_repository(image)
+                if not self._is_openrag_repository(repo):
+                    continue
+                try:
+                    await asyncio.get_running_loop().run_in_executor(
+                        None,
+                        functools.partial(validate_image_reachable, image, runtime_cmd),
+                    )
+                except (
+                    ImageNotFoundError,
+                    RegistryAuthError,
+                    MalformedImageRefError,
+                    RegistryUnreachableError,
+                ) as exc:
+                    yield False, f"ERROR: Cannot pull image {image!r}: {exc}", False
+                    return
+                except Exception as exc:
+                    # e.g. PermissionError — an OSError that validate_image_reachable's
+                    # FileNotFoundError/TimeoutExpired handlers don't cover.  Without
+                    # this, it escapes the generator and the consumer reports a bare
+                    # "Error starting services" with no image named.  Wording matches
+                    # the documented "Cannot pull image ...: REASON" form.
+                    yield (
+                        False,
+                        f"ERROR: Cannot pull image {image!r}: validation failed ({exc})",
+                        False,
+                    )
+                    return
+
             images_list = ", ".join(missing_images)
             yield False, f"Pulling container images ({images_list})...", False
             pull_success = {"value": True}

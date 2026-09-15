@@ -39,7 +39,7 @@ If the check fails, OpenRAG stops rather than attempting the pull, and reports a
 ERROR: Cannot pull image 'REGISTRY/ORG/IMAGE:TAG': REASON
 ```
 
-The reason identifies which part of your [image and registry configuration](/reference/configuration#container-image-and-registry-settings) is wrong:
+The reason identifies what went wrong, and usually points to a specific part of your [image and registry configuration](/reference/configuration#container-image-and-registry-settings):
 
 | Reason | Cause | Resolution |
 |---|---|---|
@@ -47,8 +47,9 @@ The reason identifies which part of your [image and registry configuration](/ref
 | `Authentication failure accessing 'IMAGE'` | The registry rejected the request with a `401` or `403`. | Sign in to the registry with `docker login REGISTRY` or `podman login REGISTRY` on the host that runs the containers, then retry. If you are already signed in, confirm that the account can read the repository, because some registries return an authentication error rather than a not-found error for repositories you can't access. |
 | `Registry unreachable for 'IMAGE'` | The registry host couldn't be reached because of a DNS, network, or TLS failure. | Check that the hostname in `IMAGE_REGISTRY` resolves and is reachable from the host. If your registry uses a private certificate authority, add the certificate to your container runtime's trust store. If your registry listens on a non-standard port, include it in the variable, such as `registry.example.com:5000`. |
 | `Timed out contacting registry for 'IMAGE'` | The registry didn't respond within 30 seconds. | Check for a proxy or firewall that silently drops the connection, and confirm the registry is healthy. |
-| `Image reference 'IMAGE' could not be parsed`, or `Image reference is malformed` | The resolved image reference isn't a valid image name. | Remove any scheme (`https://`) or trailing slash from `IMAGE_REGISTRY` and `IMAGE_ORG`, and make sure neither variable contains spaces or is set to an empty value. |
+| `Image reference 'IMAGE' could not be parsed`, or `Image reference is malformed` | The resolved image reference isn't a valid image name. | Remove any scheme (`https://`) or trailing slash from `IMAGE_REGISTRY` and `IMAGE_ORG`, and make sure neither variable contains spaces. |
 | `Container runtime 'docker' not found on PATH` | The container runtime executable is unavailable. | See [No container runtime found, or Docker/Podman not ready](#no-container-runtime-found-or-dockerpodman-not-ready). |
+| `validation failed (ERROR)` | The check itself couldn't run, so OpenRAG can't confirm whether the image is pullable. The most common cause is a container runtime binary that exists but isn't executable by the current user. | Check that the runtime named in the error is executable, such as with `ls -l $(command -v docker)`, and that your user can run it. The message in parentheses is the underlying system error. |
 
 This check only covers the OpenRAG-owned images.
 The OpenSearch Dashboards image isn't validated in advance, so an incorrect `DASHBOARDS_REGISTRY` value doesn't produce one of the errors above.
