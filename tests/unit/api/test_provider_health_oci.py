@@ -106,9 +106,12 @@ class TestCheckProviderHealthOciAuthMethod:
         with patch("api.provider_validation._test_oci_signer_construction") as mock_signer:
             response = await check_provider_health(provider="oci", test_completion=False, user=None)
 
-        # compartment_id rides along: litellm requires it on every embed call
-        # regardless of auth method, so validation checks it for signer-based
-        # auth too (see _test_oci_signer_construction).
-        mock_signer.assert_called_once_with("instance_principal", "ocid1.compartment.oc1..xxx")
+        # compartment_id and region ride along: litellm requires compartment_id
+        # on every embed call regardless of auth method and silently falls back
+        # to us-ashburn-1 when region is omitted, so validation checks both for
+        # signer-based auth too (see _test_oci_signer_construction).
+        mock_signer.assert_called_once_with(
+            "instance_principal", "ocid1.compartment.oc1..xxx", "us-ashburn-1"
+        )
         assert response.status_code == 200
         assert _body(response)["status"] == "healthy"

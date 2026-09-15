@@ -87,6 +87,7 @@ async def check_provider_health(
                 oci_key = getattr(provider_config, "key", None)
                 oci_key_file = getattr(provider_config, "key_file", None)
                 oci_auth_method = getattr(provider_config, "auth_method", None)
+                oci_region = getattr(provider_config, "region", None)
 
                 # Check if this provider is used for LLM or embedding
                 llm_model = (
@@ -163,6 +164,7 @@ async def check_provider_health(
             embedding_oci_key = getattr(embedding_provider_config, "key", None)
             embedding_oci_key_file = getattr(embedding_provider_config, "key_file", None)
             embedding_oci_auth_method = getattr(embedding_provider_config, "auth_method", None)
+            embedding_oci_region = getattr(embedding_provider_config, "region", None)
 
             # Short-circuit identical concurrent polls from the provider-health
             # banner so we don't fan out N watsonx round-trips per poll cycle.
@@ -189,6 +191,7 @@ async def check_provider_health(
                 embedding_oci_key=embedding_oci_key,
                 embedding_oci_key_file=embedding_oci_key_file,
                 embedding_oci_auth_method=embedding_oci_auth_method,
+                embedding_oci_region=embedding_oci_region,
             )
             # A cached *healthy* verdict must not outlive a real failure. The
             # cache exists to coalesce identical probes, and a recorded failure
@@ -264,6 +267,7 @@ async def check_provider_health(
                     oci_compartment_id=oci_compartment_id,
                     oci_key=oci_key,
                     oci_key_file=oci_key_file,
+                    oci_region=oci_region,
                 )
 
             return JSONResponse(
@@ -340,6 +344,7 @@ async def check_provider_health(
                     oci_compartment_id=embedding_oci_compartment_id,
                     oci_key=embedding_oci_key,
                     oci_key_file=embedding_oci_key_file,
+                    oci_region=embedding_oci_region,
                 )
             except httpx.TimeoutException as e:
                 # Timeout means provider is busy, not misconfigured

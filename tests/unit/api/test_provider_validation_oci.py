@@ -27,6 +27,7 @@ VALID_KWARGS = dict(
     oci_fingerprint="xx:xx:xx:xx",
     oci_tenancy="ocid1.tenancy.oc1..xxx",
     oci_compartment_id="ocid1.compartment.oc1..xxx",
+    oci_region="us-ashburn-1",
 )
 
 
@@ -144,13 +145,25 @@ class TestOciCredentialShapeMissingFields:
             await _test_oci_credential_shape(**kwargs, oci_key="pem", oci_key_file=None)
 
     @pytest.mark.asyncio
+    async def test_missing_region_fails(self):
+        """A config missing oci_region must not pass the shape check -- litellm's
+        OCI integration silently falls back to us-ashburn-1 when no region is
+        passed, which is a confusing 401/404 for a tenancy that only exists
+        elsewhere, or a silent data-residency violation for a regulated
+        deployment."""
+        kwargs = dict(VALID_KWARGS)
+        kwargs["oci_region"] = None
+        with pytest.raises(Exception, match="region"):
+            await _test_oci_credential_shape(**kwargs, oci_key="pem", oci_key_file=None)
+
+    @pytest.mark.asyncio
     async def test_missing_key_and_key_file_fails(self):
         with pytest.raises(Exception, match="oci_key"):
             await _test_oci_credential_shape(**VALID_KWARGS, oci_key=None, oci_key_file=None)
 
     @pytest.mark.asyncio
     async def test_all_fields_missing_reports_all(self):
-        with pytest.raises(Exception, match="user, fingerprint, tenancy, compartment_id"):
+        with pytest.raises(Exception, match="user, fingerprint, tenancy, compartment_id, region"):
             await _test_oci_credential_shape()
 
 
@@ -195,27 +208,28 @@ class TestOciSignerConstructionValidation:
     # tests/unit/utils/test_oci_auth.py already does for build_oci_signer
     # itself) is the pattern that actually intercepts the call.
     COMPARTMENT_ID = "ocid1.compartment.oc1..xxx"
+    REGION = "us-ashburn-1"
 
     @pytest.mark.asyncio
     @patch("oci.auth.signers.InstancePrincipalsSecurityTokenSigner")
     async def test_instance_principal_success(self, mock_signer_cls):
         mock_signer_cls.return_value = MagicMock()
         # must not raise
-        await _test_oci_signer_construction("instance_principal", self.COMPARTMENT_ID)
+        await _test_oci_signer_construction("instance_principal", self.COMPARTMENT_ID, self.REGION)
 
     @pytest.mark.asyncio
     @patch("oci.auth.signers.InstancePrincipalsSecurityTokenSigner")
     async def test_instance_principal_failure_raises(self, mock_signer_cls):
         mock_signer_cls.side_effect = Exception("not on OCI compute")
         with pytest.raises(OCISignerConstructionError):
-            await _test_oci_signer_construction("instance_principal", self.COMPARTMENT_ID)
+            await _test_oci_signer_construction("instance_principal", self.COMPARTMENT_ID, self.REGION)
 
     @pytest.mark.asyncio
     @patch("oci.auth.signers.get_oke_workload_identity_resource_principal_signer")
     async def test_workload_identity_success(self, mock_factory):
         mock_factory.return_value = MagicMock()
         # must not raise
-        await _test_oci_signer_construction("workload_identity", self.COMPARTMENT_ID)
+        await _test_oci_signer_construction("workload_identity", self.COMPARTMENT_ID, self.REGION)
 
     # compartment_id scopes which resource the embed call targets, not how the
     # request is signed, so the signer path never touches it -- but litellm
@@ -237,9 +251,31 @@ class TestOciSignerConstructionValidation:
         mock_factory.return_value = MagicMock()
 
         with pytest.raises(Exception, match="compartment_id"):
-            await _test_oci_signer_construction(auth_method, compartment_id)
+            await _test_oci_signer_construction(auth_method, compartment_id, self.REGION)
 
         # Rejected before any instance-metadata / proxymux round-trip.
+        mock_signer_cls.assert_not_called()
+        mock_factory.assert_not_called()
+
+    # litellm silently falls back to "us-ashburn-1" when no region is passed,
+    # which is a confusing 401/404 for a tenancy that only exists elsewhere,
+    # or a silent data-residency violation for a regulated deployment. A
+    # signer-mode config missing region must be rejected the same way a
+    # missing compartment_id is, before any instance-metadata/proxymux call.
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("auth_method", ["instance_principal", "workload_identity"])
+    @pytest.mark.parametrize("region", [None, ""])
+    @patch("oci.auth.signers.get_oke_workload_identity_resource_principal_signer")
+    @patch("oci.auth.signers.InstancePrincipalsSecurityTokenSigner")
+    async def test_missing_region_rejected(
+        self, mock_signer_cls, mock_factory, auth_method, region
+    ):
+        mock_signer_cls.return_value = MagicMock()
+        mock_factory.return_value = MagicMock()
+
+        with pytest.raises(Exception, match="region"):
+            await _test_oci_signer_construction(auth_method, self.COMPARTMENT_ID, region)
+
         mock_signer_cls.assert_not_called()
         mock_factory.assert_not_called()
 
@@ -266,6 +302,9 @@ class TestValidateProviderSetupOciAuthMethodDispatch:
             provider="oci",
             oci_auth_method="instance_principal",
             oci_compartment_id="ocid1.compartment.oc1..xxx",
+            oci_region="us-ashburn-1",
         )
-        mock_signer.assert_called_once_with("instance_principal", "ocid1.compartment.oc1..xxx")
+        mock_signer.assert_called_once_with(
+            "instance_principal", "ocid1.compartment.oc1..xxx", "us-ashburn-1"
+        )
         mock_shape.assert_not_called()
