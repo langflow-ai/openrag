@@ -623,6 +623,7 @@ async def update_settings(
                     oci_key = getattr(embedding_provider_config, "key", None)
                     oci_key_file = getattr(embedding_provider_config, "key_file", None)
                     oci_auth_method = getattr(embedding_provider_config, "auth_method", None)
+                    oci_region = getattr(embedding_provider_config, "region", None)
 
                     if body.oci_user is not None:
                         oci_user = body.oci_user
@@ -638,6 +639,8 @@ async def update_settings(
                         oci_key_file = body.oci_key_file
                     if body.oci_auth_method is not None:
                         oci_auth_method = body.oci_auth_method
+                    if body.oci_region is not None:
+                        oci_region = body.oci_region
 
                     await validate_provider_setup(
                         provider=embedding_provider,
@@ -653,6 +656,7 @@ async def update_settings(
                         oci_compartment_id=oci_compartment_id,
                         oci_key=oci_key,
                         oci_key_file=oci_key_file,
+                        oci_region=oci_region,
                     )
                     logger.info(
                         f"Embedding provider validation successful for {embedding_provider}"
@@ -1128,13 +1132,7 @@ async def update_settings(
             provider_updated = True
 
         if body.remove_oci_config:
-            other_providers_configured = (
-                working_config.providers.openai.configured
-                or working_config.providers.anthropic.configured
-                or working_config.providers.watsonx.configured
-                or working_config.providers.ollama.configured
-            )
-            if not other_providers_configured:
+            if not _has_other_configured_provider(working_config, "oci"):
                 return JSONResponse(
                     {
                         "error": "Cannot remove OCI Generative AI configuration: configure another model provider first."
@@ -1154,7 +1152,9 @@ async def update_settings(
             working_config.providers.oci.key = ""
             working_config.providers.oci.key_file = ""
             working_config.providers.oci.region = ""
+            working_config.providers.oci.auth_method = "api_key"
             working_config.providers.oci.configured = False
+            working_config.providers.custom.pop("oci", None)
             # OCI is not a valid LLM provider; no LLM reset needed
             if working_config.knowledge.embedding_provider == "oci":
                 fb = _first_configured_embedding_provider(working_config, "oci")
@@ -1534,6 +1534,7 @@ async def onboarding(
                     oci_compartment_id=getattr(embedding_provider_config, "compartment_id", None),
                     oci_key=getattr(embedding_provider_config, "key", None),
                     oci_key_file=getattr(embedding_provider_config, "key_file", None),
+                    oci_region=getattr(embedding_provider_config, "region", None),
                 )
                 logger.info(
                     f"Embedding provider setup validation completed successfully for {embedding_provider}"

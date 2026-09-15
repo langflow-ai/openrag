@@ -311,13 +311,21 @@ class ProvidersConfig:
             self.oci.compartment_id = clean.get("oci_compartment_id", self.oci.compartment_id)
             self.oci.key = clean.get("oci_key", self.oci.key)
             self.oci.key_file = clean.get("oci_key_file", self.oci.key_file)
-            self.oci.configured = bool(
-                self.oci.user
-                and self.oci.fingerprint
-                and self.oci.tenancy
-                and self.oci.compartment_id
-                and (self.oci.key or self.oci.key_file)
-            )
+            if auth_method:
+                self.oci.auth_method = auth_method
+            if self.oci.auth_method == "api_key":
+                self.oci.configured = bool(
+                    self.oci.user
+                    and self.oci.fingerprint
+                    and self.oci.tenancy
+                    and self.oci.compartment_id
+                    and self.oci.region
+                    and (self.oci.key or self.oci.key_file)
+                )
+            else:
+                # instance_principal / workload_identity sign via a
+                # constructed OCI SDK Signer, not the manual key fields.
+                self.oci.configured = bool(self.oci.compartment_id and self.oci.region)
 
     def pending_credentials(
         self, provider: str, submitted: dict[str, str] | None = None

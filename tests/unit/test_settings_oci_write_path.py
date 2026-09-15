@@ -59,6 +59,10 @@ def _make_config(*, oci_configured: bool, embedding_provider: str = "openai"):
             auth_method="api_key",
             configured=oci_configured,
         ),
+        # _has_other_configured_provider() (used by the remove_oci_config
+        # branch) iterates providers.custom -- must exist even though these
+        # tests don't exercise any generic/custom provider.
+        custom={},
     )
     # update_settings()'s embedding-provider validation branch resolves the
     # effective provider config via current_config.providers.get_provider_config(...)
@@ -229,6 +233,90 @@ async def test_update_settings_remove_oci_config_blocked_without_other_provider(
     assert b"Cannot remove OCI Generative AI configuration" in bytes(response.body)
     # Nothing was cleared since the removal was rejected.
     assert config.providers.oci.configured is True
+
+
+@pytest.mark.asyncio
+async def test_update_settings_remove_oci_config_allowed_with_only_custom_provider(monkeypatch):
+    """Regression test: remove_oci_config previously hardcoded a check for
+    openai/anthropic/watsonx/ollama only, so it never counted a generically
+    configured provider (Azure, Bedrock, Gemini, ...) landing in
+    ``providers.custom`` -- meaning a deployment with OCI-as-embedding +
+    Azure-as-LLM could never remove OCI even though Azure is a perfectly
+    valid fallback. The fix delegates to the shared
+    ``_has_other_configured_provider()`` helper every other removal branch
+    already uses."""
+    settings_endpoints._background_tasks.clear()
+    config = _make_config(oci_configured=True, embedding_provider="oci")
+    config.providers.openai.configured = False
+    config.providers.custom["azure"] = SimpleNamespace(configured=True)
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "openai")
+    monkeypatch.setenv("EMBEDDING_MODEL", OPENAI_DEFAULT_EMBEDDING_MODEL)
+    _fake_task, _post_save_mock, saved_configs = _patch_common(monkeypatch, config)
+
+    response = await settings_endpoints.update_settings(
+        SettingsUpdateBody(remove_oci_config=True),
+        session_manager=object(),
+        user=None,
+    )
+
+    assert isinstance(response, settings_endpoints.SettingsUpdateResponse)
+    saved = saved_configs[0]
+    assert saved.providers.oci.configured is False
+
+
+@pytest.mark.asyncio
+async def test_update_settings_remove_oci_config_resets_auth_method(monkeypatch):
+    """Regression test: removal cleared the 7 manual oci_* fields but never
+    reset ``auth_method`` back to the default "api_key" -- so a prior
+    instance_principal/workload_identity config, after "removal", still
+    carried that auth_method. A later attempt to reconfigure OCI with plain
+    api_key credentials (omitting oci_auth_method, since the caller assumes
+    a fresh default) would then get validated via
+    ``_test_oci_signer_construction`` instead of
+    ``_test_oci_credential_shape``, and fail on any host that isn't actually
+    running on OCI Compute."""
+    settings_endpoints._background_tasks.clear()
+    config = _make_config(oci_configured=True, embedding_provider="oci")
+    config.providers.oci.auth_method = "instance_principal"
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "openai")
+    monkeypatch.setenv("EMBEDDING_MODEL", OPENAI_DEFAULT_EMBEDDING_MODEL)
+    _fake_task, _post_save_mock, saved_configs = _patch_common(monkeypatch, config)
+
+    response = await settings_endpoints.update_settings(
+        SettingsUpdateBody(remove_oci_config=True),
+        session_manager=object(),
+        user=None,
+    )
+
+    assert isinstance(response, settings_endpoints.SettingsUpdateResponse)
+    saved = saved_configs[0]
+    assert saved.providers.oci.auth_method == "api_key"
+
+
+@pytest.mark.asyncio
+async def test_update_settings_remove_oci_config_clears_custom_entry(monkeypatch):
+    """Regression test: removal never touched ``providers.custom["oci"]`` --
+    an entry a generic ``provider_credentials`` submission could have created
+    -- so that entry's ``configured=True`` and its credentials survived
+    "removal" untouched, meaning ``credential_values("oci")``,
+    ``_configured_provider_names``, and the gateway all still saw OCI as
+    live."""
+    settings_endpoints._background_tasks.clear()
+    config = _make_config(oci_configured=True, embedding_provider="oci")
+    config.providers.custom["oci"] = SimpleNamespace(configured=True, credentials={"oci_user": "x"})
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "openai")
+    monkeypatch.setenv("EMBEDDING_MODEL", OPENAI_DEFAULT_EMBEDDING_MODEL)
+    _fake_task, _post_save_mock, saved_configs = _patch_common(monkeypatch, config)
+
+    response = await settings_endpoints.update_settings(
+        SettingsUpdateBody(remove_oci_config=True),
+        session_manager=object(),
+        user=None,
+    )
+
+    assert isinstance(response, settings_endpoints.SettingsUpdateResponse)
+    saved = saved_configs[0]
+    assert "oci" not in saved.providers.custom
 
 
 @pytest.mark.asyncio

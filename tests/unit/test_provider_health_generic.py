@@ -71,6 +71,7 @@ async def test_provider_health_accepts_configured_azure_provider(
         oci_compartment_id=None,
         oci_key=None,
         oci_key_file=None,
+        oci_region=None,
     )
 
 
