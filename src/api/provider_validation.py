@@ -786,6 +786,7 @@ async def validate_provider_setup(
     oci_compartment_id: str = None,
     oci_key: str = None,
     oci_key_file: str = None,
+    oci_region: str = None,
 ) -> ProbeResult:
     """
     Validate provider setup by testing completion with tool calling and embedding.
@@ -812,9 +813,11 @@ async def validate_provider_setup(
                         provider.
         oci_auth_method: OCI auth method ('api_key', 'instance_principal', 'workload_identity').
                         Only used when provider == 'oci'. Default: 'api_key'.
-        oci_user, oci_fingerprint, oci_tenancy, oci_compartment_id, oci_key, oci_key_file:
-                        OCI Generative AI credential fields (only used when provider == 'oci' and
-                        oci_auth_method == 'api_key').
+        oci_user, oci_fingerprint, oci_tenancy, oci_compartment_id, oci_key, oci_key_file, oci_region:
+                        OCI Generative AI credential fields. oci_user/oci_fingerprint/oci_tenancy/
+                        oci_key/oci_key_file are only used when provider == 'oci' and
+                        oci_auth_method == 'api_key'; oci_compartment_id and oci_region are
+                        required for provider == 'oci' regardless of auth method.
 
     Returns:
         ProbeResult: what the successful validation exercised.
@@ -908,6 +911,7 @@ async def validate_provider_setup(
                     oci_compartment_id=oci_compartment_id,
                     oci_key=oci_key,
                     oci_key_file=oci_key_file,
+                    oci_region=oci_region,
                 )
                 result = ProbeResult(model_probed=True)
             elif llm_model:
@@ -939,6 +943,7 @@ async def validate_provider_setup(
                 oci_compartment_id=oci_compartment_id,
                 oci_key=oci_key,
                 oci_key_file=oci_key_file,
+                oci_region=oci_region,
             )
             result = ProbeResult()
 
@@ -1020,6 +1025,7 @@ async def test_lightweight_health(
     oci_compartment_id: str = None,
     oci_key: str = None,
     oci_key_file: str = None,
+    oci_region: str = None,
 ) -> None:
     """Test provider health with lightweight check (no credits consumed).
 
@@ -1043,10 +1049,16 @@ async def test_lightweight_health(
     elif provider == "oci":
         if oci_auth_method == "api_key":
             await _test_oci_credential_shape(
-                oci_user, oci_fingerprint, oci_tenancy, oci_compartment_id, oci_key, oci_key_file
+                oci_user,
+                oci_fingerprint,
+                oci_tenancy,
+                oci_compartment_id,
+                oci_key,
+                oci_key_file,
+                oci_region,
             )
         else:
-            await _test_oci_signer_construction(oci_auth_method, oci_compartment_id)
+            await _test_oci_signer_construction(oci_auth_method, oci_compartment_id, oci_region)
     elif enhancement := get_provider_enhancement(provider):
         await enhancement.lightweight_health_check(
             stored_credentials if stored_credentials is not None else (credentials or {})
@@ -1089,6 +1101,7 @@ async def test_embedding(
     oci_compartment_id: str = None,
     oci_key: str = None,
     oci_key_file: str = None,
+    oci_region: str = None,
 ) -> None:
     """Test embedding generation for the provider."""
 
@@ -1106,10 +1119,16 @@ async def test_embedding(
         # live round-trip, even under test_completion=True.
         if oci_auth_method == "api_key":
             await _test_oci_credential_shape(
-                oci_user, oci_fingerprint, oci_tenancy, oci_compartment_id, oci_key, oci_key_file
+                oci_user,
+                oci_fingerprint,
+                oci_tenancy,
+                oci_compartment_id,
+                oci_key,
+                oci_key_file,
+                oci_region,
             )
         else:
-            await _test_oci_signer_construction(oci_auth_method, oci_compartment_id)
+            await _test_oci_signer_construction(oci_auth_method, oci_compartment_id, oci_region)
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -1840,6 +1859,7 @@ async def _test_oci_credential_shape(
     oci_compartment_id: str = None,
     oci_key: str = None,
     oci_key_file: str = None,
+    oci_region: str = None,
 ) -> None:
     """Validate OCI Generative AI credential shape (no live network call).
 
@@ -1861,6 +1881,7 @@ async def _test_oci_credential_shape(
             ("fingerprint", oci_fingerprint),
             ("tenancy", oci_tenancy),
             ("compartment_id", oci_compartment_id),
+            ("region", oci_region),
         )
         if not value
     ]
@@ -1897,7 +1918,7 @@ async def _test_oci_credential_shape(
 
 
 async def _test_oci_signer_construction(
-    oci_auth_method: str, oci_compartment_id: str = None
+    oci_auth_method: str, oci_compartment_id: str = None, oci_region: str = None
 ) -> None:
     """Validate OCI instance_principal / workload_identity auth by
     attempting to construct the real signer.
@@ -1911,18 +1932,30 @@ async def _test_oci_signer_construction(
     or a cluster without Workload Identity enabled before a real embedding
     call fails with a much less obvious error.
 
-    compartment_id is checked here too, even though the signer never uses
-    it: litellm requires oci_compartment_id on every embedText call
-    regardless of auth method (see OCIEmbeddingConfig.validate_environment),
-    and ``utils.embedding_kwargs.oci_credential_kwargs`` omits the kwarg
+    compartment_id and region are checked here too, even though the signer
+    never uses them: litellm requires oci_compartment_id on every embedText
+    call regardless of auth method (see OCIEmbeddingConfig.validate_environment),
+    and silently falls back to "us-ashburn-1" when no region is passed --
+    a confusing 401/404 for a tenancy that only exists elsewhere, or a
+    silent data-residency violation for a regulated deployment.
+    ``utils.embedding_kwargs.oci_credential_kwargs`` omits either kwarg
     entirely when it's empty. Without this check, a signer-based
-    configuration with no compartment_id passes onboarding/settings
-    validation and only fails at the first real embedding call.
+    configuration with no compartment_id or region passes onboarding/
+    settings validation and only fails (or silently misbehaves) at the
+    first real embedding call.
     """
     from utils.oci_auth import build_oci_signer
 
-    if not oci_compartment_id:
-        raise Exception("OCI configuration is missing required field(s): compartment_id")
+    missing = [
+        name
+        for name, value in (
+            ("compartment_id", oci_compartment_id),
+            ("region", oci_region),
+        )
+        if not value
+    ]
+    if missing:
+        raise Exception(f"OCI configuration is missing required field(s): {', '.join(missing)}")
 
     build_oci_signer(oci_auth_method)
     logger.info(f"OCI {oci_auth_method} signer construction check passed")

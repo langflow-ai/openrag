@@ -39,6 +39,8 @@ def _has_other_configured_provider(config, excluding: str) -> bool:
         return True
     if excluding != "ollama" and providers.ollama.configured:
         return True
+    if excluding != "oci" and providers.oci.configured:
+        return True
     return False
 
 

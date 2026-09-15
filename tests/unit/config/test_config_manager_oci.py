@@ -343,3 +343,25 @@ class TestOCIGenericCredentialsBridge:
             "oci_compartment_id": "ocid1.compartment.oc1..a",
             "oci_key": "pem-content",
         }
+
+    def test_set_credentials_honors_instance_principal_auth_method(self):
+        """A generic provider_credentials submission carrying only
+        compartment_id/region (no manual key fields) plus
+        provider_auth_methods={"oci": "instance_principal"} must persist the
+        auth_method and be marked configured - previously the auth_method
+        kwarg was silently ignored and `configured` was derived from the
+        api_key-mode fields only, so this valid instance_principal
+        configuration was dropped on the floor."""
+        providers = self._providers()
+
+        providers.set_credentials(
+            "oci",
+            {
+                "oci_compartment_id": "ocid1.compartment.oc1..a",
+                "oci_region": "us-ashburn-1",
+            },
+            auth_method="instance_principal",
+        )
+
+        assert providers.oci.auth_method == "instance_principal"
+        assert providers.oci.configured is True
