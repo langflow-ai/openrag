@@ -24,7 +24,8 @@ class ConversationRetentionService:
         previous_value = config.conversation.pruning_enabled
         config.conversation.pruning_enabled = enabled
         try:
-            if not self.config_manager.save_config_file(config):
+            # preserve_edited=True prevents marking config as edited during pre-onboarding toggle
+            if not self.config_manager.save_config_file(config, preserve_edited=True):
                 # Restore previous value and raise
                 config.conversation.pruning_enabled = previous_value
                 raise RuntimeError("Failed to save configuration")

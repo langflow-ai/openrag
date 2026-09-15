@@ -76,11 +76,11 @@ class ConversationPersistenceService:
         return {}
 
     def _save_conversations_sync(self) -> None:
-        # Deep-copy under self.lock, then write under _save_lock
-        with self.lock:
-            snapshot = copy.deepcopy(self._conversations)
-        # Serialize writes to prevent older executor writes from completing after newer ones
+        # Acquire _save_lock first to serialize all saves, then snapshot under self.lock
+        # This ensures queued saves commit in snapshot order and cannot overwrite newer data
         with self._save_lock:
+            with self.lock:
+                snapshot = copy.deepcopy(self._conversations)
             with open(self.storage_file, "w", encoding="utf-8") as f:
                 json.dump(
                     snapshot,

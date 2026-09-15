@@ -91,7 +91,6 @@ from config.settings import (
 )
 from dependencies import (
     get_chat_service,
-    get_conversation_retention_service,
     get_current_user,
     get_document_service,
     get_flows_service,
@@ -400,7 +399,6 @@ async def update_settings(
     user: User = Depends(require_permission("config:write")),
     models_service=Depends(get_models_service),
     rbac=Depends(get_rbac_service),
-    conversation_retention_service=Depends(get_conversation_retention_service),
 ) -> SettingsUpdateResponse:
     """Update settings in configuration"""
     try:
@@ -648,11 +646,10 @@ async def update_settings(
         working_config = copy.deepcopy(current_config)
         config_updated = False
 
-        # Handle conversation pruning via dedicated service
+        # Handle conversation pruning toggle
         if body.conversation_pruning_enabled is not None:
-            await conversation_retention_service.set_pruning_enabled(
-                body.conversation_pruning_enabled
-            )
+            # Stage in working_config so combined updates preserve the requested value
+            working_config.conversation.pruning_enabled = body.conversation_pruning_enabled
             config_updated = True
 
         # Update agent settings
@@ -1097,11 +1094,10 @@ async def update_settings(
         if not config_updated:
             return JSONResponse({"error": "No valid fields provided for update"}, status_code=400)
 
-        # Save the updated configuration (conversation_pruning_enabled already saved by retention service)
-        # Only save working_config if other fields were modified
-        if body.model_fields_set != {"conversation_pruning_enabled"}:
-            if not config_manager.save_config_file(working_config):
-                return JSONResponse({"error": "Failed to save configuration"}, status_code=500)
+        # Save the updated configuration
+        # conversation_pruning_enabled is now staged in working_config along with all other changes
+        if not config_manager.save_config_file(working_config):
+            return JSONResponse({"error": "Failed to save configuration"}, status_code=500)
 
         provider_health_cache.invalidate()
 
