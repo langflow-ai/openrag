@@ -5,6 +5,33 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+# Key under which a connector reports its object's entity tag in
+# ``ConnectorDocument.metadata``. Bucket connectors should set it from the
+# store's ETag; sync change detection persists it and compares it against a
+# fresh listing, which is how a modified object is noticed even when the two
+# timestamps can't be compared. See api.connectors.classify_remote_file_change.
+CONTENT_ETAG_METADATA_KEY = "content_etag"
+
+
+def normalize_etag(value: Any) -> str | None:
+    """Normalize an object-store entity tag for comparison, or None if empty.
+
+    Strips the weak-validator prefix and the surrounding quotes that S3-style
+    and HTTP entity tags carry, so a tag read back out of the index compares
+    equal to the one a fresh listing reports even if the two APIs quote it
+    differently.
+
+    The multipart suffix (``-12``) is deliberately kept: it is part of the
+    identity, so identical bytes uploaded with different part sizes compare as
+    different and get re-ingested, rather than being skipped on a guess.
+    """
+    if not isinstance(value, str):
+        return None
+    tag = value.strip()
+    if tag[:2].upper() == "W/":
+        tag = tag[2:].strip()
+    return tag.strip('"').strip() or None
+
 
 @dataclass
 class DocumentACL:
@@ -78,9 +105,14 @@ class BaseConnector(ABC):
     #   "replace_always" — re-process every indexed file on sync, replacing the
     #                      indexed copy (the content-hash short-circuit still
     #                      skips identical bytes on the non-Langflow path).
-    #   "timestamp"      — list the source once and re-ingest only files whose
-    #                      remote modified_time is strictly newer than the
-    #                      stored one (see bucket_changed_file_ids).
+    #   "timestamp"      — list the source once and re-ingest only the files
+    #                      that actually differ: by entity tag where the
+    #                      listing and the index both have one, otherwise by a
+    #                      strictly newer remote modified_time. Connectors on
+    #                      this mode should report "etag" in list_files() and
+    #                      CONTENT_ETAG_METADATA_KEY in get_file_content()
+    #                      metadata; without them detection falls back to
+    #                      timestamps alone (see bucket_changed_file_ids).
     CHANGE_DETECTION: str = "replace_always"
     # Connector-specific keys in the config dict that must be encrypted at rest.
     SECRET_CONFIG_KEYS: tuple = ()

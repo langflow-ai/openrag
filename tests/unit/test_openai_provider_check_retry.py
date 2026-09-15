@@ -157,6 +157,29 @@ async def test_azure_lightweight_health_checks_endpoint_and_key(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_azure_foundry_lightweight_health_checks_endpoint_and_key(monkeypatch):
+    captured = {}
+
+    async def fake_retry(method, url, **kwargs):
+        captured.update(method=method, url=url, **kwargs)
+        return httpx.Response(200, json={"data": [{"id": "test-model"}]})
+
+    monkeypatch.setattr("api.provider_validation._http_request_with_retry", fake_retry)
+
+    await _test_azure_lightweight_health(
+        {
+            "api_key": "azure-key",
+            "api_base": "https://example.services.ai.azure.com/",
+        }
+    )
+
+    assert captured["method"] == "GET"
+    assert captured["url"] == "https://example.services.ai.azure.com/openai/v1/models"
+    assert captured["headers"]["api-key"] == "azure-key"
+    assert captured["params"] is None
+
+
+@pytest.mark.asyncio
 async def test_azure_lightweight_health_rejects_missing_credentials():
     with pytest.raises(ValueError, match="Azure credentials are required"):
         await _test_azure_lightweight_health({"api_base": "https://example.openai.azure.com"})
