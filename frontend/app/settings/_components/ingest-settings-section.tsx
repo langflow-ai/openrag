@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, ChevronDown, Loader2, Minus, Plus } from "lucide-react";
+import { ArrowUpRight, ChevronDown, Minus, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -51,6 +51,7 @@ import { DEFAULT_KNOWLEDGE_SETTINGS } from "@/lib/constants";
 import { resolveLangflowEditUrl } from "@/lib/url-utils";
 import { cn } from "@/lib/utils";
 import { useUpdateSettingsMutation } from "../../api/mutations/useUpdateSettingsMutation";
+import { useRegisterSave } from "./ingest-save-context";
 import { LangflowIcon } from "./langflow-icon";
 
 const DEFAULT_WATSONX_API_VERSION = "2023-05-29";
@@ -247,9 +248,6 @@ export function IngestSettingsSection() {
     "";
 
   const updateSettingsMutation = useUpdateSettingsMutation({
-    onSuccess: () => {
-      toast.success("Settings updated successfully");
-    },
     onError: (error) => {
       toast.error("Failed to update settings", { description: error.message });
     },
@@ -269,13 +267,17 @@ export function IngestSettingsSection() {
 
   const handleEmbeddingModelChange = useCallback(
     (newModel: string, provider?: string) => {
+      const onSuccess = () => toast.success("Settings updated successfully");
       if (newModel && provider) {
-        updateSettingsMutation.mutate({
-          embedding_model: newModel,
-          embedding_provider: provider,
-        });
+        updateSettingsMutation.mutate(
+          { embedding_model: newModel, embedding_provider: provider },
+          { onSuccess },
+        );
       } else if (newModel) {
-        updateSettingsMutation.mutate({ embedding_model: newModel });
+        updateSettingsMutation.mutate(
+          { embedding_model: newModel },
+          { onSuccess },
+        );
       }
     },
     [updateSettingsMutation],
@@ -439,7 +441,7 @@ export function IngestSettingsSection() {
     setChunkValidationError(null);
   };
 
-  const handleKnowledgeIngestSave = () => {
+  const handleKnowledgeIngestSave = async (): Promise<boolean> => {
     // Only include VLM fields when the VLM UI is enabled; a hidden section
     // must not drive backend VLM state or trip its validation.
     const vlmPayload = showVlmSettings
@@ -476,13 +478,13 @@ export function IngestSettingsSection() {
       const msg = "Chunk size must be at least 1";
       setChunkValidationError(msg);
       toast.error("Could not save ingest settings", { description: msg });
-      return;
+      return false;
     }
     if (chunkOverlap >= chunkSize) {
       const msg = "Chunk overlap must be less than chunk size";
       setChunkValidationError(msg);
       toast.error("Could not save ingest settings", { description: msg });
-      return;
+      return false;
     }
 
     if (showVlmSettings && pictureDescriptions) {
@@ -491,18 +493,18 @@ export function IngestSettingsSection() {
           "Model name is required when picture descriptions are enabled";
         setValidationError(msg);
         toast.error("Could not save ingest settings", { description: msg });
-        return;
+        return false;
       }
       if (vlmMaxTokens < 1 || vlmConcurrency < 1 || vlmTimeout < 1) {
         const msg = "Max tokens, concurrency, and timeout must be at least 1";
         setValidationError(msg);
         toast.error("Could not save ingest settings", { description: msg });
-        return;
+        return false;
       }
     }
 
-    updateSettingsMutation.mutate(
-      {
+    try {
+      await updateSettingsMutation.mutateAsync({
         chunk_size: chunkSize,
         chunk_overlap: chunkOverlap,
         table_structure: tableStructure,
@@ -510,16 +512,22 @@ export function IngestSettingsSection() {
         picture_descriptions: pictureDescriptions,
         disable_ingest_with_langflow: disableIngestWithLangflow,
         ...vlmPayload,
-      },
-      {
-        onSuccess: () => {
-          setChunkValidationError(null);
-          setValidationError(null);
-          setUserEdited(false);
-        },
-      },
-    );
+      });
+    } catch {
+      // onError already surfaced the failure; stop the combined save here.
+      return false;
+    }
+    setChunkValidationError(null);
+    setValidationError(null);
+    setUserEdited(false);
+    return true;
   };
+
+  useRegisterSave("ingest-settings", {
+    isDirty: knowledgeIngestDirty,
+    blocked: vlmModelPending,
+    save: handleKnowledgeIngestSave,
+  });
 
   const handleEditInLangflow = (closeDialog: () => void) => {
     trackButton({
@@ -584,110 +592,125 @@ export function IngestSettingsSection() {
   };
 
   return (
-    <section className="space-y-8">
-      <header className="flex items-start justify-between gap-6">
-        <div className="max-w-[685px] space-y-3">
-          <h3
-            className={cn(
-              "text-lg font-semibold leading-tight tracking-tight",
-              isCloudBrand && "ibm-settings-section-title",
-            )}
-          >
-            Knowledge Ingest
-          </h3>
-          <p className="text-sm text-muted-foreground">
-            Configure how files are ingested and stored for retrieval. The
-            embedding model saves as soon as you pick one; chunk and ingest
-            options use Save ingest settings. Edit in Langflow for full control.
-          </p>
-        </div>
-        <RequirePermission perm="flows:edit">
-          <div className="flex shrink-0 gap-2">
-            <ConfirmationDialog
-              trigger={
-                <Button ignoreTitleCase={true} variant="outline">
-                  Restore flow
-                </Button>
+    <section>
+      <div className="max-w-[685px] space-y-3">
+        <h3
+          className={cn(
+            "text-lg font-semibold leading-tight tracking-tight",
+            isCloudBrand && "ibm-settings-section-title",
+          )}
+        >
+          Knowledge Ingest
+        </h3>
+        <p className="text-sm text-muted-foreground">
+          Select the embedding model used to index your files. It saves as soon
+          as you pick one.
+        </p>
+      </div>
+      <div className="mt-6 space-y-2">
+        <LabelWrapper
+          helperText="Saves immediately when you select a model"
+          id="embedding-model-select"
+          label="Embedding model"
+          required={true}
+        >
+          <ModelSelector
+            groupedOptions={groupedEmbeddingModels}
+            custom
+            noOptionsPlaceholder={
+              isLoadingAnyEmbeddingModels
+                ? "Loading models..."
+                : catalogError
+                  ? "Could not load the model catalogue. Retry later."
+                  : "No embedding models detected. Configure a provider first."
+            }
+            value={settings.knowledge?.embedding_model || ""}
+            selectedProvider={settings.knowledge?.embedding_provider}
+            onValueChange={handleEmbeddingModelChange}
+          />
+        </LabelWrapper>
+        {settings.knowledge?.embedding_model && selectedEmbeddingGroup && (
+          <div className="mt-3">
+            <ModelFeatures
+              model={
+                selectedEmbedding?.model ?? {
+                  model: settings.knowledge.embedding_model,
+                  // Without an explicit mode the panel treats an
+                  // off-catalogue embedding model as a language model and
+                  // warns that it cannot run the agent tools.
+                  mode: "embedding",
+                }
               }
-              title="Restore default Ingest flow"
-              description="This restores defaults and discards all custom settings and overrides. This can't be undone."
-              confirmText="Restore"
-              variant="destructive"
-              onConfirm={handleRestoreIngestFlow}
-              isLoading={isRestoringFlow}
-            />
-            <ConfirmationDialog
-              trigger={
-                <Button>
-                  <LangflowIcon />
-                  Edit in Langflow
-                </Button>
-              }
-              title="Edit Ingest flow in Langflow"
-              description={
-                <>
-                  <p className="mb-2">
-                    You&apos;re entering Langflow. You can edit the{" "}
-                    <b>Ingest flow</b> and other underlying flows. Manual
-                    changes to components, wiring, or I/O can break this
-                    experience.
-                  </p>
-                  <p className="mb-2">
-                    To enable editing, you need to unlock the flow by clicking
-                    on its name and disabling the <b>Lock flow</b> option.
-                  </p>
-                  <p>You can restore this flow from Settings.</p>
-                </>
-              }
-              confirmText="Proceed"
-              confirmIcon={<ArrowUpRight />}
-              variant="warning"
-              onConfirm={handleEditInLangflow}
+              providerName={selectedEmbeddingGroup.group}
+              provider={selectedEmbeddingGroup.provider}
             />
           </div>
-        </RequirePermission>
-      </header>
-      <div className="space-y-6">
-        <div className="space-y-2">
-          <LabelWrapper
-            helperText="Saves immediately when you select a model"
-            id="embedding-model-select"
-            label="Embedding model"
-            required={true}
-          >
-            <ModelSelector
-              groupedOptions={groupedEmbeddingModels}
-              custom
-              noOptionsPlaceholder={
-                isLoadingAnyEmbeddingModels
-                  ? "Loading models..."
-                  : catalogError
-                    ? "Could not load the model catalogue. Retry later."
-                    : "No embedding models detected. Configure a provider first."
-              }
-              value={settings.knowledge?.embedding_model || ""}
-              selectedProvider={settings.knowledge?.embedding_provider}
-              onValueChange={handleEmbeddingModelChange}
-            />
-          </LabelWrapper>
-          {settings.knowledge?.embedding_model && selectedEmbeddingGroup && (
-            <div className="mt-3">
-              <ModelFeatures
-                model={
-                  selectedEmbedding?.model ?? {
-                    model: settings.knowledge.embedding_model,
-                    // Without an explicit mode the panel treats an
-                    // off-catalogue embedding model as a language model and
-                    // warns that it cannot run the agent tools.
-                    mode: "embedding",
-                  }
+        )}
+      </div>
+
+      <div className="mt-8 space-y-6 border-t border-border pt-8">
+        <header className="flex items-start justify-between gap-6">
+          <div className="max-w-[545px] space-y-3">
+            <h3
+              className={cn(
+                "text-lg font-semibold leading-tight tracking-tight",
+                isCloudBrand && "ibm-settings-section-title",
+              )}
+            >
+              Langflow configuration
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              Configure how files are chunked and parsed during ingest. These
+              options use Save ingest settings. Edit in Langflow for full
+              control.
+            </p>
+          </div>
+          <RequirePermission perm="flows:edit">
+            <div className="flex shrink-0 gap-2">
+              <ConfirmationDialog
+                trigger={
+                  <Button ignoreTitleCase={true} variant="outline">
+                    Restore flow
+                  </Button>
                 }
-                providerName={selectedEmbeddingGroup.group}
-                provider={selectedEmbeddingGroup.provider}
+                title="Restore default Ingest flow"
+                description="This restores defaults and discards all custom settings and overrides. This can't be undone."
+                confirmText="Restore"
+                variant="destructive"
+                onConfirm={handleRestoreIngestFlow}
+                isLoading={isRestoringFlow}
+              />
+              <ConfirmationDialog
+                trigger={
+                  <Button>
+                    <LangflowIcon />
+                    Edit in Langflow
+                  </Button>
+                }
+                title="Edit Ingest flow in Langflow"
+                description={
+                  <>
+                    <p className="mb-2">
+                      You&apos;re entering Langflow. You can edit the{" "}
+                      <b>Ingest flow</b> and other underlying flows. Manual
+                      changes to components, wiring, or I/O can break this
+                      experience.
+                    </p>
+                    <p className="mb-2">
+                      To enable editing, you need to unlock the flow by clicking
+                      on its name and disabling the <b>Lock flow</b> option.
+                    </p>
+                    <p>You can restore this flow from Settings.</p>
+                  </>
+                }
+                confirmText="Proceed"
+                confirmIcon={<ArrowUpRight />}
+                variant="warning"
+                onConfirm={handleEditInLangflow}
               />
             </div>
-          )}
-        </div>
+          </RequirePermission>
+        </header>
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
             <LabelWrapper id="chunk-size" label="Chunk size">
@@ -781,12 +804,15 @@ export function IngestSettingsSection() {
             )}
           </div>
         </div>
-        <div>
-          <div className="flex items-center justify-between py-3 border-b border-border">
-            <div className="flex-1">
+        {/* Toggles read as one panel in the design: a filled, rounded card
+            whose rows are split by hairlines that stop short of the card edge
+            (hence last:border-b-0). */}
+        <div className="rounded-lg bg-muted/50 px-5">
+          <div className="flex items-center justify-between gap-6 border-b border-border py-6 last:border-b-0">
+            <div className="flex-1 space-y-2 pl-3">
               <Label
                 htmlFor="disable-ingest-with-langflow"
-                className="text-base font-medium cursor-pointer pb-3"
+                className="text-base font-semibold cursor-pointer"
               >
                 Disable Langflow Ingestion
               </Label>
@@ -804,11 +830,11 @@ export function IngestSettingsSection() {
               }}
             />
           </div>
-          <div className="flex items-center justify-between py-3 border-b border-border">
-            <div className="flex-1">
+          <div className="flex items-center justify-between gap-6 border-b border-border py-6 last:border-b-0">
+            <div className="flex-1 space-y-2 pl-3">
               <Label
                 htmlFor="table-structure"
-                className="text-base font-medium cursor-pointer pb-3"
+                className="text-base font-semibold cursor-pointer"
               >
                 Table Structure
               </Label>
@@ -825,11 +851,11 @@ export function IngestSettingsSection() {
               }}
             />
           </div>
-          <div className="flex items-center justify-between py-3 border-b border-border">
-            <div className="flex-1">
+          <div className="flex items-center justify-between gap-6 border-b border-border py-6 last:border-b-0">
+            <div className="flex-1 space-y-2 pl-3">
               <Label
                 htmlFor="ocr"
-                className="text-base font-medium cursor-pointer pb-3"
+                className="text-base font-semibold cursor-pointer"
               >
                 OCR
               </Label>
@@ -846,11 +872,11 @@ export function IngestSettingsSection() {
               }}
             />
           </div>
-          <div className="flex items-center justify-between py-3">
-            <div className="flex-1">
+          <div className="flex items-center justify-between gap-6 border-b border-border py-6 last:border-b-0">
+            <div className="flex-1 space-y-2 pl-3">
               <Label
                 htmlFor="picture-descriptions"
-                className="text-base font-medium cursor-pointer pb-3"
+                className="text-base font-semibold cursor-pointer"
               >
                 Picture Descriptions
               </Label>
@@ -867,202 +893,177 @@ export function IngestSettingsSection() {
               }}
             />
           </div>
-          {showVlmSettings && (
-            <>
-              <hr className="mt-4 border-border" />
-              <Collapsible
-                open={vlmOpen}
-                onOpenChange={setVlmOpen}
-                className={cn(
-                  "mt-4 px-4 transition-all duration-200",
-                  !pictureDescriptions && "opacity-50",
-                )}
-              >
-                <CollapsibleTrigger className="flex w-full items-center justify-between py-2 text-sm font-medium text-foreground hover:text-foreground/80">
-                  Advanced Vision Model (VLM) Settings
-                  <ChevronDown
-                    className={cn(
-                      "h-4 w-4 text-muted-foreground transition-transform duration-200",
-                      vlmOpen && "rotate-180",
-                    )}
-                  />
-                </CollapsibleTrigger>
-                <CollapsibleContent className="pt-4 space-y-6">
-                  <div className="space-y-2">
-                    <LabelWrapper
-                      id="vlm-model"
-                      label="Vision model"
-                      helperText="Pick a vision-capable model; the provider is set from your selection"
-                      required={pictureDescriptions}
-                    >
-                      <ModelSelector
-                        groupedOptions={groupedVlmModels}
-                        custom
-                        noOptionsPlaceholder={
-                          isLoadingAnyVlmModels
-                            ? "Loading models..."
-                            : catalogError
-                              ? "Could not load the model catalogue. Retry later."
-                              : "No models detected. Configure OpenAI, Anthropic, Ollama, or IBM watsonx.ai first."
-                        }
-                        value={vlmModel}
-                        selectedProvider={effectiveVlmProvider}
-                        onValueChange={handleVlmModelChange}
-                        hasError={!!validationError}
-                        disabled={!pictureDescriptions}
-                      />
-                    </LabelWrapper>
-                    {providerWarning && (
-                      <p className="text-sm text-destructive" role="alert">
-                        Configure a provider with vision-capable models in
-                        Settings &gt; Providers first.
-                      </p>
-                    )}
-                  </div>
-
-                  {effectiveVlmProvider === "watsonx" && (
-                    <div className="space-y-2">
-                      <LabelWrapper
-                        id="vlm-watsonx-api-version"
-                        label="watsonx API version"
-                        helperText="API version date sent to watsonx.ai"
-                      >
-                        <Input
-                          id="vlm-watsonx-api-version"
-                          type="text"
-                          placeholder={DEFAULT_WATSONX_API_VERSION}
-                          value={vlmWatsonxApiVersion}
-                          onChange={(e) => {
-                            setUserEdited(true);
-                            setVlmWatsonxApiVersion(e.target.value);
-                          }}
-                          disabled={!pictureDescriptions}
-                        />
-                      </LabelWrapper>
-                    </div>
-                  )}
-
-                  <div className="space-y-2">
-                    <LabelWrapper
-                      id="vlm-prompt"
-                      label="Prompt"
-                      helperText="Sent to the VLM for every page"
-                    >
-                      <Textarea
-                        id="vlm-prompt"
-                        rows={3}
-                        value={vlmPrompt}
-                        onChange={(e) => {
-                          setUserEdited(true);
-                          setVlmPrompt(e.target.value);
-                        }}
-                        disabled={!pictureDescriptions}
-                      />
-                    </LabelWrapper>
-                  </div>
-
-                  <div className="space-y-2">
-                    <LabelWrapper
-                      id="vlm-response-format"
-                      label="Response format"
-                      helperText="Per-page VLM output. Markdown is compatible with the existing pipeline; the final document is always Docling JSON."
-                    >
-                      <Select
-                        value={vlmResponseFormat}
-                        onValueChange={(v) => {
-                          setUserEdited(true);
-                          setVlmResponseFormat(v);
-                        }}
-                        disabled={!pictureDescriptions}
-                      >
-                        <SelectTrigger
-                          id="vlm-response-format"
-                          disabled={!pictureDescriptions}
-                        >
-                          <SelectValue placeholder="Select a format" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {RESPONSE_FORMATS.map((format) => (
-                            <SelectItem key={format.value} value={format.value}>
-                              {format.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </LabelWrapper>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-4">
-                    <NumberInput
-                      id="vlm-max-tokens"
-                      label="Max tokens per page"
-                      value={vlmMaxTokens}
-                      onChange={(value) => {
-                        setUserEdited(true);
-                        setVlmMaxTokens(Math.max(1, value));
-                      }}
-                      unit="tokens"
-                      min={1}
-                      disabled={!pictureDescriptions}
-                    />
-                    <NumberInput
-                      id="vlm-concurrency"
-                      label="Concurrency"
-                      value={vlmConcurrency}
-                      onChange={(value) => {
-                        setUserEdited(true);
-                        setVlmConcurrency(Math.max(1, value));
-                      }}
-                      unit="requests"
-                      min={1}
-                      disabled={!pictureDescriptions}
-                    />
-                    <NumberInput
-                      id="vlm-timeout"
-                      label="API timeout"
-                      value={vlmTimeout}
-                      onChange={(value) => {
-                        setUserEdited(true);
-                        setVlmTimeout(Math.max(1, value));
-                      }}
-                      unit="seconds"
-                      min={1}
-                      disabled={!pictureDescriptions}
-                    />
-                  </div>
-
-                  {validationError && (
-                    <p className="text-sm text-destructive" role="alert">
-                      {validationError}
-                    </p>
-                  )}
-                </CollapsibleContent>
-              </Collapsible>
-            </>
-          )}
         </div>
-        <div className="flex justify-end pt-2">
-          <Button
-            onClick={handleKnowledgeIngestSave}
-            disabled={
-              updateSettingsMutation.isPending ||
-              !knowledgeIngestDirty ||
-              vlmModelPending
-            }
-            className="min-w-[120px]"
-            size="sm"
-            variant="outline"
-          >
-            {updateSettingsMutation.isPending ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Saving...
-              </>
-            ) : (
-              "Save ingest settings"
+        {showVlmSettings && (
+          <Collapsible
+            open={vlmOpen}
+            onOpenChange={setVlmOpen}
+            className={cn(
+              "px-4 transition-all duration-200",
+              !pictureDescriptions && "opacity-50",
             )}
-          </Button>
-        </div>
+          >
+            <CollapsibleTrigger className="flex w-full items-center justify-between py-2 text-sm font-medium text-foreground hover:text-foreground/80">
+              Advanced Vision Model (VLM) Settings
+              <ChevronDown
+                className={cn(
+                  "h-4 w-4 text-muted-foreground transition-transform duration-200",
+                  vlmOpen && "rotate-180",
+                )}
+              />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-4 space-y-6">
+              <div className="space-y-2">
+                <LabelWrapper
+                  id="vlm-model"
+                  label="Vision model"
+                  helperText="Pick a vision-capable model; the provider is set from your selection"
+                  required={pictureDescriptions}
+                >
+                  <ModelSelector
+                    groupedOptions={groupedVlmModels}
+                    custom
+                    noOptionsPlaceholder={
+                      isLoadingAnyVlmModels
+                        ? "Loading models..."
+                        : catalogError
+                          ? "Could not load the model catalogue. Retry later."
+                          : "No models detected. Configure OpenAI, Anthropic, Ollama, or IBM watsonx.ai first."
+                    }
+                    value={vlmModel}
+                    selectedProvider={effectiveVlmProvider}
+                    onValueChange={handleVlmModelChange}
+                    hasError={!!validationError}
+                    disabled={!pictureDescriptions}
+                  />
+                </LabelWrapper>
+                {providerWarning && (
+                  <p className="text-sm text-destructive" role="alert">
+                    Configure a provider with vision-capable models in Settings
+                    &gt; Providers first.
+                  </p>
+                )}
+              </div>
+
+              {effectiveVlmProvider === "watsonx" && (
+                <div className="space-y-2">
+                  <LabelWrapper
+                    id="vlm-watsonx-api-version"
+                    label="watsonx API version"
+                    helperText="API version date sent to watsonx.ai"
+                  >
+                    <Input
+                      id="vlm-watsonx-api-version"
+                      type="text"
+                      placeholder={DEFAULT_WATSONX_API_VERSION}
+                      value={vlmWatsonxApiVersion}
+                      onChange={(e) => {
+                        setUserEdited(true);
+                        setVlmWatsonxApiVersion(e.target.value);
+                      }}
+                      disabled={!pictureDescriptions}
+                    />
+                  </LabelWrapper>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <LabelWrapper
+                  id="vlm-prompt"
+                  label="Prompt"
+                  helperText="Sent to the VLM for every page"
+                >
+                  <Textarea
+                    id="vlm-prompt"
+                    rows={3}
+                    value={vlmPrompt}
+                    onChange={(e) => {
+                      setUserEdited(true);
+                      setVlmPrompt(e.target.value);
+                    }}
+                    disabled={!pictureDescriptions}
+                  />
+                </LabelWrapper>
+              </div>
+
+              <div className="space-y-2">
+                <LabelWrapper
+                  id="vlm-response-format"
+                  label="Response format"
+                  helperText="Per-page VLM output. Markdown is compatible with the existing pipeline; the final document is always Docling JSON."
+                >
+                  <Select
+                    value={vlmResponseFormat}
+                    onValueChange={(v) => {
+                      setUserEdited(true);
+                      setVlmResponseFormat(v);
+                    }}
+                    disabled={!pictureDescriptions}
+                  >
+                    <SelectTrigger
+                      id="vlm-response-format"
+                      disabled={!pictureDescriptions}
+                    >
+                      <SelectValue placeholder="Select a format" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {RESPONSE_FORMATS.map((format) => (
+                        <SelectItem key={format.value} value={format.value}>
+                          {format.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </LabelWrapper>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <NumberInput
+                  id="vlm-max-tokens"
+                  label="Max tokens per page"
+                  value={vlmMaxTokens}
+                  onChange={(value) => {
+                    setUserEdited(true);
+                    setVlmMaxTokens(Math.max(1, value));
+                  }}
+                  unit="tokens"
+                  min={1}
+                  disabled={!pictureDescriptions}
+                />
+                <NumberInput
+                  id="vlm-concurrency"
+                  label="Concurrency"
+                  value={vlmConcurrency}
+                  onChange={(value) => {
+                    setUserEdited(true);
+                    setVlmConcurrency(Math.max(1, value));
+                  }}
+                  unit="requests"
+                  min={1}
+                  disabled={!pictureDescriptions}
+                />
+                <NumberInput
+                  id="vlm-timeout"
+                  label="API timeout"
+                  value={vlmTimeout}
+                  onChange={(value) => {
+                    setUserEdited(true);
+                    setVlmTimeout(Math.max(1, value));
+                  }}
+                  unit="seconds"
+                  min={1}
+                  disabled={!pictureDescriptions}
+                />
+              </div>
+
+              {validationError && (
+                <p className="text-sm text-destructive" role="alert">
+                  {validationError}
+                </p>
+              )}
+            </CollapsibleContent>
+          </Collapsible>
+        )}
       </div>
     </section>
   );

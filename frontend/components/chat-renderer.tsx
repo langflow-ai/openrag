@@ -533,7 +533,7 @@ export function ChatRenderer({
         >
           <div
             className={cn(
-              "h-full bg-background w-full min-w-0 overflow-x-hidden",
+              "h-full bg-background w-full min-w-0",
               showLayout && !isOnChatPage && "p-6 container",
               showLayout && isSmallWidthPath && "max-w-content mx-auto",
               !showLayout && "p-0 py-2",
