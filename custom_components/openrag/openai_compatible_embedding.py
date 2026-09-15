@@ -146,9 +146,7 @@ class OpenRAGEmbeddings(Embeddings):
 
     def embed_query(self, text: str) -> list[float]:
         if _is_cohere_embedding_model(self.model):
-            return self._delegate.embed_query(
-                text, extra_body={"input_type": "search_query"}
-            )
+            return self._delegate.embed_query(text, extra_body={"input_type": "search_query"})
         return self._delegate.embed_query(text)
 
     async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
