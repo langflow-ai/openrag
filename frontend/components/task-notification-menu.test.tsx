@@ -84,6 +84,21 @@ describe("TaskNotificationMenu — cancelled task display", () => {
   });
 });
 
+describe("TaskNotificationMenu — task deletion controls", () => {
+  it("shows delete buttons for terminal tasks", () => {
+    mockTasks = [
+      makeTask({ task_id: "completed-task", status: "completed" }),
+      makeTask({ task_id: "failed-task", status: "failed" }),
+    ];
+
+    renderWithProviders(<TaskNotificationMenu />);
+
+    expect(screen.getAllByRole("button", { name: "Delete task" })).toHaveLength(
+      2,
+    );
+  });
+});
+
 describe("TaskNotificationMenu — cancellingTaskIds cleanup useEffect", () => {
   it("removes a task from cancellingTaskIds when it transitions to cancelled", async () => {
     // Start with a running task.
