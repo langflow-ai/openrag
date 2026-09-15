@@ -157,3 +157,20 @@ def test_non_bedrock_provider_chunk_size_passes_through_unclamped(monkeypatch):
         {"chunkSize": 4000},
     )
     assert out["Split Text"]["chunk_size"] == 4000
+
+
+def test_per_request_embedding_model_override_triggers_the_clamp(monkeypatch):
+    """API/connector callers can override the model per-request via
+    settings["embeddingModel"] (see selected_embedding_model in
+    run_ingestion_flow) - the account-wide config default is openai here,
+    but the actual run uses a Cohere model, so the clamp must key off the
+    effective model, not just the config default."""
+    monkeypatch.setattr(
+        "config.settings.get_openrag_config",
+        lambda: _fake_config(embedding_provider="openai", embedding_model="text-embedding-3-large"),
+    )
+    out = LangflowFileService.merge_ui_ingest_settings_into_tweaks(
+        None,
+        {"chunkSize": 4000, "embeddingModel": "cohere.embed-multilingual-v3"},
+    )
+    assert out["Split Text"]["chunk_size"] == BEDROCK_MAX_CHUNK_CHARS
