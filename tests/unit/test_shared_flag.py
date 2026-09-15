@@ -151,11 +151,18 @@ def test_build_replace_filename_query_differs_from_owned_query():
 # ---------------------------------------------------------------------------
 
 
-def test_connector_sync_body_defaults_shared_false():
+def test_connector_sync_body_defaults_shared_to_no_intent():
+    """Omitting shared means "no explicit intent", not "private".
+
+    The connector UI sends the flag only while the share-all toggle is on
+    screen, and the re-sync paths never send it at all. None lets each file keep
+    the sharing state it already has in the index instead of being silently
+    un-shared; a file that isn't indexed yet still falls back to private.
+    """
     from api.connectors import ConnectorSyncBody
 
     body = ConnectorSyncBody()
-    assert body.shared is False
+    assert body.shared is None
 
 
 def test_connector_sync_body_shared_true():
@@ -165,11 +172,11 @@ def test_connector_sync_body_shared_true():
     assert body.shared is True
 
 
-def test_connector_sync_body_shared_backwards_compat():
-    """Existing clients that omit shared get False."""
+def test_connector_sync_body_shared_false_is_explicit():
+    """An explicitly sent False still means "index this privately"."""
     from api.connectors import ConnectorSyncBody
 
-    body = ConnectorSyncBody(selected_files=["file-1"])
+    body = ConnectorSyncBody(selected_files=["file-1"], shared=False)
     assert body.shared is False
 
 

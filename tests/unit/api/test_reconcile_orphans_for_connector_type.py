@@ -18,6 +18,25 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+
+def _rbac_allowing(*perms: str):
+    """RBAC stub granting exactly `perms`.
+
+    Unit tests run with OPENRAG_RBAC_ENFORCE=true (tests/unit/conftest.py), so
+    permission checks are live and every sync now resolves
+    knowledge:delete:anonymous to decide whether ownerless chunks may be
+    deleted — see delete_orphan_documents.
+    """
+    rbac = MagicMock()
+    granted = set(perms)
+
+    async def has_permission(user_id, perm, role_override=None):
+        return perm in granted
+
+    rbac.has_permission = AsyncMock(side_effect=has_permission)
+    return rbac
+
+
 ROOT = Path(__file__).resolve().parent.parent.parent.parent
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
@@ -238,8 +257,14 @@ async def test_happy_path_deletes_orphans(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_happy_path_private_scopes_to_owner(monkeypatch):
-    """Private orphan cleanup must filter by connector_type and owner."""
+async def test_happy_path_private_scopes_to_owner_or_ownerless(monkeypatch):
+    """With knowledge:delete:anonymous, cleanup covers "owned by me OR ownerless".
+
+    The ownerless branch matters for COS: a file ingested with the share-all
+    toggle has no owner field, and sync has no record of that, so an owner-only
+    filter would leave its chunks behind after the object is deleted at source.
+    Another user's private document stays out of scope via the owner term.
+    """
     from api.connectors import reconcile_orphans_for_connector_type
 
     conn = _make_connection("c1")
@@ -256,12 +281,21 @@ async def test_happy_path_private_scopes_to_owner(monkeypatch):
         session_manager=sm,
         jwt_token=None,
         existing_file_ids=["a", "b"],
+        allow_anonymous_delete=True,
     )
 
     search_body = opensearch_client.search.await_args.kwargs["body"]
     filters = search_body["query"]["bool"]["filter"]
     assert {"term": {"connector_type": "google_drive"}} in filters
-    assert {"term": {"owner": "alice"}} in filters
+    assert {
+        "bool": {
+            "should": [
+                {"term": {"owner": "alice"}},
+                {"bool": {"must_not": {"exists": {"field": "owner"}}}},
+            ],
+            "minimum_should_match": 1,
+        }
+    } in filters
 
 
 @pytest.mark.asyncio
@@ -284,6 +318,7 @@ async def test_happy_path_shared_scopes_to_ownerless(monkeypatch):
         jwt_token=None,
         existing_file_ids=["a", "b"],
         shared=True,
+        allow_anonymous_delete=True,
     )
 
     search_body = opensearch_client.search.await_args.kwargs["body"]
@@ -445,7 +480,7 @@ async def test_orphan_delete_matches_both_id_layouts(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_preview_subtracts_orphans_from_resync_count(monkeypatch):
-    from api.connectors import _preview_orphans_for_connector_type
+    from api.connectors import _preview_for_connector_type
 
     monkeypatch.setattr(
         "api.connectors.get_synced_file_ids_for_connector",
@@ -454,6 +489,10 @@ async def test_preview_subtracts_orphans_from_resync_count(monkeypatch):
     monkeypatch.setattr(
         "api.connectors.get_synced_id_to_filename_map",
         AsyncMock(return_value={"b": "b.pdf", "e": "e.pdf"}),
+    )
+    monkeypatch.setattr(
+        "api.connectors.list_remote_files_for_connector_type",
+        AsyncMock(return_value={"a": {"id": "a"}, "c": {"id": "c"}, "d": {"id": "d"}}),
     )
     monkeypatch.setattr(
         "api.connectors.compute_orphans_for_connector_type",
@@ -465,7 +504,7 @@ async def test_preview_subtracts_orphans_from_resync_count(monkeypatch):
         ),
     )
 
-    orphans, synced_count = await _preview_orphans_for_connector_type(
+    preview = await _preview_for_connector_type(
         connector_type="google_drive",
         user_id="alice",
         connector_service=MagicMock(),
@@ -473,11 +512,88 @@ async def test_preview_subtracts_orphans_from_resync_count(monkeypatch):
         jwt_token="token",
     )
 
-    assert synced_count == 4
-    assert orphans == [
+    assert preview.synced_count == 4
+    assert preview.orphans == [
         {"document_id": "b", "filename": "b.pdf"},
         {"document_id": "e", "filename": "e.pdf"},
     ]
+    # google_drive re-processes every file on sync and decides per file after
+    # downloading it, so the update count cannot be known in advance.
+    assert preview.updates is None
+
+
+@pytest.mark.asyncio
+async def test_preview_reports_updates_for_timestamp_connectors(monkeypatch):
+    """Bucket connectors can say which files a sync will re-ingest, and the
+    preview reuses the orphan pass's listing rather than enumerating twice."""
+    from api.connectors import SyncedFileState, _preview_for_connector_type
+
+    monkeypatch.setattr(
+        "api.connectors.get_synced_file_ids_for_connector",
+        AsyncMock(return_value=(["c::a", "c::b", "c::gone"], [], "connector_file_id")),
+    )
+    monkeypatch.setattr(
+        "api.connectors.get_synced_id_to_filename_map",
+        AsyncMock(return_value={"c::a": "a.pdf", "c::b": "b.pdf", "c::gone": "gone.pdf"}),
+    )
+    listing = AsyncMock(
+        return_value={
+            "c::a": {"id": "c::a", "etag": "etag-a"},  # untouched
+            "c::b": {"id": "c::b", "etag": "etag-b-v2"},  # overwritten
+        }
+    )
+    monkeypatch.setattr("api.connectors.list_remote_files_for_connector_type", listing)
+    monkeypatch.setattr(
+        "api.connectors.get_synced_file_state_map",
+        AsyncMock(
+            return_value={
+                "c::a": SyncedFileState(content_etag="etag-a"),
+                "c::b": SyncedFileState(content_etag="etag-b"),
+            }
+        ),
+    )
+
+    preview = await _preview_for_connector_type(
+        connector_type="ibm_cos",
+        user_id="alice",
+        connector_service=MagicMock(),
+        session_manager=MagicMock(),
+        jwt_token="token",
+    )
+
+    assert preview.updates == [{"document_id": "c::b", "filename": "b.pdf"}]
+    # Deleted at source, so it is an orphan — not an update.
+    assert preview.orphans == [{"document_id": "c::gone", "filename": "gone.pdf"}]
+    assert preview.synced_count == 2
+    listing.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_preview_reports_updates_unavailable_when_listing_aborts(monkeypatch):
+    """Strict gating: an unreachable source means unknown, not "no updates"."""
+    from api.connectors import _preview_for_connector_type
+
+    monkeypatch.setattr(
+        "api.connectors.get_synced_file_ids_for_connector",
+        AsyncMock(return_value=(["c::a"], [], "connector_file_id")),
+    )
+    monkeypatch.setattr(
+        "api.connectors.get_synced_id_to_filename_map", AsyncMock(return_value={"c::a": "a.pdf"})
+    )
+    monkeypatch.setattr(
+        "api.connectors.list_remote_files_for_connector_type", AsyncMock(return_value=None)
+    )
+
+    preview = await _preview_for_connector_type(
+        connector_type="ibm_cos",
+        user_id="alice",
+        connector_service=MagicMock(),
+        session_manager=MagicMock(),
+        jwt_token="token",
+    )
+
+    assert preview.orphans is None
+    assert preview.updates is None
 
 
 @pytest.mark.asyncio
@@ -513,8 +629,9 @@ async def test_connector_sync_filters_orphan_ids_before_resync(monkeypatch):
         request=MagicMock(),
         connector_service=service,
         session_manager=MagicMock(),
-        user=SimpleNamespace(user_id="alice", jwt_token="token"),
+        user=SimpleNamespace(user_id="alice", jwt_token="token", db_user_id="alice"),
         session=MagicMock(),
+        rbac=_rbac_allowing("knowledge:delete:anonymous"),
     )
 
     assert response.status_code == 201
@@ -556,8 +673,9 @@ async def test_connector_sync_returns_no_files_when_all_ids_are_orphans(monkeypa
         request=MagicMock(),
         connector_service=service,
         session_manager=MagicMock(),
-        user=SimpleNamespace(user_id="alice", jwt_token="token"),
+        user=SimpleNamespace(user_id="alice", jwt_token="token", db_user_id="alice"),
         session=MagicMock(),
+        rbac=_rbac_allowing("knowledge:delete:anonymous"),
     )
 
     assert response.status_code == 200
@@ -598,8 +716,9 @@ async def test_sync_all_returns_deleted_only_without_error(monkeypatch):
         request=MagicMock(),
         connector_service=service,
         session_manager=MagicMock(),
-        user=SimpleNamespace(user_id="alice", jwt_token="token"),
+        user=SimpleNamespace(user_id="alice", jwt_token="token", db_user_id="alice"),
         session=MagicMock(),
+        rbac=_rbac_allowing("knowledge:delete:anonymous"),
     )
 
     body = _json(response)
@@ -609,3 +728,69 @@ async def test_sync_all_returns_deleted_only_without_error(monkeypatch):
     assert body["deleted_only_connectors"] == ["google_drive"]
     assert "Deleted stale cloud files" in body["message"]
     service.sync_specific_files.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# knowledge:delete:anonymous gates every path that can reach ownerless chunks
+#
+# Ownerless (share-all) chunks are visible to EVERY authenticated user under
+# DLS (securityconfig/roles.yml), and the orphan candidate set is filtered only
+# by connector_type — so it can contain shared files another user's connection
+# ingested. This user's own remote listing will not contain them, orphan
+# detection will call them deleted-at-source, and without this gate an ordinary
+# sync would erase another connection's shared documents.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_private_sync_without_permission_never_widens_to_ownerless(monkeypatch):
+    from api.connectors import reconcile_orphans_for_connector_type
+
+    conn = _make_connection("c1")
+    connector = _make_connector(remote_file_ids=["a"])
+    service = _make_service([conn], connector_lookup={"c1": connector})
+    opensearch_client = _make_opensearch_client(chunk_ids=["chunk-b-1"])
+    _patch_write_client(monkeypatch)
+    sm = _make_session_manager(opensearch_client)
+
+    await reconcile_orphans_for_connector_type(
+        connector_type="ibm_cos",
+        user_id="alice",
+        connector_service=service,
+        session_manager=sm,
+        jwt_token=None,
+        existing_file_ids=["a", "b"],
+        # No knowledge:delete:anonymous — the default for an ordinary sync.
+    )
+
+    filters = opensearch_client.search.await_args.kwargs["body"]["query"]["bool"]["filter"]
+    # Owner-scoped only: an ownerless chunk cannot match this.
+    assert {"term": {"owner": "alice"}} in filters
+    assert not any("should" in str(f) and "owner" in str(f) for f in filters)
+
+
+@pytest.mark.asyncio
+async def test_shared_reconcile_without_permission_deletes_nothing(monkeypatch):
+    """An explicitly shared reconcile is refused outright, not silently narrowed."""
+    from api.connectors import reconcile_orphans_for_connector_type
+
+    conn = _make_connection("c1")
+    connector = _make_connector(remote_file_ids=["a"])
+    service = _make_service([conn], connector_lookup={"c1": connector})
+    opensearch_client = _make_opensearch_client(chunk_ids=["chunk-b-1"])
+    write_client = _patch_write_client(monkeypatch)
+    sm = _make_session_manager(opensearch_client)
+
+    deleted_ids = await reconcile_orphans_for_connector_type(
+        connector_type="ibm_cos",
+        user_id="alice",
+        connector_service=service,
+        session_manager=sm,
+        jwt_token=None,
+        existing_file_ids=["a", "b"],
+        shared=True,
+        allow_anonymous_delete=False,
+    )
+
+    assert deleted_ids == []
+    write_client.delete.assert_not_called()
