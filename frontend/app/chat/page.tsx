@@ -40,7 +40,7 @@ import type {
   RequestBody,
   ToolCallResult,
 } from "./_types/types";
-import { makeInitialMessage } from "./_types/types";
+import { makeInitialMessage, PLACEHOLDER_GREETING } from "./_types/types";
 
 function ChatPage() {
   const isDebugMode = process.env.NEXT_PUBLIC_OPENRAG_DEBUG === "true";
@@ -66,23 +66,16 @@ function ChatPage() {
     setChatError,
   } = useChat();
   const { user, isNoAuthMode } = useAuth();
-  // Only personalize the greeting when a real user is authenticated.
-  // In no-auth mode the session is anonymous — fall back to generic greeting.
   const displayName = isNoAuthMode ? null : resolveDisplayName(user);
-  const [messages, setMessages] = useState<Message[]>(() => [
-    makeInitialMessage(displayName),
-  ]);
+  const [messages, setMessages] = useState<Message[]>([PLACEHOLDER_GREETING]);
 
-  // Re-generate the greeting once the name is available (auth loads async,
-  // so the lazy initialiser above runs before user is populated).
-  // Only replace if the chat is still at the single greeting message — never
-  // clobber an active conversation.
-  const prevDisplayNameRef = useRef<string | null | undefined>(undefined);
   useEffect(() => {
-    if (prevDisplayNameRef.current === displayName) return;
-    prevDisplayNameRef.current = displayName;
     setMessages((prev) => {
-      if (prev.length === 1 && prev[0].role === "assistant") {
+      if (
+        prev.length === 1 &&
+        prev[0].isGreeting &&
+        prev[0].role === "assistant"
+      ) {
         return [makeInitialMessage(displayName)];
       }
       return prev;

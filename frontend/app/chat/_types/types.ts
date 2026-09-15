@@ -18,16 +18,29 @@ export interface Message {
   timestamp: Date;
   functionCalls?: FunctionCall[];
   isStreaming?: boolean;
+  isGreeting?: boolean;
   source?: "langflow" | "chat";
   error?: boolean;
   usage?: TokenUsage;
 }
 
-/* initial greeting message - uses displayName
+/**
+ * Stable placeholder rendered on the first paint (server and client).
+ * The content is deterministic so SSR and hydration always agree.
+ * ChatPage replaces it after mount with the real randomised greeting.
  */
+export const PLACEHOLDER_GREETING: Message = {
+  role: "assistant",
+  isGreeting: true,
+  content: "How can I assist you today?",
+  timestamp: new Date(0),
+};
+
+/** Produce the real greeting after mount */
 export function makeInitialMessage(displayName?: string | null): Message {
   return {
     role: "assistant",
+    isGreeting: true,
     content: getGreetingMessage(displayName),
     timestamp: new Date(),
   };

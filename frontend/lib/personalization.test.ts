@@ -178,51 +178,19 @@ describe("resolveDisplayName", () => {
     assert.equal(resolveDisplayName(undefined), null);
   });
 
-  it("returns null when both fields are absent", () => {
+  it("returns null when name field is absent", () => {
     assert.equal(resolveDisplayName({}), null);
   });
 
-  it("returns display_name when set", () => {
-    assert.equal(
-      resolveDisplayName({ display_name: "Alice", name: "Alice Smith" }),
-      "Alice",
-    );
-  });
-
-  it("falls back to name when display_name is absent", () => {
-    assert.equal(resolveDisplayName({ name: "Bob" }), "Bob");
-  });
-
-  it("falls back to name when display_name is null", () => {
-    assert.equal(
-      resolveDisplayName({ display_name: null, name: "Carol" }),
-      "Carol",
-    );
-  });
-
-  it("falls back to name when display_name is empty string", () => {
-    // Empty string is falsy — should fall through to name
-    assert.equal(
-      resolveDisplayName({ display_name: "", name: "Dave" }),
-      "Dave",
-    );
+  it("returns name when set", () => {
+    assert.equal(resolveDisplayName({ name: "Alice Smith" }), "Alice Smith");
   });
 
   it("ignores the 'Anonymous User' sentinel and returns null", () => {
-    assert.equal(
-      resolveDisplayName({ display_name: null, name: "Anonymous User" }),
-      null,
-    );
+    assert.equal(resolveDisplayName({ name: "Anonymous User" }), null);
   });
 
-  it("prefers display_name over name even when name is 'Anonymous User'", () => {
-    assert.equal(
-      resolveDisplayName({ display_name: "Eve", name: "Anonymous User" }),
-      "Eve",
-    );
-  });
-
-  it("returns null when name is null and display_name is absent", () => {
+  it("returns null when name is null", () => {
     assert.equal(resolveDisplayName({ name: null }), null);
   });
 });

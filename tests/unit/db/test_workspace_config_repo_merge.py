@@ -1,7 +1,7 @@
 """Unit tests for WorkspaceConfigRepo.merge_section_keys.
 
-Covers the atomic read-merge-write introduced to fix the
-no_auth_display_name / edited concurrent-update race.
+Covers the atomic read-merge-write that prevents concurrent-update races
+when multiple callers write different keys into the same section.
 """
 
 import sys
@@ -44,10 +44,10 @@ async def test_merge_creates_row_when_section_missing(session_factory):
     """First call inserts the row with only the supplied keys."""
     async with session_factory() as s:
         repo = WorkspaceConfigRepo(s)
-        row = await repo.merge_section_keys("meta", updates={"no_auth_display_name": "Alice"})
+        row = await repo.merge_section_keys("meta", updates={"edited": True})
         await s.commit()
 
-    assert row.value == {"no_auth_display_name": "Alice"}
+    assert row.value == {"edited": True}
 
 
 @pytest.mark.asyncio
@@ -55,15 +55,15 @@ async def test_merge_adds_key_without_overwriting_others(session_factory):
     """A second caller writing a different key must not clobber the first."""
     async with session_factory() as s:
         repo = WorkspaceConfigRepo(s)
-        await repo.merge_section_keys("meta", updates={"no_auth_display_name": "Alice"})
+        await repo.merge_section_keys("meta", updates={"edited": True})
         await s.commit()
 
     async with session_factory() as s:
         repo = WorkspaceConfigRepo(s)
-        row = await repo.merge_section_keys("meta", updates={"edited": True})
+        row = await repo.merge_section_keys("meta", updates={"other_key": "value"})
         await s.commit()
 
-    assert row.value == {"no_auth_display_name": "Alice", "edited": True}
+    assert row.value == {"edited": True, "other_key": "value"}
 
 
 @pytest.mark.asyncio
@@ -73,7 +73,7 @@ async def test_merge_deletion_removes_key_preserves_others(session_factory):
         repo = WorkspaceConfigRepo(s)
         await repo.merge_section_keys(
             "meta",
-            updates={"no_auth_display_name": "Alice", "edited": True},
+            updates={"edited": True, "temp_key": "remove_me"},
         )
         await s.commit()
 
@@ -82,11 +82,11 @@ async def test_merge_deletion_removes_key_preserves_others(session_factory):
         row = await repo.merge_section_keys(
             "meta",
             updates={},
-            deletions={"no_auth_display_name"},
+            deletions={"temp_key"},
         )
         await s.commit()
 
-    assert "no_auth_display_name" not in row.value
+    assert "temp_key" not in row.value
     assert row.value.get("edited") is True
 
 
@@ -103,7 +103,7 @@ async def test_merge_deletion_of_absent_key_is_noop(session_factory):
         row = await repo.merge_section_keys(
             "meta",
             updates={},
-            deletions={"no_auth_display_name"},
+            deletions={"nonexistent_key"},
         )
         await s.commit()
 
@@ -115,15 +115,15 @@ async def test_merge_update_overwrites_existing_key(session_factory):
     """Passing the same key in *updates* replaces its previous value."""
     async with session_factory() as s:
         repo = WorkspaceConfigRepo(s)
-        await repo.merge_section_keys("meta", updates={"no_auth_display_name": "Old"})
+        await repo.merge_section_keys("meta", updates={"edited": False})
         await s.commit()
 
     async with session_factory() as s:
         repo = WorkspaceConfigRepo(s)
-        row = await repo.merge_section_keys("meta", updates={"no_auth_display_name": "New"})
+        row = await repo.merge_section_keys("meta", updates={"edited": True})
         await s.commit()
 
-    assert row.value["no_auth_display_name"] == "New"
+    assert row.value["edited"] is True
 
 
 @pytest.mark.asyncio
@@ -182,7 +182,7 @@ async def test_sequential_merges_into_absent_section_preserve_all_keys(session_f
         # First caller inserts the row
         await repo.merge_section_keys("meta", updates={"key_a": "alpha"})
         # Second caller (same session, as would happen in practice under
-        # asyncio cooperative scheduling) merges a different key
+        # asyncio cooperative scheduling) merges a different key.
         await repo.merge_section_keys("meta", updates={"key_b": "beta"})
         await s.commit()
 

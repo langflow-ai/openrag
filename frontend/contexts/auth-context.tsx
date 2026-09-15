@@ -16,7 +16,6 @@ export interface User {
   user_id: string;
   email: string;
   name: string;
-  display_name?: string;
   picture?: string;
   provider: string;
   last_login?: string;

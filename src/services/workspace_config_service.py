@@ -422,7 +422,7 @@ class WorkspaceConfigService:
                 await repo.upsert(section, value, actor_user_id=actor_user_id)
 
             # For "meta", only touch the "edited" flag — preserve every other
-            # key (e.g. no_auth_display_name) atomically via a locked merge.
+            # key atomically via a locked merge.
             await repo.merge_section_keys(
                 "meta",
                 updates={"edited": bool(config_dict.get("edited", False))},
