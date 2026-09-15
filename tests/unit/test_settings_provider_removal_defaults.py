@@ -354,3 +354,23 @@ class TestHasOtherConfiguredProvider:
     def test_can_remove_watsonx_when_openai_is_configured(self):
         config = _make_config(watsonx=True, openai=True)
         assert _has_other_configured_provider(config, "watsonx")
+
+    def test_can_remove_openai_when_only_oci_is_configured(self):
+        """Regression test: _has_other_configured_provider() never checked
+        providers.oci.configured, so a deployment with only OpenAI + OCI
+        configured (OCI as the embedding provider, configured via env vars -
+        a typed field, not providers.custom) could never remove OpenAI even
+        though OCI is fully configured and working."""
+        from config.config_manager import OCIConfig
+
+        config = _make_config(openai=True)
+        config.providers.oci = OCIConfig(
+            user="ocid1.user.oc1..xxx",
+            fingerprint="xx:xx:xx:xx",
+            tenancy="ocid1.tenancy.oc1..xxx",
+            compartment_id="ocid1.compartment.oc1..xxx",
+            key="-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----",
+            region="us-ashburn-1",
+            configured=True,
+        )
+        assert _has_other_configured_provider(config, "openai")

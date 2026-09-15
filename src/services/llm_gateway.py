@@ -184,6 +184,40 @@ def provider_credentials(provider: str, config=None) -> dict[str, Any]:
         from utils.container_utils import transform_localhost_url
 
         credentials["api_base"] = transform_localhost_url(str(credentials["api_base"]))
+    if key == "oci":
+        oci_config = getattr(prov, "oci", None)
+        auth_method = getattr(oci_config, "auth_method", "api_key") or "api_key"
+        if auth_method != "api_key":
+            # instance_principal / workload_identity sign every call via a
+            # constructed OCI SDK Signer, never via the manual
+            # user/fingerprint/tenancy/key fields - credential_values()
+            # deliberately never builds one (see its own docstring), so
+            # this is the one place that does, for every caller. This is
+            # what makes Langflow's own embedding component work: it POSTs
+            # a bare JSON body to /v1/embeddings, which can never carry a
+            # non-serializable Signer object, so without this the embed
+            # call hard-fails for these two auth methods the moment
+            # Langflow tries to embed anything.
+            from utils.oci_auth import get_cached_oci_signer
+
+            for stale in (
+                "oci_user",
+                "oci_fingerprint",
+                "oci_tenancy",
+                "oci_key",
+                "oci_key_file",
+            ):
+                credentials.pop(stale, None)
+            try:
+                credentials["oci_signer"] = get_cached_oci_signer(auth_method)
+            except Exception as exc:
+                # Signer construction fails outside this function's try/except
+                # in embeddings() (resolve_call() runs before that block), so
+                # left unwrapped this reaches the caller as a raw, unsanitized
+                # 500 - losing get_cached_oci_signer's actionable message
+                # (which auth prerequisite is missing) and never recording a
+                # provider failure for the health banner.
+                raise LlmGatewayError(str(exc), 503) from exc
     custom = getattr(prov, "custom", {})
     custom_config = custom.get(key) if isinstance(custom, dict) else None
     configured = bool(getattr(custom_config, "configured", False))
@@ -1034,13 +1068,21 @@ async def embeddings(body: Mapping[str, Any], *, config=None) -> dict[str, Any]:
     litellm_model, provider, credentials = resolve_call(
         body.get("model"), kind="embedding", config=cfg
     )
+    # Call-specific kwargs beyond model/input - e.g. Cohere-family models'
+    # required input_type (see services.search_service), or an OCI signer
+    # object for instance_principal/workload_identity auth (credential_values
+    # only resolves static api_key-style credentials; a Signer must be built
+    # per-call by the caller - see services.search_service.embed_with_space).
+    # Deliberately override same-named static credentials when both are set.
+    extra = {k: v for k, v in body.items() if k not in ("model", "input")}
+    call_kwargs = {**credentials, **extra}
     try:
         import litellm
 
         result = await litellm.aembedding(
             model=litellm_model,
             input=_embedding_input(body.get("input")),
-            **credentials,
+            **call_kwargs,
         )
     except LlmGatewayError:
         raise
