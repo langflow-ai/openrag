@@ -45,8 +45,10 @@ describe("ConversationSettingsSection", () => {
 
     await user.click(toggle);
 
-    expect(update).toHaveBeenCalledWith({
-      conversation_pruning_enabled: false,
+    await waitFor(() => {
+      expect(update).toHaveBeenCalledWith({
+        conversation_pruning_enabled: false,
+      });
     });
   });
 

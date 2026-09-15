@@ -90,6 +90,7 @@ from config.settings import (
 )
 from dependencies import (
     get_chat_service,
+    get_conversation_retention_service,
     get_current_user,
     get_document_service,
     get_flows_service,
@@ -398,6 +399,7 @@ async def update_settings(
     user: User = Depends(require_permission("config:write")),
     models_service=Depends(get_models_service),
     rbac=Depends(get_rbac_service),
+    conversation_retention_service=Depends(get_conversation_retention_service),
 ) -> SettingsUpdateResponse:
     """Update settings in configuration"""
     try:
@@ -405,7 +407,46 @@ async def update_settings(
         current_config = get_openrag_config()
 
         # Check if config is marked as edited
-        if not current_config.edited:
+        # Exception: Allow conversation_pruning_enabled updates even pre-onboarding
+        is_only_conversation_pruning = (
+            body.conversation_pruning_enabled is not None
+            and all(
+                getattr(body, field) is None
+                for field in [
+                    "llm_provider",
+                    "embedding_provider",
+                    "llm_model",
+                    "embedding_model",
+                    "openai_api_key",
+                    "anthropic_api_key",
+                    "watsonx_api_key",
+                    "watsonx_endpoint",
+                    "watsonx_project_id",
+                    "azure_openai_api_key",
+                    "azure_openai_endpoint",
+                    "azure_openai_deployment",
+                    "azure_openai_api_version",
+                    "cohere_api_key",
+                    "google_api_key",
+                    "provider_credentials",
+                    "system_prompt",
+                    "chunk_size",
+                    "chunk_overlap",
+                    "index_name",
+                    "vlm_enabled",
+                    "vlm_provider",
+                    "vlm_model",
+                    "vlm_prompt",
+                    "vlm_response_format",
+                    "vlm_max_tokens",
+                    "vlm_concurrency",
+                    "vlm_timeout",
+                    "vlm_watsonx_api_version",
+                ]
+            )
+        )
+
+        if not current_config.edited and not is_only_conversation_pruning:
             return JSONResponse(
                 {"error": "Configuration must be marked as edited before updates are allowed"},
                 status_code=403,
@@ -616,9 +657,12 @@ async def update_settings(
         working_config = copy.deepcopy(current_config)
         config_updated = False
 
+        # Handle conversation pruning via dedicated service
         if body.conversation_pruning_enabled is not None:
-            working_config.conversation.pruning_enabled = body.conversation_pruning_enabled
-            config_updated = True
+            await conversation_retention_service.set_pruning_enabled(
+                body.conversation_pruning_enabled
+            )
+            # Note: config_updated stays False since the service saves independently
 
         # Update agent settings
         if body.llm_model is not None:

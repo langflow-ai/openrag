@@ -109,14 +109,14 @@ async def _periodic_backup(services):
             logger.error(f"Error in periodic backup task: {str(e)}")
 
 
-async def _periodic_conversation_pruning():
+async def _periodic_conversation_pruning(conversation_retention_service):
     """Prune stale conversation metadata once per day when enabled."""
     from services.conversation_persistence_service import conversation_persistence
 
     while True:
         try:
-            config = get_openrag_config()
-            if OPENRAG_CONVERSATION_TTL_DAYS > 0 and config.conversation.pruning_enabled:
+            pruning_enabled = await conversation_retention_service.is_pruning_enabled()
+            if OPENRAG_CONVERSATION_TTL_DAYS > 0 and pruning_enabled:
                 deleted = await conversation_persistence.prune_stale_conversations(
                     OPENRAG_CONVERSATION_TTL_DAYS
                 )
@@ -389,7 +389,10 @@ async def run_startup(app: FastAPI):
     backup_task.add_done_callback(app.state.background_tasks.discard)
 
     # Start nightly stale-conversation pruning task
-    pruning_task = asyncio.create_task(_periodic_conversation_pruning())
+    conversation_retention_service = services["conversation_retention_service"]
+    pruning_task = asyncio.create_task(
+        _periodic_conversation_pruning(conversation_retention_service)
+    )
     app.state.background_tasks.add(pruning_task)
     pruning_task.add_done_callback(app.state.background_tasks.discard)
 

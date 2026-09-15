@@ -187,6 +187,7 @@ async def initialize_services():
     # before `asyncio.run(create_app())` so the schema is in place by
     # the time the lifespan opens the engine.
     from db import engine as _db_engine_mod
+    from services.conversation_retention_service import ConversationRetentionService
     from services.rbac_service import RBACService
     from services.workspace_config_service import WorkspaceConfigService
 
@@ -206,6 +207,11 @@ async def initialize_services():
     workspace_config_service = WorkspaceConfigService(
         config_manager=config_manager,
         session_factory=_lazy_session_factory,
+    )
+
+    # ConversationRetentionService — manages conversation pruning policy
+    conversation_retention_service = ConversationRetentionService(
+        config_manager=config_manager
     )
 
     # Plumb the session factory into the two chat-history services
@@ -246,6 +252,7 @@ async def initialize_services():
         "ingest_preview_service": ingest_preview_service,
         "rbac_service": rbac_service,
         "workspace_config_service": workspace_config_service,
+        "conversation_retention_service": conversation_retention_service,
         "file_service_v2": file_service_v2,
         "file_service": file_service,
     }

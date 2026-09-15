@@ -56,25 +56,50 @@ class ConversationPersistenceService:
         if os.path.exists(self.storage_file):
             try:
                 with open(self.storage_file, encoding="utf-8") as f:
-                    return json.load(f)
+                    data = json.load(f)
+
+                # Validate top-level structure
+                if not isinstance(data, dict):
+                    logger.warning("Conversations file top-level is not a dict, resetting")
+                    return {}
+
+                # Validate and clean user buckets and conversation payloads
+                cleaned = {}
+                for user_id, user_convs in data.items():
+                    if not isinstance(user_convs, dict):
+                        logger.warning(f"User bucket for {user_id} is not a dict, skipping")
+                        continue
+
+                    valid_convs = {}
+                    for response_id, payload in user_convs.items():
+                        if not isinstance(payload, dict):
+                            logger.warning(
+                                f"Payload for {user_id}/{response_id} is not a dict, skipping"
+                            )
+                            continue
+                        valid_convs[response_id] = payload
+
+                    if valid_convs:
+                        cleaned[user_id] = valid_convs
+
+                return cleaned
             except Exception as exc:  # noqa: BLE001
                 logger.error(f"Error loading conversations: {exc}")
                 return {}
         return {}
 
     def _save_conversations_sync(self) -> None:
-        try:
-            with self.lock:
-                with open(self.storage_file, "w", encoding="utf-8") as f:
-                    json.dump(
-                        self._conversations,
-                        f,
-                        indent=2,
-                        ensure_ascii=False,
-                        default=str,
-                    )
-        except Exception as exc:  # noqa: BLE001
-            logger.error(f"Error saving conversations: {exc}")
+        with self.lock:
+            snapshot = dict(self._conversations)
+        # Write snapshot outside the lock to avoid blocking other threads during I/O
+        with open(self.storage_file, "w", encoding="utf-8") as f:
+            json.dump(
+                snapshot,
+                f,
+                indent=2,
+                ensure_ascii=False,
+                default=str,
+            )
 
     async def _save_conversations(self) -> None:
         loop = asyncio.get_event_loop()
@@ -103,9 +128,10 @@ class ConversationPersistenceService:
     async def get_user_conversations(self, user_id: str) -> dict[str, Any]:
         mode = get_storage_mode()
         if mode == "files":
-            if user_id not in self._conversations:
-                self._conversations[user_id] = {}
-            return self._conversations[user_id]
+            with self.lock:
+                if user_id not in self._conversations:
+                    self._conversations[user_id] = {}
+                return dict(self._conversations[user_id])
 
         # db / hybrid — DB read first
         db_payload = await self._db_get_for_user(user_id)
@@ -114,8 +140,9 @@ class ConversationPersistenceService:
 
         # hybrid — merge JSON entries that aren't yet in DB
         merged = dict(db_payload)
-        for resp_id, payload in self._conversations.get(user_id, {}).items():
-            merged.setdefault(resp_id, payload)
+        with self.lock:
+            for resp_id, payload in self._conversations.get(user_id, {}).items():
+                merged.setdefault(resp_id, payload)
         return merged
 
     async def store_conversation_thread(
@@ -127,9 +154,10 @@ class ConversationPersistenceService:
         serialized = self._serialize_datetime(conversation_state)
 
         if file_writes_enabled():
-            if user_id not in self._conversations:
-                self._conversations[user_id] = {}
-            self._conversations[user_id][response_id] = serialized
+            with self.lock:
+                if user_id not in self._conversations:
+                    self._conversations[user_id] = {}
+                self._conversations[user_id][response_id] = serialized
             await self._save_conversations()
 
         if db_writes_enabled():
@@ -150,8 +178,12 @@ class ConversationPersistenceService:
         deleted = False
 
         if file_writes_enabled():
-            if user_id in self._conversations and response_id in self._conversations[user_id]:
-                del self._conversations[user_id][response_id]
+            file_deleted = False
+            with self.lock:
+                if user_id in self._conversations and response_id in self._conversations[user_id]:
+                    del self._conversations[user_id][response_id]
+                    file_deleted = True
+            if file_deleted:
                 await self._save_conversations()
                 deleted = True
 
@@ -162,9 +194,14 @@ class ConversationPersistenceService:
         return deleted
 
     async def clear_user_conversations(self, user_id: str) -> None:
-        if file_writes_enabled() and user_id in self._conversations:
-            del self._conversations[user_id]
-            await self._save_conversations()
+        cleared = False
+        if file_writes_enabled():
+            with self.lock:
+                if user_id in self._conversations:
+                    del self._conversations[user_id]
+                    cleared = True
+            if cleared:
+                await self._save_conversations()
 
         if db_writes_enabled():
             await self._db_delete_all(user_id)
@@ -175,29 +212,39 @@ class ConversationPersistenceService:
         deleted = 0
 
         if file_writes_enabled():
-            for user_id in list(self._conversations):
-                conversations = self._conversations[user_id]
-                for response_id, payload in list(conversations.items()):
-                    raw_last_activity = payload.get("last_activity") or payload.get("created_at")
-                    if not raw_last_activity:
-                        continue
-                    try:
-                        last_activity = datetime.fromisoformat(
-                            str(raw_last_activity).replace("Z", "+00:00")
+            file_deleted = 0
+            # Create snapshot of deletions under lock, then persist
+            with self.lock:
+                for user_id in list(self._conversations):
+                    conversations = self._conversations[user_id]
+                    for response_id, payload in list(conversations.items()):
+                        if not isinstance(payload, dict):
+                            continue
+                        raw_last_activity = payload.get("last_activity") or payload.get(
+                            "created_at"
                         )
-                        if last_activity.tzinfo is None:
-                            last_activity = last_activity.replace(tzinfo=UTC)
-                    except (TypeError, ValueError):
-                        continue
-                    if last_activity < cutoff:
-                        del conversations[response_id]
-                        deleted += 1
-                if not conversations:
-                    del self._conversations[user_id]
+                        if not raw_last_activity:
+                            continue
+                        try:
+                            last_activity = datetime.fromisoformat(
+                                str(raw_last_activity).replace("Z", "+00:00")
+                            )
+                            if last_activity.tzinfo is None:
+                                last_activity = last_activity.replace(tzinfo=UTC)
+                        except (TypeError, ValueError):
+                            continue
+                        if last_activity < cutoff:
+                            del conversations[response_id]
+                            file_deleted += 1
+                    if not conversations:
+                        del self._conversations[user_id]
+            # Propagate save failure
             await self._save_conversations()
+            deleted += file_deleted
 
         if db_writes_enabled():
-            deleted += await self._db_delete_older_than(cutoff)
+            db_deleted = await self._db_delete_older_than(cutoff)
+            deleted += db_deleted
 
         return deleted
 
