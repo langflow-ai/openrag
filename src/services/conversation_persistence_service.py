@@ -120,7 +120,8 @@ class ConversationPersistenceService:
             with self.lock:
                 if user_id not in self._conversations:
                     self._conversations[user_id] = {}
-                return dict(self._conversations[user_id])
+                # Deep-copy to prevent callers from mutating internal state
+                return copy.deepcopy(self._conversations[user_id])
 
         # db / hybrid — DB read first
         db_payload = await self._db_get_for_user(user_id)
@@ -131,7 +132,8 @@ class ConversationPersistenceService:
         merged = dict(db_payload)
         with self.lock:
             for resp_id, payload in self._conversations.get(user_id, {}).items():
-                merged.setdefault(resp_id, payload)
+                # Deep-copy payloads to prevent aliasing internal state
+                merged.setdefault(resp_id, copy.deepcopy(payload))
         return merged
 
     async def store_conversation_thread(
