@@ -1,3 +1,5 @@
+import { toast } from "sonner";
+
 export interface CloudFile {
   id: string;
   name: string;
@@ -128,4 +130,16 @@ export function getIngestChunkSettingsError(
     return "Chunk overlap must be less than chunk size";
   }
   return null;
+}
+
+export function validateIngestSettingsOrToast(
+  settings: Pick<IngestSettings, "chunkSize" | "chunkOverlap"> | undefined,
+): boolean {
+  if (!settings) return true;
+  const chunkErr = getIngestChunkSettingsError(settings);
+  if (chunkErr) {
+    toast.error("Could not start ingest", { description: chunkErr });
+    return false;
+  }
+  return true;
 }
