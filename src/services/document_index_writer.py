@@ -7,6 +7,7 @@ indexing chunks into the documents index.
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 import hashlib
 import json
@@ -19,6 +20,25 @@ from utils.group_acl import unique_acl_principal_labels, unique_acl_principals
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+# A single bulk() call executes every item independently, so one item hitting
+# a transient condition (cluster under load, a shard temporarily unavailable)
+# sets `errors: true` for the whole response even though the rest of the
+# document's chunks were written successfully. That makes an entire file look
+# "failed" in the task counters even when it's actually indexed and visible.
+# Retrying the whole request is safe here because every op is an idempotent
+# upsert, so re-sending already-succeeded items has no effect.
+_BULK_RETRYABLE_ERROR_TYPES = frozenset(
+    {
+        "es_rejected_execution_exception",
+        "process_cluster_event_timeout_exception",
+        "unavailable_shards_exception",
+        "timeout_exception",
+        "version_conflict_engine_exception",
+    }
+)
+_MAX_BULK_RETRIES = 2
+_BULK_RETRY_DELAY_SECONDS = 0.5
 
 
 @dataclass
@@ -134,7 +154,7 @@ class DocumentIndexWriter:
                 )
             )
 
-        result = await client.bulk(body=bulk_body, refresh=refresh)
+        result = await self._bulk_with_retry(client, bulk_body, refresh=refresh)
         self._raise_for_bulk_errors(result)
         if final:
             await self._refresh(index_name)
@@ -314,6 +334,34 @@ class DocumentIndexWriter:
         if "filesize" in normalized and "file_size" not in normalized:
             normalized["file_size"] = normalized["filesize"]
         return normalized
+
+    @staticmethod
+    def _bulk_errors_are_retryable(result: Any) -> bool:
+        if not isinstance(result, dict):
+            return False
+        for item in result.get("items", []):
+            action = item.get("index") or item.get("create") or item.get("update") or item
+            error = action.get("error")
+            if error and error.get("type") not in _BULK_RETRYABLE_ERROR_TYPES:
+                return False
+        return True
+
+    async def _bulk_with_retry(
+        self, client: Any, bulk_body: list[dict[str, Any]], *, refresh: bool | str
+    ) -> Any:
+        result = await client.bulk(body=bulk_body, refresh=refresh)
+        for attempt in range(_MAX_BULK_RETRIES):
+            if not isinstance(result, dict) or not result.get("errors"):
+                return result
+            if not self._bulk_errors_are_retryable(result):
+                return result
+            logger.warning(
+                "Retrying OpenSearch bulk write after transient error",
+                attempt=attempt + 1,
+            )
+            await asyncio.sleep(_BULK_RETRY_DELAY_SECONDS * (attempt + 1))
+            result = await client.bulk(body=bulk_body, refresh=refresh)
+        return result
 
     @staticmethod
     def _raise_for_bulk_errors(result: Any) -> None:
