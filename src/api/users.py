@@ -164,5 +164,3 @@ async def set_my_dev_role(
             "permissions": sorted(perms),
         }
     )
-
-
