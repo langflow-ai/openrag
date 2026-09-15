@@ -92,9 +92,7 @@ class TestOciCredentialShapeKeyFile:
         key_file = tmp_path / "oci_key.pem"
         key_file.write_text("-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----")
 
-        await _test_oci_credential_shape(
-            **VALID_KWARGS, oci_key=None, oci_key_file=str(key_file)
-        )
+        await _test_oci_credential_shape(**VALID_KWARGS, oci_key=None, oci_key_file=str(key_file))
 
     @pytest.mark.asyncio
     async def test_nonexistent_key_file_fails(self, tmp_path):
@@ -222,7 +220,9 @@ class TestOciSignerConstructionValidation:
     async def test_instance_principal_failure_raises(self, mock_signer_cls):
         mock_signer_cls.side_effect = Exception("not on OCI compute")
         with pytest.raises(OCISignerConstructionError):
-            await _test_oci_signer_construction("instance_principal", self.COMPARTMENT_ID, self.REGION)
+            await _test_oci_signer_construction(
+                "instance_principal", self.COMPARTMENT_ID, self.REGION
+            )
 
     @pytest.mark.asyncio
     @patch("oci.auth.signers.get_oke_workload_identity_resource_principal_signer")
@@ -288,8 +288,11 @@ class TestValidateProviderSetupOciAuthMethodDispatch:
         await run_lightweight_health(
             provider="oci",
             oci_auth_method="api_key",
-            oci_user="u", oci_fingerprint="f", oci_tenancy="t",
-            oci_compartment_id="c", oci_key="-----BEGIN PRIVATE KEY-----",
+            oci_user="u",
+            oci_fingerprint="f",
+            oci_tenancy="t",
+            oci_compartment_id="c",
+            oci_key="-----BEGIN PRIVATE KEY-----",
         )
         mock_shape.assert_called_once()
         mock_signer.assert_not_called()
