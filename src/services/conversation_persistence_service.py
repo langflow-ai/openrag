@@ -1,21 +1,9 @@
-"""Conversation persistence — chat-history metadata only (full message
-bodies live in Langflow).
 
-Mode-aware (``OPENRAG_STORAGE_MODE`` from ``src/config/storage_mode.py``):
-
-| Mode         | Reads                | Writes              |
-|--------------|----------------------|---------------------|
-| db (default) | DB only              | DB only — no JSON   |
-| hybrid       | DB → JSON fallback   | DB + JSON dual      |
-| files        | JSON only            | JSON only           |
-
-All public methods are async. Call sites in ``src/agent.py`` were
-flipped from sync to ``await`` as part of this migration.
-"""
 
 from __future__ import annotations
 
 import asyncio
+import copy
 import json
 import os
 import threading
@@ -45,6 +33,7 @@ class ConversationPersistenceService:
         self.storage_file = storage_file or get_data_file("conversations.json")
         os.makedirs(os.path.dirname(self.storage_file), exist_ok=True)
         self.lock = threading.Lock()
+        self._save_lock = threading.Lock()  # Serializes file writes
         self._session_factory = session_factory
         self._conversations: dict[str, dict[str, Any]] = self._load_conversations()
 
@@ -89,17 +78,19 @@ class ConversationPersistenceService:
         return {}
 
     def _save_conversations_sync(self) -> None:
+        # Deep-copy under self.lock, then write under _save_lock
         with self.lock:
-            snapshot = dict(self._conversations)
-        # Write snapshot outside the lock to avoid blocking other threads during I/O
-        with open(self.storage_file, "w", encoding="utf-8") as f:
-            json.dump(
-                snapshot,
-                f,
-                indent=2,
-                ensure_ascii=False,
-                default=str,
-            )
+            snapshot = copy.deepcopy(self._conversations)
+        # Serialize writes to prevent older executor writes from completing after newer ones
+        with self._save_lock:
+            with open(self.storage_file, "w", encoding="utf-8") as f:
+                json.dump(
+                    snapshot,
+                    f,
+                    indent=2,
+                    ensure_ascii=False,
+                    default=str,
+                )
 
     async def _save_conversations(self) -> None:
         loop = asyncio.get_event_loop()

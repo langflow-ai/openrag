@@ -409,40 +409,7 @@ async def update_settings(
 
         # Check if config is marked as edited
         # Exception: Allow conversation_pruning_enabled updates even pre-onboarding
-        is_only_conversation_pruning = body.conversation_pruning_enabled is not None and all(
-            getattr(body, field) is None
-            for field in [
-                "llm_provider",
-                "embedding_provider",
-                "llm_model",
-                "embedding_model",
-                "openai_api_key",
-                "anthropic_api_key",
-                "watsonx_api_key",
-                "watsonx_endpoint",
-                "watsonx_project_id",
-                "azure_openai_api_key",
-                "azure_openai_endpoint",
-                "azure_openai_deployment",
-                "azure_openai_api_version",
-                "cohere_api_key",
-                "google_api_key",
-                "provider_credentials",
-                "system_prompt",
-                "chunk_size",
-                "chunk_overlap",
-                "index_name",
-                "vlm_enabled",
-                "vlm_provider",
-                "vlm_model",
-                "vlm_prompt",
-                "vlm_response_format",
-                "vlm_max_tokens",
-                "vlm_concurrency",
-                "vlm_timeout",
-                "vlm_watsonx_api_version",
-            ]
-        )
+        is_only_conversation_pruning = body.model_fields_set == {"conversation_pruning_enabled"}
 
         if not current_config.edited and not is_only_conversation_pruning:
             return JSONResponse(
@@ -686,7 +653,7 @@ async def update_settings(
             await conversation_retention_service.set_pruning_enabled(
                 body.conversation_pruning_enabled
             )
-            # Note: config_updated stays False since the service saves independently
+            config_updated = True
 
         # Update agent settings
         if body.llm_model is not None:
@@ -1130,9 +1097,11 @@ async def update_settings(
         if not config_updated:
             return JSONResponse({"error": "No valid fields provided for update"}, status_code=400)
 
-        # Save the updated configuration
-        if not config_manager.save_config_file(working_config):
-            return JSONResponse({"error": "Failed to save configuration"}, status_code=500)
+        # Save the updated configuration (conversation_pruning_enabled already saved by retention service)
+        # Only save working_config if other fields were modified
+        if body.model_fields_set != {"conversation_pruning_enabled"}:
+            if not config_manager.save_config_file(working_config):
+                return JSONResponse({"error": "Failed to save configuration"}, status_code=500)
 
         provider_health_cache.invalidate()
 

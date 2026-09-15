@@ -21,5 +21,14 @@ class ConversationRetentionService:
     async def set_pruning_enabled(self, enabled: bool) -> None:
         """Update the conversation pruning enabled flag."""
         config = self.config_manager.get_config()
+        previous_value = config.conversation.pruning_enabled
         config.conversation.pruning_enabled = enabled
-        self.config_manager.save_config_file(config)
+        try:
+            if not self.config_manager.save_config_file(config):
+                # Restore previous value and raise
+                config.conversation.pruning_enabled = previous_value
+                raise RuntimeError("Failed to save configuration")
+        except Exception:
+            # Restore previous value on any exception
+            config.conversation.pruning_enabled = previous_value
+            raise
