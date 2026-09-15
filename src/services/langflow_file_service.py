@@ -25,6 +25,19 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+# Bedrock's Cohere Embed v3 hard-limits input to 512 tokens per text entry
+# (see models/processors.py's `max_tokens = 512` cap, which enforces this
+# exactly via tiktoken on the non-Langflow ingest path). Langflow's own
+# "Split Text" component only accepts a character count for its chunk_size
+# tweak, and the Langflow embedding component does not truncate oversized
+# chunks, so there's no tokenizer available at this layer to enforce the
+# same limit exactly - this is a conservative character-based approximation
+# of it instead. ~2 chars/token is deliberately low (English averages ~4
+# chars/token; dense non-Latin scripts run closer to 1-2), so it stays a
+# safe ceiling even for the dense text the token-exact cap in processors.py
+# is guarding against.
+BEDROCK_MAX_CHUNK_CHARS = 512 * 2
+
 
 class LangflowFileService:
     INGEST_OPENSEARCH_COMPONENT_ID = "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-WaE28"
@@ -113,16 +126,28 @@ class LangflowFileService:
                 config.knowledge, "chunk_overlap", DEFAULT_CHUNK_OVERLAP
             )
 
-        if not settings:
-            return final_tweaks
+        if settings:
+            if (
+                settings.get("chunkSize")
+                or settings.get("chunkOverlap")
+                or settings.get("separator")
+            ):
+                if settings.get("chunkSize"):
+                    final_tweaks["Split Text"]["chunk_size"] = settings["chunkSize"]
+                if settings.get("chunkOverlap"):
+                    final_tweaks["Split Text"]["chunk_overlap"] = settings["chunkOverlap"]
+                if settings.get("separator"):
+                    final_tweaks["Split Text"]["separator"] = settings["separator"]
 
-        if settings.get("chunkSize") or settings.get("chunkOverlap") or settings.get("separator"):
-            if settings.get("chunkSize"):
-                final_tweaks["Split Text"]["chunk_size"] = settings["chunkSize"]
-            if settings.get("chunkOverlap"):
-                final_tweaks["Split Text"]["chunk_overlap"] = settings["chunkOverlap"]
-            if settings.get("separator"):
-                final_tweaks["Split Text"]["separator"] = settings["separator"]
+        # Bedrock/Cohere Embed models cap input at 512 tokens per chunk (see
+        # BEDROCK_MAX_CHUNK_CHARS above) - clamp regardless of whether
+        # chunk_size came from config defaults or UI settings above.
+        if config.knowledge.embedding_provider == "bedrock" or is_cohere_embedding_model(
+            config.knowledge.embedding_model
+        ):
+            final_tweaks["Split Text"]["chunk_size"] = min(
+                final_tweaks["Split Text"]["chunk_size"], BEDROCK_MAX_CHUNK_CHARS
+            )
 
         return final_tweaks
 
