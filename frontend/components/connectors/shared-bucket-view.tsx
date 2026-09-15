@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import type { useSyncConnector } from "@/app/api/mutations/useSyncConnector";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { IngestSettings } from "@/components/cloud-picker/ingest-settings";
-import { getIngestChunkSettingsError } from "@/components/cloud-picker/types";
+import { validateIngestSettingsOrToast } from "@/components/cloud-picker/types";
 import { DuplicateHandlingDialog } from "@/components/duplicate-handling-dialog";
 import { FileBrowserDialog } from "@/components/file-browser-dialog";
 import { Button } from "@/components/ui/button";
@@ -224,11 +224,7 @@ export function SharedBucketView({
   };
 
   const ingestSelected = async () => {
-    const chunkErr = getIngestChunkSettingsError(ingestSettings);
-    if (chunkErr) {
-      toast.error("Could not start ingest", { description: chunkErr });
-      return;
-    }
+    if (!validateIngestSettingsOrToast(ingestSettings)) return;
     trackStartProcess({
       processType: "Ingestion",
       process: "Document Upload",
