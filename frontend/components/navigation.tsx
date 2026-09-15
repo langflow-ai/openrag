@@ -128,17 +128,10 @@ export function Navigation({
   const [conversationToDelete, setConversationToDelete] =
     useState<ChatConversation | null>(null);
   const hasCompletedInitialLoad = useRef(false);
-  // Stable key for the loading-state fallback placeholder (prevents React
-  // from remounting the button on every render while loading=true).
   const loadingPlaceholderKey = useRef(`loading-placeholder-${Date.now()}`);
-  // Tracks the response_id of the most recently created conversation so we
-  // can typewrite its title when it first appears in the list.
   const [freshConversationId, setFreshConversationId] = useState<string | null>(
     null,
   );
-  // Mirror of placeholderConversation used to detect the transition from
-  // truthy → null during render (setState-during-render pattern) so we can
-  // derive freshConversationId without an effect setter.
   const [prevPlaceholder, setPrevPlaceholder] = useState(
     placeholderConversation,
   );
@@ -306,11 +299,6 @@ export function Navigation({
     }
   }, [isConversationsLoading, conversations.length]);
 
-  // Derive freshConversationId during render: when the placeholder transitions
-  // from truthy to null (cleared by the effect below) and a new conversation
-  // has just landed as currentConversationId, mark it fresh here rather than
-  // in an effect setter. React re-renders immediately without an extra commit.
-  // See https://react.dev/reference/react/useState#storing-information-from-previous-renders
   if (prevPlaceholder !== placeholderConversation) {
     setPrevPlaceholder(placeholderConversation);
     if (prevPlaceholder && !placeholderConversation && currentConversationId) {
