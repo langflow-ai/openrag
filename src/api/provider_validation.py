@@ -273,6 +273,8 @@ def _provider_probe_inputs(
     config: Any,
     provider: str,
     provider_config: Any,
+    *,
+    kind: str = "chat",
 ) -> tuple[str | None, str | None, str | None, dict[str, str]]:
     """Return legacy fields plus the complete LiteLLM credential map.
 
@@ -281,11 +283,15 @@ def _provider_probe_inputs(
     every LiteLLM keyword argument in ``ProvidersConfig.credentials`` instead.
     Recovery probes must use both representations because they run specifically
     when Langflow has hidden the provider's real failure.
+
+    ``kind`` (``"chat"`` or ``"embedding"``) selects the endpoint for a provider
+    that serves the two from different places (Red Hat OpenShift AI), so an
+    embedding probe hits the endpoint the real embedding call will.
     """
     credentials: dict[str, str] = {}
     credential_values = getattr(getattr(config, "providers", None), "credential_values", None)
     if callable(credential_values):
-        values = credential_values(provider)
+        values = credential_values(provider, kind=kind)
         if isinstance(values, dict):
             credentials = dict(values)
 
@@ -335,6 +341,7 @@ async def probe_provider_credential_error() -> str | None:
             config,
             provider,
             provider_config,
+            kind="embedding" if embedding_model else "chat",
         )
         if provider == "ollama":
             if not endpoint:
@@ -425,6 +432,7 @@ async def probe_embedding_error() -> str | None:
         config,
         provider,
         provider_config,
+        kind="embedding",
     )
     if provider == "ollama":
         if not endpoint:

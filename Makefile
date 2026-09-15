@@ -1007,7 +1007,9 @@ test: ## Run all backend tests
 
 test-unit: ## Run unit tests only
 	@echo "$(YELLOW)Running unit tests...$(NC)"
-	uv run pytest tests/unit/ -v
+	@# A stale module that fails to import must not abort the whole suite;
+	@# the collection error is still reported and still fails the target.
+	uv run pytest tests/unit/ -v --continue-on-collection-errors
 	@echo "$(PURPLE)Unit tests complete.$(NC)"
 
 test-integration: ## Run integration tests (requires infrastructure)
