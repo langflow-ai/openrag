@@ -27,9 +27,7 @@ class UserRepo:
         h = email_lookup_hash(email)
         if not h:
             return None
-        result = await self.session.execute(
-            select(User).where(col(User.email_lookup_hash) == h)
-        )
+        result = await self.session.execute(select(User).where(col(User.email_lookup_hash) == h))
         return result.scalar_one_or_none()
 
     async def list_all(self, limit: int = 100, offset: int = 0) -> list[User]:
