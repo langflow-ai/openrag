@@ -25,7 +25,9 @@ def _json(response):
 
 
 def _make_user():
-    return SimpleNamespace(user_id="alice", name="Alice", email="alice@example.com", jwt_token="token")
+    return SimpleNamespace(
+        user_id="alice", name="Alice", email="alice@example.com", jwt_token="token"
+    )
 
 
 @pytest.mark.asyncio
@@ -38,9 +40,11 @@ async def test_upload_path_returns_5xx_and_skips_task_when_index_check_fails(mon
     monkeypatch.setattr(
         documents_api,
         "_ensure_index_exists",
-        AsyncMock(side_effect=RuntimeError(
-            "OPENRAG_SERVICE_TOKEN is required for the index-admin OpenSearch client in saas mode."
-        )),
+        AsyncMock(
+            side_effect=RuntimeError(
+                "OPENRAG_SERVICE_TOKEN is required for the index-admin OpenSearch client in saas mode."
+            )
+        ),
     )
 
     task_service = MagicMock()
@@ -70,9 +74,11 @@ async def test_upload_bucket_returns_5xx_and_skips_task_when_index_check_fails(m
     monkeypatch.setattr(
         documents_api,
         "_ensure_index_exists",
-        AsyncMock(side_effect=RuntimeError(
-            "OPENRAG_SERVICE_TOKEN is required for the index-admin OpenSearch client in saas mode."
-        )),
+        AsyncMock(
+            side_effect=RuntimeError(
+                "OPENRAG_SERVICE_TOKEN is required for the index-admin OpenSearch client in saas mode."
+            )
+        ),
     )
 
     fake_paginator = MagicMock()
