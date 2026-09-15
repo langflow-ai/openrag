@@ -387,7 +387,6 @@ async def test_update_settings_skips_pre_save_check_for_litellm_only_providers()
     validate.assert_not_awaited()
 
 
-
 @pytest.mark.parametrize(
     "provider",
     ["openai", "watsonx", "anthropic", "local", "ollama", "azure", "azure_ai", "openai_like"],
