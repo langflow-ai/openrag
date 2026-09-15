@@ -114,6 +114,7 @@ LANGFLOW_URL_INGEST_FLOW_ID = (
 DEFAULT_CHUNK_SIZE = 1000
 DEFAULT_CHUNK_OVERLAP = 200
 OPENRAG_BACKEND_PORT = get_env_int("OPENRAG_BACKEND_PORT", 8000)
+OPENRAG_CONVERSATION_TTL_DAYS = get_env_int("OPENRAG_CONVERSATION_TTL_DAYS", 90) or 0
 
 # CORS – comma-separated list of allowed origins (e.g. "https://app.example.com,https://admin.example.com").
 # Unset → defaults to http://localhost:3000.  Set to "" to disable CORS entirely.

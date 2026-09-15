@@ -34,6 +34,9 @@ export interface UpdateSettingsRequest {
   vlm_timeout?: number;
   vlm_watsonx_api_version?: string;
 
+  // Conversation retention settings
+  conversation_pruning_enabled?: boolean;
+
   // Provider-specific settings (for dialogs)
   model_provider?: string; // Deprecated, kept for backward compatibility
   api_key?: string;

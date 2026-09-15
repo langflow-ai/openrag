@@ -122,6 +122,7 @@ class WorkspaceConfigService:
             "knowledge": rows.get("knowledge", {}),
             "agent": rows.get("agent", {}),
             "onboarding": rows.get("onboarding", {}),
+            "conversation": rows.get("conversation", {}),
             "edited": (rows.get("meta") or {}).get("edited", False),
         }
         config = OpenRAGConfig.from_dict(merged)
@@ -414,6 +415,7 @@ class WorkspaceConfigService:
             "knowledge": config_dict.get("knowledge", {}),
             "agent": config_dict.get("agent", {}),
             "onboarding": config_dict.get("onboarding", {}),
+            "conversation": config_dict.get("conversation", {}),
             "meta": {"edited": bool(config_dict.get("edited", False))},
         }
 

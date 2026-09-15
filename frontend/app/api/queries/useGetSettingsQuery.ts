@@ -105,6 +105,8 @@ export interface Settings {
   local_vlm_models?: string[];
   show_shared_upload_toggle?: boolean;
   show_workspace_oauth_overrides?: boolean;
+  conversation_pruning_enabled?: boolean;
+  conversation_ttl_days?: number | null;
   segment_write_key?: string;
   environment?: string;
   langflow_port?: string | number | null;

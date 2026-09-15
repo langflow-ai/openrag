@@ -78,6 +78,7 @@ from config.settings import (
     LANGFLOW_PUBLIC_URL,
     LANGFLOW_URL,
     LOCALHOST_URL,
+    OPENRAG_CONVERSATION_TTL_DAYS,
     OPENRAG_INGEST_VIA_CHAT,
     OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS,
     OPENRAG_SHOW_SHARED_UPLOAD_TOGGLE,
@@ -381,6 +382,10 @@ async def get_settings(
             segment_write_key=SEGMENT_WRITE_KEY or None,
             environment=ENVIRONMENT or None,
             langflow_port=str(LANGFLOW_PORT),
+            conversation_pruning_enabled=openrag_config.conversation.pruning_enabled,
+            conversation_ttl_days=OPENRAG_CONVERSATION_TTL_DAYS
+            if OPENRAG_CONVERSATION_TTL_DAYS > 0
+            else None,
         )
 
     except Exception:
@@ -401,7 +406,10 @@ async def update_settings(
         current_config = get_openrag_config()
 
         # Check if config is marked as edited
-        if not current_config.edited:
+        # Exception: Allow conversation_pruning_enabled updates even pre-onboarding
+        is_only_conversation_pruning = body.model_fields_set == {"conversation_pruning_enabled"}
+
+        if not current_config.edited and not is_only_conversation_pruning:
             return JSONResponse(
                 {"error": "Configuration must be marked as edited before updates are allowed"},
                 status_code=403,
@@ -637,6 +645,12 @@ async def update_settings(
         # leave the live cached config half-updated and unsaved.
         working_config = copy.deepcopy(current_config)
         config_updated = False
+
+        # Handle conversation pruning toggle
+        if body.conversation_pruning_enabled is not None:
+            # Stage in working_config so combined updates preserve the requested value
+            working_config.conversation.pruning_enabled = body.conversation_pruning_enabled
+            config_updated = True
 
         # Update agent settings
         if body.llm_model is not None:
@@ -1081,6 +1095,7 @@ async def update_settings(
             return JSONResponse({"error": "No valid fields provided for update"}, status_code=400)
 
         # Save the updated configuration
+        # conversation_pruning_enabled is now staged in working_config along with all other changes
         if not config_manager.save_config_file(working_config):
             return JSONResponse({"error": "Failed to save configuration"}, status_code=500)
 

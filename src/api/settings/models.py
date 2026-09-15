@@ -57,6 +57,7 @@ class SettingsUpdateBody(BaseModel):
     # embedding models are still in use by indexed documents. Without this,
     # the backend returns 409 and the frontend prompts the user.
     force_remove: bool | None = False
+    conversation_pruning_enabled: bool | None = None
 
 
 class OnboardingBody(BaseModel):
@@ -253,6 +254,8 @@ class SettingsResponse(BaseModel):
     segment_write_key: str | None = None
     environment: str | None = None
     langflow_port: str | None = None
+    conversation_pruning_enabled: bool = True
+    conversation_ttl_days: int | None = None
 
 
 class OnboardingResponse(BaseModel):
