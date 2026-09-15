@@ -87,6 +87,13 @@ describe("getGreetingMessage", () => {
     assert.ok(msg.includes(", Carol"), `expected ', Carol' in: ${msg}`);
   });
 
+  it("capitalizes the first letter of the first name", () => {
+    forceRandom(0.9);
+    fakeDate(9, 1);
+    const msg = getGreetingMessage("alice");
+    assert.ok(msg.includes(", Alice"), `expected ', Alice' in: ${msg}`);
+  });
+
   // Time-slot routing
   it("produces a morning greeting between 06:00 and 11:59", () => {
     forceRandom(0.9); // suppress day-of-week branch

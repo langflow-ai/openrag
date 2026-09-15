@@ -105,18 +105,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
       } else if (data.no_auth_mode) {
         setIsNoAuthMode(true);
         setIsIbmAuthMode(false);
-        // Carry display_name from no-auth response so greetings can use it
-        setUser(
-          data.user?.display_name
-            ? {
-                user_id: "anonymous",
-                email: "",
-                name: "Anonymous User",
-                provider: "none",
-                display_name: data.user.display_name,
-              }
-            : null,
-        );
+        // No-auth mode is always anonymous — no user identity.
+        setUser(null);
       } else if (data.authenticated && data.user) {
         setIsNoAuthMode(false);
         setIsIbmAuthMode(false);

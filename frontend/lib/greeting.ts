@@ -81,7 +81,10 @@ function pick<T>(arr: T[]): T {
  *                     Pass undefined/null/empty for an anonymous greeting.
  */
 export function getGreetingMessage(displayName?: string | null): string {
-  const firstName = displayName?.trim().split(/\s+/)[0] ?? "";
+  const rawFirst = displayName?.trim().split(/\s+/)[0] ?? "";
+  const firstName = rawFirst
+    ? rawFirst.charAt(0).toUpperCase() + rawFirst.slice(1)
+    : "";
   const nameInsertion = firstName ? `, ${firstName}` : "";
 
   const now = new Date();

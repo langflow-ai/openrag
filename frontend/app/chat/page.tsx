@@ -65,8 +65,10 @@ function ChatPage() {
     setLoading,
     setChatError,
   } = useChat();
-  const { user } = useAuth();
-  const displayName = resolveDisplayName(user);
+  const { user, isNoAuthMode } = useAuth();
+  // Only personalize the greeting when a real user is authenticated.
+  // In no-auth mode the session is anonymous — fall back to generic greeting.
+  const displayName = isNoAuthMode ? null : resolveDisplayName(user);
   const [messages, setMessages] = useState<Message[]>(() => [
     makeInitialMessage(displayName),
   ]);

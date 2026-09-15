@@ -48,7 +48,7 @@ export const SIDEBAR_HIDE_THRESHOLD = 120;
 /** Minimum visible width for a resized sidebar (px) */
 export const SIDEBAR_MIN_WIDTH = 180;
 export const HEADER_HEIGHT = 54;
-export const TOTAL_ONBOARDING_STEPS = 5;
+export const TOTAL_ONBOARDING_STEPS = 4;
 
 export const FILES_REGEX =
   /(?<=I'm uploading a document called ['"])[^'"]+\.[^.]+(?=['"]\. Here is its content:)/;
