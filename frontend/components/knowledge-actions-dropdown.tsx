@@ -252,6 +252,20 @@ export const KnowledgeActionsDropdown = ({
         isSyncing={syncConnectorMutation.isPending}
         connectorType={connectorType}
         orphans={syncPreview?.orphans}
+        orphansAvailableByType={
+          connectorType && syncPreview
+            ? { [connectorType]: syncPreview.orphans_available }
+            : undefined
+        }
+        updates={syncPreview?.updates}
+        // Every connector in CLOUD_CONNECTOR_TYPES re-reads each file during
+        // sync and decides then, so this is false and the dialog reports
+        // "re-checked" rather than a count it cannot know in advance.
+        updatesAvailableByType={
+          connectorType && syncPreview
+            ? { [connectorType]: syncPreview.updates_available }
+            : undefined
+        }
         syncedCount={syncPreview?.synced_count}
       />
     </>

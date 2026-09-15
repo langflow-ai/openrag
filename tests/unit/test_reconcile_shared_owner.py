@@ -40,7 +40,7 @@ async def test_reconcile_shared_true_omits_owner_via_script():
     settings_module.clients.opensearch = write_client
     processor = _make_processor(shared=True)
 
-    await processor._reconcile_shared_owner("report.pdf")
+    await processor._reconcile_shared_owner("report.pdf", True)
 
     assert write_client.update_by_query.await_count >= 1
     call = write_client.update_by_query.await_args_list[0]
@@ -60,7 +60,7 @@ async def test_reconcile_shared_false_sets_owner_via_script():
     settings_module.clients.opensearch = write_client
     processor = _make_processor(shared=False)
 
-    await processor._reconcile_shared_owner("report.pdf")
+    await processor._reconcile_shared_owner("report.pdf", False)
 
     call = write_client.update_by_query.await_args_list[0]
     params = call.kwargs["body"]["script"]["params"]
@@ -76,7 +76,7 @@ async def test_reconcile_shared_owner_noop_without_write_client():
     processor = _make_processor(shared=True)
 
     # Must not raise even though there's nothing to write to.
-    await processor._reconcile_shared_owner("report.pdf")
+    await processor._reconcile_shared_owner("report.pdf", True)
 
 
 @pytest.mark.asyncio
@@ -87,4 +87,4 @@ async def test_reconcile_shared_owner_swallows_update_errors():
     processor = _make_processor(shared=True)
 
     # A failed reconciliation must not fail the (already-skipped) sync item.
-    await processor._reconcile_shared_owner("report.pdf")
+    await processor._reconcile_shared_owner("report.pdf", True)
