@@ -213,7 +213,8 @@ class ConversationPersistenceService:
             }
         # db / hybrid summary from DB
         try:
-            from sqlalchemy import func, select
+            from sqlalchemy import distinct, func, select
+            from sqlmodel import col
 
             from db.models import Conversation
 
@@ -222,10 +223,10 @@ class ConversationPersistenceService:
                 return {"total_users": 0, "total_conversations": 0}
             async with sess_factory() as session:
                 total = (
-                    await session.execute(select(func.count(Conversation.response_id)))
+                    await session.execute(select(func.count(col(Conversation.response_id))))
                 ).scalar_one()
                 users = (
-                    await session.execute(select(func.count(func.distinct(Conversation.user_id))))
+                    await session.execute(select(func.count(distinct(col(Conversation.user_id)))))
                 ).scalar_one()
             return {
                 "total_users": int(users or 0),
