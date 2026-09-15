@@ -831,7 +831,7 @@ async def test_lightweight_health(
     elif provider == "anthropic":
         await _test_anthropic_lightweight_health(api_key)
     elif provider == "bedrock":
-        await _test_bedrock_lightweight_health()
+        await _test_bedrock_lightweight_health(credentials)
     elif enhancement := get_provider_enhancement(provider):
         await enhancement.lightweight_health_check(credentials or {})
     else:
@@ -1594,7 +1594,7 @@ async def _test_anthropic_completion_with_tools(api_key: str, llm_model: str) ->
 
 
 # Bedrock validation functions
-async def _test_bedrock_lightweight_health() -> None:
+async def _test_bedrock_lightweight_health(credentials: dict[str, str] | None = None) -> None:
     """Validate AWS Bedrock credential *shape* without making a live cloud call.
 
     Bedrock authentication is AWS SigV4 request signing (via IAM access
@@ -1609,19 +1609,34 @@ async def _test_bedrock_lightweight_health() -> None:
     must be set together (a lone key or lone secret is almost always a
     misconfiguration; IAM role/IRSA setups leave both blank).
 
-    Reads directly from config rather than accepting api_key/endpoint
-    params like the other `_test_*_lightweight_health` functions, because
-    BedrockConfig's field names (region/access_key_id/secret_access_key)
-    don't line up with the generic api_key/endpoint slots the shared
-    validation call chain (validate_provider_setup -> test_lightweight_health)
-    threads through for every provider.
+    Accepts the caller's already-resolved credential values (the same
+    ``aws_region_name``/``aws_access_key_id``/``aws_secret_access_key`` shape
+    ``credential_values("bedrock")``/``pending_credentials("bedrock", ...)``
+    produce), matching how ``_test_azure_lightweight_health(credentials)``
+    takes a plain dict. This matters because ``update_settings`` validates a
+    pending, not-yet-saved config: a first-time-setup request that submits
+    Bedrock's region/keys *and* selects it as the embedding provider in the
+    same call must be validated against those pending values, not the
+    currently-saved (pre-write) config. When no credentials are supplied
+    (e.g. onboarding's full-validation path, which mutates the live config
+    in place before validating), fall back to reading the live config
+    directly, preserving this check's original behavior for that caller.
     """
-    from config.config_manager import config_manager
+    if credentials is not None:
+        region = credentials.get("aws_region_name", "")
+        access_key_id = credentials.get("aws_access_key_id", "")
+        secret_access_key = credentials.get("aws_secret_access_key", "")
+    else:
+        from config.config_manager import config_manager
 
-    bedrock_config = config_manager.get_config().providers.bedrock
-    if not bedrock_config.region:
+        bedrock_config = config_manager.get_config().providers.bedrock
+        region = bedrock_config.region
+        access_key_id = bedrock_config.access_key_id
+        secret_access_key = bedrock_config.secret_access_key
+
+    if not region:
         raise Exception("AWS Bedrock requires a region to be configured")
-    if bool(bedrock_config.access_key_id) != bool(bedrock_config.secret_access_key):
+    if bool(access_key_id) != bool(secret_access_key):
         raise Exception(
             "AWS Bedrock requires both access_key_id and secret_access_key to be "
             "set together, or both left blank to use an IAM role"
