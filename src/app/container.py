@@ -210,9 +210,7 @@ async def initialize_services():
     )
 
     # ConversationRetentionService — manages conversation pruning policy
-    conversation_retention_service = ConversationRetentionService(
-        config_manager=config_manager
-    )
+    conversation_retention_service = ConversationRetentionService(config_manager=config_manager)
 
     # Plumb the session factory into the two chat-history services
     # (session_ownership + conversation_persistence). They lazy-resolve
