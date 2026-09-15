@@ -10,6 +10,7 @@ from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import col
 
 from db.models import WorkspaceConfig
 
@@ -69,7 +70,7 @@ class WorkspaceConfigRepo:
         clause is a no-op, which is safe because the deployment constraint
         enforces a single uvicorn worker (see AGENTS.md).
         """
-        stmt = select(WorkspaceConfig).where(WorkspaceConfig.section == section).with_for_update()
+        stmt = select(WorkspaceConfig).where(col(WorkspaceConfig.section) == section).with_for_update()
         result = await self.session.execute(stmt)
         existing = result.scalar_one_or_none()
 

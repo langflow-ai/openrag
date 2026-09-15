@@ -68,8 +68,10 @@ function ChatPage() {
   const { user, isNoAuthMode } = useAuth();
   const displayName = isNoAuthMode ? null : resolveDisplayName(user);
   const [messages, setMessages] = useState<Message[]>([PLACEHOLDER_GREETING]);
+  const [prevDisplayName, setPrevDisplayName] = useState(displayName);
 
-  useEffect(() => {
+  if (prevDisplayName !== displayName) {
+    setPrevDisplayName(displayName);
     setMessages((prev) => {
       if (
         prev.length === 1 &&
@@ -80,7 +82,7 @@ function ChatPage() {
       }
       return prev;
     });
-  }, [displayName]);
+  }
   const [input, setInput] = useState("");
   const [asyncMode, setAsyncMode] = useState(true);
   const [expandedFunctionCalls, setExpandedFunctionCalls] = useState<
@@ -1114,9 +1116,7 @@ function ChatPage() {
                             onFork={(e) => handleForkConversation(index, e)}
                             animate={false}
                             isInactive={index < messages.length - 1}
-                            isInitialGreeting={
-                              index === 0 && messages.length === 1
-                            }
+                            isInitialGreeting={!!message.isGreeting}
                             usage={message.usage}
                             timestamp={message.timestamp}
                           />

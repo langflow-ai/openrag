@@ -1,7 +1,8 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import col
 
 from db.models import User
 from db.repositories._helpers import email_lookup_hash
@@ -16,7 +17,9 @@ class UserRepo:
 
     async def get_by_oauth(self, provider: str, subject: str) -> User | None:
         result = await self.session.execute(
-            select(User).where(User.oauth_provider == provider, User.oauth_subject == subject)
+            select(User).where(
+                and_(col(User.oauth_provider) == provider, col(User.oauth_subject) == subject)
+            )
         )
         return result.scalar_one_or_none()
 
@@ -24,12 +27,14 @@ class UserRepo:
         h = email_lookup_hash(email)
         if not h:
             return None
-        result = await self.session.execute(select(User).where(User.email_lookup_hash == h))
+        result = await self.session.execute(
+            select(User).where(col(User.email_lookup_hash) == h)
+        )
         return result.scalar_one_or_none()
 
     async def list_all(self, limit: int = 100, offset: int = 0) -> list[User]:
         result = await self.session.execute(
-            select(User).order_by(User.created_at.desc()).offset(offset).limit(limit)
+            select(User).order_by(col(User.created_at).desc()).offset(offset).limit(limit)
         )
         return list(result.scalars().all())
 
