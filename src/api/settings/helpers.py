@@ -21,7 +21,12 @@ logger = get_logger(__name__)
 
 # Provider names in priority order. LLM supports anthropic; embeddings do not.
 _LLM_PROVIDER_NAMES = ("openai", "anthropic", "watsonx", "ollama")
-_EMBEDDING_PROVIDER_NAMES = ("openai", "watsonx", "ollama")
+# Embedding providers OpenRAG supports. Bedrock has no dedicated Langflow
+# component, but change_langflow_model_value() proxies every provider
+# through the same OpenRAG-internal OpenAI-compatible endpoint (see
+# flows_service.py's `proxy_fields`), so it no longer needs special-casing
+# here - it's synced exactly like openai/watsonx/ollama.
+_EMBEDDING_PROVIDER_NAMES = ("openai", "watsonx", "ollama", "bedrock")
 
 
 def _has_other_configured_provider(config, excluding: str) -> bool:
@@ -35,6 +40,8 @@ def _has_other_configured_provider(config, excluding: str) -> bool:
     if excluding != "watsonx" and providers.watsonx.configured:
         return True
     if excluding != "ollama" and providers.ollama.configured:
+        return True
+    if excluding != "bedrock" and providers.bedrock.configured:
         return True
     return False
 
@@ -77,7 +84,8 @@ def _first_configured_llm_provider(config, excluding: str) -> str:
 
 
 def _first_configured_embedding_provider(config, excluding: str) -> str:
-    """Return the first configured embedding provider that isn't `excluding`, or "" if none.
+    """Return the first configured embedding provider (openai/watsonx/ollama/bedrock)
+    that isn't `excluding`, or "" if none.
 
     Providers hidden in this run mode are skipped, as in
     ``_first_configured_llm_provider``.

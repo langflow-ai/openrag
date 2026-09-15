@@ -1022,7 +1022,43 @@ async def update_settings(
 
         if body.remove_provider_config:
             provider = body.remove_provider_config.strip().lower()
-            if provider in working_config.providers.custom:
+            # Bedrock has its own typed `providers.bedrock` field rather than
+            # a `.custom` entry, so it needs its own removal branch here -
+            # otherwise its region/access keys and `configured` flag are left
+            # untouched and it stays fully live after "removal".
+            if provider == "bedrock":
+                if not _has_other_configured_provider(working_config, "bedrock"):
+                    return JSONResponse(
+                        {
+                            "error": (
+                                "Cannot remove provider configuration: "
+                                "configure another model provider first."
+                            )
+                        },
+                        status_code=400,
+                    )
+                working_config.providers.bedrock.region = ""
+                working_config.providers.bedrock.access_key_id = ""
+                working_config.providers.bedrock.secret_access_key = ""
+                working_config.providers.bedrock.configured = False
+                # set_credentials() unconditionally upserts a shadow entry in
+                # providers.custom["bedrock"] (with its own configured=True
+                # and live credentials) before bridging into the typed fields
+                # above - the generic onboarding form submits through that
+                # path, so it must be cleared too or credential_values()/
+                # any_configured() keep seeing Bedrock as fully configured.
+                working_config.providers.custom.pop("bedrock", None)
+                if working_config.agent.llm_provider == "bedrock":
+                    fallback = _first_configured_llm_provider(working_config, "bedrock")
+                    working_config.agent.llm_provider = fallback
+                    working_config.agent.llm_model = _default_llm_model(fallback)
+                if working_config.knowledge.embedding_provider == "bedrock":
+                    fallback = _first_configured_embedding_provider(working_config, "bedrock")
+                    working_config.knowledge.embedding_provider = fallback
+                    working_config.knowledge.embedding_model = _default_embedding_model(fallback)
+                config_updated = True
+                provider_updated = True
+            elif provider in working_config.providers.custom:
                 if not _has_other_configured_provider(working_config, provider):
                     return JSONResponse(
                         {
@@ -1277,6 +1313,15 @@ async def onboarding(
             elif embedding_provider == "ollama" and current_config.providers.ollama.endpoint:
                 current_config.providers.ollama.configured = True
                 logger.info("Marked Ollama as configured (chosen as embedding provider)")
+            elif embedding_provider == "bedrock" and current_config.providers.bedrock.region:
+                # Bedrock is commonly configured purely via env vars/IAM role
+                # (BEDROCK_REGION with no explicit keys) rather than through
+                # provider_credentials, so it never goes through
+                # set_credentials()'s `configured = bool(region)` bridge.
+                # Region is required either way (see credential_values()), so
+                # that's the same signal used here.
+                current_config.providers.bedrock.configured = True
+                logger.info("Marked Bedrock as configured (chosen as embedding provider)")
             elif (
                 embedding_provider in current_config.providers.custom
                 and current_config.providers.custom[embedding_provider].credentials
