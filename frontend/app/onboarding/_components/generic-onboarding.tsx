@@ -15,7 +15,10 @@ import {
   savedCredentialValuesForProvider,
   savedSecretFieldsForProvider,
 } from "@/components/models/catalog-models";
-import { getProviderChrome } from "@/components/models/model-helpers";
+import {
+  getProviderChrome,
+  requiresExplicitModelSelection,
+} from "@/components/models/model-helpers";
 import type { OnboardingVariables } from "../../api/mutations/useOnboardingMutation";
 import { AdvancedOnboarding } from "./advanced";
 import { GenericProviderCredentialFields } from "./generic-provider-credential-fields";
@@ -143,7 +146,12 @@ export function GenericOnboarding({
   // highest-ranked model when the catalogue loads or provider changes.
   const defaultedModelRef = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (provider === "azure" || model || models.length === 0) return;
+    if (
+      requiresExplicitModelSelection(provider) ||
+      model ||
+      models.length === 0
+    )
+      return;
     const defaultModel = models[0].value;
     // Only set once per provider so switching back doesn't re-default.
     if (defaultedModelRef.current === `${provider}:${defaultModel}`) return;
@@ -257,7 +265,7 @@ export function GenericOnboarding({
       <AdvancedOnboarding
         icon={<Logo className="w-4 h-4" />}
         searchPlaceholder={
-          provider === "azure"
+          requiresExplicitModelSelection(provider)
             ? "Search models or type Azure deployment name"
             : undefined
         }
