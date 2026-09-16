@@ -279,8 +279,9 @@ class ConnectorService:
             file_list = await connector.list_files(page_token, max_files=max_files)
             logger.debug("Got files from connector", file_count=len(file_list.get("files", [])))
             files = file_list["files"]
+            page_token = _next_page_token(file_list)
 
-            if not files:
+            if not files and not page_token:
                 break
 
             for file_info in files:
@@ -296,8 +297,6 @@ class ConnectorService:
                         )
                         continue
                 files_to_process.append(file_info)
-
-            page_token = _next_page_token(file_list)
 
             # Stop if we have enough files or no more pages
             if (max_files and len(files_to_process) >= max_files) or not page_token:

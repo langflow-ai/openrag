@@ -136,6 +136,30 @@ async def test_token_paginated_connector_is_followed_across_pages():
 
 
 @pytest.mark.asyncio
+async def test_token_paginated_connector_continues_after_empty_page():
+    pages = [[], [_file(0), _file(1)]]
+    connector, requested_tokens = _token_paginating_connector(pages)
+    service = _service(connector)
+
+    await service.sync_connector_files("conn-1", "alice")
+
+    assert _processed_ids(service) == ["b1::k0.pdf", "b1::k1.pdf"]
+    assert requested_tokens == [None, "1"]
+
+
+@pytest.mark.asyncio
+async def test_token_paginated_connector_stops_at_aggregate_max_files():
+    pages = [[_file(i) for i in range(start, start + 15)] for start in (0, 15, 30)]
+    connector, requested_tokens = _token_paginating_connector(pages)
+    service = _service(connector)
+
+    await service.sync_connector_files("conn-1", "alice", max_files=20)
+
+    assert _processed_ids(service) == [f"b1::k{i}.pdf" for i in range(20)]
+    assert requested_tokens == [None, "1"]
+
+
+@pytest.mark.asyncio
 async def test_camel_case_token_still_paginates():
     """Tolerated alias: a connector written against the old key still works."""
     connector = MagicMock()
