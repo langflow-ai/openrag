@@ -412,7 +412,9 @@ def _catalog_entries() -> tuple[ProviderEntry, ...]:
     `models:` rows in `model_providers.yaml` can only ever be a guess. Once the
     cluster has said what it actually has, that wins — a model it does not
     serve must not sit in the picker waiting to be chosen. The configured rows
-    stay as the fallback for when it cannot be reached.
+    stay as the fallback for when it cannot be reached — per list, since a
+    provider with separate chat and embedding endpoints can have an answer
+    from one and not the other.
 
     Entries are the `_catalog()` cache key, so substituting here rebuilds the
     payload rather than serving a stale one.
@@ -424,7 +426,10 @@ def _catalog_entries() -> tuple[ProviderEntry, ...]:
         if hasattr(enhancement, "cached_models")
     }
     return tuple(
-        entry._replace(models=live.chat, embedding_models=live.embedding)
+        entry._replace(
+            models=entry.models if live.chat is None else live.chat,
+            embedding_models=entry.embedding_models if live.embedding is None else live.embedding,
+        )
         if (live := live_models.get(entry.name)) is not None
         else entry
         for entry in entries
@@ -447,7 +452,15 @@ async def refresh_live_models() -> None:
         ):
             continue
         try:
-            credentials = get_openrag_config().providers.credential_values(enhancement.PROVIDER_KEY)
+            # The stored form, not the LiteLLM one: a provider whose chat and
+            # embedding endpoints differ has its credentials narrowed to one of
+            # them by `credential_values()`, and listing models needs both.
+            providers = get_openrag_config().providers
+            credentials = (
+                providers.stored_credentials(enhancement.PROVIDER_KEY)
+                if hasattr(providers, "stored_credentials")
+                else providers.credential_values(enhancement.PROVIDER_KEY)
+            )
         except Exception:
             logger.debug(
                 "Could not read credentials for %s", enhancement.PROVIDER_KEY, exc_info=True

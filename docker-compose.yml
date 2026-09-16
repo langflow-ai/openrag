@@ -87,6 +87,13 @@ services:
       - WATSONX_API_KEY=${WATSONX_API_KEY}
       - WATSONX_ENDPOINT=${WATSONX_ENDPOINT}
       - WATSONX_PROJECT_ID=${WATSONX_PROJECT_ID}
+      # Red Hat OpenShift AI. Two endpoints because vLLM serves one model per
+      # InferenceService; RHOAI_TLS_VERIFY is a CA bundle path (or `false` for a
+      # port-forward in development only).
+      - RHOAI_ENDPOINT=${RHOAI_ENDPOINT:-}
+      - RHOAI_EMBEDDINGS_ENDPOINT=${RHOAI_EMBEDDINGS_ENDPOINT:-}
+      - RHOAI_API_KEY=${RHOAI_API_KEY:-}
+      - RHOAI_TLS_VERIFY=${RHOAI_TLS_VERIFY:-}
       - OLLAMA_ENDPOINT=${OLLAMA_ENDPOINT}
       - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}
       - GOOGLE_OAUTH_CLIENT_SECRET=${GOOGLE_OAUTH_CLIENT_SECRET}
