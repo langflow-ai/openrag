@@ -146,9 +146,7 @@ class TestDefaultEmbeddingModel:
         monkeypatch.setenv("EMBEDDING_MODEL", "text-embedding-3-large")
         assert _default_embedding_model("watsonx") == ""
 
-    def test_azure_requires_an_explicit_deployment_even_when_env_declares_one(
-        self, monkeypatch
-    ):
+    def test_azure_requires_an_explicit_deployment_even_when_env_declares_one(self, monkeypatch):
         """Azure model names are deployment names chosen by the customer.
 
         Provider removal must not silently carry an operator default into the
