@@ -11,14 +11,13 @@ on:
         type: boolean
         default: false
 
-permissions:
-  contents: read
-  security-events: write
-
 jobs:
   scan-container-images:
     name: Container Image Scan (${{ matrix.image.name }})
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     strategy:
       fail-fast: false
       matrix:
@@ -77,6 +76,8 @@ jobs:
   oss-scan:
     name: OSS Dependency Audit
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
