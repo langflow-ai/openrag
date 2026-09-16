@@ -26,8 +26,9 @@ logger = get_logger(__name__)
 # sets `errors: true` for the whole response even though the rest of the
 # document's chunks were written successfully. That makes an entire file look
 # "failed" in the task counters even when it's actually indexed and visible.
-# Retrying the whole request is safe here because every op is an idempotent
-# upsert, so re-sending already-succeeded items has no effect.
+# Every op is an idempotent upsert, so retrying is safe; we resend only the
+# items still failing rather than the whole body, since under load a retry can
+# fail a different subset than the previous attempt did.
 _BULK_RETRYABLE_ERROR_TYPES = frozenset(
     {
         "es_rejected_execution_exception",
@@ -336,32 +337,63 @@ class DocumentIndexWriter:
         return normalized
 
     @staticmethod
-    def _bulk_errors_are_retryable(result: Any) -> bool:
-        if not isinstance(result, dict):
-            return False
-        for item in result.get("items", []):
-            action = item.get("index") or item.get("create") or item.get("update") or item
-            error = action.get("error")
-            if error and error.get("type") not in _BULK_RETRYABLE_ERROR_TYPES:
-                return False
-        return True
+    def _item_error(item: Any) -> dict[str, Any] | None:
+        action = item.get("index") or item.get("create") or item.get("update") or item
+        return action.get("error")
+
+    @classmethod
+    def _item_error_is_retryable(cls, item: Any) -> bool:
+        error = cls._item_error(item)
+        return not error or error.get("type") in _BULK_RETRYABLE_ERROR_TYPES
 
     async def _bulk_with_retry(
         self, client: Any, bulk_body: list[dict[str, Any]], *, refresh: bool | str
     ) -> Any:
-        result = await client.bulk(body=bulk_body, refresh=refresh)
-        for attempt in range(_MAX_BULK_RETRIES):
-            if not isinstance(result, dict) or not result.get("errors"):
+        """Retry only the items that actually failed, not the whole bulk body.
+
+        A bulk response's `items` line up positionally with the action/document
+        pairs in the request. Resending everything on retry would re-submit
+        pairs that already succeeded and, under sustained load, could flip
+        which pairs fail on each attempt - so after the retry budget is spent
+        the file could still be marked failed even though every pair had
+        succeeded at some point. Instead we track each pair by its original
+        position and only rebuild the retry body from the ones still failing.
+        """
+        pairs = [tuple(bulk_body[i : i + 2]) for i in range(0, len(bulk_body), 2)]
+        pending_indices = list(range(len(pairs)))
+        final_items: list[Any] = [None] * len(pairs)
+
+        for attempt in range(_MAX_BULK_RETRIES + 1):
+            retry_body = [part for i in pending_indices for part in pairs[i]]
+            result = await client.bulk(body=retry_body, refresh=refresh)
+            if not isinstance(result, dict):
                 return result
-            if not self._bulk_errors_are_retryable(result):
-                return result
+
+            items = result.get("items", [])
+            still_pending = []
+            for original_index, item in zip(pending_indices, items, strict=False):
+                final_items[original_index] = item
+                if self._item_error(item):
+                    still_pending.append(original_index)
+
+            if not still_pending:
+                return {**result, "items": final_items, "errors": False}
+
+            all_retryable = all(
+                self._item_error_is_retryable(final_items[i]) for i in still_pending
+            )
+            if not all_retryable or attempt == _MAX_BULK_RETRIES:
+                return {**result, "items": final_items, "errors": True}
+
             logger.warning(
                 "Retrying OpenSearch bulk write after transient error",
                 attempt=attempt + 1,
+                remaining_items=len(still_pending),
             )
             await asyncio.sleep(_BULK_RETRY_DELAY_SECONDS * (attempt + 1))
-            result = await client.bulk(body=bulk_body, refresh=refresh)
-        return result
+            pending_indices = still_pending
+
+        return {"items": final_items, "errors": True}
 
     @staticmethod
     def _raise_for_bulk_errors(result: Any) -> None:
