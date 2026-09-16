@@ -40,7 +40,10 @@ def _load_component_module():
         ):
             sys.modules.setdefault(name, types.ModuleType(name))
         sys.modules["lfx.base.data.docling_utils"].coerce_docling_document = lambda *a, **k: None
-        sys.modules["lfx.base.data.docling_utils"].extract_docling_documents = lambda *a, **k: ([], None)
+        sys.modules["lfx.base.data.docling_utils"].extract_docling_documents = lambda *a, **k: (
+            [],
+            None,
+        )
         sys.modules["lfx.base.data.docling_utils"].get_docling_image_ref_mode = lambda *a, **k: None
         sys.modules["lfx.custom"].Component = object
         for io_name in ("DropdownInput", "HandleInput", "MessageTextInput", "Output", "StrInput"):
@@ -87,34 +90,59 @@ def _scanned_page_document():
         "schema_name": "DoclingDocument",
         "version": "1.10.0",
         "name": "scan",
-        "origin": {"mimetype": "application/pdf", "binary_hash": 1, "filename": "scan.pdf", "uri": None},
+        "origin": {
+            "mimetype": "application/pdf",
+            "binary_hash": 1,
+            "filename": "scan.pdf",
+            "uri": None,
+        },
         "furniture": {
-            "self_ref": "#/furniture", "parent": None, "children": [],
-            "content_layer": "furniture", "name": "_root_", "label": "unspecified",
+            "self_ref": "#/furniture",
+            "parent": None,
+            "children": [],
+            "content_layer": "furniture",
+            "name": "_root_",
+            "label": "unspecified",
         },
         "body": {
-            "self_ref": "#/body", "parent": None,
+            "self_ref": "#/body",
+            "parent": None,
             "children": [{"cref": "#/texts/0"}, {"cref": "#/pictures/0"}],
-            "content_layer": "body", "name": "_root_", "label": "unspecified",
+            "content_layer": "body",
+            "name": "_root_",
+            "label": "unspecified",
         },
         "groups": [],
         "texts": texts,
         "pictures": [
             {
-                "self_ref": "#/pictures/0", "parent": {"cref": "#/body"},
+                "self_ref": "#/pictures/0",
+                "parent": {"cref": "#/body"},
                 "children": [{"cref": f"#/texts/{i + 1}"} for i in range(len(picture_texts))],
-                "content_layer": "body", "label": "picture",
+                "content_layer": "body",
+                "label": "picture",
                 "prov": [
                     {
                         "page_no": 1,
-                        "bbox": {"l": 71, "t": 770, "r": 523, "b": 473, "coord_origin": "BOTTOMLEFT"},
+                        "bbox": {
+                            "l": 71,
+                            "t": 770,
+                            "r": 523,
+                            "b": 473,
+                            "coord_origin": "BOTTOMLEFT",
+                        },
                         "charspan": [0, 0],
                     }
                 ],
-                "captions": [], "references": [], "footnotes": [], "annotations": [],
+                "captions": [],
+                "references": [],
+                "footnotes": [],
+                "annotations": [],
             }
         ],
-        "tables": [], "key_value_items": [], "form_items": [],
+        "tables": [],
+        "key_value_items": [],
+        "form_items": [],
         "pages": {"1": {"size": {"width": 595.2, "height": 841.92}, "image": None, "page_no": 1}},
     }
 
