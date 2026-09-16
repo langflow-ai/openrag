@@ -348,6 +348,7 @@ async def get_settings(
                 chunk_overlap=knowledge_config.chunk_overlap,
                 table_structure=knowledge_config.table_structure,
                 ocr=knowledge_config.ocr,
+                ocr_languages=knowledge_config.ocr_languages,
                 picture_descriptions=knowledge_config.picture_descriptions,
                 index_name=knowledge_config.index_name,
                 disable_ingest_with_langflow=knowledge_config.disable_ingest_with_langflow,
@@ -684,6 +685,20 @@ async def update_settings(
 
         if body.ocr is not None:
             working_config.knowledge.ocr = body.ocr
+            config_updated = True
+            await TelemetryClient.send_event(
+                Category.SETTINGS_OPERATIONS, MessageId.ORB_SETTINGS_DOCLING_UPDATED
+            )
+
+            # Also update the flow with the new docling settings
+            try:
+                flows_service = _get_flows_service()
+                await _update_langflow_docling_settings(working_config, flows_service)
+            except Exception as e:
+                logger.error(f"Failed to update docling settings in flow: {str(e)}")
+
+        if body.ocr_languages is not None:
+            working_config.knowledge.ocr_languages = body.ocr_languages
             config_updated = True
             await TelemetryClient.send_event(
                 Category.SETTINGS_OPERATIONS, MessageId.ORB_SETTINGS_DOCLING_UPDATED
@@ -1925,8 +1940,13 @@ async def update_docling_preset(
                 ),
             }
 
-        # Get the preset configuration
-        preset_config_dict = get_docling_preset_configs(**settings_toggles)
+        # Get the preset configuration. OCR languages are not part of this legacy
+        # preset API, so carry the configured ones through rather than dropping
+        # them from the flow's docling options.
+        preset_config_dict = get_docling_preset_configs(
+            **settings_toggles,
+            ocr_languages=get_openrag_config().knowledge.ocr_languages,
+        )
         preset_config = DoclingConfig(**preset_config_dict)
 
         # Use the helper function to update the flow

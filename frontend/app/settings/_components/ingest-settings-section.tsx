@@ -41,6 +41,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { NumberInput } from "@/components/ui/inputs/number-input";
 import { Label } from "@/components/ui/label";
+import { MultiSelect } from "@/components/ui/multi-select";
 import {
   Select,
   SelectContent,
@@ -54,7 +55,11 @@ import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useRegisterDirty } from "@/contexts/unsaved-changes-context";
 import { trackButton } from "@/lib/analytics";
-import { DEFAULT_KNOWLEDGE_SETTINGS } from "@/lib/constants";
+import {
+  DEFAULT_KNOWLEDGE_SETTINGS,
+  OCR_LANGUAGE_OPTIONS,
+} from "@/lib/constants";
+import { allowedLanguages } from "@/lib/ocr-languages";
 import { resolveLangflowEditUrl } from "@/lib/url-utils";
 import { cn } from "@/lib/utils";
 import { useUpdateSettingsMutation } from "../../api/mutations/useUpdateSettingsMutation";
@@ -82,6 +87,9 @@ export function IngestSettingsSection() {
   >(null);
   const [tableStructure, setTableStructure] = useState<boolean>(true);
   const [ocr, setOcr] = useState<boolean>(false);
+  const [ocrLanguages, setOcrLanguages] = useState<string[]>([
+    ...DEFAULT_KNOWLEDGE_SETTINGS.ocr_languages,
+  ]);
   const [pictureDescriptions, setPictureDescriptions] =
     useState<boolean>(false);
   const [disableIngestWithLangflow, setDisableIngestWithLangflow] =
@@ -314,6 +322,8 @@ export function IngestSettingsSection() {
     if (k.chunk_overlap !== undefined) setChunkOverlap(k.chunk_overlap);
     if (k.table_structure !== undefined) setTableStructure(k.table_structure);
     if (k.ocr !== undefined) setOcr(k.ocr);
+    if (k.ocr_languages !== undefined && k.ocr_languages.length > 0)
+      setOcrLanguages(k.ocr_languages);
     if (k.picture_descriptions !== undefined)
       setPictureDescriptions(k.picture_descriptions);
     if (k.disable_ingest_with_langflow !== undefined)
@@ -336,6 +346,7 @@ export function IngestSettingsSection() {
   }, [settings.knowledge]);
 
   const [vlmOpen, setVlmOpen] = useState(false);
+  const [ocrOpen, setOcrOpen] = useState(false);
 
   const autoSelectedVlm = useRef(false);
   useEffect(() => {
@@ -408,11 +419,25 @@ export function IngestSettingsSection() {
       vlmWatsonxApiVersion !==
         (k?.vlm_watsonx_api_version ?? vlmWatsonxApiVersion));
 
+  // easyocr loads one recognition model per job, so a selection that mixes
+  // scripts fails at ingest time on Linux even though it works on a macOS host.
+  // Disable the incompatible rows rather than hide them, so the reason is visible.
+  const ocrLanguageOptions = useMemo(() => {
+    const allowed = new Set(allowedLanguages(ocrLanguages));
+    return OCR_LANGUAGE_OPTIONS.map((option) => ({
+      value: option.value,
+      label: option.label,
+      disabled: !allowed.has(option.value),
+      hint: allowed.has(option.value) ? undefined : "not combinable",
+    }));
+  }, [ocrLanguages]);
+
   const knowledgeIngestDirty =
     chunkSize !== (k?.chunk_size ?? chunkSize) ||
     chunkOverlap !== (k?.chunk_overlap ?? chunkOverlap) ||
     tableStructure !== (k?.table_structure ?? tableStructure) ||
     ocr !== (k?.ocr ?? ocr) ||
+    ocrLanguages.join(",") !== (k?.ocr_languages ?? ocrLanguages).join(",") ||
     pictureDescriptions !== (k?.picture_descriptions ?? pictureDescriptions) ||
     disableIngestWithLangflow !==
       (k?.disable_ingest_with_langflow ?? disableIngestWithLangflow) ||
@@ -473,6 +498,7 @@ export function IngestSettingsSection() {
         chunk_overlap: chunkOverlap,
         table_structure: tableStructure,
         ocr,
+        ocr_languages: ocrLanguages,
         picture_descriptions: pictureDescriptions,
         disable_ingest_with_langflow: disableIngestWithLangflow,
         ...vlmPayload,
@@ -514,6 +540,7 @@ export function IngestSettingsSection() {
         chunk_overlap: chunkOverlap,
         table_structure: tableStructure,
         ocr,
+        ocr_languages: ocrLanguages,
         picture_descriptions: pictureDescriptions,
         disable_ingest_with_langflow: disableIngestWithLangflow,
         ...vlmPayload,
@@ -573,6 +600,7 @@ export function IngestSettingsSection() {
         setChunkOverlap(DEFAULT_KNOWLEDGE_SETTINGS.chunk_overlap);
         setTableStructure(DEFAULT_KNOWLEDGE_SETTINGS.table_structure);
         setOcr(DEFAULT_KNOWLEDGE_SETTINGS.ocr);
+        setOcrLanguages([...DEFAULT_KNOWLEDGE_SETTINGS.ocr_languages]);
         setPictureDescriptions(DEFAULT_KNOWLEDGE_SETTINGS.picture_descriptions);
         setDisableIngestWithLangflow(false);
         setChunkValidationError(null);
@@ -879,6 +907,55 @@ export function IngestSettingsSection() {
                 }}
               />
             </div>
+            <hr className="mt-4 border-border" />
+            <Collapsible
+              open={ocrOpen}
+              onOpenChange={setOcrOpen}
+              className={cn(
+                "mt-4 px-4 transition-all duration-200",
+                !ocr && "opacity-50",
+              )}
+            >
+              <CollapsibleTrigger className="flex w-full items-center justify-between py-2 text-sm font-medium text-foreground hover:text-foreground/80">
+                Advanced OCR Settings
+                <ChevronDown
+                  className={cn(
+                    "h-4 w-4 text-muted-foreground transition-transform duration-200",
+                    ocrOpen && "rotate-180",
+                  )}
+                />
+              </CollapsibleTrigger>
+              <CollapsibleContent className="pt-4 space-y-6">
+                <div className="space-y-2">
+                  <LabelWrapper
+                    id="ocr-languages"
+                    label="OCR languages"
+                    helperText="Text in languages you don't select is skipped during ingest"
+                    disabled={!ocr}
+                  >
+                    <MultiSelect
+                      options={ocrLanguageOptions}
+                      value={ocrLanguages}
+                      onValueChange={(v) => {
+                        setUserEdited(true);
+                        // An empty selection would make docling fall back to its
+                        // English-only default without saying so; keep English.
+                        setOcrLanguages(v.length > 0 ? v : ["en"]);
+                      }}
+                      showAllOption={false}
+                      placeholder="Select languages..."
+                      searchPlaceholder="Search languages..."
+                      className="max-w-xs"
+                      disabled={!ocr}
+                    />
+                  </LabelWrapper>
+                  <p className="text-sm text-muted-foreground">
+                    Most languages can only be combined with English, so
+                    incompatible options are disabled once you choose one.
+                  </p>
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
             {showVlmSettings && (
               <>
                 <hr className="mt-4 border-border" />

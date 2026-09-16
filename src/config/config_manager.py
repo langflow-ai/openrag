@@ -342,6 +342,10 @@ class KnowledgeConfig:
     chunk_overlap: int = 200
     table_structure: bool = True
     ocr: bool = False
+    # Neutral OCR language codes (ISO 639-1, plus zh-Hans/zh-Hant), translated to
+    # engine-specific codes in services.docling_service. Empty means "engine
+    # default", which is English-only on macOS.
+    ocr_languages: list[str] = field(default_factory=lambda: ["en"])
     picture_descriptions: bool = False
     index_name: str = "documents"  # OpenSearch index name
     disable_ingest_with_langflow: bool = False

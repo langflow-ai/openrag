@@ -220,13 +220,56 @@ async def test_build_docling_options_preview_mode_embeds_page_images(docling_ser
     assert options["include_images"] is True
 
 
+@pytest.mark.asyncio
+async def test_build_docling_options_sends_configured_ocr_languages(docling_service):
+    """OCR languages from KnowledgeConfig reach docling as engine-specific codes."""
+    mock_config = MagicMock()
+    mock_config.knowledge.table_structure = False
+    mock_config.knowledge.ocr = True
+    mock_config.knowledge.ocr_languages = ["en", "ja"]
+    mock_config.knowledge.picture_descriptions = False
+    mock_config.knowledge.vlm_enabled = False
+
+    with (
+        patch("services.docling_service.get_openrag_config", return_value=mock_config),
+        patch("services.docling_service.platform.system", return_value="Darwin"),
+    ):
+        options = await docling_service._build_docling_options_async()
+
+    assert options["ocr_lang"] == ["en-US", "ja-JP"]
+
+
+@pytest.mark.asyncio
+async def test_upload_sends_ocr_lang_as_repeated_form_fields(docling_service, mock_httpx_client):
+    """httpx encodes a list form value as repeated parts; docling needs that shape."""
+    mock_config = MagicMock()
+    mock_config.knowledge.table_structure = False
+    mock_config.knowledge.ocr = True
+    mock_config.knowledge.ocr_languages = ["en", "ja"]
+    mock_config.knowledge.picture_descriptions = False
+    mock_config.knowledge.vlm_enabled = False
+
+    mock_httpx_client.post.return_value = _make_response(200, {"task_id": "t1"})
+
+    with (
+        patch("services.docling_service.get_openrag_config", return_value=mock_config),
+        patch("services.docling_service.platform.system", return_value="Darwin"),
+    ):
+        await docling_service.upload_to_docling_direct_async("doc.pdf", b"data")
+
+    sent = mock_httpx_client.post.call_args.kwargs["data"]
+    assert sent["ocr_lang"] == ["en-US", "ja-JP"]
+    assert sent["ocr_preset"] == "ocrmac"
+    assert "ocr_engine" not in sent
+
+
 def test_preset_configs_macos():
     """Uses ocrmac engine on macOS."""
     from services.docling_service import get_docling_preset_configs
 
     with patch("services.docling_service.platform.system", return_value="Darwin"):
         preset = get_docling_preset_configs(ocr=True)
-        assert preset["ocr_engine"] == "ocrmac"
+        assert preset["ocr_preset"] == "ocrmac"
 
 
 def test_preset_configs_linux():
@@ -235,7 +278,57 @@ def test_preset_configs_linux():
 
     with patch("services.docling_service.platform.system", return_value="Linux"):
         preset = get_docling_preset_configs(ocr=True)
-        assert preset["ocr_engine"] == "easyocr"
+        assert preset["ocr_preset"] == "easyocr"
+
+
+def test_preset_configs_never_sends_deprecated_ocr_engine():
+    """docling-serve silently ignores ocr_lang when the deprecated ocr_engine is set."""
+    from services.docling_service import get_docling_preset_configs
+
+    with patch("services.docling_service.platform.system", return_value="Darwin"):
+        preset = get_docling_preset_configs(ocr=True, ocr_languages=["ja", "en"])
+
+    assert "ocr_engine" not in preset
+
+
+def test_preset_configs_maps_languages_to_ocrmac_codes():
+    """ocrmac wants BCP-47 tags, not the neutral codes stored in config."""
+    from services.docling_service import get_docling_preset_configs
+
+    with patch("services.docling_service.platform.system", return_value="Darwin"):
+        preset = get_docling_preset_configs(ocr=True, ocr_languages=["ja", "en"])
+
+    assert preset["ocr_lang"] == ["ja-JP", "en-US"]
+
+
+def test_preset_configs_maps_languages_to_easyocr_codes():
+    """easyocr wants short codes, and its own spelling for Chinese."""
+    from services.docling_service import get_docling_preset_configs
+
+    with patch("services.docling_service.platform.system", return_value="Linux"):
+        preset = get_docling_preset_configs(ocr=True, ocr_languages=["ja", "zh-Hans"])
+
+    assert preset["ocr_lang"] == ["ja", "ch_sim"]
+
+
+def test_preset_configs_passes_through_unknown_language_codes():
+    """An engine code the map does not know is forwarded rather than dropped."""
+    from services.docling_service import get_docling_preset_configs
+
+    with patch("services.docling_service.platform.system", return_value="Linux"):
+        preset = get_docling_preset_configs(ocr=True, ocr_languages=["bn"])
+
+    assert preset["ocr_lang"] == ["bn"]
+
+
+def test_preset_configs_omits_ocr_lang_when_no_languages_configured():
+    """Empty config must not send an empty list that would override engine defaults."""
+    from services.docling_service import get_docling_preset_configs
+
+    with patch("services.docling_service.platform.system", return_value="Darwin"):
+        preset = get_docling_preset_configs(ocr=True, ocr_languages=[])
+
+    assert "ocr_lang" not in preset
 
 
 def test_init_default_url():
@@ -429,3 +522,29 @@ async def test_build_vlm_options_azure_ai_requires_credentials(docling_service):
     with patch("services.docling_service.get_openrag_config", return_value=mock_config):
         with pytest.raises(DoclingServeError, match="Azure AI Foundry provider is not"):
             await docling_service._build_docling_options_async()
+
+
+def test_docling_config_model_accepts_preset_output():
+    """DoclingConfig validates the dict get_docling_preset_configs produces."""
+    from services.docling_service import DoclingConfig, get_docling_preset_configs
+
+    with patch("services.docling_service.platform.system", return_value="Darwin"):
+        preset = get_docling_preset_configs(ocr=True, ocr_languages=["en", "ja"])
+
+    config = DoclingConfig(**preset)
+
+    assert config.ocr_preset == "ocrmac"
+    assert config.ocr_lang == ["en-US", "ja-JP"]
+
+
+def test_preset_configs_maps_arabic_per_engine():
+    """Arabic is in the curated set; ocrmac and easyocr spell it differently."""
+    from services.docling_service import get_docling_preset_configs
+
+    with patch("services.docling_service.platform.system", return_value="Darwin"):
+        mac = get_docling_preset_configs(ocr=True, ocr_languages=["ar"])
+    with patch("services.docling_service.platform.system", return_value="Linux"):
+        linux = get_docling_preset_configs(ocr=True, ocr_languages=["ar"])
+
+    assert mac["ocr_lang"] == ["ar-SA"]
+    assert linux["ocr_lang"] == ["ar"]

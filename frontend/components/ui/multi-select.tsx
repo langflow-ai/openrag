@@ -22,6 +22,10 @@ interface Option {
   value: string;
   label: string;
   count?: number;
+  /** Renders the row unselectable. Selecting it is a no-op. */
+  disabled?: boolean;
+  /** Short reason shown beside a disabled row, e.g. why it is unavailable. */
+  hint?: string;
 }
 
 interface MultiSelectProps {
@@ -34,6 +38,7 @@ interface MultiSelectProps {
   searchPlaceholder?: string;
   showAllOption?: boolean;
   allOptionLabel?: string;
+  disabled?: boolean;
 }
 
 export function MultiSelect({
@@ -46,6 +51,7 @@ export function MultiSelect({
   searchPlaceholder = "Search options...",
   showAllOption = true,
   allOptionLabel = "All",
+  disabled = false,
 }: MultiSelectProps) {
   const [open, setOpen] = React.useState(false);
   const [searchValue, setSearchValue] = React.useState("");
@@ -61,6 +67,9 @@ export function MultiSelect({
   );
 
   const handleSelect = (optionValue: string) => {
+    if (options.find((option) => option.value === optionValue)?.disabled) {
+      return;
+    }
     if (optionValue === "*") {
       // Toggle "All" selection
       if (isAllSelected) {
@@ -109,6 +118,7 @@ export function MultiSelect({
         <Button
           variant="outline"
           role="combobox"
+          disabled={disabled}
           aria-expanded={open}
           aria-controls={listboxId}
           className={cn("w-full justify-between h-8 py-0 text-left", className)}
@@ -152,11 +162,22 @@ export function MultiSelect({
                 <CommandItem
                   key={option.value}
                   onSelect={() => handleSelect(option.value)}
-                  className="cursor-pointer"
+                  disabled={option.disabled}
+                  aria-disabled={option.disabled}
+                  className={cn(
+                    option.disabled
+                      ? "cursor-not-allowed opacity-50"
+                      : "cursor-pointer",
+                  )}
                 >
                   <span className="flex-1 truncate min-w-0">
                     {option.label}
                   </span>
+                  {option.hint && (
+                    <span className="text-xs text-muted-foreground ml-2 shrink-0">
+                      {option.hint}
+                    </span>
+                  )}
                   {option.count !== undefined && (
                     <span className="text-xs text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded ml-2">
                       {option.count}

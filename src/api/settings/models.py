@@ -12,6 +12,27 @@ from pydantic import BaseModel, Field, field_validator
 from services.docling_service import DoclingConfig
 
 
+# OCR languages grouped by the recognition model that serves them. English is
+# universal and therefore absent: it combines with every family. Mirrors
+# frontend/lib/ocr-languages.ts.
+OCR_LANGUAGE_FAMILIES = {
+    "fr": "latin",
+    "de": "latin",
+    "es": "latin",
+    "it": "latin",
+    "pt": "latin",
+    "vi": "latin",
+    "ru": "cyrillic",
+    "uk": "cyrillic",
+    "ar": "arabic",
+    "ja": "japanese",
+    "ko": "korean",
+    "zh-Hans": "chinese_simplified",
+    "zh-Hant": "chinese_traditional",
+    "th": "thai",
+}
+
+
 class SettingsUpdateBody(BaseModel):
     llm_model: str | None = Field(None, min_length=1)
     llm_provider: str | None = Field(None, min_length=1)
@@ -20,6 +41,7 @@ class SettingsUpdateBody(BaseModel):
     chunk_overlap: int | None = Field(None, ge=0)
     table_structure: bool | None = None
     ocr: bool | None = None
+    ocr_languages: list[str] | None = None
     picture_descriptions: bool | None = None
     disable_ingest_with_langflow: bool | None = None
     vlm_enabled: bool | None = None
@@ -57,6 +79,38 @@ class SettingsUpdateBody(BaseModel):
     # embedding models are still in use by indexed documents. Without this,
     # the backend returns 409 and the frontend prompts the user.
     force_remove: bool | None = False
+
+    @field_validator("ocr_languages")
+    @classmethod
+    def _validate_ocr_languages(cls, value: list[str] | None) -> list[str] | None:
+        """Reject blanks, empty lists, and combinations no OCR engine can serve.
+
+        Mirrors the picker's rules (frontend/lib/ocr-languages.ts) so the API
+        cannot be driven into a state the UI prevents. Duplicated on purpose:
+        the two run in different languages and are tested independently.
+        """
+        if value is None:
+            return None
+        if not value:
+            raise ValueError("ocr_languages must contain at least one language")
+        cleaned = [language.strip() for language in value]
+        if any(not language for language in cleaned):
+            raise ValueError("ocr_languages must not contain blank entries")
+
+        # easyocr loads a single recognition model per job and rejects anything
+        # outside it. Unknown codes are the operator's pass-through escape
+        # hatch and are deliberately not constrained.
+        families = {
+            OCR_LANGUAGE_FAMILIES[language]
+            for language in cleaned
+            if language in OCR_LANGUAGE_FAMILIES
+        }
+        if len(families) > 1:
+            raise ValueError(
+                "ocr_languages mixes scripts that no single OCR model can serve "
+                f"({', '.join(sorted(families))}); combine one script with English"
+            )
+        return cleaned
 
 
 class OnboardingBody(BaseModel):
@@ -201,6 +255,7 @@ class KnowledgeConfig(BaseModel):
     chunk_overlap: int | None
     table_structure: bool | None
     ocr: bool | None
+    ocr_languages: list[str] | None = None
     picture_descriptions: bool | None
     index_name: str | None
     disable_ingest_with_langflow: bool | None
