@@ -1,6 +1,7 @@
 import asyncio
 import concurrent.futures
 import os
+import ssl
 import threading
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
@@ -155,14 +156,26 @@ def _langflow_tls_kwargs() -> dict[str, Any]:
 
     Reuses the backend's own server cert/key (OPENRAG_TLS_CERT_PATH/KEY_PATH)
     as the client cert, so Langflow's mTLS mode (if enabled) can authenticate
-    the backend as a caller. A no-op when those paths aren't set.
+    the backend as a caller.
+
+    Builds the ssl.SSLContext explicitly rather than passing `verify`/`cert`
+    straight to httpx: httpx's own create_ssl_context() returns early when
+    `verify` is a CA-bundle path, before it ever calls load_cert_chain(), so
+    the client cert would otherwise be silently dropped.
     """
-    kwargs: dict[str, Any] = {
-        "verify": LANGFLOW_CA_CERTS if LANGFLOW_CA_CERTS else LANGFLOW_VERIFY_CERTS,
-    }
+    if LANGFLOW_CA_CERTS:
+        ctx = ssl.create_default_context(cafile=LANGFLOW_CA_CERTS)
+    elif LANGFLOW_VERIFY_CERTS:
+        ctx = ssl.create_default_context()
+    else:
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+
     if OPENRAG_TLS_CERT_PATH and OPENRAG_TLS_KEY_PATH:
-        kwargs["cert"] = (OPENRAG_TLS_CERT_PATH, OPENRAG_TLS_KEY_PATH)
-    return kwargs
+        ctx.load_cert_chain(OPENRAG_TLS_CERT_PATH, OPENRAG_TLS_KEY_PATH)
+
+    return {"verify": ctx}
 
 
 # Optional: public URL for browser links (e.g., http://localhost:7860)
