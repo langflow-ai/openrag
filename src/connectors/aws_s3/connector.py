@@ -7,7 +7,13 @@ from posixpath import basename
 from typing import Any
 
 from config.settings import IBM_AUTH_ENABLED
-from connectors.base import BaseConnector, ConnectorDocument, DocumentACL
+from connectors.base import (
+    CONTENT_ETAG_METADATA_KEY,
+    BaseConnector,
+    ConnectorDocument,
+    DocumentACL,
+    normalize_etag,
+)
 from utils.logging_config import get_logger
 
 from .auth import create_s3_client, create_s3_resource
@@ -198,6 +204,9 @@ class S3Connector(BaseConnector):
                             "modified_time": obj.last_modified.isoformat()
                             if obj.last_modified
                             else None,
+                            # Change detection compares this against the tag
+                            # stored at ingest; it moves on every overwrite.
+                            "etag": normalize_etag(getattr(obj, "e_tag", None)),
                         }
                     )
                     if max_files and len(files) >= max_files:
@@ -249,6 +258,9 @@ class S3Connector(BaseConnector):
                 "s3_bucket": bucket_name,
                 "s3_key": key,
                 "size": size,
+                # Persisted at ingest so a later sync can tell an overwritten
+                # object from an untouched one without trusting clocks.
+                CONTENT_ETAG_METADATA_KEY: normalize_etag(response.get("ETag")),
             },
         )
 
