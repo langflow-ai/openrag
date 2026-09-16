@@ -77,7 +77,6 @@ async def check_provider_health(
                 api_key = getattr(provider_config, "api_key", None)
                 endpoint = getattr(provider_config, "endpoint", None)
                 project_id = getattr(provider_config, "project_id", None)
-                credentials = current_config.providers.credential_values(provider)
 
                 # Check if this provider is used for LLM or embedding
                 llm_model = (
@@ -98,6 +97,19 @@ async def check_provider_health(
                 if model or embedding_model_override:
                     llm_model = model or None
                     embedding_model = embedding_model_override or None
+
+                # One credential set per role, because the endpoint a provider
+                # is checked against depends on which kind of call it is being
+                # checked for (Red Hat OpenShift AI serves the two from
+                # different endpoints). Each role is probed on its own below.
+                role_credentials = {
+                    kind: current_config.providers.credential_values(provider, kind=kind)
+                    for kind in ("chat", "embedding")
+                }
+                # The untranslated form as well: a provider enhancement's
+                # lightweight check needs every endpoint the operator entered,
+                # and each entry above has been narrowed to one of them.
+                stored_credentials = current_config.providers.stored_credentials(provider)
             except ValueError:
                 # Provider not found in configuration
                 return JSONResponse(
@@ -124,8 +136,14 @@ async def check_provider_health(
             embedding_endpoint = getattr(embedding_provider_config, "endpoint", None)
             embedding_project_id = getattr(embedding_provider_config, "project_id", None)
             embedding_model = current_config.knowledge.embedding_model
-            credentials = current_config.providers.credential_values(provider)
-            embedding_credentials = current_config.providers.credential_values(embedding_provider)
+            credentials = current_config.providers.credential_values(provider, kind="chat")
+            embedding_credentials = current_config.providers.credential_values(
+                embedding_provider, kind="embedding"
+            )
+            stored_credentials = current_config.providers.stored_credentials(provider)
+            embedding_stored_credentials = current_config.providers.stored_credentials(
+                embedding_provider
+            )
 
             # Short-circuit identical concurrent polls from the provider-health
             # banner so we don't fan out N watsonx round-trips per poll cycle.
@@ -185,16 +203,35 @@ async def check_provider_health(
             # rather than the dedicated api_key/endpoint/project_id fields, so
             # this must be forwarded or validating one from the providers page
             # runs with no credentials at all.
-            await validate_provider_setup(
-                provider=provider,
-                api_key=api_key,
-                embedding_model=embedding_model,
-                llm_model=llm_model,
-                endpoint=endpoint,
-                project_id=project_id,
-                test_completion=test_completion,
-                credentials=credentials,
-            )
+            #
+            # One probe per role the provider is selected for. The validator
+            # tests a single model per call, so a provider that is both the
+            # LLM and the embedding provider needs two calls, each with the
+            # credentials for that role — otherwise the chat model is never
+            # checked and the response below claims it was. With no model at
+            # all, one lightweight check runs.
+            probes = [
+                (kind, model_name)
+                for kind, model_name in (("chat", llm_model), ("embedding", embedding_model))
+                if model_name
+            ] or [("chat", None)]
+            for index, (kind, model_name) in enumerate(probes):
+                # Same spacing the polled branch applies between the two
+                # watsonx tests, so back-to-back calls don't trip its rate limit.
+                if index and test_completion and provider == "watsonx":
+                    logger.info("Waiting 2 seconds before WatsonX embedding test")
+                    await asyncio.sleep(2)
+                await validate_provider_setup(
+                    provider=provider,
+                    api_key=api_key,
+                    embedding_model=model_name if kind == "embedding" else None,
+                    llm_model=model_name if kind == "chat" else None,
+                    endpoint=endpoint,
+                    project_id=project_id,
+                    test_completion=test_completion,
+                    credentials=role_credentials[kind],
+                    stored_credentials=stored_credentials,
+                )
 
             return JSONResponse(
                 {
@@ -226,6 +263,7 @@ async def check_provider_health(
                     project_id=project_id,
                     test_completion=test_completion,
                     credentials=credentials,
+                    stored_credentials=stored_credentials,
                 )
             except httpx.TimeoutException as e:
                 # Timeout means provider is busy, not misconfigured
@@ -261,6 +299,7 @@ async def check_provider_health(
                     project_id=embedding_project_id,
                     test_completion=test_completion,
                     credentials=embedding_credentials,
+                    stored_credentials=embedding_stored_credentials,
                 )
             except httpx.TimeoutException as e:
                 # Timeout means provider is busy, not misconfigured
