@@ -4,7 +4,12 @@ from config.settings import get_index_name
 from utils.file_utils import clean_connector_filename
 from utils.logging_config import get_logger
 
-from .base import BaseConnector, ConnectorDocument
+from .base import (
+    CONTENT_ETAG_METADATA_KEY,
+    BaseConnector,
+    ConnectorDocument,
+    normalize_etag,
+)
 from .connection_manager import ConnectionManager
 
 logger = get_logger(__name__)
@@ -159,6 +164,9 @@ class ConnectorService:
                             if (params.modified_time != null) {
                                 ctx._source.modified_time = params.modified_time;
                             }
+                            if (params.content_etag != null) {
+                                ctx._source.content_etag = params.content_etag;
+                            }
                             if (params.metadata != null) {
                                 ctx._source.metadata = params.metadata;
                             }
@@ -173,6 +181,13 @@ class ConnectorService:
                             "modified_time": document.modified_time.isoformat()
                             if document.modified_time
                             else None,
+                            # Promoted out of metadata to a top-level keyword so
+                            # sync can read it back with a terms aggregation (the
+                            # same shape connector_file_id uses) instead of
+                            # fetching every chunk's _source.
+                            "content_etag": normalize_etag(
+                                (document.metadata or {}).get(CONTENT_ETAG_METADATA_KEY)
+                            ),
                             "metadata": document.metadata,
                         },
                     },
@@ -196,7 +211,7 @@ class ConnectorService:
         filename_filter: set = None,
         ingest_settings: dict[str, Any] | None = None,
         replace_duplicates: bool = False,
-        shared: bool = False,
+        shared: bool | None = False,
     ) -> str:
         """
         Sync files from a connector connection using existing task tracking system.
@@ -335,7 +350,7 @@ class ConnectorService:
         ingest_settings: dict[str, Any] | None = None,
         replace_duplicates: bool = False,
         preview_mode: bool = False,
-        shared: bool = False,
+        shared: bool | None = False,
     ) -> str:
         """
         Sync specific files by their IDs (used for webhook-triggered syncs or manual selection).
