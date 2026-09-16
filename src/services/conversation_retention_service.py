@@ -1,5 +1,3 @@
-
-
 from config.config_manager import ConfigManager
 
 # Hard cap imposed by this service — no workspace can prune more aggressively
