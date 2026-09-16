@@ -30,13 +30,16 @@ LANGFLOW_HOP_AUDIENCES = frozenset(
 
 
 def langflow_hop_audience(token: str) -> str | None:
-    """Unverified `aud` when `token` is a Langflow hop token, else None."""
+    """Verified `aud` when `token` is a Langflow hop token, else None."""
     if not token or token.startswith("orag_"):
         return None
     try:
+        _, verification_key, algorithm = _resolve_default_signing_config()
         claims = jwt.decode(
             token,
-            options={"verify_signature": False, "verify_aud": False, "verify_exp": False},
+            verification_key,
+            algorithms=[algorithm],
+            options={"verify_aud": False},
         )
     except jwt.PyJWTError:
         return None

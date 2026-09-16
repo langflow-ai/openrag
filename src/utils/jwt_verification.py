@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
+import json
 from typing import Any, cast
 
 import httpx
@@ -24,6 +27,25 @@ GOOGLE_JWKS_URL = "https://www.googleapis.com/oauth2/v3/certs"
 # Selected at runtime based on the `ver` claim.
 MICROSOFT_JWKS_URL_V2_TEMPLATE = "https://login.microsoftonline.com/{tenant}/discovery/v2.0/keys"
 MICROSOFT_JWKS_URL_V1_TEMPLATE = "https://login.microsoftonline.com/{tenant}/discovery/keys"
+
+
+def _read_jwt_payload_without_trust(token: str) -> dict[str, Any]:
+    """Read JWT payload JSON for metadata needed before signature verification."""
+    parts = token.split(".")
+    if len(parts) != 3:
+        raise JWTVerificationError("Token is not a compact JWT")
+
+    payload_segment = parts[1]
+    padding = "=" * (-len(payload_segment) % 4)
+    try:
+        payload_bytes = base64.urlsafe_b64decode(f"{payload_segment}{padding}")
+        payload = json.loads(payload_bytes)
+    except (binascii.Error, json.JSONDecodeError, UnicodeDecodeError) as e:
+        raise JWTVerificationError(f"Failed to read token payload: {e}") from e
+
+    if not isinstance(payload, dict):
+        raise JWTVerificationError("Token payload is not a JSON object")
+    return payload
 
 
 class JWTVerificationError(Exception):
@@ -275,11 +297,10 @@ def verify_microsoft_access_token(
     access-token-claims-reference#validate-tokens):
 
     - We are a *client* (web app calling Microsoft Graph), NOT a resource server.
-      The docs state: "APIs and web applications must only validate tokens that have
-      an aud claim that matches the application."  Access tokens issued for Microsoft
-      Graph have aud = Graph's AppId, not ours — those tokens are for Graph to
-      validate, not us. When aud != our client_id we skip verification and return the
-      unverified claims; the token was obtained via MSAL over a trusted OAuth flow.
+      Access tokens issued for Microsoft Graph have aud = Graph's AppId, not ours.
+      OpenRAG still verifies the Microsoft signature, expiry, and issuer before
+      returning claims, but does not require aud to equal our client_id for those
+      resource tokens.
 
     - When aud == our client_id (token issued directly for our app), we perform full
       validation: signature, expiry, audience, and issuer per Microsoft docs.
@@ -299,12 +320,13 @@ def verify_microsoft_access_token(
     Args:
         token:              Raw JWT access token string.
         client_id:          OpenRAG's Azure AD app client ID.
-        tenant_id:          Hint for JWKS endpoint selection; extracted from the
-                            unverified tid claim when not provided.
+        tenant_id:          Hint for JWKS endpoint selection; read from unsigned
+                            payload metadata when not provided, then re-checked
+                            after signature verification.
         allowed_tenant_ids: Optional set of permitted Azure AD tenant UUIDs.
 
     Returns:
-        Verified (or trusted-unverified) token claims dict.
+        Verified token claims dict.
 
     Raises:
         InvalidSignatureError: Signature does not match the signing key.
@@ -317,47 +339,26 @@ def verify_microsoft_access_token(
         raise JWTVerificationError("client_id is required for Microsoft access token verification")
 
     try:
-        # Decode without verification to inspect claims and pick the JWKS endpoint.
-        unverified_claims = jwt.decode(token, options={"verify_signature": False})
+        # Read unsigned payload metadata only to choose the Microsoft JWKS endpoint.
+        # Claims are returned only after signature and issuer verification below.
+        untrusted_claims = _read_jwt_payload_without_trust(token)
 
         # Resolve tenant for JWKS URL (not trusted for security — re-checked post-sig).
         if not tenant_id:
-            tenant_id = unverified_claims.get("tid")
+            tenant_id = untrusted_claims.get("tid")
             if not tenant_id:
                 raise JWTVerificationError(
                     "Token is missing the 'tid' claim; cannot resolve JWKS endpoint."
                 )
             logger.debug(f"Extracted tenant_id from token: {tenant_id}")
 
-        token_aud = unverified_claims.get("aud", "")
-
-        # Per Microsoft docs: only validate tokens whose aud matches OUR application.
-        # Access tokens issued for another resource (e.g. Microsoft Graph,
-        # aud=00000003-0000-0000-c000-000000000000) are for that resource to validate —
-        # we are the caller, not the resource.  Attempting to verify them would always
-        # fail because we do not hold the correct validation parameters for Graph.
-        if token_aud != client_id:
-            logger.debug(
-                "Skipping signature verification: token audience is a resource we do not own",
-                token_aud=token_aud,
-                our_client_id=client_id,
-            )
-            # Still enforce the tenant allow-list even for pass-through tokens.
-            unverified_tid = unverified_claims.get("tid", "")
-            if allowed_tenant_ids is not None and unverified_tid not in allowed_tenant_ids:
-                logger.warning(
-                    "Microsoft token tenant not in allow-list",
-                    tid=unverified_tid,
-                )
-                raise InvalidIssuerError(
-                    f"Tenant '{unverified_tid}' is not in the configured allowed tenant list"
-                )
-            return unverified_claims
+        token_aud = untrusted_claims.get("aud", "")
+        verify_audience = token_aud == client_id
 
         # ── Full validation for tokens issued directly to our application ──────────
 
         # Select JWKS endpoint based on token version (v1 vs v2).
-        token_version = unverified_claims.get("ver", "2.0")
+        token_version = untrusted_claims.get("ver", "2.0")
         jwks_url = _resolve_ms_jwks_url(tenant_id, token_version)
         jwks = _fetch_jwks(jwks_url)
 
@@ -377,20 +378,23 @@ def verify_microsoft_access_token(
         # only ever contain public keys — cast so mypy accepts it for jwt.decode().
         signing_key = cast(RSAPublicKey, RSAAlgorithm.from_jwk(signing_key_entry))
 
-        # Verify signature, expiry, and audience.
+        # Verify signature and expiry for every Microsoft JWT. Audience validation
+        # is required for app-audience tokens. For Microsoft Graph access tokens,
+        # the audience is Graph rather than OpenRAG, so keep the signature/issuer
+        # guarantees and skip only the audience equality check.
         # verify_iss=False: issuer validated manually below per Microsoft's algorithm.
-        claims = jwt.decode(
-            token,
-            signing_key,
-            algorithms=["RS256"],
-            audience=client_id,
-            options={
+        decode_kwargs: dict[str, Any] = {
+            "algorithms": ["RS256"],
+            "options": {
                 "verify_signature": True,
                 "verify_exp": True,
-                "verify_aud": True,
+                "verify_aud": verify_audience,
                 "verify_iss": False,
             },
-        )
+        }
+        if verify_audience:
+            decode_kwargs["audience"] = client_id
+        claims = jwt.decode(token, signing_key, **decode_kwargs)
 
         # Issuer validation per Microsoft docs:
         # Substitute tid into the signing key's issuer template and exact-match iss.
