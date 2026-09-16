@@ -265,7 +265,7 @@ export function GenericOnboarding({
       <AdvancedOnboarding
         icon={<Logo className="w-4 h-4" />}
         searchPlaceholder={
-          provider === "azure"
+          requiresExplicitModelSelection(provider)
             ? "Search models or type Azure deployment name"
             : undefined
         }
