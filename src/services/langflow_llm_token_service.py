@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import time
 import uuid
+from typing import Any
 
 import jwt
 
@@ -29,16 +30,24 @@ LANGFLOW_HOP_AUDIENCES = frozenset(
 )
 
 
-def langflow_hop_audience(token: str) -> str | None:
+def langflow_hop_audience(
+    token: str,
+    secret: str | Any | None = None,
+    algorithm: str | None = None,
+) -> str | None:
     """Verified `aud` when `token` is a Langflow hop token, else None."""
     if not token or token.startswith("orag_"):
         return None
     try:
-        _, verification_key, algorithm = _resolve_default_signing_config()
+        if secret is not None:
+            verification_key = secret
+            algo = algorithm or ("HS256" if isinstance(secret, str) else "RS256")
+        else:
+            _, verification_key, algo = _resolve_default_signing_config()
         claims = jwt.decode(
             token,
             verification_key,
-            algorithms=[algorithm],
+            algorithms=[algo],
             options={"verify_aud": False},
         )
     except jwt.PyJWTError:
