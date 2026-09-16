@@ -111,6 +111,17 @@ describe("deleted_at_source is successful cleanup, not a warning", () => {
     expect(getDeletedAtSourceMessage(deletedAtSource)).toContain(
       "removed from index",
     );
+    expect(getDeletedAtSourceMessage(entry({ status: "completed" }))).toBe(
+      undefined,
+    );
+    expect(
+      getDeletedAtSourceMessage(
+        entry({
+          status: "completed",
+          result: { reason: "deleted_at_source", message: "   " },
+        }),
+      ),
+    ).toBeUndefined();
   });
 
   it("buckets a source-deleted file as completed, not warning", () => {
@@ -186,6 +197,62 @@ describe("deleted_at_source is successful cleanup, not a warning", () => {
     expect(finalizeProcessingOverlaysForEnhancedTask(overlays, task)).toEqual(
       [],
     );
+  });
+
+  it("leaves overlays for other tasks and already-active files unchanged", () => {
+    const task: Task = {
+      task_id: "task-1",
+      status: "running",
+      created_at: "2026-09-16T10:00:00Z",
+      updated_at: "2026-09-16T10:00:00Z",
+      files: { "file-id-1": deletedAtSource },
+    };
+    const overlays = [
+      {
+        task_id: "other-task",
+        source_url: "file-id-1",
+        status: "processing" as const,
+      },
+      {
+        task_id: "task-1",
+        source_url: "already.pdf",
+        status: "active" as const,
+      },
+    ];
+
+    expect(
+      finalizeProcessingOverlaysForEnhancedTask(overlays, task, ["file-id-1"]),
+    ).toEqual(overlays);
+  });
+
+  it("promotes a disappeared completed ingest overlay to active", () => {
+    const task: Task = {
+      task_id: "task-1",
+      status: "running",
+      created_at: "2026-09-16T10:00:00Z",
+      updated_at: "2026-09-16T10:00:00Z",
+      files: {},
+    };
+    const overlays = [
+      {
+        task_id: "task-1",
+        source_url: "ingested.pdf",
+        status: "processing" as const,
+      },
+    ];
+
+    expect(
+      finalizeProcessingOverlaysForEnhancedTask(overlays, task, [
+        "ingested.pdf",
+      ]),
+    ).toEqual([
+      {
+        task_id: "task-1",
+        source_url: "ingested.pdf",
+        status: "active",
+        error: undefined,
+      },
+    ]);
   });
 });
 

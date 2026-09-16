@@ -43,11 +43,7 @@ export function getDeletedAtSourceMessage(
   if (!isDeletedAtSourceFile(fileInfo)) {
     return undefined;
   }
-  const result = fileInfo.result;
-  if (!result || typeof result !== "object" || Array.isArray(result)) {
-    return undefined;
-  }
-  const message = (result as { message?: unknown }).message;
+  const message = (fileInfo.result as { message?: unknown }).message;
   return typeof message === "string" && message.trim()
     ? message.trim()
     : undefined;
