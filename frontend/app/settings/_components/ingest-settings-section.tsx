@@ -19,7 +19,10 @@ import {
   mergeLiveCatalogOptions,
 } from "@/components/models/catalog-models";
 import { ModelFeatures } from "@/components/models/model-features";
-import { getModelLogo } from "@/components/models/model-helpers";
+import {
+  getModelLogo,
+  requiresExplicitModelSelection,
+} from "@/components/models/model-helpers";
 import {
   type GroupedModelOption,
   ModelSelector,
@@ -273,6 +276,9 @@ export function IngestSettingsSection() {
   );
   const selectedEmbedding = selectedEmbeddingMatch?.option;
   const selectedEmbeddingGroup = selectedEmbeddingMatch?.group;
+  const needsExplicitEmbeddingModel =
+    requiresExplicitModelSelection(settings.knowledge?.embedding_provider) &&
+    !settings.knowledge?.embedding_model;
 
   const handleEmbeddingModelChange = useCallback(
     (newModel: string, provider?: string) => {
@@ -290,6 +296,8 @@ export function IngestSettingsSection() {
 
   const autoSelectedEmbedding = useRef(false);
   useEffect(() => {
+    if (requiresExplicitModelSelection(settings.knowledge?.embedding_provider))
+      return;
     if (settings.knowledge?.embedding_model) {
       autoSelectedEmbedding.current = false;
       return;
@@ -303,6 +311,7 @@ export function IngestSettingsSection() {
     }
   }, [
     settings.knowledge?.embedding_model,
+    settings.knowledge?.embedding_provider,
     allEmbeddingOptions,
     handleEmbeddingModelChange,
   ]);
@@ -658,7 +667,16 @@ export function IngestSettingsSection() {
         <div className="space-y-6">
           <div className="space-y-2">
             <LabelWrapper
-              helperText="Saves immediately when you select a model"
+              helperText={
+                needsExplicitEmbeddingModel
+                  ? undefined
+                  : "Saves immediately when you select a model"
+              }
+              description={
+                needsExplicitEmbeddingModel
+                  ? "Select or enter an Azure deployment name before ingesting files"
+                  : undefined
+              }
               id="embedding-model-select"
               label="Embedding model"
               required={true}
@@ -676,6 +694,14 @@ export function IngestSettingsSection() {
                 value={settings.knowledge?.embedding_model || ""}
                 selectedProvider={settings.knowledge?.embedding_provider}
                 onValueChange={handleEmbeddingModelChange}
+                searchPlaceholder={
+                  requiresExplicitModelSelection(
+                    settings.knowledge?.embedding_provider,
+                  )
+                    ? "Search models or type Azure deployment name"
+                    : undefined
+                }
+                hasError={needsExplicitEmbeddingModel}
               />
             </LabelWrapper>
             {settings.knowledge?.embedding_model && selectedEmbeddingGroup && (

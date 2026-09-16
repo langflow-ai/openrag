@@ -31,6 +31,15 @@ export const KNOWN_PROVIDERS = [
 
 export type KnownModelProvider = (typeof KNOWN_PROVIDERS)[number];
 
+/** Providers whose catalogue model IDs are not safe deployment defaults. */
+export function requiresExplicitModelSelection(
+  provider: ModelProvider | undefined,
+): boolean {
+  // Azure lets customers name deployments independently of the underlying
+  // model family, so a catalogue row such as `gpt-4.1` is only a suggestion.
+  return provider === "azure";
+}
+
 // Preferred auto-select order for the LLM onboarding step. Only a preference:
 // providers this run mode hides are dropped, and anything the API returns that
 // is not listed here is appended in API order.
