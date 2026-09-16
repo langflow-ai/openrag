@@ -43,7 +43,7 @@ from config.model_constants import (
 
 @pytest.fixture(autouse=True)
 def _run_mode_that_offers_ollama(monkeypatch):
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "on_prem")
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
 
 
 def _make_config(
@@ -103,6 +103,9 @@ class TestDefaultLlmModel:
     def test_watsonx_returns_empty(self):
         assert _default_llm_model("watsonx") == ""
 
+    def test_azure_returns_empty(self):
+        assert _default_llm_model("azure") == ""
+
     def test_unknown_provider_returns_empty(self):
         assert _default_llm_model("nonexistent") == ""
 
@@ -142,6 +145,18 @@ class TestDefaultEmbeddingModel:
         monkeypatch.setenv("EMBEDDING_PROVIDER", "openai")
         monkeypatch.setenv("EMBEDDING_MODEL", "text-embedding-3-large")
         assert _default_embedding_model("watsonx") == ""
+
+    def test_azure_requires_an_explicit_deployment_even_when_env_declares_one(
+        self, monkeypatch
+    ):
+        """Azure model names are deployment names chosen by the customer.
+
+        Provider removal must not silently carry an operator default into the
+        user's workspace; both Azure model choices are made explicitly.
+        """
+        monkeypatch.setenv("EMBEDDING_PROVIDER", "azure")
+        monkeypatch.setenv("EMBEDDING_MODEL", "text-embedding-3-small")
+        assert _default_embedding_model("azure") == ""
 
 
 # ---------------------------------------------------------------------------

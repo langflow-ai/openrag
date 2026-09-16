@@ -13,7 +13,10 @@ import {
   groupedCatalogOptions,
 } from "@/components/models/catalog-models";
 import { ModelFeatures } from "@/components/models/model-features";
-import { getModelLogo } from "@/components/models/model-helpers";
+import {
+  getModelLogo,
+  requiresExplicitModelSelection,
+} from "@/components/models/model-helpers";
 import { ModelSelector } from "@/components/models/model-selector";
 import { RequirePermission } from "@/components/require-permission";
 import { Button } from "@/components/ui/button";
@@ -115,6 +118,9 @@ export function AgentSettingsSection() {
   );
   const selectedLlm = selectedLlmMatch?.option;
   const selectedLlmGroup = selectedLlmMatch?.group;
+  const needsExplicitLlmModel =
+    requiresExplicitModelSelection(settings.agent?.llm_provider) &&
+    !settings.agent?.llm_model;
 
   const handleModelChange = useCallback(
     (newModel: string, provider?: string) => {
@@ -132,6 +138,7 @@ export function AgentSettingsSection() {
 
   const autoSelectedLlm = useRef(false);
   useEffect(() => {
+    if (requiresExplicitModelSelection(settings.agent?.llm_provider)) return;
     if (settings.agent?.llm_model) {
       autoSelectedLlm.current = false;
       return;
@@ -142,7 +149,12 @@ export function AgentSettingsSection() {
       const fallback = allLlmOptions.find((o) => o.default) || allLlmOptions[0];
       handleModelChange(fallback.value, fallback.provider);
     }
-  }, [settings.agent?.llm_model, allLlmOptions, handleModelChange]);
+  }, [
+    settings.agent?.llm_model,
+    settings.agent?.llm_provider,
+    allLlmOptions,
+    handleModelChange,
+  ]);
 
   const agentDirty = systemPrompt !== (settings.agent?.system_prompt ?? "");
   useRegisterDirty("agent-settings", userEdited && agentDirty);
@@ -304,7 +316,14 @@ export function AgentSettingsSection() {
           <div className="space-y-6">
             <LabelWrapper
               label="Language model"
-              helperText="Model used for chat"
+              helperText={
+                needsExplicitLlmModel ? undefined : "Model used for chat"
+              }
+              description={
+                needsExplicitLlmModel
+                  ? "Select or enter an Azure deployment name before chatting"
+                  : undefined
+              }
               id="language-model"
               required={true}
             >
@@ -321,6 +340,12 @@ export function AgentSettingsSection() {
                 value={settings.agent?.llm_model || ""}
                 selectedProvider={settings.agent?.llm_provider}
                 onValueChange={handleModelChange}
+                searchPlaceholder={
+                  requiresExplicitModelSelection(settings.agent?.llm_provider)
+                    ? "Search models or type Azure deployment name"
+                    : undefined
+                }
+                hasError={needsExplicitLlmModel}
                 defaultOpen={openLlmSelector}
               />
             </LabelWrapper>
