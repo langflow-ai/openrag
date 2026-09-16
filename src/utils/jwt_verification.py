@@ -354,7 +354,9 @@ def verify_microsoft_access_token(
             logger.debug(f"Extracted tenant_id from token: {tenant_id}")
 
         token_aud = untrusted_claims.get("aud", "")
-        token_audiences = {str(aud) for aud in (token_aud if isinstance(token_aud, list) else [token_aud])}
+        token_audiences = {
+            str(aud) for aud in (token_aud if isinstance(token_aud, list) else [token_aud])
+        }
         supported_audiences = {client_id, *MICROSOFT_GRAPH_AUDIENCES}
         if not token_audiences.intersection(supported_audiences):
             raise InvalidAudienceError(
