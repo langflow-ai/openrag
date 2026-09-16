@@ -480,6 +480,9 @@ class ConversationConfig:
     """Conversation history retention configuration."""
 
     pruning_enabled: bool = True
+    # User-configurable retention period (days). None means "use the operator
+    # env default (OPENRAG_CONVERSATION_TTL_DAYS)". Must be in [1, 90] when set.
+    retention_days: int | None = None
 
 
 @dataclass

@@ -36,6 +36,7 @@ export interface UpdateSettingsRequest {
 
   // Conversation retention settings
   conversation_pruning_enabled?: boolean;
+  conversation_retention_days?: number;
 
   // Provider-specific settings (for dialogs)
   model_provider?: string; // Deprecated, kept for backward compatibility

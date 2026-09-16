@@ -107,6 +107,7 @@ export interface Settings {
   show_workspace_oauth_overrides?: boolean;
   conversation_pruning_enabled?: boolean;
   conversation_ttl_days?: number | null;
+  conversation_retention_days?: number | null;
   segment_write_key?: string;
   environment?: string;
   langflow_port?: string | number | null;

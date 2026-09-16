@@ -58,6 +58,7 @@ class SettingsUpdateBody(BaseModel):
     # the backend returns 409 and the frontend prompts the user.
     force_remove: bool | None = False
     conversation_pruning_enabled: bool | None = None
+    conversation_retention_days: int | None = Field(None, ge=1, le=90)
 
 
 class OnboardingBody(BaseModel):
@@ -256,6 +257,9 @@ class SettingsResponse(BaseModel):
     langflow_port: str | None = None
     conversation_pruning_enabled: bool = True
     conversation_ttl_days: int | None = None
+    # Effective TTL shown to the user (operator cap already applied).
+    # None when pruning is disabled deployment-wide (conversation_ttl_days is None).
+    conversation_retention_days: int | None = None
 
 
 class OnboardingResponse(BaseModel):

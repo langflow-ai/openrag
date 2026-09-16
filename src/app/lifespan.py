@@ -117,13 +117,14 @@ async def _periodic_conversation_pruning(conversation_retention_service):
         try:
             pruning_enabled = await conversation_retention_service.is_pruning_enabled()
             if OPENRAG_CONVERSATION_TTL_DAYS > 0 and pruning_enabled:
-                deleted = await conversation_persistence.prune_stale_conversations(
+                effective_days = await conversation_retention_service.get_retention_days(
                     OPENRAG_CONVERSATION_TTL_DAYS
                 )
+                deleted = await conversation_persistence.prune_stale_conversations(effective_days)
                 logger.info(
                     "Conversation pruning completed",
                     deleted=deleted,
-                    ttl_days=OPENRAG_CONVERSATION_TTL_DAYS,
+                    ttl_days=effective_days,
                 )
             else:
                 logger.debug("Conversation pruning is disabled")
