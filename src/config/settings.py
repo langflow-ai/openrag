@@ -139,8 +139,14 @@ LANGFLOW_PORT = get_env_int("LANGFLOW_PORT", 7860)
 LANGFLOW_URL = os.getenv("LANGFLOW_URL", f"http://localhost:{LANGFLOW_PORT}")
 # TLS verification for outbound calls FROM the backend TO Langflow.
 # Same pattern as OPENSEARCH_CA_CERTS / OPENSEARCH_VERIFY_CERTS.
-LANGFLOW_VERIFY_CERTS = os.getenv("LANGFLOW_VERIFY_CERTS", "false").lower() in ("true", "1", "yes")
 LANGFLOW_CA_CERTS = os.getenv("LANGFLOW_CA_CERTS")  # e.g. /app/certs/langflow-ca/ca.crt
+_langflow_verify_env = os.getenv("LANGFLOW_VERIFY_CERTS")
+if _langflow_verify_env is None:
+    # A configured CA bundle is a clear signal verification should be on;
+    # an explicit env var value (including "false") always wins either way.
+    LANGFLOW_VERIFY_CERTS = bool(LANGFLOW_CA_CERTS)
+else:
+    LANGFLOW_VERIFY_CERTS = _langflow_verify_env.lower() in ("true", "1", "yes")
 
 if LANGFLOW_CA_CERTS and not os.path.isfile(LANGFLOW_CA_CERTS):
     raise RuntimeError(f"LANGFLOW_CA_CERTS path does not exist: {LANGFLOW_CA_CERTS!r}")
@@ -163,14 +169,15 @@ def _langflow_tls_kwargs() -> dict[str, Any]:
     `verify` is a CA-bundle path, before it ever calls load_cert_chain(), so
     the client cert would otherwise be silently dropped.
     """
-    if LANGFLOW_CA_CERTS:
-        ctx = ssl.create_default_context(cafile=LANGFLOW_CA_CERTS)
-    elif LANGFLOW_VERIFY_CERTS:
-        ctx = ssl.create_default_context()
-    else:
+    if not LANGFLOW_VERIFY_CERTS:
+        # Explicit opt-out wins even if a CA bundle happens to be configured.
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
+    elif LANGFLOW_CA_CERTS:
+        ctx = ssl.create_default_context(cafile=LANGFLOW_CA_CERTS)
+    else:
+        ctx = ssl.create_default_context()
 
     if OPENRAG_TLS_CERT_PATH and OPENRAG_TLS_KEY_PATH:
         ctx.load_cert_chain(OPENRAG_TLS_CERT_PATH, OPENRAG_TLS_KEY_PATH)
