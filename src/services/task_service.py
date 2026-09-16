@@ -1548,9 +1548,8 @@ class TaskService:
                 file_statuses = {}
 
                 for file_path, file_task in upload_task.file_tasks.items():
-                    if (
-                        file_task.status.value != "completed"
-                        or self._keep_completed_file_in_list(file_task)
+                    if file_task.status.value != "completed" or self._keep_completed_file_in_list(
+                        file_task
                     ):
                         file_statuses[file_path] = {
                             "status": file_task.status.value,
