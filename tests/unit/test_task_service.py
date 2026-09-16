@@ -324,3 +324,34 @@ def test_enhanced_keeps_completed_files_for_preview_tasks(task_service):
     assert "fileA" in files  # completed retained for preview
     assert files["fileA"]["status"] == "completed"
     assert "fileB" in files
+
+
+def test_enhanced_keeps_source_deleted_completed_files(task_service):
+    """Successful source-deletion cleanup stays in the file list as Removed."""
+    task = UploadTask(
+        task_id="sync_task",
+        total_files=2,
+        file_tasks={
+            "fileA": FileTask(
+                file_path="fileA",
+                status=TaskStatus.COMPLETED,
+                result={
+                    "status": "completed",
+                    "reason": "deleted_at_source",
+                    "deleted_chunks": 1,
+                    "message": "File no longer exists at source; removed from index (1 chunk(s) deleted).",
+                },
+            ),
+            "fileB": FileTask(file_path="fileB", status=TaskStatus.COMPLETED),
+        },
+        status=TaskStatus.COMPLETED,
+    )
+    task_service.task_store["user1"] = {"sync_task": task}
+
+    tasks = task_service.get_all_tasks2("user1")
+
+    files = tasks[0]["files"]
+    assert "fileA" in files
+    assert files["fileA"]["status"] == "completed"
+    assert files["fileA"]["result"]["reason"] == "deleted_at_source"
+    assert "fileB" not in files

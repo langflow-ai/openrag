@@ -395,13 +395,18 @@ class TaskProcessor:
         keep_filenames: list[str] | None = None,
         shared: bool = False,
         connector_type: str | None = None,
+        *,
+        ignore_errors: bool = True,
     ) -> int:
         """Delete indexed chunks for a connector file by its STABLE id.
 
         Deletion semantics (dual-field id match, connector/owner/shared scoping,
-        rename ``keep_filenames``) live in ``connectors.chunk_cleanup``. This
-        wrapper is best-effort: logs and returns 0 on failure so a cleanup miss
-        never fails the task.
+        rename ``keep_filenames``) live in ``connectors.chunk_cleanup``.
+
+        Rename cleanup is best-effort (``ignore_errors=True``): logs and returns
+        0 so a miss never fails an ingest that can still re-index the new name.
+        Source-deleted cleanup passes ``ignore_errors=False`` so a real index
+        failure fails the file task instead of reporting success.
 
         ``connector_type`` scopes the match to one connector type — the same
         value the chunks were indexed under — so an id that collides with a
@@ -435,7 +440,9 @@ class TaskProcessor:
                 file_id=file_id,
                 error=str(e),
             )
-            return 0
+            if ignore_errors:
+                return 0
+            raise
 
     async def process_document_standard(
         self,
@@ -1103,32 +1110,46 @@ class ConnectorFileProcessor(TaskProcessor):
                             self.user_id, self.jwt_token
                         )
                     )
-                    deleted_chunks = await self._delete_connector_chunks(
-                        file_id,
-                        opensearch_client,
-                        self.user_id,
-                        shared=await self._resolve_shared(
-                            file_id, opensearch_client, connector_type
-                        ),
-                        connector_type=connector_type,
-                    )
+                    try:
+                        deleted_chunks = await self._delete_connector_chunks(
+                            file_id,
+                            opensearch_client,
+                            self.user_id,
+                            shared=await self._resolve_shared(
+                                file_id, opensearch_client, connector_type
+                            ),
+                            connector_type=connector_type,
+                            ignore_errors=False,
+                        )
+                    except Exception:
+                        file_task.status = TaskStatus.FAILED
+                        file_task.error = (
+                            "File no longer exists at source, but removing it "
+                            "from the index failed."
+                        )
+                        file_task.updated_at = time.time()
+                        upload_task.failed_files += 1
+                        return
 
-                    logger.warning(
+                    logger.info(
                         "File no longer exists at source — removed from index",
                         file_id=file_id,
                         connection_id=self.connection_id,
                         deleted_chunks=deleted_chunks,
-                        error=str(e),
+                        source_error=str(e),
                     )
-                    file_task.status = TaskStatus.SKIPPED
+                    # Successful cleanup: the file is gone at the source and its
+                    # chunks were removed. Mark completed (not skipped) so the
+                    # tasks view does not treat this as a warning. Enhanced
+                    # listing still surfaces this reason so the dialog can show
+                    # it as Removed instead of omitting it like a normal ingest.
+                    file_task.status = TaskStatus.COMPLETED
+                    file_task.error = None
                     file_task.result = {
-                        "status": "skipped",
+                        "status": "completed",
                         "reason": "deleted_at_source",
                         "deleted_chunks": deleted_chunks,
-                        # Human-readable message so the tasks view shows this
-                        # successful cleanup instead of falling back to
-                        # "Unknown error" for a skip with no message.
-                        "warning": (
+                        "message": (
                             f"File no longer exists at source; removed from index "
                             f"({deleted_chunks} chunk(s) deleted)."
                         ),
