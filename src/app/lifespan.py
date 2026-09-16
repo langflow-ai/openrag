@@ -17,6 +17,7 @@ from config.settings import (
     JWT_CLAIMS_CACHE_MAX_SIZE,
     JWT_CLAIMS_CACHE_TTL_SECONDS,
     OPENRAG_BOOTSTRAP_OS_SECURITY_ON_STARTUP,
+    OPENRAG_CONVERSATION_TTL_DAYS,
     OPENRAG_ENSURE_INDEX_REPLICAS_ON_STARTUP,
     OPENSEARCH_WAIT_MAX_RETRIES,
     RBAC_CACHE_BACKEND,
@@ -106,6 +107,34 @@ async def _periodic_backup(services):
             break
         except Exception as e:
             logger.error(f"Error in periodic backup task: {str(e)}")
+
+
+async def _periodic_conversation_pruning(conversation_retention_service):
+    """Prune stale conversation metadata once per day when enabled."""
+    from services.conversation_persistence_service import conversation_persistence
+
+    while True:
+        try:
+            pruning_enabled = await conversation_retention_service.is_pruning_enabled()
+            if OPENRAG_CONVERSATION_TTL_DAYS > 0 and pruning_enabled:
+                effective_days = await conversation_retention_service.get_retention_days(
+                    OPENRAG_CONVERSATION_TTL_DAYS
+                )
+                deleted = await conversation_persistence.prune_stale_conversations(effective_days)
+                logger.info(
+                    "Conversation pruning completed",
+                    deleted=deleted,
+                    ttl_days=effective_days,
+                )
+            else:
+                logger.debug("Conversation pruning is disabled")
+            await asyncio.sleep(24 * 60 * 60)
+        except asyncio.CancelledError:
+            logger.info("Conversation pruning task cancelled")
+            break
+        except Exception as e:
+            logger.error("Error in conversation pruning task", error=str(e))
+            await asyncio.sleep(24 * 60 * 60)
 
 
 async def _periodic_webhook_renewal(services):
@@ -359,6 +388,14 @@ async def run_startup(app: FastAPI):
     backup_task = asyncio.create_task(_periodic_backup(services))
     app.state.background_tasks.add(backup_task)
     backup_task.add_done_callback(app.state.background_tasks.discard)
+
+    # Start nightly stale-conversation pruning task
+    conversation_retention_service = services["conversation_retention_service"]
+    pruning_task = asyncio.create_task(
+        _periodic_conversation_pruning(conversation_retention_service)
+    )
+    app.state.background_tasks.add(pruning_task)
+    pruning_task.add_done_callback(app.state.background_tasks.discard)
 
     # Start periodic webhook subscription renewal task
     renewal_task = asyncio.create_task(_periodic_webhook_renewal(services))

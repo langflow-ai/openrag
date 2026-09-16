@@ -227,6 +227,12 @@ For Langflow flow IDs and Langflow timeout settings, see [Langflow settings](#la
 | `INGESTION_TIMEOUT` | `3600` | Document ingestion timeout limit in seconds for each file. Increase this value if you experience timeouts when ingesting very large documents. Must be greater than or equal to [`LANGFLOW_TIMEOUT`](#langflow-settings).  |
 | `UPLOAD_BATCH_SIZE` | `25` | When ingesting folders, set the maximum number of files to ingest per batch. Each batch is an [ingestion task](/ingestion#monitor-ingestion). Increase this value to ingest more files per batch. If this value is too high, performance issues can occur. |
 
+## Conversation retention settings {#conversation-retention-settings}
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OPENRAG_CONVERSATION_TTL_DAYS` | `90` | Number of inactive days to retain conversation metadata before nightly hard deletion. Set to `0` to disable pruning deployment-wide. Administrators can also disable pruning from **Settings > Conversations**. Pruning follows `OPENRAG_STORAGE_MODE`: database rows are removed in `db` mode, JSON entries in `files` mode, and both in `hybrid` mode. |
+
 ## Langflow settings {#langflow-settings}
 
 Configure the OpenRAG Langflow server's authentication, contact point, and built-in flow definitions.

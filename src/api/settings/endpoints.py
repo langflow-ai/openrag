@@ -78,6 +78,7 @@ from config.settings import (
     LANGFLOW_PUBLIC_URL,
     LANGFLOW_URL,
     LOCALHOST_URL,
+    OPENRAG_CONVERSATION_TTL_DAYS,
     OPENRAG_INGEST_VIA_CHAT,
     OPENRAG_SHOW_PROVIDER_INGEST_SETTINGS,
     OPENRAG_SHOW_SHARED_UPLOAD_TOGGLE,
@@ -112,6 +113,20 @@ from utils.telemetry import Category, MessageId, TelemetryClient
 from utils.version_utils import OPENRAG_VERSION
 
 logger = get_logger(__name__)
+
+
+def _effective_retention_days(openrag_config, operator_ttl_days: int) -> int | None:
+    """Return the retention period to show in the UI.
+
+    Returns ``None`` when pruning is disabled deployment-wide so the frontend
+    knows not to render a selector.  Otherwise returns the workspace-configured
+    value clamped to the operator cap, falling back to the cap itself.
+    """
+    if operator_ttl_days <= 0:
+        return None
+    workspace_days = openrag_config.conversation.retention_days
+    days = workspace_days if workspace_days is not None else operator_ttl_days
+    return max(1, min(operator_ttl_days, days))
 
 
 def _provider_key(provider: str | None) -> str:
@@ -381,6 +396,13 @@ async def get_settings(
             segment_write_key=SEGMENT_WRITE_KEY or None,
             environment=ENVIRONMENT or None,
             langflow_port=str(LANGFLOW_PORT),
+            conversation_pruning_enabled=openrag_config.conversation.pruning_enabled,
+            conversation_ttl_days=OPENRAG_CONVERSATION_TTL_DAYS
+            if OPENRAG_CONVERSATION_TTL_DAYS > 0
+            else None,
+            conversation_retention_days=_effective_retention_days(
+                openrag_config, OPENRAG_CONVERSATION_TTL_DAYS
+            ),
         )
 
     except Exception:
@@ -401,7 +423,14 @@ async def update_settings(
         current_config = get_openrag_config()
 
         # Check if config is marked as edited
-        if not current_config.edited:
+        # Exception: Allow conversation_pruning_enabled / conversation_retention_days
+        # updates even pre-onboarding so users can adjust the setting before setup.
+        _conversation_only_fields = {"conversation_pruning_enabled", "conversation_retention_days"}
+        is_only_conversation_pruning = body.model_fields_set <= _conversation_only_fields and bool(
+            body.model_fields_set
+        )
+
+        if not current_config.edited and not is_only_conversation_pruning:
             return JSONResponse(
                 {"error": "Configuration must be marked as edited before updates are allowed"},
                 status_code=403,
@@ -637,6 +666,40 @@ async def update_settings(
         # leave the live cached config half-updated and unsaved.
         working_config = copy.deepcopy(current_config)
         config_updated = False
+
+        # Handle conversation pruning toggle and retention-period change
+        if body.conversation_pruning_enabled is not None:
+            working_config.conversation.pruning_enabled = body.conversation_pruning_enabled
+            config_updated = True
+
+        if body.conversation_retention_days is not None:
+            try:
+                from services.conversation_retention_service import (
+                    RETENTION_DAYS_MAX,
+                    RETENTION_DAYS_MIN,
+                )
+
+                days = body.conversation_retention_days
+                if not (RETENTION_DAYS_MIN <= days <= RETENTION_DAYS_MAX):
+                    return JSONResponse(
+                        {
+                            "error": f"conversation_retention_days must be between "
+                            f"{RETENTION_DAYS_MIN} and {RETENTION_DAYS_MAX}"
+                        },
+                        status_code=422,
+                    )
+                if OPENRAG_CONVERSATION_TTL_DAYS > 0 and days > OPENRAG_CONVERSATION_TTL_DAYS:
+                    return JSONResponse(
+                        {
+                            "error": f"conversation_retention_days ({days}) cannot exceed "
+                            f"the deployment limit ({OPENRAG_CONVERSATION_TTL_DAYS} days)"
+                        },
+                        status_code=422,
+                    )
+                working_config.conversation.retention_days = days
+                config_updated = True
+            except ImportError:
+                pass
 
         # Update agent settings
         if body.llm_model is not None:
@@ -1081,6 +1144,7 @@ async def update_settings(
             return JSONResponse({"error": "No valid fields provided for update"}, status_code=400)
 
         # Save the updated configuration
+        # conversation_pruning_enabled is now staged in working_config along with all other changes
         if not config_manager.save_config_file(working_config):
             return JSONResponse({"error": "Failed to save configuration"}, status_code=500)
 

@@ -1,9 +1,9 @@
 """Async CRUD over the ``conversations`` table — chat-history metadata."""
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
 
@@ -87,6 +87,13 @@ class ConversationRepo:
             await self.session.delete(r)
         await self.session.flush()
         return len(rows)
+
+    async def delete_older_than(self, cutoff: datetime) -> int:
+        result = await self.session.execute(
+            delete(Conversation).where(col(Conversation.last_activity) < cutoff)
+        )
+        await self.session.flush()
+        return cast(Any, result).rowcount or 0
 
     async def to_metadata_dict(self, c: Conversation) -> dict[str, Any]:
         """JSON-shaped dict matching the legacy conversations.json

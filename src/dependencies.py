@@ -234,6 +234,10 @@ def get_workspace_config_service(services: dict = Depends(get_services)):
     return services["workspace_config_service"]
 
 
+def get_conversation_retention_service(services: dict = Depends(get_services)):
+    return services["conversation_retention_service"]
+
+
 # ─────────────────────────────────────────────
 # Database session
 # ─────────────────────────────────────────────
