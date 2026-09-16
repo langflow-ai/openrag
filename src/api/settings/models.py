@@ -11,7 +11,6 @@ from pydantic import BaseModel, Field, field_validator
 
 from services.docling_service import DoclingConfig
 
-
 # OCR languages grouped by the recognition model that serves them. English is
 # universal and therefore absent: it combines with every family. Mirrors
 # frontend/lib/ocr-languages.ts.
