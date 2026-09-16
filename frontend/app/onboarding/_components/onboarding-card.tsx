@@ -45,7 +45,10 @@ import { AnthropicOnboarding } from "./anthropic-onboarding";
 import { GenericOnboarding } from "./generic-onboarding";
 import { IBMOnboarding } from "./ibm-onboarding";
 import { OllamaOnboarding } from "./ollama-onboarding";
-import { canCompleteOnboarding } from "./onboarding-completion";
+import {
+  canCompleteOnboarding,
+  shouldRollbackFailedOnboarding,
+} from "./onboarding-completion";
 import { OpenAIOnboarding } from "./openai-onboarding";
 import { TabTrigger } from "./tab-trigger";
 
@@ -345,8 +348,12 @@ const OnboardingCard = ({
         category: "Setup",
       });
       setError(message);
-      setCurrentStep(totalSteps);
-      rollbackMutation.mutate({ embedding_only: isEmbedding });
+      if (shouldRollbackFailedOnboarding(currentSettings?.edited)) {
+        setCurrentStep(totalSteps);
+        rollbackMutation.mutate({ embedding_only: isEmbedding });
+      } else {
+        setCurrentStep(null);
+      }
     },
   });
 
