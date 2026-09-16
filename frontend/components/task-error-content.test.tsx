@@ -99,6 +99,28 @@ describe("TaskErrorContent — cancellation display", () => {
     expect(container.firstChild).toBeNull();
   });
 
+  it("does not treat a source-deleted file as a warning", () => {
+    const task = makeTask({
+      status: "completed",
+      successful_files: 1,
+      files: {
+        "gone.pdf": {
+          status: "completed",
+          result: {
+            reason: "deleted_at_source",
+            message:
+              "File no longer exists at source; removed from index (1 chunk(s) deleted).",
+          },
+        },
+      },
+    });
+
+    const { container } = renderWithProviders(<TaskErrorContent task={task} />);
+
+    expect(container.firstChild).toBeNull();
+    expect(screen.queryByText("Warning")).not.toBeInTheDocument();
+  });
+
   it("shows 'Failed' label when there are real (non-cancellation) failures", () => {
     const task = makeTask({
       status: "failed",

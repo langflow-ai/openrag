@@ -1104,6 +1104,17 @@ class TaskService:
             "status": "accepted",
         }
 
+    @staticmethod
+    def _keep_completed_file_in_list(file_task: FileTask) -> bool:
+        """Source-deleted cleanups stay visible so the UI can show Removed.
+
+        Normal completed ingests are omitted from the task file list to keep it
+        tidy. A file that was removed from the index because it disappeared at
+        the source is also completed, but dropping it would hide the cleanup.
+        """
+        result = file_task.result or {}
+        return result.get("reason") == "deleted_at_source"
+
     def _serialize_file_task(self, file_task: FileTask) -> dict:
         """Serialize a FileTask to the standard dict shape."""
         return {
@@ -1483,7 +1494,13 @@ class TaskService:
                     # the list tidy. Preview-mode tasks instead need every file
                     # (including completed ones) so the live preview carousel can
                     # still enumerate them and render their cached Docling layout.
-                    if file_task.status != TaskStatus.COMPLETED or upload_task.preview_mode:
+                    # Source-deleted cleanups are completed but must stay visible
+                    # as successful removals, not vanish like a normal ingest.
+                    if (
+                        file_task.status != TaskStatus.COMPLETED
+                        or upload_task.preview_mode
+                        or self._keep_completed_file_in_list(file_task)
+                    ):
                         entry = self._serialize_file_task(file_task)
                         if file_task.status == TaskStatus.FAILED:
                             metadata = self._infer_failure_metadata(file_task)
@@ -1544,7 +1561,10 @@ class TaskService:
                 file_statuses = {}
 
                 for file_path, file_task in upload_task.file_tasks.items():
-                    if file_task.status.value != "completed":
+                    if (
+                        file_task.status.value != "completed"
+                        or self._keep_completed_file_in_list(file_task)
+                    ):
                         file_statuses[file_path] = {
                             "status": file_task.status.value,
                             "result": file_task.result,
