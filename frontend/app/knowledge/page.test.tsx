@@ -1,81 +1,43 @@
-import { describe, expect, it } from "vitest";
-
 /**
- * Tests the effectiveSearchText URL param building logic (lines 630-643).
- * This is the code that runs when clicking a file row to navigate to chunks page.
+ * KnowledgePage — tests for the chunks-navigation URL helper.
+ *
+ * The filename→chunks click handler lives inside an ag-Grid cellRenderer, which
+ * jsdom cannot exercise (no layout engine; cell renderers never mount). Geometry-
+ * and grid-dependent behaviour belongs in Playwright.
+ *
+ * What we CAN test in Vitest is the pure URL-building logic. It is extracted
+ * into buildChunksUrl() in page.tsx so this test imports and calls the real
+ * production function rather than re-implementing it inline.
  */
-describe("KnowledgePage - effectiveSearchText in URL params (lines 630-643)", () => {
-  it("includes effectiveSearchText in URL when it has a value", () => {
-    // Simulate the logic from lines 630-643
-    // Use a function to return the value so TS doesn't narrow the type to a literal
-    const getSearchText = () => "filter query";
-    const effectiveSearchText = getSearchText();
-    const filename = "test.pdf";
+import { describe, expect, it } from "vitest";
+import { buildChunksUrl } from "./page";
 
-    const params = new URLSearchParams({ filename });
-
-    // Lines 633-640: Check if effectiveSearchText is valid
-    if (
-      effectiveSearchText &&
-      effectiveSearchText !== "*" &&
-      effectiveSearchText !== ""
-    ) {
-      params.set("q", effectiveSearchText);
-    }
-
-    const url = `/knowledge/chunks?${params.toString()}`;
-    expect(url).toBe("/knowledge/chunks?filename=test.pdf&q=filter+query");
+describe("buildChunksUrl", () => {
+  it("includes ?q= when effectiveSearchText is a non-wildcard term", () => {
+    const url = buildChunksUrl("report.pdf", "quarterly revenue");
+    expect(url).toBe(
+      "/knowledge/chunks?filename=report.pdf&q=quarterly+revenue",
+    );
   });
 
-  it("excludes query param when effectiveSearchText is wildcard", () => {
-    const effectiveSearchText = "*";
-    const filename = "test.pdf";
-
-    const params = new URLSearchParams({ filename });
-
-    if (
-      effectiveSearchText &&
-      effectiveSearchText !== "*" &&
-      effectiveSearchText !== ""
-    ) {
-      params.set("q", effectiveSearchText);
-    }
-
-    expect(params.has("q")).toBe(false);
+  it("omits ?q= when effectiveSearchText is the wildcard '*'", () => {
+    const url = buildChunksUrl("report.pdf", "*");
+    expect(url).toBe("/knowledge/chunks?filename=report.pdf");
   });
 
-  it("excludes query param when effectiveSearchText is empty", () => {
-    const effectiveSearchText = "";
-    const filename = "test.pdf";
-
-    const params = new URLSearchParams({ filename });
-
-    if (
-      effectiveSearchText &&
-      effectiveSearchText !== "*" &&
-      effectiveSearchText !== ""
-    ) {
-      params.set("q", effectiveSearchText);
-    }
-
-    expect(params.has("q")).toBe(false);
+  it("omits ?q= when effectiveSearchText is an empty string", () => {
+    const url = buildChunksUrl("report.pdf", "");
+    expect(url).toBe("/knowledge/chunks?filename=report.pdf");
   });
 
-  it("includes query from queryOverride when available", () => {
-    const getSearchText = () => "query override text";
-    const effectiveSearchText = getSearchText();
-    const filename = "test.pdf";
+  it("omits ?q= when effectiveSearchText is whitespace only", () => {
+    const url = buildChunksUrl("report.pdf", "   ");
+    expect(url).toBe("/knowledge/chunks?filename=report.pdf");
+  });
 
-    const params = new URLSearchParams({ filename });
-
-    if (
-      effectiveSearchText &&
-      effectiveSearchText !== "*" &&
-      effectiveSearchText !== ""
-    ) {
-      params.set("q", effectiveSearchText);
-    }
-
-    expect(params.get("q")).toBe("query override text");
+  it("URL-encodes special characters in filename and query", () => {
+    const url = buildChunksUrl("my doc & notes.pdf", "cost/benefit");
+    expect(url).toContain("filename=my+doc+%26+notes.pdf");
+    expect(url).toContain("q=cost%2Fbenefit");
   });
 });

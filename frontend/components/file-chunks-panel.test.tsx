@@ -1,73 +1,134 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+/**
+ * FileChunksPanel — MSW-based tests for highlight wiring.
+ *
+ * Per AGENTS.md: mock the network, not the module. Tests drive
+ * useFileScopedChunksQuery through /api/search handlers so the searchQuery
+ * prop, request payloads, merge logic, and rendered output all stay under test.
+ */
+
+import { screen } from "@testing-library/react";
+import { HttpResponse, http } from "msw";
+import { describe, expect, it } from "vitest";
+import type { ChunkResult } from "@/app/api/queries/useGetSearchQuery";
+import { authPresets } from "@/test-utils/fixtures/auth";
+import { server } from "@/test-utils/msw/server";
 import { renderWithProviders, waitFor } from "@/test-utils/render";
 import { FileChunksPanel } from "./file-chunks-panel";
 
-const mockUseFileScopedChunksQuery = vi.fn();
-vi.mock("@/app/api/queries/useFileScopedChunksQuery", () => ({
-  useFileScopedChunksQuery: (filename: string, searchQuery?: string) =>
-    mockUseFileScopedChunksQuery(filename, searchQuery),
-}));
+function chunk(overrides: Partial<ChunkResult> = {}): ChunkResult {
+  return {
+    filename: "doc.pdf",
+    mimetype: "application/pdf",
+    page: 1,
+    text: "The quick brown fox",
+    score: 1,
+    chunk_id: "c1",
+    ...overrides,
+  };
+}
 
-describe("FileChunksPanel - searchQuery prop forwarding (line 175)", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("passes searchQuery prop to useFileScopedChunksQuery", async () => {
-    mockUseFileScopedChunksQuery.mockReturnValue({
-      file: { filename: "test.pdf", chunks: [] },
-      isFetching: false,
-    });
-
-    renderWithProviders(
-      <FileChunksPanel filename="test.pdf" searchQuery="test query" />,
-      {
-        providers: ["knowledgeFilter"],
-      },
+describe("FileChunksPanel — highlight wiring", () => {
+  it("shows all chunks when no searchQuery is provided", async () => {
+    server.use(
+      http.post("/api/search", () =>
+        HttpResponse.json({
+          results: [
+            chunk({ chunk_id: "c1", text: "First chunk content" }),
+            chunk({ chunk_id: "c2", text: "Second chunk content" }),
+          ],
+          warnings: [],
+        }),
+      ),
     );
 
-    // Line 175: const { file, isFetching } = useFileScopedChunksQuery(filename, searchQuery);
-    await waitFor(() => {
-      expect(mockUseFileScopedChunksQuery).toHaveBeenCalledWith(
-        "test.pdf",
-        "test query",
-      );
+    renderWithProviders(<FileChunksPanel filename="doc.pdf" />, {
+      providers: ["auth", "knowledgeFilter"],
+      auth: authPresets.admin,
     });
+
+    await waitFor(() =>
+      expect(screen.getByText("First chunk content")).toBeInTheDocument(),
+    );
+    expect(screen.getByText("Second chunk content")).toBeInTheDocument();
   });
 
-  it("passes undefined when searchQuery prop is not provided", async () => {
-    mockUseFileScopedChunksQuery.mockReturnValue({
-      file: { filename: "test.pdf", chunks: [] },
-      isFetching: false,
-    });
-
-    renderWithProviders(<FileChunksPanel filename="test.pdf" />, {
-      providers: ["knowledgeFilter"],
-    });
-
-    await waitFor(() => {
-      expect(mockUseFileScopedChunksQuery).toHaveBeenCalledWith(
-        "test.pdf",
-        undefined,
-      );
-    });
-  });
-
-  it("passes empty string when searchQuery prop is empty", async () => {
-    mockUseFileScopedChunksQuery.mockReturnValue({
-      file: { filename: "test.pdf", chunks: [] },
-      isFetching: false,
-    });
-
-    renderWithProviders(
-      <FileChunksPanel filename="test.pdf" searchQuery="" />,
-      {
-        providers: ["knowledgeFilter"],
-      },
+  it("passes searchQuery to the search API and merges highlights", async () => {
+    const calls: { query: string }[] = [];
+    server.use(
+      http.post("/api/search", async ({ request }) => {
+        const body = (await request.json()) as { query: string };
+        calls.push({ query: body.query });
+        if (body.query === "*") {
+          return HttpResponse.json({
+            results: [chunk({ chunk_id: "c1", text: "The quick brown fox" })],
+            warnings: [],
+          });
+        }
+        return HttpResponse.json({
+          results: [
+            chunk({
+              chunk_id: "c1",
+              text: "The quick brown fox",
+              highlights: ["The quick <mark>fox</mark>"],
+            }),
+          ],
+          warnings: [],
+        });
+      }),
     );
 
-    await waitFor(() => {
-      expect(mockUseFileScopedChunksQuery).toHaveBeenCalledWith("test.pdf", "");
-    });
+    const { container } = renderWithProviders(
+      <FileChunksPanel filename="doc.pdf" searchQuery="fox" />,
+      { providers: ["auth", "knowledgeFilter"] },
+    );
+
+    // Both a wildcard and a highlight request must have been sent.
+    await waitFor(() => expect(calls.length).toBeGreaterThanOrEqual(2));
+    expect(calls.some((c) => c.query === "*")).toBe(true);
+    expect(calls.some((c) => c.query === "fox")).toBe(true);
+
+    // The <mark> element must be visible in the rendered output.
+    await waitFor(() =>
+      expect(container.querySelector("mark")).toBeInTheDocument(),
+    );
+    expect(container.querySelector("mark")?.textContent).toBe("fox");
+  });
+
+  it("preserves non-matching chunks when a searchQuery is provided", async () => {
+    server.use(
+      http.post("/api/search", async ({ request }) => {
+        const body = (await request.json()) as { query: string };
+        if (body.query === "*") {
+          return HttpResponse.json({
+            results: [
+              chunk({ chunk_id: "c1", text: "Matching content fox" }),
+              chunk({ chunk_id: "c2", text: "Unrelated content here" }),
+            ],
+            warnings: [],
+          });
+        }
+        return HttpResponse.json({
+          results: [
+            chunk({
+              chunk_id: "c1",
+              text: "Matching content fox",
+              highlights: ["Matching <mark>fox</mark>"],
+            }),
+          ],
+          warnings: [],
+        });
+      }),
+    );
+
+    renderWithProviders(
+      <FileChunksPanel filename="doc.pdf" searchQuery="fox" />,
+      { providers: ["auth", "knowledgeFilter"] },
+    );
+
+    // Both chunks must appear — the panel must not drop non-matching chunks.
+    await waitFor(() =>
+      expect(screen.getByText("Matching content fox")).toBeInTheDocument(),
+    );
+    expect(screen.getByText("Unrelated content here")).toBeInTheDocument();
   });
 });

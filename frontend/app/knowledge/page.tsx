@@ -156,6 +156,20 @@ function buildFilterPageResetKey(
   });
 }
 
+/** Builds the URL for navigating from a knowledge search result to its chunks page.
+ *  Exported for unit testing; the click handler in SearchPage calls this directly. */
+export function buildChunksUrl(
+  filename: string,
+  effectiveSearchText: string,
+): string {
+  const params = new URLSearchParams({ filename });
+  const trimmed = effectiveSearchText.trim();
+  if (trimmed && trimmed !== "*") {
+    params.set("q", trimmed);
+  }
+  return `/knowledge/chunks?${params.toString()}`;
+}
+
 function SearchPage() {
   const isCloudBrand = useIsCloudBrand();
   const queryClient = useQueryClient();
@@ -627,19 +641,9 @@ function SearchPage() {
               )}
               onClick={() => {
                 if (!isActive) return;
-                const params = new URLSearchParams({
-                  filename: data?.filename ?? "",
-                });
-                // Use effectiveSearchText to include both queryOverride and parsedFilterData.query
-                // so the chunks page can fetch highlight fragments for the active search
-                if (
-                  effectiveSearchText &&
-                  effectiveSearchText !== "*" &&
-                  effectiveSearchText !== ""
-                ) {
-                  params.set("q", effectiveSearchText);
-                }
-                router.push(`/knowledge/chunks?${params.toString()}`);
+                router.push(
+                  buildChunksUrl(data?.filename ?? "", effectiveSearchText),
+                );
               }}
             >
               {getSourceIcon(data?.connector_type)}
