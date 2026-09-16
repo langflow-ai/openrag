@@ -120,15 +120,25 @@ describe("FileChunksPanel — highlight wiring", () => {
       }),
     );
 
-    renderWithProviders(
+    const { container } = renderWithProviders(
       <FileChunksPanel filename="doc.pdf" searchQuery="fox" />,
       { providers: ["auth", "knowledgeFilter"] },
     );
 
     // Both chunks must appear — the panel must not drop non-matching chunks.
+    // Chunk 1 has highlights so we check for the text content (mark tag splits it)
     await waitFor(() =>
-      expect(screen.getByText("Matching content fox")).toBeInTheDocument(),
+      expect(
+        screen.getByText((content, element) => {
+          return (
+            element?.textContent === "Matching content fox" ||
+            content.includes("Matching")
+          );
+        }),
+      ).toBeInTheDocument(),
     );
     expect(screen.getByText("Unrelated content here")).toBeInTheDocument();
+    // Verify the highlight mark is rendered
+    expect(container.querySelector("mark")?.textContent).toBe("fox");
   });
 });

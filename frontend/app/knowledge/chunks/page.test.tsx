@@ -152,7 +152,7 @@ describe("ChunksPage — highlight wiring", () => {
     );
 
     const { container } = renderWithProviders(<ProtectedChunksPage />, {
-      providers: "all",
+      providers: ["auth", "knowledgeFilter"],
       auth: authPresets.admin,
     });
 
