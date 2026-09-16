@@ -49,9 +49,7 @@ else:
 
 # Validate TLS configuration at import time so misconfigurations surface on startup.
 if OPENSEARCH_CA_CERTS and not os.path.isfile(OPENSEARCH_CA_CERTS):
-    raise RuntimeError(
-        f"OPENSEARCH_CA_CERTS path does not exist: {OPENSEARCH_CA_CERTS!r}"
-    )
+    raise RuntimeError(f"OPENSEARCH_CA_CERTS path does not exist: {OPENSEARCH_CA_CERTS!r}")
 if OPENSEARCH_VERIFY_CERTS and not OPENSEARCH_CA_CERTS:
     logger.warning(
         "OPENSEARCH_VERIFY_CERTS=true but OPENSEARCH_CA_CERTS is not set; "
@@ -63,7 +61,7 @@ if OPENSEARCH_VERIFY_CERTS and not OPENSEARCH_CA_CERTS:
 # When both are set, uvicorn is started with SSL enabled.  If absent the
 # backend continues to serve plain HTTP (no regression for existing deploys).
 OPENRAG_TLS_CERT_PATH = os.getenv("OPENRAG_TLS_CERT_PATH")  # e.g. /app/certs/tls.crt
-OPENRAG_TLS_KEY_PATH = os.getenv("OPENRAG_TLS_KEY_PATH")   # e.g. /app/certs/tls.key
+OPENRAG_TLS_KEY_PATH = os.getenv("OPENRAG_TLS_KEY_PATH")  # e.g. /app/certs/tls.key
 
 if bool(OPENRAG_TLS_CERT_PATH) != bool(OPENRAG_TLS_KEY_PATH):
     raise RuntimeError(
