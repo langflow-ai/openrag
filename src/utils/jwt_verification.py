@@ -27,6 +27,12 @@ GOOGLE_JWKS_URL = "https://www.googleapis.com/oauth2/v3/certs"
 # Selected at runtime based on the `ver` claim.
 MICROSOFT_JWKS_URL_V2_TEMPLATE = "https://login.microsoftonline.com/{tenant}/discovery/v2.0/keys"
 MICROSOFT_JWKS_URL_V1_TEMPLATE = "https://login.microsoftonline.com/{tenant}/discovery/keys"
+MICROSOFT_GRAPH_AUDIENCES = frozenset(
+    {
+        "00000003-0000-0000-c000-000000000000",
+        "https://graph.microsoft.com",
+    }
+)
 
 
 def _read_jwt_payload_without_trust(token: str) -> dict[str, Any]:
@@ -296,14 +302,9 @@ def verify_microsoft_access_token(
     Scope of validation (per https://learn.microsoft.com/en-us/entra/identity-platform/
     access-token-claims-reference#validate-tokens):
 
-    - We are a *client* (web app calling Microsoft Graph), NOT a resource server.
-      Access tokens issued for Microsoft Graph have aud = Graph's AppId, not ours.
-      OpenRAG still verifies the Microsoft signature, expiry, and issuer before
-      returning claims, but does not require aud to equal our client_id for those
-      resource tokens.
-
-    - When aud == our client_id (token issued directly for our app), we perform full
-      validation: signature, expiry, audience, and issuer per Microsoft docs.
+    - OpenRAG accepts tokens whose aud is either our app client_id or an explicitly
+      approved Microsoft Graph audience. Any other aud is rejected before claims are
+      returned.
 
     Signature validation details (when performed):
     - JWKS endpoint selected by token version: v1 tokens (/discovery/keys),
@@ -353,7 +354,12 @@ def verify_microsoft_access_token(
             logger.debug(f"Extracted tenant_id from token: {tenant_id}")
 
         token_aud = untrusted_claims.get("aud", "")
-        verify_audience = token_aud == client_id
+        token_audiences = {str(aud) for aud in (token_aud if isinstance(token_aud, list) else [token_aud])}
+        supported_audiences = {client_id, *MICROSOFT_GRAPH_AUDIENCES}
+        if not token_audiences.intersection(supported_audiences):
+            raise InvalidAudienceError(
+                f"Unsupported Microsoft token audience: {sorted(token_audiences)!r}"
+            )
 
         # ── Full validation for tokens issued directly to our application ──────────
 
@@ -378,23 +384,20 @@ def verify_microsoft_access_token(
         # only ever contain public keys — cast so mypy accepts it for jwt.decode().
         signing_key = cast(RSAPublicKey, RSAAlgorithm.from_jwk(signing_key_entry))
 
-        # Verify signature and expiry for every Microsoft JWT. Audience validation
-        # is required for app-audience tokens. For Microsoft Graph access tokens,
-        # the audience is Graph rather than OpenRAG, so keep the signature/issuer
-        # guarantees and skip only the audience equality check.
+        # Verify signature, expiry, and audience for every accepted Microsoft JWT.
         # verify_iss=False: issuer validated manually below per Microsoft's algorithm.
-        decode_kwargs: dict[str, Any] = {
-            "algorithms": ["RS256"],
-            "options": {
+        claims = jwt.decode(
+            token,
+            signing_key,
+            algorithms=["RS256"],
+            audience=list(supported_audiences),
+            options={
                 "verify_signature": True,
                 "verify_exp": True,
-                "verify_aud": verify_audience,
+                "verify_aud": True,
                 "verify_iss": False,
             },
-        }
-        if verify_audience:
-            decode_kwargs["audience"] = client_id
-        claims = jwt.decode(token, signing_key, **decode_kwargs)
+        )
 
         # Issuer validation per Microsoft docs:
         # Substitute tid into the signing key's issuer template and exact-match iss.

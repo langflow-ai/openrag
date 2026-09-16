@@ -11,6 +11,8 @@ on:
         type: boolean
         default: false
 
+permissions: {}
+
 jobs:
   scan-container-images:
     name: Container Image Scan (${{ matrix.image.name }})
@@ -125,6 +127,8 @@ jobs:
   static-scan:
     name: Static Code Security (SAST)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -163,6 +167,8 @@ jobs:
     needs: [scan-container-images, oss-scan, static-scan]
     if: always()
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

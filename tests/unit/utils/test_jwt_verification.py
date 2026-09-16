@@ -254,7 +254,7 @@ class TestVerifyMsAccessToken:
                 )
 
     def test_graph_token_allowed_tenant_passes(self):
-        """Pass-through token from a tenant in the allow-list succeeds."""
+        """Graph-audience token from a tenant in the allow-list succeeds."""
         MS_GRAPH_AUD = "00000003-0000-0000-c000-000000000000"
         token = _make_ms_token(self.private_key, aud=MS_GRAPH_AUD)
 
@@ -317,13 +317,13 @@ class TestVerifyMsAccessToken:
             with pytest.raises(ExpiredTokenError):
                 verify_microsoft_access_token(token, CLIENT_ID)
 
-    def test_other_audience_token_is_verified_without_audience_match(self):
-        """A token for another audience is verified but not accepted as our audience."""
+    def test_other_audience_token_is_rejected(self):
+        """A token for an unsupported audience is rejected."""
         token = _make_ms_token(self.private_key, aud=CLIENT_ID)
 
         with patch("utils.jwt_verification._fetch_jwks", return_value=self.jwks):
-            claims = verify_microsoft_access_token(token, "different-client-id")
-        assert claims["aud"] == CLIENT_ID
+            with pytest.raises(InvalidAudienceError, match="Unsupported Microsoft token audience"):
+                verify_microsoft_access_token(token, "different-client-id")
 
     def test_issuer_mismatch_raises(self):
         """Signing key issuer in JWKS doesn't match the token iss."""
