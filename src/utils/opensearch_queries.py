@@ -74,30 +74,45 @@ def build_anonymous_filename_query(filename: str) -> dict:
     }
 
 
+def build_owner_or_shared_filter(owner: str) -> dict:
+    """Build the owner-scope clause covering a user's own chunks AND shared ones.
+
+    Matches ``owner == owner`` OR the ``owner`` field being absent.  The
+    ownerless branch is what keeps replace/cleanup working on documents ingested
+    with the COS "make available to all users" toggle, which indexes chunks
+    without an owner at all; naming the current user in the other branch keeps
+    another user's *private* document — merely visible to us via allowed_users
+    DLS — out of scope.
+
+    This is the deletion boundary for anything we have already matched by a
+    stable identity (filename alias, connector file id): both layouts are ours
+    to replace, neither is someone else's to remove.
+    """
+    return {
+        "bool": {
+            "should": [
+                {"term": {"owner": owner}},
+                {"bool": {"must_not": {"exists": {"field": "owner"}}}},
+            ],
+            "minimum_should_match": 1,
+        }
+    }
+
+
 def build_replace_filename_query(filename: str, owner: str) -> dict:
     """Build a delete-scope query for replace_duplicates that covers both private
     and shared (ownerless) chunks with this filename.
 
     Matches chunks where filename matches AND (owner == current user OR owner
-    field is absent).  Combining both cases is necessary because the same
-    filename may have been previously ingested as shared (no owner field) and
-    is now being replaced by the same user.  The owner-field branch protects
-    against accidentally deleting documents owned by *other* users that are
-    merely visible to the current user via allowed_users DLS.
+    field is absent) — see build_owner_or_shared_filter.  Combining both cases
+    is necessary because the same filename may have been previously ingested as
+    shared (no owner field) and is now being replaced by the same user.
     """
     return {
         "bool": {
             "filter": [
                 build_filename_query(filename),
-                {
-                    "bool": {
-                        "should": [
-                            {"term": {"owner": owner}},
-                            {"bool": {"must_not": {"exists": {"field": "owner"}}}},
-                        ],
-                        "minimum_should_match": 1,
-                    }
-                },
+                build_owner_or_shared_filter(owner),
             ]
         }
     }

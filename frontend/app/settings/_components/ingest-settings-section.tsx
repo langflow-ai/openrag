@@ -992,7 +992,7 @@ export function IngestSettingsSection() {
                               ? "Loading models..."
                               : catalogError
                                 ? "Could not load the model catalogue. Retry later."
-                                : "No models detected. Configure OpenAI, Anthropic, Ollama, or IBM watsonx.ai first."
+                                : "No models detected. Configure a model provider with vision-capable models first."
                           }
                           value={vlmModel}
                           selectedProvider={effectiveVlmProvider}

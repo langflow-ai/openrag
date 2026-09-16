@@ -304,6 +304,89 @@ async def test_update_settings_rejects_invalid_azure_foundry_key_before_saving()
     save.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_update_settings_validates_enhancement_credentials_before_saving():
+    """A credential-only save runs a provider enhancement's model-free check.
+
+    `ProviderSettingsDialog` submits nothing but `provider_credentials`, so the
+    `llm_provider` / `embedding_provider` branches never fire. Without a branch
+    of its own, a bad OpenShift AI URL or token was stored and the UI reported
+    success; the check is handed the untranslated pending form so it sees both
+    endpoints, not the one LiteLLM was narrowed to.
+    """
+    from api.settings.endpoints import update_settings
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.edited = True
+    submitted = {
+        "api_base": "https://granite-chat.openrag.svc:8443/v1",
+        "embedding_api_base": "https://granite-embed.openrag.svc:8443/v1",
+        "api_key": "expired-token",
+    }
+    body = SettingsUpdateBody(provider_credentials={"rhoai": submitted})
+    rbac = MagicMock()
+    rbac.has_permission = AsyncMock(return_value=True)
+
+    with (
+        patch("api.settings.endpoints.get_openrag_config", return_value=config),
+        patch(
+            "api.settings.endpoints.validate_provider_setup",
+            new_callable=AsyncMock,
+            side_effect=Exception("The OpenShift AI chat endpoint rejected the token"),
+        ) as validate,
+        patch("api.settings.endpoints.config_manager.save_config_file") as save,
+    ):
+        response = await update_settings(
+            body=body,
+            session_manager=AsyncMock(),
+            user=MagicMock(spec=User),
+            models_service=MagicMock(),
+            rbac=rbac,
+        )
+
+    assert response.status_code == 400
+    assert b"rejected the token" in response.body
+    validate.assert_awaited_once()
+    kwargs = validate.await_args.kwargs
+    assert kwargs["provider"] == "rhoai"
+    assert kwargs.get("llm_model") is None and kwargs.get("embedding_model") is None
+    assert kwargs["stored_credentials"] == submitted
+    save.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_settings_skips_pre_save_check_for_litellm_only_providers():
+    """Providers without an enhancement have no model-free probe to run."""
+    from api.settings.endpoints import update_settings
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.edited = True
+    body = SettingsUpdateBody(
+        provider_credentials={"openai_like": {"api_base": "https://llm.example", "api_key": "k"}}
+    )
+    rbac = MagicMock()
+    rbac.has_permission = AsyncMock(return_value=True)
+
+    with (
+        patch("api.settings.endpoints.get_openrag_config", return_value=config),
+        patch("api.settings.endpoints.validate_provider_setup", new_callable=AsyncMock) as validate,
+        patch("api.settings.endpoints.config_manager.save_config_file"),
+        patch("api.settings.endpoints._update_langflow_global_variables", new_callable=AsyncMock),
+    ):
+        response = await update_settings(
+            body=body,
+            session_manager=AsyncMock(),
+            user=MagicMock(spec=User),
+            models_service=MagicMock(),
+            rbac=rbac,
+        )
+
+    assert getattr(response, "status_code", 200) == 200
+    validate.assert_not_awaited()
+
+
 @pytest.mark.parametrize(
     "provider",
     ["openai", "watsonx", "anthropic", "local", "ollama", "azure", "azure_ai", "openai_like"],

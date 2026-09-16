@@ -800,6 +800,8 @@ INDEX_BODY = {
             "connector_type": {"type": "keyword"},
             "ingest_run_id": {"type": "keyword"},
             "connector_file_id": {"type": "keyword"},
+            # Object-store entity tag of the source file, for sync change detection.
+            "content_etag": {"type": "keyword"},
             "owner": {"type": "keyword"},
             "allowed_users": {"type": "keyword"},
             "allowed_groups": {"type": "keyword"},
