@@ -66,6 +66,11 @@ async def legacy_migration_workspace(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("OPENRAG_NOAUTH_ROLE", "admin")
     monkeypatch.setenv("DISABLE_STARTUP_INGEST", "true")
     monkeypatch.setenv("FETCH_OPENRAG_DOCS_AT_STARTUP", "false")
+    # Disable conversation pruning: legacy fixture data is intentionally old
+    # (April 2026) and would be immediately pruned by the nightly background
+    # task if the default 90-day TTL is active, causing the history assertions
+    # below to fail.
+    monkeypatch.setenv("OPENRAG_CONVERSATION_TTL_DAYS", "0")
 
     from db.engine import dispose_engine as dispose_existing_engine
 
