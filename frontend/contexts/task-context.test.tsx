@@ -422,3 +422,81 @@ describe("TaskProvider — task completion with cancellations", () => {
     );
   });
 });
+
+describe("TaskProvider — source-deleted overlays", () => {
+  it("does not create a knowledge overlay for a source-deleted file", async () => {
+    const qc = createTestQueryClient();
+    const task = makeTask({
+      status: "running",
+      files: {
+        "file-id-1": {
+          status: "completed",
+          filename: "gone.pdf",
+          result: { reason: "deleted_at_source" },
+        },
+      },
+    });
+    server.use(
+      http.get("/api/tasks/enhanced", () =>
+        HttpResponse.json({ tasks: [task] }),
+      ),
+    );
+
+    const { result } = renderHook(() => useTask(), { wrapper: wrapper(qc) });
+
+    await waitFor(() => expect(result.current.tasks).toHaveLength(1));
+    expect(
+      result.current.files.some((file) => file.source_url === "file-id-1"),
+    ).toBe(false);
+  });
+
+  it("drops a processing overlay when the file is later deleted at the source", async () => {
+    const qc = createTestQueryClient();
+    let callCount = 0;
+    const runningTask = makeTask({
+      status: "running",
+      files: {
+        "file-id-1": { status: "running", filename: "gone.pdf" },
+      },
+    });
+    const deletedTask = makeTask({
+      status: "running",
+      files: {
+        "file-id-1": {
+          status: "completed",
+          filename: "gone.pdf",
+          result: { reason: "deleted_at_source" },
+        },
+      },
+    });
+
+    server.use(
+      http.get("/api/tasks/enhanced", () => {
+        callCount++;
+        return HttpResponse.json({
+          tasks: [callCount === 1 ? runningTask : deletedTask],
+        });
+      }),
+    );
+
+    const { result } = renderHook(() => useTask(), { wrapper: wrapper(qc) });
+
+    await waitFor(() =>
+      expect(
+        result.current.files.some((file) => file.source_url === "file-id-1"),
+      ).toBe(true),
+    );
+
+    await waitFor(() => expect(callCount).toBeGreaterThanOrEqual(2), {
+      timeout: 5000,
+    });
+
+    await waitFor(
+      () =>
+        expect(
+          result.current.files.some((file) => file.source_url === "file-id-1"),
+        ).toBe(false),
+      { timeout: 5000 },
+    );
+  });
+});
