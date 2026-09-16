@@ -295,6 +295,11 @@ export function IngestSettingsSection() {
   );
 
   const autoSelectedEmbedding = useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: provider changes reset the one-shot fallback guard.
+  useEffect(() => {
+    autoSelectedEmbedding.current = false;
+  }, [settings.knowledge?.embedding_provider]);
+
   useEffect(() => {
     if (requiresExplicitModelSelection(settings.knowledge?.embedding_provider))
       return;

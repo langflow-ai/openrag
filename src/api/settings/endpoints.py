@@ -1127,8 +1127,10 @@ async def onboarding(
 
         log_bootstrap_env(logger, "onboarding")
 
-        # Get current configuration
-        current_config = get_openrag_config()
+        # Onboarding validation can fail before anything is persisted. Work on
+        # a copy so rejected credentials or deployment names do not leak into
+        # the process-wide cached configuration.
+        current_config = copy.deepcopy(get_openrag_config())
 
         # Warn if config was already edited (onboarding being re-run)
         if current_config.edited:

@@ -137,6 +137,11 @@ export function AgentSettingsSection() {
   );
 
   const autoSelectedLlm = useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: provider changes reset the one-shot fallback guard.
+  useEffect(() => {
+    autoSelectedLlm.current = false;
+  }, [settings.agent?.llm_provider]);
+
   useEffect(() => {
     if (requiresExplicitModelSelection(settings.agent?.llm_provider)) return;
     if (settings.agent?.llm_model) {

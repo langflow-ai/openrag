@@ -9,3 +9,10 @@ export function canCompleteOnboarding({
 }): boolean {
   return isEmbedding ? !!embeddingModel : !!llmModel;
 }
+
+/** A failed first-time validation has no saved onboarding state to restore. */
+export function shouldRollbackFailedOnboarding(
+  configWasEdited: boolean | undefined,
+): boolean {
+  return configWasEdited === true;
+}

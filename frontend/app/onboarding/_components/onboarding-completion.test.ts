@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-// Node's built-in TypeScript runner requires the extension; tsc resolves the same source.
-// @ts-expect-error TS5097
-import { canCompleteOnboarding } from "./onboarding-completion.ts";
+import {
+  canCompleteOnboarding,
+  shouldRollbackFailedOnboarding,
+} from "./onboarding-completion";
 
 describe("canCompleteOnboarding", () => {
   it("allows language-model setup when a model is selected, regardless of Docling health", () => {
@@ -33,5 +34,16 @@ describe("canCompleteOnboarding", () => {
       }),
       false,
     );
+  });
+});
+
+describe("shouldRollbackFailedOnboarding", () => {
+  it("does not roll back an initial validation failure with no saved config", () => {
+    assert.equal(shouldRollbackFailedOnboarding(false), false);
+    assert.equal(shouldRollbackFailedOnboarding(undefined), false);
+  });
+
+  it("rolls back a failed update to an existing onboarding config", () => {
+    assert.equal(shouldRollbackFailedOnboarding(true), true);
   });
 });
