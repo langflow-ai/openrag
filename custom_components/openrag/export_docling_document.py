@@ -1,9 +1,33 @@
+import inspect
 from typing import Any
 
 from lfx.base.data.docling_utils import coerce_docling_document, extract_docling_documents, get_docling_image_ref_mode
 from lfx.custom import Component
 from lfx.io import DropdownInput, HandleInput, MessageTextInput, Output, StrInput
 from lfx.schema import Data, DataFrame
+
+
+def traverse_pictures_kwargs(export_fn) -> dict[str, Any]:
+    """Ask export_to_markdown to serialize text nested under pictures, when it can.
+
+    Scanned/image pages come back from Docling with all their OCR text attached
+    as children of a PictureItem rather than to the document body. Markdown
+    export skips picture children by default, which silently drops every OCR'd
+    word and leaves only the image placeholder.
+
+    Older docling-core releases have no `traverse_pictures` parameter and raise
+    TypeError if it is passed, so probe the signature rather than assume.
+    """
+    try:
+        parameters = inspect.signature(export_fn).parameters
+    except (TypeError, ValueError):
+        # Some callables (C builtins, exotic wrappers) have no inspectable
+        # signature. Omitting the flag keeps the old behaviour rather than
+        # risking a TypeError that would fail the whole export.
+        return {}
+    if "traverse_pictures" in parameters:
+        return {"traverse_pictures": True}
+    return {}
 
 
 class ExportDoclingDocumentComponent(Component):
@@ -124,6 +148,7 @@ class ExportDoclingDocumentComponent(Component):
                         image_mode=image_mode,
                         image_placeholder=self.md_image_placeholder,
                         page_no=page_no,
+                        **traverse_pictures_kwargs(doc.export_to_markdown),
                     )
                 except TypeError:
                     # Fallback to from_page/to_page parameters
@@ -132,6 +157,7 @@ class ExportDoclingDocumentComponent(Component):
                         image_placeholder=self.md_image_placeholder,
                         from_page=page_no,
                         to_page=page_no,
+                        **traverse_pictures_kwargs(doc.export_to_markdown),
                     )
             except Exception:
                 # Any exception from either attempt: fall back to whole-document export
@@ -169,12 +195,14 @@ class ExportDoclingDocumentComponent(Component):
                             image_mode=image_mode,
                             image_placeholder=self.md_image_placeholder,
                             page_break_placeholder=self.md_page_break_placeholder,
+                            **traverse_pictures_kwargs(doc.export_to_markdown),
                         )
                     except TypeError:
                         # Older docling-core versions lack page_break_placeholder
                         content = doc.export_to_markdown(
                             image_mode=image_mode,
                             image_placeholder=self.md_image_placeholder,
+                            **traverse_pictures_kwargs(doc.export_to_markdown),
                         )
                 elif self.export_format == "HTML":
                     content = doc.export_to_html(image_mode=image_mode)
