@@ -865,26 +865,79 @@ export function IngestSettingsSection() {
                 }}
               />
             </div>
-            <div className="flex items-center justify-between py-3 border-b border-border">
-              <div className="flex-1">
-                <Label
-                  htmlFor="ocr"
-                  className="text-base font-medium cursor-pointer pb-3"
-                >
-                  OCR
-                </Label>
-                <div className="text-sm text-muted-foreground">
-                  Extracts text from images/PDFs. Ingest is slower when enabled.
+            <div className="border-b border-border">
+              <div className="flex items-center justify-between py-3">
+                <div className="flex-1">
+                  <Label
+                    htmlFor="ocr"
+                    className="text-base font-medium cursor-pointer pb-3"
+                  >
+                    OCR
+                  </Label>
+                  <div className="text-sm text-muted-foreground">
+                    Extracts text from images/PDFs. Ingest is slower when
+                    enabled.
+                  </div>
                 </div>
+                <Switch
+                  id="ocr"
+                  checked={ocr}
+                  onCheckedChange={(v) => {
+                    setUserEdited(true);
+                    setOcr(v);
+                  }}
+                />
               </div>
-              <Switch
-                id="ocr"
-                checked={ocr}
-                onCheckedChange={(v) => {
-                  setUserEdited(true);
-                  setOcr(v);
-                }}
-              />
+              <Collapsible
+                open={ocrOpen}
+                onOpenChange={setOcrOpen}
+                className={cn(
+                  "pl-4 pb-3 transition-all duration-200",
+                  !ocr && "opacity-50",
+                )}
+              >
+                <CollapsibleTrigger className="flex w-full items-center justify-between py-2 text-sm font-medium text-foreground hover:text-foreground/80">
+                  Advanced OCR Settings
+                  <ChevronDown
+                    className={cn(
+                      "h-4 w-4 mr-4 text-muted-foreground transition-transform duration-200",
+                      ocrOpen && "rotate-180",
+                    )}
+                  />
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pt-4 space-y-6">
+                  <div className="space-y-2">
+                    <LabelWrapper
+                      id="ocr-languages"
+                      label="OCR languages"
+                      helperText="Text in languages you don't select is skipped during ingest"
+                      disabled={!ocr}
+                      flex
+                    >
+                      <MultiSelect
+                        options={ocrLanguageOptions}
+                        value={ocrLanguages}
+                        onValueChange={(v) => {
+                          setUserEdited(true);
+                          // An empty selection would make docling fall back to its
+                          // English-only default without saying so; keep English.
+                          setOcrLanguages(v.length > 0 ? v : ["en"]);
+                        }}
+                        showAllOption={false}
+                        placeholder="Select languages..."
+                        searchPlaceholder="Search languages..."
+                        className="w-64"
+                        inlineLabelLimit={2}
+                        disabled={!ocr}
+                      />
+                    </LabelWrapper>
+                    <p className="text-sm text-muted-foreground">
+                      Most languages can only be combined with English, so
+                      incompatible options are disabled once you choose one.
+                    </p>
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
             </div>
             <div className="flex items-center justify-between py-3">
               <div className="flex-1">
@@ -907,55 +960,6 @@ export function IngestSettingsSection() {
                 }}
               />
             </div>
-            <hr className="mt-4 border-border" />
-            <Collapsible
-              open={ocrOpen}
-              onOpenChange={setOcrOpen}
-              className={cn(
-                "mt-4 px-4 transition-all duration-200",
-                !ocr && "opacity-50",
-              )}
-            >
-              <CollapsibleTrigger className="flex w-full items-center justify-between py-2 text-sm font-medium text-foreground hover:text-foreground/80">
-                Advanced OCR Settings
-                <ChevronDown
-                  className={cn(
-                    "h-4 w-4 text-muted-foreground transition-transform duration-200",
-                    ocrOpen && "rotate-180",
-                  )}
-                />
-              </CollapsibleTrigger>
-              <CollapsibleContent className="pt-4 space-y-6">
-                <div className="space-y-2">
-                  <LabelWrapper
-                    id="ocr-languages"
-                    label="OCR languages"
-                    helperText="Text in languages you don't select is skipped during ingest"
-                    disabled={!ocr}
-                  >
-                    <MultiSelect
-                      options={ocrLanguageOptions}
-                      value={ocrLanguages}
-                      onValueChange={(v) => {
-                        setUserEdited(true);
-                        // An empty selection would make docling fall back to its
-                        // English-only default without saying so; keep English.
-                        setOcrLanguages(v.length > 0 ? v : ["en"]);
-                      }}
-                      showAllOption={false}
-                      placeholder="Select languages..."
-                      searchPlaceholder="Search languages..."
-                      className="max-w-xs"
-                      disabled={!ocr}
-                    />
-                  </LabelWrapper>
-                  <p className="text-sm text-muted-foreground">
-                    Most languages can only be combined with English, so
-                    incompatible options are disabled once you choose one.
-                  </p>
-                </div>
-              </CollapsibleContent>
-            </Collapsible>
             {showVlmSettings && (
               <>
                 <hr className="mt-4 border-border" />
@@ -963,7 +967,7 @@ export function IngestSettingsSection() {
                   open={vlmOpen}
                   onOpenChange={setVlmOpen}
                   className={cn(
-                    "mt-4 px-4 transition-all duration-200",
+                    "mt-4 pl-4 transition-all duration-200",
                     !pictureDescriptions && "opacity-50",
                   )}
                 >
@@ -971,7 +975,7 @@ export function IngestSettingsSection() {
                     Advanced Vision Model (VLM) Settings
                     <ChevronDown
                       className={cn(
-                        "h-4 w-4 text-muted-foreground transition-transform duration-200",
+                        "h-4 w-4 mr-4 text-muted-foreground transition-transform duration-200",
                         vlmOpen && "rotate-180",
                       )}
                     />

@@ -39,6 +39,11 @@ interface MultiSelectProps {
   showAllOption?: boolean;
   allOptionLabel?: string;
   disabled?: boolean;
+  /**
+   * Name the selected options on the trigger while at most this many are
+   * chosen, instead of showing a bare count. 0 always shows the count.
+   */
+  inlineLabelLimit?: number;
 }
 
 export function MultiSelect({
@@ -52,6 +57,7 @@ export function MultiSelect({
   showAllOption = true,
   allOptionLabel = "All",
   disabled = false,
+  inlineLabelLimit = 0,
 }: MultiSelectProps) {
   const [open, setOpen] = React.useState(false);
   const [searchValue, setSearchValue] = React.useState("");
@@ -102,6 +108,18 @@ export function MultiSelect({
 
     if (safeValue.length === 0) {
       return placeholder;
+    }
+
+    // A short selection reads better named than counted: "English, Japanese"
+    // says what OCR will run, "2 languages" makes you open the dropdown.
+    if (safeValue.length <= inlineLabelLimit) {
+      return safeValue
+        .map(
+          (selected) =>
+            options.find((option) => option.value === selected)?.label ??
+            selected,
+        )
+        .join(", ");
     }
 
     // Extract the noun from placeholder (e.g., "Select data sources..." -> "data sources")
