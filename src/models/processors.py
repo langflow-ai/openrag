@@ -31,6 +31,7 @@ DOCLING_PARSER_LABEL = "Docling Serve 1.20.0"
 TEXT_PARSER_LABEL = "Text Parser"
 
 DUPLICATE_FILENAME_WARNING = "A file with this name already exists."
+DUPLICATE_CONTENT_WARNING = "Identical content already exists in the knowledge base under a different filename."
 
 if TYPE_CHECKING:
     from connectors.base import DocumentACL
@@ -1636,6 +1637,25 @@ class LangflowFileProcessor(TaskProcessor):
 
             file_hash = hash_id(item)
             file_task.document_id = file_hash
+
+            # Guard: identical content already indexed under a different name.
+            # The filename guard above only fires when names match; this catches
+            # the case where the same bytes are re-uploaded with a new filename.
+            # Mirrors the connector path's check_document_exists short-circuit
+            # (processors.py:1212) but reports it as a warning rather than
+            # silently overwriting, matching the "preferred" direction in #2388.
+            if await self.check_document_exists(file_hash, opensearch_client):
+                file_task.status = TaskStatus.SKIPPED
+                file_task.error = None
+                file_task.result = {
+                    "status": "skipped",
+                    "reason": "duplicate_content",
+                    "warning": DUPLICATE_CONTENT_WARNING,
+                    "document_id": file_hash,
+                }
+                file_task.updated_at = time.time()
+                upload_task.successful_files += 1
+                return
 
             # Build settings with fresh OCR/pictureDescriptions from live
             # config so retries pick up configuration changes.
