@@ -268,7 +268,11 @@ class ConnectorService:
         files_to_process: list[dict[str, Any]] = []
         page_token = None
 
-        while True:
+        # A zero cap means "sync nothing" and has to short-circuit before the
+        # first list_files call: every cap below is spelled `if max_files and …`,
+        # so 0 would fall through as "no cap" and enumerate the whole source.
+        # None (no cap) and positive caps take the loop as before.
+        while max_files != 0:
             # Pass max_files straight through — None means "no cap". Asking for a
             # synthetic page size instead silently truncated every sync: the
             # connectors that paginate internally (all three bucket ones, and

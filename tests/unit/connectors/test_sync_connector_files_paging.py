@@ -123,6 +123,23 @@ async def test_explicit_max_files_still_caps():
 
 
 @pytest.mark.asyncio
+async def test_max_files_zero_lists_nothing():
+    """A zero cap means "sync nothing", not "no cap".
+
+    Every cap check is spelled `if max_files and ...`, so 0 reads as falsy there.
+    Without the short-circuit it would list — and ingest — the entire source.
+    """
+    connector, requested_max_files = _internally_paginating_connector(total=150)
+    service = _service(connector)
+
+    await service.sync_connector_files("conn-1", "alice", max_files=0)
+
+    assert _processed_ids(service) == []
+    assert requested_max_files == []
+    connector.list_files.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_token_paginated_connector_is_followed_across_pages():
     """SharePoint's $skiptoken was read under the wrong key and dropped."""
     pages = [[_file(0), _file(1)], [_file(2), _file(3)], [_file(4)]]
