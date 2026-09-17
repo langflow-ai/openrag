@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
-import { getGreetingMessage } from "./greeting.ts";
+import {
+  allGreetingTemplates,
+  GREETING_TEXT_PATTERN,
+  getGreetingMessage,
+} from "./greeting.ts";
 import { resolveDisplayName } from "./user.ts";
 
 // ---------------------------------------------------------------------------
@@ -161,6 +165,20 @@ describe("getGreetingMessage", () => {
     assert.ok(
       /morning|Morning/i.test(msg),
       `expected morning greeting (day branch suppressed), got: ${msg}`,
+    );
+  });
+
+  it("every greeting variant matches GREETING_TEXT_PATTERN", () => {
+    for (const tmpl of allGreetingTemplates()) {
+      const rendered = tmpl.replace("{name}", "");
+      assert.ok(
+        GREETING_TEXT_PATTERN.test(rendered),
+        `E2E greeting matcher missed template: ${tmpl}`,
+      );
+    }
+    assert.ok(
+      GREETING_TEXT_PATTERN.test("How can I assist you today?"),
+      "placeholder greeting must match GREETING_TEXT_PATTERN",
     );
   });
 });

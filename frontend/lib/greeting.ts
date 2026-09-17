@@ -74,6 +74,21 @@ function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+/** Every greeting template, including day-of-week variants. */
+export function allGreetingTemplates(): string[] {
+  return [
+    ...Object.values(GREETING_MESSAGES).flat(),
+    ...Object.values(DAY_OF_WEEK_MESSAGES).flat(),
+  ];
+}
+
+/**
+ * Matches any greeting from getGreetingMessage or PLACEHOLDER_GREETING.
+ * Used by E2E tests that must not pin a single randomized phrase.
+ */
+export const GREETING_TEXT_PATTERN =
+  /How can I assist|How can I help|What can I help you with|How may I help|What are we working on|What can I do for you|How may I assist/;
+
 /**
  * Returns a short, cheerful, personalized greeting.
  *

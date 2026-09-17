@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { GREETING_TEXT_PATTERN } from "../../lib/greeting";
 import { completeOnboarding } from "../utils/onboarding";
 
 test("can complete onboarding with configured provider", async ({ page }) => {
@@ -6,9 +7,11 @@ test("can complete onboarding with configured provider", async ({ page }) => {
     reset: true,
   });
 
-  // Chat page
-
-  await expect(page.getByText("How can I assist?")).toBeVisible({
+  // Chat page — greeting is time/day/random, so don't pin a single phrase.
+  await expect(page.getByTestId("chat-input")).toBeVisible({
+    timeout: 30000,
+  });
+  await expect(page.getByText(GREETING_TEXT_PATTERN)).toBeVisible({
     timeout: 30000,
   });
 
