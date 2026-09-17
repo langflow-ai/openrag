@@ -1,0 +1,62 @@
+name: Test Backend
+
+# Runs the backend unit suite on every PR that could affect it.
+#
+# Until this existed, no workflow ran pytest at all. That is how #2389 shipped a
+# flow whose embedded component code had drifted from its source file:
+# test_flow_embeds_the_same_component_source would have caught it, but never ran.
+#
+# Tests that already fail on main are tracked in tests/unit/known_failures.txt
+# and marked strict xfail, so this job gates on NEW failures while that list is
+# worked down. See the header of that file for the rules.
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'custom_components/**'
+      - 'flows/**'
+      - 'config/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/test-backend.yml'
+  push:
+    branches:
+      - main
+
+# Cancel in-flight runs on the same ref when a new push lands.
+concurrency:
+  group: test-backend-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Install dev dependencies
+        run: uv sync --group dev
+
+      - name: Run unit tests
+        env:
+          # Every entry in known_failures.txt must be collected, so a renamed or
+          # mistyped line fails loudly instead of silently protecting nothing.
+          OPENRAG_ENFORCE_KNOWN_FAILURES: '1'
+        run: uv run pytest tests/unit -q --color=yes
