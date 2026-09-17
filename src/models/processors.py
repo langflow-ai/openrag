@@ -31,7 +31,9 @@ DOCLING_PARSER_LABEL = "Docling Serve 1.20.0"
 TEXT_PARSER_LABEL = "Text Parser"
 
 DUPLICATE_FILENAME_WARNING = "A file with this name already exists."
-DUPLICATE_CONTENT_WARNING = "Identical content already exists in the knowledge base under a different filename."
+DUPLICATE_CONTENT_WARNING = (
+    "Identical content already exists in the knowledge base under a different filename."
+)
 
 if TYPE_CHECKING:
     from connectors.base import DocumentACL
