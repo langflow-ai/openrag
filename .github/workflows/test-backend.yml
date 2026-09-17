@@ -52,11 +52,11 @@ jobs:
         run: uv python install 3.13
 
       - name: Install dev dependencies
-        run: uv sync --group dev
+        run: uv sync --locked --group dev
 
       - name: Run unit tests
         env:
           # Every entry in known_failures.txt must be collected, so a renamed or
           # mistyped line fails loudly instead of silently protecting nothing.
           OPENRAG_ENFORCE_KNOWN_FAILURES: '1'
-        run: uv run pytest tests/unit -q --color=yes
+        run: uv run --locked pytest tests/unit -q --color=yes

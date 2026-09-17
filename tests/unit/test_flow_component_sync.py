@@ -140,8 +140,10 @@ def test_whitespace_only_drift_is_still_a_failure():
     flow_name, node_id, source_path, embedded, source = EMBEDDED[0]
 
     # The real drift was import wrapping, a split signature, and a blank line.
-    reformatted = embedded.replace("\n\n\n", "\n\n", 1)
-    assert reformatted != embedded, "expected a blank-line change to alter the text"
+    # A trailing newline is the smallest whitespace-only change, and unlike
+    # collapsing a blank line it does not depend on how the source is formatted.
+    reformatted = embedded + "\n"
+    assert reformatted != embedded, "expected a whitespace change to alter the text"
 
     with pytest.raises(pytest.fail.Exception):
         test_embedded_component_matches_its_source(
