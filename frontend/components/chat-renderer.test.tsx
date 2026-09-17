@@ -1,4 +1,4 @@
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/test-utils/render";
@@ -38,9 +38,12 @@ vi.mock("@/app/api/queries/useGetFilterByIdQuery", () => ({
   getFilterById: vi.fn(),
 }));
 
+const mockStartNewConversation = vi.fn().mockResolvedValue(undefined);
+
 vi.mock("@/app/api/mutations/useUpdateOnboardingStateMutation", () => ({
   useUpdateOnboardingStateMutation: () => ({
     mutate: vi.fn(),
+    mutateAsync: vi.fn().mockResolvedValue(undefined),
   }),
 }));
 
@@ -64,7 +67,7 @@ vi.mock("@/contexts/chat-context", async (importOriginal) => ({
     refreshTrigger: 0,
     refreshTriggerSilent: 0,
     refreshConversations: 0,
-    startNewConversation: vi.fn(),
+    startNewConversation: mockStartNewConversation,
     setConversationFilter: vi.fn(),
     setOnboardingComplete: vi.fn(),
     currentConversationId: null,
@@ -79,6 +82,25 @@ vi.mock("@/hooks/use-permissions", () => ({
     isLoading: false,
     rbacEnforced: false,
   }),
+}));
+
+let capturedHandleStepComplete: (() => void) | undefined;
+
+vi.mock("@/app/onboarding/_components/onboarding-content", () => ({
+  OnboardingContent: ({
+    handleStepComplete,
+  }: {
+    handleStepComplete: () => void;
+    handleStepBack: () => void;
+    currentStep: number;
+  }) => {
+    capturedHandleStepComplete = handleStepComplete;
+    return (
+      <button data-testid="complete-step-btn" onClick={handleStepComplete}>
+        Complete Step
+      </button>
+    );
+  },
 }));
 
 vi.mock("@/components/navigation", () => ({
@@ -216,5 +238,36 @@ describe("ChatRenderer", () => {
     expect(closeNavBtn).toBeInTheDocument();
     await user.click(closeNavBtn);
     expect(mockUnpinSidebar).toHaveBeenCalled();
+  });
+
+  // chat-renderer.tsx line 298: startNewConversation called when onboarding
+  // completes on the final step (handleStepComplete else branch)
+  it("calls startNewConversation when the final onboarding step completes", async () => {
+    global.ResizeObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as any;
+
+    capturedHandleStepComplete = undefined;
+    mockStartNewConversation.mockReset();
+
+    // current_step: 3 = TOTAL_ONBOARDING_STEPS - 1, so showLayout starts false
+    // and OnboardingContent is rendered with handleStepComplete.
+    renderWithProviders(
+      <ChatRenderer settings={{ onboarding: { current_step: 3 } }}>
+        <div>Content</div>
+      </ChatRenderer>,
+    );
+
+    // OnboardingContent mock renders the button and captures handleStepComplete
+    const btn = screen.getByTestId("complete-step-btn");
+    await userEvent.click(btn);
+
+    await waitFor(() => {
+      expect(mockStartNewConversation).toHaveBeenCalledWith({
+        showPlaceholder: false,
+      });
+    });
   });
 });
