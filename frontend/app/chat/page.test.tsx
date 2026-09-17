@@ -2,7 +2,7 @@
  * chat/page.tsx — smoke test that exercises the lines flagged by diff-coverage.
  *
  * Lines 68, 71-72: useAuth() call + isNoAuthMode guard + displayName resolution.
- * Lines 80-88: useEffect that updates the greeting message when displayName changes.
+ * Lines 71-88: useEffect that replaces PLACEHOLDER_GREETING after auth settles.
  * Lines 106, 108, 110-112, 114, 117-119, 122, 126, 128, 134: hook calls and
  *   handleFileDrop callback that run on mount.
  * Lines 373, 653: event-handler and effect bodies — covered by dispatching
@@ -11,10 +11,11 @@
  * ChatPage is not exported; we mount via the default export ProtectedChatPage
  * and stub ProtectedRoute to a passthrough.
  */
-import { act, screen } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { authPresets } from "@/test-utils/fixtures/auth";
+import { authPresets, makeUser, withAuth } from "@/test-utils/fixtures/auth";
 import { renderWithProviders } from "@/test-utils/render";
+import { PLACEHOLDER_GREETING } from "./_types/types";
 
 // ── Module stubs ─────────────────────────────────────────────────────────────
 
@@ -121,7 +122,9 @@ vi.mock("@/lib/analytics", () => ({
 
 // Stub AssistantMessage and ChatInput to avoid their own heavy dep chains
 vi.mock("@/app/chat/_components/assistant-message", () => ({
-  AssistantMessage: () => <div data-testid="assistant-message" />,
+  AssistantMessage: ({ content }: { content: string }) => (
+    <div data-testid="assistant-message">{content}</div>
+  ),
 }));
 
 vi.mock("@/app/chat/_components/chat-input", () => {
@@ -195,5 +198,35 @@ describe("ChatPage — coverage for diff-flagged lines", () => {
 
     // Component is still mounted and input is present
     expect(screen.getByTestId("chat-input")).toBeInTheDocument();
+  });
+
+  it("replaces the placeholder greeting with a named greeting after login", async () => {
+    vi.useRealTimers();
+    renderWithProviders(<ProtectedChatPage />, {
+      providers: ["auth"],
+      auth: withAuth(authPresets.admin, {
+        me: { user: makeUser({ name: "Olfa Maslah" }) },
+      }),
+    });
+
+    await waitFor(() => {
+      const text = screen.getByTestId("assistant-message").textContent;
+      expect(text).not.toBe(PLACEHOLDER_GREETING.content);
+      expect(text).toMatch(/Olfa/);
+    });
+  });
+
+  it("replaces the placeholder greeting after mount in no-auth mode", async () => {
+    vi.useRealTimers();
+    renderWithProviders(<ProtectedChatPage />, {
+      providers: ["auth"],
+      auth: authPresets.noAuthMode,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("assistant-message").textContent).not.toBe(
+        PLACEHOLDER_GREETING.content,
+      );
+    });
   });
 });

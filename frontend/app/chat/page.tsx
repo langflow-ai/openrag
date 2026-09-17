@@ -65,13 +65,17 @@ function ChatPage() {
     setLoading,
     setChatError,
   } = useChat();
-  const { user, isNoAuthMode } = useAuth();
+  const { user, isNoAuthMode, isLoading: isAuthLoading } = useAuth();
   const displayName = isNoAuthMode ? null : resolveDisplayName(user);
   const [messages, setMessages] = useState<Message[]>([PLACEHOLDER_GREETING]);
-  const [prevDisplayName, setPrevDisplayName] = useState(displayName);
 
-  if (prevDisplayName !== displayName) {
-    setPrevDisplayName(displayName);
+  // PLACEHOLDER_GREETING is deterministic so SSR and hydration agree.
+  // After mount (and once auth has settled), replace it with the real
+  // time/day/name greeting. New Chat already does this via makeInitialMessage;
+  // first load after login previously never did, because displayName is
+  // already set when ChatPage mounts behind ProtectedRoute.
+  useEffect(() => {
+    if (isAuthLoading || conversationData) return;
     setMessages((prev) => {
       if (
         prev.length === 1 &&
@@ -82,7 +86,7 @@ function ChatPage() {
       }
       return prev;
     });
-  }
+  }, [displayName, isAuthLoading, conversationData]);
   const [input, setInput] = useState("");
   const [asyncMode, setAsyncMode] = useState(true);
   const [expandedFunctionCalls, setExpandedFunctionCalls] = useState<
