@@ -33,6 +33,15 @@ def get_legacy_embedding_provider_map_json() -> str | None:
     return os.getenv("OPENRAG_LEGACY_EMBEDDING_PROVIDER_MAP")
 
 
+def get_opensearch_index_name_override() -> str | None:
+    """Return the raw ``OPENSEARCH_INDEX_NAME`` env override.
+
+    This is a role-gated infra setting, not a user preference; it is resolved
+    into the ``knowledge`` config by ``apply_index_name_env_override``.
+    """
+    return os.getenv("OPENSEARCH_INDEX_NAME")
+
+
 # Environment variables
 OPENSEARCH_HOST = os.getenv("OPENSEARCH_HOST", "localhost")
 OPENSEARCH_PORT = get_env_int("OPENSEARCH_PORT", 9200)
