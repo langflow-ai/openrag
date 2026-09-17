@@ -296,9 +296,9 @@ def test_preset_configs_maps_languages_to_ocrmac_codes():
     from services.docling_service import get_docling_preset_configs
 
     with patch("services.docling_service.platform.system", return_value="Darwin"):
-        preset = get_docling_preset_configs(ocr=True, ocr_languages=["ja", "en"])
+        preset = get_docling_preset_configs(ocr=True, ocr_languages=["ja", "en", "vi"])
 
-    assert preset["ocr_lang"] == ["ja-JP", "en-US"]
+    assert preset["ocr_lang"] == ["ja-JP", "en-US", "vi-VN"]
 
 
 def test_preset_configs_maps_languages_to_easyocr_codes():

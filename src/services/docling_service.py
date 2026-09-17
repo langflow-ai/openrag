@@ -78,7 +78,7 @@ OCR_LANGUAGE_CODES: dict[str, dict[str, str]] = {
         "ru": "ru-RU",
         "uk": "uk-UA",
         "th": "th-TH",
-        "vi": "vi-VT",
+        "vi": "vi-VN",
         "ar": "ar-SA",
     },
     "easyocr": {
