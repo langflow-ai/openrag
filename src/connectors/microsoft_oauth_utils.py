@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import jwt
+
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -25,7 +27,9 @@ def verify_ms_access_token(access_token: str | None, tenant_id: str | None = Non
     # MSAL can return opaque (non-JWT) tokens for some resources (e.g. Graph).
     # PyJWT raises DecodeError("Not enough segments") for these — they are trusted
     # by the confidential-client OAuth flow, so skip verification silently.
-    if raw_token.count(".") != 2:
+    try:
+        jwt.get_unverified_header(raw_token)
+    except jwt.DecodeError:
         logger.debug("Microsoft access token is opaque (non-JWT) — skipping verification")
         return None
 
