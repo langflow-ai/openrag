@@ -371,7 +371,7 @@ export function OnboardingContent({
               />
             )}
 
-          {/* Step 4 */}
+          {/* Step 4 — data upload */}
           <OnboardingStep
             isVisible={currentStep >= 3 && !isLoading && !!displayMessage}
             isCompleted={currentStep > 3}
