@@ -21,6 +21,11 @@ const {
   mockExpandSidebar: vi.fn(),
 }));
 
+// Mutable tasks list so individual tests can swap in different data.
+const mockTasksHolder = vi.hoisted(() => ({
+  tasks: [] as { status: string }[],
+}));
+
 vi.mock("@/contexts/brand-context", () => ({
   useIsCloudBrand: () => false,
 }));
@@ -30,7 +35,7 @@ vi.mock("@/contexts/auth-context", () => ({
 }));
 
 vi.mock("@/contexts/task-context", () => ({
-  useTask: () => ({ tasks: [] }),
+  useTask: () => ({ tasks: mockTasksHolder.tasks }),
 }));
 
 vi.mock("@/contexts/console-status-context", () => ({
@@ -72,6 +77,7 @@ import { useNarrowLayout } from "@/hooks/use-narrow-layout";
 
 describe("Header", () => {
   it("renders brand and header elements in wide non-collapsed layout", () => {
+    mockTasksHolder.tasks = [];
     render(<Header />);
     expect(screen.getByText("OpenRAG")).toBeInTheDocument();
     expect(screen.queryByLabelText("Open navigation")).not.toBeInTheDocument();
@@ -125,5 +131,40 @@ describe("Header", () => {
 
     await user.click(navBtn);
     expect(mockPinSidebar).toHaveBeenCalled();
+  });
+});
+
+describe("Header — notification badge counts", () => {
+  it("shows active task count badge when pending/running/processing tasks exist", () => {
+    mockTasksHolder.tasks = [
+      { status: "pending" },
+      { status: "running" },
+      { status: "processing" },
+    ];
+    render(<Header />);
+    // activeTaskCount = 3, badge should display "3"
+    expect(screen.getByText("3")).toBeInTheDocument();
+  });
+
+  it("shows failed task count badge when only failed/error tasks exist", () => {
+    mockTasksHolder.tasks = [{ status: "failed" }, { status: "error" }];
+    render(<Header />);
+    // activeTaskCount = 0, failedTaskCount = 2 → red badge with "2"
+    expect(screen.getByText("2")).toBeInTheDocument();
+  });
+
+  it("shows active badge and not failed badge when both active and failed tasks exist", () => {
+    mockTasksHolder.tasks = [{ status: "running" }, { status: "failed" }];
+    render(<Header />);
+    // activeTaskCount = 1 takes precedence; active badge shows, failed badge hidden
+    expect(screen.getByText("1")).toBeInTheDocument();
+    // Only one badge rendered
+    expect(screen.getAllByText(/^\d+$/).length).toBe(1);
+  });
+
+  it("shows no badge when all tasks are in terminal non-failed states", () => {
+    mockTasksHolder.tasks = [{ status: "completed" }, { status: "cancelled" }];
+    render(<Header />);
+    expect(screen.queryByText(/^\d+$/)).toBeNull();
   });
 });
