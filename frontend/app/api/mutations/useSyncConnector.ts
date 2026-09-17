@@ -29,12 +29,19 @@ export interface SyncPreviewResponse {
    * connection was unauthenticated). UI should reflect that deletions
    * cannot be predicted in that case. */
   orphans_available: boolean;
+  /** Files whose source copy changed and that the sync will re-ingest. */
+  updates: OrphanFile[];
+  /** False when this connector can't tell in advance — it decides per file
+   * while ingesting. Not the same as "nothing will be updated". */
+  updates_available: boolean;
 }
 
 export interface SyncAllPreviewResponse {
   orphans_by_type: Record<string, OrphanFile[]>;
   synced_count_by_type: Record<string, number>;
   orphans_available_by_type: Record<string, boolean>;
+  updates_by_type: Record<string, OrphanFile[]>;
+  updates_available_by_type: Record<string, boolean>;
 }
 
 // Sync all cloud connectors

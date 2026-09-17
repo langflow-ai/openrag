@@ -32,16 +32,13 @@ export function ConsoleStatusButton({
         "relative flex items-center gap-2 rounded-lg transition-colors",
         isNarrow
           ? "h-8 w-8 justify-center hover:bg-muted"
-          : "px-3 py-2 bg-zinc-800 border border-zinc-700 text-zinc-200 text-sm font-medium hover:bg-zinc-700 hover:border-zinc-600 shadow-lg",
-        !isNarrow && isOpen && "bg-zinc-700 border-zinc-500",
+          : "px-3 py-2 bg-muted border border-border text-foreground text-sm font-medium hover:bg-muted/80 hover:border-muted-foreground/40 shadow-sm",
+        !isNarrow && isOpen && "bg-muted/80 border-muted-foreground/40",
       )}
     >
       <EvCharger
         size={isNarrow ? 16 : 14}
-        className={cn(
-          "shrink-0",
-          isNarrow ? "text-muted-foreground" : "text-zinc-400",
-        )}
+        className="shrink-0 text-muted-foreground"
       />
       {!isNarrow && <span>Console Status</span>}
       {overallStatus &&
