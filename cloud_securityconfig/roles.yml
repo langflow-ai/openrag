@@ -50,8 +50,7 @@ openrag_user_role:
 
 openrag_user_acl_role:
   description: "DLS: user can read docs they are allowed on via ACL"
-  cluster_permissions:
-    - "cluster_composite_ops_ro"
+  cluster_permissions: []
 
   index_permissions:
     - index_patterns: ["documents", "documents*", "knowledge_filters", "knowledge_filters*", "orag-*", "orag*"]

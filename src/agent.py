@@ -300,10 +300,7 @@ async def async_response_stream(
                     # just reattach the raw (unvalidated) value afterwards to preserve same shape.
                     # TODO: replace this with just chunk.model_dump() if langflow's /response SSE matches openai's
                     # SDK's delta: str schema
-                    try:
-                        chunk_data = chunk.model_dump(warnings=False, exclude={"delta"})
-                    except TypeError:
-                        chunk_data = chunk.model_dump(exclude={"delta"})
+                    chunk_data = chunk.model_dump(exclude={"delta"})
                     if hasattr(chunk, "delta"):
                         chunk_data["delta"] = chunk.delta
                 elif hasattr(chunk, "__dict__"):

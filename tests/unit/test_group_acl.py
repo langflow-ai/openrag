@@ -188,22 +188,35 @@ def test_group_acl_service_invalidation_drops_cache_and_locks():
 def test_security_roles_include_acl_dls_queries():
     for rel_path in ("securityconfig/roles.yml", "cloud_securityconfig/roles.yml"):
         roles = yaml.safe_load((ROOT / rel_path).read_text())
-        user_roles = [roles["openrag_user_role"]]
-        if "openrag_user_acl_role" in roles:
-            user_roles.append(roles["openrag_user_acl_role"])
-        index_permissions = [p for r in user_roles for p in r.get("index_permissions", [])]
+        assert "openrag_user_acl_role" in roles
+
+        user_role = roles["openrag_user_role"]
+        acl_role = roles["openrag_user_acl_role"]
+        index_permissions = [
+            p for role in (user_role, acl_role) for p in role.get("index_permissions", [])
+        ]
         cluster_permissions = roles["openrag_user_role"]["cluster_permissions"]
         assert "indices:data/write/bulk" not in cluster_permissions
         assert "indices:data/write/index" not in cluster_permissions
         assert not any("alerting" in permission for permission in cluster_permissions)
+        assert acl_role["cluster_permissions"] == []
 
-        document_permissions = [
+        legacy_document_permissions = [
             p
-            for p in index_permissions
+            for p in user_role.get("index_permissions", [])
             if any("documents" in pattern for pattern in p.get("index_patterns", []))
             and "read" in p.get("allowed_actions", [])
         ]
-        assert len(document_permissions) >= 1
+        acl_document_permissions = [
+            p
+            for p in acl_role.get("index_permissions", [])
+            if any("documents" in pattern for pattern in p.get("index_patterns", []))
+            and "read" in p.get("allowed_actions", [])
+        ]
+        assert len(legacy_document_permissions) == 1
+        assert len(acl_document_permissions) == 1
+
+        document_permissions = legacy_document_permissions + acl_document_permissions
         for document_permission in document_permissions:
             document_actions = document_permission["allowed_actions"]
             assert "read" in document_actions
@@ -211,16 +224,20 @@ def test_security_roles_include_acl_dls_queries():
             assert "indices:data/write/index" not in document_actions
             assert "indices:data/write/update/byquery" not in document_actions
             assert "indices:admin/mappings/put" not in document_actions
+            assert len("".join(document_permission["dls"].split())) <= 256
 
-        dls = "".join(p.get("dls", "") for p in document_permissions)
-        assert '{"term":{"owner":"${user.name}"}}' in dls
-        assert '{"term":{"owner":"${attr.jwt.email}"}}' in dls
-        assert '{"term":{"allowed_users":"${user.name}"}}' in dls
-        assert '{"term":{"allowed_users":"${attr.jwt.email}"}}' in dls
-        assert '{"terms":{"allowed_groups":[${user.roles}]}}' not in dls
+        legacy_dls = "".join(legacy_document_permissions[0]["dls"].split())
+        acl_dls = "".join(acl_document_permissions[0]["dls"].split())
+        assert '{"term":{"owner":"${user.name}"}}' in legacy_dls
+        assert '{"term":{"owner":"${attr.jwt.email}"}}' in legacy_dls
+        assert '{"term":{"allowed_users":"${user.name}"}}' not in legacy_dls
+        assert '{"term":{"allowed_users":"${user.name}"}}' in acl_dls
+        assert '{"term":{"allowed_users":"${attr.jwt.email}"}}' in acl_dls
+        assert '{"term":{"owner":"${user.name}"}}' not in acl_dls
+        assert '{"terms":{"allowed_groups":[${user.roles}]}}' not in acl_dls
         assert (
             '{"terms":{"allowed_principals":{"index":"openrag_dls_principals",'
-            '"id":"${user.name}","path":"principals"}}}' in dls
+            '"id":"${user.name}","path":"principals"}}}' in acl_dls
         )
         principal_permission = next(
             permission
