@@ -118,7 +118,9 @@ The following variables are required or recommended:
 
    * **`LANGFUSE_SECRET_KEY`**: A secret key for your Langfuse project.
    * **`LANGFUSE_PUBLIC_KEY`**: A public key for your Langfuse project.
-   * **`LANGFUSE_HOST`**: Required for self-hosted Langfuse deployments. Leave empty for Langfuse Cloud.
+   * **`LANGFUSE_BASE_URL`**: Required for self-hosted Langfuse deployments. Leave empty for Langfuse Cloud.
+
+   `LANGFUSE_HOST` remains supported as a deprecated fallback for backward compatibility. If both endpoint variables are set, `LANGFUSE_BASE_URL` takes precedence.
 
 8. Save your `.env` file.
 
