@@ -62,9 +62,12 @@ export interface File {
     | "unavailable"
     | "failed"
     | "cancelled"
+    | "skipped"
     | "hidden"
     | "sync";
   error?: string;
+  /** Warning message for skipped rows (e.g. duplicate_content). */
+  warning?: string;
   task_id?: string; // Task ID for file-level cancellation
   chunks?: ChunkResult[];
   allowed_users?: string[];

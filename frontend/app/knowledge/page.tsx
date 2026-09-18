@@ -460,12 +460,14 @@ function SearchPage() {
         return 2;
       case "failed":
         return 3;
-      case "cancelled":
+      case "skipped":
         return 4;
-      case "unavailable":
+      case "cancelled":
         return 5;
-      case "hidden":
+      case "unavailable":
         return 6;
+      case "hidden":
+        return 7;
       default:
         return 0;
     }
@@ -830,7 +832,33 @@ function SearchPage() {
           return <StatusBadge status="cancelled" />;
         }
 
-        return <StatusBadge status={status} />;
+        if (rawStatus === "skipped") {
+          const warningText =
+            data?.warning ??
+            "Duplicate content — already exists in the knowledge base.";
+          return (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex items-center gap-1 text-sm text-amber-600 dark:text-amber-400 cursor-default">
+                  Duplicate
+                </span>
+              </TooltipTrigger>
+              <TooltipContent
+                side="top"
+                align="end"
+                className="max-w-80 whitespace-pre-wrap break-words"
+              >
+                {warningText}
+              </TooltipContent>
+            </Tooltip>
+          );
+        }
+
+        return (
+          <StatusBadge
+            status={status as import("@/components/ui/status-badge").Status}
+          />
+        );
       },
     },
     {
