@@ -8,6 +8,12 @@ openrag_user_role:
   backend_roles:
     - "openrag_user"
 
+openrag_user_acl_role:
+  users: []
+  hosts: []
+  backend_roles:
+    - "openrag_user"
+
 all_access:
   users:
     - "admin"
