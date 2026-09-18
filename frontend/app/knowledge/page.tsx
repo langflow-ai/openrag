@@ -156,6 +156,38 @@ function buildFilterPageResetKey(
   });
 }
 
+/** Pure helper — exported for unit tests, used by the status column comparator. */
+export function getStatusSortRank(status?: File["status"]): number {
+  switch (status) {
+    case "active":
+      return 0;
+    case "processing":
+      return 1;
+    case "sync":
+      return 2;
+    case "failed":
+      return 3;
+    case "skipped":
+      return 4;
+    case "cancelled":
+      return 5;
+    case "unavailable":
+      return 6;
+    case "hidden":
+      return 7;
+    default:
+      return 0;
+  }
+}
+
+/**
+ * Pure helper — exported for unit tests, used by the status column cell renderer.
+ * Returns the warning text for a skipped (duplicate-content) file.
+ */
+export function getSkippedWarningText(warning?: string): string {
+  return warning ?? "Duplicate content — already exists in the knowledge base.";
+}
+
 function SearchPage() {
   const isCloudBrand = useIsCloudBrand();
   const queryClient = useQueryClient();
@@ -450,28 +482,10 @@ function SearchPage() {
     return file?.owner_name?.trim() || file?.owner_email?.trim() || "—";
   }, []);
 
-  const getStatusSortRank = useCallback((status?: File["status"]): number => {
-    switch (status) {
-      case "active":
-        return 0;
-      case "processing":
-        return 1;
-      case "sync":
-        return 2;
-      case "failed":
-        return 3;
-      case "skipped":
-        return 4;
-      case "cancelled":
-        return 5;
-      case "unavailable":
-        return 6;
-      case "hidden":
-        return 7;
-      default:
-        return 0;
-    }
-  }, []);
+  const getStatusSortRankCb = useCallback(
+    (status?: File["status"]) => getStatusSortRank(status),
+    [],
+  );
 
   const hasOpenragRefreshCueFromTasks = tasks.some((task) => {
     const isTaskActive =
@@ -833,9 +847,7 @@ function SearchPage() {
         }
 
         if (rawStatus === "skipped") {
-          const warningText =
-            data?.warning ??
-            "Duplicate content — already exists in the knowledge base.";
+          const warningText = getSkippedWarningText(data?.warning);
           return (
             <Tooltip>
               <TooltipTrigger asChild>

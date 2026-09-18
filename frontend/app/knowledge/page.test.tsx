@@ -1,66 +1,46 @@
 /**
- * knowledge/page.tsx — coverage for duplicate-detection lines added in #2388.
+ * Unit tests for pure helpers extracted from knowledge/page.tsx.
  *
- * Lines exercised:
- *   470  — "hidden" case in getStatusSortRank
- *   835–857 — skipped status cell renderer (Duplicate badge + tooltip)
+ * Covers the lines added in #2388:
+ *   getStatusSortRank — "skipped" (rank 4) and "hidden" (rank 7)
+ *   getSkippedWarningText — returns the provided warning or the default fallback
  *
- * Uses `providers: "all"` because `ProtectedSearchPage` renders
- * `RequirePermission` which reads `usePermissions()` from `AuthProvider`.
- * Network is driven by MSW — no module mocks for contexts or query hooks
- * (per project rules: mock the network, not the module).
+ * These functions are pure and have no React / ag-grid / browser dependencies,
+ * so they can be tested without rendering the page at all.
  */
-import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
-import type { File } from "@/app/api/queries/useGetSearchQuery";
-import type { ListFilesResponse } from "@/app/api/queries/useListFiles";
-import { renderWithProviders } from "@/test-utils/render";
+import { getSkippedWarningText, getStatusSortRank } from "./page";
 
-const skippedFile: File = {
-  filename: "duplicate.pdf",
-  status: "skipped",
-  warning:
-    "Identical content already exists in the knowledge base under a different filename.",
-  connector_type: "local",
-  size: 2000,
-  source_url: "",
-  mimetype: "application/pdf",
-};
+describe("getStatusSortRank", () => {
+  it("ranks skipped above cancelled", () => {
+    expect(getStatusSortRank("skipped")).toBe(4);
+    expect(getStatusSortRank("cancelled")).toBe(5);
+    expect(getStatusSortRank("skipped")).toBeLessThan(
+      getStatusSortRank("cancelled"),
+    );
+  });
 
-const hiddenFile: File = {
-  filename: "hidden.pdf",
-  status: "hidden",
-  connector_type: "local",
-  size: 500,
-  source_url: "",
-  mimetype: "application/pdf",
-};
+  it("returns 7 for hidden", () => {
+    expect(getStatusSortRank("hidden")).toBe(7);
+  });
 
-const listFilesResponse: ListFilesResponse = {
-  files: [skippedFile, hiddenFile],
-  total: 2,
-  is_approximate: false,
-  page: 1,
-  page_size: 25,
-  after_key: null,
-};
+  it("returns 0 for active and for unknown values", () => {
+    expect(getStatusSortRank("active")).toBe(0);
+    expect(getStatusSortRank(undefined)).toBe(0);
+  });
+});
 
-// Import after MSW setup
-import ProtectedSearchPage from "./page";
+describe("getSkippedWarningText", () => {
+  it("returns the provided warning when present", () => {
+    const msg =
+      "Identical content already exists in the knowledge base under a different filename.";
+    expect(getSkippedWarningText(msg)).toBe(msg);
+  });
 
-describe("Knowledge page — duplicate detection coverage", () => {
-  it("renders with skipped and hidden files to cover duplicate status cell and sort rank", () => {
-    renderWithProviders(<ProtectedSearchPage />, {
-      providers: "all",
-      handlers: [
-        http.get("/api/files", () => HttpResponse.json(listFilesResponse)),
-        http.post("/api/search", () =>
-          HttpResponse.json({ files: [], warnings: [] }),
-        ),
-      ],
-    });
-
-    // Component mounted without throwing — RequirePermission resolved can/canAny/canAll
-    expect(document.body).toBeTruthy();
+  it("returns the default fallback when warning is undefined", () => {
+    const result = getSkippedWarningText(undefined);
+    expect(result).toBe(
+      "Duplicate content — already exists in the knowledge base.",
+    );
   });
 });
