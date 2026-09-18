@@ -41,7 +41,8 @@ def _config_with_oci(oci_config):
         raise ValueError(f"Unknown provider: {name}")
 
     providers.get_provider_config = get_provider_config
-    providers.credential_values = lambda _provider: {}
+    providers.credential_values = lambda _provider, kind="chat": {}
+    providers.stored_credentials = lambda _provider: {}
     return SimpleNamespace(
         providers=providers,
         agent=SimpleNamespace(llm_provider="openai", llm_model="gpt-4o-mini"),
