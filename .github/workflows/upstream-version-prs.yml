@@ -1,0 +1,61 @@
+name: Propose upstream service upgrades
+
+on:
+  schedule:
+    - cron: '17 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  propose:
+    if: github.repository == 'langflow-ai/openrag'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        component: [opensearch, docling, langflow]
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          token: ${{ secrets.UPSTREAM_UPDATE_TOKEN || github.token }}
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+
+      - name: Check upstream and update pins
+        id: update
+        env:
+          GH_TOKEN: ${{ secrets.UPSTREAM_UPDATE_TOKEN || github.token }}
+        run: python3 scripts/ci/update_upstream_version.py '${{ matrix.component }}'
+
+      - name: Create or update upgrade PR
+        if: steps.update.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v8
+        with:
+          token: ${{ secrets.UPSTREAM_UPDATE_TOKEN || github.token }}
+          branch: automation/update-${{ matrix.component }}
+          delete-branch: true
+          commit-message: 'chore: update ${{ matrix.component }} to ${{ steps.update.outputs.latest }}'
+          title: 'chore: update ${{ matrix.component }} to ${{ steps.update.outputs.latest }}'
+          body: |
+            Automated upstream version check: `${{ steps.update.outputs.current }}` → `${{ steps.update.outputs.latest }}`.
+
+            Please review compatibility and run the relevant build/integration tests before merging.
+            For OpenSearch, this includes the bundled plugins and Dashboards. For Docling Serve,
+            review the separately pinned `docling` and `docling-core` versions in the launcher.
+          add-paths: |
+            Dockerfile
+            Dockerfile.langflow
+            docker-compose.yml
+            kubernetes/helm/openrag/values.yaml
+            src/tui/managers/docling_manager.py
+            docs/docs/get-started/docker.mdx
+            docs/docs/reference/configuration.mdx
+            docs/docs/support/troubleshoot.mdx
