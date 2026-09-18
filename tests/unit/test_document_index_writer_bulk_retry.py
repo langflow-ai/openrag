@@ -205,6 +205,7 @@ def test_odd_length_bulk_body_raises():
     writer = DocumentIndexWriter()
     with pytest.raises(ValueError, match="action/document pairs"):
         import asyncio
+
         asyncio.get_event_loop().run_until_complete(
             writer._bulk_with_retry(None, [{"index": {"_id": "chunk-1"}}], refresh=False)
         )
