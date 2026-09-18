@@ -450,6 +450,7 @@ describe("TaskProvider — skipped files (duplicate detection)", () => {
           status: "skipped",
           error: "",
           result: {
+            reason: "duplicate_content",
             warning:
               "Duplicate content — already exists in the knowledge base.",
           },
@@ -473,11 +474,12 @@ describe("TaskProvider — skipped files (duplicate detection)", () => {
       timeout: 5000,
     });
 
-    // The file overlay should have status "skipped" with a warning.
+    // The file overlay should have status "skipped", skip_reason and warning set.
     await waitFor(
       () => {
         const f = result.current.files.find((f) => f.task_id === "task-3");
         expect(f?.status).toBe("skipped");
+        expect(f?.skip_reason).toBe("duplicate_content");
         expect(f?.warning).toBe(
           "Duplicate content — already exists in the knowledge base.",
         );
@@ -504,7 +506,7 @@ describe("TaskProvider — skipped files (duplicate detection)", () => {
         "dup.pdf": {
           status: "skipped",
           error: "",
-          result: { warning: "Duplicate content" },
+          result: { reason: "duplicate_content", warning: "Duplicate content" },
         },
       },
     };
@@ -560,7 +562,7 @@ describe("TaskProvider — skipped files (duplicate detection)", () => {
         "dup.pdf": {
           status: "skipped",
           error: "",
-          result: { warning: "Duplicate" },
+          result: { reason: "duplicate_content", warning: "Duplicate" },
         },
       },
     };
