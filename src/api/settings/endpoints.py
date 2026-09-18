@@ -322,6 +322,7 @@ async def get_settings(
             providers=ProvidersConfig(
                 openai=OpenAIProviderConfig(
                     has_api_key=bool(openrag_config.providers.openai.api_key),
+                    base_url=openrag_config.providers.openai.base_url or None,
                     configured=openrag_config.providers.openai.configured,
                 ),
                 anthropic=AnthropicProviderConfig(
@@ -415,6 +416,7 @@ async def update_settings(
             "llm_model",
             "embedding_model",
             "openai_api_key",
+            "openai_base_url",
             "anthropic_api_key",
             "watsonx_api_key",
             "watsonx_endpoint",
@@ -509,13 +511,19 @@ async def update_settings(
                             ),
                         )
 
-                # Validate LLM provider if being changed
-                if body.llm_provider is not None or body.llm_model is not None:
-                    llm_provider = (
-                        body.llm_provider.strip().lower()
-                        if body.llm_provider is not None
-                        else current_config.agent.llm_provider
-                    )
+                # Validate LLM provider if being changed. A base_url-only
+                # update against an already-active openai provider must also
+                # validate - it changes where live requests actually go.
+                llm_provider = (
+                    body.llm_provider.strip().lower()
+                    if body.llm_provider is not None
+                    else current_config.agent.llm_provider
+                )
+                if (
+                    body.llm_provider is not None
+                    or body.llm_model is not None
+                    or (body.openai_base_url is not None and llm_provider == "openai")
+                ):
                     llm_model = (
                         body.llm_model
                         if body.llm_model is not None
@@ -527,7 +535,11 @@ async def update_settings(
 
                     # Apply any updates from the request
                     api_key = getattr(llm_provider_config, "api_key", None)
-                    endpoint = getattr(llm_provider_config, "endpoint", None)
+                    # "endpoint" doubles as the validation target's base URL;
+                    # openai's provider config exposes that as "base_url" instead.
+                    endpoint = getattr(llm_provider_config, "endpoint", None) or getattr(
+                        llm_provider_config, "base_url", None
+                    )
                     project_id = getattr(llm_provider_config, "project_id", None)
                     llm_provider_key = _provider_key(llm_provider)
                     submitted_credentials = {
@@ -548,6 +560,8 @@ async def update_settings(
                         api_key = getattr(body, f"{llm_provider}_api_key", None)
                     if getattr(body, f"{llm_provider}_endpoint", None) is not None:
                         endpoint = getattr(body, f"{llm_provider}_endpoint", None)
+                    if getattr(body, f"{llm_provider}_base_url", None) is not None:
+                        endpoint = getattr(body, f"{llm_provider}_base_url").strip()
                     if getattr(body, f"{llm_provider}_project_id", None) is not None:
                         project_id = getattr(body, f"{llm_provider}_project_id", None)
 
@@ -564,13 +578,19 @@ async def update_settings(
                     )
                     logger.info(f"LLM provider validation successful for {llm_provider}")
 
-                # Validate embedding provider if being changed
-                if body.embedding_provider is not None or body.embedding_model is not None:
-                    embedding_provider = (
-                        body.embedding_provider.strip().lower()
-                        if body.embedding_provider is not None
-                        else current_config.knowledge.embedding_provider
-                    )
+                # Validate embedding provider if being changed. A base_url-only
+                # update against an already-active openai provider must also
+                # validate - it changes where live requests actually go.
+                embedding_provider = (
+                    body.embedding_provider.strip().lower()
+                    if body.embedding_provider is not None
+                    else current_config.knowledge.embedding_provider
+                )
+                if (
+                    body.embedding_provider is not None
+                    or body.embedding_model is not None
+                    or (body.openai_base_url is not None and embedding_provider == "openai")
+                ):
                     embedding_model = (
                         body.embedding_model
                         if body.embedding_model is not None
@@ -584,7 +604,11 @@ async def update_settings(
 
                     # Apply any updates from the request
                     api_key = getattr(embedding_provider_config, "api_key", None)
-                    endpoint = getattr(embedding_provider_config, "endpoint", None)
+                    # "endpoint" doubles as the validation target's base URL;
+                    # openai's provider config exposes that as "base_url" instead.
+                    endpoint = getattr(embedding_provider_config, "endpoint", None) or getattr(
+                        embedding_provider_config, "base_url", None
+                    )
                     project_id = getattr(embedding_provider_config, "project_id", None)
                     embedding_provider_key = _provider_key(embedding_provider)
                     submitted_credentials = {
@@ -607,6 +631,8 @@ async def update_settings(
                         api_key = getattr(body, f"{embedding_provider}_api_key", None)
                     if getattr(body, f"{embedding_provider}_endpoint", None) is not None:
                         endpoint = getattr(body, f"{embedding_provider}_endpoint", None)
+                    if getattr(body, f"{embedding_provider}_base_url", None) is not None:
+                        endpoint = getattr(body, f"{embedding_provider}_base_url").strip()
                     if getattr(body, f"{embedding_provider}_project_id", None) is not None:
                         project_id = getattr(body, f"{embedding_provider}_project_id", None)
 
@@ -916,6 +942,13 @@ async def update_settings(
             config_updated = True
             provider_updated = True
 
+        if body.openai_base_url is not None:
+            # Optional override to point at an OpenAI-compatible gateway. Unlike
+            # an API key, a base URL alone doesn't mean OpenAI is "configured".
+            working_config.providers.openai.base_url = body.openai_base_url.strip()
+            config_updated = True
+            provider_updated = True
+
         if body.anthropic_api_key is not None and body.anthropic_api_key.strip():
             working_config.providers.anthropic.api_key = body.anthropic_api_key.strip()
             working_config.providers.anthropic.configured = True
@@ -988,6 +1021,7 @@ async def update_settings(
                 if affected:
                     return _embedding_conflict_response("OpenAI", "openai", affected)
             working_config.providers.openai.api_key = ""
+            working_config.providers.openai.base_url = ""
             working_config.providers.openai.configured = False
             if working_config.agent.llm_provider == "openai":
                 fb = _first_configured_llm_provider(working_config, "openai")
@@ -1226,6 +1260,12 @@ async def onboarding(
             current_config.providers.openai.configured = True
             config_updated = True
 
+        if body.openai_base_url:
+            # Optional override to point at an OpenAI-compatible gateway. Unlike
+            # an API key, a base URL alone doesn't mean OpenAI is "configured".
+            current_config.providers.openai.base_url = body.openai_base_url.strip()
+            config_updated = True
+
         if body.anthropic_api_key:
             current_config.providers.anthropic.api_key = body.anthropic_api_key.strip()
             current_config.providers.anthropic.configured = True
@@ -1324,8 +1364,14 @@ async def onboarding(
         # Validate provider setup before initializing OpenSearch index
         # Use full validation with completion tests (test_completion=True) to ensure provider health during onboarding
         try:
-            # Validate LLM provider if set
-            if body.llm_provider or body.llm_model:
+            # Validate LLM provider if set. A base_url-only update against an
+            # already-active openai provider must also validate - it changes
+            # where live requests actually go.
+            if (
+                body.llm_provider
+                or body.llm_model
+                or (body.openai_base_url and current_config.agent.llm_provider.lower() == "openai")
+            ):
                 llm_provider = current_config.agent.llm_provider.lower()
                 llm_provider_config = current_config.get_llm_provider_config()
 
@@ -1336,7 +1382,10 @@ async def onboarding(
                     provider=llm_provider,
                     api_key=getattr(llm_provider_config, "api_key", None),
                     llm_model=current_config.agent.llm_model,
-                    endpoint=getattr(llm_provider_config, "endpoint", None),
+                    # "endpoint" doubles as the validation target's base URL;
+                    # openai's provider config exposes that as "base_url" instead.
+                    endpoint=getattr(llm_provider_config, "endpoint", None)
+                    or getattr(llm_provider_config, "base_url", None),
                     project_id=getattr(llm_provider_config, "project_id", None),
                     test_completion=True,  # Full validation with completion test - ensures provider health
                     credentials=current_config.providers.credential_values(llm_provider),
@@ -1345,8 +1394,17 @@ async def onboarding(
                     f"LLM provider setup validation completed successfully for {llm_provider}"
                 )
 
-            # Validate embedding provider if set
-            if body.embedding_provider or body.embedding_model:
+            # Validate embedding provider if set. A base_url-only update
+            # against an already-active openai provider must also validate -
+            # it changes where live requests actually go.
+            if (
+                body.embedding_provider
+                or body.embedding_model
+                or (
+                    body.openai_base_url
+                    and current_config.knowledge.embedding_provider.lower() == "openai"
+                )
+            ):
                 embedding_provider = current_config.knowledge.embedding_provider.lower()
                 embedding_provider_config = current_config.get_embedding_provider_config()
 
@@ -1357,7 +1415,10 @@ async def onboarding(
                     provider=embedding_provider,
                     api_key=getattr(embedding_provider_config, "api_key", None),
                     embedding_model=current_config.knowledge.embedding_model,
-                    endpoint=getattr(embedding_provider_config, "endpoint", None),
+                    # "endpoint" doubles as the validation target's base URL;
+                    # openai's provider config exposes that as "base_url" instead.
+                    endpoint=getattr(embedding_provider_config, "endpoint", None)
+                    or getattr(embedding_provider_config, "base_url", None),
                     project_id=getattr(embedding_provider_config, "project_id", None),
                     test_completion=True,  # Full validation with completion test - ensures provider health
                     credentials=current_config.providers.credential_values(
