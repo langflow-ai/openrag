@@ -552,7 +552,8 @@ describe("TaskProvider — skipped files (duplicate detection)", () => {
     const completedTask: Task = {
       ...runningTask,
       status: "completed",
-      successful_files: 1,
+      // Backend counts skipped files in successful_files, so 1 real + 1 skipped = 2
+      successful_files: 2,
       failed_files: 0,
       files: {
         "new.pdf": { status: "completed", error: "" },
