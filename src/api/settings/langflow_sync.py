@@ -518,6 +518,7 @@ async def _update_langflow_docling_settings(config, flows_service):
             table_structure=config.knowledge.table_structure,
             ocr=config.knowledge.ocr,
             picture_descriptions=config.knowledge.picture_descriptions,
+            ocr_languages=config.knowledge.ocr_languages,
         )
         await flows_service.update_flow_docling_preset("custom", preset_config)
         logger.info("Successfully updated docling settings in ingest flow")
