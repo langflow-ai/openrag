@@ -190,10 +190,14 @@ export function getSkippedWarningText(warning?: string): string {
 
 /**
  * Pure helper — exported for unit tests, used by the status column cell renderer.
- * Determines whether a file row should render the duplicate warning badge.
+ * Returns true only for skipped rows that are content duplicates.
+ * Other skip reasons (e.g. deleted_at_source) fall through to the normal StatusBadge.
  */
-export function isSkippedStatus(rawStatus?: string): boolean {
-  return rawStatus === "skipped";
+export function isSkippedStatus(
+  rawStatus?: string,
+  skipReason?: string,
+): boolean {
+  return rawStatus === "skipped" && skipReason === "duplicate_content";
 }
 
 /**
@@ -873,7 +877,7 @@ function SearchPage() {
           return <StatusBadge status="cancelled" />;
         }
 
-        if (isSkippedStatus(rawStatus)) {
+        if (isSkippedStatus(rawStatus, data?.skip_reason)) {
           return <SkippedStatusCell warning={data?.warning} />;
         }
 

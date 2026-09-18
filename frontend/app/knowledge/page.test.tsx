@@ -58,12 +58,17 @@ describe("getSkippedWarningText", () => {
 });
 
 describe("isSkippedStatus", () => {
-  it("returns true for skipped", () => {
-    expect(isSkippedStatus("skipped")).toBe(true);
+  it("returns true only for skipped + duplicate_content reason", () => {
+    expect(isSkippedStatus("skipped", "duplicate_content")).toBe(true);
+  });
+
+  it("returns false when status is skipped but reason is not duplicate_content", () => {
+    expect(isSkippedStatus("skipped", "deleted_at_source")).toBe(false);
+    expect(isSkippedStatus("skipped", undefined)).toBe(false);
   });
 
   it("returns false for any other status", () => {
-    expect(isSkippedStatus("active")).toBe(false);
+    expect(isSkippedStatus("active", "duplicate_content")).toBe(false);
     expect(isSkippedStatus("failed")).toBe(false);
     expect(isSkippedStatus(undefined)).toBe(false);
   });

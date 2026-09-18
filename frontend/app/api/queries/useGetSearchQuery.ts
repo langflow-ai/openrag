@@ -66,6 +66,11 @@ export interface File {
     | "hidden"
     | "sync";
   error?: string;
+  /**
+   * Skip reason forwarded from result.reason (e.g. "duplicate_content",
+   * "deleted_at_source"). Only set when status === "skipped".
+   */
+  skip_reason?: string;
   /** Warning message for skipped rows (e.g. duplicate_content). */
   warning?: string;
   task_id?: string; // Task ID for file-level cancellation

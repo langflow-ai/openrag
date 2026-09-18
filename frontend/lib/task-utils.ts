@@ -295,6 +295,19 @@ export function getSkippedFileCount(task: Task): number {
   ).length;
 }
 
+/**
+ * Count only files skipped because of duplicate content (reason = "duplicate_content").
+ * Excludes other skip reasons such as "deleted_at_source" (connector cleanup).
+ */
+export function getDuplicateContentFileCount(task: Task): number {
+  return Object.values(task.files || {}).filter((fileInfo) => {
+    if (fileInfo?.status !== "skipped") return false;
+    const reason = (fileInfo.result as Record<string, unknown> | undefined)
+      ?.reason;
+    return reason === "duplicate_content";
+  }).length;
+}
+
 export function getFailedFileCount(task: Task): number {
   if (typeof task.failed_files === "number") {
     return task.failed_files;

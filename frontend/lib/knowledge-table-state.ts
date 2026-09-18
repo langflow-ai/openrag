@@ -203,6 +203,7 @@ export function buildKnowledgeTableRows(
       connector_type: taskFile.connector_type,
       status: taskFile.status,
       error: taskFile.error,
+      skip_reason: taskFile.skip_reason,
       warning: taskFile.warning,
       embedding_model: taskFile.embedding_model,
       embedding_dimensions: taskFile.embedding_dimensions,
@@ -239,6 +240,7 @@ export function buildKnowledgeTableRows(
             ),
         status,
         error: taskFile.error,
+        skip_reason: taskFile.skip_reason,
         warning: taskFile.warning,
         embedding_model: taskFile.embedding_model ?? file.embedding_model,
         embedding_dimensions:

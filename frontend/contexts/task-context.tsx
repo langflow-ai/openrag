@@ -39,6 +39,7 @@ import {
   didTaskReachTerminalState,
   finalizeProcessingOverlaysForEnhancedTask,
   findTaskFileOverlayIndex,
+  getDuplicateContentFileCount,
   getEnhancedListDisappearedFilePaths,
   getFailedFileCount,
   getSkippedFileCount,
@@ -62,6 +63,11 @@ export interface TaskFile {
   created_at: string;
   updated_at: string;
   error?: string;
+  /**
+   * Skip reason forwarded from result.reason (e.g. "duplicate_content",
+   * "deleted_at_source"). Only set when status === "skipped".
+   */
+  skip_reason?: string;
   /** Warning message surfaced for skipped files (e.g. duplicate_content). */
   warning?: string;
   embedding_model?: string;
@@ -409,10 +415,20 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
                 return resolved === "Unknown error" ? undefined : resolved;
               })();
 
-              // Extract the user-facing warning from result.warning (set by the
-              // backend for skipped files, e.g. duplicate_content).
+              // Extract skip reason and warning from result (set by the backend).
+              // Only surface duplicate-specific UI for duplicate_content skips;
+              // other reasons (e.g. deleted_at_source) are silent/informational.
+              const skipReason =
+                mappedStatus === "skipped"
+                  ? ((
+                      fileInfoEntry.result as
+                        | Record<string, unknown>
+                        | undefined
+                    )?.reason as string | undefined)
+                  : undefined;
               const fileWarning =
                 mappedStatus === "skipped" &&
+                skipReason === "duplicate_content" &&
                 typeof (fileInfoEntry.result as Record<string, unknown>)
                   ?.warning === "string"
                   ? ((fileInfoEntry.result as Record<string, unknown>)
@@ -457,6 +473,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
                       ? fileInfoEntry.updated_at
                       : now,
                   error: fileError,
+                  skip_reason: skipReason,
                   warning: fileWarning,
                   embedding_model:
                     typeof fileInfoEntry.embedding_model === "string"
@@ -516,6 +533,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         ) {
           const successfulFiles = getSuccessfulFileCount(currentTask);
           const skippedFiles = getSkippedFileCount(currentTask);
+          const duplicateFiles = getDuplicateContentFileCount(currentTask);
           const failedFiles = getFailedFileCount(currentTask);
           const isTotalFailure = failedFiles > 0 && successfulFiles === 0;
 
@@ -578,17 +596,17 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
                 failedFiles !== 1 ? "s" : ""
               } failed`;
             }
-          } else if (skippedFiles > 0 && successfulFiles === 0) {
+          } else if (duplicateFiles > 0 && successfulFiles === 0) {
             // All files were duplicate-skipped — no new content was indexed.
-            description = `${skippedFiles} file${
-              skippedFiles !== 1 ? "s" : ""
+            description = `${duplicateFiles} file${
+              duplicateFiles !== 1 ? "s" : ""
             } skipped — duplicate content already in knowledge base`;
-          } else if (skippedFiles > 0) {
+          } else if (duplicateFiles > 0) {
             // Mix of uploaded and skipped.
             description = `${successfulFiles} file${
               successfulFiles !== 1 ? "s" : ""
-            } uploaded successfully, ${skippedFiles} file${
-              skippedFiles !== 1 ? "s" : ""
+            } uploaded successfully, ${duplicateFiles} file${
+              duplicateFiles !== 1 ? "s" : ""
             } skipped (duplicate content)`;
           } else {
             description = `${successfulFiles} file${
@@ -615,7 +633,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
                 action: toastAction,
               });
             } else if (
-              skippedFiles > 0 &&
+              duplicateFiles > 0 &&
               successfulFiles === 0 &&
               failedFiles === 0
             ) {
@@ -695,10 +713,14 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
                   if (file.status === "failed") {
                     return completedHasFailures;
                   }
-                  // Skipped overlays (e.g. duplicate_content) are never indexed,
-                  // so keep them in the table so the user can see the warning row
-                  // rather than having it silently disappear after completion.
+                  // Keep duplicate-content skipped overlays so the user sees the
+                  // "Duplicate" badge — unless the same filename was later
+                  // successfully indexed (a subsequent upload supersedes it).
                   if (file.status === "skipped") {
+                    const filename = file.filename?.trim();
+                    if (filename && indexedFilenames.has(filename)) {
+                      return false;
+                    }
                     return true;
                   }
                   if (file.status === "processing") {
