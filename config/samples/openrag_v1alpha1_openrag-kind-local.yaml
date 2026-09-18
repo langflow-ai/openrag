@@ -54,6 +54,10 @@ spec:
   langflow:
     image: langflowai/openrag-langflow:latest
     imagePullPolicy: IfNotPresent
+    command: ["langflow-base"]
+    env:
+      - name: LANGFLOW_WORKERS
+        value: "1"
     resources:
       requests:
         cpu: "100m"

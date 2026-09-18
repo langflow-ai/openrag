@@ -52,9 +52,18 @@ spec:
         - name: sysctl
           image: public.ecr.aws/docker/library/busybox:1
           imagePullPolicy: IfNotPresent
-          securityContext:
-            privileged: true
-          command: ["sysctl", "-w", "vm.max_map_count=262144"]
+          command:
+            - sh
+            - -c
+            - |
+              current=$(cat /proc/sys/vm/max_map_count)
+              required=262144
+              if [ "$current" -lt "$required" ]; then
+                echo "vm.max_map_count is $current, needs to be at least $required"
+                sysctl -w vm.max_map_count=$required || exit 1
+              else
+                echo "vm.max_map_count is $current (>= $required), OK"
+              fi
       containers:
         - name: opensearch
           image: public.ecr.aws/opensearchproject/opensearch:2
