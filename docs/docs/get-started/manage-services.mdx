@@ -20,15 +20,29 @@ If you [installed OpenRAG](/install-options) with `uv` or `uvx`, then you can us
 
 For [self-managed deployments](/docker), run Docker or Podman commands to manage your OpenRAG services.
 
+OpenRAG provides three service-management paths:
+
+* **CLI wizard** (`uv run openrag` or `uvx openrag`): Guided terminal session with deployment-wide **Start services**, **Stop services**, **Show status**, and **Open OpenRAG in browser** options.
+* **GUI TUI** (`uv run openrag --tui` or `uvx openrag --tui`): Terminal UI with clickable **Status** views, streaming logs, and per-service controls.
+* **Self-managed services**: Direct Docker or Podman orchestration for container services, plus host-level management for native services like Docling.
+
 ## Monitor services and view logs
 
 <Tabs>
-<TabItem value="TUI" label="Terminal-managed services" default>
+<TabItem value="cli" label="CLI wizard" default>
 
 In the terminal session, select the **Show status** option to access information about all OpenRAG services, including container health, ports, and image versions.
 
-For more information and options, you must [start the terminal session with `--tui`](/tui#access-the-tui), such as `uv run openrag --tui`.
-Then, click **Status** to access controls to stop, start, or restart individual services.
+The CLI wizard shows deployment-wide status and controls.
+If you need clickable per-service controls or streaming logs, [start the terminal session with `--tui`](/tui#access-the-tui), such as `uv run openrag --tui`.
+
+For the Docling native service, see [Stop, start, and inspect native services](#start-native-services).
+
+</TabItem>
+<TabItem value="tui" label="GUI TUI (`--tui`)">
+
+[Start the terminal session with `--tui`](/tui#access-the-tui), such as `uv run openrag --tui`, and then click **Status** to access information about all OpenRAG services, including container health, ports, image versions, and per-service controls.
+
 To view streaming logs, click the name of a service, and then press <kbd>l</kbd>.
 
 For the Docling native service, see [Stop, start, and inspect native services](#start-native-services).
@@ -46,11 +60,11 @@ For the Docling native service, see [Stop, start, and inspect native services](#
 ## Stop and start containers
 
 <Tabs>
-<TabItem value="TUI" label="Terminal-managed services" default>
+<TabItem value="cli" label="CLI wizard" default>
 
 In the terminal session, use the **Start services** and **Stop services** options to start or stop all OpenRAG services.
 
-For fine-grained controls, you must [start the terminal session with `--tui`](/tui#access-the-tui), such as `uv run openrag --tui`.
+For fine-grained controls, [start the terminal session with `--tui`](/tui#access-the-tui), such as `uv run openrag --tui`.
 Then, click **Status** to access controls to stop, start, or restart individual services.
 
 :::tip
@@ -79,6 +93,16 @@ Typically, this is only necessary if you don't want to use `--tui` or there is a
 * Start one container: `docker start CONTAINER_ID` or `podman start CONTAINER_ID`
 
 </TabItem>
+<TabItem value="tui" label="GUI TUI (`--tui`)">
+
+The GUI TUI provides the same deployment-wide **Start services** and **Stop services** controls as the CLI wizard.
+For per-service controls, [start the terminal session with `--tui`](/tui#access-the-tui), such as `uv run openrag --tui`, and then click **Status** to stop, start, or restart individual services.
+
+:::tip
+<PartialContainerVm />
+:::
+
+</TabItem>
 <TabItem value="env" label="Self-managed services">
 
 For self-managed deployments, run the Docker/Podman commands to stop and start containers:
@@ -96,13 +120,18 @@ For self-managed deployments, run the Docker/Podman commands to stop and start c
 A _native service_ in OpenRAG is a service that runs locally on your machine, not within a container. For example, the `docling serve` process is an OpenRAG native service because this document processing service runs on your local machine, separate from the OpenRAG containers.
 
 <Tabs>
-<TabItem value="TUI" label="Terminal-managed services" default>
+<TabItem value="cli" label="CLI wizard" default>
 
 In the terminal session, select the **Show status** option to view the status, port, and process ID (PID) for OpenRAG's native services.
 Native services are started and stopped when you use the **Start services** and **Stop services** options.
 
-For more information and options, you must [start the terminal session with `--tui`](/tui#access-the-tui), such as `uv run openrag --tui`.
-Then, click **Status** to access controls to stop, start, or restart individual services.
+If you need clickable per-service controls or streaming logs, [start the terminal session with `--tui`](/tui#access-the-tui), such as `uv run openrag --tui`.
+
+</TabItem>
+<TabItem value="tui" label="GUI TUI (`--tui`)">
+
+[Start the terminal session with `--tui`](/tui#access-the-tui), such as `uv run openrag --tui`, and then click **Status** to view the status, port, and process ID (PID) for OpenRAG's native services.
+Use the **Status** view to stop, start, or restart individual services.
 To view streaming logs, click the name of a service, and then press <kbd>l</kbd>.
 
 </TabItem>
@@ -156,7 +185,21 @@ Your documents are reingested into a fresh OpenSearch index after the reset.
 To reset your OpenRAG deployment _and_ delete all OpenRAG data, see [Reinstall OpenRAG](/reinstall).
 
 <Tabs>
-<TabItem value="TUI" label="Terminal-managed services" default>
+<TabItem value="cli" label="CLI wizard" default>
+
+<PartialExportFlows />
+
+2. Factory reset isn't available from the CLI wizard alone.
+To destroy and recreate your OpenRAG containers, [start the terminal session with `--tui`](/tui#access-the-tui), such as `uv run openrag --tui`.
+
+3. Click **Status** in the [TUI](/tui), and then click **Factory Reset**.
+
+4. Repeat the [setup process](/install-uvx#setup) to restart the services and launch the OpenRAG app. Your previous configuration, including credentials, are restored from the `.env` file.
+
+5. If you exported customized flows, [import your flows](https://docs.langflow.org/concepts-flows-import) into Langflow after completing the onboarding process.
+
+</TabItem>
+<TabItem value="tui" label="GUI TUI (`--tui`)">
 
 <PartialExportFlows />
 
