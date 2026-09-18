@@ -642,7 +642,7 @@ describe("TaskProvider — skipped files (duplicate detection)", () => {
     );
   });
 
-  it("accounts for skipped files when determining if task is total failure", async () => {
+  it("treats 1 failed + 1 skipped + 0 successful as total failure", async () => {
     const qc = createTestQueryClient();
 
     let callCount = 0;
@@ -684,11 +684,11 @@ describe("TaskProvider — skipped files (duplicate detection)", () => {
       timeout: 5000,
     });
 
-    // Should NOT be a total failure because one file was skipped (not failed).
+    // failedFiles > 0 and successfulFiles === 0 → total failure, even with skipped files.
     await waitFor(
       () => {
-        expect(toast.error).not.toHaveBeenCalled();
-        expect(toast.success).toHaveBeenCalled();
+        expect(toast.error).toHaveBeenCalled();
+        expect(toast.success).not.toHaveBeenCalled();
       },
       { timeout: 5000 },
     );

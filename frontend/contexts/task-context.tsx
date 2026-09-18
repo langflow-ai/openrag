@@ -517,8 +517,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
           const successfulFiles = getSuccessfulFileCount(currentTask);
           const skippedFiles = getSkippedFileCount(currentTask);
           const failedFiles = getFailedFileCount(currentTask);
-          const isTotalFailure =
-            failedFiles > 0 && successfulFiles === 0 && skippedFiles === 0;
+          const isTotalFailure = failedFiles > 0 && successfulFiles === 0;
 
           // Check if all failures are user cancellations
           const allFailuresAreCancellations = currentTask.files
