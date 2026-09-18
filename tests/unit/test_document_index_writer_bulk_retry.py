@@ -154,3 +154,46 @@ async def test_gives_up_after_max_retries_still_failing(monkeypatch):
     assert all(
         body == [{"index": {"_id": "chunk-2"}}, {"text": "b"}] for body in client.request_bodies[1:]
     )
+
+
+@pytest.mark.asyncio
+async def test_short_items_list_returns_error(monkeypatch):
+    """A response with fewer items than pending requests must be treated as an
+    error, not silently accepted with None slots in the merged result."""
+    monkeypatch.setattr("services.document_index_writer._BULK_RETRY_DELAY_SECONDS", 0)
+    # Two pairs were sent, but the server only returns one item.
+    client = ScriptedBulkClient(
+        [{"errors": False, "items": [{"index": {"_id": "chunk-1", "status": 201}}]}]
+    )
+
+    writer = DocumentIndexWriter()
+    result = await writer._bulk_with_retry(client, _bulk_body(), refresh=False)
+
+    assert client.calls == 1
+    assert result["errors"] is True
+    # The slot for the unaccounted item must not be silently None while
+    # errors is reported as False.
+    assert result["items"][1] is None
+
+
+@pytest.mark.asyncio
+async def test_top_level_errors_true_without_per_item_errors_is_preserved():
+    """If the server returns errors: true but no item carries an error dict,
+    the top-level flag must be preserved rather than overwritten with False."""
+    client = ScriptedBulkClient(
+        [
+            {
+                "errors": True,
+                "items": [
+                    {"index": {"_id": "chunk-1", "status": 201}},
+                    {"index": {"_id": "chunk-2", "status": 201}},
+                ],
+            }
+        ]
+    )
+
+    writer = DocumentIndexWriter()
+    result = await writer._bulk_with_retry(client, _bulk_body(), refresh=False)
+
+    assert client.calls == 1
+    assert result["errors"] is True

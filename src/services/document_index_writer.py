@@ -370,14 +370,27 @@ class DocumentIndexWriter:
                 return result
 
             items = result.get("items", [])
+
+            # Guard against a malformed/truncated response: the server must
+            # return exactly one item per pending request. A short or empty
+            # items list means we can't reliably map results back to
+            # final_items, so bail out as an error rather than silently
+            # leaving entries as None.
+            if len(items) != len(pending_indices):
+                return {**result, "items": final_items, "errors": True}
+
             still_pending = []
-            for original_index, item in zip(pending_indices, items, strict=False):
+            for original_index, item in zip(pending_indices, items):
                 final_items[original_index] = item
                 if self._item_error(item):
                     still_pending.append(original_index)
 
             if not still_pending:
-                return {**result, "items": final_items, "errors": False}
+                # Preserve the top-level error flag: if the server set
+                # errors: true but no per-item entry carries an explicit
+                # error, surface that condition rather than converting it
+                # to success.
+                return {**result, "items": final_items, "errors": result.get("errors", False)}
 
             all_retryable = all(
                 self._item_error_is_retryable(final_items[i]) for i in still_pending
