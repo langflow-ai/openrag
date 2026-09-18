@@ -188,6 +188,38 @@ export function getSkippedWarningText(warning?: string): string {
   return warning ?? "Duplicate content — already exists in the knowledge base.";
 }
 
+/**
+ * Pure helper — exported for unit tests, used by the status column cell renderer.
+ * Determines whether a file row should render the duplicate warning badge.
+ */
+export function isSkippedStatus(rawStatus?: string): boolean {
+  return rawStatus === "skipped";
+}
+
+/**
+ * Exported for unit tests — renders the amber "Duplicate" badge with tooltip
+ * used by the status column cell renderer when a file was skipped.
+ */
+export function SkippedStatusCell({ warning }: { warning?: string }) {
+  const warningText = getSkippedWarningText(warning);
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex items-center gap-1 text-sm text-amber-600 dark:text-amber-400 cursor-default">
+          Duplicate
+        </span>
+      </TooltipTrigger>
+      <TooltipContent
+        side="top"
+        align="end"
+        className="max-w-80 whitespace-pre-wrap break-words"
+      >
+        {warningText}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 function SearchPage() {
   const isCloudBrand = useIsCloudBrand();
   const queryClient = useQueryClient();
@@ -481,11 +513,6 @@ function SearchPage() {
   const getOwnerLabel = useCallback((file?: File): string => {
     return file?.owner_name?.trim() || file?.owner_email?.trim() || "—";
   }, []);
-
-  const getStatusSortRankCb = useCallback(
-    (status?: File["status"]) => getStatusSortRank(status),
-    [],
-  );
 
   const hasOpenragRefreshCueFromTasks = tasks.some((task) => {
     const isTaskActive =
@@ -846,24 +873,8 @@ function SearchPage() {
           return <StatusBadge status="cancelled" />;
         }
 
-        if (rawStatus === "skipped") {
-          const warningText = getSkippedWarningText(data?.warning);
-          return (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="inline-flex items-center gap-1 text-sm text-amber-600 dark:text-amber-400 cursor-default">
-                  Duplicate
-                </span>
-              </TooltipTrigger>
-              <TooltipContent
-                side="top"
-                align="end"
-                className="max-w-80 whitespace-pre-wrap break-words"
-              >
-                {warningText}
-              </TooltipContent>
-            </Tooltip>
-          );
+        if (isSkippedStatus(rawStatus)) {
+          return <SkippedStatusCell warning={data?.warning} />;
         }
 
         return (
