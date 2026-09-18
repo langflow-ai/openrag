@@ -14,6 +14,7 @@ logger = get_logger(__name__)
 OPENRAG_USER_ROLE = "openrag_user_role"
 OPENRAG_USER_ACL_ROLE = "openrag_user_acl_role"
 ALL_ACCESS_ROLE = "all_access"
+ROLE_MAPPING_PRINCIPAL_FIELDS = {"users", "hosts", "backend_roles", "and_backend_roles"}
 
 DISK_SPACE_ERROR_MESSAGE = (
     "OpenSearch has run out of available disk space. "
@@ -96,10 +97,9 @@ def _merge_role_mappings(*mappings: dict[str, Any] | None) -> dict[str, Any]:
         if not mapping:
             continue
         for key, value in mapping.items():
-            if key in {"users", "hosts", "backend_roles", "and_backend_roles"}:
-                merged[key] = _dedupe_preserving_order((merged.get(key) or []) + (value or []))
-            elif key not in merged:
-                merged[key] = copy.deepcopy(value)
+            if key not in ROLE_MAPPING_PRINCIPAL_FIELDS:
+                continue
+            merged[key] = _dedupe_preserving_order((merged.get(key) or []) + (value or []))
     return merged
 
 
@@ -408,7 +408,8 @@ async def setup_opensearch_security(
                     "the provided credentials do not have administrative permissions."
                 )
                 return
-            logger.warning("[OPENSEARCH] Failed to get current rolesmapping", error=str(e))
+            logger.error("[OPENSEARCH] Failed to get current rolesmapping", error=str(e))
+            raise
 
         cluster_health = await opensearch_client.cluster.health()
         logger.info("[OPENSEARCH] Cluster health check passed", status=cluster_health.get("status"))

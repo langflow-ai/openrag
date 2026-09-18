@@ -56,11 +56,16 @@ async def test_setup_opensearch_security_applies_acl_role_before_narrowing_legac
             "users": ["direct-user"],
             "hosts": ["legacy-host"],
             "backend_roles": ["legacy_backend_role"],
+            "and_backend_roles": ["legacy_and_role"],
+            "hidden": False,
+            "reserved": False,
         },
         "openrag_user_acl_role": {
             "users": ["acl-user"],
             "hosts": [],
             "backend_roles": ["acl_backend_role"],
+            "hidden": False,
+            "reserved": False,
         },
     }
 
@@ -108,6 +113,9 @@ async def test_setup_opensearch_security_applies_acl_role_before_narrowing_legac
         "legacy_backend_role",
         "acl_backend_role",
     ]
+    assert acl_mapping_put["and_backend_roles"] == ["legacy_and_role"]
+    assert "hidden" not in acl_mapping_put
+    assert "reserved" not in acl_mapping_put
 
     legacy_mapping_put = next(
         body
@@ -120,6 +128,9 @@ async def test_setup_opensearch_security_applies_acl_role_before_narrowing_legac
         "openrag_user",
         "legacy_backend_role",
     ]
+    assert legacy_mapping_put["and_backend_roles"] == ["legacy_and_role"]
+    assert "hidden" not in legacy_mapping_put
+    assert "reserved" not in legacy_mapping_put
 
 
 @pytest.mark.asyncio
@@ -132,6 +143,24 @@ async def test_setup_opensearch_security_skips_auth_error_before_mutation():
     await setup_opensearch_security(mock_client)
 
     assert mock_client.transport.perform_request.call_count == 1
+    mock_client.cluster.health.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_setup_opensearch_security_aborts_on_transient_mapping_read_failure():
+    """Without current mappings, setup cannot safely preserve customized principals."""
+    mock_client = MagicMock()
+    mock_client.transport.perform_request = AsyncMock(
+        side_effect=Exception("503 Service Unavailable")
+    )
+    mock_client.cluster.health = AsyncMock()
+
+    with pytest.raises(Exception, match="503 Service Unavailable"):
+        await setup_opensearch_security(mock_client)
+
+    mock_client.transport.perform_request.assert_awaited_once_with(
+        "GET", "/_plugins/_security/api/rolesmapping"
+    )
     mock_client.cluster.health.assert_not_called()
 
 
