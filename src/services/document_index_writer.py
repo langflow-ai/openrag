@@ -35,7 +35,9 @@ _BULK_RETRYABLE_ERROR_TYPES = frozenset(
         "process_cluster_event_timeout_exception",
         "unavailable_shards_exception",
         "timeout_exception",
-        "version_conflict_engine_exception",
+        # version_conflict_engine_exception is intentionally excluded: conflicts
+        # arise from concurrent writes to the same document ID and are not
+        # transient — retrying would hit the same conflict and waste the budget.
     }
 )
 _MAX_BULK_RETRIES = 2
@@ -344,6 +346,9 @@ class DocumentIndexWriter:
     @classmethod
     def _item_error_is_retryable(cls, item: Any) -> bool:
         error = cls._item_error(item)
+        # `not error` is True when the item succeeded — treated as retryable so
+        # a successful item never blocks a retry when this is called over the
+        # still_pending list (which only contains items with errors).
         return not error or error.get("type") in _BULK_RETRYABLE_ERROR_TYPES
 
     async def _bulk_with_retry(
@@ -359,6 +364,10 @@ class DocumentIndexWriter:
         succeeded at some point. Instead we track each pair by its original
         position and only rebuild the retry body from the ones still failing.
         """
+        if len(bulk_body) % 2 != 0:
+            raise ValueError(
+                f"bulk_body must contain action/document pairs; got {len(bulk_body)} elements"
+            )
         pairs = [tuple(bulk_body[i : i + 2]) for i in range(0, len(bulk_body), 2)]
         pending_indices = list(range(len(pairs)))
         final_items: list[Any] = [None] * len(pairs)

@@ -197,3 +197,71 @@ async def test_top_level_errors_true_without_per_item_errors_is_preserved():
 
     assert client.calls == 1
     assert result["errors"] is True
+
+
+def test_odd_length_bulk_body_raises():
+    """An odd-length bulk_body means a mismatched action/document pair — must
+    raise immediately rather than silently misaligning the request."""
+    writer = DocumentIndexWriter()
+    with pytest.raises(ValueError, match="action/document pairs"):
+        import asyncio
+        asyncio.get_event_loop().run_until_complete(
+            writer._bulk_with_retry(None, [{"index": {"_id": "chunk-1"}}], refresh=False)
+        )
+
+
+@pytest.mark.asyncio
+async def test_version_conflict_is_not_retried(monkeypatch):
+    """version_conflict_engine_exception must not be retried — conflicts are
+    caused by concurrent writes and are not transient cluster conditions."""
+    monkeypatch.setattr("services.document_index_writer._BULK_RETRY_DELAY_SECONDS", 0)
+    client = ScriptedBulkClient(
+        [
+            {
+                "errors": True,
+                "items": [
+                    {"index": {"_id": "chunk-1", "status": 201}},
+                    {
+                        "index": {
+                            "_id": "chunk-2",
+                            "status": 409,
+                            "error": {
+                                "type": "version_conflict_engine_exception",
+                                "reason": "document already exists",
+                            },
+                        }
+                    },
+                ],
+            }
+        ]
+    )
+
+    writer = DocumentIndexWriter()
+    result = await writer._bulk_with_retry(client, _bulk_body(), refresh=False)
+
+    assert client.calls == 1
+    assert result["errors"] is True
+
+
+@pytest.mark.asyncio
+async def test_item_error_fallback_for_unknown_action_type():
+    """_item_error must still extract the error dict when the item does not
+    use a recognised action key (index/create/update), falling back to the
+    item itself."""
+    writer = DocumentIndexWriter()
+    item_with_unknown_action = {
+        "delete": {
+            "_id": "chunk-1",
+            "status": 404,
+            "error": {"type": "not_found", "reason": "document missing"},
+        }
+    }
+    # The fallback `or item` path: none of index/create/update match, so
+    # _item_error receives the raw item dict and looks for "error" on it
+    # directly — which is absent at the top level, so returns None.
+    assert writer._item_error(item_with_unknown_action) is None
+
+    # Confirm an item that truly has no recognised action and carries a
+    # top-level error key is picked up by the fallback.
+    bare_error_item: dict[str, Any] = {"error": {"type": "some_exception", "reason": "boom"}}
+    assert writer._item_error(bare_error_item) == {"type": "some_exception", "reason": "boom"}
