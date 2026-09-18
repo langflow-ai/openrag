@@ -21,23 +21,22 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-# A single bulk() call executes every item independently, so one item hitting
-# a transient condition (cluster under load, a shard temporarily unavailable)
-# sets `errors: true` for the whole response even though the rest of the
-# document's chunks were written successfully. That makes an entire file look
-# "failed" in the task counters even when it's actually indexed and visible.
-# Every op is an idempotent upsert, so retrying is safe; we resend only the
-# items still failing rather than the whole body, since under load a retry can
-# fail a different subset than the previous attempt did.
+# A bulk() call executes every item independently. Thus, if one item hits a
+# transient condition (cluster under load, shard unavailable) the whole response
+# gets errors: true even though the rest of the document chunks wrote
+# successfully. This makes the entire file look like it "failed" in task
+# counters even when it's actually indexed and visible. But every op is an
+# idempotent upsert so retries are safe — only the items still failing are
+# resent, not the whole body.
 _BULK_RETRYABLE_ERROR_TYPES = frozenset(
     {
         "es_rejected_execution_exception",
         "process_cluster_event_timeout_exception",
         "unavailable_shards_exception",
         "timeout_exception",
-        # version_conflict_engine_exception is intentionally excluded: conflicts
-        # arise from concurrent writes to the same document ID and are not
-        # transient — retrying would hit the same conflict and waste the budget.
+        # version_conflicts are intentionally excluded — they result from
+        # concurrent writes to the same document ID, not transient failures.
+        # Retrying would just hit the same conflict again and waste the budget.
     }
 )
 _MAX_BULK_RETRIES = 2
@@ -346,23 +345,23 @@ class DocumentIndexWriter:
     @classmethod
     def _item_error_is_retryable(cls, item: Any) -> bool:
         error = cls._item_error(item)
-        # `not error` is True when the item succeeded — treated as retryable so
-        # a successful item never blocks a retry when this is called over the
-        # still_pending list (which only contains items with errors).
+        # When there is no error the item succeeded — we treat it as retryable
+        # so a successful item never blocks a retry when this runs over the
+        # still_pending list (which only ever holds items that actually failed).
         return not error or error.get("type") in _BULK_RETRYABLE_ERROR_TYPES
 
     async def _bulk_with_retry(
         self, client: Any, bulk_body: list[dict[str, Any]], *, refresh: bool | str
     ) -> Any:
-        """Retry only the items that actually failed, not the whole bulk body.
+        """Only retry the items that actually failed, not the whole bulk body.
 
-        A bulk response's `items` line up positionally with the action/document
-        pairs in the request. Resending everything on retry would re-submit
-        pairs that already succeeded and, under sustained load, could flip
-        which pairs fail on each attempt - so after the retry budget is spent
-        the file could still be marked failed even though every pair had
-        succeeded at some point. Instead we track each pair by its original
-        position and only rebuild the retry body from the ones still failing.
+        Each entry in the bulk response lines up by position with the
+        action/document pairs we sent. If we resend everything on retry we
+        end up re-submitting pairs that already succeeded — and under heavy
+        load a different subset can fail each time, meaning the file still
+        gets marked failed even though every pair succeeded at some point.
+        Instead we track each pair by its original position and only rebuild
+        the retry body from the ones still failing.
         """
         if len(bulk_body) % 2 != 0:
             raise ValueError(
@@ -380,11 +379,11 @@ class DocumentIndexWriter:
 
             items = result.get("items", [])
 
-            # Guard against a malformed/truncated response: the server must
-            # return exactly one item per pending request. A short or empty
-            # items list means we can't reliably map results back to
-            # final_items, so bail out as an error rather than silently
-            # leaving entries as None.
+            # Guard against a bad or cut-short response — the server should
+            # return exactly one item for each request we sent. If the list
+            # is short or empty we can't safely match results back to the
+            # right slots, so we treat it as an error rather than leaving
+            # gaps filled with None.
             if len(items) != len(pending_indices):
                 return {**result, "items": final_items, "errors": True}
 
@@ -395,10 +394,10 @@ class DocumentIndexWriter:
                     still_pending.append(original_index)
 
             if not still_pending:
-                # Preserve the top-level error flag: if the server set
-                # errors: true but no per-item entry carries an explicit
-                # error, surface that condition rather than converting it
-                # to success.
+                # Keep the top-level error flag as-is — if the server
+                # said errors: true but none of the individual items show
+                # an error, we still want to surface that rather than
+                # quietly calling it a success.
                 return {**result, "items": final_items, "errors": result.get("errors", False)}
 
             all_retryable = all(
