@@ -239,6 +239,7 @@ export function buildKnowledgeTableRows(
             ),
         status,
         error: taskFile.error,
+        warning: taskFile.warning,
         embedding_model: taskFile.embedding_model ?? file.embedding_model,
         embedding_dimensions:
           taskFile.embedding_dimensions ?? file.embedding_dimensions,

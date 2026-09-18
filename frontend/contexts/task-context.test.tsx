@@ -422,3 +422,274 @@ describe("TaskProvider — task completion with cancellations", () => {
     );
   });
 });
+
+describe("TaskProvider — skipped files (duplicate detection)", () => {
+  beforeEach(() => {
+    toast.success.mockClear();
+    toast.error.mockClear();
+    toast.info.mockClear();
+    toast.warning.mockClear();
+  });
+
+  it("maps 'skipped' file status from result and stores the warning message", async () => {
+    const qc = createTestQueryClient();
+
+    let callCount = 0;
+    const runningTask: Task = makeTask({
+      task_id: "task-3",
+      status: "running",
+      files: { "duplicate.pdf": { status: "running", error: "" } },
+    });
+    const completedTask: Task = {
+      ...runningTask,
+      status: "completed",
+      successful_files: 0,
+      failed_files: 0,
+      files: {
+        "duplicate.pdf": {
+          status: "skipped",
+          error: "",
+          result: {
+            warning:
+              "Duplicate content — already exists in the knowledge base.",
+          },
+        },
+      },
+    };
+
+    server.use(
+      http.get("/api/tasks/enhanced", () => {
+        callCount++;
+        return HttpResponse.json({
+          tasks: [callCount === 1 ? runningTask : completedTask],
+        });
+      }),
+    );
+
+    const { result } = renderHook(() => useTask(), { wrapper: wrapper(qc) });
+
+    // Wait for the running task to be seen, then the completed one.
+    await waitFor(() => expect(callCount).toBeGreaterThanOrEqual(2), {
+      timeout: 5000,
+    });
+
+    // The file overlay should have status "skipped" with a warning.
+    await waitFor(
+      () => {
+        const f = result.current.files.find((f) => f.task_id === "task-3");
+        expect(f?.status).toBe("skipped");
+        expect(f?.warning).toBe(
+          "Duplicate content — already exists in the knowledge base.",
+        );
+      },
+      { timeout: 5000 },
+    );
+  });
+
+  it("emits a 'Duplicate file skipped' warning toast when all files are skipped", async () => {
+    const qc = createTestQueryClient();
+
+    let callCount = 0;
+    const runningTask: Task = makeTask({
+      task_id: "task-4",
+      status: "running",
+      files: { "dup.pdf": { status: "running", error: "" } },
+    });
+    const completedTask: Task = {
+      ...runningTask,
+      status: "completed",
+      successful_files: 0,
+      failed_files: 0,
+      files: {
+        "dup.pdf": {
+          status: "skipped",
+          error: "",
+          result: { warning: "Duplicate content" },
+        },
+      },
+    };
+
+    server.use(
+      http.get("/api/tasks/enhanced", () => {
+        callCount++;
+        return HttpResponse.json({
+          tasks: [callCount === 1 ? runningTask : completedTask],
+        });
+      }),
+    );
+
+    renderHook(() => useTask(), { wrapper: wrapper(qc) });
+
+    await waitFor(() => expect(callCount).toBeGreaterThanOrEqual(2), {
+      timeout: 5000,
+    });
+
+    await waitFor(
+      () =>
+        expect(toast.warning).toHaveBeenCalledWith(
+          "Duplicate file skipped",
+          expect.objectContaining({
+            description:
+              "1 file skipped — duplicate content already in knowledge base",
+          }),
+        ),
+      { timeout: 5000 },
+    );
+  });
+
+  it("emits a success toast with skip count when some files succeed and some are skipped", async () => {
+    const qc = createTestQueryClient();
+
+    let callCount = 0;
+    const runningTask: Task = makeTask({
+      task_id: "task-5",
+      status: "running",
+      files: {
+        "new.pdf": { status: "running", error: "" },
+        "dup.pdf": { status: "running", error: "" },
+      },
+    });
+    const completedTask: Task = {
+      ...runningTask,
+      status: "completed",
+      successful_files: 1,
+      failed_files: 0,
+      files: {
+        "new.pdf": { status: "completed", error: "" },
+        "dup.pdf": {
+          status: "skipped",
+          error: "",
+          result: { warning: "Duplicate" },
+        },
+      },
+    };
+
+    server.use(
+      http.get("/api/tasks/enhanced", () => {
+        callCount++;
+        return HttpResponse.json({
+          tasks: [callCount === 1 ? runningTask : completedTask],
+        });
+      }),
+    );
+
+    renderHook(() => useTask(), { wrapper: wrapper(qc) });
+
+    await waitFor(() => expect(callCount).toBeGreaterThanOrEqual(2), {
+      timeout: 5000,
+    });
+
+    await waitFor(
+      () =>
+        expect(toast.success).toHaveBeenCalledWith(
+          "Task completed",
+          expect.objectContaining({
+            description:
+              "1 file uploaded successfully, 1 file skipped (duplicate content)",
+          }),
+        ),
+      { timeout: 5000 },
+    );
+  });
+
+  it("keeps skipped file overlays in the table after task completion", async () => {
+    const qc = createTestQueryClient();
+
+    let callCount = 0;
+    const runningTask: Task = makeTask({
+      task_id: "task-6",
+      status: "running",
+      files: { "skipped.pdf": { status: "running", error: "" } },
+    });
+    const completedTask: Task = {
+      ...runningTask,
+      status: "completed",
+      successful_files: 0,
+      failed_files: 0,
+      files: {
+        "skipped.pdf": {
+          status: "skipped",
+          error: "",
+          result: { warning: "Duplicate" },
+        },
+      },
+    };
+
+    server.use(
+      http.get("/api/tasks/enhanced", () => {
+        callCount++;
+        return HttpResponse.json({
+          tasks: [callCount === 1 ? runningTask : completedTask],
+        });
+      }),
+    );
+
+    const { result } = renderHook(() => useTask(), { wrapper: wrapper(qc) });
+
+    await waitFor(() => expect(callCount).toBeGreaterThanOrEqual(2), {
+      timeout: 5000,
+    });
+
+    // Skipped files should remain in the overlay (not be removed).
+    await waitFor(
+      () => {
+        const f = result.current.files.find((f) => f.task_id === "task-6");
+        expect(f?.status).toBe("skipped");
+        expect(f).toBeDefined();
+      },
+      { timeout: 5000 },
+    );
+  });
+
+  it("accounts for skipped files when determining if task is total failure", async () => {
+    const qc = createTestQueryClient();
+
+    let callCount = 0;
+    const runningTask: Task = makeTask({
+      task_id: "task-7",
+      status: "running",
+      files: {
+        "fail.pdf": { status: "running", error: "" },
+        "dup.pdf": { status: "running", error: "" },
+      },
+    });
+    const completedTask: Task = {
+      ...runningTask,
+      status: "completed",
+      successful_files: 0,
+      failed_files: 1,
+      files: {
+        "fail.pdf": { status: "failed", error: "Error" },
+        "dup.pdf": {
+          status: "skipped",
+          error: "",
+          result: { warning: "Duplicate" },
+        },
+      },
+    };
+
+    server.use(
+      http.get("/api/tasks/enhanced", () => {
+        callCount++;
+        return HttpResponse.json({
+          tasks: [callCount === 1 ? runningTask : completedTask],
+        });
+      }),
+    );
+
+    renderHook(() => useTask(), { wrapper: wrapper(qc) });
+
+    await waitFor(() => expect(callCount).toBeGreaterThanOrEqual(2), {
+      timeout: 5000,
+    });
+
+    // Should NOT be a total failure because one file was skipped (not failed).
+    await waitFor(
+      () => {
+        expect(toast.error).not.toHaveBeenCalled();
+        expect(toast.success).toHaveBeenCalled();
+      },
+      { timeout: 5000 },
+    );
+  });
+});
