@@ -79,6 +79,25 @@ def test_resolve_call_watsonx_includes_project_and_endpoint():
     assert creds["api_base"] == "https://us-south.ml.cloud.ibm.com"
 
 
+def test_resolve_call_ollama_chat_uses_ollama_chat_prefix():
+    cfg = _config(agent=SimpleNamespace(llm_model="qwen3:8b", llm_provider="ollama"))
+    model, provider, creds = resolve_call(None, kind="chat", config=cfg)
+    assert provider == "ollama"
+    assert model == "ollama_chat/qwen3:8b"
+    assert creds["api_base"] == "http://localhost:11434"
+
+
+def test_resolve_call_ollama_embedding_keeps_ollama_prefix():
+    # LiteLLM has no "ollama_chat" embedding provider - only "ollama/" is
+    # ever a valid embedding route, so the chat-only rewrite must not apply here.
+    cfg = _config(
+        knowledge=SimpleNamespace(embedding_model="nomic-embed-text", embedding_provider="ollama")
+    )
+    model, provider, creds = resolve_call(None, kind="embedding", config=cfg)
+    assert provider == "ollama"
+    assert model == "ollama/nomic-embed-text"
+
+
 def test_legacy_text_embedding_3_small_routes_to_openai_not_selected_provider():
     cfg = _config(
         knowledge=SimpleNamespace(
