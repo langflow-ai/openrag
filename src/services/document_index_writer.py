@@ -380,7 +380,7 @@ class DocumentIndexWriter:
                 return {**result, "items": final_items, "errors": True}
 
             still_pending = []
-            for original_index, item in zip(pending_indices, items):
+            for original_index, item in zip(pending_indices, items, strict=True):
                 final_items[original_index] = item
                 if self._item_error(item):
                     still_pending.append(original_index)
