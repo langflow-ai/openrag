@@ -66,10 +66,14 @@ async def test_check_specific_provider_validates_against_configured_base_url(mon
 
     await provider_health_api.check_provider_health(provider="openai", user=None)
 
-    validate_mock.assert_awaited_once()
-    call = validate_mock.await_args
-    assert call.kwargs["provider"] == "openai"
-    assert call.kwargs["endpoint"] == GATEWAY_URL
+    # openai is selected for both the chat and embedding role here, so the
+    # per-role probing check_provider_health() added for dual-endpoint
+    # providers (Red Hat OpenShift AI) issues one call per role rather than
+    # a single combined one.
+    assert validate_mock.await_count == 2
+    for call in validate_mock.await_args_list:
+        assert call.kwargs["provider"] == "openai"
+        assert call.kwargs["endpoint"] == GATEWAY_URL
 
 
 @pytest.mark.asyncio
