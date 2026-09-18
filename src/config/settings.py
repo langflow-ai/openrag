@@ -790,6 +790,28 @@ def _get_min_env_int(key: str, default: int, minimum: int) -> int:
 VECTOR_DIM = 1536
 KNN_EF_CONSTRUCTION = 100
 KNN_M = 16
+
+# k-NN vector engine. "jvector" (OpenRAG's default) ships only in the project's
+# own OpenSearch image (see Dockerfile: the opensearch-jvector plugin replaces
+# the bundled opensearch-knn one) and pairs with the "disk_ann" method. Every
+# other engine the bundled opensearch-knn plugin supports (faiss, nmslib) is
+# only valid with the "hnsw" method — there is no generic engine-agnostic
+# method, so the two must be selected together. Set this for a managed/SaaS
+# OpenSearch deployment (AWS OpenSearch Service, Aiven, Scaleway Cloud
+# Essentials, ...) that only has the standard plugin, where "jvector" fails
+# index creation with `mapper_parsing_exception: Invalid engine: jvector`.
+_VALID_KNN_ENGINES = ("jvector", "faiss", "nmslib")
+_raw_knn_engine = os.getenv("OPENRAG_OPENSEARCH_KNN_ENGINE", "jvector").strip().lower()
+if _raw_knn_engine not in _VALID_KNN_ENGINES:
+    logger.warning(
+        "Invalid OPENRAG_OPENSEARCH_KNN_ENGINE value, falling back to 'jvector'",
+        value=_raw_knn_engine,
+        valid_values=_VALID_KNN_ENGINES,
+    )
+    _raw_knn_engine = "jvector"
+KNN_ENGINE = _raw_knn_engine
+KNN_METHOD_NAME = "disk_ann" if KNN_ENGINE == "jvector" else "hnsw"
+
 OPENSEARCH_NUMBER_OF_SHARDS = _get_min_env_int("OPENRAG_OPENSEARCH_NUMBER_OF_SHARDS", 2, 1)
 OPENSEARCH_NUMBER_OF_REPLICAS = _get_min_env_int("OPENRAG_OPENSEARCH_NUMBER_OF_REPLICAS", 2, 0)
 
