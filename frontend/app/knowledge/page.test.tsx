@@ -70,31 +70,21 @@ describe("isSkippedStatus", () => {
 });
 
 describe("SkippedStatusCell", () => {
-  it("renders the Duplicate label", () => {
-    render(
+  it("renders the visible Duplicate label for both warning variants", () => {
+    // Radix TooltipContent is not in the DOM until hover — assert only the
+    // always-visible trigger span. Warning text is covered by getSkippedWarningText tests.
+    const { rerender } = render(
       <TooltipProvider>
         <SkippedStatusCell warning="Identical content already exists." />
       </TooltipProvider>,
     );
-    // The visible trigger text is always in the DOM
     expect(screen.getByText("Duplicate")).toBeTruthy();
-    // Tooltip content is in the DOM (hidden until hover); queryByText finds it
-    expect(
-      screen.queryByText("Identical content already exists."),
-    ).not.toBeNull();
-  });
 
-  it("renders the default fallback warning when no warning prop is given", () => {
-    render(
+    rerender(
       <TooltipProvider>
         <SkippedStatusCell />
       </TooltipProvider>,
     );
     expect(screen.getByText("Duplicate")).toBeTruthy();
-    expect(
-      screen.queryByText(
-        "Duplicate content — already exists in the knowledge base.",
-      ),
-    ).not.toBeNull();
   });
 });
