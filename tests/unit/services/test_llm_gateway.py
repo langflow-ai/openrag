@@ -8,6 +8,7 @@ import pytest
 from config.config_manager import (
     AnthropicConfig,
     GenericProviderConfig,
+    OCIConfig,
     OllamaConfig,
     OpenAIConfig,
     ProvidersConfig,
@@ -21,6 +22,7 @@ from services.llm_gateway import (
     resolve_call,
     split_model_id,
 )
+from utils.oci_auth import OCISignerConstructionError
 
 
 def _config(**overrides):
@@ -197,6 +199,122 @@ def test_indexed_space_routes_through_its_configured_generic_provider():
     assert credentials == {"api_key": "gemini-secret"}
 
 
+def test_provider_credentials_oci_builds_signer_for_instance_principal(monkeypatch):
+    sentinel_signer = object()
+    monkeypatch.setattr("utils.oci_auth.get_cached_oci_signer", lambda auth_method: sentinel_signer)
+    providers = ProvidersConfig(
+        openai=OpenAIConfig(),
+        anthropic=AnthropicConfig(),
+        watsonx=WatsonXConfig(),
+        ollama=OllamaConfig(),
+        oci=OCIConfig(
+            auth_method="instance_principal",
+            compartment_id="ocid1.compartment.oc1..a",
+            region="us-ashburn-1",
+            # Deliberately stale manual fields - proves they get dropped,
+            # not just that oci_signer gets added alongside them.
+            user="stale-user",
+            fingerprint="stale-fp",
+            tenancy="stale-tenancy",
+            key="stale-key",
+            key_file="stale-key-file",
+            configured=True,
+        ),
+    )
+    cfg = SimpleNamespace(providers=providers)
+
+    creds = provider_credentials("oci", cfg)
+
+    assert creds["oci_signer"] is sentinel_signer
+    assert creds["oci_compartment_id"] == "ocid1.compartment.oc1..a"
+    assert creds["oci_region"] == "us-ashburn-1"
+    for stale in ("oci_user", "oci_fingerprint", "oci_tenancy", "oci_key", "oci_key_file"):
+        assert stale not in creds
+
+
+def test_provider_credentials_oci_signer_failure_becomes_llm_gateway_error(monkeypatch):
+    """get_cached_oci_signer() raises a plain OCISignerConstructionError (not
+    an LlmGatewayError) when e.g. instance_principal is configured off OCI
+    Compute. Left unwrapped, that reaches embeddings_endpoint's caller as a
+    raw, unsanitized 500 instead of a proper gateway error - and losing the
+    actionable "which prerequisite is missing" message the exception carries."""
+
+    def _boom(auth_method):
+        raise OCISignerConstructionError("not running on an OCI Compute instance")
+
+    monkeypatch.setattr("utils.oci_auth.get_cached_oci_signer", _boom)
+    providers = ProvidersConfig(
+        openai=OpenAIConfig(),
+        anthropic=AnthropicConfig(),
+        watsonx=WatsonXConfig(),
+        ollama=OllamaConfig(),
+        oci=OCIConfig(
+            auth_method="instance_principal",
+            compartment_id="ocid1.compartment.oc1..a",
+            region="us-ashburn-1",
+            configured=True,
+        ),
+    )
+    cfg = SimpleNamespace(providers=providers)
+
+    with pytest.raises(LlmGatewayError, match="not running on an OCI Compute instance"):
+        provider_credentials("oci", cfg)
+
+
+def test_provider_credentials_oci_builds_signer_for_workload_identity(monkeypatch):
+    sentinel_signer = object()
+    monkeypatch.setattr("utils.oci_auth.get_cached_oci_signer", lambda auth_method: sentinel_signer)
+    providers = ProvidersConfig(
+        openai=OpenAIConfig(),
+        anthropic=AnthropicConfig(),
+        watsonx=WatsonXConfig(),
+        ollama=OllamaConfig(),
+        oci=OCIConfig(
+            auth_method="workload_identity",
+            compartment_id="ocid1.compartment.oc1..a",
+            region="us-ashburn-1",
+            configured=True,
+        ),
+    )
+    cfg = SimpleNamespace(providers=providers)
+
+    creds = provider_credentials("oci", cfg)
+
+    assert creds["oci_signer"] is sentinel_signer
+    assert creds["oci_compartment_id"] == "ocid1.compartment.oc1..a"
+
+
+def test_provider_credentials_oci_api_key_mode_untouched_by_signer_logic(monkeypatch):
+    """Sanity check: the new signer branch must not fire for api_key auth."""
+
+    def _boom(auth_method):
+        raise AssertionError("get_cached_oci_signer must not be called for api_key auth")
+
+    monkeypatch.setattr("utils.oci_auth.get_cached_oci_signer", _boom)
+    providers = ProvidersConfig(
+        openai=OpenAIConfig(),
+        anthropic=AnthropicConfig(),
+        watsonx=WatsonXConfig(),
+        ollama=OllamaConfig(),
+        oci=OCIConfig(
+            auth_method="api_key",
+            user="ocid1.user.oc1..a",
+            fingerprint="aa:bb:cc",
+            tenancy="ocid1.tenancy.oc1..a",
+            compartment_id="ocid1.compartment.oc1..a",
+            region="eu-frankfurt-1",
+            key_file="/etc/oci/api_key.pem",
+            configured=True,
+        ),
+    )
+    cfg = SimpleNamespace(providers=providers)
+
+    creds = provider_credentials("oci", cfg)
+
+    assert creds["oci_key_file"] == "/etc/oci/api_key.pem"
+    assert "oci_signer" not in creds
+
+
 @pytest.mark.asyncio
 async def test_chat_completions_calls_litellm_with_config_key(monkeypatch):
     captured = {}
@@ -367,6 +485,88 @@ async def test_embeddings_calls_litellm(monkeypatch):
     assert result["data"][0]["embedding"] == [0.1]
     assert captured["api_key"] == "sk-openai"
     assert captured["input"] == ["hello"]
+
+
+@pytest.mark.asyncio
+async def test_embeddings_langflow_bare_body_gets_oci_signer_for_instance_principal(
+    monkeypatch,
+):
+    """Reproduces the actual hard-failure scenario: Langflow's embedding
+    component POSTs a bare {model, input} JSON body - it never carries an
+    input_type or a Signer object, since a Signer can't cross HTTP JSON at
+    all. Before this fix, this exact call would reach litellm.aembedding()
+    with no OCI credentials whatsoever under instance_principal auth."""
+    sentinel_signer = object()
+    monkeypatch.setattr("utils.oci_auth.get_cached_oci_signer", lambda auth_method: sentinel_signer)
+    providers = ProvidersConfig(
+        openai=OpenAIConfig(),
+        anthropic=AnthropicConfig(),
+        watsonx=WatsonXConfig(),
+        ollama=OllamaConfig(),
+        oci=OCIConfig(
+            auth_method="instance_principal",
+            compartment_id="ocid1.compartment.oc1..a",
+            region="us-ashburn-1",
+            configured=True,
+        ),
+    )
+    cfg = SimpleNamespace(providers=providers)
+
+    captured = {}
+
+    async def fake_aembedding(**kwargs):
+        captured.update(kwargs)
+        return {"object": "list", "data": [{"embedding": [0.1], "index": 0}]}
+
+    monkeypatch.setattr("litellm.aembedding", fake_aembedding)
+
+    result = await embeddings(
+        {"model": "space:oci:cohere.embed-multilingual-v3.0", "input": "hello"},
+        config=cfg,
+    )
+
+    assert result["data"][0]["embedding"] == [0.1]
+    assert captured["oci_signer"] is sentinel_signer
+    assert captured["oci_compartment_id"] == "ocid1.compartment.oc1..a"
+
+
+@pytest.mark.asyncio
+async def test_embeddings_langflow_bare_body_gets_oci_key_file_for_api_key_auth(
+    monkeypatch,
+):
+    providers = ProvidersConfig(
+        openai=OpenAIConfig(),
+        anthropic=AnthropicConfig(),
+        watsonx=WatsonXConfig(),
+        ollama=OllamaConfig(),
+        oci=OCIConfig(
+            auth_method="api_key",
+            user="ocid1.user.oc1..a",
+            fingerprint="aa:bb:cc",
+            tenancy="ocid1.tenancy.oc1..a",
+            compartment_id="ocid1.compartment.oc1..a",
+            region="eu-frankfurt-1",
+            key_file="/etc/oci/api_key.pem",
+            configured=True,
+        ),
+    )
+    cfg = SimpleNamespace(providers=providers)
+
+    captured = {}
+
+    async def fake_aembedding(**kwargs):
+        captured.update(kwargs)
+        return {"object": "list", "data": [{"embedding": [0.2], "index": 0}]}
+
+    monkeypatch.setattr("litellm.aembedding", fake_aembedding)
+
+    result = await embeddings(
+        {"model": "space:oci:cohere.embed-multilingual-v3.0", "input": "hello"},
+        config=cfg,
+    )
+
+    assert result["data"][0]["embedding"] == [0.2]
+    assert captured["oci_key_file"] == "/etc/oci/api_key.pem"
 
 
 class _RecordingLogger:

@@ -219,6 +219,134 @@ def test_embedding_adapter_preserves_dimensions_only_for_selected_provider_route
     assert [kwargs.get("dimensions") for kwargs in created] == [512, 512, None, None, None]
 
 
+def _import_embedding_component_with_fake_delegate(
+    monkeypatch: pytest.MonkeyPatch, fake_openai_embeddings: type
+) -> ModuleType:
+    """Import the embedding component with its `langchain_openai` dependency faked out."""
+
+    class FakeInput:
+        def __init__(self, **kwargs: object) -> None:
+            self.name = kwargs.get("name")
+
+    modules: dict[str, ModuleType] = {
+        "langchain_core": ModuleType("langchain_core"),
+        "langchain_core.embeddings": ModuleType("langchain_core.embeddings"),
+        "langchain_openai": ModuleType("langchain_openai"),
+        "lfx": ModuleType("lfx"),
+        "lfx.base": ModuleType("lfx.base"),
+        "lfx.base.embeddings": ModuleType("lfx.base.embeddings"),
+        "lfx.base.embeddings.model": ModuleType("lfx.base.embeddings.model"),
+        "lfx.io": ModuleType("lfx.io"),
+    }
+    vars(modules["langchain_core.embeddings"])["Embeddings"] = object
+    vars(modules["langchain_openai"])["OpenAIEmbeddings"] = fake_openai_embeddings
+    vars(modules["lfx.base.embeddings.model"])["LCEmbeddingsModel"] = object
+    for input_name in ("IntInput", "SecretStrInput", "StrInput"):
+        setattr(modules["lfx.io"], input_name, FakeInput)
+    for module_name, module in modules.items():
+        monkeypatch.setitem(sys.modules, module_name, module)
+
+    module_name = "custom_components.openrag.openai_compatible_embedding"
+    sys.modules.pop(module_name, None)
+    return importlib.import_module(module_name)
+
+
+def _make_fake_openai_embeddings(calls: list[tuple[str, object, dict[str, object]]]) -> type:
+    """Build a fake `OpenAIEmbeddings` stand-in that records its call args."""
+
+    class FakeOpenAIEmbeddings:
+        def __init__(self, **kwargs: object) -> None:
+            self.kwargs = kwargs
+
+        def embed_documents(self, texts, **kwargs):
+            calls.append(("embed_documents", texts, kwargs))
+            return [[0.0]] * len(texts)
+
+        def embed_query(self, text, **kwargs):
+            calls.append(("embed_query", text, kwargs))
+            return [0.0]
+
+        async def aembed_documents(self, texts, **kwargs):
+            calls.append(("aembed_documents", texts, kwargs))
+            return [[0.0]] * len(texts)
+
+        async def aembed_query(self, text, **kwargs):
+            calls.append(("aembed_query", text, kwargs))
+            return [0.0]
+
+    return FakeOpenAIEmbeddings
+
+
+def test_embed_documents_and_embed_query_attach_input_type_for_cohere_models(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cohere Embed models need an explicit `input_type` on every call."""
+    calls: list[tuple[str, object, dict[str, object]]] = []
+    component = _import_embedding_component_with_fake_delegate(
+        monkeypatch, _make_fake_openai_embeddings(calls)
+    )
+
+    adapter = component.OpenRAGEmbeddings(
+        model_name="cohere.embed-multilingual-v3.0",
+        api_key="token",
+        api_base="http://openrag/v1",
+    )
+    adapter.embed_documents(["a", "b"])
+    adapter.embed_query("q")
+
+    assert calls == [
+        ("embed_documents", ["a", "b"], {"extra_body": {"input_type": "search_document"}}),
+        ("embed_query", "q", {"extra_body": {"input_type": "search_query"}}),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_async_embed_methods_attach_input_type_for_cohere_models(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The async embed methods need the same `input_type` treatment as the sync ones."""
+    calls: list[tuple[str, object, dict[str, object]]] = []
+    component = _import_embedding_component_with_fake_delegate(
+        monkeypatch, _make_fake_openai_embeddings(calls)
+    )
+
+    adapter = component.OpenRAGEmbeddings(
+        model_name="cohere.embed-multilingual-v3.0",
+        api_key="token",
+        api_base="http://openrag/v1",
+    )
+    await adapter.aembed_documents(["a", "b"])
+    await adapter.aembed_query("q")
+
+    assert calls == [
+        ("aembed_documents", ["a", "b"], {"extra_body": {"input_type": "search_document"}}),
+        ("aembed_query", "q", {"extra_body": {"input_type": "search_query"}}),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_non_cohere_models_get_no_input_type_kwarg(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Non-Cohere routes (OpenAI/watsonx/ollama) must not regress: no `extra_body` at all."""
+    calls: list[tuple[str, object, dict[str, object]]] = []
+    component = _import_embedding_component_with_fake_delegate(
+        monkeypatch, _make_fake_openai_embeddings(calls)
+    )
+
+    adapter = component.OpenRAGEmbeddings(
+        model_name="text-embedding-3-small",
+        api_key="token",
+        api_base="http://openrag/v1",
+    )
+    adapter.embed_documents(["a", "b"])
+    adapter.embed_query("q")
+    await adapter.aembed_documents(["a", "b"])
+    await adapter.aembed_query("q")
+
+    assert len(calls) == 4
+    for _, _, kwargs in calls:
+        assert "extra_body" not in kwargs
+
+
 def test_flows_embed_the_current_proxy_component_sources():
     """Flow JSONs carry their own copy of each component; keep them in step.
 
