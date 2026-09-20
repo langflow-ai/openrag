@@ -157,9 +157,9 @@ async def test_gives_up_after_max_retries_still_failing(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_short_items_list_returns_error(monkeypatch):
-    """A response with fewer items than pending requests must be treated as an
-    error, not silently accepted with None slots in the merged result."""
+async def test_short_items_list_raises(monkeypatch):
+    """A response with fewer items than pending requests must raise immediately
+    rather than returning None-filled slots that callers cannot safely iterate."""
     monkeypatch.setattr("services.document_index_writer._BULK_RETRY_DELAY_SECONDS", 0)
     # Two pairs were sent, but the server only returns one item.
     client = ScriptedBulkClient(
@@ -167,13 +167,10 @@ async def test_short_items_list_returns_error(monkeypatch):
     )
 
     writer = DocumentIndexWriter()
-    result = await writer._bulk_with_retry(client, _bulk_body(), refresh=False)
+    with pytest.raises(RuntimeError, match="malformed response"):
+        await writer._bulk_with_retry(client, _bulk_body(), refresh=False)
 
     assert client.calls == 1
-    assert result["errors"] is True
-    # The slot for the unaccounted item must not be silently None while
-    # errors is reported as False.
-    assert result["items"][1] is None
 
 
 @pytest.mark.asyncio

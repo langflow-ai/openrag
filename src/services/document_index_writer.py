@@ -385,7 +385,10 @@ class DocumentIndexWriter:
             # right slots, so we treat it as an error rather than leaving
             # gaps filled with None.
             if len(items) != len(pending_indices):
-                return {**result, "items": final_items, "errors": True}
+                raise RuntimeError(
+                    f"OpenSearch bulk response returned {len(items)} items for "
+                    f"{len(pending_indices)} requests — malformed response"
+                )
 
             still_pending = []
             for original_index, item in zip(pending_indices, items, strict=True):
