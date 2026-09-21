@@ -146,7 +146,9 @@ def _extract_document_json_content(payload: dict[str, Any], *, task_id: str) -> 
         )
         raise DoclingServeError(f"Docling processing failed: {detail}")
 
-    document = payload.get("document") or {}
+    document = payload.get("document")
+    if not isinstance(document, dict):
+        document = {}
     doc_content = document.get("json_content")
     if doc_content is None:
         logger.error(
