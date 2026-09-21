@@ -867,6 +867,33 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         )
         return url, token, ingest_run_id
 
+    @staticmethod
+    def _backend_tls_verify() -> bool | str:
+        """TLS verification setting for outbound LF → BE calls.
+
+        Reads the same env vars the operator injects into the Langflow pod:
+          OPENRAG_BACKEND_CA_CERTS    — path to the interpod CA bundle (PEM)
+          OPENRAG_BACKEND_VERIFY_CERTS — "true"/"false" explicit override
+
+        Priority (mirrors the BE-side LANGFLOW_CA_CERTS / LANGFLOW_VERIFY_CERTS logic):
+          1. OPENRAG_BACKEND_VERIFY_CERTS explicitly set → honour it
+          2. OPENRAG_BACKEND_CA_CERTS set → verify=<path> (verify using that CA)
+          3. Neither set → True (httpx default: verify against system CA bundle)
+        """
+        import os
+
+        ca_path = os.getenv("OPENRAG_BACKEND_CA_CERTS")
+        verify_env = os.getenv("OPENRAG_BACKEND_VERIFY_CERTS")
+
+        if verify_env is not None:
+            if verify_env.lower() not in ("true", "1", "yes"):
+                return False
+            # explicit true: use the CA bundle if provided, else system bundle
+            return ca_path if ca_path else True
+
+        # no explicit override: a CA path is its own signal to verify with it
+        return ca_path if ca_path else True
+
     def _post_openrag_ingest_batches(
         self,
         *,
@@ -887,7 +914,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             f"[OpenRAG ingest POST] total_chunks={len(requests)} batch_size={batch_size} timeout_s={timeout}"
         )
 
-        with httpx.Client(timeout=timeout) as client:
+        with httpx.Client(timeout=timeout, verify=self._backend_tls_verify()) as client:
             total_batches = (len(requests) + batch_size - 1) // batch_size
             for batch_number, start in enumerate(range(0, len(requests), batch_size), start=1):
                 batch = requests[start : start + batch_size]
