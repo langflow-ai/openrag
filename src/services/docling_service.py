@@ -108,7 +108,12 @@ def resolve_ocr_languages(engine: str, languages: list[str]) -> list[str]:
     code OpenRAG does not know about rather than have it silently dropped.
     """
     mapping = OCR_LANGUAGE_CODES.get(engine, {})
-    return [mapping.get(language, language) for language in languages]
+    # Apple Vision treats earlier languages as higher priority. Keep English as
+    # the fallback so adding another language does not suppress its script.
+    prioritized = [language for language in languages if language != "en"]
+    if "en" in languages:
+        prioritized.append("en")
+    return [mapping.get(language, language) for language in prioritized]
 
 
 def get_docling_preset_configs(
@@ -120,8 +125,7 @@ def get_docling_preset_configs(
 
     config = {
         "do_ocr": ocr,
-        # Must be ocr_preset, not the deprecated ocr_engine: docling-serve
-        # silently ignores ocr_lang whenever ocr_engine is set.
+        # ocr_preset is the supported replacement for deprecated ocr_engine.
         "ocr_preset": engine,
         "do_table_structure": table_structure,
         "do_picture_classification": picture_descriptions,

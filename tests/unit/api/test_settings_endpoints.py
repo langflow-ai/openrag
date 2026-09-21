@@ -412,7 +412,7 @@ def test_settings_body_accepts_ocr_languages():
     """OCR languages are settable through the settings API."""
     body = SettingsUpdateBody(ocr_languages=["en", "ja"])
 
-    assert body.ocr_languages == ["en", "ja"]
+    assert body.ocr_languages == ["ja", "en"]
 
 
 def test_settings_body_rejects_blank_ocr_language():
@@ -429,7 +429,7 @@ def test_settings_body_rejects_empty_ocr_language_list():
 
 def test_settings_body_accepts_one_family_plus_english():
     """A selection drawn from a single recognition-model family is valid."""
-    assert SettingsUpdateBody(ocr_languages=["en", "ja"]).ocr_languages == ["en", "ja"]
+    assert SettingsUpdateBody(ocr_languages=["en", "ja"]).ocr_languages == ["ja", "en"]
     assert SettingsUpdateBody(ocr_languages=["ru", "uk"]).ocr_languages == ["ru", "uk"]
     assert SettingsUpdateBody(ocr_languages=["fr", "de", "pt"]).ocr_languages == [
         "fr",

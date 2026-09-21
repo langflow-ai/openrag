@@ -109,7 +109,10 @@ class SettingsUpdateBody(BaseModel):
                 "ocr_languages mixes scripts that no single OCR model can serve "
                 f"({', '.join(sorted(families))}); combine one script with English"
             )
-        return cleaned
+        # Keep English last in the persisted list, matching OCR priority on macOS.
+        return [language for language in cleaned if language != "en"] + (
+            ["en"] if "en" in cleaned else []
+        )
 
 
 class OnboardingBody(BaseModel):

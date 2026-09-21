@@ -236,7 +236,7 @@ async def test_build_docling_options_sends_configured_ocr_languages(docling_serv
     ):
         options = await docling_service._build_docling_options_async()
 
-    assert options["ocr_lang"] == ["en-US", "ja-JP"]
+    assert options["ocr_lang"] == ["ja-JP", "en-US"]
 
 
 @pytest.mark.asyncio
@@ -258,7 +258,7 @@ async def test_upload_sends_ocr_lang_as_repeated_form_fields(docling_service, mo
         await docling_service.upload_to_docling_direct_async("doc.pdf", b"data")
 
     sent = mock_httpx_client.post.call_args.kwargs["data"]
-    assert sent["ocr_lang"] == ["en-US", "ja-JP"]
+    assert sent["ocr_lang"] == ["ja-JP", "en-US"]
     assert sent["ocr_preset"] == "ocrmac"
     assert "ocr_engine" not in sent
 
@@ -282,7 +282,7 @@ def test_preset_configs_linux():
 
 
 def test_preset_configs_never_sends_deprecated_ocr_engine():
-    """docling-serve silently ignores ocr_lang when the deprecated ocr_engine is set."""
+    """Use the supported preset field rather than the deprecated engine field."""
     from services.docling_service import get_docling_preset_configs
 
     with patch("services.docling_service.platform.system", return_value="Darwin"):
@@ -298,7 +298,7 @@ def test_preset_configs_maps_languages_to_ocrmac_codes():
     with patch("services.docling_service.platform.system", return_value="Darwin"):
         preset = get_docling_preset_configs(ocr=True, ocr_languages=["ja", "en", "vi"])
 
-    assert preset["ocr_lang"] == ["ja-JP", "en-US", "vi-VN"]
+    assert preset["ocr_lang"] == ["ja-JP", "vi-VN", "en-US"]
 
 
 def test_preset_configs_maps_languages_to_easyocr_codes():
@@ -534,7 +534,7 @@ def test_docling_config_model_accepts_preset_output():
     config = DoclingConfig(**preset)
 
     assert config.ocr_preset == "ocrmac"
-    assert config.ocr_lang == ["en-US", "ja-JP"]
+    assert config.ocr_lang == ["ja-JP", "en-US"]
 
 
 def test_preset_configs_maps_arabic_per_engine():

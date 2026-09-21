@@ -33,6 +33,13 @@ export const OCR_LANGUAGE_FAMILIES: Record<string, readonly string[]> = {
 
 const CURATED = [UNIVERSAL, ...Object.values(OCR_LANGUAGE_FAMILIES).flat()];
 
+/** Keep English as the fallback when another OCR language is selected. */
+export function englishLast(languages: string[]): string[] {
+  const prioritized = languages.filter((language) => language !== UNIVERSAL);
+  if (languages.includes(UNIVERSAL)) prioritized.push(UNIVERSAL);
+  return prioritized;
+}
+
 function familyOf(language: string): string | undefined {
   return Object.keys(OCR_LANGUAGE_FAMILIES).find((family) =>
     OCR_LANGUAGE_FAMILIES[family].includes(language),

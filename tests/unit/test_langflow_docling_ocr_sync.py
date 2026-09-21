@@ -23,5 +23,5 @@ async def test_langflow_sync_includes_ocr_languages():
         await _update_langflow_docling_settings(config, flows_service)
 
     _, opts = flows_service.update_flow_docling_preset.call_args.args
-    assert opts["ocr_lang"] == ["en", "ja"]
+    assert opts["ocr_lang"] == ["ja", "en"]
     assert opts["ocr_preset"] == "easyocr"

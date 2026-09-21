@@ -59,7 +59,7 @@ import {
   DEFAULT_KNOWLEDGE_SETTINGS,
   OCR_LANGUAGE_OPTIONS,
 } from "@/lib/constants";
-import { allowedLanguages } from "@/lib/ocr-languages";
+import { allowedLanguages, englishLast } from "@/lib/ocr-languages";
 import { resolveLangflowEditUrl } from "@/lib/url-utils";
 import { cn } from "@/lib/utils";
 import { useUpdateSettingsMutation } from "../../api/mutations/useUpdateSettingsMutation";
@@ -323,7 +323,7 @@ export function IngestSettingsSection() {
     if (k.table_structure !== undefined) setTableStructure(k.table_structure);
     if (k.ocr !== undefined) setOcr(k.ocr);
     if (k.ocr_languages !== undefined && k.ocr_languages.length > 0)
-      setOcrLanguages(k.ocr_languages);
+      setOcrLanguages(englishLast(k.ocr_languages));
     if (k.picture_descriptions !== undefined)
       setPictureDescriptions(k.picture_descriptions);
     if (k.disable_ingest_with_langflow !== undefined)
@@ -437,7 +437,8 @@ export function IngestSettingsSection() {
     chunkOverlap !== (k?.chunk_overlap ?? chunkOverlap) ||
     tableStructure !== (k?.table_structure ?? tableStructure) ||
     ocr !== (k?.ocr ?? ocr) ||
-    ocrLanguages.join(",") !== (k?.ocr_languages ?? ocrLanguages).join(",") ||
+    ocrLanguages.join(",") !==
+      englishLast(k?.ocr_languages ?? ocrLanguages).join(",") ||
     pictureDescriptions !== (k?.picture_descriptions ?? pictureDescriptions) ||
     disableIngestWithLangflow !==
       (k?.disable_ingest_with_langflow ?? disableIngestWithLangflow) ||
@@ -910,7 +911,7 @@ export function IngestSettingsSection() {
                     <LabelWrapper
                       id="ocr-languages"
                       label="OCR languages"
-                      helperText="Text in languages you don't select is skipped during ingest"
+                      helperText="Languages are prioritized in this order; English stays last when combined with others"
                       disabled={!ocr}
                       flex
                     >
@@ -921,7 +922,9 @@ export function IngestSettingsSection() {
                           setUserEdited(true);
                           // An empty selection would make docling fall back to its
                           // English-only default without saying so; keep English.
-                          setOcrLanguages(v.length > 0 ? v : ["en"]);
+                          setOcrLanguages(
+                            englishLast(v.length > 0 ? v : ["en"]),
+                          );
                         }}
                         showAllOption={false}
                         placeholder="Select languages..."

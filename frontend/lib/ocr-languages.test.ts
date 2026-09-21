@@ -1,5 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { allowedLanguages, isSelectionValid } from "@/lib/ocr-languages";
+import {
+  allowedLanguages,
+  englishLast,
+  isSelectionValid,
+} from "@/lib/ocr-languages";
+
+describe("englishLast", () => {
+  it("moves the default English selection behind a newly chosen language", () => {
+    expect(englishLast(["en", "ja"])).toEqual(["ja", "en"]);
+  });
+
+  it("preserves the relative priority of other languages", () => {
+    expect(englishLast(["en", "ru", "uk"])).toEqual(["ru", "uk", "en"]);
+  });
+
+  it("leaves English-only and non-English selections unchanged", () => {
+    expect(englishLast(["en"])).toEqual(["en"]);
+    expect(englishLast(["ja"])).toEqual(["ja"]);
+  });
+});
 
 describe("allowedLanguages", () => {
   it("allows every curated language when nothing is selected", () => {

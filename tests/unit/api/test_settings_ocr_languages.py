@@ -41,7 +41,7 @@ async def test_update_settings_persists_ocr_languages():
             rbac=MagicMock(),
         )
 
-    assert saved["config"].knowledge.ocr_languages == ["en", "ja"]
+    assert saved["config"].knowledge.ocr_languages == ["ja", "en"]
 
 
 @pytest.mark.asyncio
@@ -67,4 +67,4 @@ async def test_docling_preset_endpoint_keeps_configured_ocr_languages():
         )
 
     _, opts = flows_service.update_flow_docling_preset.call_args.args
-    assert opts["ocr_lang"] == ["en-US", "ja-JP"]
+    assert opts["ocr_lang"] == ["ja-JP", "en-US"]
