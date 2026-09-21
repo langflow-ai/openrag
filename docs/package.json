@@ -65,9 +65,6 @@
     "shell-quote": "1.9.0",
     "http-proxy-middleware": "^2.0.10",
     "js-yaml": "5.4.2",
-    "gray-matter": {
-      "js-yaml": "5.4.2"
-    },
     "joi": "17.13.8",
     "proxy-addr": "2.0.8",
     "body-parser": "1.20.6",
