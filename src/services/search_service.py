@@ -648,6 +648,7 @@ class SearchService:
         # Skipped for wildcard/match_all queries where there is nothing to highlight.
         if not is_wildcard_match_all:
             search_body["highlight"] = {
+                "type": "unified",
                 "fields": {
                     "text": {
                         "fragment_size": 200,

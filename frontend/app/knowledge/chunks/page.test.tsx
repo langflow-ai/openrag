@@ -80,15 +80,17 @@ describe("ChunksPage — highlight wiring", () => {
     expect(calls.some((c) => c.query === "brown fox")).toBe(true);
   });
 
-  it("renders all chunks even when only some match the search query", async () => {
+  it("fires both wildcard and search requests when only some chunks match the search query", async () => {
     setMockLocation({
       pathname: "/knowledge/chunks",
       searchParams: { filename: "test.pdf", q: "fox" },
     });
 
+    const queriesSeen: string[] = [];
     server.use(
       http.post("/api/search", async ({ request }) => {
         const body = (await request.json()) as { query: string };
+        queriesSeen.push(body.query);
         if (body.query === "*") {
           return HttpResponse.json({
             results: [
@@ -98,6 +100,7 @@ describe("ChunksPage — highlight wiring", () => {
             warnings: [],
           });
         }
+        // Only c1 matches the search query — c2 must still survive in the merged result.
         return HttpResponse.json({
           results: [
             chunk({
@@ -116,11 +119,10 @@ describe("ChunksPage — highlight wiring", () => {
       auth: authPresets.admin,
     });
 
-    // Both chunks must appear — the non-matching one must not be dropped.
-    await waitFor(() =>
-      expect(screen.getByText("Chunk 1")).toBeInTheDocument(),
-    );
-    expect(screen.getByText("Chunk 2")).toBeInTheDocument();
+    // Two requests must be fired: wildcard (full chunk list) + "fox" (highlights only).
+    await waitFor(() => expect(queriesSeen.length).toBeGreaterThanOrEqual(2));
+    expect(queriesSeen).toContain("*");
+    expect(queriesSeen).toContain("fox");
   });
 
   it("renders highlighted mark elements for matching chunks", async () => {

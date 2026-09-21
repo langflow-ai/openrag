@@ -37,9 +37,14 @@ export function useFileScopedChunksQuery(
   // When there is a real search query, fire a second request (scoped to the
   // same file) purely to collect highlight fragments. This result is never used
   // for the chunk list itself — only for merging highlights below.
+  //
+  // placeholderData is explicitly cleared (overrides the hook default of
+  // `prev => prev`) so stale highlights from a previous query are never merged
+  // onto chunks belonging to a different search term.
   const { data: hlData = EMPTY_SEARCH_RESULT, isFetching: isFetchingHl } =
     useGetSearchQuery(isRealQuery ? searchQuery! : "*", queryData, {
       enabled: Boolean(filename) && isRealQuery,
+      placeholderData: undefined,
     });
 
   const file = useMemo(() => {
