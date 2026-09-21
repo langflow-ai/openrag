@@ -61,6 +61,7 @@ export interface Task {
     | "completed"
     | "skipped"
     | "failed"
+    | "cancelled"
     | "error";
   total_files?: number;
   processed_files?: number;
@@ -74,6 +75,11 @@ export interface Task {
   result?: Record<string, unknown>;
   error?: string;
   files?: Record<string, TaskFileEntry>;
+  /** True when this task belongs to the shared anonymous store, not the
+   *  calling user. Shared tasks are visible to all signed-in users but can
+   *  only be bulk-cleared by the system (cleanup_old_tasks), not by any
+   *  individual user's "Clear all" action. */
+  is_shared?: boolean;
 }
 
 export interface TasksResponse {

@@ -3,6 +3,7 @@
 import asyncio
 import json
 import re
+from collections.abc import Mapping
 from typing import Any
 from urllib.parse import urlparse
 
@@ -272,6 +273,8 @@ def _provider_probe_inputs(
     config: Any,
     provider: str,
     provider_config: Any,
+    *,
+    kind: str = "chat",
 ) -> tuple[str | None, str | None, str | None, dict[str, str]]:
     """Return legacy fields plus the complete LiteLLM credential map.
 
@@ -280,11 +283,15 @@ def _provider_probe_inputs(
     every LiteLLM keyword argument in ``ProvidersConfig.credentials`` instead.
     Recovery probes must use both representations because they run specifically
     when Langflow has hidden the provider's real failure.
+
+    ``kind`` (``"chat"`` or ``"embedding"``) selects the endpoint for a provider
+    that serves the two from different places (Red Hat OpenShift AI), so an
+    embedding probe hits the endpoint the real embedding call will.
     """
     credentials: dict[str, str] = {}
     credential_values = getattr(getattr(config, "providers", None), "credential_values", None)
     if callable(credential_values):
-        values = credential_values(provider)
+        values = credential_values(provider, kind=kind)
         if isinstance(values, dict):
             credentials = dict(values)
 
@@ -334,6 +341,7 @@ async def probe_provider_credential_error() -> str | None:
             config,
             provider,
             provider_config,
+            kind="embedding" if embedding_model else "chat",
         )
         if provider == "ollama":
             if not endpoint:
@@ -424,6 +432,7 @@ async def probe_embedding_error() -> str | None:
         config,
         provider,
         provider_config,
+        kind="embedding",
     )
     if provider == "ollama":
         if not endpoint:
@@ -662,6 +671,7 @@ async def validate_provider_setup(
     project_id: str = None,
     test_completion: bool = False,
     credentials: dict[str, str] | None = None,
+    stored_credentials: Mapping[str, Any] | None = None,
 ) -> None:
     """
     Validate provider setup by testing completion with tool calling and embedding.
@@ -675,6 +685,11 @@ async def validate_provider_setup(
         project_id: Project ID (required for watsonx)
         test_completion: If True, performs full validation with completion/embedding tests (consumes credits).
                         If False, performs lightweight validation (no credits consumed). Default: False.
+        credentials: LiteLLM kwargs for the provider, as the real call will be made.
+        stored_credentials: The provider's credentials as the operator entered them, untranslated.
+                        Only a provider enhancement's lightweight check reads it: a provider with
+                        separate chat and embedding endpoints has ``credentials`` narrowed to one
+                        of them, and the check has to see both to probe both.
 
     Raises:
         Exception: If validation fails, raises the original exception with the actual error message.
@@ -729,6 +744,7 @@ async def validate_provider_setup(
                     endpoint=endpoint,
                     project_id=project_id,
                     credentials=supplied,
+                    stored_credentials=stored_credentials,
                 )
                 return
             # Full validation with completion/embedding tests (consumes credits)
@@ -758,6 +774,7 @@ async def validate_provider_setup(
                 endpoint=endpoint,
                 project_id=project_id,
                 credentials=supplied,
+                stored_credentials=stored_credentials,
             )
 
         logger.info(f"Validation successful for provider: {provider_lower}")
@@ -813,8 +830,14 @@ async def test_lightweight_health(
     endpoint: str = None,
     project_id: str = None,
     credentials: dict[str, str] | None = None,
+    stored_credentials: Mapping[str, Any] | None = None,
 ) -> None:
-    """Test provider health with lightweight check (no credits consumed)."""
+    """Test provider health with lightweight check (no credits consumed).
+
+    ``stored_credentials`` is the untranslated form and is what a provider
+    enhancement's check is given when the caller has it; ``credentials`` is the
+    LiteLLM form and the fallback. See ``validate_provider_setup``.
+    """
 
     if provider == "openai":
         await _test_openai_lightweight_health(api_key)
@@ -829,7 +852,9 @@ async def test_lightweight_health(
     elif provider == "anthropic":
         await _test_anthropic_lightweight_health(api_key)
     elif enhancement := get_provider_enhancement(provider):
-        await enhancement.lightweight_health_check(credentials or {})
+        await enhancement.lightweight_health_check(
+            stored_credentials if stored_credentials is not None else (credentials or {})
+        )
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -990,8 +1015,8 @@ async def _test_azure_lightweight_health(credentials: dict[str, str]) -> None:
     """Validate Azure OpenAI credentials without selecting or billing a deployment.
 
     Azure deployment enumeration is an Azure Resource Manager operation, not an
-    Azure OpenAI data-plane operation.  The data plane does provide ``models``;
-    use that endpoint so a valid resource is not rejected with ResourceNotFound.
+    Azure OpenAI data-plane operation. Both Azure OpenAI Service and Foundry
+    resource roots expose authenticated, read-only model listing routes.
     """
     api_base = credentials.get("api_base")
     api_version = credentials.get("api_version")
@@ -1030,11 +1055,19 @@ async def _test_azure_lightweight_health(credentials: dict[str, str]) -> None:
         headers["Authorization"] = f"Bearer {access_token}"
     else:
         headers["api-key"] = api_key or ""
+    if is_azure_ai_foundry_endpoint(api_base):
+        # Azure OpenAI deployments on Foundry resource roots use the OpenAI v1
+        # route. The older /models/info route excludes Azure OpenAI endpoints.
+        url = f"{api_base.rstrip('/')}/openai/v1/models"
+        params = None
+    else:
+        url = f"{api_base.rstrip('/')}/openai/models"
+        params = {"api-version": api_version or "2024-10-21"}
     response = await _http_request_with_retry(
         "GET",
-        f"{api_base.rstrip('/')}/openai/models",
+        url,
         headers=headers,
-        params={"api-version": api_version or "2024-10-21"},
+        params=params,
         timeout=30.0,
     )
     if response.status_code != 200:

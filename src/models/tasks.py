@@ -16,7 +16,16 @@ class TaskStatus(Enum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+    CANCELLED = "cancelled"
     SKIPPED = "skipped"
+
+
+class TaskDeleteResult(Enum):
+    """Outcome of a single-task delete attempt."""
+
+    DELETED = "deleted"
+    NOT_FOUND = "not_found"
+    IN_PROGRESS = "in_progress"
 
 
 class DoclingPhaseStatus(Enum):

@@ -482,7 +482,7 @@ dashboards:
 
   image:
     repository: opensearchproject/opensearch-dashboards
-    tag: "3.6.0"
+    tag: "3.8.0"
 
   replicaCount: 1
 

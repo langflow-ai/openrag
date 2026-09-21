@@ -9,11 +9,26 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll, vi } from "vitest";
 import { server } from "./msw/server";
+import { navigationMock, resetMockRouter } from "./router";
+
+// Registered here rather than per test file so all 28 next/navigation
+// consumers share one router double. A setupFile mock applies to every test
+// file in the run. See test-utils/router.ts for why this is a vi.mock at all.
+vi.mock("next/navigation", async () => navigationMock);
 
 // RTL auto-cleans when it detects a global afterEach, but we register it
 // explicitly so behaviour does not silently change if `globals` is turned off.
 afterEach(() => {
   cleanup();
+  resetMockRouter();
+  // BrandProvider persists the active brand, and auth-context writes several
+  // `auth_*` keys during login. jsdom keeps localStorage for the whole file,
+  // so without this a brand set in one test leaks into the next.
+  localStorage.clear();
+  sessionStorage.clear();
+  // BrandProvider stamps `data-theme="ibm"` on <html> and only removes it on
+  // re-render, so a cloud-brand test would otherwise leave the attribute set.
+  document.documentElement.removeAttribute("data-theme");
 });
 
 // `onUnhandledRequest: "error"` makes an unmocked call fail loudly and

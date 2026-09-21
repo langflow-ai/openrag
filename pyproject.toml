@@ -50,10 +50,11 @@ dependencies = [
     "structlog>=25.4.0",
     "zxcvbn>=4.5.0",
     "prometheus-fastapi-instrumentator>=8.0.0",
-    "litellm==1.84.0",
+    "litellm>=1.96.2,<2.0.0",
+    "joserfc>=1.7.3,<2.0.0",
     "pyyaml>=6.0",
     "tiktoken>=0.7.0",
-    "fastmcp>=3.2.3",
+    "fastmcp>=3.4.0",
     "mcp>=1.28.1",
     "openai==2.24.0",
     "tenacity>=9.1.4",
@@ -176,4 +177,3 @@ exclude = ["flows/components"]
 [[tool.mypy.overrides]]
 module = ["api.settings.endpoints", "api.v1.settings"]
 disable_error_code = ["return-value"]
-

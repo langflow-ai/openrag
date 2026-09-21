@@ -48,6 +48,13 @@ const config = {
         "3xl": "1500px",
       },
       keyframes: {
+        "toast-shake": {
+          "0%, 100%": { transform: "translateX(0)" },
+          "20%": { transform: "translateX(-6px)" },
+          "40%": { transform: "translateX(6px)" },
+          "60%": { transform: "translateX(-4px)" },
+          "80%": { transform: "translateX(4px)" },
+        },
         overlayShow: {
           from: {
             opacity: 0,
@@ -102,6 +109,7 @@ const config = {
         },
       },
       animation: {
+        "toast-shake": "toast-shake 0.4s ease-in-out",
         overlayShow: "overlayShow 400ms cubic-bezier(0.16, 1, 0.3, 1)",
         contentShow: "contentShow 400ms cubic-bezier(0.16, 1, 0.3, 1)",
         wiggle: "wiggle 150ms ease-in-out 1",
