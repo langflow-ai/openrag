@@ -325,7 +325,6 @@ def verify_microsoft_access_token(
         # JWKS document — needed for Microsoft's documented issuer validation.
         last_key_error: JWTVerificationError | None = None
         claims: dict[str, Any] | None = None
-        signing_key_issuer: str | None = None
         token_version = "2.0"
 
         for candidate_version, jwks_url in jwks_candidates:
@@ -361,8 +360,20 @@ def verify_microsoft_access_token(
                     "verify_exp": True,
                     "verify_aud": True,
                     "verify_iss": False,
+                    "require": ["exp"],
                 },
             )
+            verified_tid = claims.get("tid", "")
+            if not verified_tid:
+                raise JWTVerificationError("Token is missing the 'tid' claim.")
+            issuer = claims.get("iss", "")
+            try:
+                _validate_ms_issuer(issuer, verified_tid, signing_key_issuer)
+            except InvalidIssuerError as e:
+                last_key_error = e
+                claims = None
+                continue
+
             token_version = candidate_version
             break
 
@@ -371,13 +382,7 @@ def verify_microsoft_access_token(
                 raise last_key_error
             raise JWTVerificationError("No Microsoft JWKS signing key candidates were available")
 
-        # Issuer validation per Microsoft docs:
-        # Substitute tid into the signing key's issuer template and exact-match iss.
         verified_tid = claims.get("tid", "")
-        if not verified_tid:
-            raise JWTVerificationError("Token is missing the 'tid' claim.")
-        issuer = claims.get("iss", "")
-        _validate_ms_issuer(issuer, verified_tid, signing_key_issuer)
 
         # Tenant allow-list (optional business policy).
         if allowed_tenant_ids is not None and verified_tid not in allowed_tenant_ids:
