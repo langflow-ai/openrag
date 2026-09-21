@@ -102,7 +102,7 @@ providers:
     display_name: IBM watsonx.ai
     badge: On-prem
     modes:
-      oss: false
+      oss: true
       on_prem: false
       saas: false # a cluster-hosted deployment has no place in multi-tenant SaaS
     # Checked against a Cloud Pak for Data 5.x cluster, which serves exactly
