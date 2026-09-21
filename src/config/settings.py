@@ -801,15 +801,29 @@ KNN_M = 16
 # Essentials, ...) that only has the standard plugin, where "jvector" fails
 # index creation with `mapper_parsing_exception: Invalid engine: jvector`.
 _VALID_KNN_ENGINES = ("jvector", "faiss", "nmslib")
-_raw_knn_engine = os.getenv("OPENRAG_OPENSEARCH_KNN_ENGINE", "jvector").strip().lower()
-if _raw_knn_engine not in _VALID_KNN_ENGINES:
-    logger.warning(
-        "Invalid OPENRAG_OPENSEARCH_KNN_ENGINE value, falling back to 'jvector'",
-        value=_raw_knn_engine,
-        valid_values=_VALID_KNN_ENGINES,
-    )
-    _raw_knn_engine = "jvector"
-KNN_ENGINE = _raw_knn_engine
+
+
+def _resolve_knn_engine(raw_engine: str) -> str:
+    """Normalise and validate a configured k-NN engine name.
+
+    An unknown value is rejected rather than defaulted back to "jvector":
+    this variable is only ever set because the target OpenSearch cannot serve
+    the default engine, so falling back lands on the one engine known to be
+    unavailable there and the typo resurfaces much later as an opaque
+    `mapper_parsing_exception: Invalid engine: jvector` at index creation.
+    """
+    engine = raw_engine.strip().lower()
+    if engine not in _VALID_KNN_ENGINES:
+        msg = (
+            f"Invalid OPENRAG_OPENSEARCH_KNN_ENGINE value: {engine!r}. "
+            f"Expected one of: {', '.join(_VALID_KNN_ENGINES)}."
+        )
+        logger.error(msg, value=engine, valid_values=_VALID_KNN_ENGINES)
+        raise ValueError(msg)
+    return engine
+
+
+KNN_ENGINE = _resolve_knn_engine(os.getenv("OPENRAG_OPENSEARCH_KNN_ENGINE", "jvector"))
 KNN_METHOD_NAME = "disk_ann" if KNN_ENGINE == "jvector" else "hnsw"
 
 OPENSEARCH_NUMBER_OF_SHARDS = _get_min_env_int("OPENRAG_OPENSEARCH_NUMBER_OF_SHARDS", 2, 1)

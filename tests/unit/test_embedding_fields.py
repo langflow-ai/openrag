@@ -14,6 +14,7 @@ from typing import Any
 
 import pytest
 
+from config.settings import _resolve_knn_engine
 from utils.embedding_fields import (
     build_embedding_space_aggregation,
     build_knn_vector_field,
@@ -178,6 +179,32 @@ class TestBuildKnnVectorFieldEngineSelection:
         monkeypatch.setattr("config.settings.KNN_ENGINE", "jvector")
         monkeypatch.setattr("config.settings.KNN_METHOD_NAME", "disk_ann")
         assert build_knn_vector_field(1536)["method"]["name"] == "disk_ann"
+
+
+class TestKnnEngineValidation:
+    """An unknown OPENRAG_OPENSEARCH_KNN_ENGINE must be rejected, not defaulted.
+
+    The variable is only set when the target OpenSearch cannot serve jvector,
+    so silently falling back to it would pick the one engine known to be
+    unavailable there and fail much later, at index creation.
+    """
+
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [("jvector", "jvector"), ("  FAISS ", "faiss"), ("NmsLib", "nmslib")],
+    )
+    def test_known_engines_are_normalised(self, raw: str, expected: str) -> None:
+        assert _resolve_knn_engine(raw) == expected
+
+    @pytest.mark.parametrize("raw", ["jvecotr", "lucene", ""])
+    def test_unknown_engine_raises_with_the_valid_values(self, raw: str) -> None:
+        with pytest.raises(ValueError, match="OPENRAG_OPENSEARCH_KNN_ENGINE") as excinfo:
+            _resolve_knn_engine(raw)
+
+        message = str(excinfo.value)
+        assert repr(raw.strip().lower()) in message
+        for engine in ("jvector", "faiss", "nmslib"):
+            assert engine in message
 
 
 class TestBuildKnnVectorFieldIsolation:
