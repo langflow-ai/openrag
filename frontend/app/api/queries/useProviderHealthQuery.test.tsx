@@ -121,14 +121,18 @@ describe("useProviderHealthQuery", () => {
     );
   });
 
-  it("stays disabled while a task is pending, running, or processing", async () => {
+  it.each([
+    "pending",
+    "running",
+    "processing",
+  ] as const)("stays disabled while a task is %s", async (status) => {
     server.use(
       http.get("/api/settings", () =>
         HttpResponse.json(makeSettings({ edited: true })),
       ),
       http.get("/api/tasks/enhanced", () =>
         HttpResponse.json(
-          makeTasksResponse([makeTask({ task_id: "t1", status: "running" })]),
+          makeTasksResponse([makeTask({ task_id: "t1", status })]),
         ),
       ),
     );

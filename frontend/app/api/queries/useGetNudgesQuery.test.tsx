@@ -84,19 +84,39 @@ describe("useGetNudgesQuery", () => {
   });
 
   it("stays disabled while onboarding is still in progress", async () => {
+    let nudgeRequests = 0;
     server.use(
       http.get("/api/settings", () =>
         HttpResponse.json(makeSettings({ onboarding: { current_step: 1 } })),
       ),
-      http.post("/api/nudges", () => HttpResponse.json({ response: "x" })),
+      http.post("/api/nudges", () => {
+        nudgeRequests += 1;
+        return HttpResponse.json({ response: "x" });
+      }),
     );
 
+    const queryClient = createTestQueryClient();
     const { result } = renderHook(() => useGetNudgesQuery(), {
-      wrapper: createQueryWrapper({ providers: ["auth", "chat"] }),
+      wrapper: createQueryWrapper({ queryClient, providers: ["auth", "chat"] }),
     });
 
-    // Never reaches a resolved state because the query is disabled.
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    // Wait for the in-progress onboarding settings to resolve and propagate
+    // to chat state, rather than sleeping for a fixed interval.
+    await waitFor(() =>
+      expect(
+        (
+          queryClient.getQueryData(["settings"]) as
+            | ReturnType<typeof makeSettings>
+            | undefined
+        )?.onboarding?.current_step,
+      ).toBe(1),
+    );
+    await waitFor(() =>
+      expect(queryClient.isFetching({ queryKey: ["settings"] })).toBe(0),
+    );
+
+    // Query is disabled: no request, no data, not loading.
+    expect(nudgeRequests).toBe(0);
     expect(result.current.data).toBeUndefined();
     expect(result.current.isLoading).toBe(false);
   });
