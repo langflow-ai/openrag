@@ -872,13 +872,14 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         """TLS verification setting for outbound LF → BE calls.
 
         Reads the same env vars the operator injects into the Langflow pod:
-          OPENRAG_BACKEND_CA_CERTS    — path to the interpod CA bundle (PEM)
-          OPENRAG_BACKEND_VERIFY_CERTS — "true"/"false" explicit override
+          OPENRAG_BACKEND_CA_CERTS     — path to the interpod CA bundle (PEM)
+          OPENRAG_BACKEND_VERIFY_CERTS — explicit override ("true"/"false")
 
-        Priority (mirrors the BE-side LANGFLOW_CA_CERTS / LANGFLOW_VERIFY_CERTS logic):
-          1. OPENRAG_BACKEND_VERIFY_CERTS explicitly set → honour it
+        Priority:
+          1. OPENRAG_BACKEND_VERIFY_CERTS explicitly set → honour it;
+             raises ValueError for unrecognised values (fail-closed).
           2. OPENRAG_BACKEND_CA_CERTS set → verify=<path> (verify using that CA)
-          3. Neither set → True (httpx default: verify against system CA bundle)
+          3. Neither set → True (httpx default: system CA bundle)
         """
         import os
 
@@ -886,10 +887,16 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         verify_env = os.getenv("OPENRAG_BACKEND_VERIFY_CERTS")
 
         if verify_env is not None:
-            if verify_env.lower() not in ("true", "1", "yes"):
+            val = verify_env.strip().lower()
+            if val in ("true", "1", "yes"):
+                # explicit true: use the CA bundle if provided, else system bundle
+                return ca_path if ca_path else True
+            if val in ("false", "0", "no"):
                 return False
-            # explicit true: use the CA bundle if provided, else system bundle
-            return ca_path if ca_path else True
+            raise ValueError(
+                f"OPENRAG_BACKEND_VERIFY_CERTS={verify_env!r} is not recognised. "
+                "Use 'true' or 'false'."
+            )
 
         # no explicit override: a CA path is its own signal to verify with it
         return ca_path if ca_path else True
