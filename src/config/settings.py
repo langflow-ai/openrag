@@ -317,6 +317,21 @@ def is_dev_azure_blob_enabled() -> bool:
     return raw in ("true", "1", "yes", "on")
 
 
+def is_dev_aws_s3_enabled() -> bool:
+    """Local dev: enable the AWS S3 connector without IBM_AUTH_ENABLED.
+
+    Allows testing the S3 connector (e.g. against MinIO) in a local environment
+    where IBM auth is not configured. Never enable in production. Requires
+    ``OPENRAG_DEV_AWS_S3=true``.
+
+    S3 was the only bucket connector with no dev bypass, so it could not be
+    exercised end to end without standing up IBM auth — which is why its sync
+    behaviour has historically had less real-world validation than COS's.
+    """
+    raw = os.getenv("OPENRAG_DEV_AWS_S3", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
 def is_dev_ibm_cos_enabled() -> bool:
     """Local dev: enable the IBM COS connector without IBM_AUTH_ENABLED.
 

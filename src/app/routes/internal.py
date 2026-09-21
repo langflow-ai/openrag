@@ -132,6 +132,23 @@ def register_internal_routes(app: FastAPI):
         tags=["internal"],
     )
     app.add_api_route(
+        "/tasks/{task_id}",
+        tasks.delete_task,
+        methods=["DELETE"],
+        tags=["internal"],
+        responses={
+            200: {"model": tasks._DeletedTaskResponse},
+            404: {"model": tasks._TaskNotFoundResponse},
+            409: {"model": tasks._TaskInProgressResponse},
+        },
+    )
+    app.add_api_route(
+        "/tasks",
+        tasks.delete_all_terminal_tasks,
+        methods=["DELETE"],
+        tags=["internal"],
+    )
+    app.add_api_route(
         "/tasks/{task_id}/files/cancel",
         tasks.cancel_file,
         methods=["POST"],
