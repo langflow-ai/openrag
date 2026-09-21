@@ -1,0 +1,8 @@
+{"id":"c7314113-d0e1-424c-a68d-0ebfaec382d2","ts":"2026-02-04T22:41:08.989Z","path":"/home/mpawlow/git/openrag/.gitignore","version":"1.0.0","taskID":"1568aa36-95fa-4198-9305-8310ccb907eb"}
+{"id":"4174bfef-8393-4fa1-931a-fc5da0866124","ts":"2026-02-05T15:37:10.232Z","path":"/home/mpawlow/git/openrag/src/services/task_service.py","version":"1.0.0","taskID":"c41d10b5-52c9-40fc-8777-516d5682a5d4"}
+{"id":"377688e4-fb23-4eba-811a-3df38c5a13d7","ts":"2026-02-05T16:48:21.220Z","path":"/home/mpawlow/git/openrag/tests/unit/test_task_service.py","version":"1.0.0","taskID":"162701fc-cd19-446a-ba1c-e01b814050f0"}
+{"id":"adfea4ce-1856-4bdc-9510-1d792ac51402","ts":"2026-02-05T17:17:55.162Z","path":"/home/mpawlow/git/openrag/tests/unit/test_task_service.py","version":"1.0.0","taskID":"162701fc-cd19-446a-ba1c-e01b814050f0"}
+{"id":"6efa5dd0-1850-44b4-8d49-510cde6b6e18","ts":"2026-02-05T17:24:59.460Z","path":"/home/mpawlow/git/openrag/tests/unit/test_task_service.py","version":"1.0.0","taskID":"162701fc-cd19-446a-ba1c-e01b814050f0"}
+{"id":"849011a1-94f4-4c64-bf4a-81d801b051e3","ts":"2026-02-05T17:25:11.310Z","path":"/home/mpawlow/git/openrag/tests/unit/test_task_service.py","version":"1.0.0","taskID":"162701fc-cd19-446a-ba1c-e01b814050f0"}
+{"id":"fd420f24-5953-4a71-9f0f-0217760bed1d","ts":"2026-02-05T17:27:10.382Z","path":"/home/mpawlow/git/openrag/tests/unit/test_task_service.py","version":"1.0.0","taskID":"162701fc-cd19-446a-ba1c-e01b814050f0"}
+{"id":"a3c7ad1b-f129-483b-a896-bcb97cef01a0","ts":"2026-02-05T17:28:17.970Z","path":"/home/mpawlow/git/openrag/tests/unit/test_task_service.py","version":"1.0.0","taskID":"162701fc-cd19-446a-ba1c-e01b814050f0"}
