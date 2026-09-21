@@ -133,13 +133,6 @@ describe("useConnectConnectorMutation", () => {
       },
       mutations: { retry: false },
     });
-    let refetched = false;
-    server.use(
-      http.get("/api/connectors", () => {
-        refetched = true;
-        return HttpResponse.json({ connectors: {} });
-      }),
-    );
     // Seed a cache entry that isConnectorsQuery would invalidate.
     queryClient.setQueryData(
       ["connectors", false, false, false, false],

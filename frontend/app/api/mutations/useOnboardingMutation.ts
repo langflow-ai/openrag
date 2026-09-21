@@ -68,7 +68,12 @@ export const useOnboardingMutation = (
 
   return useMutation({
     mutationFn: submitOnboarding,
-    onSuccess: (data) => {
+    onSettled: () => {
+      // Invalidate settings query to refetch updated data
+      queryClient.invalidateQueries({ queryKey: ["settings"] });
+    },
+    ...options,
+    onSuccess: (data, variables, onMutateResult, context) => {
       // Save OpenRAG docs filter ID if sample data was ingested
       if (data.openrag_docs_filter_id) {
         // Save to backend
@@ -76,11 +81,7 @@ export const useOnboardingMutation = (
           openrag_docs_filter_id: data.openrag_docs_filter_id,
         });
       }
+      return options?.onSuccess?.(data, variables, onMutateResult, context);
     },
-    onSettled: () => {
-      // Invalidate settings query to refetch updated data
-      queryClient.invalidateQueries({ queryKey: ["settings"] });
-    },
-    ...options,
   });
 };

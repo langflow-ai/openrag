@@ -5,7 +5,7 @@
  */
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { server } from "@/test-utils/msw/server";
 import { createQueryWrapper } from "@/test-utils/render";
 import { useOnboardingMutation } from "./useOnboardingMutation";
@@ -61,6 +61,41 @@ describe("useOnboardingMutation", () => {
     act(() => result.current.mutate({}));
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    await waitFor(() =>
+      expect(stateBody).toEqual({ openrag_docs_filter_id: "filter-123" }),
+    );
+  });
+
+  it("persists the filter ID and calls the caller's onSuccess", async () => {
+    let stateBody: unknown;
+    const onSuccess = vi.fn();
+    const response = {
+      message: "done",
+      edited: true,
+      openrag_docs_filter_id: "filter-123",
+    };
+    server.use(
+      http.post("/api/onboarding", () => HttpResponse.json(response)),
+      http.post("/api/onboarding/state", async ({ request }) => {
+        stateBody = await request.json();
+        return HttpResponse.json({ success: true });
+      }),
+    );
+
+    const { result } = renderHook(() => useOnboardingMutation({ onSuccess }), {
+      wrapper: createQueryWrapper(),
+    });
+
+    act(() => result.current.mutate({}));
+
+    await waitFor(() =>
+      expect(onSuccess).toHaveBeenCalledWith(
+        response,
+        {},
+        undefined,
+        expect.anything(),
+      ),
+    );
     await waitFor(() =>
       expect(stateBody).toEqual({ openrag_docs_filter_id: "filter-123" }),
     );

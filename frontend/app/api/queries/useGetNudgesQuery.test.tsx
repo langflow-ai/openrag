@@ -74,10 +74,9 @@ describe("useGetNudgesQuery", () => {
       }),
     );
 
-    const { result } = renderHook(
-      () => useGetNudgesQuery({ chatId: "chat-123" }),
-      { wrapper: createQueryWrapper({ providers: ["auth", "chat"] }) },
-    );
+    renderHook(() => useGetNudgesQuery({ chatId: "chat-123" }), {
+      wrapper: createQueryWrapper({ providers: ["auth", "chat"] }),
+    });
 
     await waitFor(() => expect(capturedUrl).not.toBe(""));
     expect(capturedUrl).toContain("/api/nudges/chat-123");
