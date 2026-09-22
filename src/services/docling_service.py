@@ -8,7 +8,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 import httpx
-from pydantic import BaseModel
+from pydantic import BaseModel, computed_field
 
 from config.settings import (
     DOCLING_ERROR_DETAIL_MAX_LENGTH,
@@ -24,12 +24,25 @@ logger = get_logger(__name__)
 
 
 class DoclingConfig(BaseModel):
+    """Only used to shape the legacy /settings/docling-preset response.
+
+    The actual Docling Serve request payload is built from a plain dict
+    (see get_docling_preset_configs), so this model doesn't need to match
+    Docling Serve's field names.
+    """
+
     do_ocr: bool
     ocr_preset: str
     ocr_lang: list[str] | None = None
     do_table_structure: bool
     do_picture_classification: bool
     do_picture_description: bool
+
+    @computed_field
+    @property
+    def ocr_engine(self) -> str:
+        """Deprecated alias for ocr_preset, kept for legacy API callers."""
+        return self.ocr_preset
 
 
 class DoclingServeError(Exception):
