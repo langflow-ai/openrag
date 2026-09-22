@@ -21,7 +21,7 @@ from utils.file_utils import (
 )
 from utils.hash_utils import hash_id
 from utils.logging_config import get_logger
-from utils.opensearch_queries import build_replace_filename_query
+from utils.opensearch_queries import build_owned_filename_query, build_replace_filename_query
 
 from .tasks import FileTask, TaskStatus, UploadTask
 
@@ -1003,9 +1003,20 @@ class ConnectorFileProcessor(TaskProcessor):
         since then. Without this, those chunks would keep whatever owner they
         got on their original ingest forever, since a byte-identical re-sync
         never reaches resolve_shared_owner_fields(). Scoped to chunks owned by
-        this user or already ownerless (matching the same boundary
-        delete_document_by_filename uses), so it can't touch another user's
-        private document that happens to share this filename.
+        this user — and to ownerless ones only under the same
+        ``knowledge:delete:anonymous`` boundary delete_document_by_filename
+        uses — so it can't touch another user's document that happens to share
+        this filename.
+
+        That boundary matters here even more than it does for a delete. An
+        ownerless document is visible to the whole instance, and this script
+        writes an owner onto what it matches: without the permission check, a
+        private sync of a file whose name collides with a shared document would
+        quietly claim that document for the syncing user, taking it out of
+        everyone else's view. ``_indexed_shared_state`` cannot prevent it — it
+        keys on the connector file id, and a collision by definition comes from
+        a document this connector never ingested, so the lookup returns None and
+        ``shared`` falls back to the sync's own (private) intent.
 
         `shared` comes from _resolve_shared, never straight from self.shared: on
         a re-sync it reflects the file's current indexed state, so this is a
@@ -1017,12 +1028,19 @@ class ConnectorFileProcessor(TaskProcessor):
         owner, owner_name, owner_email = resolve_shared_owner_fields(
             self.user_id, self.owner_name, self.owner_email, shared
         )
+        # A shared write already cleared the permission upstream (connector_sync
+        # rejects shared syncs without it), so it keeps the wider scope.
+        build_query = (
+            build_replace_filename_query
+            if shared or self.allow_anonymous_delete
+            else build_owned_filename_query
+        )
         for candidate in get_filename_aliases(filename):
             try:
                 await write_client.update_by_query(
                     index=get_index_name(),
                     body={
-                        "query": build_replace_filename_query(candidate, self.user_id),
+                        "query": build_query(candidate, self.user_id),
                         "script": {
                             "source": """
                                 if (params.shared) {
