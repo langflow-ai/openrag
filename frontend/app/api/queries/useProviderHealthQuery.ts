@@ -55,7 +55,7 @@ export const useProviderHealthQuery = (
   const { data: settings = {} } = useGetSettingsQuery();
 
   // Check if there are any active ingestion tasks
-  const { data: tasks = [] } = useGetTasksQuery();
+  const { data: tasks = [], isSuccess: tasksLoaded } = useGetTasksQuery();
   const hasActiveIngestion = tasks.some(
     (task) =>
       task.status === "pending" ||
@@ -128,6 +128,7 @@ export const useProviderHealthQuery = (
   const isEnabled =
     !!settings?.edited &&
     isOnboardingComplete &&
+    tasksLoaded &&
     !hasActiveIngestion &&
     providerHealthAllowed &&
     options?.enabled !== false;

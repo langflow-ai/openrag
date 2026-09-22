@@ -1,10 +1,18 @@
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
+import { useAuth } from "@/contexts/auth-context";
 import { authPresets, withAuth } from "@/test-utils/fixtures/auth";
 import { makeSettings } from "@/test-utils/fixtures/settings";
 import { makeTask, makeTasksResponse } from "@/test-utils/fixtures/task";
 import { server } from "@/test-utils/msw/server";
-import { createQueryWrapper, renderHook, waitFor } from "@/test-utils/render";
+import {
+  createQueryWrapper,
+  createTestQueryClient,
+  renderHook,
+  waitFor,
+} from "@/test-utils/render";
+import { useGetSettingsQuery } from "./useGetSettingsQuery";
+import { useGetTasksQuery } from "./useGetTasksQuery";
 import { useProviderHealthQuery } from "./useProviderHealthQuery";
 
 /**
@@ -22,16 +30,37 @@ function wrapper() {
 
 describe("useProviderHealthQuery", () => {
   it("stays disabled until settings.edited is true", async () => {
+    let healthRequests = 0;
     server.use(
       http.get("/api/settings", () => HttpResponse.json(makeSettings())),
+      http.get("/api/provider/health", () => {
+        healthRequests++;
+        return HttpResponse.json({ status: "healthy", message: "ok" });
+      }),
     );
 
-    const { result } = renderHook(() => useProviderHealthQuery(), {
-      wrapper: wrapper(),
-    });
+    const queryClient = createTestQueryClient();
+    const { result } = renderHook(
+      () => ({
+        health: useProviderHealthQuery(),
+        settings: useGetSettingsQuery(),
+        tasks: useGetTasksQuery(),
+      }),
+      {
+        wrapper: createQueryWrapper({
+          providers: ["auth", "chat"],
+          auth: authPresets.rbacDisabled,
+          queryClient,
+        }),
+      },
+    );
 
-    await waitFor(() => expect(result.current.isEnabled).toBe(false));
-    expect(result.current.data).toBeUndefined();
+    await waitFor(() => expect(result.current.settings.isSuccess).toBe(true));
+    await waitFor(() => expect(result.current.tasks.isSuccess).toBe(true));
+    expect(result.current.settings.data?.edited).toBeFalsy();
+    expect(result.current.health.isEnabled).toBe(false);
+    expect(result.current.health.data).toBeUndefined();
+    expect(healthRequests).toBe(0);
   });
 
   it("fetches and returns a healthy response once enabled", async () => {
@@ -126,39 +155,97 @@ describe("useProviderHealthQuery", () => {
     "running",
     "processing",
   ] as const)("stays disabled while a task is %s", async (status) => {
+    let healthRequests = 0;
+    let releaseTasks!: () => void;
+    const tasksBlocked = new Promise<void>((resolve) => {
+      releaseTasks = resolve;
+    });
     server.use(
       http.get("/api/settings", () =>
         HttpResponse.json(makeSettings({ edited: true })),
       ),
-      http.get("/api/tasks/enhanced", () =>
-        HttpResponse.json(
+      http.get("/api/tasks/enhanced", async () => {
+        await tasksBlocked;
+        return HttpResponse.json(
           makeTasksResponse([makeTask({ task_id: "t1", status })]),
-        ),
-      ),
+        );
+      }),
+      http.get("/api/provider/health", () => {
+        healthRequests++;
+        return HttpResponse.json({ status: "healthy", message: "ok" });
+      }),
     );
 
-    const { result } = renderHook(() => useProviderHealthQuery(), {
-      wrapper: wrapper(),
-    });
+    const queryClient = createTestQueryClient();
+    const { result } = renderHook(
+      () => ({
+        health: useProviderHealthQuery(),
+        settings: useGetSettingsQuery(),
+        tasks: useGetTasksQuery(),
+      }),
+      {
+        wrapper: createQueryWrapper({
+          providers: ["auth", "chat"],
+          auth: authPresets.rbacDisabled,
+          queryClient,
+        }),
+      },
+    );
 
-    await waitFor(() => expect(result.current.isEnabled).toBe(false));
+    await waitFor(() =>
+      expect(result.current.settings.data?.edited).toBe(true),
+    );
+    expect(result.current.health.isEnabled).toBe(false);
+    expect(healthRequests).toBe(0);
+    releaseTasks();
+
+    await waitFor(() =>
+      expect(result.current.tasks.data).toEqual([
+        expect.objectContaining({ status }),
+      ]),
+    );
+    expect(result.current.health.isEnabled).toBe(false);
+    expect(healthRequests).toBe(0);
   });
 
   it("stays disabled without providers:read when RBAC is enforced", async () => {
+    let healthRequests = 0;
     server.use(
       http.get("/api/settings", () =>
         HttpResponse.json(makeSettings({ edited: true })),
       ),
+      http.get("/api/provider/health", () => {
+        healthRequests++;
+        return HttpResponse.json({ status: "healthy", message: "ok" });
+      }),
     );
 
-    const { result } = renderHook(() => useProviderHealthQuery(), {
-      wrapper: createQueryWrapper({
-        providers: ["auth", "chat"],
-        auth: withAuth(authPresets.viewer, {}),
+    const queryClient = createTestQueryClient();
+    const { result } = renderHook(
+      () => ({
+        health: useProviderHealthQuery(),
+        auth: useAuth(),
+        settings: useGetSettingsQuery(),
+        tasks: useGetTasksQuery(),
       }),
-    });
+      {
+        wrapper: createQueryWrapper({
+          providers: ["auth", "chat"],
+          auth: withAuth(authPresets.viewer, {}),
+          queryClient,
+        }),
+      },
+    );
 
-    await waitFor(() => expect(result.current.isEnabled).toBe(false));
+    await waitFor(() =>
+      expect(result.current.auth.permissionsResolved).toBe(true),
+    );
+    await waitFor(() =>
+      expect(result.current.settings.data?.edited).toBe(true),
+    );
+    await waitFor(() => expect(result.current.tasks.isSuccess).toBe(true));
+    expect(result.current.health.isEnabled).toBe(false);
+    expect(healthRequests).toBe(0);
   });
 
   it("appends the provider query param when passed", async () => {

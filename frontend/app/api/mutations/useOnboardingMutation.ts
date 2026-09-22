@@ -67,22 +67,22 @@ export const useOnboardingMutation = (
   const updateOnboardingMutation = useUpdateOnboardingStateMutation();
 
   return useMutation({
-    mutationFn: submitOnboarding,
+    mutationFn: async (variables) => {
+      const data = await submitOnboarding(variables);
+      if (data.openrag_docs_filter_id) {
+        await updateOnboardingMutation.mutateAsync({
+          openrag_docs_filter_id: data.openrag_docs_filter_id,
+        });
+      }
+      return data;
+    },
     ...options,
     onSettled: (...args) => {
       // Invalidate settings query to refetch updated data
       queryClient.invalidateQueries({ queryKey: ["settings"] });
       return options?.onSettled?.(...args);
     },
-    onSuccess: (data, variables, onMutateResult, context) => {
-      // Save OpenRAG docs filter ID if sample data was ingested
-      if (data.openrag_docs_filter_id) {
-        // Save to backend
-        updateOnboardingMutation.mutateAsync({
-          openrag_docs_filter_id: data.openrag_docs_filter_id,
-        });
-      }
-      return options?.onSuccess?.(data, variables, onMutateResult, context);
-    },
+    onSuccess: (data, variables, onMutateResult, context) =>
+      options?.onSuccess?.(data, variables, onMutateResult, context),
   });
 };
