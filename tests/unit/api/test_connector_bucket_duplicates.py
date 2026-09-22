@@ -238,78 +238,44 @@ async def test_missing_index_is_not_an_error(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_bucket_filter_overwrite_reingests_everything(monkeypatch):
-    """replace_duplicates skips the change-detection gate: the user is
-    overwriting an indexed copy that may predate this connector entirely, so a
-    source timestamp cannot decide it."""
+async def test_bucket_filter_overwrite_replaces_only_the_colliding_files(monkeypatch):
+    """Overwrite targets the blobs whose name is indexed but which this
+    connector never synced. Nothing we store about them can say whether the
+    source is newer, so change detection cannot decide them — they are replaced
+    outright, while a blob this connector already synced and that has not
+    changed is still skipped."""
     from api import connectors as connectors_api
 
     monkeypatch.setattr(connectors_api.TelemetryClient, "send_event", AsyncMock())
     monkeypatch.setattr(connectors_api, "_connector_access_denied", AsyncMock(return_value=None))
-    synced_ids = AsyncMock(return_value=([], [], "connector_file_id"))
-    state_map = AsyncMock(return_value={})
-    monkeypatch.setattr(connectors_api, "get_synced_file_ids_for_connector", synced_ids)
-    monkeypatch.setattr(connectors_api, "get_synced_file_state_map", state_map)
-
-    remote_files = [
-        {"id": "b::a.pdf", "name": "a.pdf", "modified_time": "2024-01-01T00:00:00Z"},
-        {"id": "b::b.pdf", "name": "b.pdf", "modified_time": "2024-01-01T00:00:00Z"},
-    ]
-    service = _bucket_sync_service(remote_files)
-
-    response = await connectors_api.connector_sync(
-        "ibm_cos",
-        connectors_api.ConnectorSyncBody(
-            connection_id="conn-1", bucket_filter=["b"], replace_duplicates=True
-        ),
-        request=MagicMock(),
-        connector_service=service,
-        session_manager=MagicMock(),
-        user=SimpleNamespace(user_id="alice", jwt_token="token", db_user_id="alice"),
-        session=MagicMock(),
-        rbac=_rbac_allowing("knowledge:delete:anonymous"),
-    )
-
-    assert response.status_code == 201
-    assert _json(response)["task_ids"] == ["task-x"]
-
-    # One batch, every listed blob, replace on.
-    assert service.sync_specific_files.await_count == 1
-    call = service.sync_specific_files.await_args
-    assert call.args[2] == ["b::a.pdf", "b::b.pdf"]
-    assert call.kwargs["replace_duplicates"] is True
-    # The unchanged-blob gate is not consulted at all on this path.
-    state_map.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_bucket_filter_overwrite_reingests_unchanged_blobs(monkeypatch):
-    """An already-synced, byte-identical blob is still re-ingested under
-    overwrite — otherwise confirming the dialog would leave the colliding file
-    exactly as it was."""
-    from api import connectors as connectors_api
-
-    monkeypatch.setattr(connectors_api.TelemetryClient, "send_event", AsyncMock())
-    monkeypatch.setattr(connectors_api, "_connector_access_denied", AsyncMock(return_value=None))
+    monkeypatch.setattr(connectors_api, "get_index_name", lambda: "idx")
     monkeypatch.setattr(
         connectors_api,
         "get_synced_file_ids_for_connector",
-        AsyncMock(return_value=(["b::a.pdf"], [], "connector_file_id")),
+        AsyncMock(return_value=(["b::synced.pdf"], [], "connector_file_id")),
     )
     monkeypatch.setattr(
         connectors_api,
         "get_synced_file_state_map",
         AsyncMock(
             return_value={
-                "b::a.pdf": connectors_api.SyncedFileState(
+                "b::synced.pdf": connectors_api.SyncedFileState(
                     modified_time_ms=1704067200000.0, content_etag=None
                 )
             }
         ),
     )
 
-    remote_files = [{"id": "b::a.pdf", "name": "a.pdf", "modified_time": "2024-01-01T00:00:00Z"}]
+    remote_files = [
+        # Uploaded directly before this connector existed: name taken, id new.
+        {"id": "b::uploaded.pdf", "name": "uploaded.pdf", "modified_time": "2024-01-01T00:00:00Z"},
+        # Synced by this connector and unchanged at source.
+        {"id": "b::synced.pdf", "name": "synced.pdf", "modified_time": "2024-01-01T00:00:00Z"},
+        # Not indexed anywhere.
+        {"id": "b::fresh.pdf", "name": "fresh.pdf", "modified_time": "2024-01-01T00:00:00Z"},
+    ]
     service = _bucket_sync_service(remote_files)
+    session_manager, _ = _session_manager_finding("uploaded.pdf", "synced.pdf")
 
     response = await connectors_api.connector_sync(
         "ibm_cos",
@@ -318,15 +284,113 @@ async def test_bucket_filter_overwrite_reingests_unchanged_blobs(monkeypatch):
         ),
         request=MagicMock(),
         connector_service=service,
-        session_manager=MagicMock(),
+        session_manager=session_manager,
         user=SimpleNamespace(user_id="alice", jwt_token="token", db_user_id="alice"),
         session=MagicMock(),
         rbac=_rbac_allowing("knowledge:delete:anonymous"),
     )
 
     assert response.status_code == 201
-    assert service.sync_specific_files.await_args.args[2] == ["b::a.pdf"]
-    assert service.sync_specific_files.await_args.kwargs["replace_duplicates"] is True
+    assert service.sync_specific_files.await_count == 2
+    new_call, replace_call = service.sync_specific_files.await_args_list
+    assert new_call.args[2] == ["b::fresh.pdf"]
+    assert new_call.kwargs.get("replace_duplicates", False) is False
+    # Only the name collision is overwritten; the unchanged synced blob is not
+    # in either batch.
+    assert replace_call.args[2] == ["b::uploaded.pdf"]
+    assert replace_call.kwargs["replace_duplicates"] is True
+
+
+@pytest.mark.asyncio
+async def test_bucket_filter_overwrite_batches_collisions_with_changed_blobs(monkeypatch):
+    """A blob changed at source and a blob colliding by name both need the same
+    replace semantics, so they ride in one batch."""
+    from api import connectors as connectors_api
+
+    monkeypatch.setattr(connectors_api.TelemetryClient, "send_event", AsyncMock())
+    monkeypatch.setattr(connectors_api, "_connector_access_denied", AsyncMock(return_value=None))
+    monkeypatch.setattr(connectors_api, "get_index_name", lambda: "idx")
+    monkeypatch.setattr(
+        connectors_api,
+        "get_synced_file_ids_for_connector",
+        AsyncMock(return_value=(["b::changed.pdf"], [], "connector_file_id")),
+    )
+    monkeypatch.setattr(
+        connectors_api,
+        "get_synced_file_state_map",
+        AsyncMock(
+            return_value={
+                "b::changed.pdf": connectors_api.SyncedFileState(
+                    modified_time_ms=1704067200000.0, content_etag=None
+                )
+            }
+        ),
+    )
+
+    remote_files = [
+        {"id": "b::uploaded.pdf", "name": "uploaded.pdf", "modified_time": "2024-01-01T00:00:00Z"},
+        {"id": "b::changed.pdf", "name": "changed.pdf", "modified_time": "2024-06-01T00:00:00Z"},
+    ]
+    service = _bucket_sync_service(remote_files)
+    session_manager, _ = _session_manager_finding("uploaded.pdf", "changed.pdf")
+
+    await connectors_api.connector_sync(
+        "ibm_cos",
+        connectors_api.ConnectorSyncBody(
+            connection_id="conn-1", bucket_filter=["b"], replace_duplicates=True
+        ),
+        request=MagicMock(),
+        connector_service=service,
+        session_manager=session_manager,
+        user=SimpleNamespace(user_id="alice", jwt_token="token", db_user_id="alice"),
+        session=MagicMock(),
+        rbac=_rbac_allowing("knowledge:delete:anonymous"),
+    )
+
+    assert service.sync_specific_files.await_count == 1
+    call = service.sync_specific_files.await_args
+    assert sorted(call.args[2]) == ["b::changed.pdf", "b::uploaded.pdf"]
+    assert call.kwargs["replace_duplicates"] is True
+
+
+@pytest.mark.asyncio
+async def test_bucket_filter_without_overwrite_never_looks_up_filenames(monkeypatch):
+    """Declining the overwrite leaves the sync exactly as it was: the colliding
+    blob rides in the plain batch and the processor backstop skips it. No
+    filename lookup is issued."""
+    from api import connectors as connectors_api
+
+    monkeypatch.setattr(connectors_api.TelemetryClient, "send_event", AsyncMock())
+    monkeypatch.setattr(connectors_api, "_connector_access_denied", AsyncMock(return_value=None))
+    monkeypatch.setattr(connectors_api, "get_index_name", lambda: "idx")
+    monkeypatch.setattr(
+        connectors_api,
+        "get_synced_file_ids_for_connector",
+        AsyncMock(return_value=([], [], "connector_file_id")),
+    )
+    monkeypatch.setattr(connectors_api, "get_synced_file_state_map", AsyncMock(return_value={}))
+
+    remote_files = [
+        {"id": "b::uploaded.pdf", "name": "uploaded.pdf", "modified_time": "2024-01-01T00:00:00Z"}
+    ]
+    service = _bucket_sync_service(remote_files)
+    session_manager, client = _session_manager_finding("uploaded.pdf")
+
+    await connectors_api.connector_sync(
+        "ibm_cos",
+        connectors_api.ConnectorSyncBody(connection_id="conn-1", bucket_filter=["b"]),
+        request=MagicMock(),
+        connector_service=service,
+        session_manager=session_manager,
+        user=SimpleNamespace(user_id="alice", jwt_token="token", db_user_id="alice"),
+        session=MagicMock(),
+        rbac=_rbac_allowing("knowledge:delete:anonymous"),
+    )
+
+    client.search.assert_not_awaited()
+    call = service.sync_specific_files.await_args
+    assert call.args[2] == ["b::uploaded.pdf"]
+    assert call.kwargs.get("replace_duplicates", False) is False
 
 
 @pytest.mark.asyncio

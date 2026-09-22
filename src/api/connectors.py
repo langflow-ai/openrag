@@ -1143,6 +1143,64 @@ def _connector_scoped_to_buckets(connector, bucket_names: list[str]):
     return scoped
 
 
+def _cleaned_blob_filename(file_info: dict[str, Any]) -> str:
+    """The name a remote blob would be indexed under, cleaned exactly as
+    ingestion cleans it — so name comparisons here mean what they say."""
+    from utils.file_utils import clean_connector_filename
+
+    return clean_connector_filename(
+        file_info.get("name", ""),
+        file_info.get("mimeType") or file_info.get("mime_type") or file_info.get("mimetype") or "",
+    )
+
+
+async def _bucket_blob_ids_with_indexed_filename(
+    files: list[dict[str, Any]],
+    session_manager,
+    user_id: str,
+    jwt_token: str | None,
+) -> set[str]:
+    """Ids of the blobs whose filename already has indexed chunks, from any
+    source — a direct upload, another connector, or an earlier sync of this one.
+
+    One batched terms aggregation for the whole listing, through the same
+    ``find_existing_filenames`` the OAuth connector classifier and the per-file
+    processor backstop use, so the duplicate question gets one answer at every
+    altitude. A missing index means nothing is indexed yet, not a failure.
+    """
+    from utils.file_utils import get_filename_aliases
+    from utils.opensearch_filenames import find_existing_filenames
+
+    aliases_by_id: dict[str, list[str]] = {}
+    all_candidates: set[str] = set()
+    for f in files:
+        fid = f.get("id")
+        if not fid:
+            continue
+        aliases = get_filename_aliases(_cleaned_blob_filename(f))
+        aliases_by_id[fid] = aliases
+        all_candidates.update(aliases)
+
+    if not all_candidates:
+        return set()
+
+    opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
+    try:
+        existing_filenames = await find_existing_filenames(
+            all_candidates, opensearch_client, get_index_name()
+        )
+    except Exception as search_err:
+        if "index_not_found_exception" not in str(search_err):
+            raise
+        return set()
+
+    return {
+        fid
+        for fid, aliases in aliases_by_id.items()
+        if any(alias in existing_filenames for alias in aliases)
+    }
+
+
 async def _classify_bucket_connector_duplicates(
     connector,
     connector_type: str,
@@ -1187,52 +1245,28 @@ async def _classify_bucket_connector_duplicates(
     )
     existing_set = set(existing_ids)
 
-    from utils.file_utils import clean_connector_filename, get_filename_aliases
-    from utils.opensearch_filenames import find_existing_filenames
-
-    # Clean the names the same way ingestion will, so what is compared here is
-    # what the blobs would actually be indexed under.
-    cleaned_files: list[tuple[dict[str, Any], list[str]]] = []
-    all_candidates: set[str] = set()
-    for f in all_files:
-        if not f.get("id"):
-            continue
-        cleaned_name = clean_connector_filename(
-            f.get("name", ""),
-            f.get("mimeType") or f.get("mime_type") or f.get("mimetype") or "",
-        )
-        response_file = _connector_file_response(f, cleaned_name=cleaned_name)
-        aliases = get_filename_aliases(cleaned_name)
-        cleaned_files.append((response_file, aliases))
-        all_candidates.update(aliases)
-
     # The id half answers "did this connector already ingest this blob?"; the
     # filename half answers "is this name already in the index at all?" — the
     # question a direct upload, or an ingest through a different connector,
     # makes relevant. Only the id half existed here, so a bucket whose blobs
     # collide by name with files ingested elsewhere reported zero duplicates,
     # skipped the confirm dialog, and then had every colliding file skipped at
-    # ingest time with "A file with this name already exists". The filename
-    # half is the same check the OAuth connector classifier and the per-file
-    # processor backstop already run.
-    existing_filenames: set[str] = set()
-    if all_candidates:
-        opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
-        try:
-            existing_filenames = await find_existing_filenames(
-                all_candidates, opensearch_client, get_index_name()
-            )
-        except Exception as search_err:
-            if "index_not_found_exception" not in str(search_err):
-                raise
+    # ingest time with "A file with this name already exists".
+    name_taken_ids = await _bucket_blob_ids_with_indexed_filename(
+        all_files, session_manager, user_id, jwt_token
+    )
 
     duplicate_files: list[dict[str, Any]] = []
     duplicate_names: list[str] = []
     non_duplicate_files: list[dict[str, Any]] = []
-    for response_file, aliases in cleaned_files:
-        already_synced = response_file["id"] in existing_set
-        name_taken = any(alias in existing_filenames for alias in aliases)
-        if already_synced or name_taken:
+    total = 0
+    for f in all_files:
+        fid = f.get("id")
+        if not fid:
+            continue
+        total += 1
+        response_file = _connector_file_response(f, cleaned_name=_cleaned_blob_filename(f))
+        if fid in existing_set or fid in name_taken_ids:
             duplicate_files.append(response_file)
             duplicate_names.append(response_file["name"])
         else:
@@ -1243,7 +1277,7 @@ async def _classify_bucket_connector_duplicates(
         "duplicate_files": duplicate_files,
         "non_duplicate_files": non_duplicate_files,
         "duplicate_count": len(duplicate_files),
-        "total_files": len(cleaned_files),
+        "total_files": total,
     }
 
 
@@ -1706,7 +1740,7 @@ async def connector_sync(
                 }
                 if not infos_by_id:
                     # Nothing addressable: every listed blob came back without an
-                    # id, so there is no sync to start on either path below.
+                    # id, so there is no sync to start.
                     return JSONResponse(
                         {
                             "status": "no_files",
@@ -1715,119 +1749,112 @@ async def connector_sync(
                         status_code=200,
                     )
 
+                # Classify each remote blob as new / changed / unchanged.
+                existing_ids, _, _ = await get_synced_file_ids_for_connector(
+                    connector_type=connector_type,
+                    user_id=user.user_id,
+                    session_manager=session_manager,
+                    jwt_token=jwt_token,
+                )
+                existing_set = set(existing_ids)
+                state_map = await get_synced_file_state_map(
+                    connector_type=connector_type,
+                    user_id=user.user_id,
+                    session_manager=session_manager,
+                    jwt_token=jwt_token,
+                )
+
+                # "Overwrite duplicates", confirmed in the UI dialog, is about
+                # blobs whose name is already indexed but which this connector
+                # has never synced — a direct upload, another connector. Nothing
+                # we store about them can say whether the source is newer, so
+                # change detection cannot decide them and they are replaced
+                # outright. It deliberately does NOT cover blobs this connector
+                # already synced: those keep the modified-time/etag gate, so
+                # confirming an overwrite re-ingests the colliding files rather
+                # than every object in the container.
+                colliding_ids: set[str] = set()
                 if body.replace_duplicates:
-                    # The user confirmed "overwrite" in the duplicate dialog.
-                    # That decision is about the INDEXED copy — which may have
-                    # come from a direct upload or another connector, where no
-                    # source timestamp of ours applies — so the change-detection
-                    # gate has nothing to say about it. Re-ingest the whole
-                    # selection unconditionally, replacing what is there; this is
-                    # what overwrite already means for the OAuth connectors.
-                    all_ids = list(infos_by_id)
-                    logger.info(
-                        "Bucket selection re-ingested with overwrite",
-                        connector_type=connector_type,
-                        total=len(all_ids),
+                    colliding_ids = {
+                        fid
+                        for fid in await _bucket_blob_ids_with_indexed_filename(
+                            all_files, session_manager, user.user_id, jwt_token
+                        )
+                        if fid not in existing_set
+                    }
+
+                new_ids: list[str] = []
+                replace_ids: list[str] = []
+                for f in all_files:
+                    fid = f.get("id")
+                    if not fid:
+                        continue
+                    if fid in colliding_ids:
+                        replace_ids.append(fid)
+                        continue
+                    status = classify_remote_file_change(
+                        fid,
+                        f.get("modified_time"),
+                        fid in existing_set,
+                        state_map,
+                        f.get("etag"),
                     )
+                    if status == "new":
+                        new_ids.append(fid)
+                    elif status == "changed":
+                        replace_ids.append(fid)
+                    # "unchanged" → skip; already ingested and not newer at source.
+
+                logger.info(
+                    "Reconciled bucket selection",
+                    connector_type=connector_type,
+                    total=len(all_files),
+                    new=len(new_ids),
+                    replaced=len(replace_ids),
+                    overwritten_duplicates=len(colliding_ids),
+                    skipped=len(all_files) - len(new_ids) - len(replace_ids),
+                )
+
+                if not new_ids and not replace_ids:
+                    return JSONResponse(
+                        {
+                            "status": "no_files",
+                            "message": "All files in the selected buckets are already up to date.",
+                        },
+                        status_code=200,
+                    )
+
+                # Two batches: new files are created; changed and overwritten
+                # files replace the indexed copy (replace_duplicates=True bypasses
+                # the filename-skip and deletes stale chunks before re-ingest).
+                # replace is batch-level, hence the split.
+                if new_ids:
                     task_ids.append(
                         await connector_service.sync_specific_files(
                             working_connection.connection_id,
                             user.user_id,
-                            all_ids,
+                            new_ids,
                             jwt_token=jwt_token,
-                            file_infos=[infos_by_id[fid] for fid in all_ids],
+                            file_infos=[infos_by_id[fid] for fid in new_ids],
+                            ingest_settings=body.settings,
+                            preview_mode=preview_mode,
+                            shared=body.shared,
+                        )
+                    )
+                if replace_ids:
+                    task_ids.append(
+                        await connector_service.sync_specific_files(
+                            working_connection.connection_id,
+                            user.user_id,
+                            replace_ids,
+                            jwt_token=jwt_token,
+                            file_infos=[infos_by_id[fid] for fid in replace_ids],
                             ingest_settings=body.settings,
                             replace_duplicates=True,
                             preview_mode=preview_mode,
                             shared=body.shared,
                         )
                     )
-                else:
-                    # Classify each remote blob as new / changed / unchanged.
-                    existing_ids, _, _ = await get_synced_file_ids_for_connector(
-                        connector_type=connector_type,
-                        user_id=user.user_id,
-                        session_manager=session_manager,
-                        jwt_token=jwt_token,
-                    )
-                    existing_set = set(existing_ids)
-                    state_map = await get_synced_file_state_map(
-                        connector_type=connector_type,
-                        user_id=user.user_id,
-                        session_manager=session_manager,
-                        jwt_token=jwt_token,
-                    )
-
-                    new_ids: list[str] = []
-                    changed_ids: list[str] = []
-                    for f in all_files:
-                        fid = f.get("id")
-                        if not fid:
-                            continue
-                        status = classify_remote_file_change(
-                            fid,
-                            f.get("modified_time"),
-                            fid in existing_set,
-                            state_map,
-                            f.get("etag"),
-                        )
-                        if status == "new":
-                            new_ids.append(fid)
-                        elif status == "changed":
-                            changed_ids.append(fid)
-                        # "unchanged" → skip; already ingested, not newer at source.
-
-                    logger.info(
-                        "Reconciled bucket selection",
-                        connector_type=connector_type,
-                        total=len(all_files),
-                        new=len(new_ids),
-                        changed=len(changed_ids),
-                        skipped=len(all_files) - len(new_ids) - len(changed_ids),
-                    )
-
-                    if not new_ids and not changed_ids:
-                        return JSONResponse(
-                            {
-                                "status": "no_files",
-                                "message": (
-                                    "All files in the selected buckets are already up to date."
-                                ),
-                            },
-                            status_code=200,
-                        )
-
-                    # Two batches: new files are created; changed files replace the
-                    # indexed copy (replace_duplicates=True bypasses the filename-skip
-                    # and deletes stale chunks before re-ingest). replace is batch-level,
-                    # hence the split.
-                    if new_ids:
-                        task_ids.append(
-                            await connector_service.sync_specific_files(
-                                working_connection.connection_id,
-                                user.user_id,
-                                new_ids,
-                                jwt_token=jwt_token,
-                                file_infos=[infos_by_id[fid] for fid in new_ids],
-                                ingest_settings=body.settings,
-                                preview_mode=preview_mode,
-                                shared=body.shared,
-                            )
-                        )
-                    if changed_ids:
-                        task_ids.append(
-                            await connector_service.sync_specific_files(
-                                working_connection.connection_id,
-                                user.user_id,
-                                changed_ids,
-                                jwt_token=jwt_token,
-                                file_infos=[infos_by_id[fid] for fid in changed_ids],
-                                ingest_settings=body.settings,
-                                replace_duplicates=True,
-                                preview_mode=preview_mode,
-                                shared=body.shared,
-                            )
-                        )
             else:
                 # sync_all: ingest everything the connector can see
                 task_id = await connector_service.sync_connector_files(
