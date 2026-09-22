@@ -102,6 +102,7 @@ export function TaskErrorContent({
   }
 
   const ossIconColumn = showHeader && !isCloudBrand;
+  const stopEvent = (e: React.SyntheticEvent) => e.stopPropagation();
   const toggleAccordion = () =>
     setAccordionValue((value) =>
       value === "failed-files" ? "" : "failed-files",
@@ -201,7 +202,7 @@ export function TaskErrorContent({
                     <p className={statusPillClassName}>{statusLabel}</p>
                   )}
                   {/* biome-ignore lint/a11y/noStaticElementInteractions: stop-propagation wrapper */}
-                  <span onClick={(event) => event.stopPropagation()}>
+                  <span onClick={stopEvent} onKeyDown={stopEvent}>
                     {openTaskDialogButton}
                   </span>
                   {/* biome-ignore lint/a11y/noStaticElementInteractions: stop-propagation wrapper */}
