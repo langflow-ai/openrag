@@ -264,6 +264,20 @@ describe("GenericOnboarding model selection", () => {
     expect(getSettings().provider_credentials?.watsonx_onprem?.space_id).toBe(
       "space-prod",
     );
+
+    await user.click(spaceSelect);
+    await user.type(
+      screen.getByPlaceholderText("Search or enter a deployment space ID…"),
+      "manually-entered-space",
+    );
+    await user.click(
+      await screen.findByRole("option", {
+        name: /Use manually-entered-space as deployment space ID/,
+      }),
+    );
+    expect(getSettings().provider_credentials?.watsonx_onprem?.space_id).toBe(
+      "manually-entered-space",
+    );
   });
 
   it("updates the selected embedding model for another generic provider", async () => {

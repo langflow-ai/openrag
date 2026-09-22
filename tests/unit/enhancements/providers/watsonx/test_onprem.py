@@ -582,7 +582,7 @@ async def test_space_listing_exchanges_credentials_when_zen_auth_is_rejected(
     ]
     assert requests[1][2]["json"] == {
         "username": "cpduser",
-        "apikey": "APIKEY",
+        "api_key": "APIKEY",
     }
     assert requests[2][2]["headers"]["Authorization"] == "Bearer cpd-access-token"
 

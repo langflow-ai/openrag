@@ -417,7 +417,7 @@ async def _cpd_bearer_token(
         cpd_authorize_url(api_base),
         client=client,
         headers={"Accept": "application/json", "Content-Type": "application/json"},
-        json={"username": username, "apikey": api_key},
+        json={"username": username, "api_key": api_key},
         timeout=15.0,
     )
     if response.status_code != 200:

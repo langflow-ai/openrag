@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronsUpDown, LoaderCircle, X } from "lucide-react";
+import { Check, ChevronsUpDown, LoaderCircle, Plus, X } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { LabelWrapper } from "@/components/label-wrapper";
 import { Button } from "@/components/ui/button";
@@ -48,6 +48,7 @@ export function WatsonxSpaceSelect({
   const generatedId = useId();
   const id = `${idPrefix}-space-${generatedId.replaceAll(":", "")}`;
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
   const [spaces, setSpaces] = useState<WatsonxSpace[]>([]);
   const [status, setStatus] = useState<"idle" | "loading" | "loaded">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -125,12 +126,28 @@ export function WatsonxSpaceSelect({
 
   const selected = spaces.find((space) => space.id === value);
   const selectedLabel = selected?.name ?? value;
+  const typedSpaceId = search.trim();
+  const typedSpaceExists = spaces.some(
+    (space) => space.id.toLowerCase() === typedSpaceId.toLowerCase(),
+  );
+
+  const selectSpace = (spaceId: string) => {
+    onValueChange(spaceId);
+    setSearch("");
+    setOpen(false);
+  };
 
   return (
     <div className="min-w-0 space-y-2">
       <LabelWrapper label="Deployment space ID" helperText={helperText} id={id}>
         <div className="flex min-w-0 gap-2">
-          <Popover open={open} onOpenChange={setOpen}>
+          <Popover
+            open={open}
+            onOpenChange={(nextOpen) => {
+              setOpen(nextOpen);
+              if (!nextOpen) setSearch("");
+            }}
+          >
             <PopoverTrigger asChild>
               <Button
                 id={id}
@@ -157,18 +174,34 @@ export function WatsonxSpaceSelect({
             </PopoverTrigger>
             <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
               <Command>
-                <CommandInput placeholder="Search deployment spaces…" />
+                <CommandInput
+                  placeholder="Search or enter a deployment space ID…"
+                  value={search}
+                  onValueChange={setSearch}
+                />
                 <CommandList>
-                  <CommandEmpty>No accessible deployment spaces.</CommandEmpty>
+                  <CommandEmpty>
+                    No accessible deployment spaces. Enter an ID to use it.
+                  </CommandEmpty>
                   <CommandGroup>
+                    {typedSpaceId && !typedSpaceExists && (
+                      <CommandItem
+                        value={typedSpaceId}
+                        onSelect={() => selectSpace(typedSpaceId)}
+                        className="gap-2 py-2"
+                      >
+                        <Plus />
+                        <span className="min-w-0 truncate">
+                          Use <span className="font-mono">{typedSpaceId}</span>{" "}
+                          as deployment space ID
+                        </span>
+                      </CommandItem>
+                    )}
                     {spaces.map((space) => (
                       <CommandItem
                         key={space.id}
                         value={`${space.name} ${space.id}`}
-                        onSelect={() => {
-                          onValueChange(space.id);
-                          setOpen(false);
-                        }}
+                        onSelect={() => selectSpace(space.id)}
                         className="items-start gap-2 py-2"
                       >
                         <Check
