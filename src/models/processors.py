@@ -21,7 +21,7 @@ from utils.file_utils import (
 )
 from utils.hash_utils import hash_id
 from utils.logging_config import get_logger
-from utils.opensearch_queries import build_replace_filename_query
+from utils.opensearch_queries import build_owned_filename_query, build_replace_filename_query
 
 from .tasks import FileTask, TaskStatus, UploadTask
 
@@ -896,10 +896,21 @@ class ConnectorFileProcessor(TaskProcessor):
         "Make documents available to all users" setting may have been toggled
         since then. Without this, those chunks would keep whatever owner they
         got on their original ingest forever, since a byte-identical re-sync
-        never reaches resolve_shared_owner_fields(). Scoped to chunks owned by
-        this user or already ownerless (matching the same boundary
-        delete_document_by_filename uses), so it can't touch another user's
-        private document that happens to share this filename.
+        never reaches resolve_shared_owner_fields(). Scoped exactly as
+        delete_document_by_filename scopes its replace: ownerless chunks are in
+        reach only for a shared write, owner-scoped ones otherwise.
+
+        That boundary matters more here than it does for a delete, because this
+        script writes an owner onto whatever it matches. Under the wider "mine
+        OR ownerless" scope, a private sync of a file whose name collides with a
+        SHARED document quietly set the syncing user as its owner, taking a
+        document visible to the whole instance out of everyone else's view —
+        with none of the knowledge:delete:anonymous gating that deliberate
+        shared deletion goes through, and with no overwrite to confirm, since
+        the skip path is the default outcome for a duplicate. A shared sync has
+        already cleared that permission upstream (connector_sync rejects it with
+        403 otherwise), so self.shared is the same "may touch ownerless chunks"
+        answer the replace-delete relies on.
         """
         write_client = clients.opensearch
         if write_client is None:
@@ -907,12 +918,13 @@ class ConnectorFileProcessor(TaskProcessor):
         owner, owner_name, owner_email = resolve_shared_owner_fields(
             self.user_id, self.owner_name, self.owner_email, self.shared
         )
+        build_query = build_replace_filename_query if self.shared else build_owned_filename_query
         for candidate in get_filename_aliases(filename):
             try:
                 await write_client.update_by_query(
                     index=get_index_name(),
                     body={
-                        "query": build_replace_filename_query(candidate, self.user_id),
+                        "query": build_query(candidate, self.user_id),
                         "script": {
                             "source": """
                                 if (params.shared) {
