@@ -43,10 +43,10 @@ to a mounted CA bundle.
 
 LiteLLM's watsonx adapter does not consistently consume an ``ssl_verify`` call
 kwarg. It does accept an explicit HTTP client on both chat and embedding paths,
-so ``litellm_credentials`` supplies a cached ``AsyncHTTPHandler`` configured
-for this provider. That keeps the setting away from OpenAI, Anthropic, and
-every other provider in the process. OpenRAG's health check and model discovery
-resolve the same stored value for their direct httpx calls.
+so ``litellm_runtime_kwargs`` creates a provider-scoped ``AsyncHTTPHandler`` at
+the call boundary. Stored and translated credentials remain serializable data;
+OpenRAG's health check and model discovery resolve the same TLS value for their
+direct httpx calls.
 
 The CA path is on the backend filesystem, not the browser's. In Kubernetes,
 mount the cluster CA into the backend pod. Use a bundle containing both the
@@ -61,7 +61,6 @@ import base64
 import os
 import time
 from collections.abc import Mapping
-from functools import lru_cache
 from typing import Any, NamedTuple, cast
 from urllib.parse import urlsplit, urlunsplit
 
@@ -175,6 +174,21 @@ _FALSE_TLS_VALUES = frozenset({"false", "0", "no", "off"})
 _TRUE_TLS_VALUES = frozenset({"true", "1", "yes", "on"})
 _reported_tls_settings: set[str] = set()
 
+#: One source of truth for persisted and pending authentication fields.
+AUTH_METHOD_FIELDS = {
+    "username_api_key": frozenset({"username", "api_key"}),
+    "zen_api_key": frozenset({"zen_api_key"}),
+}
+SHARED_CREDENTIAL_FIELDS = frozenset({"api_base", "space_id", "project_id", "ssl_verify"})
+
+
+def credential_fields_for_auth_method(auth_method: str) -> frozenset[str]:
+    """Return every field valid for one on-prem authentication method."""
+    active = AUTH_METHOD_FIELDS.get(auth_method)
+    if active is None:
+        raise ValueError("Choose a valid watsonx.ai on-prem authentication method")
+    return SHARED_CREDENTIAL_FIELDS | active
+
 
 def _values(stored: Mapping[str, Any] | None) -> dict[str, str]:
     """Stored form values as trimmed strings, excluding runtime objects."""
@@ -213,19 +227,27 @@ def resolve_ssl_verify(value: Any) -> bool | str:
     if raw.lower() in _TRUE_TLS_VALUES:
         return True
     if not os.path.isfile(raw):
-        raise ValueError(f"The watsonx.ai on-prem CA bundle path does not exist: {raw}")
+        raise ValueError("The watsonx.ai on-prem CA bundle path is not usable")
     return raw
 
 
-@lru_cache(maxsize=8)
-def _http_client_for(ssl_setting: bool | str) -> Any:
-    """One reusable LiteLLM async client per provider TLS configuration."""
+def litellm_runtime_kwargs(stored: Mapping[str, Any]) -> dict[str, Any]:
+    """Reuse an event-loop-safe LiteLLM transport for one resolved TLS policy."""
+    import litellm
     from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler
 
-    return AsyncHTTPHandler(
-        ssl_verify=ssl_setting,
-        client_alias="openrag-watsonx-onprem",
-    )
+    tls = ssl_verify(stored)
+    revision = os.stat(tls).st_mtime_ns if isinstance(tls, str) else ""
+    cache_key = f"openrag-watsonx-onprem:{tls!s}:{revision}"
+    cache = litellm.in_memory_llm_clients_cache
+    client = cache.get_cache(cache_key)
+    if client is None:
+        client = AsyncHTTPHandler(
+            ssl_verify=tls,
+            client_alias="openrag-watsonx-onprem",
+        )
+        cache.set_cache(cache_key, client, litellm_owned_client=True)
+    return {"client": client}
 
 
 def zen_api_key(username: str | None, api_key: str | None) -> str:
@@ -242,16 +264,15 @@ def zen_api_key(username: str | None, api_key: str | None) -> str:
 
 
 def litellm_credentials(stored: Mapping[str, Any]) -> dict[str, Any]:
-    """Stored form values as LiteLLM kwargs for `watsonx`.
+    """Translate stored form values into serializable LiteLLM credentials.
 
     `api_key` is set to the Zen key as well as `zen_api_key`: the embeddings
     path rejects the call before it ever reads the auth header if `api_key` is
     unset, and the header it then builds comes from `zen_api_key`, so the two
     have to travel together.
 
-    An explicit client carries this provider's TLS policy. Passing
-    ``ssl_verify`` itself is ineffective on watsonx and risks it reaching the
-    request body through adapters that treat unknown kwargs as payload fields.
+    Runtime transport objects deliberately stay out of this mapping. Callers
+    that invoke LiteLLM merge `litellm_runtime_kwargs` at the final call seam.
     """
     values = _values(stored)
     zen = values.get("zen_api_key") or zen_api_key(values.get("username"), values.get("api_key"))
@@ -270,7 +291,6 @@ def litellm_credentials(stored: Mapping[str, Any]) -> dict[str, Any]:
         # secret the operator supplied.
         credentials["api_key"] = values["api_key"]
     if credentials:
-        credentials["client"] = _http_client_for(resolve_ssl_verify(values.get("ssl_verify")))
         install_litellm_compatibility()
     return credentials
 

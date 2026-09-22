@@ -727,9 +727,20 @@ async def validate_provider_setup(
             )
         )
         if probes_the_model:
+            call_credentials = supplied
+            if enhancement is not None:
+                from enhancements.providers.registry import runtime_kwargs_for
+
+                call_credentials = {
+                    **supplied,
+                    **runtime_kwargs_for(
+                        enhancement,
+                        stored_credentials if stored_credentials is not None else supplied,
+                    ),
+                }
             await _test_litellm_provider(
                 provider=provider_lower,
-                credentials=supplied,
+                credentials=call_credentials,
                 embedding_model=embedding_model,
                 llm_model=llm_model,
             )

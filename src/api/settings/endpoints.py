@@ -421,9 +421,18 @@ async def update_settings(
             "watsonx_project_id",
             "ollama_endpoint",
             "provider_credentials",
+            "provider_credential_removals",
             "remove_provider_config",
         ]
-
+        submitted_credentials = {
+            _provider_key(name): values
+            for name, values in (body.provider_credentials or {}).items()
+        }
+        removals_by_provider = {
+            _provider_key(name): set(fields)
+            for name, fields in (body.provider_credential_removals or {}).items()
+        }
+        provider_update_keys = set(submitted_credentials) | set(removals_by_provider)
         should_validate = any(getattr(body, field) is not None for field in provider_fields)
 
         # Docling VLM settings reuse provider credentials, so they are gated
@@ -468,9 +477,9 @@ async def update_settings(
                 # a model-free `lightweight_health_check`, so a bad URL or
                 # token is rejected here rather than on the first chat or
                 # ingest.
-                for provider, submitted in (body.provider_credentials or {}).items():
-                    provider_key = _provider_key(provider)
-                    removals = set((body.provider_credential_removals or {}).get(provider_key, []))
+                for provider_key in provider_update_keys:
+                    submitted = submitted_credentials.get(provider_key, {})
+                    removals = removals_by_provider.get(provider_key, set())
                     credentials = current_config.providers.pending_credentials(
                         provider_key, submitted, remove=removals
                     )
@@ -531,16 +540,10 @@ async def update_settings(
                     endpoint = getattr(llm_provider_config, "endpoint", None)
                     project_id = getattr(llm_provider_config, "project_id", None)
                     llm_provider_key = _provider_key(llm_provider)
-                    submitted_credentials = {
-                        _provider_key(name): values
-                        for name, values in (body.provider_credentials or {}).items()
-                    }
                     credentials = current_config.providers.pending_credentials(
                         llm_provider_key,
                         submitted_credentials.get(llm_provider_key, {}),
-                        remove=set(
-                            (body.provider_credential_removals or {}).get(llm_provider_key, [])
-                        ),
+                        remove=removals_by_provider.get(llm_provider_key, set()),
                     )
                     api_key = credentials.get("api_key", api_key)
                     endpoint = credentials.get("api_base", endpoint)
@@ -566,9 +569,7 @@ async def update_settings(
                         stored_credentials=current_config.providers.pending_stored_credentials(
                             llm_provider_key,
                             submitted_credentials.get(llm_provider_key, {}),
-                            remove=set(
-                                (body.provider_credential_removals or {}).get(llm_provider_key, [])
-                            ),
+                            remove=removals_by_provider.get(llm_provider_key, set()),
                         ),
                     )
                     logger.info(f"LLM provider validation successful for {llm_provider}")
@@ -596,19 +597,11 @@ async def update_settings(
                     endpoint = getattr(embedding_provider_config, "endpoint", None)
                     project_id = getattr(embedding_provider_config, "project_id", None)
                     embedding_provider_key = _provider_key(embedding_provider)
-                    submitted_credentials = {
-                        _provider_key(name): values
-                        for name, values in (body.provider_credentials or {}).items()
-                    }
                     credentials = current_config.providers.pending_credentials(
                         embedding_provider_key,
                         submitted_credentials.get(embedding_provider_key, {}),
                         kind="embedding",
-                        remove=set(
-                            (body.provider_credential_removals or {}).get(
-                                embedding_provider_key, []
-                            )
-                        ),
+                        remove=removals_by_provider.get(embedding_provider_key, set()),
                     )
                     api_key = credentials.get("api_key", api_key)
                     endpoint = credentials.get("api_base", endpoint)
@@ -634,11 +627,7 @@ async def update_settings(
                         stored_credentials=current_config.providers.pending_stored_credentials(
                             embedding_provider_key,
                             submitted_credentials.get(embedding_provider_key, {}),
-                            remove=set(
-                                (body.provider_credential_removals or {}).get(
-                                    embedding_provider_key, []
-                                )
-                            ),
+                            remove=removals_by_provider.get(embedding_provider_key, set()),
                         ),
                     )
                     logger.info(
@@ -920,14 +909,12 @@ async def update_settings(
 
         # Update provider-specific settings
         provider_updated = False
-        for provider, credentials in (body.provider_credentials or {}).items():
+        for provider in provider_update_keys:
             working_config.providers.set_credentials(
                 provider,
-                credentials,
-                auth_method=(body.provider_auth_methods or {}).get(_provider_key(provider)),
-                remove=set(
-                    (body.provider_credential_removals or {}).get(_provider_key(provider), [])
-                ),
+                submitted_credentials.get(provider, {}),
+                auth_method=(body.provider_auth_methods or {}).get(provider),
+                remove=removals_by_provider.get(provider, set()),
             )
             config_updated = True
             provider_updated = True
@@ -1177,7 +1164,7 @@ async def onboarding(
         log_bootstrap_env(logger, "onboarding")
 
         # Get current configuration
-        current_config = get_openrag_config()
+        current_config = copy.deepcopy(get_openrag_config())
 
         # Warn if config was already edited (onboarding being re-run)
         if current_config.edited:
@@ -1273,14 +1260,20 @@ async def onboarding(
             current_config.providers.ollama.configured = True
             config_updated = True
 
-        for provider, credentials in (body.provider_credentials or {}).items():
+        submitted_credentials = {
+            _provider_key(name): values
+            for name, values in (body.provider_credentials or {}).items()
+        }
+        removals_by_provider = {
+            _provider_key(name): set(fields)
+            for name, fields in (body.provider_credential_removals or {}).items()
+        }
+        for provider in set(submitted_credentials) | set(removals_by_provider):
             current_config.providers.set_credentials(
                 provider,
-                credentials,
-                auth_method=(body.provider_auth_methods or {}).get(_provider_key(provider)),
-                remove=set(
-                    (body.provider_credential_removals or {}).get(_provider_key(provider), [])
-                ),
+                submitted_credentials.get(provider, {}),
+                auth_method=(body.provider_auth_methods or {}).get(provider),
+                remove=removals_by_provider.get(provider, set()),
             )
             config_updated = True
 

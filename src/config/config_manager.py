@@ -272,17 +272,13 @@ class ProvidersConfig:
             }
             previous.auth_method = auth_method
         if key == "watsonx_onprem" and auth_method:
-            methods = {
-                "username_api_key": {"username", "api_key"},
-                "zen_api_key": {"zen_api_key"},
-            }
-            active = methods.get(auth_method)
-            if active is None:
-                raise ValueError(f"Unknown watsonx.ai on-prem authentication method: {auth_method}")
+            from enhancements.providers.watsonx.onprem import (
+                credential_fields_for_auth_method,
+            )
+
+            allowed = credential_fields_for_auth_method(auth_method)
             previous.credentials = {
-                name: value
-                for name, value in previous.credentials.items()
-                if name in {"api_base", "space_id", "project_id", "ssl_verify"} or name in active
+                name: value for name, value in previous.credentials.items() if name in allowed
             }
             previous.auth_method = auth_method
         for name in removals:
@@ -826,6 +822,32 @@ class ConfigManager:
             config_data["providers"]["watsonx"]["endpoint"] = os.getenv("WATSONX_ENDPOINT")
         if os.getenv("WATSONX_PROJECT_ID"):
             config_data["providers"]["watsonx"]["project_id"] = os.getenv("WATSONX_PROJECT_ID")
+
+        # IBM watsonx.ai on-prem (Cloud Pak for Data / Software Hub).
+        onprem_credentials = {
+            "api_base": os.getenv("WATSONX_ONPREM_ENDPOINT"),
+            "username": os.getenv("WATSONX_ONPREM_USERNAME"),
+            "api_key": os.getenv("WATSONX_ONPREM_API_KEY"),
+            "zen_api_key": os.getenv("WATSONX_ONPREM_ZEN_API_KEY"),
+            "space_id": os.getenv("WATSONX_ONPREM_SPACE_ID"),
+            "project_id": os.getenv("WATSONX_ONPREM_PROJECT_ID"),
+            "ssl_verify": os.getenv("WATSONX_ONPREM_TLS_VERIFY"),
+        }
+        if any(onprem_credentials.values()):
+            self._seed_custom_provider_credentials(
+                config_data,
+                "watsonx_onprem",
+                onprem_credentials,
+                required=("api_base",),
+            )
+            entry = config_data["providers"]["custom"]["watsonx_onprem"]
+            stored = entry["credentials"]
+            has_zen = bool(stored.get("zen_api_key"))
+            entry["auth_method"] = "zen_api_key" if has_zen else "username_api_key"
+            entry["configured"] = bool(
+                stored.get("api_base")
+                and (has_zen or (stored.get("username") and stored.get("api_key")))
+            )
 
         # Ollama provider settings
         if os.getenv("OLLAMA_ENDPOINT"):

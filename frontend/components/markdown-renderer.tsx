@@ -1,8 +1,10 @@
 import dynamic from "next/dynamic";
 import Markdown from "react-markdown";
-import rehypeMathjax from "rehype-mathjax";
+import rehypeKatex from "rehype-katex";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import "katex/dist/katex.min.css";
 import { cn } from "@/lib/utils";
 
 const CodeComponent = dynamic(() => import("./code-component"), {
@@ -75,8 +77,8 @@ export const MarkdownRenderer = ({
       )}
     >
       <Markdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeMathjax, rehypeRaw]}
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeRaw, rehypeKatex]}
         urlTransform={(url) => url}
         components={{
           p({ node, ...props }) {

@@ -173,6 +173,7 @@ const ProviderSettingsDialog = ({
         ? ["zen_api_key"]
         : ["username", "api_key"]),
     ]);
+    const fieldsByKey = new Map(fields.map((field) => [field.key, field]));
     for (const [key, value] of Object.entries(data.credentials ?? {})) {
       if (provider === "azure" && !allowedAzureFields.has(key)) {
         continue;
@@ -183,7 +184,7 @@ const ProviderSettingsDialog = ({
       if (trimmed !== "") {
         credentials[key] = trimmed;
       } else {
-        const field = fields.find((candidate) => candidate.key === key);
+        const field = fieldsByKey.get(key);
         const isSecret =
           field?.field_type === "password" || field?.field_type === "textarea";
         if (!isSecret && saved?.credential_values?.[key]) {

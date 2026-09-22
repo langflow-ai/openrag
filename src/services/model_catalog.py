@@ -467,7 +467,14 @@ async def refresh_live_models() -> None:
             )
             continue
         if credentials:
-            await enhancement.fetch_models(credentials)
+            try:
+                await enhancement.fetch_models(credentials)
+            except Exception:
+                logger.warning(
+                    "Provider model discovery failed; keeping configured fallback models",
+                    provider=enhancement.PROVIDER_KEY,
+                    exc_info=True,
+                )
 
 
 def supported_provider_keys() -> frozenset[str]:

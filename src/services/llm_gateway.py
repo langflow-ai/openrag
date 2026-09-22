@@ -160,6 +160,14 @@ def provider_credentials(
 
     if hasattr(prov, "credential_values"):
         credentials = prov.credential_values(key, kind=kind)
+        from enhancements.providers.registry import get, runtime_kwargs_for
+
+        enhancement = get(key)
+        if enhancement is not None:
+            stored = (
+                prov.stored_credentials(key) if hasattr(prov, "stored_credentials") else credentials
+            )
+            credentials.update(runtime_kwargs_for(enhancement, stored))
     else:
         provider_config = getattr(prov, key, None)
         if provider_config is None:

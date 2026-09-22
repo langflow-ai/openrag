@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, ChevronsUpDown, LoaderCircle, Plus, X } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useReducer, useState } from "react";
 import { LabelWrapper } from "@/components/label-wrapper";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,6 +35,45 @@ interface WatsonxSpaceSelectProps {
   idPrefix: string;
 }
 
+type SpaceSelectState = {
+  open: boolean;
+  spaces: WatsonxSpace[];
+  status: "idle" | "loading" | "loaded";
+  error: string | null;
+};
+
+type SpaceSelectAction =
+  | { type: "reset" }
+  | { type: "loading" }
+  | { type: "loaded"; spaces: WatsonxSpace[] }
+  | { type: "failed"; error: string }
+  | { type: "setOpen"; open: boolean };
+
+const initialState: SpaceSelectState = {
+  open: false,
+  spaces: [],
+  status: "idle",
+  error: null,
+};
+
+function reduceSpaceSelect(
+  state: SpaceSelectState,
+  action: SpaceSelectAction,
+): SpaceSelectState {
+  switch (action.type) {
+    case "reset":
+      return initialState;
+    case "loading":
+      return { ...state, spaces: [], status: "loading", error: null };
+    case "loaded":
+      return { ...state, spaces: action.spaces, status: "loaded", error: null };
+    case "failed":
+      return { ...state, status: "loaded", error: action.error };
+    case "setOpen":
+      return { ...state, open: action.open };
+  }
+}
+
 export function WatsonxSpaceSelect({
   credentials,
   authMethod = "username_api_key",
@@ -47,11 +86,9 @@ export function WatsonxSpaceSelect({
 }: WatsonxSpaceSelectProps) {
   const generatedId = useId();
   const id = `${idPrefix}-space-${generatedId.replaceAll(":", "")}`;
-  const [open, setOpen] = useState(false);
+  const [state, dispatch] = useReducer(reduceSpaceSelect, initialState);
   const [search, setSearch] = useState("");
-  const [spaces, setSpaces] = useState<WatsonxSpace[]>([]);
-  const [status, setStatus] = useState<"idle" | "loading" | "loaded">("idle");
-  const [error, setError] = useState<string | null>(null);
+  const { open, spaces, status, error } = state;
 
   const apiBase = credentials.api_base?.trim() ?? "";
   const username = credentials.username?.trim() ?? "";
@@ -66,17 +103,12 @@ export function WatsonxSpaceSelect({
 
   useEffect(() => {
     if (!ready) {
-      setSpaces([]);
-      setStatus("idle");
-      setError(null);
-      setOpen(false);
+      dispatch({ type: "reset" });
       return;
     }
 
     const controller = new AbortController();
-    setSpaces([]);
-    setStatus("loading");
-    setError(null);
+    dispatch({ type: "loading" });
 
     const timeout = window.setTimeout(async () => {
       try {
@@ -105,16 +137,16 @@ export function WatsonxSpaceSelect({
         if (!response.ok) {
           throw new Error(result.error || "Could not load deployment spaces");
         }
-        setSpaces(result.spaces ?? []);
-        setStatus("loaded");
+        dispatch({ type: "loaded", spaces: result.spaces ?? [] });
       } catch (requestError) {
         if (controller.signal.aborted) return;
-        setStatus("loaded");
-        setError(
-          requestError instanceof Error
-            ? requestError.message
-            : "Could not load deployment spaces",
-        );
+        dispatch({
+          type: "failed",
+          error:
+            requestError instanceof Error
+              ? requestError.message
+              : "Could not load deployment spaces",
+        });
       }
     }, 350);
 
@@ -134,7 +166,7 @@ export function WatsonxSpaceSelect({
   const selectSpace = (spaceId: string) => {
     onValueChange(spaceId);
     setSearch("");
-    setOpen(false);
+    dispatch({ type: "setOpen", open: false });
   };
 
   return (
@@ -144,7 +176,7 @@ export function WatsonxSpaceSelect({
           <Popover
             open={open}
             onOpenChange={(nextOpen) => {
-              setOpen(nextOpen);
+              dispatch({ type: "setOpen", open: nextOpen });
               if (!nextOpen) setSearch("");
             }}
           >

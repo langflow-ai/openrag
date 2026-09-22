@@ -51,16 +51,21 @@ def test_a_half_filled_form_yields_no_zen_key(username, api_key) -> None:
     assert watsonx_onprem.zen_api_key(username, api_key) == ""
 
 
-def test_username_never_reaches_litellm() -> None:
-    """LiteLLM forwards kwargs it does not recognise, so local fields stay out."""
-    credentials = watsonx_onprem.litellm_credentials(
-        {"api_base": "https://cpd.example.com", "username": "cpduser", "api_key": "APIKEY"}
-    )
-    client = credentials.pop("client")
+def test_username_never_reaches_serializable_credentials() -> None:
+    """Credential data stays serializable; runtime transport remains call-local."""
+    stored = {
+        "api_base": "https://cpd.example.com",
+        "username": "cpduser",
+        "api_key": "APIKEY",
+    }
+    credentials = watsonx_onprem.litellm_credentials(stored)
+    client = watsonx_onprem.litellm_runtime_kwargs(stored)["client"]
 
     assert "username" not in credentials
     assert "ssl_verify" not in credentials
+    assert "client" not in credentials
     assert client.ssl_verify is False
+    assert client is watsonx_onprem.litellm_runtime_kwargs(stored)["client"]
     assert credentials["api_base"] == "https://cpd.example.com"
     # Both, and the same value: the embeddings path refuses the call outright
     # when api_key is unset, and builds its auth header from zen_api_key.
@@ -111,17 +116,28 @@ def test_a_deployment_scope_is_passed_through_untouched() -> None:
     assert credentials["project_id"] == "proj-1"
 
 
-def test_credential_values_translates_the_stored_form() -> None:
+def test_credential_values_translates_the_stored_form_as_data() -> None:
+    from utils import provider_health_cache
+
     providers = _providers(api_base="https://cpd.example.com", username="cpduser", api_key="APIKEY")
 
     credentials = providers.credential_values(PROVIDER)
-    client = credentials.pop("client")
     assert credentials == {
         "api_base": "https://cpd.example.com",
         "zen_api_key": "Y3BkdXNlcjpBUElLRVk=",
         "api_key": "Y3BkdXNlcjpBUElLRVk=",
     }
-    assert client.ssl_verify is False
+    provider_health_cache.cache_key(
+        provider=PROVIDER,
+        embedding_provider=PROVIDER,
+        test_completion=False,
+        llm_model="model",
+        embedding_model="embedding",
+        endpoint=None,
+        project_id=None,
+        api_key=None,
+        credentials=credentials,
+    )
 
 
 def test_pending_credentials_rebuilds_the_zen_key_from_a_submitted_change() -> None:
@@ -156,6 +172,7 @@ def test_the_gateway_routes_it_as_watsonx() -> None:
     # The OpenRAG key is what the caller and the credential store still see.
     assert provider == PROVIDER
     assert credentials["zen_api_key"] == "Y3BkdXNlcjpBUElLRVk="
+    assert credentials["client"].ssl_verify is False
 
 
 def test_the_alias_is_routable_so_ids_are_not_billed_to_the_default_provider() -> None:
@@ -397,7 +414,7 @@ def test_tls_setting_is_scoped_to_the_onprem_provider(monkeypatch) -> None:
     """The stored value wins without mutating LiteLLM's process-wide setting."""
     monkeypatch.setenv("SSL_VERIFY", "false")
 
-    secure = watsonx_onprem.litellm_credentials(
+    secure = watsonx_onprem.litellm_runtime_kwargs(
         {
             "api_base": "https://cpd.example.com",
             "username": "cpduser",
@@ -405,7 +422,7 @@ def test_tls_setting_is_scoped_to_the_onprem_provider(monkeypatch) -> None:
             "ssl_verify": "true",
         }
     )
-    insecure = watsonx_onprem.litellm_credentials(
+    insecure = watsonx_onprem.litellm_runtime_kwargs(
         {
             "api_base": "https://cpd.example.com",
             "username": "cpduser",
@@ -429,8 +446,22 @@ def test_custom_ca_bundle_must_exist(tmp_path) -> None:
     ca.write_text("combined bundle", encoding="utf-8")
 
     assert watsonx_onprem.resolve_ssl_verify(str(ca)) == str(ca)
-    with pytest.raises(ValueError, match="CA bundle path does not exist"):
+    with pytest.raises(ValueError, match="CA bundle path is not usable"):
         watsonx_onprem.resolve_ssl_verify(str(tmp_path / "missing.pem"))
+
+
+@pytest.mark.asyncio
+async def test_missing_ca_bundle_does_not_break_the_shared_model_catalog(tmp_path) -> None:
+    models = await watsonx_onprem.fetch_models(
+        {
+            "api_base": "https://cpd.example.com",
+            "username": "cpduser",
+            "api_key": "APIKEY",
+            "ssl_verify": str(tmp_path / "missing.pem"),
+        }
+    )
+
+    assert models is None
 
 
 @pytest.mark.asyncio

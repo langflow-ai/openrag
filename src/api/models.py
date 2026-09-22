@@ -225,7 +225,7 @@ async def get_ibm_models(
 
 async def get_watsonx_onprem_spaces(
     body: WatsonxOnPremSpacesBody | None = None,
-    user: User = Depends(require_permission("providers:read")),
+    user: User = Depends(require_permission("providers:write")),
 ):
     """Deployment spaces visible to the pending watsonx.ai on-prem credentials."""
     from enhancements.providers.watsonx import onprem
@@ -233,37 +233,53 @@ async def get_watsonx_onprem_spaces(
     request = body or WatsonxOnPremSpacesBody()
     try:
         config = get_openrag_config()
-        stored = config.providers.get_provider_config(onprem.PROVIDER_KEY)
-        auth_method = request.auth_method or getattr(stored, "auth_method", None)
+        stored_config = config.providers.get_provider_config(onprem.PROVIDER_KEY)
+        stored_credentials = config.providers.stored_credentials(onprem.PROVIDER_KEY)
+        auth_method = request.auth_method or getattr(stored_config, "auth_method", None)
         if auth_method is None:
-            existing = config.providers.stored_credentials(onprem.PROVIDER_KEY)
-            auth_method = "zen_api_key" if existing.get("zen_api_key") else "username_api_key"
-        auth_fields = {
-            "username_api_key": {"username", "api_key"},
-            "zen_api_key": {"zen_api_key"},
+            auth_method = (
+                "zen_api_key" if stored_credentials.get("zen_api_key") else "username_api_key"
+            )
+        allowed = onprem.credential_fields_for_auth_method(auth_method)
+        submitted = {
+            name: str(value).strip()
+            for name, value in request.credentials.items()
+            if name in allowed and str(value).strip()
         }
-        active = auth_fields.get(auth_method)
-        if active is None:
-            raise ValueError("Choose a valid watsonx.ai on-prem authentication method")
-
-        credentials = config.providers.pending_stored_credentials(
-            onprem.PROVIDER_KEY,
-            request.credentials,
+        target_changed = any(
+            name in submitted and submitted[name] != stored_credentials.get(name)
+            for name in ("api_base", "ssl_verify")
         )
-        allowed = {"api_base", "space_id", "project_id", "ssl_verify"} | active
-        credentials = {name: value for name, value in credentials.items() if name in allowed}
+        base = {} if target_changed else stored_credentials
+        credentials = {
+            name: value for name, value in {**base, **submitted}.items() if name in allowed
+        }
         spaces = await onprem.list_spaces(credentials)
         return JSONResponse(
             {"spaces": spaces},
             headers={"Cache-Control": "no-store"},
         )
     except onprem.SpaceDiscoveryError as exc:
+        logger.warning(
+            "watsonx.ai on-prem space discovery was rejected",
+            status_code=exc.status_code,
+        )
         status_code = exc.status_code if exc.status_code in {400, 401, 403, 404} else 502
-        error = _redact_credentials(sanitize_provider_error_content(exc))
+        if status_code in {401, 403}:
+            error = "The cluster rejected the configured credentials."
+        elif status_code == 404:
+            error = "The cluster deployment-space endpoint was not found."
+        elif status_code == 400:
+            error = "The cluster rejected the deployment-space request."
+        else:
+            error = "Unable to list deployment spaces from the cluster."
         return JSONResponse({"error": error}, status_code=status_code)
     except Exception as exc:
-        logger.error("Failed to list watsonx.ai on-prem spaces: %s", str(exc))
-        return _models_error_response(exc)
+        logger.error("Failed to list watsonx.ai on-prem spaces", exc_info=exc)
+        return JSONResponse(
+            {"error": "Unable to list deployment spaces from the cluster."},
+            status_code=500,
+        )
 
 
 async def get_model_providers(
