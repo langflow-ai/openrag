@@ -463,6 +463,64 @@ async def test_health_check_uses_the_saved_tls_policy(monkeypatch) -> None:
     assert seen["verify"] is False
 
 
+@pytest.mark.asyncio
+async def test_space_listing_uses_saved_auth_tls_and_rebases_pagination(monkeypatch) -> None:
+    seen: dict[str, Any] = {"urls": []}
+    pages = [
+        {
+            "resources": [
+                {"metadata": {"id": "space-1", "name": "Production"}},
+                {"metadata": {"id": "space-1", "name": "Duplicate"}},
+            ],
+            "next": {"href": "https://internal-cpd/v2/spaces?version=2024-03-13&start=2"},
+        },
+        {
+            "resources": [
+                {"metadata": {"id": "space-2", "name": "Development"}},
+            ]
+        },
+    ]
+
+    class _Client:
+        def __init__(self, *, verify, timeout):
+            seen["verify"] = verify
+            seen["timeout"] = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def request(self, method, url, **kwargs):
+            seen["urls"].append(url)
+            seen["authorization"] = kwargs["headers"]["Authorization"]
+            body = pages.pop(0)
+            return SimpleNamespace(status_code=200, text="{}", json=lambda: body)
+
+    monkeypatch.setattr("httpx.AsyncClient", _Client)
+
+    spaces = await watsonx_onprem.list_spaces(
+        {
+            "api_base": "https://cpd.example.com",
+            "username": "cpduser",
+            "api_key": "APIKEY",
+            "ssl_verify": "false",
+        }
+    )
+
+    assert spaces == [
+        {"id": "space-1", "name": "Production"},
+        {"id": "space-2", "name": "Development"},
+    ]
+    assert seen["verify"] is False
+    assert seen["authorization"].startswith("ZenApiKey ")
+    assert seen["urls"] == [
+        "https://cpd.example.com/v2/spaces",
+        "https://cpd.example.com/v2/spaces?version=2024-03-13&start=2",
+    ]
+
+
 def test_auth_method_changes_preserve_the_tls_policy() -> None:
     providers = _providers(
         api_base="https://cpd.example.com",

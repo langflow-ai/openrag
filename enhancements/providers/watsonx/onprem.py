@@ -285,6 +285,11 @@ MODEL_SPECS_PATH = "/ml/v1/foundation_model_specs"
 #: not serve.
 API_VERSION = "2024-03-13"
 
+#: Cloud Pak for Data deployment-space discovery endpoint and page limits.
+SPACES_PATH = "/v2/spaces"
+SPACES_PAGE_LIMIT = 100
+MAX_SPACE_PAGES = 10
+
 
 def auth_header(stored: Mapping[str, Any]) -> str:
     """The `Authorization` value for OpenRAG's own calls to the cluster."""
@@ -313,6 +318,11 @@ def model_specs_url(api_base: str) -> str:
 def model_specs_params(**extra: Any) -> dict[str, Any]:
     """Query parameters for the catalogue endpoint. `version` is mandatory."""
     return {"version": API_VERSION, **extra}
+
+
+def spaces_url(api_base: str) -> str:
+    """Deployment spaces visible to the configured CPD identity."""
+    return f"{(api_base or '').rstrip('/')}{SPACES_PATH}"
 
 
 def _error_details(response: Any) -> str:
@@ -356,6 +366,79 @@ async def _http_request_with_retry(
                 raise exc
         await asyncio.sleep(backoff_factor * (2**attempt))
     raise RuntimeError(f"CPD request to {url} failed after retries")
+
+
+class SpaceDiscoveryError(Exception):
+    """A CPD spaces request failed with an actionable upstream status."""
+
+    def __init__(self, status_code: int, message: str):
+        super().__init__(message)
+        self.status_code = status_code
+
+
+async def list_spaces(credentials: Mapping[str, Any]) -> list[dict[str, str]]:
+    """List deployment spaces accessible to the configured CPD identity."""
+    import httpx
+
+    values = _values(credentials)
+    api_base = values.get("api_base", "")
+    header = auth_header(values)
+    if not api_base:
+        raise ValueError("Enter the watsonx.ai on-prem cluster URL first")
+    if not header:
+        raise ValueError(
+            "Enter a username and API key, or a Zen API key, to load deployment spaces"
+        )
+
+    headers = {"Authorization": header, "Accept": "application/json"}
+    url = spaces_url(api_base)
+    params: dict[str, Any] | None = {
+        "version": API_VERSION,
+        "limit": SPACES_PAGE_LIMIT,
+    }
+    resources: list[Any] = []
+    async with httpx.AsyncClient(verify=ssl_verify(values), timeout=15.0) as client:
+        for _ in range(MAX_SPACE_PAGES):
+            response = await _http_request_with_retry(
+                "GET",
+                url,
+                client=client,
+                headers=headers,
+                params=params,
+                timeout=15.0,
+            )
+            if response.status_code != 200:
+                raise SpaceDiscoveryError(response.status_code, _error_details(response))
+            body = response.json()
+            if not isinstance(body, dict):
+                raise ValueError("The watsonx.ai cluster returned an invalid spaces response")
+            resources.extend(body.get("resources") or [])
+            next_page = body.get("next")
+            href = next_page.get("href") if isinstance(next_page, Mapping) else None
+            if not href:
+                break
+            parsed = urlsplit(href)
+            url = f"{api_base.rstrip('/')}{urlunsplit(('', '', parsed.path, parsed.query, ''))}"
+            params = None
+
+    spaces: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for resource in resources:
+        if not isinstance(resource, Mapping):
+            continue
+        metadata = resource.get("metadata")
+        entity = resource.get("entity")
+        metadata = metadata if isinstance(metadata, Mapping) else {}
+        entity = entity if isinstance(entity, Mapping) else {}
+        space_id = str(metadata.get("id") or resource.get("id") or "").strip()
+        if not space_id or space_id in seen:
+            continue
+        seen.add(space_id)
+        name = str(
+            metadata.get("name") or entity.get("name") or resource.get("name") or space_id
+        ).strip()
+        spaces.append({"id": space_id, "name": name})
+    return spaces
 
 
 async def lightweight_health_check(credentials: Mapping[str, Any]) -> None:

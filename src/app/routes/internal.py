@@ -460,6 +460,12 @@ def register_internal_routes(app: FastAPI):
     )
     app.add_api_route("/models/ibm", models.get_ibm_models, methods=["POST"], tags=["internal"])
     app.add_api_route(
+        "/models/watsonx_onprem/spaces",
+        models.get_watsonx_onprem_spaces,
+        methods=["POST"],
+        tags=["internal"],
+    )
+    app.add_api_route(
         "/models/catalog", models.get_model_catalog, methods=["GET"], tags=["internal"]
     )
     app.add_api_route(

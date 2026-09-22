@@ -3,7 +3,7 @@ import re
 import httpx
 from fastapi import Depends
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from api.provider_validation import (
     is_provider_credential_error,
@@ -45,6 +45,11 @@ class IBMBody(BaseModel):
     api_key: str | None = None
     endpoint: str | None = None
     project_id: str | None = None
+
+
+class WatsonxOnPremSpacesBody(BaseModel):
+    credentials: dict[str, str] = Field(default_factory=dict)
+    auth_method: str | None = None
 
 
 def _models_error_response(exc: Exception) -> JSONResponse:
@@ -216,6 +221,49 @@ async def get_ibm_models(
     except Exception as e:
         logger.error(f"Failed to get IBM models: {str(e)}")
         return _models_error_response(e)
+
+
+async def get_watsonx_onprem_spaces(
+    body: WatsonxOnPremSpacesBody | None = None,
+    user: User = Depends(require_permission("providers:read")),
+):
+    """Deployment spaces visible to the pending watsonx.ai on-prem credentials."""
+    from enhancements.providers.watsonx import onprem
+
+    request = body or WatsonxOnPremSpacesBody()
+    try:
+        config = get_openrag_config()
+        stored = config.providers.get_provider_config(onprem.PROVIDER_KEY)
+        auth_method = request.auth_method or getattr(stored, "auth_method", None)
+        if auth_method is None:
+            existing = config.providers.stored_credentials(onprem.PROVIDER_KEY)
+            auth_method = "zen_api_key" if existing.get("zen_api_key") else "username_api_key"
+        auth_fields = {
+            "username_api_key": {"username", "api_key"},
+            "zen_api_key": {"zen_api_key"},
+        }
+        active = auth_fields.get(auth_method)
+        if active is None:
+            raise ValueError("Choose a valid watsonx.ai on-prem authentication method")
+
+        credentials = config.providers.pending_stored_credentials(
+            onprem.PROVIDER_KEY,
+            request.credentials,
+        )
+        allowed = {"api_base", "space_id", "project_id", "ssl_verify"} | active
+        credentials = {name: value for name, value in credentials.items() if name in allowed}
+        spaces = await onprem.list_spaces(credentials)
+        return JSONResponse(
+            {"spaces": spaces},
+            headers={"Cache-Control": "no-store"},
+        )
+    except onprem.SpaceDiscoveryError as exc:
+        status_code = exc.status_code if exc.status_code in {400, 401, 403, 404} else 502
+        error = _redact_credentials(sanitize_provider_error_content(exc))
+        return JSONResponse({"error": error}, status_code=status_code)
+    except Exception as exc:
+        logger.error("Failed to list watsonx.ai on-prem spaces: %s", str(exc))
+        return _models_error_response(exc)
 
 
 async def get_model_providers(

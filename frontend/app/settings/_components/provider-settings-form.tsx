@@ -1,6 +1,7 @@
 import { useFormContext } from "react-hook-form";
 import { LabelWrapper } from "@/components/label-wrapper";
 import type { CatalogCredentialField } from "@/components/models/catalog-models";
+import { WatsonxSpaceSelect } from "@/components/models/watsonx-space-select";
 import { WatsonxTlsSettings } from "@/components/models/watsonx-tls-settings";
 import {
   Accordion,
@@ -73,8 +74,27 @@ export function ProviderSettingsForm({
   } = useFormContext<ProviderSettingsFormData>();
 
   const saved = new Set(savedSecretFields);
+  const credentials = watch("credentials");
 
   const renderField = (field: CatalogCredentialField) => {
+    if (provider === "watsonx_onprem" && field.key === "space_id") {
+      return (
+        <WatsonxSpaceSelect
+          key={field.key}
+          idPrefix="provider-watsonx-onprem"
+          credentials={credentials}
+          authMethod={onPremAuthMethod}
+          hasSavedApiKey={saved.has("api_key")}
+          hasSavedZenApiKey={saved.has("zen_api_key")}
+          value={credentials.space_id}
+          onValueChange={(value) =>
+            setValue("credentials.space_id", value, { shouldDirty: true })
+          }
+          helperText={field.tooltip ?? undefined}
+        />
+      );
+    }
+
     if (provider === "watsonx_onprem" && field.key === "ssl_verify") {
       return (
         <WatsonxTlsSettings

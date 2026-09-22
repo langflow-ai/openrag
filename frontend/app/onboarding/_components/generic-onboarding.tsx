@@ -16,6 +16,7 @@ import {
   savedSecretFieldsForProvider,
 } from "@/components/models/catalog-models";
 import { getProviderChrome } from "@/components/models/model-helpers";
+import { WatsonxSpaceSelect } from "@/components/models/watsonx-space-select";
 import { WatsonxTlsSettings } from "@/components/models/watsonx-tls-settings";
 import type { OnboardingVariables } from "../../api/mutations/useOnboardingMutation";
 import { AdvancedOnboarding } from "./advanced";
@@ -233,6 +234,22 @@ export function GenericOnboarding({
   };
 
   const renderField = (field: (typeof fields)[number]) => {
+    if (provider === "watsonx_onprem" && field.key === "space_id") {
+      return (
+        <WatsonxSpaceSelect
+          key={field.key}
+          idPrefix={`onboarding-${provider}`}
+          credentials={credentials}
+          authMethod={onPremAuthMethod}
+          hasSavedApiKey={savedSecrets.has("api_key")}
+          hasSavedZenApiKey={savedSecrets.has("zen_api_key")}
+          value={credentials.space_id}
+          onValueChange={(value) => handleCredentialChange("space_id", value)}
+          helperText={field.tooltip ?? undefined}
+        />
+      );
+    }
+
     if (provider === "watsonx_onprem" && field.key === "ssl_verify") {
       return (
         <WatsonxTlsSettings

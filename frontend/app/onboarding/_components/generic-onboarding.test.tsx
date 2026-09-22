@@ -43,6 +43,18 @@ const catalog = {
           field_type: "text",
         },
         {
+          key: "username",
+          label: "Username",
+          required: true,
+          field_type: "text",
+        },
+        {
+          key: "api_key",
+          label: "API key",
+          required: true,
+          field_type: "password",
+        },
+        {
           key: "space_id",
           label: "Deployment space ID",
           required: false,
@@ -87,6 +99,14 @@ function renderOnboarding(
       providers: ["tooltip"],
       handlers: [
         http.get("/api/models/catalog", () => HttpResponse.json(catalog)),
+        http.post("/api/models/watsonx_onprem/spaces", () =>
+          HttpResponse.json({
+            spaces: [
+              { id: "space-prod", name: "Production" },
+              { id: "space-dev", name: "Development" },
+            ],
+          }),
+        ),
       ],
     },
   );
@@ -203,20 +223,47 @@ describe("GenericOnboarding model selection", () => {
     await user.click(
       await screen.findByRole("button", { name: "Advanced settings" }),
     );
-    const spaceId = screen.getByRole("textbox", {
-      name: "Deployment space ID",
-    });
-    expect(spaceId).toHaveValue("deployment-space");
+    expect(
+      screen.getByRole("combobox", { name: "Deployment space ID" }),
+    ).toHaveTextContent("deployment-space");
 
-    await user.clear(spaceId);
+    await user.click(
+      screen.getByRole("button", { name: "Clear deployment space" }),
+    );
     expect(getSettings().provider_credential_removals?.watsonx_onprem).toEqual([
       "space_id",
     ]);
+  });
 
-    await user.type(spaceId, "replacement-space");
-    expect(
-      getSettings().provider_credential_removals?.watsonx_onprem,
-    ).toBeUndefined();
+  it("loads and selects an available deployment space during onboarding", async () => {
+    const { user, getSettings } = renderOnboarding("watsonx_onprem", false, {
+      custom: {
+        watsonx_onprem: {
+          auth_method: "username_api_key",
+          credential_values: {
+            api_base: "https://cpd.example.com",
+            username: "cpd-user",
+            ssl_verify: "true",
+          },
+          secret_fields: ["api_key"],
+        },
+      },
+    });
+
+    await user.click(
+      await screen.findByRole("button", { name: "Advanced settings" }),
+    );
+    const spaceSelect = screen.getByRole("combobox", {
+      name: "Deployment space ID",
+    });
+    await user.click(spaceSelect);
+    await user.click(
+      await screen.findByRole("option", { name: /Production.*space-prod/ }),
+    );
+
+    expect(getSettings().provider_credentials?.watsonx_onprem?.space_id).toBe(
+      "space-prod",
+    );
   });
 
   it("updates the selected embedding model for another generic provider", async () => {
