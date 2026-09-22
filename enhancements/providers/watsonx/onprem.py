@@ -213,9 +213,7 @@ def resolve_ssl_verify(value: Any) -> bool | str:
         )
         return False
     if not os.path.isfile(raw):
-        raise ValueError(
-            f"The watsonx.ai on-prem CA bundle path does not exist: {raw}"
-        )
+        raise ValueError(f"The watsonx.ai on-prem CA bundle path does not exist: {raw}")
     return raw
 
 
@@ -256,9 +254,7 @@ def litellm_credentials(stored: Mapping[str, Any]) -> dict[str, Any]:
     request body through adapters that treat unknown kwargs as payload fields.
     """
     values = _values(stored)
-    zen = values.get("zen_api_key") or zen_api_key(
-        values.get("username"), values.get("api_key")
-    )
+    zen = values.get("zen_api_key") or zen_api_key(values.get("username"), values.get("api_key"))
 
     credentials: dict[str, Any] = {
         name: value
@@ -274,9 +270,7 @@ def litellm_credentials(stored: Mapping[str, Any]) -> dict[str, Any]:
         # secret the operator supplied.
         credentials["api_key"] = values["api_key"]
     if credentials:
-        credentials["client"] = _http_client_for(
-            resolve_ssl_verify(values.get("ssl_verify"))
-        )
+        credentials["client"] = _http_client_for(resolve_ssl_verify(values.get("ssl_verify")))
         install_litellm_compatibility()
     return credentials
 
@@ -295,9 +289,7 @@ API_VERSION = "2024-03-13"
 def auth_header(stored: Mapping[str, Any]) -> str:
     """The `Authorization` value for OpenRAG's own calls to the cluster."""
     values = _values(stored)
-    zen = values.get("zen_api_key") or zen_api_key(
-        values.get("username"), values.get("api_key")
-    )
+    zen = values.get("zen_api_key") or zen_api_key(values.get("username"), values.get("api_key"))
     if zen:
         return f"ZenApiKey {zen}"
     # Deliberately no `Bearer <api_key>` fallback. A Cloud Pak for Data API key
@@ -451,9 +443,7 @@ def cached_models() -> ClusterModels | None:
 def _cache_key(credentials: Mapping[str, Any]) -> str:
     """Identify the cluster, credentials, and TLS policy behind a model list."""
     values = _values(credentials)
-    zen = values.get("zen_api_key") or zen_api_key(
-        values.get("username"), values.get("api_key")
-    )
+    zen = values.get("zen_api_key") or zen_api_key(values.get("username"), values.get("api_key"))
     tls = values.get("ssl_verify", "true").lower()
     return f"{values.get('api_base', '')}|{zen}|{tls}"
 

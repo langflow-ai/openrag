@@ -431,6 +431,7 @@ def test_custom_ca_bundle_must_exist(tmp_path) -> None:
     with pytest.raises(ValueError, match="CA bundle path does not exist"):
         watsonx_onprem.resolve_ssl_verify(str(tmp_path / "missing.pem"))
 
+
 @pytest.mark.asyncio
 async def test_health_check_uses_the_saved_tls_policy(monkeypatch) -> None:
     seen: dict[str, Any] = {}
