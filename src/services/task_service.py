@@ -9,6 +9,7 @@ from typing import Any, TypeVar
 
 from models.tasks import DoclingPhaseStatus, FileTask, IngestionPhase, TaskStatus, UploadTask
 from session_manager import AnonymousUser
+from utils.filename_claims import claim_holder, filename_claims
 from utils.gpu_detection import get_worker_count
 from utils.logging_config import get_logger
 from utils.telemetry import Category, MessageId, TelemetryClient
@@ -650,6 +651,11 @@ class TaskService:
                         )
 
                     finally:
+                        # Hand back the filename this file held while in flight
+                        # (utils.filename_claims), so the next task — or a retry
+                        # of this one — can take it. Every file passes through
+                        # here, including the ones that never claimed anything.
+                        filename_claims.release(claim_holder(task_id, item_key))
                         file_task.updated_at = time.time()
                         # Only increment processed_files if the file reached a terminal state
                         # This prevents counter inconsistency on cancellation.

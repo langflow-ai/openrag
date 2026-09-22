@@ -11,6 +11,7 @@ so test fixtures cannot accidentally pollute the dev `data/openrag.db` file.
 # guarantees that even if a test imports something that triggers
 # `init_engine()` at import time, the engine binds to an in-memory DB.
 import os as _os
+
 _os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 
 # Defensive default: pin OPENRAG_RBAC_ENFORCE=true for unit tests so a
@@ -39,8 +40,29 @@ def _reset_db_engine_module_state(monkeypatch):
     """
     try:
         import db.engine as _engine_mod
+
         monkeypatch.setattr(_engine_mod, "_engine", None, raising=False)
         monkeypatch.setattr(_engine_mod, "SessionLocal", None, raising=False)
     except ImportError:
         pass
     yield
+
+
+@pytest.fixture(autouse=True)
+def _reset_filename_claims():
+    """Per-test, drop in-flight filename claims.
+
+    In production TaskService releases a file's claim when it reaches a
+    terminal state, but tests drive `processor.process_item` directly and never
+    pass through that release — a leaked claim would make a later test's ingest
+    of the same filename resolve as a duplicate.
+    """
+    try:
+        from utils.filename_claims import filename_claims
+    except ImportError:
+        yield
+        return
+
+    filename_claims.clear()
+    yield
+    filename_claims.clear()
