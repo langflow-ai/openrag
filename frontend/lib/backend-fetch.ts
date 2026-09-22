@@ -82,7 +82,10 @@ function initialise(): void {
     // because it is the Web Fetch API, not undici.fetch — this is the fix.
     const undicicFetch = undiciModule.fetch;
     _customFetch = (input, init) =>
-      undicicFetch(input, { ...(init as UndiciRequestInit), dispatcher: agent });
+      undicicFetch(input, {
+        ...(init as UndiciRequestInit),
+        dispatcher: agent,
+      });
 
     console.info(
       "[backend-fetch] Custom CA loaded from OPENRAG_BACKEND_CA_CERT_PATH; " +
