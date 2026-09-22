@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { backendFetchInit, getBackendBaseUrl } from "@/lib/backend-fetch";
+import { backendFetch, getBackendBaseUrl } from "@/lib/backend-fetch";
 
 function getRequestId(request: NextRequest): string {
   return request.headers.get("x-request-id") || crypto.randomUUID();
@@ -111,10 +111,7 @@ async function proxyRequest(request: NextRequest, params: { path: string[] }) {
       method: request.method,
       path: `/${path}`,
     });
-    const response = await fetch(backendUrl, {
-      ...backendFetchInit(),
-      ...init,
-    });
+    const response = await backendFetch(backendUrl, init);
     const durationMs = Math.round(performance.now() - start);
     // biome-ignore lint/suspicious/noConsole: Server-side proxy timing is needed for CI diagnostics.
     console.info("[API Proxy] Request", {

@@ -7,78 +7,130 @@
  *      (legacy three-var form; preserved so existing deployments need no changes)
  *
  * Custom CA certificate (OPENRAG_BACKEND_CA_CERT_PATH):
- *   When set, every server-side fetch to the backend uses an undici Agent
- *   configured with the supplied CA bundle so Node.js trusts a self-signed or
- *   private-CA-signed backend TLS certificate.  Without this env var the
- *   dispatcher is left undefined (Node's default TLS verification applies).
+ *   When set, every server-side fetch to the backend uses undici's own fetch
+ *   function (not globalThis.fetch) with an Agent configured with the supplied
+ *   CA bundle.  This is required because globalThis.fetch in Node 18+ is the
+ *   built-in Web Fetch API and silently ignores the `dispatcher` option, so
+ *   NODE_EXTRA_CA_CERTS and passing `dispatcher` to globalThis.fetch both have
+ *   no effect on undici's TLS stack.  Calling undici.fetch directly is the only
+ *   reliable way to inject a custom CA into server-side requests.
+ *
+ *   Without OPENRAG_BACKEND_CA_CERT_PATH the module falls back to
+ *   globalThis.fetch (Node's default TLS verification applies).
  *
  * Usage:
- *   import { getBackendBaseUrl, backendFetchInit } from "@/lib/backend-fetch";
- *   const res = await fetch(`${getBackendBaseUrl()}/${path}`, {
- *     ...backendFetchInit(),
+ *   import { getBackendBaseUrl, backendFetch } from "@/lib/backend-fetch";
+ *   const res = await backendFetch(`${getBackendBaseUrl()}/${path}`, {
+ *     method: "POST",
  *     headers: { ... },
+ *     body: "...",
  *   });
  */
 
 import { readFileSync } from "node:fs";
 
-// Lazily populated so the module can be imported at build time (when env vars
-// may not be present) without throwing.
-let _agentInit: Record<string, unknown> | undefined;
-let _agentInitialised = false;
+// ---------------------------------------------------------------------------
+// Internal state — lazily initialised on first call so this module is safe to
+// import at build time when env vars may not yet be present.
+// ---------------------------------------------------------------------------
 
-function buildAgentInit(): Record<string, unknown> | undefined {
+type UndiciFetch = typeof import("undici")["fetch"];
+type UndiciRequestInit = Parameters<UndiciFetch>[1];
+type UndiciDispatcher = import("undici").Dispatcher;
+
+let _initialised = false;
+// When a custom CA is configured: the bound undici.fetch with the agent baked
+// in via the dispatcher option.  When not configured: undefined (caller falls
+// back to globalThis.fetch).
+let _customFetch: UndiciFetch | undefined;
+
+function initialise(): void {
+  if (_initialised) return;
+  _initialised = true;
+
   const caPath = process.env.OPENRAG_BACKEND_CA_CERT_PATH;
-  if (!caPath) return undefined;
+  if (!caPath) return;
 
   try {
-    // Try to load undici — it is built-in on Node 22+ (via "node:undici") and a
-    // production dependency on Node 20.  If neither is available we log a hint
-    // and fall back to the default dispatcher (no custom CA).
+    // undici is a direct production dependency (see package.json).  We also
+    // try the built-in "node:undici" alias available on Node 22+.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    let AgentClass: typeof import("undici")["Agent"] | undefined;
+    let undiciModule: typeof import("undici") | undefined;
     for (const id of ["node:undici", "undici"]) {
       try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
-        AgentClass = (require(id) as typeof import("undici")).Agent;
+        undiciModule = require(id) as typeof import("undici");
         break;
       } catch {
         // try next candidate
       }
     }
-    if (!AgentClass) {
+
+    if (!undiciModule) {
       console.warn(
-        "[backend-fetch] OPENRAG_BACKEND_CA_CERT_PATH is set but undici is not available. " +
-          "Custom CA certificate will not be applied. " +
-          "Alternative: set NODE_EXTRA_CA_CERTS to the same path.",
+        "[backend-fetch] OPENRAG_BACKEND_CA_CERT_PATH is set but undici is not " +
+          "available. Custom CA certificate will not be applied.",
       );
-      return undefined;
+      return;
     }
+
     const ca = readFileSync(caPath);
-    const agent = new AgentClass({ connect: { ca } });
-    return { dispatcher: agent };
+    const agent: UndiciDispatcher = new undiciModule.Agent({ connect: { ca } });
+
+    // Bind undici's own fetch with the custom dispatcher so every call through
+    // backendFetch() uses this agent.  globalThis.fetch ignores `dispatcher`
+    // because it is the Web Fetch API, not undici.fetch — this is the fix.
+    const undicicFetch = undiciModule.fetch;
+    _customFetch = (input, init) =>
+      undicicFetch(input, { ...(init as UndiciRequestInit), dispatcher: agent });
+
+    console.info(
+      "[backend-fetch] Custom CA loaded from OPENRAG_BACKEND_CA_CERT_PATH; " +
+        "using undici.fetch with custom dispatcher for backend requests.",
+    );
   } catch (err) {
-    // Log once and fall back — better than crashing if the file is temporarily missing.
     console.error(
       "[backend-fetch] Failed to build custom CA agent from OPENRAG_BACKEND_CA_CERT_PATH; " +
         "falling back to default TLS verification.",
       err,
     );
-    return undefined;
   }
 }
 
 /**
- * Returns extra `RequestInit` properties that should be spread into every
- * server-side `fetch` call to the backend.  Currently adds only the custom CA
- * `dispatcher`; returns an empty object when no CA cert is configured.
+ * Drop-in replacement for `fetch` for all server-side requests to the backend.
+ *
+ * When OPENRAG_BACKEND_CA_CERT_PATH is set this calls undici's own `fetch`
+ * with a custom CA Agent as the dispatcher.  Otherwise it falls through to
+ * globalThis.fetch so behaviour is identical to before for plain HTTP or
+ * publicly-trusted HTTPS backends.
+ */
+export function backendFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  if (!_initialised) initialise();
+  if (_customFetch) {
+    // undici.fetch accepts the same (input, init) signature as globalThis.fetch.
+    // Cast through unknown because undici's Response type diverges slightly from
+    // the global Response in typings only — the runtime objects are compatible.
+    return _customFetch(
+      input as Parameters<UndiciFetch>[0],
+      init as UndiciRequestInit,
+    ) as unknown as Promise<Response>;
+  }
+  return fetch(input, init);
+}
+
+/**
+ * @deprecated Use `backendFetch(url, init)` directly.  This shim is kept for
+ * any call sites that still spread `backendFetchInit()` into a globalThis.fetch
+ * call — those calls will NOT apply the custom CA because globalThis.fetch
+ * silently ignores the `dispatcher` option.  Migrate to `backendFetch`.
  */
 export function backendFetchInit(): Record<string, unknown> {
-  if (!_agentInitialised) {
-    _agentInit = buildAgentInit();
-    _agentInitialised = true;
-  }
-  return _agentInit ?? {};
+  // Return an empty object.  The dispatcher is now handled inside backendFetch.
+  return {};
 }
 
 /**
