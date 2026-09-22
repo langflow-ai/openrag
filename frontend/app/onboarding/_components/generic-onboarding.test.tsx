@@ -188,16 +188,13 @@ describe("GenericOnboarding model selection", () => {
       name: "Verify TLS certificates",
     });
 
-    expect(verifyTls).toBeChecked();
-    await user.click(verifyTls);
+    expect(verifyTls).not.toBeChecked();
     expect(
       screen.getByText(/Certificate verification is disabled/),
     ).toBeVisible();
-    expect(getSettings().provider_credentials?.watsonx_onprem?.ssl_verify).toBe(
-      "false",
-    );
 
     await user.click(verifyTls);
+    expect(verifyTls).toBeChecked();
     const caPath = screen.getByRole("textbox", {
       name: "Custom CA bundle path",
     });

@@ -60,7 +60,7 @@ def test_username_never_reaches_litellm() -> None:
 
     assert "username" not in credentials
     assert "ssl_verify" not in credentials
-    assert client.ssl_verify is True
+    assert client.ssl_verify is False
     assert credentials["api_base"] == "https://cpd.example.com"
     # Both, and the same value: the embeddings path refuses the call outright
     # when api_key is unset, and builds its auth header from zen_api_key.
@@ -121,7 +121,7 @@ def test_credential_values_translates_the_stored_form() -> None:
         "zen_api_key": "Y3BkdXNlcjpBUElLRVk=",
         "api_key": "Y3BkdXNlcjpBUElLRVk=",
     }
-    assert client.ssl_verify is True
+    assert client.ssl_verify is False
 
 
 def test_pending_credentials_rebuilds_the_zen_key_from_a_submitted_change() -> None:
@@ -420,6 +420,7 @@ def test_tls_setting_is_scoped_to_the_onprem_provider(monkeypatch) -> None:
     assert "ssl_verify" not in insecure
     assert watsonx_onprem.ssl_verify({"ssl_verify": "true"}) is True
     assert watsonx_onprem.ssl_verify({"ssl_verify": "false"}) is False
+    assert watsonx_onprem.ssl_verify({}) is False
     assert os.environ["SSL_VERIFY"] == "false"
 
 
@@ -464,9 +465,22 @@ async def test_health_check_uses_the_saved_tls_policy(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_space_listing_uses_saved_auth_tls_and_rebases_pagination(monkeypatch) -> None:
-    seen: dict[str, Any] = {"urls": []}
-    pages = [
+async def test_space_listing_rejects_cleartext_credentials() -> None:
+    with pytest.raises(ValueError, match="must use HTTPS"):
+        await watsonx_onprem.list_spaces(
+            {
+                "api_base": "http://cpd.example.com",
+                "username": "cpduser",
+                "api_key": "APIKEY",
+            }
+        )
+
+
+@pytest.mark.asyncio
+async def test_space_listing_uses_bearer_tls_and_rebases_pagination(monkeypatch) -> None:
+    seen: dict[str, Any] = {"requests": []}
+    responses = [
+        {"accessToken": "cpd-access-token"},
         {
             "resources": [
                 {"metadata": {"id": "space-1", "name": "Production"}},
@@ -493,9 +507,8 @@ async def test_space_listing_uses_saved_auth_tls_and_rebases_pagination(monkeypa
             return False
 
         async def request(self, method, url, **kwargs):
-            seen["urls"].append(url)
-            seen["authorization"] = kwargs["headers"]["Authorization"]
-            body = pages.pop(0)
+            seen["requests"].append((method, url, kwargs))
+            body = responses.pop(0)
             return SimpleNamespace(status_code=200, text="{}", json=lambda: body)
 
     monkeypatch.setattr("httpx.AsyncClient", _Client)
@@ -505,7 +518,6 @@ async def test_space_listing_uses_saved_auth_tls_and_rebases_pagination(monkeypa
             "api_base": "https://cpd.example.com",
             "username": "cpduser",
             "api_key": "APIKEY",
-            "ssl_verify": "false",
         }
     )
 
@@ -514,24 +526,25 @@ async def test_space_listing_uses_saved_auth_tls_and_rebases_pagination(monkeypa
         {"id": "space-2", "name": "Development"},
     ]
     assert seen["verify"] is False
-    assert seen["authorization"].startswith("ZenApiKey ")
-    assert seen["urls"] == [
-        "https://cpd.example.com/v2/spaces",
-        "https://cpd.example.com/v2/spaces?version=2024-03-13&start=2",
+    assert [(method, url) for method, url, _ in seen["requests"]] == [
+        ("POST", "https://cpd.example.com/icp4d-api/v1/authorize"),
+        ("GET", "https://cpd.example.com/v2/spaces"),
+        ("GET", "https://cpd.example.com/v2/spaces?version=2024-03-13&start=2"),
     ]
+    assert seen["requests"][0][2]["json"] == {
+        "username": "cpduser",
+        "api_key": "APIKEY",
+    }
+    assert all(
+        kwargs["headers"]["Authorization"] == "Bearer cpd-access-token"
+        for _, _, kwargs in seen["requests"][1:]
+    )
 
 
 @pytest.mark.asyncio
-async def test_space_listing_exchanges_credentials_when_zen_auth_is_rejected(
-    monkeypatch,
-) -> None:
+async def test_space_listing_exchanges_a_pasted_zen_key_for_bearer(monkeypatch) -> None:
     requests: list[tuple[str, str, dict[str, Any]]] = []
-    seen: dict[str, Any] = {}
     responses = [
-        (
-            400,
-            {"message": "Authorization header has not been provided."},
-        ),
         (200, {"token": "cpd-access-token"}),
         (
             200,
@@ -545,7 +558,7 @@ async def test_space_listing_exchanges_credentials_when_zen_auth_is_rejected(
 
     class _Client:
         def __init__(self, *, verify, timeout):
-            seen["verify"] = verify
+            assert verify is False
 
         async def __aenter__(self):
             return self
@@ -567,24 +580,20 @@ async def test_space_listing_exchanges_credentials_when_zen_auth_is_rejected(
     spaces = await watsonx_onprem.list_spaces(
         {
             "api_base": "https://cpd.example.com",
-            "username": "cpduser",
-            "api_key": "APIKEY",
-            "ssl_verify": "false",
+            "zen_api_key": "Y3BkdXNlcjpBUElLRVk=",
         }
     )
 
     assert spaces == [{"id": "space-1", "name": "Production"}]
-    assert seen["verify"] is False
     assert [(method, url) for method, url, _ in requests] == [
-        ("GET", "https://cpd.example.com/v2/spaces"),
         ("POST", "https://cpd.example.com/icp4d-api/v1/authorize"),
         ("GET", "https://cpd.example.com/v2/spaces"),
     ]
-    assert requests[1][2]["json"] == {
+    assert requests[0][2]["json"] == {
         "username": "cpduser",
         "api_key": "APIKEY",
     }
-    assert requests[2][2]["headers"]["Authorization"] == "Bearer cpd-access-token"
+    assert requests[1][2]["headers"]["Authorization"] == "Bearer cpd-access-token"
 
 
 def test_auth_method_changes_preserve_the_tls_policy() -> None:

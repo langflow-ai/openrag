@@ -30,7 +30,7 @@ export function WatsonxTlsSettings({
   idPrefix: string;
 }) {
   const normalized = (value ?? "").trim().toLowerCase();
-  const enabled = FALSE_VALUES[normalized] !== true;
+  const enabled = Boolean(normalized) && FALSE_VALUES[normalized] !== true;
   const caPath =
     !normalized ||
     TRUE_VALUES[normalized] === true ||
