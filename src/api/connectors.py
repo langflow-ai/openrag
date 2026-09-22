@@ -1159,9 +1159,15 @@ async def _bucket_blob_ids_with_indexed_filename(
     session_manager,
     user_id: str,
     jwt_token: str | None,
-) -> set[str]:
-    """Ids of the blobs whose filename already has indexed chunks, from any
-    source — a direct upload, another connector, or an earlier sync of this one.
+) -> dict[str, str]:
+    """Map each blob whose filename already has indexed chunks — from any source,
+    a direct upload, another connector, or an earlier sync of this one — to the
+    indexed name it lands on.
+
+    The name, not just the id, because two blobs in one container can land on
+    the same one: a bucket connector names a blob after its key's basename, so
+    ``a/report.pdf`` and ``b/report.pdf`` are both ``report.pdf``. Callers that
+    act on the collision need to know which of them compete.
 
     One batched terms aggregation for the whole listing, through the same
     ``find_existing_filenames`` the OAuth connector classifier and the per-file
@@ -1182,7 +1188,7 @@ async def _bucket_blob_ids_with_indexed_filename(
         all_candidates.update(aliases)
 
     if not all_candidates:
-        return set()
+        return {}
 
     opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
     try:
@@ -1192,13 +1198,17 @@ async def _bucket_blob_ids_with_indexed_filename(
     except Exception as search_err:
         if "index_not_found_exception" not in str(search_err):
             raise
-        return set()
+        return {}
 
-    return {
-        fid
-        for fid, aliases in aliases_by_id.items()
-        if any(alias in existing_filenames for alias in aliases)
-    }
+    # Listing order, so a caller resolving a contested name gets a stable winner
+    # (bucket listings are ordered by key).
+    matched: dict[str, str] = {}
+    for fid, aliases in aliases_by_id.items():
+        for alias in aliases:
+            if alias in existing_filenames:
+                matched[fid] = alias
+                break
+    return matched
 
 
 async def _classify_bucket_connector_duplicates(
@@ -1775,13 +1785,24 @@ async def connector_sync(
                 # than every object in the container.
                 colliding_ids: set[str] = set()
                 if body.replace_duplicates:
-                    colliding_ids = {
-                        fid
-                        for fid in await _bucket_blob_ids_with_indexed_filename(
-                            all_files, session_manager, user.user_id, jwt_token
-                        )
-                        if fid not in existing_set
-                    }
+                    # One winner per contested name. Two blobs in the same
+                    # container can land on the same indexed filename (a bucket
+                    # connector names a blob after its key's basename, so
+                    # a/report.pdf and b/report.pdf are both "report.pdf"), and
+                    # files within a task are ingested concurrently — replacing
+                    # one document from two of them at once has no defined
+                    # winner. The first in listing order takes the name; the
+                    # rest fall through to the per-file backstop, which skips
+                    # them as duplicates exactly as it does today.
+                    claimed_names: set[str] = set()
+                    collisions = await _bucket_blob_ids_with_indexed_filename(
+                        all_files, session_manager, user.user_id, jwt_token
+                    )
+                    for fid, indexed_name in collisions.items():
+                        if fid in existing_set or indexed_name in claimed_names:
+                            continue
+                        claimed_names.add(indexed_name)
+                        colliding_ids.add(fid)
 
                 new_ids: list[str] = []
                 replace_ids: list[str] = []
