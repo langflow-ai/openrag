@@ -224,6 +224,20 @@ export function SkippedStatusCell({ warning }: { warning?: string }) {
   );
 }
 
+/** Builds the URL for navigating from a knowledge search result to its chunks page.
+ *  Exported for unit testing; the click handler in SearchPage calls this directly. */
+export function buildChunksUrl(
+  filename: string,
+  effectiveSearchText: string,
+): string {
+  const params = new URLSearchParams({ filename });
+  const trimmed = effectiveSearchText.trim();
+  if (trimmed && trimmed !== "*") {
+    params.set("q", trimmed);
+  }
+  return `/knowledge/chunks?${params.toString()}`;
+}
+
 function SearchPage() {
   const isCloudBrand = useIsCloudBrand();
   const queryClient = useQueryClient();
@@ -675,9 +689,7 @@ function SearchPage() {
               onClick={() => {
                 if (!isActive) return;
                 router.push(
-                  `/knowledge/chunks?filename=${encodeURIComponent(
-                    data?.filename ?? "",
-                  )}`,
+                  buildChunksUrl(data?.filename ?? "", effectiveSearchText),
                 );
               }}
             >
