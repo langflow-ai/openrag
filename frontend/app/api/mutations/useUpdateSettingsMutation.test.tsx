@@ -18,17 +18,19 @@ import {
 describe("useUpdateSettingsMutation", () => {
   it("posts the settings payload and triggers a settings refetch on success", async () => {
     let settingsFetchCount = 0;
+    let capturedBody: unknown;
     server.use(
       http.get("/api/settings", () => {
         settingsFetchCount += 1;
         return HttpResponse.json({ agent: { llm_provider: "openai" } });
       }),
-      http.post("/api/settings", () =>
-        HttpResponse.json({
+      http.post("/api/settings", async ({ request }) => {
+        capturedBody = await request.json();
+        return HttpResponse.json({
           message: "saved",
           settings: { agent: { llm_provider: "openai" } },
-        }),
-      ),
+        });
+      }),
       http.post("/api/models/openai", () =>
         HttpResponse.json({ language_models: [], embedding_models: [] }),
       ),
@@ -43,6 +45,7 @@ describe("useUpdateSettingsMutation", () => {
     act(() => result.current.mutate({ llm_model: "gpt-5.4" }));
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(capturedBody).toEqual({ llm_model: "gpt-5.4" });
     // invalidateQueries refetches the mounted useGetSettingsQuery observer.
     await waitFor(() => expect(settingsFetchCount).toBe(2));
   });

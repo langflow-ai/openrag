@@ -5,11 +5,17 @@
  */
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Connector } from "@/app/api/queries/useGetConnectorsQuery";
 import { server } from "@/test-utils/msw/server";
 import { createQueryWrapper, createTestQueryClient } from "@/test-utils/render";
 import { useConnectConnectorMutation } from "./useConnectConnectorMutation";
+
+const toast = vi.hoisted(() => ({
+  error: vi.fn(),
+  success: vi.fn(),
+}));
+vi.mock("sonner", () => ({ toast }));
 
 function connector(overrides: Partial<Connector> = {}): Connector {
   return {
@@ -26,6 +32,8 @@ function connector(overrides: Partial<Connector> = {}): Connector {
 describe("useConnectConnectorMutation", () => {
   beforeEach(() => {
     localStorage.clear();
+    toast.error.mockClear();
+    toast.success.mockClear();
   });
 
   it("stores OAuth redirect state in localStorage and does not touch the connector cache", async () => {
@@ -160,10 +168,20 @@ describe("useConnectConnectorMutation", () => {
   });
 
   it("restores the pre-mutation cache and toasts on failure", async () => {
+    let requestStarted = false;
+    let releaseResponse!: () => void;
+    const responseBlocked = new Promise<void>((resolve) => {
+      releaseResponse = resolve;
+    });
     server.use(
-      http.post("/api/auth/init", () =>
-        HttpResponse.json({ error: "provider unreachable" }, { status: 500 }),
-      ),
+      http.post("/api/auth/init", async () => {
+        requestStarted = true;
+        await responseBlocked;
+        return HttpResponse.json(
+          { error: "provider unreachable" },
+          { status: 500 },
+        );
+      }),
     );
 
     const queryClient = createTestQueryClient();
@@ -190,10 +208,18 @@ describe("useConnectConnectorMutation", () => {
       });
     });
 
+    await waitFor(() => expect(requestStarted).toBe(true));
+    queryClient.setQueryData(
+      ["connectors", false, false, false, false],
+      [connector({ status: "not_connected" })],
+    );
+    releaseResponse();
+
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(result.current.error?.message).toBe("provider unreachable");
     expect(
       queryClient.getQueryData(["connectors", false, false, false, false]),
     ).toEqual(seed);
+    expect(toast.error).toHaveBeenCalledWith("provider unreachable");
   });
 });
