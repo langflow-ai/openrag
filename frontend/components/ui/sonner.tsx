@@ -16,15 +16,18 @@ const Toaster = ({ ...props }: ToasterProps) => {
         classNames: {
           toast:
             "group toast group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg",
+          // Mimics Carbon inline-notification (no Carbon package — project tokens only):
+          //   light → tinted surface (accent-* bg) + accent-foreground left border
+          //   dark  → neutral card surface + accent-foreground left border only
           success:
-            "group-[.toaster]:!bg-green-700 group-[.toaster]:!text-white group-[.toaster]:!border-green-700 [&_[data-description]]:!text-white",
+            "group-[.toaster]:!bg-accent-emerald dark:group-[.toaster]:!bg-card group-[.toaster]:!text-foreground group-[.toaster]:!border-accent-emerald dark:group-[.toaster]:!border-border [&_[data-description]]:!text-muted-foreground [border-left:3px_solid_hsl(var(--accent-emerald-foreground))]",
           warning:
-            "group-[.toaster]:!bg-amber-700 group-[.toaster]:!text-white group-[.toaster]:!border-amber-700 [&_[data-description]]:!text-white",
+            "group-[.toaster]:!bg-accent-amber dark:group-[.toaster]:!bg-card group-[.toaster]:!text-foreground group-[.toaster]:!border-accent-amber dark:group-[.toaster]:!border-border [&_[data-description]]:!text-muted-foreground [border-left:3px_solid_hsl(var(--accent-amber-foreground))]",
           error:
-            "group-[.toaster]:!bg-red-600 group-[.toaster]:!text-white group-[.toaster]:!border-red-600 [&_[data-description]]:!text-white",
+            "group-[.toaster]:!bg-accent-red dark:group-[.toaster]:!bg-card group-[.toaster]:!text-foreground group-[.toaster]:!border-accent-red dark:group-[.toaster]:!border-border [&_[data-description]]:!text-muted-foreground [border-left:3px_solid_hsl(var(--accent-red-foreground))]",
           description: "!text-muted-foreground",
           actionButton:
-            "group-data-[type=success]:!bg-green-900 group-data-[type=success]:!text-white group-data-[type=warning]:!bg-amber-900 group-data-[type=warning]:!text-white group-data-[type=error]:!bg-red-900 group-data-[type=error]:!text-white !bg-primary !text-primary-foreground",
+            "!bg-secondary !text-secondary-foreground hover:!bg-secondary-hover",
           cancelButton: "!bg-muted !text-muted-foreground",
         },
       }}
