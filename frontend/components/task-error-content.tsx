@@ -29,6 +29,9 @@ import {
 import { formatTaskTimestamp, parseTimestamp } from "@/lib/time-utils";
 import { cn } from "@/lib/utils";
 
+/** Stops both click and keyboard events from bubbling to parent handlers. */
+const stopEvent = (e: React.SyntheticEvent) => e.stopPropagation();
+
 interface TaskErrorContentProps {
   task: Task;
   mode?: "recent" | "past";
@@ -102,7 +105,6 @@ export function TaskErrorContent({
   }
 
   const ossIconColumn = showHeader && !isCloudBrand;
-  const stopEvent = (e: React.SyntheticEvent) => e.stopPropagation();
   const toggleAccordion = () =>
     setAccordionValue((value) =>
       value === "failed-files" ? "" : "failed-files",
@@ -201,10 +203,14 @@ export function TaskErrorContent({
                   {!isExpanded && (
                     <p className={statusPillClassName}>{statusLabel}</p>
                   )}
-                  {/* biome-ignore lint/a11y/noStaticElementInteractions: stop-propagation wrapper */}
-                  <span onClick={stopEvent} onKeyDown={stopEvent}>
+                  {/* biome-ignore lint/a11y/noStaticElementInteractions: presentation wrapper; stopPropagation only, no interactive semantics */}
+                  <div
+                    role="presentation"
+                    onClick={stopEvent}
+                    onKeyDown={stopEvent}
+                  >
                     {openTaskDialogButton}
-                  </span>
+                  </div>
                   {/* biome-ignore lint/a11y/noStaticElementInteractions: stop-propagation wrapper */}
                   <span onClick={(event) => event.stopPropagation()}>
                     {headerEnd}
