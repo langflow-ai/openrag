@@ -764,7 +764,8 @@ class ConnectorSyncBody(BaseModel):
     settings: dict[str, Any] | None = None
     # When True, files whose filename already exists in the index are replaced
     # rather than failing. Set by the provider upload UI after the user confirms
-    # overwrite in the duplicate dialog.
+    # overwrite in the duplicate dialog. Honored for an explicit ``selected_files``
+    # sync and for a whole-container ``bucket_filter`` sync (see connector_sync).
     replace_duplicates: bool = False
     # When True (OSS only for now; SaaS deferred), run the ingest in preview mode
     # (same as direct upload). Honored only when is_ingest_preview_enabled().
@@ -917,6 +918,74 @@ def _connector_scoped_to_buckets(connector, bucket_names: list[str]):
     return scoped
 
 
+def _cleaned_blob_filename(file_info: dict[str, Any]) -> str:
+    """The name a remote blob would be indexed under, cleaned exactly as
+    ingestion cleans it — so name comparisons here mean what they say."""
+    from utils.file_utils import clean_connector_filename
+
+    return clean_connector_filename(
+        file_info.get("name", ""),
+        file_info.get("mimeType") or file_info.get("mime_type") or file_info.get("mimetype") or "",
+    )
+
+
+async def _bucket_blob_ids_with_indexed_filename(
+    files: list[dict[str, Any]],
+    session_manager,
+    user_id: str,
+    jwt_token: str | None,
+) -> dict[str, str]:
+    """Map each blob whose filename already has indexed chunks — from any source,
+    a direct upload, another connector, or an earlier sync of this one — to the
+    indexed name it lands on.
+
+    The name, not just the id, because two blobs in one container can land on
+    the same one: a bucket connector names a blob after its key's basename, so
+    ``a/report.pdf`` and ``b/report.pdf`` are both ``report.pdf``. Callers that
+    act on the collision need to know which of them compete.
+
+    One batched terms aggregation for the whole listing, through the same
+    ``find_existing_filenames`` the OAuth connector classifier and the per-file
+    processor backstop use, so the duplicate question gets one answer at every
+    altitude. A missing index means nothing is indexed yet, not a failure.
+    """
+    from utils.file_utils import get_filename_aliases
+    from utils.opensearch_filenames import find_existing_filenames
+
+    aliases_by_id: dict[str, list[str]] = {}
+    all_candidates: set[str] = set()
+    for f in files:
+        fid = f.get("id")
+        if not fid:
+            continue
+        aliases = get_filename_aliases(_cleaned_blob_filename(f))
+        aliases_by_id[fid] = aliases
+        all_candidates.update(aliases)
+
+    if not all_candidates:
+        return {}
+
+    opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
+    try:
+        existing_filenames = await find_existing_filenames(
+            all_candidates, opensearch_client, get_index_name()
+        )
+    except Exception as search_err:
+        if "index_not_found_exception" not in str(search_err):
+            raise
+        return {}
+
+    # Listing order, so a caller resolving a contested name gets a stable winner
+    # (bucket listings are ordered by key).
+    matched: dict[str, str] = {}
+    for fid, aliases in aliases_by_id.items():
+        for alias in aliases:
+            if alias in existing_filenames:
+                matched[fid] = alias
+                break
+    return matched
+
+
 async def _classify_bucket_connector_duplicates(
     connector,
     connector_type: str,
@@ -925,13 +994,14 @@ async def _classify_bucket_connector_duplicates(
     user_id: str,
     jwt_token: str | None,
 ) -> dict[str, Any]:
-    """Preview a bucket_filter sync: classify remote blobs new/changed/unchanged
-    without ingesting anything, mirroring the reconciliation in connector_sync's
-    bucket_filter branch. "changed" blobs are reported as duplicates (they would
-    overwrite an already-indexed version); "unchanged" blobs are silently
-    dropped (the real sync would skip them too); "new" blobs are returned as
-    ``non_duplicate_files`` so the caller can sync just those when the user
-    chooses to skip duplicates.
+    """Preview a bucket_filter sync: classify remote blobs as duplicate or new
+    without ingesting anything, so the upload UI can confirm an overwrite.
+
+    A blob is a duplicate when it is already indexed under THIS connector type
+    (id match) or when its filename is already in the index from any other
+    source — a direct upload, a different connector. Blobs that match neither
+    are returned as ``non_duplicate_files`` so the caller can sync just those
+    when the user chooses to skip duplicates.
     """
     scoped_connector = _connector_scoped_to_buckets(connector, bucket_filter)
     all_files: list[dict[str, Any]] = []
@@ -960,33 +1030,39 @@ async def _classify_bucket_connector_duplicates(
     )
     existing_set = set(existing_ids)
 
-    # Existence-based, like the OAuth connector duplicate check: any blob
-    # already ingested under this connector_type is a "duplicate" regardless
-    # of whether the remote copy is newer. (The real bucket_filter sync uses
-    # modified_time to auto-skip unchanged blobs on ITS OWN — that's a
-    # separate, silent optimization; the confirm dialog here is about whether
-    # the user wants to touch an already-indexed file at all, same as it
-    # would for Google Drive/OneDrive/SharePoint.)
+    # The id half answers "did this connector already ingest this blob?"; the
+    # filename half answers "is this name already in the index at all?" — the
+    # question a direct upload, or an ingest through a different connector,
+    # makes relevant. Only the id half existed here, so a bucket whose blobs
+    # collide by name with files ingested elsewhere reported zero duplicates,
+    # skipped the confirm dialog, and then had every colliding file skipped at
+    # ingest time with "A file with this name already exists".
+    name_taken_ids = await _bucket_blob_ids_with_indexed_filename(
+        all_files, session_manager, user_id, jwt_token
+    )
+
     duplicate_files: list[dict[str, Any]] = []
     duplicate_names: list[str] = []
     non_duplicate_files: list[dict[str, Any]] = []
+    total = 0
     for f in all_files:
         fid = f.get("id")
         if not fid:
             continue
-        if fid in existing_set:
-            response_file = _connector_file_response(f)
+        total += 1
+        response_file = _connector_file_response(f, cleaned_name=_cleaned_blob_filename(f))
+        if fid in existing_set or fid in name_taken_ids:
             duplicate_files.append(response_file)
             duplicate_names.append(response_file["name"])
         else:
-            non_duplicate_files.append(_connector_file_response(f))
+            non_duplicate_files.append(response_file)
 
     return {
         "duplicate_names": list(dict.fromkeys(duplicate_names)),
         "duplicate_files": duplicate_files,
         "non_duplicate_files": non_duplicate_files,
         "duplicate_count": len(duplicate_files),
-        "total_files": len(all_files),
+        "total_files": total,
     }
 
 
@@ -1435,6 +1511,23 @@ async def connector_sync(
                         status_code=200,
                     )
 
+                # Carry the listing's names into the task so its file rows read
+                # "report.pdf" rather than the raw "<bucket>::<key>" id, which is
+                # all the task has until each blob is fetched.
+                infos_by_id = {
+                    f["id"]: _connector_file_response(f) for f in all_files if f.get("id")
+                }
+                if not infos_by_id:
+                    # Nothing addressable: every listed blob came back without an
+                    # id, so there is no sync to start.
+                    return JSONResponse(
+                        {
+                            "status": "no_files",
+                            "message": "No files found in the selected buckets.",
+                        },
+                        status_code=200,
+                    )
+
                 # Classify each remote blob as new / changed / unchanged.
                 existing_ids, _, _ = await get_synced_file_ids_for_connector(
                     connector_type=connector_type,
@@ -1450,11 +1543,44 @@ async def connector_sync(
                     jwt_token=jwt_token,
                 )
 
+                # "Overwrite duplicates", confirmed in the UI dialog, is about
+                # blobs whose name is already indexed but which this connector
+                # has never synced — a direct upload, another connector. Nothing
+                # we store about them can say whether the source is newer, so
+                # change detection cannot decide them and they are replaced
+                # outright. It deliberately does NOT cover blobs this connector
+                # already synced: those keep the modified-time gate, so confirming
+                # an overwrite re-ingests the colliding files rather than every
+                # object in the container.
+                colliding_ids: set[str] = set()
+                if body.replace_duplicates:
+                    # One winner per contested name. Two blobs in the same
+                    # container can land on the same indexed filename (a bucket
+                    # connector names a blob after its key's basename, so
+                    # a/report.pdf and b/report.pdf are both "report.pdf"), and
+                    # files within a task are ingested concurrently — replacing
+                    # one document from two of them at once has no defined
+                    # winner. The first in listing order takes the name; the
+                    # rest fall through to the per-file backstop, which skips
+                    # them as duplicates exactly as it does today.
+                    claimed_names: set[str] = set()
+                    collisions = await _bucket_blob_ids_with_indexed_filename(
+                        all_files, session_manager, user.user_id, jwt_token
+                    )
+                    for fid, indexed_name in collisions.items():
+                        if fid in existing_set or indexed_name in claimed_names:
+                            continue
+                        claimed_names.add(indexed_name)
+                        colliding_ids.add(fid)
+
                 new_ids: list[str] = []
-                changed_ids: list[str] = []
+                replace_ids: list[str] = []
                 for f in all_files:
                     fid = f.get("id")
                     if not fid:
+                        continue
+                    if fid in colliding_ids:
+                        replace_ids.append(fid)
                         continue
                     status = classify_remote_file_change(
                         fid,
@@ -1465,7 +1591,7 @@ async def connector_sync(
                     if status == "new":
                         new_ids.append(fid)
                     elif status == "changed":
-                        changed_ids.append(fid)
+                        replace_ids.append(fid)
                     # "unchanged" → skip; already ingested and not newer at source.
 
                 logger.info(
@@ -1473,11 +1599,12 @@ async def connector_sync(
                     connector_type=connector_type,
                     total=len(all_files),
                     new=len(new_ids),
-                    changed=len(changed_ids),
-                    skipped=len(all_files) - len(new_ids) - len(changed_ids),
+                    replaced=len(replace_ids),
+                    overwritten_duplicates=len(colliding_ids),
+                    skipped=len(all_files) - len(new_ids) - len(replace_ids),
                 )
 
-                if not new_ids and not changed_ids:
+                if not new_ids and not replace_ids:
                     return JSONResponse(
                         {
                             "status": "no_files",
@@ -1486,10 +1613,10 @@ async def connector_sync(
                         status_code=200,
                     )
 
-                # Two batches: new files are created; changed files replace the
-                # indexed copy (replace_duplicates=True bypasses the filename-skip
-                # and deletes stale chunks before re-ingest). replace is batch-level,
-                # hence the split.
+                # Two batches: new files are created; changed and overwritten
+                # files replace the indexed copy (replace_duplicates=True bypasses
+                # the filename-skip and deletes stale chunks before re-ingest).
+                # replace is batch-level, hence the split.
                 if new_ids:
                     task_ids.append(
                         await connector_service.sync_specific_files(
@@ -1497,18 +1624,20 @@ async def connector_sync(
                             user.user_id,
                             new_ids,
                             jwt_token=jwt_token,
+                            file_infos=[infos_by_id[fid] for fid in new_ids],
                             ingest_settings=body.settings,
                             preview_mode=preview_mode,
                             shared=body.shared,
                         )
                     )
-                if changed_ids:
+                if replace_ids:
                     task_ids.append(
                         await connector_service.sync_specific_files(
                             working_connection.connection_id,
                             user.user_id,
-                            changed_ids,
+                            replace_ids,
                             jwt_token=jwt_token,
+                            file_infos=[infos_by_id[fid] for fid in replace_ids],
                             ingest_settings=body.settings,
                             replace_duplicates=True,
                             preview_mode=preview_mode,
