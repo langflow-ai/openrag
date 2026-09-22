@@ -7,7 +7,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, vi } from "vitest";
 import { server } from "@/test-utils/msw/server";
-import { createQueryWrapper } from "@/test-utils/render";
+import { createQueryWrapper, createTestQueryClient } from "@/test-utils/render";
 import { useOnboardingMutation } from "./useOnboardingMutation";
 
 describe("useOnboardingMutation", () => {
@@ -99,6 +99,32 @@ describe("useOnboardingMutation", () => {
     await waitFor(() =>
       expect(stateBody).toEqual({ openrag_docs_filter_id: "filter-123" }),
     );
+  });
+
+  it("invalidates settings and calls the caller's onSettled", async () => {
+    const response = { message: "done", edited: true };
+    const onSettled = vi.fn();
+    server.use(http.post("/api/onboarding", () => HttpResponse.json(response)));
+
+    const queryClient = createTestQueryClient();
+    queryClient.setQueryDefaults(["settings"], { gcTime: 60_000 });
+    queryClient.setQueryData(["settings"], { edited: false });
+    const { result } = renderHook(() => useOnboardingMutation({ onSettled }), {
+      wrapper: createQueryWrapper({ queryClient }),
+    });
+
+    act(() => result.current.mutate({}));
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(onSettled).toHaveBeenCalledOnce();
+    expect(onSettled).toHaveBeenCalledWith(
+      response,
+      null,
+      {},
+      undefined,
+      expect.anything(),
+    );
+    expect(queryClient.getQueryState(["settings"])?.isInvalidated).toBe(true);
   });
 
   it("does not call the onboarding-state endpoint when there is no filter ID", async () => {

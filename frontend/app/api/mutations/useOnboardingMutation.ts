@@ -68,11 +68,12 @@ export const useOnboardingMutation = (
 
   return useMutation({
     mutationFn: submitOnboarding,
-    onSettled: () => {
+    ...options,
+    onSettled: (...args) => {
       // Invalidate settings query to refetch updated data
       queryClient.invalidateQueries({ queryKey: ["settings"] });
+      return options?.onSettled?.(...args);
     },
-    ...options,
     onSuccess: (data, variables, onMutateResult, context) => {
       // Save OpenRAG docs filter ID if sample data was ingested
       if (data.openrag_docs_filter_id) {
