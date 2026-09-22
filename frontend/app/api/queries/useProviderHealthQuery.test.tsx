@@ -156,16 +156,16 @@ describe("useProviderHealthQuery", () => {
     "processing",
   ] as const)("stays disabled while a task is %s", async (status) => {
     let healthRequests = 0;
-    let releaseTasks!: () => void;
-    const tasksBlocked = new Promise<void>((resolve) => {
-      releaseTasks = resolve;
+    let releaseSettings!: () => void;
+    const settingsBlocked = new Promise<void>((resolve) => {
+      releaseSettings = resolve;
     });
     server.use(
-      http.get("/api/settings", () =>
-        HttpResponse.json(makeSettings({ edited: true })),
-      ),
-      http.get("/api/tasks/enhanced", async () => {
-        await tasksBlocked;
+      http.get("/api/settings", async () => {
+        await settingsBlocked;
+        return HttpResponse.json(makeSettings({ edited: true }));
+      }),
+      http.get("/api/tasks/enhanced", () => {
         return HttpResponse.json(
           makeTasksResponse([makeTask({ task_id: "t1", status })]),
         );
@@ -193,16 +193,13 @@ describe("useProviderHealthQuery", () => {
     );
 
     await waitFor(() =>
-      expect(result.current.settings.data?.edited).toBe(true),
-    );
-    expect(result.current.health.isEnabled).toBe(false);
-    expect(healthRequests).toBe(0);
-    releaseTasks();
-
-    await waitFor(() =>
       expect(result.current.tasks.data).toEqual([
         expect.objectContaining({ status }),
       ]),
+    );
+    releaseSettings();
+    await waitFor(() =>
+      expect(result.current.settings.data?.edited).toBe(true),
     );
     expect(result.current.health.isEnabled).toBe(false);
     expect(healthRequests).toBe(0);

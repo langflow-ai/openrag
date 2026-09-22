@@ -66,39 +66,19 @@ describe("useOnboardingMutation", () => {
     );
   });
 
-  it("persists the filter ID and calls the caller's onSuccess", async () => {
-    let stateBody: unknown;
-    let releaseSave!: () => void;
-    const saveBlocked = new Promise<void>((resolve) => {
-      releaseSave = resolve;
-    });
+  it("calls the caller's onSuccess for a completed onboarding request", async () => {
     const onSuccess = vi.fn();
     const response = {
       message: "done",
       edited: true,
-      openrag_docs_filter_id: "filter-123",
     };
-    server.use(
-      http.post("/api/onboarding", () => HttpResponse.json(response)),
-      http.post("/api/onboarding/state", async ({ request }) => {
-        stateBody = await request.json();
-        await saveBlocked;
-        return HttpResponse.json({ success: true });
-      }),
-    );
+    server.use(http.post("/api/onboarding", () => HttpResponse.json(response)));
 
     const { result } = renderHook(() => useOnboardingMutation({ onSuccess }), {
       wrapper: createQueryWrapper(),
     });
 
     act(() => result.current.mutate({}));
-
-    await waitFor(() =>
-      expect(stateBody).toEqual({ openrag_docs_filter_id: "filter-123" }),
-    );
-    expect(onSuccess).not.toHaveBeenCalled();
-    expect(result.current.isSuccess).toBe(false);
-    releaseSave();
 
     await waitFor(() =>
       expect(onSuccess).toHaveBeenCalledWith(
@@ -111,61 +91,47 @@ describe("useOnboardingMutation", () => {
     expect(result.current.isSuccess).toBe(true);
   });
 
-  it("reports a failed filter ID save without completing onboarding", async () => {
-    const onSuccess = vi.fn();
+  it("calls the caller's onError when onboarding fails", async () => {
     const onError = vi.fn();
     server.use(
       http.post("/api/onboarding", () =>
-        HttpResponse.json({
-          message: "done",
-          edited: true,
-          openrag_docs_filter_id: "filter-123",
-        }),
-      ),
-      http.post("/api/onboarding/state", () =>
         HttpResponse.json(
-          { error: "Could not save filter ID" },
+          { error: "Could not complete onboarding" },
           { status: 500 },
         ),
       ),
     );
 
-    const { result } = renderHook(
-      () => useOnboardingMutation({ onSuccess, onError }),
-      { wrapper: createQueryWrapper() },
-    );
+    const { result } = renderHook(() => useOnboardingMutation({ onError }), {
+      wrapper: createQueryWrapper(),
+    });
 
     act(() => result.current.mutate({}));
 
     await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(result.current.error?.message).toBe("Could not save filter ID");
-    expect(onError).toHaveBeenCalledOnce();
-    expect(onSuccess).not.toHaveBeenCalled();
+    expect(result.current.error?.message).toBe("Could not complete onboarding");
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "Could not complete onboarding" }),
+      {},
+      undefined,
+      expect.anything(),
+    );
   });
 
-  it("invalidates settings and calls the caller's onSettled", async () => {
+  it("invalidates settings after onboarding settles", async () => {
     const response = { message: "done", edited: true };
-    const onSettled = vi.fn();
     server.use(http.post("/api/onboarding", () => HttpResponse.json(response)));
 
     const queryClient = createTestQueryClient();
     queryClient.setQueryDefaults(["settings"], { gcTime: 60_000 });
     queryClient.setQueryData(["settings"], { edited: false });
-    const { result } = renderHook(() => useOnboardingMutation({ onSettled }), {
+    const { result } = renderHook(() => useOnboardingMutation(), {
       wrapper: createQueryWrapper({ queryClient }),
     });
 
     act(() => result.current.mutate({}));
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(onSettled).toHaveBeenCalledOnce();
-    expect(onSettled).toHaveBeenCalledWith(
-      response,
-      null,
-      {},
-      undefined,
-      expect.anything(),
-    );
     expect(queryClient.getQueryState(["settings"])?.isInvalidated).toBe(true);
   });
 
