@@ -19,6 +19,7 @@ from utils.file_utils import (
     get_filename_aliases,
     langflow_safe_filename_and_mimetype,
 )
+from utils.filename_claims import claim_holder, claim_scope, filename_claims
 from utils.hash_utils import hash_id
 from utils.logging_config import get_logger
 from utils.opensearch_queries import build_replace_filename_query
@@ -256,6 +257,7 @@ class TaskProcessor:
         replace: bool,
         owner_user_id: str | None,
         shared: bool = False,
+        claim_holder: str | None = None,
     ) -> Literal["proceed", "skip", "replaced"]:
         """Single duplicate-filename policy shared by every processor.
 
@@ -268,7 +270,21 @@ class TaskProcessor:
           * ``"replaced"`` — duplicate and ``replace`` is True; the existing
                              chunks were deleted and the index refreshed, so
                              ingestion can continue.
+
+        ``claim_holder`` identifies this file's run (see ``utils.filename_claims``)
+        and holds the name for its duration, so a second file heading for the
+        same name inside the same batch resolves as a duplicate instead of
+        racing the index check. TaskService releases the claim when the file
+        reaches a terminal state. Callers that pass None get the OpenSearch
+        policy alone — every processor passes one.
         """
+        if claim_holder is not None and not filename_claims.claim(
+            claim_holder, claim_scope(owner_user_id, shared), filename
+        ):
+            # Another file in flight is already heading for this name; whichever
+            # of them lands first is the one this name belongs to.
+            return "skip"
+
         if not await self.check_filename_exists(filename, opensearch_client):
             return "proceed"
         if not replace:
@@ -298,6 +314,11 @@ class TaskProcessor:
                 error=str(refresh_error),
             )
         return "replaced"
+
+    @staticmethod
+    def _claim_holder(upload_task: UploadTask, file_task: FileTask) -> str:
+        """Identity of this file's run, for the in-flight filename claim."""
+        return claim_holder(upload_task.task_id, file_task.file_path)
 
     def mark_duplicate_skipped(self, upload_task: UploadTask, file_task: FileTask) -> None:
         """Uniform terminal state for a duplicate that was not replaced:
@@ -761,6 +782,7 @@ class DocumentFileProcessor(TaskProcessor):
                 opensearch_client,
                 replace=self.replace_duplicates,
                 owner_user_id=self.owner_user_id,
+                claim_holder=self._claim_holder(upload_task, file_task),
             )
             if duplicate_action == "skip":
                 self.mark_duplicate_skipped(upload_task, file_task)
@@ -1075,6 +1097,7 @@ class ConnectorFileProcessor(TaskProcessor):
                 replace=self.replace_duplicates,
                 owner_user_id=self.user_id,
                 shared=self.shared,
+                claim_holder=self._claim_holder(upload_task, file_task),
             )
             if duplicate_action == "skip":
                 await self._reconcile_shared_owner(file_task.filename)
@@ -1401,6 +1424,7 @@ class S3FileProcessor(TaskProcessor):
                 opensearch_client,
                 replace=self.replace_duplicates,
                 owner_user_id=self.owner_user_id,
+                claim_holder=self._claim_holder(upload_task, file_task),
             )
             if duplicate_action == "skip":
                 self.mark_duplicate_skipped(upload_task, file_task)
@@ -1508,6 +1532,7 @@ class LangflowFileProcessor(TaskProcessor):
                 opensearch_client,
                 replace=self.replace_duplicates,
                 owner_user_id=self.owner_user_id,
+                claim_holder=self._claim_holder(upload_task, file_task),
             )
             if duplicate_action == "skip":
                 self.mark_duplicate_skipped(upload_task, file_task)
