@@ -546,3 +546,44 @@ async def test_alias_collision_between_two_blobs_gets_one_winner(monkeypatch):
     ]
     assert len(replace_calls) == 1
     assert replace_calls[0].args[2] == ["b::notes.txt"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("granted", [True, False])
+async def test_overwrite_carries_the_users_anonymous_delete_permission(monkeypatch, granted):
+    """Replacing a duplicate can delete a shared (ownerless) document, which is
+    what knowledge:delete:anonymous governs. connector_sync already resolves it
+    for orphan cleanup; the sync must hand the same answer to the replace path
+    rather than letting it widen on its own."""
+    from api import connectors as connectors_api
+
+    monkeypatch.setattr(connectors_api.TelemetryClient, "send_event", AsyncMock())
+    monkeypatch.setattr(connectors_api, "_connector_access_denied", AsyncMock(return_value=None))
+    monkeypatch.setattr(connectors_api, "get_index_name", lambda: "idx")
+    monkeypatch.setattr(
+        connectors_api,
+        "get_synced_file_ids_for_connector",
+        AsyncMock(return_value=([], [], "connector_file_id")),
+    )
+    monkeypatch.setattr(connectors_api, "get_synced_file_state_map", AsyncMock(return_value={}))
+
+    remote_files = [{"id": "b::report.pdf", "name": "report.pdf", "modified_time": None}]
+    service = _bucket_sync_service(remote_files)
+    session_manager, _ = _session_manager_finding("report.pdf")
+
+    await connectors_api.connector_sync(
+        "ibm_cos",
+        connectors_api.ConnectorSyncBody(
+            connection_id="conn-1", bucket_filter=["b"], replace_duplicates=True
+        ),
+        request=MagicMock(),
+        connector_service=service,
+        session_manager=session_manager,
+        user=SimpleNamespace(user_id="alice", jwt_token="token", db_user_id="alice"),
+        session=MagicMock(),
+        rbac=_rbac_allowing("knowledge:delete:anonymous") if granted else _rbac_allowing(),
+    )
+
+    call = service.sync_specific_files.await_args
+    assert call.kwargs["replace_duplicates"] is True
+    assert call.kwargs["allow_anonymous_delete"] is granted

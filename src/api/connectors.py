@@ -940,6 +940,7 @@ async def _sync_existing_connector_files(
                 ingest_settings=ingest_settings,
                 replace_duplicates=True,
                 shared=shared,
+                allow_anonymous_delete=allow_anonymous_delete,
             )
         else:
             if max_files is not None:
@@ -952,6 +953,7 @@ async def _sync_existing_connector_files(
                 ingest_settings=ingest_settings,
                 replace_duplicates=_connector_sync_should_replace(connector_type),
                 shared=shared,
+                allow_anonymous_delete=allow_anonymous_delete,
             )
     else:
         # Fallback: use filename filtering (for Langflow-ingested files without document_id)
@@ -969,6 +971,7 @@ async def _sync_existing_connector_files(
             ingest_settings=ingest_settings,
             replace_duplicates=_connector_sync_should_replace(connector_type),
             shared=shared,
+            allow_anonymous_delete=allow_anonymous_delete,
         )
     return {"outcome": "synced", "task_id": task_id}
 
@@ -1706,6 +1709,7 @@ async def connector_sync(
                 replace_duplicates=body.replace_duplicates,
                 preview_mode=preview_mode,
                 shared=body.shared,
+                allow_anonymous_delete=allow_anonymous_delete,
             )
         elif body.sync_all or body.bucket_filter:
             # Full ingest: discover and ingest all files (or files from specific buckets).
@@ -1860,6 +1864,7 @@ async def connector_sync(
                             ingest_settings=body.settings,
                             preview_mode=preview_mode,
                             shared=body.shared,
+                            allow_anonymous_delete=allow_anonymous_delete,
                         )
                     )
                 if replace_ids:
@@ -1874,6 +1879,7 @@ async def connector_sync(
                             replace_duplicates=True,
                             preview_mode=preview_mode,
                             shared=body.shared,
+                            allow_anonymous_delete=allow_anonymous_delete,
                         )
                     )
             else:
@@ -1885,6 +1891,7 @@ async def connector_sync(
                     jwt_token=jwt_token,
                     ingest_settings=body.settings,
                     shared=body.shared,
+                    allow_anonymous_delete=allow_anonymous_delete,
                 )
         else:
             # No files specified - sync only files already in OpenSearch for this connector
