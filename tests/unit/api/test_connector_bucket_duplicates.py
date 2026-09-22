@@ -40,20 +40,38 @@ def _rbac_allowing(*perms: str):
     return rbac
 
 
-def _session_manager_finding(*indexed_filenames: str):
-    """Session manager whose OpenSearch client reports these filenames indexed.
+def _session_manager_finding(*indexed_filenames: str, synced_ids: tuple[str, ...] = ()):
+    """Session manager whose OpenSearch client reports these filenames indexed,
+    and these blob ids already synced under the connector.
 
-    Mirrors the terms aggregation find_existing_filenames issues, so the real
-    query path runs rather than a stubbed-out classifier.
+    Serves both queries the sync issues for real — the filename terms
+    aggregation behind find_existing_filenames, and the per-id lookup that asks
+    which of those blobs this connector already ingested — so the real query
+    paths run rather than a stubbed-out classifier.
     """
     indexed = set(indexed_filenames)
+    synced = set(synced_ids)
     client = AsyncMock()
 
     async def search(*, index, body):
-        asked = body["query"]["terms"]["filename"]
+        terms = body["query"].get("terms")
+        if terms is not None:
+            asked = terms["filename"]
+            return {
+                "aggregations": {
+                    "filenames": {"buckets": [{"key": name} for name in asked if name in indexed]}
+                }
+            }
+
+        # The per-id "already synced here?" lookup.
+        should = body["query"]["bool"]["filter"][1]["bool"]["should"]
+        asked_ids = should[1]["terms"]["connector_file_id"]
         return {
             "aggregations": {
-                "filenames": {"buckets": [{"key": name} for name in asked if name in indexed]}
+                "connector_file_ids": {
+                    "buckets": [{"key": fid} for fid in asked_ids if fid in synced]
+                },
+                "document_ids": {"buckets": []},
             }
         }
 
@@ -275,7 +293,9 @@ async def test_bucket_filter_overwrite_replaces_only_the_colliding_files(monkeyp
         {"id": "b::fresh.pdf", "name": "fresh.pdf", "modified_time": "2024-01-01T00:00:00Z"},
     ]
     service = _bucket_sync_service(remote_files)
-    session_manager, _ = _session_manager_finding("uploaded.pdf", "synced.pdf")
+    session_manager, _ = _session_manager_finding(
+        "uploaded.pdf", "synced.pdf", synced_ids=("b::synced.pdf",)
+    )
 
     response = await connectors_api.connector_sync(
         "ibm_cos",
@@ -332,7 +352,9 @@ async def test_bucket_filter_overwrite_batches_collisions_with_changed_blobs(mon
         {"id": "b::changed.pdf", "name": "changed.pdf", "modified_time": "2024-06-01T00:00:00Z"},
     ]
     service = _bucket_sync_service(remote_files)
-    session_manager, _ = _session_manager_finding("uploaded.pdf", "changed.pdf")
+    session_manager, _ = _session_manager_finding(
+        "uploaded.pdf", "changed.pdf", synced_ids=("b::changed.pdf",)
+    )
 
     await connectors_api.connector_sync(
         "ibm_cos",
@@ -587,3 +609,50 @@ async def test_overwrite_carries_the_users_anonymous_delete_permission(monkeypat
     call = service.sync_specific_files.await_args
     assert call.kwargs["replace_duplicates"] is True
     assert call.kwargs["allow_anonymous_delete"] is granted
+
+
+@pytest.mark.asyncio
+async def test_overwrite_ignores_a_truncated_synced_id_listing(monkeypatch):
+    """get_synced_file_ids_for_connector's terms aggregation is capped at
+    OPENSEARCH_TERMS_AGG_LIMIT, so a container past the cap reports only some of
+    the ids it has ingested. An omitted blob must not become a collision with
+    its own indexed document and get re-ingested — the case that matters here is
+    exactly the large container.
+    """
+    from api import connectors as connectors_api
+
+    monkeypatch.setattr(connectors_api.TelemetryClient, "send_event", AsyncMock())
+    monkeypatch.setattr(connectors_api, "_connector_access_denied", AsyncMock(return_value=None))
+    monkeypatch.setattr(connectors_api, "get_index_name", lambda: "idx")
+    # Truncated: the blob IS ingested, but the capped listing leaves it out.
+    monkeypatch.setattr(
+        connectors_api,
+        "get_synced_file_ids_for_connector",
+        AsyncMock(return_value=([], [], "connector_file_id")),
+    )
+    monkeypatch.setattr(connectors_api, "get_synced_file_state_map", AsyncMock(return_value={}))
+
+    remote_files = [{"id": "b::synced.pdf", "name": "synced.pdf", "modified_time": None}]
+    service = _bucket_sync_service(remote_files)
+    # The per-id lookup knows the truth the capped listing lost.
+    session_manager, _ = _session_manager_finding("synced.pdf", synced_ids=("b::synced.pdf",))
+
+    await connectors_api.connector_sync(
+        "ibm_cos",
+        connectors_api.ConnectorSyncBody(
+            connection_id="conn-1", bucket_filter=["b"], replace_duplicates=True
+        ),
+        request=MagicMock(),
+        connector_service=service,
+        session_manager=session_manager,
+        user=SimpleNamespace(user_id="alice", jwt_token="token", db_user_id="alice"),
+        session=MagicMock(),
+        rbac=_rbac_allowing("knowledge:delete:anonymous"),
+    )
+
+    # Not a collision: it falls through to change detection, which sees a blob
+    # the truncated listing calls "new" and ingests it plainly — no replace.
+    replace_calls = [
+        c for c in service.sync_specific_files.await_args_list if c.kwargs.get("replace_duplicates")
+    ]
+    assert replace_calls == []

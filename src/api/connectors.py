@@ -1157,6 +1157,93 @@ def _cleaned_blob_filename(file_info: dict[str, Any]) -> str:
     )
 
 
+# Ids travel to OpenSearch in `terms` clauses, which are capped by
+# index.max_terms_count (65_536 by default). Whole-container syncs can exceed
+# that, so id lookups go out in batches.
+_ID_LOOKUP_BATCH_SIZE = 1024
+
+
+async def _bucket_blob_ids_already_synced(
+    file_ids: list[str],
+    connector_type: str,
+    session_manager,
+    user_id: str,
+    jwt_token: str | None,
+) -> set[str]:
+    """Which of exactly these blob ids already have chunks under this connector.
+
+    ``get_synced_file_ids_for_connector`` answers the same question for the
+    whole connector in one terms aggregation, which is capped at
+    ``OPENSEARCH_TERMS_AGG_LIMIT``: past the cap it omits ids that ARE ingested.
+    Reading "absent from that set" as "this connector never synced it" would
+    then turn an already-synced blob into a name collision — its own indexed
+    document is what holds the name — and re-ingest it under overwrite, in
+    exactly the large containers where the cap is reached. Asking about the
+    handful of ids actually in question keeps the answer independent of how much
+    the connector has ingested in total.
+
+    The id is matched in both fields it can live in, as
+    ``connectors.chunk_cleanup`` does: the standard ingest path stores it in
+    ``connector_file_id``, the Langflow path in ``document_id``.
+    """
+    ids = [fid for fid in file_ids if fid]
+    if not ids:
+        return set()
+
+    opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
+    synced: set[str] = set()
+
+    for start in range(0, len(ids), _ID_LOOKUP_BATCH_SIZE):
+        batch = ids[start : start + _ID_LOOKUP_BATCH_SIZE]
+        body: dict[str, Any] = {
+            "size": 0,
+            "query": {
+                "bool": {
+                    "filter": [
+                        {"term": {"connector_type": connector_type}},
+                        {
+                            "bool": {
+                                "should": [
+                                    {"terms": {"document_id": batch}},
+                                    {"terms": {"connector_file_id": batch}},
+                                    # Indices predating the explicit keyword
+                                    # mapping dynamically mapped this as text.
+                                    {"terms": {"connector_file_id.keyword": batch}},
+                                ],
+                                "minimum_should_match": 1,
+                            }
+                        },
+                    ]
+                }
+            },
+            "aggs": {
+                "connector_file_ids": {"terms": {"field": "connector_file_id", "size": len(batch)}},
+                "document_ids": {"terms": {"field": "document_id", "size": len(batch)}},
+            },
+        }
+
+        try:
+            response = await opensearch_client.search(index=get_index_name(), body=body)
+        except Exception as search_err:
+            if _is_unmapped_keyword_agg_error(search_err):
+                body["aggs"]["connector_file_ids"]["terms"]["field"] = "connector_file_id.keyword"
+                response = await opensearch_client.search(index=get_index_name(), body=body)
+            elif "index_not_found_exception" in str(search_err):
+                return set()
+            else:
+                raise
+
+        aggregations = response.get("aggregations", {})
+        for agg_name in ("connector_file_ids", "document_ids"):
+            for bucket in aggregations.get(agg_name, {}).get("buckets", []):
+                if bucket.get("key"):
+                    synced.add(bucket["key"])
+
+    # Only ids we asked about; the aggregations can also surface an id that
+    # merely shares a chunk with one of them.
+    return synced & set(ids)
+
+
 async def _bucket_blob_ids_with_indexed_filename(
     files: list[dict[str, Any]],
     session_manager,
@@ -1802,8 +1889,15 @@ async def connector_sync(
                     collisions = await _bucket_blob_ids_with_indexed_filename(
                         all_files, session_manager, user.user_id, jwt_token
                     )
+                    # "Synced here already?" is asked of these ids directly
+                    # rather than read off existing_set, whose aggregation is
+                    # capped: above the cap an ingested blob is missing from it,
+                    # and would look like a collision with its own document.
+                    synced_collisions = await _bucket_blob_ids_already_synced(
+                        list(collisions), connector_type, session_manager, user.user_id, jwt_token
+                    )
                     for fid, indexed_name in collisions.items():
-                        if fid in existing_set or indexed_name in claimed_names:
+                        if fid in synced_collisions or indexed_name in claimed_names:
                             continue
                         claimed_names.add(indexed_name)
                         colliding_ids.add(fid)
