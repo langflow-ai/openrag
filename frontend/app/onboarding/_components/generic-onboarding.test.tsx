@@ -32,6 +32,31 @@ const catalog = {
         { model: "text-embedding-3-large" },
       ],
     },
+    {
+      key: "watsonx_onprem",
+      name: "IBM watsonx.ai",
+      credential_fields: [
+        {
+          key: "api_base",
+          label: "Cluster URL",
+          required: true,
+          field_type: "text",
+        },
+        {
+          key: "ssl_verify",
+          label: "TLS certificate verification",
+          required: false,
+          field_type: "text",
+        },
+      ],
+      models: [
+        {
+          model: "ibm/granite-3-8b-instruct",
+          capabilities: ["function_calling"],
+        },
+      ],
+      embedding_models: [],
+    },
   ],
 };
 
@@ -124,6 +149,35 @@ describe("GenericOnboarding model selection", () => {
     await user.type(apiBase, "https://new.example");
     expect(getSettings().provider_credentials?.openai_like?.api_base).toBe(
       "https://new.example",
+    );
+  });
+
+  it("keeps watsonx on-prem TLS configuration provider-scoped", async () => {
+    const { user, getSettings } = renderOnboarding("watsonx_onprem");
+
+    await user.click(
+      await screen.findByRole("button", { name: "Advanced settings" }),
+    );
+    const verifyTls = screen.getByRole("switch", {
+      name: "Verify TLS certificates",
+    });
+
+    expect(verifyTls).toBeChecked();
+    await user.click(verifyTls);
+    expect(
+      screen.getByText(/Certificate verification is disabled/),
+    ).toBeVisible();
+    expect(getSettings().provider_credentials?.watsonx_onprem?.ssl_verify).toBe(
+      "false",
+    );
+
+    await user.click(verifyTls);
+    const caPath = screen.getByRole("textbox", {
+      name: "Custom CA bundle path",
+    });
+    await user.type(caPath, "/etc/ssl/certs/openrag-ca.pem");
+    expect(getSettings().provider_credentials?.watsonx_onprem?.ssl_verify).toBe(
+      "/etc/ssl/certs/openrag-ca.pem",
     );
   });
 

@@ -277,7 +277,8 @@ class ProvidersConfig:
             previous.credentials = {
                 name: value
                 for name, value in previous.credentials.items()
-                if name in {"api_base", "space_id", "project_id"} or name in active
+                if name in {"api_base", "space_id", "project_id", "ssl_verify"}
+                or name in active
             }
             previous.auth_method = auth_method
         previous.credentials.update(clean)

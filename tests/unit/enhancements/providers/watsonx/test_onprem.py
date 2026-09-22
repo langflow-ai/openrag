@@ -1,5 +1,6 @@
 """watsonx.ai on a Cloud Pak for Data cluster, routed through LiteLLM's watsonx provider."""
 
+import os
 from types import SimpleNamespace
 from typing import Any
 
@@ -51,12 +52,15 @@ def test_a_half_filled_form_yields_no_zen_key(username, api_key) -> None:
 
 
 def test_username_never_reaches_litellm() -> None:
-    """LiteLLM forwards kwargs it does not recognise, so a stray field lands in the body."""
+    """LiteLLM forwards kwargs it does not recognise, so local fields stay out."""
     credentials = watsonx_onprem.litellm_credentials(
         {"api_base": "https://cpd.example.com", "username": "cpduser", "api_key": "APIKEY"}
     )
+    client = credentials.pop("client")
 
     assert "username" not in credentials
+    assert "ssl_verify" not in credentials
+    assert client.ssl_verify is True
     assert credentials["api_base"] == "https://cpd.example.com"
     # Both, and the same value: the embeddings path refuses the call outright
     # when api_key is unset, and builds its auth header from zen_api_key.
@@ -110,11 +114,14 @@ def test_a_deployment_scope_is_passed_through_untouched() -> None:
 def test_credential_values_translates_the_stored_form() -> None:
     providers = _providers(api_base="https://cpd.example.com", username="cpduser", api_key="APIKEY")
 
-    assert providers.credential_values(PROVIDER) == {
+    credentials = providers.credential_values(PROVIDER)
+    client = credentials.pop("client")
+    assert credentials == {
         "api_base": "https://cpd.example.com",
         "zen_api_key": "Y3BkdXNlcjpBUElLRVk=",
         "api_key": "Y3BkdXNlcjpBUElLRVk=",
     }
+    assert client.ssl_verify is True
 
 
 def test_pending_credentials_rebuilds_the_zen_key_from_a_submitted_change() -> None:
@@ -182,6 +189,7 @@ def test_the_settings_form_asks_for_cluster_credentials_not_ibm_cloud_ones() -> 
         "zen_api_key",
         "space_id",
         "project_id",
+        "ssl_verify",
     }
     assert model_catalog.secret_field_keys(PROVIDER) == {"api_key", "zen_api_key"}
 
@@ -385,18 +393,94 @@ async def test_health_reports_a_rejected_zen_key_as_a_credential_problem(monkeyp
     assert is_provider_credential_error(str(excinfo.value))
 
 
-def test_the_health_probe_uses_the_same_tls_setting_as_real_traffic(monkeypatch) -> None:
-    """`SSL_CERT_FILE`/`SSL_VERIFY` are read by LiteLLM, not by httpx.
-
-    Without this the banner could sit red on a certificate error while chat
-    through the gateway works, or the reverse.
-    """
+def test_tls_setting_is_scoped_to_the_onprem_provider(monkeypatch) -> None:
+    """The stored value wins without mutating LiteLLM's process-wide setting."""
     monkeypatch.setenv("SSL_VERIFY", "false")
-    assert watsonx_onprem.ssl_verify() is False
 
-    monkeypatch.setenv("SSL_VERIFY", "true")
-    monkeypatch.delenv("SSL_CERT_FILE", raising=False)
-    assert watsonx_onprem.ssl_verify() is True
+    secure = watsonx_onprem.litellm_credentials(
+        {
+            "api_base": "https://cpd.example.com",
+            "username": "cpduser",
+            "api_key": "APIKEY",
+            "ssl_verify": "true",
+        }
+    )
+    insecure = watsonx_onprem.litellm_credentials(
+        {
+            "api_base": "https://cpd.example.com",
+            "username": "cpduser",
+            "api_key": "APIKEY",
+            "ssl_verify": "false",
+        }
+    )
+
+    assert secure["client"].ssl_verify is True
+    assert insecure["client"].ssl_verify is False
+    assert "ssl_verify" not in secure
+    assert "ssl_verify" not in insecure
+    assert watsonx_onprem.ssl_verify({"ssl_verify": "true"}) is True
+    assert watsonx_onprem.ssl_verify({"ssl_verify": "false"}) is False
+    assert os.environ["SSL_VERIFY"] == "false"
+
+
+def test_custom_ca_bundle_must_exist(tmp_path) -> None:
+    ca = tmp_path / "openrag-ca.pem"
+    ca.write_text("combined bundle", encoding="utf-8")
+
+    assert watsonx_onprem.resolve_ssl_verify(str(ca)) == str(ca)
+    with pytest.raises(ValueError, match="CA bundle path does not exist"):
+        watsonx_onprem.resolve_ssl_verify(str(tmp_path / "missing.pem"))
+
+@pytest.mark.asyncio
+async def test_health_check_uses_the_saved_tls_policy(monkeypatch) -> None:
+    seen: dict[str, Any] = {}
+
+    class _Client:
+        def __init__(self, *, verify):
+            seen["verify"] = verify
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def request(self, method, url, **kwargs):
+            return SimpleNamespace(status_code=200, text="{}", json=lambda: {"resources": []})
+
+    monkeypatch.setattr("httpx.AsyncClient", _Client)
+
+    await watsonx_onprem.lightweight_health_check(
+        {
+            "api_base": "https://cpd.example.com",
+            "username": "cpduser",
+            "api_key": "APIKEY",
+            "ssl_verify": "false",
+        }
+    )
+
+    assert seen["verify"] is False
+
+
+def test_auth_method_changes_preserve_the_tls_policy() -> None:
+    providers = _providers(
+        api_base="https://cpd.example.com",
+        username="cpduser",
+        api_key="APIKEY",
+        ssl_verify="false",
+    )
+
+    providers.set_credentials(
+        PROVIDER,
+        {"zen_api_key": "cHJlOmVuY29kZWQ="},
+        auth_method="zen_api_key",
+    )
+
+    assert providers.stored_credentials(PROVIDER) == {
+        "api_base": "https://cpd.example.com",
+        "zen_api_key": "cHJlOmVuY29kZWQ=",
+        "ssl_verify": "false",
+    }
 
 
 @pytest.mark.asyncio

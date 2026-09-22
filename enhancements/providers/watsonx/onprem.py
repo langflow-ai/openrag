@@ -34,44 +34,34 @@ Nothing here imports OpenRAG config — `config_manager`, `model_catalog` and
 Verified end to end against a Cloud Pak for Data 5.x cluster: ZenApiKey accepted
 on `/ml/v1`, model listing, chat, streaming chat, embeddings and tool calling.
 
-TLS: trusting a cluster's own CA
---------------------------------
-A CPD cluster is usually fronted by an internal or self-signed CA, and the call
-then fails before it leaves the process::
+TLS: provider-scoped certificate verification
+---------------------------------------------
+A CPD cluster is usually fronted by an internal or self-signed CA. TLS trust is
+stored with this provider as ``ssl_verify``: ``true`` uses OpenRAG's trust
+store, ``false`` disables verification for development, and any other value is
+the path to a mounted CA bundle.
 
-    litellm.InternalServerError: WatsonxException - Cannot connect to host
-    <cluster>:443 ssl:True [SSLCertVerificationError: ... certificate verify
-    failed: self-signed certificate in certificate chain]
+LiteLLM's watsonx adapter does not consistently consume an ``ssl_verify`` call
+kwarg. It does accept an explicit HTTP client on both chat and embedding paths,
+so ``litellm_credentials`` supplies a cached ``AsyncHTTPHandler`` configured
+for this provider. That keeps the setting away from OpenAI, Anthropic, and
+every other provider in the process. OpenRAG's health check and model discovery
+resolve the same stored value for their direct httpx calls.
 
-There is no per-provider setting for this, and no OpenRAG one either. LiteLLM
-resolves TLS trust from process-wide environment only — verified against
-litellm 1.84 with a self-signed server, chat and embeddings both:
-
-- ``SSL_CERT_FILE=<path>``   works. **This is the fix.**
-- ``SSL_VERIFY=false``       works, but turns verification off for *every*
-  provider in the process, OpenAI and Anthropic included. Development only.
-- ``ssl_verify=False`` as a per-call kwarg does **not** work: litellm threads it
-  through only some providers, and watsonx is not one of them. It is silently
-  ignored, so do not reach for it.
-
-``SSL_CERT_FILE`` *replaces* certifi's roots rather than adding to them, so
-pointing it at the cluster CA alone breaks every public provider. Concatenate::
-
-    cat "$(python -m certifi)" cluster-ca.crt > /etc/ssl/certs/openrag-ca.pem
-    export SSL_CERT_FILE=/etc/ssl/certs/openrag-ca.pem
-
-In Kubernetes, mount the cluster CA into the backend pod and build that bundle
-in the entrypoint; the operator's ConfigMap is the usual home for the CA. A
-failure that gets this far is reported by the gateway as a trust problem rather
-than as an outage — see ``_UPSTREAM_TLS_MESSAGE`` in ``services/llm_gateway``.
+The CA path is on the backend filesystem, not the browser's. In Kubernetes,
+mount the cluster CA into the backend pod. Use a bundle containing both the
+public roots and the cluster CA when this deployment also calls public
+providers.
 """
 
 from __future__ import annotations
 
 import asyncio
 import base64
+import os
 import time
 from collections.abc import Mapping
+from functools import lru_cache
 from typing import Any, NamedTuple, cast
 from urllib.parse import urlsplit, urlunsplit
 
@@ -161,12 +151,83 @@ CREDENTIAL_FIELDS: list[dict[str, Any]] = [
         "options": None,
         "default_value": None,
     },
+    {
+        "key": "ssl_verify",
+        "label": "TLS certificate verification",
+        "placeholder": "/etc/ssl/certs/openrag-ca.pem",
+        "tooltip": "Verify the cluster certificate using OpenRAG's trust store, or provide "
+        "the backend path to a mounted CA bundle. Disabling verification is for local "
+        "development only.",
+        "required": False,
+        "field_type": "text",
+        "options": None,
+        "default_value": "true",
+    },
 ]
 
 #: Fields an operator fills in that are not LiteLLM kwargs. `username` is half
-#: of the Zen key and nothing else — forwarding it would land it in the request
-#: body, since LiteLLM passes kwargs it does not recognise straight through.
-_LOCAL_ONLY_FIELDS = frozenset({"username"})
+#: of the Zen key and nothing else. `ssl_verify` configures the provider's HTTP
+#: client rather than the request body. Forwarding either would leak it into the
+#: watsonx request payload.
+_LOCAL_ONLY_FIELDS = frozenset({"username", "ssl_verify"})
+
+_FALSE_TLS_VALUES = frozenset({"false", "0", "no", "off"})
+_TRUE_TLS_VALUES = frozenset({"true", "1", "yes", "on"})
+_reported_tls_settings: set[str] = set()
+
+
+def _values(stored: Mapping[str, Any] | None) -> dict[str, str]:
+    """Stored form values as trimmed strings, excluding runtime objects."""
+    values: dict[str, str] = {}
+    for name, value in (stored or {}).items():
+        if name == "client":
+            continue
+        if isinstance(value, bool):
+            text = "true" if value else "false"
+        elif value is None or isinstance(value, (list, tuple, dict, set)):
+            continue
+        else:
+            text = str(value).strip()
+        if text:
+            values[str(name)] = text
+    return values
+
+
+def _warn_once(setting: str, message: str, **fields: Any) -> None:
+    if setting in _reported_tls_settings:
+        return
+    _reported_tls_settings.add(setting)
+    logger.warning(message, **fields)
+
+
+def resolve_ssl_verify(value: Any) -> bool | str:
+    """Resolve a provider TLS value without consulting process-wide settings."""
+    raw = str(value if value is not None else "").strip()
+    if not raw or raw.lower() in _TRUE_TLS_VALUES:
+        return True
+    if raw.lower() in _FALSE_TLS_VALUES:
+        _warn_once(
+            "disabled",
+            "TLS verification is disabled for watsonx.ai on-prem. This is a "
+            "development-only setting; never use it on a deployed environment.",
+        )
+        return False
+    if not os.path.isfile(raw):
+        raise ValueError(
+            f"The watsonx.ai on-prem CA bundle path does not exist: {raw}"
+        )
+    return raw
+
+
+@lru_cache(maxsize=8)
+def _http_client_for(ssl_setting: bool | str) -> Any:
+    """One reusable LiteLLM async client per provider TLS configuration."""
+    from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler
+
+    return AsyncHTTPHandler(
+        ssl_verify=ssl_setting,
+        client_alias="openrag-watsonx-onprem",
+    )
 
 
 def zen_api_key(username: str | None, api_key: str | None) -> str:
@@ -182,22 +243,24 @@ def zen_api_key(username: str | None, api_key: str | None) -> str:
     return base64.b64encode(f"{user}:{key}".encode()).decode("ascii")
 
 
-def litellm_credentials(stored: Mapping[str, Any]) -> dict[str, str]:
+def litellm_credentials(stored: Mapping[str, Any]) -> dict[str, Any]:
     """Stored form values as LiteLLM kwargs for `watsonx`.
 
     `api_key` is set to the Zen key as well as `zen_api_key`: the embeddings
     path rejects the call before it ever reads the auth header if `api_key` is
     unset, and the header it then builds comes from `zen_api_key`, so the two
     have to travel together.
-    """
-    values = {
-        str(name): str(value).strip()
-        for name, value in (stored or {}).items()
-        if str(value or "").strip()
-    }
-    zen = values.get("zen_api_key") or zen_api_key(values.get("username"), values.get("api_key"))
 
-    credentials = {
+    An explicit client carries this provider's TLS policy. Passing
+    ``ssl_verify`` itself is ineffective on watsonx and risks it reaching the
+    request body through adapters that treat unknown kwargs as payload fields.
+    """
+    values = _values(stored)
+    zen = values.get("zen_api_key") or zen_api_key(
+        values.get("username"), values.get("api_key")
+    )
+
+    credentials: dict[str, Any] = {
         name: value
         for name, value in values.items()
         if name not in _LOCAL_ONLY_FIELDS and name not in {"api_key", "zen_api_key"}
@@ -211,6 +274,9 @@ def litellm_credentials(stored: Mapping[str, Any]) -> dict[str, str]:
         # secret the operator supplied.
         credentials["api_key"] = values["api_key"]
     if credentials:
+        credentials["client"] = _http_client_for(
+            resolve_ssl_verify(values.get("ssl_verify"))
+        )
         install_litellm_compatibility()
     return credentials
 
@@ -227,21 +293,16 @@ API_VERSION = "2024-03-13"
 
 
 def auth_header(stored: Mapping[str, Any]) -> str:
-    """The `Authorization` value for OpenRAG's own calls to the cluster.
-
-    The health check talks to `/ml/v1` directly rather than through LiteLLM, so
-    it has to build the same header LiteLLM would.
-    """
-    credentials = litellm_credentials(stored)
-    if credentials.get("zen_api_key"):
-        return f"ZenApiKey {credentials['zen_api_key']}"
+    """The `Authorization` value for OpenRAG's own calls to the cluster."""
+    values = _values(stored)
+    zen = values.get("zen_api_key") or zen_api_key(
+        values.get("username"), values.get("api_key")
+    )
+    if zen:
+        return f"ZenApiKey {zen}"
     # Deliberately no `Bearer <api_key>` fallback. A Cloud Pak for Data API key
-    # is not a bearer token — the cluster issues one from `/icp4d-api/v1/authorize`
-    # in exchange for a *username and* an API key. Sending the raw key gets a
-    # 401 that looks like bad credentials rather than incomplete ones, and the
-    # caller quietly falls back to the configured model list with nothing on
-    # screen to say why. Returning nothing lets the health check say what is
-    # missing.
+    # is not a bearer token — returning nothing lets the health check report
+    # incomplete credentials instead of a misleading rejected-key error.
     return ""
 
 
@@ -321,7 +382,7 @@ async def lightweight_health_check(credentials: Mapping[str, Any]) -> None:
 
     url = model_specs_url(api_base)
     try:
-        async with httpx.AsyncClient(verify=ssl_verify()) as client:
+        async with httpx.AsyncClient(verify=ssl_verify(credentials)) as client:
             response = await _http_request_with_retry(
                 "GET",
                 url,
@@ -347,21 +408,9 @@ async def lightweight_health_check(credentials: Mapping[str, Any]) -> None:
     raise Exception(details)
 
 
-def ssl_verify() -> bool | str:
-    """The TLS setting LiteLLM will use, so our own calls agree with real traffic.
-
-    A cluster behind its own CA is reached by pointing `SSL_CERT_FILE` at a
-    bundle (or, in development, by `SSL_VERIFY=false`). Both are read by
-    LiteLLM, not by httpx, so without this a direct call here could fail on a
-    certificate that the gateway accepts, or the reverse.
-    """
-    try:
-        from litellm.llms.custom_httpx.http_handler import get_ssl_verify
-
-        return get_ssl_verify()
-    except Exception:
-        logger.debug("Could not read LiteLLM's TLS setting; verifying normally", exc_info=True)
-        return True
+def ssl_verify(stored: Mapping[str, Any] | None = None) -> bool | str:
+    """The provider-scoped TLS setting used by direct and LiteLLM calls."""
+    return resolve_ssl_verify(_values(stored).get("ssl_verify"))
 
 
 #: How long a fetched model list is reused. The set of deployed models changes
@@ -400,9 +449,13 @@ def cached_models() -> ClusterModels | None:
 
 
 def _cache_key(credentials: Mapping[str, Any]) -> str:
-    """Identifies the cluster and the credentials a cached list was fetched with."""
-    values = litellm_credentials(credentials)
-    return f"{values.get('api_base', '')}|{values.get('api_key', '')}"
+    """Identify the cluster, credentials, and TLS policy behind a model list."""
+    values = _values(credentials)
+    zen = values.get("zen_api_key") or zen_api_key(
+        values.get("username"), values.get("api_key")
+    )
+    tls = values.get("ssl_verify", "true").lower()
+    return f"{values.get('api_base', '')}|{zen}|{tls}"
 
 
 def _resource_markers(resource: Mapping[str, Any]) -> set[str]:
@@ -500,7 +553,7 @@ async def fetch_models(credentials: Mapping[str, Any]) -> ClusterModels | None:
     params: dict[str, Any] | None = model_specs_params(limit=MODELS_PAGE_LIMIT)
     resources: list[Any] = []
     try:
-        async with httpx.AsyncClient(verify=ssl_verify(), timeout=15.0) as client:
+        async with httpx.AsyncClient(verify=ssl_verify(credentials), timeout=15.0) as client:
             for _ in range(MAX_MODEL_PAGES):
                 response = await client.get(url, headers=headers, params=params)
                 if response.status_code != 200:

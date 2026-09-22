@@ -16,6 +16,7 @@ import {
   savedSecretFieldsForProvider,
 } from "@/components/models/catalog-models";
 import { getProviderChrome } from "@/components/models/model-helpers";
+import { WatsonxTlsSettings } from "@/components/models/watsonx-tls-settings";
 import type { OnboardingVariables } from "../../api/mutations/useOnboardingMutation";
 import { AdvancedOnboarding } from "./advanced";
 import { GenericProviderCredentialFields } from "./generic-provider-credential-fields";
@@ -88,6 +89,7 @@ export function GenericOnboarding({
       "api_base",
       "space_id",
       "project_id",
+      "ssl_verify",
       ...(onPremAuthMethod === "zen_api_key"
         ? ["zen_api_key"]
         : ["username", "api_key"]),
@@ -190,6 +192,7 @@ export function GenericOnboarding({
       "api_base",
       "space_id",
       "project_id",
+      "ssl_verify",
       ...(method === "zen_api_key" ? ["zen_api_key"] : ["username", "api_key"]),
     ]);
     const selected = Object.fromEntries(
@@ -209,6 +212,17 @@ export function GenericOnboarding({
   };
 
   const renderField = (field: (typeof fields)[number]) => {
+    if (provider === "watsonx_onprem" && field.key === "ssl_verify") {
+      return (
+        <WatsonxTlsSettings
+          key={field.key}
+          idPrefix={`onboarding-${provider}`}
+          value={credentials.ssl_verify}
+          onValueChange={(value) => handleCredentialChange("ssl_verify", value)}
+        />
+      );
+    }
+
     const isSecret =
       field.field_type === "password" || field.field_type === "textarea";
     const hasSaved = isSecret && savedSecrets.has(field.key);

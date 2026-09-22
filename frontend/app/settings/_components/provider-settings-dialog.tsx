@@ -167,6 +167,7 @@ const ProviderSettingsDialog = ({
       "api_base",
       "space_id",
       "project_id",
+      "ssl_verify",
       ...(onPremAuthMethod === "zen_api_key"
         ? ["zen_api_key"]
         : ["username", "api_key"]),
