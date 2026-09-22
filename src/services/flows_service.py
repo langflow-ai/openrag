@@ -943,7 +943,18 @@ class FlowsService:
                 return None
             try:
                 response = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
-                if response.status_code == 200:
+                # PATCH (local, not upstream): some Langflow builds (seen on
+                # 1.7.0.dev21) answer a GET for a flow id that does not exist
+                # with 200 + their own frontend's index.html instead of a 404
+                # — presumably a global "unmatched route -> serve the SPA"
+                # fallback catching this under /api/v1 too. Trusting bare
+                # status_code == 200 then makes every fresh deployment believe
+                # all flows already exist and never create them. Require the
+                # response to actually be the JSON flow object it claims to be.
+                content_type = response.headers.get("content-type", "")
+                flow_found = response.status_code == 200 and "application/json" in content_type
+
+                if flow_found:
                     logger.info(
                         f"Flow {flow_type} (ID: {flow_id}) already exists, skipping creation"
                     )
@@ -955,7 +966,10 @@ class FlowsService:
                         logger.warning(f"Failed to check MCP project auth for {flow_type}: {err}")
                     return None
 
-                if response.status_code != 404:
+                not_found = response.status_code == 404 or (
+                    response.status_code == 200 and not flow_found
+                )
+                if not not_found:
                     logger.warning(
                         f"Unexpected status checking {flow_type} flow (ID: {flow_id}): "
                         f"HTTP {response.status_code} — skipping creation to avoid overwriting existing data"
