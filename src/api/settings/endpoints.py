@@ -470,8 +470,9 @@ async def update_settings(
                 # ingest.
                 for provider, submitted in (body.provider_credentials or {}).items():
                     provider_key = _provider_key(provider)
+                    removals = set((body.provider_credential_removals or {}).get(provider_key, []))
                     credentials = current_config.providers.pending_credentials(
-                        provider_key, submitted
+                        provider_key, submitted, remove=removals
                     )
                     if provider_key == "azure":
                         auth_method = (body.provider_auth_methods or {}).get(provider_key)
@@ -505,7 +506,7 @@ async def update_settings(
                             provider=provider_key,
                             credentials=credentials,
                             stored_credentials=current_config.providers.pending_stored_credentials(
-                                provider_key, submitted
+                                provider_key, submitted, remove=removals
                             ),
                         )
 
@@ -535,7 +536,11 @@ async def update_settings(
                         for name, values in (body.provider_credentials or {}).items()
                     }
                     credentials = current_config.providers.pending_credentials(
-                        llm_provider_key, submitted_credentials.get(llm_provider_key, {})
+                        llm_provider_key,
+                        submitted_credentials.get(llm_provider_key, {}),
+                        remove=set(
+                            (body.provider_credential_removals or {}).get(llm_provider_key, [])
+                        ),
                     )
                     api_key = credentials.get("api_key", api_key)
                     endpoint = credentials.get("api_base", endpoint)
@@ -559,7 +564,11 @@ async def update_settings(
                         project_id=project_id,
                         credentials=credentials,
                         stored_credentials=current_config.providers.pending_stored_credentials(
-                            llm_provider_key, submitted_credentials.get(llm_provider_key, {})
+                            llm_provider_key,
+                            submitted_credentials.get(llm_provider_key, {}),
+                            remove=set(
+                                (body.provider_credential_removals or {}).get(llm_provider_key, [])
+                            ),
                         ),
                     )
                     logger.info(f"LLM provider validation successful for {llm_provider}")
@@ -595,6 +604,11 @@ async def update_settings(
                         embedding_provider_key,
                         submitted_credentials.get(embedding_provider_key, {}),
                         kind="embedding",
+                        remove=set(
+                            (body.provider_credential_removals or {}).get(
+                                embedding_provider_key, []
+                            )
+                        ),
                     )
                     api_key = credentials.get("api_key", api_key)
                     endpoint = credentials.get("api_base", endpoint)
@@ -620,6 +634,11 @@ async def update_settings(
                         stored_credentials=current_config.providers.pending_stored_credentials(
                             embedding_provider_key,
                             submitted_credentials.get(embedding_provider_key, {}),
+                            remove=set(
+                                (body.provider_credential_removals or {}).get(
+                                    embedding_provider_key, []
+                                )
+                            ),
                         ),
                     )
                     logger.info(
@@ -906,6 +925,9 @@ async def update_settings(
                 provider,
                 credentials,
                 auth_method=(body.provider_auth_methods or {}).get(_provider_key(provider)),
+                remove=set(
+                    (body.provider_credential_removals or {}).get(_provider_key(provider), [])
+                ),
             )
             config_updated = True
             provider_updated = True
@@ -1256,6 +1278,9 @@ async def onboarding(
                 provider,
                 credentials,
                 auth_method=(body.provider_auth_methods or {}).get(_provider_key(provider)),
+                remove=set(
+                    (body.provider_credential_removals or {}).get(_provider_key(provider), [])
+                ),
             )
             config_updated = True
 

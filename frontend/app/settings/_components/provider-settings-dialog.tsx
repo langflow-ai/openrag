@@ -150,9 +150,10 @@ const ProviderSettingsDialog = ({
   });
 
   const onSubmit = (data: ProviderSettingsFormData) => {
-    // Blank means "leave the stored value alone": the backend ignores empty
-    // values, and secrets are never echoed back for us to resubmit.
+    // Secret inputs stay blank when a value is stored, so an empty secret means
+    // "leave unchanged". Empty non-secret fields explicitly remove saved data.
     const credentials: Record<string, string> = {};
+    const removals: string[] = [];
     const azureAuthFields: Record<string, Set<string>> = {
       api_key: new Set(["api_key"]),
       entra_token: new Set(["azure_ad_token"]),
@@ -181,16 +182,26 @@ const ProviderSettingsDialog = ({
       const trimmed = (value ?? "").trim();
       if (trimmed !== "") {
         credentials[key] = trimmed;
+      } else {
+        const field = fields.find((candidate) => candidate.key === key);
+        const isSecret =
+          field?.field_type === "password" || field?.field_type === "textarea";
+        if (!isSecret && saved?.credential_values?.[key]) {
+          removals.push(key);
+        }
       }
     }
 
-    if (Object.keys(credentials).length === 0) {
+    if (Object.keys(credentials).length === 0 && removals.length === 0) {
       methods.setError("root", { message: "Enter at least one credential" });
       return;
     }
 
     settingsMutation.mutate({
       provider_credentials: { [provider]: credentials },
+      ...(removals.length > 0
+        ? { provider_credential_removals: { [provider]: removals } }
+        : {}),
       ...(provider === "azure"
         ? { provider_auth_methods: { azure: azureAuthMethod } }
         : provider === "watsonx_onprem"

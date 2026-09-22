@@ -52,14 +52,17 @@ export function GenericOnboarding({
     () => onboardingCredentialFields(catalog, provider),
     [catalog, provider],
   );
+  const savedCredentials = useMemo(
+    () => savedCredentialValuesForProvider(providers, provider),
+    [providers, provider],
+  );
   const savedSecrets = useMemo(
     () => new Set(savedSecretFieldsForProvider(providers, provider)),
     [providers, provider],
   );
 
-  const [credentials, setCredentials] = useState<Record<string, string>>(() =>
-    savedCredentialValuesForProvider(providers, provider),
-  );
+  const [credentials, setCredentials] =
+    useState<Record<string, string>>(savedCredentials);
   const [model, setModel] = useState("");
   const [azureAuthMethod, setAzureAuthMethod] = useState(
     providers?.custom?.[provider]?.auth_method ?? "api_key",
@@ -79,6 +82,7 @@ export function GenericOnboarding({
     nextModel: string,
   ) => {
     const submitted: Record<string, string> = {};
+    const removals: string[] = [];
     const activeAzureFields = new Set([
       "api_base",
       "api_version",
@@ -101,33 +105,50 @@ export function GenericOnboarding({
       const trimmed = (value ?? "").trim();
       if (trimmed !== "") {
         submitted[key] = trimmed;
+      } else if (!savedSecrets.has(key) && savedCredentials[key]) {
+        removals.push(key);
       }
     }
-    setSettingsRef.current((prev) => ({
-      ...prev,
-      ...(isEmbedding
-        ? { embedding_provider: provider, embedding_model: nextModel }
-        : { llm_provider: provider, llm_model: nextModel }),
-      provider_credentials: Object.keys(submitted).length
-        ? { ...prev.provider_credentials, [provider]: submitted }
-        : prev.provider_credentials,
-      ...(provider === "azure"
-        ? {
-            provider_auth_methods: {
-              ...prev.provider_auth_methods,
-              azure: azureAuthMethod,
-            },
-          }
-        : {}),
-      ...(provider === "watsonx_onprem"
-        ? {
-            provider_auth_methods: {
-              ...prev.provider_auth_methods,
-              watsonx_onprem: onPremAuthMethod,
-            },
-          }
-        : {}),
-    }));
+    setSettingsRef.current((prev) => {
+      const providerCredentialRemovals = {
+        ...prev.provider_credential_removals,
+      };
+      if (removals.length > 0) {
+        providerCredentialRemovals[provider] = removals;
+      } else {
+        delete providerCredentialRemovals[provider];
+      }
+
+      return {
+        ...prev,
+        ...(isEmbedding
+          ? { embedding_provider: provider, embedding_model: nextModel }
+          : { llm_provider: provider, llm_model: nextModel }),
+        provider_credentials: Object.keys(submitted).length
+          ? { ...prev.provider_credentials, [provider]: submitted }
+          : prev.provider_credentials,
+        provider_credential_removals:
+          Object.keys(providerCredentialRemovals).length > 0
+            ? providerCredentialRemovals
+            : undefined,
+        ...(provider === "azure"
+          ? {
+              provider_auth_methods: {
+                ...prev.provider_auth_methods,
+                azure: azureAuthMethod,
+              },
+            }
+          : {}),
+        ...(provider === "watsonx_onprem"
+          ? {
+              provider_auth_methods: {
+                ...prev.provider_auth_methods,
+                watsonx_onprem: onPremAuthMethod,
+              },
+            }
+          : {}),
+      };
+    });
   };
 
   const models = useMemo(

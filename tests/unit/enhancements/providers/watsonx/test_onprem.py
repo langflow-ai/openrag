@@ -484,6 +484,23 @@ def test_auth_method_changes_preserve_the_tls_policy() -> None:
     }
 
 
+def test_cleared_optional_credential_is_removed() -> None:
+    providers = _providers(
+        api_base="https://cpd.example.com",
+        username="cpduser",
+        api_key="APIKEY",
+        space_id="deployment-space",
+    )
+    providers.set_credentials(
+        PROVIDER,
+        {"api_base": "https://cpd.example.com"},
+        auth_method="username_api_key",
+        remove={"space_id"},
+    )
+
+    assert "space_id" not in providers.stored_credentials(PROVIDER)
+
+
 @pytest.mark.asyncio
 async def test_switching_to_a_model_the_cluster_lacks_is_still_blocked(monkeypatch) -> None:
     """Settings validates before it writes and returns 400 on failure.

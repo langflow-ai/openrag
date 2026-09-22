@@ -43,6 +43,12 @@ const catalog = {
           field_type: "text",
         },
         {
+          key: "space_id",
+          label: "Deployment space ID",
+          required: false,
+          field_type: "text",
+        },
+        {
           key: "ssl_verify",
           label: "TLS certificate verification",
           required: false,
@@ -179,6 +185,38 @@ describe("GenericOnboarding model selection", () => {
     expect(getSettings().provider_credentials?.watsonx_onprem?.ssl_verify).toBe(
       "/etc/ssl/certs/openrag-ca.pem",
     );
+  });
+
+  it("marks a cleared saved field for removal during onboarding", async () => {
+    const { user, getSettings } = renderOnboarding("watsonx_onprem", false, {
+      custom: {
+        watsonx_onprem: {
+          credential_values: {
+            api_base: "https://cpd.example.com",
+            space_id: "deployment-space",
+            ssl_verify: "true",
+          },
+        },
+      },
+    });
+
+    await user.click(
+      await screen.findByRole("button", { name: "Advanced settings" }),
+    );
+    const spaceId = screen.getByRole("textbox", {
+      name: "Deployment space ID",
+    });
+    expect(spaceId).toHaveValue("deployment-space");
+
+    await user.clear(spaceId);
+    expect(getSettings().provider_credential_removals?.watsonx_onprem).toEqual([
+      "space_id",
+    ]);
+
+    await user.type(spaceId, "replacement-space");
+    expect(
+      getSettings().provider_credential_removals?.watsonx_onprem,
+    ).toBeUndefined();
   });
 
   it("updates the selected embedding model for another generic provider", async () => {

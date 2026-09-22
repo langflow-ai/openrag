@@ -51,6 +51,7 @@ class SettingsUpdateBody(BaseModel):
     remove_anthropic_config: bool | None = None
     remove_watsonx_config: bool | None = None
     provider_credentials: dict[str, dict[str, str]] | None = None
+    provider_credential_removals: dict[str, list[str]] | None = None
     provider_auth_methods: dict[str, str] | None = None
     remove_provider_config: str | None = None
     # Explicit confirmation that the caller accepts removing a provider whose
@@ -71,6 +72,7 @@ class OnboardingBody(BaseModel):
     watsonx_project_id: str | None = Field(None, min_length=1)
     ollama_endpoint: str | None = Field(None, min_length=1)
     provider_credentials: dict[str, dict[str, str]] | None = None
+    provider_credential_removals: dict[str, list[str]] | None = None
     provider_auth_methods: dict[str, str] | None = None
 
 
