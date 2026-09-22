@@ -7,7 +7,8 @@ type ToasterProps = React.ComponentProps<typeof Sonner>;
 
 // Filled circle icons matching Carbon's inline-notification icon style.
 // Each is a solid colored circle with a symbol inside.
-const SuccessIcon = () => (
+// Exported for unit testing only.
+export const SuccessIcon = () => (
   // green-500 in light, emerald-400 in dark — matches Carbon success icon brightness
   <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-green-500 dark:bg-[hsl(var(--accent-emerald-foreground))]">
     <svg viewBox="0 0 12 12" fill="none" className="size-3" aria-hidden>
@@ -22,7 +23,7 @@ const SuccessIcon = () => (
   </span>
 );
 
-const WarningIcon = () => (
+export const WarningIcon = () => (
   // Bright yellow circle with dark exclamation — matches Carbon warning icon
   <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-amber-400 dark:bg-amber-300">
     <svg viewBox="0 0 12 12" fill="none" className="size-3" aria-hidden>
@@ -36,7 +37,7 @@ const WarningIcon = () => (
   </span>
 );
 
-const ErrorIcon = () => (
+export const ErrorIcon = () => (
   <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-[hsl(var(--accent-red-foreground))]">
     <svg viewBox="0 0 12 12" fill="none" className="size-3" aria-hidden>
       <path
