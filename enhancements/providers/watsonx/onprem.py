@@ -287,6 +287,7 @@ API_VERSION = "2024-03-13"
 
 #: Cloud Pak for Data deployment-space discovery endpoint and page limits.
 SPACES_PATH = "/v2/spaces"
+CPD_AUTHORIZE_PATH = "/icp4d-api/v1/authorize"
 SPACES_PAGE_LIMIT = 100
 MAX_SPACE_PAGES = 10
 
@@ -323,6 +324,31 @@ def model_specs_params(**extra: Any) -> dict[str, Any]:
 def spaces_url(api_base: str) -> str:
     """Deployment spaces visible to the configured CPD identity."""
     return f"{(api_base or '').rstrip('/')}{SPACES_PATH}"
+
+
+def cpd_authorize_url(api_base: str) -> str:
+    """Endpoint that exchanges CPD user credentials for a bearer token."""
+    return f"{(api_base or '').rstrip('/')}{CPD_AUTHORIZE_PATH}"
+
+
+def _cpd_user_credentials(values: Mapping[str, str]) -> tuple[str, str] | None:
+    """Recover the username/API-key pair needed by CPD's token endpoint."""
+    username = values.get("username", "")
+    api_key = values.get("api_key", "")
+    if username and api_key:
+        return username, api_key
+
+    encoded = values.get("zen_api_key", "")
+    if not encoded:
+        return None
+    try:
+        decoded = base64.b64decode(encoded, validate=True).decode("utf-8")
+        username, api_key = decoded.split(":", 1)
+    except (ValueError, UnicodeDecodeError):
+        return None
+    if not username or not api_key:
+        return None
+    return username, api_key
 
 
 def _error_details(response: Any) -> str:
@@ -376,6 +402,37 @@ class SpaceDiscoveryError(Exception):
         self.status_code = status_code
 
 
+async def _cpd_bearer_token(
+    client: Any,
+    api_base: str,
+    values: Mapping[str, str],
+) -> str:
+    """Exchange stored CPD credentials for APIs that reject ZenApiKey."""
+    credentials = _cpd_user_credentials(values)
+    if credentials is None:
+        return ""
+    username, api_key = credentials
+    response = await _http_request_with_retry(
+        "POST",
+        cpd_authorize_url(api_base),
+        client=client,
+        headers={"Accept": "application/json", "Content-Type": "application/json"},
+        json={"username": username, "apikey": api_key},
+        timeout=15.0,
+    )
+    if response.status_code != 200:
+        raise SpaceDiscoveryError(response.status_code, _error_details(response))
+    body = response.json()
+    if not isinstance(body, Mapping):
+        raise ValueError("The watsonx.ai cluster returned an invalid authorization response")
+    token = str(
+        body.get("token") or body.get("accessToken") or body.get("access_token") or ""
+    ).strip()
+    if not token:
+        raise ValueError("The watsonx.ai cluster authorization response contained no token")
+    return token
+
+
 async def list_spaces(credentials: Mapping[str, Any]) -> list[dict[str, str]]:
     """List deployment spaces accessible to the configured CPD identity."""
     import httpx
@@ -397,6 +454,7 @@ async def list_spaces(credentials: Mapping[str, Any]) -> list[dict[str, str]]:
         "limit": SPACES_PAGE_LIMIT,
     }
     resources: list[Any] = []
+    bearer_attempted = False
     async with httpx.AsyncClient(verify=ssl_verify(values), timeout=15.0) as client:
         for _ in range(MAX_SPACE_PAGES):
             response = await _http_request_with_retry(
@@ -408,7 +466,22 @@ async def list_spaces(credentials: Mapping[str, Any]) -> list[dict[str, str]]:
                 timeout=15.0,
             )
             if response.status_code != 200:
-                raise SpaceDiscoveryError(response.status_code, _error_details(response))
+                details = _error_details(response)
+                missing_authorization = (
+                    response.status_code == 400 and "authorization header" in details.lower()
+                )
+                if (
+                    response.status_code in {401, 403} or missing_authorization
+                ) and not bearer_attempted:
+                    bearer_attempted = True
+                    token = await _cpd_bearer_token(client, api_base, values)
+                    if token:
+                        headers = {
+                            "Authorization": f"Bearer {token}",
+                            "Accept": "application/json",
+                        }
+                        continue
+                raise SpaceDiscoveryError(response.status_code, details)
             body = response.json()
             if not isinstance(body, dict):
                 raise ValueError("The watsonx.ai cluster returned an invalid spaces response")

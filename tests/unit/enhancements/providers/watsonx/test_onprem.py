@@ -521,6 +521,72 @@ async def test_space_listing_uses_saved_auth_tls_and_rebases_pagination(monkeypa
     ]
 
 
+@pytest.mark.asyncio
+async def test_space_listing_exchanges_credentials_when_zen_auth_is_rejected(
+    monkeypatch,
+) -> None:
+    requests: list[tuple[str, str, dict[str, Any]]] = []
+    seen: dict[str, Any] = {}
+    responses = [
+        (
+            400,
+            {"message": "Authorization header has not been provided."},
+        ),
+        (200, {"token": "cpd-access-token"}),
+        (
+            200,
+            {
+                "resources": [
+                    {"metadata": {"id": "space-1", "name": "Production"}},
+                ]
+            },
+        ),
+    ]
+
+    class _Client:
+        def __init__(self, *, verify, timeout):
+            seen["verify"] = verify
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def request(self, method, url, **kwargs):
+            requests.append((method, url, kwargs))
+            status_code, body = responses.pop(0)
+            return SimpleNamespace(
+                status_code=status_code,
+                text=str(body),
+                json=lambda: body,
+            )
+
+    monkeypatch.setattr("httpx.AsyncClient", _Client)
+
+    spaces = await watsonx_onprem.list_spaces(
+        {
+            "api_base": "https://cpd.example.com",
+            "username": "cpduser",
+            "api_key": "APIKEY",
+            "ssl_verify": "false",
+        }
+    )
+
+    assert spaces == [{"id": "space-1", "name": "Production"}]
+    assert seen["verify"] is False
+    assert [(method, url) for method, url, _ in requests] == [
+        ("GET", "https://cpd.example.com/v2/spaces"),
+        ("POST", "https://cpd.example.com/icp4d-api/v1/authorize"),
+        ("GET", "https://cpd.example.com/v2/spaces"),
+    ]
+    assert requests[1][2]["json"] == {
+        "username": "cpduser",
+        "apikey": "APIKEY",
+    }
+    assert requests[2][2]["headers"]["Authorization"] == "Bearer cpd-access-token"
+
+
 def test_auth_method_changes_preserve_the_tls_policy() -> None:
     providers = _providers(
         api_base="https://cpd.example.com",
