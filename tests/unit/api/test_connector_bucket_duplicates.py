@@ -656,3 +656,88 @@ async def test_overwrite_ignores_a_truncated_synced_id_listing(monkeypatch):
         c for c in service.sync_specific_files.await_args_list if c.kwargs.get("replace_duplicates")
     ]
     assert replace_calls == []
+
+
+def _two_connection_service(remote_files, *, broken_first: bool = False):
+    """Two active connections of one type, in list order conn-1, conn-2.
+
+    connector_check_duplicates resolves the requested id, so the sync has to
+    resolve the same one or the dialog and the ingest describe different
+    connections.
+    """
+    connections = [
+        SimpleNamespace(connection_id="conn-1", is_active=True),
+        SimpleNamespace(connection_id="conn-2", is_active=True),
+    ]
+    connectors = {}
+    for conn in connections:
+        connector = _bucket_connector(remote_files)
+        connector.authenticate = AsyncMock(
+            return_value=not (broken_first and conn.connection_id == "conn-1")
+        )
+        connectors[conn.connection_id] = connector
+
+    service = MagicMock()
+    service.connection_manager = MagicMock()
+    service.connection_manager.list_connections = AsyncMock(return_value=connections)
+    service.get_connector = AsyncMock(side_effect=lambda cid: connectors[cid])
+    service.sync_specific_files = AsyncMock(return_value="task-x")
+    return service
+
+
+async def _sync_with_connection(service, connection_id, monkeypatch):
+    from api import connectors as connectors_api
+
+    monkeypatch.setattr(connectors_api.TelemetryClient, "send_event", AsyncMock())
+    monkeypatch.setattr(connectors_api, "_connector_access_denied", AsyncMock(return_value=None))
+    monkeypatch.setattr(connectors_api, "get_index_name", lambda: "idx")
+    monkeypatch.setattr(
+        connectors_api,
+        "get_synced_file_ids_for_connector",
+        AsyncMock(return_value=([], [], "connector_file_id")),
+    )
+    monkeypatch.setattr(connectors_api, "get_synced_file_state_map", AsyncMock(return_value={}))
+
+    return await connectors_api.connector_sync(
+        "ibm_cos",
+        connectors_api.ConnectorSyncBody(connection_id=connection_id, bucket_filter=["b"]),
+        request=MagicMock(),
+        connector_service=service,
+        session_manager=_session_manager_finding()[0],
+        user=SimpleNamespace(user_id="alice", jwt_token="token", db_user_id="alice"),
+        session=MagicMock(),
+        rbac=_rbac_allowing("knowledge:delete:anonymous"),
+    )
+
+
+@pytest.mark.asyncio
+async def test_sync_uses_the_requested_connection(monkeypatch):
+    """Not merely the first that authenticates — conn-2 is second in list order."""
+    remote_files = [{"id": "b::a.pdf", "name": "a.pdf", "modified_time": None}]
+    service = _two_connection_service(remote_files)
+
+    await _sync_with_connection(service, "conn-2", monkeypatch)
+
+    assert service.sync_specific_files.await_args.args[0] == "conn-2"
+
+
+@pytest.mark.asyncio
+async def test_sync_without_a_requested_connection_takes_the_first_working(monkeypatch):
+    remote_files = [{"id": "b::a.pdf", "name": "a.pdf", "modified_time": None}]
+    service = _two_connection_service(remote_files)
+
+    await _sync_with_connection(service, None, monkeypatch)
+
+    assert service.sync_specific_files.await_args.args[0] == "conn-1"
+
+
+@pytest.mark.asyncio
+async def test_a_requested_connection_that_cannot_authenticate_falls_back(monkeypatch):
+    """Ordering rather than hard selection: an unusable connection behaves as it
+    did before, rather than failing later inside the connector."""
+    remote_files = [{"id": "b::a.pdf", "name": "a.pdf", "modified_time": None}]
+    service = _two_connection_service(remote_files, broken_first=True)
+
+    await _sync_with_connection(service, "conn-1", monkeypatch)
+
+    assert service.sync_specific_files.await_args.args[0] == "conn-2"

@@ -977,6 +977,12 @@ async def _sync_existing_connector_files(
 
 
 class ConnectorSyncBody(BaseModel):
+    # The connection this sync targets. The upload UI is rendered per connection
+    # and sends it on every request; connector_check_duplicates resolves the same
+    # id, so honouring it here keeps the dialog and the sync it confirms pointed
+    # at one connection. Unset (or unknown) falls back to the first that
+    # authenticates, as before.
+    connection_id: str | None = None
     max_files: int | None = None
     selected_files: list[Any] | None = None
     # When True, ingest ALL files from the connector (bypasses the existing-files gate).
@@ -1707,9 +1713,27 @@ async def connector_sync(
                 status_code=404,
             )
 
+        # Try the requested connection first, then the rest. Ordering rather than
+        # selecting outright keeps today's behaviour when that connection cannot
+        # authenticate: the sync falls through to another, or reports that none
+        # work, instead of failing later inside the connector.
+        candidate_connections = active_connections
+        if body.connection_id:
+            requested = [c for c in active_connections if c.connection_id == body.connection_id]
+            if requested:
+                candidate_connections = requested + [
+                    c for c in active_connections if c.connection_id != body.connection_id
+                ]
+            else:
+                logger.warning(
+                    "Requested connection is not active for this connector type",
+                    connector_type=connector_type,
+                    connection_id=body.connection_id,
+                )
+
         # Find the first connection that actually works
         working_connection = None
-        for connection in active_connections:
+        for connection in candidate_connections:
             logger.debug(
                 "Testing connection authentication",
                 connection_id=connection.connection_id,
