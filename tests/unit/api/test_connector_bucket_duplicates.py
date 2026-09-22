@@ -430,3 +430,96 @@ async def test_bucket_filter_listing_without_ids_starts_no_sync(monkeypatch):
     assert response.status_code == 200
     assert _json(response)["status"] == "no_files"
     service.sync_specific_files.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_overwrite_gives_one_winner_when_two_blobs_share_a_name(monkeypatch):
+    """A bucket connector names a blob after its key's basename, so a/report.pdf
+    and b/report.pdf both land on "report.pdf". Files within a task are ingested
+    concurrently, so letting both replace the same document has no defined
+    winner. The first in listing order takes the name; the other rides in the
+    plain batch, where the per-file backstop skips it as a duplicate.
+    """
+    from api import connectors as connectors_api
+
+    monkeypatch.setattr(connectors_api.TelemetryClient, "send_event", AsyncMock())
+    monkeypatch.setattr(connectors_api, "_connector_access_denied", AsyncMock(return_value=None))
+    monkeypatch.setattr(connectors_api, "get_index_name", lambda: "idx")
+    monkeypatch.setattr(
+        connectors_api,
+        "get_synced_file_ids_for_connector",
+        AsyncMock(return_value=([], [], "connector_file_id")),
+    )
+    monkeypatch.setattr(
+        connectors_api, "get_synced_id_to_modified_time_map", AsyncMock(return_value={})
+    )
+
+    remote_files = [
+        {"id": "b::a/report.pdf", "name": "report.pdf", "modified_time": None},
+        {"id": "b::c/report.pdf", "name": "report.pdf", "modified_time": None},
+    ]
+    service = _bucket_sync_service(remote_files)
+    session_manager, _ = _session_manager_finding("report.pdf")
+
+    await connectors_api.connector_sync(
+        "ibm_cos",
+        connectors_api.ConnectorSyncBody(
+            connection_id="conn-1", bucket_filter=["b"], replace_duplicates=True
+        ),
+        request=MagicMock(),
+        connector_service=service,
+        session_manager=session_manager,
+        user=SimpleNamespace(user_id="alice", jwt_token="token"),
+        session=MagicMock(),
+    )
+
+    assert service.sync_specific_files.await_count == 2
+    new_call, replace_call = service.sync_specific_files.await_args_list
+    assert replace_call.args[2] == ["b::a/report.pdf"]
+    assert replace_call.kwargs["replace_duplicates"] is True
+    assert new_call.args[2] == ["b::c/report.pdf"]
+    assert new_call.kwargs.get("replace_duplicates", False) is False
+
+
+@pytest.mark.asyncio
+async def test_alias_collision_between_two_blobs_gets_one_winner(monkeypatch):
+    """notes.txt and notes.md are ingestion aliases of one another, so two blobs
+    can contest a name without sharing one."""
+    from api import connectors as connectors_api
+
+    monkeypatch.setattr(connectors_api.TelemetryClient, "send_event", AsyncMock())
+    monkeypatch.setattr(connectors_api, "_connector_access_denied", AsyncMock(return_value=None))
+    monkeypatch.setattr(connectors_api, "get_index_name", lambda: "idx")
+    monkeypatch.setattr(
+        connectors_api,
+        "get_synced_file_ids_for_connector",
+        AsyncMock(return_value=([], [], "connector_file_id")),
+    )
+    monkeypatch.setattr(
+        connectors_api, "get_synced_id_to_modified_time_map", AsyncMock(return_value={})
+    )
+
+    remote_files = [
+        {"id": "b::notes.txt", "name": "notes.txt", "modified_time": None},
+        {"id": "b::notes.md", "name": "notes.md", "modified_time": None},
+    ]
+    service = _bucket_sync_service(remote_files)
+    session_manager, _ = _session_manager_finding("notes.md")
+
+    await connectors_api.connector_sync(
+        "ibm_cos",
+        connectors_api.ConnectorSyncBody(
+            connection_id="conn-1", bucket_filter=["b"], replace_duplicates=True
+        ),
+        request=MagicMock(),
+        connector_service=service,
+        session_manager=session_manager,
+        user=SimpleNamespace(user_id="alice", jwt_token="token"),
+        session=MagicMock(),
+    )
+
+    replace_calls = [
+        c for c in service.sync_specific_files.await_args_list if c.kwargs.get("replace_duplicates")
+    ]
+    assert len(replace_calls) == 1
+    assert replace_calls[0].args[2] == ["b::notes.txt"]
