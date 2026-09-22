@@ -200,6 +200,11 @@ export function TaskErrorContent({
                   {!isExpanded && (
                     <p className={statusPillClassName}>{statusLabel}</p>
                   )}
+                  {/* biome-ignore lint/a11y/noStaticElementInteractions: stop-propagation wrapper */}
+                  <span onClick={(event) => event.stopPropagation()}>
+                    {openTaskDialogButton}
+                  </span>
+                  {/* biome-ignore lint/a11y/noStaticElementInteractions: stop-propagation wrapper */}
                   <span onClick={(event) => event.stopPropagation()}>
                     {headerEnd}
                   </span>
@@ -231,7 +236,6 @@ export function TaskErrorContent({
                   const componentCause = formatApiComponent(fileInfo.component);
                   const isWarning = isTaskFileWarning(fileInfo);
                   const isCancelled = isFileCancelled(fileInfo);
-                  const isFirst = index === 0;
 
                   return (
                     <div
@@ -270,7 +274,6 @@ export function TaskErrorContent({
                         >
                           {fileName}
                         </p>
-                        {isFirst && openTaskDialogButton}
                       </div>
                       <p
                         className={cn(
