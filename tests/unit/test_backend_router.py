@@ -192,6 +192,25 @@ def test_llm_proxy_forwards_only_allowlisted_headers_and_maps_private_path(monke
     assert "x-evil" not in forwarded
 
 
+def test_llm_proxy_uses_ingestion_scale_timeout(monkeypatch):
+    captured: dict = {}
+
+    def create_client(*args, **kwargs):
+        captured["timeout"] = kwargs["timeout"]
+        return _FakeLlmClient(captured)
+
+    monkeypatch.setattr(router_app.httpx, "AsyncClient", create_client)
+
+    response = TestClient(router_app.create_router_app()).post(
+        "/embeddings",
+        json={"model": "ibm/slate-30m-english-rtrvr", "input": ["chunk"]},
+    )
+
+    assert response.status_code == 200
+    assert captured["timeout"].connect == settings.LANGFLOW_CONNECT_TIMEOUT
+    assert captured["timeout"].read == settings.LANGFLOW_TIMEOUT
+
+
 def test_router_exposes_only_allowlisted_paths_and_health():
     client = TestClient(router_app.create_router_app())
     assert client.get("/health").status_code == 200

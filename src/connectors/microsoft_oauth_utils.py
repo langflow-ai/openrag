@@ -2,53 +2,81 @@
 
 from __future__ import annotations
 
-import jwt
-
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
 
-def verify_ms_access_token(access_token: str | None, tenant_id: str | None = None) -> dict | None:
-    """Verify a Microsoft access token obtained via MSAL.
+def _tenant_from_home_account_id(home_account_id: object) -> str | None:
+    if not isinstance(home_account_id, str):
+        return None
+    parts = home_account_id.split(".")
+    if len(parts) >= 2 and parts[-1]:
+        return parts[-1]
+    return None
 
-    Returns the verified claims dict on success.
-    Returns None when no token is present, verification is not configured, or the
-    token is opaque (not a JWT) — MSAL sometimes issues opaque tokens for Graph
-    resources; those are trusted by virtue of the confidential-client OAuth flow.
-    Raises JWTVerificationError (or a subclass) when the token IS a JWT but fails
-    signature, expiry, audience, or issuer validation.
+
+def trusted_tenant_id_from_account(account: dict | None) -> str | None:
+    """Return the Microsoft tenant id from MSAL account metadata."""
+    if not account:
+        return None
+    realm = account.get("realm")
+    if isinstance(realm, str) and realm:
+        return realm
+    return _tenant_from_home_account_id(account.get("home_account_id"))
+
+
+def trusted_tenant_id_from_token_result(result: dict | None) -> str | None:
+    """Return the Microsoft tenant id from MSAL token response metadata."""
+    if not result:
+        return None
+    id_token_claims = result.get("id_token_claims")
+    if isinstance(id_token_claims, dict):
+        tid = id_token_claims.get("tid")
+        if isinstance(tid, str) and tid:
+            return tid
+    tenant_id = result.get("tenant_id")
+    if isinstance(tenant_id, str) and tenant_id:
+        return tenant_id
+    return None
+
+
+def enforce_ms_tenant_allowlist(tenant_id: str | None) -> None:
+    """Enforce OpenRAG's Microsoft tenant policy from trusted MSAL metadata."""
+    from config.settings import MICROSOFT_ALLOWED_TENANT_IDS
+    from utils.jwt_verification import InvalidIssuerError
+
+    if MICROSOFT_ALLOWED_TENANT_IDS is None:
+        return
+    if not tenant_id:
+        raise InvalidIssuerError("Microsoft tenant id is required by the configured allow-list")
+    if tenant_id not in MICROSOFT_ALLOWED_TENANT_IDS:
+        logger.warning("Microsoft token tenant not in allow-list", tenant_id=tenant_id)
+        raise InvalidIssuerError(
+            f"Tenant '{tenant_id}' is not in the configured allowed tenant list"
+        )
+
+
+def verify_ms_access_token(access_token: str | None, tenant_id: str | None = None) -> dict | None:
+    """Handle a Microsoft access token obtained via MSAL.
+
+    OpenRAG only forwards these bearer tokens to Microsoft Graph. Graph is the
+    resource server responsible for validating Graph-audience access tokens, so
+    this helper deliberately avoids decoding or using local JWT claims.
     """
+    enforce_ms_tenant_allowlist(tenant_id)
+
     if not access_token:
         return None
 
     raw_token = access_token.removeprefix("Bearer ").strip()
-
-    # MSAL can return opaque (non-JWT) tokens for some resources (e.g. Graph).
-    # PyJWT raises DecodeError("Not enough segments") for these — they are trusted
-    # by the confidential-client OAuth flow, so skip verification silently.
-    try:
-        jwt.get_unverified_header(raw_token)
-    except jwt.DecodeError:
-        logger.debug("Microsoft access token is opaque (non-JWT) — skipping verification")
+    if raw_token.count(".") != 2:
+        logger.debug("Microsoft access token is opaque (non-JWT)")
         return None
 
-    from config.settings import MICROSOFT_ALLOWED_TENANT_IDS, MICROSOFT_GRAPH_OAUTH_CLIENT_ID
-    from utils.jwt_verification import verify_microsoft_access_token
-
-    if not MICROSOFT_GRAPH_OAUTH_CLIENT_ID:
-        logger.warning(
-            "MICROSOFT_GRAPH_OAUTH_CLIENT_ID not configured - skipping access token verification"
-        )
-        return None
-
-    # Raises JWTVerificationError on any failure — intentionally not caught here
-    # so that callers propagate the error and refuse to return an unverified token.
-    claims = verify_microsoft_access_token(
-        raw_token,
-        MICROSOFT_GRAPH_OAUTH_CLIENT_ID,
-        tenant_id=tenant_id,
-        allowed_tenant_ids=MICROSOFT_ALLOWED_TENANT_IDS,
+    logger.debug(
+        "Microsoft access token is a JWT for an external resource; "
+        "leaving validation to Microsoft Graph",
+        tenant_hint=tenant_id,
     )
-    logger.debug("Microsoft access token verified", tenant=claims.get("tid"))
-    return claims
+    return None
