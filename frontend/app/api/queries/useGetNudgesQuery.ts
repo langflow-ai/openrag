@@ -42,9 +42,10 @@ export const useGetNudgesQuery = (
     health === undefined ||
     (health?.status === "healthy" && !health?.llm_error);
 
-  function cancel() {
-    queryClient.removeQueries({
-      queryKey: ["nudges", chatId, filters, limit, scoreThreshold],
+  function refresh(nextChatId: string | null | undefined = chatId) {
+    return queryClient.invalidateQueries({
+      queryKey: ["nudges", nextChatId, filters, limit, scoreThreshold],
+      exact: true,
     });
   }
 
@@ -117,5 +118,5 @@ export const useGetNudgesQuery = (
     queryClient,
   );
 
-  return { data, isLoading, isError, error, refetch, isFetching, cancel };
+  return { data, isLoading, isError, error, refetch, isFetching, refresh };
 };
