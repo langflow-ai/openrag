@@ -226,8 +226,8 @@ function ChatPage() {
         inputTokens: message.usage?.input_tokens,
         outputTokens: message.usage?.output_tokens,
       });
+      refreshNudges(responseId);
       if (responseId) {
-        cancelNudges();
         // Langflow session id for chaining; sidebar id stays on currentConversationId.
         setPreviousResponseIds((prev) => ({
           ...prev,
@@ -669,7 +669,7 @@ function ChatPage() {
       })()
     : undefined;
 
-  const { data: nudges = [], cancel: cancelNudges } = useGetNudgesQuery(
+  const { data: nudges = [], refresh: refreshNudges } = useGetNudgesQuery(
     {
       chatId: previousResponseIds[endpoint],
       filters: processedFiltersForNudges,
@@ -795,9 +795,7 @@ function ChatPage() {
           };
           setMessages((prev) => [...prev, assistantMessage]);
           setChatError(false);
-          if (result.response_id) {
-            cancelNudges();
-          }
+          refreshNudges(result.response_id);
 
           // Store the response ID if present for this endpoint
           if (result.response_id) {
