@@ -8,27 +8,24 @@ vi.mock("next-themes", () => ({ useTheme: () => ({ theme: "light" }) }));
 vi.mock("sonner", () => ({ Toaster: () => null }));
 
 describe("Sonner toast icon components", () => {
-  it("SuccessIcon renders a circle span with an svg checkmark", () => {
+  it("SuccessIcon renders an svg with the green circle fill", () => {
     const { container } = render(<SuccessIcon />);
-    const span = container.querySelector("span");
-    expect(span).not.toBeNull();
-    expect(span?.className).toContain("rounded-full");
-    expect(container.querySelector("svg")).not.toBeNull();
+    const svg = container.querySelector("svg");
+    expect(svg).not.toBeNull();
+    expect(container.innerHTML).toContain("#24a148");
   });
 
-  it("WarningIcon renders a circle span with an svg exclamation", () => {
+  it("WarningIcon renders an svg with the amber circle fill", () => {
     const { container } = render(<WarningIcon />);
-    const span = container.querySelector("span");
-    expect(span).not.toBeNull();
-    expect(span?.className).toContain("rounded-full");
-    expect(container.querySelector("svg")).not.toBeNull();
+    const svg = container.querySelector("svg");
+    expect(svg).not.toBeNull();
+    expect(container.innerHTML).toContain("#f1c21b");
   });
 
-  it("ErrorIcon renders a circle span with an svg backslash", () => {
+  it("ErrorIcon renders an svg with the red circle fill", () => {
     const { container } = render(<ErrorIcon />);
-    const span = container.querySelector("span");
-    expect(span).not.toBeNull();
-    expect(span?.className).toContain("rounded-full");
-    expect(container.querySelector("svg")).not.toBeNull();
+    const svg = container.querySelector("svg");
+    expect(svg).not.toBeNull();
+    expect(container.innerHTML).toContain("#da1e28");
   });
 });

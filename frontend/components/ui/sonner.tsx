@@ -5,49 +5,41 @@ import { Toaster as Sonner } from "sonner";
 
 type ToasterProps = React.ComponentProps<typeof Sonner>;
 
-// Filled circle icons matching Carbon's inline-notification icon style.
-// Each is a solid colored circle with a symbol inside.
+// Toast icons matching Carbon's inline-notification icon style.
+// Paths derived from Carbon's filled icon set (MIT licence), scaled to 16×16 viewBox.
 // Exported for unit testing only.
+
+// checkmark--filled: green circle + white checkmark
 export const SuccessIcon = () => (
-  // green-500 in light, emerald-400 in dark — matches Carbon success icon brightness
-  <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-green-500 dark:bg-[hsl(var(--accent-emerald-foreground))]">
-    <svg viewBox="0 0 12 12" fill="none" className="size-3" aria-hidden>
-      <path
-        d="M2 6l3 3 5-5"
-        stroke="white"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  </span>
+  <svg viewBox="0 0 16 16" className="size-5 shrink-0" aria-hidden>
+    <path
+      fill="#24a148"
+      d="M8 1C4.1 1 1 4.1 1 8s3.1 7 7 7 7-3.1 7-7-3.1-7-7-7z"
+    />
+    <path fill="white" d="M7 11 3.5 7.5l1-1L7 9l5.5-5.5 1 1z" />
+  </svg>
 );
 
+// warning--alt--filled: amber circle + white exclamation
 export const WarningIcon = () => (
-  // Bright yellow circle with dark exclamation — matches Carbon warning icon
-  <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-amber-400 dark:bg-amber-300">
-    <svg viewBox="0 0 12 12" fill="none" className="size-3" aria-hidden>
-      <path
-        d="M6 3.5v3M6 8.5v.5"
-        stroke="black"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-    </svg>
-  </span>
+  <svg viewBox="0 0 16 16" className="size-5 shrink-0" aria-hidden>
+    <path
+      fill="#f1c21b"
+      d="M8 1C4.1 1 1 4.1 1 8s3.1 7 7 7 7-3.1 7-7-3.1-7-7-7z"
+    />
+    <path fill="#161616" d="M7.25 4.75h1.5v5h-1.5zM7.25 11.25h1.5v1.5h-1.5z" />
+  </svg>
 );
 
+// error--filled: red circle + white backslash
 export const ErrorIcon = () => (
-  <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-[hsl(var(--accent-red-foreground))]">
-    <svg viewBox="0 0 12 12" fill="none" className="size-3" aria-hidden>
-      <path
-        d="M2.5 2.5l7 7"
-        stroke="white"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-    </svg>
-  </span>
+  <svg viewBox="0 0 16 16" className="size-5 shrink-0" aria-hidden>
+    <path
+      fill="#da1e28"
+      d="M8 1C4.1 1 1 4.1 1 8s3.1 7 7 7 7-3.1 7-7-3.1-7-7-7z"
+    />
+    <path fill="white" d="m10.7 11.5-6.2-6.2.8-.8 6.2 6.2z" />
+  </svg>
 );
 
 const Toaster = ({ ...props }: ToasterProps) => {
