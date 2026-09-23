@@ -62,11 +62,11 @@ const Toaster = ({ ...props }: ToasterProps) => {
           //   light → tinted surface (accent-* bg) + accent-foreground left border
           //   dark  → neutral card surface + accent-foreground left border only
           success:
-            "group-[.toaster]:!bg-accent-emerald dark:group-[.toaster]:!bg-card group-[.toaster]:!text-foreground group-[.toaster]:!border-accent-emerald dark:group-[.toaster]:!border-border [&_[data-description]]:!text-muted-foreground [border-left:3px_solid_hsl(var(--accent-emerald-foreground))]",
+            "group-[.toaster]:!bg-accent-emerald dark:group-[.toaster]:!bg-card group-[.toaster]:!text-foreground [&_[data-description]]:!text-muted-foreground",
           warning:
-            "group-[.toaster]:!bg-accent-amber dark:group-[.toaster]:!bg-card group-[.toaster]:!text-foreground group-[.toaster]:!border-accent-amber dark:group-[.toaster]:!border-border [&_[data-description]]:!text-muted-foreground [border-left:3px_solid_hsl(var(--accent-amber-foreground))]",
+            "group-[.toaster]:!bg-accent-amber dark:group-[.toaster]:!bg-card group-[.toaster]:!text-foreground [&_[data-description]]:!text-muted-foreground",
           error:
-            "group-[.toaster]:!bg-accent-red dark:group-[.toaster]:!bg-card group-[.toaster]:!text-foreground group-[.toaster]:!border-accent-red dark:group-[.toaster]:!border-border [&_[data-description]]:!text-muted-foreground [border-left:3px_solid_hsl(var(--accent-red-foreground))]",
+            "group-[.toaster]:!bg-accent-red dark:group-[.toaster]:!bg-card group-[.toaster]:!text-foreground [&_[data-description]]:!text-muted-foreground",
           // Override sonner's fixed 16×16 icon slot so the 20×20 circle renders fully,
           // and align it to the top of the content block (next to the title).
           icon: "!size-5 !h-auto self-start mt-0.5",

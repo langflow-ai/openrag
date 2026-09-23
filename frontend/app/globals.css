@@ -1153,3 +1153,28 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* Sonner toast left-border overrides — outside all @layer blocks so these
+   unlayered rules beat Sonner's own injected unlayered border shorthand.
+   Uses the same hex values as the SVG icons for exact colour match. */
+
+/* OSS brand: all themes */
+[data-sonner-toast][data-type="success"] {
+  border-left-color: #24a148 !important;
+  border-left-width: 3px !important;
+}
+
+[data-sonner-toast][data-type="warning"] {
+  border-left-color: #f1c21b !important;
+  border-left-width: 3px !important;
+}
+
+[data-sonner-toast][data-type="error"] {
+  border-left-color: #da1e28 !important;
+  border-left-width: 3px !important;
+}
+
+/* IBM/SaaS brand: square corners in addition */
+[data-theme="ibm"] [data-sonner-toast] {
+  border-radius: 0 !important;
+}
