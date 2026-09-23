@@ -1040,6 +1040,9 @@ def _log_stream_shape(tally: _StreamTally, provider: str, model: str) -> None:
         logger.debug("Could not summarise stream shape", exc_info=True)
 
 
+_WATSONX_ONPREM_EMBEDDING_BATCH_SIZE = 32
+
+
 def _embedding_input(value: Any) -> Any:
     """OpenAI's `input`, in the shape every provider behind us accepts.
 
@@ -1060,15 +1063,55 @@ async def embeddings(body: Mapping[str, Any], *, config=None) -> dict[str, Any]:
         body.get("model"), kind="embedding", config=cfg
     )
     runtime_kwargs = _provider_runtime_kwargs(provider, cfg)
+    embedding_input = _embedding_input(body.get("input"))
+    should_batch = (
+        provider == "watsonx_onprem"
+        and isinstance(embedding_input, list)
+        and len(embedding_input) > _WATSONX_ONPREM_EMBEDDING_BATCH_SIZE
+        and not all(isinstance(item, int) for item in embedding_input)
+    )
     try:
         import litellm
 
-        result = await litellm.aembedding(
-            model=litellm_model,
-            input=_embedding_input(body.get("input")),
-            **credentials,
-            **runtime_kwargs,
-        )
+        if not should_batch:
+            result = await litellm.aembedding(
+                model=litellm_model,
+                input=embedding_input,
+                **credentials,
+                **runtime_kwargs,
+            )
+            response = _to_openai_dict(result)
+        else:
+            response = {}
+            data: list[dict[str, Any]] = []
+            usage: dict[str, int | float] = {}
+            for offset in range(
+                0,
+                len(embedding_input),
+                _WATSONX_ONPREM_EMBEDDING_BATCH_SIZE,
+            ):
+                batch = embedding_input[offset : offset + _WATSONX_ONPREM_EMBEDDING_BATCH_SIZE]
+                result = await litellm.aembedding(
+                    model=litellm_model,
+                    input=batch,
+                    **credentials,
+                    **runtime_kwargs,
+                )
+                payload = _to_openai_dict(result)
+                if not response:
+                    response = {
+                        key: value for key, value in payload.items() if key not in {"data", "usage"}
+                    }
+                for position, item in enumerate(payload.get("data", [])):
+                    merged_item = dict(item)
+                    merged_item["index"] = offset + int(item.get("index", position))
+                    data.append(merged_item)
+                for key, value in payload.get("usage", {}).items():
+                    if isinstance(value, (int, float)):
+                        usage[key] = usage.get(key, 0) + value
+            response["data"] = data
+            if usage:
+                response["usage"] = usage
     except LlmGatewayError:
         raise
     except Exception as exc:
@@ -1082,4 +1125,4 @@ async def embeddings(body: Mapping[str, Any], *, config=None) -> dict[str, Any]:
             detail=detail,
         ) from exc
     provider_error_log.record_success(provider, "embedding")
-    return _to_openai_dict(result)
+    return response
