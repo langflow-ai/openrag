@@ -21,6 +21,7 @@ from utils.embedding_fields import (
     embedding_spaces_from_aggregation,
     get_embedding_field_name,
     get_embedding_space_id,
+    normalize_model_name,
     split_embedding_space_id,
 )
 
@@ -161,6 +162,50 @@ class TestBuildKnnVectorFieldIsolation:
 
         second = build_knn_vector_field(1536)
         assert "advanced.hierarchy_enabled" not in second["method"]["parameters"]
+
+
+class TestNormalizeModelNameOci:
+    """OCI's Cohere embed model names must normalize to safe, distinct
+    OpenSearch field-name suffixes -- specifically checked against
+    ``cohere.embed-multilingual-v3.0``, the model this integration targets.
+    """
+
+    def test_oci_cohere_multilingual_v3_model_name(self) -> None:
+        assert (
+            normalize_model_name("cohere.embed-multilingual-v3.0")
+            == "cohere_embed_multilingual_v3_0"
+        )
+
+    def test_oci_prefixed_variant_normalizes_consistently(self) -> None:
+        # get_litellm_model_name() prefixes with "oci/"; the embedding_model
+        # field stored on each chunk uses the *bare* model name today (see
+        # models.processors), so both forms should normalize distinctly and
+        # predictably rather than colliding or erroring.
+        bare = normalize_model_name("cohere.embed-multilingual-v3.0")
+        prefixed = normalize_model_name("oci/cohere.embed-multilingual-v3.0")
+        assert bare == "cohere_embed_multilingual_v3_0"
+        assert prefixed == "oci_cohere_embed_multilingual_v3_0"
+        assert bare != prefixed
+
+    def test_distinct_from_sibling_cohere_variant(self) -> None:
+        # A hypothetical Bedrock-style Cohere model name without the ".0"
+        # patch suffix must not collide with the OCI ".0" variant.
+        multilingual_v3_0 = normalize_model_name("cohere.embed-multilingual-v3.0")
+        multilingual_v3 = normalize_model_name("cohere.embed-multilingual-v3")
+        assert multilingual_v3_0 != multilingual_v3
+        assert multilingual_v3_0 == "cohere_embed_multilingual_v3_0"
+        assert multilingual_v3 == "cohere_embed_multilingual_v3"
+
+    def test_distinct_from_english_variant(self) -> None:
+        multilingual = normalize_model_name("cohere.embed-multilingual-v3.0")
+        english = normalize_model_name("cohere.embed-english-v3.0")
+        assert multilingual != english
+
+    def test_embed_field_name_for_oci_model(self) -> None:
+        assert (
+            get_embedding_field_name("cohere.embed-multilingual-v3.0")
+            == "chunk_embedding_cohere_embed_multilingual_v3_0"
+        )
 
 
 class TestBuildKnnVectorFieldCallSitesMatch:

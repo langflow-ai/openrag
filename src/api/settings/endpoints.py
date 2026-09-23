@@ -46,6 +46,7 @@ from api.settings.models import (
     GenericProviderConfig,
     IngestionDefaultsConfig,
     KnowledgeConfig,
+    OCIProviderConfig,
     OllamaProviderConfig,
     OnboardingBody,
     OnboardingResponse,
@@ -338,6 +339,17 @@ async def get_settings(
                     endpoint=openrag_config.providers.ollama.endpoint or None,
                     configured=openrag_config.providers.ollama.configured,
                 ),
+                oci=OCIProviderConfig(
+                    has_key=bool(
+                        openrag_config.providers.oci.key or openrag_config.providers.oci.key_file
+                    ),
+                    user=openrag_config.providers.oci.user or None,
+                    tenancy=openrag_config.providers.oci.tenancy or None,
+                    compartment_id=openrag_config.providers.oci.compartment_id or None,
+                    region=openrag_config.providers.oci.region or None,
+                    auth_method=openrag_config.providers.oci.auth_method,
+                    configured=openrag_config.providers.oci.configured,
+                ),
                 custom=_custom_providers_for_settings(openrag_config),
             )
             if show_providers
@@ -420,6 +432,14 @@ async def update_settings(
             "watsonx_endpoint",
             "watsonx_project_id",
             "ollama_endpoint",
+            "oci_user",
+            "oci_fingerprint",
+            "oci_tenancy",
+            "oci_compartment_id",
+            "oci_key",
+            "oci_key_file",
+            "oci_region",
+            "oci_auth_method",
             "provider_credentials",
             "remove_provider_config",
         ]
@@ -610,6 +630,36 @@ async def update_settings(
                     if getattr(body, f"{embedding_provider}_project_id", None) is not None:
                         project_id = getattr(body, f"{embedding_provider}_project_id", None)
 
+                    # OCI has no api_key/endpoint/project_id fields; it authenticates via
+                    # its own multi-field API Signing Key credential set. Merge request
+                    # overrides onto the existing config the same way as above so the
+                    # shape check (_test_oci_credential_shape) sees the effective values.
+                    oci_user = getattr(embedding_provider_config, "user", None)
+                    oci_fingerprint = getattr(embedding_provider_config, "fingerprint", None)
+                    oci_tenancy = getattr(embedding_provider_config, "tenancy", None)
+                    oci_compartment_id = getattr(embedding_provider_config, "compartment_id", None)
+                    oci_key = getattr(embedding_provider_config, "key", None)
+                    oci_key_file = getattr(embedding_provider_config, "key_file", None)
+                    oci_auth_method = getattr(embedding_provider_config, "auth_method", None)
+                    oci_region = getattr(embedding_provider_config, "region", None)
+
+                    if body.oci_user is not None:
+                        oci_user = body.oci_user
+                    if body.oci_fingerprint is not None:
+                        oci_fingerprint = body.oci_fingerprint
+                    if body.oci_tenancy is not None:
+                        oci_tenancy = body.oci_tenancy
+                    if body.oci_compartment_id is not None:
+                        oci_compartment_id = body.oci_compartment_id
+                    if body.oci_key is not None:
+                        oci_key = body.oci_key
+                    if body.oci_key_file is not None:
+                        oci_key_file = body.oci_key_file
+                    if body.oci_auth_method is not None:
+                        oci_auth_method = body.oci_auth_method
+                    if body.oci_region is not None:
+                        oci_region = body.oci_region
+
                     await validate_provider_setup(
                         provider=embedding_provider,
                         api_key=api_key,
@@ -621,6 +671,14 @@ async def update_settings(
                             embedding_provider_key,
                             submitted_credentials.get(embedding_provider_key, {}),
                         ),
+                        oci_auth_method=oci_auth_method,
+                        oci_user=oci_user,
+                        oci_fingerprint=oci_fingerprint,
+                        oci_tenancy=oci_tenancy,
+                        oci_compartment_id=oci_compartment_id,
+                        oci_key=oci_key,
+                        oci_key_file=oci_key_file,
+                        oci_region=oci_region,
                     )
                     logger.info(
                         f"Embedding provider validation successful for {embedding_provider}"
@@ -946,6 +1004,54 @@ async def update_settings(
             config_updated = True
             provider_updated = True
 
+        if body.oci_user is not None:
+            working_config.providers.oci.user = body.oci_user.strip()
+            working_config.providers.oci.configured = True
+            config_updated = True
+            provider_updated = True
+
+        if body.oci_fingerprint is not None:
+            working_config.providers.oci.fingerprint = body.oci_fingerprint.strip()
+            working_config.providers.oci.configured = True
+            config_updated = True
+            provider_updated = True
+
+        if body.oci_tenancy is not None:
+            working_config.providers.oci.tenancy = body.oci_tenancy.strip()
+            working_config.providers.oci.configured = True
+            config_updated = True
+            provider_updated = True
+
+        if body.oci_compartment_id is not None:
+            working_config.providers.oci.compartment_id = body.oci_compartment_id.strip()
+            working_config.providers.oci.configured = True
+            config_updated = True
+            provider_updated = True
+
+        if body.oci_key is not None:
+            working_config.providers.oci.key = body.oci_key.strip()
+            working_config.providers.oci.configured = True
+            config_updated = True
+            provider_updated = True
+
+        if body.oci_key_file is not None:
+            working_config.providers.oci.key_file = body.oci_key_file.strip()
+            working_config.providers.oci.configured = True
+            config_updated = True
+            provider_updated = True
+
+        if body.oci_region is not None:
+            working_config.providers.oci.region = body.oci_region.strip()
+            working_config.providers.oci.configured = True
+            config_updated = True
+            provider_updated = True
+
+        if body.oci_auth_method is not None:
+            working_config.providers.oci.auth_method = body.oci_auth_method.strip()
+            working_config.providers.oci.configured = True
+            config_updated = True
+            provider_updated = True
+
         if body.remove_ollama_config:
             if not _has_other_configured_provider(working_config, "ollama"):
                 return JSONResponse(
@@ -1042,6 +1148,38 @@ async def update_settings(
                 working_config.agent.llm_model = _default_llm_model(fb)
             if working_config.knowledge.embedding_provider == "watsonx":
                 fb = _first_configured_embedding_provider(working_config, "watsonx")
+                working_config.knowledge.embedding_provider = fb
+                working_config.knowledge.embedding_model = _default_embedding_model(fb)
+            config_updated = True
+            provider_updated = True
+
+        if body.remove_oci_config:
+            if not _has_other_configured_provider(working_config, "oci"):
+                return JSONResponse(
+                    {
+                        "error": "Cannot remove OCI Generative AI configuration: configure another model provider first."
+                    },
+                    status_code=400,
+                )
+            if not body.force_remove:
+                affected = await _affected_embedding_models(
+                    "oci", session_manager, user, models_service
+                )
+                if affected:
+                    return _embedding_conflict_response("OCI Generative AI", "oci", affected)
+            working_config.providers.oci.user = ""
+            working_config.providers.oci.fingerprint = ""
+            working_config.providers.oci.tenancy = ""
+            working_config.providers.oci.compartment_id = ""
+            working_config.providers.oci.key = ""
+            working_config.providers.oci.key_file = ""
+            working_config.providers.oci.region = ""
+            working_config.providers.oci.auth_method = "api_key"
+            working_config.providers.oci.configured = False
+            working_config.providers.custom.pop("oci", None)
+            # OCI is not a valid LLM provider; no LLM reset needed
+            if working_config.knowledge.embedding_provider == "oci":
+                fb = _first_configured_embedding_provider(working_config, "oci")
                 working_config.knowledge.embedding_provider = fb
                 working_config.knowledge.embedding_model = _default_embedding_model(fb)
             config_updated = True
@@ -1251,6 +1389,46 @@ async def onboarding(
             current_config.providers.ollama.configured = True
             config_updated = True
 
+        if body.oci_user:
+            current_config.providers.oci.user = body.oci_user.strip()
+            current_config.providers.oci.configured = True
+            config_updated = True
+
+        if body.oci_fingerprint:
+            current_config.providers.oci.fingerprint = body.oci_fingerprint.strip()
+            current_config.providers.oci.configured = True
+            config_updated = True
+
+        if body.oci_tenancy:
+            current_config.providers.oci.tenancy = body.oci_tenancy.strip()
+            current_config.providers.oci.configured = True
+            config_updated = True
+
+        if body.oci_compartment_id:
+            current_config.providers.oci.compartment_id = body.oci_compartment_id.strip()
+            current_config.providers.oci.configured = True
+            config_updated = True
+
+        if body.oci_key:
+            current_config.providers.oci.key = body.oci_key.strip()
+            current_config.providers.oci.configured = True
+            config_updated = True
+
+        if body.oci_key_file:
+            current_config.providers.oci.key_file = body.oci_key_file.strip()
+            current_config.providers.oci.configured = True
+            config_updated = True
+
+        if body.oci_region:
+            current_config.providers.oci.region = body.oci_region.strip()
+            current_config.providers.oci.configured = True
+            config_updated = True
+
+        if body.oci_auth_method:
+            current_config.providers.oci.auth_method = body.oci_auth_method.strip()
+            current_config.providers.oci.configured = True
+            config_updated = True
+
         for provider, credentials in (body.provider_credentials or {}).items():
             current_config.providers.set_credentials(
                 provider,
@@ -1304,6 +1482,16 @@ async def onboarding(
             elif embedding_provider == "ollama" and current_config.providers.ollama.endpoint:
                 current_config.providers.ollama.configured = True
                 logger.info("Marked Ollama as configured (chosen as embedding provider)")
+            elif (
+                embedding_provider == "oci"
+                and current_config.providers.oci.user
+                and current_config.providers.oci.fingerprint
+                and current_config.providers.oci.tenancy
+                and current_config.providers.oci.compartment_id
+                and (current_config.providers.oci.key or current_config.providers.oci.key_file)
+            ):
+                current_config.providers.oci.configured = True
+                logger.info("Marked OCI as configured (chosen as embedding provider)")
             elif (
                 embedding_provider in current_config.providers.custom
                 and current_config.providers.custom[embedding_provider].credentials
@@ -1363,6 +1551,14 @@ async def onboarding(
                     credentials=current_config.providers.credential_values(
                         embedding_provider, kind="embedding"
                     ),
+                    oci_auth_method=getattr(embedding_provider_config, "auth_method", None),
+                    oci_user=getattr(embedding_provider_config, "user", None),
+                    oci_fingerprint=getattr(embedding_provider_config, "fingerprint", None),
+                    oci_tenancy=getattr(embedding_provider_config, "tenancy", None),
+                    oci_compartment_id=getattr(embedding_provider_config, "compartment_id", None),
+                    oci_key=getattr(embedding_provider_config, "key", None),
+                    oci_key_file=getattr(embedding_provider_config, "key_file", None),
+                    oci_region=getattr(embedding_provider_config, "region", None),
                 )
                 logger.info(
                     f"Embedding provider setup validation completed successfully for {embedding_provider}"
@@ -1397,6 +1593,13 @@ async def onboarding(
                     body.watsonx_endpoint,
                     body.watsonx_project_id,
                     body.ollama_endpoint,
+                    body.oci_user,
+                    body.oci_fingerprint,
+                    body.oci_tenancy,
+                    body.oci_compartment_id,
+                    body.oci_key,
+                    body.oci_key_file,
+                    body.oci_region,
                     body.provider_credentials,
                 ]
             )

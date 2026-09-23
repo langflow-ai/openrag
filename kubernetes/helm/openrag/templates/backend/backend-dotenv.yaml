@@ -142,6 +142,30 @@ stringData:
     {{- if .Values.llmProviders.watsonx.projectId }}
     WATSONX_PROJECT_ID={{ .Values.llmProviders.watsonx.projectId | quote }}
     {{- end }}
+    {{- if .Values.llmProviders.oci.user }}
+    OCI_USER={{ .Values.llmProviders.oci.user | quote }}
+    {{- end }}
+    {{- if .Values.llmProviders.oci.fingerprint }}
+    OCI_FINGERPRINT={{ .Values.llmProviders.oci.fingerprint | quote }}
+    {{- end }}
+    {{- if .Values.llmProviders.oci.tenancy }}
+    OCI_TENANCY={{ .Values.llmProviders.oci.tenancy | quote }}
+    {{- end }}
+    {{- if .Values.llmProviders.oci.compartmentId }}
+    OCI_COMPARTMENT_ID={{ .Values.llmProviders.oci.compartmentId | quote }}
+    {{- end }}
+    {{- if .Values.llmProviders.oci.key }}
+    OCI_KEY={{ .Values.llmProviders.oci.key | quote }}
+    {{- end }}
+    {{- if .Values.llmProviders.oci.keyFile }}
+    OCI_KEY_FILE={{ .Values.llmProviders.oci.keyFile | quote }}
+    {{- end }}
+    {{- if .Values.llmProviders.oci.region }}
+    OCI_REGION={{ .Values.llmProviders.oci.region | quote }}
+    {{- end }}
+    {{- if .Values.llmProviders.oci.authMethod }}
+    OCI_AUTH_METHOD={{ .Values.llmProviders.oci.authMethod | quote }}
+    {{- end }}
 
     # LLM / Embedding provider configuration
     {{- if .Values.appConfig.agent.llmProvider }}
