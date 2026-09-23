@@ -197,6 +197,37 @@ def test_indexed_space_routes_through_its_configured_generic_provider():
     assert credentials == {"api_key": "gemini-secret"}
 
 
+def test_onprem_resolved_credentials_remain_json_serializable():
+    providers = ProvidersConfig(
+        openai=OpenAIConfig(),
+        anthropic=AnthropicConfig(),
+        watsonx=WatsonXConfig(),
+        ollama=OllamaConfig(),
+        custom={
+            "watsonx_onprem": GenericProviderConfig(
+                credentials={
+                    "api_base": "https://cpd.example.com",
+                    "username": "cpduser",
+                    "api_key": "secret",
+                    "ssl_verify": "false",
+                },
+                configured=True,
+            )
+        },
+    )
+    cfg = SimpleNamespace(providers=providers)
+
+    _, provider, credentials = resolve_call(
+        "watsonx_onprem:test-model",
+        kind="chat",
+        config=cfg,
+    )
+
+    assert provider == "watsonx_onprem"
+    assert "client" not in credentials
+    json.dumps(credentials)
+
+
 @pytest.mark.asyncio
 async def test_chat_completions_calls_litellm_with_config_key(monkeypatch):
     captured = {}

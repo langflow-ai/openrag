@@ -160,14 +160,6 @@ def provider_credentials(
 
     if hasattr(prov, "credential_values"):
         credentials = prov.credential_values(key, kind=kind)
-        from enhancements.providers.registry import get, runtime_kwargs_for
-
-        enhancement = get(key)
-        if enhancement is not None:
-            stored = (
-                prov.stored_credentials(key) if hasattr(prov, "stored_credentials") else credentials
-            )
-            credentials.update(runtime_kwargs_for(enhancement, stored))
     else:
         provider_config = getattr(prov, key, None)
         if provider_config is None:
@@ -204,6 +196,27 @@ def provider_credentials(
             400,
         )
     return credentials
+
+
+def _provider_runtime_kwargs(provider: str, config=None) -> dict[str, Any]:
+    """Non-serializable transport kwargs for the immediate LiteLLM invocation."""
+    cfg = config or _get_config()
+    prov = cfg.providers
+    if not hasattr(prov, "credential_values"):
+        return {}
+
+    from enhancements.providers.registry import get, runtime_kwargs_for
+
+    key = (provider or "").strip().lower()
+    enhancement = get(key)
+    if enhancement is None:
+        return {}
+    stored = (
+        prov.stored_credentials(key)
+        if hasattr(prov, "stored_credentials")
+        else prov.credential_values(key)
+    )
+    return runtime_kwargs_for(enhancement, stored)
 
 
 def resolve_call(
@@ -648,6 +661,7 @@ async def chat_completions(
     """OpenAI `POST /v1/chat/completions`. Streams SSE lines when `stream` is true."""
     cfg = config or _get_config()
     litellm_model, provider, credentials = resolve_call(body.get("model"), kind="chat", config=cfg)
+    runtime_kwargs = _provider_runtime_kwargs(provider, cfg)
     kwargs = {key: body[key] for key in _LITELLM_FORWARDED_PARAMS if key in body}
     stream = bool(body.get("stream"))
     if litellm_model in _TOOLS_NEED_REASONING_OFF:
@@ -669,6 +683,7 @@ async def chat_completions(
             # provider's capabilities instead of failing the request.
             drop_params=True,
             **credentials,
+            **runtime_kwargs,
             **kwargs,
         )
 
@@ -1044,6 +1059,7 @@ async def embeddings(body: Mapping[str, Any], *, config=None) -> dict[str, Any]:
     litellm_model, provider, credentials = resolve_call(
         body.get("model"), kind="embedding", config=cfg
     )
+    runtime_kwargs = _provider_runtime_kwargs(provider, cfg)
     try:
         import litellm
 
@@ -1051,6 +1067,7 @@ async def embeddings(body: Mapping[str, Any], *, config=None) -> dict[str, Any]:
             model=litellm_model,
             input=_embedding_input(body.get("input")),
             **credentials,
+            **runtime_kwargs,
         )
     except LlmGatewayError:
         raise

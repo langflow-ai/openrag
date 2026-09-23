@@ -172,7 +172,7 @@ def test_the_gateway_routes_it_as_watsonx() -> None:
     # The OpenRAG key is what the caller and the credential store still see.
     assert provider == PROVIDER
     assert credentials["zen_api_key"] == "Y3BkdXNlcjpBUElLRVk="
-    assert credentials["client"].ssl_verify is False
+    assert "client" not in credentials
 
 
 def test_the_alias_is_routable_so_ids_are_not_billed_to_the_default_provider() -> None:
@@ -985,6 +985,7 @@ async def test_validating_an_embedding_model_sends_a_list_not_a_string(monkeypat
     )
 
     assert isinstance(sent["input"], list), sent["input"]
+    assert "client" in sent
 
 
 @pytest.mark.asyncio
@@ -1018,6 +1019,7 @@ async def test_a_client_sending_a_bare_string_input_still_embeds(monkeypatch) ->
     )
 
     assert sent["input"] == ["hello"]
+    assert "client" in sent
 
 
 def test_a_token_array_input_is_left_alone() -> None:
