@@ -37,12 +37,17 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
  * - /api/models/catalog → empty provider list; prevents unhandled-request error
  *                          from useGetModelCatalogQuery (always enabled for authed users).
  */
-function baseHandlers(): RequestHandler[] {
+function baseHandlers(
+  knowledge: { chunk_size: number; chunk_overlap: number } = {
+    chunk_size: 1024,
+    chunk_overlap: 50,
+  },
+): RequestHandler[] {
   return [
     http.get("/api/settings", () =>
       HttpResponse.json(
         makeSettings({
-          knowledge: { chunk_size: 1024, chunk_overlap: 50 },
+          knowledge,
           show_vlm_settings: false,
         }),
       ),
@@ -51,11 +56,14 @@ function baseHandlers(): RequestHandler[] {
   ];
 }
 
-function renderSection(extraHandlers: RequestHandler[] = []) {
+function renderSection(
+  extraHandlers: RequestHandler[] = [],
+  knowledge?: { chunk_size: number; chunk_overlap: number },
+) {
   return renderWithProviders(<IngestSettingsSection />, {
     providers: ["tooltip", "auth", "unsavedChanges"],
     auth: authPresets.admin,
-    handlers: [...baseHandlers(), ...extraHandlers],
+    handlers: [...baseHandlers(knowledge), ...extraHandlers],
   });
 }
 
@@ -66,14 +74,16 @@ describe("IngestSettingsSection", () => {
 
   describe("initial load", () => {
     it("populates chunk size and overlap from server", async () => {
-      renderSection();
+      // Use server values that differ from the component defaults (1024 / 50)
+      // so this test fails if server→form synchronization stops working.
+      renderSection([], { chunk_size: 768, chunk_overlap: 128 });
 
       expect(
         await screen.findByRole("spinbutton", { name: /chunk size/i }),
-      ).toHaveValue(1024);
+      ).toHaveValue(768);
       expect(
         screen.getByRole("spinbutton", { name: /chunk overlap/i }),
-      ).toHaveValue(50);
+      ).toHaveValue(128);
     });
   });
 
@@ -237,14 +247,32 @@ describe("IngestSettingsSection", () => {
       fireEvent.change(input, { target: { value: "512" } });
       expect(input).toHaveValue(512);
 
-      // Simulate a background refetch — the handler still returns the original
-      // server value of 1024.
+      // Simulate a background refetch that returns a DIFFERENT valid server
+      // value (999). Returning the same 1024 would let TanStack Query preserve
+      // the settings.knowledge reference via structural sharing, so the guarded
+      // sync effect might never run and the assertion could pass trivially.
+      let refetchCompleted = false;
+      server.use(
+        http.get("/api/settings", () => {
+          refetchCompleted = true;
+          return HttpResponse.json(
+            makeSettings({
+              knowledge: { chunk_size: 999, chunk_overlap: 50 },
+              show_vlm_settings: false,
+            }),
+          );
+        }),
+      );
+
       await act(async () => {
         await queryClient.invalidateQueries({ queryKey: ["settings"] });
       });
 
-      // User's edit must be preserved; the sync effect should have been
-      // short-circuited by userEditedRef.current === true.
+      // The refetch really happened and returned new data...
+      expect(refetchCompleted).toBe(true);
+      // ...yet the user's edit must be preserved (not overwritten by 999): the
+      // sync effect should have been short-circuited by
+      // userEditedRef.current === true.
       expect(
         screen.getByRole("spinbutton", { name: /chunk size/i }),
       ).toHaveValue(512);
