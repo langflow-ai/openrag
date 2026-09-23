@@ -60,6 +60,7 @@ const sanitizeCitationResult = (item: ToolCallResult): ToolCallResult => {
     page: item.page ?? item.data?.page,
     score: item.score ?? item.data?.score,
     text: item.text ?? item.data?.text,
+    highlights: item.highlights,
     embedding_model: item.embedding_model ?? item.data?.embedding_model,
     parser: item.parser ?? item.data?.parser,
     chunk_size: item.chunk_size ?? item.data?.chunk_size,
@@ -370,7 +371,7 @@ export function OnboardingContent({
               />
             )}
 
-          {/* Step 4 */}
+          {/* Step 4 — data upload */}
           <OnboardingStep
             isVisible={currentStep >= 3 && !isLoading && !!displayMessage}
             isCompleted={currentStep > 3}

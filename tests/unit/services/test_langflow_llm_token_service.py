@@ -25,7 +25,7 @@ def test_round_trip_identifies_the_user():
     assert user.user_id == "alice"
     assert user.email == "a@x"
     assert user.provider == "langflow_llm"
-    assert langflow_hop_audience(token) == LANGFLOW_LLM_AUDIENCE
+    assert langflow_hop_audience(token, secret=SECRET) == LANGFLOW_LLM_AUDIENCE
 
 
 def test_expired_token_is_rejected():
@@ -59,7 +59,7 @@ def test_ingest_token_is_not_an_llm_token():
     llm = LangflowLlmTokenService(secret=SECRET, ttl_seconds=60)
     with pytest.raises(ValueError, match="Invalid Langflow LLM proxy token"):
         llm.validate_token(token)
-    assert langflow_hop_audience(token) == "openrag-langflow-ingest"
+    assert langflow_hop_audience(token, secret=SECRET) == "openrag-langflow-ingest"
 
 
 def test_wrong_scope_is_rejected():
