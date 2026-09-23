@@ -80,6 +80,41 @@ def is_permitted_index_name(index_name: str) -> bool:
     return bool(_PERMITTED_INDEX_NAME.match(index_name))
 
 
+def apply_index_name_env_override(knowledge: dict[str, Any]) -> None:
+    """Apply ``OPENSEARCH_INDEX_NAME`` onto a ``knowledge`` config dict in place.
+
+    The index name is a role-gated infra setting (``securityconfig/roles.yml``),
+    shared by every workspace on a deployment, not a user preference. This
+    override therefore always wins when the env var is set — independent of the
+    storage mode or the ``edited`` flag — so the ingest-write path and the
+    connector enrichment path can never resolve different index names (issue
+    81583). Mirrors the unconditional ``legacy_embedding_provider_map`` override.
+
+    An env value outside the security role's index patterns is rejected and the
+    prior value kept, since applying it would break search/write with a 403.
+    """
+    from config.settings import get_opensearch_index_name_override
+
+    env_index_name = get_opensearch_index_name_override()
+    if not env_index_name:
+        return
+    if not is_permitted_index_name(env_index_name):
+        logger.error(
+            f"OPENSEARCH_INDEX_NAME={env_index_name!r} is not permitted by the "
+            f"OpenSearch security role (must match one of "
+            f"{ALLOWED_INDEX_NAME_PATTERNS}); ignoring and keeping "
+            f"{knowledge.get('index_name', 'documents')!r}. "
+            "See securityconfig/roles.yml."
+        )
+        return
+    if knowledge.get("index_name") not in (None, env_index_name):
+        logger.warning(
+            f"Stored index_name {knowledge.get('index_name')!r} overridden by "
+            f"OPENSEARCH_INDEX_NAME={env_index_name!r}"
+        )
+    knowledge["index_name"] = env_index_name
+
+
 def _validate_config_path(config_file: str | Path) -> Path:
     """Validate a config file path against a strict allowlist (anti path-injection)."""
     value = os.fspath(config_file)
@@ -197,20 +232,25 @@ class ProvidersConfig:
         return self.custom.get(provider_lower, GenericProviderConfig())
 
     def set_credentials(
-        self, provider: str, credentials: dict[str, str], *, auth_method: str | None = None
+        self,
+        provider: str,
+        credentials: dict[str, str],
+        *,
+        auth_method: str | None = None,
+        remove: set[str] | None = None,
     ) -> None:
-        """Upsert arbitrary LiteLLM credentials while preserving legacy config."""
+        """Upsert credentials and apply explicitly requested field removals."""
         key = provider.strip().lower()
         clean = {
             str(name): str(value).strip()
             for name, value in credentials.items()
             if str(name).strip() and str(value).strip()
         }
-        if not clean:
-            # Every submitted value was blank. Creating the entry anyway would
-            # register a provider that reports `configured` with zero
-            # credentials, which then satisfies `any_configured()` and can be
-            # picked as a fallback provider and called with no key at all.
+        removals = {str(name).strip() for name in remove or set() if str(name).strip()}
+        if not clean and not removals:
+            # Blank values remain "leave unchanged" because secret fields are
+            # intentionally not echoed to forms. Deletion is an explicit,
+            # separate operation so an empty password cannot erase a secret.
             return
         previous = self.custom.get(key, GenericProviderConfig())
         if key == "azure" and auth_method:
@@ -232,19 +272,17 @@ class ProvidersConfig:
             }
             previous.auth_method = auth_method
         if key == "watsonx_onprem" and auth_method:
-            methods = {
-                "username_api_key": {"username", "api_key"},
-                "zen_api_key": {"zen_api_key"},
-            }
-            active = methods.get(auth_method)
-            if active is None:
-                raise ValueError(f"Unknown watsonx.ai on-prem authentication method: {auth_method}")
+            from enhancements.providers.watsonx.onprem import (
+                credential_fields_for_auth_method,
+            )
+
+            allowed = credential_fields_for_auth_method(auth_method)
             previous.credentials = {
-                name: value
-                for name, value in previous.credentials.items()
-                if name in {"api_base", "space_id", "project_id"} or name in active
+                name: value for name, value in previous.credentials.items() if name in allowed
             }
             previous.auth_method = auth_method
+        for name in removals:
+            previous.credentials.pop(name, None)
         previous.credentials.update(clean)
         # Complete against the form's required fields, not merely non-empty:
         # a submission of just `ssl_verify` must not make a provider look
@@ -286,16 +324,18 @@ class ProvidersConfig:
         return dict(self.custom.get(provider.strip().lower(), GenericProviderConfig()).credentials)
 
     def pending_stored_credentials(
-        self, provider: str, submitted: dict[str, str] | None = None
+        self,
+        provider: str,
+        submitted: dict[str, str] | None = None,
+        *,
+        remove: set[str] | None = None,
     ) -> dict[str, str]:
-        """`stored_credentials()` as it would read once `submitted` is saved.
-
-        The untranslated counterpart of `pending_credentials()`, for the pre-save
-        health check of a provider whose check needs every field — both of an
-        OpenShift AI deployment's endpoints — rather than the one LiteLLM call
-        the translated form is narrowed to.
-        """
-        return {**self.stored_credentials(provider), **_clean_submitted(submitted)}
+        """`stored_credentials()` as it would read after one pending update."""
+        pending = self.stored_credentials(provider)
+        for name in remove or set():
+            pending.pop(name, None)
+        pending.update(_clean_submitted(submitted))
+        return pending
 
     def pending_credentials(
         self,
@@ -303,6 +343,7 @@ class ProvidersConfig:
         submitted: dict[str, str] | None = None,
         *,
         kind: str = "chat",
+        remove: set[str] | None = None,
     ) -> dict[str, Any]:
         """LiteLLM kwargs for `provider` as it would be once `submitted` is saved.
 
@@ -324,9 +365,11 @@ class ProvidersConfig:
         clean = _clean_submitted(submitted)
         enhancement = get_provider_enhancement(key)
         if enhancement:
-            stored = self.custom.get(key, GenericProviderConfig()).credentials
-            return credentials_for(enhancement, {**stored, **clean}, kind)
+            stored = self.pending_stored_credentials(key, clean, remove=remove)
+            return credentials_for(enhancement, stored, kind)
         values = self.credential_values(key, kind=kind)
+        for name in remove or set():
+            values.pop(name, None)
         values.update(clean)
         return values
 
@@ -759,6 +802,10 @@ class ConfigManager:
                     error=str(e),
                 )
 
+        # The index name is infra, not a user preference: it must resolve the
+        # same way after onboarding marks the config edited (issue 81583).
+        apply_index_name_env_override(config_data["knowledge"])
+
         # Skip all environment overrides if config has been manually edited
         if temp_config and temp_config.edited:
             logger.debug("Skipping all env overrides - config marked as edited")
@@ -779,6 +826,32 @@ class ConfigManager:
             config_data["providers"]["watsonx"]["endpoint"] = os.getenv("WATSONX_ENDPOINT")
         if os.getenv("WATSONX_PROJECT_ID"):
             config_data["providers"]["watsonx"]["project_id"] = os.getenv("WATSONX_PROJECT_ID")
+
+        # IBM watsonx.ai on-prem (Cloud Pak for Data / Software Hub).
+        onprem_credentials = {
+            "api_base": os.getenv("WATSONX_ONPREM_ENDPOINT"),
+            "username": os.getenv("WATSONX_ONPREM_USERNAME"),
+            "api_key": os.getenv("WATSONX_ONPREM_API_KEY"),
+            "zen_api_key": os.getenv("WATSONX_ONPREM_ZEN_API_KEY"),
+            "space_id": os.getenv("WATSONX_ONPREM_SPACE_ID"),
+            "project_id": os.getenv("WATSONX_ONPREM_PROJECT_ID"),
+            "ssl_verify": os.getenv("WATSONX_ONPREM_TLS_VERIFY"),
+        }
+        if any(onprem_credentials.values()):
+            self._seed_custom_provider_credentials(
+                config_data,
+                "watsonx_onprem",
+                onprem_credentials,
+                required=("api_base",),
+            )
+            entry = config_data["providers"]["custom"]["watsonx_onprem"]
+            stored = entry["credentials"]
+            has_zen = bool(stored.get("zen_api_key"))
+            entry["auth_method"] = "zen_api_key" if has_zen else "username_api_key"
+            entry["configured"] = bool(
+                stored.get("api_base")
+                and (has_zen or (stored.get("username") and stored.get("api_key")))
+            )
 
         # Ollama provider settings
         if os.getenv("OLLAMA_ENDPOINT"):
@@ -848,18 +921,7 @@ class ConfigManager:
             config_data["knowledge"]["chunk_size"] = int(os.getenv("CHUNK_SIZE"))
         if os.getenv("CHUNK_OVERLAP"):
             config_data["knowledge"]["chunk_overlap"] = int(os.getenv("CHUNK_OVERLAP"))
-        if os.getenv("OPENSEARCH_INDEX_NAME"):
-            env_index_name = os.getenv("OPENSEARCH_INDEX_NAME")
-            if is_permitted_index_name(env_index_name):
-                config_data["knowledge"]["index_name"] = env_index_name
-            else:
-                logger.error(
-                    f"OPENSEARCH_INDEX_NAME={env_index_name!r} is not permitted by the "
-                    f"OpenSearch security role (must match one of "
-                    f"{ALLOWED_INDEX_NAME_PATTERNS}); ignoring and keeping "
-                    f"{config_data['knowledge'].get('index_name', 'documents')!r}. "
-                    "See securityconfig/roles.yml."
-                )
+        # OPENSEARCH_INDEX_NAME is applied above, before the edited-flag gate.
         if os.getenv("OCR_ENABLED"):
             config_data["knowledge"]["ocr"] = os.getenv("OCR_ENABLED").lower() in (
                 "true",

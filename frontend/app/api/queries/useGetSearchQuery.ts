@@ -24,6 +24,10 @@ export interface ChunkResult {
   mimetype: string;
   page: number;
   text: string;
+  /** Keyword-match highlight fragments from OpenSearch. Each fragment is a
+   *  substring of `text` with matched terms wrapped in `<mark>` tags.
+   *  Empty array when no keyword match exists (pure semantic/KNN hit). */
+  highlights?: string[];
   score: number;
   source_url?: string;
   owner?: string;
@@ -62,9 +66,17 @@ export interface File {
     | "unavailable"
     | "failed"
     | "cancelled"
+    | "skipped"
     | "hidden"
     | "sync";
   error?: string;
+  /**
+   * Skip reason forwarded from result.reason (e.g. "duplicate_content",
+   * "deleted_at_source"). Only set when status === "skipped".
+   */
+  skip_reason?: string;
+  /** Warning message for skipped rows (e.g. duplicate_content). */
+  warning?: string;
   task_id?: string; // Task ID for file-level cancellation
   chunks?: ChunkResult[];
   allowed_users?: string[];
@@ -190,9 +202,15 @@ export const useGetSearchQuery = (
 
       (data.results || []).forEach((chunk: ChunkResult) => {
         const fileIdentity = getFileIdentity(chunk);
+        // Preserve highlights on the chunk object itself — they are per-chunk,
+        // not per-file, so we carry them through rather than aggregating.
+        const chunkWithHighlights: ChunkResult = {
+          ...chunk,
+          highlights: Array.isArray(chunk.highlights) ? chunk.highlights : [],
+        };
         const existing = fileMap.get(fileIdentity);
         if (existing) {
-          existing.chunks.push(chunk);
+          existing.chunks.push(chunkWithHighlights);
           existing.totalScore += chunk.score;
           if (!existing.embedding_model && chunk.embedding_model) {
             existing.embedding_model = chunk.embedding_model;
@@ -207,7 +225,7 @@ export const useGetSearchQuery = (
           fileMap.set(fileIdentity, {
             filename: fileIdentity,
             mimetype: chunk.mimetype,
-            chunks: [chunk],
+            chunks: [chunkWithHighlights],
             totalScore: chunk.score,
             source_url: chunk.source_url,
             owner: chunk.owner,

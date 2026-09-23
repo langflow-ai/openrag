@@ -230,6 +230,57 @@ def test_rhoai_tls_env_alone_reaches_a_stored_config(monkeypatch, tmp_path):
     }
 
 
+def _clear_watsonx_onprem_env(monkeypatch):
+    for name in (
+        "WATSONX_ONPREM_ENDPOINT",
+        "WATSONX_ONPREM_USERNAME",
+        "WATSONX_ONPREM_API_KEY",
+        "WATSONX_ONPREM_ZEN_API_KEY",
+        "WATSONX_ONPREM_SPACE_ID",
+        "WATSONX_ONPREM_PROJECT_ID",
+        "WATSONX_ONPREM_TLS_VERIFY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
+def test_watsonx_onprem_env_seeds_credentials_and_tls(monkeypatch, tmp_path):
+    from config.config_manager import ConfigManager
+
+    _clear_rhoai_env(monkeypatch)
+    _clear_watsonx_onprem_env(monkeypatch)
+    monkeypatch.setenv("WATSONX_ONPREM_ENDPOINT", "https://cpd.example.com")
+    monkeypatch.setenv("WATSONX_ONPREM_USERNAME", "cpduser")
+    monkeypatch.setenv("WATSONX_ONPREM_API_KEY", "secret")
+    monkeypatch.setenv("WATSONX_ONPREM_SPACE_ID", "space-1")
+    monkeypatch.setenv("WATSONX_ONPREM_TLS_VERIFY", "/etc/openrag/cpd-ca.pem")
+
+    config = ConfigManager(config_file=tmp_path / "config.yaml").load_config()
+    provider = config.providers.custom["watsonx_onprem"]
+
+    assert provider.configured is True
+    assert provider.auth_method == "username_api_key"
+    assert config.providers.stored_credentials("watsonx_onprem") == {
+        "api_base": "https://cpd.example.com",
+        "username": "cpduser",
+        "api_key": "secret",
+        "space_id": "space-1",
+        "ssl_verify": "/etc/openrag/cpd-ca.pem",
+    }
+
+
+def test_watsonx_onprem_env_without_complete_auth_stays_unconfigured(monkeypatch, tmp_path):
+    from config.config_manager import ConfigManager
+
+    _clear_rhoai_env(monkeypatch)
+    _clear_watsonx_onprem_env(monkeypatch)
+    monkeypatch.setenv("WATSONX_ONPREM_ENDPOINT", "https://cpd.example.com")
+    monkeypatch.setenv("WATSONX_ONPREM_TLS_VERIFY", "false")
+
+    config = ConfigManager(config_file=tmp_path / "config.yaml").load_config()
+
+    assert config.providers.custom["watsonx_onprem"].configured is False
+
+
 def test_rhoai_env_is_ignored_once_settings_have_been_edited(monkeypatch, tmp_path):
     """The trap worth an explicit test: the first Settings save sets
     `config.edited` and silently freezes every environment override, which on a

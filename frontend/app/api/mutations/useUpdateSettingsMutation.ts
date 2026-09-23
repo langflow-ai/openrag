@@ -55,6 +55,7 @@ export interface UpdateSettingsRequest {
   // Bypass the "this provider's embedding models are still in use" guard.
   force_remove?: boolean;
   provider_credentials?: Record<string, Record<string, string>>;
+  provider_credential_removals?: Record<string, string[]>;
   provider_auth_methods?: Record<string, string>;
   remove_provider_config?: string;
 }

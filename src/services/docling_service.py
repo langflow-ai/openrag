@@ -196,6 +196,51 @@ def _format_docling_error(payload: dict[str, Any]) -> str:
     return result
 
 
+def _extract_document_json_content(payload: dict[str, Any], *, task_id: str) -> dict[str, Any]:
+    """Return ``document.json_content`` from a ``/v1/result`` payload.
+
+    docling-serve reports the *task* as ``success`` even when the *conversion*
+    failed (e.g. a password-protected or corrupted PDF). The failure reason then
+    lives in the result body's ``status`` / ``errors`` and ``json_content`` is
+    null, so those are checked first — otherwise the real cause is discarded and
+    every conversion failure reads as a malformed response.
+
+    Raises:
+        DoclingServeError: the conversion failed, or the payload carries no
+            ``document.json_content``.
+    """
+    logger.debug("Extracting document from docling result", task_id=task_id)
+
+    status = payload.get("status")
+    if status == "failure" or payload.get("errors"):
+        detail = _format_docling_error(payload)
+        logger.warning(
+            "Docling conversion failed",
+            task_id=task_id,
+            status=status,
+            error=detail,
+        )
+        raise DoclingServeError(f"Docling processing failed: {detail}")
+
+    document = payload.get("document")
+    if not isinstance(document, dict):
+        document = {}
+    doc_content = document.get("json_content")
+    if doc_content is None:
+        logger.error(
+            "Docling result missing document.json_content",
+            task_id=task_id,
+            status=status,
+            document_keys=sorted(document) if isinstance(document, dict) else None,
+        )
+        raise DoclingServeError(
+            f"docling-serve response missing document.json_content (status={status!r})"
+        )
+
+    logger.debug("Successfully extracted document from docling result", task_id=task_id)
+    return doc_content
+
+
 class DoclingService:
     _default_client: httpx.AsyncClient | None = None
 
@@ -623,13 +668,7 @@ class DoclingService:
         except ValueError as e:
             raise DoclingServeError(f"Malformed docling result payload: {str(e)}") from e
 
-        if payload.get("status") == "failure" or payload.get("errors"):
-            raise DoclingServeError(f"Docling processing failed: {_format_docling_error(payload)}")
-
-        document = payload.get("document") or {}
-        if document.get("json_content") is None:
-            raise DoclingServeError("docling-serve response missing document.json_content")
-        return document["json_content"]
+        return _extract_document_json_content(payload, task_id=task_id)
 
     async def _poll_result(
         self,
@@ -657,19 +696,16 @@ class DoclingService:
             status = status_data.get("task_status")
 
             if status == "success":
+                logger.debug("Docling task succeeded; fetching result", task_id=task_id)
                 result_response = await client.get(
                     f"{self.docling_url}/v1/result/{task_id}", headers=headers
                 )
                 result_response.raise_for_status()
                 result_json = result_response.json()
 
-                # Extract the json_content which matches the old convert_file/bytes return
-                document = result_json.get("document") or {}
-                doc_content = document.get("json_content")
-                if doc_content is None:
-                    raise DoclingServeError("docling-serve response missing document.json_content")
-
-                return doc_content
+                # A "success" task status only means the job ran; the conversion
+                # itself may still have failed, which the result body reports.
+                return _extract_document_json_content(result_json, task_id=task_id)
             elif status == "failure" or status_data.get("errors"):
                 raise DoclingServeError(
                     f"Docling processing failed: {_format_docling_error(status_data)}"

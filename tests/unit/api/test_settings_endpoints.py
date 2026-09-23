@@ -453,3 +453,118 @@ def test_settings_body_rejects_mixed_scripts():
 def test_settings_body_allows_unknown_passthrough_codes():
     """Raw engine codes are the operator's escape hatch; do not second-guess them."""
     assert SettingsUpdateBody(ocr_languages=["hi", "mr"]).ocr_languages == ["hi", "mr"]
+
+
+@pytest.mark.asyncio
+async def test_update_settings_persists_case_insensitive_removal_only_request():
+    from api.settings.endpoints import update_settings
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.edited = True
+    config.providers.set_credentials(
+        "gemini",
+        {"api_key": "secret", "api_base": "https://gemini.example.com"},
+    )
+    body = SettingsUpdateBody(
+        provider_credential_removals={"Gemini": ["api_key"]},
+    )
+    rbac = MagicMock()
+    rbac.has_permission = AsyncMock(return_value=True)
+
+    with (
+        patch("api.settings.endpoints.get_openrag_config", return_value=config),
+        patch(
+            "api.settings.endpoints.config_manager.save_config_file",
+            return_value=True,
+        ) as save,
+        patch(
+            "api.settings.endpoints.clients.refresh_patched_client",
+            new_callable=AsyncMock,
+        ),
+    ):
+        response = await update_settings(
+            body=body,
+            session_manager=AsyncMock(),
+            user=MagicMock(spec=User),
+            models_service=MagicMock(),
+            rbac=rbac,
+        )
+    assert getattr(response, "status_code", 200) == 200
+    saved_config = save.call_args.args[0]
+    assert saved_config.providers.stored_credentials("gemini") == {
+        "api_base": "https://gemini.example.com"
+    }
+
+
+@pytest.mark.asyncio
+async def test_removal_only_provider_update_requires_provider_write_permission():
+    from api.settings.endpoints import update_settings
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.edited = True
+    rbac = MagicMock()
+    rbac.has_permission = AsyncMock(return_value=False)
+    rbac.audit_denied = AsyncMock()
+
+    with (
+        patch("api.settings.endpoints.get_openrag_config", return_value=config),
+        patch("api.settings.endpoints.is_rbac_enforced", return_value=True),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await update_settings(
+            body=SettingsUpdateBody(
+                provider_credential_removals={"gemini": ["api_key"]},
+            ),
+            session_manager=AsyncMock(),
+            user=MagicMock(spec=User, db_user_id="user-1", user_id="user-1"),
+            models_service=MagicMock(),
+            rbac=rbac,
+        )
+
+    assert exc_info.value.status_code == 403
+    rbac.audit_denied.assert_awaited_once_with("user-1", "providers:write")
+
+
+@pytest.mark.asyncio
+async def test_failed_onboarding_validation_does_not_mutate_cached_config():
+    from api.settings.endpoints import onboarding
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.agent.llm_provider = "openai"
+    config.agent.llm_model = "old-model"
+    body = OnboardingBody(
+        llm_provider="openai",
+        llm_model="new-model",
+        openai_api_key="sk-new",
+    )
+
+    with (
+        patch("api.settings.endpoints.get_openrag_config", return_value=config),
+        patch(
+            "api.settings.endpoints.TelemetryClient.send_event",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "api.settings.endpoints.validate_provider_setup",
+            new_callable=AsyncMock,
+            side_effect=Exception("validation failed"),
+        ),
+    ):
+        response = await onboarding(
+            body=body,
+            flows_service=MagicMock(),
+            session_manager=AsyncMock(),
+            document_service=MagicMock(),
+            models_service=MagicMock(),
+            task_service=MagicMock(),
+            langflow_file_service=MagicMock(),
+            knowledge_filter_service=MagicMock(),
+            user=MagicMock(spec=User),
+        )
+
+    assert response.status_code == 400
+    assert config.agent.llm_model == "old-model"
+    assert config.providers.openai.api_key == ""
