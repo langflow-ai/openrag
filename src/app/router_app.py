@@ -24,6 +24,8 @@ from app.middleware import RequestLoggingMiddleware
 from config.settings import (
     ACCESS_LOG_ENABLED,
     INGEST_CALLBACK_PATH,
+    LANGFLOW_CONNECT_TIMEOUT,
+    LANGFLOW_TIMEOUT,
     OPENRAG_BACKEND_ROUTER_HOST,
     OPENRAG_BACKEND_ROUTER_PORT,
     OPENRAG_BACKEND_ROUTER_UPSTREAM_URL,
@@ -50,7 +52,14 @@ _LLM_PROXY_UPSTREAM_PATHS = {
 # hop-by-hop headers, etc.) is dropped so the router cannot be abused as an open
 # proxy. The ingest token travels in either Authorization or the custom header.
 _FORWARDED_HEADERS = ("authorization", "x-openrag-ingest-token", "content-type", "accept")
-_UPSTREAM_TIMEOUT = httpx.Timeout(60.0)
+_INGEST_UPSTREAM_TIMEOUT = httpx.Timeout(60.0)
+_LLM_UPSTREAM_TIMEOUT = httpx.Timeout(
+    timeout=LANGFLOW_TIMEOUT,
+    connect=LANGFLOW_CONNECT_TIMEOUT,
+    read=LANGFLOW_TIMEOUT,
+    write=LANGFLOW_CONNECT_TIMEOUT,
+    pool=LANGFLOW_CONNECT_TIMEOUT,
+)
 
 
 async def _proxy_ingest_chunks(request: Request) -> Response:
@@ -61,7 +70,7 @@ async def _proxy_ingest_chunks(request: Request) -> Response:
         key: value for key, value in request.headers.items() if key.lower() in _FORWARDED_HEADERS
     }
     try:
-        async with httpx.AsyncClient(timeout=_UPSTREAM_TIMEOUT) as client:
+        async with httpx.AsyncClient(timeout=_INGEST_UPSTREAM_TIMEOUT) as client:
             upstream = await client.post(upstream_url, content=body, headers=headers)
     except httpx.HTTPError as e:
         logger.error(
@@ -102,7 +111,7 @@ async def _proxy_llm_request(request: Request) -> Response:
     headers = {
         key: value for key, value in request.headers.items() if key.lower() in _FORWARDED_HEADERS
     }
-    client = httpx.AsyncClient(timeout=_UPSTREAM_TIMEOUT)
+    client = httpx.AsyncClient(timeout=_LLM_UPSTREAM_TIMEOUT)
     try:
         upstream = await client.send(
             client.build_request(
