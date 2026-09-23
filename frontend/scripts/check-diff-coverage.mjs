@@ -36,9 +36,13 @@ const COVERAGE_FILE = path.resolve("coverage/lcov.info");
 /** Source files we gate on. Mirrors coverage.include in vitest.config.mts. */
 const INCLUDED =
   /^(app|components|contexts|hooks|lib|enhancements)\/.*\.(ts|tsx)$/;
-/** Never gate on these: tests themselves, types, and Next route plumbing. */
+/**
+ * Never gate on these: tests themselves, types, Next route plumbing, and the
+ * pure presentational SVG wrappers under components/icons/. Mirrors
+ * coverage.exclude in vitest.config.mts.
+ */
 const EXCLUDED =
-  /(\.test\.tsx?$|\.d\.ts$|\/(layout|error|global-error|loading)\.tsx$|\/route\.ts$)/;
+  /(\.test\.tsx?$|\.d\.ts$|\/(layout|error|global-error|loading)\.tsx$|\/route\.ts$|^components\/icons\/)/;
 
 function git(...a) {
   return execFileSync("git", a, {

@@ -4,12 +4,14 @@ These are the single-poll primitives that the backend's polling coordinator
 uses instead of the legacy in-method polling loop.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
 import httpx
+import pytest
+
 from services.docling_service import (
-    DoclingService,
     DoclingServeError,
+    DoclingService,
     DoclingTaskState,
 )
 
@@ -148,6 +150,36 @@ async def test_fetch_result_missing_json_content_raises(docling_service, mock_cl
 
     with pytest.raises(DoclingServeError, match="missing document.json_content"):
         await docling_service.fetch_task_result("t1")
+
+
+@pytest.mark.asyncio
+async def test_fetch_result_conversion_failure_raises_with_detail(docling_service, mock_client):
+    """A failed conversion surfaces the docling error, not 'missing json_content'."""
+    mock_client.get.return_value = _resp(
+        200,
+        {
+            "status": "failure",
+            "errors": [
+                {
+                    "component_type": "user_input",
+                    "module_name": "",
+                    "error_message": (
+                        "docling-parse could not load document abc123: "
+                        "Failed to load document (PDFium: Incorrect password error)."
+                    ),
+                }
+            ],
+            "document": {"filename": "secret.pdf", "json_content": None},
+        },
+    )
+
+    with pytest.raises(DoclingServeError) as exc_info:
+        await docling_service.fetch_task_result("t1")
+
+    message = str(exc_info.value)
+    assert message.startswith("Docling processing failed: ")
+    assert "Incorrect password" in message
+    assert "missing document.json_content" not in message
 
 
 @pytest.mark.asyncio

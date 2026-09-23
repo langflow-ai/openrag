@@ -40,10 +40,9 @@ const EMPTY_FIELDS: CatalogCredentialField[] = [];
  * generic `provider_credentials` payload, so adding a provider row to
  * `config/model_providers.yaml` is enough to make it configurable here.
  *
- * There is no live key check on save — OpenRAG has no generic
- * "list this provider's models" endpoint to probe with. The credentials are
- * validated the first time a model from this provider is selected in Agent or
- * Ingestion settings, which reports the provider's own error.
+ * Most generic providers have no credential-only check on save; they are
+ * validated when a model is selected in Agent or Ingestion settings. Azure
+ * OpenAI is an exception: the backend probes its key before persisting it.
  */
 const ProviderSettingsDialog = ({
   provider,
@@ -151,9 +150,10 @@ const ProviderSettingsDialog = ({
   });
 
   const onSubmit = (data: ProviderSettingsFormData) => {
-    // Blank means "leave the stored value alone": the backend ignores empty
-    // values, and secrets are never echoed back for us to resubmit.
+    // Secret inputs stay blank when a value is stored, so an empty secret means
+    // "leave unchanged". Empty non-secret fields explicitly remove saved data.
     const credentials: Record<string, string> = {};
+    const removals: string[] = [];
     const azureAuthFields: Record<string, Set<string>> = {
       api_key: new Set(["api_key"]),
       entra_token: new Set(["azure_ad_token"]),
@@ -168,10 +168,12 @@ const ProviderSettingsDialog = ({
       "api_base",
       "space_id",
       "project_id",
+      "ssl_verify",
       ...(onPremAuthMethod === "zen_api_key"
         ? ["zen_api_key"]
         : ["username", "api_key"]),
     ]);
+    const fieldsByKey = new Map(fields.map((field) => [field.key, field]));
     for (const [key, value] of Object.entries(data.credentials ?? {})) {
       if (provider === "azure" && !allowedAzureFields.has(key)) {
         continue;
@@ -181,16 +183,26 @@ const ProviderSettingsDialog = ({
       const trimmed = (value ?? "").trim();
       if (trimmed !== "") {
         credentials[key] = trimmed;
+      } else {
+        const field = fieldsByKey.get(key);
+        const isSecret =
+          field?.field_type === "password" || field?.field_type === "textarea";
+        if (!isSecret && saved?.credential_values?.[key]) {
+          removals.push(key);
+        }
       }
     }
 
-    if (Object.keys(credentials).length === 0) {
+    if (Object.keys(credentials).length === 0 && removals.length === 0) {
       methods.setError("root", { message: "Enter at least one credential" });
       return;
     }
 
     settingsMutation.mutate({
       provider_credentials: { [provider]: credentials },
+      ...(removals.length > 0
+        ? { provider_credential_removals: { [provider]: removals } }
+        : {}),
       ...(provider === "azure"
         ? { provider_auth_methods: { azure: azureAuthMethod } }
         : provider === "watsonx_onprem"

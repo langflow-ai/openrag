@@ -10,6 +10,23 @@ import pytest
 
 from services.docling_service import DoclingServeError, DoclingService
 
+# Shape of a /v1/result body for a password-protected PDF: the task ran to
+# completion, but the conversion failed and no document was exported.
+_PASSWORD_PROTECTED_RESULT = {
+    "status": "failure",
+    "errors": [
+        {
+            "component_type": "user_input",
+            "module_name": "",
+            "error_message": (
+                "docling-parse could not load document abc123: "
+                "Failed to load document (PDFium: Incorrect password error)."
+            ),
+        }
+    ],
+    "document": {"filename": "secret.pdf", "json_content": None},
+}
+
 
 def _make_response(status_code: int, json_data: dict = None) -> MagicMock:
     """Create a mock HTTP response."""
@@ -122,6 +139,30 @@ async def test_poll_result_missing_content(docling_service, mock_httpx_client):
 
     with pytest.raises(DoclingServeError, match="missing document.json_content"):
         await docling_service._poll_result(mock_httpx_client, "task123", 1.0, 10.0)
+
+
+@pytest.mark.asyncio
+async def test_poll_result_surfaces_conversion_failure_from_result_payload(
+    docling_service, mock_httpx_client
+):
+    """A 'success' task whose *conversion* failed reports the real cause.
+
+    docling-serve marks the task successful once the job ran; a password-protected
+    PDF then yields a result body with status="failure", an errors list and a null
+    json_content. The errors must win over the generic "missing json_content".
+    """
+    mock_httpx_client.get.side_effect = [
+        _make_response(200, {"task_status": "success"}),
+        _make_response(200, _PASSWORD_PROTECTED_RESULT),
+    ]
+
+    with pytest.raises(DoclingServeError) as exc_info:
+        await docling_service._poll_result(mock_httpx_client, "task123", 1.0, 10.0)
+
+    message = str(exc_info.value)
+    assert message.startswith("Docling processing failed: ")
+    assert "Incorrect password" in message
+    assert "missing document.json_content" not in message
 
 
 @pytest.mark.asyncio

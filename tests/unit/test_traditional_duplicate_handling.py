@@ -206,6 +206,54 @@ async def test_delete_document_by_filename_shared_without_owner(monkeypatch):
     assert {"bool": {"must_not": {"exists": {"field": "owner"}}}} in filters
 
 
+@pytest.mark.asyncio
+async def test_delete_document_by_filename_replaces_owned_and_ownerless(monkeypatch):
+    """With an owner in hand the replace scope is "mine OR ownerless", always.
+
+    ``shared`` says how the replacement will be written; it must not narrow what
+    gets deleted. An owner-only scope matched none of a shared document's
+    chunks, so the caller saw zero deletions, reported "nothing to replace" and
+    skipped the file — even though the (owner-agnostic) duplicate check had just
+    found it and the user had confirmed the overwrite.
+    """
+    from types import SimpleNamespace
+
+    from models.processors import TaskProcessor
+
+    admin_client = AsyncMock()
+    admin_client.delete = AsyncMock(return_value={"result": "deleted"})
+    monkeypatch.setattr(
+        "config.settings.clients",
+        SimpleNamespace(opensearch=admin_client),
+    )
+    monkeypatch.setattr("config.settings.get_index_name", lambda: "test-index")
+
+    opensearch_client = AsyncMock()
+    opensearch_client.search = AsyncMock(
+        return_value={"_scroll_id": None, "hits": {"hits": [{"_id": "chunk-1"}]}}
+    )
+
+    processor = TaskProcessor()
+    deleted = await processor.delete_document_by_filename(
+        "report.pdf",
+        opensearch_client,
+        owner_user_id="user-123",
+        shared=False,
+    )
+
+    assert deleted == 1
+    filters = opensearch_client.search.await_args.kwargs["body"]["query"]["bool"]["filter"]
+    assert {
+        "bool": {
+            "should": [
+                {"term": {"owner": "user-123"}},
+                {"bool": {"must_not": {"exists": {"field": "owner"}}}},
+            ],
+            "minimum_should_match": 1,
+        }
+    } in filters
+
+
 def _build_s3_processor(replace_duplicates: bool) -> S3FileProcessor:
     document_service = MagicMock()
     document_service.session_manager = MagicMock()

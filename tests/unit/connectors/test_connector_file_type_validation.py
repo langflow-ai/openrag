@@ -6,6 +6,19 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+
+def _permissive_rbac():
+    """RBAC stub that grants everything.
+
+    Unit tests pin OPENRAG_RBAC_ENFORCE=true (tests/unit/conftest.py), and every
+    sync now resolves knowledge:delete:anonymous up front to decide whether
+    orphan cleanup may touch ownerless chunks (see delete_orphan_documents).
+    """
+    rbac = MagicMock()
+    rbac.has_permission = AsyncMock(return_value=True)
+    return rbac
+
+
 ROOT = Path(__file__).resolve().parent.parent.parent.parent
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
@@ -328,7 +341,8 @@ async def test_connector_sync_skip_duplicates_returns_no_files_when_all_selected
         request=MagicMock(),
         connector_service=connector_service,
         session_manager=session_manager,
-        user=SimpleNamespace(user_id="user-id", jwt_token="jwt-token"),
+        user=SimpleNamespace(user_id="user-id", jwt_token="jwt-token", db_user_id="user-id"),
+        rbac=_permissive_rbac(),
     )
 
     assert response.status_code == 200
@@ -393,7 +407,8 @@ async def test_connector_sync_skip_duplicates_submits_only_expanded_non_duplicat
         request=MagicMock(),
         connector_service=connector_service,
         session_manager=session_manager,
-        user=SimpleNamespace(user_id="user-id", jwt_token="jwt-token"),
+        user=SimpleNamespace(user_id="user-id", jwt_token="jwt-token", db_user_id="user-id"),
+        rbac=_permissive_rbac(),
     )
 
     assert response.status_code == 201
@@ -449,7 +464,8 @@ async def test_connector_sync_does_not_report_all_duplicates_when_expansion_is_e
         request=MagicMock(),
         connector_service=connector_service,
         session_manager=session_manager,
-        user=SimpleNamespace(user_id="user-id", jwt_token="jwt-token"),
+        user=SimpleNamespace(user_id="user-id", jwt_token="jwt-token", db_user_id="user-id"),
+        rbac=_permissive_rbac(),
     )
 
     assert response.status_code == 201

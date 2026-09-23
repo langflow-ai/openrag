@@ -497,8 +497,8 @@ class AuthService:
 
         return result
 
-    async def get_user_info(self, request) -> dict | None:
-        """Get current user information from request"""
+    async def get_user_info(self, request, session=None) -> dict | None:
+        """Get current user information from request."""
         from config.settings import IBM_AUTH_ENABLED
 
         # IBM auth mode: user is set by get_optional_user from IBM cookie
@@ -519,14 +519,18 @@ class AuthService:
                 }
             return {"authenticated": False, "ibm_auth_mode": True, "user": None}
 
-        # In no-auth mode, return a consistent response
+        # No-auth mode — no user identity.
         if is_no_auth_mode():
-            return {"authenticated": False, "user": None, "no_auth_mode": True}
+            return {
+                "authenticated": False,
+                "user": None,
+                "no_auth_mode": True,
+            }
 
         user = getattr(request.state, "user", None)
 
         if user:
-            user_data = {
+            return {
                 "authenticated": True,
                 "ibm_auth_mode": IBM_AUTH_ENABLED,
                 "user": {
@@ -538,8 +542,6 @@ class AuthService:
                     "last_login": user.last_login.isoformat() if user.last_login else None,
                 },
             }
-
-            return user_data
         else:
             return {
                 "authenticated": False,

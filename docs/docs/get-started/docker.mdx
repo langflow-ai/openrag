@@ -139,10 +139,10 @@ This is only supported for self-managed deployments. For Kubernetes deployments,
    | `docker.io/langflowai/openrag-frontend:VERSION` | `REGISTRY/ORG/openrag-frontend:TAG` |
    | `docker.io/langflowai/openrag-langflow:VERSION` | `REGISTRY/ORG/openrag-langflow:TAG` |
    | `docker.io/langflowai/openrag-opensearch:VERSION` | `REGISTRY/ORG/openrag-opensearch:TAG` |
-   | `docker.io/opensearchproject/opensearch-dashboards:3.6.0` | `DASHBOARDS_REGISTRY/opensearchproject/opensearch-dashboards:3.6.0` |
+   | `docker.io/opensearchproject/opensearch-dashboards:3.8.0` | `DASHBOARDS_REGISTRY/opensearchproject/opensearch-dashboards:3.8.0` |
 
    The first four images resolve from `IMAGE_REGISTRY` and `IMAGE_ORG`, so you can mirror them into any organization you control.
-   The OpenSearch Dashboards image resolves from `DASHBOARDS_REGISTRY` only, so you must preserve the `opensearchproject/opensearch-dashboards` path and the `3.6.0` tag when you mirror it.
+   The OpenSearch Dashboards image resolves from `DASHBOARDS_REGISTRY` only, so you must preserve the `opensearchproject/opensearch-dashboards` path and the `3.8.0` tag when you mirror it.
 
    :::tip
    The OpenRAG images are multi-architecture manifests.

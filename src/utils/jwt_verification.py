@@ -271,18 +271,13 @@ def verify_microsoft_access_token(
     """
     Verify a Microsoft access token following the Microsoft identity platform docs.
 
-    Scope of validation (per https://learn.microsoft.com/en-us/entra/identity-platform/
-    access-token-claims-reference#validate-tokens):
+    Scope of validation:
 
-    - We are a *client* (web app calling Microsoft Graph), NOT a resource server.
-      The docs state: "APIs and web applications must only validate tokens that have
-      an aud claim that matches the application."  Access tokens issued for Microsoft
-      Graph have aud = Graph's AppId, not ours — those tokens are for Graph to
-      validate, not us. When aud != our client_id we skip verification and return the
-      unverified claims; the token was obtained via MSAL over a trusted OAuth flow.
-
-    - When aud == our client_id (token issued directly for our app), we perform full
-      validation: signature, expiry, audience, and issuer per Microsoft docs.
+    - Validate only tokens issued to this OpenRAG application. Microsoft Graph
+      access tokens are intended for Graph to validate, so callers that only pass
+      a token through to Graph should not use this helper.
+    - Perform full validation: signature, expiry, audience, issuer, and optional
+      tenant allow-list.
 
     Signature validation details (when performed):
     - JWKS endpoint selected by token version: v1 tokens (/discovery/keys),
@@ -299,12 +294,12 @@ def verify_microsoft_access_token(
     Args:
         token:              Raw JWT access token string.
         client_id:          OpenRAG's Azure AD app client ID.
-        tenant_id:          Hint for JWKS endpoint selection; extracted from the
-                            unverified tid claim when not provided.
+        tenant_id:          Optional hint for tenant-specific JWKS endpoint
+                            selection. When omitted, the common endpoint is used.
         allowed_tenant_ids: Optional set of permitted Azure AD tenant UUIDs.
 
     Returns:
-        Verified (or trusted-unverified) token claims dict.
+        Verified token claims dict.
 
     Raises:
         InvalidSignatureError: Signature does not match the signing key.
@@ -317,86 +312,77 @@ def verify_microsoft_access_token(
         raise JWTVerificationError("client_id is required for Microsoft access token verification")
 
     try:
-        # Decode without verification to inspect claims and pick the JWKS endpoint.
-        unverified_claims = jwt.decode(token, options={"verify_signature": False})
-
-        # Resolve tenant for JWKS URL (not trusted for security — re-checked post-sig).
-        if not tenant_id:
-            tenant_id = unverified_claims.get("tid")
-            if not tenant_id:
-                raise JWTVerificationError(
-                    "Token is missing the 'tid' claim; cannot resolve JWKS endpoint."
-                )
-            logger.debug(f"Extracted tenant_id from token: {tenant_id}")
-
-        token_aud = unverified_claims.get("aud", "")
-
-        # Per Microsoft docs: only validate tokens whose aud matches OUR application.
-        # Access tokens issued for another resource (e.g. Microsoft Graph,
-        # aud=00000003-0000-0000-c000-000000000000) are for that resource to validate —
-        # we are the caller, not the resource.  Attempting to verify them would always
-        # fail because we do not hold the correct validation parameters for Graph.
-        if token_aud != client_id:
-            logger.debug(
-                "Skipping signature verification: token audience is a resource we do not own",
-                token_aud=token_aud,
-                our_client_id=client_id,
-            )
-            # Still enforce the tenant allow-list even for pass-through tokens.
-            unverified_tid = unverified_claims.get("tid", "")
-            if allowed_tenant_ids is not None and unverified_tid not in allowed_tenant_ids:
-                logger.warning(
-                    "Microsoft token tenant not in allow-list",
-                    tid=unverified_tid,
-                )
-                raise InvalidIssuerError(
-                    f"Tenant '{unverified_tid}' is not in the configured allowed tenant list"
-                )
-            return unverified_claims
-
-        # ── Full validation for tokens issued directly to our application ──────────
-
-        # Select JWKS endpoint based on token version (v1 vs v2).
-        token_version = unverified_claims.get("ver", "2.0")
-        jwks_url = _resolve_ms_jwks_url(tenant_id, token_version)
-        jwks = _fetch_jwks(jwks_url)
+        # Use the caller's tenant hint when available; otherwise validate against
+        # Microsoft's common endpoint. Try v2 first, then v1, without trusting
+        # unverified claims to choose the metadata endpoint.
+        jwks_tenant = tenant_id or "common"
+        jwks_candidates = (
+            ("2.0", _resolve_ms_jwks_url(jwks_tenant, "2.0")),
+            ("1.0", _resolve_ms_jwks_url(jwks_tenant, "1.0")),
+        )
 
         # Find the signing key by kid and record its issuer property from the
         # JWKS document — needed for Microsoft's documented issuer validation.
-        unverified_header = jwt.get_unverified_header(token)
-        kid = unverified_header.get("kid")
-        if not kid:
-            raise JWTVerificationError("Token header missing 'kid' field")
+        last_key_error: JWTVerificationError | None = None
+        claims: dict[str, Any] | None = None
+        token_version = "2.0"
 
-        signing_key_entry = next((k for k in jwks.get("keys", []) if k.get("kid") == kid), None)
-        if signing_key_entry is None:
-            raise JWTVerificationError(f"Signing key with kid '{kid}' not found in JWKS")
+        for candidate_version, jwks_url in jwks_candidates:
+            jwks = _fetch_jwks(jwks_url)
+            try:
+                signing_key = cast(RSAPublicKey, _get_signing_key(token, jwks))
+            except JWTVerificationError as e:
+                last_key_error = e
+                continue
 
-        signing_key_issuer = signing_key_entry.get("issuer") or None
-        # from_jwk() is typed as RSAPrivateKey | RSAPublicKey but JWKS endpoints
-        # only ever contain public keys — cast so mypy accepts it for jwt.decode().
-        signing_key = cast(RSAPublicKey, RSAAlgorithm.from_jwk(signing_key_entry))
+            unverified_header = jwt.get_unverified_header(token)
+            kid = unverified_header.get("kid")
+            signing_key_entry = next(
+                (k for k in jwks.get("keys", []) if k.get("kid") == kid),
+                None,
+            )
+            if signing_key_entry is None:
+                last_key_error = JWTVerificationError(
+                    f"Signing key with kid '{kid}' not found in JWKS"
+                )
+                continue
+            signing_key_issuer = signing_key_entry.get("issuer") or None
 
-        # Verify signature, expiry, and audience.
-        # verify_iss=False: issuer validated manually below per Microsoft's algorithm.
-        claims = jwt.decode(
-            token,
-            signing_key,
-            algorithms=["RS256"],
-            audience=client_id,
-            options={
-                "verify_signature": True,
-                "verify_exp": True,
-                "verify_aud": True,
-                "verify_iss": False,
-            },
-        )
+            # Verify signature, expiry, and audience.
+            # verify_iss=False: issuer validated manually below per Microsoft's algorithm.
+            claims = jwt.decode(
+                token,
+                signing_key,
+                algorithms=["RS256"],
+                audience=client_id,
+                options={
+                    "verify_signature": True,
+                    "verify_exp": True,
+                    "verify_aud": True,
+                    "verify_iss": False,
+                    "require": ["exp"],
+                },
+            )
+            verified_tid = claims.get("tid", "")
+            if not verified_tid:
+                raise JWTVerificationError("Token is missing the 'tid' claim.")
+            issuer = claims.get("iss", "")
+            try:
+                _validate_ms_issuer(issuer, verified_tid, signing_key_issuer)
+            except InvalidIssuerError as e:
+                last_key_error = e
+                claims = None
+                continue
 
-        # Issuer validation per Microsoft docs:
-        # Substitute tid into the signing key's issuer template and exact-match iss.
+            token_version = candidate_version
+            break
+
+        if claims is None:
+            if last_key_error is not None:
+                raise last_key_error
+            raise JWTVerificationError("No Microsoft JWKS signing key candidates were available")
+
         verified_tid = claims.get("tid", "")
-        issuer = claims.get("iss", "")
-        _validate_ms_issuer(issuer, verified_tid, signing_key_issuer)
 
         # Tenant allow-list (optional business policy).
         if allowed_tenant_ids is not None and verified_tid not in allowed_tenant_ids:

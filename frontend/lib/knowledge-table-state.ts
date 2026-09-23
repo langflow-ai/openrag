@@ -144,6 +144,8 @@ function taskOverlayPriority(status?: string): number {
       return 2;
     case "cancelled":
       return 2;
+    case "skipped":
+      return 2;
     case "active":
       return 1;
     default:
@@ -201,6 +203,8 @@ export function buildKnowledgeTableRows(
       connector_type: taskFile.connector_type,
       status: taskFile.status,
       error: taskFile.error,
+      skip_reason: taskFile.skip_reason,
+      warning: taskFile.warning,
       embedding_model: taskFile.embedding_model,
       embedding_dimensions: taskFile.embedding_dimensions,
     };
@@ -218,7 +222,8 @@ export function buildKnowledgeTableRows(
       const status =
         taskFile.status === "processing" ||
         taskFile.status === "failed" ||
-        taskFile.status === "cancelled"
+        taskFile.status === "cancelled" ||
+        taskFile.status === "skipped"
           ? taskFile.status
           : backendStatus;
       return {
@@ -235,6 +240,8 @@ export function buildKnowledgeTableRows(
             ),
         status,
         error: taskFile.error,
+        skip_reason: taskFile.skip_reason,
+        warning: taskFile.warning,
         embedding_model: taskFile.embedding_model ?? file.embedding_model,
         embedding_dimensions:
           taskFile.embedding_dimensions ?? file.embedding_dimensions,

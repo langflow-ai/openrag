@@ -7,6 +7,7 @@ import AzureOpenAILogo from "@/components/icons/azure-openai-logo";
 import IBMLogo from "@/components/icons/ibm-logo";
 import OllamaLogo from "@/components/icons/ollama-logo";
 import OpenAILogo from "@/components/icons/openai-logo";
+import OpenShiftAILogo from "@/components/icons/openshift-ai-logo";
 import { CAPABILITY_ICONS } from "./capability-icons";
 import type { CatalogModel } from "./catalog-models";
 import {
@@ -35,6 +36,7 @@ const PROVIDER_LOGOS: Record<
   anthropic: AnthropicLogo,
   watsonx: IBMLogo,
   watsonx_onprem: IBMLogo,
+  rhoai: OpenShiftAILogo,
   ollama: OllamaLogo,
   // Both Azure rows: `azure_ai` is Foundry, `azure` is Azure OpenAI Service,
   // and Microsoft draws the two differently.

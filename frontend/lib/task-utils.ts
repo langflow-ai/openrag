@@ -279,11 +279,33 @@ function isCompletedWithFailures(task: Task): boolean {
 
 export function getSuccessfulFileCount(task: Task): number {
   if (typeof task.successful_files === "number") {
-    return task.successful_files;
+    // The backend counts skipped (duplicate) files as successful_files too.
+    // Subtract them so the toast only reports truly-indexed files as uploaded.
+    const skipped = getSkippedFileCount(task);
+    return Math.max(0, task.successful_files - skipped);
   }
   return Object.values(task.files || {}).filter(
     (fileInfo) => fileInfo?.status === "completed",
   ).length;
+}
+
+export function getSkippedFileCount(task: Task): number {
+  return Object.values(task.files || {}).filter(
+    (fileInfo) => fileInfo?.status === "skipped",
+  ).length;
+}
+
+/**
+ * Count only files skipped because of duplicate content (reason = "duplicate_content").
+ * Excludes other skip reasons such as "deleted_at_source" (connector cleanup).
+ */
+export function getDuplicateContentFileCount(task: Task): number {
+  return Object.values(task.files || {}).filter((fileInfo) => {
+    if (fileInfo?.status !== "skipped") return false;
+    const reason = (fileInfo.result as Record<string, unknown> | undefined)
+      ?.reason;
+    return reason === "duplicate_content";
+  }).length;
 }
 
 export function getFailedFileCount(task: Task): number {
@@ -384,7 +406,7 @@ export function getEnhancedListDisappearedFilePaths(
 interface ProcessingFileOverlay {
   task_id: string;
   source_url: string;
-  status: "active" | "failed" | "processing" | "cancelled";
+  status: "active" | "failed" | "processing" | "cancelled" | "skipped";
   error?: string;
 }
 

@@ -295,7 +295,7 @@ export function ChatRenderer({
 
       // Clear ALL conversation state so next message starts fresh
       // This will pick up the default filter we just set
-      await startNewConversation();
+      await startNewConversation({ showPlaceholder: false });
 
       setShowLayout(true);
     }

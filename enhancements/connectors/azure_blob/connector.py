@@ -25,7 +25,13 @@ from config.settings import (
     is_azure_blob_enabled,
     is_dev_azure_blob_enabled,
 )
-from connectors.base import BaseConnector, ConnectorDocument, DocumentACL
+from connectors.base import (
+    CONTENT_ETAG_METADATA_KEY,
+    BaseConnector,
+    ConnectorDocument,
+    DocumentACL,
+    normalize_etag,
+)
 from utils.logging_config import get_logger
 
 from .auth import account_name_from_config, create_blob_service_client
@@ -251,6 +257,9 @@ class AzureBlobConnector(BaseConnector):
                             "key": blob.name,
                             "size": getattr(blob, "size", 0),
                             "modified_time": last_modified.isoformat() if last_modified else None,
+                            # Change detection compares this against the tag
+                            # stored at ingest; it moves on every overwrite.
+                            "etag": normalize_etag(getattr(blob, "etag", None)),
                         }
                     )
                     if max_files and len(files) >= max_files:
@@ -269,16 +278,19 @@ class AzureBlobConnector(BaseConnector):
         props = getattr(downloader, "properties", None)
         content_type = ""
         last_modified = None
+        etag = None
         size = len(content)
         if props is not None:
             settings = getattr(props, "content_settings", None)
             content_type = getattr(settings, "content_type", "") or ""
             last_modified = getattr(props, "last_modified", None)
+            etag = getattr(props, "etag", None)
             size = getattr(props, "size", None) or len(content)
         return {
             "content": content,
             "content_type": content_type,
             "last_modified": last_modified,
+            "etag": etag,
             "size": size,
         }
 
@@ -352,6 +364,9 @@ class AzureBlobConnector(BaseConnector):
                 "azure_container": container_name,
                 "azure_blob": blob_name,
                 "size": size,
+                # Persisted at ingest so a later sync can tell an overwritten
+                # blob from an untouched one without trusting clocks.
+                CONTENT_ETAG_METADATA_KEY: normalize_etag(result.get("etag")),
             },
         )
 

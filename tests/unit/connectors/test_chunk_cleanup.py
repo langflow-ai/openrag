@@ -57,6 +57,39 @@ def test_query_shared_targets_ownerless_chunks():
     assert {"term": {"owner": "alice"}} not in query["bool"]["filter"]
 
 
+def test_query_include_shared_covers_owned_and_ownerless():
+    """Sync scope: the file id pins the document down, so both layouts are ours.
+
+    A COS file ingested with the share-all toggle has no owner field at all; an
+    owner-only term matches none of its chunks and the cleanup silently no-ops.
+    """
+    query = build_connector_file_chunks_query(["f"], owner_user_id="alice", include_shared=True)
+    assert {
+        "bool": {
+            "should": [
+                {"term": {"owner": "alice"}},
+                {"bool": {"must_not": {"exists": {"field": "owner"}}}},
+            ],
+            "minimum_should_match": 1,
+        }
+    } in query["bool"]["filter"]
+    assert {"term": {"owner": "alice"}} not in query["bool"]["filter"]
+
+
+def test_query_include_shared_ignored_without_owner():
+    query = build_connector_file_chunks_query(["f"], include_shared=True)
+    assert len(query["bool"]["filter"]) == 1
+
+
+def test_query_shared_wins_over_include_shared():
+    """shared=True is already ownerless-only; include_shared must not widen it."""
+    query = build_connector_file_chunks_query(
+        ["f"], owner_user_id="alice", shared=True, include_shared=True
+    )
+    assert {"bool": {"must_not": {"exists": {"field": "owner"}}}} in query["bool"]["filter"]
+    assert not any("should" in str(f) and "owner" in str(f) for f in query["bool"]["filter"][1:])
+
+
 def test_query_keep_filenames_excluded():
     query = build_connector_file_chunks_query(["f"], keep_filenames=["new.pdf", "new_.pdf"])
     assert query["bool"]["must_not"] == [{"terms": {"filename": ["new.pdf", "new_.pdf"]}}]

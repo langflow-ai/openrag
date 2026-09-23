@@ -9,7 +9,10 @@ cleanup — but exactly one deletion *semantic*, owned here:
   holds the content hash), the Langflow path stores it in ``document_id``.
   Matching a single field misses chunks from the other layout.
 * Optionally owner-scoped: ``owner_user_id`` restricts to that owner's chunks;
-  ``shared=True`` targets ownerless (instance-shared) chunks instead.
+  ``shared=True`` targets ownerless (instance-shared) chunks instead, and
+  ``include_shared=True`` covers both (the right boundary when the caller has
+  already pinned the file down by its connector id — see
+  ``build_owner_or_shared_filter``).
 * DLS-safe: visible chunk ``_id``s are enumerated with the caller's
   (user-scoped) client, then deleted individually with the trusted backend
   write client — ``delete_by_query`` is silently no-opped under DLS.
@@ -25,6 +28,7 @@ def build_connector_file_chunks_query(
     connector_type: str | None = None,
     owner_user_id: str | None = None,
     shared: bool = False,
+    include_shared: bool = False,
     keep_filenames: Iterable[str] | None = None,
 ) -> dict[str, Any]:
     """Query matching every chunk of the given connector file ids.
@@ -32,9 +36,17 @@ def build_connector_file_chunks_query(
     ``connector_type`` narrows the match to a single connector type so IDs
     that happen to collide across connectors are not affected.
 
+    ``include_shared`` widens ``owner_user_id`` from "owned by this user" to
+    "owned by this user OR ownerless". Sync paths need it: a file ingested with
+    the COS share-all toggle has no ``owner`` at all, so a plain owner term
+    matches none of its chunks and the cleanup silently no-ops. Ignored when
+    ``shared=True`` (already ownerless-only) or when no owner is given.
+
     ``keep_filenames`` excludes chunks indexed under those names — used by
     rename cleanup to drop only the stale old-name chunks of a file id.
     """
+    from utils.opensearch_queries import build_owner_or_shared_filter
+
     ids = [fid for fid in file_ids if fid]
     filters: list[dict[str, Any]] = [
         {
@@ -56,7 +68,11 @@ def build_connector_file_chunks_query(
     if shared:
         filters.append({"bool": {"must_not": {"exists": {"field": "owner"}}}})
     elif owner_user_id:
-        filters.append({"term": {"owner": owner_user_id}})
+        filters.append(
+            build_owner_or_shared_filter(owner_user_id)
+            if include_shared
+            else {"term": {"owner": owner_user_id}}
+        )
     query: dict[str, Any] = {"bool": {"filter": filters}}
     keep = [name for name in (keep_filenames or []) if name]
     if keep:
@@ -71,6 +87,7 @@ async def delete_connector_file_chunks(
     connector_type: str | None = None,
     owner_user_id: str | None = None,
     shared: bool = False,
+    include_shared: bool = False,
     keep_filenames: Iterable[str] | None = None,
     refresh: bool = False,
 ) -> int:
@@ -99,6 +116,7 @@ async def delete_connector_file_chunks(
             connector_type=connector_type,
             owner_user_id=owner_user_id,
             shared=shared,
+            include_shared=include_shared,
             keep_filenames=keep_filenames,
         ),
     )

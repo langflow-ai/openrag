@@ -63,7 +63,7 @@ async def test_bucket_filter_sync_forwards_shared_to_new_and_changed_batches():
             new=AsyncMock(return_value=(["changed-file-1"], [], "connector_file_id")),
         ),
         patch(
-            "api.connectors.get_synced_id_to_modified_time_map",
+            "api.connectors.get_synced_file_state_map",
             new=AsyncMock(return_value={"changed-file-1": 0.0}),
         ),
         patch(

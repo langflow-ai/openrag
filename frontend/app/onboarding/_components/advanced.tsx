@@ -44,6 +44,7 @@ export function AdvancedOnboarding({
             previewLimit={5}
             searchPlaceholder={searchPlaceholder}
             data-testid="embedding-model-selector"
+            aria-label="Embedding model"
             icon={icon}
             value={embeddingModel}
             onValueChange={setEmbeddingModel}
@@ -63,6 +64,7 @@ export function AdvancedOnboarding({
             previewLimit={5}
             searchPlaceholder={searchPlaceholder}
             data-testid="language-model-selector"
+            aria-label="Language model"
             icon={icon}
             value={languageModel}
             onValueChange={setLanguageModel}

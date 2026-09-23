@@ -29,6 +29,7 @@ dependencies = [
     "click>=8.3.3",
     "google-api-python-client>=2.143.0",
     "google-auth-httplib2>=0.2.0",
+    "httplib2>=0.32.0",
     "google-auth-oauthlib>=1.2.0",
     "msal>=1.29.0",
     "httpx>=0.27.0",
@@ -37,7 +38,7 @@ dependencies = [
     "pyjwt>=2.13.0",
     "python-multipart>=0.0.31",
     "fastapi>=0.115.0",
-    "starlette>=1.3.1",
+    "starlette>=1.6.0",
     "uvicorn>=0.35.0",
     "boto3>=1.35.0",
     "ibm-cos-sdk>=2.13.0",
@@ -50,7 +51,8 @@ dependencies = [
     "structlog>=25.4.0",
     "zxcvbn>=4.5.0",
     "prometheus-fastapi-instrumentator>=8.0.0",
-    "litellm==1.84.0",
+    "litellm>=1.96.2,<2.0.0",
+    "joserfc>=1.7.3,<2.0.0",
     "pyyaml>=6.0",
     "tiktoken>=0.7.0",
     "fastmcp>=3.4.0",
@@ -176,4 +178,3 @@ exclude = ["flows/components"]
 [[tool.mypy.overrides]]
 module = ["api.settings.endpoints", "api.v1.settings"]
 disable_error_code = ["return-value"]
-

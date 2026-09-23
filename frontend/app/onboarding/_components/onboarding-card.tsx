@@ -548,6 +548,13 @@ const OnboardingCard = ({
     if (generic && Object.keys(generic).length > 0) {
       onboardingData.provider_credentials = { [currentProvider]: generic };
     }
+    const credentialRemovals =
+      settings.provider_credential_removals?.[currentProvider];
+    if (credentialRemovals && credentialRemovals.length > 0) {
+      onboardingData.provider_credential_removals = {
+        [currentProvider]: credentialRemovals,
+      };
+    }
     const authMethod = settings.provider_auth_methods?.[currentProvider];
     if (authMethod) {
       onboardingData.provider_auth_methods = { [currentProvider]: authMethod };
