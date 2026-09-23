@@ -1,5 +1,6 @@
 """watsonx.ai on a Cloud Pak for Data cluster, routed through LiteLLM's watsonx provider."""
 
+import os
 from types import SimpleNamespace
 from typing import Any
 
@@ -50,13 +51,21 @@ def test_a_half_filled_form_yields_no_zen_key(username, api_key) -> None:
     assert watsonx_onprem.zen_api_key(username, api_key) == ""
 
 
-def test_username_never_reaches_litellm() -> None:
-    """LiteLLM forwards kwargs it does not recognise, so a stray field lands in the body."""
-    credentials = watsonx_onprem.litellm_credentials(
-        {"api_base": "https://cpd.example.com", "username": "cpduser", "api_key": "APIKEY"}
-    )
+def test_username_never_reaches_serializable_credentials() -> None:
+    """Credential data stays serializable; runtime transport remains call-local."""
+    stored = {
+        "api_base": "https://cpd.example.com",
+        "username": "cpduser",
+        "api_key": "APIKEY",
+    }
+    credentials = watsonx_onprem.litellm_credentials(stored)
+    client = watsonx_onprem.litellm_runtime_kwargs(stored)["client"]
 
     assert "username" not in credentials
+    assert "ssl_verify" not in credentials
+    assert "client" not in credentials
+    assert client.ssl_verify is True
+    assert client is watsonx_onprem.litellm_runtime_kwargs(stored)["client"]
     assert credentials["api_base"] == "https://cpd.example.com"
     # Both, and the same value: the embeddings path refuses the call outright
     # when api_key is unset, and builds its auth header from zen_api_key.
@@ -107,14 +116,28 @@ def test_a_deployment_scope_is_passed_through_untouched() -> None:
     assert credentials["project_id"] == "proj-1"
 
 
-def test_credential_values_translates_the_stored_form() -> None:
+def test_credential_values_translates_the_stored_form_as_data() -> None:
+    from utils import provider_health_cache
+
     providers = _providers(api_base="https://cpd.example.com", username="cpduser", api_key="APIKEY")
 
-    assert providers.credential_values(PROVIDER) == {
+    credentials = providers.credential_values(PROVIDER)
+    assert credentials == {
         "api_base": "https://cpd.example.com",
         "zen_api_key": "Y3BkdXNlcjpBUElLRVk=",
         "api_key": "Y3BkdXNlcjpBUElLRVk=",
     }
+    provider_health_cache.cache_key(
+        provider=PROVIDER,
+        embedding_provider=PROVIDER,
+        test_completion=False,
+        llm_model="model",
+        embedding_model="embedding",
+        endpoint=None,
+        project_id=None,
+        api_key=None,
+        credentials=credentials,
+    )
 
 
 def test_pending_credentials_rebuilds_the_zen_key_from_a_submitted_change() -> None:
@@ -149,6 +172,7 @@ def test_the_gateway_routes_it_as_watsonx() -> None:
     # The OpenRAG key is what the caller and the credential store still see.
     assert provider == PROVIDER
     assert credentials["zen_api_key"] == "Y3BkdXNlcjpBUElLRVk="
+    assert "client" not in credentials
 
 
 def test_the_alias_is_routable_so_ids_are_not_billed_to_the_default_provider() -> None:
@@ -182,7 +206,9 @@ def test_the_settings_form_asks_for_cluster_credentials_not_ibm_cloud_ones() -> 
         "zen_api_key",
         "space_id",
         "project_id",
+        "ssl_verify",
     }
+    assert fields["ssl_verify"]["default_value"] == "true"
     assert model_catalog.secret_field_keys(PROVIDER) == {"api_key", "zen_api_key"}
 
 
@@ -385,18 +411,259 @@ async def test_health_reports_a_rejected_zen_key_as_a_credential_problem(monkeyp
     assert is_provider_credential_error(str(excinfo.value))
 
 
-def test_the_health_probe_uses_the_same_tls_setting_as_real_traffic(monkeypatch) -> None:
-    """`SSL_CERT_FILE`/`SSL_VERIFY` are read by LiteLLM, not by httpx.
-
-    Without this the banner could sit red on a certificate error while chat
-    through the gateway works, or the reverse.
-    """
+def test_tls_setting_is_scoped_to_the_onprem_provider(monkeypatch) -> None:
+    """The stored value wins without mutating LiteLLM's process-wide setting."""
     monkeypatch.setenv("SSL_VERIFY", "false")
-    assert watsonx_onprem.ssl_verify() is False
 
-    monkeypatch.setenv("SSL_VERIFY", "true")
-    monkeypatch.delenv("SSL_CERT_FILE", raising=False)
-    assert watsonx_onprem.ssl_verify() is True
+    secure = watsonx_onprem.litellm_runtime_kwargs(
+        {
+            "api_base": "https://cpd.example.com",
+            "username": "cpduser",
+            "api_key": "APIKEY",
+            "ssl_verify": "true",
+        }
+    )
+    insecure = watsonx_onprem.litellm_runtime_kwargs(
+        {
+            "api_base": "https://cpd.example.com",
+            "username": "cpduser",
+            "api_key": "APIKEY",
+            "ssl_verify": "false",
+        }
+    )
+
+    assert secure["client"].ssl_verify is True
+    assert insecure["client"].ssl_verify is False
+    assert "ssl_verify" not in secure
+    assert "ssl_verify" not in insecure
+    assert watsonx_onprem.ssl_verify({"ssl_verify": "true"}) is True
+    assert watsonx_onprem.ssl_verify({"ssl_verify": "false"}) is False
+    assert watsonx_onprem.ssl_verify({}) is True
+    assert os.environ["SSL_VERIFY"] == "false"
+
+
+def test_custom_ca_bundle_must_exist(tmp_path) -> None:
+    ca = tmp_path / "openrag-ca.pem"
+    ca.write_text("combined bundle", encoding="utf-8")
+
+    assert watsonx_onprem.resolve_ssl_verify(str(ca)) == str(ca)
+    with pytest.raises(ValueError, match="CA bundle path is not usable"):
+        watsonx_onprem.resolve_ssl_verify(str(tmp_path / "missing.pem"))
+
+
+@pytest.mark.asyncio
+async def test_missing_ca_bundle_does_not_break_the_shared_model_catalog(tmp_path) -> None:
+    models = await watsonx_onprem.fetch_models(
+        {
+            "api_base": "https://cpd.example.com",
+            "username": "cpduser",
+            "api_key": "APIKEY",
+            "ssl_verify": str(tmp_path / "missing.pem"),
+        }
+    )
+
+    assert models is None
+
+
+@pytest.mark.asyncio
+async def test_health_check_uses_the_saved_tls_policy(monkeypatch) -> None:
+    seen: dict[str, Any] = {}
+
+    class _Client:
+        def __init__(self, *, verify):
+            seen["verify"] = verify
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def request(self, method, url, **kwargs):
+            return SimpleNamespace(status_code=200, text="{}", json=lambda: {"resources": []})
+
+    monkeypatch.setattr("httpx.AsyncClient", _Client)
+
+    await watsonx_onprem.lightweight_health_check(
+        {
+            "api_base": "https://cpd.example.com",
+            "username": "cpduser",
+            "api_key": "APIKEY",
+            "ssl_verify": "false",
+        }
+    )
+
+    assert seen["verify"] is False
+
+
+@pytest.mark.asyncio
+async def test_space_listing_rejects_cleartext_credentials() -> None:
+    with pytest.raises(ValueError, match="must use HTTPS"):
+        await watsonx_onprem.list_spaces(
+            {
+                "api_base": "http://cpd.example.com",
+                "username": "cpduser",
+                "api_key": "APIKEY",
+            }
+        )
+
+
+@pytest.mark.asyncio
+async def test_space_listing_uses_bearer_tls_and_rebases_pagination(monkeypatch) -> None:
+    seen: dict[str, Any] = {"requests": []}
+    responses = [
+        {"accessToken": "cpd-access-token"},
+        {
+            "resources": [
+                {"metadata": {"id": "space-1", "name": "Production"}},
+                {"metadata": {"id": "space-1", "name": "Duplicate"}},
+            ],
+            "next": {"href": "https://internal-cpd/v2/spaces?version=2024-03-13&start=2"},
+        },
+        {
+            "resources": [
+                {"metadata": {"id": "space-2", "name": "Development"}},
+            ]
+        },
+    ]
+
+    class _Client:
+        def __init__(self, *, verify, timeout):
+            seen["verify"] = verify
+            seen["timeout"] = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def request(self, method, url, **kwargs):
+            seen["requests"].append((method, url, kwargs))
+            body = responses.pop(0)
+            return SimpleNamespace(status_code=200, text="{}", json=lambda: body)
+
+    monkeypatch.setattr("httpx.AsyncClient", _Client)
+
+    spaces = await watsonx_onprem.list_spaces(
+        {
+            "api_base": "https://cpd.example.com",
+            "username": "cpduser",
+            "api_key": "APIKEY",
+        }
+    )
+
+    assert spaces == [
+        {"id": "space-1", "name": "Production"},
+        {"id": "space-2", "name": "Development"},
+    ]
+    assert seen["verify"] is True
+    assert [(method, url) for method, url, _ in seen["requests"]] == [
+        ("POST", "https://cpd.example.com/icp4d-api/v1/authorize"),
+        ("GET", "https://cpd.example.com/v2/spaces"),
+        ("GET", "https://cpd.example.com/v2/spaces?version=2024-03-13&start=2"),
+    ]
+    assert seen["requests"][0][2]["json"] == {
+        "username": "cpduser",
+        "api_key": "APIKEY",
+    }
+    assert all(
+        kwargs["headers"]["Authorization"] == "Bearer cpd-access-token"
+        for _, _, kwargs in seen["requests"][1:]
+    )
+
+
+@pytest.mark.asyncio
+async def test_space_listing_exchanges_a_pasted_zen_key_for_bearer(monkeypatch) -> None:
+    requests: list[tuple[str, str, dict[str, Any]]] = []
+    responses = [
+        (200, {"token": "cpd-access-token"}),
+        (
+            200,
+            {
+                "resources": [
+                    {"metadata": {"id": "space-1", "name": "Production"}},
+                ]
+            },
+        ),
+    ]
+
+    class _Client:
+        def __init__(self, *, verify, timeout):
+            assert verify is True
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def request(self, method, url, **kwargs):
+            requests.append((method, url, kwargs))
+            status_code, body = responses.pop(0)
+            return SimpleNamespace(
+                status_code=status_code,
+                text=str(body),
+                json=lambda: body,
+            )
+
+    monkeypatch.setattr("httpx.AsyncClient", _Client)
+
+    spaces = await watsonx_onprem.list_spaces(
+        {
+            "api_base": "https://cpd.example.com",
+            "zen_api_key": "Y3BkdXNlcjpBUElLRVk=",
+        }
+    )
+
+    assert spaces == [{"id": "space-1", "name": "Production"}]
+    assert [(method, url) for method, url, _ in requests] == [
+        ("POST", "https://cpd.example.com/icp4d-api/v1/authorize"),
+        ("GET", "https://cpd.example.com/v2/spaces"),
+    ]
+    assert requests[0][2]["json"] == {
+        "username": "cpduser",
+        "api_key": "APIKEY",
+    }
+    assert requests[1][2]["headers"]["Authorization"] == "Bearer cpd-access-token"
+
+
+def test_auth_method_changes_preserve_the_tls_policy() -> None:
+    providers = _providers(
+        api_base="https://cpd.example.com",
+        username="cpduser",
+        api_key="APIKEY",
+        ssl_verify="false",
+    )
+
+    providers.set_credentials(
+        PROVIDER,
+        {"zen_api_key": "cHJlOmVuY29kZWQ="},
+        auth_method="zen_api_key",
+    )
+
+    assert providers.stored_credentials(PROVIDER) == {
+        "api_base": "https://cpd.example.com",
+        "zen_api_key": "cHJlOmVuY29kZWQ=",
+        "ssl_verify": "false",
+    }
+
+
+def test_cleared_optional_credential_is_removed() -> None:
+    providers = _providers(
+        api_base="https://cpd.example.com",
+        username="cpduser",
+        api_key="APIKEY",
+        space_id="deployment-space",
+    )
+    providers.set_credentials(
+        PROVIDER,
+        {"api_base": "https://cpd.example.com"},
+        auth_method="username_api_key",
+        remove={"space_id"},
+    )
+
+    assert "space_id" not in providers.stored_credentials(PROVIDER)
 
 
 @pytest.mark.asyncio
@@ -719,6 +986,7 @@ async def test_validating_an_embedding_model_sends_a_list_not_a_string(monkeypat
     )
 
     assert isinstance(sent["input"], list), sent["input"]
+    assert "client" in sent
 
 
 @pytest.mark.asyncio
@@ -752,6 +1020,7 @@ async def test_a_client_sending_a_bare_string_input_still_embeds(monkeypatch) ->
     )
 
     assert sent["input"] == ["hello"]
+    assert "client" in sent
 
 
 def test_a_token_array_input_is_left_alone() -> None:

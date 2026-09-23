@@ -196,6 +196,25 @@ describe("useChatStreaming", () => {
       expect(onComplete.mock.calls[0][0].content).toBe("Hello there");
     });
 
+    it("preserves a burst of deltas delivered in one network chunk", async () => {
+      const deltas = Array.from({ length: 150 }, (_, index) =>
+        textChunk(`${index},`),
+      );
+      serveStream([
+        deltas.map((chunk) => JSON.stringify(chunk)).join("\n") + "\n",
+      ]);
+      const { result } = setup();
+
+      const returned = await send(result, { prompt: "p" });
+
+      expect(returned?.content).toBe(
+        Array.from({ length: 150 }, (_, index) => `${index},`).join(""),
+      );
+      expect(console.error).not.toHaveBeenCalledWith(
+        expect.stringContaining("Maximum update depth exceeded"),
+      );
+    });
+
     it("reassembles a JSON object split across two network chunks", async () => {
       const line = JSON.stringify(textChunk("split"));
       serveStream([line.slice(0, 12), `${line.slice(12)}\n`]);

@@ -232,20 +232,25 @@ class ProvidersConfig:
         return self.custom.get(provider_lower, GenericProviderConfig())
 
     def set_credentials(
-        self, provider: str, credentials: dict[str, str], *, auth_method: str | None = None
+        self,
+        provider: str,
+        credentials: dict[str, str],
+        *,
+        auth_method: str | None = None,
+        remove: set[str] | None = None,
     ) -> None:
-        """Upsert arbitrary LiteLLM credentials while preserving legacy config."""
+        """Upsert credentials and apply explicitly requested field removals."""
         key = provider.strip().lower()
         clean = {
             str(name): str(value).strip()
             for name, value in credentials.items()
             if str(name).strip() and str(value).strip()
         }
-        if not clean:
-            # Every submitted value was blank. Creating the entry anyway would
-            # register a provider that reports `configured` with zero
-            # credentials, which then satisfies `any_configured()` and can be
-            # picked as a fallback provider and called with no key at all.
+        removals = {str(name).strip() for name in remove or set() if str(name).strip()}
+        if not clean and not removals:
+            # Blank values remain "leave unchanged" because secret fields are
+            # intentionally not echoed to forms. Deletion is an explicit,
+            # separate operation so an empty password cannot erase a secret.
             return
         previous = self.custom.get(key, GenericProviderConfig())
         if key == "azure" and auth_method:
@@ -267,19 +272,17 @@ class ProvidersConfig:
             }
             previous.auth_method = auth_method
         if key == "watsonx_onprem" and auth_method:
-            methods = {
-                "username_api_key": {"username", "api_key"},
-                "zen_api_key": {"zen_api_key"},
-            }
-            active = methods.get(auth_method)
-            if active is None:
-                raise ValueError(f"Unknown watsonx.ai on-prem authentication method: {auth_method}")
+            from enhancements.providers.watsonx.onprem import (
+                credential_fields_for_auth_method,
+            )
+
+            allowed = credential_fields_for_auth_method(auth_method)
             previous.credentials = {
-                name: value
-                for name, value in previous.credentials.items()
-                if name in {"api_base", "space_id", "project_id"} or name in active
+                name: value for name, value in previous.credentials.items() if name in allowed
             }
             previous.auth_method = auth_method
+        for name in removals:
+            previous.credentials.pop(name, None)
         previous.credentials.update(clean)
         # Complete against the form's required fields, not merely non-empty:
         # a submission of just `ssl_verify` must not make a provider look
@@ -321,16 +324,18 @@ class ProvidersConfig:
         return dict(self.custom.get(provider.strip().lower(), GenericProviderConfig()).credentials)
 
     def pending_stored_credentials(
-        self, provider: str, submitted: dict[str, str] | None = None
+        self,
+        provider: str,
+        submitted: dict[str, str] | None = None,
+        *,
+        remove: set[str] | None = None,
     ) -> dict[str, str]:
-        """`stored_credentials()` as it would read once `submitted` is saved.
-
-        The untranslated counterpart of `pending_credentials()`, for the pre-save
-        health check of a provider whose check needs every field — both of an
-        OpenShift AI deployment's endpoints — rather than the one LiteLLM call
-        the translated form is narrowed to.
-        """
-        return {**self.stored_credentials(provider), **_clean_submitted(submitted)}
+        """`stored_credentials()` as it would read after one pending update."""
+        pending = self.stored_credentials(provider)
+        for name in remove or set():
+            pending.pop(name, None)
+        pending.update(_clean_submitted(submitted))
+        return pending
 
     def pending_credentials(
         self,
@@ -338,6 +343,7 @@ class ProvidersConfig:
         submitted: dict[str, str] | None = None,
         *,
         kind: str = "chat",
+        remove: set[str] | None = None,
     ) -> dict[str, Any]:
         """LiteLLM kwargs for `provider` as it would be once `submitted` is saved.
 
@@ -359,9 +365,11 @@ class ProvidersConfig:
         clean = _clean_submitted(submitted)
         enhancement = get_provider_enhancement(key)
         if enhancement:
-            stored = self.custom.get(key, GenericProviderConfig()).credentials
-            return credentials_for(enhancement, {**stored, **clean}, kind)
+            stored = self.pending_stored_credentials(key, clean, remove=remove)
+            return credentials_for(enhancement, stored, kind)
         values = self.credential_values(key, kind=kind)
+        for name in remove or set():
+            values.pop(name, None)
         values.update(clean)
         return values
 
@@ -814,6 +822,32 @@ class ConfigManager:
             config_data["providers"]["watsonx"]["endpoint"] = os.getenv("WATSONX_ENDPOINT")
         if os.getenv("WATSONX_PROJECT_ID"):
             config_data["providers"]["watsonx"]["project_id"] = os.getenv("WATSONX_PROJECT_ID")
+
+        # IBM watsonx.ai on-prem (Cloud Pak for Data / Software Hub).
+        onprem_credentials = {
+            "api_base": os.getenv("WATSONX_ONPREM_ENDPOINT"),
+            "username": os.getenv("WATSONX_ONPREM_USERNAME"),
+            "api_key": os.getenv("WATSONX_ONPREM_API_KEY"),
+            "zen_api_key": os.getenv("WATSONX_ONPREM_ZEN_API_KEY"),
+            "space_id": os.getenv("WATSONX_ONPREM_SPACE_ID"),
+            "project_id": os.getenv("WATSONX_ONPREM_PROJECT_ID"),
+            "ssl_verify": os.getenv("WATSONX_ONPREM_TLS_VERIFY"),
+        }
+        if any(onprem_credentials.values()):
+            self._seed_custom_provider_credentials(
+                config_data,
+                "watsonx_onprem",
+                onprem_credentials,
+                required=("api_base",),
+            )
+            entry = config_data["providers"]["custom"]["watsonx_onprem"]
+            stored = entry["credentials"]
+            has_zen = bool(stored.get("zen_api_key"))
+            entry["auth_method"] = "zen_api_key" if has_zen else "username_api_key"
+            entry["configured"] = bool(
+                stored.get("api_base")
+                and (has_zen or (stored.get("username") and stored.get("api_key")))
+            )
 
         # Ollama provider settings
         if os.getenv("OLLAMA_ENDPOINT"):
