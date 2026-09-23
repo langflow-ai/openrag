@@ -332,6 +332,58 @@ describe("buildKnowledgeTableRows", () => {
       );
       expect(rows[0].status).toBe("cancelled");
     });
+
+    it("treats a skipped overlay with the same priority as failed and cancelled", () => {
+      // skipped, cancelled, and failed all have priority 2. When a second overlay
+      // arrives with the same key, taskOverlayPriority is called for both —
+      // passing a `skipped` overlay through the switch exercises line 148.
+      const rows = buildKnowledgeTableRows(
+        [searchFile({ filename: "b.pdf", status: "active" })],
+        [
+          // First overlay: active (priority 1)
+          taskFile({ filename: "b.pdf", status: "active" }),
+          // Second overlay: skipped (priority 2) — should win over active
+          taskFile({
+            filename: "b.pdf",
+            status: "skipped",
+            warning: "Duplicate content",
+          }),
+        ],
+      );
+      expect(rows[0].status).toBe("skipped");
+    });
+
+    it("promotes skipped status onto the indexed row", () => {
+      const rows = buildKnowledgeTableRows(
+        [searchFile({ filename: "c.pdf", status: "active" })],
+        [
+          taskFile({
+            filename: "c.pdf",
+            status: "skipped",
+            warning: "Duplicate",
+          }),
+        ],
+      );
+      expect(rows[0].status).toBe("skipped");
+      expect(rows[0].warning).toBe("Duplicate");
+    });
+
+    it("merges warning message from skipped overlay onto the row", () => {
+      const rows = buildKnowledgeTableRows(
+        [searchFile({ filename: "d.pdf" })],
+        [
+          taskFile({
+            filename: "d.pdf",
+            status: "skipped",
+            warning:
+              "Duplicate content — already exists in the knowledge base.",
+          }),
+        ],
+      );
+      expect(rows[0].warning).toBe(
+        "Duplicate content — already exists in the knowledge base.",
+      );
+    });
   });
 });
 

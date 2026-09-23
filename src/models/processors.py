@@ -31,6 +31,9 @@ DOCLING_PARSER_LABEL = "Docling Serve 1.20.0"
 TEXT_PARSER_LABEL = "Text Parser"
 
 DUPLICATE_FILENAME_WARNING = "A file with this name already exists."
+DUPLICATE_CONTENT_WARNING = (
+    "Identical content already exists in the knowledge base under a different filename."
+)
 
 if TYPE_CHECKING:
     from connectors.base import DocumentACL
@@ -1608,6 +1611,38 @@ class LangflowFileProcessor(TaskProcessor):
                 self.mark_duplicate_skipped(upload_task, file_task)
                 return
 
+            # Compute the content hash early — before reading file bytes into
+            # memory and before submitting any work to Docling so the duplicate
+            # guard fires as cheaply as possible.
+            #
+            # The guard only runs on the "proceed" path (no filename match).
+            # When duplicate_action == "replaced" the caller asked to replace an
+            # existing same-name document: the old chunks were already deleted
+            # above, so we must not short-circuit here even if the hash matches
+            # (that would leave the index empty after the delete).
+            file_hash = hash_id(item)
+            file_task.document_id = file_hash
+
+            if duplicate_action == "proceed" and await self.check_document_exists(
+                file_hash, opensearch_client
+            ):
+                # Identical content is already indexed under a different filename.
+                # Report it as a warning rather than silently overwriting.
+                # Mirrors the connector path (processors.py:1212) but uses a
+                # distinct reason so the UI can distinguish it from a filename
+                # collision.
+                file_task.status = TaskStatus.SKIPPED
+                file_task.error = None
+                file_task.result = {
+                    "status": "skipped",
+                    "reason": "duplicate_content",
+                    "warning": DUPLICATE_CONTENT_WARNING,
+                    "document_id": file_hash,
+                }
+                file_task.updated_at = time.time()
+                upload_task.successful_files += 1
+                return
+
             # Read file content for processing
             with open(item, "rb") as f:
                 content = f.read()
@@ -1633,9 +1668,6 @@ class LangflowFileProcessor(TaskProcessor):
 
             # Prepare metadata tweaks similar to API endpoint
             final_tweaks = self.tweaks.copy() if self.tweaks else {}
-
-            file_hash = hash_id(item)
-            file_task.document_id = file_hash
 
             # Build settings with fresh OCR/pictureDescriptions from live
             # config so retries pick up configuration changes.
