@@ -2,7 +2,7 @@
 
 **Audience:** OpenRAG maintainers (IBM / langflow-ai)
 **Context:** Live deployment of OpenRAG to a real OpenShift cluster (IBM TechZone sandbox, OpenShift 4.18.48, OpenShift Data Foundation storage) using the **operator** installation path (`kubernetes/operator` + `kubernetes/helm/operator`). Single-tenant deployment in one dedicated namespace/project (`openrag`), with cluster-admin access.
-**Outcome:** Successfully deployed end-to-end — frontend, backend, Langflow, Postgres, OpenSearch, Docling (serve + worker + Valkey queue) — all healthy, chat/search working with real per-user authentication. Getting there required **10 distinct fixes**, none of which are documented anywhere in the repo today. This doc is a full account of what broke, why, and how we fixed it, plus concrete recommendations.
+**Outcome:** Successfully deployed end-to-end — frontend, backend, Langflow, Postgres, OpenSearch, Docling (serve + worker + Valkey queue) — all healthy, chat/search working with real per-user authentication. Getting there required **13 distinct fixes**, none of which are documented anywhere in the repo today. This doc is a full account of what broke, why, and how we fixed it, plus concrete recommendations.
 
 This deployment used **kube:admin**-level access. Several of the fixes below (SCC grants, ClusterRole patches) are things a typical namespace-scoped deployer would not be able to do themselves — worth keeping in mind when prioritizing fixes.
 
@@ -170,11 +170,45 @@ Since an auto-generated default secret already existed (from the very first reco
 - At minimum, document this interaction prominently — it's a genuinely hard failure mode to diagnose from symptoms alone (a 401 on document search looks like a credentials problem, not a signing-algorithm mismatch four layers removed).
 - Provide a supported key-rotation path (a CR field, an annotation, or a documented `oc delete secret <default> <env>` + finalizer-strip procedure) instead of leaving the safety guard as a dead end.
 
+### 3.11 — "Open in Langflow" link is unusable behind any real ingress (Route/Ingress), and there's no first-class way to expose Langflow at all
+Settings → Langflow → "Open in Langflow" produced a URL like `https://openrag-frontend-openrag.apps.<cluster>:7860/flow/<id>` — the *frontend's own hostname*, with the port swapped to `7860`. An OpenShift Route only ever terminates on 443/80; there is no listener on `:7860` for that hostname at all, so the link is dead by construction. Root cause is the resolution order in `frontend/lib/url-utils.ts`:
+```ts
+// IBM-derived URL (only in IBM auth mode) → operator-configured `publicUrl`
+// → same-host with port swapped to :7860 → localhost
+```
+Since `LANGFLOW_PUBLIC_URL` is never set by any sample/default, and this isn't an IBM-auth deployment, it falls straight to the same-host-port-swap fallback — which only makes sense for a docker-compose-style setup where every service is one host with different ports, not a Kubernetes/OpenShift deployment where each service normally gets its own Route/Ingress hostname.
+
+**Fix applied:** Created a second Route exposing Langflow's port 7860 directly (`oc create route edge openrag-langflow --service=openrag-lf --port=7860`), then set `spec.backend.env: [{name: LANGFLOW_PUBLIC_URL, value: "https://<that route's host>"}]`.
+
+**Recommendation:** The operator has no Route/Ingress support at all (noted in §4 below) — this is the concrete symptom of that gap. At minimum, document that `LANGFLOW_PUBLIC_URL` must be set by hand for any non-Compose deployment; ideally, add optional Route/Ingress fields to the CR (or the frontend URL derivation) for both the frontend and Langflow.
+
+### 3.12 — Langflow's default memory limit is too tight; OOMKilled mid-use causes confusing, transient failures
+After some routine use (multiple flows loaded, MCP servers initialized, ~19h uptime), the Langflow pod was silently `OOMKilled` (exit 137) with the CR's initial `limits.memory: 2Gi`. Because the Deployment's readiness probe has a **110-second `initialDelaySeconds`**, the Service had zero endpoints for that whole window after the restart — any request routed through the Langflow Route (including the "Open in Langflow" link from §3.11) got an OpenShift router `503 Application is not available` in the meantime, which reads exactly like a routing/config bug rather than what it actually was (an OOM restart in progress).
+
+**Fix applied:** Raised Langflow to `requests: {cpu: 500m, memory: 2Gi}` / `limits: {cpu: 2, memory: 4Gi}` (from `500m`/`1Gi` requests, `1`/`2Gi` limits). Stable at ~930Mi under light use afterward, but 2Gi clearly wasn't enough headroom even for a single-instance, low-traffic deployment.
+**Recommendation:** Raise the documented/sample default memory limit for Langflow, and consider whether the 110s readiness-probe delay is worth shortening (or at minimum call it out) — it directly widens the blast radius of any restart, OOM or otherwise, into a multi-minute outage window for anything routed at Langflow.
+
+### 3.13 — `flowsRef` silently overwrites bundled flows with newer ones the shipped image's components can't run — breaks chat outright
+Set `spec.langflow.flowsRef: main` expecting to just get "the default flows" (reasonable reading of the field, and matches the CRD sample's own comment). Chat then failed immediately:
+```
+Flow build blocked: custom components are not allowed: OpenRAG Embeddings (OpenAICompatibleEmbedding-ix4WD),
+OpenRAG LLM (OpenAICompatibleLLM-u2sHy)
+```
+**Root cause:** `flowsRef` isn't "pick a version of the default flows" — setting it to anything non-empty adds an init container (`internal/controller/openrag_controller.go`, `flowsDownloadScript`) that **unconditionally** downloads every `*.json` under `flows/` from `github.com/langflow-ai/openrag` at that ref into a dedicated `langflow-flows` `emptyDir`, mounted over `/app/flows` — completely replacing whatever the image itself shipped there (`Dockerfile.langflow` already does `COPY flows/ /app/flows/`), on **every pod start**, with no version/compatibility check of any kind.
+
+We pointed it at `main`. The `main`-branch flow JSON references two components — `OpenAICompatibleEmbedding` / `OpenAICompatibleLLM` (`custom_components/openrag/openai_compatible_{embedding,llm}.py` in current source) — that **are not present in the published `langflowai/openrag-langflow:latest` image**: `find /app/custom_components -iname '*OpenAICompatible*'` came back empty; the directory only had `docling_remote.py`, `export_docling_document.py`, `opensearch_multimodal.py`. The published image is evidently a build from an older commit than current `main`, and `flowsRef: main` pulls flow definitions that outrun it. `LANGFLOW_ALLOW_CUSTOM_COMPONENTS=false` (set in `Dockerfile.langflow`) then correctly refuses to build the flow, since it can't resolve those component types to anything it has loaded — but the resulting error message ("custom components are not allowed") reads like a security/config problem, not an image/flow version mismatch.
+
+**Fix applied:** Removed `flowsRef` from the CR entirely (no init container, no overriding `emptyDir` — `/app/flows` reverts to the image's own bundled, matching flow JSON). Confirmed via the Langflow API that the chat flow's component types went from `OpenAICompatibleEmbedding`/`...LLM` back to the image's actual bundled types (`EmbeddingModel`, `LanguageModelComponent`) after a restart — Langflow's own startup logic overwrites the DB-stored flow by ID from whatever's on disk at `/app/flows`, so no manual database cleanup was needed once the mismatched files stopped being downloaded.
+**Recommendation:**
+- At minimum, have the init container (or the operator) verify flow/component compatibility before overwriting — or don't overwrite silently: skip the download if `/app/flows` already has content, matching the pattern already used by the direct Helm chart's own `load-default-documents`/`load-default-flows` init containers (`if [ -z "$(ls -A ...)" ]`).
+- More fundamentally: **keep the published `openrag-langflow` image and the `flows/`/`custom_components/` content in `main` in sync** (or version the flows alongside image tags, and default `flowsRef` — if it must exist — to a tag/branch that's guaranteed compatible with `:latest`, not `main` itself).
+- Reword the CRD's `flowsRef` doc comment: it currently reads like a safe "pick the version of the default flows" knob, not "unconditionally overwrite the image's bundled, compatibility-guaranteed flows with whatever's on that git ref right now."
+
 ## 4. Cluster environment specifics (IBM TechZone / OpenShift 4.18)
 
 - **Storage:** `ocs-storagecluster-ceph-rbd` (default StorageClass, Ceph RBD, RWO) used for every PVC — Postgres, OpenSearch, backend, Langflow, Docling serve/worker, Valkey. The operator's per-component `PersistenceSpec` only ever creates single, independent PVCs (unlike the direct Helm chart's separate RWX "shared" volume model) — **RWX storage was never needed** for the operator path. `ocs-storagecluster-cephfs` (RWX) is available on this cluster but unused.
 - **`vm.max_map_count`:** already `262144` cluster-wide on all worker nodes — no MachineConfig change needed for OpenSearch's bootstrap check. Worth confirming this isn't assumed/undocumented, since a cluster without cluster-level tuning would need a privileged Machine Config change (node reboot) that's well outside "just install the app" scope.
-- **Ingress:** used an OpenShift `Route` (edge TLS) for the frontend; the CR has no Route/Ingress support at all, so this is 100% manual regardless of cluster.
+- **Ingress:** used OpenShift `Route`s (edge TLS) for both the frontend and, separately, Langflow (see §3.11) — the CR has no Route/Ingress support at all, so this is 100% manual regardless of cluster.
 - **RBAC/SCC exceptions granted (see full detail in §3.5, §3.9's related item):**
   - `anyuid` SCC → dedicated `openrag-opensearch` ServiceAccount (scoped to one workload only).
   - Patched the operator's own `ClusterRole` (Helm-installed) to add `apps/statefulsets` and `autoscaling/horizontalpodautoscalers` — **missing from the Helm chart's RBAC template but present in the kustomize source** (`config/rbac/role.yaml`). Without this, the operator can reconcile everything except the Valkey `StatefulSet`, which silently never gets created (the reflector just logs `Failed to watch ... forbidden` in a loop; nothing in CR status flags it). **This is a straightforward chart-drift bug** — the Helm and kustomize RBAC sources should be generated from the same place or kept in lockstep by CI.
@@ -183,12 +217,14 @@ Since an auto-generated default secret already existed (from the very first reco
 
 1. **Fix the JWT signing key default (§3.10).** Highest-impact, silent, breaks all real usage out of the box.
 2. **Fix OpenSearch image's securityconfig ownership + add `set -e` to `setup-security.sh` (§3.5).** Second-highest — total, silent auth lockout under arbitrary-UID execution (i.e., every OpenShift/PSA-restricted cluster).
-3. **Fix the Langflow container command defaults + entrypoint's root assumption (§3.2, §3.3).** Blocks the operator path entirely on any non-privileged runtime.
-4. **Sync the Helm chart's operator RBAC with the kustomize source (§4).** Easy, mechanical fix; currently silently breaks Docling/Valkey and any future HPA usage.
-5. **Fix Docling Deployment strategy to `Recreate` (§3.9).** Easy fix, currently guarantees a deadlock on the very first config change anyone makes.
-6. **Fix the placeholder Docling image names in the primary sample CR (§3.7).** Low effort, actively misleads.
-7. **Default `LANGFLOW_WORKERS=1` (§3.4) and raise Docling resource defaults (§3.8).**
-8. **Add an OpenShift/self-hosted "getting started" doc** covering: the `jvector`-only OpenSearch image requirement, the fact that Postgres/OpenSearch/Docling are BYO, and the JWT signing key requirement — ideally with a tested reference set of manifests (even just what's in this document) so the next deployer isn't rediscovering all of the above from scratch.
+3. **Stop `flowsRef` from silently overwriting bundled flows with commit-incompatible ones (§3.13).** Breaks chat outright, with a misleading "custom components are not allowed" error; keeping the published image and `main`'s flows/components in sync (or gating the download on compatibility) matters regardless of platform.
+4. **Fix the Langflow container command defaults + entrypoint's root assumption (§3.2, §3.3).** Blocks the operator path entirely on any non-privileged runtime.
+5. **Sync the Helm chart's operator RBAC with the kustomize source (§4).** Easy, mechanical fix; currently silently breaks Docling/Valkey and any future HPA usage.
+6. **Fix Docling Deployment strategy to `Recreate` (§3.9).** Easy fix, currently guarantees a deadlock on the very first config change anyone makes.
+7. **Fix the placeholder Docling image names in the primary sample CR (§3.7).** Low effort, actively misleads.
+8. **Default `LANGFLOW_WORKERS=1` (§3.4), raise Langflow and Docling resource defaults (§3.8, §3.12).**
+9. **Add Route/Ingress support (or at least `LANGFLOW_PUBLIC_URL` guidance) so "Open in Langflow" works out of the box (§3.11).**
+10. **Add an OpenShift/self-hosted "getting started" doc** covering: the `jvector`-only OpenSearch image requirement, the fact that Postgres/OpenSearch/Docling are BYO, and the JWT signing key requirement — ideally with a tested reference set of manifests (even just what's in this document) so the next deployer isn't rediscovering all of the above from scratch.
 
 ---
 *Compiled from a live deployment session against an OpenShift 4.18.48 cluster (IBM TechZone, OpenShift Data Foundation storage), operator chart v0.1.0 / app v0.1.52, `main` branch of `langflow-ai/openrag` as of 2026-09-22/23.*
