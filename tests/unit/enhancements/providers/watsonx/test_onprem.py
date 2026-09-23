@@ -64,7 +64,7 @@ def test_username_never_reaches_serializable_credentials() -> None:
     assert "username" not in credentials
     assert "ssl_verify" not in credentials
     assert "client" not in credentials
-    assert client.ssl_verify is False
+    assert client.ssl_verify is True
     assert client is watsonx_onprem.litellm_runtime_kwargs(stored)["client"]
     assert credentials["api_base"] == "https://cpd.example.com"
     # Both, and the same value: the embeddings path refuses the call outright
@@ -208,6 +208,7 @@ def test_the_settings_form_asks_for_cluster_credentials_not_ibm_cloud_ones() -> 
         "project_id",
         "ssl_verify",
     }
+    assert fields["ssl_verify"]["default_value"] == "true"
     assert model_catalog.secret_field_keys(PROVIDER) == {"api_key", "zen_api_key"}
 
 
@@ -437,7 +438,7 @@ def test_tls_setting_is_scoped_to_the_onprem_provider(monkeypatch) -> None:
     assert "ssl_verify" not in insecure
     assert watsonx_onprem.ssl_verify({"ssl_verify": "true"}) is True
     assert watsonx_onprem.ssl_verify({"ssl_verify": "false"}) is False
-    assert watsonx_onprem.ssl_verify({}) is False
+    assert watsonx_onprem.ssl_verify({}) is True
     assert os.environ["SSL_VERIFY"] == "false"
 
 
@@ -556,7 +557,7 @@ async def test_space_listing_uses_bearer_tls_and_rebases_pagination(monkeypatch)
         {"id": "space-1", "name": "Production"},
         {"id": "space-2", "name": "Development"},
     ]
-    assert seen["verify"] is False
+    assert seen["verify"] is True
     assert [(method, url) for method, url, _ in seen["requests"]] == [
         ("POST", "https://cpd.example.com/icp4d-api/v1/authorize"),
         ("GET", "https://cpd.example.com/v2/spaces"),
@@ -589,7 +590,7 @@ async def test_space_listing_exchanges_a_pasted_zen_key_for_bearer(monkeypatch) 
 
     class _Client:
         def __init__(self, *, verify, timeout):
-            assert verify is False
+            assert verify is True
 
         async def __aenter__(self):
             return self

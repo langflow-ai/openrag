@@ -194,12 +194,6 @@ describe("GenericOnboarding model selection", () => {
       name: "Verify TLS certificates",
     });
 
-    expect(verifyTls).not.toBeChecked();
-    expect(
-      screen.getByText(/Certificate verification is disabled/),
-    ).toBeVisible();
-
-    await user.click(verifyTls);
     expect(verifyTls).toBeChecked();
     const caPath = screen.getByRole("textbox", {
       name: "Custom CA bundle path",

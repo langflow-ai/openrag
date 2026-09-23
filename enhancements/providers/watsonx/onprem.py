@@ -37,9 +37,9 @@ on `/ml/v1`, model listing, chat, streaming chat, embeddings and tool calling.
 TLS: provider-scoped certificate verification
 ---------------------------------------------
 A CPD cluster is usually fronted by an internal or self-signed CA. TLS trust is
-stored with this provider as ``ssl_verify``: ``false`` is the default for these
-clusters, ``true`` uses OpenRAG's trust store, and any other value is the path
-to a mounted CA bundle.
+stored with this provider as ``ssl_verify``: ``true`` is the default and uses
+OpenRAG's trust store, ``false`` disables verification, and any other value is
+the path to a mounted CA bundle.
 
 LiteLLM's watsonx adapter does not consistently consume an ``ssl_verify`` call
 kwarg. It does accept an explicit HTTP client on both chat and embedding paths,
@@ -160,7 +160,7 @@ CREDENTIAL_FIELDS: list[dict[str, Any]] = [
         "required": False,
         "field_type": "text",
         "options": None,
-        "default_value": "false",
+        "default_value": "true",
     },
 ]
 
@@ -217,14 +217,14 @@ def _warn_once(setting: str, message: str, **fields: Any) -> None:
 def resolve_ssl_verify(value: Any) -> bool | str:
     """Resolve a provider TLS value without consulting process-wide settings."""
     raw = str(value if value is not None else "").strip()
-    if not raw or raw.lower() in _FALSE_TLS_VALUES:
+    if raw.lower() in _FALSE_TLS_VALUES:
         _warn_once(
             "disabled",
             "TLS verification is disabled for watsonx.ai on-prem. Credentials "
             "and model traffic can be intercepted; configure trust for deployed use.",
         )
         return False
-    if raw.lower() in _TRUE_TLS_VALUES:
+    if not raw or raw.lower() in _TRUE_TLS_VALUES:
         return True
     if not os.path.isfile(raw):
         raise ValueError("The watsonx.ai on-prem CA bundle path is not usable")
@@ -630,11 +630,11 @@ def _cache_key(credentials: Mapping[str, Any]) -> str:
     """Identify the cluster, credentials, and TLS policy behind a model list."""
     values = _values(credentials)
     zen = values.get("zen_api_key") or zen_api_key(values.get("username"), values.get("api_key"))
-    raw_tls = values.get("ssl_verify", "false")
+    raw_tls = values.get("ssl_verify", "true")
     normalized_tls = raw_tls.lower()
     if normalized_tls in _TRUE_TLS_VALUES:
         tls = "true"
-    elif not normalized_tls or normalized_tls in _FALSE_TLS_VALUES:
+    elif normalized_tls in _FALSE_TLS_VALUES:
         tls = "false"
     else:
         tls = raw_tls
