@@ -59,7 +59,10 @@ async def test_upload_path_returns_5xx_and_skips_task_when_index_check_fails(mon
 
     assert 500 <= response.status_code < 600
     body = _json(response)
-    assert "OPENRAG_SERVICE_TOKEN" in body["error"]
+    assert body["error"] == "Index preflight check failed"
+    # The internal RuntimeError detail must not leak to the client
+    # (CodeQL py/stack-trace-exposure).
+    assert "OPENRAG_SERVICE_TOKEN" not in body["error"]
     task_service.create_upload_task.assert_not_awaited()
 
 
@@ -101,5 +104,8 @@ async def test_upload_bucket_returns_5xx_and_skips_task_when_index_check_fails(m
 
     assert 500 <= response.status_code < 600
     body = _json(response)
-    assert "OPENRAG_SERVICE_TOKEN" in body["error"]
+    assert body["error"] == "Index preflight check failed"
+    # The internal RuntimeError detail must not leak to the client
+    # (CodeQL py/stack-trace-exposure).
+    assert "OPENRAG_SERVICE_TOKEN" not in body["error"]
     task_service.create_custom_task.assert_not_awaited()
