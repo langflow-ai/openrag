@@ -118,7 +118,7 @@
     "browserslist": "4.28.7",
     "qs": "6.16.0",
     "joi": "17.13.6",
-    "js-yaml": "4.3.2",
+    "js-yaml": "5.4.2",
     "fast-uri": "3.1.7",
     "colord": "2.9.4",
     "compression": "1.8.2",
