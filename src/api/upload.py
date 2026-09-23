@@ -98,9 +98,7 @@ async def upload_path(
         await _ensure_index_exists(jwt_token)
     except RuntimeError:
         logger.exception("[INGEST] Index preflight check failed for upload_path")
-        return JSONResponse(
-            {"error": "Index preflight check failed"}, status_code=500
-        )
+        return JSONResponse({"error": "Index preflight check failed"}, status_code=500)
 
     task_id = await task_service.create_upload_task(
         owner_user_id,
@@ -231,9 +229,7 @@ async def upload_bucket(
         await _ensure_index_exists(jwt_token)
     except RuntimeError:
         logger.exception("[INGEST] Index preflight check failed for upload_bucket")
-        return JSONResponse(
-            {"error": "Index preflight check failed"}, status_code=500
-        )
+        return JSONResponse({"error": "Index preflight check failed"}, status_code=500)
 
     processor = S3FileProcessor(
         task_service.document_service,
