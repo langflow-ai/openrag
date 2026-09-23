@@ -521,3 +521,51 @@ async def test_failed_onboarding_validation_does_not_mutate_cached_config():
     assert response.status_code == 400
     assert config.agent.llm_model == "old-model"
     assert config.providers.openai.api_key == ""
+
+
+@pytest.mark.asyncio
+async def test_onboarding_validation_receives_onprem_tls_policy():
+    from api.settings.endpoints import onboarding
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    body = OnboardingBody(
+        llm_provider="watsonx_onprem",
+        llm_model="ibm/granite-3-3-8b-instruct",
+        provider_credentials={
+            "watsonx_onprem": {
+                "api_base": "https://cpd.example.com",
+                "username": "cpd-user",
+                "api_key": "secret",
+                "ssl_verify": "false",
+            }
+        },
+        provider_auth_methods={"watsonx_onprem": "username_api_key"},
+    )
+
+    with (
+        patch("api.settings.endpoints.get_openrag_config", return_value=config),
+        patch(
+            "api.settings.endpoints.TelemetryClient.send_event",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "api.settings.endpoints.validate_provider_setup",
+            new_callable=AsyncMock,
+            side_effect=Exception("stop after validation arguments are captured"),
+        ) as validate,
+    ):
+        response = await onboarding(
+            body=body,
+            flows_service=MagicMock(),
+            session_manager=AsyncMock(),
+            document_service=MagicMock(),
+            models_service=MagicMock(),
+            task_service=MagicMock(),
+            langflow_file_service=MagicMock(),
+            knowledge_filter_service=MagicMock(),
+            user=MagicMock(spec=User),
+        )
+
+    assert response.status_code == 400
+    assert validate.await_args.kwargs["stored_credentials"]["ssl_verify"] == "false"

@@ -1358,6 +1358,7 @@ async def onboarding(
                     project_id=getattr(llm_provider_config, "project_id", None),
                     test_completion=True,  # Full validation with completion test - ensures provider health
                     credentials=current_config.providers.credential_values(llm_provider),
+                    stored_credentials=current_config.providers.stored_credentials(llm_provider),
                 )
                 logger.info(
                     f"LLM provider setup validation completed successfully for {llm_provider}"
@@ -1380,6 +1381,9 @@ async def onboarding(
                     test_completion=True,  # Full validation with completion test - ensures provider health
                     credentials=current_config.providers.credential_values(
                         embedding_provider, kind="embedding"
+                    ),
+                    stored_credentials=current_config.providers.stored_credentials(
+                        embedding_provider
                     ),
                 )
                 logger.info(

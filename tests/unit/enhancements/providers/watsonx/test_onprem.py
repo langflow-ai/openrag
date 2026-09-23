@@ -434,6 +434,7 @@ def test_tls_setting_is_scoped_to_the_onprem_provider(monkeypatch) -> None:
 
     assert secure["client"].ssl_verify is True
     assert insecure["client"].ssl_verify is False
+    assert secure["client"] is not insecure["client"]
     assert "ssl_verify" not in secure
     assert "ssl_verify" not in insecure
     assert watsonx_onprem.ssl_verify({"ssl_verify": "true"}) is True

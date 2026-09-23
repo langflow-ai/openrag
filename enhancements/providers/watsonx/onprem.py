@@ -242,9 +242,13 @@ def litellm_runtime_kwargs(stored: Mapping[str, Any]) -> dict[str, Any]:
     cache = litellm.in_memory_llm_clients_cache
     client = cache.get_cache(cache_key)
     if client is None:
+        # LiteLLM also keys its underlying httpx client by client_alias. Keep
+        # that alias policy-specific or a previously-created verifying client
+        # can be reused after the operator disables verification.
+        client_alias = f"{cache_key}"
         client = AsyncHTTPHandler(
             ssl_verify=tls,
-            client_alias="openrag-watsonx-onprem",
+            client_alias=client_alias,
         )
         cache.set_cache(cache_key, client, litellm_owned_client=True)
     return {"client": client}
