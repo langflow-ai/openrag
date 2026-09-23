@@ -421,10 +421,9 @@ def test_settings_body_rejects_blank_ocr_language():
         SettingsUpdateBody(ocr_languages=["en", "  "])
 
 
-def test_settings_body_rejects_empty_ocr_language_list():
-    """An empty list means 'no languages', which disables OCR text entirely."""
-    with pytest.raises(ValidationError):
-        SettingsUpdateBody(ocr_languages=[])
+def test_settings_body_accepts_empty_ocr_language_list():
+    """An empty list clears the override so docling uses the engine default."""
+    assert SettingsUpdateBody(ocr_languages=[]).ocr_languages == []
 
 
 def test_settings_body_accepts_one_family_plus_english():

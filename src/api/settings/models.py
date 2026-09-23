@@ -83,7 +83,10 @@ class SettingsUpdateBody(BaseModel):
     @field_validator("ocr_languages")
     @classmethod
     def _validate_ocr_languages(cls, value: list[str] | None) -> list[str] | None:
-        """Reject blanks, empty lists, and combinations no OCR engine can serve.
+        """Reject blank entries and combinations no OCR engine can serve.
+
+        An empty list is accepted and clears the override: no ocr_lang is sent
+        to docling, so the engine default applies.
 
         Mirrors the picker's rules (frontend/lib/ocr-languages.ts) so the API
         cannot be driven into a state the UI prevents. Duplicated on purpose:
@@ -92,7 +95,7 @@ class SettingsUpdateBody(BaseModel):
         if value is None:
             return None
         if not value:
-            raise ValueError("ocr_languages must contain at least one language")
+            return []
         cleaned = [language.strip() for language in value]
         if any(not language for language in cleaned):
             raise ValueError("ocr_languages must not contain blank entries")
