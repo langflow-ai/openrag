@@ -23,6 +23,7 @@ from api.settings.helpers import (
 from config.config_manager import (
     AgentConfig,
     AnthropicConfig,
+    BedrockConfig,
     KnowledgeConfig,
     OllamaConfig,
     OnboardingState,
@@ -52,6 +53,7 @@ def _make_config(
     anthropic=False,
     ollama=False,
     watsonx=False,
+    bedrock=False,
     llm_provider="openai",
     llm_model="gpt-5.4-mini",
     embedding_provider="openai",
@@ -70,6 +72,10 @@ def _make_config(
                 endpoint="https://us-south.ml.cloud.ibm.com" if watsonx else "",
                 project_id="pid" if watsonx else "",
                 configured=watsonx,
+            ),
+            bedrock=BedrockConfig(
+                region="eu-central-1" if bedrock else "",
+                configured=bedrock,
             ),
         ),
         knowledge=KnowledgeConfig(
@@ -354,3 +360,19 @@ class TestHasOtherConfiguredProvider:
     def test_can_remove_watsonx_when_openai_is_configured(self):
         config = _make_config(watsonx=True, openai=True)
         assert _has_other_configured_provider(config, "watsonx")
+
+    def test_can_remove_openai_when_bedrock_is_configured(self):
+        """Bedrock has its own typed `providers.bedrock` field (not a
+        `.custom` entry), so it must be counted here just like
+        openai/watsonx/ollama - otherwise removing OpenAI is wrongly
+        rejected even though Bedrock is fully configured and working."""
+        config = _make_config(openai=True, bedrock=True)
+        assert _has_other_configured_provider(config, "openai")
+
+    def test_single_bedrock_provider_cannot_be_removed(self):
+        config = _make_config(bedrock=True)
+        assert not _has_other_configured_provider(config, "bedrock")
+
+    def test_can_remove_bedrock_when_openai_is_configured(self):
+        config = _make_config(openai=True, bedrock=True)
+        assert _has_other_configured_provider(config, "bedrock")
