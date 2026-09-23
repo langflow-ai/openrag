@@ -242,13 +242,14 @@ def litellm_runtime_kwargs(stored: Mapping[str, Any]) -> dict[str, Any]:
     cache = litellm.in_memory_llm_clients_cache
     client = cache.get_cache(cache_key)
     if client is None:
-        # LiteLLM also keys its underlying httpx client by client_alias. Keep
-        # that alias policy-specific or a previously-created verifying client
-        # can be reused after the operator disables verification.
-        client_alias = f"{cache_key}"
+        # Isolation across TLS policies comes from cache_key above, which is
+        # already policy-specific. client_alias is a log-only label in this
+        # LiteLLM version (nothing reads it back for cache lookups) — keep it
+        # policy-specific anyway so distinct clients are distinguishable in
+        # logs and diagnostics.
         client = AsyncHTTPHandler(
             ssl_verify=tls,
-            client_alias=client_alias,
+            client_alias=cache_key,
         )
         cache.set_cache(cache_key, client, litellm_owned_client=True)
     return {"client": client}
