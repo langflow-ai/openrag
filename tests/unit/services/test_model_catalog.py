@@ -524,3 +524,32 @@ async def test_live_model_failure_does_not_block_other_provider_refreshes(monkey
     await model_catalog.refresh_live_models()
 
     assert calls == ["broken", "healthy"]
+
+
+@pytest.mark.asyncio
+async def test_refresh_live_models_can_be_narrowed_to_one_provider(monkeypatch):
+    """A caller asking about one provider must not wait on another's cluster."""
+    calls: list[str] = []
+
+    def lister(name):
+        async def fetch(_credentials):
+            calls.append(name)
+
+        return fetch
+
+    first = SimpleNamespace(PROVIDER_KEY="first", fetch_models=lister("first"))
+    second = SimpleNamespace(PROVIDER_KEY="second", fetch_models=lister("second"))
+    providers = SimpleNamespace(stored_credentials=lambda _provider: {"api_key": "secret"})
+
+    monkeypatch.setattr(model_catalog, "provider_enhancements", lambda: (first, second))
+    monkeypatch.setattr(
+        model_catalog, "supported_provider_keys", lambda: frozenset({"first", "second"})
+    )
+    monkeypatch.setattr(
+        "config.settings.get_openrag_config",
+        lambda: SimpleNamespace(providers=providers),
+    )
+
+    await model_catalog.refresh_live_models(" Second ")
+
+    assert calls == ["second"]
