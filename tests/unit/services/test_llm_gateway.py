@@ -1224,6 +1224,127 @@ def test_sanitise_messages_removes_a_tool_calls_key_left_empty():
     assert repairs == 0
 
 
+def test_sanitise_messages_drops_the_result_of_a_dropped_call_that_had_an_id():
+    """The result carries a real id, but the call it answers is gone."""
+    from services import llm_gateway
+
+    cleaned, repairs = llm_gateway._sanitise_messages(
+        [
+            {"role": "user", "content": "q"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "type": "function",
+                        "id": "call_1",
+                        "function": {"name": "search", "arguments": "{}"},
+                    },
+                    {
+                        "type": "function",
+                        "id": "call_2",
+                        "function": {"name": "", "arguments": "{}"},
+                    },
+                ],
+            },
+            {"role": "tool", "tool_call_id": "call_1", "content": "kept"},
+            {"role": "tool", "tool_call_id": "call_2", "content": "orphaned"},
+        ]
+    )
+
+    assert repairs == 2
+    assert [m.get("content") for m in cleaned if m["role"] == "tool"] == ["kept"]
+
+
+def test_sanitise_messages_drops_an_assistant_message_that_was_only_bad_calls():
+    """`content` is optional only beside `tool_calls`; with neither, nothing is left."""
+    from services import llm_gateway
+
+    cleaned, repairs = llm_gateway._sanitise_messages(
+        [
+            {"role": "user", "content": "q"},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "type": "function",
+                        "id": "call_2",
+                        "function": {"name": "", "arguments": "{}"},
+                    }
+                ],
+            },
+            {"role": "tool", "tool_call_id": "call_2", "content": "orphaned"},
+            {"role": "user", "content": "again"},
+        ]
+    )
+
+    assert repairs == 2
+    assert cleaned == [{"role": "user", "content": "q"}, {"role": "user", "content": "again"}]
+
+
+def test_sanitise_messages_keeps_an_assistant_message_that_still_has_content():
+    from services import llm_gateway
+
+    cleaned, _ = llm_gateway._sanitise_messages(
+        [
+            {
+                "role": "assistant",
+                "content": "Let me look.",
+                "tool_calls": [
+                    {
+                        "type": "function",
+                        "id": "call_2",
+                        "function": {"name": "", "arguments": "{}"},
+                    }
+                ],
+            }
+        ]
+    )
+
+    assert cleaned == [{"role": "assistant", "content": "Let me look."}]
+
+
+def test_sanitise_messages_drops_a_result_not_answering_the_preceding_assistant_message():
+    """A result only answers the calls of the assistant message just before it."""
+    from services import llm_gateway
+
+    call = {"type": "function", "id": "call_1", "function": {"name": "search", "arguments": "{}"}}
+    cleaned, repairs = llm_gateway._sanitise_messages(
+        [
+            {"role": "assistant", "content": "", "tool_calls": [call]},
+            {"role": "tool", "tool_call_id": "call_1", "content": "answer"},
+            {"role": "user", "content": "next"},
+            {"role": "tool", "tool_call_id": "call_1", "content": "replayed out of place"},
+        ]
+    )
+
+    assert repairs == 1
+    assert [m.get("content") for m in cleaned] == ["", "answer", "next"]
+
+
+def test_sanitise_messages_keeps_every_result_of_parallel_calls():
+    from services import llm_gateway
+
+    messages = [
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {"type": "function", "id": "a", "function": {"name": "search", "arguments": "{}"}},
+                {"type": "function", "id": "b", "function": {"name": "search", "arguments": "{}"}},
+            ],
+        },
+        {"role": "tool", "tool_call_id": "b", "content": "second"},
+        {"role": "tool", "tool_call_id": "a", "content": "first"},
+    ]
+
+    cleaned, repairs = llm_gateway._sanitise_messages(messages)
+
+    assert repairs == 0
+    assert cleaned == messages
+
+
 def test_sanitise_messages_leaves_a_healthy_conversation_untouched():
     from services import llm_gateway
 
@@ -1278,8 +1399,8 @@ async def test_chat_completions_sends_the_sanitised_conversation_upstream(monkey
         config=_config(),
     )
 
-    assert "tool_calls" not in captured["messages"][1]
-    assert captured["messages"][0] == {"role": "user", "content": "hi"}
+    # The assistant message held nothing but the unusable call, so it goes too.
+    assert captured["messages"] == [{"role": "user", "content": "hi"}]
 
 
 # --------------------------------------------------------------------------
