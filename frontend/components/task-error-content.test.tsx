@@ -193,13 +193,41 @@ describe("TaskErrorContent — interaction handlers", () => {
     const user = userEvent.setup();
     mockOpenTaskDialog.mockReset();
 
-    renderWithProviders(
-      <TaskErrorContent task={makeFailedTask()} defaultExpanded />,
-    );
+    renderWithProviders(<TaskErrorContent task={makeFailedTask()} />);
 
     await user.click(screen.getByRole("button", { name: "Open task details" }));
 
     expect(mockOpenTaskDialog).toHaveBeenCalledWith("task-interaction-1");
+  });
+
+  it("keyboard activation of task-details button calls openTaskDialog without toggling the accordion", async () => {
+    const user = userEvent.setup();
+    mockOpenTaskDialog.mockReset();
+
+    renderWithProviders(<TaskErrorContent task={makeFailedTask()} />);
+
+    const expandableRow = document.querySelector(
+      "[aria-expanded]",
+    ) as HTMLElement;
+    expect(expandableRow.getAttribute("aria-expanded")).toBe("false");
+
+    const detailsButton = screen.getByRole("button", {
+      name: "Open task details",
+    });
+    detailsButton.focus();
+
+    // Enter fires the button's click handler but must not bubble up to the
+    // outer onKeyDown toggle.
+    await user.keyboard("{Enter}");
+    expect(mockOpenTaskDialog).toHaveBeenCalledWith("task-interaction-1");
+    expect(expandableRow.getAttribute("aria-expanded")).toBe("false");
+
+    mockOpenTaskDialog.mockReset();
+
+    // Space likewise.
+    await user.keyboard(" ");
+    expect(mockOpenTaskDialog).toHaveBeenCalledWith("task-interaction-1");
+    expect(expandableRow.getAttribute("aria-expanded")).toBe("false");
   });
 
   it("headerEnd click does not toggle the accordion (stopPropagation)", async () => {
