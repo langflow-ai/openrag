@@ -31,9 +31,55 @@ EMBED_RETRY_INITIAL_DELAY = 1.0
 EMBED_RETRY_MAX_DELAY = 8.0
 EMBEDDING_SPACE_PAGE_SIZE = 100
 
+_SEARCH_FILTER_FIELDS = {
+    "data_sources": "filename",
+    "document_types": "mimetype",
+    "owners": "owner",
+    "connector_types": "connector_type",
+    "document_ids": "document_id",
+    "web_source_ids": "web_source_id",
+}
+_MAPPING_COMPATIBLE_FILTER_FIELDS = {"web_source_id"}
+
 
 # Variable used to store the active instance for the tool wrapper
 _global_search_service = None
+
+
+def _build_search_filter_clauses(filters: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """Translate public search filters into OpenSearch clauses in one place."""
+    clauses: list[dict[str, Any]] = []
+    for filter_key, values in (filters or {}).items():
+        if not isinstance(values, list):
+            continue
+        field_name = _SEARCH_FILTER_FIELDS.get(filter_key, filter_key)
+        if not values:
+            clauses.append({"term": {field_name: "__IMPOSSIBLE_VALUE__"}})
+        elif field_name in _MAPPING_COMPATIBLE_FILTER_FIELDS:
+            terms_query = (
+                {"term": {field_name: values[0]}}
+                if len(values) == 1
+                else {"terms": {field_name: values}}
+            )
+            keyword_field = f"{field_name}.keyword"
+            keyword_query = (
+                {"term": {keyword_field: values[0]}}
+                if len(values) == 1
+                else {"terms": {keyword_field: values}}
+            )
+            clauses.append(
+                {
+                    "bool": {
+                        "should": [terms_query, keyword_query],
+                        "minimum_should_match": 1,
+                    }
+                }
+            )
+        elif len(values) == 1:
+            clauses.append({"term": {field_name: values[0]}})
+        else:
+            clauses.append({"terms": {field_name: values}})
+    return clauses
 
 
 def _is_exact_token_query(query: str) -> bool:
@@ -320,30 +366,7 @@ class SearchService:
 
         if not is_wildcard_match_all:
             # Build filter clauses first so we can use them in model detection
-            filter_clauses: list[dict[str, Any]] = []
-            if filters:
-                # Map frontend filter names to backend field names
-                field_mapping = {
-                    "data_sources": "filename",
-                    "document_types": "mimetype",
-                    "owners": "owner",
-                    "connector_types": "connector_type",
-                }
-
-                for filter_key, values in filters.items():
-                    if values is not None and isinstance(values, list):
-                        # Map frontend key to backend field name
-                        field_name = field_mapping.get(filter_key, filter_key)
-
-                        if len(values) == 0:
-                            # Empty array means "match nothing" - use impossible filter
-                            filter_clauses.append({"term": {field_name: "__IMPOSSIBLE_VALUE__"}})
-                        elif len(values) == 1:
-                            # Single value filter
-                            filter_clauses.append({"term": {field_name: values[0]}})
-                        else:
-                            # Multiple values filter
-                            filter_clauses.append({"terms": {field_name: values}})
+            filter_clauses = _build_search_filter_clauses(filters)
 
             try:
                 seen_spaces: set[str] = set()
@@ -500,30 +523,7 @@ class SearchService:
             )
         else:
             # Wildcard query - no embedding needed
-            filter_clauses = []
-            if filters:
-                # Map frontend filter names to backend field names
-                field_mapping = {
-                    "data_sources": "filename",
-                    "document_types": "mimetype",
-                    "owners": "owner",
-                    "connector_types": "connector_type",
-                }
-
-                for filter_key, values in filters.items():
-                    if values is not None and isinstance(values, list):
-                        # Map frontend key to backend field name
-                        field_name = field_mapping.get(filter_key, filter_key)
-
-                        if len(values) == 0:
-                            # Empty array means "match nothing" - use impossible filter
-                            filter_clauses.append({"term": {field_name: "__IMPOSSIBLE_VALUE__"}})
-                        elif len(values) == 1:
-                            # Single value filter
-                            filter_clauses.append({"term": {field_name: values[0]}})
-                        else:
-                            # Multiple values filter
-                            filter_clauses.append({"terms": {field_name: values}})
+            filter_clauses = _build_search_filter_clauses(filters)
 
         # Build query body
         if is_wildcard_match_all:
@@ -638,6 +638,13 @@ class SearchService:
                 "allowed_users",
                 "allowed_groups",
                 "allowed_principal_labels",
+                "document_id",
+                "web_source_id",
+                "web_page_id",
+                "web_page_depth",
+                "canonical_url",
+                "status",
+                "error",
             ],
             "size": limit,
         }
@@ -775,6 +782,13 @@ class SearchService:
                     "allowed_users": source.get("allowed_users", []),
                     "allowed_groups": source.get("allowed_groups", []),
                     "allowed_principal_labels": source.get("allowed_principal_labels", []),
+                    "document_id": source.get("document_id"),
+                    "web_source_id": source.get("web_source_id"),
+                    "web_page_id": source.get("web_page_id"),
+                    "web_page_depth": source.get("web_page_depth"),
+                    "canonical_url": source.get("canonical_url"),
+                    "status": source.get("status"),
+                    "error": source.get("error"),
                 }
             )
 

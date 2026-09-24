@@ -103,3 +103,4 @@ async def test_backend_search_queries_exact_and_legacy_embedding_providers(monke
         "chunk_embedding_azure_ai_embed_v2",
         "chunk_embedding_text_embedding_3_small",
     ]
+    assert {"document_id", "web_source_id", "web_page_id"} <= set(opensearch.final_body["_source"])

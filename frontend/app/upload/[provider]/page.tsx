@@ -2,7 +2,7 @@
 
 import { AlertCircle, ArrowLeft } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useSyncConnector } from "@/app/api/mutations/useSyncConnector";
 import { useGetConnectorsQuery } from "@/app/api/queries/useGetConnectorsQuery";
@@ -34,6 +34,12 @@ export default function UploadProviderPage() {
   const router = useRouter();
   const provider = params.provider as string;
   const { addTask } = useTask();
+
+  useEffect(() => {
+    if (provider === "url") {
+      router.replace("/knowledge?add=url");
+    }
+  }, [provider, router]);
 
   const {
     data: connectors = [],

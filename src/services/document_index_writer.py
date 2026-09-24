@@ -45,6 +45,12 @@ class DocumentIndexContext:
     parser: str | None = None
     chunk_size: int | None = None
     chunk_overlap: int | None = None
+    record_kind: str | None = None
+    web_source_id: str | None = None
+    web_page_id: str | None = None
+    web_page_depth: int | None = None
+    root_source_url: str | None = None
+    canonical_url: str | None = None
 
 
 @dataclass
@@ -288,6 +294,17 @@ class DocumentIndexWriter:
             doc["connector_file_id"] = metadata["connector_file_id"]
         if context.is_sample_data:
             doc["is_sample_data"] = "true"
+        for field_name in (
+            "record_kind",
+            "web_source_id",
+            "web_page_id",
+            "web_page_depth",
+            "root_source_url",
+            "canonical_url",
+        ):
+            value = getattr(context, field_name)
+            if value is not None:
+                doc[field_name] = value
         for time_field in ("created_time", "modified_time"):
             if metadata.get(time_field):
                 doc[time_field] = metadata[time_field]

@@ -4,7 +4,10 @@ import {
   type SearchResult,
   useGetSearchQuery,
 } from "@/app/api/queries/useGetSearchQuery";
-import { fileScopedSearchQueryData } from "@/lib/file-chunks";
+import {
+  documentScopedSearchQueryData,
+  fileScopedSearchQueryData,
+} from "@/lib/file-chunks";
 
 /** Loads every chunk for one filename (shared by chunks page + FileChunksPanel). */
 export function useFileScopedChunksQuery(filename: string | null | undefined) {
@@ -18,4 +21,18 @@ export function useFileScopedChunksQuery(filename: string | null | undefined) {
     (entry: File) => entry.filename === filename,
   );
   return { file, isFetching };
+}
+
+export function useDocumentScopedChunksQuery(
+  documentId: string | null | undefined,
+) {
+  const queryData = documentId
+    ? documentScopedSearchQueryData(documentId)
+    : null;
+  const { data = EMPTY_SEARCH_RESULT, isFetching } = useGetSearchQuery(
+    "*",
+    queryData,
+    { enabled: Boolean(documentId) },
+  );
+  return { file: (data as SearchResult).files[0], isFetching };
 }

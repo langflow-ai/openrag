@@ -17,3 +17,19 @@ export function fileScopedSearchQueryData(filename: string): ParsedQueryData {
     icon: "folder",
   };
 }
+
+/** Stable-document variant for URL child pages whose titles need not be unique. */
+export function documentScopedSearchQueryData(
+  documentId: string,
+): ParsedQueryData {
+  return {
+    ...fileScopedSearchQueryData(""),
+    filters: {
+      data_sources: [],
+      document_types: [],
+      owners: [],
+      connector_types: [],
+      document_ids: [documentId],
+    },
+  };
+}

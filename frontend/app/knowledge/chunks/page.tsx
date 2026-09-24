@@ -3,7 +3,10 @@
 import { ArrowLeft, Loader2, Search } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
-import { useFileScopedChunksQuery } from "@/app/api/queries/useFileScopedChunksQuery";
+import {
+  useDocumentScopedChunksQuery,
+  useFileScopedChunksQuery,
+} from "@/app/api/queries/useFileScopedChunksQuery";
 import { FileChunksPanel } from "@/components/file-chunks-panel";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Button } from "@/components/ui/button";
@@ -18,9 +21,12 @@ function ChunksPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const filename = searchParams.get("filename");
-  const { file: fileData } = useFileScopedChunksQuery(filename);
+  const documentId = searchParams.get("document_id");
+  const filenameQuery = useFileScopedChunksQuery(filename);
+  const documentQuery = useDocumentScopedChunksQuery(documentId);
+  const { file: fileData } = documentId ? documentQuery : filenameQuery;
 
-  if (!filename) {
+  if (!filename && !documentId) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
@@ -52,21 +58,27 @@ function ChunksPageContent() {
         <div className="flex items-center gap-3 mb-6">
           <Button
             variant="ghost"
-            onClick={() => router.push("/knowledge")}
+            onClick={() => router.back()}
             size="sm"
             className="max-w-8 max-h-8 -m-2"
           >
             <ArrowLeft size={24} />
           </Button>
           <h1 className="text-lg font-semibold">
-            {filename.replace(/\.[^/.]+$/, "")}
+            {(filename || fileData?.filename || "Website page").replace(
+              /\.[^/.]+$/,
+              "",
+            )}
           </h1>
         </div>
       </div>
 
       <div className="grid gap-6 grid-cols-1 lg:grid-cols-[3fr_1fr]">
         <div className="row-start-2 lg:row-start-1">
-          <FileChunksPanel filename={filename} />
+          <FileChunksPanel
+            filename={filename || fileData?.filename || ""}
+            documentId={documentId}
+          />
         </div>
 
         {chunkCount > 0 && (

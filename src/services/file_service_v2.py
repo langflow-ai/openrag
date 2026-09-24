@@ -41,6 +41,19 @@ class FileServiceV2:
     def __init__(self, session_manager=None):
         self.session_manager = session_manager
 
+    @staticmethod
+    def _exact_metadata_filter(field: str, value: str) -> dict[str, Any]:
+        """Match metadata written before and after its keyword mapping existed."""
+        return {
+            "bool": {
+                "should": [
+                    {"term": {field: value}},
+                    {"term": {f"{field}.keyword": value}},
+                ],
+                "minimum_should_match": 1,
+            }
+        }
+
     async def list_files(
         self,
         user_id: str,
@@ -303,7 +316,14 @@ class FileServiceV2:
                 }
             )
 
-        query: dict[str, Any] = {"bool": {"filter": filter_clauses}}
+        query: dict[str, Any] = {
+            "bool": {
+                "filter": filter_clauses,
+            }
+        }
+        # The root Knowledge view exposes URL source projections only.
+        # Legacy documents with no record_kind continue to match.
+        query["bool"]["must_not"] = [self._exact_metadata_filter("record_kind", "web_page")]
         if must:
             query["bool"]["must"] = must
         return query
@@ -377,6 +397,12 @@ class FileServiceV2:
                                     "allowed_users",
                                     "allowed_groups",
                                     "allowed_principal_labels",
+                                    "web_source_id",
+                                    "web_page_id",
+                                    "web_page_depth",
+                                    "web_child_count",
+                                    "status",
+                                    "error",
                                 ],
                                 "sort": [{"indexed_time": {"order": "desc"}}],
                             }
@@ -433,6 +459,12 @@ class FileServiceV2:
                                     "allowed_users",
                                     "allowed_groups",
                                     "allowed_principal_labels",
+                                    "web_source_id",
+                                    "web_page_id",
+                                    "web_page_depth",
+                                    "web_child_count",
+                                    "status",
+                                    "error",
                                 ],
                                 "sort": [{"indexed_time": {"order": "desc"}}],
                             }
@@ -521,6 +553,12 @@ class FileServiceV2:
                     "allowed_users": source.get("allowed_users", []),
                     "allowed_groups": source.get("allowed_groups", []),
                     "allowed_principal_labels": source.get("allowed_principal_labels", []),
+                    "web_source_id": source.get("web_source_id"),
+                    "web_page_id": source.get("web_page_id"),
+                    "web_page_depth": source.get("web_page_depth"),
+                    "web_child_count": source.get("web_child_count", 0),
+                    "status": source.get("status", "active"),
+                    "error": source.get("error", ""),
                 }
             )
         return files
