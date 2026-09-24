@@ -11,7 +11,7 @@
 <script>!function(){function e(){if(void 0!==window.truste&&window.truste.cma){var e=window.truste.cma.callApi("getConsent",window.location.href)||{},n=1===e[2],t=1===e[3];gtag("consent","update",{ad_storage:n?"granted":"denied",ad_user_data:n?"granted":"denied",ad_personalization:n?"granted":"denied",analytics_storage:t?"granted":"denied"})}}window.addEventListener&&(window.addEventListener("cm_data_subject_consent_changed",e),window.addEventListener("cm_consent_preferences_set",e)),"complete"===document.readyState?e():window.addEventListener("load",e)}()</script>
 <script>window._ibmAnalytics={settings:{name:"DataStax",tealiumProfileName:"ibm-subsidiary"},trustarc:{privacyPolicyLink:"https://ibm.com/privacy"}},window.digitalData={page:{pageInfo:{ibm:{siteId:"IBM_DataStax"}},category:{primaryCategory:"PC230"}}}</script>
 <script src="//1.www.s81c.com/common/stats/ibm-common.js" async="true"></script><link rel="stylesheet" href="/assets/css/styles.03e1a957.css">
-<script src="/assets/js/runtime~main.1c0d53e4.js" defer="defer"></script>
+<script src="/assets/js/runtime~main.e6b08b79.js" defer="defer"></script>
 <script src="/assets/js/main.1a56002a.js" defer="defer"></script>
 </head>
 <body>
@@ -42,6 +42,7 @@ You can also use the terminal&#x27;s <strong>Show status</strong> option to <a c
 <li class="">
 <p><strong>Docling processor ingestion</strong>: Instead of using a separate Docling Serve service and the Docling Serve API, you can use the Docling processor directly.
 To do this, set <code>DISABLE_INGEST_WITH_LANGFLOW=true</code> in your <a class="" href="/reference/configuration#document-processing-settings">OpenRAG <code>.env</code> file</a>, and then <a class="" href="/manage-services">restart the OpenRAG services</a>.
+This mode uses the embedding provider selected in <strong>Settings</strong>, including IBM watsonx.ai on-prem.
 For the underlying functionality for this option, see <a href="https://github.com/langflow-ai/openrag/blob/main/src/models/processors.py#L58" target="_blank" rel="noopener noreferrer" class=""><code>processors.py</code></a> in the OpenRAG repository.</p>
 </li>
 </ul>
