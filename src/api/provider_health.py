@@ -26,20 +26,44 @@ logger = get_logger(__name__)
 STALE_EMBEDDING_SPACE = "stale_embedding_space"
 
 
-async def _refresh_live_models() -> None:
-    """Re-list what self-describing providers serve, best effort.
+#: Ceiling on re-listing a provider's models from inside a health check. The
+#: listing is only an input to a diagnostic, so a slow cluster costs this at
+#: most; the probes report an unreachable one in their own words.
+_MODEL_REFRESH_TIMEOUT_SECONDS = 5.0
+
+
+async def _refresh_live_models(provider: str) -> None:
+    """Re-list what `provider` serves, if it can say, best effort.
+
+    Only the provider being checked: the listing of any other would not be
+    read, and waiting on its cluster would only slow this one's verdict. A
+    provider with no enhancement, or one that cannot list its own models, has
+    nothing to refresh, and is skipped without a call.
 
     TTL-guarded inside each enhancement, so this is a network call once every
-    few minutes rather than once per poll. A failure leaves the previous answer
-    in place and must never fail the health check — an unreachable cluster is
-    already being reported by the probes above, in its own words.
+    few minutes rather than once per poll — while the cluster answers. A failed
+    listing is not cached, so an unreachable cluster is asked again on every
+    poll; hence the timeout. A failure or timeout leaves the previous answer in
+    place and must never fail the health check.
     """
     try:
+        from enhancements.providers.registry import get as get_enhancement
         from services.model_catalog import refresh_live_models
 
-        await refresh_live_models()
+        enhancement = get_enhancement(provider)
+        if enhancement is None or not hasattr(enhancement, "fetch_models"):
+            return
+        await asyncio.wait_for(
+            refresh_live_models(provider), timeout=_MODEL_REFRESH_TIMEOUT_SECONDS
+        )
+    except TimeoutError:
+        logger.debug(
+            "Timed out refreshing live model listing",
+            provider=provider,
+            timeout_seconds=_MODEL_REFRESH_TIMEOUT_SECONDS,
+        )
     except Exception:
-        logger.debug("Could not refresh live model listings", exc_info=True)
+        logger.debug("Could not refresh live model listings", provider=provider, exc_info=True)
 
 
 #: One page of spaces is plenty for a diagnostic. A corpus has a handful of
@@ -483,7 +507,7 @@ async def check_provider_health(
             # the model that made it. Reported beside the verdict, never in it:
             # a stale space degrades search but says nothing about whether the
             # provider is serving, so it must not turn the status code.
-            await _refresh_live_models()
+            await _refresh_live_models(embedding_provider)
             stale_spaces = await _stale_embedding_spaces(embedding_provider)
             warnings = [stale_spaces] if stale_spaces else []
 

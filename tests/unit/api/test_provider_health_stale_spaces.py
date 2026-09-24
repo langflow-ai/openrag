@@ -70,7 +70,7 @@ def _healthy_probe(monkeypatch):
 
     monkeypatch.setattr(provider_health.provider_health_cache, "acquire", acquire)
 
-    async def no_refresh():
+    async def no_refresh(_provider):
         return None
 
     monkeypatch.setattr(provider_health, "_refresh_live_models", no_refresh)
@@ -182,6 +182,84 @@ async def test_a_real_failure_keeps_its_own_words_and_the_warning_rides_beside_i
     assert body["embedding_error"] == "endpoint unreachable"
     # ...and the corpus advice is still there for when the provider recovers.
     assert body["warnings"][0]["models"] == [STALE]
+
+
+# --------------------------------------------------------------------------
+# Refreshing what the provider serves
+# --------------------------------------------------------------------------
+
+
+@pytest.fixture
+def _refreshes(monkeypatch):
+    """Record which providers the catalogue is asked to re-list."""
+    import services.model_catalog as model_catalog
+
+    asked: list[str | None] = []
+
+    async def refresh(provider=None):
+        asked.append(provider)
+
+    monkeypatch.setattr(model_catalog, "refresh_live_models", refresh)
+    return asked
+
+
+@pytest.mark.asyncio
+async def test_only_the_checked_provider_is_refreshed(monkeypatch, _refreshes):
+    import enhancements.providers.registry as registry
+
+    monkeypatch.setattr(registry, "get", lambda _p: SimpleNamespace(fetch_models=lambda _c: None))
+
+    await provider_health._refresh_live_models("rhoai")
+
+    assert _refreshes == ["rhoai"]
+
+
+@pytest.mark.asyncio
+async def test_a_provider_that_cannot_list_its_models_is_not_refreshed(monkeypatch, _refreshes):
+    """openai and friends have no enhancement: nothing to re-list, no call made."""
+    import enhancements.providers.registry as registry
+
+    monkeypatch.setattr(registry, "get", lambda _p: None)
+    await provider_health._refresh_live_models("openai")
+
+    monkeypatch.setattr(registry, "get", lambda _p: SimpleNamespace())
+    await provider_health._refresh_live_models("listless")
+
+    assert _refreshes == []
+
+
+@pytest.mark.asyncio
+async def test_a_slow_cluster_cannot_stall_the_health_check(monkeypatch):
+    import asyncio
+
+    import enhancements.providers.registry as registry
+    import services.model_catalog as model_catalog
+
+    monkeypatch.setattr(registry, "get", lambda _p: SimpleNamespace(fetch_models=lambda _c: None))
+
+    async def hang(provider=None):
+        await asyncio.sleep(60)
+
+    monkeypatch.setattr(model_catalog, "refresh_live_models", hang)
+    monkeypatch.setattr(provider_health, "_MODEL_REFRESH_TIMEOUT_SECONDS", 0.01)
+
+    # Returns (quietly) instead of raising or waiting out the listing.
+    await asyncio.wait_for(provider_health._refresh_live_models("rhoai"), timeout=1)
+
+
+@pytest.mark.asyncio
+async def test_the_health_check_refreshes_the_embedding_provider(monkeypatch, _healthy_probe):
+    asked: list[str] = []
+
+    async def refresh(provider):
+        asked.append(provider)
+
+    monkeypatch.setattr(provider_health, "_refresh_live_models", refresh)
+    _served(monkeypatch, None)
+
+    await provider_health.check_provider_health(test_completion=True, user=None)
+
+    assert asked == ["rhoai"]
 
 
 # --------------------------------------------------------------------------
