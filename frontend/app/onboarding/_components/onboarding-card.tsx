@@ -47,6 +47,7 @@ import { IBMOnboarding } from "./ibm-onboarding";
 import { OllamaOnboarding } from "./ollama-onboarding";
 import {
   canCompleteOnboarding,
+  fetchEditedForRollbackCheck,
   shouldRollbackFailedOnboarding,
 } from "./onboarding-completion";
 import { OpenAIOnboarding } from "./openai-onboarding";
@@ -339,7 +340,7 @@ const OnboardingCard = ({
         setCurrentStep(0);
       }
     },
-    onError: (error) => {
+    onError: async (error) => {
       const message = formatProviderErrorMessage(error.message);
       trackProcessFailure({
         processType: "Onboarding",
@@ -348,7 +349,12 @@ const OnboardingCard = ({
         category: "Setup",
       });
       setError(message);
-      if (shouldRollbackFailedOnboarding(currentSettings?.edited)) {
+
+      const freshEdited = await fetchEditedForRollbackCheck(
+        queryClient,
+        currentSettings?.edited,
+      );
+      if (shouldRollbackFailedOnboarding(freshEdited)) {
         setCurrentStep(totalSteps);
         rollbackMutation.mutate({ embedding_only: isEmbedding });
       } else {
