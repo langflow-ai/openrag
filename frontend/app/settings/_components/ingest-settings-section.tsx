@@ -9,6 +9,7 @@ import {
   useGetOllamaModelsQuery,
 } from "@/app/api/queries/useGetModelsQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
+import { getIngestChunkSettingsError } from "@/components/cloud-picker/types";
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { LabelWrapper } from "@/components/label-wrapper";
 import {
@@ -77,9 +78,10 @@ export function IngestSettingsSection() {
 
   const [chunkSize, setChunkSize] = useState<number>(1024);
   const [chunkOverlap, setChunkOverlap] = useState<number>(50);
-  const [chunkValidationError, setChunkValidationError] = useState<
-    string | null
-  >(null);
+  const chunkValidationError = getIngestChunkSettingsError({
+    chunkSize,
+    chunkOverlap,
+  });
   const [tableStructure, setTableStructure] = useState<boolean>(true);
   const [ocr, setOcr] = useState<boolean>(false);
   const [pictureDescriptions, setPictureDescriptions] =
@@ -307,7 +309,19 @@ export function IngestSettingsSection() {
     handleEmbeddingModelChange,
   ]);
 
+  const userEditedRef = useRef(userEdited);
+  userEditedRef.current = userEdited;
+
   useEffect(() => {
+    // Skip resync while the user has an unsaved edit in progress — otherwise
+    // a background refetch of settings.knowledge silently overwrites what
+    // they're typing before they've had a chance to save it. Read via a ref
+    // (rather than depending on userEdited directly) so this effect doesn't
+    // re-fire against stale, pre-refetch data the instant a save flips
+    // userEdited back to false. userEdited is cleared as soon as the form
+    // matches the server again (see the effect below useRegisterDirty), so a
+    // value the user edited and then reverted no longer blocks this resync.
+    if (userEditedRef.current) return;
     const k = settings.knowledge;
     if (!k) return;
     if (k.chunk_size !== undefined) setChunkSize(k.chunk_size);
@@ -420,6 +434,18 @@ export function IngestSettingsSection() {
 
   useRegisterDirty("ingest-settings", userEdited && knowledgeIngestDirty);
 
+  // Keep `userEdited` honest. It is set on every edit but, left alone, would
+  // stay sticky until the next successful save. If the user edits a value and
+  // then reverts it back to what the server has, the form is clean again — but
+  // a sticky flag would (a) permanently skip the resync effect above, so a
+  // genuine later server change is never picked up (stale form), and (b) let
+  // the Save button re-enable and submit that stale value. Clearing the flag
+  // the moment the form matches the server gates the resync on an *actual*
+  // unsaved difference rather than a one-way "has ever edited" flag.
+  useEffect(() => {
+    if (userEdited && !knowledgeIngestDirty) setUserEdited(false);
+  }, [userEdited, knowledgeIngestDirty]);
+
   // Resolve through the same map that builds the groups: the catalogue now
   // contributes custom LiteLLM providers, so a hard-coded chain would report
   // OpenAI's state for any provider outside the four legacy keys.
@@ -437,13 +463,11 @@ export function IngestSettingsSection() {
   const handleChunkSizeChange = (value: string) => {
     setUserEdited(true);
     setChunkSize(Math.max(0, Number.parseInt(value, 10) || 0));
-    setChunkValidationError(null);
   };
 
   const handleChunkOverlapChange = (value: string) => {
     setUserEdited(true);
     setChunkOverlap(Math.max(0, Number.parseInt(value, 10) || 0));
-    setChunkValidationError(null);
   };
 
   const handleKnowledgeIngestSave = () => {
@@ -479,16 +503,10 @@ export function IngestSettingsSection() {
       },
     });
 
-    if (chunkSize < 1) {
-      const msg = "Chunk size must be at least 1";
-      setChunkValidationError(msg);
-      toast.error("Could not save ingest settings", { description: msg });
-      return;
-    }
-    if (chunkOverlap >= chunkSize) {
-      const msg = "Chunk overlap must be less than chunk size";
-      setChunkValidationError(msg);
-      toast.error("Could not save ingest settings", { description: msg });
+    if (chunkValidationError) {
+      toast.error("Could not save ingest settings", {
+        description: chunkValidationError,
+      });
       return;
     }
 
@@ -520,7 +538,6 @@ export function IngestSettingsSection() {
       },
       {
         onSuccess: () => {
-          setChunkValidationError(null);
           setValidationError(null);
           setUserEdited(false);
         },
@@ -575,7 +592,6 @@ export function IngestSettingsSection() {
         setOcr(DEFAULT_KNOWLEDGE_SETTINGS.ocr);
         setPictureDescriptions(DEFAULT_KNOWLEDGE_SETTINGS.picture_descriptions);
         setDisableIngestWithLangflow(false);
-        setChunkValidationError(null);
         setUserEdited(false);
         toast.success("Default ingest flow settings restored successfully");
         closeDialog();
@@ -1062,7 +1078,8 @@ export function IngestSettingsSection() {
               disabled={
                 updateSettingsMutation.isPending ||
                 !knowledgeIngestDirty ||
-                vlmModelPending
+                vlmModelPending ||
+                !!chunkValidationError
               }
               className="min-w-[120px]"
               size="sm"
