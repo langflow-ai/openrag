@@ -1235,14 +1235,10 @@ async def onboarding(
             )
             if (
                 embedding_provider_selected.lower() == "watsonx_onprem"
-                and current_config.knowledge.chunk_size
-                > WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE
+                and current_config.knowledge.chunk_size > WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE
             ):
                 current_config.knowledge.chunk_size = WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE
-                if (
-                    current_config.knowledge.chunk_overlap
-                    >= WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE
-                ):
+                if current_config.knowledge.chunk_overlap >= WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE:
                     current_config.knowledge.chunk_overlap = 200
                 chunk_size_adjusted_to = WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE
                 logger.info(
