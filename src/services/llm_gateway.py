@@ -11,6 +11,7 @@ import json
 import re
 from collections.abc import AsyncIterator, Mapping
 from typing import Any, Literal
+from uuid import uuid4
 
 from services import provider_error_log
 from services.model_catalog import is_known_provider, litellm_provider_key
@@ -565,6 +566,93 @@ def _repair_tool_calls(tool_calls: Any, provider: str, model: str) -> int:
     return repaired
 
 
+def _finalise_tool_call(call: dict[str, Any]) -> bool:
+    """Make `call` something a client can execute. False when it cannot be.
+
+    A call with no name names no tool, so nothing can run it and no result can
+    ever come back for it; forwarding it only corrupts the assistant message the
+    client will replay on its next turn. A missing `id` is recoverable — the id
+    is only the handle a tool result is correlated by, so any stable string
+    serves — and minting one keeps a real call alive that clients would
+    otherwise reject for carrying `id: null`.
+    """
+    function = call.get("function")
+    if not isinstance(function, dict) or not function.get("name"):
+        return False
+    if not isinstance(call.get("id"), str) or not call["id"]:
+        call["id"] = f"call_{uuid4().hex}"
+    return True
+
+
+def _sanitise_messages(messages: Any) -> tuple[list[Any], int]:
+    """`messages` with unusable tool calls repaired or dropped, and a repair count.
+
+    The gateway forwards a client's conversation verbatim, and one malformed
+    tool call in it is not a one-turn problem. Clients replay their whole
+    history on every turn, so the same bad message goes back up again and again,
+    and providers reject the *request* rather than the message that spoiled it —
+    vLLM answers the lot with "Please ensure `tool_calls` are iterable of tool
+    calls". The conversation is then wedged for good, with nothing in the UI
+    pointing at the turn that broke it. A proxy sitting between many clients and
+    many providers is the right place to stop that.
+
+    Three shapes are handled, all of them things real clients emit: `arguments`
+    sent as an object rather than the JSON *string* OpenAI's contract requires;
+    a tool call carrying no id or no name, which nothing can execute and no
+    result can be matched to; and the tool results left behind by one, which are
+    dropped alongside it so no provider is handed a reply to a call that is no
+    longer there.
+    """
+    cleaned: list[Any] = []
+    repairs = 0
+    for message in messages or []:
+        if not isinstance(message, dict):
+            cleaned.append(message)
+            continue
+        if message.get("role") == "tool":
+            tool_call_id = message.get("tool_call_id")
+            if not isinstance(tool_call_id, str) or not tool_call_id:
+                repairs += 1
+                continue
+            cleaned.append(message)
+            continue
+        if "tool_calls" not in message:
+            cleaned.append(message)
+            continue
+
+        raw = message.get("tool_calls")
+        kept: list[dict[str, Any]] = []
+        for call in raw if isinstance(raw, list) else []:
+            if not isinstance(call, dict):
+                repairs += 1
+                continue
+            call = {**call, "function": dict(call.get("function") or {})}
+            arguments, changed = _normalise_tool_arguments(call["function"].get("arguments"))
+            if changed:
+                call["function"]["arguments"] = arguments
+                repairs += 1
+            # Unlike the response path, a missing id is not minted here: the
+            # result for this call is already somewhere in the history under the
+            # id the client used, and inventing a different one would orphan it.
+            if isinstance(call.get("id"), str) and call["id"] and call["function"].get("name"):
+                kept.append(call)
+            else:
+                repairs += 1
+
+        message = dict(message)
+        if kept:
+            message["tool_calls"] = kept
+        else:
+            # `tool_calls: null` is itself a shape some providers iterate
+            # without a None check, so the key goes rather than emptying.
+            message.pop("tool_calls")
+            # A list's entries were each counted above; anything else was
+            # never iterable in the first place and is one repair on its own.
+            repairs += bool(raw) and not isinstance(raw, list)
+        cleaned.append(message)
+    return cleaned, repairs
+
+
 def _repair_completion_payload(payload: dict[str, Any], provider: str, model: str) -> int:
     repaired = 0
     for choice in payload.get("choices") or []:
@@ -667,13 +755,21 @@ async def chat_completions(
     if litellm_model in _TOOLS_NEED_REASONING_OFF:
         # Already learned about this model; do not spend a round-trip relearning.
         _reasoning_off_retry(litellm_model, kwargs)
+    messages, repairs = _sanitise_messages(body.get("messages"))
+    if repairs:
+        logger.warning(
+            "Repaired malformed tool calls in the request's conversation",
+            provider=provider,
+            model=litellm_model,
+            repairs=repairs,
+        )
 
     async def _call() -> Any:
         import litellm
 
         return await litellm.acompletion(
             model=litellm_model,
-            messages=list(body.get("messages") or []),
+            messages=messages,
             stream=stream,
             # OpenAI-compatible clients send OpenAI's full parameter set, but
             # providers accept different subsets — watsonx rejects
@@ -783,6 +879,45 @@ class _ToolCallBuffer:
     def __bool__(self) -> bool:
         return bool(self._order)
 
+    def _open_call(self, choice_index: int) -> dict[str, Any] | None:
+        """The call most recently opened on this choice, if there is one."""
+        for key in reversed(self._order):
+            if key[0] == choice_index:
+                return self._calls[key]
+        return None
+
+    def _target(
+        self, choice_index: int, index: int, raw: Mapping[str, Any]
+    ) -> dict[str, Any] | None:
+        """The call `raw` belongs to: one already open, a new one, or none.
+
+        A delta that names no call — no `id`, no `function.name` — cannot be the
+        start of one, so it continues the call already open on this choice
+        rather than opening another. vLLM's tool parsers can attribute a call's
+        last `arguments` fragment, often the closing brace by itself, to the
+        *next* index; taken at face value that does two kinds of damage at once.
+        The real call loses the fragment and its arguments no longer parse, and
+        a second call appears with no id and no name that nothing can execute.
+        Neither survives the round trip: the client folds both into the
+        assistant message it replays on the next turn, and the provider then
+        rejects every later request in that conversation rather than the one
+        message that is malformed.
+        """
+        key = (choice_index, index)
+        call = self._calls.get(key)
+        if call is not None:
+            return call
+        function = raw.get("function")
+        names_a_call = bool(raw.get("id")) or bool(
+            isinstance(function, dict) and function.get("name")
+        )
+        if not names_a_call:
+            return self._open_call(choice_index)
+        call = {"index": index, "type": "function", "function": {"name": "", "arguments": ""}}
+        self._calls[key] = call
+        self._order.append(key)
+        return call
+
     def absorb(self, choice_index: int, tool_calls: Any) -> None:
         for position, raw in enumerate(tool_calls or []):
             if not isinstance(raw, dict):
@@ -790,16 +925,11 @@ class _ToolCallBuffer:
             index = raw.get("index")
             if not isinstance(index, int):
                 index = position
-            key = (choice_index, index)
-            call = self._calls.get(key)
+            call = self._target(choice_index, index, raw)
             if call is None:
-                call = {
-                    "index": index,
-                    "type": "function",
-                    "function": {"name": "", "arguments": ""},
-                }
-                self._calls[key] = call
-                self._order.append(key)
+                # Nothing open to continue and nothing named: there is no call
+                # here to reassemble.
+                continue
             if raw.get("id"):
                 call["id"] = raw["id"]
             if raw.get("type"):
@@ -825,9 +955,18 @@ class _ToolCallBuffer:
             grouped.setdefault(choice_index, [])
         for key in self._order:
             grouped[key[0]].append(self._calls[key])
-        for calls in grouped.values():
+        for choice_index, calls in grouped.items():
             calls.sort(key=lambda call: call.get("index", 0))
-            repaired += _repair_tool_calls(calls, provider, model)
+            usable = [call for call in calls if _finalise_tool_call(call)]
+            if len(usable) != len(calls):
+                logger.warning(
+                    "Dropped tool calls that named no tool",
+                    provider=provider,
+                    model=model,
+                    dropped=len(calls) - len(usable),
+                )
+            grouped[choice_index] = usable
+            repaired += _repair_tool_calls(usable, provider, model)
         self._calls.clear()
         self._order.clear()
         return grouped, repaired
