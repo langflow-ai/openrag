@@ -10,6 +10,11 @@ import { server } from "@/test-utils/msw/server";
 import { createQueryWrapper, createTestQueryClient } from "@/test-utils/render";
 import { useOnboardingMutation } from "./useOnboardingMutation";
 
+const toast = vi.hoisted(() => ({
+  info: vi.fn(),
+}));
+vi.mock("sonner", () => ({ toast }));
+
 describe("useOnboardingMutation", () => {
   it("posts the onboarding variables and resolves with the response", async () => {
     let capturedBody: unknown;
@@ -64,6 +69,57 @@ describe("useOnboardingMutation", () => {
     await waitFor(() =>
       expect(stateBody).toEqual({ openrag_docs_filter_id: "filter-123" }),
     );
+  });
+
+  it("explains when watsonx.ai on-prem reduces the ingestion chunk size", async () => {
+    server.use(
+      http.post("/api/onboarding", () =>
+        HttpResponse.json({
+          message: "done",
+          edited: true,
+          chunk_size_adjusted_to: 500,
+        }),
+      ),
+    );
+
+    const { result } = renderHook(() => useOnboardingMutation(), {
+      wrapper: createQueryWrapper(),
+    });
+
+    act(() =>
+      result.current.mutate({
+        embedding_provider: "watsonx_onprem",
+        embedding_model: "ibm/slate-30m-english-rtrvr",
+      }),
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(toast.info).toHaveBeenCalledWith("Chunk size reduced to 500", {
+      description:
+        "OpenRAG adjusted ingestion chunks to stay within watsonx.ai on-prem embedding limits.",
+    });
+  });
+
+  it("does not show a chunk-size toast when the backend reports no adjustment", async () => {
+    toast.info.mockClear();
+    server.use(
+      http.post("/api/onboarding", () =>
+        HttpResponse.json({
+          message: "done",
+          edited: true,
+          chunk_size_adjusted_to: null,
+        }),
+      ),
+    );
+
+    const { result } = renderHook(() => useOnboardingMutation(), {
+      wrapper: createQueryWrapper(),
+    });
+
+    act(() => result.current.mutate({ embedding_provider: "watsonx_onprem" }));
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(toast.info).not.toHaveBeenCalled();
   });
 
   it("calls the caller's onSuccess for a completed onboarding request", async () => {

@@ -113,6 +113,8 @@ from utils.version_utils import OPENRAG_VERSION
 
 logger = get_logger(__name__)
 
+WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE = 500
+
 
 def _provider_key(provider: str | None) -> str:
     """Normalize a provider name the way credential storage does.
@@ -1206,6 +1208,7 @@ async def onboarding(
         # Update knowledge settings (embedding)
         embedding_model_selected = None
         embedding_provider_selected = None
+        chunk_size_adjusted_to = None
 
         if body.embedding_model:
             embedding_model_selected = body.embedding_model.strip()
@@ -1230,6 +1233,23 @@ async def onboarding(
             logger.info(
                 f"Embedding provider selected during onboarding: {embedding_provider_selected}"
             )
+            if (
+                embedding_provider_selected.lower() == "watsonx_onprem"
+                and current_config.knowledge.chunk_size
+                > WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE
+            ):
+                current_config.knowledge.chunk_size = WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE
+                if (
+                    current_config.knowledge.chunk_overlap
+                    >= WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE
+                ):
+                    current_config.knowledge.chunk_overlap = 200
+                chunk_size_adjusted_to = WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE
+                logger.info(
+                    "Reduced chunk size for watsonx.ai on-prem embedding compatibility",
+                    chunk_size=chunk_size_adjusted_to,
+                    chunk_overlap=current_config.knowledge.chunk_overlap,
+                )
 
         # Update provider-specific credentials
         if body.openai_api_key:
@@ -1649,6 +1669,7 @@ async def onboarding(
             sample_data_ingested=should_ingest_sample_data,
             openrag_docs_filter_id=openrag_docs_filter_id,
             task_id=task_id,
+            chunk_size_adjusted_to=chunk_size_adjusted_to,
         )
 
     except Exception as e:

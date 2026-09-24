@@ -617,3 +617,82 @@ async def test_onboarding_embedding_validation_receives_onprem_tls_policy():
 
     assert response.status_code == 400
     assert validate.await_args.kwargs["stored_credentials"]["ssl_verify"] == "false"
+
+
+@pytest.mark.asyncio
+async def test_onboarding_caps_chunk_size_for_watsonx_onprem_embeddings():
+    from api.settings.endpoints import onboarding
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.knowledge.chunk_size = 1000
+    body = OnboardingBody(
+        embedding_provider="watsonx_onprem",
+        embedding_model="ibm/slate-30m-english-rtrvr",
+        provider_credentials={
+            "watsonx_onprem": {
+                "api_base": "https://cpd.example.com",
+                "username": "cpd-user",
+                "api_key": "secret",
+                "ssl_verify": "false",
+            }
+        },
+        provider_auth_methods={"watsonx_onprem": "username_api_key"},
+    )
+
+    with (
+        patch("api.settings.endpoints.get_openrag_config", return_value=config),
+        patch("api.settings.endpoints.INGEST_SAMPLE_DATA", False),
+        patch(
+            "api.settings.endpoints.TelemetryClient.send_event",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "api.settings.endpoints.validate_provider_setup",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "api.settings.endpoints.wait_for_langflow",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "api.settings.endpoints._update_langflow_global_variables",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "api.settings.endpoints._update_mcp_server_urls",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "api.settings.endpoints._update_langflow_model_values",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "api.settings.endpoints.config_manager.save_config_file",
+            return_value=True,
+        ) as save_config,
+        patch(
+            "api.settings.endpoints.clients.refresh_patched_client",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "api.settings.endpoints.clients.create_index_admin_opensearch_client",
+            return_value=MagicMock(),
+        ),
+        patch("main.init_index", new_callable=AsyncMock),
+    ):
+        response = await onboarding(
+            body=body,
+            flows_service=MagicMock(),
+            session_manager=AsyncMock(),
+            document_service=MagicMock(),
+            models_service=MagicMock(),
+            task_service=MagicMock(),
+            langflow_file_service=MagicMock(),
+            knowledge_filter_service=MagicMock(),
+            user=MagicMock(spec=User),
+        )
+
+    saved_config = save_config.call_args.args[0]
+    assert saved_config.knowledge.chunk_size == 500
+    assert response.chunk_size_adjusted_to == 500
