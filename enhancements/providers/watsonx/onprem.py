@@ -857,8 +857,10 @@ def install_litellm_compatibility() -> None:
     watsonx_error = common_utils.WatsonXAIError
 
     def _get_api_params_allowing_no_scope(params: dict, model: str | None = None):
+        explicit_space = bool(params.get("space_id"))
+        explicit_project = bool(params.get("project_id") or params.get("watsonx_project"))
         try:
-            return original_get_api_params(params=params, model=model)
+            api_params = original_get_api_params(params=params, model=model)
         except watsonx_error as exc:
             if getattr(exc, "status_code", None) != 401 or "space_id" not in str(exc):
                 raise
@@ -866,6 +868,13 @@ def install_litellm_compatibility() -> None:
             # and both were absent — which is exactly the lightweight-engine
             # shape. Carry on with an empty scope.
             return WatsonXAPIParams(project_id=None, space_id=None, region_name=None)
+        if explicit_space and not explicit_project:
+            # The cloud and on-prem providers share LiteLLM's watsonx adapter.
+            # An explicit on-prem space must win over the cloud provider's
+            # ambient WATSONX_PROJECT_ID, otherwise LiteLLM sends that project
+            # instead and the cluster rejects the request.
+            api_params["project_id"] = None
+        return api_params
 
     setattr(_get_api_params_allowing_no_scope, _PATCH_MARKER, True)
 
