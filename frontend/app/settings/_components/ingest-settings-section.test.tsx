@@ -278,6 +278,52 @@ describe("IngestSettingsSection", () => {
       ).toHaveValue(512);
     });
 
+    it("resumes background sync after the user reverts an edit back to the saved value", async () => {
+      // Regression test for the sticky-userEdited bug: editing a value and then
+      // changing it back leaves the form clean, so a later server change must
+      // be adopted rather than skipped (which would show stale values and let
+      // Save submit them).
+      const { queryClient } = renderSection();
+
+      const input = await screen.findByRole("spinbutton", {
+        name: /chunk size/i,
+      });
+      expect(input).toHaveValue(1024);
+
+      // Edit, then revert back to the saved value — form is clean again.
+      fireEvent.change(input, { target: { value: "512" } });
+      expect(input).toHaveValue(512);
+      fireEvent.change(input, { target: { value: "1024" } });
+      expect(input).toHaveValue(1024);
+
+      // The server value genuinely changes underneath the (clean) form.
+      let refetchCompleted = false;
+      server.use(
+        http.get("/api/settings", () => {
+          refetchCompleted = true;
+          return HttpResponse.json(
+            makeSettings({
+              knowledge: { chunk_size: 2048, chunk_overlap: 50 },
+              show_vlm_settings: false,
+            }),
+          );
+        }),
+      );
+
+      await act(async () => {
+        await queryClient.invalidateQueries({ queryKey: ["settings"] });
+      });
+
+      expect(refetchCompleted).toBe(true);
+      // Because the form was clean, the resync must adopt the new server value
+      // (2048) instead of leaving the stale 1024.
+      await waitFor(() => {
+        expect(
+          screen.getByRole("spinbutton", { name: /chunk size/i }),
+        ).toHaveValue(2048);
+      });
+    });
+
     it("background sync resumes after a successful save", async () => {
       renderSection();
 

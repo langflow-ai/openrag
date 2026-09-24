@@ -318,7 +318,9 @@ export function IngestSettingsSection() {
     // they're typing before they've had a chance to save it. Read via a ref
     // (rather than depending on userEdited directly) so this effect doesn't
     // re-fire against stale, pre-refetch data the instant a save flips
-    // userEdited back to false.
+    // userEdited back to false. userEdited is cleared as soon as the form
+    // matches the server again (see the effect below useRegisterDirty), so a
+    // value the user edited and then reverted no longer blocks this resync.
     if (userEditedRef.current) return;
     const k = settings.knowledge;
     if (!k) return;
@@ -431,6 +433,18 @@ export function IngestSettingsSection() {
     vlmDirty;
 
   useRegisterDirty("ingest-settings", userEdited && knowledgeIngestDirty);
+
+  // Keep `userEdited` honest. It is set on every edit but, left alone, would
+  // stay sticky until the next successful save. If the user edits a value and
+  // then reverts it back to what the server has, the form is clean again — but
+  // a sticky flag would (a) permanently skip the resync effect above, so a
+  // genuine later server change is never picked up (stale form), and (b) let
+  // the Save button re-enable and submit that stale value. Clearing the flag
+  // the moment the form matches the server gates the resync on an *actual*
+  // unsaved difference rather than a one-way "has ever edited" flag.
+  useEffect(() => {
+    if (userEdited && !knowledgeIngestDirty) setUserEdited(false);
+  }, [userEdited, knowledgeIngestDirty]);
 
   // Resolve through the same map that builds the groups: the catalogue now
   // contributes custom LiteLLM providers, so a hard-coded chain would report
