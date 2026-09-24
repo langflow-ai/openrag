@@ -576,7 +576,21 @@ async def test_stream_sse_counts_tool_calls_as_usable_output(monkeypatch):
 
     async def gen():
         yield {
-            "choices": [{"delta": {"tool_calls": [{"index": 0}]}, "finish_reason": "tool_calls"}]
+            "choices": [
+                {
+                    "delta": {
+                        "tool_calls": [
+                            {
+                                "index": 0,
+                                "id": "call_1",
+                                "type": "function",
+                                "function": {"name": "search_documents", "arguments": "{}"},
+                            }
+                        ]
+                    },
+                    "finish_reason": "tool_calls",
+                }
+            ]
         }
 
     [line async for line in llm_gateway._stream_sse(gen(), "openai", "gpt-4o-mini")]
@@ -1018,6 +1032,254 @@ async def test_stream_sse_logs_the_repair(monkeypatch):
     _level, _event, fields = next(call for call in warnings if "Repaired" in call[1])
     assert fields["model"] == "watsonx/ibm/granite-4-h-small"
     assert fields["tool_calls"] == 1
+
+
+# --------------------------------------------------------------------------
+# Tool calls a provider splits across the wrong index
+# --------------------------------------------------------------------------
+
+
+def _orphaned_fragment_deltas():
+    """The gpt-oss-on-vLLM symptom: the closing brace lands under the next index.
+
+    Taken literally this truncates the real call's arguments *and* invents a
+    second call with no id and no name — the exact pair that makes the assistant
+    message the agent replays unacceptable to vLLM on every later turn.
+    """
+    opening = {
+        "id": "chatcmpl-tool-1",
+        "type": "function",
+        "index": 0,
+        "function": {"name": "search_documents", "arguments": ""},
+    }
+    fragments = ['{\n  "query": "AMCOR', ' signatories"\n']
+    chunks = [{"choices": [{"index": 0, "delta": {"tool_calls": [opening]}}]}]
+    chunks += [
+        {
+            "choices": [
+                {"index": 0, "delta": {"tool_calls": [{"index": 0, "function": {"arguments": f}}]}}
+            ]
+        }
+        for f in fragments
+    ]
+    # The stray one: same content, wrong index, and nothing naming a call.
+    chunks.append(
+        {
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {"tool_calls": [{"index": 1, "function": {"arguments": "}"}}]},
+                }
+            ]
+        }
+    )
+    chunks.append({"choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]})
+    return chunks
+
+
+@pytest.mark.asyncio
+async def test_stream_sse_rejoins_a_fragment_misfiled_under_the_next_index():
+    from services import llm_gateway
+
+    async def gen():
+        for chunk in _orphaned_fragment_deltas():
+            yield chunk
+
+    lines = [line async for line in llm_gateway._stream_sse(gen(), "rhoai", "hosted_vllm/gpt-oss")]
+
+    calls = _streamed_tool_calls(lines)
+    assert len(calls) == 1, "the stray fragment must not become a second tool call"
+    assert calls[0]["id"] == "chatcmpl-tool-1"
+    assert calls[0]["function"]["name"] == "search_documents"
+    # The closing brace is back where it belongs, so the arguments parse.
+    assert json.loads(calls[0]["function"]["arguments"]) == {"query": "AMCOR signatories"}
+
+
+@pytest.mark.asyncio
+async def test_stream_sse_drops_a_buffered_call_that_names_no_tool(monkeypatch):
+    """Backstop: a call with no name can never be executed, so it must not ship."""
+    from services import llm_gateway
+
+    recorder = _RecordingLogger()
+    monkeypatch.setattr(llm_gateway, "logger", recorder)
+
+    async def gen():
+        yield {
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "tool_calls": [
+                            {"id": "call_1", "index": 0, "function": {"arguments": "{}"}}
+                        ]
+                    },
+                    "finish_reason": "tool_calls",
+                }
+            ]
+        }
+
+    lines = [line async for line in llm_gateway._stream_sse(gen(), "rhoai", "hosted_vllm/gpt-oss")]
+
+    assert _streamed_tool_calls(lines) == []
+    assert any(call[0] == "warning" and "named no tool" in call[1] for call in recorder.calls)
+
+
+@pytest.mark.asyncio
+async def test_stream_sse_mints_an_id_for_a_named_call_that_has_none():
+    """A named call is real work; only its correlation handle is missing."""
+    from services import llm_gateway
+
+    async def gen():
+        yield {
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "tool_calls": [
+                            {
+                                "index": 0,
+                                "function": {"name": "search_documents", "arguments": "{}"},
+                            }
+                        ]
+                    },
+                    "finish_reason": "tool_calls",
+                }
+            ]
+        }
+
+    lines = [line async for line in llm_gateway._stream_sse(gen(), "rhoai", "hosted_vllm/gpt-oss")]
+
+    calls = _streamed_tool_calls(lines)
+    assert len(calls) == 1
+    assert isinstance(calls[0]["id"], str) and calls[0]["id"]
+
+
+# --------------------------------------------------------------------------
+# A poisoned conversation must not wedge every later turn
+# --------------------------------------------------------------------------
+
+
+def test_sanitise_messages_drops_a_tool_call_naming_no_tool_and_its_result():
+    """vLLM rejects the whole request over this one message, so it cannot go up."""
+    from services import llm_gateway
+
+    messages = [
+        {"role": "user", "content": "For the AMCOR form, who are the signatories?"},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "type": "function",
+                    "id": "call_1",
+                    "function": {"name": "search_documents", "arguments": '{"query": "AMCOR"}'},
+                },
+                # What langchain-openai echoes back for an unparseable call.
+                {"type": "function", "id": None, "function": {"name": "", "arguments": "}"}},
+            ],
+        },
+        {"role": "tool", "tool_call_id": "call_1", "content": "…"},
+        {"role": "tool", "tool_call_id": None, "content": "…"},
+    ]
+
+    cleaned, repairs = llm_gateway._sanitise_messages(messages)
+
+    assert repairs == 2
+    assert [m["role"] for m in cleaned] == ["user", "assistant", "tool"]
+    assert [c["id"] for c in cleaned[1]["tool_calls"]] == ["call_1"]
+
+
+def test_sanitise_messages_encodes_object_arguments_as_the_json_string_openai_requires():
+    from services import llm_gateway
+
+    cleaned, repairs = llm_gateway._sanitise_messages(
+        [
+            {
+                "role": "assistant",
+                "tool_calls": [
+                    {
+                        "type": "function",
+                        "id": "call_1",
+                        "function": {"name": "search", "arguments": {"query": "AMCOR"}},
+                    }
+                ],
+            }
+        ]
+    )
+
+    assert repairs == 1
+    assert cleaned[0]["tool_calls"][0]["function"]["arguments"] == '{"query": "AMCOR"}'
+
+
+def test_sanitise_messages_removes_a_tool_calls_key_left_empty():
+    """`tool_calls: null` is itself a shape providers iterate without a None check."""
+    from services import llm_gateway
+
+    cleaned, repairs = llm_gateway._sanitise_messages(
+        [{"role": "assistant", "content": "hello", "tool_calls": None}]
+    )
+
+    assert "tool_calls" not in cleaned[0]
+    assert cleaned[0]["content"] == "hello"
+    assert repairs == 0
+
+
+def test_sanitise_messages_leaves_a_healthy_conversation_untouched():
+    from services import llm_gateway
+
+    messages = [
+        {"role": "system", "content": "be helpful"},
+        {"role": "user", "content": "hi"},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "type": "function",
+                    "id": "call_1",
+                    "function": {"name": "search", "arguments": '{"query": "x"}'},
+                }
+            ],
+        },
+        {"role": "tool", "tool_call_id": "call_1", "content": "result"},
+    ]
+
+    cleaned, repairs = llm_gateway._sanitise_messages(messages)
+
+    assert repairs == 0
+    assert cleaned == messages
+
+
+@pytest.mark.asyncio
+async def test_chat_completions_sends_the_sanitised_conversation_upstream(monkeypatch):
+    """The repair has to reach the wire, not just exist as a helper."""
+    captured = {}
+
+    async def fake_acompletion(**kwargs):
+        captured.update(kwargs)
+        return {"id": "1", "choices": [{"message": {"role": "assistant", "content": "hi"}}]}
+
+    monkeypatch.setattr("litellm.acompletion", fake_acompletion)
+
+    await chat_completions(
+        {
+            "model": "gpt-4o-mini",
+            "messages": [
+                {"role": "user", "content": "hi"},
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {"type": "function", "id": None, "function": {"name": "", "arguments": "}"}}
+                    ],
+                },
+            ],
+        },
+        config=_config(),
+    )
+
+    assert "tool_calls" not in captured["messages"][1]
+    assert captured["messages"][0] == {"role": "user", "content": "hi"}
 
 
 # --------------------------------------------------------------------------
