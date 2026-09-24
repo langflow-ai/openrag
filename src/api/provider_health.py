@@ -18,6 +18,122 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 
+async def _refresh_live_models() -> None:
+    """Re-list what self-describing providers serve, best effort.
+
+    TTL-guarded inside each enhancement, so this is a network call once every
+    few minutes rather than once per poll. A failure leaves the previous answer
+    in place and must never fail the health check — an unreachable cluster is
+    already being reported by the probes above, in its own words.
+    """
+    try:
+        from services.model_catalog import refresh_live_models
+
+        await refresh_live_models()
+    except Exception:
+        logger.debug("Could not refresh live model listings", exc_info=True)
+
+
+#: One page of spaces is plenty for a diagnostic. A corpus has a handful of
+#: them — one per embedding model it has ever been indexed with — and a
+#: deployment past this many has a bigger problem than this message.
+_EMBEDDING_SPACE_SAMPLE = 100
+
+
+async def _indexed_spaces(provider: str) -> tuple[str, ...] | None:
+    """Embedding models this corpus holds vectors for, under `provider`.
+
+    None means unknown — OpenSearch unreachable, or nothing indexed. Read with
+    the admin client, not a user-scoped one, because this is a property of the
+    corpus rather than of whoever is looking; DLS would silently shrink it.
+    """
+    try:
+        from config.settings import clients, get_index_name
+        from utils.embedding_fields import (
+            build_embedding_space_aggregation,
+            embedding_spaces_from_aggregation,
+            split_embedding_space_id,
+        )
+
+        client = clients.opensearch
+        if client is None:
+            return None
+        result = await client.search(
+            index=get_index_name(),
+            body={
+                "size": 0,
+                # Qualified spaces only. A legacy space records no provider, so
+                # it cannot be attributed to this one, and it is governed by
+                # OPENRAG_LEGACY_EMBEDDING_PROVIDER_MAP rather than by what the
+                # cluster serves today.
+                "aggs": build_embedding_space_aggregation(
+                    size=_EMBEDDING_SPACE_SAMPLE, include_legacy=False
+                ),
+            },
+            params={"terminate_after": 0},
+        )
+    except Exception:
+        logger.debug("Could not read indexed embedding spaces", exc_info=True)
+        return None
+
+    key = (provider or "").strip().lower()
+    models = []
+    for space in embedding_spaces_from_aggregation(result):
+        space_provider, model = split_embedding_space_id(space.space_id)
+        if space_provider == key and model:
+            models.append(model)
+    return tuple(dict.fromkeys(models)) or None
+
+
+async def _stale_embedding_spaces(provider: str) -> str | None:
+    """Indexed vector spaces whose model the provider has stopped serving.
+
+    Nothing re-checks a corpus once it is indexed. A chunk records the space it
+    was embedded in (`provider:model`), retrieval embeds the query once per
+    space it finds there, and an `InferenceService` redeployed under a new
+    `--served-model-name` leaves every earlier chunk pointing at a model that
+    is gone. No save can be rejected over it and no probe reaches it — the
+    *configured* model is fine, so health stays green until someone runs a
+    search and gets a 502 quoting a model name that appears nowhere in
+    Settings.
+
+    Silent unless both halves are known: what the provider serves, and what the
+    corpus holds. Neither absence is evidence of the other.
+    """
+    try:
+        from enhancements.providers.registry import live_models_for
+
+        served = live_models_for(provider, "embedding")
+    except Exception:
+        logger.debug("Could not read live models for %s", provider, exc_info=True)
+        return None
+    if not served:
+        return None
+
+    indexed = await _indexed_spaces(provider)
+    if not indexed:
+        return None
+    stale = [model for model in indexed if model not in served]
+    if not stale:
+        return None
+    return (
+        f"Documents are indexed with {', '.join(repr(model) for model in stale)}, which this "
+        f"endpoint no longer serves (it serves: {', '.join(served)}). Every search embeds the "
+        "query once per indexed space, so searching will fail until those documents are "
+        "re-ingested or deleted."
+    )
+
+
+async def _with_stale_spaces(error: str | None, provider: str) -> str | None:
+    """`error` with the stale-space warning appended, or it alone when quiet."""
+    stale = await _stale_embedding_spaces(provider)
+    if not stale:
+        return error
+    # Stale spaces alone are still unhealthy: the probes above only exercise
+    # the configured model, and every one of them can pass while search fails.
+    return f"{error} {stale}" if error else stale
+
+
 async def check_provider_health(
     provider: str | None = None,
     test_completion: bool = False,
@@ -345,6 +461,12 @@ async def check_provider_health(
                 provider_error_log.latest_failure(embedding_provider, "embedding")
                 or embedding_error
             )
+
+            # Nothing above looks at the corpus, and a vector space outlives
+            # the model that made it. Checked last so it can only add to what
+            # the probes and real traffic already said.
+            await _refresh_live_models()
+            embedding_error = await _with_stale_spaces(embedding_error, embedding_provider)
 
             # Return combined status
             if llm_error or embedding_error:
