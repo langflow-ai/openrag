@@ -1224,6 +1224,58 @@ def test_sanitise_messages_removes_a_tool_calls_key_left_empty():
     assert repairs == 0
 
 
+@pytest.mark.parametrize("function", ["search", 42, ["name", "search"]])
+def test_sanitise_messages_drops_a_call_whose_function_is_not_an_object(function):
+    """Malformed history is the sanitiser's job to absorb, not to crash on."""
+    from services import llm_gateway
+
+    good = {"type": "function", "id": "call_1", "function": {"name": "search", "arguments": "{}"}}
+    cleaned, repairs = llm_gateway._sanitise_messages(
+        [
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [good, {"type": "function", "id": "call_2", "function": function}],
+            },
+            {"role": "tool", "tool_call_id": "call_1", "content": "kept"},
+            {"role": "tool", "tool_call_id": "call_2", "content": "orphaned"},
+        ]
+    )
+
+    assert repairs == 2
+    assert [call["id"] for call in cleaned[0]["tool_calls"]] == ["call_1"]
+    assert [m["content"] for m in cleaned[1:]] == ["kept"]
+
+
+@pytest.mark.asyncio
+async def test_chat_completions_absorbs_a_non_object_function_instead_of_raising(monkeypatch):
+    """It runs before the call's error handling, so a raise here was a bare 500."""
+    captured = {}
+
+    async def fake_acompletion(**kwargs):
+        captured.update(kwargs)
+        return {"id": "1", "choices": [{"message": {"role": "assistant", "content": "hi"}}]}
+
+    monkeypatch.setattr("litellm.acompletion", fake_acompletion)
+
+    await chat_completions(
+        {
+            "model": "gpt-4o-mini",
+            "messages": [
+                {"role": "user", "content": "hi"},
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [{"type": "function", "id": "call_1", "function": "oops"}],
+                },
+            ],
+        },
+        config=_config(),
+    )
+
+    assert captured["messages"] == [{"role": "user", "content": "hi"}]
+
+
 def test_sanitise_messages_drops_the_result_of_a_dropped_call_that_had_an_id():
     """The result carries a real id, but the call it answers is gone."""
     from services import llm_gateway
