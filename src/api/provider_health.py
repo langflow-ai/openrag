@@ -1,6 +1,7 @@
 """Provider health check endpoint."""
 
 import asyncio
+from typing import Any
 
 import httpx
 from fastapi import Depends
@@ -20,6 +21,9 @@ from utils import provider_health_cache
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+#: `warnings[].code` for indexed vectors whose model the provider no longer serves.
+STALE_EMBEDDING_SPACE = "stale_embedding_space"
 
 
 async def _refresh_live_models() -> None:
@@ -89,7 +93,7 @@ async def _indexed_spaces(provider: str) -> tuple[str, ...] | None:
     return tuple(dict.fromkeys(models)) or None
 
 
-async def _stale_embedding_spaces(provider: str) -> str | None:
+async def _stale_embedding_spaces(provider: str) -> dict[str, Any] | None:
     """Indexed vector spaces whose model the provider has stopped serving.
 
     Nothing re-checks a corpus once it is indexed. A chunk records the space it
@@ -97,9 +101,15 @@ async def _stale_embedding_spaces(provider: str) -> str | None:
     space it finds there, and an `InferenceService` redeployed under a new
     `--served-model-name` leaves every earlier chunk pointing at a model that
     is gone. No save can be rejected over it and no probe reaches it — the
-    *configured* model is fine, so health stays green until someone runs a
-    search and gets a 502 quoting a model name that appears nowhere in
-    Settings.
+    *configured* model is fine. Retrieval skips a space it cannot embed for and
+    carries on, so nothing fails outright: those documents quietly stop being
+    found by meaning, and the only trace is a 502 quoting a model name that
+    appears nowhere in Settings.
+
+    A warning, never an error: the provider is serving and nothing in its setup
+    is wrong. The remedy is in the corpus — re-ingest or delete — so reporting
+    it as a provider failure would send the operator to the one screen that
+    cannot fix it.
 
     Silent unless both halves are known: what the provider serves, and what the
     corpus holds. Neither absence is evidence of the other.
@@ -120,22 +130,18 @@ async def _stale_embedding_spaces(provider: str) -> str | None:
     stale = [model for model in indexed if model not in served]
     if not stale:
         return None
-    return (
-        f"Documents are indexed with {', '.join(repr(model) for model in stale)}, which this "
-        f"endpoint no longer serves (it serves: {', '.join(served)}). Every search embeds the "
-        "query once per indexed space, so searching will fail until those documents are "
-        "re-ingested or deleted."
-    )
-
-
-async def _with_stale_spaces(error: str | None, provider: str) -> str | None:
-    """`error` with the stale-space warning appended, or it alone when quiet."""
-    stale = await _stale_embedding_spaces(provider)
-    if not stale:
-        return error
-    # Stale spaces alone are still unhealthy: the probes above only exercise
-    # the configured model, and every one of them can pass while search fails.
-    return f"{error} {stale}" if error else stale
+    return {
+        "code": STALE_EMBEDDING_SPACE,
+        "provider": provider,
+        "models": stale,
+        "served": list(served),
+        "message": (
+            f"Documents are indexed with {', '.join(repr(model) for model in stale)}, which "
+            f"this endpoint no longer serves (it serves: {', '.join(served)}). Search skips "
+            "those vectors, so the documents are found by keyword only until they are "
+            "re-ingested or deleted."
+        ),
+    }
 
 
 async def check_provider_health(
@@ -474,10 +480,12 @@ async def check_provider_health(
             )
 
             # Nothing above looks at the corpus, and a vector space outlives
-            # the model that made it. Checked last so it can only add to what
-            # the probes and real traffic already said.
+            # the model that made it. Reported beside the verdict, never in it:
+            # a stale space degrades search but says nothing about whether the
+            # provider is serving, so it must not turn the status code.
             await _refresh_live_models()
-            embedding_error = await _with_stale_spaces(embedding_error, embedding_provider)
+            stale_spaces = await _stale_embedding_spaces(embedding_provider)
+            warnings = [stale_spaces] if stale_spaces else []
 
             # Return combined status
             if llm_error or embedding_error:
@@ -498,6 +506,7 @@ async def check_provider_health(
                         "embedding_provider": embedding_provider,
                         "llm_error": llm_error,
                         "embedding_error": embedding_error,
+                        "warnings": warnings,
                     },
                     status_code=503,
                 )
@@ -511,6 +520,7 @@ async def check_provider_health(
                     "llm_model": llm_model,
                     "embedding_model": embedding_model,
                 },
+                "warnings": warnings,
             }
             provider_health_cache.set_and_release(health_cache_key, healthy_payload)
             _health_leader_key = None

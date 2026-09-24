@@ -5,12 +5,15 @@ embeds the query once per space found in the corpus, and an `InferenceService`
 redeployed under a new `--served-model-name` leaves every earlier chunk
 pointing at a model that is gone. Nothing else in the health path looks at the
 corpus: the *configured* model is still fine, so every probe passes and the
-banner stays green until someone runs a search and gets a 502 quoting a model
-name that appears nowhere in Settings. These pin that it gets said instead.
+banner stays green while those documents quietly drop out of vector search.
+These pin that it gets said instead — as a warning beside the verdict, not as a
+provider failure, because the provider is serving and its setup is not what
+needs fixing.
 """
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -86,18 +89,42 @@ def _indexed(monkeypatch, models):
     monkeypatch.setattr(provider_health, "_indexed_spaces", spaces)
 
 
+def _body(response):
+    return json.loads(response.body)
+
+
 @pytest.mark.asyncio
-async def test_a_space_the_endpoint_no_longer_serves_is_reported(monkeypatch, _healthy_probe):
+async def test_a_space_the_endpoint_no_longer_serves_is_a_warning_not_a_failure(
+    monkeypatch, _healthy_probe
+):
     _served(monkeypatch, (SERVED,))
     _indexed(monkeypatch, (SERVED, STALE))
 
     response = await provider_health.check_provider_health(test_completion=True, user=None)
 
-    assert response.status_code == 503
-    body = response.body.decode()
-    assert STALE in body
-    assert SERVED in body
-    assert "re-ingested or deleted" in body
+    # The provider is serving; only the corpus is out of date.
+    assert response.status_code == 200
+    body = _body(response)
+    assert body["status"] == "healthy"
+    [warning] = body["warnings"]
+    assert warning["code"] == provider_health.STALE_EMBEDDING_SPACE
+    assert warning["provider"] == "rhoai"
+    assert warning["models"] == [STALE]
+    assert warning["served"] == [SERVED]
+    assert "re-ingested or deleted" in warning["message"]
+
+
+@pytest.mark.asyncio
+async def test_the_warning_says_search_degrades_rather_than_fails(monkeypatch, _healthy_probe):
+    """Retrieval skips a space it cannot embed for; it does not fail the search."""
+    _served(monkeypatch, (SERVED,))
+    _indexed(monkeypatch, (STALE,))
+
+    response = await provider_health.check_provider_health(test_completion=True, user=None)
+
+    message = _body(response)["warnings"][0]["message"]
+    assert "keyword only" in message
+    assert "will fail" not in message
 
 
 @pytest.mark.asyncio
@@ -108,7 +135,7 @@ async def test_a_corpus_that_matches_what_is_served_says_nothing(monkeypatch, _h
     response = await provider_health.check_provider_health(test_completion=True, user=None)
 
     assert response.status_code == 200
-    assert "no longer serves" not in response.body.decode()
+    assert _body(response)["warnings"] == []
 
 
 @pytest.mark.asyncio
@@ -120,6 +147,7 @@ async def test_an_unknown_listing_is_not_evidence_of_a_stale_corpus(monkeypatch,
     response = await provider_health.check_provider_health(test_completion=True, user=None)
 
     assert response.status_code == 200
+    assert _body(response)["warnings"] == []
 
 
 @pytest.mark.asyncio
@@ -130,10 +158,13 @@ async def test_an_empty_corpus_is_not_evidence_of_drift(monkeypatch, _healthy_pr
     response = await provider_health.check_provider_health(test_completion=True, user=None)
 
     assert response.status_code == 200
+    assert _body(response)["warnings"] == []
 
 
 @pytest.mark.asyncio
-async def test_the_probes_own_words_are_kept_alongside_the_warning(monkeypatch, _healthy_probe):
+async def test_a_real_failure_keeps_its_own_words_and_the_warning_rides_beside_it(
+    monkeypatch, _healthy_probe
+):
     async def boom(**kwargs):
         if kwargs.get("embedding_model"):
             raise RuntimeError("endpoint unreachable")
@@ -146,9 +177,11 @@ async def test_the_probes_own_words_are_kept_alongside_the_warning(monkeypatch, 
     response = await provider_health.check_provider_health(test_completion=True, user=None)
 
     assert response.status_code == 503
-    body = response.body.decode()
-    assert "endpoint unreachable" in body
-    assert STALE in body
+    body = _body(response)
+    # The failure is reported as itself, not diluted by corpus advice...
+    assert body["embedding_error"] == "endpoint unreachable"
+    # ...and the corpus advice is still there for when the provider recovers.
+    assert body["warnings"][0]["models"] == [STALE]
 
 
 # --------------------------------------------------------------------------
