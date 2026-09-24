@@ -147,3 +147,95 @@ async def test_standard_processor_uses_shared_writer_for_embedding_mapping_and_w
     assert bulk_body[1]["chunk_embedding_openai_text_embedding_3_small"] == [0.1, 0.2, 0.3]
     assert bulk_body[1]["embedding_provider"] == "openai"
     assert bulk_body[1]["embedding_space_id"] == "openai:text-embedding-3-small"
+
+
+@pytest.mark.asyncio
+async def test_standard_processor_routes_onprem_embeddings_through_gateway(
+    tmp_path,
+    monkeypatch,
+):
+    model = "ibm/slate-30m-english-rtrvr"
+    gateway_calls = []
+    indexed = []
+
+    async def gateway_embeddings(body):
+        gateway_calls.append(body)
+        return {
+            "data": [
+                {"embedding": [0.1, 0.2, 0.3], "index": index}
+                for index, _ in enumerate(body["input"])
+            ]
+        }
+
+    class SessionManager:
+        def get_user_opensearch_client(self, user_id, jwt_token):
+            return SimpleNamespace()
+
+    class ModelsService:
+        async def get_litellm_model_name(self, embedding_model, provider=None):
+            assert embedding_model == model
+            assert provider == "watsonx_onprem"
+            return f"watsonx_onprem/{embedding_model}"
+
+    class FailingEmbeddingClient:
+        class Embeddings:
+            async def create(self, **kwargs):
+                raise AssertionError(
+                    "watsonx.ai on-prem must not use the environment-backed embedding client"
+                )
+
+        embeddings = Embeddings()
+
+    class Writer:
+        async def index_chunks(self, context, chunks, *, final=False):
+            indexed.append((context, chunks, final))
+
+    monkeypatch.setattr(
+        "models.processors.get_openrag_config",
+        lambda: SimpleNamespace(
+            knowledge=SimpleNamespace(
+                embedding_model=model,
+                embedding_provider="watsonx_onprem",
+                chunk_size=None,
+                chunk_overlap=None,
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        "models.processors.clients",
+        SimpleNamespace(opensearch=None, patched_embedding_client=FailingEmbeddingClient()),
+    )
+    monkeypatch.setattr("services.llm_gateway.embeddings", gateway_embeddings)
+
+    file_path = tmp_path / "doc.md"
+    file_path.write_text("# Test\n\nhello world", encoding="utf-8")
+    processor = TaskProcessor(
+        document_service=SimpleNamespace(
+            session_manager=SessionManager(),
+            document_index_writer=Writer(),
+        ),
+        models_service=ModelsService(),
+        docling_service=None,
+    )
+
+    async def document_missing(*args, **kwargs):
+        return False
+
+    monkeypatch.setattr(processor, "check_document_exists", document_missing)
+
+    result = await processor.process_document_standard(
+        file_path=str(file_path),
+        file_hash="file-1",
+        owner_user_id="user-1",
+        jwt_token="Bearer user-token",
+    )
+
+    assert result == {"status": "indexed", "id": "file-1"}
+    assert gateway_calls == [
+        {
+            "model": "watsonx_onprem:ibm/slate-30m-english-rtrvr",
+            "input": ["# Test\n\nhello world"],
+        }
+    ]
+    assert indexed[0][0].embedding_provider == "watsonx_onprem"
+    assert indexed[0][1][0].vector == [0.1, 0.2, 0.3]
