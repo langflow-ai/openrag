@@ -16,6 +16,7 @@ from types import SimpleNamespace
 import pytest
 
 from api import provider_health
+from api.provider_validation import ProbeResult
 from services import provider_error_log
 
 SERVED = "redhataigranite-embedding-engl"
@@ -51,7 +52,7 @@ def _healthy_probe(monkeypatch):
     monkeypatch.setattr(provider_health, "is_known_provider", lambda _p: True)
 
     async def ok(**_kwargs):
-        return None
+        return ProbeResult()
 
     monkeypatch.setattr(provider_health, "validate_provider_setup", ok)
     monkeypatch.setattr(provider_health.provider_health_cache, "cache_key", lambda **_k: "key")
@@ -136,6 +137,7 @@ async def test_the_probes_own_words_are_kept_alongside_the_warning(monkeypatch, 
     async def boom(**kwargs):
         if kwargs.get("embedding_model"):
             raise RuntimeError("endpoint unreachable")
+        return ProbeResult()
 
     monkeypatch.setattr(provider_health, "validate_provider_setup", boom)
     _served(monkeypatch, (SERVED,))

@@ -6,7 +6,11 @@ import httpx
 from fastapi import Depends
 from fastapi.responses import JSONResponse
 
-from api.provider_validation import sanitize_provider_error_content, validate_provider_setup
+from api.provider_validation import (
+    ProbeResult,
+    sanitize_provider_error_content,
+    validate_provider_setup,
+)
 from config.settings import get_openrag_config
 from dependencies import require_permission
 from services import provider_error_log
@@ -371,7 +375,7 @@ async def check_provider_health(
 
             # Validate LLM provider
             try:
-                await validate_provider_setup(
+                llm_probe: ProbeResult = await validate_provider_setup(
                     provider=provider,
                     api_key=api_key,
                     llm_model=llm_model,
@@ -393,17 +397,21 @@ async def check_provider_health(
                 llm_error = sanitize_provider_error_content(e)
                 logger.error(f"LLM provider ({provider}) validation failed: {llm_error}")
             else:
-                # A completion probe that succeeds is itself a real call to this
-                # provider, which is the condition the recorded failure is
-                # erased on. Without this the banner can only be cleared by
-                # chat traffic: one failed turn latches it, the frontend then
-                # polls every 5s with `test_completion` while it stays latched,
-                # and a provider that is demonstrably serving keeps being
-                # reported broken — with "Fix Setup" offered for a setup that
-                # just passed its own check — until the entry goes stale 15
-                # minutes later. A model-free check proves too little to clear
-                # anything, so only the completion probe counts.
-                if test_completion:
+                # Without this the banner can only be cleared by chat traffic:
+                # one failed turn latches it, the frontend then polls every 5s
+                # with `test_completion` while it stays latched, and a provider
+                # that has recovered keeps being reported broken until the entry
+                # goes stale 15 minutes later.
+                #
+                # But a probe cannot reproduce the request that failed (see
+                # `provider_error_log`), so only one that sent the same shape
+                # of request may speak for it. A passing validation can mean a
+                # deployment listing (Azure), no call at all (no model set), or
+                # a tool-less completion (the LiteLLM probe) — none of which
+                # reaches the tool-calling failures agent traffic actually hits.
+                # Clearing on those would drop the banner while chat is still
+                # broken, only for the next turn to raise it again.
+                if test_completion and llm_probe.model_probed and llm_probe.tools_exercised:
                     provider_error_log.record_success(provider, "chat")
 
             # Validate embedding provider
@@ -420,7 +428,7 @@ async def check_provider_health(
                 await asyncio.sleep(2)
 
             try:
-                await validate_provider_setup(
+                embedding_probe: ProbeResult = await validate_provider_setup(
                     provider=embedding_provider,
                     api_key=embedding_api_key,
                     embedding_model=embedding_model,
@@ -446,7 +454,10 @@ async def check_provider_health(
                     f"Embedding provider ({embedding_provider}) validation failed: {embedding_error}"
                 )
             else:
-                if test_completion:
+                # An embedding request has no shape beyond model and input, so a
+                # real call to the configured model is the same request traffic
+                # makes. Anything short of one proves nothing about it.
+                if test_completion and embedding_probe.model_probed:
                     provider_error_log.record_success(embedding_provider, "embedding")
 
             # A real call beats a probe. The probe sends its own request, so it
