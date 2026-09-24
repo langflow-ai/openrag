@@ -98,7 +98,6 @@ export function SharedBucketView({
   const [pendingDuplicates, setPendingDuplicates] = useState<{
     duplicateNames: string[];
     duplicateCount: number;
-    duplicateFiles: BucketDuplicateFile[];
     nonDuplicateFiles: BucketDuplicateFile[];
   } | null>(null);
   const isOverwriteConfirmedRef = useRef(false);
@@ -177,9 +176,12 @@ export function SharedBucketView({
   };
 
   // Full bucket sync: backend classifies new/changed/unchanged itself and
-  // re-ingests both new and changed blobs (used both when there are no
-  // duplicates and when the user chooses to overwrite them).
-  const runBucketSync = () => {
+  // re-ingests both new and changed blobs. With `replaceDuplicates`, it instead
+  // re-ingests the whole selection and replaces what is already indexed — the
+  // overwrite path. Either way the bucket names travel instead of the file
+  // list, so the request stays the same size for a 10-object bucket and a
+  // 10,000-object one.
+  const runBucketSync = (replaceDuplicates = false) => {
     syncMutation.mutate(
       {
         connectorType: connector.type,
@@ -188,6 +190,7 @@ export function SharedBucketView({
           selected_files: [],
           bucket_filter: Array.from(selectedBuckets),
           settings: ingestSettings,
+          replace_duplicates: replaceDuplicates,
           shared: showSharedToggle
             ? (ingestSettings.shared ?? false)
             : undefined,
@@ -197,15 +200,11 @@ export function SharedBucketView({
     );
   };
 
-  // Sync explicit files. `replaceDuplicates` forces an unconditional
-  // re-ingest (bypassing the bucket_filter path's modified-time gate) —
-  // used when the user confirms "Overwrite duplicates" so an already
-  // up-to-date file still gets re-ingested, matching what "overwrite" means
-  // for the OAuth connectors.
-  const runSelectedFilesSync = (
-    files: BucketDuplicateFile[],
-    replaceDuplicates = false,
-  ) => {
+  // Sync an explicit subset of the listing — how "skip duplicates" ingests
+  // only the files that are not already indexed. (Overwrite goes through
+  // runBucketSync(true) instead: it needs the whole selection, and naming the
+  // buckets says that in one line.)
+  const runSelectedFilesSync = (files: BucketDuplicateFile[]) => {
     syncMutation.mutate(
       {
         connectorType: connector.type,
@@ -213,7 +212,7 @@ export function SharedBucketView({
           connection_id: connector.connectionId!,
           selected_files: files,
           settings: ingestSettings,
-          replace_duplicates: replaceDuplicates,
+          replace_duplicates: false,
           shared: showSharedToggle
             ? (ingestSettings.shared ?? false)
             : undefined,
@@ -272,7 +271,6 @@ export function SharedBucketView({
       setPendingDuplicates({
         duplicateNames,
         duplicateCount,
-        duplicateFiles: checkData.duplicate_files || [],
         nonDuplicateFiles: checkData.non_duplicate_files || [],
       });
       setDuplicateDialogOpen(true);
@@ -289,8 +287,7 @@ export function SharedBucketView({
   const handleOverwriteDuplicates = () => {
     if (!pendingDuplicates) return;
     isOverwriteConfirmedRef.current = true;
-    const { duplicateFiles, nonDuplicateFiles } = pendingDuplicates;
-    runSelectedFilesSync([...duplicateFiles, ...nonDuplicateFiles], true);
+    runBucketSync(true);
     setPendingDuplicates(null);
   };
 
