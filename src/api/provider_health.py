@@ -276,6 +276,19 @@ async def check_provider_health(
             except Exception as e:
                 llm_error = sanitize_provider_error_content(e)
                 logger.error(f"LLM provider ({provider}) validation failed: {llm_error}")
+            else:
+                # A completion probe that succeeds is itself a real call to this
+                # provider, which is the condition the recorded failure is
+                # erased on. Without this the banner can only be cleared by
+                # chat traffic: one failed turn latches it, the frontend then
+                # polls every 5s with `test_completion` while it stays latched,
+                # and a provider that is demonstrably serving keeps being
+                # reported broken — with "Fix Setup" offered for a setup that
+                # just passed its own check — until the entry goes stale 15
+                # minutes later. A model-free check proves too little to clear
+                # anything, so only the completion probe counts.
+                if test_completion:
+                    provider_error_log.record_success(provider, "chat")
 
             # Validate embedding provider
             # For WatsonX with test_completion=True, wait 2 seconds between completion and embedding tests
@@ -316,6 +329,9 @@ async def check_provider_health(
                 logger.error(
                     f"Embedding provider ({embedding_provider}) validation failed: {embedding_error}"
                 )
+            else:
+                if test_completion:
+                    provider_error_log.record_success(embedding_provider, "embedding")
 
             # A real call beats a probe. The probe sends its own request, so it
             # hits its own failure: OpenAI checks request shape before billing,
