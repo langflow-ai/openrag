@@ -579,13 +579,25 @@ class TaskProcessor:
 
         text_batches = chunk_texts_for_embeddings(texts, max_tokens=max_tokens)
         embeddings = []
+        from services.model_catalog import litellm_provider_key, public_model_id
+
+        gateway_model = None
+        if litellm_provider_key(embedding_provider) != embedding_provider:
+            from services.llm_gateway import embeddings as gateway_embeddings
+
+            gateway_model = public_model_id(embedding_provider, embedding_model)
 
         for batch in text_batches:
-            resp = await clients.patched_embedding_client.embeddings.create(
-                model=litellm_embedding_model, input=batch
-            )
+            if gateway_model is not None:
+                response = await gateway_embeddings({"model": gateway_model, "input": batch})
+                data = response.get("data", [])
+            else:
+                response = await clients.patched_embedding_client.embeddings.create(
+                    model=litellm_embedding_model, input=batch
+                )
+                data = response.data
             embeddings.extend(
-                [d["embedding"] if isinstance(d, dict) else d.embedding for d in resp.data]
+                [item["embedding"] if isinstance(item, dict) else item.embedding for item in data]
             )
 
         if not embeddings or len(embeddings) == 0:
