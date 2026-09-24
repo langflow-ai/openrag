@@ -634,7 +634,11 @@ def _sanitise_messages(messages: Any) -> tuple[list[Any], int]:
             if not isinstance(call, dict):
                 repairs += 1
                 continue
-            call = {**call, "function": dict(call.get("function") or {})}
+            # The client controls this value, and `dict()` raises on a string or
+            # a number. A non-mapping names no tool, so it becomes an empty one
+            # and the call is dropped below like any other nameless call.
+            function = call.get("function")
+            call = {**call, "function": dict(function) if isinstance(function, dict) else {}}
             arguments, changed = _normalise_tool_arguments(call["function"].get("arguments"))
             if changed:
                 call["function"]["arguments"] = arguments
