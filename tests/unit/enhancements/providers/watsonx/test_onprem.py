@@ -281,6 +281,27 @@ def test_a_scope_that_is_set_still_reaches_the_cluster() -> None:
     assert payload == {"model_id": "ibm/granite-3-3-8b-instruct", "space_id": "space-1"}
 
 
+def test_an_explicit_onprem_space_ignores_the_cloud_project_environment(monkeypatch) -> None:
+    """Cloud and on-prem watsonx scopes must not leak into each other."""
+    monkeypatch.setenv("WATSONX_PROJECT_ID", "cloud-project")
+    watsonx_onprem.install_litellm_compatibility()
+
+    from litellm.llms.watsonx.chat.handler import _get_api_params
+    from litellm.llms.watsonx.chat.transformation import IBMWatsonXChatConfig
+
+    api_params = _get_api_params(
+        params={"space_id": "onprem-space"}, model="ibm/granite-3-3-8b-instruct"
+    )
+    payload = IBMWatsonXChatConfig()._prepare_payload(
+        model="ibm/granite-3-3-8b-instruct", api_params=api_params
+    )
+
+    assert payload == {
+        "model_id": "ibm/granite-3-3-8b-instruct",
+        "space_id": "onprem-space",
+    }
+
+
 def test_a_self_signed_cluster_cert_is_reported_as_a_trust_problem() -> None:
     """The request never leaves the process, so there is no provider error to quote.
 
