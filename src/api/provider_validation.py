@@ -4,6 +4,7 @@ import asyncio
 import json
 import re
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlparse
 
@@ -662,6 +663,26 @@ def is_azure_ai_foundry_endpoint(api_base: str | None) -> bool:
     return (urlparse(api_base).hostname or "").endswith(".services.ai.azure.com")
 
 
+@dataclass(frozen=True)
+class ProbeResult:
+    """What a successful `validate_provider_setup()` call actually exercised.
+
+    Passing validation is weaker evidence than it looks: depending on the
+    provider and arguments it may have listed deployments, checked a key, or
+    made no call at all. Callers deciding whether a provider is *serving* — as
+    the health check does before erasing a real-traffic failure — need to know
+    which.
+
+    ``model_probed``: a real call was made to the model under test — the
+    embedding model when one was given, otherwise the LLM.
+    ``tools_exercised``: that call was a completion carrying tool definitions,
+    the shape the agent's own traffic has.
+    """
+
+    model_probed: bool = False
+    tools_exercised: bool = False
+
+
 async def validate_provider_setup(
     provider: str,
     api_key: str = None,
@@ -672,7 +693,7 @@ async def validate_provider_setup(
     test_completion: bool = False,
     credentials: dict[str, str] | None = None,
     stored_credentials: Mapping[str, Any] | None = None,
-) -> None:
+) -> ProbeResult:
     """
     Validate provider setup by testing completion with tool calling and embedding.
 
@@ -690,6 +711,9 @@ async def validate_provider_setup(
                         Only a provider enhancement's lightweight check reads it: a provider with
                         separate chat and embedding endpoints has ``credentials`` narrowed to one
                         of them, and the check has to see both to probe both.
+
+    Returns:
+        ProbeResult: what the successful validation exercised.
 
     Raises:
         Exception: If validation fails, raises the original exception with the actual error message.
@@ -742,6 +766,10 @@ async def validate_provider_setup(
                 embedding_model=embedding_model,
                 llm_model=llm_model,
             )
+            # The LiteLLM probe is a plain completion: it proves the model
+            # answers, not that it can take the tool-calling request the agent
+            # sends.
+            result = ProbeResult(model_probed=True)
         elif test_completion:
             if provider_lower == "azure":
                 # Azure deployments are user-defined, so a model completion is
@@ -755,7 +783,7 @@ async def validate_provider_setup(
                     credentials=supplied,
                     stored_credentials=stored_credentials,
                 )
-                return
+                return ProbeResult()
             # Full validation with completion/embedding tests (consumes credits)
             if embedding_model:
                 # Test embedding
@@ -766,6 +794,7 @@ async def validate_provider_setup(
                     endpoint=endpoint,
                     project_id=project_id,
                 )
+                result = ProbeResult(model_probed=True)
             elif llm_model:
                 # Test completion with tool calling
                 await test_completion_with_tools(
@@ -775,6 +804,10 @@ async def validate_provider_setup(
                     endpoint=endpoint,
                     project_id=project_id,
                 )
+                result = ProbeResult(model_probed=True, tools_exercised=True)
+            else:
+                # No model to test with, so nothing was called at all.
+                result = ProbeResult()
         else:
             # Lightweight validation (no credits consumed)
             await test_lightweight_health(
@@ -785,8 +818,10 @@ async def validate_provider_setup(
                 credentials=supplied,
                 stored_credentials=stored_credentials,
             )
+            result = ProbeResult()
 
         logger.info(f"Validation successful for provider: {provider_lower}")
+        return result
 
     except Exception as e:
         logger.error(f"Validation failed for provider {provider_lower}: {str(e)}")
