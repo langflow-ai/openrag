@@ -11,10 +11,12 @@ import functools
 import inspect
 from collections.abc import Mapping
 from types import ModuleType
-from typing import Any
+from typing import Any, Literal
 
 from enhancements.providers.redhat import openshift_ai
 from enhancements.providers.watsonx import onprem
+
+CallKind = Literal["chat", "embedding"]
 
 _ENHANCEMENTS: dict[str, ModuleType] = {
     onprem.PROVIDER_KEY: onprem,
@@ -48,6 +50,31 @@ def credential_field_overrides() -> dict[str, list[dict[str, object]]]:
 def enhancements() -> tuple[ModuleType, ...]:
     """All registered enhancements, for generic catalogue refreshes."""
     return tuple(_ENHANCEMENTS.values())
+
+
+def live_models_for(provider: str, kind: CallKind) -> tuple[str, ...] | None:
+    """What `provider` last said it serves for `kind`, if it can say at all.
+
+    None means *unknown*, never "serves nothing": the provider has no
+    enhancement, the enhancement cannot list its own models, or nothing fresh
+    is cached for that endpoint. Callers must treat None as no information —
+    telling an operator their model is missing on the strength of a listing
+    that never arrived would be worse than staying quiet.
+
+    The lists come from the enhancement's own TTL cache, so this is a dict
+    lookup; refreshing them is `model_catalog.refresh_live_models()`.
+    """
+    enhancement = get(provider)
+    if enhancement is None or not hasattr(enhancement, "cached_models"):
+        return None
+    try:
+        models = enhancement.cached_models()
+    except Exception:  # a diagnostic must never take down its caller
+        return None
+    if models is None:
+        return None
+    listed = getattr(models, kind, None)
+    return tuple(listed) if listed else None
 
 
 def credentials_for(
