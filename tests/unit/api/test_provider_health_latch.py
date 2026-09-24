@@ -7,6 +7,10 @@ turn latched the banner, the frontend then polled every 5s with
 demonstrably serving kept being reported broken — offering "Fix Setup" for a
 setup that had just passed its own check — until the entry went stale a
 quarter of an hour later.
+
+It must not clear itself on weaker evidence than the failure it erases,
+though. Only a probe that sent the same shape of request — a tool-calling
+completion for chat, a real embedding call for embeddings — may do it.
 """
 
 from __future__ import annotations
@@ -16,7 +20,13 @@ from types import SimpleNamespace
 import pytest
 
 from api import provider_health
+from api.provider_validation import ProbeResult
 from services import provider_error_log
+
+#: What each kind of passing validation actually exercised.
+TOOL_COMPLETION = ProbeResult(model_probed=True, tools_exercised=True)
+PLAIN_COMPLETION = ProbeResult(model_probed=True)
+NO_CALL = ProbeResult()
 
 
 @pytest.fixture(autouse=True)
@@ -41,16 +51,22 @@ def _config():
     )
 
 
+def _probes(monkeypatch, *, chat: ProbeResult, embedding: ProbeResult) -> None:
+    """Validation passes for both roles, having exercised what is given."""
+
+    async def ok(**kwargs):
+        return embedding if kwargs.get("embedding_model") else chat
+
+    monkeypatch.setattr(provider_health, "validate_provider_setup", ok)
+
+
 @pytest.fixture
 def _healthy_probe(monkeypatch):
     """A provider whose probes all pass, with the caches out of the way."""
     monkeypatch.setattr(provider_health, "get_openrag_config", _config)
     monkeypatch.setattr(provider_health, "is_known_provider", lambda _p: True)
 
-    async def ok(**_kwargs):
-        return None
-
-    monkeypatch.setattr(provider_health, "validate_provider_setup", ok)
+    _probes(monkeypatch, chat=TOOL_COMPLETION, embedding=PLAIN_COMPLETION)
     monkeypatch.setattr(provider_health.provider_health_cache, "cache_key", lambda **_k: "key")
     monkeypatch.setattr(provider_health.provider_health_cache, "get", lambda _k: None)
     monkeypatch.setattr(
@@ -65,7 +81,7 @@ def _healthy_probe(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_a_passing_completion_probe_clears_a_latched_chat_failure(_healthy_probe):
+async def test_a_passing_tool_calling_probe_clears_a_latched_chat_failure(_healthy_probe):
     provider_error_log.record_failure("rhoai", "chat", "tool_calls are not iterable")
 
     response = await provider_health.check_provider_health(test_completion=True, user=None)
@@ -75,13 +91,43 @@ async def test_a_passing_completion_probe_clears_a_latched_chat_failure(_healthy
 
 
 @pytest.mark.asyncio
-async def test_a_passing_completion_probe_clears_a_latched_embedding_failure(_healthy_probe):
+async def test_a_passing_embedding_call_clears_a_latched_embedding_failure(_healthy_probe):
     provider_error_log.record_failure("rhoai", "embedding", "embeddings fell over")
 
     response = await provider_health.check_provider_health(test_completion=True, user=None)
 
     assert response.status_code == 200
     assert provider_error_log.latest_failure("rhoai", "embedding") is None
+
+
+@pytest.mark.asyncio
+async def test_a_tool_less_completion_leaves_a_latched_chat_failure(monkeypatch, _healthy_probe):
+    """The LiteLLM probe (RHOAI and friends) sends a plain completion.
+
+    Agent traffic fails on tool calls, which that probe never makes, so it can
+    pass while every chat turn still fails.
+    """
+    _probes(monkeypatch, chat=PLAIN_COMPLETION, embedding=PLAIN_COMPLETION)
+    provider_error_log.record_failure("rhoai", "chat", "tool_calls are not iterable")
+
+    response = await provider_health.check_provider_health(test_completion=True, user=None)
+
+    assert response.status_code == 503
+    assert provider_error_log.latest_failure("rhoai", "chat") == "tool_calls are not iterable"
+
+
+@pytest.mark.asyncio
+async def test_a_validation_that_called_no_model_clears_nothing(monkeypatch, _healthy_probe):
+    """Azure's deployment listing, or a role with no model set, makes no model call."""
+    _probes(monkeypatch, chat=NO_CALL, embedding=NO_CALL)
+    provider_error_log.record_failure("rhoai", "chat", "tool_calls are not iterable")
+    provider_error_log.record_failure("rhoai", "embedding", "embeddings fell over")
+
+    response = await provider_health.check_provider_health(test_completion=True, user=None)
+
+    assert response.status_code == 503
+    assert provider_error_log.latest_failure("rhoai", "chat") == "tool_calls are not iterable"
+    assert provider_error_log.latest_failure("rhoai", "embedding") == "embeddings fell over"
 
 
 @pytest.mark.asyncio
@@ -102,6 +148,7 @@ async def test_a_failing_probe_leaves_the_recorded_failure_in_place(monkeypatch,
     async def boom(**kwargs):
         if kwargs.get("llm_model"):
             raise RuntimeError("endpoint unreachable")
+        return PLAIN_COMPLETION
 
     monkeypatch.setattr(provider_health, "validate_provider_setup", boom)
     provider_error_log.record_failure("rhoai", "chat", "the real traffic failure")
