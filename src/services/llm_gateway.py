@@ -602,20 +602,28 @@ def _sanitise_messages(messages: Any) -> tuple[list[Any], int]:
     result can be matched to; and the tool results left behind by one, which are
     dropped alongside it so no provider is handed a reply to a call that is no
     longer there.
+
+    What survives must still be a sequence providers accept: a `tool` message
+    is kept only when it answers a call kept on the assistant message just
+    before it, and an assistant message left with neither tool calls nor
+    content is dropped, since `content` is only optional beside `tool_calls`.
     """
     cleaned: list[Any] = []
     repairs = 0
+    # Ids of the calls kept on the most recent assistant message: the only ones
+    # a `tool` message may answer.
+    live_ids: set[str] = set()
     for message in messages or []:
         if not isinstance(message, dict):
             cleaned.append(message)
             continue
         if message.get("role") == "tool":
-            tool_call_id = message.get("tool_call_id")
-            if not isinstance(tool_call_id, str) or not tool_call_id:
+            if message.get("tool_call_id") not in live_ids:
                 repairs += 1
                 continue
             cleaned.append(message)
             continue
+        live_ids = set()
         if "tool_calls" not in message:
             cleaned.append(message)
             continue
@@ -642,6 +650,7 @@ def _sanitise_messages(messages: Any) -> tuple[list[Any], int]:
         message = dict(message)
         if kept:
             message["tool_calls"] = kept
+            live_ids = {call["id"] for call in kept}
         else:
             # `tool_calls: null` is itself a shape some providers iterate
             # without a None check, so the key goes rather than emptying.
@@ -649,6 +658,10 @@ def _sanitise_messages(messages: Any) -> tuple[list[Any], int]:
             # A list's entries were each counted above; anything else was
             # never iterable in the first place and is one repair on its own.
             repairs += bool(raw) and not isinstance(raw, list)
+            if raw and message.get("role") == "assistant" and not message.get("content"):
+                # The dropped calls were the whole message; what is left has
+                # nothing to say, and no provider accepts it saying nothing.
+                continue
         cleaned.append(message)
     return cleaned, repairs
 
