@@ -242,9 +242,14 @@ def litellm_runtime_kwargs(stored: Mapping[str, Any]) -> dict[str, Any]:
     cache = litellm.in_memory_llm_clients_cache
     client = cache.get_cache(cache_key)
     if client is None:
+        # Isolation across TLS policies comes from cache_key above, which is
+        # already policy-specific. client_alias is a log-only label in this
+        # LiteLLM version (nothing reads it back for cache lookups) — keep it
+        # policy-specific anyway so distinct clients are distinguishable in
+        # logs and diagnostics.
         client = AsyncHTTPHandler(
             ssl_verify=tls,
-            client_alias="openrag-watsonx-onprem",
+            client_alias=cache_key,
         )
         cache.set_cache(cache_key, client, litellm_owned_client=True)
     return {"client": client}

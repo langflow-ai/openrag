@@ -97,9 +97,9 @@ export function GenericProviderCredentialFields({
             <AccordionTrigger>Advanced settings</AccordionTrigger>
             <AccordionContent className="space-y-4">
               {fieldsForKeys(fields, [
+                "ssl_verify",
                 "space_id",
                 "project_id",
-                "ssl_verify",
               ]).map(renderField)}
             </AccordionContent>
           </AccordionItem>
