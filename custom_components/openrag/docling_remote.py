@@ -328,7 +328,7 @@ class DoclingRemoteComponent(BaseFileComponent):
         Returns:
             list[Data]: Parsed data from the processed files or task.
         """
-        if self.task_id:
+        if self.task_id and str(self.task_id).strip() not in ("", "None", "null"):
             return self._process_task_id()
         return super().load_files_base()
 
