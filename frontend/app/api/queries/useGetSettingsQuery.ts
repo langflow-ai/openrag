@@ -104,6 +104,7 @@ export interface Settings {
   show_vlm_settings?: boolean;
   local_vlm_models?: string[];
   show_shared_upload_toggle?: boolean;
+  show_url_connector?: boolean;
   show_workspace_oauth_overrides?: boolean;
   segment_write_key?: string;
   environment?: string;

@@ -5,10 +5,18 @@ import AwsLogo from "@/components/icons/aws-logo";
 import GoogleDriveLogo from "@/components/icons/google-drive-logo";
 import OneDriveLogo from "@/components/icons/one-drive-logo";
 import SharePointLogo from "@/components/icons/share-point-logo";
+import { KnowledgeUrlIcon } from "@/components/knowledge-url-icon";
 import { ADDITIONAL_CONNECTORS } from "@/enhancements";
 import type { ConnectorUIDescriptor } from "./types";
 
 const BUILTIN_CONNECTORS: ConnectorUIDescriptor[] = [
+  {
+    connectorType: "url",
+    name: "URL",
+    Icon: KnowledgeUrlIcon,
+    kind: "managed",
+    menuItem: { label: "URL", route: "/knowledge?add=url" },
+  },
   {
     connectorType: "google_drive",
     name: "Google Drive",

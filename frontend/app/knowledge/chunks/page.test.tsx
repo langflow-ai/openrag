@@ -9,13 +9,14 @@
  */
 
 import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 import type { ChunkResult } from "@/app/api/queries/useGetSearchQuery";
 import { authPresets } from "@/test-utils/fixtures/auth";
 import { server } from "@/test-utils/msw/server";
 import { renderWithProviders, waitFor } from "@/test-utils/render";
-import { setMockLocation } from "@/test-utils/router";
+import { mockRouter, setMockLocation } from "@/test-utils/router";
 import ProtectedChunksPage from "./page";
 
 function chunk(overrides: Partial<ChunkResult> = {}): ChunkResult {
@@ -57,7 +58,7 @@ describe("ChunksPage — highlight wiring", () => {
     });
 
     await waitFor(() => expect(calls.length).toBeGreaterThanOrEqual(1));
-    expect(calls.every((c) => c.query === "*")).toBe(true);
+    expect(calls.every((call) => call.query === "*")).toBe(true);
   });
 
   it("fires a second request with the search query when ?q= is present", async () => {
@@ -74,10 +75,9 @@ describe("ChunksPage — highlight wiring", () => {
       auth: authPresets.admin,
     });
 
-    // Two requests: wildcard (all chunks) + the search query (highlights).
     await waitFor(() => expect(calls.length).toBeGreaterThanOrEqual(2));
-    expect(calls.some((c) => c.query === "*")).toBe(true);
-    expect(calls.some((c) => c.query === "brown fox")).toBe(true);
+    expect(calls.some((call) => call.query === "*")).toBe(true);
+    expect(calls.some((call) => call.query === "brown fox")).toBe(true);
   });
 
   it("fires both wildcard and search requests when only some chunks match the search query", async () => {
@@ -100,7 +100,6 @@ describe("ChunksPage — highlight wiring", () => {
             warnings: [],
           });
         }
-        // Only c1 matches the search query — c2 must still survive in the merged result.
         return HttpResponse.json({
           results: [
             chunk({
@@ -119,7 +118,6 @@ describe("ChunksPage — highlight wiring", () => {
       auth: authPresets.admin,
     });
 
-    // Two requests must be fired: wildcard (full chunk list) + "fox" (highlights only).
     await waitFor(() => expect(queriesSeen.length).toBeGreaterThanOrEqual(2));
     expect(queriesSeen).toContain("*");
     expect(queriesSeen).toContain("fox");
@@ -162,5 +160,59 @@ describe("ChunksPage — highlight wiring", () => {
       expect(container.querySelector("mark")).toBeInTheDocument(),
     );
     expect(container.querySelector("mark")?.textContent).toBe("fox");
+  });
+});
+
+describe("ChunksPage — URL child pages", () => {
+  it("loads URL child chunks by document id and keeps the debounced query in the URL", async () => {
+    const user = userEvent.setup();
+    setMockLocation({
+      pathname: "/knowledge/chunks",
+      searchParams: { document_id: "web-page-1", web_source_id: "source-1" },
+    });
+
+    renderWithProviders(<ProtectedChunksPage />, {
+      providers: ["auth", "knowledgeFilter"],
+      auth: authPresets.noAuthMode,
+      handlers: [
+        http.post("/api/search", () =>
+          HttpResponse.json({
+            results: [
+              {
+                filename: "A website page",
+                document_id: "web-page-1",
+                mimetype: "text/html",
+                text: "The crawled page content",
+                chunk_id: "chunk-1",
+                score: 1,
+                page: 1,
+                file_size: 123,
+                owner: "anonymous",
+              },
+            ],
+            warnings: [],
+          }),
+        ),
+      ],
+    });
+
+    expect(await screen.findByText("The crawled page content")).toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: "A website page" }),
+    ).toBeVisible();
+    expect(screen.getByText("Total chunks")).toBeVisible();
+
+    await user.type(screen.getByPlaceholderText("Search chunks…"), "crawled");
+    await waitFor(
+      () =>
+        expect(mockRouter.replace).toHaveBeenCalledWith(
+          "/knowledge/chunks?document_id=web-page-1&web_source_id=source-1&q=crawled",
+          { scroll: false },
+        ),
+      { timeout: 1_000 },
+    );
+
+    await user.click(screen.getAllByRole("button")[0]);
+    expect(mockRouter.back).toHaveBeenCalledOnce();
   });
 });

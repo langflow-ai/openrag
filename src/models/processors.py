@@ -478,6 +478,14 @@ class TaskProcessor:
         ocr: bool | None = None,
         picture_descriptions: bool | None = None,
         shared: bool = False,
+        document_id: str | None = None,
+        replace_existing: bool = False,
+        source_url: str | None = None,
+        web_source_id: str | None = None,
+        web_page_id: str | None = None,
+        web_page_depth: int | None = None,
+        root_source_url: str | None = None,
+        canonical_url: str | None = None,
     ):
         """
         Standard processing pipeline for non-Langflow processors:
@@ -513,9 +521,13 @@ class TaskProcessor:
             owner_user_id, jwt_token
         )
 
-        # Check if already exists
-        if await self.check_document_exists(file_hash, opensearch_client):
-            return {"status": "unchanged", "id": file_hash}
+        stable_document_id = document_id or file_hash
+        # URL sources perform their own normalized-content dedupe. Replacements
+        # retain a stable document id while clearing obsolete chunks below.
+        if not replace_existing and await self.check_document_exists(
+            stable_document_id, opensearch_client
+        ):
+            return {"status": "unchanged", "id": stable_document_id}
 
         logger.info(
             "Processing document with embedding model",
@@ -531,7 +543,7 @@ class TaskProcessor:
             logger.info(
                 "Processing as plain text file (bypassing docling)",
                 file_path=file_path,
-                file_hash=file_hash,
+                file_hash=stable_document_id,
             )
             slim_doc = process_text_file(file_path)
             slim_doc["parser"] = TEXT_PARSER_LABEL
@@ -655,7 +667,7 @@ class TaskProcessor:
             stale_chunk_ids = await collect_visible_document_ids(
                 opensearch_client,
                 index=get_index_name(),
-                query={"term": {"document_id": file_hash}},
+                query={"term": {"document_id": stable_document_id}},
             )
             await delete_document_ids(
                 write_client,
@@ -666,7 +678,7 @@ class TaskProcessor:
         except Exception as e:
             logger.warning(
                 "Failed to clear stale chunks before re-index; proceeding",
-                file_hash=file_hash,
+                file_hash=stable_document_id,
                 error=str(e),
             )
 
@@ -688,7 +700,7 @@ class TaskProcessor:
 
         filename = original_filename if original_filename else slim_doc["filename"]
         index_context = DocumentIndexContext(
-            document_id=file_hash,
+            document_id=stable_document_id,
             filename=filename,
             mimetype=slim_doc["mimetype"],
             embedding_model=embedding_model,
@@ -698,6 +710,13 @@ class TaskProcessor:
             owner_email=owner_email,
             file_size=file_size,
             connector_type=connector_type,
+            source_url=source_url,
+            record_kind="web_page" if web_source_id else None,
+            web_source_id=web_source_id,
+            web_page_id=web_page_id,
+            web_page_depth=web_page_depth,
+            root_source_url=root_source_url,
+            canonical_url=canonical_url,
             allowed_users=allowed_users,
             allowed_groups=allowed_groups,
             allowed_principals=allowed_principals,
@@ -721,7 +740,7 @@ class TaskProcessor:
 
         index_chunks = [
             DocumentIndexChunk(
-                chunk_id=f"{file_hash}_{i}",
+                chunk_id=f"{stable_document_id}_{i}",
                 text=chunk["text"],
                 vector=vect,
                 page=chunk["page"],
@@ -730,7 +749,7 @@ class TaskProcessor:
             for i, (chunk, vect) in enumerate(zip(slim_doc["chunks"], embeddings, strict=True))
         ]
         await document_index_writer.index_chunks(index_context, index_chunks, final=True)
-        return {"status": "indexed", "id": file_hash}
+        return {"status": "indexed", "id": stable_document_id, "chunk_count": len(index_chunks)}
 
     async def process_item(self, upload_task: UploadTask, item: Any, file_task: FileTask) -> None:
         """
