@@ -4,13 +4,21 @@ from typing import Any
 
 import msal
 
-from connectors.microsoft_oauth_utils import verify_ms_access_token
+from connectors.microsoft_oauth_utils import (
+    trusted_tenant_id_from_account,
+    trusted_tenant_id_from_token_result,
+    verify_ms_access_token,
+)
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
 # Backward-compat alias used by get_access_token() call sites in this module.
 _verify_access_token = verify_ms_access_token
+
+
+def _tenant_id_for_result(result: dict | None, account: dict[str, Any] | None) -> str | None:
+    return trusted_tenant_id_from_token_result(result) or trusted_tenant_id_from_account(account)
 
 
 class OneDriveOAuth:
@@ -352,7 +360,10 @@ class OneDriveOAuth:
                 )
                 if result and "access_token" in result:
                     access_token = result["access_token"]
-                    _verify_access_token(access_token)  # raises JWTVerificationError on failure
+                    _verify_access_token(
+                        access_token,
+                        tenant_id=_tenant_id_for_result(result, self._current_account),
+                    )  # raises JWTVerificationError on tenant policy failure
                     logger.info("OneDrive get_access_token: Success with current account")
                     return access_token
                 else:
@@ -365,7 +376,12 @@ class OneDriveOAuth:
             result = self.app.acquire_token_silent(self.RESOURCE_SCOPES, account=None)
             if result and "access_token" in result:
                 access_token = result["access_token"]
-                _verify_access_token(access_token)  # raises JWTVerificationError on failure
+                accounts = self.app.get_accounts()
+                account = accounts[0] if accounts else None
+                _verify_access_token(
+                    access_token,
+                    tenant_id=_tenant_id_for_result(result, account),
+                )  # raises JWTVerificationError on tenant policy failure
                 logger.info("OneDrive get_access_token: Fallback success")
                 return access_token
 

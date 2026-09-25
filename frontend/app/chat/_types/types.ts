@@ -86,6 +86,7 @@ export interface ToolCallResult {
   score?: number | string;
   source_url?: string | null;
   text?: string;
+  highlights?: string[];
   embedding_model?: string;
   parser?: string;
   chunk_size?: number | string;

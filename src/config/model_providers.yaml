@@ -102,8 +102,8 @@ providers:
     display_name: IBM watsonx.ai
     badge: On-prem
     modes:
-      oss: false
-      on_prem: false
+      oss: true
+      on_prem: true
       saas: false # a cluster-hosted deployment has no place in multi-tenant SaaS
     # Checked against a Cloud Pak for Data 5.x cluster, which serves exactly
     # these two. Note the embedding id has no `-v2` suffix: `slate-30m-
@@ -165,7 +165,7 @@ providers:
     display_name: Azure OpenAI
     modes:
       oss: true
-      on_prem: false
+      on_prem: true
       saas: true
     # Azure serves the same OpenAI models, so it needs the same exclusions.
     # The plain name covers the regional ids (`eu/`, `us/`, `global/`) too.

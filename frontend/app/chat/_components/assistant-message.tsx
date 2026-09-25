@@ -338,6 +338,7 @@ export function AssistantMessage({
               activeCitedSource.item.text ||
               ""
             }
+            highlights={activeCitedSource.item.highlights}
             item={activeCitedSource.item}
             showViewDocument={showViewDocument}
           />

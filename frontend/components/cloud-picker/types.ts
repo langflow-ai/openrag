@@ -117,10 +117,16 @@ export interface IngestSettings {
   shared?: boolean;
 }
 
-/** Inline error message if chunk settings are invalid; otherwise null. */
+/** Inline error message if ingest or chunk settings are invalid; otherwise null. */
 export function getIngestChunkSettingsError(
-  settings: Pick<IngestSettings, "chunkSize" | "chunkOverlap">,
+  settings: Pick<
+    IngestSettings,
+    "embeddingModel" | "chunkSize" | "chunkOverlap"
+  >,
 ): string | null {
+  if (!settings.embeddingModel.trim()) {
+    return "Select an embedding model in Settings before ingesting files";
+  }
   if (settings.chunkSize < 1) {
     return "Chunk size must be at least 1";
   }

@@ -649,6 +649,24 @@ class SearchService:
             "size": limit,
         }
 
+        # Request keyword highlights from OpenSearch for non-wildcard queries.
+        # Highlights mark the exact query terms inside the returned text so
+        # callers can render them without a second pass over the chunk text.
+        # Skipped for wildcard/match_all queries where there is nothing to highlight.
+        if not is_wildcard_match_all:
+            search_body["highlight"] = {
+                "type": "unified",
+                "fields": {
+                    "text": {
+                        "fragment_size": 200,
+                        "number_of_fragments": 3,
+                        "pre_tags": ["<mark>"],
+                        "post_tags": ["</mark>"],
+                    }
+                },
+                "require_field_match": False,
+            }
+
         # Add score threshold only for hybrid (not meaningful for match_all)
         if not is_wildcard_match_all and score_threshold > 0:
             search_body["min_score"] = score_threshold
@@ -756,12 +774,17 @@ class SearchService:
         chunks = []
         for hit in results["hits"]["hits"]:
             source = hit.get("_source", {})
+            # OpenSearch returns highlight fragments as lists of strings.
+            # Flatten to a single list; absent when the field had no keyword match
+            # (e.g. pure KNN hit) or when this was a wildcard query.
+            raw_highlights: list[str] = hit.get("highlight", {}).get("text") or []
             chunks.append(
                 {
                     "filename": source.get("filename"),
                     "mimetype": source.get("mimetype"),
                     "page": source.get("page"),
                     "text": source.get("text"),
+                    "highlights": raw_highlights,
                     "score": hit.get("_score"),
                     "source_url": source.get("source_url"),
                     "owner": source.get("owner"),

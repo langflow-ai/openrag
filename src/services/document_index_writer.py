@@ -7,6 +7,7 @@ indexing chunks into the documents index.
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 import hashlib
 import json
@@ -19,6 +20,27 @@ from utils.group_acl import unique_acl_principal_labels, unique_acl_principals
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+# A bulk() call executes every item independently. Thus, if one item hits a
+# transient condition (cluster under load, shard unavailable) the whole response
+# gets errors: true even though the rest of the document chunks wrote
+# successfully. This makes the entire file look like it "failed" in task
+# counters even when it's actually indexed and visible. But every op is an
+# idempotent upsert so retries are safe — only the items still failing are
+# resent, not the whole body.
+_BULK_RETRYABLE_ERROR_TYPES = frozenset(
+    {
+        "es_rejected_execution_exception",
+        "process_cluster_event_timeout_exception",
+        "unavailable_shards_exception",
+        "timeout_exception",
+        # version_conflicts are intentionally excluded — they result from
+        # concurrent writes to the same document ID, not transient failures.
+        # Retrying would just hit the same conflict again and waste the budget.
+    }
+)
+_MAX_BULK_RETRIES = 2
+_BULK_RETRY_DELAY_SECONDS = 0.5
 
 
 @dataclass
@@ -140,7 +162,7 @@ class DocumentIndexWriter:
                 )
             )
 
-        result = await client.bulk(body=bulk_body, refresh=refresh)
+        result = await self._bulk_with_retry(client, bulk_body, refresh=refresh)
         self._raise_for_bulk_errors(result)
         if final:
             await self._refresh(index_name)
@@ -331,6 +353,88 @@ class DocumentIndexWriter:
         if "filesize" in normalized and "file_size" not in normalized:
             normalized["file_size"] = normalized["filesize"]
         return normalized
+
+    @staticmethod
+    def _item_error(item: Any) -> dict[str, Any] | None:
+        action = item.get("index") or item.get("create") or item.get("update") or item
+        return action.get("error")
+
+    @classmethod
+    def _item_error_is_retryable(cls, item: Any) -> bool:
+        error = cls._item_error(item)
+        # When there is no error the item succeeded — we treat it as retryable
+        # so a successful item never blocks a retry when this runs over the
+        # still_pending list (which only ever holds items that actually failed).
+        return not error or error.get("type") in _BULK_RETRYABLE_ERROR_TYPES
+
+    async def _bulk_with_retry(
+        self, client: Any, bulk_body: list[dict[str, Any]], *, refresh: bool | str
+    ) -> Any:
+        """Only retry the items that actually failed, not the whole bulk body.
+
+        Each entry in the bulk response lines up by position with the
+        action/document pairs we sent. If we resend everything on retry we
+        end up re-submitting pairs that already succeeded — and under heavy
+        load a different subset can fail each time, meaning the file still
+        gets marked failed even though every pair succeeded at some point.
+        Instead we track each pair by its original position and only rebuild
+        the retry body from the ones still failing.
+        """
+        if len(bulk_body) % 2 != 0:
+            raise ValueError(
+                f"bulk_body must contain action/document pairs; got {len(bulk_body)} elements"
+            )
+        pairs = [tuple(bulk_body[i : i + 2]) for i in range(0, len(bulk_body), 2)]
+        pending_indices = list(range(len(pairs)))
+        final_items: list[Any] = [None] * len(pairs)
+
+        for attempt in range(_MAX_BULK_RETRIES + 1):
+            retry_body = [part for i in pending_indices for part in pairs[i]]
+            result = await client.bulk(body=retry_body, refresh=refresh)
+            if not isinstance(result, dict):
+                return result
+
+            items = result.get("items", [])
+
+            # Guard against a bad or cut-short response — the server should
+            # return exactly one item for each request we sent. If the list
+            # is short or empty we can't safely match results back to the
+            # right slots, so we treat it as an error rather than leaving
+            # gaps filled with None.
+            if len(items) != len(pending_indices):
+                raise RuntimeError(
+                    f"OpenSearch bulk response returned {len(items)} items for "
+                    f"{len(pending_indices)} requests — malformed response"
+                )
+
+            still_pending = []
+            for original_index, item in zip(pending_indices, items, strict=True):
+                final_items[original_index] = item
+                if self._item_error(item):
+                    still_pending.append(original_index)
+
+            if not still_pending:
+                # Keep the top-level error flag as-is — if the server
+                # said errors: true but none of the individual items show
+                # an error, we still want to surface that rather than
+                # quietly calling it a success.
+                return {**result, "items": final_items, "errors": result.get("errors", False)}
+
+            all_retryable = all(
+                self._item_error_is_retryable(final_items[i]) for i in still_pending
+            )
+            if not all_retryable or attempt == _MAX_BULK_RETRIES:
+                return {**result, "items": final_items, "errors": True}
+
+            logger.warning(
+                "Retrying OpenSearch bulk write after transient error",
+                attempt=attempt + 1,
+                remaining_items=len(still_pending),
+            )
+            await asyncio.sleep(_BULK_RETRY_DELAY_SECONDS * (attempt + 1))
+            pending_indices = still_pending
+
+        return {"items": final_items, "errors": True}
 
     @staticmethod
     def _raise_for_bulk_errors(result: Any) -> None:

@@ -29,6 +29,9 @@ import {
 import { formatTaskTimestamp, parseTimestamp } from "@/lib/time-utils";
 import { cn } from "@/lib/utils";
 
+/** Stops both click and keyboard events from bubbling to parent handlers. */
+const stopEvent = (e: React.SyntheticEvent) => e.stopPropagation();
+
 interface TaskErrorContentProps {
   task: Task;
   mode?: "recent" | "past";
@@ -200,6 +203,15 @@ export function TaskErrorContent({
                   {!isExpanded && (
                     <p className={statusPillClassName}>{statusLabel}</p>
                   )}
+                  {/* biome-ignore lint/a11y/noStaticElementInteractions: presentation wrapper; stopPropagation only, no interactive semantics */}
+                  <div
+                    role="presentation"
+                    onClick={stopEvent}
+                    onKeyDown={stopEvent}
+                  >
+                    {openTaskDialogButton}
+                  </div>
+                  {/* biome-ignore lint/a11y/noStaticElementInteractions: stop-propagation wrapper */}
                   <span onClick={(event) => event.stopPropagation()}>
                     {headerEnd}
                   </span>
@@ -231,7 +243,6 @@ export function TaskErrorContent({
                   const componentCause = formatApiComponent(fileInfo.component);
                   const isWarning = isTaskFileWarning(fileInfo);
                   const isCancelled = isFileCancelled(fileInfo);
-                  const isFirst = index === 0;
 
                   return (
                     <div
@@ -270,7 +281,6 @@ export function TaskErrorContent({
                         >
                           {fileName}
                         </p>
-                        {isFirst && openTaskDialogButton}
                       </div>
                       <p
                         className={cn(

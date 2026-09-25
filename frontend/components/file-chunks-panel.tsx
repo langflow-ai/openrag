@@ -7,6 +7,7 @@ import {
   useFileScopedChunksQuery,
 } from "@/app/api/queries/useFileScopedChunksQuery";
 import type { ChunkResult } from "@/app/api/queries/useGetSearchQuery";
+import { HighlightedText } from "@/components/highlighted-text";
 import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -40,6 +41,8 @@ export interface FileChunksPanelProps {
   onFilterQueryChange?: (query: string) => void;
   /** Grow to fill parent height (ingest-review expand); replaces compact max-height. */
   fillHeight?: boolean;
+  /** Original search query from the knowledge page — used to fetch highlighted chunks. */
+  searchQuery?: string;
 }
 
 function chunkMatches(chunk: ChunkResult, needle: string): boolean {
@@ -130,7 +133,10 @@ function FileChunkCard({
             compact ? "text-xs" : "text-sm ml-1.5",
           )}
         >
-          {chunk.text}
+          <HighlightedText
+            highlights={chunk.highlights ?? []}
+            fallbackText={chunk.text}
+          />
         </blockquote>
       ) : (
         <p className="text-xs text-muted-foreground">
@@ -169,9 +175,10 @@ export function FileChunksPanel({
   filterQuery,
   onFilterQueryChange,
   fillHeight = false,
+  searchQuery,
 }: FileChunksPanelProps) {
-  const filenameQuery = useFileScopedChunksQuery(filename);
-  const documentQuery = useDocumentScopedChunksQuery(documentId);
+  const filenameQuery = useFileScopedChunksQuery(filename, searchQuery);
+  const documentQuery = useDocumentScopedChunksQuery(documentId, searchQuery);
   const { file, isFetching } = documentId ? documentQuery : filenameQuery;
   const allChunks = useMemo(() => {
     const sorted = [...(file?.chunks ?? [])].sort(compareChunksByDocumentOrder);

@@ -2,7 +2,7 @@
 
 import { ArrowLeft, Loader2, Search } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import {
   useDocumentScopedChunksQuery,
   useFileScopedChunksQuery,
@@ -17,13 +17,65 @@ import {
 } from "@/components/ui/tooltip";
 import { formatFileSize, getFileTypeLabel } from "@/lib/file-format";
 
+/** How long to wait after the user stops typing before firing a highlight fetch. */
+const HIGHLIGHT_DEBOUNCE_MS = 400;
+
 function ChunksPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const filename = searchParams.get("filename");
   const documentId = searchParams.get("document_id");
-  const filenameQuery = useFileScopedChunksQuery(filename);
-  const documentQuery = useDocumentScopedChunksQuery(documentId);
+  const webSourceId = searchParams.get("web_source_id");
+
+  // initialQuery comes from ?q= (set when navigating from the knowledge page).
+  const initialQuery = searchParams.get("q") ?? "";
+
+  // localQuery drives both the local chunk filter and (debounced) the highlight
+  // fetch. Initialised from the URL so arriving with ?q=fantasy football
+  // pre-fills the search box and shows highlights immediately.
+  const [localQuery, setLocalQuery] = useState(initialQuery);
+
+  // searchQuery is the debounced value sent to the highlight API. We keep it
+  // separate so typing doesn't hammer the backend on every keystroke.
+  const [searchQuery, setSearchQuery] = useState(initialQuery);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleQueryChange = useCallback(
+    (value: string) => {
+      setLocalQuery(value);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => {
+        setSearchQuery(value);
+        // Keep the URL in sync so the user can share/refresh the page.
+        const params = new URLSearchParams();
+        if (filename) params.set("filename", filename);
+        if (documentId) params.set("document_id", documentId);
+        if (webSourceId) params.set("web_source_id", webSourceId);
+        if (value.trim() && value.trim() !== "*") params.set("q", value.trim());
+        router.replace(`/knowledge/chunks?${params.toString()}`, {
+          scroll: false,
+        });
+      }, HIGHLIGHT_DEBOUNCE_MS);
+    },
+    [documentId, filename, router, webSourceId],
+  );
+
+  // Clean up any pending debounce on unmount.
+  useEffect(
+    () => () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    },
+    [],
+  );
+
+  const filenameQuery = useFileScopedChunksQuery(
+    filename,
+    searchQuery || undefined,
+  );
+  const documentQuery = useDocumentScopedChunksQuery(
+    documentId,
+    searchQuery || undefined,
+  );
   const { file: fileData } = documentId ? documentQuery : filenameQuery;
 
   if (!filename && !documentId) {
@@ -78,6 +130,9 @@ function ChunksPageContent() {
           <FileChunksPanel
             filename={filename || fileData?.filename || ""}
             documentId={documentId}
+            searchQuery={searchQuery || undefined}
+            filterQuery={localQuery}
+            onFilterQueryChange={handleQueryChange}
           />
         </div>
 
