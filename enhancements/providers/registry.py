@@ -75,6 +75,15 @@ def credentials_for(
     return dict(translate(stored))
 
 
+def runtime_kwargs_for(
+    enhancement: ModuleType,
+    stored: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Build optional non-serializable kwargs only at a LiteLLM call boundary."""
+    build = getattr(enhancement, "litellm_runtime_kwargs", None)
+    return dict(build(stored)) if callable(build) else {}
+
+
 @functools.cache
 def _accepts_kind(enhancement: ModuleType) -> bool:
     """Whether the module's `litellm_credentials` takes a `kind` keyword.

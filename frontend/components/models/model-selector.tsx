@@ -283,8 +283,13 @@ export function ModelSelector({
 
   return (
     <Popover open={open} onOpenChange={setOpen} modal={false}>
-      <PopoverTrigger asChild>
+      <PopoverTrigger
+        asChild
+        role="combobox"
+        aria-label={props["aria-label"] ?? placeholder}
+      >
         <Button
+          {...props}
           variant={variant}
           role="combobox"
           disabled={disabled || (allOptions.length === 0 && !allowCustomEntry)}
@@ -295,7 +300,6 @@ export function ModelSelector({
             hasError && "!border-destructive",
             className,
           )}
-          {...props}
         >
           {value ? (
             <div className="flex items-center gap-2">
