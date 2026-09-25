@@ -15,6 +15,7 @@ import pytest
 from models.processors import DUPLICATE_SKIP_ACTIONS, TaskProcessor
 from models.tasks import TaskStatus
 from services.task_service import TaskService
+from utils.filename_claims import INFLIGHT_CLAIM_WINNER_FAILED_ERROR
 
 
 class _RacingProcessor(TaskProcessor):
@@ -118,3 +119,98 @@ async def test_loser_stays_a_skipped_duplicate_when_the_winner_succeeds():
 
     skipped = next(t for t in upload_task.file_tasks.values() if t.status is TaskStatus.SKIPPED)
     assert skipped.result["reason"] == "duplicate_filename"
+
+
+class _HeldClaimProcessor(TaskProcessor):
+    """Claims the name, then holds it until released — so a second task can lose
+    the race while this one is still in flight."""
+
+    def __init__(self, *, claimed: asyncio.Event, may_finish: asyncio.Event):
+        super().__init__()
+        self.claimed = claimed
+        self.may_finish = may_finish
+
+    async def check_filename_exists(self, filename, opensearch_client, **kwargs):
+        return False
+
+    async def process_item(self, upload_task, item, file_task):
+        action = await self.resolve_duplicate_filename(
+            file_task.filename,
+            AsyncMock(),
+            replace=False,
+            owner_user_id="user-1",
+            claim_holder=self._claim_holder(upload_task, file_task),
+        )
+        assert action == "proceed"
+        self.claimed.set()
+        await self.may_finish.wait()
+        file_task.status = TaskStatus.FAILED
+        file_task.error = "The file appears corrupted or invalid and cannot be processed."
+        upload_task.failed_files += 1
+
+
+class _LosingProcessor(TaskProcessor):
+    async def check_filename_exists(self, filename, opensearch_client, **kwargs):
+        return False
+
+    async def process_item(self, upload_task, item, file_task):
+        action = await self.resolve_duplicate_filename(
+            file_task.filename,
+            AsyncMock(),
+            replace=False,
+            owner_user_id="user-1",
+            claim_holder=self._claim_holder(upload_task, file_task),
+        )
+        assert action in DUPLICATE_SKIP_ACTIONS
+        self.mark_duplicate_skipped(upload_task, file_task)
+
+
+@pytest.mark.asyncio
+async def test_a_loser_in_another_task_is_recovered_too():
+    """Claims are keyed by name and ownership, not by task, so the file that
+    loses can belong to a different task — two uploads in flight, or an upload
+    racing a connector sync. It has to be recovered there, in its own task."""
+    service = TaskService(document_service=Mock(), ingestion_timeout=5)
+    service._processing_semaphore = asyncio.Semaphore(4)
+
+    claimed = asyncio.Event()
+    may_finish = asyncio.Event()
+
+    winner_task_id = await service.create_custom_task(
+        "user-1",
+        ["/tmp/winner/report.pdf"],
+        _HeldClaimProcessor(claimed=claimed, may_finish=may_finish),
+        original_filenames={"/tmp/winner/report.pdf": "report.pdf"},
+    )
+    await asyncio.wait_for(claimed.wait(), timeout=5)
+
+    # A separate task, started while the first still holds the name.
+    loser_task_id = await service.create_custom_task(
+        "user-1",
+        ["/tmp/loser/report.pdf"],
+        _LosingProcessor(),
+        original_filenames={"/tmp/loser/report.pdf": "report.pdf"},
+    )
+    loser_task = service.task_store["user-1"][loser_task_id]
+    while loser_task.processed_files < 1:
+        await asyncio.sleep(0)
+
+    # The loser is already finalized as a successful skip before the winner fails.
+    loser_file = loser_task.file_tasks["/tmp/loser/report.pdf"]
+    assert loser_file.status is TaskStatus.SKIPPED
+    assert loser_task.successful_files == 1
+
+    may_finish.set()
+    await asyncio.gather(*list(service.background_tasks), return_exceptions=True)
+
+    assert (
+        service.task_store["user-1"][winner_task_id].file_tasks["/tmp/winner/report.pdf"].status
+        is TaskStatus.FAILED
+    )
+
+    assert loser_file.status is TaskStatus.FAILED
+    assert loser_file.error == INFLIGHT_CLAIM_WINNER_FAILED_ERROR
+    assert loser_task.successful_files == 0
+    assert loser_task.failed_files == 1
+    # The loser's task finished before the reversal; its accounting stays whole.
+    assert loser_task.processed_files == loser_task.total_files

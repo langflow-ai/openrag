@@ -611,9 +611,21 @@ class TaskService:
 
         return f"{hours}h {mins}m {secs}s"
 
-    async def _fail_files_stranded_by(
-        self, upload_task: UploadTask, task_id: str, refused_holders: set[str]
-    ) -> None:
+    def _find_upload_task(self, task_id: str) -> UploadTask | None:
+        """The task with this id, whichever user's store holds it.
+
+        A claim conflict is not confined to one task: the registry keys names by
+        ownership scope, not by task, so a file in one task can lose a name to a
+        file in another — two uploads in flight at once, or an upload racing a
+        connector sync.
+        """
+        for tasks in self.task_store.values():
+            found = tasks.get(task_id)
+            if found is not None:
+                return found
+        return None
+
+    async def _fail_files_stranded_by(self, refused_holders: set[str]) -> None:
         """Fail the files that were skipped for a name this one never indexed.
 
         The duplicate gate decides a losing file's outcome the moment it loses
@@ -628,12 +640,24 @@ class TaskService:
         retry, which re-runs the gate and resolves correctly either way: it
         ingests if the name is genuinely free, and skips again as a duplicate if
         something else holds it by then.
+
+        Each loser is corrected inside its own task, which may not be this one
+        and may already have finished. That stays consistent: processed_files is
+        untouched, one successful file becomes a failed one under that task's
+        lock, and a COMPLETED task carrying failures is the ordinary shape retry
+        operates on — it refuses only while a task is still RUNNING. The
+        completion event for such a task was emitted with the earlier counts,
+        which leaves a stale statistic behind rather than inconsistent state.
         """
-        prefix = f"{task_id}:"
         for holder in refused_holders:
-            if not holder.startswith(prefix):
+            loser_task_id, _, file_key = holder.partition(":")
+            if not file_key:
                 continue
-            stranded = upload_task.file_tasks.get(holder[len(prefix) :])
+            owning_task = self._find_upload_task(loser_task_id)
+            if owning_task is None:
+                # Task already evicted from the store; nothing left to correct.
+                continue
+            stranded = owning_task.file_tasks.get(file_key)
             if stranded is None or stranded.status != TaskStatus.SKIPPED:
                 continue
             # Only the in-flight skip is ours to reverse; a file skipped against
@@ -645,13 +669,14 @@ class TaskService:
             stranded.error = INFLIGHT_CLAIM_WINNER_FAILED_ERROR
             stranded.result = None
             stranded.updated_at = time.time()
-            async with self._get_task_lock(task_id):
-                if upload_task.successful_files > 0:
-                    upload_task.successful_files -= 1
-                upload_task.failed_files += 1
+            async with self._get_task_lock(loser_task_id):
+                if owning_task.successful_files > 0:
+                    owning_task.successful_files -= 1
+                owning_task.failed_files += 1
+                owning_task.updated_at = time.time()
             logger.info(
                 "Reversed an in-flight duplicate skip after the ingesting file failed",
-                task_id=task_id,
+                task_id=loser_task_id,
                 file_path=stranded.file_path,
                 filename=stranded.filename,
             )
@@ -810,7 +835,7 @@ class TaskService:
                         # here, including the ones that never claimed anything.
                         refused = filename_claims.release(claim_holder(task_id, item_key))
                         if refused and file_task.status == TaskStatus.FAILED:
-                            await self._fail_files_stranded_by(upload_task, task_id, refused)
+                            await self._fail_files_stranded_by(refused)
                         file_task.updated_at = time.time()
                         # Only increment processed_files if the file reached a terminal state
                         # This prevents counter inconsistency on cancellation.
