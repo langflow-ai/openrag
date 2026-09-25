@@ -377,6 +377,18 @@ def is_ingest_preview_flag_enabled() -> bool:
     return raw in ("true", "1", "yes", "on")
 
 
+def is_url_connector_enabled() -> bool:
+    """Feature flag for the managed public-website connector.
+
+    The URL crawler is an opt-in feature while it is being rolled out. Read the
+    environment per-call so test and runtime overrides are reflected by the
+    connector availability, settings response, and route guard without relying
+    on a value captured at module import time.
+    """
+    raw = os.getenv("OPENRAG_URL_CONNECTOR_ENABLED", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
 def is_workspace_oauth_overrides_enabled() -> bool:
     """Feature flag for workspace-level OAuth connector credential overrides.
 

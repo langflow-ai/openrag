@@ -2,6 +2,9 @@
 
 from typing import Any
 
+from fastapi import Depends
+
+from config.settings import is_url_connector_enabled
 from connectors.base import BaseConnector
 
 
@@ -15,52 +18,74 @@ class URLConnector(BaseConnector):
 
     @classmethod
     def is_available(cls, manager, user_id: str | None = None) -> bool:
-        return True
+        return is_url_connector_enabled()
 
     @classmethod
     def register_routes(cls, app) -> None:
+        if not is_url_connector_enabled():
+            return
+
         from .api import (
             create_source,
             delete_page,
             delete_source,
             get_source,
             list_sources,
+            require_url_connector_enabled,
             sync_page,
             sync_source,
         )
 
+        route_dependencies = [Depends(require_url_connector_enabled)]
+
         app.add_api_route(
-            "/connectors/url/sources", create_source, methods=["POST"], tags=["internal"]
+            "/connectors/url/sources",
+            create_source,
+            methods=["POST"],
+            tags=["internal"],
+            dependencies=route_dependencies,
         )
         app.add_api_route(
-            "/connectors/url/sources", list_sources, methods=["GET"], tags=["internal"]
+            "/connectors/url/sources",
+            list_sources,
+            methods=["GET"],
+            tags=["internal"],
+            dependencies=route_dependencies,
         )
         app.add_api_route(
-            "/connectors/url/sources/{source_id}", get_source, methods=["GET"], tags=["internal"]
+            "/connectors/url/sources/{source_id}",
+            get_source,
+            methods=["GET"],
+            tags=["internal"],
+            dependencies=route_dependencies,
         )
         app.add_api_route(
             "/connectors/url/sources/{source_id}/sync",
             sync_source,
             methods=["POST"],
             tags=["internal"],
+            dependencies=route_dependencies,
         )
         app.add_api_route(
             "/connectors/url/sources/{source_id}",
             delete_source,
             methods=["DELETE"],
             tags=["internal"],
+            dependencies=route_dependencies,
         )
         app.add_api_route(
             "/connectors/url/sources/{source_id}/pages/{page_id}/sync",
             sync_page,
             methods=["POST"],
             tags=["internal"],
+            dependencies=route_dependencies,
         )
         app.add_api_route(
             "/connectors/url/sources/{source_id}/pages/{page_id}",
             delete_page,
             methods=["DELETE"],
             tags=["internal"],
+            dependencies=route_dependencies,
         )
 
     async def authenticate(self) -> bool:

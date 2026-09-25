@@ -8,6 +8,7 @@ import {
   type Connector as QueryConnector,
   useGetConnectorsQuery,
 } from "@/app/api/queries/useGetConnectorsQuery";
+import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { DeleteConfirmationDialog } from "@/components/delete-confirmation-dialog";
 import { useAuth } from "@/contexts/auth-context";
 import { useBrand } from "@/contexts/brand-context";
@@ -38,6 +39,10 @@ export default function ConnectorCards() {
     useGetConnectorsQuery({
       enabled: isAuthenticated || isNoAuthMode,
     });
+  const { data: apiSettings } = useGetSettingsQuery({
+    enabled: isAuthenticated || isNoAuthMode,
+  });
+  const showUrlConnector = apiSettings?.show_url_connector ?? false;
 
   const connectMutation = useConnectConnectorMutation();
   const disconnectMutation = useDisconnectConnectorMutation();
@@ -55,6 +60,9 @@ export default function ConnectorCards() {
   }, []);
 
   const connectors = queryConnectors.reduce<Connector[]>((acc, c) => {
+    if (c.type === "url" && !showUrlConnector) {
+      return acc;
+    }
     // Keep OAuth connectors regardless of availability
     // Only hide credential-based connectors when unavailable
     if (c.requiresOAuth || c.available !== false) {

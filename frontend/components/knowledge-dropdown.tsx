@@ -13,6 +13,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { File as SearchFile } from "@/app/api/queries/useGetSearchQuery";
+import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import { DuplicateHandlingDialog } from "@/components/duplicate-handling-dialog";
 import { IngestReviewDialog } from "@/components/ingest-review";
@@ -101,7 +102,11 @@ const FolderIconWithColor = ({ className }: { className?: string }) => (
 );
 
 export function KnowledgeDropdown() {
-  const { runMode } = useAuth();
+  const { runMode, isAuthenticated, isNoAuthMode } = useAuth();
+  const { data: apiSettings } = useGetSettingsQuery({
+    enabled: isAuthenticated || isNoAuthMode,
+  });
+  const showUrlConnector = apiSettings?.show_url_connector ?? false;
   const { supportedExtensions, supportedExtensionSet } =
     useSupportedFileTypes();
   const { can } = usePermissions();
@@ -291,10 +296,16 @@ export function KnowledgeDropdown() {
 
   useEffect(() => {
     setMounted(true);
-    if (new URLSearchParams(window.location.search).get("add") === "url") {
+  }, []);
+
+  useEffect(() => {
+    if (
+      showUrlConnector &&
+      new URLSearchParams(window.location.search).get("add") === "url"
+    ) {
       setUrlDialogOpen(true);
     }
-  }, []);
+  }, [showUrlConnector]);
 
   const handleFileUpload = () => {
     fileInputRef.current?.click();
@@ -859,11 +870,15 @@ export function KnowledgeDropdown() {
       icon: FolderIconWithColor,
       onClick: () => folderInputRef.current?.click(),
     },
-    {
-      label: "URL",
-      icon: KnowledgeUrlIcon,
-      onClick: () => setUrlDialogOpen(true),
-    },
+    ...(showUrlConnector
+      ? [
+          {
+            label: "URL",
+            icon: KnowledgeUrlIcon,
+            onClick: () => setUrlDialogOpen(true),
+          },
+        ]
+      : []),
     ...bucketConnectorItems,
     ...cloudConnectorItems,
   ];
@@ -1054,15 +1069,17 @@ export function KnowledgeDropdown() {
         taskIds={preview.taskIds}
         previewFiles={preview.files}
       />
-      <UrlSourceDialog
-        open={urlDialogOpen}
-        onOpenChange={setUrlDialogOpen}
-        onCreated={(taskId) => {
-          if (taskId) addTask(taskId, { connectorType: "url" });
-          void queryClient.invalidateQueries({ queryKey: ["listFiles"] });
-          void refetchTasks();
-        }}
-      />
+      {showUrlConnector && (
+        <UrlSourceDialog
+          open={urlDialogOpen}
+          onOpenChange={setUrlDialogOpen}
+          onCreated={(taskId) => {
+            if (taskId) addTask(taskId, { connectorType: "url" });
+            void queryClient.invalidateQueries({ queryKey: ["listFiles"] });
+            void refetchTasks();
+          }}
+        />
+      )}
     </>
   );
 }

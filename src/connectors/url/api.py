@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from config.settings import is_url_connector_enabled
 from db.models.website_source import WebsitePage, WebsiteSource
 from dependencies import get_current_user, get_db_session, get_task_service, require_permission
 from session_manager import User
@@ -22,6 +23,12 @@ from .projection import (
     delete_source_chunks,
     delete_source_projection,
 )
+
+
+def require_url_connector_enabled() -> None:
+    """Reject URL source calls while the managed connector is disabled."""
+    if not is_url_connector_enabled():
+        raise HTTPException(status_code=404, detail="Website connector is not enabled")
 
 
 class CreateSourceBody(BaseModel):

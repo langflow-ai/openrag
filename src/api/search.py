@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from config.settings import is_url_connector_enabled
 from db.models.website_source import WebsitePage, WebsiteSource
 from dependencies import (
     get_db_session,
@@ -119,6 +120,9 @@ async def search(
 ):
     """Search for documents"""
     try:
+        if body.resultMode == "website_pages" and not is_url_connector_enabled():
+            raise HTTPException(status_code=404, detail="Website connector is not enabled")
+
         jwt_token = user.jwt_token
 
         logger.debug(
