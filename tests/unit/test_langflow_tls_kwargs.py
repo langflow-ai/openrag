@@ -1,8 +1,6 @@
 import ssl
 from unittest.mock import patch
 
-import pytest
-
 from config import settings
 
 
