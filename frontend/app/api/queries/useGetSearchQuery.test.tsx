@@ -264,6 +264,33 @@ describe("useGetSearchQuery", () => {
       expect(files[1]).toMatchObject({ filename: "b.pdf", chunkCount: 1 });
     });
 
+    it("uses the backend chunk count for a website page", async () => {
+      serveSearch({
+        results: [
+          chunk({
+            filename: "Guide",
+            document_id: "page-a",
+            chunk_count: 12,
+          }),
+          chunk({
+            filename: "Guide",
+            document_id: "page-a",
+            chunk_count: 12,
+          }),
+        ],
+      });
+
+      const { result } = await runSearch("", queryData(), {
+        groupBy: "document_id",
+        resultMode: "website_pages",
+      });
+
+      expect(result.current.data?.files[0]).toMatchObject({
+        document_id: "page-a",
+        chunkCount: 12,
+      });
+    });
+
     it("falls back to source_url, then to Untitled source (#1609)", async () => {
       serveSearch({
         results: [

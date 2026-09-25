@@ -63,7 +63,7 @@ class WebsiteSourceProcessor(TaskProcessor):
             if not source_is_established:
                 source_is_established = (
                     await session.execute(
-                        select(WebsitePage.id)
+                        select(col(WebsitePage.id))
                         .where(col(WebsitePage.web_source_id) == source.id)
                         .limit(1)
                     )

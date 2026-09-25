@@ -65,6 +65,12 @@ export function useWebsitePagesTable(
           return page.size;
         case "chunkCount":
           return page.chunkCount ?? 0;
+        case "web_page_depth":
+          return page.web_page_depth ?? 0;
+        case "embedding_model":
+          return page.embedding_model ?? "";
+        case "embedding_dimensions":
+          return page.embedding_dimensions ?? 0;
         case "status":
           return statusRank[page.status || "active"] ?? 99;
         case "source_url":

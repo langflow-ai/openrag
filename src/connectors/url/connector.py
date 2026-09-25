@@ -5,7 +5,7 @@ from typing import Any
 from fastapi import Depends
 
 from config.settings import is_url_connector_enabled
-from connectors.base import BaseConnector
+from connectors.base import BaseConnector, ConnectorDocument
 
 
 class URLConnector(BaseConnector):
@@ -96,3 +96,12 @@ class URLConnector(BaseConnector):
 
     async def list_files(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
         raise NotImplementedError("URL sources use /connectors/url/sources")
+
+    async def get_file_content(self, file_id: str) -> ConnectorDocument:
+        raise NotImplementedError("URL sources use /connectors/url/sources")
+
+    async def handle_webhook(self, payload: dict[str, Any]) -> list[str]:
+        raise NotImplementedError("URL sources do not use webhooks")
+
+    async def cleanup_subscription(self, subscription_id: str) -> bool:
+        raise NotImplementedError("URL sources do not use subscriptions")
