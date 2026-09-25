@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { backendFetch, getBackendBaseUrl } from "@/lib/backend-fetch";
 import {
   backendProxyDuration,
   backendProxyErrors,
   backendProxyTotal,
   normalizePath,
 } from "@/lib/metrics";
-import { backendFetch, getBackendBaseUrl } from "@/lib/backend-fetch";
 
 function getRequestId(request: NextRequest): string {
   return request.headers.get("x-request-id") || crypto.randomUUID();
