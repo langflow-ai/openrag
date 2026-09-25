@@ -10,6 +10,10 @@ import {
   useSyncConnector,
   useSyncConnectorPreview,
 } from "@/app/api/mutations/useSyncConnector";
+import {
+  useDeleteWebsiteSourcePageMutation,
+  useSyncWebsiteSourceMutation,
+} from "@/app/api/mutations/useWebsiteSourceMutation";
 import { useGetConnectorsQuery } from "@/app/api/queries/useGetConnectorsQuery";
 import {
   DropdownMenu,
@@ -55,6 +59,8 @@ export const KnowledgeActionsDropdown = ({
   const { refreshTasks } = useTask();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const deleteDocumentMutation = useDeleteDocument();
+  const syncWebsiteSourceMutation = useSyncWebsiteSourceMutation();
+  const deleteWebsiteSourceMutation = useDeleteWebsiteSourcePageMutation();
   const syncConnectorMutation = useSyncConnector();
   const syncPreviewMutation = useSyncConnectorPreview();
   const [syncDialogOpen, setSyncDialogOpen] = useState(false);
@@ -133,25 +139,19 @@ export const KnowledgeActionsDropdown = ({
 
   const syncWebsite = async () => {
     if (!webSourceId) return;
-    const response = await fetch(
-      `/api/connectors/url/sources/${webSourceId}/sync`,
-      { method: "POST" },
-    );
-    if (!response.ok) {
-      toast.error("Could not start website sync");
-      return;
+    try {
+      await syncWebsiteSourceMutation.mutateAsync({ sourceId: webSourceId });
+      toast.success("Website sync started");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Could not start website sync",
+      );
     }
-    toast.success("Website sync started");
-    await refreshTasks();
   };
 
   const deleteWebsite = async () => {
     if (!webSourceId) return;
-    const response = await fetch(`/api/connectors/url/sources/${webSourceId}`, {
-      method: "DELETE",
-    });
-    if (!response.ok) throw new Error("Could not delete website source");
-    await refreshTasks();
+    await deleteWebsiteSourceMutation.mutateAsync({ sourceId: webSourceId });
   };
 
   return (
@@ -167,6 +167,7 @@ export const KnowledgeActionsDropdown = ({
             <>
               <DropdownMenuItem
                 className="text-primary focus:text-primary cursor-pointer"
+                disabled={syncWebsiteSourceMutation.isPending}
                 onClick={syncWebsite}
               >
                 <RefreshCw className="mr-2 h-4 w-4" />
@@ -286,7 +287,10 @@ export const KnowledgeActionsDropdown = ({
         }
         confirmText="Delete"
         onConfirm={webSourceId ? deleteWebsite : handleDelete}
-        isLoading={deleteDocumentMutation.isPending}
+        isLoading={
+          deleteDocumentMutation.isPending ||
+          deleteWebsiteSourceMutation.isPending
+        }
       >
         {!webSourceId && (
           <p className="my-2">

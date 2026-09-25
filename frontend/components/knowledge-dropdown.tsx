@@ -1076,7 +1076,6 @@ export function KnowledgeDropdown() {
           onCreated={(taskId) => {
             if (taskId) addTask(taskId, { connectorType: "url" });
             void queryClient.invalidateQueries({ queryKey: ["listFiles"] });
-            void refetchTasks();
           }}
         />
       )}

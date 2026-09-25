@@ -3,15 +3,19 @@
 import { type ColDef } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { toast } from "sonner";
+import {
+  useDeleteWebsiteSourcePageMutation,
+  useSyncWebsiteSourceMutation,
+} from "@/app/api/mutations/useWebsiteSourceMutation";
 import type { File } from "@/app/api/queries/useGetSearchQuery";
+import { useGetWebsiteSourceQuery } from "@/app/api/queries/useGetWebsiteSourceQuery";
 import { KnowledgeDataTable } from "@/components/knowledge-data-table";
 import { KnowledgePaginationFooter } from "@/components/knowledge-pagination-footer";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useWebsitePageColumns } from "./website-pages/use-website-page-columns";
 import { useWebsitePagesTable } from "./website-pages/use-website-pages-table";
-import { useWebsiteSource } from "./website-pages/use-website-source";
 import { WebsitePagesHeader } from "./website-pages/website-pages-header";
 import { WebsitePagesToolbar } from "./website-pages/website-pages-toolbar";
 
@@ -23,7 +27,8 @@ export function WebsitePagesView({ sourceId }: { sourceId: string }) {
   if (!cursorCacheRef.current) {
     cursorCacheRef.current = new Map();
   }
-  const { source, sourceLoading, reload } = useWebsiteSource(sourceId);
+  const { data: source, isLoading: sourceLoading } =
+    useGetWebsiteSourceQuery(sourceId);
   const {
     currentPage,
     currentPageSize,
@@ -31,37 +36,36 @@ export function WebsitePagesView({ sourceId }: { sourceId: string }) {
     isPagesLoading,
     onSortChanged,
     pages,
-    refetchPages,
     search,
     setCurrentPage,
     setCurrentPageSize,
     total,
     updateSearch,
   } = useWebsitePagesTable(sourceId, gridRef);
-  const [isSyncing, setIsSyncing] = useState(false);
+  const syncWebsiteSourceMutation = useSyncWebsiteSourceMutation();
+  const deleteWebsiteSourcePageMutation = useDeleteWebsiteSourcePageMutation();
 
   const action = useCallback(
-    async (url: string, method = "POST") => {
-      const response = await fetch(url, { method });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        toast.error(data.detail || data.error || "Action failed");
-        return;
+    async (pageId?: string, operation: "sync" | "delete" = "sync") => {
+      try {
+        if (operation === "delete") {
+          await deleteWebsiteSourcePageMutation.mutateAsync({
+            sourceId,
+            pageId,
+          });
+          toast.success("Page disabled");
+        } else {
+          await syncWebsiteSourceMutation.mutateAsync({ sourceId, pageId });
+          toast.success("Sync started");
+        }
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Action failed");
       }
-      toast.success(method === "DELETE" ? "Page disabled" : "Sync started");
-      void Promise.all([reload(), refetchPages()]);
     },
-    [refetchPages, reload],
+    [deleteWebsiteSourcePageMutation, sourceId, syncWebsiteSourceMutation],
   );
 
-  const syncSource = async () => {
-    setIsSyncing(true);
-    try {
-      await action(`/api/connectors/url/sources/${sourceId}/sync`);
-    } finally {
-      setIsSyncing(false);
-    }
-  };
+  const syncSource = () => action();
 
   const defaultColDef = useMemo<ColDef<File>>(
     () => ({
@@ -97,7 +101,7 @@ export function WebsitePagesView({ sourceId }: { sourceId: string }) {
         search={search}
         onSearch={updateSearch}
         isCloudBrand={isCloudBrand}
-        isSyncing={isSyncing}
+        isSyncing={syncWebsiteSourceMutation.isPending}
         onSync={syncSource}
       />
       <KnowledgeDataTable

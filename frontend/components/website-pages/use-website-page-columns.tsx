@@ -22,7 +22,7 @@ export function useWebsitePageColumns({
 }: {
   sourceId: string;
   isCloudBrand: boolean;
-  onAction(url: string, method?: string): Promise<void>;
+  onAction(pageId?: string, operation?: "sync" | "delete"): Promise<void>;
 }) {
   const router = useRouter();
   const viewChunks = useCallback(
@@ -160,22 +160,13 @@ export function useWebsitePageColumns({
                   View chunks
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  onClick={() =>
-                    onAction(
-                      `/api/connectors/url/sources/${sourceId}/pages/${data.web_page_id}/sync`,
-                    )
-                  }
+                  onClick={() => onAction(data.web_page_id, "sync")}
                 >
                   Re-sync page
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   className="text-destructive focus:text-destructive"
-                  onClick={() =>
-                    onAction(
-                      `/api/connectors/url/sources/${sourceId}/pages/${data.web_page_id}`,
-                      "DELETE",
-                    )
-                  }
+                  onClick={() => onAction(data.web_page_id, "delete")}
                 >
                   Delete page
                 </DropdownMenuItem>
@@ -190,6 +181,6 @@ export function useWebsitePageColumns({
         },
       },
     ],
-    [isCloudBrand, onAction, sourceId, viewChunks],
+    [isCloudBrand, onAction, viewChunks],
   );
 }

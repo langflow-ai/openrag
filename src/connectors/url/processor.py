@@ -226,7 +226,7 @@ class WebsiteSourceProcessor(TaskProcessor):
             succeeded = successful_pages > 0
             source.status = "active" if succeeded else "failed"
             source.last_error = result.reason if succeeded else failure_reason
-            if result.complete and succeeded:
+            if succeeded:
                 source.last_successful_sync_at = datetime.now(UTC)
             source.updated_at = datetime.now(UTC)
             run.completed, run.capped, run.error, run.finished_at = (

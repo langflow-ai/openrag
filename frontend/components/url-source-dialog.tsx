@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import { useCreateWebsiteSourceMutation } from "@/app/api/mutations/useWebsiteSourceMutation";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -34,8 +35,8 @@ export function UrlSourceDialog({
 }) {
   const [step, setStep] = useState<UrlSourceDialogStep>(1);
   const [advanced, setAdvanced] = useState(false);
-  const [pending, setPending] = useState(false);
   const [form, setForm] = useState<UrlSourceForm>(INITIAL_URL_SOURCE_FORM);
+  const createWebsiteSourceMutation = useCreateWebsiteSourceMutation();
 
   const update = <K extends keyof UrlSourceForm>(
     key: K,
@@ -53,19 +54,10 @@ export function UrlSourceDialog({
   };
 
   const submit = async () => {
-    setPending(true);
     try {
-      const response = await fetch("/api/connectors/url/sources", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(createUrlSourcePayload(form)),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(
-          data.detail || data.error || "Could not create website source",
-        );
-      }
+      const data = await createWebsiteSourceMutation.mutateAsync(
+        createUrlSourcePayload(form),
+      );
       onCreated?.(data.last_task_id);
       close(false);
       toast.success("Website crawl started");
@@ -73,8 +65,6 @@ export function UrlSourceDialog({
       toast.error("Could not start website crawl", {
         description: error instanceof Error ? error.message : "Unknown error",
       });
-    } finally {
-      setPending(false);
     }
   };
 
@@ -111,10 +101,14 @@ export function UrlSourceDialog({
             Cancel
           </Button>
           <Button
-            disabled={!valid || pending}
+            disabled={!valid || createWebsiteSourceMutation.isPending}
             onClick={() => (step === 1 ? setStep(2) : submit())}
           >
-            {pending ? "Starting…" : step === 1 ? "Continue" : "Ingest URL"}
+            {createWebsiteSourceMutation.isPending
+              ? "Starting…"
+              : step === 1
+                ? "Continue"
+                : "Ingest URL"}
           </Button>
         </div>
       </DialogContent>

@@ -322,7 +322,6 @@ async def test_always_reingest_processes_an_unchanged_page(monkeypatch):
         starting_url="https://docs.example.com/",
         crawl_settings={"seed_url": "https://docs.example.com/"},
         change_detection="always_reingest",
-        last_successful_sync_at=datetime.now(UTC),
     )
     existing_page = WebsitePage(
         id="page-5",
@@ -355,8 +354,8 @@ async def test_always_reingest_processes_an_unchanged_page(monkeypatch):
                         ),
                     ),
                 ),
-                complete=True,
-                capped=False,
+                complete=False,
+                capped=True,
             )
         ),
     )
@@ -382,4 +381,5 @@ async def test_always_reingest_processes_an_unchanged_page(monkeypatch):
 
     processor.process_document_standard.assert_awaited_once()
     assert existing_page.status == "active"
+    assert source.last_successful_sync_at is not None
     assert file_task.status is TaskStatus.COMPLETED

@@ -1,15 +1,16 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, vi } from "vitest";
 import { server } from "@/test-utils/msw/server";
+import { renderWithProviders } from "@/test-utils/render";
 import { UrlSourceDialog } from "./url-source-dialog";
 
 describe("UrlSourceDialog", () => {
   it("switches between source and re-sync steps from the dialog header", async () => {
     const user = userEvent.setup();
 
-    render(<UrlSourceDialog open onOpenChange={vi.fn()} />);
+    renderWithProviders(<UrlSourceDialog open onOpenChange={vi.fn()} />);
 
     const sourceTab = screen.getByRole("button", { name: "Source & scope" });
     const resyncTab = screen.getByRole("button", { name: "Re-sync behavior" });
@@ -48,7 +49,7 @@ describe("UrlSourceDialog", () => {
       }),
     );
 
-    render(
+    renderWithProviders(
       <UrlSourceDialog open onOpenChange={vi.fn()} onCreated={onCreated} />,
     );
 
