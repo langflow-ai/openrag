@@ -41,6 +41,12 @@ const catalog = {
           field_type: "text",
         },
         {
+          key: "project_id",
+          label: "Project ID",
+          required: false,
+          field_type: "text",
+        },
+        {
           key: "ssl_verify",
           label: "TLS certificate verification",
           required: false,
@@ -54,6 +60,69 @@ const catalog = {
 };
 
 describe("ProviderSettingsDialog watsonx.ai on-prem TLS", () => {
+  it("shows TLS verification before the deployment scope fields", async () => {
+    const settings = makeSettings({
+      providers: {
+        custom: {
+          watsonx_onprem: {
+            configured: true,
+            auth_method: "username_api_key",
+            credential_values: {
+              api_base: "https://cpd.example.com",
+              username: "cpd-user",
+              ssl_verify: "true",
+            },
+            secret_fields: ["api_key"],
+          },
+        },
+      },
+    });
+
+    renderWithProviders(
+      <ProviderSettingsDialog
+        provider="watsonx_onprem"
+        displayName="IBM watsonx.ai (on-prem)"
+        open
+        setOpen={() => {}}
+      />,
+      {
+        providers: ["auth", "tooltip"],
+        handlers: [
+          http.get("/api/settings", () => HttpResponse.json(settings)),
+          http.get("/api/models/catalog", () => HttpResponse.json(catalog)),
+          http.post("/api/models/watsonx_onprem/spaces", () =>
+            HttpResponse.json({ spaces: [] }),
+          ),
+          http.post("/api/models/openai", () =>
+            HttpResponse.json({ models: [], embedding_models: [] }),
+          ),
+        ],
+      },
+    );
+
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole("button", { name: "Advanced settings" }),
+    );
+
+    const tlsToggle = screen.getByRole("switch", {
+      name: "Verify TLS certificates",
+    });
+    const deploymentSpace = screen.getByRole("combobox", {
+      name: "Deployment space ID",
+    });
+    const projectId = screen.getByRole("textbox", { name: "Project ID" });
+
+    expect(
+      tlsToggle.compareDocumentPosition(deploymentSpace) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      tlsToggle.compareDocumentPosition(projectId) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it("submits the advanced TLS policy with only the on-prem provider", async () => {
     let submitted: UpdateSettingsRequest | undefined;
     const settings = makeSettings({
