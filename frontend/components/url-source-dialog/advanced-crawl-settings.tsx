@@ -1,6 +1,13 @@
-import { Check } from "lucide-react";
+import { Info } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { UpdateUrlSourceForm, UrlSourceForm } from "./form";
 
 export function AdvancedCrawlSettings({
@@ -41,10 +48,31 @@ export function AdvancedCrawlSettings({
           placeholder="/archive/ (one per line)"
         />
         <div className="space-y-2">
-          <Label>Change detection</Label>
-          <div className="flex h-10 items-center bg-muted px-3 text-sm">
-            Normalized content hash
-          </div>
+          <Label htmlFor="change-detection">Change detection</Label>
+          <Select
+            value={form.change_detection}
+            onValueChange={(value) =>
+              onUpdate(
+                "change_detection",
+                value as UrlSourceForm["change_detection"],
+              )
+            }
+          >
+            <SelectTrigger id="change-detection">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="normalized_content_hash">
+                Normalized content hash
+              </SelectItem>
+              <SelectItem value="always_reingest">Always re-ingest</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            {form.change_detection === "always_reingest"
+              ? "Re-ingest every returned page, even if its content has not changed."
+              : "Re-ingest only when normalized page content changes."}
+          </p>
         </div>
         {(
           [
@@ -75,7 +103,7 @@ export function AdvancedCrawlSettings({
         ))}
       </div>
       <div className="flex gap-3 border border-green-500/40 bg-green-500/10 p-4 text-sm">
-        <Check className="size-5 shrink-0 text-green-600" />
+        <Info className="size-5 shrink-0 text-green-600" />
         <p>
           <strong>Always-on safety</strong>
           <br />

@@ -18,7 +18,7 @@ export function ResyncBehaviorStep({
         </p>
       </div>
       <div className="space-y-3">
-        <div>
+        <div className="space-y-1.5">
           <Label>RE-SYNC BEHAVIOR</Label>
           <p className="text-sm text-muted-foreground">
             When a scheduled or manual re-crawl runs, which pages get ingested?
@@ -40,7 +40,7 @@ export function ResyncBehaviorStep({
         </div>
       </div>
       <div className="space-y-3">
-        <div>
+        <div className="space-y-1.5">
           <Label>REMOVED PAGES</Label>
           <p className="text-sm text-muted-foreground">
             What should happen to pages that disappear from the site?

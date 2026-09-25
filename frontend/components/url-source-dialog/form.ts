@@ -1,4 +1,5 @@
 export type Scope = "path" | "page" | "site";
+export type ChangeDetection = "normalized_content_hash" | "always_reingest";
 
 export type UrlSourceForm = {
   name: string;
@@ -12,6 +13,7 @@ export type UrlSourceForm = {
   max_depth: number;
   max_downloaded_mb: number;
   max_crawl_minutes: number;
+  change_detection: ChangeDetection;
   resync_behavior: "full" | "root";
   removed_page_behavior: "retain" | "delete";
 };
@@ -33,6 +35,7 @@ export const INITIAL_URL_SOURCE_FORM: UrlSourceForm = {
   max_depth: 4,
   max_downloaded_mb: 128,
   max_crawl_minutes: 15,
+  change_detection: "normalized_content_hash",
   resync_behavior: "full",
   removed_page_behavior: "retain",
 };

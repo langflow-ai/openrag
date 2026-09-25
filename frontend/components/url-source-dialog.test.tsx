@@ -76,6 +76,8 @@ describe("UrlSourceDialog", () => {
       screen.getByPlaceholderText("/archive/ (one per line)"),
       "/archive",
     );
+    await user.click(screen.getByLabelText("Change detection"));
+    await user.click(screen.getByRole("option", { name: "Always re-ingest" }));
     await user.click(screen.getByRole("checkbox"));
 
     expect(continueButton).toBeEnabled();
@@ -100,6 +102,7 @@ describe("UrlSourceDialog", () => {
       scope: "page",
       additional_hosts: ["assets.example.com", "cdn.example.com"],
       include_paths: ["/guides"],
+      change_detection: "always_reingest",
       max_pages: 1,
       max_depth: 0,
       removed_page_behavior: "delete",

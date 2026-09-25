@@ -263,3 +263,77 @@ async def test_page_ingestion_exception_marks_the_page_and_source_failed(monkeyp
     assert source.status == "failed"
     assert source.last_error == "ingestion down"
     assert file_task.status is TaskStatus.FAILED
+
+
+@pytest.mark.asyncio
+async def test_always_reingest_processes_an_unchanged_page(monkeypatch):
+    from connectors.url import processor as processor_module
+
+    source = WebsiteSource(
+        id="source-5",
+        owner_id="owner-1",
+        name="Documentation",
+        starting_url="https://docs.example.com/",
+        crawl_settings={"seed_url": "https://docs.example.com/"},
+        change_detection="always_reingest",
+        last_successful_sync_at=datetime.now(UTC),
+    )
+    existing_page = WebsitePage(
+        id="page-5",
+        web_source_id=source.id,
+        canonical_url="https://docs.example.com/guide",
+        title="Guide",
+        document_id="document-5",
+        content_hash="same-content",
+        chunk_count=1,
+        status="active",
+    )
+    session = _Session(source, existing_page)
+    monkeypatch.setattr(processor_module, "SessionLocal", object())
+    monkeypatch.setattr(engine, "SessionLocal", lambda: session)
+    monkeypatch.setattr(
+        processor_module,
+        "crawl",
+        AsyncMock(
+            return_value=CrawlResult(
+                (
+                    CrawledPage(
+                        canonical_url=existing_page.canonical_url,
+                        final_url=existing_page.canonical_url,
+                        depth=1,
+                        document=WebDocument(
+                            title="Guide",
+                            markdown="# Guide\n\nContent\n",
+                            content_hash="same-content",
+                            byte_size=18,
+                        ),
+                    ),
+                ),
+                complete=True,
+                capped=False,
+            )
+        ),
+    )
+    monkeypatch.setattr(processor_module, "upsert_source_projection", AsyncMock())
+    monkeypatch.setattr(processor_module, "delete_source_projection", AsyncMock())
+
+    processor = WebsiteSourceProcessor(
+        source_id=source.id,
+        owner_id=source.owner_id,
+        jwt_token=None,
+        owner_name=None,
+        owner_email=None,
+        document_service=None,
+        models_service=None,
+    )
+    processor.process_document_standard = AsyncMock(
+        return_value={"status": "indexed", "chunk_count": 1}
+    )
+    upload_task = UploadTask(task_id="task-5", total_files=1)
+    file_task = FileTask(file_path="website:source-5")
+
+    await processor.process_item(upload_task, file_task.file_path, file_task)
+
+    processor.process_document_standard.assert_awaited_once()
+    assert existing_page.status == "active"
+    assert file_task.status is TaskStatus.COMPLETED

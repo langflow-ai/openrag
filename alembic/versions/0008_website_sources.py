@@ -24,6 +24,12 @@ def upgrade() -> None:
         sa.Column("name", sa.String(256), nullable=False),
         sa.Column("starting_url", sa.String(2048), nullable=False),
         sa.Column("crawl_settings", sa.JSON(), nullable=False),
+        sa.Column(
+            "change_detection",
+            sa.String(32),
+            nullable=False,
+            server_default="normalized_content_hash",
+        ),
         sa.Column("resync_behavior", sa.String(32), nullable=False),
         sa.Column("removed_page_behavior", sa.String(32), nullable=False),
         sa.Column("status", sa.String(32), nullable=False),

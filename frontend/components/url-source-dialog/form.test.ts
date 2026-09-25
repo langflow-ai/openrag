@@ -31,6 +31,7 @@ describe("URL source form helpers", () => {
       exclude_paths: ["/archive"],
       max_pages: 1,
       max_depth: 0,
+      change_detection: "normalized_content_hash",
     });
   });
 

@@ -53,7 +53,7 @@ export function SourceScopeStep({
         </div>
       </div>
       <div className="space-y-3">
-        <div>
+        <div className="space-y-1.5">
           <Label>CRAWL SCOPE</Label>
           <p className="text-sm text-muted-foreground">
             How far should the crawler follow links from the starting URL?

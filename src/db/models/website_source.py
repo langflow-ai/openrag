@@ -13,6 +13,7 @@ class WebsiteSource(SQLModel, table=True):
     name: str = Field(max_length=256)
     starting_url: str = Field(max_length=2048)
     crawl_settings: dict = Field(sa_column=Column(JSON, nullable=False))
+    change_detection: str = Field(default="normalized_content_hash", max_length=32)
     resync_behavior: str = Field(default="full", max_length=32)
     removed_page_behavior: str = Field(default="retain", max_length=32)
     status: str = Field(default="processing", max_length=32, index=True)

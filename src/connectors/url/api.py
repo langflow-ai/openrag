@@ -44,6 +44,9 @@ class CreateSourceBody(BaseModel):
     max_depth: int = Field(default=4, ge=0, le=20)
     max_downloaded_mb: int = Field(default=128, ge=1, le=2048)
     max_crawl_minutes: int = Field(default=15, ge=1, le=60)
+    change_detection: Literal["normalized_content_hash", "always_reingest"] = (
+        "normalized_content_hash"
+    )
     resync_behavior: Literal["full", "root"] = "full"
     removed_page_behavior: Literal["retain", "delete"] = "retain"
 
@@ -56,7 +59,14 @@ class CreateSourceBody(BaseModel):
         return value
 
     def spec(self) -> CrawlSpec:
-        values = self.model_dump(exclude={"name", "resync_behavior", "removed_page_behavior"})
+        values = self.model_dump(
+            exclude={
+                "name",
+                "change_detection",
+                "resync_behavior",
+                "removed_page_behavior",
+            }
+        )
         if values["scope"] == "page":
             values["max_pages"], values["max_depth"] = 1, 0
         return CrawlSpec(seed_url=values.pop("starting_url"), **values)
@@ -67,6 +77,7 @@ def _view(source: WebsiteSource, count: int | None = None) -> dict:
         "id": source.id,
         "name": source.name,
         "starting_url": source.starting_url,
+        "change_detection": source.change_detection,
         "status": source.status,
         "last_error": source.last_error,
         "last_task_id": source.last_task_id,
@@ -114,6 +125,7 @@ async def create_source(
         name=body.name,
         starting_url=spec.seed_url,
         crawl_settings=spec.as_dict(),
+        change_detection=body.change_detection,
         resync_behavior=body.resync_behavior,
         removed_page_behavior=body.removed_page_behavior,
     )
