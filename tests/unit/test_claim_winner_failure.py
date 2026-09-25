@@ -8,7 +8,6 @@ candidate (retry_failed_files takes FAILED only), so nothing recovers it.
 """
 
 import asyncio
-
 from unittest.mock import AsyncMock, Mock
 
 import pytest
