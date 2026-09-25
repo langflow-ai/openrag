@@ -48,10 +48,10 @@ const INITIAL: Form = {
   removed_page_behavior: "retain",
 };
 const lines = (value: string) =>
-  value
-    .split("\n")
-    .map((x) => x.trim())
-    .filter(Boolean);
+  value.split("\n").flatMap((line) => {
+    const trimmed = line.trim();
+    return trimmed ? [trimmed] : [];
+  });
 
 function validUrl(value: string) {
   try {

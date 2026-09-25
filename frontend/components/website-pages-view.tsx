@@ -58,9 +58,10 @@ export function WebsitePagesView({ sourceId }: { sourceId: string }) {
   const router = useRouter();
   const isCloudBrand = useIsCloudBrand();
   const gridRef = useRef<AgGridReact<File>>(null);
-  const cursorCacheRef = useRef<Map<number, Record<string, unknown>>>(
-    new Map(),
-  );
+  const cursorCacheRef = useRef<Map<number, Record<string, unknown>>>(null!);
+  if (!cursorCacheRef.current) {
+    cursorCacheRef.current = new Map();
+  }
   const [source, setSource] = useState<Source | null>(null);
   const [sourceLoading, setSourceLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -163,9 +164,10 @@ export function WebsitePagesView({ sourceId }: { sourceId: string }) {
     currentPage * currentPageSize,
   );
 
-  useEffect(() => {
+  const updateSearch = useCallback((value: string) => {
+    setSearch(value);
     setCurrentPage(1);
-  }, [search, currentPageSize, sortBy, sortOrder]);
+  }, []);
 
   const action = useCallback(
     async (url: string, method = "POST") => {
@@ -196,6 +198,7 @@ export function WebsitePagesView({ sourceId }: { sourceId: string }) {
       .find((column) => column.sort != null);
     setSortBy(state?.colId || "filename");
     setSortOrder(state?.sort === "desc" ? "desc" : "asc");
+    setCurrentPage(1);
   }, []);
 
   const defaultColDef = useMemo<ColDef<File>>(
@@ -433,8 +436,7 @@ export function WebsitePagesView({ sourceId }: { sourceId: string }) {
 
       <KnowledgeSearchBar
         value={search}
-        onSearch={setSearch}
-        onClear={() => setSearch("")}
+        onSearch={updateSearch}
         placeholder="Search knowledge"
         rightActions={
           <Button
