@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from models.processors import TaskProcessor
+from models.processors import DUPLICATE_SKIP_ACTIONS, TaskProcessor
 from models.tasks import TaskStatus
 from services.task_service import TaskService
 
@@ -40,7 +40,9 @@ class _RacingProcessor(TaskProcessor):
             owner_user_id="user-1",
             claim_holder=self._claim_holder(upload_task, file_task),
         )
-        if action == "skip":
+        if action in DUPLICATE_SKIP_ACTIONS:
+            # Both skips finish a file the same way; only the reconcile in
+            # ConnectorFileProcessor tells them apart.
             self.mark_duplicate_skipped(upload_task, file_task)
             return
 

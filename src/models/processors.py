@@ -32,6 +32,12 @@ DOCLING_PARSER_LABEL = "Docling Serve 1.20.0"
 TEXT_PARSER_LABEL = "Text Parser"
 
 DUPLICATE_FILENAME_WARNING = "A file with this name already exists."
+
+# Both outcomes finish the file the same way — SKIPPED, counted successful,
+# duplicate warning — but only "skip" means a document with this name is
+# actually indexed. "skip_in_flight" means another file in this batch is still
+# writing it, which is a different fact about the index.
+DUPLICATE_SKIP_ACTIONS = ("skip", "skip_in_flight")
 DUPLICATE_CONTENT_WARNING = (
     "Identical content already exists in the knowledge base under a different filename."
 )
@@ -262,15 +268,21 @@ class TaskProcessor:
         shared: bool = False,
         claim_holder: str | None = None,
         allow_anonymous_delete: bool = True,
-    ) -> Literal["proceed", "skip", "replaced"]:
+    ) -> Literal["proceed", "skip", "skip_in_flight", "replaced"]:
         """Single duplicate-filename policy shared by every processor.
 
         Checks whether a document with this filename (or one of its aliases)
         is already indexed and applies the caller's replace decision:
 
           * ``"proceed"``  — no duplicate; continue ingestion.
-          * ``"skip"``     — duplicate and ``replace`` is False; the caller
-                             should finish via ``mark_duplicate_skipped``.
+          * ``"skip"``     — a document with this name is indexed and
+                             ``replace`` is False; the caller should finish via
+                             ``mark_duplicate_skipped``.
+          * ``"skip_in_flight"`` — another file in this batch holds the name and
+                             has not finished writing it. Finishes the same way,
+                             but nothing is indexed under the name *yet*, so a
+                             caller must not treat it as a statement about what
+                             is in the index (see ``_reconcile_shared_owner``).
           * ``"replaced"`` — duplicate and ``replace`` is True; the existing
                              chunks were deleted and the index refreshed, so
                              ingestion can continue.
@@ -287,7 +299,7 @@ class TaskProcessor:
         ):
             # Another file in flight is already heading for this name; whichever
             # of them lands first is the one this name belongs to.
-            return "skip"
+            return "skip_in_flight"
 
         if not await self.check_filename_exists(filename, opensearch_client):
             return "proceed"
@@ -834,7 +846,7 @@ class DocumentFileProcessor(TaskProcessor):
                 owner_user_id=self.owner_user_id,
                 claim_holder=self._claim_holder(upload_task, file_task),
             )
-            if duplicate_action == "skip":
+            if duplicate_action in DUPLICATE_SKIP_ACTIONS:
                 self.mark_duplicate_skipped(upload_task, file_task)
                 return
 
@@ -1034,10 +1046,16 @@ class ConnectorFileProcessor(TaskProcessor):
         """Update owner fields on already-indexed chunks for `filename` to match
         the `shared` setting resolved for this file.
 
-        Called on the duplicate/unchanged skip paths below, where a file's
-        content and name haven't changed since a prior sync but the connector's
-        "Make documents available to all users" setting may have been toggled
-        since then. Without this, those chunks would keep whatever owner they
+        Called where the document indexed under this name is THIS file's own —
+        the unchanged-content path, and a skip against a real duplicate. Never
+        for a "skip_in_flight": there the name belongs to another file that is
+        still writing it, and this query matches by filename, so reconciling
+        would stamp this file's sharing answer onto that one's chunks.
+
+        On those paths the file's content and name haven't changed since a prior
+        sync, but the connector's "Make documents available to all users"
+        setting may have been toggled since. Without this, those chunks would
+        keep whatever owner they
         got on their original ingest forever, since a byte-identical re-sync
         never reaches resolve_shared_owner_fields(). Scoped to chunks owned by
         this user — and to ownerless ones only under the same
@@ -1251,8 +1269,15 @@ class ConnectorFileProcessor(TaskProcessor):
                 claim_holder=self._claim_holder(upload_task, file_task),
                 allow_anonymous_delete=self.allow_anonymous_delete,
             )
-            if duplicate_action == "skip":
-                await self._reconcile_shared_owner(file_task.filename, shared)
+            if duplicate_action in DUPLICATE_SKIP_ACTIONS:
+                # Only for a real duplicate. The reconcile rewrites owner fields
+                # on every chunk with this filename, and "skip_in_flight" means
+                # the chunks under that name are being written right now by a
+                # DIFFERENT document, whose sharing state was resolved from its
+                # own file id and can differ from this one's. Reconciling then
+                # would stamp this file's answer onto another file's chunks.
+                if duplicate_action == "skip":
+                    await self._reconcile_shared_owner(file_task.filename, shared)
                 self.mark_duplicate_skipped(upload_task, file_task)
                 return
 
@@ -1578,7 +1603,7 @@ class S3FileProcessor(TaskProcessor):
                 owner_user_id=self.owner_user_id,
                 claim_holder=self._claim_holder(upload_task, file_task),
             )
-            if duplicate_action == "skip":
+            if duplicate_action in DUPLICATE_SKIP_ACTIONS:
                 self.mark_duplicate_skipped(upload_task, file_task)
                 return
 
@@ -1686,7 +1711,7 @@ class LangflowFileProcessor(TaskProcessor):
                 owner_user_id=self.owner_user_id,
                 claim_holder=self._claim_holder(upload_task, file_task),
             )
-            if duplicate_action == "skip":
+            if duplicate_action in DUPLICATE_SKIP_ACTIONS:
                 self.mark_duplicate_skipped(upload_task, file_task)
                 return
 

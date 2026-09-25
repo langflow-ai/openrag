@@ -7,12 +7,14 @@ resolve_shared_owner_fields() recompute is normally only reached on a fresh
 index write.
 """
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 import config.settings as settings_module
 from models.processors import ConnectorFileProcessor
+from models.tasks import FileTask, TaskStatus, UploadTask
+from utils.filename_claims import claim_scope, filename_claims
 
 
 def _make_processor(*, shared: bool, user_id: str = "user-1"):
@@ -153,3 +155,85 @@ async def test_reconcile_of_a_shared_file_keeps_the_wider_scope():
 
     query = write_client.update_by_query.await_args.kwargs["body"]["query"]
     assert query == build_replace_filename_query("report.pdf", "user-1")
+
+
+def _connector_processor_for(filename: str, *, indexed: bool):
+    """A ConnectorFileProcessor wired far enough to reach the duplicate gate."""
+    from types import SimpleNamespace
+
+    processor = _make_processor(shared=False)
+    document = SimpleNamespace(
+        id="file-abc",
+        filename=filename,
+        mimetype="application/pdf",
+        content=b"%PDF-",
+        acl=None,
+    )
+    connector = AsyncMock()
+    connector.get_file_content = AsyncMock(return_value=document)
+    connector.CONNECTOR_TYPE = "ibm_cos"
+    connector_service = AsyncMock()
+    connector_service.get_connector = AsyncMock(return_value=connector)
+    connector_service.connection_manager.get_connection = AsyncMock(
+        return_value=SimpleNamespace(connector_type="ibm_cos")
+    )
+    processor.connector_service = connector_service
+    processor.document_service = MagicMock()
+    processor.session_manager = MagicMock()
+    processor.check_filename_exists = AsyncMock(return_value=indexed)
+    processor._reconcile_shared_owner = AsyncMock()
+    return processor
+
+
+@pytest.mark.asyncio
+async def test_losing_an_in_flight_claim_does_not_reconcile():
+    """The reconcile matches by filename, so running it for a claim loser would
+    rewrite owner fields on the chunks the WINNER is writing — a different
+    document, whose sharing state was resolved from its own file id and can
+    differ from this one's. Nothing is indexed under the name by this file, so
+    there is nothing of its own to reconcile.
+    """
+    processor = _connector_processor_for("report.pdf", indexed=False)
+    upload_task = UploadTask(task_id="task-1", total_files=2)
+    file_task = FileTask(file_path="cos::b/report.pdf", filename="report.pdf")
+
+    # Another file in this batch already holds the name.
+    filename_claims.claim("task-1:winner", claim_scope("user-1", False), "report.pdf")
+
+    await processor.process_item(upload_task, "cos::b/report.pdf", file_task)
+
+    assert file_task.status is TaskStatus.SKIPPED
+    assert file_task.result["reason"] == "duplicate_filename"
+    processor._reconcile_shared_owner.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_real_duplicate_still_reconciles():
+    """The document indexed under this name IS this file's own, so the owner
+    fields still get brought in line with the connector's current setting."""
+    processor = _connector_processor_for("report.pdf", indexed=True)
+    upload_task = UploadTask(task_id="task-1", total_files=1)
+    file_task = FileTask(file_path="cos::b/report.pdf", filename="report.pdf")
+
+    await processor.process_item(upload_task, "cos::b/report.pdf", file_task)
+
+    assert file_task.status is TaskStatus.SKIPPED
+    processor._reconcile_shared_owner.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_the_gate_reports_the_two_skips_apart():
+    """The indexed document under this name IS this file's own, so the caller
+    reconciles as before."""
+    processor = _make_processor(shared=False)
+    processor.check_filename_exists = AsyncMock(return_value=True)
+
+    action = await processor.resolve_duplicate_filename(
+        "report.pdf",
+        AsyncMock(),
+        replace=False,
+        owner_user_id="user-1",
+        claim_holder="task-1:only",
+    )
+
+    assert action == "skip"
