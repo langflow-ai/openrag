@@ -455,10 +455,14 @@ class LangflowFileService:
         config = get_openrag_config()
 
         # Pass files via tweaks to File component (File-PSU37 from the flow)
+        if "Docling Serve" not in tweaks:
+            tweaks["Docling Serve"] = {}
+
         if file_paths:
-            if "Docling Serve" not in tweaks:
-                tweaks["Docling Serve"] = {}
             tweaks["Docling Serve"]["path"] = file_paths
+
+        if docling_task_id:
+            tweaks["Docling Serve"]["task_id"] = str(docling_task_id)
 
         if session_id:
             payload["session_id"] = session_id

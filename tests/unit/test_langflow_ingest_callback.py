@@ -239,6 +239,7 @@ async def test_langflow_file_service_sends_backend_callback_global_vars(monkeypa
     assert result == {"status": "ok"}
     payload = captured["json"]
     assert LangflowFileService.INGEST_OPENSEARCH_COMPONENT_ID not in payload["tweaks"]
+    assert payload["tweaks"]["Docling Serve"]["path"] == ["/tmp/source.pdf"]
     headers = captured["headers"]
     assert headers["X-Langflow-Global-Var-OPENRAG_INGEST_URL"].endswith("/internal/ingest/chunks")
     assert headers["X-Langflow-Global-Var-OPENRAG_INGEST_TOKEN"]
