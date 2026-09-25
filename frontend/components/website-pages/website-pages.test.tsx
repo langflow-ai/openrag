@@ -169,7 +169,15 @@ describe("website page presentation", () => {
       screen.getByRole("link", { name: "https://docs.example.com" }),
     ).toHaveAttribute("href", "https://docs.example.com");
     expect(screen.getByText("3 pages indexed")).toBeInTheDocument();
-    expect(screen.getByText(/Last synced 25\/09\/2026/)).toBeInTheDocument();
+    const lastSynced = new Intl.DateTimeFormat("en-GB", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(new Date("2026-09-25T13:39:19.000Z"));
+    expect(screen.getByText(`Last synced ${lastSynced}`)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Project knowledge" }));
     expect(onNavigateBack).toHaveBeenCalledOnce();
   });
