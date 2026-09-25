@@ -170,7 +170,9 @@ async def test_crawl_exception_marks_the_task_failed_and_keeps_an_established_so
     session = _Session(source)
     monkeypatch.setattr(processor_module, "SessionLocal", object())
     monkeypatch.setattr(engine, "SessionLocal", lambda: session)
-    monkeypatch.setattr(processor_module, "crawl", AsyncMock(side_effect=RuntimeError("network down")))
+    monkeypatch.setattr(
+        processor_module, "crawl", AsyncMock(side_effect=RuntimeError("network down"))
+    )
     upsert_source_projection = AsyncMock()
     monkeypatch.setattr(processor_module, "upsert_source_projection", upsert_source_projection)
     monkeypatch.setattr(processor_module, "delete_source_projection", AsyncMock())

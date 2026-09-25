@@ -62,15 +62,12 @@ class WebsiteSourceProcessor(TaskProcessor):
             source_is_established = source.last_successful_sync_at is not None
             if not source_is_established:
                 source_is_established = (
-                    (
-                        await session.execute(
-                            select(WebsitePage.id)
-                            .where(col(WebsitePage.web_source_id) == source.id)
-                            .limit(1)
-                        )
-                    ).scalar_one_or_none()
-                    is not None
-                )
+                    await session.execute(
+                        select(WebsitePage.id)
+                        .where(col(WebsitePage.web_source_id) == source.id)
+                        .limit(1)
+                    )
+                ).scalar_one_or_none() is not None
             started_at = datetime.now(UTC)
             source.status = "processing"
             run = WebsiteCrawlRun(
@@ -175,7 +172,10 @@ class WebsiteSourceProcessor(TaskProcessor):
                             canonical_url=outcome.canonical_url,
                         )
                     except Exception as exc:
-                        page.status, page.last_error = "failed", str(exc) or "Website page ingestion failed"
+                        page.status, page.last_error = (
+                            "failed",
+                            str(exc) or "Website page ingestion failed",
+                        )
                         page_errors.append(page.last_error)
                         continue
                     if processed.get("status") == "error":
