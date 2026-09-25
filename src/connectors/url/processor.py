@@ -78,12 +78,12 @@ class WebsiteSourceProcessor(TaskProcessor):
             )
             session.add(run)
             await session.commit()
-            if source_is_established:
-                await upsert_source_projection(source)
             spec_values = dict(source.crawl_settings)
             if source.resync_behavior == "root":
                 spec_values.update(scope="page", max_pages=1, max_depth=0)
             try:
+                if source_is_established:
+                    await upsert_source_projection(source)
                 result = await crawl(CrawlSpec(**spec_values))
             except Exception as exc:
                 result = CrawlResult(

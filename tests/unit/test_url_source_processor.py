@@ -9,7 +9,7 @@ import db.engine as engine
 from connectors.url.crawler import CrawledPage, CrawlResult
 from connectors.url.document import WebDocument
 from connectors.url.processor import WebsiteSourceProcessor
-from db.models.website_source import WebsitePage, WebsiteSource
+from db.models.website_source import WebsiteCrawlRun, WebsitePage, WebsiteSource
 from models.tasks import FileTask, TaskStatus, UploadTask
 
 
@@ -199,6 +199,52 @@ async def test_crawl_exception_marks_the_task_failed_and_keeps_an_established_so
     assert upsert_source_projection.await_count == 2
     assert file_task.status is TaskStatus.FAILED
     assert file_task.error == "network down"
+
+
+@pytest.mark.asyncio
+async def test_projection_failure_marks_an_established_source_failed(monkeypatch):
+    from connectors.url import processor as processor_module
+
+    source = WebsiteSource(
+        id="source-projection-failure",
+        owner_id="owner-1",
+        name="Documentation",
+        starting_url="https://docs.example.com/",
+        crawl_settings={"seed_url": "https://docs.example.com/"},
+        last_successful_sync_at=datetime.now(UTC),
+    )
+    session = _Session(source)
+    monkeypatch.setattr(processor_module, "SessionLocal", object())
+    monkeypatch.setattr(engine, "SessionLocal", lambda: session)
+    monkeypatch.setattr(processor_module, "crawl", AsyncMock())
+    monkeypatch.setattr(
+        processor_module,
+        "upsert_source_projection",
+        AsyncMock(side_effect=[RuntimeError("OpenSearch unavailable"), None]),
+    )
+    monkeypatch.setattr(processor_module, "delete_source_projection", AsyncMock())
+
+    processor = WebsiteSourceProcessor(
+        source_id=source.id,
+        owner_id=source.owner_id,
+        jwt_token=None,
+        owner_name=None,
+        owner_email=None,
+        document_service=None,
+        models_service=None,
+    )
+    upload_task = UploadTask(task_id="task-projection-failure", total_files=1)
+    file_task = FileTask(file_path=f"website:{source.id}")
+
+    await processor.process_item(upload_task, file_task.file_path, file_task)
+
+    run = next(item for item in session.added if isinstance(item, WebsiteCrawlRun))
+    assert source.status == "failed"
+    assert source.last_error == "OpenSearch unavailable"
+    assert run.error == "OpenSearch unavailable"
+    assert session.deleted == []
+    assert file_task.status is TaskStatus.FAILED
+    assert file_task.error == "OpenSearch unavailable"
 
 
 @pytest.mark.asyncio
