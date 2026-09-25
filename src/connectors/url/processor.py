@@ -13,7 +13,7 @@ import time
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from db.engine import SessionLocal, init_engine
 from db.models.website_source import WebsiteCrawlRun, WebsitePage, WebsiteSource
@@ -22,7 +22,7 @@ from models.tasks import FileTask, TaskStatus, UploadTask
 
 from .crawler import crawl
 from .policy import CrawlSpec
-from .projection import delete_page_chunks, upsert_source_projection
+from .projection import delete_page_chunks, delete_source_projection, upsert_source_projection
 
 
 def _document_id(source_id: str, canonical_url: str) -> str:
@@ -58,6 +58,7 @@ class WebsiteSourceProcessor(TaskProcessor):
             source = await session.get(WebsiteSource, self.source_id)
             if source is None:
                 raise ValueError("Website source no longer exists")
+            source_was_active = source.status == "active"
             started_at = datetime.now(UTC)
             source.status = "processing"
             run = WebsiteCrawlRun(
@@ -68,12 +69,15 @@ class WebsiteSourceProcessor(TaskProcessor):
             )
             session.add(run)
             await session.commit()
-            await upsert_source_projection(source)
+            if source_was_active:
+                await upsert_source_projection(source)
             spec_values = dict(source.crawl_settings)
             if source.resync_behavior == "root":
                 spec_values.update(scope="page", max_pages=1, max_depth=0)
             result = await crawl(CrawlSpec(**spec_values))
             indexed = 0
+            successful_pages = 0
+            page_errors: list[str] = []
             for outcome in result.pages:
                 existing = (
                     await session.execute(
@@ -101,6 +105,7 @@ class WebsiteSourceProcessor(TaskProcessor):
                 )
                 if outcome.error:
                     page.status, page.last_error = "failed", outcome.error
+                    page_errors.append(outcome.error)
                     continue
                 if outcome.document is None or outcome.noindex:
                     page.status = "unavailable"
@@ -120,6 +125,8 @@ class WebsiteSourceProcessor(TaskProcessor):
                     and page.chunk_count > 0
                 ):
                     page.status = "active"
+                    page.last_error = None
+                    successful_pages += 1
                     continue
                 handle = tempfile.NamedTemporaryFile(
                     mode="w", suffix=".md", delete=False, encoding="utf-8"
@@ -147,14 +154,19 @@ class WebsiteSourceProcessor(TaskProcessor):
                         canonical_url=outcome.canonical_url,
                     )
                     if processed.get("status") == "error":
-                        page.status, page.last_error = "failed", processed.get("error")
+                        page.status, page.last_error = "failed", (
+                            processed.get("error") or "Failed to ingest website page"
+                        )
+                        page_errors.append(page.last_error)
                     else:
                         page.content_hash, page.chunk_count, page.status = (
                             document.content_hash,
                             processed.get("chunk_count", 0),
                             "active",
                         )
+                        page.last_error = None
                         page.last_ingested_at, indexed = datetime.now(UTC), indexed + 1
+                        successful_pages += 1
                 finally:
                     try:
                         os.unlink(handle.name)
@@ -179,33 +191,61 @@ class WebsiteSourceProcessor(TaskProcessor):
                     if source.removed_page_behavior == "delete":
                         await delete_page_chunks(page.document_id)
                         page.chunk_count = 0
-            source.status = (
-                "active" if indexed or any(p.document for p in result.pages) else "failed"
+            failure_reason = (
+                result.reason
+                or next(iter(page_errors), None)
+                or "No indexable website pages were found."
             )
-            source.last_error = result.reason
-            if result.complete:
+            succeeded = successful_pages > 0
+            source.status = "active" if succeeded else "failed"
+            source.last_error = result.reason if succeeded else failure_reason
+            if result.complete and succeeded:
                 source.last_successful_sync_at = datetime.now(UTC)
             source.updated_at = datetime.now(UTC)
             run.completed, run.capped, run.error, run.finished_at = (
-                result.complete,
+                result.complete and succeeded,
                 result.capped,
-                result.reason,
+                source.last_error,
                 datetime.now(UTC),
             )
             await session.commit()
-            child_count = (
-                (
-                    await session.execute(
-                        select(WebsitePage).where(WebsitePage.web_source_id == source.id)
-                    )
+            discard_failed_new_source = not succeeded and not source_was_active
+            if discard_failed_new_source:
+                # Failed regular uploads never become Knowledge records. Do the
+                # same for a URL source that has never successfully indexed a
+                # page, so a task-expired failure cannot become an orphaned row.
+                await delete_source_projection(source.id)
+                await session.execute(
+                    delete(WebsitePage).where(WebsitePage.web_source_id == source.id)
                 )
-                .scalars()
-                .all()
+                await session.execute(
+                    delete(WebsiteCrawlRun).where(WebsiteCrawlRun.web_source_id == source.id)
+                )
+                await session.delete(source)
+                await session.commit()
+            else:
+                child_count = (
+                    (
+                        await session.execute(
+                            select(WebsitePage).where(WebsitePage.web_source_id == source.id)
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                await upsert_source_projection(source, child_count=len(child_count))
+        if not succeeded:
+            file_task.status, file_task.error, file_task.result, file_task.updated_at = (
+                TaskStatus.FAILED,
+                failure_reason,
+                {"indexed": 0, "pages": 0},
+                time.time(),
             )
-            await upsert_source_projection(source, child_count=len(child_count))
+            upload_task.failed_files += 1
+            return
         file_task.status, file_task.result, file_task.updated_at = (
             TaskStatus.COMPLETED,
-            {"indexed": indexed},
+            {"indexed": indexed, "pages": successful_pages},
             time.time(),
         )
         upload_task.successful_files += 1

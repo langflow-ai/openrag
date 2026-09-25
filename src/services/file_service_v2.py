@@ -322,8 +322,20 @@ class FileServiceV2:
             }
         }
         # The root Knowledge view exposes URL source projections only.
-        # Legacy documents with no record_kind continue to match.
-        query["bool"]["must_not"] = [self._exact_metadata_filter("record_kind", "web_page")]
+        # Legacy documents with no record_kind continue to match. Failed
+        # first-time URL crawls mirror regular failed uploads: they do not
+        # become persistent Knowledge rows.
+        query["bool"]["must_not"] = [
+            self._exact_metadata_filter("record_kind", "web_page"),
+            {
+                "bool": {
+                    "filter": [
+                        self._exact_metadata_filter("record_kind", "web_source"),
+                        self._exact_metadata_filter("status", "failed"),
+                    ]
+                }
+            },
+        ]
         if must:
             query["bool"]["must"] = must
         return query

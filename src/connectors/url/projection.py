@@ -35,6 +35,13 @@ async def upsert_source_projection(source: WebsiteSource, *, child_count: int = 
 async def delete_source_projection(source_id: str) -> None:
     if clients.opensearch is None:
         return
+    try:
+        await clients.opensearch.delete(
+            index=get_index_name(), id=f"web-source:{source_id}", refresh=True
+        )
+    except Exception:
+        # A missing projection should not block SQL cleanup.
+        return
 
 
 async def delete_page_chunks(document_id: str) -> int:
@@ -70,10 +77,3 @@ async def delete_source_chunks(source_id: str) -> int:
         },
     )
     return await delete_document_ids(clients.opensearch, index=get_index_name(), document_ids=ids)
-    try:
-        await clients.opensearch.delete(
-            index=get_index_name(), id=f"web-source:{source_id}", refresh=True
-        )
-    except Exception:
-        # A missing projection should not block SQL cleanup.
-        return

@@ -21,7 +21,6 @@ from .projection import (
     delete_page_chunks,
     delete_source_chunks,
     delete_source_projection,
-    upsert_source_projection,
 )
 
 
@@ -113,8 +112,14 @@ async def create_source(
     session.add(source)
     await session.commit()
     await session.refresh(source)
-    await upsert_source_projection(source)
-    source.last_task_id = await _enqueue(source, user, task_service)
+    try:
+        source.last_task_id = await _enqueue(source, user, task_service)
+    except Exception:
+        # Match ordinary uploads: if no task can be created, leave no
+        # unattached source record behind.
+        await session.delete(source)
+        await session.commit()
+        raise
     await session.commit()
     return _view(source, 0)
 

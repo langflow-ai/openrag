@@ -1,37 +1,24 @@
-"""Small bounded crawler used only by the managed URL connector."""
+"""Scrapy subprocess adapter for the managed URL connector.
+
+Scrapy runs outside the backend event loop so its Twisted reactor cannot affect
+FastAPI. The subprocess is still owned by the existing TaskService task: it
+uses a temporary work directory and returns the same ``CrawlResult`` consumed
+by the native ingestion pipeline.
+"""
 
 from __future__ import annotations
 
-import time
-from collections import deque
+import asyncio
+import json
+import os
+import sys
+import tempfile
 from dataclasses import dataclass
-from html.parser import HTMLParser
-from urllib.parse import urljoin, urlsplit
-
-import httpx
+from pathlib import Path
+from typing import Any
 
 from .document import WebDocument, html_to_document
-from .policy import CrawlPolicyError, CrawlSpec, canonicalize_url, resolve_public_addresses
-
-USER_AGENT = "OpenRAG URL connector (+https://openrag.ai)"
-MAX_REDIRECTS = 5
-
-
-class _Links(HTMLParser):
-    def __init__(self) -> None:
-        super().__init__()
-        self.links: list[str] = []
-        self.noindex = False
-        self.nofollow = False
-
-    def handle_starttag(self, tag, attrs):
-        values = dict(attrs)
-        if tag.lower() == "a" and values.get("href"):
-            self.links.append(values["href"])
-        if tag.lower() == "meta" and values.get("name", "").lower() == "robots":
-            robots = values.get("content", "").lower()
-            self.noindex = "noindex" in robots
-            self.nofollow = "nofollow" in robots
+from .policy import CrawlSpec
 
 
 @dataclass(frozen=True)
@@ -52,88 +39,94 @@ class CrawlResult:
     reason: str | None = None
 
 
-async def _fetch(client: httpx.AsyncClient, url: str, max_bytes: int) -> tuple[str, bytes, str]:
-    current = canonicalize_url(url)
-    for _ in range(MAX_REDIRECTS + 1):
-        parsed = urlsplit(current)
-        # Resolve immediately before each request. trust_env=False prevents a
-        # deployment proxy from silently turning this into private-network egress.
-        resolve_public_addresses(
-            parsed.hostname or "", parsed.port or (443 if parsed.scheme == "https" else 80)
-        )
-        response = await client.get(current)
-        if response.is_redirect:
-            location = response.headers.get("location")
-            if not location:
-                raise CrawlPolicyError("redirect response had no location")
-            current = canonicalize_url(urljoin(current, location))
-            continue
-        response.raise_for_status()
-        data = response.content
-        if len(data) > max_bytes:
-            raise CrawlPolicyError("response exceeds the per-page byte limit")
-        return canonicalize_url(current), data, response.headers.get("content-type", "")
-    raise CrawlPolicyError("redirect limit exceeded")
+async def _stop(process: asyncio.subprocess.Process) -> None:
+    if process.returncode is not None:
+        return
+    process.terminate()
+    try:
+        await asyncio.wait_for(process.wait(), timeout=5)
+    except TimeoutError:
+        process.kill()
+        await process.wait()
+
+
+def _failure_reason(stderr: bytes) -> str:
+    detail = stderr.decode("utf-8", errors="replace").strip().splitlines()
+    if detail:
+        return f"Scrapy crawler failed: {detail[-1][:500]}"
+    return "Scrapy crawler failed"
+
+
+def _page(record: dict[str, Any], work_dir: Path) -> CrawledPage:
+    canonical_url = str(record["canonical_url"])
+    final_url = str(record.get("final_url") or canonical_url)
+    error = record.get("error")
+    document: WebDocument | None = None
+    content_path = record.get("content_path")
+    if not error and content_path:
+        try:
+            content = (work_dir / str(content_path)).read_bytes()
+            document = html_to_document(content, final_url)
+        except (OSError, ValueError) as exc:
+            error = str(exc)
+    return CrawledPage(
+        canonical_url=canonical_url,
+        final_url=final_url,
+        depth=int(record["depth"]),
+        document=document,
+        noindex=bool(record.get("noindex", False)),
+        error=str(error) if error else None,
+    )
+
+
+def _result(work_dir: Path) -> CrawlResult:
+    manifest = json.loads((work_dir / "result.json").read_text(encoding="utf-8"))
+    return CrawlResult(
+        pages=tuple(_page(record, work_dir) for record in manifest.get("pages", [])),
+        complete=bool(manifest.get("complete", False)),
+        capped=bool(manifest.get("capped", False)),
+        reason=manifest.get("reason"),
+    )
 
 
 async def crawl(spec: CrawlSpec) -> CrawlResult:
-    frontier: deque[tuple[str, int]] = deque([(spec.seed_url, 0)])
-    seen: set[str] = set()
-    pages: list[CrawledPage] = []
-    byte_limit = spec.max_downloaded_mb * 1024 * 1024
-    downloaded = 0
-    deadline = time.monotonic() + spec.max_crawl_minutes * 60
-    capped = False
-    async with httpx.AsyncClient(
-        follow_redirects=False,
-        cookies=None,
-        trust_env=False,
-        timeout=httpx.Timeout(20.0),
-        headers={"User-Agent": USER_AGENT, "Accept": "text/html,application/xhtml+xml"},
-    ) as client:
-        while frontier:
-            if len(pages) >= spec.max_pages or time.monotonic() >= deadline:
-                capped = True
-                break
-            value, depth = frontier.popleft()
-            if depth > spec.max_depth:
-                continue
-            try:
-                canonical = canonicalize_url(value)
-            except CrawlPolicyError:
-                continue
-            if canonical in seen or not spec.allows(canonical):
-                continue
-            seen.add(canonical)
-            try:
-                final, content, content_type = await _fetch(
-                    client, canonical, byte_limit - downloaded
-                )
-                if not spec.allows(final):
-                    raise CrawlPolicyError("redirect left the approved crawl scope")
-                downloaded += len(content)
-                if downloaded > byte_limit:
-                    capped = True
-                    break
-                if not content_type.lower().startswith(("text/html", "application/xhtml+xml")):
-                    pages.append(
-                        CrawledPage(canonical, final, depth, None, error="Unsupported content type")
-                    )
-                    continue
-                document = html_to_document(content, final)
-                links = _Links()
-                links.feed(content.decode("utf-8", errors="replace"))
-                pages.append(CrawledPage(canonical, final, depth, document, noindex=links.noindex))
-                if not links.nofollow and spec.scope != "page":
-                    for href in links.links:
-                        candidate = urljoin(final, href)
-                        if spec.allows(candidate):
-                            frontier.append((candidate, depth + 1))
-            except (httpx.HTTPError, CrawlPolicyError, ValueError) as exc:
-                pages.append(CrawledPage(canonical, canonical, depth, None, error=str(exc)))
-    return CrawlResult(
-        tuple(pages),
-        complete=not capped,
-        capped=capped,
-        reason="safety limit reached" if capped else None,
-    )
+    """Run one bounded website crawl in the backend's existing task process."""
+
+    with tempfile.TemporaryDirectory(prefix="openrag-url-crawl-") as directory:
+        work_dir = Path(directory)
+        environment = os.environ.copy()
+        source_root = str(Path(__file__).resolve().parents[2])
+        environment["PYTHONPATH"] = os.pathsep.join(
+            value for value in (source_root, environment.get("PYTHONPATH")) if value
+        )
+        process = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-m",
+            "connectors.url.scrapy_runner",
+            "--output-dir",
+            str(work_dir),
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=environment,
+        )
+        try:
+            _, stderr = await asyncio.wait_for(
+                process.communicate(json.dumps(spec.as_dict()).encode()),
+                timeout=spec.max_crawl_minutes * 60 + 30,
+            )
+        except TimeoutError:
+            await _stop(process)
+            return CrawlResult((), complete=False, capped=True, reason="safety limit reached")
+        except asyncio.CancelledError:
+            await _stop(process)
+            raise
+
+        if process.returncode:
+            return CrawlResult((), complete=False, capped=False, reason=_failure_reason(stderr))
+        try:
+            return _result(work_dir)
+        except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+            return CrawlResult(
+                (), complete=False, capped=False, reason=f"Scrapy crawler returned no result: {exc}"
+            )
