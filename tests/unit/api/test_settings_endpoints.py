@@ -4,6 +4,7 @@ Validates error handling in update_docling_preset endpoint.
 """
 
 import json
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -481,16 +482,7 @@ async def test_removal_only_provider_update_requires_provider_write_permission()
     rbac.audit_denied.assert_awaited_once_with("user-1", "providers:write")
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("provider", "model"),
-    [
-        ("azure", "text-embedding-3-small"),
-        ("watsonx_onprem", "ibm/slate-125m-english-rtrvr"),
-    ],
-)
-async def test_custom_provider_removal_warns_when_embedding_models_are_in_use(provider, model):
-    from api.settings.endpoints import update_settings
+def _removable_custom_provider_config(provider: str):
     from config.config_manager import OpenRAGConfig
 
     config = OpenRAGConfig.from_dict({})
@@ -498,25 +490,51 @@ async def test_custom_provider_removal_warns_when_embedding_models_are_in_use(pr
     config.providers.openai.api_key = "sk-test"
     config.providers.openai.configured = True
     config.providers.set_credentials(provider, {"api_key": "secret"})
-    affected = [{"model": model, "doc_count": 4}]
+    return config
 
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("provider", "model", "display_name"),
+    [
+        ("azure", "customer-deployment", "Azure OpenAI"),
+        ("watsonx_onprem", "ibm/slate-125m-english-rtrvr", "IBM watsonx.ai"),
+    ],
+)
+async def test_custom_provider_removal_warns_before_side_effects(provider, model, display_name):
+    from api.settings.endpoints import update_settings
+
+    config = _removable_custom_provider_config(provider)
+    affected = ({"model": model, "doc_count": 4},)
+    provider_removal_service = SimpleNamespace(
+        assess=AsyncMock(
+            return_value=SimpleNamespace(
+                status="in_use",
+                affected_models=affected,
+                unresolved_legacy_models=(),
+            )
+        )
+    )
     rbac = MagicMock()
     rbac.has_permission = AsyncMock(return_value=True)
 
     with (
         patch("api.settings.endpoints.get_openrag_config", return_value=config),
-        patch(
-            "api.settings.endpoints._affected_embedding_models",
-            new_callable=AsyncMock,
-            return_value=affected,
-        ),
         patch("api.settings.endpoints.config_manager.save_config_file") as save,
+        patch(
+            "api.settings.endpoints._update_langflow_system_prompt",
+            new_callable=AsyncMock,
+        ) as update_prompt,
     ):
         response = await update_settings(
-            body=SettingsUpdateBody(remove_provider_config=provider),
+            body=SettingsUpdateBody(
+                remove_provider_config=provider,
+                system_prompt="new prompt",
+            ),
             session_manager=AsyncMock(),
             user=MagicMock(spec=User),
             models_service=MagicMock(),
+            provider_removal_service=provider_removal_service,
             rbac=rbac,
         )
 
@@ -524,8 +542,95 @@ async def test_custom_provider_removal_warns_when_embedding_models_are_in_use(pr
     assert response.status_code == 409
     assert payload["code"] == "embedding_provider_in_use"
     assert payload["affected_provider"] == provider
-    assert payload["affected_models"] == affected
+    assert payload["affected_models"] == list(affected)
+    assert display_name in payload["error"]
+    provider_removal_service.assess.assert_awaited_once_with(provider, config)
+    update_prompt.assert_not_awaited()
     save.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_provider_removal_fails_closed_when_embedding_usage_is_unknown():
+    from api.settings.endpoints import update_settings
+
+    config = _removable_custom_provider_config("azure")
+    provider_removal_service = SimpleNamespace(
+        assess=AsyncMock(
+            return_value=SimpleNamespace(
+                status="unknown",
+                affected_models=(),
+                unresolved_legacy_models=("shared-model",),
+            )
+        )
+    )
+    rbac = MagicMock()
+    rbac.has_permission = AsyncMock(return_value=True)
+
+    with (
+        patch("api.settings.endpoints.get_openrag_config", return_value=config),
+        patch("api.settings.endpoints.config_manager.save_config_file") as save,
+    ):
+        response = await update_settings(
+            body=SettingsUpdateBody(remove_provider_config="azure"),
+            session_manager=AsyncMock(),
+            user=MagicMock(spec=User),
+            models_service=MagicMock(),
+            provider_removal_service=provider_removal_service,
+            rbac=rbac,
+        )
+
+    payload = json.loads(response.body)
+    assert response.status_code == 503
+    assert payload["code"] == "embedding_usage_unknown"
+    assert payload["affected_provider"] == "azure"
+    assert payload["unresolved_legacy_models"] == ["shared-model"]
+    save.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_force_remove_bypasses_embedding_usage_check():
+    from api.settings.endpoints import update_settings
+
+    config = _removable_custom_provider_config("azure")
+    provider_removal_service = SimpleNamespace(assess=AsyncMock())
+    rbac = MagicMock()
+    rbac.has_permission = AsyncMock(return_value=True)
+
+    with (
+        patch("api.settings.endpoints.get_openrag_config", return_value=config),
+        patch(
+            "api.settings.endpoints.TelemetryClient.send_event",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "api.settings.endpoints.config_manager.save_config_file",
+            return_value=True,
+        ) as save,
+        patch(
+            "api.settings.endpoints.clients.refresh_patched_client",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "api.settings.endpoints._run_async_post_save_langflow_updates",
+            new_callable=AsyncMock,
+        ),
+    ):
+        response = await update_settings(
+            body=SettingsUpdateBody(
+                remove_provider_config="azure",
+                force_remove=True,
+            ),
+            session_manager=AsyncMock(),
+            user=MagicMock(spec=User),
+            models_service=MagicMock(),
+            provider_removal_service=provider_removal_service,
+            rbac=rbac,
+        )
+
+    assert response.message == "Configuration updated successfully"
+    provider_removal_service.assess.assert_not_awaited()
+    saved_config = save.call_args.args[0]
+    assert "azure" not in saved_config.providers.custom
 
 
 @pytest.mark.asyncio

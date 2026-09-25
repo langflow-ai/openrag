@@ -13,7 +13,7 @@ from typing import Any
 
 from fastapi.responses import JSONResponse
 
-from config.settings import clients, is_no_auth_mode
+from config.settings import is_no_auth_mode
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -151,72 +151,6 @@ def _default_embedding_model(provider: str) -> str:
     return get_declared_default_embedding_model(provider)
 
 
-async def _affected_embedding_models(
-    provider: str,
-    session_manager,
-    user,
-    models_service,
-) -> list[dict[str, Any]]:
-    """Find embedding models present in the corpus that belong to ``provider``.
-
-    Used to warn users before they remove a provider whose embedding models
-    were used to index documents — otherwise semantic search silently breaks
-    for those docs. Returns a list of ``{"model": str, "doc_count": int}``.
-
-    Conservative on errors (returns empty list) so infra issues don't block
-    provider removal.
-    """
-    from config.settings import get_index_name
-    from services.models_service import ModelsService
-
-    provider_lower = provider.lower()
-    if provider_lower == "anthropic":
-        # Anthropic doesn't serve embedding models — nothing to warn about.
-        return []
-
-    try:
-        # Refresh so the registry reflects currently-configured providers
-        # before we use it to attribute models.
-        await models_service.update_model_registry()
-        registry = ModelsService._model_provider_registry
-
-        # Use the admin client so DLS does not scope the aggregation to the
-        # requesting user's documents. Provider removal is a global operation
-        # that affects all tenants, so we must see every document's embedding
-        # model regardless of ownership.
-        agg_result = await clients.opensearch.search(
-            index=get_index_name(),
-            body={
-                "size": 0,
-                "aggs": {"embedding_models": {"terms": {"field": "embedding_model", "size": 50}}},
-            },
-            params={"terminate_after": 0},
-        )
-        buckets = agg_result.get("aggregations", {}).get("embedding_models", {}).get("buckets", [])
-
-        affected: list[dict[str, Any]] = []
-        for bucket in buckets:
-            model = bucket.get("key")
-            if not model:
-                continue
-            mapped = registry.get(model)
-            # Narrow fallback: the watsonx registry bootstrap requires the
-            # provider still be configured, so models from an about-to-be-
-            # removed watsonx can still be attributed via the "ibm/" prefix.
-            if mapped is None and provider_lower == "watsonx" and model.startswith("ibm/"):
-                mapped = "watsonx"
-            if mapped == provider_lower:
-                affected.append({"model": model, "doc_count": bucket.get("doc_count", 0)})
-        return affected
-    except Exception as e:
-        logger.warning(
-            "Could not determine affected embedding models for provider removal",
-            provider=provider,
-            error=str(e),
-        )
-        return []
-
-
 def _embedding_conflict_response(
     provider_label: str, provider_key: str, affected: list[dict[str, Any]]
 ) -> JSONResponse:
@@ -237,6 +171,26 @@ def _embedding_conflict_response(
         },
         status_code=409,
     )
+
+
+def _embedding_usage_unknown_response(
+    provider_label: str,
+    provider_key: str,
+    unresolved_legacy_models: tuple[str, ...],
+) -> JSONResponse:
+    """503 response when indexed embedding provenance cannot be verified."""
+    payload: dict[str, Any] = {
+        "error": (
+            f"Could not verify whether indexed documents depend on {provider_label}. "
+            "Retry when OpenSearch is available, configure legacy embedding provenance, "
+            "or retry with force_remove=true to proceed anyway."
+        ),
+        "code": "embedding_usage_unknown",
+        "affected_provider": provider_key,
+    }
+    if unresolved_legacy_models:
+        payload["unresolved_legacy_models"] = list(unresolved_legacy_models)
+    return JSONResponse(payload, status_code=503)
 
 
 async def _create_openrag_docs_filter(knowledge_filter_service, session_manager, user):

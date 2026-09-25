@@ -35,6 +35,7 @@ from services.langflow_llm_token_service import LangflowLlmTokenService
 from services.langflow_mcp_service import LangflowMCPService
 from services.models_service import ModelsService
 from services.monitor_service import MonitorService
+from services.provider_removal_service import ProviderRemovalService
 from services.search_service import SearchService, register_search_service
 from services.task_service import TaskService
 from session_manager import SessionManager
@@ -96,6 +97,7 @@ async def initialize_services():
     )
     search_service = SearchService(session_manager, models_service)
     register_search_service(search_service)
+    provider_removal_service = ProviderRemovalService(clients.opensearch)
 
     # Backend-side Docling polling coordinator. Constructed once as a
     # singleton (it is stateless) and gated by ENABLE_BACKEND_DOCLING_POLLING
@@ -237,6 +239,7 @@ async def initialize_services():
         "dls_principal_service": dls_principal_service,
         "knowledge_filter_service": knowledge_filter_service,
         "models_service": models_service,
+        "provider_removal_service": provider_removal_service,
         "monitor_service": monitor_service,
         "session_manager": session_manager,
         "api_key_service": api_key_service,

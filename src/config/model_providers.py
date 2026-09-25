@@ -213,6 +213,15 @@ def configured_providers() -> tuple[dict[str, Any], ...]:
     return _configured((os.getenv(CONFIG_PATH_ENV) or "").strip(), str(DEFAULT_CONFIG_PATH))
 
 
+def provider_display_name(provider: str) -> str:
+    """Human-readable provider name from the deployment catalogue."""
+    key = (provider or "").strip().lower()
+    for entry in configured_providers():
+        if entry["name"] == key:
+            return entry["display_name"]
+    return key
+
+
 def reload() -> None:
     """Drop the cached file so the next read re-parses it."""
     _configured.cache_clear()
