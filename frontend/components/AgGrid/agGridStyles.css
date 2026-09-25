@@ -1,3 +1,7 @@
+.ag-center-header .ag-header-cell-label {
+  justify-content: center;
+}
+
 body {
   --ag-text-color: hsl(var(--muted-foreground));
   --ag-background-color: hsl(var(--background));

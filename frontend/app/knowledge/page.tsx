@@ -130,8 +130,6 @@ const AG_FIELD_TO_SORT_BY: Record<string, string> = {
   mimetype: "mimetype",
   owner: "owner",
   chunkCount: "chunk_count",
-  embedding_model: "embedding_model",
-  embedding_dimensions: "embedding_dimensions",
   status: "status",
 };
 
@@ -240,6 +238,14 @@ export function buildChunksUrl(
 
 function SearchPage() {
   const isCloudBrand = useIsCloudBrand();
+  const [isNarrow, setIsNarrow] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 640px)");
+    setIsNarrow(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsNarrow(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
   const queryClient = useQueryClient();
   const router = useRouter();
   const {
@@ -652,8 +658,9 @@ function SearchPage() {
     );
   }, [gridRowsSelectionKey, isDeletableKnowledgeRow, getGridApi]);
 
-  const columnDefs: ColDef<File>[] = [
-    {
+  // ── Shared column fragments ──────────────────────────────────────────────
+  const colSource: ColDef<File> = useMemo(
+    () => ({
       field: "filename",
       headerName: "Source",
       sortable: true,
@@ -715,235 +722,244 @@ function SearchPage() {
           </div>
         );
       },
+    }),
+    [
+      isCloudBrand,
+      isDeletableKnowledgeRow,
+      isOpenragDocsRow,
+      hasOpenragRefreshCue,
+      effectiveSearchText,
+      router,
+    ],
+  );
+
+  const colSize: ColDef<File> = {
+    field: "size",
+    headerName: "Size",
+    ...(isCloudBrand ? { flex: 1, minWidth: 110 } : {}),
+    sortable: true,
+    comparator: () => 0,
+    valueFormatter: (params: ValueFormatterParams<File>) =>
+      params.value ? formatFileSize(params.value) : "-",
+    cellClass: isCloudBrand ? "text-muted-foreground" : undefined,
+  };
+
+  const colType: ColDef<File> = {
+    field: "mimetype",
+    headerName: "Type",
+    ...(isCloudBrand ? { flex: 1, minWidth: 110 } : {}),
+    cellClass: isCloudBrand ? "text-muted-foreground" : undefined,
+    sortable: true,
+  };
+
+  const colOwner: ColDef<File> = {
+    field: "owner",
+    headerName: "Owner",
+    ...(isCloudBrand ? { flex: 1.4, minWidth: 180 } : {}),
+    valueFormatter: (params: ValueFormatterParams<File>) =>
+      params.data?.owner_name || params.data?.owner_email || "—",
+    cellClass: isCloudBrand ? "text-muted-foreground" : undefined,
+    sortable: true,
+    valueGetter: (params: ValueGetterParams<File>) =>
+      getOwnerLabel(params.data),
+    comparator: () => 0,
+  };
+
+  const colChunks: ColDef<File> = {
+    field: "chunkCount",
+    headerName: "Chunks",
+    ...(isCloudBrand ? { flex: 0.9, minWidth: 95 } : { width: 95 }),
+    sortable: true,
+    comparator: () => 0,
+    headerClass: "ag-center-header",
+    cellStyle: { textAlign: "center" },
+    cellClass: isCloudBrand ? "text-muted-foreground" : undefined,
+    valueFormatter: (params: ValueFormatterParams<File>) =>
+      params.data?.chunkCount?.toString() || "-",
+  };
+
+  const colAvgScore: ColDef<File> = {
+    field: "avgScore",
+    headerName: "Avg score",
+    hide: isWildcardQuery,
+    ...(isCloudBrand ? { flex: 1, minWidth: 120 } : { width: 120 }),
+    sortable: true,
+    comparator: (valueA?: number, valueB?: number) =>
+      (valueA || 0) - (valueB || 0),
+    cellRenderer: ({ value }: CustomCellRendererProps<File>) => {
+      const label = typeof value === "number" ? value.toFixed(2) : "-";
+      const tooltipText =
+        "Relevance score based on how closely this document matched your search query. Higher is a stronger match.";
+      return (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="text-xs text-accent-emerald-foreground bg-accent-emerald px-2 py-1 rounded cursor-default">
+              {label}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="max-w-56 text-center">
+            {tooltipText}
+          </TooltipContent>
+        </Tooltip>
+      );
     },
-    {
-      field: "size",
-      headerName: "Size",
-      ...(isCloudBrand ? { flex: 1, minWidth: 110 } : {}),
-      sortable: true,
-      comparator: () => 0,
-      valueFormatter: (params: ValueFormatterParams<File>) =>
-        params.value ? formatFileSize(params.value) : "-",
-      cellClass: isCloudBrand ? "text-muted-foreground" : undefined,
-    },
-    {
-      field: "mimetype",
-      headerName: "Type",
-      ...(isCloudBrand ? { flex: 1, minWidth: 110 } : {}),
-      cellClass: isCloudBrand ? "text-muted-foreground" : undefined,
-      sortable: true,
-    },
-    {
-      field: "owner",
-      headerName: "Owner",
-      ...(isCloudBrand ? { flex: 1.4, minWidth: 180 } : {}),
-      valueFormatter: (params: ValueFormatterParams<File>) =>
-        params.data?.owner_name || params.data?.owner_email || "—",
-      cellClass: isCloudBrand ? "text-muted-foreground" : undefined,
-      sortable: true,
-      valueGetter: (params: ValueGetterParams<File>) =>
-        getOwnerLabel(params.data),
-      comparator: () => 0,
-    },
-    {
-      field: "chunkCount",
-      headerName: "Chunks",
-      ...(isCloudBrand ? { flex: 0.9, minWidth: 95 } : {}),
-      sortable: true,
-      comparator: () => 0,
-      valueFormatter: (params: ValueFormatterParams<File>) =>
-        params.data?.chunkCount?.toString() || "-",
-      cellClass: isCloudBrand ? "text-muted-foreground" : undefined,
-    },
-    {
-      field: "avgScore",
-      headerName: "Avg score",
-      ...(isCloudBrand ? { flex: 1, minWidth: 120 } : {}),
-      sortable: true,
-      comparator: (valueA?: number, valueB?: number) =>
-        (valueA || 0) - (valueB || 0),
-      cellRenderer: ({ value }: CustomCellRendererProps<File>) => {
+  };
+
+  const colStatus: ColDef<File> = {
+    field: "status",
+    headerName: "Status",
+    ...(isCloudBrand ? { flex: 1, minWidth: 130 } : { width: 130 }),
+    sortable: true,
+    valueGetter: (params: ValueGetterParams<File>) =>
+      params.data?.status || "active",
+    comparator: (valueA?: File["status"], valueB?: File["status"]) =>
+      getStatusSortRank(valueA) - getStatusSortRank(valueB),
+    cellRenderer: ({ data }: CustomCellRendererProps<File>) => {
+      const rawStatus = data?.status || "active";
+      // Use centralized cancellation detection
+      const status =
+        rawStatus === "failed" && data && isFileCancelled(data)
+          ? "cancelled"
+          : rawStatus;
+      const showOpenragRefreshCue =
+        isOpenragDocsRow(data) && hasOpenragRefreshCue;
+
+      if (showOpenragRefreshCue) {
         if (isCloudBrand) {
           return (
-            <span className="text-muted-foreground">
-              {typeof value === "number" ? value.toFixed(2) : "-"}
-            </span>
-          );
-        }
-        return (
-          <span className="text-xs text-accent-emerald-foreground bg-accent-emerald px-2 py-1 rounded">
-            {value?.toFixed(2) ?? "-"}
-          </span>
-        );
-      },
-    },
-    {
-      field: "embedding_model",
-      headerName: "Embedding model",
-      ...(isCloudBrand ? { flex: 1.4 } : {}),
-      sortable: true,
-      minWidth: 200,
-      cellRenderer: ({ data }: CustomCellRendererProps<File>) => (
-        <span className="text-xs text-muted-foreground">
-          {data?.embedding_model || "—"}
-        </span>
-      ),
-    },
-    {
-      field: "embedding_dimensions",
-      headerName: "Dimensions",
-      ...(isCloudBrand ? { flex: 0.9, minWidth: 110 } : { width: 110 }),
-      sortable: true,
-      comparator: () => 0,
-      cellRenderer: ({ data }: CustomCellRendererProps<File>) => (
-        <span className="text-xs text-muted-foreground">
-          {typeof data?.embedding_dimensions === "number"
-            ? data.embedding_dimensions.toString()
-            : "—"}
-        </span>
-      ),
-    },
-    {
-      field: "status",
-      headerName: "Status",
-      ...(isCloudBrand ? { flex: 1, minWidth: 130 } : {}),
-      sortable: true,
-      valueGetter: (params: ValueGetterParams<File>) =>
-        params.data?.status || "active",
-      comparator: (valueA?: File["status"], valueB?: File["status"]) =>
-        getStatusSortRank(valueA) - getStatusSortRank(valueB),
-      cellRenderer: ({ data }: CustomCellRendererProps<File>) => {
-        const rawStatus = data?.status || "active";
-        // Use centralized cancellation detection
-        const status =
-          rawStatus === "failed" && data && isFileCancelled(data)
-            ? "cancelled"
-            : rawStatus;
-        const showOpenragRefreshCue =
-          isOpenragDocsRow(data) && hasOpenragRefreshCue;
-
-        if (showOpenragRefreshCue) {
-          if (isCloudBrand) {
-            return (
-              <div className="inline-flex items-center gap-2 text-primary">
-                <RefreshCw className="h-4 w-4 animate-spin" />
-                <span className="text-sm font-medium">Refreshing</span>
-              </div>
-            );
-          }
-          return (
-            <div className="inline-flex items-center justify-center h-5 w-5">
-              <RefreshCw
-                className="h-4 w-4 text-primary animate-spin"
-                aria-label="OpenRAG doc is refreshing"
-              />
+            <div className="inline-flex items-center gap-2 text-primary">
+              <RefreshCw className="h-4 w-4 animate-spin" />
+              <span className="text-sm font-medium">Refreshing</span>
             </div>
           );
         }
-
-        if (status === "failed") {
-          const button = (
-            <button
-              type="button"
-              className={cn(
-                "inline-flex items-center h-full transition",
-                isCloudBrand
-                  ? "text-destructive hover:opacity-80"
-                  : "w-full text-red-500 hover:text-red-400",
-              )}
-              aria-label={
-                data?.error
-                  ? `View ingestion error: ${data.error}`
-                  : "View ingestion error"
-              }
-              data-testid="failed-status-cell-trigger"
-              onClick={() => {
-                selectTask(getTaskIdForRow(data));
-                openTaskMenu();
-                setRecentTasksExpanded(true);
-              }}
-            >
-              <StatusBadge status={status} className="pointer-events-none" />
-            </button>
-          );
-
-          if (!data?.error) {
-            return button;
-          }
-
-          return (
-            <Tooltip>
-              <TooltipTrigger asChild>{button}</TooltipTrigger>
-              <TooltipContent
-                side="top"
-                align="end"
-                className="max-w-80 whitespace-pre-wrap break-words"
-              >
-                {data.error}
-              </TooltipContent>
-            </Tooltip>
-          );
-        }
-
-        if (status === "cancelled") {
-          return <StatusBadge status="cancelled" />;
-        }
-
-        if (isSkippedStatus(rawStatus, data?.skip_reason)) {
-          return <SkippedStatusCell warning={data?.warning} />;
-        }
-
         return (
-          <StatusBadge
-            status={status as import("@/components/ui/status-badge").Status}
-          />
-        );
-      },
-    },
-    {
-      colId: "actions",
-      headerName: "",
-      width: 56,
-      minWidth: 56,
-      ...(isCloudBrand ? { maxWidth: 56 } : { initialFlex: 0 }),
-      sortable: false,
-      filter: false,
-      resizable: false,
-      suppressMovable: true,
-      cellRenderer: ({ data }: CustomCellRendererProps<File>) => {
-        const status = data?.status || "active";
-        if (status === "processing") {
-          const taskId = getTaskIdForRow(data);
-          if (!taskId || !data) return null;
-
-          // Get file path for this row - use source_url or filename
-          const filePath = data.source_url || data.filename || "";
-          if (!filePath) return null;
-
-          return (
-            <CancelIngestionButton
-              taskId={taskId}
-              filePath={filePath}
-              onCancel={cancelFile}
+          <div className="inline-flex items-center justify-center h-5 w-5">
+            <RefreshCw
+              className="h-4 w-4 text-primary animate-spin"
+              aria-label="OpenRAG doc is refreshing"
             />
-          );
+          </div>
+        );
+      }
+
+      if (status === "failed") {
+        const button = (
+          <button
+            type="button"
+            className={cn(
+              "inline-flex items-center h-full transition",
+              isCloudBrand
+                ? "text-destructive hover:opacity-80"
+                : "w-full text-red-500 hover:text-red-400",
+            )}
+            aria-label={
+              data?.error
+                ? `View ingestion error: ${data.error}`
+                : "View ingestion error"
+            }
+            data-testid="failed-status-cell-trigger"
+            onClick={() => {
+              selectTask(getTaskIdForRow(data));
+              openTaskMenu();
+              setRecentTasksExpanded(true);
+            }}
+          >
+            <StatusBadge status={status} className="pointer-events-none" />
+          </button>
+        );
+
+        if (!data?.error) {
+          return button;
         }
-        if (status !== "active") return null;
+
         return (
-          <KnowledgeActionsDropdown
-            filename={data?.filename || ""}
-            connectorType={data?.connector_type}
+          <Tooltip>
+            <TooltipTrigger asChild>{button}</TooltipTrigger>
+            <TooltipContent
+              side="top"
+              align="end"
+              className="max-w-80 whitespace-pre-wrap break-words"
+            >
+              {data.error}
+            </TooltipContent>
+          </Tooltip>
+        );
+      }
+
+      if (status === "cancelled") {
+        return <StatusBadge status="cancelled" />;
+      }
+
+      if (isSkippedStatus(rawStatus, data?.skip_reason)) {
+        return <SkippedStatusCell warning={data?.warning} />;
+      }
+
+      return (
+        <StatusBadge
+          status={status as import("@/components/ui/status-badge").Status}
+        />
+      );
+    },
+  };
+
+  const colActions: ColDef<File> = {
+    colId: "actions",
+    headerName: "",
+    width: 56,
+    minWidth: 56,
+    ...(isCloudBrand ? { maxWidth: 56 } : { initialFlex: 0 }),
+    sortable: false,
+    filter: false,
+    resizable: false,
+    suppressMovable: true,
+    cellRenderer: ({ data }: CustomCellRendererProps<File>) => {
+      const status = data?.status || "active";
+      if (status === "processing") {
+        const taskId = getTaskIdForRow(data);
+        if (!taskId || !data) return null;
+
+        // Get file path for this row - use source_url or filename
+        const filePath = data.source_url || data.filename || "";
+        if (!filePath) return null;
+
+        return (
+          <CancelIngestionButton
+            taskId={taskId}
+            filePath={filePath}
+            onCancel={cancelFile}
           />
         );
-      },
-      cellStyle: {
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 0,
-      },
+      }
+      if (status !== "active") return null;
+      return (
+        <KnowledgeActionsDropdown
+          filename={data?.filename || ""}
+          connectorType={data?.connector_type}
+        />
+      );
     },
-  ];
+    cellStyle: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 0,
+    },
+  };
+
+  // ── Layout-aware column sets ─────────────────────────────────────────────
+  const columnDefs: ColDef<File>[] = isNarrow
+    ? [colSource, colChunks, colAvgScore, colStatus, colActions]
+    : [
+        colSource,
+        colSize,
+        colType,
+        colOwner,
+        colChunks,
+        colAvgScore,
+        colStatus,
+        colActions,
+      ];
 
   const defaultColDef: ColDef<File> = {
     resizable: false,
@@ -1059,8 +1075,14 @@ function SearchPage() {
               isCloudBrand && "ibm-section-title",
             )}
           >
-            Project knowledge
+            Project Knowledge
           </h2>
+          {!isCloudBrand && isNarrow && (
+            <KnowledgeSearchInput
+              placeholder="Search..."
+              className="max-w-[180px]"
+            />
+          )}
         </div>
         {isCloudBrand ? (
           <div className="relative overflow-hidden h-12 shrink-0">
@@ -1095,7 +1117,9 @@ function SearchPage() {
         ) : (
           /* Search Input Area */
           <div className="flex items-center flex-shrink-0 flex-wrap-reverse gap-3 mb-6">
-            <KnowledgeSearchInput />
+            {!isNarrow && (
+              <KnowledgeSearchInput placeholder="Search your documents..." />
+            )}
 
             <Button
               type="button"
