@@ -5,6 +5,7 @@ on:
     paths:
       - 'src/**/*.py'
       - 'tests/**/*.py'
+      - 'scripts/ci/**/*.py'
       - 'pyproject.toml'
       - 'uv.lock'
       - '.github/workflows/lint-backend.yml'
@@ -87,3 +88,18 @@ jobs:
           if [ "${#test_files[@]}" -gt 0 ]; then
             uv run mypy "${test_files[@]}"
           fi
+          scripts_files=()
+          for f in ${{ steps.changed.outputs.files }}; do
+            case "$f" in
+              scripts/*) scripts_files+=("$f") ;;
+            esac
+          done
+          if [ "${#scripts_files[@]}" -gt 0 ]; then
+            uv run mypy "${scripts_files[@]}"
+          fi
+
+      - name: Run scripts/ci tests
+        if: |
+          contains(steps.changed.outputs.files, 'scripts/ci/')
+        run: |
+          python3 scripts/ci/test_update_upstream_version.py -v
