@@ -1,5 +1,5 @@
 import { cookies, headers } from "next/headers";
-import { backendFetchInit, getBackendBaseUrl } from "@/lib/backend-fetch";
+import { backendFetch, getBackendBaseUrl } from "@/lib/backend-fetch";
 
 export async function fetchFromBackend(
   path: string,
@@ -32,8 +32,7 @@ export async function fetchFromBackend(
   const credentialsValue = incoming.get(ibmCredentialsHeader);
   if (credentialsValue) forwarded[ibmCredentialsHeader] = credentialsValue;
 
-  return fetch(`${baseUrl}/${path}`, {
-    ...backendFetchInit(),
+  return backendFetch(`${baseUrl}/${path}`, {
     ...init,
     headers: {
       ...forwarded,
