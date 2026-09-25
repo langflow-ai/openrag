@@ -138,8 +138,7 @@ class WebsiteSourceProcessor(TaskProcessor):
                     continue
                 if (
                     source.change_detection == "normalized_content_hash"
-                    and
-                    page.content_hash == document.content_hash
+                    and page.content_hash == document.content_hash
                     and page.status == "active"
                     and page.chunk_count > 0
                 ):
