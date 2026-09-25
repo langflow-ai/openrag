@@ -10,6 +10,7 @@ from fastapi import Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import col
 
 from config.settings import is_url_connector_enabled
 from db.models.website_source import WebsitePage, WebsiteSource
@@ -136,10 +137,10 @@ async def list_sources(
 ):
     rows = (
         await session.execute(
-            select(WebsiteSource, func.count(WebsitePage.id))
+            select(WebsiteSource, func.count(col(WebsitePage.id)))
             .outerjoin(WebsitePage)
-            .where(WebsiteSource.owner_id == user.user_id)
-            .group_by(WebsiteSource.id)
+            .where(col(WebsiteSource.owner_id) == user.user_id)
+            .group_by(col(WebsiteSource.id))
         )
     ).all()
     return {"sources": [_view(source, count) for source, count in rows]}
@@ -155,7 +156,7 @@ async def get_source(
         await session.execute(
             select(func.count())
             .select_from(WebsitePage)
-            .where(WebsitePage.web_source_id == source.id)
+            .where(col(WebsitePage.web_source_id) == source.id)
         )
     ).scalar_one()
     return _view(source, count)
@@ -186,7 +187,7 @@ async def delete_source(
         await session.execute(
             select(func.count())
             .select_from(WebsitePage)
-            .where(WebsitePage.web_source_id == source.id)
+            .where(col(WebsitePage.web_source_id) == source.id)
         )
     ).scalar_one()
     await delete_source_chunks(source.id)

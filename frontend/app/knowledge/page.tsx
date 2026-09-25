@@ -11,7 +11,14 @@ import {
 import { AgGridReact, type CustomCellRendererProps } from "ag-grid-react";
 import { AlertTriangle, Cloud, FileIcon, RefreshCw } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { KnowledgeDataTable } from "@/components/knowledge-data-table";
 import { KnowledgeDropdown } from "@/components/knowledge-dropdown";
 import { KnowledgeUrlIcon } from "@/components/knowledge-url-icon";
@@ -1135,12 +1142,20 @@ function SearchPage() {
   );
 }
 
-export default function ProtectedSearchPage() {
+function ProtectedSearchPageContent() {
   const searchParams = useSearchParams();
   const websiteId = searchParams.get("website");
   return (
     <ProtectedRoute>
       {websiteId ? <WebsitePagesView sourceId={websiteId} /> : <SearchPage />}
     </ProtectedRoute>
+  );
+}
+
+export default function ProtectedSearchPage() {
+  return (
+    <Suspense fallback={null}>
+      <ProtectedSearchPageContent />
+    </Suspense>
   );
 }

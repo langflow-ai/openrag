@@ -187,6 +187,10 @@ class ManagedWebsiteSpider(scrapy.Spider):
             return
 
         self.downloaded_bytes += len(response.body)
+        if not isinstance(response, scrapy.http.TextResponse):
+            self._record(canonical_url, final_url, depth, content=response.body)
+            return
+
         robots = " ".join(
             response.xpath(
                 "//meta[translate(@name, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', "

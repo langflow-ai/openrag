@@ -71,7 +71,7 @@ def public_ip(value: str) -> bool:
 
 def resolve_public_addresses(host: str, port: int) -> tuple[str, ...]:
     records = socket.getaddrinfo(normalize_host(host), port, type=socket.SOCK_STREAM)
-    addresses = tuple(dict.fromkeys(record[4][0] for record in records))
+    addresses = tuple(dict.fromkeys(str(record[4][0]) for record in records))
     if not addresses or any(not public_ip(address) for address in addresses):
         raise CrawlPolicyError("destination does not resolve exclusively to public addresses")
     return addresses

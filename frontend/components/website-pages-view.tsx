@@ -37,18 +37,21 @@ type Source = {
   web_child_count?: number;
   last_successful_sync_at?: string | null;
 };
+
+const lastSyncFormatter = new Intl.DateTimeFormat("en-GB", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
 function formatLastSync(value?: string | null) {
   if (!value) return "Last synced —";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Last synced —";
-  return `Last synced ${new Intl.DateTimeFormat("en-GB", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date)}`;
+  return `Last synced ${lastSyncFormatter.format(date)}`;
 }
 
 export function WebsitePagesView({ sourceId }: { sourceId: string }) {

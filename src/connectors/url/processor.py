@@ -14,13 +14,14 @@ import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import delete, select
+from sqlmodel import col
 
 from db.engine import SessionLocal, init_engine
 from db.models.website_source import WebsiteCrawlRun, WebsitePage, WebsiteSource
 from models.processors import TaskProcessor
 from models.tasks import FileTask, TaskStatus, UploadTask
 
-from .crawler import crawl
+from .crawler import CrawlResult, crawl
 from .policy import CrawlSpec
 from .projection import delete_page_chunks, delete_source_projection, upsert_source_projection
 
@@ -58,7 +59,18 @@ class WebsiteSourceProcessor(TaskProcessor):
             source = await session.get(WebsiteSource, self.source_id)
             if source is None:
                 raise ValueError("Website source no longer exists")
-            source_was_active = source.status == "active"
+            source_is_established = source.last_successful_sync_at is not None
+            if not source_is_established:
+                source_is_established = (
+                    (
+                        await session.execute(
+                            select(WebsitePage.id)
+                            .where(col(WebsitePage.web_source_id) == source.id)
+                            .limit(1)
+                        )
+                    ).scalar_one_or_none()
+                    is not None
+                )
             started_at = datetime.now(UTC)
             source.status = "processing"
             run = WebsiteCrawlRun(
@@ -69,12 +81,20 @@ class WebsiteSourceProcessor(TaskProcessor):
             )
             session.add(run)
             await session.commit()
-            if source_was_active:
+            if source_is_established:
                 await upsert_source_projection(source)
             spec_values = dict(source.crawl_settings)
             if source.resync_behavior == "root":
                 spec_values.update(scope="page", max_pages=1, max_depth=0)
-            result = await crawl(CrawlSpec(**spec_values))
+            try:
+                result = await crawl(CrawlSpec(**spec_values))
+            except Exception as exc:
+                result = CrawlResult(
+                    (),
+                    complete=False,
+                    capped=False,
+                    reason=str(exc) or "Website crawl failed",
+                )
             indexed = 0
             successful_pages = 0
             page_errors: list[str] = []
@@ -82,8 +102,8 @@ class WebsiteSourceProcessor(TaskProcessor):
                 existing = (
                     await session.execute(
                         select(WebsitePage).where(
-                            WebsitePage.web_source_id == source.id,
-                            WebsitePage.canonical_url == outcome.canonical_url,
+                            col(WebsitePage.web_source_id) == source.id,
+                            col(WebsitePage.canonical_url) == outcome.canonical_url,
                         )
                     )
                 ).scalar_one_or_none()
@@ -134,25 +154,30 @@ class WebsiteSourceProcessor(TaskProcessor):
                 try:
                     handle.write(document.markdown)
                     handle.close()
-                    processed = await self.process_document_standard(
-                        file_path=handle.name,
-                        file_hash=page.document_id,
-                        document_id=page.document_id,
-                        replace_existing=True,
-                        owner_user_id=self.owner_id,
-                        jwt_token=self.jwt_token,
-                        owner_name=self.owner_name,
-                        owner_email=self.owner_email,
-                        file_size=document.byte_size,
-                        original_filename=document.title,
-                        connector_type="url",
-                        source_url=outcome.final_url,
-                        web_source_id=source.id,
-                        web_page_id=page.id,
-                        web_page_depth=outcome.depth,
-                        root_source_url=source.starting_url,
-                        canonical_url=outcome.canonical_url,
-                    )
+                    try:
+                        processed = await self.process_document_standard(
+                            file_path=handle.name,
+                            file_hash=page.document_id,
+                            document_id=page.document_id,
+                            replace_existing=True,
+                            owner_user_id=self.owner_id,
+                            jwt_token=self.jwt_token,
+                            owner_name=self.owner_name,
+                            owner_email=self.owner_email,
+                            file_size=document.byte_size,
+                            original_filename=document.title,
+                            connector_type="url",
+                            source_url=outcome.final_url,
+                            web_source_id=source.id,
+                            web_page_id=page.id,
+                            web_page_depth=outcome.depth,
+                            root_source_url=source.starting_url,
+                            canonical_url=outcome.canonical_url,
+                        )
+                    except Exception as exc:
+                        page.status, page.last_error = "failed", str(exc) or "Website page ingestion failed"
+                        page_errors.append(page.last_error)
+                        continue
                     if processed.get("status") == "error":
                         page.status, page.last_error = (
                             "failed",
@@ -178,9 +203,9 @@ class WebsiteSourceProcessor(TaskProcessor):
                     (
                         await session.execute(
                             select(WebsitePage).where(
-                                WebsitePage.web_source_id == source.id,
-                                WebsitePage.last_seen_at < started_at,
-                                WebsitePage.suppressed_by_user.is_(False),
+                                col(WebsitePage.web_source_id) == source.id,
+                                col(WebsitePage.last_seen_at) < started_at,
+                                col(WebsitePage.suppressed_by_user).is_(False),
                             )
                         )
                     )
@@ -210,17 +235,17 @@ class WebsiteSourceProcessor(TaskProcessor):
                 datetime.now(UTC),
             )
             await session.commit()
-            discard_failed_new_source = not succeeded and not source_was_active
+            discard_failed_new_source = not succeeded and not source_is_established
             if discard_failed_new_source:
                 # Failed regular uploads never become Knowledge records. Do the
                 # same for a URL source that has never successfully indexed a
                 # page, so a task-expired failure cannot become an orphaned row.
                 await delete_source_projection(source.id)
                 await session.execute(
-                    delete(WebsitePage).where(WebsitePage.web_source_id == source.id)
+                    delete(WebsitePage).where(col(WebsitePage.web_source_id) == source.id)
                 )
                 await session.execute(
-                    delete(WebsiteCrawlRun).where(WebsiteCrawlRun.web_source_id == source.id)
+                    delete(WebsiteCrawlRun).where(col(WebsiteCrawlRun.web_source_id) == source.id)
                 )
                 await session.delete(source)
                 await session.commit()
@@ -228,7 +253,7 @@ class WebsiteSourceProcessor(TaskProcessor):
                 child_count = (
                     (
                         await session.execute(
-                            select(WebsitePage).where(WebsitePage.web_source_id == source.id)
+                            select(WebsitePage).where(col(WebsitePage.web_source_id) == source.id)
                         )
                     )
                     .scalars()
