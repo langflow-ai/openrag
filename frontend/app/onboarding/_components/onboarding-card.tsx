@@ -537,8 +537,13 @@ const OnboardingCard = ({
     }
 
     // Add provider-specific credentials based on the selected provider
-    if (currentProvider === "openai" && settings.openai_api_key) {
-      onboardingData.openai_api_key = settings.openai_api_key;
+    if (currentProvider === "openai") {
+      if (settings.openai_api_key) {
+        onboardingData.openai_api_key = settings.openai_api_key;
+      }
+      if (settings.openai_base_url) {
+        onboardingData.openai_base_url = settings.openai_base_url;
+      }
     } else if (currentProvider === "anthropic" && settings.anthropic_api_key) {
       onboardingData.anthropic_api_key = settings.anthropic_api_key;
     } else if (currentProvider === "watsonx") {
@@ -725,6 +730,9 @@ const OnboardingCard = ({
                         alreadyConfigured={
                           providerAlreadyConfigured &&
                           modelProvider === "openai"
+                        }
+                        existingBaseUrl={
+                          currentSettings?.providers?.openai?.base_url
                         }
                       />
                     ) : providerKey === "watsonx" ? (

@@ -41,6 +41,7 @@ class SettingsUpdateBody(BaseModel):
     embedding_provider: str | None = Field(None, min_length=1)
     index_name: str | None = Field(None, min_length=1)
     openai_api_key: str | None = Field(None, min_length=1)
+    openai_base_url: str | None = Field(None, min_length=1)
     anthropic_api_key: str | None = Field(None, min_length=1)
     watsonx_api_key: str | None = Field(None, min_length=1)
     watsonx_endpoint: str | None = Field(None, min_length=1)
@@ -59,6 +60,13 @@ class SettingsUpdateBody(BaseModel):
     # the backend returns 409 and the frontend prompts the user.
     force_remove: bool | None = False
 
+    @field_validator("openai_base_url")
+    @classmethod
+    def reject_whitespace_only_base_url(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("openai_base_url must not be blank")
+        return value
+
 
 class OnboardingBody(BaseModel):
     llm_provider: str | None = Field(None, min_length=1)
@@ -66,6 +74,7 @@ class OnboardingBody(BaseModel):
     embedding_provider: str | None = Field(None, min_length=1)
     embedding_model: str | None = Field(None, min_length=1)
     openai_api_key: str | None = Field(None, min_length=1)
+    openai_base_url: str | None = Field(None, min_length=1)
     anthropic_api_key: str | None = Field(None, min_length=1)
     watsonx_api_key: str | None = Field(None, min_length=1)
     watsonx_endpoint: str | None = Field(None, min_length=1)
@@ -74,6 +83,13 @@ class OnboardingBody(BaseModel):
     provider_credentials: dict[str, dict[str, str]] | None = None
     provider_credential_removals: dict[str, list[str]] | None = None
     provider_auth_methods: dict[str, str] | None = None
+
+    @field_validator("openai_base_url")
+    @classmethod
+    def reject_whitespace_only_base_url(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("openai_base_url must not be blank")
+        return value
 
 
 class CitationDisplayData(BaseModel):
@@ -161,6 +177,7 @@ class OnboardingStateConfig(BaseModel):
 
 class OpenAIProviderConfig(BaseModel):
     has_api_key: bool
+    base_url: str | None
     configured: bool
 
 
