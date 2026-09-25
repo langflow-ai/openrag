@@ -15,8 +15,8 @@ from db.models.session_ownership import SessionOwnership
 from db.models.user import User
 from db.models.user_preferences import UserPreferences
 from db.models.user_role import UserRole
-from db.models.workspace_config import WorkspaceConfig
 from db.models.website_source import WebsiteCrawlRun, WebsitePage, WebsiteSource
+from db.models.workspace_config import WorkspaceConfig
 
 __all__ = [
     "ApiKey",

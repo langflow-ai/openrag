@@ -154,8 +154,9 @@ class WebsiteSourceProcessor(TaskProcessor):
                         canonical_url=outcome.canonical_url,
                     )
                     if processed.get("status") == "error":
-                        page.status, page.last_error = "failed", (
-                            processed.get("error") or "Failed to ingest website page"
+                        page.status, page.last_error = (
+                            "failed",
+                            (processed.get("error") or "Failed to ingest website page"),
                         )
                         page_errors.append(page.last_error)
                     else:

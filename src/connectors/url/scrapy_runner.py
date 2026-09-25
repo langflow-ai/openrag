@@ -37,7 +37,9 @@ class CrawlPolicyDownloaderMiddleware:
     def process_request(self, request: Request, spider: ManagedWebsiteSpider) -> None:
         try:
             url = canonicalize_url(request.url)
-            if not spider.allows_request(url, is_robots=request.meta.get("dont_obey_robotstxt", False)):
+            if not spider.allows_request(
+                url, is_robots=request.meta.get("dont_obey_robotstxt", False)
+            ):
                 raise CrawlPolicyError("URL is not within the allowed crawl scope")
             parsed = urlsplit(url)
             resolve_public_addresses(
@@ -162,7 +164,9 @@ class ManagedWebsiteSpider(scrapy.Spider):
             self._record(canonical_url, canonical_url, depth, error=str(exc))
             return
         if not self.spec.allows(final_url):
-            self._record(canonical_url, final_url, depth, error="redirect left the approved crawl scope")
+            self._record(
+                canonical_url, final_url, depth, error="redirect left the approved crawl scope"
+            )
             return
         if len(self._recorded) >= self.spec.max_pages:
             self._stop_for_limit("openrag_page_limit")
@@ -176,7 +180,9 @@ class ManagedWebsiteSpider(scrapy.Spider):
             self._record(canonical_url, final_url, depth, error="Unsupported content type")
             return
         if self.downloaded_bytes + len(response.body) > self.spec.max_downloaded_mb * 1024 * 1024:
-            self._record(canonical_url, final_url, depth, error="response exceeds the download limit")
+            self._record(
+                canonical_url, final_url, depth, error="response exceeds the download limit"
+            )
             self._stop_for_limit("openrag_download_limit")
             return
 
