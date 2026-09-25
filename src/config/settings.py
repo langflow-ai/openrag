@@ -157,17 +157,15 @@ LANGFLOW_URL = os.getenv("LANGFLOW_URL", f"http://localhost:{LANGFLOW_PORT}")
 LANGFLOW_CA_CERTS = os.getenv("LANGFLOW_CA_CERTS")  # e.g. /app/certs/langflow-ca/ca.crt
 _langflow_verify_env = os.getenv("LANGFLOW_VERIFY_CERTS")
 if _langflow_verify_env is None:
-    # A configured CA bundle is a clear signal verification should be on;
-    # an explicit env var value (including "false") always wins either way.
-    LANGFLOW_VERIFY_CERTS = bool(LANGFLOW_CA_CERTS)
+    LANGFLOW_VERIFY_CERTS = True
 else:
     LANGFLOW_VERIFY_CERTS = _langflow_verify_env.lower() in ("true", "1", "yes")
 
 if LANGFLOW_CA_CERTS and not os.path.isfile(LANGFLOW_CA_CERTS):
     raise RuntimeError(f"LANGFLOW_CA_CERTS path does not exist: {LANGFLOW_CA_CERTS!r}")
 if LANGFLOW_VERIFY_CERTS and not LANGFLOW_CA_CERTS:
-    logger.warning(
-        "LANGFLOW_VERIFY_CERTS=true but LANGFLOW_CA_CERTS is not set; "
+    logger.debug(
+        "LANGFLOW_VERIFY_CERTS=true and LANGFLOW_CA_CERTS is not set; "
         "TLS verification will use the system CA bundle."
     )
 

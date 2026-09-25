@@ -350,3 +350,53 @@ async def test_docling_submit_failure_skips_polling_and_langflow(
     assert mock_polling_service.poll_until_ready.call_count == 0
     assert svc.run_ingestion_flow.call_count == 0
     assert file_task.docling_task_id is None
+
+
+@pytest.mark.asyncio
+async def test_run_ingestion_flow_passes_docling_task_id_in_tweaks(monkeypatch):
+    """Verify run_ingestion_flow passes docling_task_id in tweaks['Docling Serve']['task_id']."""
+    captured = {}
+
+    class Response:
+        status_code = 200
+        reason_phrase = "OK"
+        headers = {"content-type": "application/json"}
+        text = '{"status":"ok"}'
+
+        def json(self):
+            return {"status": "ok"}
+
+    async def langflow_request(method, endpoint, **kwargs):
+        captured.update({"method": method, "endpoint": endpoint, **kwargs})
+        return Response()
+
+    async def add_provider_credentials_to_headers(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(
+        "services.langflow_file_service.clients",
+        SimpleNamespace(langflow_request=langflow_request, opensearch=None),
+    )
+    monkeypatch.setattr(
+        "utils.langflow_headers.add_provider_credentials_to_headers",
+        add_provider_credentials_to_headers,
+    )
+    monkeypatch.setattr(
+        "config.settings.get_openrag_config",
+        lambda: SimpleNamespace(
+            knowledge=SimpleNamespace(embedding_model="text-embedding-3-small")
+        ),
+    )
+    monkeypatch.setattr("config.settings.get_index_name", lambda: "unit-documents")
+
+    service = LangflowFileService()
+    result = await service.run_ingestion_flow(
+        file_paths=[],
+        file_tuples=[("source.pdf", b"content", "application/pdf")],
+        docling_task_id="docling-task-9876",
+    )
+
+    assert result == {"status": "ok"}
+    payload = captured["json"]
+    assert payload["tweaks"]["Docling Serve"]["task_id"] == "docling-task-9876"
+    assert captured["headers"]["X-Langflow-Global-Var-DOCLING_TASK_ID"] == "docling-task-9876"
