@@ -17,7 +17,11 @@ from models.tasks import (
     UploadTask,
 )
 from session_manager import AnonymousUser
-from utils.filename_claims import claim_holder, filename_claims
+from utils.filename_claims import (
+    INFLIGHT_CLAIM_WINNER_FAILED_ERROR,
+    claim_holder,
+    filename_claims,
+)
 from utils.gpu_detection import get_worker_count
 from utils.logging_config import get_logger
 from utils.telemetry import Category, MessageId, TelemetryClient
@@ -607,6 +611,51 @@ class TaskService:
 
         return f"{hours}h {mins}m {secs}s"
 
+    async def _fail_files_stranded_by(
+        self, upload_task: UploadTask, task_id: str, refused_holders: set[str]
+    ) -> None:
+        """Fail the files that were skipped for a name this one never indexed.
+
+        The duplicate gate decides a losing file's outcome the moment it loses
+        the claim, before the winner has ingested anything. When the winner then
+        fails, nothing landed under that name, so the loser's "skipped, a file
+        with this name already exists" describes something that never happened —
+        and it is counted as a successful file, which is a document the user
+        never got. SKIPPED is also not a retry candidate (retry_failed_files
+        takes FAILED only), so nothing would ever recover it.
+
+        Failing it instead says what happened and puts it back within reach of a
+        retry, which re-runs the gate and resolves correctly either way: it
+        ingests if the name is genuinely free, and skips again as a duplicate if
+        something else holds it by then.
+        """
+        prefix = f"{task_id}:"
+        for holder in refused_holders:
+            if not holder.startswith(prefix):
+                continue
+            stranded = upload_task.file_tasks.get(holder[len(prefix) :])
+            if stranded is None or stranded.status != TaskStatus.SKIPPED:
+                continue
+            # Only the in-flight skip is ours to reverse; a file skipped against
+            # something already indexed is unaffected by this failure.
+            if (stranded.result or {}).get("reason") != "duplicate_filename":
+                continue
+
+            stranded.status = TaskStatus.FAILED
+            stranded.error = INFLIGHT_CLAIM_WINNER_FAILED_ERROR
+            stranded.result = None
+            stranded.updated_at = time.time()
+            async with self._get_task_lock(task_id):
+                if upload_task.successful_files > 0:
+                    upload_task.successful_files -= 1
+                upload_task.failed_files += 1
+            logger.info(
+                "Reversed an in-flight duplicate skip after the ingesting file failed",
+                task_id=task_id,
+                file_path=stranded.file_path,
+                filename=stranded.filename,
+            )
+
     async def background_custom_processor(
         self, user_id: str, task_id: str, items: list, processor=None
     ) -> None:
@@ -759,7 +808,9 @@ class TaskService:
                         # (utils.filename_claims), so the next task — or a retry
                         # of this one — can take it. Every file passes through
                         # here, including the ones that never claimed anything.
-                        filename_claims.release(claim_holder(task_id, item_key))
+                        refused = filename_claims.release(claim_holder(task_id, item_key))
+                        if refused and file_task.status == TaskStatus.FAILED:
+                            await self._fail_files_stranded_by(upload_task, task_id, refused)
                         file_task.updated_at = time.time()
                         # Only increment processed_files if the file reached a terminal state
                         # This prevents counter inconsistency on cancellation.
@@ -1145,6 +1196,19 @@ class TaskService:
                 "failure_phase": "cancelled",
                 "user_facing_message": "Ingestion was cancelled.",
                 "actionable_by": "USER_ACTIONABLE",
+            }
+
+        # Before the substring heuristics below, which would otherwise read this
+        # as a plain duplicate: the file was never ingested, and retrying is
+        # exactly the right move.
+        if error == INFLIGHT_CLAIM_WINNER_FAILED_ERROR:
+            return {
+                "component": "openrag",
+                "failure_phase": "unknown",
+                "user_facing_message": (
+                    f"{INFLIGHT_CLAIM_WINNER_FAILED_ERROR} Retry to ingest it."
+                ),
+                "actionable_by": "RETRYABLE",
             }
 
         # Before any substring heuristic: an OpenSearch transport failure carries a

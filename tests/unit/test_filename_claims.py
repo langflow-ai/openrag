@@ -103,3 +103,35 @@ async def test_module_registry_is_clean_between_tests():
     """The autouse fixture in conftest clears it; without that, a claim leaked
     by a test driving process_item directly would skip a later test's file."""
     assert filename_claims.holds("owner:alice", "report.pdf") is None
+
+
+def test_release_reports_who_was_turned_away():
+    """The holder's outcome decides what the refused files' skips meant, so the
+    registry has to remember them."""
+    registry = FilenameClaimRegistry()
+    registry.claim("task-1:a", "owner:alice", "report.pdf")
+
+    assert registry.claim("task-1:b", "owner:alice", "report.pdf") is False
+    assert registry.claim("task-1:c", "owner:alice", "report.pdf") is False
+
+    assert registry.release("task-1:a") == {"task-1:b", "task-1:c"}
+
+
+def test_release_reports_nobody_when_no_one_was_refused():
+    registry = FilenameClaimRegistry()
+    registry.claim("task-1:a", "owner:alice", "report.pdf")
+
+    assert registry.release("task-1:a") == set()
+
+
+def test_refusals_do_not_leak_to_the_next_holder():
+    """Whoever takes the name next starts with a clean slate — the previous
+    holder's losers were already accounted for."""
+    registry = FilenameClaimRegistry()
+    registry.claim("task-1:a", "owner:alice", "report.pdf")
+    registry.claim("task-1:b", "owner:alice", "report.pdf")
+    registry.release("task-1:a")
+
+    registry.claim("task-1:b", "owner:alice", "report.pdf")
+
+    assert registry.release("task-1:b") == set()

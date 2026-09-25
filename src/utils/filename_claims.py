@@ -39,6 +39,15 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 
+# Error recorded on a file whose skip turned out to describe an ingestion that
+# never happened. Kept distinctive so failure classification can recognise it
+# without colliding with the corruption/duplicate substring heuristics.
+INFLIGHT_CLAIM_WINNER_FAILED_ERROR = (
+    "Another file with this name was ingesting at the same time and did not finish, "
+    "so this file was not ingested."
+)
+
+
 def claim_scope(owner_user_id: str | None, shared: bool) -> str:
     """The visibility scope a claim belongs to.
 
@@ -59,6 +68,9 @@ class FilenameClaimRegistry:
     def __init__(self) -> None:
         self._holders: dict[tuple[str, str], str] = {}
         self._claimed_by: dict[str, set[tuple[str, str]]] = {}
+        # Who was turned away while a holder had the name. The holder's outcome
+        # decides what their skip meant, so release() hands them back.
+        self._refused: dict[str, set[str]] = {}
 
     def claim(self, holder: str, scope: str, filename: str) -> bool:
         """Take `filename` and its aliases for `holder`, or report the name as
@@ -81,6 +93,7 @@ class FilenameClaimRegistry:
                     holder=holder,
                     held_by=current,
                 )
+                self._refused.setdefault(current, set()).add(holder)
                 return False
 
         for key in keys:
@@ -88,13 +101,20 @@ class FilenameClaimRegistry:
         self._claimed_by.setdefault(holder, set()).update(keys)
         return True
 
-    def release(self, holder: str) -> None:
-        """Drop everything `holder` claimed. Safe to call for a holder that
-        never claimed anything, which is the common case (a file that failed
-        before reaching the duplicate gate)."""
+    def release(self, holder: str) -> set[str]:
+        """Drop everything `holder` claimed and report who was turned away for it.
+
+        Safe to call for a holder that never claimed anything, which is the
+        common case (a file that failed before reaching the duplicate gate).
+
+        The refused holders come back because their outcome was decided on the
+        assumption that this one would index the name: if it did not, their skip
+        described something that never happened, and the caller has to say so.
+        """
         for key in self._claimed_by.pop(holder, ()):
             if self._holders.get(key) == holder:
                 del self._holders[key]
+        return self._refused.pop(holder, set())
 
     def holds(self, scope: str, filename: str) -> str | None:
         """The holder of this name, for tests and diagnostics."""
@@ -107,6 +127,7 @@ class FilenameClaimRegistry:
     def clear(self) -> None:
         self._holders.clear()
         self._claimed_by.clear()
+        self._refused.clear()
 
 
 # One registry per process: ingestion is driven by the singleton TaskService.
