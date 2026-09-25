@@ -3,6 +3,7 @@ Unit tests for api.settings.endpoints
 Validates error handling in update_docling_preset endpoint.
 """
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -478,6 +479,53 @@ async def test_removal_only_provider_update_requires_provider_write_permission()
 
     assert exc_info.value.status_code == 403
     rbac.audit_denied.assert_awaited_once_with("user-1", "providers:write")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("provider", "model"),
+    [
+        ("azure", "text-embedding-3-small"),
+        ("watsonx_onprem", "ibm/slate-125m-english-rtrvr"),
+    ],
+)
+async def test_custom_provider_removal_warns_when_embedding_models_are_in_use(provider, model):
+    from api.settings.endpoints import update_settings
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.edited = True
+    config.providers.openai.api_key = "sk-test"
+    config.providers.openai.configured = True
+    config.providers.set_credentials(provider, {"api_key": "secret"})
+    affected = [{"model": model, "doc_count": 4}]
+
+    rbac = MagicMock()
+    rbac.has_permission = AsyncMock(return_value=True)
+
+    with (
+        patch("api.settings.endpoints.get_openrag_config", return_value=config),
+        patch(
+            "api.settings.endpoints._affected_embedding_models",
+            new_callable=AsyncMock,
+            return_value=affected,
+        ),
+        patch("api.settings.endpoints.config_manager.save_config_file") as save,
+    ):
+        response = await update_settings(
+            body=SettingsUpdateBody(remove_provider_config=provider),
+            session_manager=AsyncMock(),
+            user=MagicMock(spec=User),
+            models_service=MagicMock(),
+            rbac=rbac,
+        )
+
+    payload = json.loads(response.body)
+    assert response.status_code == 409
+    assert payload["code"] == "embedding_provider_in_use"
+    assert payload["affected_provider"] == provider
+    assert payload["affected_models"] == affected
+    save.assert_not_called()
 
 
 @pytest.mark.asyncio

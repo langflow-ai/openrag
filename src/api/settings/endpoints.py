@@ -1071,6 +1071,12 @@ async def update_settings(
                         },
                         status_code=400,
                     )
+                if not body.force_remove:
+                    affected = await _affected_embedding_models(
+                        provider, session_manager, user, models_service
+                    )
+                    if affected:
+                        return _embedding_conflict_response(provider, provider, affected)
                 del working_config.providers.custom[provider]
                 if working_config.agent.llm_provider == provider:
                     fallback = _first_configured_llm_provider(working_config, provider)
