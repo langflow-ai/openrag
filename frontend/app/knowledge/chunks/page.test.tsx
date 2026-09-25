@@ -164,3 +164,69 @@ describe("ChunksPage — highlight wiring", () => {
     expect(container.querySelector("mark")?.textContent).toBe("fox");
   });
 });
+
+/**
+ * Serve a minimal /api/search response carrying per-chunk access-control
+ * fields. The query aggregates these onto the File object, making them visible
+ * in the detail panel when chunkCount > 0.
+ */
+function serveFile(chunkOverrides: Partial<ChunkResult>) {
+  const baseChunk: ChunkResult = {
+    filename: "access-test.pdf",
+    mimetype: "application/pdf",
+    page: 1,
+    text: "Sample content",
+    score: 1,
+    chunk_id: "c1",
+  };
+  server.use(
+    http.post("/api/search", () =>
+      HttpResponse.json({
+        results: [{ ...baseChunk, ...chunkOverrides }],
+        warnings: [],
+      }),
+    ),
+  );
+}
+
+describe("ChunksPage — access-control sections", () => {
+  it("renders every allowed_users entry (line 224)", async () => {
+    setMockLocation({
+      pathname: "/knowledge/chunks",
+      searchParams: { filename: "access-test.pdf" },
+    });
+    serveFile({
+      allowed_users: ["alice@example.com", "bob@example.com"],
+      filename: "access-test.pdf",
+    });
+
+    renderWithProviders(<ProtectedChunksPage />, {
+      providers: ["tooltip", "auth", "knowledgeFilter"],
+      auth: authPresets.admin,
+    });
+
+    await screen.findByText("alice@example.com", {}, { timeout: 5000 });
+    expect(screen.getByText("bob@example.com")).toBeTruthy();
+    expect(screen.getByText("Allowed users")).toBeTruthy();
+  });
+
+  it("renders every allowed_groups entry (line 256)", async () => {
+    setMockLocation({
+      pathname: "/knowledge/chunks",
+      searchParams: { filename: "access-test.pdf" },
+    });
+    serveFile({
+      allowed_groups: ["admins", "editors"],
+      filename: "access-test.pdf",
+    });
+
+    renderWithProviders(<ProtectedChunksPage />, {
+      providers: ["tooltip", "auth", "knowledgeFilter"],
+      auth: authPresets.admin,
+    });
+
+    await screen.findByText("admins", {}, { timeout: 5000 });
+    expect(screen.getByText("editors")).toBeTruthy();
+    expect(screen.getByText("Allowed groups")).toBeTruthy();
+  });
+});

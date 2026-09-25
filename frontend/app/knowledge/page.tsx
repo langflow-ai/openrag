@@ -722,7 +722,6 @@ function SearchPage() {
           </div>
         );
       },
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     }),
     [
       isCloudBrand,
@@ -730,6 +729,7 @@ function SearchPage() {
       isOpenragDocsRow,
       hasOpenragRefreshCue,
       effectiveSearchText,
+      router,
     ],
   );
 

@@ -125,14 +125,14 @@ function ChunksPageContent() {
             <div className="flex items-center mb-4">
               <h2 className="text-xl font-semibold">Document Details</h2>
               {fileData?.owner && (
-                <span className="lg:hidden flex items-center gap-1.5 text-sm text-muted-foreground ps-3">
+                <span className="lg:hidden flex items-center gap-1.5 text-sm text-muted-foreground ps-3 min-w-0">
                   Owned by:{" "}
                   <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900">
                     <span className="text-xs font-medium text-amber-800 dark:text-amber-200">
                       {String(fileData.owner).charAt(0).toUpperCase()}
                     </span>
                   </span>
-                  <span className="text-foreground">
+                  <span className="text-foreground truncate">
                     {fileData.owner_name ||
                       fileData.owner_email ||
                       fileData.owner}
