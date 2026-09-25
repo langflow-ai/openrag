@@ -296,6 +296,95 @@ def _opensearch(monkeypatch):
     return install
 
 
+def _page(*space_ids, after=None, **extra):
+    """One composite-aggregation page; `after` is the cursor it hands back."""
+    result = _aggregation(*space_ids)
+    if after is not None:
+        result["aggregations"]["embedding_spaces"]["after_key"] = {"space_id": after}
+    result.update(extra)
+    return result
+
+
+@pytest.fixture
+def _paged_opensearch(monkeypatch):
+    """An admin client that serves `pages` in order and records each request."""
+
+    def install(*pages):
+        requests: list[dict] = []
+        remaining = list(pages)
+
+        class _Client:
+            async def search(self, **kwargs):
+                requests.append(kwargs)
+                return remaining.pop(0)
+
+        monkeypatch.setattr(
+            "config.settings.clients", SimpleNamespace(opensearch=_Client()), raising=False
+        )
+        monkeypatch.setattr("config.settings.get_index_name", lambda: "documents", raising=False)
+        return requests
+
+    return install
+
+
+def _after(request):
+    return request["body"]["aggs"]["embedding_spaces"]["composite"].get("after")
+
+
+@pytest.mark.asyncio
+async def test_indexed_spaces_follows_the_cursor_past_the_first_page(
+    monkeypatch, _paged_opensearch
+):
+    """A stale space on page two is still a stale space."""
+    monkeypatch.setattr(provider_health, "_EMBEDDING_SPACE_PAGE_SIZE", 2)
+    requests = _paged_opensearch(
+        _page("openai:text-embedding-3-small", f"rhoai:{SERVED}", after=f"rhoai:{SERVED}"),
+        _page(f"rhoai:{STALE}"),
+    )
+
+    assert await provider_health._indexed_spaces("rhoai") == (SERVED, STALE)
+    assert [_after(request) for request in requests] == [None, {"space_id": f"rhoai:{SERVED}"}]
+
+
+@pytest.mark.asyncio
+async def test_indexed_spaces_stops_at_a_short_page(_paged_opensearch):
+    """The last page still carries an `after_key`; following it is a wasted read."""
+    requests = _paged_opensearch(_page(f"rhoai:{SERVED}", after=f"rhoai:{SERVED}"))
+
+    assert await provider_health._indexed_spaces("rhoai") == (SERVED,)
+    assert len(requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_indexed_spaces_refuses_partial_results(_paged_opensearch):
+    """A failed shard must raise, not hand back fewer buckets as if complete."""
+    requests = _paged_opensearch(_page(f"rhoai:{SERVED}"))
+
+    await provider_health._indexed_spaces("rhoai")
+
+    assert requests[0]["params"] == {"allow_partial_search_results": "false"}
+
+
+@pytest.mark.asyncio
+async def test_indexed_spaces_is_unknown_when_the_read_timed_out(_paged_opensearch):
+    _paged_opensearch(_page(f"rhoai:{SERVED}", timed_out=True))
+
+    assert await provider_health._indexed_spaces("rhoai") is None
+
+
+@pytest.mark.asyncio
+async def test_indexed_spaces_is_unknown_past_the_page_limit(monkeypatch, _paged_opensearch):
+    """Running out of pages before the cursor does is not knowing, not a full list."""
+    monkeypatch.setattr(provider_health, "_EMBEDDING_SPACE_PAGE_SIZE", 1)
+    monkeypatch.setattr(provider_health, "_EMBEDDING_SPACE_MAX_PAGES", 2)
+    _paged_opensearch(
+        _page(f"rhoai:{SERVED}", after=f"rhoai:{SERVED}"),
+        _page(f"rhoai:{STALE}", after=f"rhoai:{STALE}"),
+    )
+
+    assert await provider_health._indexed_spaces("rhoai") is None
+
+
 @pytest.mark.asyncio
 async def test_indexed_spaces_returns_this_providers_models(_opensearch):
     _opensearch(_aggregation(f"rhoai:{SERVED}", f"rhoai:{STALE}"))

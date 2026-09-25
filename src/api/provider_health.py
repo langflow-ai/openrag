@@ -66,23 +66,34 @@ async def _refresh_live_models(provider: str) -> None:
         logger.debug("Could not refresh live model listings", provider=provider, exc_info=True)
 
 
-#: One page of spaces is plenty for a diagnostic. A corpus has a handful of
-#: them — one per embedding model it has ever been indexed with — and a
-#: deployment past this many has a bigger problem than this message.
-_EMBEDDING_SPACE_SAMPLE = 100
+#: Spaces per aggregation page — the same page size retrieval discovers them
+#: with. A corpus has a handful: one per embedding model it was indexed with.
+_EMBEDDING_SPACE_PAGE_SIZE = 100
+
+#: Pages read before giving up. Far past any real corpus; it bounds what one
+#: health poll can cost if the index is somehow full of distinct spaces.
+_EMBEDDING_SPACE_MAX_PAGES = 10
 
 
 async def _indexed_spaces(provider: str) -> tuple[str, ...] | None:
     """Embedding models this corpus holds vectors for, under `provider`.
 
-    None means unknown — OpenSearch unreachable, or nothing indexed. Read with
-    the admin client, not a user-scoped one, because this is a property of the
-    corpus rather than of whoever is looking; DLS would silently shrink it.
+    None means unknown — OpenSearch unreachable, nothing indexed, or an answer
+    that may be incomplete. A partial list is never returned as if it were the
+    whole: a space missing from it is a stale space that goes unreported. So
+    every page of the composite aggregation is read, shard failures raise
+    rather than quietly dropping buckets, and running out of pages before the
+    cursor does is treated as not knowing.
+
+    Read with the admin client, not a user-scoped one, because this is a
+    property of the corpus rather than of whoever is looking; DLS would
+    silently shrink it.
     """
     try:
         from config.settings import clients, get_index_name
         from utils.embedding_fields import (
             build_embedding_space_aggregation,
+            embedding_space_after_keys,
             embedding_spaces_from_aggregation,
             split_embedding_space_id,
         )
@@ -90,28 +101,56 @@ async def _indexed_spaces(provider: str) -> tuple[str, ...] | None:
         client = clients.opensearch
         if client is None:
             return None
-        result = await client.search(
-            index=get_index_name(),
-            body={
-                "size": 0,
-                # Qualified spaces only. A legacy space records no provider, so
-                # it cannot be attributed to this one, and it is governed by
-                # OPENRAG_LEGACY_EMBEDDING_PROVIDER_MAP rather than by what the
-                # cluster serves today.
-                "aggs": build_embedding_space_aggregation(
-                    size=_EMBEDDING_SPACE_SAMPLE, include_legacy=False
-                ),
-            },
-            params={"terminate_after": 0},
-        )
+        space_ids: list[str] = []
+        after: dict[str, Any] | None = None
+        for _ in range(_EMBEDDING_SPACE_MAX_PAGES):
+            result = await client.search(
+                index=get_index_name(),
+                body={
+                    "size": 0,
+                    # Qualified spaces only. A legacy space records no provider,
+                    # so it cannot be attributed to this one, and it is governed
+                    # by OPENRAG_LEGACY_EMBEDDING_PROVIDER_MAP rather than by what
+                    # the cluster serves today.
+                    "aggs": build_embedding_space_aggregation(
+                        size=_EMBEDDING_SPACE_PAGE_SIZE,
+                        qualified_after=after,
+                        include_legacy=False,
+                    ),
+                },
+                # A failed shard must fail the read, not shrink its buckets.
+                params={"allow_partial_search_results": "false"},
+            )
+            if result.get("timed_out"):
+                logger.debug("Reading indexed embedding spaces timed out")
+                return None
+            space_ids.extend(space.space_id for space in embedding_spaces_from_aggregation(result))
+            # Raw buckets, not parsed spaces: the parser skips blank ids, and a
+            # page it thinned out is not a short one.
+            buckets = (
+                result.get("aggregations", {}).get("embedding_spaces", {}).get("buckets") or []
+            )
+            next_after, _ = embedding_space_after_keys(result)
+            # A short page is the last one; a composite aggregation still hands
+            # back an `after_key` for it, and following it costs an empty read.
+            if len(buckets) < _EMBEDDING_SPACE_PAGE_SIZE or not next_after or next_after == after:
+                break
+            after = next_after
+        else:
+            logger.debug(
+                "Indexed embedding spaces exceed the read limit",
+                pages=_EMBEDDING_SPACE_MAX_PAGES,
+                page_size=_EMBEDDING_SPACE_PAGE_SIZE,
+            )
+            return None
     except Exception:
         logger.debug("Could not read indexed embedding spaces", exc_info=True)
         return None
 
     key = (provider or "").strip().lower()
     models = []
-    for space in embedding_spaces_from_aggregation(result):
-        space_provider, model = split_embedding_space_id(space.space_id)
+    for space_id in space_ids:
+        space_provider, model = split_embedding_space_id(space_id)
         if space_provider == key and model:
             models.append(model)
     return tuple(dict.fromkeys(models)) or None
